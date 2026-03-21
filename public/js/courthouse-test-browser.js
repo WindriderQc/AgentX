@@ -26,7 +26,7 @@ function suggestedContextTokens(prompt) {
 }
 
 function typeLabel(prompt) {
-    return prompt.scoring_type || prompt.category || 'general';
+    return prompt.scoring_type || prompt.category || 'knowledge';
 }
 
 function renderCriteria(prompt) {

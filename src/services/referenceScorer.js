@@ -8,6 +8,7 @@ const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...
 const logger = require('../../config/logger');
 const { getFetchOptions } = require('../helpers/httpAgent');
 const { resolveEffectiveJudgeContext } = require('./scoring/judgeRuntimeConfig');
+const { DEFAULT_SCORING_CATEGORY } = require('./scoring/scoringConfigs');
 
 /**
  * Extract key points from a reference answer
@@ -309,7 +310,7 @@ async function score(response, prompt, judgeConfig) {
     return {
         quality_score: finalScore,
         scoring_method: 'reference',
-        scoring_type: prompt.scoring_type || 'general',
+        scoring_type: prompt.scoring_type || DEFAULT_SCORING_CATEGORY,
         breakdown: {
             similarity_rating: similarity.similarity,
             similarity_score: similarity.score,

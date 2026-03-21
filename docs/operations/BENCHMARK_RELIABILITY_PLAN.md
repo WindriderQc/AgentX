@@ -20,6 +20,8 @@ Status:
 Status:
 - Launched. Confidence-driven multi-judge escalation is active in the benchmark judging pipeline.
 - Launched. Calibration gold set and calibration metrics module are in place for CI and future reporting.
+- Launched. Hybrid scoring now lowers confidence and flags review when deterministic accuracy and compliance signals sharply disagree, so contradictory judge outcomes can escalate instead of silently landing as high-confidence scores.
+- Launched. Deterministic numeric parsing now prefers final-answer candidates and supports fractions and percentages, reducing false mismatches on step-by-step math responses.
 
 3. Recovery and state reconciliation
 - Verify batch state after crashes, queue stalls, and partial judging.
@@ -40,6 +42,7 @@ Status:
 
 5. Next tranche
 - Add richer calibration corpora for more categories and disagreement archetypes.
+- Add canonical machine-readable targets for deterministic prompts that currently embed the final answer inside explanatory prose.
 - Reduce `recordTestComplete()` and `current_test` write frequency if profiling shows they remain hot.
 - Add benchmark analytics for escalation rate, consensus rate, and calibration drift over time.
 - Add benchmark-specific crash and resume tests around live execution worker shutdown.

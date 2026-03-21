@@ -19,21 +19,14 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         type: Number,
         required: true,
         min: 1,
-        max: 10, // Enhanced judging system: expanded from 5 to 10 levels for finer differentiation
+        max: 5,
         index: true
     },
     category: {
         type: String,
         required: true,
-        enum: [
-            // Original categories
-            'code', 'coding', 'reasoning', 'factual', 'math', 'creative', 'general',
-            // Enhanced judging system categories
-            'instruction-following', 'summarization', 'translation',
-            'multi-turn-reasoning', 'context-retention', 'edge-cases',
-            // Additional deep-evaluation categories
-            'refactoring', 'debugging', 'explanation', 'dialogue'
-        ],
+        // 7 benchmark categories — see config/categories.js
+        enum: ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'],
         index: true
     },
     expected_answer: {
@@ -50,16 +43,7 @@ const BenchmarkPromptSchema = new mongoose.Schema({
     },
     scoring_type: {
         type: String,
-        enum: [
-            'reasoning', 'quick', 'pattern', 'code', 'factual', 'math', 'creative',
-            // Enhanced judging system scoring types
-            'instruction-following', 'summarization', 'translation',
-            'multi-turn-reasoning', 'context-retention', 'edge-cases',
-            // Additional deep-evaluation categories
-            'coding', 'general', 'refactoring', 'debugging', 'explanation', 'dialogue',
-            // Custom prompt-defined scoring
-            'custom'
-        ],
+        enum: ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation', 'custom'],
         default: 'reasoning'
     },
     scoring_dimensions: {
@@ -129,7 +113,7 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         allow_latex: { type: Boolean, default: true },        // for number_only
         description: { type: String, default: undefined }     // human-readable
     },
-    // Expert reference answer for reference-based scoring (levels 6+)
+    // Expert reference answer for reference-based scoring
     reference_answer: {
         type: String,
         default: null

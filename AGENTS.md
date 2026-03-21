@@ -299,6 +299,7 @@ Conventional commits (`feat:`, `fix:`, `docs:`, etc.), coverage targets above, P
 ## Naming
 
 - **AgentX Platform** — the application runtime / control plane
+- **OpenClaw** — an external operator shell or gateway that may supervise AgentX workflows, but does not redefine AgentX as a SpecialX subagent
 - **SpecialX** — specialist task agents managed by AgentX
 - **Persona** — behavior/prompt profile only (not an autonomous runtime)
 - **Run** — one bounded execution of one SpecialX on one task

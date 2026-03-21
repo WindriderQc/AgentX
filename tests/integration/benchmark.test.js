@@ -128,13 +128,15 @@ describe('Benchmark System - Integration Tests', () => {
             expect(count).toBeGreaterThan(0);
 
             const seededCategories = await BenchmarkPrompt.distinct('category');
-            expect(seededCategories).toEqual(expect.arrayContaining([
-                'general',
-                'refactoring',
-                'debugging',
-                'explanation',
-                'dialogue'
-            ]));
+            expect(seededCategories.sort()).toEqual([
+                'coding',
+                'creative',
+                'instruction',
+                'knowledge',
+                'math',
+                'reasoning',
+                'translation'
+            ]);
         });
 
         it('should return prompts grouped by level', async () => {
@@ -343,7 +345,7 @@ describe('Benchmark System - Integration Tests', () => {
                 modelName: 'aligned-model',
                 displayName: 'Aligned Model',
                 categories: ['generalist'],
-                benchmarkStats: { bestCategory: 'general' },
+                benchmarkStats: { bestCategory: 'knowledge' },
                 hostPerformance: [
                     {
                         hostUrl: 'http://localhost:11434',
@@ -370,7 +372,7 @@ describe('Benchmark System - Integration Tests', () => {
             expect(row.host_test_tokens_per_sec).toBe(108);
             expect(row.host_test_latency_ms).toBe(950);
             expect(row.host_test_vram_used_mib).toBe(8192);
-            expect(row.recommended_category).toBe('general');
+            expect(row.recommended_category).toBe('knowledge');
             expect(row.manual_categories).toEqual(['generalist']);
         });
 
@@ -628,6 +630,37 @@ describe('Benchmark System - Integration Tests', () => {
             expect(batch).toBeTruthy();
             expect(batch.status).toBe('running');
             expect(batch.models).toEqual(['test-model']);
+        });
+
+        it('should not report pending judge work immediately after launch', async () => {
+            const response = await request(app)
+                .post('/api/benchmark/batch')
+                .send({
+                    host: 'http://localhost:11434',
+                    models: ['test-model'],
+                    levels: [1],
+                    run_name: 'Judge Init Regression',
+                    judge_config: { host: 'http://localhost:11434', model: 'judge-model' }
+                });
+
+            expect(response.status).toBe(200);
+
+            const batchResponse = await request(app)
+                .get(`/api/benchmark/batch/${response.body.data.batch_id}`)
+                .expect(200);
+
+            expect(batchResponse.body.status).toBe('success');
+            expect(batchResponse.body.data.completed).toBe(0);
+            expect(batchResponse.body.data.judge_total).toBe(0);
+            expect(batchResponse.body.data.judge_completed).toBe(0);
+            expect(batchResponse.body.data.judge_failed).toBe(0);
+            expect(batchResponse.body.data.judge_stats).toMatchObject({
+                total: 0,
+                pending: 0,
+                lag: 0,
+                completed: 0,
+                failed: 0
+            });
         });
 
         it('should reject batch start when preflight fails', async () => {

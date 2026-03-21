@@ -72,9 +72,9 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         required: true,
         validate: {
             validator: function(v) {
-                return Array.isArray(v) && v.length > 0 && v.every(l => l >= 1 && l <= 10);
+                return Array.isArray(v) && v.length > 0 && v.every(l => l >= 1 && l <= 5);
             },
-            message: 'Levels must be between 1 and 10' // Enhanced judging system: expanded from 5 to 10 levels
+            message: 'Levels must be between 1 and 5'
         }
     },
     judge_config: {

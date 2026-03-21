@@ -16,6 +16,9 @@ const logger = require('../../config/logger');
 const { getFetchOptions } = require('../helpers/httpAgent');
 const { DECOMPOSED_QUESTIONS } = require('./decomposedJudgeQuestions');
 const { resolveEffectiveJudgeContext } = require('./scoring/judgeRuntimeConfig');
+const { DEFAULT_SCORING_CATEGORY, normalizeScoringCategory } = require('./scoring/scoringConfigs');
+
+const DEFAULT_DECOMPOSED_CATEGORY = DEFAULT_SCORING_CATEGORY;
 
 /**
  * Make a single binary YES/NO call to the judge model
@@ -251,19 +254,24 @@ function buildExplanation(overallScore, category, dimensionScores, dimensionBrea
  * @returns {Promise<Object>} Complete scoring result
  */
 async function score(response, prompt, judgeConfig) {
-    const category = prompt.scoring_type || prompt.category || 'general';
+    const category = normalizeScoringCategory(
+        prompt.scoring_type || prompt.category,
+        DEFAULT_DECOMPOSED_CATEGORY
+    );
     const questions = DECOMPOSED_QUESTIONS[category];
 
     if (!questions) {
-        if (category === 'general') {
-            logger.error('DECOMPOSED_QUESTIONS missing "general" category - cannot score');
+        if (category === DEFAULT_DECOMPOSED_CATEGORY) {
+            logger.error('DECOMPOSED_QUESTIONS missing default fallback category - cannot score', {
+                fallback: DEFAULT_DECOMPOSED_CATEGORY
+            });
             return null;
         }
         logger.warn('No decomposed questions for category', {
             category,
-            fallback: 'general'
+            fallback: DEFAULT_DECOMPOSED_CATEGORY
         });
-        return score(response, { ...prompt, scoring_type: 'general' }, judgeConfig);
+        return score(response, { ...prompt, scoring_type: DEFAULT_DECOMPOSED_CATEGORY }, judgeConfig);
     }
 
     logger.info('Starting decomposed judging', {
@@ -368,7 +376,7 @@ async function score(response, prompt, judgeConfig) {
  * @returns {Array<string>} List of dimension names
  */
 function getDimensions(category) {
-    const questions = DECOMPOSED_QUESTIONS[category] || DECOMPOSED_QUESTIONS.general;
+    const questions = DECOMPOSED_QUESTIONS[category] || DECOMPOSED_QUESTIONS[DEFAULT_DECOMPOSED_CATEGORY];
     return Object.keys(questions);
 }
 
@@ -379,7 +387,7 @@ function getDimensions(category) {
  * @returns {Object|Array} Questions object or array
  */
 function getQuestions(category, dimension = null) {
-    const questions = DECOMPOSED_QUESTIONS[category] || DECOMPOSED_QUESTIONS.general;
+    const questions = DECOMPOSED_QUESTIONS[category] || DECOMPOSED_QUESTIONS[DEFAULT_DECOMPOSED_CATEGORY];
     if (dimension) {
         return questions[dimension] || [];
     }

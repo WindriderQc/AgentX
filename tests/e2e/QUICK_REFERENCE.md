@@ -163,7 +163,6 @@ tests/e2e/
 ├── fixtures/                      # Test data (runtime only)
 ├── downloads/                     # Downloaded files (runtime only)
 ├── TESTING_GUIDE.md              # Full guide (510 lines)
-├── EXPORT_IMPORT_TEST_SUMMARY.md # Detailed summary (439 lines)
 └── QUICK_REFERENCE.md            # This file
 ```
 
@@ -260,7 +259,6 @@ Tested on:
 ## Links
 
 - **Full Testing Guide:** [TESTING_GUIDE.md](./TESTING_GUIDE.md)
-- **Detailed Summary:** [EXPORT_IMPORT_TEST_SUMMARY.md](./EXPORT_IMPORT_TEST_SUMMARY.md)
 - **Test File:** [export-import.spec.js](./export-import.spec.js)
 - **Playwright Docs:** https://playwright.dev/
 

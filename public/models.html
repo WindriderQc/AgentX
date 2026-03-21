@@ -3,59 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Model Catalog | AgentX</title>
+    <title>Models | AgentX</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="css/models.css">
 </head>
 <body>
 
-    <!-- Top Navigation (injected via nav.js) -->
     <div id="nav-container"></div>
     <script src="/js/components/nav.js"></script>
     <script src="/js/workspace.js"></script>
     <script>injectNav('models');</script>
 
-    <!-- Main Content -->
     <main class="container-fluid">
-        <!-- Stats Row -->
+        <!-- Stats Strip -->
         <div class="stats-row">
-            <div class="stat-card">
+            <div class="stat-card clickable" id="statTotalCard">
                 <div class="icon-box blue"><i class="fas fa-cubes"></i></div>
                 <div class="stat-info">
                     <h3>Total Models</h3>
                     <div class="number" id="statTotal">--</div>
+                    <div class="sub-text" id="statTotalSub"></div>
                 </div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card clickable" id="statStorageCard">
                 <div class="icon-box purple"><i class="fas fa-hdd"></i></div>
                 <div class="stat-info">
-                    <h3>Storage Used</h3>
+                    <h3>Storage</h3>
                     <div class="number" id="statStorage">--</div>
+                    <div class="sub-text" id="statStorageSub"></div>
                 </div>
             </div>
-            <div class="stat-card clickable" id="statVramCard">
-                <div class="icon-box green"><i class="fas fa-microchip"></i></div>
+            <div class="stat-card clickable" id="statHostsCard">
+                <div class="icon-box orange"><i class="fas fa-server"></i></div>
                 <div class="stat-info">
-                    <h3>Active VRAM</h3>
-                    <div class="number" id="statVram">--</div>
+                    <h3>Hosts</h3>
+                    <div class="number" id="statHosts">--</div>
+                    <div class="sub-text" id="statHostsSub"></div>
                 </div>
             </div>
-             <div class="stat-card clickable" id="statProvidersCard">
-                <div class="icon-box orange"><i class="fas fa-bolt"></i></div>
+            <div class="stat-card clickable" id="statBenchmarkedCard">
+                <div class="icon-box cyan"><i class="fas fa-flask-vial"></i></div>
                 <div class="stat-info">
-                    <h3>Providers</h3>
-                    <div class="number" id="statProviders">--</div>
-                    <div class="sub-text" id="statProvidersSub">--</div>
+                    <h3>Benchmarked</h3>
+                    <div class="number" id="statBenchmarked">--</div>
+                    <div class="sub-text" id="statAvgScore">--</div>
                 </div>
             </div>
         </div>
 
+        <!-- Category Pill Strip -->
+        <div class="category-strip" id="categoryStrip">
+            <button class="cat-pill active" data-cat="all"><i class="fas fa-border-all"></i> All</button>
+            <button class="cat-pill" data-cat="coding"><i class="fas fa-code"></i> Coding</button>
+            <button class="cat-pill" data-cat="reasoning"><i class="fas fa-brain"></i> Reasoning</button>
+            <button class="cat-pill" data-cat="generalist"><i class="fas fa-cubes"></i> Generalist</button>
+            <button class="cat-pill" data-cat="specialist"><i class="fas fa-star"></i> Specialist</button>
+            <button class="cat-pill" data-cat="ops"><i class="fas fa-bolt"></i> Ops</button>
+            <button class="cat-pill" data-cat="embedding"><i class="fas fa-vector-square"></i> Embedding</button>
+            <button class="cat-pill" data-cat="judge"><i class="fas fa-gavel"></i> Judge</button>
+        </div>
+
         <!-- Filter Bar -->
         <div class="filter-bar glass-panel">
-            <div class="search-box">
-                <i class="fas fa-search"></i>
-                <input type="text" id="searchInput" placeholder="Search models (e.g. 'llama3', 'coder')...">
+            <div class="filter-search-row">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchInput" placeholder="Search models, tags, vendors...">
+                </div>
+                <div class="filter-actions">
+                    <button id="syncRegistryBtn" class="btn-secondary" title="Sync models from all Ollama hosts">
+                        <i class="fas fa-sync-alt"></i> Sync
+                    </button>
+                    <button id="openAddSourceBtn" class="btn-primary" title="Add model source">
+                        <i class="fas fa-plus"></i> Add Source
+                    </button>
+                </div>
             </div>
             <div class="filters">
                 <select id="providerSelect" class="select-input">
@@ -64,95 +87,87 @@
                     <option value="n8n">n8n</option>
                     <option value="custom">Custom</option>
                 </select>
-                <select id="categorySelect" class="select-input">
-                    <option value="all">All Categories</option>
-                    <option value="chat">Chat / General</option>
-                    <option value="code">Coding</option>
-                    <option value="embedding">Embedding</option>
+                <select id="hostSelect" class="select-input">
+                    <option value="all">All Hosts</option>
                 </select>
-                 <select id="sortSelect" class="select-input">
+                <select id="statusSelect" class="select-input">
+                    <option value="available">Available</option>
+                    <option value="all">All (incl. gone)</option>
+                    <option value="gone">Gone only</option>
+                </select>
+                <select id="sortSelect" class="select-input">
                     <option value="name">Name (A-Z)</option>
+                    <option value="score">Benchmark Score</option>
                     <option value="size">Size (Largest)</option>
-                    <option value="newest">Newest First</option>
+                    <option value="speed">Speed (tok/s)</option>
+                    <option value="newest">Newest</option>
                 </select>
-                <button id="syncRegistryBtn" class="btn-secondary" style="margin-left: auto;" title="Sync models from all Ollama hosts">
-                    <i class="fas fa-sync-alt"></i> Sync
-                </button>
-                <button id="openAddSourceBtn" class="btn-primary" title="Add n8n webhook or custom model source">
-                    <i class="fas fa-plus"></i> Add Source
-                </button>
             </div>
         </div>
+
+        <!-- Tag Cloud -->
+        <div class="tag-cloud" id="tagCloud"></div>
+
+        <!-- Selection Workspace -->
+        <section id="compareDrawer" class="comparison-workspace glass-panel" hidden>
+            <div class="drawer-header">
+                <div>
+                    <h3>Selected Models <span class="badge" id="compareCount">0</span></h3>
+                    <p class="drawer-subtitle" id="compareSubtitle">Select one model for details or 2-4 to compare automatically.</p>
+                </div>
+                <button class="btn-text text-sm" id="clearCompare">Clear All</button>
+            </div>
+            <div class="drawer-body">
+                <div class="compare-chip-list" id="compareList"></div>
+            </div>
+            <div id="compareContent" class="compare-content"></div>
+        </section>
 
         <!-- Models Table -->
         <div class="models-table-container glass-panel">
             <table class="models-table" id="modelsTable">
                 <thead>
                     <tr>
-                        <th width="30%" class="sortable" data-sort="name">Name <i class="fas fa-sort sort-icon" aria-hidden="true"></i></th>
-                        <th class="sortable" data-sort="provider">Provider <i class="fas fa-sort sort-icon" aria-hidden="true"></i></th>
-                        <th class="sortable" data-sort="params">Params <i class="fas fa-sort sort-icon" aria-hidden="true"></i></th>
-                        <th class="sortable" data-sort="quant">Quant <i class="fas fa-sort sort-icon" aria-hidden="true"></i></th>
-                        <th class="sortable" data-sort="size">Size <i class="fas fa-sort sort-icon" aria-hidden="true"></i></th>
-                        <th class="sortable" data-sort="context">Context <i class="fas fa-sort sort-icon" aria-hidden="true"></i></th>
+                        <th width="28%" class="sortable" data-sort="name">Model <i class="fas fa-sort sort-icon"></i></th>
+                        <th class="sortable" data-sort="host">Host <i class="fas fa-sort sort-icon"></i></th>
+                        <th class="sortable" data-sort="params">Params <i class="fas fa-sort sort-icon"></i></th>
+                        <th class="sortable" data-sort="context">Context <i class="fas fa-sort sort-icon"></i></th>
+                        <th>Categories</th>
+                        <th class="sortable" data-sort="score">Score <i class="fas fa-sort sort-icon"></i></th>
+                        <th class="sortable" data-sort="speed">Speed <i class="fas fa-sort sort-icon"></i></th>
+                        <th>Capabilities</th>
                         <th class="text-right">Actions</th>
                     </tr>
                 </thead>
-                <tbody id="modelsTableBody">
-                    <!-- Rendered by JS -->
-                </tbody>
+                <tbody id="modelsTableBody"></tbody>
             </table>
             <div id="loadingIndicator" class="loading-spinner">Loading models...</div>
         </div>
-        <div id="modelsGrid" class="hidden"></div> <!-- Keep ID to prevent errors if ref exists but hide it -->
-
     </main>
 
-    <!-- Comparison Drawer -->
-    <div id="compareDrawer" class="comparison-drawer glass-panel">
-        <div class="drawer-header">
-            <h3>Compare Models <span class="badge" id="compareCount">0</span></h3>
-            <button class="btn-text text-sm" id="clearCompare">Clear All</button>
-        </div>
-        <div class="drawer-body" id="compareList">
-            <!-- Selected items -->
-        </div>
-        <div class="drawer-footer">
-            <button id="compareNowBtn" class="btn-primary w-full">Compare Now <i class="fas fa-arrow-right"></i></button>
-        </div>
-    </div>
+    <!-- Detail Drawer Backdrop -->
+    <div id="detailDrawerBackdrop" class="detail-drawer-backdrop"></div>
 
-    <!-- Batch Toolbar -->
-    <div id="batchToolbar" class="batch-toolbar">
-        <span class="text-white"><span id="batchCount">0</span> selected</span>
-        <div class="h-separator"></div>
-        <button id="batchCompareBtn" class="btn-secondary-sm"><i class="fas fa-columns"></i> Compare</button>
-        <button id="batchExportBtn" class="btn-secondary-sm"><i class="fas fa-file-export"></i> Export</button>
-        <button id="batchDeleteBtn" class="btn-danger-sm"><i class="fas fa-trash"></i> Delete</button>
-        <button id="batchCancelBtn" class="btn-icon"><i class="fas fa-times"></i></button>
-    </div>
-
-    <!-- Modals -->
-
-    <!-- VRAM Details Modal -->
-    <div id="vramDetailsModal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>VRAM Details</h2>
-                <button id="closeVramDetailsModal" class="close-modal"><i class="fas fa-times"></i></button>
+    <!-- Model Detail Drawer -->
+    <div id="modelDetailDrawer" class="detail-drawer">
+        <div class="detail-drawer-content">
+            <div class="detail-drawer-header">
+                <h2 id="detailModelName">Model</h2>
+                <button id="closeDetailDrawer" class="close-modal"><i class="fas fa-times"></i></button>
             </div>
-            <div id="vramDetailsBody" class="tab-pane active"></div>
+            <div id="detailDrawerBody" class="detail-drawer-body"></div>
         </div>
     </div>
 
-    <!-- Providers Details Modal -->
-    <div id="providersDetailsModal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Providers</h2>
-                <button id="closeProvidersDetailsModal" class="close-modal"><i class="fas fa-times"></i></button>
+    <!-- Stat Popout Drawer (reused for all stat cards) -->
+    <div id="statPopoutBackdrop" class="detail-drawer-backdrop"></div>
+    <div id="statPopoutDrawer" class="detail-drawer stat-popout-drawer">
+        <div class="detail-drawer-content">
+            <div class="detail-drawer-header">
+                <h2 id="statPopoutTitle">Details</h2>
+                <button id="closeStatPopout" class="close-modal"><i class="fas fa-times"></i></button>
             </div>
-            <div id="providersDetailsBody" class="tab-pane active"></div>
+            <div id="statPopoutBody" class="detail-drawer-body"></div>
         </div>
     </div>
 
@@ -199,11 +214,11 @@
                 <div id="tab-custom" class="tab-pane">
                     <p>Register a custom model definition or remote API.</p>
                     <form id="customForm">
-                         <div class="form-group">
+                        <div class="form-group">
                             <label>Display Name</label>
                             <input type="text" name="displayName" class="form-input" required>
                         </div>
-                         <div class="form-group">
+                        <div class="form-group">
                             <label>Base Model ID</label>
                             <input type="text" name="baseModel" class="form-input" required placeholder="gpt-4-turbo">
                         </div>
@@ -217,17 +232,15 @@
     <!-- Comparison Modal -->
     <div id="comparisonModal" class="modal-overlay">
         <div class="modal-content full-screen-modal">
-             <div class="modal-header">
+            <div class="modal-header">
                 <h2>Model Comparison</h2>
                 <div class="actions">
-                     <button class="btn-secondary-sm"><i class="fas fa-file-pdf"></i> Export PDF</button>
-                     <button class="close-modal"><i class="fas fa-times"></i></button>
+                    <button class="btn-secondary-sm"><i class="fas fa-file-pdf"></i> Export PDF</button>
+                    <button class="close-modal"><i class="fas fa-times"></i></button>
                 </div>
             </div>
             <div class="modal-body p-0">
-                <div id="comparisonContainer" class="comparison-grid">
-                    <!-- JS renders grid here -->
-                </div>
+                <div id="comparisonContainer" class="comparison-grid"></div>
             </div>
         </div>
     </div>
@@ -260,7 +273,6 @@
         </div>
     </div>
 
-    <!-- Scripts -->
     <script src="js/models-unified.js"></script>
     <script src="js/models-management.js"></script>
     <script src="js/models-comparison.js"></script>

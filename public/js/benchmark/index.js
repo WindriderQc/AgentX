@@ -9,7 +9,7 @@ import { updateBatchInfo, renderDepthMatrix, bindDepthMatrix, updateDepthSummary
 import { runBatch, stopBatch, pollBatchProgress, resetBatchUI, recoverBatch, loadBatchHistory } from './batch-execution.js';
 import { showJudgeDetails, closeJudgeDetails } from './judge-details.js';
 import { pickRepresentativeResultId } from './results-analysis.js';
-import { loadRecentTestsTimeline, getTimelineMode, scheduleTimelineScrollSync, showTimelineTooltip } from './timeline.js';
+import { loadRecentTestsTimeline, showTimelineTooltip } from './timeline.js';
 import { rerenderRecentTests, toggleSuccessRateDetails } from './recent-tests.js';
 import { refreshJudgeTierUI } from './judge-mismatch.js';
 import { bindExplorer } from './prompt-explorer.js';
@@ -1053,19 +1053,7 @@ async function initBenchmarkUI() {
     }
 
     // Timeline controls
-    const timelineModeSelect = document.getElementById('timelineMode');
     const timelineOrderSelect = document.getElementById('timelineOrder');
-    const timelineZoomSelect = document.getElementById('timelineZoom');
-
-    const updateTimelineControls = () => {
-        const mode = getTimelineMode();
-        if (timelineZoomSelect) {
-            timelineZoomSelect.style.display = mode === 'events' ? '' : 'none';
-        }
-        if (timelineOrderSelect) {
-            timelineOrderSelect.style.display = mode === 'events' ? 'none' : '';
-        }
-    };
 
     if (timelineOrderSelect) {
         const savedOrder = localStorage.getItem('benchmarkTimelineOrder');
@@ -1078,18 +1066,6 @@ async function initBenchmarkUI() {
         });
     }
 
-    if (timelineModeSelect) {
-        timelineModeSelect.addEventListener('change', () => {
-            updateTimelineControls();
-            loadRecentTestsTimeline();
-        });
-    }
-
-    if (timelineZoomSelect) {
-        timelineZoomSelect.addEventListener('change', loadRecentTestsTimeline);
-    }
-
-    updateTimelineControls();
     loadRecentTestsTimeline();
 
     // Periodic refresh

@@ -34,7 +34,7 @@
                 </div>
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
                     <a href="courthouse.html" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; width: auto; height: 42px;"><i class="fas fa-balance-scale"></i> Courthouse</a>
-                    <a href="model-categorization.html" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; width: auto; height: 42px;"><i class="fas fa-tags"></i> Manage Categories</a>
+                    <a href="models.html" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; width: auto; height: 42px;"><i class="fas fa-tags"></i> Model Catalog</a>
                     <button id="helpBtn" class="btn-secondary" style="height: 42px;"><i class="fas fa-book"></i> Methodology & Guide</button>
                 </div>
             </div>
@@ -430,61 +430,63 @@
 
         <!-- Task Execution Timeline Section -->
         <div class="timeline-section" style="margin-top: 32px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 24px;">
-            <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0; font-size: 1.25em; display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-stream" style="color: var(--accent);"></i> Test Execution
-                </h3>
-                <div id="currentTestIndicator" style="display: none; flex: 1; margin: 0 24px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; border-left: 4px solid var(--accent);">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <div class="pulse-dot" style="width: 12px; height: 12px; background: var(--accent); border-radius: 50%; animation: pulse 2s ease-in-out infinite;"></div>
-                        <div style="flex: 1;">
-                            <div style="font-weight: 600; color: var(--text); font-size: 0.95em;" id="currentTestStage">Executing Test...</div>
-                            <div style="color: var(--muted); font-size: 0.85em; margin-top: 4px;">
-                                <span id="currentTestModel" style="color: var(--accent); font-weight: 500;"></span> →
-                                <span id="currentTestPrompt"></span>
-                            </div>
-                            <div style="color: var(--muted); font-size: 0.80em; margin-top: 2px;">
-                                <i class="fas fa-clock"></i> <span id="currentTestDuration">0s</span>
+            <div class="section-header timeline-header">
+                <div class="timeline-header-top">
+                    <div class="timeline-header-title">
+                        <h3 style="margin: 0; font-size: 1.25em; display: flex; align-items: center; gap: 10px;">
+                            <i class="fas fa-stream" style="color: var(--accent);"></i> Test Execution
+                        </h3>
+                        <div class="timeline-header-subtitle">Live progress, judge activity, and active batch status</div>
+                    </div>
+                    <div class="timeline-controls timeline-order-control">
+                        <label for="timelineOrder" class="timeline-control-label">Order</label>
+                        <select id="timelineOrder" class="timeline-order-select">
+                            <option value="execution" selected>Execution</option>
+                            <option value="prompt">Prompt</option>
+                            <option value="level">Level</option>
+                            <option value="quality">Quality</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="timeline-header-grid">
+                    <div id="currentTestIndicator" class="timeline-current-card" style="display: none;">
+                        <div class="timeline-current-inner">
+                            <div class="pulse-dot timeline-current-pulse"></div>
+                            <div class="timeline-current-copy">
+                                <div class="timeline-current-stage" id="currentTestStage">Executing Test...</div>
+                                <div class="timeline-current-meta">
+                                    <span id="currentTestModel" class="timeline-current-model"></span>
+                                    <span class="timeline-current-arrow">→</span>
+                                    <span id="currentTestPrompt"></span>
+                                </div>
+                                <div class="timeline-current-duration">
+                                    <i class="fas fa-clock"></i> <span id="currentTestDuration">0s</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-        <div id="judgeStatusPanel" style="display:none; margin-top: 8px; padding: 10px 14px; background: var(--panel-bg, #1a1a2e); border: 1px solid var(--panel-border, #2a2a4a); border-radius: 8px; font-size: 0.83em;">
-            <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-                <span style="color:var(--muted,#888);font-weight:600;"><i class="fas fa-gavel"></i> Active Judge:</span>
-                <span id="judgeStatusModel" class="badge bg-primary" style="font-size:0.82em;"></span>
-                <span style="color:var(--muted,#666);">on</span>
-                <span id="judgeStatusHost" class="badge bg-light text-dark border" style="font-size:0.8em;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-                <span id="judgeStatusUpgrade" style="font-size:0.8em;"></span>
-                <span id="judgeStatusTierUpgrades" style="display:none;"></span>
-                <span id="judgeStatusConcurrency" class="badge bg-light text-dark border" style="font-size:0.78em;"></span>
-                <span style="margin-left:auto;color:var(--muted);font-size:0.78em;">
-                    Scored: <strong id="judgeStatusScored">0</strong>/<span id="judgeStatusTotal">0</span>
-                    <span id="judgeStatusAvgLatency" style="margin-left:6px;"></span>
-                </span>
-            </div>
-        </div>
-                <div id="timelineBatchInfo" style="display: none; flex: 1; padding: 8px 16px; background: rgba(0,0,0,0.2); border-radius: 6px; font-size: 0.85em; color: var(--muted);">
-                    <i class="fas fa-layer-group" style="color: var(--accent); margin-right: 6px;"></i>
-                    <span id="timelineBatchLabel">Batch</span>
-                </div>
-                <div class="timeline-controls">
-                    <select id="timelineMode" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px;">
-                        <option value="results" selected>Results view</option>
-                        <option value="events">Batch events</option>
-                    </select>
-                    <select id="timelineOrder" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px;">
-                        <option value="execution" selected>Order: Execution</option>
-                        <option value="prompt">Order: Prompt</option>
-                        <option value="level">Order: Level</option>
-                        <option value="quality">Order: Quality</option>
-                    </select>
-                    <select id="timelineZoom" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px; display: none;">
-                        <option value="1" selected>Zoom 1x</option>
-                        <option value="0.85">Zoom 0.85x</option>
-                        <option value="0.7">Zoom 0.7x</option>
-                        <option value="0.55">Zoom 0.55x</option>
-                    </select>
+                    <div id="judgeStatusPanel" class="timeline-judge-card" style="display:none;">
+                        <div class="timeline-judge-row">
+                            <span class="timeline-judge-label"><i class="fas fa-gavel"></i> Active Judge</span>
+                            <span id="judgeStatusModel" class="badge bg-primary timeline-judge-badge"></span>
+                            <span class="timeline-judge-host-label">on</span>
+                            <span id="judgeStatusHost" class="badge bg-light text-dark border timeline-judge-badge timeline-judge-host"></span>
+                            <span id="judgeStatusUpgrade" class="timeline-judge-upgrade"></span>
+                            <span id="judgeStatusTierUpgrades" style="display:none;"></span>
+                            <span id="judgeStatusConcurrency" class="badge bg-light text-dark border timeline-judge-badge"></span>
+                            <span class="timeline-judge-score">
+                                Scored: <strong id="judgeStatusScored">0</strong>/<span id="judgeStatusTotal">0</span>
+                                <span id="judgeStatusAvgLatency" style="margin-left:6px;"></span>
+                            </span>
+                        </div>
+                    </div>
+                    <div id="timelineBatchInfo" class="timeline-batch-card" style="display: none;">
+                        <div class="timeline-batch-heading">
+                            <i class="fas fa-layer-group timeline-batch-icon"></i>
+                            <span>Active Batch</span>
+                        </div>
+                        <div id="timelineBatchLabel" class="timeline-batch-label">Batch</div>
+                    </div>
                 </div>
             </div>
 
@@ -495,13 +497,6 @@
             </div>
             <div class="timeline-note">
                 Colors represent prompt difficulty levels (1–10). Execution order reflects completion time; use prompt/level order to compare model consistency.
-            </div>
-            <div id="timelineScrollControls" class="timeline-scroll-controls" style="display: none;">
-                <div class="timeline-scroll-label">
-                    <span>Timeline scroll</span>
-                    <span>Past -> Latest</span>
-                </div>
-                <input type="range" id="timelineScrollRange" min="0" max="100" value="100" aria-label="Scroll timeline horizontally" />
             </div>
             <!-- Execution Timeline (Collapsible) -->
             <div id="timelineContainer" style="display: none; margin: 12px 0 0; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">

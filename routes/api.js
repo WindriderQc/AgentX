@@ -475,17 +475,33 @@ router.get('/chat/stream', optionalAuth, attachWorkspace, async (req, res) => {
 });
 
 // FEEDBACK
-router.post('/feedback', async (req, res) => {
+router.post('/feedback', optionalAuth, attachWorkspace, async (req, res) => {
     const { conversationId, messageId, rating, comment } = req.body;
     try {
-        let conversation;
-        
-        if (conversationId) {
-            conversation = await Conversation.findById(conversationId);
-        } else if (messageId) {
-            conversation = await Conversation.findOne({ 'messages._id': messageId });
+        if (!conversationId && !messageId) {
+            return res.status(400).json({ status: 'error', message: 'conversationId or messageId is required' });
         }
-        
+
+        const userId = getUserId(res);
+        const workspaceId = req.workspace ? req.workspace._id : null;
+        const query = { userId };
+
+        if (conversationId) {
+            query._id = conversationId;
+        } else {
+            query['messages._id'] = messageId;
+        }
+
+        if (workspaceId) {
+            query.workspaceId = workspaceId;
+        } else {
+            query.$or = [
+                { workspaceId: { $exists: false } },
+                { workspaceId: null }
+            ];
+        }
+
+        const conversation = await Conversation.findOne(query);
         if (!conversation) return res.status(404).json({ status: 'error', message: 'Conversation not found' });
 
         const msg = conversation.messages.id(messageId);

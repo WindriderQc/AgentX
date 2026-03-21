@@ -64,6 +64,73 @@ function exactMatch(response, expected, options = {}) {
     };
 }
 
+function parseNumericLiteral(token) {
+    if (typeof token !== 'string') return null;
+
+    const normalized = token
+        .trim()
+        .replace(/^[$(\[]+/, '')
+        .replace(/[$)\].,:;!?]+$/, '')
+        .replace(/,/g, '');
+
+    if (!normalized) return null;
+
+    const fractionMatch = normalized.match(/^(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)$/);
+    if (fractionMatch) {
+        const numerator = Number(fractionMatch[1]);
+        const denominator = Number(fractionMatch[2]);
+        if (Number.isFinite(numerator) && Number.isFinite(denominator) && denominator !== 0) {
+            return numerator / denominator;
+        }
+    }
+
+    const percentMatch = normalized.match(/^(-?\d+(?:\.\d+)?)%$/);
+    if (percentMatch) {
+        const percent = Number(percentMatch[1]);
+        if (Number.isFinite(percent)) {
+            return percent / 100;
+        }
+    }
+
+    const numberMatch = normalized.match(/^-?\d+(?:\.\d+)?$/);
+    if (numberMatch) {
+        const value = Number(numberMatch[0]);
+        if (Number.isFinite(value)) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+function collectNumericCandidates(text, regex, priority, candidates) {
+    regex.lastIndex = 0;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+        const rawValue = match[1] || match[0];
+        const value = parseNumericLiteral(rawValue);
+        if (value !== null) {
+            candidates.push({
+                value,
+                priority,
+                index: match.index
+            });
+        }
+    }
+}
+
+function chooseBestNumericCandidate(candidates) {
+    if (!Array.isArray(candidates) || candidates.length === 0) return null;
+
+    return candidates.reduce((best, candidate) => {
+        if (!best) return candidate;
+        if (candidate.priority !== best.priority) {
+            return candidate.priority > best.priority ? candidate : best;
+        }
+        return candidate.index >= best.index ? candidate : best;
+    }, null);
+}
+
 /**
  * Parse a numeric value from text
  * Handles various formats: "42", "x = 42", "The answer is 42", "42.5", "-3.14"
@@ -73,32 +140,44 @@ function exactMatch(response, expected, options = {}) {
 function parseNumericValue(text) {
     if (!text || typeof text !== 'string') return null;
 
-    // Try direct parse first
-    const direct = parseFloat(text.trim());
-    if (!isNaN(direct) && isFinite(direct)) {
+    const direct = parseNumericLiteral(text);
+    if (direct !== null) {
         return direct;
     }
 
-    // Try to extract number from common patterns
-    const patterns = [
-        /(?:=|is|equals|:)\s*(-?\d+(?:\.\d+)?)/i,  // "x = 42", "answer is 42"
-        /(-?\d+(?:\.\d+)?)\s*(?:$|[.,;])/,          // "42." or "42" at end
-        /\*\*(-?\d+(?:\.\d+)?)\*\*/,                // **42** (markdown bold)
-        /\\boxed\{(-?\d+(?:\.\d+)?)\}/,             // \boxed{42} (LaTeX)
-        /(-?\d+(?:\.\d+)?)/                         // First number found
-    ];
+    const sanitized = text
+        .replace(/^\s*\d+[.)]\s+/gm, '')
+        .replace(/\*\*/g, '')
+        .replace(/`/g, '');
 
-    for (const pattern of patterns) {
-        const match = text.match(pattern);
-        if (match && match[1]) {
-            const num = parseFloat(match[1]);
-            if (!isNaN(num) && isFinite(num)) {
-                return num;
-            }
-        }
-    }
+    const candidates = [];
+    collectNumericCandidates(sanitized, /\\boxed\{([^}]+)\}/g, 100, candidates);
+    collectNumericCandidates(
+        sanitized,
+        /\b(?:final answer|answer|result|therefore|thus|so|probability|sale price)\b[^\d\n]{0,80}?(?:=|is|equals|:)\s*([$]?-?\d+(?:\.\d+)?(?:\s*\/\s*-?\d+(?:\.\d+)?)?%?)/gi,
+        95,
+        candidates
+    );
+    collectNumericCandidates(
+        sanitized,
+        /(?:=|equals|:)\s*([$]?-?\d+(?:\.\d+)?(?:\s*\/\s*-?\d+(?:\.\d+)?)?%?)/gi,
+        85,
+        candidates
+    );
+    collectNumericCandidates(
+        sanitized,
+        /([$]?-?\d+(?:\.\d+)?(?:\s*\/\s*-?\d+(?:\.\d+)?)?%?)\s*(?=$|[)\].,;!?]|\n)/gm,
+        70,
+        candidates
+    );
+    collectNumericCandidates(
+        sanitized,
+        /([$]?-?\d+(?:\.\d+)?(?:\s*\/\s*-?\d+(?:\.\d+)?)?%?)/g,
+        10,
+        candidates
+    );
 
-    return null;
+    return chooseBestNumericCandidate(candidates)?.value ?? null;
 }
 
 /**

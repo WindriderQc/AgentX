@@ -135,8 +135,9 @@ describe('chatService', () => {
         calculateMessageCost.mockResolvedValue(mockCost);
         calculateConversationCost.mockReturnValue({ sum: 0.0002 });
 
-        // Conversation Mock Defaults (handled by factory, but ensure findById returns null by default for new chats)
+        // Conversation Mock Defaults (handled by factory, but ensure scoped lookups return null by default for new chats)
         Conversation.findById.mockResolvedValue(null);
+        Conversation.findOne.mockResolvedValue(null);
     });
 
     describe('Standard Chat Flow', () => {
@@ -175,10 +176,11 @@ describe('chatService', () => {
             mockExistingConvInstance.messages.push = jest.fn((item) => mockExistingConvInstance.messages.length + 1);
             mockExistingConvInstance.messages.create = jest.fn((msg) => ({ ...msg, _id: 'newmsg', metadata: {} }));
 
-            Conversation.findById.mockResolvedValue(mockExistingConvInstance);
+            Conversation.findOne.mockResolvedValue(mockExistingConvInstance);
 
             const request = {
                 userId: 'user123',
+                workspaceId: 'workspace123',
                 model: 'llama2',
                 message: 'Continue chat',
                 conversationId: 'existing123'
@@ -187,9 +189,36 @@ describe('chatService', () => {
             const result = await handleChatRequest(request);
 
             expect(result.conversationId).toBe('existing123');
-            expect(Conversation.findById).toHaveBeenCalledWith('existing123');
+            expect(Conversation.findOne).toHaveBeenCalledWith({
+                _id: 'existing123',
+                userId: 'user123',
+                workspaceId: 'workspace123'
+            });
             expect(mockExistingConvInstance.messages.push).toHaveBeenCalled();
             expect(mockExistingConvInstance.save).toHaveBeenCalled();
+        });
+
+        it('should create a new conversation when the provided ID is outside the caller scope', async () => {
+            const request = {
+                userId: 'user123',
+                workspaceId: 'workspace123',
+                model: 'llama2',
+                message: 'Continue chat',
+                conversationId: 'foreign123'
+            };
+
+            const result = await handleChatRequest(request);
+
+            expect(result.conversationId).toBe('conv123');
+            expect(Conversation.findOne).toHaveBeenCalledWith({
+                _id: 'foreign123',
+                userId: 'user123',
+                workspaceId: 'workspace123'
+            });
+            expect(Conversation).toHaveBeenCalledWith(expect.objectContaining({
+                userId: 'user123',
+                workspaceId: 'workspace123'
+            }));
         });
     });
 

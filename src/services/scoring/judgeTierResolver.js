@@ -76,42 +76,32 @@ const TIER_DISPLAY = {
 };
 
 // ── Prompt level → minimum judge tier mapping ────────────────────────
-// Levels 1-3:  basic is fine (trivial prompts, clear right/wrong)
-// Levels 4-6:  standard required (key differentiation zone)
-// Levels 7-10: advanced required (nuanced / complex evaluation)
+// Levels 1:    basic is fine (clear right/wrong, lightweight prompts)
+// Levels 2-3:  standard required (core differentiation zone)
+// Levels 4-5:  advanced required (expert/master evaluation)
 //
 // Local-first: max required tier is advanced (14B models). Premium is
 // never enforced — keeps benchmarking accessible on consumer hardware.
 const LEVEL_TIER_MAP = {
     1: 'basic',
-    2: 'basic',
-    3: 'basic',
-    4: 'standard',
-    5: 'standard',
-    6: 'standard',
-    7: 'advanced',
-    8: 'advanced',
-    9: 'advanced',
-    10: 'advanced'
+    2: 'standard',
+    3: 'standard',
+    4: 'advanced',
+    5: 'advanced'
 };
 
 const LEVEL_LABELS = {
-    1: 'Trivial',
-    2: 'Simple',
-    3: 'Easy',
-    4: 'Moderate',
-    5: 'Medium',
-    6: 'Challenging',
-    7: 'Hard',
-    8: 'Very Hard',
-    9: 'Extreme',
-    10: 'Master'
+    1: 'Basic',
+    2: 'Intermediate',
+    3: 'Advanced',
+    4: 'Expert',
+    5: 'Master'
 };
 
 const LEVEL_REASON_BY_TIER = {
-    basic: 'Clear right-or-wrong evaluation can stay on small judges.',
-    standard: 'This level needs more nuance and consistency than the basic tier provides.',
-    advanced: 'This level needs stronger reasoning for subtle quality differences.',
+    basic: 'Level 1 prompts have clear right-or-wrong evaluation and can stay on small judges.',
+    standard: 'Levels 2-3 need more nuance and consistency than the basic tier provides.',
+    advanced: 'Levels 4-5 need stronger reasoning for subtle quality differences.',
     premium: 'Premium is optional and never required by level policy.'
 };
 
@@ -153,11 +143,11 @@ const JUDGE_PRESETS = {
 
 /**
  * Get the minimum required judge tier for a prompt level.
- * @param {number} level - Prompt difficulty level (1-10)
+ * @param {number} level - Prompt difficulty level (1-5)
  * @returns {string} Tier name ('basic' | 'standard' | 'advanced' | 'premium')
  */
 function getRequiredTier(level) {
-    const clamped = Math.max(1, Math.min(10, Math.round(level || 5)));
+    const clamped = Math.max(1, Math.min(5, Math.round(level || 3)));
     return LEVEL_TIER_MAP[clamped] || 'standard';
 }
 

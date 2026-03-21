@@ -11,25 +11,25 @@
   {
     "id": "coding-partial-bug",
     "category": "coding",
-    "level": 7,
+    "level": 4,
     "human_score": 5.0,
     "tolerance": 1.0,
     "expected_review": true,
     "notes": "Code is plausible but contains a correctness bug and weak explanation."
   },
   {
-    "id": "summarization-overlong",
-    "category": "summarization",
-    "level": 4,
+    "id": "instruction-overlong",
+    "category": "instruction",
+    "level": 3,
     "human_score": 6.5,
     "tolerance": 0.8,
     "expected_review": false,
     "notes": "Captures main points but misses brevity constraints."
   },
   {
-    "id": "edge-case-unsafe",
-    "category": "edge-cases",
-    "level": 8,
+    "id": "reasoning-edge-case-unsafe",
+    "category": "reasoning",
+    "level": 5,
     "human_score": 3.0,
     "tolerance": 0.7,
     "expected_review": true,

@@ -7,6 +7,26 @@ const Conversation = require('../../../models/Conversation');
 const { calculateMessageCost, calculateConversationCost } = require('../costCalculator');
 const logger = require('../../../config/logger');
 
+async function findConversationForUpdate({ conversationId, userId, workspaceId }) {
+    if (!conversationId || !userId) return null;
+
+    const query = {
+        _id: conversationId,
+        userId
+    };
+
+    if (workspaceId) {
+        query.workspaceId = workspaceId;
+    } else {
+        query.$or = [
+            { workspaceId: { $exists: false } },
+            { workspaceId: null }
+        ];
+    }
+
+    return Conversation.findOne(query);
+}
+
 /**
  * Build RAG source entries for assistant message tracking
  */
@@ -56,7 +76,9 @@ async function persistConversation(params) {
     let assistantMessageId = null;
 
     try {
-        if (conversationId) conversation = await Conversation.findById(conversationId);
+        if (conversationId) {
+            conversation = await findConversationForUpdate({ conversationId, userId, workspaceId });
+        }
         if (!conversation) {
             conversation = new Conversation({
                 userId,
@@ -167,4 +189,4 @@ async function persistConversation(params) {
     return { conversation, assistantMessageId };
 }
 
-module.exports = { persistConversation, buildRagSourceEntries };
+module.exports = { persistConversation, buildRagSourceEntries, findConversationForUpdate };

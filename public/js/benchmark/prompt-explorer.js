@@ -7,31 +7,17 @@ import { getDepthConfig, getSelectedLevels } from './batch-config.js';
 // ─── Constants ─────────────────────────────────────────────────────
 
 const SCORING_TYPE_COLORS = {
-    'code':                   '#3498db',
-    'coding':                 '#3498db',
-    'reasoning':              '#9b59b6',
-    'factual':                '#1abc9c',
-    'math':                   '#e67e22',
-    'creative':               '#e74c3c',
-    'general':                '#95a5a6',
-    'instruction-following':  '#2ecc71',
-    'summarization':          '#f39c12',
-    'translation':            '#00bcd4',
-    'multi-turn-reasoning':   '#8e44ad',
-    'context-retention':      '#16a085',
-    'edge-cases':             '#c0392b',
-    'refactoring':            '#2980b9',
-    'debugging':              '#d35400',
-    'explanation':            '#27ae60',
-    'dialogue':               '#7f8c8d',
-    'custom':                 '#bdc3c7',
-    'quick':                  '#1abc9c',
-    'pattern':                '#f1c40f'
+    coding:      '#7c9fff',
+    reasoning:   '#a78bfa',
+    math:        '#fbbf24',
+    knowledge:   '#34d399',
+    instruction: '#06b6d4',
+    creative:    '#f87171',
+    translation: '#f472b6'
 };
 
 const LEVEL_LABELS = {
-    1: 'Trivial', 2: 'Simple', 3: 'Easy', 4: 'Moderate', 5: 'Medium',
-    6: 'Challenging', 7: 'Hard', 8: 'Very Hard', 9: 'Extreme', 10: 'Master'
+    1: 'Basic', 2: 'Intermediate', 3: 'Advanced', 4: 'Expert', 5: 'Master'
 };
 
 // ─── State ─────────────────────────────────────────────────────────

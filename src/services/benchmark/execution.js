@@ -104,7 +104,6 @@ async function startBatch({
         active_slot: 'benchmark_singleton',
         total_tests: models.length * selectedPrompts.length,
         plan,
-        judge_total: models.length * selectedPrompts.length,
         status: 'running',
         started_at: new Date(),
         tags: Array.isArray(tags) ? tags : [],

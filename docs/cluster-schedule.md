@@ -1,6 +1,6 @@
 # Cluster Schedule
 
-Unified view of what's using the LLM/GPU hosts and when. Aggregates schedules from OpenClaw, AgentX, n8n, and persistent Ollama models into one timeline.
+Unified view of what's using the LLM/GPU hosts and when. AgentX aggregates schedules from OpenClaw, AgentX, n8n, and persistent Ollama models into one timeline.
 
 ## Architecture
 
@@ -54,6 +54,8 @@ Response format: `{ status: 'success', data: {...} }`
 
 The sync script reads OpenClaw's `~/.openclaw/cron/jobs.json` directly and POSTs to AgentX. Zero OpenClaw code changes. Zero npm dependencies (uses Node 18+ built-in fetch).
 
+OpenClaw `jobs.json` is the source of truth for OpenClaw-owned recurring jobs only. AgentX remains the canonical merged schedule view for the broader cluster.
+
 ### Real jobs.json schema (OpenClaw)
 
 ```jsonc
@@ -99,9 +101,10 @@ Key mappings in the sync script:
 
 | Alias | Model | Host |
 |-------|-------|------|
-| local | qwen2.5:14b-instruct-q5_K_M | secondary (UGBrutal) |
-| fast | qwen3:14b | tertiary (UGClawdX) |
-| big | qwen32b:perf | tertiary (UGClawdX) |
+| small | qwen3:8b | tertiary (UGFrank) |
+| local | qwen3:14b | primary (UGClawdX) |
+| main | qwen3-coder:30b | primary (UGClawdX) |
+| big | qwen3.5:27b | primary (UGClawdX) |
 | think | deepseek-r1:14b | secondary (UGBrutal) |
 | coder | deepcoder:14b-preview-q4_K_M | secondary (UGBrutal) |
 | oss | openclaw-oss-20b | secondary (UGBrutal) |
@@ -124,9 +127,9 @@ ssh clawdx 'node ~/sync-openclaw-schedule.js'
 
 | Host | ID | IP | GPU | Role |
 |------|----|----|-----|------|
-| UGFrank | primary | 192.168.2.99 | RTX 3080 Ti 12GB | 3-8B models, embeddings |
+| UGFrank | tertiary | 192.168.2.99 | RTX 3080 Ti 12GB | 3-8B models, embeddings |
 | UGBrutal | secondary | 192.168.2.12 | RTX 5070 Ti 16GB | 14B reasoning/coding |
-| UGClawdX | tertiary | 192.168.2.66 | RTX 3090 24GB | 32B+ models, OpenClaw runtime |
+| UGClawdX | primary | 192.168.2.66 | RTX 3090 24GB | stable default local inference, OpenClaw runtime |
 
 ## Repository Layout
 
@@ -135,24 +138,25 @@ ssh clawdx 'node ~/sync-openclaw-schedule.js'
 | `~/.openclaw/workspace-clawdx-coder/AgentX/` | Dev — OpenClaw's agent works here | any |
 | `~/codes/AgentX/` | Prod — what runs on .33 | main only |
 
-## OpenClaw Jobs (12 total)
+## OpenClaw Jobs (13 total)
 
 All jobs from `~/.openclaw/cron/jobs.json`, synced every 15 min to AgentX.
 
 | Job | Agent | Schedule | Model | Host | Delivery |
 |-----|-------|----------|-------|------|----------|
-| infra-health-check | main | every 2h | local | secondary | none |
-| morning-briefing | main | `0 8 * * 1-5` | (agent default) | tertiary | telegram |
-| memory-maintenance | main | `0 22 * * 0,3` | local | secondary | none |
-| healthcheck:security-audit | main | `0 6 * * 1` | local | secondary | none |
-| agentx:daily-analytics | main | `0 18 * * *` | local | secondary | telegram |
-| agentx:weekly-benchmark | clawdx-coder | `0 14 * * 6` | local | secondary | telegram |
-| agentx:rag-maintenance | clawdx-coder | `0 3 * * 3` | local | secondary | none |
-| self-improve:weekly-report | main | `0 9 * * 1` | local | secondary | telegram |
-| self-improve:model-quality-watch | thinker | `0 20 * * *` | local | secondary | telegram |
-| leantime:daily-status | main | `30 8 * * *` | local | secondary | telegram |
-| roadmap-driver:work-cycle | roadmap-driver | `0 2 * * 1-5` | big | tertiary | none |
-| roadmap-driver:bisync | roadmap-driver | `0 7 * * 1-5` | local | secondary | telegram |
+| infra-health-check | main | every 2h | small | tertiary | none |
+| morning-briefing | main | `0 8 * * 1-5` | main | primary | telegram |
+| memory-maintenance | main | `0 22 * * 0,3` | main | primary | none |
+| healthcheck:security-audit | main | `0 6 * * 1` | local | primary | none |
+| agentx:daily-analytics | main | `0 18 * * *` | main | primary | telegram |
+| agentx:weekly-benchmark | clawdx-coder | `0 14 * * 6` | main | primary | telegram |
+| agentx:rag-maintenance | clawdx-coder | `0 3 * * 3` | main | primary | none |
+| self-improve:weekly-report | main | `0 9 * * 1` | main | primary | telegram |
+| self-improve:model-quality-watch | thinker | `0 20 * * *` | main | primary | telegram |
+| leantime:daily-status | main | `30 8 * * *` | main | primary | telegram |
+| roadmap-driver:work-cycle | roadmap-driver | `0 2 * * 1-5` | main | primary | none |
+| roadmap-driver:bisync | roadmap-driver | `0 7 * * 1-5` | local | primary | telegram |
+| session-cleanup | main | `0 4 * * 0` | local | primary | none |
 
 All cron expressions are America/Toronto timezone.
 

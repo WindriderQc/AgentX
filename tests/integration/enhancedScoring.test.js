@@ -23,7 +23,7 @@ describe('Enhanced Scoring System - Integration', () => {
                 prompt: 'Write a function to calculate fibonacci',
                 level: 2,
                 category: 'coding',
-                scoring_type: 'code',
+                scoring_type: 'coding',
                 scoring_dimensions: [
                     {
                         name: 'correctness',
@@ -61,7 +61,7 @@ describe('Enhanced Scoring System - Integration', () => {
                     name: 'Invalid Weight',
                     prompt: 'Test',
                     level: 1,
-                    category: 'general',
+                    category: 'knowledge',
                     scoring_dimensions: [
                         {
                             name: 'test',
@@ -87,19 +87,19 @@ describe('Enhanced Scoring System - Integration', () => {
     });
 
     describe('Enhanced Scoring Dimension Selection', () => {
-        it('should use enhanced config for code category (4 core dimensions)', async () => {
+        it('should use enhanced config for coding category (4 core dimensions)', async () => {
             const prompt = await BenchmarkPrompt.create({
                 name: 'Code Test',
                 prompt: 'Implement binary search',
                 level: 3,
                 category: 'coding',
-                scoring_type: 'code'
+                scoring_type: 'coding'
             });
 
             const dimensions = getScoringDimensions(prompt);
 
             // Now uses 4 core dimensions for judge reliability
-            expect(dimensions.category).toBe('code');
+            expect(dimensions.category).toBe('coding');
             expect(dimensions.dimensions).toHaveLength(4);
             expect(dimensions.dimensions.map(d => d.name)).toEqual([
                 'correctness',
@@ -125,8 +125,8 @@ describe('Enhanced Scoring System - Integration', () => {
             expect(dimensions.dimensions.map(d => d.name)).toEqual([
                 'accuracy',
                 'logic_soundness',
-                'clarity',
-                'completeness'
+                'completeness',
+                'clarity'
             ]);
         });
 
@@ -182,13 +182,13 @@ describe('Enhanced Scoring System - Integration', () => {
     });
 
     describe('Dynamic Judge Prompt Generation', () => {
-        it('should generate detailed prompts for 4-dimension code scoring', async () => {
+        it('should generate detailed prompts for 4-dimension coding scoring', async () => {
             const prompt = await BenchmarkPrompt.create({
                 name: 'Fibonacci',
                 prompt: 'Write a function to calculate fibonacci numbers',
                 level: 2,
                 category: 'coding',
-                scoring_type: 'code',
+                scoring_type: 'coding',
                 expected_answer: 'Efficient recursive or iterative solution'
             });
 
@@ -276,8 +276,7 @@ describe('Enhanced Scoring System - Integration', () => {
                 name: 'General Question',
                 prompt: 'Explain photosynthesis',
                 level: 2,
-                category: 'general'
-                // scoring_type defaults to 'general'
+                category: 'knowledge'
             });
 
             const dimensions = getScoringDimensions(prompt);
@@ -301,7 +300,7 @@ describe('Enhanced Scoring System - Integration', () => {
                 name: 'Weighted Test',
                 prompt: 'Test prompt',
                 level: 1,
-                category: 'general',
+                category: 'knowledge',
                 scoring_dimensions: [
                     { name: 'critical', weight: 0.7, description: 'Critical aspect' },
                     { name: 'minor', weight: 0.2, description: 'Minor aspect' },

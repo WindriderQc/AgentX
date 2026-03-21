@@ -121,15 +121,17 @@ function resolveHostVramMb(hostUrl, fallbackVramMb) {
 function getConfiguredHosts() {
   const hosts = [];
 
+  // OLLAMA_HOST (primary) = 192.168.2.66 = UGClawdX (RTX 3090 24GB, gateway host)
   const primaryUrl = normalizeHostUrl(envFirst('OLLAMA_HOST', 'OLLAMA_HOST_1', 'OLLAMA_HOST_PRIMARY'));
   if (primaryUrl) hosts.push({
     id: 'primary',
-    name: 'UGFrank',
+    name: 'UGClawdX',
     url: primaryUrl,
     priority: 1,
-    vramMb: resolveHostVramMb(primaryUrl, 12288)
+    vramMb: resolveHostVramMb(primaryUrl, 24576)
   });
 
+  // OLLAMA_HOST_2 = 192.168.2.12 = UGBrutal (RTX 5070Ti 16GB)
   const secondaryUrl = normalizeHostUrl(envFirst('OLLAMA_HOST_2', 'OLLAMA_HOST_HEAVY', 'OLLAMA_HOST_SECONDARY'));
   if (secondaryUrl) hosts.push({
     id: 'secondary',
@@ -139,13 +141,14 @@ function getConfiguredHosts() {
     vramMb: resolveHostVramMb(secondaryUrl, 16384)
   });
 
+  // OLLAMA_HOST_3 = 192.168.2.99 = UGFrank (RTX 3080Ti 12GB)
   const tertiaryUrl = normalizeHostUrl(envFirst('OLLAMA_HOST_3', 'OLLAMA_HOST_TERTIARY'));
   if (tertiaryUrl) hosts.push({
     id: 'tertiary',
-    name: 'UGClawdX',
+    name: 'UGFrank',
     url: tertiaryUrl,
     priority: 3,
-    vramMb: resolveHostVramMb(tertiaryUrl, 24576)
+    vramMb: resolveHostVramMb(tertiaryUrl, 12288)
   });
 
   return hosts;

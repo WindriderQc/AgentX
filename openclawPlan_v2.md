@@ -2,7 +2,7 @@
 
 > **Status:** Approved
 > **Date:** 2026-03-10
-> **Supersedes:** openclawPlan.md (Agent Mesh Foundation)
+> **Supersedes:** `docs/archive/2026-03-21/root/openclawPlan.md` (Agent Mesh Foundation)
 
 ---
 

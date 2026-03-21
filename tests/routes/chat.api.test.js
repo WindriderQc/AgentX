@@ -4,6 +4,7 @@
  */
 
 const request = require('supertest');
+const Conversation = require('../../models/Conversation');
 
 // Mock dependencies before requiring app
 jest.mock('../../models/Conversation', () => {
@@ -85,6 +86,7 @@ const UserProfile = require('../../models/UserProfile');
 const Workspace = require('../../models/Workspace');
 const WorkspaceMember = require('../../models/WorkspaceMember');
 const chatService = require('../../src/services/chatService');
+const userHelpers = require('../../src/helpers/userHelpers');
 const { getRagStore } = require('../../src/services/ragStore');
 
 // Load app after mocks
@@ -121,6 +123,7 @@ describe('POST /api/chat - Non-Streaming Endpoint', () => {
 
         Workspace.findById = jest.fn().mockResolvedValue(null);
         WorkspaceMember.findOne = jest.fn().mockResolvedValue(null);
+        userHelpers.getUserId.mockReturnValue('testuser123');
     });
 
     it('should return a standard JSON response', async () => {
@@ -148,5 +151,53 @@ describe('POST /api/chat - Non-Streaming Endpoint', () => {
 
         expect(response.status).toBe(400);
         expect(response.body.message).toContain('Message is required');
+    });
+});
+
+describe('POST /api/feedback', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('should save feedback only for a conversation in the caller scope', async () => {
+        const message = { _id: 'msg123', feedback: null };
+        const conversation = {
+            messages: {
+                id: jest.fn().mockReturnValue(message)
+            },
+            save: jest.fn().mockResolvedValue(true)
+        };
+
+        Conversation.findOne.mockResolvedValue(conversation);
+
+        const response = await request(app)
+            .post('/api/feedback')
+            .send({ conversationId: 'conv123', messageId: 'msg123', rating: 1, comment: 'Useful' });
+
+        expect(response.status).toBe(200);
+        expect(response.body.status).toBe('success');
+        expect(Conversation.findOne).toHaveBeenCalledWith({
+            _id: 'conv123',
+            userId: 'testuser123',
+            workspaceId: 'workspace123'
+        });
+        expect(message.feedback).toEqual({ rating: 1, comment: 'Useful' });
+        expect(conversation.save).toHaveBeenCalled();
+    });
+
+    it('should reject feedback updates for conversations outside the caller scope', async () => {
+        Conversation.findOne.mockResolvedValue(null);
+
+        const response = await request(app)
+            .post('/api/feedback')
+            .send({ conversationId: 'foreign123', messageId: 'msg123', rating: -1 });
+
+        expect(response.status).toBe(404);
+        expect(response.body.message).toContain('Conversation not found');
+        expect(Conversation.findOne).toHaveBeenCalledWith({
+            _id: 'foreign123',
+            userId: 'testuser123',
+            workspaceId: 'workspace123'
+        });
     });
 });

@@ -45,20 +45,12 @@ const BenchmarkResultSchema = new mongoose.Schema({
     prompt_level: {
         type: Number,
         min: 1,
-        max: 10, // Enhanced judging system: expanded from 5 to 10 levels for finer differentiation
+        max: 5,
         index: true
     },
     prompt_category: {
         type: String,
-        enum: [
-            // Original categories
-            'code', 'coding', 'reasoning', 'factual', 'math', 'creative', 'general',
-            // Enhanced judging system categories
-            'instruction-following', 'summarization', 'translation',
-            'multi-turn-reasoning', 'context-retention', 'edge-cases',
-            // Additional deep evaluation categories
-            'refactoring', 'debugging', 'explanation', 'dialogue'
-        ],
+        enum: ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'],
         index: true
     },
     expected_answer: {
@@ -225,17 +217,7 @@ const BenchmarkResultSchema = new mongoose.Schema({
     },
     scoring_type: {
         type: String,
-        enum: [
-            // Legacy values
-            'reasoning', 'quick', 'pattern',
-            // Category-based scoring types (matches ENHANCED_SCORING_CONFIGS)
-            'code', 'coding', 'factual', 'math', 'creative', 'general',
-            'instruction-following', 'summarization', 'translation',
-            'multi-turn-reasoning', 'context-retention', 'edge-cases',
-            'refactoring', 'debugging', 'explanation', 'dialogue',
-            // Custom prompt-defined scoring
-            'custom'
-        ],
+        enum: ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation', 'custom'],
         default: null
     },
     scoring_time_ms: {

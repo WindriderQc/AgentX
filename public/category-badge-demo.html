@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CategoryBadge Component Demo</title>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/css/model-categorization.css">
+    <link rel="stylesheet" href="/css/models.css">
     <style>
         body {
             background: #0D1117;
@@ -95,7 +95,7 @@
             </div>
             <div class="badge-demo">
                 <h4>📚 Factual</h4>
-                <div id="badge-factual"></div>
+                <div id="badge-knowledge"></div>
                 <code>#34d399</code>
             </div>
             <div class="badge-demo">
@@ -110,7 +110,7 @@
             </div>
             <div class="badge-demo">
                 <h4>📝 General</h4>
-                <div id="badge-general"></div>
+                <div id="badge-instruction"></div>
                 <code>#94a3b8</code>
             </div>
         </div>
@@ -192,8 +192,8 @@
         document.getElementById('badge-medium').innerHTML = 
             CategoryBadge.render('reasoning', 65, { interactive: true });
         
-        document.getElementById('badge-low').innerHTML = 
-            CategoryBadge.render('factual', 52, { interactive: true });
+        document.getElementById('badge-low').innerHTML =
+            CategoryBadge.render('knowledge', 52, { interactive: true });
         
         document.getElementById('badge-very-low').innerHTML = 
             CategoryBadge.render('math', 38, { interactive: true });
@@ -205,17 +205,17 @@
         document.getElementById('badge-reasoning').innerHTML = 
             CategoryBadge.render('reasoning', 72, { interactive: true });
         
-        document.getElementById('badge-factual').innerHTML = 
-            CategoryBadge.render('factual', 91, { interactive: true });
-        
-        document.getElementById('badge-math').innerHTML = 
+        document.getElementById('badge-knowledge').innerHTML =
+            CategoryBadge.render('knowledge', 91, { interactive: true });
+
+        document.getElementById('badge-math').innerHTML =
             CategoryBadge.render('math', 68, { interactive: true });
-        
-        document.getElementById('badge-creative').innerHTML = 
+
+        document.getElementById('badge-creative').innerHTML =
             CategoryBadge.render('creative', 79, { interactive: true });
-        
-        document.getElementById('badge-general').innerHTML = 
-            CategoryBadge.render('general', 55, { interactive: true });
+
+        document.getElementById('badge-instruction').innerHTML =
+            CategoryBadge.render('instruction', 55, { interactive: true });
 
         // Size variants
         document.getElementById('badge-small').innerHTML = 

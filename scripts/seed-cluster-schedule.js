@@ -5,15 +5,15 @@
  * Idempotent: upserts schedule entries from real infrastructure.
  *
  * Sources:
- *   openclaw  — 12 cron jobs from ~/.openclaw/cron/jobs.json (ClawdX)
+ *   openclaw  — 13 cron jobs from ~/.openclaw/cron/jobs.json (ClawdX)
  *   n8n       — 7 scheduled workflows (Ubundocker)
  *   agentx    — 5 internal timers (Docker Host)
  *   ollama-persistent — 3 GPU hosts always-on
  *
  * Hosts:
- *   UGFrank    (primary)   — 192.168.2.99  — RTX 3080 Ti 12GB
+ *   UGFrank    (tertiary)  — 192.168.2.99  — RTX 3080 Ti 12GB
  *   UGBrutal   (secondary) — 192.168.2.12  — RTX 5070 Ti 16GB
- *   UGClawdX   (tertiary)  — 192.168.2.66  — RTX 3090 24GB + OpenClaw
+ *   UGClawdX   (primary)   — 192.168.2.66  — RTX 3090 24GB + OpenClaw
  *   Ubundocker             — 192.168.2.199 — n8n automation
  *   Docker Host            — 192.168.2.33  — DataAPI, MongoDB
  *
@@ -27,38 +27,38 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx
 const entries = [
   // ── OpenClaw Cron Jobs (UGClawdX 192.168.2.66) ───────────────
   // Source: ~/.openclaw/cron/jobs.json
-  // Model aliases: local=qwen2.5:14b→UGBrutal, big=qwen32b:perf→UGClawdX
+  // Model aliases: small=qwen3:8b→UGFrank, local=qwen3:14b→UGClawdX, main=qwen3-coder:30b→UGClawdX, big=qwen3.5:27b→UGClawdX
   {
     source: 'openclaw', sourceId: 'oc-infra-health-check',
     name: 'Infra Health Check', taskType: 'monitoring',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'tertiary', model: 'qwen3:8b',
     agent: 'main',
     schedule: { type: 'cron', cron: '0 */2 * * *', timezone: 'America/Toronto' },
     estimatedDurationMs: 120000, priority: 5, enabled: true,
-    metadata: { modelAlias: 'local', delivery: 'none' }
+    metadata: { modelAlias: 'small', delivery: 'none' }
   },
   {
     source: 'openclaw', sourceId: 'oc-morning-briefing',
     name: 'Morning Briefing', taskType: 'inference',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'primary', model: 'qwen3-coder:30b',
     agent: 'main',
     schedule: { type: 'cron', cron: '0 8 * * 1-5', timezone: 'America/Toronto' },
     estimatedDurationMs: 300000, priority: 3, enabled: true,
-    metadata: { modelAlias: 'local', delivery: 'telegram' }
+    metadata: { modelAlias: 'main', delivery: 'telegram' }
   },
   {
     source: 'openclaw', sourceId: 'oc-memory-maintenance',
     name: 'Memory Maintenance', taskType: 'maintenance',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'primary', model: 'qwen3-coder:30b',
     agent: 'main',
     schedule: { type: 'cron', cron: '0 22 * * 0,3', timezone: 'America/Toronto' },
     estimatedDurationMs: 600000, priority: 6, enabled: true,
-    metadata: { modelAlias: 'local', delivery: 'none' }
+    metadata: { modelAlias: 'main', delivery: 'none' }
   },
   {
     source: 'openclaw', sourceId: 'oc-security-audit',
     name: 'Security Audit', taskType: 'diagnostics',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'primary', model: 'qwen3:14b',
     agent: 'main',
     schedule: { type: 'cron', cron: '0 6 * * 1', timezone: 'America/Toronto' },
     estimatedDurationMs: 600000, priority: 4, enabled: true,
@@ -67,74 +67,83 @@ const entries = [
   {
     source: 'openclaw', sourceId: 'oc-daily-analytics',
     name: 'AgentX Daily Analytics', taskType: 'diagnostics',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'primary', model: 'qwen3-coder:30b',
     agent: 'main',
     schedule: { type: 'cron', cron: '0 18 * * *', timezone: 'America/Toronto' },
     estimatedDurationMs: 300000, priority: 4, enabled: true,
-    metadata: { modelAlias: 'local', delivery: 'telegram' }
+    metadata: { modelAlias: 'main', delivery: 'telegram' }
   },
   {
     source: 'openclaw', sourceId: 'oc-weekly-benchmark',
     name: 'AgentX Weekly Benchmark', taskType: 'benchmark',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'primary', model: 'qwen3-coder:30b',
     agent: 'clawdx-coder',
     schedule: { type: 'cron', cron: '0 14 * * 6', timezone: 'America/Toronto' },
     estimatedDurationMs: 3600000, priority: 2, enabled: true,
-    metadata: { modelAlias: 'local', delivery: 'telegram' }
+    metadata: { modelAlias: 'main', delivery: 'telegram' }
   },
   {
     source: 'openclaw', sourceId: 'oc-rag-maintenance',
     name: 'RAG Maintenance', taskType: 'maintenance',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'primary', model: 'qwen3-coder:30b',
     agent: 'clawdx-coder',
     schedule: { type: 'cron', cron: '0 3 * * 3', timezone: 'America/Toronto' },
     estimatedDurationMs: 900000, priority: 5, enabled: true,
-    metadata: { modelAlias: 'local', delivery: 'none' }
+    metadata: { modelAlias: 'main', delivery: 'none' }
   },
   {
     source: 'openclaw', sourceId: 'oc-weekly-report',
     name: 'Self-Improve Weekly Report', taskType: 'diagnostics',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'primary', model: 'qwen3-coder:30b',
     agent: 'main',
     schedule: { type: 'cron', cron: '0 9 * * 1', timezone: 'America/Toronto' },
     estimatedDurationMs: 300000, priority: 4, enabled: true,
-    metadata: { modelAlias: 'local', delivery: 'telegram' }
+    metadata: { modelAlias: 'main', delivery: 'telegram' }
   },
   {
     source: 'openclaw', sourceId: 'oc-model-quality-watch',
     name: 'Model Quality Watch', taskType: 'diagnostics',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'primary', model: 'qwen3-coder:30b',
     agent: 'thinker',
     schedule: { type: 'cron', cron: '0 20 * * *', timezone: 'America/Toronto' },
     estimatedDurationMs: 300000, priority: 4, enabled: true,
-    metadata: { modelAlias: 'local', delivery: 'telegram' }
+    metadata: { modelAlias: 'main', delivery: 'telegram' }
   },
   {
     source: 'openclaw', sourceId: 'oc-leantime-status',
     name: 'Leantime Daily Status', taskType: 'inference',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'primary', model: 'qwen3-coder:30b',
     agent: 'main',
     schedule: { type: 'cron', cron: '30 8 * * *', timezone: 'America/Toronto' },
     estimatedDurationMs: 180000, priority: 4, enabled: true,
-    metadata: { modelAlias: 'local', delivery: 'telegram' }
+    metadata: { modelAlias: 'main', delivery: 'telegram' }
   },
   {
     source: 'openclaw', sourceId: 'oc-roadmap-work-cycle',
     name: 'Roadmap Driver Work Cycle', taskType: 'inference',
-    host: 'tertiary', model: 'qwen32b:perf',
+    host: 'primary', model: 'qwen3-coder:30b',
     agent: 'roadmap-driver',
     schedule: { type: 'cron', cron: '0 2 * * 1-5', timezone: 'America/Toronto' },
     estimatedDurationMs: 1800000, vramMb: 20000, priority: 2, enabled: true,
-    metadata: { modelAlias: 'big', delivery: 'none' }
+    metadata: { modelAlias: 'main', delivery: 'none' }
   },
   {
     source: 'openclaw', sourceId: 'oc-roadmap-bisync',
     name: 'Roadmap Driver Bisync', taskType: 'sync',
-    host: 'secondary', model: 'qwen2.5:14b-instruct-q5_K_M',
+    host: 'primary', model: 'qwen3:14b',
     agent: 'roadmap-driver',
     schedule: { type: 'cron', cron: '0 7 * * 1-5', timezone: 'America/Toronto' },
     estimatedDurationMs: 300000, priority: 3, enabled: true,
     metadata: { modelAlias: 'local', delivery: 'telegram' }
+  },
+  {
+    source: 'openclaw', sourceId: 'oc-session-cleanup',
+    name: 'Session Cleanup', taskType: 'maintenance',
+    host: 'primary', model: 'qwen3:14b',
+    agent: 'main',
+    schedule: { type: 'cron', cron: '0 4 * * 0', timezone: 'America/Toronto' },
+    estimatedDurationMs: 180000, priority: 5, enabled: true,
+    metadata: { modelAlias: 'local', delivery: 'none' }
   },
 
   // ── n8n Scheduled Workflows (Ubundocker 192.168.2.199) ────────

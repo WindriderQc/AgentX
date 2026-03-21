@@ -507,6 +507,7 @@ async function runBatchOrchestrator({
                 await enqueueJudgeTask(model, prompt, judgeHostUrl, resultId);
             }
         } catch (err) {
+            const classified = classifyBenchmarkError(err);
             await persistFailedResult({
                 model,
                 hostUrl,
@@ -517,7 +518,9 @@ async function runBatchOrchestrator({
                 currentBatch,
                 pendingModelTimeline
             });
+            if (classified.infra) return { infraError: true };
         }
+        return { infraError: false };
     };
 
     const runModelPromptLoop = async (hostUrl, judgeHostUrl, model) => {
@@ -555,7 +558,7 @@ async function runBatchOrchestrator({
                     await recordBatchTimelineEvent('tests_start', { success: true });
                 }
 
-                await executePrompt({
+                const execResult = await executePrompt({
                     hostUrl,
                     judgeHostUrl,
                     model,
@@ -567,6 +570,20 @@ async function runBatchOrchestrator({
                     modelWarmupData,
                     pendingModelTimeline
                 });
+
+                if (execResult?.infraError) {
+                    logger.warn('Infra error on prompt — re-warming model before next prompt', { batchId, model, host: hostUrl });
+                    try {
+                        await warmupModel(hostUrl, model, {
+                            timelinePrefix: 'infra_recovery_warmup',
+                            recordTimelineEvent: recordBatchTimelineEvent,
+                            num_ctx: modelExecConfig.num_ctx || null
+                        });
+                        logger.info('Model recovered after infra error', { batchId, model, host: hostUrl });
+                    } catch (recoveryErr) {
+                        logger.error('Model recovery warmup failed', { batchId, model, host: hostUrl, error: recoveryErr.message });
+                    }
+                }
             }
         } finally {
             await flushModelTimeline(pendingModelTimeline);

@@ -38,7 +38,6 @@ export let currentJudgeDetailId = null;
 // Timeline state
 export let lastTimelineResultIds = new Set();
 export let lastTimelineHash = null;
-export let timelineScrollRaf = null;
 export let benchmarkTooltipEl = null;
 
 // Debug flags
@@ -80,7 +79,6 @@ export function setCurrentJudgeDetailId(id) { currentJudgeDetailId = id; }
 
 export function setLastTimelineResultIds(ids) { lastTimelineResultIds = ids; }
 export function setLastTimelineHash(hash) { lastTimelineHash = hash; }
-export function setTimelineScrollRaf(raf) { timelineScrollRaf = raf; }
 export function setBenchmarkTooltipEl(el) { benchmarkTooltipEl = el; }
 
 /**

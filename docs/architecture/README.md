@@ -33,6 +33,5 @@ Design documents and diagrams for the AgentX backend.
 ## SBQC Stack
 
 - [SBQC Overview](./SBQC-Stack-Final/00-OVERVIEW.md) - Stack overview
-- [SBQC Audit Summary](./SBQC-Stack-Final/00-AUDIT-SUMMARY.md) - Audit results
-- [SBQC Setup Summary](./SBQC-Stack-Final/SETUP-SUMMARY-2025-12-31.md) - Setup reference
-- [SBQC Validation Prompt](./SBQC-Stack-Final/AGENT-PROMPT-FOR-VALIDATION.md) - Agent validation prompt
+- [SBQC Stack README](./SBQC-Stack-Final/README.md) - Stack-specific navigation hub
+- Historical validation artifacts now live in [../archive/README.md](../archive/README.md)

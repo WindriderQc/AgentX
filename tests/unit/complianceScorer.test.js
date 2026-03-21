@@ -179,37 +179,24 @@ describe('Compliance Scorer', () => {
             expect(result.compliance_score).toBe(5);
         });
 
-        it('should use context-retention weights (0.75/0.25)', () => {
+        it('should use instruction weights (0.55/0.45)', () => {
             const result = blendHybridScore(
                 makeCriteriaResult(10),
                 { score: 6, breakdown: [] },
-                'context-retention'
+                'instruction'
             );
 
-            // 10*0.75 + 6*0.25 = 7.5 + 1.5 = 9.0
-            expect(result.quality_score).toBe(9);
+            expect(result.quality_score).toBe(8.2);
         });
 
-        it('should use instruction-following weights (0.55/0.45)', () => {
+        it('should use default weights for knowledge', () => {
             const result = blendHybridScore(
                 makeCriteriaResult(10),
                 { score: 4, breakdown: [] },
-                'instruction-following'
+                'knowledge'
             );
 
-            // 10*0.55 + 4*0.45 = 5.5 + 1.8 = 7.3
-            expect(result.quality_score).toBe(7.3);
-        });
-
-        it('should use summarization weights (0.60/0.40)', () => {
-            const result = blendHybridScore(
-                makeCriteriaResult(8),
-                { score: 6, breakdown: [] },
-                'summarization'
-            );
-
-            // 8*0.60 + 6*0.40 = 4.8 + 2.4 = 7.2
-            expect(result.quality_score).toBe(7.2);
+            expect(result.quality_score).toBe(8.2);
         });
 
         it('should use translation weights (0.70/0.30)', () => {
@@ -223,33 +210,21 @@ describe('Compliance Scorer', () => {
             expect(result.quality_score).toBe(8.4);
         });
 
-        it('should use multi-turn-reasoning weights (0.75/0.25)', () => {
+        it('should use default weights for creative when no override exists', () => {
             const result = blendHybridScore(
                 makeCriteriaResult(10),
                 { score: 2, breakdown: [] },
-                'multi-turn-reasoning'
+                'creative'
             );
 
-            // 10*0.75 + 2*0.25 = 7.5 + 0.5 = 8.0
-            expect(result.quality_score).toBe(8);
-        });
-
-        it('should use edge-cases weights (0.70/0.30)', () => {
-            const result = blendHybridScore(
-                makeCriteriaResult(10),
-                { score: 10, breakdown: [] },
-                'edge-cases'
-            );
-
-            // 10*0.70 + 10*0.30 = 7.0 + 3.0 = 10.0
-            expect(result.quality_score).toBe(10);
+            expect(result.quality_score).toBe(7.6);
         });
 
         it('should clamp scores to 0-10 range', () => {
             const result = blendHybridScore(
                 { score: 15, matched: true },
                 { score: -5, breakdown: [] },
-                'general'
+                'unknown-category'
             );
 
             // Clamped: accuracy=10, compliance=0 → 10*0.70 + 0*0.30 = 7.0
@@ -262,12 +237,12 @@ describe('Compliance Scorer', () => {
             const result = blendHybridScore(
                 makeCriteriaResult(8),
                 { score: 6, breakdown: [{ question: 'q1', answer: true }] },
-                'context-retention'
+                'instruction'
             );
 
             expect(result).toHaveProperty('quality_score');
             expect(result).toHaveProperty('scoring_method', 'hybrid');
-            expect(result).toHaveProperty('scoring_type', 'context-retention');
+            expect(result).toHaveProperty('scoring_type', 'instruction');
             expect(result).toHaveProperty('deterministic_type', 'criteria');
             expect(result).toHaveProperty('matched_expected', true);
             expect(result).toHaveProperty('accuracy_score');
@@ -279,13 +254,14 @@ describe('Compliance Scorer', () => {
             expect(result.breakdown).toHaveProperty('overall');
             expect(result.breakdown).toHaveProperty('accuracy');
             expect(result.breakdown).toHaveProperty('compliance');
+            expect(result.breakdown).toHaveProperty('divergence', 2);
         });
 
         it('should handle NaN/undefined scores gracefully', () => {
             const result = blendHybridScore(
                 { score: undefined, matched: false },
                 { score: NaN, breakdown: [] },
-                'general'
+                'unknown-category'
             );
 
             expect(result.accuracy_score).toBe(0);
@@ -301,10 +277,36 @@ describe('Compliance Scorer', () => {
             const result = blendHybridScore(
                 makeCriteriaResult(10),
                 { score: 5, breakdown },
-                'context-retention'
+                'instruction'
             );
 
             expect(result.breakdown.compliance_details).toEqual(breakdown);
+        });
+
+        it('should lower confidence and request review for strong accuracy-compliance conflicts', () => {
+            const result = blendHybridScore(
+                makeCriteriaResult(8, true),
+                { score: 0, breakdown: [] },
+                'coding'
+            );
+
+            expect(result.judge_confidence).toBe(0.55);
+            expect(result.needs_review).toBe(true);
+            expect(result.review_reason).toContain('strong deterministic accuracy');
+            expect(result.breakdown.divergence).toBe(8);
+        });
+
+        it('should reduce confidence for moderate divergence without forcing review', () => {
+            const result = blendHybridScore(
+                makeCriteriaResult(9, true),
+                { score: 6, breakdown: [] },
+                'coding'
+            );
+
+            expect(result.judge_confidence).toBe(0.75);
+            expect(result.needs_review).toBe(false);
+            expect(result.review_reason).toBeNull();
+            expect(result.breakdown.divergence).toBe(3);
         });
     });
 

@@ -11,13 +11,14 @@ let CATEGORY_WEIGHTS = {};
 let HOST_NAMES = {}; // URL -> friendly name, loaded from /api/benchmark/host-names
 
 const LEADERBOARD_TAB_GROUPS = [
-    { key: '',          label: 'All Models',  faIcon: 'fa-globe',       categories: [] },
-    { key: 'coding',    label: 'Coding',      faIcon: 'fa-code',        categories: ['coding'] },
-    { key: 'reasoning', label: 'Reasoning',   faIcon: 'fa-brain',       categories: ['reasoning', 'multi-turn-reasoning'] },
-    { key: 'knowledge', label: 'Knowledge',   faIcon: 'fa-book',        categories: ['factual', 'general', 'context-retention'] },
-    { key: 'creative',  label: 'Creative',    faIcon: 'fa-paint-brush', categories: ['creative', 'edge-cases'] },
-    { key: 'language',  label: 'Language',     faIcon: 'fa-language',    categories: ['instruction-following', 'summarization', 'translation'] },
-    { key: 'math',      label: 'Math',        faIcon: 'fa-calculator',  categories: ['math'] }
+    { key: '',            label: 'All Models',  faIcon: 'fa-globe',       categories: [] },
+    { key: 'coding',      label: 'Coding',      faIcon: 'fa-code',        categories: ['coding'] },
+    { key: 'reasoning',   label: 'Reasoning',   faIcon: 'fa-brain',       categories: ['reasoning'] },
+    { key: 'math',        label: 'Math',        faIcon: 'fa-calculator',  categories: ['math'] },
+    { key: 'knowledge',   label: 'Knowledge',   faIcon: 'fa-book',        categories: ['knowledge'] },
+    { key: 'instruction', label: 'Instruction', faIcon: 'fa-list-check',  categories: ['instruction'] },
+    { key: 'creative',    label: 'Creative',    faIcon: 'fa-paint-brush', categories: ['creative'] },
+    { key: 'translation', label: 'Translation', faIcon: 'fa-language',    categories: ['translation'] }
 ];
 
 // Profile display metadata (actual scoring is server-side)
@@ -581,7 +582,7 @@ function updateStats() {
     document.getElementById('statModels').textContent = performanceData.length;
     const totalTests = performanceData.reduce((sum, m) => sum + (m.total_tests || m.tests || 0) + (m.failed_tests || 0), 0);
     document.getElementById('statTests').textContent = totalTests.toLocaleString();
-    const categoryCount = Object.keys(CATEGORY_WEIGHTS).length || 16;
+    const categoryCount = Object.keys(CATEGORY_WEIGHTS).length || 7;
     document.getElementById('statCategories').textContent = categoryCount;
     document.getElementById('statUpdated').textContent = new Date().toLocaleTimeString();
 }
@@ -682,8 +683,7 @@ function getCoverageColor(coverage) {
 
 function getLevelColor(level) {
     const colors = {
-        1: '#22c55e', 2: '#4ade80', 3: '#84cc16', 4: '#a3e635', 5: '#eab308',
-        6: '#f59e0b', 7: '#f97316', 8: '#ef4444', 9: '#dc2626', 10: '#9333ea'
+        1: '#22c55e', 2: '#84cc16', 3: '#eab308', 4: '#f97316', 5: '#9333ea'
     };
     return colors[level] || '#64748b';
 }

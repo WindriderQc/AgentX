@@ -5,8 +5,6 @@ Operational documentation covering deployment, CI/CD, benchmarking, and system a
 - [AUTHENTICATION](./AUTHENTICATION.md)
 - [BENCHMARK_COLOR_THEME](./BENCHMARK_COLOR_THEME.md)
 - [BENCHMARK_SYSTEM](./BENCHMARK_SYSTEM.md)
-- [BENCHMARK_UI_10_LEVEL_REDESIGN](./BENCHMARK_UI_10_LEVEL_REDESIGN.md)
-- [BUG_FIX_HANDOFF](./BUG_FIX_HANDOFF.md)
 - [CATEGORIZATION_TESTS](./CATEGORIZATION_TESTS.md)
 - [CICD_GUIDE](./CICD_GUIDE.md)
 - [CI_CD_SETUP](./CI_CD_SETUP.md)
@@ -20,7 +18,6 @@ Operational documentation covering deployment, CI/CD, benchmarking, and system a
 - [QDRANT_DEPLOYMENT](./QDRANT_DEPLOYMENT.md)
 - [RESPONSE_HANDLING](./RESPONSE_HANDLING.md)
 - [RUNNER_MANAGEMENT](./RUNNER_MANAGEMENT.md)
-- [START_BUG_SQUAD](./START_BUG_SQUAD.md)
 
 ### Metrics Cleanup Service
 - [Overview](./metrics-cleanup/README.md) - MetricsCleanup service documentation
@@ -28,3 +25,7 @@ Operational documentation covering deployment, CI/CD, benchmarking, and system a
 - [Quick Reference](./metrics-cleanup/QUICKREF.md) - Common operations cheat sheet
 - [Integration Guide](./metrics-cleanup/INTEGRATION_GUIDE.md) - How to wire up the service
 - [Deliverables](./metrics-cleanup/DELIVERABLES.md) - Implementation deliverables checklist
+
+## Historical Material
+
+One-off handoff and bug-squad docs have been moved to [../archive/README.md](../archive/README.md).

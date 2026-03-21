@@ -11,9 +11,7 @@ const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { validateCategoryParity } = require('./categoryParity');
 
 const PROMPT_LIBRARY_FILES = [
-    'benchmark-prompts.json',
-    'benchmark-prompts-enhanced.json',
-    'benchmark-prompts-deep.json'
+    'benchmark-prompts.json'
 ];
 
 function promptIdentityKey(prompt) {
@@ -33,7 +31,7 @@ function sanitizePromptRecord(rawPrompt, sourceFile) {
     const name = String(rawPrompt && rawPrompt.name ? rawPrompt.name : '').trim();
     const prompt = String(rawPrompt && rawPrompt.prompt ? rawPrompt.prompt : '').trim();
     const category = String(rawPrompt && rawPrompt.category ? rawPrompt.category : '').trim();
-    const level = toBoundedNumber(rawPrompt && rawPrompt.level, 1, 10);
+    const level = toBoundedNumber(rawPrompt && rawPrompt.level, 1, 5);
 
     if (!name || !prompt || !category || level === null) {
         logger.warn('Skipping invalid prompt record in benchmark library', {
@@ -168,7 +166,7 @@ async function seedPrompts() {
         });
         await syncRepresentativeFlags(libraryRecords);
         await validateCategoryParity();
-        return 0;
+        return existing.length;
     }
 
     let insertedCount = 0;
@@ -196,7 +194,7 @@ async function seedPrompts() {
 
     await syncRepresentativeFlags(libraryRecords);
     await validateCategoryParity();
-    return insertedCount;
+    return BenchmarkPrompt.countDocuments();
 }
 
 /**

@@ -40,8 +40,14 @@ Everything related to LLM model routing, aggregation, registration, custom model
 - config/categories.js — Task category definitions
 
 ### Frontend (public/js/)
-- models.js, models-unified.js, models-management.js, models-comparison.js
-- model-explorer.js, model-categorization.js, hardware-matrix.js
+- `models-unified.js`
+- `models-management.js`
+- `models-comparison.js`
+- `models-execution-config.js`
+- `hardware-matrix.js`
+- `host-monitor.js`
+- `host-test.js`
+- `cluster-schedule.js`
 
 ## APIs Exposed
 - `GET /api/models` — List all available models
@@ -78,3 +84,5 @@ Exclusive write access to: ModelRegistry, CustomModel, HardwareProfile, N8nLLMSo
 - Persistent failover state with auto-recovery
 - 1s health check cache TTL
 - 6s latency slow threshold
+- Unified models UI lives at `public/models.html`
+- Host and schedule UIs live at `public/hosts.html`, `public/host-test.html`, and `public/cluster.html`

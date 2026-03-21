@@ -20,6 +20,33 @@ const COMPLIANCE_QUESTIONS = [
 /** Default hybrid weights when category has no explicit config */
 const DEFAULT_HYBRID_WEIGHTS = { accuracy: 0.70, compliance: 0.30 };
 
+function assessHybridReliability(accuracyScore, complianceScore) {
+    const divergence = Math.round(Math.abs(accuracyScore - complianceScore) * 10) / 10;
+
+    let judgeConfidence = 0.95;
+    let needsReview = false;
+    let reviewReason = null;
+
+    if (accuracyScore >= 8 && complianceScore <= 2) {
+        judgeConfidence = 0.55;
+        needsReview = true;
+        reviewReason = 'Hybrid scoring conflict: strong deterministic accuracy with very low compliance';
+    } else if (divergence >= 5) {
+        judgeConfidence = 0.6;
+        needsReview = true;
+        reviewReason =             'Hybrid scoring divergence ' + divergence.toFixed(1) + ' requires review';
+    } else if (divergence >= 3) {
+        judgeConfidence = 0.75;
+    }
+
+    return {
+        divergence,
+        judgeConfidence,
+        needsReview,
+        reviewReason
+    };
+}
+
 /**
  * Score compliance of a response using binary YES/NO questions.
  * @param {string} response - Model response text
@@ -65,6 +92,7 @@ function blendHybridScore(criteriaResult, complianceResult, category) {
 
     const accuracyScore = Math.max(0, Math.min(10, Number(criteriaResult.score) || 0));
     const complianceScore = Math.max(0, Math.min(10, Number(complianceResult.score) || 0));
+    const reliability = assessHybridReliability(accuracyScore, complianceScore);
 
     const blended = accuracyScore * weights.accuracy + complianceScore * weights.compliance;
     const qualityScore = Math.max(0, Math.min(10, Math.round(blended * 10) / 10));
@@ -82,10 +110,12 @@ function blendHybridScore(criteriaResult, complianceResult, category) {
             overall: qualityScore,
             accuracy: accuracyScore,
             compliance: complianceScore,
+            divergence: reliability.divergence,
             ...complianceResult.breakdown && { compliance_details: complianceResult.breakdown }
         },
-        judge_confidence: 0.95,
-        needs_review: false
+        judge_confidence: reliability.judgeConfidence,
+        needs_review: reliability.needsReview,
+        review_reason: reliability.reviewReason
     };
 }
 

@@ -4,7 +4,7 @@ const ClusterScheduleEntrySchema = new mongoose.Schema({
   source: {
     type: String,
     required: true,
-    enum: ['n8n', 'agentx', 'ollama-persistent', 'openclaw'],
+    enum: ['n8n', 'agentx', 'agentx-system', 'ollama-persistent', 'openclaw'],
     index: true
   },
   sourceId: { type: String, required: true },

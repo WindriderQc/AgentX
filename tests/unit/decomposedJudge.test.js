@@ -310,13 +310,25 @@ describe('scoreDimension', () => {
 });
 
 describe('DECOMPOSED_QUESTIONS coverage', () => {
-    test('context-retention category exists with expected dimensions', () => {
-        const cr = DECOMPOSED_QUESTIONS['context-retention'];
-        expect(cr).toBeDefined();
-        expect(cr.recall_accuracy).toBeDefined();
-        expect(cr.relevance_filtering).toBeDefined();
-        expect(cr.consistency).toBeDefined();
-        expect(cr.no_hallucination).toBeDefined();
+    test('all 7 benchmark categories exist', () => {
+        expect(Object.keys(DECOMPOSED_QUESTIONS).sort()).toEqual([
+            'coding',
+            'creative',
+            'instruction',
+            'knowledge',
+            'math',
+            'reasoning',
+            'translation'
+        ]);
+    });
+
+    test('instruction category exists with expected dimensions', () => {
+        const instruction = DECOMPOSED_QUESTIONS.instruction;
+        expect(instruction).toBeDefined();
+        expect(instruction.instruction_adherence).toBeDefined();
+        expect(instruction.constraint_compliance).toBeDefined();
+        expect(instruction.format_accuracy).toBeDefined();
+        expect(instruction.completeness).toBeDefined();
     });
 
     test('all categories have weights summing to ~1 per dimension', () => {

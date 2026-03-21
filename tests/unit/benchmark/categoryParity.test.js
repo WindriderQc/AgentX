@@ -3,10 +3,10 @@ const { normalizeCategoryKey, getCategoryParitySnapshot } = require('../../../sr
 
 describe('Benchmark category parity', () => {
     describe('normalizeCategoryKey', () => {
-        it('normalizes code aliases and snake case', () => {
-            expect(normalizeCategoryKey('code')).toBe('coding');
-            expect(normalizeCategoryKey('context_retention')).toBe('context-retention');
-            expect(normalizeCategoryKey('  Debugging  ')).toBe('debugging');
+        it('normalizes casing and whitespace for canonical benchmark categories', () => {
+            expect(normalizeCategoryKey(' coding ')).toBe('coding');
+            expect(normalizeCategoryKey('KNOWLEDGE')).toBe('knowledge');
+            expect(normalizeCategoryKey('Instruction')).toBe('instruction');
         });
     });
 
@@ -22,12 +22,11 @@ describe('Benchmark category parity', () => {
 
         it('detects missing active prompt categories', async () => {
             const promptCategories = Object.keys(ENHANCED_SCORING_CONFIGS)
-                .filter((cat) => cat !== 'general');
+                .filter((cat) => cat !== 'knowledge');
             const snapshot = await getCategoryParitySnapshot({ promptCategories });
 
             expect(snapshot.hasDrift).toBe(true);
-            expect(snapshot.drift.in_scoring_not_in_active_prompts).toContain('general');
+            expect(snapshot.drift.in_scoring_not_in_active_prompts).toContain('knowledge');
         });
     });
 });
-

@@ -20,7 +20,7 @@ describe('judgeCalibration', () => {
             {
                 id: 'coding-partial-bug',
                 category: 'coding',
-                level: 7,
+                level: 4,
                 human_score: 5,
                 tolerance: 1,
                 expected_review: true

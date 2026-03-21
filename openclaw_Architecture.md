@@ -2,14 +2,25 @@
 
 > **Purpose:** This document provides a complete architectural overview of the OpenClaw deployment for use by external agents performing ecosystem-level architectural review. It covers all subsystems, data flows, agent topology, infrastructure, and integration points.
 >
-> **Last updated:** 2026-03-10
+> **Last updated:** 2026-03-20
 > **Config root:** `/home/yb/.openclaw/`
+> **AgentX production path:** `/home/yb/codes/AgentX/` (UGClawdX — 192.168.2.66:3080)
 
 ---
 
 ## 1. Executive Summary
 
 OpenClaw is a **local-first, self-hosted AI personal assistant platform** that orchestrates multiple LLM-powered agents across a GPU cluster, a Telegram bot interface, a web-based AI operations platform (AgentX), and a project management dashboard (Mission Control). It is owned and operated by a single power-user ("Yanik") as a personal productivity and home-lab AI system.
+
+### Ecosystem Plane Model
+
+| Plane | System | Role |
+|-------|--------|------|
+| **Operator layer** | **OpenClaw** | Conversational gateway, agent dispatch, human-facing reports, cron orchestration, Telegram, approval routing |
+| **Control plane** | **AgentX Platform** | AI-ops system-of-record: RAG, benchmarks, SpecialX tasks, cluster scheduling, host telemetry, analytics, dashboards |
+| **Data plane** | **DataAPI** | Deterministic file scanning, metadata, exports, background ingestion substrate |
+
+OpenClaw is the **operator shell and gateway** for the ecosystem. AgentX is the **primary AI-ops control plane and system-of-record** for maintenance, scheduling, telemetry, and bounded automation. OpenClaw can trigger, supervise, and report on AgentX workflows, but AgentX is not modeled as an OpenClaw SpecialX subagent. OpenClaw cron jobs are one upstream automation source; they are synced into AgentX's cluster schedule view every 15 minutes via `scripts/sync-openclaw-schedule.js`.
 
 The system prioritizes:
 - **Local inference first** — cloud APIs are fallback only
@@ -87,7 +98,7 @@ The system prioritizes:
 |-----------|-------------|
 | Agent Router | Selects which agent handles a request based on agent ID, model chain, and subagent permissions |
 | Session Manager | Per-channel-peer DM sessions with `session-archive/` for persistence |
-| Cron Scheduler | `cron/jobs.json` — the single source of truth for all recurring automation |
+| Cron Scheduler | `cron/jobs.json` — the source of truth for OpenClaw-owned recurring jobs |
 | Delivery Queue | `delivery-queue/` — outbound message queue for Telegram and other channels |
 | Device Pairing | `devices/paired.json` — paired operator devices (webchat, CLI) |
 | Identity System | `identity/device-auth.json`, `identity/device.json` — device identity and auth |
@@ -119,7 +130,7 @@ openclaw.json
 **Role:** Full-stack AI operations platform — chat UI, RAG pipeline, benchmarking, analytics, model management, and automation task execution.
 
 - **Repo:** [WindriderQc/AgentX](https://github.com/WindriderQc/AgentX) (v1.4.1)
-- **Location:** `/home/yb/.openclaw/workspace-clawdx-coder/AgentX/`
+- **Production location:** `/home/yb/codes/AgentX/` (on UGClawdX — the canonical production path)
 - **Stack:** Express.js + MongoDB + Qdrant (vector store) + Ollama
 - **Port:** 3080
 - **Process manager:** PM2
@@ -227,7 +238,7 @@ Bootstrap/Chart.js HTML/JS pages served as static assets:
 | `dashboard.html` | System dashboard |
 | `hosts.html` | GPU host management |
 | `hardware-matrix.html` | Hardware capability matrix |
-| `models.html`, `model-explorer.html`, `model-categorization.html` | Model management UIs |
+| `models.html` | Consolidated model catalog (categories, benchmarks, capabilities, detail drawer) |
 | `rag.html` | RAG document management |
 | `self-healing.html` | Self-healing rule management |
 | `specialx.html` | SpecialX automation tasks |
@@ -763,9 +774,11 @@ Voice message (Telegram)
 │
 ├── workspace-clawdx-coder/       # ClawdX-Coder workspace
 │   ├── SOUL.md, IDENTITY.md, TOOLS.md, AGENTS.md
-│   ├── memory/
-│   └── AgentX/                   # ← Full AgentX platform (git repo)
-│       ├── server.js             # Express entry point
+│   └── memory/
+│
+# AgentX production location (separate from openclaw workspace)
+# /home/yb/codes/AgentX/         # ← Full AgentX platform (git repo, production)
+│   ├── server.js                 # Express entry point
 │       ├── src/app.js            # Express app setup
 │       ├── src/services/ (60+)   # Business logic
 │       ├── src/middleware/ (8)    # Auth, workspace, performance
@@ -795,7 +808,7 @@ Voice message (Telegram)
 │   └── tg-*/                     # Telegram command skills
 │
 ├── cron/
-│   ├── jobs.json                 # Recurring job definitions (source of truth)
+│   ├── jobs.json                 # OpenClaw recurring job definitions (source of truth)
 │   └── runs/                     # Job execution history
 │
 ├── session-archive/              # Archived agent sessions
@@ -825,7 +838,7 @@ Voice message (Telegram)
 
 3. **Local-first inference** — All default agents use Ollama models at $0/token. Cloud (OpenAI, xAI, Anthropic) is only used by explicitly cloud-designated agents.
 
-4. **Cron as source of truth for automation** — All recurring work is defined in `jobs.json` with rich metadata (category, alert policy, visibility mode, summary job). No hidden schedules.
+4. **Cron as source of truth for OpenClaw automation** — OpenClaw recurring jobs are defined in `jobs.json` with rich metadata (category, alert policy, visibility mode, summary job). AgentX ingests them as one schedule source, not as the global owner of all automation state.
 
 5. **Markdown-file memory** — Agent memory uses plain markdown files, not a database. Daily logs are distilled into curated summaries. Cross-agent knowledge goes to the shared RAG folder.
 

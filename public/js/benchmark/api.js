@@ -156,15 +156,6 @@ export async function fetchBatchProgress(batchId) {
 }
 
 /**
- * Fetch batch timeline
- */
-export async function fetchBatchTimeline(batchId) {
-    const res = await fetch(`${BENCHMARK_API}/batch/${batchId}/timeline`, withWorkspaceRequestOptions());
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-}
-
-/**
  * Fetch batch history
  */
 export async function fetchBatchHistory() {
@@ -219,12 +210,4 @@ export async function deleteFailedResults() {
         method: 'DELETE',
     }));
     return { res, json: await res.json().catch(() => null) };
-}
-
-/**
- * Fetch advanced results
- */
-export async function fetchAdvancedResults(batchId, limit = 5000) {
-    const res = await fetch(`${BENCHMARK_API}/results/advanced?batchId=${batchId}&limit=${limit}`, withWorkspaceRequestOptions());
-    return res.json();
 }

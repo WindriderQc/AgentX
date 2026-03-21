@@ -77,25 +77,26 @@ See [Quick Start Guide](docs/onboarding/quickstart.md) for detailed setup.
 
 ## Documentation
 
-**Start here:** [`docs/INDEX.md`](docs/INDEX.md) — complete documentation hub.
+**Start here:** [`docs/INDEX.md`](docs/INDEX.md) — the primary documentation hub.
 
 | Audience | Start With |
 |----------|-----------|
-| New Users | [Quick Start](docs/onboarding/quickstart.md), [User Manual](docs/user-manual/README.md) |
-| Developers | [AGENTS.md](AGENTS.md), [Architecture](docs/architecture/backend-overview.md), [Testing Patterns](docs/patterns/TESTING_PATTERNS.md) |
-| Operators | [Deployment](docs/operations/DEPLOYMENT.md), [SBQC Stack](docs/architecture/SBQC-Stack-Final/00-OVERVIEW.md) |
-| AI Agents | [CLAUDE.md](CLAUDE.md), [Critical Conventions](docs/patterns/CRITICAL_CONVENTIONS.md) |
+| New users | [Quick Start](docs/onboarding/quickstart.md), [User Manual](docs/user-manual/README.md) |
+| Developers | [AGENTS.md](AGENTS.md), [Backend Overview](docs/architecture/backend-overview.md), [Testing Patterns](docs/patterns/TESTING_PATTERNS.md) |
+| Operators | [Deployment](docs/operations/DEPLOYMENT.md), [Operations Docs](docs/operations/README.md), [Critical Gotchas](docs/operations/CRITICAL_GOTCHAS.md) |
+| AI agents | [CLAUDE.md](CLAUDE.md), [Critical Conventions](docs/patterns/CRITICAL_CONVENTIONS.md) |
 
-Key references:
-- **[ROADMAP.md](ROADMAP.md)** — Project status (all 8 tracks complete)
-- **[API Reference](docs/architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)** — 40+ endpoints
-- **[Critical Gotchas](docs/operations/CRITICAL_GOTCHAS.md)** — Common pitfalls
+Current reference points:
+- **[ROADMAP.md](ROADMAP.md)** — project status and current work
+- **[Architecture](docs/architecture/README.md)** — system design docs
+- **[Testing](docs/testing/README.md)** — testing hubs and suite entry points
+- **[Documentation Consolidation](docs/consolidation/00-OVERVIEW.md)** — latest doc inventory, mapping, and cleanup record
 
 ---
 
 ## Architecture
 
-Service-Oriented Architecture: Routes (validation) → Services (orchestration) → Models (data) → MongoDB/Ollama.
+Service-Oriented Architecture: Routes (validation) -> Services (orchestration) -> Models (data) -> MongoDB / Ollama / external integrations.
 
 ```
 AgentX/
@@ -108,7 +109,7 @@ AgentX/
 ├── routes/                 # API endpoints (thin HTTP layer)
 ├── models/                 # Mongoose schemas
 ├── config/                 # DB connection, categories, self-healing rules
-├── public/                 # Frontend (HTML/JS/CSS, Bootstrap, Chart.js)
+├── public/                 # Frontend (42 HTML pages plus JS/CSS assets)
 ├── scripts/                # Seeding, backups, migrations
 ├── tests/                  # Jest unit/integration, Playwright E2E, Artillery load
 ├── n8n_workflows/          # Versioned n8n workflow exports
@@ -143,7 +144,7 @@ For PM2 production deployment, see [Deployment Guide](docs/operations/DEPLOYMENT
 
 ## Contributing
 
-Development workflow, git conventions, testing standards, and PR process are documented in [AGENTS.md](AGENTS.md#contributing-to-agentx).
+Development workflow, git conventions, testing standards, and PR process are documented in [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
 ---
 
@@ -161,4 +162,4 @@ MIT License — See LICENSE file for details.
 
 ---
 
-**Version**: 1.4.1 | **Status**: Production Ready | All 8 development tracks complete
+**Version**: 1.4.1 | **Status**: Active | Documentation reconciled with code on 2026-03-21

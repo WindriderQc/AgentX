@@ -343,27 +343,20 @@ function buildModelBadges(model, offenders, isBestOverall) {
 }
 
 const CATEGORY_CONFIG_MAP = {
-    coding:    { icon: 'fa-code',          color: '#7c9fff', bg: 'rgba(124, 159, 255, 0.15)', cssClass: 'badge-coding',     label: 'Coding' },
-    reasoning: { icon: 'fa-brain',         color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.15)', cssClass: 'badge-reasoning',  label: 'Reasoning' },
-    ops:       { icon: 'fa-bolt',          color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)',  cssClass: 'badge-ops',        label: 'Ops/Glue' },
-    specialist:{ icon: 'fa-star',          color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)',  cssClass: 'badge-specialist', label: 'Specialist' },
-    generalist:{ icon: 'fa-cubes',         color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)', cssClass: 'badge-generalist', label: 'Generalist' },
-    embedding: { icon: 'fa-vector-square', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)',  cssClass: 'badge-embedding',  label: 'Embedding' },
-    judge:     { icon: 'fa-gavel',         color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)',  cssClass: 'badge-judge',      label: 'Judge' },
-    factual:   { icon: 'fa-book',          color: '#34d399', bg: 'rgba(52, 211, 153, 0.15)',  cssClass: 'badge-factual',    label: 'Factual' },
-    math:      { icon: 'fa-calculator',    color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)',  cssClass: 'badge-math',       label: 'Math' },
-    creative:  { icon: 'fa-paint-brush',   color: '#f87171', bg: 'rgba(248, 113, 113, 0.15)', cssClass: 'badge-creative',   label: 'Creative' },
-    general:   { icon: 'fa-tag',           color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)', cssClass: 'badge-general',    label: 'General' },
-    'instruction-following': { icon: 'fa-list-check',   color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)',   cssClass: 'badge-if', label: 'Instruction Following' },
-    'summarization':         { icon: 'fa-compress-alt', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.15)',  cssClass: 'badge-sum', label: 'Summarization' },
-    'translation':           { icon: 'fa-language',     color: '#f472b6', bg: 'rgba(244, 114, 182, 0.15)', cssClass: 'badge-tl', label: 'Translation' },
-    'multi-turn-reasoning':  { icon: 'fa-comments',     color: '#c084fc', bg: 'rgba(192, 132, 252, 0.15)', cssClass: 'badge-mtr', label: 'Multi-Turn' },
-    'context-retention':     { icon: 'fa-memory',       color: '#fb923c', bg: 'rgba(251, 146, 60, 0.15)',  cssClass: 'badge-cr', label: 'Context Retention' },
-    'edge-cases':            { icon: 'fa-exclamation-triangle', color: '#a3e635', bg: 'rgba(163, 230, 53, 0.15)', cssClass: 'badge-ec', label: 'Edge Cases' },
-    'refactoring':           { icon: 'fa-recycle',      color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)',  cssClass: 'badge-rf', label: 'Refactoring' },
-    'debugging':             { icon: 'fa-bug',          color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)',   cssClass: 'badge-db', label: 'Debugging' },
-    'explanation':           { icon: 'fa-chalkboard-teacher', color: '#818cf8', bg: 'rgba(129, 140, 248, 0.15)', cssClass: 'badge-ex', label: 'Explanation' },
-    'dialogue':              { icon: 'fa-comment-dots', color: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.15)',  cssClass: 'badge-dl', label: 'Dialogue' }
+    // Benchmark categories (7)
+    coding:      { icon: 'fa-code',          color: '#7c9fff', bg: 'rgba(124, 159, 255, 0.15)', cssClass: 'badge-coding',      label: 'Coding' },
+    reasoning:   { icon: 'fa-brain',         color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.15)', cssClass: 'badge-reasoning',   label: 'Reasoning' },
+    math:        { icon: 'fa-calculator',    color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)',  cssClass: 'badge-math',        label: 'Math' },
+    knowledge:   { icon: 'fa-book',          color: '#34d399', bg: 'rgba(52, 211, 153, 0.15)',  cssClass: 'badge-knowledge',   label: 'Knowledge' },
+    instruction: { icon: 'fa-list-check',    color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)',   cssClass: 'badge-instruction', label: 'Instruction' },
+    creative:    { icon: 'fa-paint-brush',   color: '#f87171', bg: 'rgba(248, 113, 113, 0.15)', cssClass: 'badge-creative',    label: 'Creative' },
+    translation: { icon: 'fa-language',      color: '#f472b6', bg: 'rgba(244, 114, 182, 0.15)', cssClass: 'badge-translation', label: 'Translation' },
+    // Manual assignment categories (5)
+    ops:         { icon: 'fa-bolt',          color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)',  cssClass: 'badge-ops',         label: 'Ops/Glue' },
+    specialist:  { icon: 'fa-star',          color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)',  cssClass: 'badge-specialist',  label: 'Specialist' },
+    generalist:  { icon: 'fa-cubes',         color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)', cssClass: 'badge-generalist',  label: 'Generalist' },
+    embedding:   { icon: 'fa-vector-square', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)',  cssClass: 'badge-embedding',   label: 'Embedding' },
+    judge:       { icon: 'fa-gavel',         color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)',  cssClass: 'badge-judge',       label: 'Judge' }
 };
 
 function getCategoryConfig(category) {
@@ -377,7 +370,7 @@ function getCategoryConfig(category) {
 
 function buildLevelStars(levelStats) {
     if (!levelStats || typeof levelStats !== 'object') return '';
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(level => {
+    return [1, 2, 3, 4, 5].map(level => {
         const count = Number(levelStats[level] || levelStats[String(level)] || 0);
         if (count <= 0) {
             return `<span class="level-star-slot empty" title="Level ${level}: 0 tests"><span class="level-num">${level}</span></span>`;

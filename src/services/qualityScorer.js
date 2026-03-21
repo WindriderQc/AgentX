@@ -12,7 +12,14 @@ const referenceScorer = require('./referenceScorer');
 const judgeConfidence = require('./judgeConfidence');
 
 // Import from extracted modules
-const { ENHANCED_SCORING_CONFIGS, CATEGORY_COMPOSITE_PROFILES, CATEGORY_STRATEGIES, getScoringDimensions } = require('./scoring/scoringConfigs');
+const {
+    DEFAULT_SCORING_CATEGORY,
+    ENHANCED_SCORING_CONFIGS,
+    CATEGORY_COMPOSITE_PROFILES,
+    CATEGORY_STRATEGIES,
+    getScoringDimensions,
+    normalizeScoringCategory
+} = require('./scoring/scoringConfigs');
 const { calculateCompositeScore } = require('./scoring/compositeScorer');
 const { stripMarkdownCodeFences, jsonDeepEqual, tryParseJson } = require('./scoring/jsonUtils');
 const { quickScore } = require('./scoring/quickScorer');
@@ -131,7 +138,10 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
         return enrichWithDualScores({
             quality_score: 0,
             scoring_method: 'empty_response',
-            scoring_type: prompt.scoring_type || 'general',
+            scoring_type: normalizeScoringCategory(
+                prompt.scoring_type || prompt.category,
+                DEFAULT_SCORING_CATEGORY
+            ),
             explanation: 'CRITICAL: Model produced NO response. Unable to evaluate empty output. Automatic score: 0/10',
             breakdown: {
                 accuracy: 0,
@@ -180,7 +190,10 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
     }
 
     // Phase 4: Fall back to standard LLM-as-judge for complex evaluation
-    const scoringType = prompt.scoring_type || 'general';
+    const scoringType = normalizeScoringCategory(
+        prompt.scoring_type || prompt.category,
+        DEFAULT_SCORING_CATEGORY
+    );
     const dimensionsInfo = getScoringDimensions(prompt);
 
     const cleanedResponse = stripMarkdownCodeFences(response);
@@ -353,12 +366,17 @@ async function scoreResponse({ response, prompt, skipLLM = false, judgeConfig = 
  * Route scoring to the appropriate strategy based on category and prompt
  */
 async function routeScoring(response, prompt, judgeConfig) {
-    const category = prompt.scoring_type || prompt.category || 'general';
-    const strategy = CATEGORY_STRATEGIES[category] || CATEGORY_STRATEGIES.general;
+    const requestedCategory = prompt.scoring_type || prompt.category;
+    const normalizedCategory = normalizeScoringCategory(requestedCategory, DEFAULT_SCORING_CATEGORY);
+    const category = CATEGORY_STRATEGIES[normalizedCategory]
+        ? normalizedCategory
+        : DEFAULT_SCORING_CATEGORY;
+    const strategy = CATEGORY_STRATEGIES[category] || CATEGORY_STRATEGIES[DEFAULT_SCORING_CATEGORY];
     const level = prompt.level || 5;
 
     logger.debug('Routing scoring', {
         prompt: prompt.name || 'unknown',
+        requestedCategory,
         category,
         strategy: strategy.primary,
         level
@@ -440,7 +458,7 @@ async function routeScoring(response, prompt, judgeConfig) {
 
     // Phase 3: Use decomposed judging for complex evaluations
     if (strategy.primary === 'decomposed' || strategy.llm_strategy === 'decomposed') {
-        const enhancedConfig = ENHANCED_SCORING_CONFIGS[category] || ENHANCED_SCORING_CONFIGS.general;
+        const enhancedConfig = ENHANCED_SCORING_CONFIGS[category] || ENHANCED_SCORING_CONFIGS[DEFAULT_SCORING_CATEGORY];
         const dimensionWeights = {};
         if (enhancedConfig && enhancedConfig.core_dimensions) {
             for (const dim of enhancedConfig.core_dimensions) {
@@ -501,7 +519,7 @@ async function batchScore(results, options = {}) {
         const promptInfo = {
             prompt: result.prompt,
             expected_answer: result.expected_answer || '',
-            scoring_type: result.prompt_category || 'reasoning',
+            scoring_type: normalizeScoringCategory(result.prompt_category, DEFAULT_SCORING_CATEGORY),
             judge_criteria: result.judge_criteria || []
         };
 

@@ -268,7 +268,7 @@ async function getBatch(batchId, {
     const rawJudgeTotal = Number(batch.judge_total) || 0;
     const effectiveJudgeTotal = totalResultsCount > 0
         ? actualJudgeableCount
-        : (rawJudgeTotal > 0 ? rawJudgeTotal : 0);
+        : 0;
 
     const judgeCompletedCount = totalResultsCount > 0
         ? actualJudgeCompletedCount
@@ -366,8 +366,8 @@ async function getBatch(batchId, {
         };
     });
 
-    const judge_progress = rawJudgeTotal > 0
-        ? Math.min(Math.round((judgeCompletedCount / rawJudgeTotal) * 100), 100)
+    const judge_progress = effectiveJudgeTotal > 0
+        ? Math.min(Math.round((judgeCompletedCount / effectiveJudgeTotal) * 100), 100)
         : 0;
 
     const judge_progress_effective = effectiveJudgeTotal > 0

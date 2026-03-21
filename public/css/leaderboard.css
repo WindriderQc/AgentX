@@ -332,17 +332,19 @@ body {
 
 .category-tab[data-category="coding"]:hover:not(.active) { color: #7c9fff; }
 .category-tab[data-category="reasoning"]:hover:not(.active) { color: #a78bfa; }
-.category-tab[data-category="knowledge"]:hover:not(.active) { color: #34d399; }
-.category-tab[data-category="creative"]:hover:not(.active) { color: #f87171; }
-.category-tab[data-category="language"]:hover:not(.active) { color: #06b6d4; }
 .category-tab[data-category="math"]:hover:not(.active) { color: #fbbf24; }
+.category-tab[data-category="knowledge"]:hover:not(.active) { color: #34d399; }
+.category-tab[data-category="instruction"]:hover:not(.active) { color: #06b6d4; }
+.category-tab[data-category="creative"]:hover:not(.active) { color: #f87171; }
+.category-tab[data-category="translation"]:hover:not(.active) { color: #f472b6; }
 
 .category-tab[data-category="coding"].active { background: linear-gradient(135deg, #7c9fff, #5b7de8); }
 .category-tab[data-category="reasoning"].active { background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
-.category-tab[data-category="knowledge"].active { background: linear-gradient(135deg, #34d399, #10b981); }
-.category-tab[data-category="creative"].active { background: linear-gradient(135deg, #f87171, #ef4444); }
-.category-tab[data-category="language"].active { background: linear-gradient(135deg, #06b6d4, #0891b2); }
 .category-tab[data-category="math"].active { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+.category-tab[data-category="knowledge"].active { background: linear-gradient(135deg, #34d399, #10b981); }
+.category-tab[data-category="instruction"].active { background: linear-gradient(135deg, #06b6d4, #0891b2); }
+.category-tab[data-category="creative"].active { background: linear-gradient(135deg, #f87171, #ef4444); }
+.category-tab[data-category="translation"].active { background: linear-gradient(135deg, #f472b6, #ec4899); }
 
 /* ============================================================================
    Boards Container & Section

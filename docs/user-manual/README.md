@@ -1,13 +1,14 @@
 # AgentX User Manual (SBQC Stack)
 
-**Last updated:** 2026-02-09
+**Last updated:** 2026-03-20
 
 **Audience:** operators and admins using the SBQC stack through AgentX.
 
 **Goal:** help you succeed quickly, then confidently run the system day-to-day.
 
 **System roles (one sentence each):**
-- **AgentX**: the primary UI + orchestrator (system-of-record for the SBQC stack).
+- **AgentX**: the primary control plane and system-of-record for AgentX-managed operations in this repo.
+- **OpenClaw**: an optional outer operator shell that can trigger, supervise, and summarize AgentX workflows.
 - **DataAPI**: a headless tool server used by AgentX (your browser typically never calls it directly).
 
 ---
@@ -63,28 +64,15 @@ Canonical documentation hubs:
 Most pages use the same top navigation (in the UI header). These are the real, current pages:
 
 - **Chat**: `http://localhost:3080/index.html`
-	- Main chat UI (title: “AgentX • Ollama Control”). Includes onboarding/tour elements.
-- **Operations**: `http://localhost:3080/dashboard.html`
-	- “Operations Center” for health, metrics, events, and operational triggers.
-- **Alerts**: `http://localhost:3080/alerts.html`
-	- Alerts dashboard (list, filters, refresh).
-- **n8n Monitor**: `http://localhost:3080/n8n-monitor.html`
-	- Workflow monitor + webhook testing + deploy helpers.
-- **Backup**: `http://localhost:3080/backup.html`
-	- Backup & recovery UI (create/restore/list).
-- **Models**: `http://localhost:3080/models.html`
-	- Custom models UI.
-- **Benchmark**: `http://localhost:3080/benchmark.html`
-	- Benchmark runner and charts.
-	- Includes exec vs judge progress, Judge Health telemetry, and “details/hyper” drilldowns for debugging.
-- **Performance**: `http://localhost:3080/performance.html`
-	- Performance dashboard and charts.
-- **Analytics**: `http://localhost:3080/analytics.html`
-	- Product + usage analytics.
-- **RAG**: `http://localhost:3080/rag.html`
-	- RAG document upload and management.
-- **Prompts**: `http://localhost:3080/prompts.html`
-	- Persona management UI (page title uses “Persona Management”).
+	- Main chat UI.
+- **Agent group**
+	- `models.html`, `rag.html`, `prompts.html`, `benchmark.html`, `courthouse.html`, `compare-insights.html`, `config-optimizer.html`, `results-explorer.html`, `leaderboard.html`, `hardware-matrix.html`, `roundtable.html`
+- **Monitor group**
+	- `dashboard.html`, `docjanitor.html`, `self-healing.html`, `alerts.html`, `performance.html`, `hosts.html`, `cluster.html`, `host-test.html`, `analytics.html`, `cost-tracking.html`
+- **Features group**
+	- `features-inventory.html`, `features-telemetry.html`, `features-adoption.html`, `feature-alignment.html`, `features-admin.html`
+- **System group**
+	- `workspace-settings.html`, `workspace-audit.html`, `backup.html`
 - **Profile**: `http://localhost:3080/profile.html`
 	- User profile and preferences injected into conversations.
 
@@ -95,8 +83,14 @@ These exist in the UI but are not top-nav items:
 	- Sign in/sign up screen (if auth is enabled for your deployment).
 - **Alert Analytics**: `http://localhost:3080/alert-analytics.html`
 	- Linked from the Alerts page (“Analytics” button).
-- **Self-Healing**: `http://localhost:3080/self-healing.html`
-	- Self-Healing dashboard (rules + history). It uses its own header/nav.
+- **SpecialX**: `http://localhost:3080/specialx.html`
+	- SpecialX task console.
+- **Repo Watcher**: `http://localhost:3080/repoWatcher.html`
+	- Repo quality scan dashboard.
+- **Inference Telemetry**: `http://localhost:3080/inference-telemetry.html`
+	- Inference activity dashboard.
+- **Maintenance**: `http://localhost:3080/maintenance.html`
+	- Maintenance/finding workflows.
 
 ### 2.3 Legacy/compatibility links
 - `http://localhost:3080/personas.html` redirects to `http://localhost:3080/prompts.html`.
@@ -151,11 +145,11 @@ AgentX also ships a couple of UI test pages under [public/](../../public/) (e.g.
 2. Set “Last 7/14/30 days”, then click “Refresh”.
 3. Use “Usage Trends” grouping (By Day / By Model / By Prompt).
 
-#### Use the n8n monitor screen
-1. Open `http://localhost:3080/n8n-monitor.html`.
-2. Click “Refresh” under “System Health”.
-3. Select a workflow to view details and test controls.
-4. Use “Deploy Selected” / “Deploy All” only if you intend to update n8n.
+#### Use benchmark and result analysis tools
+1. Open `http://localhost:3080/benchmark.html`.
+2. Launch or inspect a batch.
+3. Open `http://localhost:3080/results-explorer.html` for result-level drilldown.
+4. Use `leaderboard.html` and `compare-insights.html` for comparison views.
 
 ---
 
@@ -283,12 +277,12 @@ DATAAPI_API_KEY=change-me-long-random
 
 DataAPI must be configured with a matching API key and may require `x-api-key` on tool endpoints.
 
-DataAPI canonical docs index lives in the sibling DataAPI repo at: [../../../DataAPI/docs/INDEX.md](../../../DataAPI/docs/INDEX.md).
+If you also have the sibling DataAPI repository checked out locally, use its own docs index there for DataAPI-specific operator details.
 
 ### 6.3 n8n
 There are two main UI surfaces:
 - `http://localhost:3080/dashboard.html`: quick webhook triggers + RAG ingestion trigger
-- `http://localhost:3080/n8n-monitor.html`: workflow monitor/test UI
+- `http://localhost:3080/cluster.html`: schedule visibility for recurring and synced workload planning
 
 ---
 
@@ -393,4 +387,4 @@ curl http://localhost:11434/api/tags
 
 ### Docs entrypoints
 - AgentX docs index: [docs/INDEX.md](../INDEX.md)
-- DataAPI docs index: [../../../DataAPI/docs/INDEX.md](../../../DataAPI/docs/INDEX.md)
+- DataAPI docs index: use the sibling DataAPI repository if it is checked out locally

@@ -27,7 +27,10 @@
 
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
-const { GENERALIST_CATEGORY_WEIGHTS } = require('../../../config/categories');
+const {
+    GENERALIST_CATEGORY_WEIGHTS,
+    normalizeBenchmarkCategory
+} = require('../../../config/categories');
 const { INFRA_ERROR_REGEX } = require('./errorClassifier');
 
 // Explicit input quality scale for generalist normalization.
@@ -82,11 +85,7 @@ function normalizeQualityTo100(rawQuality) {
  * Handles legacy aliases and snake_case variants.
  */
 function normalizeCategoryKey(rawCategory) {
-    if (!rawCategory) return null;
-    const normalized = String(rawCategory).trim().toLowerCase().replace(/_/g, '-');
-    if (!normalized) return null;
-    if (normalized === 'code') return 'coding';
-    return normalized;
+    return normalizeBenchmarkCategory(rawCategory, null);
 }
 
 /**

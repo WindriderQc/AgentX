@@ -10,28 +10,21 @@ const DEPTH_STORAGE_KEY = 'benchmarkDepthConfig';
 const DEPTH_OPTIONS = ['off', 'single', 'light', 'full'];
 
 const DEFAULT_DEPTH_CONFIG = {
-    1: 'light', 2: 'light', 3: 'light', 4: 'light', 5: 'light',
-    6: 'light', 7: 'light', 8: 'light', 9: 'light', 10: 'light'
+    1: 'full', 2: 'full', 3: 'full', 4: 'full', 5: 'full'
 };
 
 // Approximate prompt counts per level (used for UI estimation only)
 // Actual counts come from the database at runtime
 const LEVEL_PROMPT_META = {
-    1:  { prompts: 16, categories: 10 },
-    2:  { prompts: 16, categories: 10 },
-    3:  { prompts: 16, categories: 10 },
-    4:  { prompts: 22, categories: 10 },
-    5:  { prompts: 22, categories: 10 },
-    6:  { prompts: 12, categories: 6 },
-    7:  { prompts: 12, categories: 6 },
-    8:  { prompts: 12, categories: 6 },
-    9:  { prompts: 6,  categories: 6 },
-    10: { prompts: 6,  categories: 6 }
+    1: { prompts: 14, categories: 7 },
+    2: { prompts: 21, categories: 7 },
+    3: { prompts: 21, categories: 7 },
+    4: { prompts: 21, categories: 7 },
+    5: { prompts: 7,  categories: 7 }
 };
 
 const LEVEL_LABELS = {
-    1: 'Trivial', 2: 'Simple', 3: 'Easy', 4: 'Moderate', 5: 'Medium',
-    6: 'Challenging', 7: 'Hard', 8: 'Very Hard', 9: 'Extreme', 10: 'Master'
+    1: 'Basic', 2: 'Intermediate', 3: 'Advanced', 4: 'Expert', 5: 'Master'
 };
 
 /**
@@ -90,9 +83,14 @@ function calculatePromptCount(level, depth) {
                 return 1;
             case 'light':
                 return Object.keys(groupPromptsByCategory(prompts)).length;
+            case 'full':
+                return prompts.length;
+            default:
+                return 0;
+        }
     }
 
-    const meta = LEVEL_PROMPT_META[level] || { prompts: 10, categories: 6 };
+    const meta = LEVEL_PROMPT_META[level] || { prompts: 7, categories: 7 };
     switch (depth) {
         case 'off':    return 0;
         case 'single': return meta.prompts > 0 ? 1 : 0;
@@ -107,7 +105,7 @@ function calculatePromptCount(level, depth) {
  */
 function getTotalPromptCount(config) {
     let total = 0;
-    for (let level = 1; level <= 10; level++) {
+    for (let level = 1; level <= 5; level++) {
         const depth = (config && config[level]) || 'off';
         total += calculatePromptCount(level, depth);
     }
@@ -148,7 +146,7 @@ function resolveWorkloadSummary(plan, categories) {
  */
 export function getSelectedLevels(config) {
     const levels = [];
-    for (let level = 1; level <= 10; level++) {
+    for (let level = 1; level <= 5; level++) {
         const depth = (config && config[level]) || 'off';
         if (depth !== 'off') levels.push(level);
     }
@@ -157,11 +155,14 @@ export function getSelectedLevels(config) {
 
 
 const SCORING_TYPE_COLORS = {
-    code: '#3498db', coding: '#3498db', reasoning: '#9b59b6', factual: '#1abc9c',
-    math: '#e67e22', creative: '#e74c3c', general: '#95a5a6', 'instruction-following': '#2ecc71',
-    summarization: '#f39c12', translation: '#00bcd4', 'multi-turn-reasoning': '#8e44ad',
-    'context-retention': '#16a085', 'edge-cases': '#c0392b', refactoring: '#2980b9',
-    debugging: '#d35400', explanation: '#27ae60', dialogue: '#7f8c8d', custom: '#bdc3c7'
+    coding:      '#7c9fff',
+    reasoning:   '#a78bfa',
+    math:        '#fbbf24',
+    knowledge:   '#34d399',
+    instruction: '#06b6d4',
+    creative:    '#f87171',
+    translation: '#f472b6',
+    custom:      '#bdc3c7'
 };
 const expandedLevelRows = new Set();
 
@@ -175,7 +176,7 @@ function getPromptsForLevel(level) {
 }
 
 function getPromptType(prompt) {
-    return prompt.scoring_type || prompt.category || 'general';
+    return prompt.scoring_type || prompt.category || 'knowledge';
 }
 
 function estimateInputTokens(text) {
@@ -265,7 +266,7 @@ export function renderDepthMatrix() {
     const judgeRank = rankMap[judgeTier] || 0;
     let html = '';
 
-    for (let level = 1; level <= 10; level++) {
+    for (let level = 1; level <= 5; level++) {
         const currentDepth = config[level] || 'light';
         const est = calculatePromptCount(level, currentDepth);
         const label = LEVEL_LABELS[level] || '';
@@ -396,7 +397,7 @@ export function bindDepthMatrix() {
  */
 export function setAllDepths(depth) {
     const config = {};
-    for (let level = 1; level <= 10; level++) {
+    for (let level = 1; level <= 5; level++) {
         config[level] = depth;
     }
     setDepthConfig(config);

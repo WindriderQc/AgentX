@@ -22,31 +22,12 @@ function makePrompts(level, category, count, opts) {
 // Build a realistic prompt set matching the documented distribution
 function buildFullPromptSet() {
     const prompts = [];
-    // Levels 1-3: 16 prompts, 10 categories (roughly 1-2 per cat)
-    for (let level = 1; level <= 3; level++) {
-        for (let cat = 1; cat <= 10; cat++) {
-            const count = cat <= 6 ? 2 : 1; // 6 cats × 2 + 4 cats × 1 = 16
-            // Mark first category's first prompt as representative
-            prompts.push(...makePrompts(level, `cat${cat}`, count, cat === 1 ? { representative: true } : {}));
-        }
-    }
-    // Levels 4-5: 22 prompts, 10 categories
-    for (let level = 4; level <= 5; level++) {
-        for (let cat = 1; cat <= 10; cat++) {
-            const count = cat <= 2 ? 3 : 2; // 2 cats × 3 + 8 cats × 2 = 22
-            prompts.push(...makePrompts(level, `cat${cat}`, count, cat === 1 ? { representative: true } : {}));
-        }
-    }
-    // Levels 6-8: 12 prompts, 6 categories (2 each)
-    for (let level = 6; level <= 8; level++) {
-        for (let cat = 1; cat <= 6; cat++) {
-            prompts.push(...makePrompts(level, `cat${cat}`, 2, cat === 1 ? { representative: true } : {}));
-        }
-    }
-    // Levels 9-10: 6 prompts, 6 categories (1 each)
-    for (let level = 9; level <= 10; level++) {
-        for (let cat = 1; cat <= 6; cat++) {
-            prompts.push(...makePrompts(level, `cat${cat}`, 1, cat === 1 ? { representative: true } : {}));
+    const categories = ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'];
+    const promptsPerLevel = { 1: 2, 2: 3, 3: 3, 4: 3, 5: 1 };
+
+    for (let level = 1; level <= 5; level++) {
+        for (const [index, category] of categories.entries()) {
+            prompts.push(...makePrompts(level, category, promptsPerLevel[level], index === 0 ? { representative: true } : {}));
         }
     }
     return prompts;
@@ -73,10 +54,10 @@ describe('samplePromptsByDepth', () => {
         });
 
         it('should include every prompt (no filtering)', () => {
-            const config = { 6: 'full' };
-            const level6 = allPrompts.filter(p => p.level === 6);
-            const result = samplePromptsByDepth(level6, config);
-            expect(result).toEqual(expect.arrayContaining(level6));
+            const config = { 4: 'full' };
+            const level4 = allPrompts.filter(p => p.level === 4);
+            const result = samplePromptsByDepth(level4, config);
+            expect(result).toEqual(expect.arrayContaining(level4));
         });
     });
 
@@ -125,19 +106,16 @@ describe('samplePromptsByDepth', () => {
             const config = { 1: 'light' };
             const level1 = allPrompts.filter(p => p.level === 1);
             const result = samplePromptsByDepth(level1, config);
-            // Level 1 has 10 categories
-            expect(result).toHaveLength(10);
-            // Verify each category represented exactly once
+            expect(result).toHaveLength(7);
             const categories = result.map(p => p.category);
-            expect(new Set(categories).size).toBe(10);
+            expect(new Set(categories).size).toBe(7);
         });
 
-        it('should return 1 prompt per category for levels with fewer categories', () => {
-            const config = { 9: 'light' };
-            const level9 = allPrompts.filter(p => p.level === 9);
-            const result = samplePromptsByDepth(level9, config);
-            // Level 9 has 6 categories with 1 prompt each
-            expect(result).toHaveLength(6);
+        it('should return 1 prompt per category for sparse levels too', () => {
+            const config = { 5: 'light' };
+            const level5 = allPrompts.filter(p => p.level === 5);
+            const result = samplePromptsByDepth(level5, config);
+            expect(result).toHaveLength(7);
         });
     });
 
@@ -159,11 +137,11 @@ describe('samplePromptsByDepth', () => {
                 byLevel[p.level].push(p);
             });
 
-            expect(byLevel[1] || []).toHaveLength(16);
-            expect(byLevel[2] || []).toHaveLength(10);
+            expect(byLevel[1] || []).toHaveLength(14);
+            expect(byLevel[2] || []).toHaveLength(7);
             expect(byLevel[3]).toBeUndefined();
             expect(byLevel[4] || []).toHaveLength(1);
-            expect(byLevel[5] || []).toHaveLength(22);
+            expect(byLevel[5] || []).toHaveLength(7);
         });
     });
 

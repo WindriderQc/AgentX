@@ -43,9 +43,7 @@ let charts = {
 
 // Categories for filters
 const CATEGORIES = [
-    'coding', 'reasoning', 'factual', 'math', 'creative', 'general',
-    'instruction-following', 'summarization', 'translation',
-    'multi-turn-reasoning', 'context-retention', 'edge-cases'
+    'coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'
 ];
 
 // Initialize on page load
@@ -288,7 +286,7 @@ function clearAllFilters() {
 
     // Reset ranges
     document.getElementById('levelMin').value = 1;
-    document.getElementById('levelMax').value = 10;
+    document.getElementById('levelMax').value = 5;
     document.getElementById('qualityMin').value = 0;
     document.getElementById('qualityMax').value = 10;
     updateRangeDisplay('levelMin', 'levelMax', 'levelRangeDisplay');

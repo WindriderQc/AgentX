@@ -44,10 +44,16 @@ async function getTimeline(dateStr, timezone = 'America/Toronto') {
         id: entry._id,
         name: entry.name,
         source: entry.source,
+        sourceId: entry.sourceId,
         taskType: entry.taskType,
         host: entry.host,
         model: entry.model,
+        agent: entry.agent,
         priority: entry.priority,
+        estimatedDurationMs: entry.estimatedDurationMs,
+        vramMb: entry.vramMb,
+        scheduleType: entry.schedule?.type || null,
+        metadata: entry.metadata || {},
         slots
       });
     }
@@ -147,13 +153,40 @@ async function getNextTasks(count = 5) {
         model: entry.model,
         priority: entry.priority,
         nextRun: next.toISOString(),
-        msFromNow: next.getTime() - now.getTime()
+        msFromNow: next.getTime() - now.getTime(),
+        scheduleType: entry.schedule.type,
+        intervalMs: entry.schedule.intervalMs || null,
+        dailyCount: estimateDailyCount(entry)
       });
     }
   }
 
   upcoming.sort((a, b) => a.msFromNow - b.msFromNow);
   return upcoming.slice(0, count);
+}
+
+/**
+ * Estimate how many times an entry fires per day.
+ * Used to classify service ticks vs meaningful scheduled jobs.
+ */
+function estimateDailyCount(entry) {
+  if (entry.schedule?.type === 'interval' && entry.schedule.intervalMs > 0) {
+    return Math.round(86400000 / entry.schedule.intervalMs);
+  }
+  if (entry.schedule?.type === 'cron' && entry.schedule.cron) {
+    try {
+      const tz = entry.schedule.timezone || 'America/Toronto';
+      const now = new Date();
+      const iter = CronExpressionParser.parse(entry.schedule.cron, { currentDate: now, tz });
+      const t1raw = iter.next();
+      const t2raw = iter.next();
+      const t1 = t1raw.toDate ? t1raw.toDate().getTime() : new Date(t1raw).getTime();
+      const t2 = t2raw.toDate ? t2raw.toDate().getTime() : new Date(t2raw).getTime();
+      const gapMs = t2 - t1;
+      return gapMs > 0 ? Math.round(86400000 / gapMs) : 1;
+    } catch { return 1; }
+  }
+  return 1;
 }
 
 /**
@@ -274,6 +307,8 @@ async function getConflicts(dateStr, timezone = 'America/Toronto') {
   const byHost = {};
 
   for (const entry of timeline) {
+    // Entries with no model consume no GPU — skip from conflict detection
+    if (!entry.model) continue;
     const h = entry.host || 'unassigned';
     if (!byHost[h]) byHost[h] = [];
     byHost[h].push(entry);

@@ -68,25 +68,25 @@ describe('Judge Confidence Service', () => {
     });
 
     describe('checkLevelScoreMismatch', () => {
-        it('should flag level 7+ with near-perfect score', () => {
-            const result = checkLevelScoreMismatch(7, 9.5);
+        it('should flag level 4+ with near-perfect score', () => {
+            const result = checkLevelScoreMismatch(4, 9.5);
             expect(result.suspicious).toBe(true);
         });
 
-        it('should flag level 8+ with very high score', () => {
-            const result = checkLevelScoreMismatch(8, 9.0);
+        it('should flag level 5 with very high score', () => {
+            const result = checkLevelScoreMismatch(5, 9.0);
             expect(result.suspicious).toBe(true);
         });
 
-        it('should flag level 9+ with high score', () => {
-            const result = checkLevelScoreMismatch(9, 8.5);
+        it('should flag level 5 with suspiciously high score', () => {
+            const result = checkLevelScoreMismatch(5, 8.5);
             expect(result.suspicious).toBe(true);
         });
 
         it('should not flag normal level-score combinations', () => {
-            expect(checkLevelScoreMismatch(5, 9.0).suspicious).toBe(false);
+            expect(checkLevelScoreMismatch(3, 9.0).suspicious).toBe(false);
             expect(checkLevelScoreMismatch(3, 10).suspicious).toBe(false);
-            expect(checkLevelScoreMismatch(7, 7.0).suspicious).toBe(false);
+            expect(checkLevelScoreMismatch(5, 7.0).suspicious).toBe(false);
         });
     });
 
@@ -127,13 +127,13 @@ describe('Judge Confidence Service', () => {
             expect(estimatePromptComplexity({ level: 5, category: 'reasoning' })).toBeGreaterThan(5);
         });
 
-        it('should cap at 10', () => {
+        it('should stay within the internal 1-10 complexity scale', () => {
             const result = estimatePromptComplexity({
-                level: 10,
+                level: 5,
                 prompt: 'a'.repeat(10000),
                 category: 'reasoning'
             });
-            expect(result).toBe(10);
+            expect(result).toBeLessThanOrEqual(10);
         });
 
         it('should floor at 1', () => {
@@ -163,7 +163,7 @@ describe('Judge Confidence Service', () => {
                 breakdown: { a: 9, b: 9, c: 9, d: 9 },
                 explanation: 'Good'
             };
-            const prompt = { level: 8 };
+            const prompt = { level: 5 };
 
             const result = assess(scoreResult, prompt);
             expect(result.needs_review).toBe(true);
@@ -198,12 +198,12 @@ describe('Judge Confidence Service', () => {
 
     describe('quickCheck', () => {
         it('should return lower confidence for high level + high score', () => {
-            const result = quickCheck(9.0, 7);
+            const result = quickCheck(9.0, 5);
             expect(result.confidence).toBeLessThan(1);
         });
 
         it('should return high confidence for normal combinations', () => {
-            const result = quickCheck(7.0, 5);
+            const result = quickCheck(7.0, 3);
             expect(result.confidence).toBe(1.0);
             expect(result.needsReview).toBe(false);
         });

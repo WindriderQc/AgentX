@@ -47,8 +47,8 @@ jest.mock('../../src/services/scoring/complianceScorer', () => {
 
 describe('Enhanced Scoring Dimensions', () => {
     describe('buildDynamicJudgePrompt', () => {
-        it('should build a prompt with 4 core dimensions for code category', () => {
-            const dimensions = ENHANCED_SCORING_CONFIGS.code.core_dimensions;
+        it('should build a prompt with 4 core dimensions for coding category', () => {
+            const dimensions = ENHANCED_SCORING_CONFIGS.coding.core_dimensions;
             const task = 'Write a function to sort an array';
             const expected = 'Efficient sorting algorithm';
             const response = 'function sort(arr) { return arr.sort(); }';
@@ -110,7 +110,7 @@ describe('Enhanced Scoring Dimensions', () => {
         });
 
         it('should include empty response handling instructions', () => {
-            const dimensions = ENHANCED_SCORING_CONFIGS.code.core_dimensions;
+            const dimensions = ENHANCED_SCORING_CONFIGS.coding.core_dimensions;
             const prompt = buildDynamicJudgePrompt(dimensions, 'task', 'expected', 'response');
 
             expect(prompt).toContain('RESPONSE TO EVALUATE section is empty or blank');
@@ -122,7 +122,7 @@ describe('Enhanced Scoring Dimensions', () => {
         it('should use custom scoring_dimensions from prompt if defined', () => {
             const prompt = {
                 name: 'Custom Prompt',
-                scoring_type: 'code',
+                scoring_type: 'coding',
                 scoring_dimensions: [
                     { name: 'custom_dim1', weight: 0.6, description: 'Custom dimension 1' },
                     { name: 'custom_dim2', weight: 0.4, description: 'Custom dimension 2' }
@@ -142,18 +142,18 @@ describe('Enhanced Scoring Dimensions', () => {
         it('should use enhanced configs if no custom dimensions defined', () => {
             const prompt = {
                 name: 'Test Prompt',
-                scoring_type: 'code'
+                scoring_type: 'coding'
             };
 
             const result = getScoringDimensions(prompt);
 
-            expect(result.category).toBe('code');
+            expect(result.category).toBe('coding');
             expect(result.dimensions.length).toBe(4);
             expect(result.dimensions[0].name).toBe('correctness');
             expect(result.weights.correctness).toBeGreaterThan(0);
         });
 
-        it('should fall back to general config for unknown scoring_type', () => {
+        it('should fall back to the default benchmark config for unknown scoring_type', () => {
             const prompt = {
                 name: 'Test Prompt',
                 scoring_type: 'unknown-category'
@@ -161,24 +161,36 @@ describe('Enhanced Scoring Dimensions', () => {
 
             const result = getScoringDimensions(prompt);
 
-            // Should fall back to 'general' dimensions
-            expect(result.category).toBe('unknown-category');
+            expect(result.category).toBe('knowledge');
             expect(result.dimensions.length).toBe(4);
-            expect(result.dimensions[0].name).toBe('helpfulness');
+            expect(result.dimensions[0].name).toBe('accuracy');
         });
 
-        it('should use general config by default when no scoring_type specified', () => {
+        it('should remap legacy scoring types to the canonical benchmark category', () => {
+            const prompt = {
+                name: 'Legacy Refactor Prompt',
+                scoring_type: 'refactoring'
+            };
+
+            const result = getScoringDimensions(prompt);
+
+            expect(result.category).toBe('coding');
+            expect(result.dimensions.length).toBe(4);
+            expect(result.dimensions[0].name).toBe('correctness');
+        });
+
+        it('should use knowledge config by default when no scoring_type specified', () => {
             const prompt = {
                 name: 'Test Prompt'
             };
 
             const result = getScoringDimensions(prompt);
 
-            expect(result.category).toBe('general');
+            expect(result.category).toBe('knowledge');
             expect(result.dimensions.length).toBe(4);
         });
 
-        it('should handle all 16 enhanced category types', () => {
+        it('should handle all 7 benchmark category types', () => {
             const categories = Object.keys(ENHANCED_SCORING_CONFIGS);
 
             categories.forEach(category => {
@@ -249,12 +261,9 @@ describe('Enhanced Scoring Dimensions', () => {
     });
 
     describe('ENHANCED_SCORING_CONFIGS Validation', () => {
-        it('should have all 16 required categories', () => {
+        it('should have all 7 required categories', () => {
             const expectedCategories = [
-                'code', 'reasoning', 'factual', 'math', 'creative', 'general',
-                'instruction-following', 'summarization', 'translation',
-                'multi-turn-reasoning', 'context-retention', 'edge-cases',
-                'refactoring', 'debugging', 'explanation', 'dialogue'
+                'coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'
             ];
 
             expectedCategories.forEach(category => {
@@ -289,8 +298,8 @@ describe('Enhanced Scoring Dimensions', () => {
         });
 
         describe('Category-specific validations', () => {
-            it('code: should include correctness as highest-weighted dimension', () => {
-                const dims = ENHANCED_SCORING_CONFIGS.code.core_dimensions;
+            it('coding: should include correctness as highest-weighted dimension', () => {
+                const dims = ENHANCED_SCORING_CONFIGS.coding.core_dimensions;
                 const correctness = dims.find(d => d.name === 'correctness');
                 expect(correctness).toBeDefined();
                 expect(correctness.weight).toBeGreaterThanOrEqual(0.3);
@@ -314,10 +323,10 @@ describe('Enhanced Scoring Dimensions', () => {
                 expect(dims.find(d => d.name === 'originality')).toBeDefined();
             });
 
-            it('debugging: should include root_cause and fix_correctness', () => {
-                const dims = ENHANCED_SCORING_CONFIGS.debugging.core_dimensions;
-                expect(dims.find(d => d.name === 'root_cause')).toBeDefined();
-                expect(dims.find(d => d.name === 'fix_correctness')).toBeDefined();
+            it('instruction: should include instruction adherence and format accuracy', () => {
+                const dims = ENHANCED_SCORING_CONFIGS.instruction.core_dimensions;
+                expect(dims.find(d => d.name === 'instruction_adherence')).toBeDefined();
+                expect(dims.find(d => d.name === 'format_accuracy')).toBeDefined();
             });
         });
     });
@@ -335,23 +344,14 @@ describe('Enhanced Scoring Dimensions', () => {
                 expect(typeof CATEGORY_COMPOSITE_PROFILES).toBe('object');
             });
 
-            it('should have all required categories including code alias', () => {
+            it('should have all required benchmark categories', () => {
                 const expectedCategories = [
-                    'code', 'coding', 'reasoning', 'factual', 'math', 'creative', 'general',
-                    'instruction-following', 'summarization', 'translation',
-                    'multi-turn-reasoning', 'context-retention', 'edge-cases',
-                    'refactoring', 'debugging', 'explanation', 'dialogue'
+                    'coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'
                 ];
 
                 expectedCategories.forEach(category => {
                     expect(CATEGORY_COMPOSITE_PROFILES).toHaveProperty(category);
                 });
-            });
-
-            it('should have code and coding profiles with identical weights', () => {
-                expect(CATEGORY_COMPOSITE_PROFILES.code.weights).toEqual(
-                    CATEGORY_COMPOSITE_PROFILES.coding.weights
-                );
             });
 
             it('should have weights that sum to 1.0 for each category', () => {
@@ -364,19 +364,19 @@ describe('Enhanced Scoring Dimensions', () => {
 
         describe('calculateCompositeScore', () => {
             it('should accept category name and use category-specific weights', () => {
-                const result = calculateCompositeScore(testMetrics, 'code');
+                const result = calculateCompositeScore(testMetrics, 'coding');
 
                 expect(result).toHaveProperty('composite_score');
                 expect(result).toHaveProperty('composite_profile_used');
-                expect(result.composite_profile_used).toBe('category:code');
+                expect(result.composite_profile_used).toBe('category:coding');
                 expect(result.weights.quality).toBe(0.6);
             });
 
             it('should produce different scores for different categories', () => {
-                const codeResult = calculateCompositeScore(testMetrics, 'code');
+                const codingResult = calculateCompositeScore(testMetrics, 'coding');
                 const reasoningResult = calculateCompositeScore(testMetrics, 'reasoning');
 
-                expect(codeResult.composite_score).not.toBe(reasoningResult.composite_score);
+                expect(codingResult.composite_score).not.toBe(reasoningResult.composite_score);
             });
 
             it('should prioritize quality for reasoning category (80% weight)', () => {
@@ -399,7 +399,7 @@ describe('Enhanced Scoring Dimensions', () => {
                     tokens_per_sec: null,
                     quality_score: undefined
                 };
-                const result = calculateCompositeScore(invalidMetrics, 'code');
+                const result = calculateCompositeScore(invalidMetrics, 'coding');
 
                 expect(result.composite_score).toBeGreaterThanOrEqual(0);
                 expect(result.normalized.quality).toBe(0);
@@ -408,9 +408,9 @@ describe('Enhanced Scoring Dimensions', () => {
 
             it('should cap latency score at 0 when exceeding latencyCap', () => {
                 const highLatencyMetrics = { ...testMetrics, latency: 100000 };
-                const result = calculateCompositeScore(highLatencyMetrics, 'factual');
+                const result = calculateCompositeScore(highLatencyMetrics, 'knowledge');
 
-                // factual has 30s cap, 100s should give 0 latency score
+                // knowledge has 30s cap, 100s should give 0 latency score
                 expect(result.normalized.latency).toBe(0);
             });
 
@@ -420,11 +420,9 @@ describe('Enhanced Scoring Dimensions', () => {
                     tokens_per_sec: 80,   // very fast
                     quality_score: 0      // zero quality
                 };
-                const result = calculateCompositeScore(zeroQualityMetrics, 'factual');
+                const result = calculateCompositeScore(zeroQualityMetrics, 'knowledge');
 
-                // Without cap: 0*0.7 + ~98*0.2 + 80*0.1 = 27.6
-                // With quality floor cap: capped to 5.0
-                expect(result.composite_score).toBeLessThanOrEqual(5.0);
+                expect(result.composite_score).toBe(0);
                 expect(result.normalized.quality).toBe(0);
             });
 
@@ -434,7 +432,7 @@ describe('Enhanced Scoring Dimensions', () => {
                     tokens_per_sec: 80,
                     quality_score: 1      // minimal but non-zero
                 };
-                const result = calculateCompositeScore(lowQualityMetrics, 'factual');
+                const result = calculateCompositeScore(lowQualityMetrics, 'knowledge');
 
                 // quality_score=1 => qualityScore=10, no cap applies
                 expect(result.composite_score).toBeGreaterThan(5.0);
@@ -450,7 +448,7 @@ describe('Enhanced Scoring Dimensions', () => {
         it('should return score 0 with empty_response method for empty responses', async () => {
             const result = await scoreResponse({
                 response: '',
-                prompt: { prompt: 'Test prompt', scoring_type: 'general' }
+                prompt: { prompt: 'Test prompt', scoring_type: 'knowledge' }
             });
 
             expect(result.quality_score).toBe(0);
@@ -458,10 +456,21 @@ describe('Enhanced Scoring Dimensions', () => {
             expect(result.explanation).toContain('NO response');
         });
 
+        it('should normalize legacy scoring types before returning empty-response metadata', async () => {
+            const result = await scoreResponse({
+                response: '',
+                prompt: { prompt: 'Refactor this function', scoring_type: 'refactoring' }
+            });
+
+            expect(result.quality_score).toBe(0);
+            expect(result.scoring_method).toBe('empty_response');
+            expect(result.scoring_type).toBe('coding');
+        });
+
         it('should return score 0 with empty_response method for whitespace-only responses', async () => {
             const result = await scoreResponse({
                 response: '   \n\t  ',
-                prompt: { prompt: 'Test prompt', scoring_type: 'general' }
+                prompt: { prompt: 'Test prompt', scoring_type: 'knowledge' }
             });
 
             expect(result.quality_score).toBe(0);
@@ -657,7 +666,7 @@ describe('Enhanced Scoring Dimensions', () => {
             mockBlendHybridScore.mockReturnValue({
                 quality_score: 9,
                 scoring_method: 'hybrid',
-                scoring_type: 'context-retention',
+                scoring_type: 'instruction',
                 accuracy_score: 10,
                 compliance_score: 6,
                 matched_expected: true,
@@ -670,8 +679,8 @@ describe('Enhanced Scoring Dimensions', () => {
             const response = 'Q1: The Pine Ridge trail is closed.\nQ2: They had rye sandwiches for lunch.\nQ3: They stayed at Alder Cove campsite.';
             const prompt = {
                 name: 'Lake Trip Journal',
-                scoring_type: 'context-retention',
-                category: 'context-retention',
+                scoring_type: 'instruction',
+                category: 'instruction',
                 expected_answer: 'Q1: Pine Ridge trail. Q2: Rye sandwiches. Q3: Alder Cove.',
                 judge_criteria: [
                     'Names Pine Ridge as the closed trail',
@@ -697,8 +706,8 @@ describe('Enhanced Scoring Dimensions', () => {
             const response = 'Q1: Pine Ridge. Q2: Rye sandwiches. Q3: Alder Cove.';
             const prompt = {
                 name: 'Lake Trip',
-                scoring_type: 'context-retention',
-                category: 'context-retention',
+                scoring_type: 'instruction',
+                category: 'instruction',
                 expected_answer: 'Q1: Pine Ridge trail. Q2: Rye sandwiches. Q3: Alder Cove.',
                 judge_criteria: [
                     'Names Pine Ridge as the closed trail',
@@ -715,14 +724,8 @@ describe('Enhanced Scoring Dimensions', () => {
             expect(mockBlendHybridScore).not.toHaveBeenCalled();
         });
 
-        it('should have hybrid_compliance enabled for context-retention category', () => {
-            const strategy = CATEGORY_STRATEGIES['context-retention'];
-            expect(strategy.hybrid_compliance).toBe(true);
-            expect(strategy.hybrid_weights).toEqual({ accuracy: 0.75, compliance: 0.25 });
-        });
-
-        it('should have hybrid_compliance enabled for instruction-following category', () => {
-            const strategy = CATEGORY_STRATEGIES['instruction-following'];
+        it('should have hybrid_compliance enabled for instruction category', () => {
+            const strategy = CATEGORY_STRATEGIES.instruction;
             expect(strategy.hybrid_compliance).toBe(true);
             expect(strategy.hybrid_weights).toEqual({ accuracy: 0.55, compliance: 0.45 });
         });
@@ -736,7 +739,7 @@ describe('Enhanced Scoring Dimensions', () => {
             const hybridCategories = Object.entries(CATEGORY_STRATEGIES)
                 .filter(([_, s]) => s.hybrid_weights);
 
-            expect(hybridCategories.length).toBeGreaterThanOrEqual(6);
+            expect(hybridCategories.length).toBe(1);
 
             hybridCategories.forEach(([cat, strategy]) => {
                 const sum = strategy.hybrid_weights.accuracy + strategy.hybrid_weights.compliance;

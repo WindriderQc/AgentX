@@ -18,8 +18,7 @@ This directory is the stack-level deep-dive set for AgentX and DataAPI integrati
 
 ## Historical and Audit Material
 
-- [00-AUDIT-SUMMARY.md](00-AUDIT-SUMMARY.md) - Audit summary and document history.
-- `archive/` - Historical and superseded stack material.
+- Historical validation and audit artifacts now live in [../../archive/README.md](../../archive/README.md).
 
 ## Why This File Is Short
 

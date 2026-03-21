@@ -1,11 +1,11 @@
 
 Used 4 references
 Plan: Agent Mesh Foundation
-Recommended architecture: keep OpenClaw, AgentX, and DataAPI as three separate planes with clear ownership instead of forcing one system to become everything. OpenClaw should remain the personal operator shell and conversational agent gateway. AgentX should become the maintenance control room and system-of-record for repo health, bounded maintenance tasks, approvals, scheduling, and host telemetry. DataAPI should remain the deterministic data substrate and evolve only where it clearly adds value for indexing, scanning, and export. The fastest path is not agent-per-repo. The fastest path is bounded maintainer capabilities running against repo profiles, with AgentX as the orchestration plane.
+Recommended architecture: keep OpenClaw, AgentX, and DataAPI as three separate planes with clear ownership instead of forcing one system to become everything. OpenClaw should remain the personal operator shell and conversational gateway over AgentX workflows. AgentX should remain the maintenance control room and system-of-record for repo health, bounded maintenance tasks, approvals, scheduling, and host telemetry. DataAPI should remain the deterministic data substrate and evolve only where it clearly adds value for indexing, scanning, and export. The fastest path is not agent-per-repo. The fastest path is bounded maintainer capabilities running against repo profiles, with AgentX as the orchestration plane.
 
 Actual status
 
-OpenClaw is already a real agent platform, not a sidecar. It has a gateway, 8 agents, cron as source of truth, Telegram delivery, session persistence, skills, delegation, and model chains. It is strong at personal automation, agent identity, scheduled reports, and conversational orchestration.
+OpenClaw is already a real agent platform, not a sidecar. It has a gateway, 8 agents, cron as the source of truth for its own recurring jobs, Telegram delivery, session persistence, skills, delegation, and model chains. It is strong at personal automation, agent identity, scheduled reports, and conversational orchestration.
 AgentX is already a real application platform, not just a chat UI. It has SpecialX queue-driven automation, repoWatcher, docJanitor, feature alignment scanning, validation scanning, cluster scheduling, host monitoring, analytics, workspaces, and dashboards. It is strong at observability, bounded automation, persistence, and app-facing control-plane concerns.
 DataAPI is not yet a code intelligence engine. It is currently strongest at deterministic file metadata, scanning, export, storage analytics, and background-worker patterns. It can become a substrate for repo ingestion later, but today it does not provide AST indexing, symbol graphs, code contracts, or patch workflow orchestration.
 OpenClaw and AgentX currently integrate mostly through observation rather than execution. AgentX probes OpenClaw health and agent inventory, and syncs OpenClaw cron jobs into cluster schedule data. There is no first-class AgentX-to-OpenClaw task dispatch, no OpenClaw-to-AgentX result callback, and no shared run ledger.
@@ -22,15 +22,15 @@ Make AgentX the control room for AgentX plus DataAPI maintenance. Make OpenClaw 
 Target end game
 
 OpenClaw is the outer operator layer. It is where you converse, receive reports, trigger workflows, approve risky actions, and run personal automation.
-AgentX is the maintenance system-of-record. It stores repo profiles, health snapshots, findings, task queues, automation runs, approvals, host telemetry, and maintenance dashboards.
+AgentX is the primary maintenance system-of-record and AI-ops control plane. It stores repo profiles, health snapshots, findings, task queues, automation runs, approvals, host telemetry, and maintenance dashboards.
 DataAPI is the deterministic ingestion and export layer. It scans repositories, stores file and artifact metadata, serves exports, and optionally hosts heavier background analysis jobs when needed.
 Maintainer agents are responsibility-based, not repo-based. Initial agent set: Code Steward, Test Guardian, Docs Janitor, Architecture Reviewer, Data Contract Checker, Ops Runtime Guard, and Repo Intake/Indexer.
 Every maintainer capability operates against explicit project rules: purpose, critical paths, forbidden edit zones, test commands, build commands, deployment paths, risk class, and approval policy.
 Every action has a proof trail: extracted facts, impacted files, confidence, proposed patch, validation steps, approval state, and result metrics.
 Architecture conclusion
 
-The earlier idea that AgentX is simply the single HQ and OpenClaw is just another node is too simplistic. OpenClaw is already the personal orchestration HQ for your broader daily AI system.
-The better framing is layered HQs. OpenClaw is the user-control and delegation plane. AgentX is the app-maintenance and AI-ops control plane. DataAPI is the deterministic data plane.
+The earlier idea that AgentX is simply the single HQ and OpenClaw is just another node is too simplistic. OpenClaw is a real operator environment for the broader daily AI system, but it should not own AgentX internal maintenance state.
+The better framing is layered control. AgentX is the app-maintenance and AI-ops control plane. OpenClaw is the user-control, delegation, approval, and notification shell over AgentX workflows. DataAPI is the deterministic data plane.
 For the vision of an agent using the code and helping maintain the code, AgentX is the best foundation to productize first because it already contains the repo-maintenance dashboards, scanners, queue runner, and cluster observability primitives.
 OpenClaw should not be discarded. It should become the approval, escalation, notification, and high-level orchestration shell over AgentX maintenance workflows.
 DataAPI should not be promoted to orchestrator. It should evolve into a substrate only where structured file inventories, heavy scans, exports, or background ingestion materially help.

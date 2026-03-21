@@ -4,26 +4,28 @@
  * Reports prompt counts per category × level and identifies gaps.
  *
  * Usage: node scripts/audit-prompt-coverage.js [--min N]
- *   --min N   Minimum prompts per category×level (default: 5)
+ *   --min N   Minimum prompts per category×level (default: 1)
  */
 
 const MIN_PER_LEVEL = parseInt(process.argv.find(a => a.startsWith('--min='))?.split('=')[1], 10)
-    || (process.argv.includes('--min') ? parseInt(process.argv[process.argv.indexOf('--min') + 1], 10) : 5)
-    || 5;
+    || (process.argv.includes('--min') ? parseInt(process.argv[process.argv.indexOf('--min') + 1], 10) : 1)
+    || 1;
 
-const base = require('../data/benchmark-prompts.json');
-const enhanced = require('../data/benchmark-prompts-enhanced.json');
-const deep = require('../data/benchmark-prompts-deep.json');
+const prompts = require('../data/benchmark-prompts.json');
 const { GENERALIST_CATEGORY_WEIGHTS } = require('../config/categories');
 
-const all = [...base, ...enhanced, ...deep];
-console.log(`Total prompts: ${all.length} (base: ${base.length}, enhanced: ${enhanced.length}, deep: ${deep.length})`);
+const EXPECTED_CATEGORIES = 7;
+const EXPECTED_LEVELS = 5;
+const EXPECTED_PROMPTS = 84;
+
+console.log(`Total prompts: ${prompts.length}`);
 console.log(`Minimum per level: ${MIN_PER_LEVEL}\n`);
+console.log(`Expected totals: ${EXPECTED_PROMPTS} prompts, ${EXPECTED_CATEGORIES} categories, ${EXPECTED_LEVELS} levels\n`);
 
 // Build category × level grid
 const grid = {};
 const allLevels = new Set();
-for (const p of all) {
+for (const p of prompts) {
     const cat = p.category || 'unknown';
     const level = p.level || 0;
     allLevels.add(level);
@@ -32,6 +34,11 @@ for (const p of all) {
 }
 
 const levels = [...allLevels].sort((a, b) => a - b);
+const categories = Object.keys(grid);
+
+console.log(`Discovered categories: ${categories.length}`);
+console.log(`Discovered levels: ${levels.length}`);
+console.log(`Prompt total matches expected: ${prompts.length === EXPECTED_PROMPTS ? 'yes' : 'no'}\n`);
 
 // Print grid
 const catWidth = 25;
@@ -98,11 +105,11 @@ if (gapDetails.length > 0) {
 
 // Metadata quality
 let missingCriteria = 0, missingDeterministic = 0;
-const deterministicCategories = ['math', 'coding', 'factual'];
-for (const p of all) {
+const deterministicCategories = ['math', 'coding', 'instruction'];
+for (const p of prompts) {
     if (!p.judge_criteria || p.judge_criteria.length === 0) missingCriteria++;
     if (deterministicCategories.includes(p.category) && !p.deterministic_scoring) missingDeterministic++;
 }
 console.log(`\nMetadata quality:`);
-console.log(`  Missing judge_criteria: ${missingCriteria}/${all.length}`);
-console.log(`  Missing deterministic_scoring (math/coding/factual): ${missingDeterministic}`);
+console.log(`  Missing judge_criteria: ${missingCriteria}/${prompts.length}`);
+console.log(`  Missing deterministic_scoring (math/coding/instruction): ${missingDeterministic}`);

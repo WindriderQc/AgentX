@@ -233,4 +233,77 @@ router.get('/schedule/actual-vs-planned', optionalAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /schedule/sync/system-cron
+ * Read the current user's system crontab and sync entries into ClusterScheduleEntry.
+ * Idempotent — safe to call repeatedly. Marks non-LLM jobs automatically.
+ */
+router.post('/schedule/sync/system-cron', optionalAuth, async (req, res) => {
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFilePromise = promisify(execFile);
+
+    // Read system crontab
+    let lines = [];
+    try {
+      const { stdout } = await execFilePromise('crontab', ['-l'], { maxBuffer: 1024 * 1024 });
+      lines = String(stdout || '').split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0 && !l.startsWith('#'));
+    } catch (err) {
+      const msg = `${err?.stderr || ''} ${err?.message || ''}`.toLowerCase();
+      if (!msg.includes('no crontab')) throw err;
+    }
+
+    if (lines.length === 0) {
+      return res.json({ status: 'success', data: { created: 0, updated: 0, unchanged: 0, lines: 0 } });
+    }
+
+    // Parse and transform each cron line
+    const entries = lines.map((line, idx) => {
+      const parts = line.trim().split(/\s+/);
+      const hasStandardCron = parts.length >= 6;
+      const schedule = hasStandardCron ? parts.slice(0, 5).join(' ') : null;
+      const command = hasStandardCron ? parts.slice(5).join(' ') : line;
+
+      // Derive a human name from the command
+      const scriptMatch = command.match(/\/([^/\s]+\.(?:js|sh|py))/) ;
+      const name = scriptMatch
+        ? scriptMatch[1].replace(/[-_]/g, ' ').replace(/\.(js|sh|py)$/, '').replace(/\b\w/g, c => c.toUpperCase())
+        : `System Cron ${idx + 1}`;
+
+      // Classify task type
+      const cmd = command.toLowerCase();
+      let taskType = 'monitoring';
+      if (/sync|bisync/.test(cmd)) taskType = 'sync';
+      else if (/backup/.test(cmd)) taskType = 'backup';
+      else if (/telemetry|aggregate/.test(cmd)) taskType = 'monitoring';
+      else if (/clean|purge/.test(cmd)) taskType = 'cleanup';
+      else if (/ingest|rag/.test(cmd)) taskType = 'ingestion';
+      else if (/benchmark/.test(cmd)) taskType = 'benchmark';
+
+      return {
+        source: 'agentx-system',
+        sourceId: `syscron-${Buffer.from(line).toString('base64').slice(0, 20)}`,
+        name,
+        taskType,
+        host: 'primary',          // system crons run on this host
+        model: null,               // no model = no GPU/LLM
+        agent: null,
+        schedule: schedule ? { type: 'cron', cron: schedule, timezone: 'America/Toronto' } : null,
+        estimatedDurationMs: null,
+        enabled: true,
+        metadata: { command, raw: line }
+      };
+    }).filter(e => e.schedule); // skip lines we couldn't parse
+
+    const stats = await clusterScheduleService.syncEntries(entries);
+    res.json({ status: 'success', data: { ...stats, lines: lines.length } });
+  } catch (err) {
+    logger.error('Failed to sync system crontab', { error: err.message });
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
 module.exports = router;

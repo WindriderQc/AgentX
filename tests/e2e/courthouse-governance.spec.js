@@ -66,15 +66,10 @@ function buildRosterResponse(defaultJudgeModel = 'judge-alpha:14b') {
           ],
           levelRequirements: [
             { level: 1, requiredTier: 'basic' },
-            { level: 2, requiredTier: 'basic' },
-            { level: 3, requiredTier: 'basic' },
-            { level: 4, requiredTier: 'standard' },
-            { level: 5, requiredTier: 'standard' },
-            { level: 6, requiredTier: 'standard' },
-            { level: 7, requiredTier: 'advanced' },
-            { level: 8, requiredTier: 'advanced' },
-            { level: 9, requiredTier: 'advanced' },
-            { level: 10, requiredTier: 'advanced' }
+            { level: 2, requiredTier: 'standard' },
+            { level: 3, requiredTier: 'standard' },
+            { level: 4, requiredTier: 'advanced' },
+            { level: 5, requiredTier: 'advanced' }
           ]
         }
       ],
@@ -86,15 +81,10 @@ function buildRosterResponse(defaultJudgeModel = 'judge-alpha:14b') {
       },
       levelRequirements: [
         { level: 1, requiredTier: 'basic' },
-        { level: 2, requiredTier: 'basic' },
-        { level: 3, requiredTier: 'basic' },
-        { level: 4, requiredTier: 'standard' },
-        { level: 5, requiredTier: 'standard' },
-        { level: 6, requiredTier: 'standard' },
-        { level: 7, requiredTier: 'advanced' },
-        { level: 8, requiredTier: 'advanced' },
-        { level: 9, requiredTier: 'advanced' },
-        { level: 10, requiredTier: 'advanced' }
+        { level: 2, requiredTier: 'standard' },
+        { level: 3, requiredTier: 'standard' },
+        { level: 4, requiredTier: 'advanced' },
+        { level: 5, requiredTier: 'advanced' }
       ],
       tierRank: { basic: 1, standard: 2, advanced: 3, premium: 4 }
     }

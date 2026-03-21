@@ -2,112 +2,76 @@
 
 > **Navigation:** [CLAUDE.md](../../CLAUDE.md) → [Documentation Index](../INDEX.md) → Benchmark System
 
-> **Context:** Service-oriented benchmarking with category filtering and quality scoring.
+> **Context:** Current benchmark architecture after consolidation to a single prompt catalog, 7 benchmark categories, and 5 difficulty levels.
 
-## Key Documentation
+## Overview
 
-| Document | Purpose |
-|----------|---------|
-| [GENERALIST_SCORING_SYSTEM.md](./GENERALIST_SCORING_SYSTEM.md) | **Quality scoring formula** - coverage penalty, consistency bonus |
-| [BENCHMARK_QUALITY_SCORING.md](../testing/BENCHMARK_QUALITY_SCORING.md) | LLM judge configuration and scoring dimensions |
+AgentX benchmark execution follows the standard service-oriented flow:
 
-## Architecture
+`routes/benchmark.js` → `src/services/benchmark/*` → `models/Benchmark*`
 
-**Service-Oriented Design:**
-- Routes: `/routes/benchmark.js` - Thin HTTP layer
-- Service: `/src/services/benchmark/` - Modular business logic
-  - `index.js` - Main facade
-  - `results.js` - Dashboard and statistics
-  - `generalistScore.js` - Quality scoring (single source of truth)
-  - `judges.js` - Judge leaderboard
-  - `execution.js` - Batch execution (with per-model execution config from registry)
-  - `batches.js` - Batch management
-  - `config.js` - Default execution settings (fallback when no per-model config)
-- Model Sync: `/src/services/modelSync/` - Auto-sync and per-model config detection
-  - `syncOrchestrator.js` - Discovers models from Ollama hosts, populates registry
-  - `parameterDetection.js` - Auto-detects optimal num_ctx per model
+The benchmark prompt library now lives in a single source of truth:
 
-**Per-Model Execution Config:**
+- `data/benchmark-prompts.json`
+- 84 prompts total
+- 7 categories
+- 5 levels
+- `scoring_type === category` for seeded prompts
 
-During benchmark execution, each model gets its own `num_ctx` resolved via priority chain:
-```
-User override (executionOverrides.num_ctx)
-  → Auto-detected default (executionDefaults.num_ctx)
-    → Batch-level config (DEFAULT_EXECUTION_CONFIG.num_ctx = 8192)
-```
-See [Model Registry](../architecture/MODEL_REGISTRY.md#execution-config-priority) for full details.
+## Categories
 
-**Models:**
-- `BenchmarkPrompt` - Test prompts with categories
-- `BenchmarkResult` - Individual test results
-- `BenchmarkBatch` - Batch execution with state transitions
+| Key | Label | Notes |
+|-----|-------|-------|
+| `coding` | Coding | Code generation, bug fixing, refactors |
+| `reasoning` | Reasoning | Multi-step logic and edge-case handling |
+| `math` | Math | Numeric correctness and method validity |
+| `knowledge` | Knowledge | Factual recall, explanation, grounded answers |
+| `instruction` | Instruction | Constraint following, format compliance, summarization-style tasks |
+| `creative` | Creative | Writing quality, originality, dialogue-style generation |
+| `translation` | Translation | Cross-language fidelity and fluency |
 
-**Features:**
-- 10-level prompt library (1=easy, 10=expert)
-- Batch testing with async execution
-- Quality scoring with LLM judges
-- Generalist scoring with coverage/consistency metrics
+## Levels
 
----
+| Level | Label | Judge Tier | Prompts per category |
+|-------|-------|------------|----------------------|
+| 1 | Basic | `basic` | 2 |
+| 2 | Intermediate | `standard` | 3 |
+| 3 | Advanced | `standard` | 3 |
+| 4 | Expert | `advanced` | 3 |
+| 5 | Master | `advanced` | 1 |
 
-## Category Filtering (Task-Segmented Leaderboards)
+Distribution: `2 + 3 + 3 + 3 + 1 = 12` prompts per category, `12 × 7 = 84` prompts total.
 
-Benchmarks support filtering by model category, prompt category, and tags to enable "apples to apples" comparisons.
+## Runtime Notes
 
-### Enhanced Dashboard Endpoint
+- Prompt seeding: `src/services/benchmark/init.js`
+- Category metadata and leaderboard tabs: `config/categories.js`
+- Scoring configs and strategies: `src/services/scoring/scoringConfigs.js`
+- Decomposed judging questions: `src/services/decomposedJudgeQuestions.js`
+- Prompt coverage audit: `scripts/audit-prompt-coverage.js`
 
-```bash
-GET /api/benchmark/dashboard?modelCategory=<category>&promptCategory=<category>&tag=<tag>&sort=<criteria>
-```
+## Filter Values
 
-### Filter Parameters
+`GET /api/benchmark/dashboard`
 
-| Parameter | Purpose | Values |
-|-----------|---------|--------|
-| `modelCategory` | Filter to models in category | ops, coding, reasoning, specialist, generalist, embedding, judge |
-| `promptCategory` | Filter to prompts in category | coding, reasoning, factual, math, creative, general |
-| `tag` | Filter to batches with specific tag | production, experimental, etc. |
-| `sort` | Sort criteria | latency, quality, composite |
+| Parameter | Values |
+|-----------|--------|
+| `modelCategory` | `ops`, `coding`, `reasoning`, `specialist`, `generalist`, `embedding`, `judge` |
+| `promptCategory` | `coding`, `reasoning`, `math`, `knowledge`, `instruction`, `creative`, `translation` |
+| `sort` | `latency`, `quality`, `composite` |
 
-### Examples
+## Validation Checklist
 
-```bash
-# Get coding models only
-curl "http://localhost:3080/api/benchmark/dashboard?modelCategory=coding"
-
-# Get reasoning tasks only
-curl "http://localhost:3080/api/benchmark/dashboard?promptCategory=reasoning"
-
-# Get coding models on coding tasks (find best code generator)
-curl "http://localhost:3080/api/benchmark/dashboard?modelCategory=coding&promptCategory=coding"
-
-# Get production-tagged batches sorted by quality
-curl "http://localhost:3080/api/benchmark/dashboard?tag=production&sort=quality"
-
-# Combined filters
-curl "http://localhost:3080/api/benchmark/dashboard?modelCategory=reasoning&promptCategory=reasoning&tag=production&sort=composite"
-```
-
----
-
-## How Category Filtering Works
-
-1. Frontend passes category/tag filters to dashboard endpoint
-2. Backend queries ModelRegistry for models matching `modelCategory`
-3. BenchmarkResult aggregation filters to matching models and `promptCategory`
-4. Tag filter queries BenchmarkBatch for batches with tag, then filters results
-5. Returns task-specific leaderboard (e.g., "Best Coding Models" vs "Best Reasoning Models")
-
-**Critical Pattern:** Category filtering enables finding the right model for specific tasks, preventing fast-but-weak models from ranking artificially high on trivial tasks.
-
----
+- Prompt file contains 84 prompts
+- Active prompt categories exactly match the 7 benchmark categories
+- Active levels are within `1..5`
+- Judge tier policy matches `1=basic`, `2-3=standard`, `4-5=advanced`
 
 ## Related Documentation
 
-- [GENERALIST_SCORING_SYSTEM.md](./GENERALIST_SCORING_SYSTEM.md) - Quality scoring formula and API
-- [BENCHMARK_QUALITY_SCORING.md](../testing/BENCHMARK_QUALITY_SCORING.md) - LLM judge configuration
-- [Model Registry](../architecture/MODEL_REGISTRY.md) - Category filtering integration
-- [Model Routing](../architecture/MODEL_ROUTING.md) - Task-based routing
+- [GENERALIST_SCORING_SYSTEM.md](./GENERALIST_SCORING_SYSTEM.md)
+- [BENCHMARK_QUALITY_SCORING.md](../testing/BENCHMARK_QUALITY_SCORING.md)
+- [Model Registry](../architecture/MODEL_REGISTRY.md)
 
 ---
 

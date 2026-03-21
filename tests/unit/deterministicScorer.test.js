@@ -63,6 +63,31 @@ describe('Deterministic Scorer', () => {
             expect(parseNumericValue('\\boxed{42}')).toBe(42);
         });
 
+        it('should parse fractions as numeric values', () => {
+            expect(parseNumericValue('2/9')).toBeCloseTo(2 / 9, 6);
+        });
+
+        it('should parse percentages as decimal values', () => {
+            expect(parseNumericValue('22.2%')).toBeCloseTo(0.222, 6);
+        });
+
+        it('should prefer the final answer over numbered list markers', () => {
+            const response = [
+                '1. Find the total number of balls: 10',
+                '2. Compute the first draw: 5/10',
+                '3. Compute the second draw: 4/9',
+                'The probability that both are red is **2/9**.'
+            ].join('\n');
+
+            expect(parseNumericValue(response)).toBeCloseTo(2 / 9, 6);
+        });
+
+        it('should prefer the final numeric candidate in expected-answer narratives', () => {
+            const expected = 'P(both red) = (5/10) * (4/9) = 20/90 = 2/9 approximately 0.222';
+
+            expect(parseNumericValue(expected)).toBeCloseTo(2 / 9, 2);
+        });
+
         it('should return null for non-numeric input', () => {
             expect(parseNumericValue('hello')).toBe(null);
             expect(parseNumericValue('')).toBe(null);
@@ -129,6 +154,25 @@ describe('Deterministic Scorer', () => {
         it('should extract number from text', () => {
             const result = numericEval('The answer is 42', '42');
             expect(result.matched).toBe(true);
+        });
+
+        it('should match step-by-step probability answers with fractions and percentages', () => {
+            const response = [
+                'Here is the step-by-step calculation to find the probability:',
+                '',
+                '1. Find the total number of balls: 10',
+                '2. Compute the first draw: 5/10 = 1/2',
+                '3. Compute the second draw: 4/9',
+                '4. Multiply: 1/2 * 4/9 = 2/9',
+                'The probability that both balls are red is **2/9** (or approximately **22.2%**).'
+            ].join('\n');
+            const expected = 'P(both red) = (5/10) * (4/9) = 20/90 = 2/9 approximately 0.222';
+
+            const result = numericEval(response, expected, { tolerance: 0.01 });
+
+            expect(result.matched).toBe(true);
+            expect(result.extracted.response).toBeCloseTo(2 / 9, 6);
+            expect(result.extracted.expected).toBeCloseTo(2 / 9, 2);
         });
     });
 
@@ -252,6 +296,26 @@ describe('Deterministic Scorer', () => {
             });
             expect(result.score).toBe(10);
             expect(result.deterministic_type).toBe('numeric');
+        });
+
+        it('should score benchmark-style probability explanations correctly', () => {
+            const result = score(
+                [
+                    '1. Find the total number of balls: 10',
+                    '2. P(1st Red) = 5/10 = 1/2',
+                    '3. P(2nd Red) = 4/9',
+                    '4. P(Both Red) = 2/9',
+                    'The probability that both balls are red is **2/9** (approximately **22.2%**).'
+                ].join('\n'),
+                {
+                    name: 'Probability Without Replacement',
+                    deterministic_scoring: { type: 'numeric', numeric_tolerance: 0.01 },
+                    expected_answer: 'P(both red) = (5/10) * (4/9) = 20/90 = 2/9 approximately 0.222'
+                }
+            );
+
+            expect(result.score).toBe(10);
+            expect(result.matched).toBe(true);
         });
 
         it('should use JSON comparison when configured', () => {

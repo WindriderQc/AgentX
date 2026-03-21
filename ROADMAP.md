@@ -1,6 +1,6 @@
 # AgentX Project Roadmap
 
-**Last Updated:** 2026-01-08 (External Agent Completion Report)
+**Last Updated:** 2026-03-20 (Benchmark consolidation cleanup and validation)
 
 This roadmap tracks the development status and priorities for the AgentX project - a robust, self-healing, and intelligent monitoring and automation stack built on the SBQC architecture.
 
@@ -34,6 +34,11 @@ AgentX development is organized across **eight development tracks**, each focusi
 - Documentation Exclusion List (-85% noise)
 - RAG Contextual Compression (30-50% token savings, 7/7 tests passing)
 - External Notifications Implementation (Slack/Email/Webhook with retry logic, 8/8 tests passing) ✅ NEW
+
+**Benchmark Consolidation (2026-03-20):**
+- Consolidated benchmark prompts to `data/benchmark-prompts.json`
+- Standardized benchmark taxonomy to 7 categories and 5 levels
+- Removed obsolete enhanced/deep prompt files and related seed/update scripts
 
 ---
 

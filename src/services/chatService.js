@@ -18,7 +18,7 @@ const fetch = require('node-fetch');
 // Extracted modules
 const { isThinkingModel, getActivePrompt, buildSystemPrompt } = require('./chat/chatPromptHelpers');
 const { buildRagContext } = require('./chat/ragContextBuilder');
-const { persistConversation } = require('./chat/conversationPersistence');
+const { persistConversation, findConversationForUpdate } = require('./chat/conversationPersistence');
 const { handleImageGeneration } = require('./chat/imageGeneration');
 
 // Core Chat Service
@@ -113,7 +113,9 @@ const handleChatRequest = async ({
         let assistantMessageId = null;
 
         try {
-            if (conversationId) conversation = await Conversation.findById(conversationId);
+            if (conversationId) {
+                conversation = await findConversationForUpdate({ conversationId, userId, workspaceId });
+            }
             if (!conversation) {
                 conversation = new Conversation({
                     userId, workspaceId, model: effectiveModel,
@@ -167,7 +169,7 @@ const handleChatRequest = async ({
             let assistantMessageId = null;
             if (conversationId) {
                 try {
-                    conversation = await Conversation.findById(conversationId);
+                    conversation = await findConversationForUpdate({ conversationId, userId, workspaceId });
                     if (conversation) {
                         conversation.messages.push({ role: 'user', content: message });
                         const assistantMsg = conversation.messages.create({

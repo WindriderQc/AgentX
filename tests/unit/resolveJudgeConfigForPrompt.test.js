@@ -27,7 +27,7 @@ describe('hasExplicitJudgeConfigValue', () => {
     });
 });
 
-function makePrompt(level = 5, category = 'general') {
+function makePrompt(level = 5, category = 'knowledge') {
     return { level, prompt_level: level, category, text: 'test prompt' };
 }
 
@@ -58,7 +58,7 @@ describe('resolveJudgeConfigForPrompt — pinned only', () => {
             model: 'qwen2.5:14b-instruct',
             host: 'http://ugbrutal:11434'
         };
-        const result = await resolveJudgeConfigForPrompt(makePrompt(8), makeMergedConfig(), rawJudgeConfig);
+        const result = await resolveJudgeConfigForPrompt(makePrompt(5), makeMergedConfig(), rawJudgeConfig);
 
         expect(result.mergedJudgeConfig.model).toBe('qwen2.5:14b-instruct');
         expect(result.mergedJudgeConfig.host).toBe('http://ugbrutal:11434');
@@ -82,6 +82,6 @@ describe('resolveJudgeConfigForPrompt — pinned only', () => {
             host: 'http://ugbrutal:11434'
         });
 
-        await expect(resolveJudgeConfigForPrompt(makePrompt(8), makeMergedConfig(), frozen)).resolves.toBeTruthy();
+        await expect(resolveJudgeConfigForPrompt(makePrompt(5), makeMergedConfig(), frozen)).resolves.toBeTruthy();
     });
 });

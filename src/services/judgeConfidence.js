@@ -5,7 +5,7 @@
  * Unreliability signals:
  * - Score spread < 1.0 (all dimensions 7-8 = suspicious clustering)
  * - Vague explanation (< 50 chars or generic phrases)
- * - High-level prompt (7+) with very high score (judge may not understand)
+ * - High-level prompt (4-5) with very high score (judge may not understand)
  * - Prompt complexity >> judge capability
  */
 
@@ -82,32 +82,22 @@ function checkExplanationQuality(explanation) {
 /**
  * Check for level-score mismatch
  * High level prompts with very high scores are suspicious
- * @param {number} level - Prompt difficulty level (1-10)
+ * @param {number} level - Prompt difficulty level (1-5)
  * @param {number} score - Quality score (0-10)
  * @returns {Object} { suspicious: boolean, reason: string }
  */
 function checkLevelScoreMismatch(level, score) {
-    // Levels 7+ are hard - consistent perfect scores are suspicious
-    if (level >= 7 && score >= 9.5) {
+    if (level >= 5 && score >= 8.5) {
+        return {
+            suspicious: true,
+            reason: `Level ${level} prompt with very high score (${score}) - automatic review`
+        };
+    }
+
+    if (level >= 4 && score >= 9.5) {
         return {
             suspicious: true,
             reason: `Level ${level} prompt with near-perfect score (${score}) - judge may not understand complexity`
-        };
-    }
-
-    // Level 8+ with score 9+ is even more suspicious
-    if (level >= 8 && score >= 9.0) {
-        return {
-            suspicious: true,
-            reason: `Level ${level} prompt with very high score (${score}) - review recommended`
-        };
-    }
-
-    // Level 9-10 should almost never get perfect scores
-    if (level >= 9 && score >= 8.5) {
-        return {
-            suspicious: true,
-            reason: `Extreme difficulty (Level ${level}) with high score (${score}) - automatic review`
         };
     }
 
@@ -161,7 +151,7 @@ function estimatePromptComplexity(prompt) {
     if (expectedLength > 1000) complexity += 0.5;
 
     // Certain categories are inherently harder
-    const hardCategories = ['multi-turn-reasoning', 'edge-cases', 'reasoning'];
+    const hardCategories = ['coding', 'reasoning', 'knowledge'];
     if (hardCategories.includes(prompt.category || prompt.scoring_type)) {
         complexity += 0.5;
     }
@@ -247,13 +237,12 @@ function assess(scoreResult, prompt) {
 function quickCheck(score, level) {
     let confidence = 1.0;
 
-    // Level 7+ with high scores is suspicious
-    if (level >= 7 && score >= 9.0) {
+    if (level >= 5 && score >= 8.5) {
         confidence = 0.5;
-    } else if (level >= 8 && score >= 8.0) {
+    } else if (level >= 4 && score >= 9.0) {
         confidence = 0.6;
-    } else if (level >= 9) {
-        confidence = 0.7; // Always lower confidence for extreme levels
+    } else if (level >= 5) {
+        confidence = 0.7;
     }
 
     return {

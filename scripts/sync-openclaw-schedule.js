@@ -27,19 +27,26 @@ const AGENTX_URL = process.env.AGENTX_URL || 'http://localhost:3080';
 const SYNC_ENDPOINT = `${AGENTX_URL}/api/cluster/schedule/sync`;
 
 // OpenClaw model alias → { model, host }
+// primary   = UGClawdX  192.168.2.66  RTX 3090  24 GB
+// secondary = UGBrutal  192.168.2.12  RTX 5070Ti 16 GB
+// tertiary  = UGFrank   192.168.2.99  RTX 3080Ti 12 GB
 const MODEL_ALIASES = {
-  local:   { model: 'qwen2.5:14b-instruct-q5_K_M', host: 'secondary' },
-  fast:    { model: 'qwen3:14b',                    host: 'tertiary' },
-  big:     { model: 'qwen32b:perf',                 host: 'tertiary' },
-  think:   { model: 'deepseek-r1:14b',              host: 'secondary' },
-  coder:   { model: 'deepcoder:14b-preview-q4_K_M', host: 'secondary' },
-  oss:     { model: 'openclaw-oss-20b',              host: 'secondary' },
-  mistral: { model: 'Mistral-Small3.1-24B',          host: 'secondary' }
+  local:   { model: 'qwen3:14b',                    host: 'primary'   }, // UGClawdX
+  fast:    { model: 'qwen3:8b',                     host: 'tertiary'  }, // UGFrank
+  big:     { model: 'qwen3.5:27b',                  host: 'primary'   }, // UGClawdX
+  main:    { model: 'qwen3-coder:30b',              host: 'primary'   }, // UGClawdX
+  coder:   { model: 'deepcoder:14b-preview-q4_K_M', host: 'secondary' }, // UGBrutal
+  coder30: { model: 'qwen3-coder:30b',              host: 'primary'   }, // legacy alias
+  think:   { model: 'deepseek-r1:14b',              host: 'secondary' }, // UGBrutal
+  oss:     { model: 'openclaw-oss-20b',              host: 'secondary' }, // UGBrutal
+  mistral: { model: 'Mistral-Small3.1-24B',          host: 'secondary' }, // UGBrutal
+  ablit:   { model: 'qwen3-abliterated:30b',         host: 'primary'   }, // UGClawdX
+  small:   { model: 'qwen3:8b',                      host: 'tertiary'  }, // UGFrank
 };
 
 function resolveModel(alias) {
-  if (!alias) return { model: null, host: 'tertiary' };
-  return MODEL_ALIASES[alias] || { model: alias, host: 'tertiary' };
+  if (!alias) return { model: null, host: 'primary' }; // default to UGClawdX (gateway host)
+  return MODEL_ALIASES[alias] || { model: alias, host: 'secondary' };
 }
 
 function classifyTaskType(jobName) {

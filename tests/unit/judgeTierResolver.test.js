@@ -24,8 +24,8 @@ describe('judgeTierResolver constants', () => {
     expect(TIER_RANK.premium).toBe(4);
   });
 
-  test('LEVEL_TIER_MAP covers levels 1-10', () => {
-    for (let l = 1; l <= 10; l++) {
+  test('LEVEL_TIER_MAP covers levels 1-5', () => {
+    for (let l = 1; l <= 5; l++) {
       expect(LEVEL_TIER_MAP[l]).toBeDefined();
     }
   });
@@ -44,22 +44,21 @@ describe('judgeTierResolver constants', () => {
 // ---------------------------------------------------------------------------
 describe('getRequiredTier', () => {
   test.each([
-    [1, 'basic'], [2, 'basic'], [3, 'basic'],
-    [4, 'standard'], [5, 'standard'], [6, 'standard'],
-    [7, 'advanced'], [8, 'advanced'],
-    [9, 'advanced'], [10, 'advanced']
+    [1, 'basic'],
+    [2, 'standard'], [3, 'standard'],
+    [4, 'advanced'], [5, 'advanced']
   ])('level %i → %s', (level, expected) => {
     expect(getRequiredTier(level)).toBe(expected);
   });
 
   test('clamps out-of-range levels to valid range', () => {
-    // 0 is falsy -> defaults to 5 -> standard
+    // 0 is falsy -> defaults to 3 -> standard
     expect(getRequiredTier(0)).toBe('standard');
-    // 11 clamps to 10 -> advanced
+    // 11 clamps to 5 -> advanced
     expect(getRequiredTier(11)).toBe('advanced');
     // -1 is truthy -> clamps to max(1,-1)=1 -> basic
     expect(getRequiredTier(-1)).toBe('basic');
-    // undefined/null -> default 5 -> standard
+    // undefined/null -> default 3 -> standard
     expect(getRequiredTier(undefined)).toBe('standard');
     expect(getRequiredTier(null)).toBe('standard');
   });

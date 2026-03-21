@@ -43,18 +43,18 @@ describe('normalizeQualityTo100', () => {
 });
 
 describe('normalizeCategoryKey', () => {
-    it('normalizes "code" alias to "coding"', () => {
-        expect(normalizeCategoryKey('code')).toBe('coding');
-    });
-
-    it('converts snake_case to kebab-case', () => {
-        expect(normalizeCategoryKey('context_retention')).toBe('context-retention');
-        expect(normalizeCategoryKey('multi_turn_reasoning')).toBe('multi-turn-reasoning');
-    });
-
     it('lowercases and trims whitespace', () => {
-        expect(normalizeCategoryKey('  Debugging  ')).toBe('debugging');
+        expect(normalizeCategoryKey('  Instruction  ')).toBe('instruction');
         expect(normalizeCategoryKey('CODING')).toBe('coding');
+    });
+
+    it('remaps legacy benchmark categories to canonical categories', () => {
+        expect(normalizeCategoryKey('code')).toBe('coding');
+        expect(normalizeCategoryKey('refactoring')).toBe('coding');
+        expect(normalizeCategoryKey('instruction_following')).toBe('instruction');
+        expect(normalizeCategoryKey('multi-turn-reasoning')).toBe('reasoning');
+        expect(normalizeCategoryKey('context-retention')).toBe('knowledge');
+        expect(normalizeCategoryKey('dialogue')).toBe('creative');
     });
 
     it('returns null for falsy input', () => {

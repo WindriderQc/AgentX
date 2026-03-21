@@ -10,10 +10,7 @@ const GroundTruth = (() => {
     let summary = null;
 
     const CATEGORIES = [
-        'code', 'reasoning', 'factual', 'math', 'creative', 'general',
-        'instruction-following', 'summarization', 'translation',
-        'multi-turn-reasoning', 'context-retention', 'edge-cases',
-        'refactoring', 'debugging', 'explanation', 'dialogue'
+        'coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'
     ];
 
     function init() {

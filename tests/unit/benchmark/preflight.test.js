@@ -67,8 +67,8 @@ describe('benchmark preflight', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         BenchmarkPrompt.aggregate.mockResolvedValue([
-            { _id: 'refactoring', count: 4 },
-            { _id: 'general', count: 5 }
+            { _id: 'coding', count: 4 },
+            { _id: 'knowledge', count: 5 }
         ]);
         BenchmarkBatch.find.mockReturnValue(chainResolved([]));
         benchmarkFetch.mockResolvedValue(okJson({
@@ -96,8 +96,8 @@ describe('benchmark preflight', () => {
 
         const result = await checkJudgeConfiguration(
             { host: 'http://judge-host:11434', model: 'judge-model:latest' },
-            [8],
-            { categories: { refactoring: { count: 4 } } }
+            [5],
+            { categories: { coding: { count: 4 } } }
         );
 
         expect(result.ok).toBe(false);
@@ -118,8 +118,8 @@ describe('benchmark preflight', () => {
 
         const result = await checkJudgeConfiguration(
             { host: 'http://judge-host:11434', model: 'qwen2.5:14b' },
-            [8],
-            { categories: { refactoring: { count: 4 } } }
+            [5],
+            { categories: { coding: { count: 4 } } }
         );
 
         expect(result.ok).toBe(true);
@@ -140,7 +140,7 @@ describe('benchmark preflight', () => {
 
         const result = await checkJudgeConfiguration(
             { host: 'http://judge-host:11434', model: 'judge-model:latest' },
-            [6],
+            [4],
             { categories: { reasoning: { count: 6 } } }
         );
 
@@ -169,8 +169,8 @@ describe('benchmark preflight', () => {
 
         const result = await checkJudgeConfiguration(
             { host: 'http://judge-host:11434', model: 'judge-model:latest' },
-            [8],
-            { categories: { refactoring: { count: 4 } } }
+            [5],
+            { categories: { coding: { count: 4 } } }
         );
 
         expect(result.ok).toBe(false);
@@ -200,8 +200,8 @@ describe('benchmark preflight', () => {
 
         const result = await checkJudgeConfiguration(
             { host: 'http://judge-host:11434', model: 'judge-model:latest' },
-            [8],
-            { categories: { refactoring: { count: 4 } } }
+            [5],
+            { categories: { coding: { count: 4 } } }
         );
 
         expect(result.ok).toBe(true);
@@ -323,8 +323,8 @@ describe('benchmark preflight', () => {
 
         const result = await checkJudgeConfiguration(
             { host: 'http://judge-host:11434', model: 'judge-model:latest', num_ctx: 8192 },
-            [8],
-            { categories: { refactoring: { count: 4 } } }
+            [5],
+            { categories: { coding: { count: 4 } } }
         );
 
         expect(result.ok).toBe(true);
@@ -366,7 +366,7 @@ describe('benchmark preflight', () => {
                 host: 'http://judge-host:11434',
                 model: 'judge-model:latest'
             },
-            levels: [8]
+            levels: [5]
         });
 
         expect(result.ready).toBe(false);

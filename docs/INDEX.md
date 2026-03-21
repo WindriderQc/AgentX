@@ -1,8 +1,8 @@
 # AgentX Documentation Index
 
-**Complete documentation hub for the AgentX SBQC Stack**
+**Primary documentation hub for the AgentX codebase**
 
-Last Updated: 2026-02-09
+Last Updated: 2026-03-21
 
 ---
 
@@ -18,7 +18,7 @@ Last Updated: 2026-02-09
 ## Architecture Documentation
 
 ### Core Architecture
-- **[Backend Overview](architecture/backend-overview.md)** - Service-oriented architecture overview
+- **[Backend Overview](architecture/backend-overview.md)** - Current runtime architecture, route families, and platform boundaries
 - **[Startup Sequence](architecture/STARTUP_SEQUENCE.md)** - Bootstrap order and initialization
 - **[Model Registry](architecture/MODEL_REGISTRY.md)** - Model categorization and metadata system
 - **[Model Routing](architecture/MODEL_ROUTING.md)** - Smart routing, failover, and host management
@@ -38,7 +38,7 @@ Last Updated: 2026-02-09
 ## Development Patterns
 
 ### Critical Conventions
-- **[Critical Conventions](patterns/CRITICAL_CONVENTIONS.md)** - Mandatory coding patterns (Service-Oriented, Singletons, etc.)
+- **[Critical Conventions](patterns/CRITICAL_CONVENTIONS.md)** - Mandatory coding patterns and environment rules
 - **[Testing Patterns](patterns/TESTING_PATTERNS.md)** - Jest, integration tests, and coverage standards
 - **[Critical Gotchas](operations/CRITICAL_GOTCHAS.md)** - Known issues, pitfalls, and workarounds
 
@@ -47,12 +47,12 @@ Last Updated: 2026-02-09
 ## Operations Documentation
 
 ### System Operations
+- **[Operations Hub](operations/README.md)** - Main runbook entry point
 - **[Authentication](operations/AUTHENTICATION.md)** - Dual auth system (session + API keys)
+- **[Deployment](operations/DEPLOYMENT.md)** - Runtime and deployment guidance
 - **[Response Handling](operations/RESPONSE_HANDLING.md)** - LLM response processing and streaming
 - **[Benchmark System](operations/BENCHMARK_SYSTEM.md)** - Quality scoring and model evaluation
-- **[Benchmark Color Theme](operations/BENCHMARK_COLOR_THEME.md)** - Level-based color system for UI
 - **[Categorization Tests](operations/CATEGORIZATION_TESTS.md)** - Model category assignment and validation
-- **[Enhanced Judging System Plan](operations/ENHANCED_JUDGING_SYSTEM_PLAN.md)** - Future benchmark enhancements (planning doc)
 
 ---
 
@@ -67,22 +67,24 @@ Last Updated: 2026-02-09
 
 ### End-User Guides
 - **[User Manual](user-manual/README.md)** - Complete user guide with UI navigation
-- **[UI Pages & Navigation](user-manual/README.md#2-the-ui-pages--navigation)** - Detailed page-by-page reference
+- **[Frontend UI Inventory](consolidation/04-FRONTEND-UI.md)** - Current page inventory verified from `public/` and `nav.js`
 
 ---
 
 ## Project Documentation
 
 ### Planning & Status
-- **[ROADMAP.md](../ROADMAP.md)** - All 8 tracks complete, production-ready status
-- **[AGENTS.md](../AGENTS.md)** - Contribution guidelines and workflow
+- **[ROADMAP.md](../ROADMAP.md)** - Project status and current roadmap narrative
+- **[Documentation Consolidation](consolidation/00-OVERVIEW.md)** - Inventory, mapping, permanent-doc set, and cleanup record
 
 ---
 
 ## API References
 
 ### Endpoint Documentation
-- Full API reference available at: [API Documentation](../ROADMAP.md#api-endpoints) (40+ endpoints documented inline)
+- **[API README](api/README.md)** - API documentation hub
+- **[API Reference](api/reference.md)** - Reference-style API documentation
+- **[SBQC AgentX API Reference](architecture/SBQC-Stack-Final/07-AGENTX-API-REFERENCE.md)** - Stack-oriented API reference
 
 ---
 
@@ -90,16 +92,15 @@ Last Updated: 2026-02-09
 
 - **[API Documentation](api/README.md)** - API endpoint guides and references
 - **[Architecture](architecture/README.md)** - System architecture deep dives
-- **[Archives](Archives/README.md)** - Historical completed work (preserved for reference)
+- **[Archive](archive/README.md)** - Historical and superseded docs
 - **[Components](components/README.md)** - Shared UI component documentation
-- **[Features](features/README.md)** - Feature-specific documentation
+- **[Consolidation](consolidation/00-OVERVIEW.md)** - Documentation inventory, mapping, and cleanup
 - **[Future](future/README.md)** - Planned features and design proposals
 - **[Guides](guides/README.md)** - How-to guides and tutorials
 - **[Integrations](integrations/README.md)** - External service integration guides
 - **[Onboarding](onboarding/README.md)** - Getting started and setup
 - **[Operations](operations/README.md)** - Operational procedures and runbooks
-- **[Reports](reports/README.md)** - Generated reports and audits
-- **[Reviews](reviews/README.md)** - Code and architecture reviews
+- **[Services](services/chat/README.md)** - Domain service documentation set
 - **[Testing](testing/README.md)** - Test strategies, load testing, E2E
 - **[User Manual](user-manual/README.md)** - End-user documentation
 
@@ -111,18 +112,19 @@ Last Updated: 2026-02-09
 ```
 AgentX/
 ├── src/services/        # 60+ services (business logic, orchestration)
-├── routes/              # 49 route files (API endpoints)
-├── models/              # 41 Mongoose models (data layer)
-├── public/              # Frontend UI (38 HTML pages, JS/CSS)
+├── routes/              # 55 route files (API endpoints)
+├── models/              # 52 Mongoose models (data layer)
+├── public/              # Frontend UI (42 HTML pages, JS/CSS)
 ├── docs/                # Documentation (you are here)
 │   ├── api/             # API endpoint guides
+│   ├── archive/         # Historical/completed work
 │   ├── architecture/    # Architecture deep dives
-│   ├── Archives/        # Historical/completed work
-│   ├── features/        # Feature documentation
+│   ├── consolidation/   # Documentation audit and cleanup records
 │   ├── guides/          # How-to guides
 │   ├── integrations/    # External integration guides
 │   ├── operations/      # Operational procedures
 │   ├── patterns/        # Development patterns
+│   ├── services/        # Service/domain docs
 │   ├── testing/         # Test strategies
 │   └── user-manual/     # End-user documentation
 ├── config/              # Configuration files
@@ -141,12 +143,11 @@ AgentX/
 
 ---
 
-## Getting Help
+## Maintenance Notes
 
-- **Issues:** Report at [GitHub Issues](https://github.com/WindriderQc/AgentX/issues)
-- **Discussions:** Coming soon
-- **Documentation Gaps:** File an issue with label `documentation`
+- The permanent docs set is described in [consolidation/03-PERMANENT-DOCS.md](consolidation/03-PERMANENT-DOCS.md).
+- Historical one-off docs are moved to [archive/README.md](archive/README.md).
 
 ---
 
-**Navigation:** [Back to Root](../README.md) | [Quick Start](onboarding/quickstart.md) | [CLAUDE.md](../CLAUDE.md) | [ROADMAP.md](../ROADMAP.md)
+**Navigation:** [Back to Root](../README.md) | [Quick Start](onboarding/quickstart.md) | [Architecture](architecture/README.md) | [Operations](operations/README.md)

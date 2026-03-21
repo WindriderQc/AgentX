@@ -15,7 +15,7 @@ const AutomationTaskSchema = new mongoose.Schema({
   },
   source: {
     type: String,
-    enum: ['manual', 'schedule', 'system', 'n8n', 'ci', 'webhook'],
+    enum: ['manual', 'schedule', 'system', 'n8n', 'ci', 'webhook', 'cron'],
     default: 'manual',
     index: true
   },
@@ -30,7 +30,10 @@ const AutomationTaskSchema = new mongoose.Schema({
       'docs_drift_check',
       'patch_proposal',
       'patch_apply',
-      'proposal_expiry_sweep'
+      'proposal_expiry_sweep',
+      'telemetry_aggregate',
+      'maintenance_snapshot',
+      'maintenance_digest'
     ],
     required: true,
     index: true

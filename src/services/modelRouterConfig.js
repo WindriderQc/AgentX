@@ -47,17 +47,13 @@ refreshHosts();
 // ── Model → Host mapping ───────────────────────────────────────────────────
 
 const MODEL_ROUTING = {
-    // UGFrank (99) - Fast models for quick responses
-    'qwen2.5:7b-instruct-q4_0': 'primary',
-    'qwen2.5:7b': 'primary',  // Alias
-    'qwen2.5:3b': 'primary',
-    'qwen3:4b': 'primary',
-    'qwen3:8b': 'primary',
-    'llama3.2:1b': 'primary',
-    'llama2:latest': 'primary',
-    'whisper': 'primary',
+    // UGClawdX (66) - Stable default local inference
+    'qwen3:14b': 'primary',
+    'qwen3.5:27b': 'primary',
+    'qwen3-coder:30b': 'primary',
+    'qwen32b:perf': 'primary',
 
-    // UGBrutal (12) - Heavy specialists
+    // UGBrutal (12) - Specialists only
     'deepseek-r1:8b': 'secondary',
     'deepseek-r1:32b': 'secondary',
     'deepseek-r1:14b': 'secondary',
@@ -66,34 +62,40 @@ const MODEL_ROUTING = {
     'gemma3:4b-it-qat': 'secondary',
     'qwen2.5-coder:14b': 'secondary',
     'qwen2.5-coder:7b': 'secondary',
-    'qwen3:14b': 'secondary',
     'llama3.1:8b': 'secondary',
     'olmo2:13b': 'secondary',
 
-    // ClawdX (66) - 32B models
-    'qwen2.5:32b-instruct-q4_K_M': 'tertiary',
-    'qwen32b:perf': 'tertiary',
+    // UGFrank (99) - Light/cheap always-available models
+    'qwen2.5:7b-instruct-q4_0': 'tertiary',
+    'qwen2.5:7b': 'tertiary',  // Alias
+    'qwen2.5:3b': 'tertiary',
+    'qwen3:4b': 'tertiary',
+    'qwen3:8b': 'tertiary',
+    'llama3.2:1b': 'tertiary',
+    'llama2:latest': 'tertiary',
+    'whisper': 'tertiary',
+    'qwen2.5:32b-instruct-q4_K_M': 'primary',
 
-    // Embeddings — always light host
-    'qwen3-embedding:8b': 'primary',
-    'qllama/bge-m3:f16': 'primary',
-    'nomic-embed-text': 'primary',
-    'nomic-embed-text:v1.5': 'primary',
-    'nomic-embed-text:latest': 'primary'
+    // Embeddings — keep them off the main inference host
+    'qwen3-embedding:8b': 'tertiary',
+    'qllama/bge-m3:f16': 'tertiary',
+    'nomic-embed-text': 'tertiary',
+    'nomic-embed-text:v1.5': 'tertiary',
+    'nomic-embed-text:latest': 'tertiary'
 };
 
 // ── Task type → Model recommendation ──────────────────────────────────────
 
 const TASK_MODELS = {
-    quick_chat:      { model: 'qwen2.5:7b-instruct-q4_0', host: 'primary' },
-    general_chat:    { model: 'qwen2.5:7b-instruct-q4_0', host: 'primary' },
-    code_generation: { model: 'qwen2.5-coder:14b', host: 'secondary' },
-    code_review:     { model: 'qwen2.5-coder:14b', host: 'secondary' },
+    quick_chat:      { model: 'qwen3:8b', host: 'tertiary' },
+    general_chat:    { model: 'qwen3:14b', host: 'primary' },
+    code_generation: { model: 'qwen3-coder:30b', host: 'primary' },
+    code_review:     { model: 'qwen3-coder:30b', host: 'primary' },
     deep_reasoning:  { model: 'deepseek-r1:8b', host: 'secondary' },
-    analysis:        { model: 'gemma3:12b-it-qat', host: 'secondary' },
-    summarization:   { model: 'gemma3:12b-it-qat', host: 'secondary' },
-    translation:     { model: 'qwen2.5:7b-instruct-q4_0', host: 'primary' },
-    embeddings:      { model: 'nomic-embed-text:v1.5', host: 'primary' }
+    analysis:        { model: 'qwen3:14b', host: 'primary' },
+    summarization:   { model: 'qwen3:8b', host: 'tertiary' },
+    translation:     { model: 'qwen3:8b', host: 'tertiary' },
+    embeddings:      { model: 'nomic-embed-text:v1.5', host: 'tertiary' }
 };
 
 // ── Classification prompt ──────────────────────────────────────────────────

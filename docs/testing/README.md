@@ -13,3 +13,5 @@ Canonical testing entry points for AgentX.
 
 - [Benchmark System](../operations/BENCHMARK_SYSTEM.md)
 - [Documentation Index](../INDEX.md)
+
+Historical E2E implementation reports were moved to [../archive/README.md](../archive/README.md).

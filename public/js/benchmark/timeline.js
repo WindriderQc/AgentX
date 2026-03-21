@@ -1,9 +1,8 @@
-// timeline.js - renderBatchEventTimeline and related functions
+// timeline.js - benchmark results timeline rendering and tooltip helpers
 
-import * as state from './state.js';
 import { BENCHMARK_API } from './state.js';
-import { escapeHtml, encodeTooltip, decodeTooltip, summarizeNumbers } from './utils.js';
-import { fetchBatchTimeline, fetchActiveBatches, fetchAdvancedResults } from './api.js';
+import { escapeHtml, encodeTooltip, decodeTooltip } from './utils.js';
+import { fetchActiveBatches } from './api.js';
 import { renderStatsSummary, renderEventList, renderPerformanceHeatmap } from './timeline-panels.js';
 
 // Track previous result IDs and hash for incremental update detection
@@ -36,88 +35,12 @@ export function resetTimelineState() {
 }
 
 /**
- * Get timeline mode from selector
- */
-export function getTimelineMode() {
-    const modeSelect = document.getElementById('timelineMode');
-    return modeSelect ? modeSelect.value : 'results';
-}
-
-/**
  * Get timeline ordering from selector or localStorage
  */
 export function getTimelineOrder() {
     const orderSelect = document.getElementById('timelineOrder');
     if (orderSelect && orderSelect.value) return orderSelect.value;
     return localStorage.getItem('benchmarkTimelineOrder') || 'execution';
-}
-
-/**
- * Get timeline zoom from selector
- */
-export function getTimelineZoom() {
-    const zoomSelect = document.getElementById('timelineZoom');
-    const zoom = zoomSelect ? Number(zoomSelect.value) : 1;
-    return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-}
-
-/**
- * Schedule timeline scroll sync
- */
-export function scheduleTimelineScrollSync(stickToEnd = true) {
-    if (state.timelineScrollRaf) cancelAnimationFrame(state.timelineScrollRaf);
-    const raf = requestAnimationFrame(() => {
-        state.setTimelineScrollRaf(null);
-        syncTimelineScroll(stickToEnd);
-    });
-    state.setTimelineScrollRaf(raf);
-}
-
-/**
- * Sync timeline scroll across tracks
- */
-function syncTimelineScroll(stickToEnd = true) {
-    const timelineVisual = document.getElementById('timelineVisual');
-    const controls = document.getElementById('timelineScrollControls');
-    const range = document.getElementById('timelineScrollRange');
-    if (!timelineVisual || !controls || !range) return;
-
-    if (timelineVisual.offsetParent === null) {
-        controls.style.display = 'none';
-        return;
-    }
-
-    const tracks = Array.from(timelineVisual.querySelectorAll('.timeline-track, .timeline-track-absolute'));
-    if (!tracks.length) {
-        controls.style.display = 'none';
-        return;
-    }
-
-    const maxScroll = tracks.reduce((max, track) => {
-        return Math.max(max, track.scrollWidth - track.clientWidth);
-    }, 0);
-
-    if (maxScroll <= 1) {
-        controls.style.display = 'none';
-        return;
-    }
-
-    controls.style.display = 'block';
-    range.min = 0;
-    range.max = Math.ceil(maxScroll);
-    range.step = 1;
-
-    const targetValue = stickToEnd ? maxScroll : Math.min(Number(range.value) || 0, maxScroll);
-    range.value = Math.round(targetValue);
-
-    // Apply scroll
-    const ratio = maxScroll > 0 ? targetValue / maxScroll : 0;
-    tracks.forEach((track) => {
-        const trackMax = track.scrollWidth - track.clientWidth;
-        if (trackMax > 0) {
-            track.scrollLeft = trackMax * ratio;
-        }
-    });
 }
 
 /**
@@ -177,122 +100,6 @@ export function showTimelineTooltip(e, htmlContent) {
         }, 200);
         document.removeEventListener('mousemove', moveHandler);
     };
-}
-
-/**
- * Render batch event timeline (events mode)
- */
-export async function renderBatchEventTimeline(timelineVisual, timelineEmptyState, activeBatch) {
-    if (!timelineVisual || !timelineEmptyState) return;
-
-    if (!activeBatch || !activeBatch._id) {
-        timelineVisual.style.display = 'none';
-        timelineEmptyState.style.display = 'block';
-        scheduleTimelineScrollSync(false);
-        return;
-    }
-
-    try {
-        const json = await fetchBatchTimeline(activeBatch._id);
-        const timeline = json.data?.timeline || [];
-
-        if (!timeline.length) {
-            timelineVisual.style.display = 'none';
-            timelineEmptyState.style.display = 'block';
-            scheduleTimelineScrollSync(false);
-            return;
-        }
-
-        timelineVisual.style.display = 'block';
-        timelineEmptyState.style.display = 'none';
-
-        // Event definitions
-        const renderableEvents = new Set([
-            'prep_start', 'judge_warmup_start', 'judge_warmup_complete', 'judge_warmup_fallback',
-            'tests_start', 'model_warmup_complete', 'test_complete', 'judge_complete', 'error'
-        ]);
-
-        const eventVisuals = {
-            prep_start: { icon: 'fa-plug', class: 'segment-warmup-judge', label: 'LLM Load' },
-            judge_warmup_start: { icon: 'fa-gavel', class: 'segment-warmup-judge', label: 'Judge Warmup' },
-            judge_warmup_complete: { icon: 'fa-check-circle', class: 'segment-warmup-judge', label: 'Judge Warmup Stabilized' },
-            judge_warmup_fallback: { icon: 'fa-exchange-alt', class: 'segment-error', label: 'Judge Warmup Fallback' },
-            tests_start: { icon: 'fa-rocket', class: 'segment-running', label: 'Launching Tests' },
-            model_warmup_complete: { icon: 'fa-bolt', class: 'segment-warmup', label: 'Model Warmup' },
-            test_complete: { icon: 'fa-robot', class: 'segment-success', label: 'Test Complete' },
-            judge_complete: { icon: 'fa-gavel', class: 'segment-judging', label: 'Judging Complete' },
-            error: { icon: 'fa-exclamation-triangle', class: 'segment-error', label: 'Test Failed' }
-        };
-
-        // Filter and calculate timeline bounds
-        const filtered = timeline.filter(event => renderableEvents.has(event.event));
-        let maxEndMs = 0;
-        filtered.forEach((event) => {
-            const end = Number(event.time_since_start_ms) || 0;
-            maxEndMs = Math.max(maxEndMs, end);
-        });
-
-        const totalDurationMs = Math.max(1, maxEndMs);
-        const zoom = getTimelineZoom();
-        const baseWidth = Math.max(600, Math.round((totalDurationMs / 1000) * 20));
-        const trackWidth = Math.round(baseWidth * zoom);
-        const scale = trackWidth / totalDurationMs;
-
-        // Group events by lane
-        const eventsByLane = new Map();
-        filtered.forEach((event) => {
-            const laneKey = getLaneKey(event);
-            if (!eventsByLane.has(laneKey)) {
-                eventsByLane.set(laneKey, []);
-            }
-            eventsByLane.get(laneKey).push(event);
-        });
-
-        // Build HTML (simplified)
-        const rowsHtml = Array.from(eventsByLane.entries()).map(([laneKey, laneEvents]) => {
-            laneEvents.sort((a, b) => (a.time_since_start_ms || 0) - (b.time_since_start_ms || 0));
-
-            const segmentsHtml = laneEvents.map(event => {
-                const visual = eventVisuals[event.event] || eventVisuals.test_complete;
-                const endMs = Number(event.time_since_start_ms) || 0;
-                const durationMs = Number(event.duration_ms) || 200;
-                const startMs = Math.max(0, endMs - durationMs);
-                const left = Math.round(startMs * scale);
-                const width = Math.max(6, Math.round(durationMs * scale));
-
-                return `<div class="timeline-segment ${visual.class}" style="position:absolute; left:${left}px; width:${width}px; height:20px;"></div>`;
-            }).join('');
-
-            return `
-                <div class="timeline-model-row">
-                    <div class="timeline-model-label">${escapeHtml(laneKey)}</div>
-                    <div class="timeline-track-absolute" style="position:relative; width:${trackWidth}px; height:24px;">${segmentsHtml}</div>
-                </div>
-            `;
-        }).join('');
-
-        timelineVisual.innerHTML = `<div class="timeline-wrapper">${rowsHtml}</div>`;
-        scheduleTimelineScrollSync(true);
-    } catch (err) {
-        console.error('Failed to render timeline:', err);
-        timelineEmptyState.style.display = 'block';
-        timelineVisual.style.display = 'none';
-    }
-}
-
-/**
- * Get lane key for an event
- */
-function getLaneKey(event) {
-    const prepEvents = new Set(['prep_start', 'tests_start']);
-    const judgePrepEvents = new Set(['judge_warmup_start', 'judge_warmup_complete', 'judge_warmup_fallback']);
-
-    if (prepEvents.has(event.event)) return 'Prep';
-    if (judgePrepEvents.has(event.event)) return 'Judge Prep';
-
-    const model = event.model || 'Unknown';
-    if (event.event === 'judge_complete') return `${model} (Judge)`;
-    return model;
 }
 
 /**
@@ -391,7 +198,7 @@ function getResultComparator(order) {
 }
 
 /**
- * Load recent tests timeline - handles both 'results' and 'events' modes
+ * Load recent tests timeline
  */
 export async function loadRecentTestsTimeline() {
     try {
@@ -474,20 +281,10 @@ export async function loadRecentTestsTimeline() {
         const statsSummaryEl = document.getElementById('timelineStatsSummary');
         const heatmapSectionEl = document.getElementById('performanceHeatmapSection');
 
-        // Handle events mode
-        if (timelineVisual && timelineEmptyState && getTimelineMode() === 'events') {
-            if (statsSummaryEl) statsSummaryEl.style.display = 'none';
-            if (heatmapSectionEl) heatmapSectionEl.style.display = 'none';
-            await renderBatchEventTimeline(timelineVisual, timelineEmptyState, activeBatch);
-            return;
-        }
-
-        // Handle results mode (rest of function)
         if (!results.length && !activeBatch) {
             if (timelineVisual) timelineVisual.style.display = 'none';
             if (timelineEmptyState) timelineEmptyState.style.display = 'block';
             if (batchInfoEl) batchInfoEl.style.display = 'none';
-            scheduleTimelineScrollSync(false);
             return;
         }
 
@@ -614,7 +411,7 @@ export async function loadRecentTestsTimeline() {
             if (String(result.scoring_method || '').toLowerCase() === 'llm_failed') return stageVisuals['judge-error'];
             if (result.success) {
                 const level = getResultLevel(result);
-                if (Number.isFinite(level) && level >= 1 && level <= 10) {
+                if (Number.isFinite(level) && level >= 1 && level <= 5) {
                     return { icon: 'fa-check-circle', class: `segment-level-${level}` };
                 }
             }
@@ -1016,8 +813,6 @@ export async function loadRecentTestsTimeline() {
                 </div>
             `;
         }
-        scheduleTimelineScrollSync(true);
-
         // Populate Performance Summary Panel
         renderStatsSummary(sorted, globalStats);
 

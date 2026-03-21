@@ -17,7 +17,7 @@ function validateCalibrationSet(calibrationSet) {
         if (!entry.id || !entry.category) {
             throw new Error('Calibration entries require id and category');
         }
-        if (!Number.isFinite(entry.level) || entry.level < 1 || entry.level > 10) {
+        if (!Number.isFinite(entry.level) || entry.level < 1 || entry.level > 5) {
             throw new Error(`Calibration entry ${entry.id} has invalid level`);
         }
         if (!Number.isFinite(entry.human_score) || entry.human_score < 0 || entry.human_score > 10) {

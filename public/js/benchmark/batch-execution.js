@@ -601,6 +601,7 @@ function updateJudgeStatusPanel(batch) {
  */
 function updateCurrentTestIndicator(batch) {
     const currentTestIndicator = document.getElementById('currentTestIndicator');
+    const currentTestArrow = document.querySelector('#currentTestIndicator .timeline-current-arrow');
     const currentTest = batch.current_test;
 
     if (currentTest && currentTest.stage === 'warmup' && batch.status === 'running') {
@@ -608,6 +609,7 @@ function updateCurrentTestIndicator(batch) {
         document.getElementById('currentTestStage').innerHTML = '<i class="fas fa-fire-alt"></i> Warming up judge model';
         document.getElementById('currentTestModel').textContent = currentTest.model || '';
         document.getElementById('currentTestPrompt').textContent = `Loading on ${currentTest.prompt_name || 'judge host'}…`;
+        if (currentTestArrow) currentTestArrow.style.display = currentTest.model ? '' : 'none';
         if (currentTest.started_at) {
             startCurrentTestDurationTicker(currentTest.started_at);
         }
@@ -621,6 +623,7 @@ function updateCurrentTestIndicator(batch) {
         document.getElementById('currentTestStage').innerHTML = `${stageIcon} ${stageText} <span style="color: var(--muted); font-weight: 400;">(${testNum}/${batch.total_tests})</span>`;
         document.getElementById('currentTestModel').textContent = currentTest.model || '';
         document.getElementById('currentTestPrompt').textContent = currentTest.prompt_name || currentTest.prompt_id || 'Unknown';
+        if (currentTestArrow) currentTestArrow.style.display = currentTest.model ? '' : 'none';
 
         if (currentTest.started_at) {
             // If the started_at changed (new test), reset the ticker
@@ -636,9 +639,11 @@ function updateCurrentTestIndicator(batch) {
         document.getElementById('currentTestModel').textContent = '';
         document.getElementById('currentTestPrompt').textContent = `${batch.judge_completed}/${batch.judge_total} scored`;
         document.getElementById('currentTestDuration').textContent = '';
+        if (currentTestArrow) currentTestArrow.style.display = 'none';
         stopCurrentTestDurationTicker();
     } else {
         currentTestIndicator.style.display = 'none';
+        if (currentTestArrow) currentTestArrow.style.display = '';
         stopCurrentTestDurationTicker();
     }
 }

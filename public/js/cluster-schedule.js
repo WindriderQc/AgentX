@@ -4,7 +4,7 @@
  * 1. Live host cards — VRAM bar, active model, next job, health badge
  * 2. Background services strip — persistent monitors collapsed out of timeline
  * 3. Grouped timeline — rows grouped by taskType, collapsible, with now line
- * 4. Right panel — Next Up + Attention tabs
+ * 4. Upcoming + Alerts cards
  * 5. Conflict detection
  */
 
@@ -19,24 +19,54 @@ const TASK_COLORS = {
   diagnostics: '#a78bfa'
 };
 
+const HOST_META = {
+  primary: { id: 'primary', label: 'UGClawdX', color: '#7cf0ff' },
+  secondary: { id: 'secondary', label: 'UGBrutal', color: '#f97316' },
+  tertiary: { id: 'tertiary', label: 'UGFrank', color: '#22c55e' },
+  unassigned: { id: 'unassigned', label: 'Infra / Shared', color: '#94a3b8' }
+};
+
+const SOURCE_META = {
+  openclaw: { label: 'OpenClaw', color: '#7c3aed' },
+  n8n: { label: 'n8n', color: '#ef4444' },
+  agentx: { label: 'AgentX', color: '#38bdf8' },
+  'agentx-system': { label: 'System Cron', color: '#f59e0b' },
+  'ollama-persistent': { label: 'Persistent GPU', color: '#22c55e' }
+};
+
 const CATEGORY_LABELS = {
   monitoring: 'MON', maintenance: 'MAINT', sync: 'SYNC', benchmark: 'BENCH',
   inference: 'AI', diagnostics: 'DIAG', cleanup: 'CLEAN', ingestion: 'INGEST',
   backup: 'BAK', scanning: 'SCAN'
 };
 
-// Known host VRAM capacities (MB)
-const HOST_VRAM = { primary: 12288, secondary: 16384, tertiary: 24576 };
+// Known host VRAM capacities (MB): primary=UGClawdX RTX3090 24GB, secondary=UGBrutal RTX5070Ti 16GB, tertiary=UGFrank RTX3080Ti 12GB
+const HOST_VRAM = { primary: 24576, secondary: 16384, tertiary: 12288 };
+
+const HOST_ROLES = {
+  primary:   'RTX 3090 · 24 GB VRAM',
+  secondary: 'RTX 5070 Ti · 16 GB VRAM',
+  tertiary:  'RTX 3080 Ti · 12 GB VRAM',
+  unassigned: 'Infra / Shared'
+};
 
 let livePollTimer = null;
 let countdownTimer = null;
 let nextTasksData = [];
 let conflictsData = [];
+let liveHostsData = [];
 let currentDate = new Date().toISOString().slice(0, 10);
 let viewMode = 'task';
 let collapsedGroups = new Set();
 let servicesCollapsed = false;
 let actualView = 'heatmap';
+let showHighFreqLightJobs = false;
+let showNoGpuTasks = true;
+let servicePopoverPinnedId = null;
+let lastServiceHoverId = null;
+let persistentServicesData = [];
+let visibleTimelineEntries = [];
+let upcomingTimelineEntries = [];
 
 // ── API ─────────────────────────────────────────────────────
 
@@ -66,19 +96,10 @@ function setViewMode(mode) {
   viewMode = mode;
   document.getElementById('viewTask').classList.toggle('active', mode === 'task');
   document.getElementById('viewHost').classList.toggle('active', mode === 'host');
+  syncTimelineFilterUI();
   loadTimeline(); loadConflicts();
 }
 function isToday() { return currentDate === new Date().toISOString().slice(0, 10); }
-
-// ── Tabs ────────────────────────────────────────────────────
-
-function switchTab(tabId) {
-  document.querySelectorAll('.cs-tab').forEach((t, i) => {
-    t.classList.toggle('active', (i === 0 && tabId === 'next') || (i === 1 && tabId === 'attention'));
-  });
-  document.getElementById('tabNext').classList.toggle('active', tabId === 'next');
-  document.getElementById('tabAttention').classList.toggle('active', tabId === 'attention');
-}
 
 // ── Live Host Cards (enriched) ──────────────────────────────
 
@@ -100,6 +121,7 @@ function renderLiveBar(container, hosts, nextTasks) {
     container.innerHTML = '<div class="cs-empty">No hosts configured</div>';
     return;
   }
+  liveHostsData = hosts;
 
   container.innerHTML = hosts.map(h => {
     const isOnline = h.status === 'online';
@@ -107,48 +129,118 @@ function renderLiveBar(container, hosts, nextTasks) {
     const models = h.models || [];
     const hasModels = models.length > 0;
 
-    // VRAM usage
+    // VRAM
     const totalUsed = models.reduce((s, m) => s + (m.sizeVram || 0), 0);
-    const totalUsedGb = (totalUsed / 1073741824).toFixed(1);
     const capacityMb = h.vramMb || HOST_VRAM[h.id] || 0;
     const capacityGb = (capacityMb / 1024).toFixed(0);
+    const usedGb = (totalUsed / 1073741824).toFixed(1);
+    const freeBytes = Math.max(0, capacityMb * 1048576 - totalUsed);
+    const freeGb = (freeBytes / 1073741824).toFixed(1);
     const usedPct = capacityMb > 0 ? Math.min(100, (totalUsed / (capacityMb * 1048576)) * 100) : 0;
-    const vramClass = usedPct > 85 ? 'high' : usedPct > 50 ? 'mid' : 'low';
+    const vramFillClass = usedPct > 85 ? 'high' : usedPct > 50 ? 'mid' : 'low';
+    const freeClass = usedPct > 85 ? 'critical' : usedPct > 50 ? 'tight' : '';
+    const isIdle = !hasModels && isOnline;
 
-    // Health badge
-    let healthClass, healthLabel;
-    if (!isOnline) { healthClass = 'down'; healthLabel = 'DOWN'; }
-    else if (hasModels) { healthClass = 'ok'; healthLabel = 'ACTIVE'; }
-    else { healthClass = 'idle'; healthLabel = 'IDLE'; }
+    // Workload state — one badge that captures the meaningful state
+    let stateBadgeClass, stateBadgeLabel;
+    if (!isOnline)     { stateBadgeClass = 'down';    stateBadgeLabel = 'OFFLINE'; }
+    else if (hasModels){ stateBadgeClass = 'ok';      stateBadgeLabel = 'ACTIVE'; }
+    else               { stateBadgeClass = 'idle';    stateBadgeLabel = 'IDLE'; }
 
-    // Model tags
+    // GPU model (RTX type) from role
+    const gpuLine = HOST_ROLES[h.id] || '';
+
+    // IP from URL e.g. http://192.168.2.66:11434
+    const ipMatch = (h.url || '').match(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/);
+    const hostIp = ipMatch ? ipMatch[0] : '';
+
+    // Loaded model display
     const modelsHtml = hasModels
-      ? models.map(m => `<span class="cs-model-tag">${esc(m.name || m.model)}</span>`).join('')
-      : '<span style="color:#475569">No models loaded</span>';
+      ? `<div class="cs-host-model-summary">Loaded ${models.length} model${models.length !== 1 ? 's' : ''}</div>
+         <div class="cs-host-models-loaded">${models.map(m => `<span class="cs-model-tag">${esc(m.name || m.model)}</span>`).join('')}</div>`
+      : `<div class="cs-host-models-idle"><i class="fas fa-circle-notch" style="font-size:9px;margin-right:5px;opacity:0.4"></i>No model loaded</div>`;
 
-    // Next job for this host
-    const hostNext = nextTasks.find(t => t.host === h.id);
-    const nextHtml = hostNext
-      ? `<div class="cs-host-next"><i class="fas fa-clock"></i> Next: ${esc(hostNext.name)} in ${formatCountdown(hostNext.msFromNow)}</div>`
-      : '';
+    // Scheduled jobs for this host (non-service-tick)
+    const allHostJobs = nextTasks.filter(t => t.host === h.id && !isServiceTick(t));
+    const hostJobsSoon = allHostJobs.filter(t => t.msFromNow >= 0 && t.msFromNow < 3600000);
+    const nextJob     = allHostJobs[0];                    // soonest scheduled job
+    const nextGpuJob  = allHostJobs.find(t => t.model);   // soonest GPU-bound job
 
-    const cardClass = !isOnline ? ' down' : '';
+    // VRAM row: context-aware
+    let vramLine = '';
+    if (capacityMb > 0) {
+      if (isIdle) {
+        vramLine = `<div class="cs-host-vram-idle"><span style="color:#22c55e;font-size:10px">⬤</span> ${capacityGb} GB available</div>`;
+      } else if (hasModels) {
+        vramLine = `
+          <div class="cs-vram-bar" style="margin-top:6px"><div class="cs-vram-fill ${vramFillClass}" style="width:${usedPct.toFixed(1)}%"></div></div>
+          <div class="cs-host-detail">
+            <span>${usedGb} / ${capacityGb} GB VRAM</span>
+            <span class="cs-vram-free ${freeClass}">${freeGb} GB free</span>
+          </div>`;
+      }
+    }
+
+    // Footer: next job + queue
+    let footerHtml = '';
+    if (!isOnline) {
+      footerHtml = `<div class="cs-host-footer-offline"><i class="fas fa-exclamation-triangle"></i> Host unreachable</div>`;
+    } else if (nextJob) {
+      const jobCount = hostJobsSoon.length;
+      const countPart = jobCount > 1 ? `<span class="cs-host-queue-count">${jobCount} jobs in next hour</span>` : '';
+      footerHtml = `<div class="cs-host-next"><i class="fas fa-clock"></i> Next scheduled: ${esc(nextJob.name)} <span class="cs-host-next-time">${formatCountdown(nextJob.msFromNow)}</span> ${countPart}</div>`;
+      // If next job is light but there's an upcoming GPU job, surface it
+      if (!nextJob.model && nextGpuJob && nextGpuJob !== nextJob) {
+        footerHtml += `<div class="cs-host-next-gpu"><i class="fas fa-microchip"></i> Next GPU run: ${esc(nextGpuJob.model)} in ${formatCountdown(nextGpuJob.msFromNow)}</div>`;
+      }
+    } else {
+      footerHtml = `<div class="cs-host-next" style="font-style:italic">No scheduled jobs today</div><div class="cs-host-standby-note">Host is online and ready for queued work.</div>`;
+    }
+
+    const cardClass = !isOnline ? ' down' : hasModels ? ' active' : '';
 
     return `
       <div class="cs-host-card${cardClass}">
         <div class="cs-host-header">
           <span class="cs-status-dot ${statusClass}"></span>
-          <span class="cs-host-name">${esc(h.name)}</span>
-          <span class="cs-health-badge ${healthClass}">${healthLabel}</span>
+          <div class="cs-host-title">
+            <span class="cs-host-name">${esc(h.name)}</span>
+            <span class="cs-host-role">${gpuLine}${hostIp ? ` · <span class="cs-host-ip">${hostIp}</span>` : ''}</span>
+          </div>
+          <span class="cs-health-badge ${stateBadgeClass}">${stateBadgeLabel}</span>
         </div>
-        <div class="cs-host-models">${modelsHtml}</div>
-        ${capacityMb > 0 ? `
-          <div class="cs-vram-bar"><div class="cs-vram-fill ${vramClass}" style="width:${usedPct.toFixed(1)}%"></div></div>
-          <div class="cs-host-detail"><span>${totalUsedGb} / ${capacityGb} GB VRAM</span><span>${usedPct.toFixed(0)}%</span></div>
-        ` : ''}
-        ${nextHtml}
+        ${modelsHtml}
+        ${vramLine}
+        <div class="cs-host-card-footer">${footerHtml}</div>
       </div>`;
   }).join('');
+
+  // Inject global status summary into header
+  updateHeaderStatus(hosts, nextTasks);
+}
+
+function updateHeaderStatus(hosts, nextTasks) {
+  const el = document.getElementById('headerStatus');
+  if (!el) return;
+  const total = hosts.length;
+  const online = hosts.filter(h => h.status === 'online').length;
+  const offline = total - online;
+  const loaded = hosts.filter(h => (h.models || []).length > 0).length;
+  const scheduledNext = nextTasks.filter(t => !isServiceTick(t) && t.msFromNow >= 0 && t.msFromNow < 3600000);
+  const gpuJobs = scheduledNext.filter(t => t.model).length;
+  const lightJobs = scheduledNext.length - gpuJobs;
+
+  const nextHourLabel = scheduledNext.length > 0
+    ? `${scheduledNext.length} next hour`
+    : '';
+
+  el.innerHTML = [
+    `<span class="cs-header-status-item">${total} hosts</span>`,
+    online > 0 ? `<span class="cs-header-status-item ok"><i class="fas fa-circle" style="font-size:7px"></i> ${online} online</span>` : '',
+    offline > 0 ? `<span class="cs-header-status-item err"><i class="fas fa-circle" style="font-size:7px"></i> ${offline} offline</span>` : '',
+    `<span class="cs-header-status-item"><i class="fas fa-microchip" style="font-size:9px"></i> ${loaded} loaded</span>`,
+    nextHourLabel ? `<span class="cs-header-status-item warn"><i class="fas fa-clock" style="font-size:9px"></i> ${nextHourLabel}${gpuJobs ? ` · ${gpuJobs} GPU` : ''}${lightJobs ? ` · ${lightJobs} light` : ''}</span>` : `<span class="cs-header-status-item"><i class="fas fa-clock" style="font-size:9px"></i> quiet next hour</span>`,
+  ].filter(Boolean).join('<span style="color:#1e293b"> · </span>');
 }
 
 // ── Timeline ────────────────────────────────────────────────
@@ -159,32 +251,77 @@ async function loadTimeline() {
     if (viewMode === 'host') {
       const data = await fetchJSON(`${API_BASE}/schedule/timeline-by-host?date=${currentDate}`);
       document.getElementById('servicesStrip').style.display = 'none';
-      renderHostHeatmap(container, data.hosts);
-      renderLegendFromHosts(data.hosts);
+      upcomingTimelineEntries = data.hosts.flatMap(host => host.tasks || []);
+      const hosts = data.hosts.map(host => ({
+        ...host,
+        tasks: filterTimelineEntries(host.tasks || [])
+      }));
+      visibleTimelineEntries = hosts.flatMap(host => host.tasks || []);
+      renderHostHeatmap(container, hosts);
+      renderLegendFromHosts(hosts);
     } else {
       const data = await fetchJSON(`${API_BASE}/schedule/timeline?date=${currentDate}`);
       const { persistent, scheduled } = splitTimeline(data.timeline);
-      renderServicesStrip(persistent);
-      renderGroupedHeatmap(container, scheduled);
-      renderLegend(scheduled);
+      const continuousServices = persistent.filter(entry => entry.source !== 'ollama-persistent');
+      persistentServicesData = persistent;
+      upcomingTimelineEntries = scheduled;
+
+      // Schedule filters should not change the separate continuous-services strip.
+      const visibleServices = continuousServices;
+      const visibleScheduled = filterTimelineEntries(scheduled);
+      visibleTimelineEntries = visibleScheduled;
+
+      renderServicesStrip(visibleServices);
+      renderGroupedHeatmap(container, visibleScheduled);
+      renderLegend(visibleScheduled);
     }
+    loadNextTasks();
   } catch (err) {
     container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
   }
 }
 
-// Split timeline into persistent services vs actual scheduled jobs
+// Split timeline into 24/7 continuous services vs schedulable jobs.
 function splitTimeline(timeline) {
   if (!timeline) return { persistent: [], scheduled: [] };
   const persistent = [];
   const scheduled = [];
   for (const entry of timeline) {
     const isContinuous = entry.slots.length === 1 && entry.slots[0].continuous;
-    const isHighFreq = entry.slots.length > 12; // more than 12 runs/day = background service
-    if (isContinuous || isHighFreq) persistent.push(entry);
+    if (isContinuous) persistent.push(entry);
     else scheduled.push(entry);
   }
   return { persistent, scheduled };
+}
+
+function filterTimelineEntries(entries) {
+  return (entries || []).filter(entry => {
+    if (!showNoGpuTasks && isNoGpuTaskEntry(entry)) return false;
+    if (!showHighFreqLightJobs && isHighFrequencyLightJob(entry)) return false;
+    return true;
+  });
+}
+
+function isNoGpuTaskEntry(entry) {
+  return !entry?.model && entry?.source !== 'ollama-persistent';
+}
+
+function isHighFrequencyLightJob(entry) {
+  if (!isNoGpuTaskEntry(entry)) return false;
+  const slots = entry?.slots || [];
+  const isContinuous = slots.length === 1 && slots[0]?.continuous;
+  return isContinuous || slots.length > 12;
+}
+
+function setTimelineFilter(filterName, checked) {
+  if (filterName === 'highFreq') showHighFreqLightJobs = checked;
+  if (filterName === 'noGpu') showNoGpuTasks = checked;
+  loadTimeline();
+}
+
+function syncTimelineFilterUI() {
+  const filters = document.getElementById('timelineFilters');
+  if (filters) filters.style.display = viewMode === 'task' ? 'flex' : 'none';
 }
 
 // ── Persistent Services Strip ───────────────────────────────
@@ -194,24 +331,221 @@ function renderServicesStrip(persistent) {
   const grid = document.getElementById('servicesGrid');
   const count = document.getElementById('servicesCount');
 
-  if (persistent.length === 0) { strip.style.display = 'none'; return; }
+  if (persistent.length === 0) {
+    strip.style.display = 'none';
+    hideServicePopover(true);
+    return;
+  }
   strip.style.display = 'block';
   count.textContent = `(${persistent.length})`;
 
-  grid.innerHTML = persistent.map(p => {
-    const color = TASK_COLORS[p.taskType] || '#666';
-    return `<div class="cs-service-chip">
-      <span class="cs-service-dot active" style="background:${color}"></span>
-      ${esc(p.name)}
-      <span style="color:#475569;font-size:10px">${p.slots.length > 1 ? p.slots.length + 'x/day' : '24/7'}</span>
-    </div>`;
-  }).join('');
+  const serviceGroups = groupPersistentServices(persistent);
+  grid.innerHTML = serviceGroups.map(group => `
+    <div class="cs-service-group">
+      <div class="cs-service-group-header">${esc(group.label)} <span style="color:#5f718d;font-weight:500">${group.entries.length}</span></div>
+      <div class="cs-service-group-row">
+        ${group.entries.map((p, index) => {
+          const color = TASK_COLORS[p.taskType] || '#666';
+          const cadence = getCadenceLabel(p);
+          const liveHost = p.host ? liveHostsData.find(h => h.id === p.host) : null;
+          const isHostOnline = !liveHost || liveHost.status === 'online';
+          const dotClass = isHostOnline ? 'active' : 'stale';
+          const dotColor = isHostOnline ? color : '#f59e0b';
+          return `<div class="cs-service-chip" data-service-id="${esc(getServiceEntryId(p, index))}">
+            <span class="cs-service-dot ${dotClass}" style="background:${dotColor}"></span>
+            ${esc(p.name)}
+            <span class="cs-service-cadence">${esc(cadence || (p.slots.length > 1 ? p.slots.length + '×/d' : '24/7'))}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  attachServiceChipEvents();
+
+  if (servicePopoverPinnedId) {
+    const activeChip = grid.querySelector(`.cs-service-chip[data-service-id="${servicePopoverPinnedId}"]`);
+    if (activeChip) showServicePopover(servicePopoverPinnedId, activeChip, true);
+    else hideServicePopover(true);
+  }
+}
+
+function groupPersistentServices(entries) {
+  const groups = [
+    { key: 'monitoring', label: 'Monitoring', entries: [] },
+    { key: 'ops', label: 'Ops & Maintenance', entries: [] },
+    { key: 'sync', label: 'Sync & Automation', entries: [] },
+    { key: 'other', label: 'Other Services', entries: [] }
+  ];
+
+  for (const entry of (entries || [])) {
+    if (entry.taskType === 'monitoring') groups[0].entries.push(entry);
+    else if (entry.taskType === 'maintenance') groups[1].entries.push(entry);
+    else if (entry.taskType === 'sync') groups[2].entries.push(entry);
+    else groups[3].entries.push(entry);
+  }
+
+  return groups.filter(group => group.entries.length > 0);
 }
 
 function toggleServices() {
   servicesCollapsed = !servicesCollapsed;
   document.getElementById('servicesGrid').classList.toggle('collapsed', servicesCollapsed);
   document.getElementById('servicesToggle').classList.toggle('collapsed', servicesCollapsed);
+}
+
+function attachServiceChipEvents() {
+  document.querySelectorAll('.cs-service-chip').forEach(chip => {
+    chip.addEventListener('mouseenter', onServiceChipEnter);
+    chip.addEventListener('mouseleave', onServiceChipLeave);
+    chip.addEventListener('mousemove', onServiceChipMove);
+    chip.addEventListener('click', onServiceChipClick);
+  });
+}
+
+function onServiceChipEnter(e) {
+  const serviceId = e.currentTarget.dataset.serviceId;
+  lastServiceHoverId = serviceId;
+  if (servicePopoverPinnedId && servicePopoverPinnedId !== serviceId) return;
+  showServicePopover(serviceId, e.currentTarget, false);
+}
+
+function onServiceChipLeave(e) {
+  const serviceId = e.currentTarget.dataset.serviceId;
+  if (servicePopoverPinnedId === serviceId) return;
+  lastServiceHoverId = null;
+  hideServicePopover();
+}
+
+function onServiceChipMove(e) {
+  const serviceId = e.currentTarget.dataset.serviceId;
+  if (servicePopoverPinnedId === serviceId) return;
+  positionServicePopover(e.currentTarget);
+}
+
+function onServiceChipClick(e) {
+  const chip = e.currentTarget;
+  const serviceId = chip.dataset.serviceId;
+  if (servicePopoverPinnedId === serviceId) {
+    hideServicePopover(true);
+    return;
+  }
+  showServicePopover(serviceId, chip, true);
+}
+
+function showServicePopover(serviceId, anchorEl, pinned = false) {
+  const popover = document.getElementById('servicePopover');
+  const service = persistentServicesData.find((entry, index) => getServiceEntryId(entry, index) === serviceId);
+  if (!popover || !service || !anchorEl) return;
+
+  servicePopoverPinnedId = pinned ? serviceId : servicePopoverPinnedId;
+  popover.innerHTML = renderServicePopover(service, serviceId, pinned);
+  popover.classList.add('visible');
+  positionServicePopover(anchorEl);
+
+  document.querySelectorAll('.cs-service-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.serviceId === (servicePopoverPinnedId || serviceId));
+  });
+
+  const closeBtn = popover.querySelector('[data-close-service-popover]');
+  if (closeBtn) closeBtn.addEventListener('click', () => hideServicePopover(true));
+}
+
+function hideServicePopover(force = false) {
+  const popover = document.getElementById('servicePopover');
+  if (!popover) return;
+  if (!force && servicePopoverPinnedId) return;
+  if (force) servicePopoverPinnedId = null;
+  popover.classList.remove('visible');
+  popover.innerHTML = '';
+  document.querySelectorAll('.cs-service-chip').forEach(chip => chip.classList.remove('active'));
+}
+
+function positionServicePopover(anchorEl) {
+  const popover = document.getElementById('servicePopover');
+  if (!popover || !anchorEl || !popover.classList.contains('visible')) return;
+  const rect = anchorEl.getBoundingClientRect();
+  const popRect = popover.getBoundingClientRect();
+  const margin = 12;
+  let left = rect.left;
+  let top = rect.bottom + 10;
+
+  if (left + popRect.width > window.innerWidth - margin) {
+    left = Math.max(margin, window.innerWidth - popRect.width - margin);
+  }
+  if (top + popRect.height > window.innerHeight - margin) {
+    top = Math.max(margin, rect.top - popRect.height - 10);
+  }
+
+  popover.style.left = `${Math.max(margin, left)}px`;
+  popover.style.top = `${Math.max(margin, top)}px`;
+}
+
+function renderServicePopover(service, serviceId, pinned) {
+  const sourceMeta = getSourceMeta(service.source);
+  const hostMeta = getHostMeta(service.host);
+  const taskColor = TASK_COLORS[service.taskType] || '#666';
+  const stats = [
+    { label: 'Schedule', value: service.scheduleType === 'continuous' ? '24/7 continuous' : `${service.slots?.length || 0} runs/day` },
+    { label: 'Source', value: sourceMeta.label },
+    { label: 'Host', value: service.host ? hostMeta.label : (service.metadata?.runner || 'Shared infra') },
+    { label: 'Task Type', value: service.taskType || 'service' },
+    { label: 'Priority', value: service.priority ? `P${service.priority}` : 'n/a' },
+    { label: 'Model', value: service.model || service.metadata?.role || 'No model bound' },
+    { label: 'Agent', value: service.agent || service.metadata?.specialx || service.metadata?.webhook || 'n/a' },
+    { label: 'Capacity', value: formatServiceCapacity(service) }
+  ];
+
+  const note = buildServiceNote(service);
+  return `
+    <div class="cs-service-popover-header">
+      <div>
+        <div class="cs-service-popover-title">${esc(service.name)}</div>
+        <div class="cs-service-popover-subtitle">${esc(service.sourceId || serviceId)}</div>
+      </div>
+      ${pinned ? '<button class="cs-service-popover-close" data-close-service-popover title="Close">×</button>' : ''}
+    </div>
+    <div class="cs-service-popover-badges">
+      <span class="cs-service-popover-badge"><span class="cs-legend-color" style="background:${taskColor}"></span>${esc(service.taskType || 'service')}</span>
+      <span class="cs-service-popover-badge">${esc(sourceMeta.label)}</span>
+      <span class="cs-service-popover-badge">${esc(service.host ? hostMeta.label : 'Infra / Shared')}</span>
+      ${pinned ? '<span class="cs-service-popover-badge">Pinned</span>' : '<span class="cs-service-popover-badge">Hover preview</span>'}
+    </div>
+    <div class="cs-service-popover-grid">
+      ${stats.map(stat => `
+        <div class="cs-service-popover-stat">
+          <div class="cs-service-popover-stat-label">${esc(stat.label)}</div>
+          <div class="cs-service-popover-stat-value">${esc(stat.value)}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="cs-service-popover-note">${esc(note)}</div>
+  `;
+}
+
+function getServiceEntryId(entry, index = 0) {
+  return String(entry?.sourceId || entry?.id || `service-${index}`);
+}
+
+function formatServiceCapacity(service) {
+  if (service.vramMb) return `${(service.vramMb / 1024).toFixed(0)} GB reserved`;
+  if (service.metadata?.gpu) return service.metadata.gpu;
+  if (service.estimatedDurationMs) return formatDuration(service.estimatedDurationMs);
+  return 'Lightweight service';
+}
+
+function buildServiceNote(service) {
+  const parts = [];
+  if (service.metadata?.runner) parts.push(`Runs via ${service.metadata.runner}.`);
+  if (service.metadata?.role) parts.push(`Role: ${service.metadata.role}.`);
+  if (service.metadata?.ip) parts.push(`Host IP ${service.metadata.ip}.`);
+  if (service.metadata?.webhook) parts.push(`Webhook ${service.metadata.webhook}.`);
+  if (service.metadata?.specialx) parts.push(`SpecialX ${service.metadata.specialx}.`);
+  if (service.estimatedDurationMs && service.scheduleType !== 'continuous') {
+    parts.push(`Estimated runtime ${formatDuration(service.estimatedDurationMs)} per cycle.`);
+  }
+  if (!parts.length) parts.push('Continuous background service shown outside the main timeline.');
+  return parts.join(' ');
 }
 
 // ── Grouped Task Heatmap ────────────────────────────────────
@@ -253,27 +587,35 @@ function renderGroupedHeatmap(container, timeline) {
     const toggleIcon = isCollapsed ? 'collapsed' : '';
     const color = TASK_COLORS[groupKey] || '#666';
 
+    const gpuCount = entries.filter(e => e.model).length;
+    const infraCount = entries.length - gpuCount;
+    const countLabel = gpuCount > 0
+      ? `${gpuCount} AI job${gpuCount !== 1 ? 's' : ''}${infraCount > 0 ? `, ${infraCount} sys` : ''}`
+      : `${infraCount} sys job${infraCount !== 1 ? 's' : ''}`;
     html += `<div class="cs-group-header" onclick="toggleGroup('${groupKey}')">
       <i class="fas fa-caret-down toggle ${toggleIcon}"></i>
       <span style="color:${color}">${(groupKey).toUpperCase()}</span>
-      <span class="cs-group-count">${entries.length} job${entries.length > 1 ? 's' : ''}</span>
+      <span class="cs-group-count">${countLabel}</span>
     </div>`;
 
     for (const entry of entries) {
       const hiddenClass = isCollapsed ? ' cs-group-hidden' : '';
-      const prefix = CATEGORY_LABELS[entry.taskType] || '';
-      const hostTag = entry.host ? entry.host.slice(0, 3).toUpperCase() : '';
+      const isInfra = isNoGpuTaskEntry(entry);
+      const infraClass = isInfra ? ' cs-hm-label-infra' : '';
+      const hostMeta = getHostMeta(entry.host);
+      const hostLabel = hostMeta ? hostMeta.label : '';
 
-      html += `<div class="cs-hm-label${hiddenClass}" title="${esc(entry.name)}${entry.host ? ' [' + entry.host + ']' : ''}">
-        <span class="cs-cat-prefix">${prefix}</span>${esc(entry.name)}
-        ${hostTag ? `<span class="cs-host-tag">${hostTag}</span>` : ''}
+      const cadence = getCadenceLabel(entry);
+      html += `<div class="cs-hm-label${hiddenClass}${infraClass}" title="${esc(entry.name)}${isInfra ? ' [no GPU — infra task]' : ''}${hostLabel ? ' · ' + hostLabel : ''}${cadence ? ' · ' + cadence : ''}">
+        <span class="cs-label-name">${esc(entry.name)}</span>
+        ${cadence ? `<span class="cs-cadence-pill">${cadence}</span>` : ''}
+        ${hostLabel ? `<span class="cs-host-tag ${hostMeta.id}">${esc(hostLabel)}</span>` : ''}
       </div>`;
 
       for (let h = 0; h < 24; h++) {
         const pastClass = isToday() && h < currentHour ? ' past' : '';
-        const curClass = h === currentHour ? ' current-hour' : '';
-        const slotsHtml = getSlotSegments(entry.slots, h, h + 1, entry.taskType, entry.name);
-        html += `<div class="cs-hm-cell${pastClass}${curClass}${hiddenClass}" data-hour="${h}" data-name="${esc(entry.name)}" data-type="${entry.taskType}">${slotsHtml}</div>`;
+        const slotsHtml = getSlotSegments(entry.slots, h, h + 1, entry.taskType, entry.name, isInfra, { host: entry.host, source: entry.source, model: entry.model, estimatedDurationMs: entry.estimatedDurationMs, vramMb: entry.vramMb });
+        html += `<div class="cs-hm-cell${pastClass}${hiddenClass}" data-hour="${h}" data-name="${esc(entry.name)}" data-type="${entry.taskType}">${slotsHtml}</div>`;
       }
     }
   }
@@ -283,7 +625,7 @@ function renderGroupedHeatmap(container, timeline) {
   // Now line
   if (isToday() && currentHour >= 0) {
     const gridCols = 25; // 1 label + 24 hours
-    const labelWidthPx = 200;
+    const labelWidthPx = 230;
     const nowPct = ((currentHour + nowMinuteFrac) / 24) * 100;
     html += `<div class="cs-now-line" style="left:calc(${labelWidthPx}px + ${nowPct}% * (100% - ${labelWidthPx}px) / 100%)"></div>`;
   }
@@ -307,13 +649,15 @@ function positionNowLine(container) {
   const cellsWidth = gridRect.width - cellsStart;
   const lineLeft = cellsStart + cellsWidth * nowFrac;
 
+  const now = new Date();
+  const nowTimeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
   let line = container.querySelector('.cs-now-line');
   if (!line) {
     line = document.createElement('div');
     line.className = 'cs-now-line';
-    line.innerHTML = '<span class="cs-now-label">NOW</span>';
     container.appendChild(line);
   }
+  line.innerHTML = `<span class="cs-now-label">${nowTimeStr}</span>`;
   line.style.left = lineLeft + 'px';
   line.style.top = '0';
   line.style.height = grid.offsetHeight + 'px';
@@ -346,12 +690,11 @@ function renderHostHeatmap(container, hosts) {
 
     for (let h = 0; h < 24; h++) {
       const pastClass = isToday() && h < currentHour ? ' past' : '';
-      const curClass = h === currentHour ? ' current-hour' : '';
       let slotsHtml = '';
       for (const task of host.tasks) {
-        slotsHtml += getSlotSegments(task.slots, h, h + 1, task.taskType, task.name);
+        slotsHtml += getSlotSegments(task.slots, h, h + 1, task.taskType, task.name, false, { host: host.hostId || host.hostName, source: task.source, model: task.model, estimatedDurationMs: task.estimatedDurationMs, vramMb: task.vramMb });
       }
-      html += `<div class="cs-hm-cell${pastClass}${curClass}" data-hour="${h}" data-name="${esc(host.hostName)}" data-type="host">${slotsHtml}</div>`;
+      html += `<div class="cs-hm-cell${pastClass}" data-hour="${h}" data-name="${esc(host.hostName)}" data-type="host">${slotsHtml}</div>`;
     }
   }
 
@@ -363,7 +706,7 @@ function renderHostHeatmap(container, hosts) {
 
 // ── Slot Rendering ──────────────────────────────────────────
 
-function getSlotSegments(slots, hourStart, hourEnd, taskType, taskName) {
+function getSlotSegments(slots, hourStart, hourEnd, taskType, taskName, isInfra = false, meta = {}) {
   if (!slots || slots.length === 0) return '';
   taskName = taskName || taskType;
   let html = '';
@@ -378,8 +721,18 @@ function getSlotSegments(slots, hourStart, hourEnd, taskType, taskName) {
     const left = (visStart * 100).toFixed(1);
     const width = ((visEnd - visStart) * 100).toFixed(1);
     const contClass = slot.continuous ? ' continuous' : '';
-    const timeStr = `${formatTime(slotStart)} - ${formatTime(slotEnd)}`;
-    html += `<div class="cs-hm-slot ${taskType}${contClass}" style="left:${left}%;width:${width}%" data-tooltip-name="${esc(taskName)}" data-tooltip-detail="${esc(taskType + ' | ' + timeStr)}"></div>`;
+    const infraClass = isInfra ? ' infra' : '';
+    html += `<div class="cs-hm-slot ${taskType}${contClass}${infraClass}"
+      style="left:${left}%;width:${width}%"
+      data-tt-name="${esc(taskName)}"
+      data-tt-type="${esc(taskType)}"
+      data-tt-time="${esc(formatTime(slotStart))}–${esc(formatTime(slotEnd))}"
+      data-tt-host="${esc(meta.host || '')}"
+      data-tt-source="${esc(meta.source || '')}"
+      data-tt-model="${esc(meta.model || '')}"
+      data-tt-duration="${meta.estimatedDurationMs || 0}"
+      data-tt-vram="${meta.vramMb || 0}"
+      data-tt-infra="${isInfra ? '1' : '0'}"></div>`;
   }
   return html;
 }
@@ -388,18 +741,88 @@ function getSlotSegments(slots, hourStart, hourEnd, taskType, taskName) {
 
 function renderLegend(timeline) {
   const el = document.getElementById('legend');
-  const types = new Set(timeline.map(t => t.taskType));
-  el.innerHTML = Array.from(types).map(t =>
-    `<div class="cs-legend-item"><div class="cs-legend-color" style="background:${TASK_COLORS[t] || '#666'}"></div>${t}</div>`
-  ).join('');
+  const hostCounts = countBy(timeline, entry => getHostMeta(entry.host).id);
+  const sourceCounts = countBy(timeline, entry => entry.source || 'unknown');
+
+  el.innerHTML = `
+    ${renderLegendSection('Hosts', hostCounts, id => {
+      const meta = getHostMeta(id);
+      return {
+        label: meta.label,
+        className: `host-${meta.id}`,
+        swatch: meta.color
+      };
+    })}
+    ${renderLegendSection('Sources', sourceCounts, id => {
+      const meta = getSourceMeta(id);
+      return {
+        label: meta.label,
+        className: '',
+        swatch: meta.color
+      };
+    })}
+  `;
 }
 function renderLegendFromHosts(hosts) {
   const el = document.getElementById('legend');
   const types = new Set();
   for (const h of hosts) for (const t of h.tasks) types.add(t.taskType);
-  el.innerHTML = Array.from(types).map(t =>
-    `<div class="cs-legend-item"><div class="cs-legend-color" style="background:${TASK_COLORS[t] || '#666'}"></div>${t}</div>`
-  ).join('');
+  el.innerHTML = renderLegendSection('Task Colors', Array.from(types).sort().map(type => ({
+    key: type,
+    count: null
+  })), id => ({
+    label: id,
+    className: '',
+    swatch: TASK_COLORS[id] || '#666'
+  }), { showCount: false });
+}
+
+function renderLegendSection(title, items, getMeta, options = {}) {
+  const showCount = options.showCount !== false;
+  const normalized = Array.isArray(items)
+    ? items
+    : Array.from(items.entries()).map(([key, count]) => ({ key, count }));
+
+  if (!normalized.length) {
+    return `<div class="cs-legend-section"><span class="cs-legend-title">${esc(title)}</span><span class="cs-legend-empty">None</span></div>`;
+  }
+
+  return `<div class="cs-legend-section">
+    <span class="cs-legend-title">${esc(title)}</span>
+    ${normalized.map(({ key, count }) => {
+      const meta = getMeta(key);
+      const className = meta.className ? ` ${meta.className}` : '';
+      return `<div class="cs-legend-item${className}">
+        <div class="cs-legend-color" style="background:${meta.swatch}"></div>
+        <span>${esc(meta.label)}</span>
+        ${showCount && Number.isFinite(count) ? `<span class="cs-legend-count">${count}</span>` : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function countBy(items, getKey) {
+  const counts = new Map();
+  for (const item of items) {
+    const key = getKey(item);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return String(a[0]).localeCompare(String(b[0]));
+    })
+    .map(([key, count]) => ({ key, count }));
+}
+
+function getHostMeta(hostId) {
+  if (!hostId) return HOST_META.unassigned;
+  return HOST_META[hostId] || { id: 'unassigned', label: hostId, color: '#94a3b8' };
+}
+
+function getSourceMeta(sourceId) {
+  if (!sourceId) return { label: 'Unknown', color: '#64748b' };
+  return SOURCE_META[sourceId] || { label: sourceId, color: '#64748b' };
 }
 
 // ── Conflicts ───────────────────────────────────────────────
@@ -448,7 +871,18 @@ function renderAttention() {
   }
 
   if (items.length === 0) {
-    container.innerHTML = '<div class="cs-empty"><i class="fas fa-check-circle" style="color:#22c55e"></i> All clear</div>';
+    container.innerHTML = `
+      <div style="padding:12px 4px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <i class="fas fa-check-circle" style="color:#22c55e;font-size:16px"></i>
+          <span style="font-size:13px;font-weight:600;color:#22c55e">No issues detected</span>
+        </div>
+        <div style="font-size:11px;color:#374151;display:flex;flex-direction:column;gap:4px">
+          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>0 schedule conflicts</div>
+          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>0 overdue tasks</div>
+          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>All reachable hosts online</div>
+        </div>
+      </div>`;
     return;
   }
 
@@ -471,30 +905,60 @@ function attachTooltipEvents(container) {
   });
 }
 function showTooltip(e) {
-  const tooltip = document.getElementById('tooltip');
-  document.getElementById('tooltipName').textContent = e.target.dataset.tooltipName || '';
-  document.getElementById('tooltipDetail').textContent = e.target.dataset.tooltipDetail || '';
-  tooltip.classList.add('visible');
+  const d = e.target.dataset;
+  const name    = d.ttName || '';
+  const type    = d.ttType || '';
+  const time    = d.ttTime || '';
+  const host    = d.ttHost || '';
+  const source  = d.ttSource || '';
+  const model   = d.ttModel || '';
+  const dur     = parseInt(d.ttDuration || '0');
+  const vram    = parseInt(d.ttVram || '0');
+  const isInfra = d.ttInfra === '1';
+
+  const hostLabel  = host   ? (getHostMeta(host).label   || host)   : '';
+  const sourceLabel = source ? (getSourceMeta(source).label || source) : '';
+
+  const rows = [];
+  if (time)        rows.push(row('fa-clock',      time,        ''));
+  if (hostLabel)   rows.push(row('fa-server',     hostLabel,   ''));
+  if (sourceLabel) rows.push(row('fa-tag',        sourceLabel, ''));
+  if (model)       rows.push(row('fa-microchip',  model,       'hi'));
+  if (dur > 0)     rows.push(row('fa-hourglass-half', '~' + formatDuration(dur), ''));
+  if (vram > 0)    rows.push(row('fa-memory',     (vram / 1024).toFixed(1) + ' GB VRAM', 'warn'));
+  if (isInfra)     rows.push(row('fa-cog',        'no GPU — infra task', 'dim'));
+
+  const typeColor = TASK_COLORS[type] || '#64748b';
+  document.getElementById('tooltipType').innerHTML =
+    type ? `<span style="color:${typeColor}">${type.toUpperCase()}</span>` : '';
+  document.getElementById('tooltipName').textContent = name;
+  document.getElementById('tooltipRows').innerHTML = rows.join('');
+  document.getElementById('tooltip').classList.add('visible');
 }
+
+function row(icon, text, cls) {
+  return `<div class="cs-tooltip-row"><i class="fas ${icon}"></i><span class="${cls}">${esc(text)}</span></div>`;
+}
+
 function hideTooltip() { document.getElementById('tooltip').classList.remove('visible'); }
 function moveTooltip(e) {
   const t = document.getElementById('tooltip');
-  t.style.left = (e.clientX + 12) + 'px';
-  t.style.top = (e.clientY - 10) + 'px';
+  const margin = 12;
+  let left = e.clientX + 14;
+  let top  = e.clientY - 10;
+  if (left + 310 > window.innerWidth) left = e.clientX - 320;
+  if (top  + 200 > window.innerHeight) top = e.clientY - 160;
+  t.style.left = left + 'px';
+  t.style.top  = top  + 'px';
 }
 
 // ── Next Up ─────────────────────────────────────────────────
 
 async function loadNextTasks() {
   const container = document.getElementById('nextList');
-  try {
-    const data = await fetchJSON(`${API_BASE}/schedule/next?count=10`);
-    nextTasksData = data.tasks || [];
-    renderNextTasks(container);
-    startCountdown();
-  } catch (err) {
-    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
-  }
+  nextTasksData = buildUpcomingTasksFromTimeline(upcomingTimelineEntries);
+  renderNextTasks(container);
+  startCountdown();
 }
 
 function renderNextTasks(container) {
@@ -502,18 +966,51 @@ function renderNextTasks(container) {
     container.innerHTML = '<div class="cs-empty">No upcoming tasks</div>';
     return;
   }
-  container.innerHTML = nextTasksData.map((task, i) => `
+
+  // Split: system ticks (high-frequency interval pollers < 1h) vs scheduled jobs (cron or long interval)
+  const sysTasks = nextTasksData.filter(t => isServiceTick(t));
+  const scheduledTasks = nextTasksData.filter(t => !isServiceTick(t));
+
+  let html = '';
+
+  if (scheduledTasks.length > 0) {
+    html += `<div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;padding:2px 0 6px">Scheduled Jobs <span style="font-weight:400;color:#64748b">${scheduledTasks.length}</span></div>`;
+    html += scheduledTasks.map((task, i) => renderNextItem(task, i)).join('');
+  }
+
+  if (sysTasks.length > 0) {
+    const due = sysTasks.filter(t => t.msFromNow <= 0).length;
+    const dueSoon = sysTasks.filter(t => t.msFromNow > 0 && t.msFromNow < 300000).length;
+    html += `<div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;padding:8px 0 6px;margin-top:4px;border-top:1px solid rgba(255,255,255,0.05)">
+      System Ticks
+      <span style="color:#64748b;font-weight:400;font-size:9px"> ${sysTasks.length}</span>
+      ${due > 0 ? `<span style="color:#94a3b8;font-weight:400;font-size:9px"> · ${due} due now</span>` : ''}
+      ${dueSoon > 0 ? `<span style="color:#94a3b8;font-weight:400;font-size:9px"> · ${dueSoon} in &lt;5m</span>` : ''}
+    </div>`;
+    html += sysTasks.map((task, i) => renderNextItem(task, scheduledTasks.length + i)).join('');
+  }
+
+  container.innerHTML = html || '<div class="cs-empty">No upcoming tasks</div>';
+}
+
+function renderNextItem(task, i) {
+  const sourceMeta = getSourceMeta(task.source);
+  const sourceClass = task.source || 'openclaw';
+  const hostLabel = task.host ? getHostMeta(task.host).label : '';
+  const cadenceLabel = isServiceTick(task) ? `every ${formatInterval(task.intervalMs)}` : '';
+  return `
     <div class="cs-next-item">
-      <div>
+      <div style="min-width:0;flex:1">
         <div class="cs-next-name">${esc(task.name)}</div>
         <div class="cs-next-meta">
           <span class="cs-task-badge ${task.taskType}">${task.taskType}</span>
-          ${task.host ? `<span><i class="fas fa-server" style="font-size:9px"></i> ${esc(task.host)}</span>` : ''}
+          ${hostLabel ? `<span style="font-size:10px"><i class="fas fa-server" style="font-size:8px;margin-right:2px"></i>${esc(hostLabel)}</span>` : ''}
+          <span class="cs-source-chip ${sourceClass}">${esc(sourceMeta.label)}</span>
+          ${cadenceLabel ? `<span class="cs-source-chip cadence">${esc(cadenceLabel)}</span>` : ''}
         </div>
       </div>
-      <div class="cs-next-countdown" id="countdown-${i}">${formatCountdown(task.msFromNow)}</div>
-    </div>
-  `).join('');
+      <div class="cs-next-countdown" id="countdown-${i}">${formatUpcomingDisplay(task)}</div>
+    </div>`;
 }
 
 function startCountdown() {
@@ -523,9 +1020,76 @@ function startCountdown() {
     const elapsed = Date.now() - startedAt;
     nextTasksData.forEach((task, i) => {
       const el = document.getElementById(`countdown-${i}`);
-      if (el) el.textContent = formatCountdown(Math.max(0, task.msFromNow - elapsed));
+      if (!el) return;
+      if (task.displayMode === 'time') {
+        el.textContent = task.displayText || '';
+        return;
+      }
+      el.textContent = formatCountdown(Math.max(0, task.msFromNow - elapsed));
     });
   }, COUNTDOWN_TICK_MS);
+}
+
+function buildUpcomingTasksFromTimeline(entries) {
+  const now = Date.now();
+  const todaySelected = isToday();
+  const occurrences = [];
+
+  for (const entry of (entries || [])) {
+    const slots = entry.slots || [];
+    for (const slot of slots) {
+      const startMs = new Date(slot.start).getTime();
+      const endMs = new Date(slot.end).getTime();
+      if (todaySelected && endMs < now) continue;
+
+      const dailyCount = slots.length;
+      const msFromNow = todaySelected ? Math.max(0, startMs - now) : Math.max(0, startMs - now);
+      occurrences.push({
+        id: `${entry.id || entry.name}-${slot.start}`,
+        name: entry.name,
+        source: entry.source,
+        taskType: entry.taskType,
+        host: entry.host,
+        model: entry.model,
+        priority: entry.priority,
+        scheduleType: entry.scheduleType || (dailyCount > 1 ? 'cron' : null),
+        intervalMs: deriveIntervalMs(entry, slot),
+        dailyCount,
+        nextRun: slot.start,
+        msFromNow,
+        displayMode: todaySelected ? 'countdown' : 'time',
+        displayText: formatTime(new Date(slot.start))
+      });
+    }
+  }
+
+  occurrences.sort((a, b) => {
+    if (a.msFromNow !== b.msFromNow) return a.msFromNow - b.msFromNow;
+    return new Date(a.nextRun).getTime() - new Date(b.nextRun).getTime();
+  });
+
+  return occurrences.slice(0, 25);
+}
+
+function deriveIntervalMs(entry, slot) {
+  if (entry?.scheduleType === 'interval' && entry.intervalMs) return entry.intervalMs;
+  const slots = entry?.slots || [];
+  if (slots.length > 1) {
+    const first = new Date(slots[0].start).getTime();
+    const second = new Date(slots[1].start).getTime();
+    const delta = second - first;
+    if (delta > 0) return delta;
+  }
+  if (slot?.start && slot?.end) {
+    const span = new Date(slot.end).getTime() - new Date(slot.start).getTime();
+    if (span > 0) return span;
+  }
+  return null;
+}
+
+function formatUpcomingDisplay(task) {
+  if (task.displayMode === 'time') return task.displayText || '';
+  return formatCountdown(task.msFromNow);
 }
 
 // ── Utilities ───────────────────────────────────────────────
@@ -539,6 +1103,24 @@ function esc(s) {
 function formatTime(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 }
+function formatDuration(ms) {
+  if (!ms || ms <= 0) return 'n/a';
+  const totalMinutes = Math.round(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
+}
+function formatInterval(ms) {
+  if (!ms || ms <= 0) return '?';
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  return `${hours}h`;
+}
 function formatCountdown(ms) {
   if (ms <= 0) return 'Now';
   const s = Math.floor(ms / 1000);
@@ -546,6 +1128,48 @@ function formatCountdown(ms) {
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${sec}s`;
   return `${sec}s`;
+}
+function formatDuration(ms) {
+  if (!ms || ms <= 0) return '?';
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m > 0 ? m + 'm' : ''}`.trim();
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
+
+// Derive a short cadence label from slot count for timeline row labels
+function getCadenceLabel(entry) {
+  const n = entry.slots?.length || 0;
+  if (n === 0) return '';
+  if (n === 1 && entry.slots[0]?.continuous) return '24/7';
+  if (n >= 1000) return 'q1m';   // every minute or faster
+  if (n >= 200)  return 'q5m';   // every ~5 min
+  if (n >= 80)   return 'q10m';  // every ~10 min
+  if (n >= 40)   return 'q15m';  // every ~15 min
+  if (n >= 26)   return 'q30m';  // every ~30 min
+  if (n >= 20)   return 'hrly';  // roughly hourly (20-25/day)
+  if (n >= 11)   return 'q2h';   // every ~2 hours (12/day)
+  if (n >= 6)    return 'q4h';   // every ~4 hours
+  if (n >= 3)    return 'q8h';   // every ~8 hours
+  if (n === 2)   return '2×/d';
+  if (n === 1) {
+    // Show start time for single daily jobs
+    try {
+      const t = new Date(entry.slots[0].start);
+      return `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+    } catch { return 'daily'; }
+  }
+  return `${n}×/d`;
+}
+
+// Service tick = mirrors splitTimeline threshold: short interval OR >12 runs/day
+// Consistent with what goes into the background services strip (slots.length > 12)
+function isServiceTick(task) {
+  if (!task) return false;
+  if (task.scheduleType === 'interval' && task.intervalMs && task.intervalMs < 3600000) return true;
+  if (task.dailyCount && task.dailyCount > 12) return true;
+  return false;
 }
 
 // ── Actual Utilization ──────────────────────────────────────
@@ -753,7 +1377,7 @@ async function refreshAll() {
   icon.classList.add('spinning');
   try {
     await Promise.all([
-      loadLiveState(), loadTimeline(), loadNextTasks(), loadConflicts(),
+      loadLiveState(), loadTimeline(), loadConflicts(),
       actualView === 'heatmap' ? loadActualHeatmap() : loadActualVsPlanned()
     ]);
   } finally { icon.classList.remove('spinning'); }
@@ -766,6 +1390,24 @@ function startLivePolling() {
 
 document.addEventListener('DOMContentLoaded', () => {
   updateDateLabel();
+  syncTimelineFilterUI();
   refreshAll();
   startLivePolling();
+});
+
+document.addEventListener('click', (e) => {
+  const popover = document.getElementById('servicePopover');
+  if (!popover || !popover.classList.contains('visible') || !servicePopoverPinnedId) return;
+  if (e.target.closest('.cs-service-chip') || e.target.closest('#servicePopover')) return;
+  hideServicePopover(true);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideServicePopover(true);
+});
+
+window.addEventListener('resize', () => {
+  if (!servicePopoverPinnedId) return;
+  const activeChip = document.querySelector(`.cs-service-chip[data-service-id="${servicePopoverPinnedId}"]`);
+  if (activeChip) positionServicePopover(activeChip);
 });

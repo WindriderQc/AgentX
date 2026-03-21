@@ -19,56 +19,132 @@
         .cs-header p { color: var(--muted); font-size: 14px; }
         .cs-header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
+        /* Header status summary */
+        .cs-header-status {
+            font-size: 12px; color: #7b8ba3; margin-top: 4px;
+            display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+        }
+        .cs-header-status-item { display: flex; align-items: center; gap: 5px; }
+        .cs-header-status-item.ok { color: #22c55e; }
+        .cs-header-status-item.warn { color: #f59e0b; }
+        .cs-header-status-item.err { color: #ef4444; }
+
         /* Live State Bar — enhanced */
         .cs-live-bar { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
         .cs-host-card {
             background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
-            padding: 14px 18px; flex: 1; min-width: 280px; transition: border-color 0.2s;
+            padding: 14px 18px; flex: 1; min-width: 290px; transition: border-color 0.2s;
         }
-        .cs-host-card:hover { border-color: rgba(124,240,255,0.3); }
-        .cs-host-card.degraded { border-color: rgba(245,158,11,0.4); }
-        .cs-host-card.down { border-color: rgba(239,68,68,0.4); }
-        .cs-host-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-        .cs-host-name { font-size: 15px; font-weight: 600; color: #fff; }
-        .cs-health-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; margin-left: auto; text-transform: uppercase; }
-        .cs-health-badge.ok { background: rgba(34,197,94,0.15); color: #22c55e; }
-        .cs-health-badge.idle { background: rgba(100,116,139,0.2); color: #94a3b8; }
-        .cs-health-badge.down { background: rgba(239,68,68,0.15); color: #ef4444; }
-        .cs-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-        .cs-status-dot.online { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+        .cs-host-card:hover { border-color: rgba(124,240,255,0.25); }
+        .cs-host-card.active { border-color: rgba(34,197,94,0.2); }
+        .cs-host-card.down { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.03); }
+        .cs-host-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .cs-host-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+        .cs-host-name { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
+        .cs-host-role { font-size: 10px; color: #6f86a3; font-weight: 500; line-height: 1.3; }
+        .cs-host-role .cs-host-ip { color: #8ca2bf; }
+        .cs-health-badge { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; letter-spacing: 0.04em; }
+        .cs-health-badge.ok   { background: rgba(34,197,94,0.12);  color: #22c55e; border: 1px solid rgba(34,197,94,0.2); }
+        .cs-health-badge.idle { background: rgba(100,116,139,0.16); color: #94a3b8; border: 1px solid rgba(148,163,184,0.22); }
+        .cs-health-badge.down { background: rgba(239,68,68,0.12);  color: #ef4444; border: 1px solid rgba(239,68,68,0.25); }
+        .cs-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .cs-status-dot.online { background: #22c55e; box-shadow: 0 0 5px rgba(34,197,94,0.6); }
         .cs-status-dot.unreachable { background: #ef4444; }
-        .cs-host-models { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+
+        /* Model display */
+        .cs-host-models-loaded { font-size: 12px; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 3px; }
+        .cs-host-models-idle { font-size: 11px; color: #7b8ba3; margin-bottom: 8px; display: flex; align-items: center; }
+        .cs-host-model-summary { font-size: 11px; color: #9fb4cf; margin-bottom: 8px; }
         .cs-model-tag {
             display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px;
-            background: rgba(124,240,255,0.1); color: #7cf0ff; margin: 2px 4px 2px 0;
+            background: rgba(124,240,255,0.1); color: #7cf0ff; border: 1px solid rgba(124,240,255,0.15);
         }
-        .cs-vram-bar { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; margin: 6px 0 4px; overflow: hidden; }
-        .cs-vram-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
-        .cs-vram-fill.low { background: #22c55e; }
-        .cs-vram-fill.mid { background: #f59e0b; }
-        .cs-vram-fill.high { background: #ef4444; }
-        .cs-host-detail { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
-        .cs-host-next { font-size: 11px; color: #94a3b8; margin-top: 4px; }
-        .cs-host-next i { color: #7cf0ff; margin-right: 4px; }
+
+        /* VRAM */
+        .cs-vram-bar { height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
+        .cs-vram-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+        .cs-vram-fill.low  { background: linear-gradient(90deg, #16a34a, #22c55e); }
+        .cs-vram-fill.mid  { background: linear-gradient(90deg, #d97706, #f59e0b); }
+        .cs-vram-fill.high { background: linear-gradient(90deg, #dc2626, #ef4444); }
+        .cs-host-vram-idle { font-size: 11px; color: #7ba88e; margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+        .cs-host-vram-idle span { color: #16a34a; }
+        .cs-host-detail { font-size: 11px; color: #8092ab; display: flex; justify-content: space-between; margin-top: 3px; margin-bottom: 4px; }
+        .cs-vram-free { font-size: 10px; }
+        .cs-vram-free.tight    { color: #f59e0b; }
+        .cs-vram-free.critical { color: #ef4444; }
+
+        /* Card footer */
+        .cs-host-card-footer { border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px; margin-top: 6px; }
+        .cs-host-next { font-size: 11px; color: #8ca2bf; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+        .cs-host-next i { color: #3b82f6; font-size: 9px; flex-shrink: 0; }
+        .cs-host-next-time { color: #93c5fd; font-weight: 600; }
+        .cs-host-queue-count { margin-left: auto; font-size: 10px; color: #6f86a3; }
+        .cs-host-next-gpu { font-size: 10px; color: #7b8ba3; margin-top: 3px; display: flex; align-items: center; gap: 5px; }
+        .cs-host-next-gpu i { color: #7cf0ff; font-size: 9px; }
+        .cs-host-footer-offline { font-size: 11px; color: #fca5a5; display: flex; align-items: center; gap: 5px; }
+        .cs-host-footer-offline i { color: #ef4444; }
+        .cs-host-standby-note { font-size: 10px; color: #70839c; margin-top: 3px; }
 
         /* Persistent Services Strip */
         .cs-services-strip {
             background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
             padding: 14px 18px; margin-bottom: 20px;
         }
-        .cs-services-title { font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .cs-services-title { font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .cs-services-subtitle { font-size: 11px; color: #70839c; margin-bottom: 10px; }
         .cs-services-title i.toggle { transition: transform 0.2s; font-size: 10px; }
         .cs-services-title i.toggle.collapsed { transform: rotate(-90deg); }
-        .cs-services-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .cs-services-grid { display: flex; flex-direction: column; gap: 10px; }
         .cs-services-grid.collapsed { display: none; }
+        .cs-service-group { display: flex; flex-direction: column; gap: 6px; }
+        .cs-service-group-header {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+            color: #7b8ba3; display: flex; align-items: center; gap: 6px;
+        }
+        .cs-service-group-row { display: flex; flex-wrap: wrap; gap: 8px; }
         .cs-service-chip {
             display: flex; align-items: center; gap: 6px; font-size: 11px; color: #cbd5e1;
             padding: 4px 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 6px;
+            border-radius: 6px; cursor: pointer; transition: border-color 0.2s, background 0.2s, transform 0.2s;
         }
+        .cs-service-chip:hover,
+        .cs-service-chip.active { border-color: rgba(124,240,255,0.28); background: rgba(124,240,255,0.05); transform: translateY(-1px); }
         .cs-service-dot { width: 6px; height: 6px; border-radius: 50%; }
         .cs-service-dot.active { background: #22c55e; }
         .cs-service-dot.stale { background: #f59e0b; }
+        .cs-service-cadence { color: #8ca2bf; font-size: 10px; font-weight: 600; }
+        .cs-service-popover {
+            display: none; position: fixed; z-index: 1100; width: min(360px, calc(100vw - 24px));
+            background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.98));
+            border: 1px solid rgba(124,240,255,0.18); border-radius: 14px; padding: 14px;
+            box-shadow: 0 18px 48px rgba(0,0,0,0.45); color: #e2e8f0;
+        }
+        .cs-service-popover.visible { display: block; }
+        .cs-service-popover-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+        .cs-service-popover-title { font-size: 14px; font-weight: 700; color: #fff; }
+        .cs-service-popover-subtitle { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+        .cs-service-popover-close {
+            border: none; background: rgba(255,255,255,0.05); color: #94a3b8; border-radius: 999px;
+            width: 24px; height: 24px; cursor: pointer; flex-shrink: 0;
+        }
+        .cs-service-popover-close:hover { color: #fff; background: rgba(255,255,255,0.1); }
+        .cs-service-popover-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .cs-service-popover-badge {
+            display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px;
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); font-size: 10px; color: #cbd5e1;
+        }
+        .cs-service-popover-grid {
+            display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px;
+        }
+        .cs-service-popover-stat {
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 9px 10px;
+        }
+        .cs-service-popover-stat-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+        .cs-service-popover-stat-value { font-size: 12px; color: #e2e8f0; font-weight: 600; word-break: break-word; }
+        .cs-service-popover-note {
+            font-size: 11px; color: #94a3b8; line-height: 1.45; padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
 
         /* Timeline Heatmap */
         .cs-timeline-section {
@@ -80,23 +156,41 @@
 
         .cs-heatmap { overflow-x: auto; position: relative; }
         .cs-heatmap-grid {
-            display: grid; grid-template-columns: 200px repeat(24, 1fr);
-            gap: 2px; min-width: 900px; position: relative;
+            display: grid; grid-template-columns: 230px repeat(24, 1fr);
+            gap: 2px; min-width: 940px; position: relative;
         }
-        .cs-hm-header { font-size: 10px; color: var(--muted); text-align: center; padding: 4px 0; }
+        .cs-hm-header { font-size: 10px; color: #64748b; text-align: center; padding: 4px 0; font-weight: 500; }
         .cs-hm-label {
-            font-size: 11px; color: #e2e8f0; padding: 5px 8px; display: flex; align-items: center; font-weight: 400;
+            font-size: 11px; color: #e2e8f0; padding: 5px 8px; display: flex; align-items: center; gap: 6px; font-weight: 400;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .cs-hm-label .cs-cat-prefix { color: #64748b; font-size: 10px; font-weight: 600; margin-right: 5px; text-transform: uppercase; flex-shrink: 0; }
-        .cs-hm-label .cs-host-tag { font-size: 9px; color: #475569; margin-left: auto; flex-shrink: 0; padding-left: 4px; }
+        .cs-hm-label .cs-cat-prefix {
+            color: #94a3b8; font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+            text-transform: uppercase; flex-shrink: 0;
+        }
+        .cs-hm-label .cs-label-name {
+            min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto;
+        }
+        .cs-cadence-pill {
+            font-size: 9px; color: #475569; flex-shrink: 0; padding: 1px 5px;
+            border-radius: 3px; background: rgba(255,255,255,0.04); font-weight: 600;
+            border: 1px solid rgba(255,255,255,0.07); letter-spacing: 0.02em; white-space: nowrap;
+        }
+        .cs-hm-label .cs-host-tag {
+            font-size: 9px; color: #e2e8f0; flex-shrink: 0; padding: 2px 6px;
+            border-radius: 999px; border: 1px solid rgba(255,255,255,0.16);
+            background: rgba(15,23,42,0.88); line-height: 1.2;
+        }
+        .cs-hm-label .cs-host-tag.primary { border-color: rgba(124,240,255,0.45); color: #7cf0ff; }
+        .cs-hm-label .cs-host-tag.secondary { border-color: rgba(249,115,22,0.45); color: #fdba74; }
+        .cs-hm-label .cs-host-tag.tertiary { border-color: rgba(34,197,94,0.45); color: #86efac; }
+        .cs-hm-label .cs-host-tag.unassigned { border-color: rgba(148,163,184,0.35); color: #cbd5e1; }
         .cs-hm-cell {
             height: 28px; border-radius: 2px; background: rgba(255,255,255,0.03);
             position: relative; cursor: default; transition: background 0.15s;
         }
         .cs-hm-cell:hover { background: rgba(255,255,255,0.08); }
         .cs-hm-cell.past { background: rgba(0,0,0,0.15); }
-        .cs-hm-cell.current-hour { outline: 2px solid rgba(124,240,255,0.5); outline-offset: -1px; }
 
         /* Now line */
         .cs-now-line {
@@ -104,8 +198,9 @@
             z-index: 10; pointer-events: none;
         }
         .cs-now-label {
-            position: absolute; top: -2px; left: -12px; font-size: 9px; color: #ef4444;
-            font-weight: 700; background: var(--panel-bg); padding: 0 3px; border-radius: 2px;
+            position: absolute; top: -10px; left: -18px; font-size: 9px; color: #ef4444;
+            font-weight: 700; background: var(--panel-bg); padding: 1px 4px; border-radius: 3px;
+            border: 1px solid rgba(239,68,68,0.3); white-space: nowrap;
         }
 
         /* Task type colors */
@@ -122,6 +217,10 @@
         .cs-hm-slot.scanning { background: #14b8a6; }
         .cs-hm-slot.diagnostics { background: #a78bfa; }
         .cs-hm-slot.continuous { background-image: repeating-linear-gradient(90deg, rgba(255,255,255,0.15) 0px, rgba(255,255,255,0.15) 4px, transparent 4px, transparent 8px); }
+        /* Infra/system tasks — no GPU, visually muted */
+        .cs-hm-slot.infra { opacity: 0.35; background: #475569; border: 1px dashed rgba(255,255,255,0.2); }
+        .cs-hm-label-infra { opacity: 0.72; font-style: italic; }
+        .cs-hm-label-infra .cs-cat-prefix { color: #94a3b8; }
 
         /* Group headers */
         .cs-group-header {
@@ -136,34 +235,65 @@
         .cs-group-hidden { display: none; }
 
         /* Legend */
-        .cs-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
-        .cs-legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
-        .cs-legend-color { width: 10px; height: 10px; border-radius: 2px; }
+        .cs-legend {
+            display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px;
+            padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        .cs-legend-section { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .cs-legend-title {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+            text-transform: uppercase; color: #94a3b8;
+        }
+        .cs-legend-item {
+            display: inline-flex; align-items: center; gap: 6px; font-size: 10px; color: #cbd5e1;
+            padding: 4px 8px; border-radius: 999px; background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .cs-legend-item .cs-legend-count { color: #94a3b8; font-size: 9px; }
+        .cs-legend-color { width: 10px; height: 10px; border-radius: 999px; flex-shrink: 0; }
+        .cs-legend-item.host-primary { border-color: rgba(124,240,255,0.22); }
+        .cs-legend-item.host-secondary { border-color: rgba(249,115,22,0.22); }
+        .cs-legend-item.host-tertiary { border-color: rgba(34,197,94,0.22); }
+        .cs-legend-item.host-unassigned { border-color: rgba(148,163,184,0.16); }
+        .cs-legend-empty { font-size: 10px; color: #64748b; }
 
         /* Tooltip */
         .cs-tooltip {
-            display: none; position: fixed; background: #1e293b; border: 1px solid var(--panel-border);
-            border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #fff; z-index: 1000;
-            pointer-events: none; max-width: 280px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            display: none; position: fixed; background: #0f172a; border: 1px solid rgba(124,240,255,0.18);
+            border-radius: 10px; padding: 12px 14px; font-size: 12px; color: #fff; z-index: 1000;
+            pointer-events: none; max-width: 300px; box-shadow: 0 8px 24px rgba(0,0,0,0.6);
         }
         .cs-tooltip.visible { display: block; }
-        .cs-tooltip-name { font-weight: 600; margin-bottom: 4px; }
-        .cs-tooltip-detail { color: var(--muted); }
+        .cs-tooltip-type { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #475569; margin-bottom: 5px; }
+        .cs-tooltip-name { font-weight: 600; font-size: 13px; margin-bottom: 9px; line-height: 1.3; }
+        .cs-tooltip-rows { display: flex; flex-direction: column; gap: 4px; }
+        .cs-tooltip-row { display: flex; align-items: center; gap: 7px; font-size: 11px; }
+        .cs-tooltip-row i { width: 11px; text-align: center; flex-shrink: 0; font-size: 9px; color: #475569; }
+        .cs-tooltip-row span { color: #94a3b8; }
+        .cs-tooltip-row span.hi { color: #7cf0ff; }
+        .cs-tooltip-row span.warn { color: #f59e0b; }
+        .cs-tooltip-row span.dim { color: #475569; font-style: italic; }
 
-        /* Right panel */
-        .cs-right-section {
+        /* Side cards */
+        .cs-side-grid {
+            display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px; margin-bottom: 20px;
+        }
+        .cs-side-card {
             background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
-            padding: 0; margin-bottom: 20px; overflow: hidden;
+            overflow: hidden; min-width: 0;
         }
-        .cs-tabs { display: flex; border-bottom: 1px solid var(--panel-border); }
-        .cs-tab {
-            flex: 1; padding: 10px 14px; font-size: 12px; font-weight: 600; color: var(--muted);
-            background: transparent; border: none; cursor: pointer; text-align: center; transition: all 0.2s;
+        .cs-side-card-header {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 8px; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.05);
+            background: linear-gradient(180deg, rgba(124,240,255,0.03), rgba(124,240,255,0));
         }
-        .cs-tab.active { color: #7cf0ff; border-bottom: 2px solid #7cf0ff; }
-        .cs-tab:hover:not(.active) { color: #fff; }
-        .cs-tab-panel { display: none; padding: 14px; }
-        .cs-tab-panel.active { display: block; }
+        .cs-side-card-title {
+            font-size: 13px; font-weight: 700; color: #d5e7ff; display: flex; align-items: center; gap: 8px;
+        }
+        .cs-side-card-title i { color: #7cf0ff; font-size: 11px; }
+        .cs-side-card-note { font-size: 10px; color: #70839c; text-transform: uppercase; letter-spacing: 0.08em; }
+        .cs-side-card-body { padding: 14px; }
         .cs-next-list { display: flex; flex-direction: column; gap: 6px; }
         .cs-next-item {
             display: flex; justify-content: space-between; align-items: center;
@@ -186,6 +316,13 @@
         .cs-task-badge.scanning { background: rgba(20,184,166,0.2); color: #14b8a6; }
         .cs-task-badge.diagnostics { background: rgba(167,139,250,0.2); color: #a78bfa; }
 
+        /* Source chips in Next Up */
+        .cs-source-chip { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; text-transform: uppercase; background: rgba(124,60,237,0.15); color: #a78bfa; }
+        .cs-source-chip.n8n { background: rgba(239,68,68,0.15); color: #f87171; }
+        .cs-source-chip.agentx { background: rgba(56,189,248,0.15); color: #38bdf8; }
+        .cs-source-chip.agentx-system { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .cs-source-chip.cadence { background: rgba(148,163,184,0.14); color: #cbd5e1; text-transform: none; }
+
         /* Attention items */
         .cs-attn-item {
             padding: 8px 12px; background: rgba(239,68,68,0.05); border-radius: 6px;
@@ -198,23 +335,51 @@
         .cs-attn-detail { color: #64748b; font-size: 11px; margin-top: 2px; }
 
         /* Date nav */
-        .cs-date-nav { display: flex; align-items: center; gap: 6px; }
+        .cs-date-nav { display: flex; align-items: center; gap: 4px; }
         .cs-date-nav button {
             background: rgba(124,240,255,0.1); border: 1px solid rgba(124,240,255,0.3);
-            color: #7cf0ff; width: 30px; height: 30px; border-radius: 6px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; font-size: 11px; transition: all 0.2s;
+            color: #7cf0ff; width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 10px; transition: all 0.2s;
         }
         .cs-date-nav button:hover { background: rgba(124,240,255,0.2); }
-        .cs-date-label { font-size: 13px; color: #fff; font-weight: 500; min-width: 110px; text-align: center; }
+        .cs-date-nav button.cs-date-today { width: auto; padding: 0 8px; font-size: 10px; }
+        .cs-date-label { font-size: 12px; color: #fff; font-weight: 500; min-width: 108px; text-align: center; }
 
         /* View toggle */
-        .cs-view-toggle { display: flex; border: 1px solid rgba(124,240,255,0.3); border-radius: 8px; overflow: hidden; }
+        .cs-view-toggle { display: flex; border: 1px solid rgba(124,240,255,0.25); border-radius: 8px; overflow: hidden; background: rgba(0,0,0,0.2); }
         .cs-view-toggle button {
-            background: transparent; border: none; color: var(--muted); padding: 5px 12px;
-            font-size: 11px; cursor: pointer; transition: all 0.2s;
+            background: transparent; border: none; color: #64748b; padding: 4px 11px;
+            font-size: 10px; font-weight: 500; cursor: pointer; transition: all 0.2s;
         }
-        .cs-view-toggle button.active { background: rgba(124,240,255,0.2); color: #7cf0ff; }
-        .cs-view-toggle button:hover:not(.active) { color: #fff; }
+        .cs-view-toggle button.active { background: rgba(124,240,255,0.18); color: #7cf0ff; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(124,240,255,0.2); }
+        .cs-view-toggle button:hover:not(.active) { color: #cbd5e1; }
+
+        .cs-timeline-header {
+            display: flex; align-items: flex-start; justify-content: space-between;
+            gap: 10px 16px; flex-wrap: wrap; margin-bottom: 10px;
+        }
+        .cs-timeline-heading {
+            display: flex; flex-direction: column; gap: 8px; flex: 1 1 280px; min-width: 0;
+        }
+        .cs-timeline-toolbar {
+            display: flex; justify-content: flex-end; flex: 0 0 auto; margin-top: -2px;
+        }
+        .cs-timeline-note { font-size: 11px; color: #53657d; }
+        .cs-toolbar-actions {
+            display: flex; flex-direction: column; align-items: flex-end;
+            gap: 6px; margin-left: auto; flex: 0 1 auto;
+        }
+        .cs-toolbar-controls { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+        .cs-filter-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+        .cs-filter-toggle {
+            display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;
+            border-radius: 999px; border: 1px solid rgba(124,240,255,0.12);
+            background: rgba(255,255,255,0.03); color: #cbd5e1; font-size: 10px;
+        }
+        .cs-filter-toggle input {
+            width: 12px; height: 12px; accent-color: #7cf0ff; cursor: pointer; margin: 0;
+        }
+        .cs-filter-toggle span { white-space: nowrap; }
 
         /* Host Gantt row */
         .cs-host-row-label {
@@ -246,9 +411,9 @@
         .cs-loading { text-align: center; padding: 30px; color: var(--muted); }
         .cs-empty { text-align: center; padding: 20px; color: var(--muted); font-size: 13px; }
 
-        /* Two-column layout */
-        .cs-grid-2 { display: grid; grid-template-columns: 1fr 340px; gap: 16px; }
-        @media (max-width: 1100px) { .cs-grid-2 { grid-template-columns: 1fr; } }
+        /* Layout */
+        .cs-main-stack { display: flex; flex-direction: column; gap: 20px; }
+        @media (max-width: 900px) { .cs-side-grid { grid-template-columns: 1fr; } }
 
         /* ── Actual Utilization Section ───────────────────────── */
         .cs-actual-section {
@@ -323,18 +488,9 @@
             <div>
                 <h1><i class="fas fa-calendar-alt"></i> Cluster Schedule</h1>
                 <p>Unified view of scheduled tasks across all GPU hosts</p>
+                <div class="cs-header-status" id="headerStatus"></div>
             </div>
             <div class="cs-header-actions">
-                <div class="cs-date-nav">
-                    <button onclick="shiftDate(-1)" title="Previous day"><i class="fas fa-chevron-left"></i></button>
-                    <span class="cs-date-label" id="dateLabel"></span>
-                    <button onclick="shiftDate(1)" title="Next day"><i class="fas fa-chevron-right"></i></button>
-                    <button onclick="goToday()" title="Today" style="width:auto;padding:0 8px;font-size:10px;">Today</button>
-                </div>
-                <div class="cs-view-toggle">
-                    <button id="viewTask" class="active" onclick="setViewMode('task')">By Task</button>
-                    <button id="viewHost" onclick="setViewMode('host')">By Host</button>
-                </div>
                 <button class="cs-btn" id="refreshBtn" onclick="refreshAll()">
                     <i class="fas fa-sync-alt"></i> Refresh
                 </button>
@@ -356,35 +512,73 @@
             <div class="cs-services-title" onclick="toggleServices()">
                 <i class="fas fa-caret-down toggle" id="servicesToggle"></i>
                 <i class="fas fa-heartbeat" style="color:#22c55e;font-size:11px"></i>
-                Background Services <span id="servicesCount" style="color:#475569;font-weight:400"></span>
+                Continuous Services <span id="servicesCount" style="color:#475569;font-weight:400"></span>
             </div>
+            <div class="cs-services-subtitle">Always-on 24/7 services only — excluded from timeline</div>
             <div class="cs-services-grid" id="servicesGrid"></div>
         </div>
 
-        <div class="cs-grid-2">
-            <!-- Timeline Heatmap -->
+        <div class="cs-main-stack">
             <div class="cs-timeline-section">
-                <div class="cs-section-title"><i class="fas fa-stream"></i> Scheduled Jobs</div>
+                <div class="cs-timeline-header">
+                    <div class="cs-timeline-heading">
+                        <div class="cs-section-title"><i class="fas fa-stream"></i> Scheduled Jobs</div>
+                        <div class="cs-timeline-note">Time-based and cron-scheduled jobs · excludes continuous services</div>
+                    </div>
+                    <div class="cs-timeline-toolbar" id="timelineToolbar">
+                        <div class="cs-toolbar-actions">
+                            <div class="cs-toolbar-controls">
+                                <div class="cs-date-nav">
+                                    <button onclick="shiftDate(-1)" title="Previous day"><i class="fas fa-chevron-left"></i></button>
+                                    <span class="cs-date-label" id="dateLabel"></span>
+                                    <button onclick="shiftDate(1)" title="Next day"><i class="fas fa-chevron-right"></i></button>
+                                    <button class="cs-date-today" onclick="goToday()" title="Today">Today</button>
+                                </div>
+                                <div class="cs-view-toggle">
+                                    <button id="viewTask" class="active" onclick="setViewMode('task')">By Task</button>
+                                    <button id="viewHost" onclick="setViewMode('host')">By Host</button>
+                                </div>
+                            </div>
+                            <div class="cs-filter-row" id="timelineFilters">
+                                <label class="cs-filter-toggle">
+                                    <input type="checkbox" id="toggleHighFreqJobs" onchange="setTimelineFilter('highFreq', this.checked)">
+                                    <span>High-frequency light jobs</span>
+                                </label>
+                                <label class="cs-filter-toggle">
+                                    <input type="checkbox" id="toggleNoGpuJobs" checked onchange="setTimelineFilter('noGpu', this.checked)">
+                                    <span>No GPU tasks</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="cs-heatmap" id="heatmapContainer">
                     <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading timeline...</div>
                 </div>
                 <div class="cs-legend" id="legend"></div>
             </div>
 
-            <!-- Right Panel: Tabs -->
-            <div class="cs-right-section">
-                <div class="cs-tabs">
-                    <button class="cs-tab active" onclick="switchTab('next')">Next Up</button>
-                    <button class="cs-tab" onclick="switchTab('attention')">Attention</button>
-                </div>
-                <div class="cs-tab-panel active" id="tabNext">
-                    <div class="cs-next-list" id="nextList">
-                        <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+            <div class="cs-side-grid">
+                <div class="cs-side-card">
+                    <div class="cs-side-card-header">
+                        <div class="cs-side-card-title"><i class="fas fa-list-ul"></i> Upcoming</div>
+                        <div class="cs-side-card-note">Next visible runs</div>
+                    </div>
+                    <div class="cs-side-card-body">
+                        <div class="cs-next-list" id="nextList">
+                            <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        </div>
                     </div>
                 </div>
-                <div class="cs-tab-panel" id="tabAttention">
-                    <div id="attentionList">
-                        <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                <div class="cs-side-card">
+                    <div class="cs-side-card-header">
+                        <div class="cs-side-card-title"><i class="fas fa-shield-halved"></i> Alerts</div>
+                        <div class="cs-side-card-note">Conflicts and overdue work</div>
+                    </div>
+                    <div class="cs-side-card-body">
+                        <div id="attentionList">
+                            <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -423,9 +617,11 @@
     </div>
 
     <div class="cs-tooltip" id="tooltip">
+        <div class="cs-tooltip-type" id="tooltipType"></div>
         <div class="cs-tooltip-name" id="tooltipName"></div>
-        <div class="cs-tooltip-detail" id="tooltipDetail"></div>
+        <div class="cs-tooltip-rows" id="tooltipRows"></div>
     </div>
+    <div class="cs-service-popover" id="servicePopover"></div>
 
     <script src="/js/components/nav.js"></script>
     <script>injectNav('cluster');</script>

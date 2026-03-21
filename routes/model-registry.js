@@ -30,6 +30,27 @@ const logger = require('../config/logger');
 const ModelRegistry = require('../models/ModelRegistry');
 const { requireAuth } = require('../src/middleware/auth');
 const { probeModelContext, getProbeStatus } = require('../src/services/contextProbe/contextProbeService');
+const { getConfiguredHosts } = require('../src/helpers/ollamaHostConfig');
+
+/** Build URL → friendly-name map from configured hosts */
+function buildHostNameMap() {
+  const map = new Map();
+  for (const h of getConfiguredHosts()) {
+    map.set(h.url, h.name);
+  }
+  return map;
+}
+
+/** Attach hostName to model docs that have a host URL */
+function enrichWithHostNames(models) {
+  const map = buildHostNameMap();
+  for (const m of models) {
+    if (m.host && map.has(m.host)) {
+      m.hostName = map.get(m.host);
+    }
+  }
+  return models;
+}
 
 /**
  * GET /api/models/registry
@@ -72,6 +93,8 @@ router.get('/', async (req, res) => {
     const models = await ModelRegistry.find(query)
       .sort({ displayName: 1 })
       .lean();
+
+    enrichWithHostNames(models);
 
     logger.info('Retrieved models from registry', {
       count: models.length,

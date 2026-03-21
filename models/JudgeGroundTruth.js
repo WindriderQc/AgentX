@@ -31,10 +31,7 @@ const JudgeGroundTruthSchema = new mongoose.Schema({
     category: {
         type: String,
         enum: [
-            'code', 'reasoning', 'factual', 'math', 'creative', 'general',
-            'instruction-following', 'summarization', 'translation',
-            'multi-turn-reasoning', 'context-retention', 'edge-cases',
-            'refactoring', 'debugging', 'explanation', 'dialogue'
+            'coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'
         ],
         required: true,
         index: true
@@ -69,12 +66,12 @@ const JudgeGroundTruthSchema = new mongoose.Schema({
         default: 'system'
     },
 
-    // Difficulty level (1-10)
+    // Difficulty level (1-5)
     difficulty: {
         type: Number,
         min: 1,
-        max: 10,
-        default: 5
+        max: 5,
+        default: 3
     },
 
     // Tags for filtering

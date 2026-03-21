@@ -1,166 +1,135 @@
-# AgentX Backend Implementation
+# AgentX Backend Overview
 
 ## Overview
 
-This backend implements **V1 (Chat + Logs)**, **V2 (User Memory + Feedback)**, **V3 (RAG)**, and **V4 (Analytics)** for the AgentX project.
+AgentX is a service-oriented Node.js/Express platform for local-first LLM operations. The current codebase exposes:
 
-### Technology Stack
+- 55 route modules
+- 71 top-level services
+- 52 Mongoose models
+- 42 public HTML pages
 
-- **Node.js** with Express
-- **MongoDB** (via Mongoose) for data persistence
-- **Ollama** for LLM integration
-- **n8n** for workflow automation and dataset ingestion
+The backend is not organized around the earlier V1/V2/V3/V4 rollout phases anymore. The live system now combines chat, RAG, benchmarking, roundtable debates, self-healing, workspace isolation, SpecialX automation, feature alignment, repo health tooling, and model/host operations in one runtime.
 
----
+## Platform Boundaries
 
-## Features Implemented
+The current ecosystem works best as a three-plane model:
 
-### ✅ V1: Chat + Logs
+- **OpenClaw**: operator shell, notifications, conversational gateway, and higher-level orchestration
+- **AgentX**: application control plane and system-of-record for chat, automation, telemetry, findings, and dashboards
+- **DataAPI**: deterministic tool/data substrate used through AgentX server-side proxying and tool execution
 
-1. **Enhanced Chat Endpoint (`POST /api/chat`)**
-   - Persistent conversation management
-   - Automatic message logging
-   - Full metadata capture (tokens, latency, model parameters)
-   - User memory injection into system prompts
-   - Conversation history context
-   - Persona switching support
+## Architecture Pattern
 
-2. **Conversation Retrieval**
-   - `GET /api/history/conversations` - List user's conversations
-   - `GET /api/history/conversations/:id` - Get conversation with full message history
-   - `PATCH /api/history/conversations/:id` - Update conversation title
+The required backend pattern is:
 
-### ✅ V2: User Memory + Feedback
+`Routes -> Services -> Models -> MongoDB / Ollama / external systems`
 
-3. **User Profile Management**
-   - `GET /api/profile` - Retrieve user preferences
-   - `POST /api/profile` - Create/update profile
-   - Fields:
-     - Name, role, language preference
-     - Response style (concise/detailed/balanced)
-     - Code preference (code-heavy/conceptual/balanced)
-     - Custom preferences (JSON for extensibility)
-   - Automatic memory injection into chat system prompts
+Rules that matter in practice:
 
-4. **Feedback System**
-   - `POST /api/feedback` - Submit ratings and comments
-   - Designed for consumption by V4 Analytics and n8n workflows
+- routes stay thin and delegate business logic immediately,
+- stateful services are consumed through singleton getters,
+- RAG context and user memory are appended to the system prompt, not inserted into chat history,
+- tool slash commands are executed before any LLM call,
+- workspace-aware queries must scope to `workspaceId` when workspace context exists.
 
-### ✅ V3: RAG (Retrieval-Augmented Generation)
+## Runtime Shape
 
-5. **RAG Integration**
-   - `POST /api/chat` supports `useRag: true`
-   - `POST /api/rag/ingest` - Ingest documents (Contract with n8n)
-   - `POST /api/rag/search` - Debug/Test search
-   - Vector Store abstraction (currently In-Memory or Qdrant)
+### Main layers
 
-### ✅ V4: Analytics & Improvement
+| Layer | Location | Responsibility |
+|------|----------|----------------|
+| Routes | `routes/*.js` | HTTP parsing, validation, response formatting |
+| Services | `src/services/*.js` | Business logic, orchestration, integrations |
+| Models | `models/*.js` | Persistence schemas and collection helpers |
+| Middleware | `src/middleware/*.js` | Auth, workspace context, logging, rate limiting, performance tracking |
+| Frontend | `public/` | Multi-page HTML/JS/CSS UI |
 
-6. **Analytics & Datasets**
-   - `GET /api/analytics/usage` - Usage metrics
-   - `GET /api/analytics/feedback` - Feedback metrics
-   - `GET /api/dataset/conversations` - Export for training
-   - `POST /api/dataset/prompts` - Auto-generate prompt versions via n8n
+### Key service domains
 
----
+- chat and conversation persistence
+- RAG and embeddings
+- model routing and host management
+- benchmark execution and scoring
+- roundtable orchestration
+- self-healing and notification delivery
+- feature alignment, repo watcher, and doc janitor
+- workspaces, invitations, and audit logging
+- SpecialX queue-driven automation
 
-## Database Schema
+## Middleware Order
 
-MongoDB database with the following Mongoose models:
+The current app bootstrap in [`src/app.js`](/home/yb/codes/AgentX/src/app.js) applies middleware in this general order:
 
-- **UserProfile** - User memory and preferences
-- **Conversation** - Chat sessions/threads (embedded messages)
-- **PromptConfig** - Versioned system prompts
+1. security headers and CORS
+2. cookies and compression
+3. janitor proxy route
+4. body parsing and Mongo sanitize
+5. session store
+6. authenticated user attachment
+7. request logging
+8. performance tracking
+9. API rate limiters
+10. mounted API routes
+11. static assets
+12. health/config/system endpoints
+13. error handlers
 
-See `docs/architecture/database.md` for full details.
+That ordering matters, especially for:
 
----
+- auth before workspace-sensitive routes,
+- API routes before static assets,
+- slash/tool processing before chat inference,
+- session middleware before request handlers that rely on `req.user`.
 
-## File Structure
+## Mounted API Families
 
-```
-AgentX/
-├── server.js              # Express server entry point
-├── routes/                # API route modules
-├── models/                # Mongoose models
-├── config/                # Database configuration and logger
-├── docs/                  # Onboarding, architecture, API, reports, archive
-├── specs/                 # Architecture specs
-├── public/                # Frontend files
-├── src/                   # Service utilities (services/, utils/, middleware/)
-├── scripts/               # Utility scripts
-├── tests/                 # Test suite
-└── package.json           # Dependencies
-```
+The live backend mounts route families for:
 
----
+- auth, API keys, audit logs, cache, workspaces, invitations, workspace audit
+- gallery, RAG, analytics, dataset, metrics, config variants
+- alerts, self-healing, n8n, profile, history, voice
+- prompts, prompt templates, agents, tools, benchmark, roundtable
+- Ollama hosts, Ollama VRAM, host test, host monitoring, cluster schedule
+- workflow generation, backup, features, custom models, model registry, unified models
+- performance, dashboard, operations, export, repo watcher, doc janitor
+- SpecialX and SpecialX proposals
+- chat and base API endpoints
 
-## Design Decisions
+## Key Models And Services
 
-### Why MongoDB?
+Representative components:
 
-- **Flexible Schema** - Ideal for evolving chat metadata and user profiles
-- **JSON Native** - Seamless integration with Node.js and LLM responses
-- **Mongoose** - Strong typing and validation layer
+- `src/services/chatService.js` and `src/services/chat/`
+- `src/services/ragStore.js`, `src/services/embeddings.js`
+- `src/services/modelRouter.js`
+- `src/services/roundtable/`
+- `src/services/selfHealingEngine.js`
+- `src/services/repoWatcherService.js`
+- `src/services/docJanitorService.js`
+- `src/services/automationRunnerService.js`
 
-### Why Service Layer?
+Representative models:
 
-- `src/services/chatService.js` encapsulates core logic
-- `src/services/ragStore.js` abstracts vector database
-- `src/services/toolExecutor.js` handles tool execution
-- Allows testing logic independently of HTTP routes
+- `Conversation`, `UserProfile`, `PromptConfig`
+- `Workspace`, `WorkspaceMember`, `WorkspaceInvitation`, `WorkspaceAuditLog`
+- `ModelRegistry`, `CustomModel`, `InferenceLog`
+- `BenchmarkBatch`, `BenchmarkPrompt`, `BenchmarkResult`, `JudgeGroundTruth`
+- `SpecialX`, `AutomationTask`, `AutomationRun`
+- `Finding`, `RepoScan`, `DocJanitorScan`, `FeatureInventory`
 
----
+## Operational Realities
 
-## Error Handling
+- Qdrant is required for persistent production RAG; the in-memory vector store is not durable.
+- PM2 cluster mode means in-memory singleton state is process-local.
+- `autoRoute=true` overrides the user-selected model.
+- Tool commands bypass the model path entirely.
+- Session persistence is Mongo-backed through `connect-mongodb-session`.
 
-All endpoints return consistent error format:
+## Related Docs
 
-```json
-{
-  "status": "error",
-  "message": "Description of error",
-  "details": {}  // Optional
-}
-```
-
-Common status codes:
-- `400` - Bad request (missing required fields)
-- `404` - Resource not found
-- `500` - Internal server error
-- `502` - Bad Gateway (Ollama or upstream service failure)
-
----
-
-## Collaboration with Frontend
-
-### For Agent C (Frontend & UX Integrator)
-
-1. **Base URL**: `http://localhost:3080` (or as configured)
-
-2. **User Session Management**:
-   - Generate `userId` client-side or use auth session
-   - Pass `userId` in API calls where required (mostly handled by session/cookie now)
-
-3. **Key Endpoints**:
-   - Chat: `POST /api/chat`
-   - History: `GET /api/history/conversations`
-   - Profile: `GET /api/profile`
-   - Feedback: `POST /api/feedback`
-
----
-
-## Notes for Deployment
-
-### Environment Variables
-
-See `.env.example` for full list. Key variables:
-
-```bash
-PORT=3080
-MONGODB_URI=mongodb://localhost:27017/agentx
-OLLAMA_HOST=http://localhost:11434
-# Optional
-OLLAMA_HOST_2=...
-DATAAPI_BASE_URL=...
-```
+- [Database Architecture](./database.md)
+- [Startup Sequence](./STARTUP_SEQUENCE.md)
+- [Model Routing](./MODEL_ROUTING.md)
+- [RAG System](./RAG_SYSTEM.md)
+- [Multi-Tenancy](./MULTI_TENANCY.md)

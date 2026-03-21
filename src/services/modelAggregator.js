@@ -15,7 +15,15 @@ const ModelRegistry = require('../../models/ModelRegistry');
 const N8nLLMSource = require('../../models/N8nLLMSource');
 const BenchmarkResult = require('../../models/BenchmarkResult');
 const logger = require('../../config/logger');
-const { getHostUrls } = require('../helpers/ollamaHostConfig');
+const { getHostUrls, getConfiguredHosts } = require('../helpers/ollamaHostConfig');
+
+/** Resolve friendly hostname (e.g. "UGClawdX") from an Ollama host URL */
+function resolveHostName(hostUrl) {
+  if (!hostUrl) return null;
+  const hosts = getConfiguredHosts();
+  const match = hosts.find(h => h.url === hostUrl);
+  return match ? match.name : null;
+}
 
 // Cache for aggregated models (5 min TTL)
 let modelCache = null;
@@ -71,6 +79,7 @@ async function getAllModels(options = {}) {
     const normalizedName = ollamaModel.name.replace(/:latest$/, '');
     if (seenOllamaModels.has(normalizedName)) continue;
     seenOllamaModels.add(normalizedName);
+    const hostName = resolveHostName(ollamaModel.host);
     const unified = {
       id: `ollama:${ollamaModel.host}:${normalizedName}`,
       name: normalizedName,
@@ -81,6 +90,7 @@ async function getAllModels(options = {}) {
       source: {
         type: 'ollama-host',
         url: ollamaModel.host,
+        hostName: hostName || undefined,
         metadata: {
           size: ollamaModel.size,
           digest: ollamaModel.digest,
@@ -220,17 +230,75 @@ async function getAllModels(options = {}) {
     models.push(unified);
   }
 
+  // Include registry-only entries ("guest book") — models removed from hosts
+  // but still carrying stats, benchmarks, categories, etc.
+  if (includeRegistry) {
+    const seenRegistryNames = new Set();
+    for (const reg of registryData) {
+      const normalizedRegName = reg.modelName.replace(/:latest$/, '');
+      if (seenOllamaModels.has(reg.modelName) || seenOllamaModels.has(normalizedRegName)) continue; // already merged above
+      if (seenRegistryNames.has(normalizedRegName)) continue; // dedup :latest variants
+      seenRegistryNames.add(normalizedRegName);
+      const benchmarkMatch = benchmarkData.find(b => b.model === reg.modelName);
+      const hostName = resolveHostName(reg.host);
+      models.push({
+        id: `registry:${normalizedRegName}`,
+        name: normalizedRegName,
+        displayName: reg.displayName || normalizedRegName,
+        provider: 'ollama',
+        size: null,
+        details: reg.details || {},
+        source: {
+          type: 'ollama-host',
+          url: reg.host || null,
+          hostName: hostName || undefined,
+        },
+        capabilities: {
+          maxContext: reg.capabilities?.maxContext || 4096,
+          supportsStreaming: true,
+          supportsThinking: reg.capabilities?.supportsThinking ?? false,
+          supportsVision: reg.capabilities?.supportsVision ?? false,
+          avgLatencyMs: benchmarkMatch?.avgLatency || reg.capabilities?.avgLatencyMs || null,
+          avgTokensPerSec: reg.capabilities?.avgTokensPerSec || null,
+          judgeTier: reg.capabilities?.judgeTier || null,
+          curatedJudgeTier: reg.capabilities?.curatedJudgeTier || null,
+          judgeReliability: reg.capabilities?.judgeReliability || null,
+        },
+        deployment: { status: 'gone', deployedAt: null, ollamaHost: reg.host },
+        categories: reg.categories || [],
+        tags: reg.tags || [],
+        benchmarkStats: reg.benchmarkStats || (benchmarkMatch ? {
+          avgCompositeScore: benchmarkMatch.avgScore,
+          totalTests: benchmarkMatch.testCount
+        } : null),
+        benchmarkEligibility: reg.benchmarkEligibility || null,
+        executionDefaults: reg.executionDefaults || null,
+        executionOverrides: reg.executionOverrides || null,
+        parameterSize: reg.parameterSize || null,
+        quantization: reg.quantization || null,
+        family: reg.family || null,
+        vendor: reg.vendor || null,
+        description: reg.description || null,
+        userNote: reg.userNote || null,
+        routingRules: reg.routingRules || null,
+        cost: { promptCostPer1M: 0, completionCostPer1M: 0, currency: 'USD' },
+      });
+    }
+  }
+
   // Only cache full-source results to avoid stale data for partial callers
   if (allSourcesIncluded) {
     modelCache = models;
     cacheTimestamp = Date.now();
   }
 
+  const goneCount = models.filter(m => m.deployment?.status === 'gone').length;
   logger.info('Model aggregation complete', {
     total: models.length,
     ollama: ollamaModels.length,
     n8n: n8nModels.length,
-    custom: customModels.length
+    custom: customModels.length,
+    registryOnly: goneCount
   });
 
   return applyFilters(models, filters);
@@ -391,9 +459,12 @@ async function getModelSources() {
     }
   };
 
-  // Extract unique Ollama hosts
-  const ollamaHosts = [...new Set(models.filter(m => m.provider === 'ollama').map(m => m.source.url))];
-  sources.ollama.hosts = ollamaHosts;
+  // Extract unique Ollama hosts with friendly names
+  const ollamaUrls = [...new Set(models.filter(m => m.provider === 'ollama').map(m => m.source.url))];
+  sources.ollama.hosts = ollamaUrls.map(url => ({
+    url,
+    name: resolveHostName(url) || url
+  }));
   sources.ollama.count = models.filter(m => m.provider === 'ollama').length;
 
   // Extract n8n webhooks
