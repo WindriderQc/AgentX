@@ -16,6 +16,7 @@ const { PSYX_DEFAULT_MODEL } = require('../config/psyx');
 const userId = process.env.PSYX_USER_ID || 'windrider';
 const model = process.env.PSYX_MODEL || PSYX_DEFAULT_MODEL;
 let conversationId = process.env.PSYX_CONVERSATION_ID || null;
+let resumeLast = true;
 
 function printHelp() {
   console.log(`
@@ -91,6 +92,7 @@ async function main() {
 
       if (input === '/new') {
         conversationId = null;
+        resumeLast = false;
         console.log('PsyX > new conversation; longitudinal state preserved.\n');
         rl.prompt();
         return;
@@ -108,9 +110,11 @@ async function main() {
         userId,
         model,
         message: input,
-        conversationId
+        conversationId,
+        resumeLast
       });
       conversationId = String(result.conversationId);
+      resumeLast = true;
       console.log(`${result.response}\n`);
     } catch (err) {
       console.error(`\nPsyX ! ${err.message}\n`);
