@@ -1,7 +1,6 @@
 'use strict';
 
 const fetch = require('node-fetch');
-const Conversation = require('../../models/Conversation');
 const PsyXState = require('../../models/PsyXState');
 const { getOrCreateProfile } = require('../helpers/userHelpers');
 const { buildSystemPrompt } = require('./chat/chatPromptHelpers');
@@ -111,6 +110,7 @@ async function chat({
   workspaceId = null,
   message,
   conversationId = null,
+  resumeLast = true,
   model = PSYX_DEFAULT_MODEL,
   target = null,
   options = {}
@@ -119,7 +119,7 @@ async function chat({
   if (!message || !String(message).trim()) throw new Error('message is required');
 
   const state = await getOrCreateState(userId, workspaceId);
-  const effectiveConversationId = conversationId || state.lastConversationId || null;
+  const effectiveConversationId = conversationId || (resumeLast ? state.lastConversationId : null);
   const history = await getConversationMessages({
     conversationId: effectiveConversationId,
     userId,
