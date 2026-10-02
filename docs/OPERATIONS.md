@@ -362,6 +362,11 @@ instance installs and qualifies its model. False preserves ordinary transcriptio
 During a response, microphone energy holds playback reversibly while transcription
 checks the candidate. Empty or failed transcription resumes the remaining audio;
 confirmed speech or a Stop control cancels the old turn before another starts.
+When no reply text has arrived 3 s after a voice turn starts, Nestor says one short
+holding phrase (« Un instant… ») and shows that it is still thinking; hearing that
+phrase back is echo, not an interruption. Cancelling an OpenClaw turn before it
+streamed content, a tool call or reasoning settles at once; after that, Core waits
+for the run's native end and otherwise pauses the conversation with a French notice.
 The Super Dad and Famille avatar dock loads GraphysX's `<llmx-face>` module from
 `HOUSEHOLD_AVATAR_MODULE_URL` (a GraphysX build's `/embed/llmx-face.js`). Core
 relays it at `/api/household/avatar/llmx-face.js`, like the VoiX player, so the
