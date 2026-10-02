@@ -47,6 +47,14 @@ function createSynthesisHandler({ upstream, timeoutMs, fail, cleanText }) {
         const detail = await response.text();
         return fail(res, response.status >= 500 ? 503 : response.status, detail || 'VoiX synthesis failed', 'VOIX_BAD_RESPONSE');
       }
+      // VoiX answers 200 before its engine starts; a stopped VoxCPM2 worker only
+      // shows as a first "error" event. Report it as unavailable so the browser's
+      // voice ladder moves to the next voice instead of playing silence.
+      const head = streaming ? await firstEvent(response.body) : null;
+      if (head?.event?.type === 'error') {
+        await head.cancel();
+        return fail(res, 503, head.event.message || 'VoiX synthesis failed', 'VOIX_SYNTHESIS_FAILED');
+      }
       res.status(200).set({
         'Content-Type': response.headers.get('content-type') || 'audio/wav',
         'X-Nestor-Speech-Language': profile.language,
@@ -58,7 +66,7 @@ function createSynthesisHandler({ upstream, timeoutMs, fail, cleanText }) {
       });
       if (streaming) {
         res.set('X-Accel-Buffering', 'no');
-        await pipeStream(Readable.fromWeb(response.body), res);
+        await pipeStream(head.stream, res);
         return;
       }
       return res.send(Buffer.from(await response.arrayBuffer()));
@@ -71,4 +79,26 @@ function createSynthesisHandler({ upstream, timeoutMs, fail, cleanText }) {
   };
 }
 
-module.exports = { createSynthesisHandler };
+// The first NDJSON event of a VoiX PCM stream, and the whole stream to forward
+// unchanged (the bytes already read come first).
+async function firstEvent(body) {
+  const reader = body.getReader();
+  const chunks = [];
+  let text = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) { const chunk = Buffer.from(value); chunks.push(chunk); text += chunk.toString('utf8'); }
+    const end = text.indexOf('\n');
+    if (end >= 0 || done) {
+      let event = null;
+      try { event = JSON.parse(end >= 0 ? text.slice(0, end) : text); } catch { /* forwarded as is */ }
+      async function* rest() {
+        yield* chunks;
+        for (;;) { const next = await reader.read(); if (next.done) return; yield Buffer.from(next.value); }
+      }
+      return { event, stream: Readable.from(rest()), cancel: () => reader.cancel().catch(() => {}) };
+    }
+  }
+}
+
+module.exports = { createSynthesisHandler, firstEvent };
