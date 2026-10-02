@@ -237,9 +237,12 @@ router.get('/search', async (req, res) => {
 
         const result = await conversationSearchService.searchConversations(searchOptions);
 
+        // Search text stays out of logs; only its length is recorded.
         logger.info('Conversation search executed', {
             userId,
-            query,
+            queryLength: typeof query === 'string' ? query.length : 0,
+            page: pageNum,
+            limit: limitNum,
             resultsCount: result.data.results.length,
             totalResults: result.data.pagination.totalResults
         });
@@ -250,7 +253,7 @@ router.get('/search', async (req, res) => {
         logger.error('Conversation search failed', {
             error: err.message,
             userId: getUserId(res),
-            query: req.query
+            queryLength: typeof req.query?.q === 'string' ? req.query.q.length : 0
         });
         res.status(500).json({ status: 'error', message: err.message });
     }
