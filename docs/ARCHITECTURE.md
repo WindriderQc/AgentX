@@ -387,3 +387,4 @@ See [operational screens](OPERATOR_UI.md) for user-facing states and actions.
 
 - [ADR 0001: one canonical repository](adr/0001-one-repository.md)
 - [ADR 0002: reuse existing memory classification](adr/0002-memory-access.md)
+- [ADR 0003: ingested content is data, never authority](adr/0003-ingested-content.md)
