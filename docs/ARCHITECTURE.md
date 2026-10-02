@@ -156,6 +156,15 @@ from OpenClaw's conversational provider (the one that asks for the busy reply,
 used by Telegram) gets the same priority and keeps the host through its agent
 loop; its wait stops at 45 s, under the gateway's provider timeout.
 
+### Browser voice
+
+Core's `core/public/js/voice` owns browser microphone capture, speech endpoint
+detection, echo rejection and cancellable playback. Household and PsyX compose
+its conversation loop with their own session, transcription and turn adapters.
+PsyX uses only its protected routes; choosing a voice is request-scoped and never
+changes VoiX's shared settings. The browser buffers audio transiently and stops
+capture when the session closes or the page is hidden.
+
 ### Attachments
 
 `conversationAttachmentService` owns attachment bytes and extracted document

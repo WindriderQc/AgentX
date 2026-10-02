@@ -4,13 +4,14 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 
-const source = fs.readFileSync(require.resolve('../public/browser-conversation'), 'utf8');
+const source = fs.readFileSync(require.resolve('../../../public/js/voice/browser-conversation'), 'utf8');
 
 test('shared microphone loads its worklet beside the script even after currentScript clears', async () => {
   for (const [scriptUrl, expected] of [
+    ['https://agentx.example.test/js/voice/browser-conversation.js', 'https://agentx.example.test/js/voice/voice-capture-worklet.js?v=1.46.0'],
     ['https://agentx.example.test/assets/household/browser-conversation.js', 'https://agentx.example.test/assets/household/voice-capture-worklet.js?v=1.46.0'],
     ['http://127.0.0.1:4207/llmx-api/assets/browser-conversation.js', 'http://127.0.0.1:4207/llmx-api/assets/voice-capture-worklet.js?v=1.46.0'],
-    [undefined, '/assets/household/voice-capture-worklet.js?v=1.46.0'],
+    [undefined, '/js/voice/voice-capture-worklet.js?v=1.46.0'],
   ]) {
     const modules = [];
     const track = { enabled: true, stop() {}, getSettings: () => ({ echoCancellation: true }) };
