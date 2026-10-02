@@ -6,7 +6,7 @@ are limited to 24,000 extracted characters; PDFs also have a 20-page limit.
 Unreadable, protected or textless PDFs and oversized documents are rejected,
 never silently truncated. OCR, office formats, screen capture and family uploads
 are not implemented. Playground screen capture is tracked in
-[#1](https://github.com/WindriderQc/AgentX/issues/1).
+[#2](https://github.com/WindriderQc/AgentX/issues/2).
 
 Files stay in the browser draft until Send. A message is required. On success,
 the draft clears; on failure it remains available for correction/retry. Repeating

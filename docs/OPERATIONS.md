@@ -479,8 +479,9 @@ query expansion fall back to the always-on `tertiary` host, and a short Nestor
 answer tries `secondary` next.
 
 - Keys are task types, values ordered `{ model, host }` fallbacks (at most
-  four). `host` is `primary`, `secondary` or `tertiary` and needs its
-  `OLLAMA_HOST*` URL. Pin the fallback model on its host first.
+  four). `host` is a configured host ID: `primary`, `secondary`, `tertiary`
+  with its `OLLAMA_HOST*` URL, or an additional ID from the inference host
+  registry described below. Pin the fallback model on its host first.
 - Only `quick_chat`, `buddy_reaction`, `nestor_answer_light`,
   `rag_query_expansion`, `rag_reranking`, `rag_compression` and `janitor_ai`
   may degrade. A ladder naming any other task, an unknown task or an
