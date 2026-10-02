@@ -3,12 +3,12 @@ require('dotenv').config();
 const express = require('express');
 const { createBrowserOriginGuard } = require('../shared/browserOriginGuard');
 const { createServiceIdentity } = require('../shared/serviceIdentity');
-const morgan = require('morgan');
 const { MongoClient } = require('mongodb');
 const { log } = require('./utils/logger');
 const { ensureIndexes } = require('./utils/indexes');
 const errorHandler = require('./middleware/errorHandler');
 const responseEnvelope = require('./middleware/responseEnvelope');
+const { createRequestLog } = require('./middleware/requestLog');
 const storageController = require('./controllers/storageController');
 const liveData = require('./services/liveData');
 const janitorScheduler = require('./services/janitorScheduler');
@@ -26,7 +26,7 @@ app.use(createBrowserOriginGuard());
 app.use(express.json({ limit: '10mb' }));
 // Unify API response envelope: add canonical { ok, error } alongside legacy { status, message }
 app.use(responseEnvelope);
-if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
+if (process.env.NODE_ENV !== 'test') app.use(createRequestLog(log));
 
 // Health
 app.get('/', (req, res) => res.redirect('/health'));
