@@ -1080,3 +1080,20 @@ test('a silent wait speaks one holding phrase in the turn language; a quick repl
   q.conversation.stop();
   assert.equal(holdingPhrase('en', 0), 'One moment…');
 });
+
+test('the browser voice fallback speaks the text in the turn locale and stops on cancel', async () => {
+  const { speakWithBrowser } = require('../public/browser-conversation');
+  const spoken = []; let cancelled = 0;
+  globalThis.SpeechSynthesisUtterance = function (text) { this.text = text; };
+  globalThis.speechSynthesis = { getVoices: () => [{ lang: 'fr-CA', name: 'Example' }], cancel: () => { cancelled++; },
+    speak: utterance => { spoken.push(utterance); setTimeout(() => utterance.onend?.(), 1); } };
+  try {
+    await speakWithBrowser({ text: 'Bonjour.', language: 'fr' }, new AbortController().signal);
+    assert.equal(spoken[0].text, 'Bonjour.'); assert.equal(spoken[0].lang, 'fr-CA'); assert.equal(spoken[0].voice.name, 'Example');
+    const abort = new AbortController();
+    globalThis.speechSynthesis.speak = utterance => spoken.push(utterance);
+    const pending = speakWithBrowser({ text: 'Une longue phrase.', language: 'fr' }, abort.signal);
+    abort.abort(); await pending;
+    assert.equal(cancelled, 1);
+  } finally { delete globalThis.speechSynthesis; delete globalThis.SpeechSynthesisUtterance; }
+});

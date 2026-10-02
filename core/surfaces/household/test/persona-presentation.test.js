@@ -103,3 +103,13 @@ test('cancelled preview ignores late synthesis bytes and cannot start playback',
     assert.equal(fixture.calls.filter(call => call === 'close').length, 1);
   } finally { fixture.restore(); }
 });
+
+test('voice choices fall back from the selection to the persona voice and then its catalog voice', () => {
+  const P = require('../public/persona-presentation');
+  const persona = { voice: { provider: 'voxcpm', presentation: 'masculine', voices: { fr: 'example-clone', en: 'example-clone' }, source: 'instance',
+    fallback: { provider: 'kokoro', presentation: 'masculine', voices: { fr: 'catalog-fr', en: 'catalog-en' } } } };
+  assert.deepEqual(P.speechChoices(persona, 'fr').map(c => c.provider + '|' + c.voice), ['voxcpm|example-clone', 'kokoro|catalog-fr']);
+  assert.deepEqual(P.speechChoices(persona, 'fr', { selections: { fr: 'windows_sapi|Example' } }).map(c => c.provider + '|' + c.voice),
+    ['windows_sapi|Example', 'voxcpm|example-clone', 'kokoro|catalog-fr']);
+  assert.deepEqual(P.speechChoices({ voice: { provider: 'kokoro', presentation: 'feminine', voices: { fr: 'ff_siwis' } } }, 'fr').map(c => c.voice), ['ff_siwis']);
+});

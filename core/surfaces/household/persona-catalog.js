@@ -28,7 +28,8 @@ function instanceVoice(personaId, voice = {}, env = process.env) {
   const choice = map?.[personaId] ?? map?.['*'];
   const match = typeof choice === 'string' && /^(kokoro|windows_sapi|voxcpm)\|([^\r\n|]{1,120})$/.exec(choice);
   if (!match) return voice;
-  return { ...voice, provider: match[1], voices: { fr: match[2], en: match[2] }, source: 'instance' };
+  return { ...voice, provider: match[1], voices: { fr: match[2], en: match[2] }, source: 'instance',
+    fallback: { provider: voice.provider || 'kokoro', presentation: voice.presentation, voices: voice.voices } };
 }
 
 function snapshot(row) {
