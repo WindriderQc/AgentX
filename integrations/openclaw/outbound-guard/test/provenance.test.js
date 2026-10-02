@@ -17,6 +17,8 @@ const review = { agentId: 'mail-agent', sessionKey: 'agent:mail-agent:cron:revie
 
 test('origins come from host context and configured sessions, never model fields', () => {
   assert.equal(nativeActionProvenance(owner, config).origin, 'owner_turn');
+  assert.equal(nativeActionProvenance({ ...owner, requester: { senderIsOwner: false } }, config).origin, 'unknown');
+  assert.equal(nativeActionProvenance({ ...owner, requester: { senderId: '999' } }, config).origin, 'unknown');
   assert.equal(nativeActionProvenance(review, config).origin, 'ingested_content');
   assert.equal(nativeActionProvenance({ ...review, requester: { senderIsOwner: true } }, config).origin, 'ingested_content');
   assert.equal(nativeActionProvenance({ agentId: 'main', sessionKey: 'agent:main:cron:other' }, config).origin, 'scheduled');

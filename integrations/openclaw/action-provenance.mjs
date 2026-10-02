@@ -24,13 +24,19 @@ export function nativeActionProvenance(context = {}, config = {}, pluginConfig =
   const session = typeof context.sessionKey === 'string' ? context.sessionKey : '';
   const prefix = context.agentId ? `agent:${context.agentId}:` : '';
   const consistent = Boolean(prefix && session.startsWith(prefix));
+  const requester = context.requester;
+  const ownerContext = requester?.senderId ? { ...context, senderId: requester.senderId } : context;
+  // Prefer the host's explicit identity observation to the legacy session
+  // convention; a denied or mismatched requester is never an owner turn.
+  const ownerVerified = requester?.senderIsOwner === true
+    || (requester?.senderIsOwner !== false && privateOwnerContext(ownerContext, config));
   let origin = 'unknown';
   if (consistent) {
     const kind = session.slice(prefix.length);
     if (kind.startsWith('subagent:') || context.sandboxed) origin = 'delegated';
     else if (configuredJobContext(context, secretaryKeys)) origin = 'ingested_content';
     else if (kind.startsWith('cron:') || configuredJobContext(context, briefingKeys)) origin = 'scheduled';
-    else if (privateOwnerContext(context, config) || context.requester?.senderIsOwner === true) origin = 'owner_turn';
+    else if (ownerVerified) origin = 'owner_turn';
   }
   return agentActionProvenance({ ...context, origin });
 }
