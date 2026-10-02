@@ -18,6 +18,13 @@ const { plainReply } = replyChannels;
 const { scoreSpeechLanguage } = require('./public/speech-language');
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
+const teamAddress = require('./team-address');
+
+// A team member's own personality, from the shared catalog definitions.
+function teamPersona(agentId) {
+  const row = personaCatalog.generatedPersonas().find((entry) => entry.uiConfig.layoutConfig.agentId === agentId);
+  return row ? personaCatalog.snapshot({ ...row, version: 0, _id: 'catalog' }) : null;
+}
 
 const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
 
@@ -120,6 +127,8 @@ function createPersonaTurnHandler({
       // not consume this browser sound payload, so it must not invite a child to
       // listen and then produce silence.
       let sound = null;
+      // Set when the turn addresses another team member (#41): who answers, and with which voice.
+      let member = null, memberPersona = null, speaker = null;
       let continuity = { status: 'not-required', source: 'session-audit', messageCount: 0 };
       let toolEvidence = null;
       let metadata = { model: '', hostKey: '', routingSource: 'deterministic' };
@@ -145,9 +154,18 @@ function createPersonaTurnHandler({
         // Scope chooses context and permissions. The same executor handles every
         // pack; its selected backend stays fixed for this conversation.
         const backend = conversationBackend(session.backend, conversationEnv);
-        if (backend === 'openclaw') await requireNativeAgent(agentIdFor(session));
+        // #41: a turn that names another team member runs in that member's own session.
+        member = backend === 'openclaw' && !pack.childSafe && !isLlmX
+          ? teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session)) : null;
+        memberPersona = member ? teamPersona(member.agentId) : null;
+        const turnSession = member ? teamAddress.memberSession(session, member, memberPersona) : session;
+        if (member) {
+          speaker = { agentId: member.agentId, name: memberPersona?.name || member.agentId, personaId: memberPersona?.id || null };
+          event('speaker', { speaker });
+        }
+        if (backend === 'openclaw') await requireNativeAgent(agentIdFor(turnSession));
         let history = [];
-        if (backend === 'agentx' || !session.agentSessionKey || attachmentStore) {
+        if (backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore) {
           try { history = sessionHistoryMessages(await loadSessionAuditRows(conversations, session, pack), pack); }
           catch { return fail(res, 503, 'Conversation history is unavailable; no out-of-context answer was generated.', 'VOICE_PERSONA_HISTORY_UNAVAILABLE'); }
         }
@@ -197,10 +215,11 @@ function createPersonaTurnHandler({
           holdState = await openHold.waitForResident(holdState, { signal: abort.signal,
             onStatus: state => event('status', { phase: state.phase }) });
         }
-        const nativeInstructions = agentInstructions(session, session.persona,
+        const nativeInstructions = agentInstructions(turnSession, turnSession.persona,
           pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode,
           { soundPlayback: !pack.childSafe && browserSoundPlayback, channel: req.body?.channel })
-          + (personalVoice(session, req.body?.channel) ? '' : systemPromptFor(pack, { ...context, contextOnly: true })) + workshopPrompt(workshop)
+          + (member ? teamAddress.memberInstruction(speaker.name) : teamAddress.exchangeContext(session.teamExchange))
+          + (personalVoice(turnSession, req.body?.channel) ? '' : systemPromptFor(pack, { ...context, contextOnly: true })) + workshopPrompt(workshop)
           + sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : '') + (isLlmX ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }) + brain.contextFor(session.sessionId));
         const agentxInstructions = [systemPromptFor(pack, context), session.persona?.identity,
           'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
@@ -212,19 +231,27 @@ function createPersonaTurnHandler({
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ allowSecrets: !pack.childSafe, language: replyLanguage,
           onSay: delta => { if (!res.writableEnded) event('delta', { delta }); }, onShow: block => visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage })
             .then(shown => { if (!res.writableEnded) event('show', { block: shown }); })) });
-        const run = executeConversation({ backend, session, pack: isOpening ? { ...pack, maxTokens: 180 }
+        const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history, streaming, channel: req.body?.channel,
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
-          instructions: nativeInstructions, agentxInstructions, ...(personalVoice(session, req.body?.channel) ? { turnContext: systemPromptFor(pack, { ...context, contextOnly: true }) } : {}),
+          instructions: nativeInstructions, agentxInstructions, ...(personalVoice(turnSession, req.body?.channel) ? { turnContext: systemPromptFor(pack, { ...context, contextOnly: true }) } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
           signal: abort.signal, onWaiting: () => event('status', { phase: 'waiting_host' }), onActivity: activity => event('status', { phase: 'activity', activity }),
           onStarted: async (key, runId) => {
             if (runId) entry.auditContext = { ...entry.auditContext,
-              toolEvidence: { authority: `openclaw/${agentIdFor(session)}`, sessionKey: key, runId } };
-            await conversations.updateSession({ sessionId: session.sessionId }, { $set: { agentSessionKey: key } });
-            session.agentSessionKey = key;
+              toolEvidence: { authority: `openclaw/${agentIdFor(turnSession)}`, sessionKey: key, runId } };
+            if (member) {
+              // The member's own native session; the conversation agent's key is never replaced.
+              const keys = { ...(session.agentSessionKeys || {}), [member.agentId]: key };
+              await conversations.updateSession({ sessionId: session.sessionId }, { $set: { agentSessionKeys: keys } });
+              session.agentSessionKeys = keys;
+            } else {
+              await conversations.updateSession({ sessionId: session.sessionId }, { $set: { agentSessionKey: key } });
+              session.agentSessionKey = key;
+            }
+            turnSession.agentSessionKey = key;
           },
           onSettled: () => { entry.executionSettled = true; },
           onDelta: delta => { entry.generated = (entry.generated + delta).slice(0, 5000); if (channels) channels.push(delta); else if (!isOpening && !sceneEnabled) event('delta', { delta }); }
@@ -234,7 +261,7 @@ function createPersonaTurnHandler({
         entry.executionSettled = true;
         metadata = result.metadata; if (metadata?.routing?.degraded) { fallbackUsed = true; fallbackReason = `task_fallback_${metadata.routing.reason}`; } // #135 degraded fallback
         routeTier = backend === 'openclaw' ? 'agent' : 'router';
-        continuity = backend === 'openclaw' ? { status: 'ready', source: `openclaw/${agentIdFor(session)}`, sessionKey: result.sessionKey }
+        continuity = backend === 'openclaw' ? { status: 'ready', source: `openclaw/${agentIdFor(turnSession)}`, sessionKey: result.sessionKey }
           : { status: 'ready', source: 'session-audit', messageCount: history.length };
         if (!pack.childSafe) continuity.personal = { status: 'ready', authority: 'agentx.core', notes: memories };
         toolEvidence = result.tools;
@@ -297,6 +324,7 @@ function createPersonaTurnHandler({
         knowledgeSourceCount: knowledge.sourceCount,
         knowledgeCorpusFingerprint: knowledge.corpusFingerprint,
         personalContinuity: continuity.personal || null, toolEvidence,
+        speakerAgentId: speaker?.agentId || '',
         durationMs: Date.now() - startedAt
       }, { sessionPatch: isOpening ? {
         'llmx.opening.status': 'completed', 'llmx.opening.completedAt': new Date(),
@@ -305,6 +333,10 @@ function createPersonaTurnHandler({
       entry.auditWritten = true;
       entry.traceId = traceId; if (!isLlmX) brain.schedule({ session, pack, traceId });
       entry.replyText = replyText;
+      // The conversation's agent hears about a member's answer once, on its next turn.
+      if (member) await conversations.updateSession({ sessionId: session.sessionId },
+        { $set: { teamExchange: teamAddress.exchangeRecord(member, speaker.name, userText, replyText) } });
+      else if (session.teamExchange) await conversations.updateSession({ sessionId: session.sessionId }, { $unset: { teamExchange: '' } });
       const updated = await conversations.getSession({ sessionId: session.sessionId });
       const resultPayload = {
         traceId,
@@ -315,8 +347,9 @@ function createPersonaTurnHandler({
         mode: modeSummary(pack.modes.find((entry) => entry.id === session.modeId) || pack.modes[0]),
         // The surface reads this aloud, so it is told which voice to use rather
         // than re-deriving it from the question and disagreeing with the text.
-        reply: { text: replyText, language: spokenReplyLanguage(replyText, userText),
-          speech: personaCatalog.speechFor(session.persona, spokenReplyLanguage(replyText, userText), session.voice) },
+        reply: { text: replyText, language: spokenReplyLanguage(replyText, userText), speaker,
+          speech: speaker ? personaCatalog.speechFor(memberPersona || session.persona, spokenReplyLanguage(replyText, userText), {})
+            : personaCatalog.speechFor(session.persona, spokenReplyLanguage(replyText, userText), session.voice) },
         // Present only when a clip was selected; the browser may offer playback
         // once speech finishes, but this response is not a playback receipt.
         sound: sound ? { ...sound, play: 'after-reply' } : null,

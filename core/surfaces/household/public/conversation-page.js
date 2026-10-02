@@ -213,11 +213,14 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const selection = () => ({ wakeWord: el('conversationWake').checked, backend: backendPicker.value, agentId: family ? 'family' : selectedAgent().id, personaId: selected().id, personaVersion: selected().version,
     inference: { open: !family && open.checked }, voice: { presentation: chosenVoice(), selections: P.selections({ fr: voice.value, en: voiceEnglish.value }) }, language: language.value,
     visual: visualSelection(), interruption: interruption.checked });
-  const message = (role, text, interrupted = false, sound = null, attachments = []) => {
+  // The team member answering this turn when it addressed one directly (#41); null for the conversation's agent.
+  let turnSpeaker = null;
+  const message = (role, text, interrupted = false, sound = null, attachments = [], speakerName = role === 'assistant' ? turnSpeaker?.name : '') => {
     transcript.querySelector('.empty')?.remove(); el('conversationResume').hidden = true;
     let row = role === 'assistant' ? partial : null;
     if (!row) { row = document.createElement('div'); row.className = `conversation-message ${role}`; transcript.append(row); }
     row.textContent = role === 'assistant' && sound ? NestorSpeech.withoutMediaReferences(text) : text; partial = null;
+    if (speakerName) row.dataset.speaker = speakerName; else delete row.dataset.speaker;
     if (role === 'assistant' && degradedReply) { row.dataset.degraded = 'true'; degradedReply = false; } // #135 fallback model
     attachments.forEach(attachment => {
       const link = document.createElement('a'); link.href = attachmentUrl(conversation.session.sessionId, attachment.id);
@@ -257,7 +260,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice } = {}) {
     personalNotes.show(null);
-    activeBrowserTurn = turnId; activity('turn'); brain.cancel();
+    activeBrowserTurn = turnId; activity('turn'); brain.cancel(); turnSpeaker = null;
     const response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
       method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
     if (!response.ok) { const body = await response.json(); throw new Error(body.message || 'Conversation unavailable'); }
@@ -270,6 +273,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (!line.trim()) return;
       const event = JSON.parse(line);
       if (event.type === 'error') throw new Error(event.message);
+      if (event.type === 'speaker') { turnSpeaker = event.speaker || null; if (turnSpeaker) el('conversationStatus').textContent = `${turnSpeaker.name} te répond.`; }
       if (event.type === 'tools') { showTools(event.evidence); activity('tools', { count: event.evidence?.receipts?.length || 1 }); }
       if (event.type === 'scene' && !interruptedTurns.has(turnId)) activity('scene', { scene: event.scene });
       if (event.type === 'show' && !interruptedTurns.has(turnId)) board.add(event.block);
@@ -297,7 +301,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
       if (event.type === 'delta' && !interruptedTurns.has(turnId)) {
         answer += event.delta;
-        if (!partial) { partial = document.createElement('div'); partial.className = 'conversation-message assistant'; transcript.append(partial); }
+        if (!partial) { partial = document.createElement('div'); partial.className = 'conversation-message assistant'; if (turnSpeaker) partial.dataset.speaker = turnSpeaker.name; transcript.append(partial); }
         partial.textContent = answer; onDelta(event.delta); activity('delta', { size: event.delta.length });
       }
       if (event.type === 'done') { result = event.data; activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); void brain.follow(session.sessionId, event.data?.traceId); }
@@ -406,8 +410,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
     async synthesize(reply, signal) {
       const lang = NestorSpeech.replySpeechLanguage(reply.text, reply.language);
-      const persona = conversation.session?.persona || selected();
-      return synthesize(reply.text, lang, persona, conversation.session?.voice || {}, signal);
+      // A member who answers directly speaks with its own personality's voice, not the session's choices.
+      const member = turnSpeaker && personas.find(p => p.id === turnSpeaker.personaId);
+      const persona = member || conversation.session?.persona || selected();
+      return synthesize(reply.text, lang, persona, member ? {} : conversation.session?.voice || {}, signal);
     },
     // The household speaks French unless English was chosen; the browser's own
     // locale greeted a French family in English. The line
@@ -708,7 +714,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       transcript.replaceChildren(); partial = null; board.clear(); brain.reset();
       (data.turns || []).forEach(turn => {
         if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);
-        if (turn.replyText) message('assistant', turn.replyText, turn.interrupted);
+        if (turn.replyText) message('assistant', turn.replyText, turn.interrupted, null, [], turn.speakerAgentId ? ConversationTeam.memberName(team, agents, turn.speakerAgentId) : '');
         board.restore(turn.display);
       });
       personalNotes.show(data.turns?.at(-1)?.personalContinuity);

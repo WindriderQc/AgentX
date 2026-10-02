@@ -724,6 +724,7 @@ a.service { text-decoration: none; }
 .conversation-team .team-card { min-height: 40px; padding: 6px 14px; border: 1px solid #2c4a50; border-radius: 999px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .conversation-team .team-card.active { border-color: #52cfc5; background: #173d43; font-weight: 600; }
 .conversation-team .team-card:disabled { opacity: .45; cursor: not-allowed; }
+.conversation-message.assistant[data-speaker]::before { content: attr(data-speaker); display: block; margin-bottom: 4px; color: #e0b252; font-size: .78rem; font-weight: 600; letter-spacing: .02em; }
 .conversation-locked { margin: 8px 0 12px; padding: 8px 10px; border-left: 3px solid #e0b252; background: rgba(224, 178, 82, .08); font-size: .85rem; line-height: 1.45; }
 .conversation-history { border: 1px solid #29404d; border-radius: 18px; padding: 18px; margin-bottom: 24px; background: #0c1b26; }
 .conversation-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }

@@ -1454,6 +1454,17 @@
       "description": "Optional JSON mapping a Household persona id, or \"*\", to an instance voice \"provider|voice\" (kokoro, windows_sapi or voxcpm). A browser voice selection still wins. Unset: catalog voices.",
       "fallback": "catalog persona voices"
     },
+    "HOUSEHOLD_TEAM_MEMBERS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional JSON mapping an OpenClaw agent id to the names the owner uses to address it directly in Super Dad (\"Secretary, ...\", \"ask the secretary ...\"). That turn goes to the agent's own session and voice. Unset: every turn stays with the conversation's agent.",
+      "fallback": "no direct addressing"
+    },
     "HOUSEHOLD_BRAIN_EXCLUSIVE": {
       "services": [
         "core"

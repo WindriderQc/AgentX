@@ -391,6 +391,15 @@ browser's own voice selection still wins; invalid entries keep the catalog voice
 The chosen engine must be available: an unavailable VoxCPM2 worker leaves the
 reply unspoken rather than substituting another voice.
 
+`HOUSEHOLD_TEAM_MEMBERS` optionally lets the owner address a team member
+directly in Super Dad: a JSON object maps an OpenClaw agent id to the names it
+answers to. A personal turn that starts with that name, or asks to "ask" or
+"demande à" it, runs in that agent's own native session (its model, tools and
+memory; the conversation agent's session key is never replaced), shows its name
+on the reply and speaks with the catalog personality that declares the agent.
+The next turn returns to the conversation's agent, which receives that exchange
+once as reference data. Family turns never use it.
+
 Live voice transcribes through VoiX. `HOUSEHOLD_BROWSER_STT_FALLBACK` optionally
 lets Super Dad (`personal`) or both spaces (`true`) fall back to the browser's own
 speech recognition when VoiX is unreachable (transcription 502/503/504, a network
