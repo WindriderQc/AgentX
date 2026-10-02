@@ -45,7 +45,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Exiger « Hey Nestor »</label><p class="muted">Avec réveil vocal, Nestor revient en veille après 30 secondes sans intervention ou dès « Merci Nestor ». En conversation ouverte, il répond aux paroles tant que le micro est actif. Les phrases sont transcrites sur le réseau local avant la détection du nom ; seules les phrases adressées à Nestor entrent dans la conversation.</p>${family ? '' : '<a href="/voice/native" class="conversation-native">Appareils et diagnostic audio</a>'}</details>
     </details><section class="conversation-stage" aria-label="Conversation">
       <div id="conversationPresence" class="conversation-presence" data-state="idle" aria-hidden="true"><span id="conversationInitial">N</span></div>
-      <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Préparation de Nestor…</p><p id="conversationDevice" class="muted">Microphone et haut-parleurs de cet appareil</p>
+      <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Préparation de Nestor…</p><p id="conversationDevice" class="muted">Microphone et haut-parleurs de cet appareil</p><p id="conversationVoiceNotice" class="muted" role="status" hidden></p>
       <div class="conversation-actions"><button id="conversationStart" type="button" class="button primary" hidden disabled>Activer Nestor</button><button id="conversationPause" type="button" class="button" disabled>Pause</button><button id="conversationEnd" type="button" class="button danger" disabled>Arrêter</button></div>
       <details id="conversationAudio" class="conversation-audio"><summary>Audio & transcription</summary>
         <p class="muted">Replay up to 20 seconds from this microphone. One excerpt stays in this tab for at most 2 minutes. Pause, End or leaving the page erases it.</p>
@@ -301,11 +301,24 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     } finally { await reader.cancel().catch(() => {}); }
   }
   const labels = { idle: 'Prêt à écouter.', starting: 'Activation du microphone…', listening: 'Je t’écoute…', hearing: 'Je t’écoute…', transcribing: 'Un instant…', waiting: 'Je termine la réponse précédente…', thinking: 'Je réfléchis…', preparing: 'Je prépare la réponse…', speaking: 'Nestor répond…', paused: 'Micro coupé. Active Nestor pour reprendre.', error: 'Conversation en pause.', reviewing: 'Micro coupé pour la réécoute. Active Nestor pour reprendre.', resuming: 'Reprise après la lecture…' };
+  const voiceNotice = text => { const node = el('conversationVoiceNotice'); node.hidden = !text; node.textContent = text || ''; };
   async function synthesize(text, lang, persona, voicePrefs, signal, source = 'Conversation') {
-    const speech = P.speechFor(persona, lang, voicePrefs);
-    const response = await fetch('/api/voix/synthesize/stream', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, language: lang, voice: speech.voice, tts_provider: speech.provider }) });
-    if (!response.ok) throw new Error('Voice playback is unavailable. Your text conversation is saved.');
+    // Fallback ladder: chosen voice, persona voice, catalog voice, then the browser's own voice.
+    let response, speech;
+    for (const [index, choice] of P.speechChoices(persona, lang, voicePrefs).entries()) {
+      try {
+        response = await fetch('/api/voix/synthesize/stream', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, language: lang, voice: choice.voice, tts_provider: choice.provider }) });
+      } catch (error) { if (signal.aborted) throw error; response = null; break; }
+      if (response.ok) { speech = choice; voiceNotice(index ? 'Voix choisie indisponible : voix de secours.' : ''); break; }
+    }
+    if (!response?.ok) {
+      if (!signal.aborted && 'speechSynthesis' in window) {
+        voiceNotice('Voix du serveur indisponible : voix de ce navigateur.');
+        return { browserSpeech: { text, language: lang } };
+      }
+      throw new Error('La voix est indisponible pour le moment. Ta conversation continue par écrit.');
+    }
     if (!signal.aborted) {
       const acknowledged = decodeURIComponent(response.headers.get('X-Voix-Voice') || '');
       const actualLanguage = response.headers.get('X-Nestor-Speech-Language');

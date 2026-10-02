@@ -608,6 +608,24 @@
     }
   }
 
+  // Last rung of the voice ladder: the device's own speech synthesis, cancelled like PCM playback.
+  function speakWithBrowser({ text, language }, signal) {
+    const synth = root.speechSynthesis;
+    if (!synth || signal.aborted) return Promise.resolve();
+    return new Promise(resolve => {
+      const utterance = new root.SpeechSynthesisUtterance(text);
+      const profile = speechLanguage.PROFILES?.[language === 'en' ? 'en' : 'fr'];
+      utterance.lang = profile?.locale || (language === 'en' ? 'en-CA' : 'fr-CA');
+      const voice = speechLanguage.pickBrowserVoice?.(synth.getVoices(), profile);
+      if (voice) utterance.voice = voice;
+      const done = () => { signal.removeEventListener('abort', stop); resolve(); };
+      const stop = () => { synth.cancel(); done(); };
+      utterance.onend = done; utterance.onerror = done;
+      signal.addEventListener('abort', stop, { once: true });
+      synth.speak(utterance);
+    });
+  }
+
   async function openAudio(signal, onError = () => {}, options = {}) {
     const Context = root.AudioContext || root.webkitAudioContext;
     if (!root.isSecureContext || !Context || !root.navigator.mediaDevices?.getUserMedia) {
@@ -712,6 +730,7 @@
         const observed = analyser && !isReview && gain === null;
         if (observed) activeSpeech = abort;
         try {
+          if (bytes?.browserSpeech) return await speakWithBrowser(bytes.browserSpeech, abort.signal);
           return await new root.VoixAudio.Player(!isReview && playbackHold ? playbackHold.playerContext : context, {
             destinations: output ? [output] : isReview ? [context.destination] : [observed ? analyser : context.destination, { node, input: 1 }],
             onMetrics: options.onPlaybackMetrics,
@@ -780,7 +799,7 @@
     return response.arrayBuffer();
   }
 
-  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, isTranscriptHallucination, isSpokenEcho, holdingPhrase, nextSpeechChunkLength };
+  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isTranscriptHallucination, isSpokenEcho, holdingPhrase, nextSpeechChunkLength };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.NestorConversation = api;
 })(typeof window === 'undefined' ? globalThis : window);

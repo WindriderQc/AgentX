@@ -54,7 +54,8 @@ test('an instance voice replaces catalog voices per persona or for every persona
   const catalog = { provider: 'kokoro', presentation: 'masculine', voices: { fr: 'catalog-fr', en: 'catalog-en' } };
   const env = { HOUSEHOLD_PERSONA_VOICES: JSON.stringify({ '*': 'voxcpm|example-clone', jarvis: 'kokoro|example-jarvis' }) };
   const nestor = instanceVoice('nestor', catalog, env);
-  assert.deepEqual(nestor, { provider: 'voxcpm', presentation: 'masculine', voices: { fr: 'example-clone', en: 'example-clone' }, source: 'instance' });
+  assert.deepEqual(nestor, { provider: 'voxcpm', presentation: 'masculine', voices: { fr: 'example-clone', en: 'example-clone' }, source: 'instance',
+    fallback: { provider: 'kokoro', presentation: 'masculine', voices: { fr: 'catalog-fr', en: 'catalog-en' } } });
   assert.equal(instanceVoice('jarvis', catalog, env).voices.fr, 'example-jarvis');
   for (const language of ['fr', 'en']) assert.deepEqual(speechFor({ voice: nestor }, language), { provider: 'voxcpm', language, voice: 'example-clone', presentation: 'masculine' });
   assert.equal(speechFor({ voice: nestor }, 'fr', { presentation: 'feminine' }).voice, 'example-clone');
