@@ -369,11 +369,14 @@ async function resolveCapabilities(model, host, deps = {}) {
   };
 }
 
-function requestText({ prompt, system, messages }) {
+function requestText({ prompt, system, messages, tools }) {
+  const content = value => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value);
+  const parts = [system];
   if (Array.isArray(messages)) {
-    return messages.map((message) => String(message?.content || '')).join('\n');
-  }
-  return [system, prompt].filter((value) => typeof value === 'string').join('\n');
+    parts.push(...messages.map(message => [content(message?.content), content(message?.tool_calls)].filter(Boolean).join('\n')));
+  } else parts.push(prompt);
+  if (Array.isArray(tools) && tools.length) parts.push(JSON.stringify(tools));
+  return parts.filter(value => typeof value === 'string').join('\n');
 }
 
 function estimateInputTokens(input = {}) {

@@ -377,8 +377,9 @@ async function executeRoutedInference(deps, request, options = {}) {
     path: 'trusted-extension-contract',
     ...claimProof
   });
+  payload = buildLocalPayload(request, model, runtimeOptions, keepAlive);
   const runtime = await prepareInferenceRuntime({
-    model, host: hostUrl, prompt: request.prompt, messages: request.messages,
+    ...payload, host: hostUrl,
     options: runtimeOptions, keepAlive, think: request.think,
   }, request.mode === 'embed' ? 'embed' : 'extension', deps);
   ({ options: runtimeOptions, keepAlive, numCtxSource, inferenceContract } = runtime);

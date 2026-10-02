@@ -100,4 +100,12 @@ describe('caller runtime compatibility', () => {
     expect(result.options).toEqual(options);
     expect(result.numCtxSource).toBe('caller');
   });
+
+  test.each(['chat', 'extension', 'direct'])('%s passes native tool schemas to context accounting', async policy => {
+    const deps = makeDeps();
+    const tools = [{ type: 'function', function: { name: 'read', description: 'Full schema' } }];
+    await prepareInferenceRuntime({ model: 'example:latest', tools,
+      messages: [{ role: 'user', content: 'hello' }], options: { num_ctx: 2048 } }, policy, deps);
+    expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.objectContaining({ tools }));
+  });
 });

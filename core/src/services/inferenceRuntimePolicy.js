@@ -46,7 +46,7 @@ async function prepareInferenceRuntime(request, policy, overrides = {}) {
     }
   }
   const contractInput = {
-    model, host, prompt, messages, system,
+    model, host, prompt, messages, system, tools: request.tools,
     requestedNumCtx: options.num_ctx, numCtxSource,
     requestedMaxOutputTokens: options.num_predict,
   };
