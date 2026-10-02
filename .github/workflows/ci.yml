@@ -1,0 +1,176 @@
+name: agentx-ci
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Private repositories may select a runner with AGENTX_CI_RUNNER.
+# Public repositories always use disposable GitHub-hosted runners.
+
+# A newer push to the same pull request cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    # Drafts are not tested; marking the pull request ready starts the run.
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [core, benchmark, rag, data]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Required check names stay stable: an out-of-scope service reports
+      # success without installing or testing.
+      - id: scope
+        env:
+          CI_SCOPE_JOB: ${{ matrix.service }}
+          CI_SCOPE_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci-scope.cjs
+      - if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ${{ matrix.service }}/package-lock.json
+      - if: steps.scope.outputs.run == 'true'
+        run: npm ci
+        working-directory: ${{ matrix.service }}
+      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
+        run: npm run setup:integrations
+      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
+        run: python3 -m unittest discover -s integrations/voix -p 'test_*.py'
+      - if: steps.scope.outputs.run == 'true'
+        run: npm run build --if-present
+        working-directory: ${{ matrix.service }}
+      - if: steps.scope.outputs.run == 'true'
+        run: npm test -- --runInBand
+        working-directory: ${{ matrix.service }}
+      - if: steps.scope.outputs.run == 'true'
+        run: npm run test:surfaces --if-present
+        working-directory: ${{ matrix.service }}
+
+  compose:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    env:
+      AGENTX_BUILD_REVISION: ${{ github.sha }}
+      # No local inference host, production endpoint or operator secret in CI.
+      AGENTX_OLLAMA_HOST: http://127.0.0.1:9
+      AGENTX_PROFILE: full
+      COMPOSE_PROFILES: data
+      AGENTX_PROJECT_NAME: agentx-ci
+      AGENTX_ENV_FILE: /tmp/agentx-ci-instance.env
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          CI_SCOPE_JOB: compose
+          CI_SCOPE_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci-scope.cjs
+      - name: External instance settings
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          cp config/agentx.env "$AGENTX_ENV_FILE"
+          cat >> "$AGENTX_ENV_FILE" <<'ENV'
+          CORE_PORT=43180
+          BENCHMARK_PORT=43181
+          RAG_PORT=43182
+          DATA_PORT=43183
+          PSYX_ACCESS_TOKEN=ci-synthetic-psyx-code
+          AGENTX_PARENTAL_CODE=ci-synthetic-parent-code
+          AGENTX_RUNTIME_BRIDGES_ENABLED=true
+          AGENTX_PRINTER_VISION_ENABLED=true
+          ENV
+      - name: Scripts parse
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          bash -n agentx
+          bash -n integrations/coding/dsh-studio.sh
+          bash -n integrations/coding/dsh-headless.sh
+          bash -n integrations/coding/run-coding-dispatcher-one-shot.sh
+          bash -n integrations/operations/backup-critical-runtime-state.sh
+          bash -n integrations/operations/restore-drill-critical-runtime-state.sh
+          node --check core/server.js
+          node --check benchmark/server.js
+          node --check rag/server.js
+          node --check data/server.js
+      - name: Compose renders
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          AGENTX_BUILD_REVISION=ci docker compose --env-file config/agentx.env -f docker-compose.yml config --quiet
+          AGENTX_BUILD_REVISION=ci docker compose --env-file config/agentx.env -f docker-compose.yml -f docker-compose.ollama.yml --profile ollama config --quiet
+          node scripts/check-compose-isolation.cjs
+      - name: Build and start disposable stack
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          bash ./agentx up --build
+          bash ./agentx health
+      - name: Native backup and restore round trip
+        if: steps.scope.outputs.run == 'true'
+        run: bash integrations/operations/tests/backup-roundtrip.sh
+      - name: Application and Qdrant smoke
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          for port in 43180 43181 43182 43183; do
+            curl --fail --silent --show-error "http://127.0.0.1:${port}/health"
+          done
+          curl --fail --silent --show-error http://127.0.0.1:43180/dad | grep -q 'assets/household/app.js'
+          curl --fail --silent --show-error http://127.0.0.1:43180/api/family/profiles
+          curl --fail --silent --show-error http://127.0.0.1:43180/data-toolbox | grep -q 'assets/data-toolbox/app.js'
+          curl --fail --silent --show-error http://127.0.0.1:43180/api/data-toolbox/status | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{const d=JSON.parse(s).data;require('node:assert/strict').equal(d.dataService.healthy,d.dataService.total)})"
+          curl --fail --silent --show-error http://127.0.0.1:43180/psyx | grep -q 'PsyX'
+          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/psyx/state)" = 401
+          curl --fail --silent --show-error -H 'Authorization: Bearer ci-synthetic-psyx-code' http://127.0.0.1:43180/api/psyx/state
+          test "$(curl --silent -H 'X-AgentX-Entry: household' -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/voice-personas/private/agents)" = 401
+          curl --fail --silent --show-error -c /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' -H 'Content-Type: application/json' -d '{"code":"ci-synthetic-parent-code"}' http://127.0.0.1:43180/api/access/unlock
+          curl --fail --silent --show-error -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' http://127.0.0.1:43180/api/psyx/state
+          curl --fail --silent --show-error -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' http://127.0.0.1:43180/api/voice-personas/private/agents
+          curl --fail --silent --show-error -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' http://127.0.0.1:43180/panel > /dev/null
+          test "$(curl --silent -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/psyx/state)" = 401
+          curl --fail --silent --show-error http://127.0.0.1:43180/api/runtime-bridges/status
+          curl --fail --silent --show-error http://127.0.0.1:43180/api/printer-vision/adapter
+          docker compose --env-file "$AGENTX_ENV_FILE" exec -T rag node <<'NODE'
+          const assert = require('node:assert/strict');
+          const QdrantVectorStore = require('./src/services/vectorStore/QdrantVectorStore');
+          async function smoke() {
+            const store = new QdrantVectorStore({ collectionName: 'agentx_ci_smoke' });
+            const metadata = { source: 'ci-synthetic', scope: 'private_domain', sensitivity: 'highly_private' };
+            await store.upsertDocument('synthetic-note', metadata, [
+              { chunkIndex: 0, text: 'Synthetic CI content', embedding: [1, 0, 0] }
+            ]);
+            const results = await store.searchSimilar([1, 0, 0], { filters: metadata });
+            assert.equal(results.length, 1);
+            assert.equal(results[0].metadata.sensitivity, 'highly_private');
+            const excluded = await store.searchSimilar([1, 0, 0], { filters: { scope: 'household', sensitivity: 'normal' } });
+            assert.equal(excluded.length, 0);
+            assert.equal((await store.getDocument('synthetic-note')).scope, 'private_domain');
+            assert.equal((await store.listDocuments()).documents[0].sensitivity, 'highly_private');
+            await store.deleteDocument('synthetic-note');
+            assert.equal(await store.getDocument('synthetic-note'), null);
+            console.log('Synthetic Qdrant write/read/filter/delete passed');
+          }
+          smoke().catch(error => { console.error(error); process.exitCode = 1; });
+          NODE
+      - name: Diagnostics on failure
+        if: steps.scope.outputs.run == 'true' && failure()
+        run: |
+          docker compose --env-file "$AGENTX_ENV_FILE" ps -a
+          docker compose --env-file "$AGENTX_ENV_FILE" logs --no-color --tail 100
+      - name: Remove disposable stack
+        if: always() && steps.scope.outputs.run == 'true'
+        run: docker compose --env-file "$AGENTX_ENV_FILE" down --volumes --remove-orphans --timeout 10
