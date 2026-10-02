@@ -804,6 +804,13 @@ observations before the shared quarantine can be restored. A saved measurement
 is separate from a successful runtime restoration. A verified journal left
 after an acknowledged Core release resolves from its durable release receipt.
 
+A running single-model profile can be cancelled from its Profiler panel or with
+`POST /api/profiler/pipeline/profile/:profileId/cancel`. It stops at its next
+checkpoint, once the current runtime request has returned (a CPU context
+sample can take minutes), and Core then restores the pinned models as after any
+profile; the profile ends as `cancelled`. Prefer it to restarting Ollama, which
+leaves the interrupted request UNKNOWN.
+
 For an UNKNOWN workload, use this operator sequence:
 
 1. Inspect the exact operation's journal, Core workload admission and benchmark

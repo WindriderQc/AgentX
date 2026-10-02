@@ -149,7 +149,12 @@ router.post('/profile', async (req, res) => {
 
     // Fire-and-forget
     runJournaledProfile(lease, { hostId, hostUrl: host.hostUrl, modelName }, () => orchestrator.profile(modelName, hostId, host.hostUrl, chosenDepth, {
-      assertClaimActive: lease.assertActive,
+      // A requested cancel stops at the next checkpoint, after the current
+      // runtime request has its terminal response, so nothing is left UNKNOWN.
+      assertClaimActive: () => {
+        lease.assertActive();
+        if (tracker.cancelRequested) throw Object.assign(new Error('Profile cancelled by the operator'), { code: 'PROFILE_CANCELLED' });
+      },
       claimIdentity: lease.identityFor(host.hostUrl),
       signal: lease.signal,
       onProgress: (step, data) => {
@@ -172,9 +177,10 @@ router.post('/profile', async (req, res) => {
           profileId, error: abandonError.message
         }));
       }
-      tracker.status = 'failed';
+      tracker.status = err.code === 'PROFILE_CANCELLED' ? 'cancelled' : 'failed';
       tracker.error = err.message;
-      logger.error('Profile job failed', { profileId, modelName, hostId, error: err.message });
+      if (tracker.status === 'cancelled') tracker.statusMessage = 'Cancelled; pinned models restored';
+      logger[tracker.status === 'cancelled' ? 'info' : 'error']('Profile job ended', { profileId, modelName, hostId, status: tracker.status, error: err.message });
     }).finally(async () => {
       // Core performs a fenced restore under this exact lease and releases
       // only after pinned residency verifies.
@@ -194,6 +200,18 @@ router.post('/profile', async (req, res) => {
 
     res.json({ status: 'success', data: { profileId } });
   } catch (err) { res.status(500).json({ status: 'error', error: err.message }); }
+});
+
+// Cancel a running profile. It stops at its next checkpoint (the current
+// request finishes first: a CPU context sample can take minutes), then Core
+// restores the pinned models as after any profile.
+router.post('/profile/:profileId/cancel', (req, res) => {
+  const tracker = activeProfiles.get(req.params.profileId);
+  if (!tracker) return res.status(404).json({ status: 'error', error: 'Profile not found' });
+  if (tracker.status !== 'running') return res.json({ status: 'success', data: { profileStatus: tracker.status, cancelRequested: false } });
+  tracker.cancelRequested = true;
+  tracker.statusMessage = 'Cancelling after the current request…';
+  return res.json({ status: 'success', data: { profileStatus: 'running', cancelRequested: true } });
 });
 
 // List active profiles (for detecting externally-started profiles)
@@ -218,6 +236,7 @@ router.get('/profile/:profileId/progress', async (req, res) => {
   const contextProposal = await completionProposal(tracker);
   res.json({ status: 'success', data: {
     profileStatus: tracker.status,
+    cancelRequested: tracker.cancelRequested === true,
     modelName: tracker.modelName,
     hostId: tracker.hostId,
     hostUrl: tracker.hostUrl || null,
