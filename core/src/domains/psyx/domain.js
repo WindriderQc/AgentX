@@ -56,7 +56,8 @@ function resolveControl(control, recommendation = null) {
     mode: autoMode ? recommendation?.stance || 'talk' : control.mode,
     depth: autoDepth ? recommendation?.depth || 'normal' : control.depth,
     auto: { mode: autoMode, depth: autoDepth },
-    reason: (autoMode || autoDepth) && recommendation?.reason ? recommendation.reason : ''
+    // The reason explains the recommended stance, so it only accompanies an automatic stance.
+    reason: autoMode && recommendation?.reason ? recommendation.reason : ''
   };
 }
 

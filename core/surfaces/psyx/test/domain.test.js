@@ -28,7 +28,7 @@ test('auto stance and depth follow the review recommendation, explicit choices w
   assert.match(controlSystemMessage(auto), /Mode: CHALLENGE[\s\S]*Chosen automatically after reviewing this conversation: A convenient story/);
 
   const manual = resolveControl(normalizeControl({ mode: 'talk', depth: 'auto' }), next);
-  assert.deepEqual([manual.mode, manual.depth, manual.auto], ['talk', 'deep', { mode: false, depth: true }]);
+  assert.deepEqual([manual.mode, manual.depth, manual.auto, manual.reason], ['talk', 'deep', { mode: false, depth: true }, '']);
   const firstTurn = resolveControl(normalizeControl({ mode: 'auto', depth: 'auto' }), null);
   assert.deepEqual([firstTurn.mode, firstTurn.depth, firstTurn.reason], ['talk', 'normal', '']);
   assert.doesNotMatch(controlSystemMessage(normalizeControl({})), /Chosen automatically/);
