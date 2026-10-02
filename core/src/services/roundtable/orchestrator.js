@@ -427,7 +427,7 @@ async function executeRound(roundtableDoc, roundNum, agents, buildMessages, time
       if (searchResult.formatted) {
         messages.splice(messages.length - 1, 0, {
           role: 'user',
-          content: `Use these web search results as additional context for your analysis:\n\n${searchResult.formatted}`
+          content: require('../webSearch').untrustedSearchMessage(searchResult.formatted)
         });
       }
       if (emitter) emitter.emit('chunk', { type: 'web-search-done', agentId: agent.agentId, round: roundNum, resultCount: webSearchResults.length });
