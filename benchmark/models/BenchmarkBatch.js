@@ -429,20 +429,19 @@ BenchmarkBatchSchema.statics.getAuthoritativeCounts = async function(batchId) {
     };
 };
 
-BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSeconds = 300) {
-    // Only mark batches as stale if they've been inactive for the threshold period
-    // This prevents killing active batches on server restart/reload
+BenchmarkBatchSchema.statics.cleanupStale = function(inactivityThresholdSeconds = 300) {
+    // Only inactive batches: a server restart/reload must not kill active ones.
     const threshold = new Date(Date.now() - (inactivityThresholdSeconds * 1000));
-
-    // Find stale batches first so we can fix them properly
-    const staleBatches = await this.find({
+    return this.reconcileAbandoned({
         status: { $in: ['running', 'judging'] },
-        $or: [
-            { last_activity_at: { $lt: threshold } },
-            { last_activity_at: null }
-        ]
-    });
+        $or: [{ last_activity_at: { $lt: threshold } }, { last_activity_at: null }]
+    }, 'stale_cleanup', 'Batch reconciled after inactivity threshold was exceeded');
+};
 
+// Settle running/judging batches that no process executes: completed when
+// every test and judgment finished, otherwise interrupted (resumable).
+BenchmarkBatchSchema.statics.reconcileAbandoned = async function(filter, timelineEvent, timelineError) {
+    const staleBatches = await this.find(filter);
     let fixedCount = 0;
 
     for (const batch of staleBatches) {
@@ -459,8 +458,8 @@ BenchmarkBatchSchema.statics.cleanupStale = async function(inactivityThresholdSe
                 status: reconciledStatus,
                 judgeStatus: deriveTerminalJudgeStatus(batch, counts, reconciledStatus),
                 authoritativeCounts: counts,
-                timelineEvent: 'stale_cleanup',
-                timelineError: 'Batch reconciled after inactivity threshold was exceeded'
+                timelineEvent,
+                timelineError
             });
             fixedCount++;
         } catch (err) {

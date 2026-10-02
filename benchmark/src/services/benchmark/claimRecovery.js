@@ -153,11 +153,16 @@ async function recoverLeakedClaims() {
  * auto-restore takes over the host, stealing VRAM from the live benchmark's
  * judge calls. claimHostForBenchmark is idempotent for same-batch reclaims,
  * so calling this on every startup is safe.
+ *
+ * With `processStartedAt`, only batches written since this process started
+ * are re-claimed: a batch untouched since then has no executor here
+ * (orphanedBatchRecovery settles it).
  */
-async function reacquireActiveBatchClaims() {
+async function reacquireActiveBatchClaims({ processStartedAt = null } = {}) {
     const now = Date.now();
     const active = await BenchmarkBatch.find({
-        status: { $in: ['running', 'judging'] }
+        status: { $in: ['running', 'judging'] },
+        ...(processStartedAt ? { updated_at: { $gte: processStartedAt } } : {})
     }).select('_id host models judge_config last_activity_at total_tests').lean();
 
     if (active.length === 0) {
