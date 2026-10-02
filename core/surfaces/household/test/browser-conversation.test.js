@@ -1097,3 +1097,44 @@ test('the browser voice fallback speaks the text in the turn locale and stops on
     assert.equal(cancelled, 1);
   } finally { delete globalThis.speechSynthesis; delete globalThis.SpeechSynthesisUtterance; }
 });
+
+test('a message typed while voice waits is a spoken turn on the same session, then listening resumes', async () => {
+  const turns = [];
+  const h = harness({ turn: async (session, text, signal, onDelta, options) => { turns.push({ session: session.sessionId, text, options }); return { text: 'Réponse écrite et dite.', language: 'fr' }; } });
+  await h.conversation.start({ language: 'fr' });
+  assert.equal(h.conversation.canType(), true);
+  assert.equal(await h.conversation.typed('  Bonjour par écrit  '), true);
+  assert.deepEqual(turns.map(t => [t.session, t.text]), [['private-1', 'Bonjour par écrit']]);
+  assert.equal(turns[0].options.attachmentIds, undefined);
+  assert.deepEqual(h.messages, [{ role: 'user', text: 'Bonjour par écrit' }, { role: 'assistant', text: 'Réponse écrite et dite.' }]);
+  assert.ok(h.calls.includes('play'));
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('a typed message carries its attachments to the transcript and the turn', async () => {
+  let options, shown;
+  const h = harness({ turn: async (session, text, signal, onDelta, opts) => { options = opts; return { text: 'Vu.' }; },
+    message(role, text, interrupted, sound, attachments) { if (role === 'user') shown = attachments; } });
+  await h.conversation.start({ language: 'fr' });
+  const attachments = [{ id: 'a'.repeat(24), name: 'photo.jpg' }];
+  assert.equal(await h.conversation.typed('Regarde', { attachments }), true);
+  assert.deepEqual(options.attachmentIds, ['a'.repeat(24)]);
+  assert.deepEqual(shown, attachments);
+  h.conversation.stop();
+});
+
+test('typing is refused before voice starts and while a turn is in flight', async () => {
+  const reply = deferred();
+  const h = harness({ turn: async () => reply.promise });
+  assert.equal(h.conversation.canType(), false);
+  assert.equal(await h.conversation.typed('Trop tôt'), false);
+  await h.conversation.start({ language: 'fr' });
+  const pending = h.conversation.typed('Premier');
+  await tick();
+  assert.equal(h.conversation.canType(), false);
+  assert.equal(await h.conversation.typed('Deuxième'), false);
+  reply.resolve({ text: 'Fini.' }); await pending;
+  assert.equal(h.conversation.canType(), true);
+  h.conversation.stop();
+});

@@ -414,8 +414,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationEnd').disabled = !active && !conversation.session;
     [backendPicker, agentPicker, picker, open, voice, voiceEnglish, language, appearance, color, interruption, el('conversationReset')].forEach(node => { node.disabled = active || !!conversation.session || textBusy || (node === agentPicker && (family || !agentCatalog || backendPicker.value !== 'openclaw')); });
     el('conversationWake').disabled = textBusy || !['idle', 'paused', 'error', 'listening'].includes(state);
-    el('conversationText').querySelector('button').disabled = active || reviewing || textBusy;
-    if (!family) { el('conversationFiles').disabled = active || reviewing || textBusy; renderDraftFiles(); }
+    // Waiting voice (open listening or wake standby) accepts a typed message as its next turn.
+    const typing = active && !conversation.canType();
+    el('conversationText').querySelector('button').disabled = typing || reviewing || textBusy;
+    if (!family) { el('conversationFiles').disabled = typing || reviewing || textBusy; renderDraftFiles(); }
     el('conversationPreview').disabled = active || reviewing || textBusy;
     if (conversation.audio) el('conversationInterruptionStatus').textContent = !interruption.checked
       ? 'Spoken interruption is off. Listening resumes after each reply.'
@@ -573,6 +575,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   });
   el('conversationText').onsubmit = async event => {
     event.preventDefault();
+    if (!textBusy && conversation.canType()) return typedDuringVoice();
     if (textBusy || !['idle', 'paused', 'error'].includes(conversation.state)) return;
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
     let shown = false;
@@ -600,6 +603,18 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     }
     finally { textBusy = false; conversation.show(conversation.state, el('conversationStatus').textContent); }
   };
+  async function typedDuringVoice() {
+    const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
+    stopPreview(); textBusy = true; conversation.show(conversation.state);
+    let attachments = null, failure = '';
+    try { attachments = await uploadDraftFiles(conversation.session, conversation.abort.signal); }
+    catch (error) { failure = error.message; }
+    textBusy = false;
+    if (!attachments) { conversation.show(conversation.state, failure); return; }
+    if (input.value.trim() === text) input.value = '';
+    draftFiles = []; renderDraftFiles();
+    if (!await conversation.typed(text, { attachments }) && !input.value.trim()) input.value = text;
+  }
   document.addEventListener('visibilitychange', () => { if (document.hidden) { stopPreview(); conversation.stop(true); void releaseOpen(); } });
   window.addEventListener('pagehide', () => { clearInterval(audioReviewClock); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
