@@ -7,56 +7,75 @@ const { formatFileSize, ensureDir, listFilesWithMeta, validateFilename, exists }
 const { formatFilePath } = require('../utils/fileHelpers');
 const fs = require('fs/promises');
 const { createWriteStream } = require('fs');
+const { randomBytes } = require('crypto');
 
 const EXPORT_DIR = path.join(__dirname, '../exports');
 const REPORT_TYPES = new Set(['full', 'summary', 'media', 'large', 'stats']);
 const REPORT_FORMATS = new Set(['json', 'csv']);
 
 /**
+ * Wait until a chunk is accepted by the write stream, honoring backpressure.
+ */
+function writeChunk(ws, chunk) {
+  if (ws.write(chunk)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const onDrain = () => { ws.off('error', onError); resolve(); };
+    const onError = (err) => { ws.off('drain', onDrain); reject(err); };
+    ws.once('drain', onDrain);
+    ws.once('error', onError);
+  });
+}
+
+/**
  * Stream a "full" report directly to a JSON file without loading all docs into memory.
- * Returns { totalFiles } after streaming completes.
+ * The file is created exclusively, so an existing export is never overwritten.
+ * Documents that cannot be serialized are skipped and counted separately.
+ * On failure the cursor is closed and the partial file is removed.
  */
 async function streamFullReport(db, filePath) {
   const cursor = db.collection('nas_files').find({}).sort({ dirname: 1, filename: 1 });
-  const ws = createWriteStream(filePath);
-  const generatedAt = new Date().toISOString();
+  const ws = createWriteStream(filePath, { flags: 'wx' });
+  let streamError = null;
+  let opened = false;
+  ws.on('error', (err) => { streamError = err; });
+  let totalFiles = 0;
+  let skippedFiles = 0;
 
-  return new Promise((resolve, reject) => {
-    let count = 0;
-    ws.write(`{"reportType":"full","generatedAt":"${generatedAt}","files":[\n`);
-
-    function writeNext() {
-      cursor.next().then(doc => {
-        if (!doc) {
-          ws.write(`\n],"totalFiles":${count}}`);
-          ws.end();
-          return;
-        }
-        let row;
-        try {
-          row = JSON.stringify({
-            path: formatFilePath(doc), filename: doc.filename, dirname: doc.dirname,
-            ext: doc.ext, size: doc.size, sizeFormatted: formatFileSize(doc.size), mtime: doc.mtime
-          });
-        } catch (e) {
-          count++; // skip bad document
-          writeNext();
-          return;
-        }
-        const prefix = count > 0 ? ',\n' : '';
-        count++;
-        if (ws.write(prefix + row)) {
-          writeNext();
-        } else {
-          ws.once('drain', writeNext);
-        }
-      }).catch(reject);
+  try {
+    await new Promise((resolve, reject) => {
+      ws.once('open', () => { opened = true; resolve(); });
+      ws.once('error', reject);
+    });
+    await writeChunk(ws, `{"reportType":"full","generatedAt":"${new Date().toISOString()}","files":[\n`);
+    for (let doc = await cursor.next(); doc; doc = await cursor.next()) {
+      if (streamError) throw streamError;
+      let row;
+      try {
+        row = JSON.stringify({
+          path: formatFilePath(doc), filename: doc.filename, dirname: doc.dirname,
+          ext: doc.ext, size: doc.size, sizeFormatted: formatFileSize(doc.size), mtime: doc.mtime
+        });
+      } catch {
+        skippedFiles++;
+        continue;
+      }
+      await writeChunk(ws, (totalFiles > 0 ? ',\n' : '') + row);
+      totalFiles++;
     }
-
-    ws.on('finish', () => resolve({ totalFiles: count }));
-    ws.on('error', reject);
-    writeNext();
-  });
+    await writeChunk(ws, `\n],"totalFiles":${totalFiles},"skippedFiles":${skippedFiles}}`);
+    await new Promise((resolve, reject) => {
+      ws.once('error', reject);
+      ws.end(resolve);
+    });
+    if (streamError) throw streamError;
+    return { totalFiles, skippedFiles };
+  } catch (err) {
+    ws.destroy();
+    if (opened) await fs.unlink(filePath).catch(() => {});
+    throw err;
+  } finally {
+    await Promise.resolve(cursor.close?.()).catch(() => {});
+  }
 }
 
 async function generateOptimizedReport(db, reportType) {
@@ -160,25 +179,27 @@ exports.generateReport = async (req, res, next) => {
     }
 
     const now = new Date();
-    const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}`;
-    const filename = `export_${type}_${ts}.${format}`;
+    const pad = (n) => String(n).padStart(2, '0');
+    const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    // A random suffix keeps concurrent exports of the same type apart.
+    const filename = `export_${type}_${ts}_${randomBytes(3).toString('hex')}.${format}`;
     const filePath = path.join(EXPORT_DIR, filename);
     await ensureDir(EXPORT_DIR);
 
     // "full" JSON exports stream directly to file (memory-safe for large collections)
     if (type === 'full' && format === 'json') {
-      const { totalFiles } = await streamFullReport(db, filePath);
+      const { totalFiles, skippedFiles } = await streamFullReport(db, filePath);
       const stats = await fs.stat(filePath);
       return res.json({
         status: 'success',
-        data: { filename, size: stats.size, sizeFormatted: formatFileSize(stats.size), recordCount: totalFiles, generatedAt: now.toISOString() }
+        data: { filename, size: stats.size, sizeFormatted: formatFileSize(stats.size), recordCount: totalFiles, skippedCount: skippedFiles, generatedAt: now.toISOString() }
       });
     }
 
     const data = await generateOptimizedReport(db, type);
 
     const content = format === 'csv' ? convertToCSV(data) : JSON.stringify(data, null, 2);
-    await fs.writeFile(filePath, content);
+    await fs.writeFile(filePath, content, { flag: 'wx' });
     const stats = await fs.stat(filePath);
 
     res.json({
@@ -187,6 +208,7 @@ exports.generateReport = async (req, res, next) => {
     });
   } catch (error) {
     if (error.message.startsWith('Unknown report type')) return res.status(400).json({ status: 'error', message: error.message });
+    if (error.code === 'EEXIST') return res.status(409).json({ status: 'error', message: 'An export with this name already exists; retry' });
     next(error);
   }
 };
@@ -209,3 +231,6 @@ exports.deleteExport = async (req, res, next) => {
     res.json({ status: 'success', message: 'Deleted' });
   } catch (error) { next(error); }
 };
+
+// Exposed for stream-integrity tests.
+exports.streamFullReport = streamFullReport;
