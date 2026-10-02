@@ -12,7 +12,7 @@ export function decodeResult(result) {
 }
 
 export async function agentxRead(baseUrl, name, args, fetchImpl = fetch) {
-  if (!["list_personal_tasks", "personal_briefing", "rag_search"].includes(name)) throw new Error("Unsupported Nestor read");
+  if (!["list_personal_tasks", "personal_briefing", "rag_search", "network_devices"].includes(name)) throw new Error("Unsupported Nestor read");
   const response = await fetchImpl(new URL("/mcp", baseUrl), {
     method: "POST", redirect: "error", signal: AbortSignal.timeout(8000),
     headers: { "content-type": "application/json" },

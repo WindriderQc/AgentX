@@ -84,6 +84,14 @@ const SECRETARY_TOOLS = Object.freeze([
     _meta: SECRETARY_MCP_META
   }),
   Object.freeze({
+    name: 'network_devices',
+    title: 'Network Devices',
+    description: 'List devices the home network collector has observed: online now (default), unknown (not named or marked known), or all. Always relay the freshness sentence: a stale scan means the list is not confirmed now. Read-only.',
+    inputSchema: objectSchema({ scope: { type: 'string', enum: ['online', 'unknown', 'all'] } }),
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    _meta: SECRETARY_MCP_META
+  }),
+  Object.freeze({
     name: 'complete_personal_task',
     title: 'Complete Personal Task',
     description: 'Mark exactly one personal task done by numeric id or distinctive title phrase. Ambiguous phrases fail with candidates instead of guessing.',
@@ -182,6 +190,10 @@ async function callSecretaryTool(name, args, deps) {
     if (name === 'update_personal_task') return textResult(await deps.personalTasks.update({ ...input, by: 'nestor-secretary' }));
     if (name === 'add_idea') return textResult(await (deps.ideaInbox || require('../../src/services/ideaInboxService')).captureIdea({ text: input.text, tags: input.tags, origin: 'nestor' }));
     if (name === 'personal_briefing') return textResult(await deps.personalTasks.briefing());
+    if (name === 'network_devices') {
+      const read = deps.networkInventory || require('../../src/services/networkInventory').readNetworkInventory;
+      return textResult(await read({ scope: input.scope || 'online' }));
+    }
     if (name === 'add_email_action') {
       const writer = deps.emailActionWriter || addEmailAction;
       return textResult(await writer(input, {
