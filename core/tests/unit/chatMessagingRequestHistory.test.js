@@ -3,9 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { readChatMessagingSource } = require('../helpers/chatMessagingSource');
 
-const messagingPath = path.resolve(__dirname, '../../public/js/chat/chat-messaging.js');
-const source = fs.readFileSync(messagingPath, 'utf8').replace(/\r\n/g, '\n');
+const source = readChatMessagingSource().replace(/\r\n/g, '\n');
 const mainSource = fs.readFileSync(
   path.resolve(__dirname, '../../public/js/chat/chat-main.js'),
   'utf8'
