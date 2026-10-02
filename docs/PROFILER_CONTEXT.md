@@ -45,6 +45,16 @@ keeps a higher value already verified for the same artifact and runtime
 evidence at or below it. Raise `CONTEXT_PROBE_TIMEOUT_MS` to verify a window
 whose reload and prefill exceed the request deadline.
 
+When a step's deadline expires with the model resident at the requested context,
+the run aborts the request and Ollama's `/api/ps` must prove it stopped (see
+[profiler
+restoration](OPERATIONS.md#profiler-restoration-and-unknown-recovery)). A proven
+stop records the step as timed out (`failureCode: "ETIMEDOUT"`,
+`requestStopProven: true`, placement observed just before the abort) and the
+probe sends no further candidate, so a slow CPU host completes with the context
+verified below the timed-out step as a transport floor. Raise
+`CONTEXT_PROBE_CPU_TIMEOUT_MS` to verify a larger CPU window.
+
 Every ladder rung is measured with its prompt filled to the probe's fill
 percentage of that rung's window. The interactive recommendation and the
 performance knee therefore price a nearly full window. They do not measure a

@@ -4,6 +4,7 @@ const HostProfile = require('../../../models/HostProfile');
 const hostProfileService = require('./hostProfileService');
 const { getWorkloadRecoveryIdentity } = require('../../clients/coreApiClient');
 const { withMutationJournal } = require('./profilerMutationObservation');
+const { createProfileCancellation } = require('./profileCancellation');
 const journals = new WeakMap();
 
 function journalError(message, code = 'PROFILER_RUN_JOURNAL_LOST') {
@@ -38,6 +39,7 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
   let sequence = 0;
   const tickets = new Set();
   let cancellation = null;
+  let deadlineUnproven = null;
   async function update(fields, requireLease = true) {
     if (requireLease) lease.assertActive();
     const result = await HostProfile.updateOne(filter, { $set: Object.fromEntries(
@@ -62,6 +64,26 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
     error.message = `${error.message}; ${result.reason}. The request stays UNKNOWN until a runtime restart attestation`;
     await update({ cancelAbort: { proven: false, reason: result.reason, evidence: result.evidence } }, false);
   }
+  // A request deadline expired and the tracker aborted it: it is terminal (a
+  // measured timeout) only with the same stop proof, otherwise UNKNOWN.
+  async function settleDeadlineAbort(ticket, error) {
+    await update({ reason: 'Request deadline expired; aborted, awaiting runtime stop proof' }, false);
+    const result = await cancellation.resolveAbort();
+    if (result.proven) {
+      await update({ pendingRequests: 0, serverTerminalObserved: true, serverTerminalAt: new Date(),
+        deadlineAbort: { proven: true, receipt: result.receipt }, ownerClaimedAt: new Date(), reason: null }, false);
+      tickets.delete(ticket); pending = 0;
+      error.stopProof = result.receipt;
+      error.message = `${error.message}; Ollama confirmed the request stopped (${result.receipt.outcome})`;
+      return;
+    }
+    uncertain = true;
+    deadlineUnproven = result.reason;
+    error.deadlineStopUnproven = true;
+    error.message = `${error.message}; ${result.reason}. The request stays UNKNOWN until a runtime restart attestation`;
+    await update({ state: 'unknown', serverTerminalObserved: false, reason: 'PROFILE_DEADLINE_STOP_UNPROVEN',
+      deadlineAbort: { proven: false, reason: result.reason, evidence: result.evidence } }, false);
+  }
   const journal = {
     hostId,
     heartbeat: () => update({ ownerClaimedAt: new Date() }),
@@ -76,6 +98,7 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
       cancellation?.track(ticket, request);
       return ticket;
     },
+    requestControl: ticket => cancellation?.requestControl(ticket) ?? null,
     async completeMutation(ticket) {
       if (!tickets.has(ticket) || uncertain) throw journalError('Profiler terminal receipt does not match the pending request');
       await update({ pendingRequests: 0, serverTerminalObserved: true, serverTerminalAt: new Date(),
@@ -84,6 +107,11 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
       cancellation?.settle(ticket);
     },
     async unknownMutation(ticket, error) {
+      cancellation?.disarm(ticket);
+      if (!uncertain && error?.deadlineAbort === true && tickets.has(ticket) && cancellation?.isExpiredTicket(ticket)) {
+        await settleDeadlineAbort(ticket, error);
+        return;
+      }
       if (!uncertain && error?.code === 'PROFILE_CANCELLED' && cancellation?.isAbortedTicket(ticket)) {
         await update({ reason: 'Profile cancel aborted the request; awaiting runtime stop proof' }, false);
         return;
@@ -93,7 +121,8 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
         reason: error?.code || 'Profiler request terminality unknown' }, false);
     },
     async run(operation, modelName, { cancellation: runCancellation = null } = {}) {
-      cancellation = runCancellation;
+      // Without an operator cancel the run still owns its request deadlines.
+      cancellation = runCancellation || createProfileCancellation({ hostUrl });
       try {
         await update({ model: modelName, ownerClaimedAt: new Date() });
         const result = await withMutationJournal(journal, operation);
@@ -101,13 +130,18 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
         await update({ state: 'pending_reconciliation', reason: 'Profile requests settled; exact host restoration pending' });
         return result;
       } catch (error) {
+        if (deadlineUnproven && !error.deadlineStopUnproven) {
+          error.deadlineStopUnproven = true;
+          error.message = `${error.message}: a request deadline expired and Ollama did not confirm the aborted request stopped (${deadlineUnproven}). It stays UNKNOWN until a runtime restart attestation`;
+        }
         if (pending && !uncertain && [...tickets].some(ticket => cancellation?.isAbortedTicket(ticket))) {
           await settleCancelAbort(error).catch(() => { uncertain = true; });
         }
         if (pending || uncertain || error.retainAdmission || lease.signal.aborted) {
           uncertain = true;
           await update({ state: 'unknown', serverTerminalObserved: false,
-            reason: error.cancelStopUnproven ? 'PROFILE_CANCEL_STOP_UNPROVEN' : error.code || 'Profiler interrupted' }, false);
+            reason: error.cancelStopUnproven ? 'PROFILE_CANCEL_STOP_UNPROVEN'
+              : error.deadlineStopUnproven ? 'PROFILE_DEADLINE_STOP_UNPROVEN' : error.code || 'Profiler interrupted' }, false);
           error.retainAdmission = true;
           await lease.abandon(error);
         } else await update({ state: 'pending_reconciliation', reason: 'Profile ended; acknowledged runtime requests require restoration' });

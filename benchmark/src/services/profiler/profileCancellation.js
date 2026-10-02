@@ -20,13 +20,19 @@
  * Without that proof within the budget the request stays UNKNOWN and the host
  * quarantined, as before. Any other in-flight request (streaming, Core-routed
  * or not yet resident) is not aborted: the cancel lands at the next checkpoint.
+ *
+ * The same tracker owns the deadline of such a request: when it expires, it
+ * samples /api/ps, aborts the request and the run journal takes the same stop
+ * proof. A proven stop makes the timed-out request terminal and the profile
+ * continues; otherwise it stays UNKNOWN. The client's own timeout is extended
+ * by a backstop so this deadline fires first.
  */
 
 const { listRunning } = require('../../clients/ollamaClient');
 const { isSameOllamaModel } = require('../../helpers/ollamaModelIdentity');
 
 const CONTRACT = 'agentx.profile-cancel-abort/v1';
-const DEFAULTS = { budgetMs: 60_000, settleMs: 15_000, sampleGapMs: 5_000 };
+const DEFAULTS = { budgetMs: 60_000, settleMs: 15_000, sampleGapMs: 5_000, backstopMs: 15_000 };
 
 function envMs(raw, fallback, minimum) {
   const parsed = Number(raw);
@@ -35,6 +41,11 @@ function envMs(raw, fallback, minimum) {
 
 function cancelledError() {
   return Object.assign(new Error('Profile cancelled by the operator'), { code: 'PROFILE_CANCELLED' });
+}
+
+function deadlineError(timeoutMs) {
+  return Object.assign(new Error(`Ollama request timed out after ${timeoutMs}ms`),
+    { code: 'ETIMEDOUT', transportFailure: true, deadlineAbort: true });
 }
 
 const modelOf = entry => entry?.name || entry?.model || null;
@@ -60,7 +71,8 @@ function createProfileCancellation({
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
   budgetMs = envMs(process.env.PROFILE_CANCEL_PROOF_BUDGET_MS, DEFAULTS.budgetMs, 10_000),
   settleMs = envMs(process.env.PROFILE_CANCEL_SETTLE_MS, DEFAULTS.settleMs, 5_000),
-  sampleGapMs = DEFAULTS.sampleGapMs
+  sampleGapMs = DEFAULTS.sampleGapMs,
+  backstopMs = DEFAULTS.backstopMs
 } = {}) {
   const controller = new AbortController();
   const signal = parentSignal ? AbortSignal.any([parentSignal, controller.signal]) : controller.signal;
@@ -69,23 +81,28 @@ function createProfileCancellation({
   let abort = null;
   let phase = null;
 
-  const status = () => ({
-    phase,
-    requestedAt,
-    abortedAt: abort?.abortedAt ?? null,
-    proofDeadlineAt: abort ? abort.abortedAt + budgetMs : null,
-    remainingMs: abort ? Math.max(0, abort.abortedAt + budgetMs - now()) : null,
-    budgetMs
-  });
+  const status = () => {
+    const cancelAbort = abort?.trigger === 'cancel' ? abort : null;
+    return {
+      phase,
+      requestedAt,
+      abortedAt: cancelAbort?.abortedAt ?? null,
+      proofDeadlineAt: cancelAbort ? cancelAbort.abortedAt + budgetMs : null,
+      remainingMs: cancelAbort ? Math.max(0, cancelAbort.abortedAt + budgetMs - now()) : null,
+      budgetMs
+    };
+  };
 
   async function proveStopped() {
     const { request, baseline, abortedAt } = abort;
     const before = findModel(baseline, request.model);
-    const evidence = { contract: CONTRACT, model: request.model, numCtx: request.numCtx ?? null,
-      requestedAt, abortedAt, settleMs, sampleGapMs, budgetMs,
-      baseline: before ? { expiresAt: before.expires_at || null, contextLength: before.context_length ?? null } : null };
+    const evidence = { contract: CONTRACT, trigger: abort.trigger, model: request.model, numCtx: request.numCtx ?? null,
+      requestedAt, abortedAt, settleMs, sampleGapMs, budgetMs, timeoutMs: request.timeoutMs ?? null,
+      baseline: before ? { expiresAt: before.expires_at || null, contextLength: before.context_length ?? null,
+        size: before.size ?? null, sizeVram: before.size_vram ?? null } : null };
     if (!Array.isArray(baseline) || !residentAt(before, request.numCtx)) {
-      return { proven: false, evidence, reason: 'The model was not resident at the request context when the cancel arrived; a load may still be running' };
+      const when = abort.trigger === 'deadline' ? 'the request deadline expired' : 'the cancel arrived';
+      return { proven: false, evidence, reason: `The model was not resident at the request context when ${when}; a load may still be running` };
     }
     const deadline = abortedAt + budgetMs;
     let previous = null;
@@ -113,31 +130,71 @@ function createProfileCancellation({
       reason: `Ollama did not show the aborted request ending within ${Math.round(budgetMs / 1000)} s` };
   }
 
+  const disarm = target => { if (target?.timer) clearTimeout(target.timer); };
+  // A request that ended (answered, or proven stopped after its deadline) frees the tracker.
+  const settle = ticket => {
+    if (inFlight?.ticket === ticket) { disarm(inFlight); inFlight = null; }
+    if (abort?.trigger === 'deadline' && abort.ticket === ticket) abort = null;
+  };
+  const requestOf = target => ({ model: target.model, numCtx: target.numCtx, timeoutMs: target.timeoutMs });
+
+  // The request deadline expired: sample /api/ps, then abort only that request.
+  async function expire(target) {
+    if (inFlight !== target || abort) return;
+    const baseline = await readPs(hostUrl).catch(() => null);
+    if (inFlight !== target || abort) return;
+    abort = { trigger: 'deadline', ticket: target.ticket, request: requestOf(target), baseline, abortedAt: now() };
+    target.controller.abort(deadlineError(target.timeoutMs));
+  }
+
   return {
     signal,
     get requested() { return requestedAt !== null; },
     status,
     /** The run journal reports each dispatched request and its settlement. */
-    track(ticket, request) { inFlight = { ticket, ...(request || {}) }; },
-    settle(ticket) { if (inFlight?.ticket === ticket) inFlight = null; },
+    track(ticket, request) {
+      disarm(inFlight);
+      inFlight = { ticket, ...(request || {}) };
+      const target = inFlight;
+      if (!target.abortable || !target.model || !(target.timeoutMs > 0)) return;
+      target.controller = new AbortController();
+      target.timer = setTimeout(() => { expire(target).catch(() => {}); }, target.timeoutMs);
+      target.timer.unref?.();
+    },
+    /** Signal and client backstop for a request whose deadline this tracker owns. */
+    requestControl(ticket) {
+      const target = inFlight?.ticket === ticket ? inFlight : null;
+      return target?.controller ? { signal: target.controller.signal, timeoutMs: target.timeoutMs + backstopMs } : null;
+    },
+    disarm(ticket) { if (inFlight?.ticket === ticket) disarm(inFlight); },
+    settle,
     assertNotCancelled() { if (requestedAt !== null) throw cancelledError(); },
-    isAbortedTicket: ticket => abort !== null && abort.ticket === ticket,
+    isAbortedTicket: ticket => abort?.trigger === 'cancel' && abort.ticket === ticket,
+    isExpiredTicket: ticket => abort?.trigger === 'deadline' && abort.ticket === ticket,
     async cancel() {
       if (requestedAt !== null) return status();
       requestedAt = now();
       phase = 'checkpoint';
       const target = inFlight;
-      if (!target?.abortable || !target.model) return status();
+      // A request already aborted at its deadline gets its own stop proof first.
+      if (!target?.abortable || !target.model || abort) return status();
       const baseline = await readPs(hostUrl).catch(() => null);
       // The request may have ended during the sample; the checkpoint stops the run.
-      if (inFlight !== target) return status();
-      abort = { ticket: target.ticket, request: { model: target.model, numCtx: target.numCtx }, baseline, abortedAt: now() };
+      if (inFlight !== target || abort) return status();
+      disarm(target);
+      abort = { trigger: 'cancel', ticket: target.ticket, request: requestOf(target), baseline, abortedAt: now() };
       phase = 'awaiting_stop_proof';
       controller.abort(cancelledError());
       return status();
     },
     async resolveAbort() {
+      const current = abort;
       const result = await proveStopped();
+      if (current.trigger === 'deadline') {
+        // A proven stop ends this request only; the tracker is ready for the next.
+        if (result.proven) settle(current.ticket);
+        return result;
+      }
       phase = result.proven ? 'stopped' : 'stop_unproven';
       return result;
     }

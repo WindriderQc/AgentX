@@ -190,20 +190,30 @@ const getVersion = (host, opts) => ollamaFetch(host, '/api/version', { timeoutMs
 const showModel = (host, model, opts) =>
     ollamaFetch(host, '/api/show', { method: 'POST', body: { name: model }, timeoutMs: 15_000, ...opts });
 
-// Identifies a request that a profile cancel may abort and prove stopped.
-const abortableRequest = body => ({ model: body?.model, numCtx: body?.options?.num_ctx });
+// Identifies a request that a profile cancel or its deadline may abort and prove stopped.
+const abortableRequest = (body, opts) => ({
+    model: body?.model, numCtx: body?.options?.num_ctx, timeoutMs: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS
+});
+
+// A journaled profile run owns the request deadline: its signal aborts at the
+// deadline and the client timeout becomes a later backstop.
+function withRequestControl(opts = {}, control) {
+    if (!control) return opts;
+    const signal = opts.signal ? AbortSignal.any([opts.signal, control.signal]) : control.signal;
+    return { ...opts, signal, timeoutMs: control.timeoutMs };
+}
 
 /** POST /api/generate — text completion */
-const generate = async (host, body, opts) => observeJsonMutation(async () => requireExactTerminal(
-    await ollamaFetch(host, '/api/generate', { method: 'POST', body, ...opts }),
+const generate = async (host, body, opts) => observeJsonMutation(async control => requireExactTerminal(
+    await ollamaFetch(host, '/api/generate', { method: 'POST', body, ...withRequestControl(opts, control) }),
     'generate'
-), abortableRequest(body));
+), abortableRequest(body, opts));
 
 /** POST /api/chat — chat completion */
-const chat = async (host, body, opts) => observeJsonMutation(async () => requireExactTerminal(
-    await ollamaFetch(host, '/api/chat', { method: 'POST', body, ...opts }),
+const chat = async (host, body, opts) => observeJsonMutation(async control => requireExactTerminal(
+    await ollamaFetch(host, '/api/chat', { method: 'POST', body, ...withRequestControl(opts, control) }),
     'chat'
-), abortableRequest(body));
+), abortableRequest(body, opts));
 
 /** Custom model deployment remains an explicit fail-closed tombstone. */
 const createModel = (host, body, opts) =>
