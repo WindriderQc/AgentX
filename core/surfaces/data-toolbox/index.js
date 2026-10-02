@@ -56,8 +56,10 @@ function safeName(value, label) {
   return name;
 }
 
-function fetchData(relativePath, { query = '', timeoutMs = REQUEST_TIMEOUT_MS() } = {}) {
-  return fetchDataService(relativePath, { query, timeoutMs });
+const MAC = /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/;
+
+function fetchData(relativePath, { query = '', timeoutMs = REQUEST_TIMEOUT_MS(), method, payload } = {}) {
+  return fetchDataService(relativePath, { query, timeoutMs, method, payload });
 }
 
 function relay(relativePath, queryRules) {
@@ -383,6 +385,27 @@ function register(api) {
   router.get('/network/devices', relay(() => '/api/v1/network/devices'));
   router.get('/network/agents', relay(() => '/api/v1/network/agents'));
   router.get('/network/capability', relay(() => '/api/v1/network/capability'));
+  // The one write: name a device or mark it known, which acknowledges it as
+  // not new. Through the LAN gateway it requires the adult session.
+  router.patch('/network/devices/:mac', async (req, res) => {
+    const mac = String(req.params.mac || '').toUpperCase();
+    const { alias, known } = req.body || {};
+    const update = {};
+    if (alias !== undefined) update.alias = String(alias).trim().slice(0, 80);
+    if (known !== undefined) update.known = known;
+    if (!MAC.test(mac) || !Object.keys(update).length || (known !== undefined && typeof known !== 'boolean')) {
+      return res.status(400).json({ ok: false, status: 'error', code: 'INVALID_DEVICE_UPDATE',
+        message: 'Expected a MAC address and an alias or a boolean known flag' });
+    }
+    try {
+      const { response, body } = await fetchData(`/api/v1/network/devices/${encodeURIComponent(mac)}`,
+        { method: 'PATCH', payload: update });
+      return res.status(response.status).json(body);
+    } catch (error) {
+      return res.status(502).json({ ok: false, status: 'error',
+        code: error.name === 'TimeoutError' ? 'DATA_TIMEOUT' : 'DATA_UNAVAILABLE', message: error.message });
+    }
+  });
   router.get('/hardware/collectors', relay(() => '/api/v1/hardware/collectors'));
   router.get('/hardware/latest', relay(() => '/api/v1/hardware/latest', { hostId: { maxLength: 128 } }));
 
@@ -433,8 +456,8 @@ function register(api) {
 
 module.exports = {
   id: 'aio-ops-data-toolbox',
-  version: '1.3.2',
-  capabilities: ['data-toolbox-ui', 'data-readonly-projection'],
+  version: '1.4.0',
+  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-acknowledge'],
   register,
   boundedInt,
   pickQuery,

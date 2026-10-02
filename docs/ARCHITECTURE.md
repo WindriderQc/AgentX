@@ -216,8 +216,9 @@ finance (`/api/finance`, `/finance`) are in the demo exclusion list of
   inference. `core/src/domains/psyx` owns longitudinal state and reflection
   rules. Browser access uses the shared [parental session](PARENTAL_ACCESS.md);
   native consumers keep a separate access token.
-- `core/surfaces/data-toolbox`: read-only UI served by Core, consuming the
-  optional Data process over HTTP. Collectors are host-native adapters under
+- `core/surfaces/data-toolbox`: UI served by Core, consuming the optional
+  Data process over HTTP. It is read-only except for naming a network device
+  or marking it known. Collectors are host-native adapters under
   `integrations/data-collectors`; paths, network targets and supervisor
   placement are external configuration.
 

@@ -93,6 +93,18 @@ export default definePluginEntry({
       };
     }, { name: "nestor_briefing", optional: true });
 
+    api.registerTool(context => {
+      if (!privateOwnerContext(context, api.config)) return null;
+      return {
+        name: "nestor_network", label: "Nestor Network Devices",
+        description: "List devices the home network collector has observed in AgentX: online now (default), unknown (not named or marked known), or all. Always relay the freshness sentence; a stale scan means the list is not confirmed now. Read-only.",
+        parameters: { type: "object", properties: { scope: { type: "string", enum: ["online", "unknown", "all"] } }, additionalProperties: false },
+        async execute(_id, params = {}) {
+          return receipt(await agentxRead(api.pluginConfig?.agentxUrl, "network_devices", params.scope ? { scope: params.scope } : {}));
+        },
+      };
+    }, { name: "nestor_network", optional: true });
+
     api.on("after_tool_call", async (event, context) => {
       const workspace = householdWorkspace(context, api.config, resolveWorkspace) || (privateOwnerContext(context, api.config) ? workspaceFor(context) : null);
       if (workspace) await recordTool(workspace, event, context);

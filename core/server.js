@@ -506,6 +506,19 @@ async function startServer() {
     console.log(`   ⚠ Lane Observability: ${err.message}`);
   }
 
+  // Opt-in: alert once per unknown device the Data network collector reports.
+  const networkWatchMs = require('./src/services/networkDeviceWatch').watchIntervalMs();
+  if (networkWatchMs) {
+    try {
+      const networkWatch = require('./src/services/networkDeviceWatch').createNetworkDeviceWatch();
+      await startCoreSingletonDaemon({ name: 'network-device-watch', label: 'Network Device Watch',
+        start: async () => { networkWatch.start(networkWatchMs); console.log(`   ✓ Network Device Watch: Active (${networkWatchMs}ms)`); },
+        stop: async () => networkWatch.stop() });
+    } catch (err) {
+      console.log(`   ⚠ Network Device Watch: ${err.message}`);
+    }
+  }
+
   // Council sessions only advance inside the process that started them. Close
   // any pending/running session a previous process left behind so the Council
   // page never shows a RUNNING status that nothing can complete.

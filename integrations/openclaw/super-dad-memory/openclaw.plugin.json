@@ -14,7 +14,8 @@
       "personal_memory",
       "vault_note",
       "nestor_context",
-      "nestor_briefing"
+      "nestor_briefing",
+      "nestor_network"
     ]
   },
   "toolMetadata": {
@@ -28,6 +29,9 @@
       "optional": true
     },
     "nestor_briefing": {
+      "optional": true
+    },
+    "nestor_network": {
       "optional": true
     }
   },

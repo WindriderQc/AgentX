@@ -126,7 +126,8 @@ function registeredSurface() {
       const routes = [];
       const router = {
         routes,
-        get(routePath, handler) { routes.push({ method: 'get', path: routePath, handler }); }
+        get(routePath, handler) { routes.push({ method: 'get', path: routePath, handler }); },
+        patch(routePath, handler) { routes.push({ method: 'patch', path: routePath, handler }); }
       };
       routers.push(router);
       return router;
@@ -140,10 +141,10 @@ function registeredSurface() {
   return { mounts, routers };
 }
 
-test('manifest identifies the read-only AIOps Data Toolbox contract', () => {
+test('manifest identifies the AIOps Data Toolbox contract and its one acknowledgement write', () => {
   assert.equal(toolbox.id, 'aio-ops-data-toolbox');
-  assert.equal(toolbox.version, '1.3.2');
-  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection']);
+  assert.equal(toolbox.version, '1.4.0');
+  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-acknowledge']);
   assert.throws(() => toolbox.register({ contractVersion: 1 }), /contract v2/);
 });
 
@@ -160,7 +161,7 @@ test('query projection keeps only allowlisted, bounded values', () => {
   assert.throws(() => toolbox.safeName('../private', 'collection'), /Invalid collection/);
 });
 
-test('registration mounts the cockpit and GET-only proxy families', () => {
+test('registration mounts the cockpit, GET proxy families and only the device acknowledgement write', () => {
   const { mounts, routers } = registeredSurface();
   const appPaths = mounts.map((entry) => entry.path);
   assert.ok(appPaths.includes('/assets/data-toolbox'));
@@ -170,7 +171,8 @@ test('registration mounts the cockpit and GET-only proxy families', () => {
 
   const routes = routers.flatMap((router) => router.routes);
   assert.ok(routes.length >= 20);
-  assert.ok(routes.every((route) => route.method === 'get'), 'toolbox must not mount mutation methods');
+  assert.deepEqual(routes.filter((route) => route.method !== 'get').map((route) => `${route.method} ${route.path}`),
+    ['patch /network/devices/:mac'], 'the only mutation is naming or acknowledging a network device');
   for (const route of [
     '/status', '/storage/summary', '/storage/files', '/network/devices',
     '/databases/collections', '/live-data/feeds', '/janitor/profiles', '/janitor/dedup-report',
@@ -267,7 +269,9 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   assert.match(app, /draft\.authorizesFilesystemMutation === false/);
   assert.match(app, /clearJanitorReviewDraft\(\)/);
   assert.match(app, /saved in this browser across refreshes, tab changes, and portfolio regenerations/);
-  assert.doesNotMatch(app, /method:\s*["'](?:POST|PUT|PATCH|DELETE)/i);
+  // The only mutation the bundle sends is naming or acknowledging a device.
+  assert.equal(app.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi)?.length, 1);
+  assert.match(app, /network\/devices\/\$\{encodeURIComponent\(mac\)\}`, \{ method: 'PATCH'/);
   assert.match(css, /@media \(max-width: 620px\)/);
 });
 
@@ -422,4 +426,31 @@ test('collector placement comes only from bounded external display metadata', (t
   assert.equal(row.cadence.length, 200);
   process.env.DATA_COLLECTOR_PLACEMENT_JSON = 'invalid';
   assert.throws(() => toolbox.collectorPlacement());
+});
+
+test('device acknowledgement relays a bounded PATCH to Data and rejects anything else', async (t) => {
+  const express = require('express');
+  const request = require('supertest');
+  const original = global.fetch;
+  const calls = [];
+  t.after(() => { global.fetch = original; });
+  global.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, status: 200, text: async () => JSON.stringify({ status: 'success', data: { device: { mac: 'AA:BB:CC:00:00:01' } } }) };
+  };
+  const app = express();
+  app.use(express.json());
+  toolbox.register({ contractVersion: 2, app, express });
+
+  await request(app).patch('/api/data-toolbox/network/devices/aa:bb:cc:00:00:01')
+    .send({ alias: `  ${'x'.repeat(100)}`, known: true, notes: 'ignored' }).expect(200);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /\/api\/v1\/network\/devices\/AA%3ABB%3ACC%3A00%3A00%3A01$/);
+  assert.equal(calls[0].options.method, 'PATCH');
+  assert.deepEqual(JSON.parse(calls[0].options.body), { alias: 'x'.repeat(80), known: true });
+
+  await request(app).patch('/api/data-toolbox/network/devices/not-a-mac').send({ known: true }).expect(400);
+  await request(app).patch('/api/data-toolbox/network/devices/AA:BB:CC:00:00:01').send({ known: 'yes' }).expect(400);
+  await request(app).patch('/api/data-toolbox/network/devices/AA:BB:CC:00:00:01').send({ notes: 'x' }).expect(400);
+  assert.equal(calls.length, 1);
 });
