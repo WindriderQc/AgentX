@@ -26,119 +26,99 @@ function writeChunk(ws, chunk) {
   });
 }
 
-/**
- * Stream a "full" report directly to a JSON file without loading all docs into memory.
- * The file is created exclusively, so an existing export is never overwritten.
- * Documents that cannot be serialized are skipped and counted separately.
- * On failure the cursor is closed and the partial file is removed.
- */
-async function streamFullReport(db, filePath) {
-  const cursor = db.collection('nas_files').find({}).sort({ dirname: 1, filename: 1 });
-  const ws = createWriteStream(filePath, { flags: 'wx' });
-  let streamError = null;
-  let opened = false;
-  ws.on('error', (err) => { streamError = err; });
-  let totalFiles = 0;
-  let skippedFiles = 0;
+const MEDIA_EXTS = ['jpg','jpeg','png','gif','bmp','webp','svg','mp4','avi','mkv','mov','wmv','flv','webm','mp3','wav','flac','aac','ogg','m4a'];
+const LARGE_FILE_BYTES = 100 * 1024 * 1024;
 
-  try {
-    await new Promise((resolve, reject) => {
-      ws.once('open', () => { opened = true; resolve(); });
-      ws.once('error', reject);
-    });
-    await writeChunk(ws, `{"reportType":"full","generatedAt":"${new Date().toISOString()}","files":[\n`);
-    for (let doc = await cursor.next(); doc; doc = await cursor.next()) {
-      if (streamError) throw streamError;
-      let row;
-      try {
-        row = JSON.stringify({
-          path: formatFilePath(doc), filename: doc.filename, dirname: doc.dirname,
-          ext: doc.ext, size: doc.size, sizeFormatted: formatFileSize(doc.size), mtime: doc.mtime
-        });
-      } catch {
-        skippedFiles++;
-        continue;
-      }
-      await writeChunk(ws, (totalFiles > 0 ? ',\n' : '') + row);
-      totalFiles++;
-    }
-    await writeChunk(ws, `\n],"totalFiles":${totalFiles},"skippedFiles":${skippedFiles}}`);
-    await new Promise((resolve, reject) => {
-      ws.once('error', reject);
-      ws.end(resolve);
-    });
-    if (streamError) throw streamError;
-    return { totalFiles, skippedFiles };
-  } catch (err) {
-    ws.destroy();
-    if (opened) await fs.unlink(filePath).catch(() => {});
-    throw err;
-  } finally {
-    await Promise.resolve(cursor.close?.()).catch(() => {});
-  }
+function fileRow(f) {
+  return { path: formatFilePath(f), filename: f.filename, ext: f.ext, size: f.size, sizeFormatted: formatFileSize(f.size) };
 }
 
-async function generateOptimizedReport(db, reportType) {
+/**
+ * Describe a row-per-document report: its cursor, row mapping and totals.
+ * Rows are streamed, so memory stays bounded however large the inventory is.
+ * Returns null for "stats", which holds one row per extension and stays in memory.
+ */
+async function reportSource(db, reportType) {
   const nasFiles = db.collection('nas_files');
-  const nasDirs = db.collection('nas_directories');
 
-  if (reportType === 'summary') {
-    let dirs = await nasDirs.find({}).sort({ total_size: -1 }).toArray();
-    if (dirs.length === 0) {
-      dirs = (await nasFiles.aggregate([
-        { $group: { _id: '$dirname', file_count: { $sum: 1 }, total_size: { $sum: '$size' } } },
-        { $sort: { total_size: -1 } }
-      ]).toArray()).map(d => ({ path: d._id, file_count: d.file_count, total_size: d.total_size }));
-    }
+  if (reportType === 'full') {
     return {
-      reportType: 'summary', generatedAt: new Date().toISOString(),
-      totalDirectories: dirs.length,
-      totalFiles: dirs.reduce((s, d) => s + (d.file_count || 0), 0),
-      totalSize: dirs.reduce((s, d) => s + (d.total_size || 0), 0),
-      directories: dirs.map(d => ({ directory: d.path, fileCount: d.file_count, totalSize: d.total_size, totalSizeFormatted: formatFileSize(d.total_size) }))
+      reportType: 'full', listKey: 'files',
+      cursor: nasFiles.find({}).sort({ dirname: 1, filename: 1 }),
+      toRow: f => ({
+        path: formatFilePath(f), filename: f.filename, dirname: f.dirname,
+        ext: f.ext, size: f.size, sizeFormatted: formatFileSize(f.size), mtime: f.mtime
+      }),
+      totals: count => ({ totalFiles: count })
     };
   }
 
   if (reportType === 'media') {
-    const exts = ['jpg','jpeg','png','gif','bmp','webp','svg','mp4','avi','mkv','mov','wmv','flv','webm','mp3','wav','flac','aac','ogg','m4a'];
-    const files = await nasFiles.find({ ext: { $in: exts } }).sort({ size: -1 }).toArray();
     return {
-      reportType: 'media', generatedAt: new Date().toISOString(), totalMediaFiles: files.length,
-      files: files.map(f => ({ path: formatFilePath(f), filename: f.filename, ext: f.ext, size: f.size, sizeFormatted: formatFileSize(f.size) }))
+      reportType: 'media', listKey: 'files',
+      cursor: nasFiles.find({ ext: { $in: MEDIA_EXTS } }).sort({ size: -1 }),
+      toRow: fileRow,
+      totals: count => ({ totalMediaFiles: count })
     };
   }
 
   if (reportType === 'large') {
-    const files = await nasFiles.find({ size: { $gte: 100 * 1024 * 1024 } }).sort({ size: -1 }).toArray();
     return {
-      reportType: 'large_files', generatedAt: new Date().toISOString(), totalLargeFiles: files.length,
-      files: files.map(f => ({ path: formatFilePath(f), filename: f.filename, ext: f.ext, size: f.size, sizeFormatted: formatFileSize(f.size) }))
+      reportType: 'large_files', listKey: 'files',
+      cursor: nasFiles.find({ size: { $gte: LARGE_FILE_BYTES } }).sort({ size: -1 }),
+      toRow: fileRow,
+      totals: count => ({ totalLargeFiles: count })
     };
   }
 
-  if (reportType === 'stats') {
-    const [statsByExt, totalFiles, totalSize] = await Promise.all([
-      nasFiles.aggregate([
-        { $group: { _id: '$ext', count: { $sum: 1 }, totalSize: { $sum: '$size' }, avgSize: { $avg: '$size' }, maxSize: { $max: '$size' } } },
-        { $sort: { totalSize: -1 } }
-      ]).toArray(),
-      nasFiles.countDocuments(),
-      nasFiles.aggregate([{ $group: { _id: null, total: { $sum: '$size' } } }]).toArray()
-    ]);
-    const ts = totalSize[0]?.total || 0;
+  if (reportType === 'summary') {
+    const nasDirs = db.collection('nas_directories');
+    const hasDirs = await nasDirs.findOne({}, { projection: { _id: 1 } });
+    const cursor = hasDirs
+      ? nasDirs.find({}).sort({ total_size: -1 })
+      : nasFiles.aggregate([
+        { $group: { _id: '$dirname', file_count: { $sum: 1 }, total_size: { $sum: '$size' } } },
+        { $sort: { total_size: -1 } },
+        { $project: { _id: 0, path: '$_id', file_count: 1, total_size: 1 } }
+      ], { allowDiskUse: true });
+    let totalFiles = 0;
+    let totalSize = 0;
     return {
-      reportType: 'statistics', generatedAt: new Date().toISOString(),
-      overview: { totalFiles, totalSize: ts, totalSizeFormatted: formatFileSize(ts) },
-      extensionStats: statsByExt.map(s => ({
-        extension: s._id || 'none', fileCount: s.count,
-        totalSize: s.totalSize, totalSizeFormatted: formatFileSize(s.totalSize),
-        avgSize: Math.round(s.avgSize), maxSize: s.maxSize,
-        pct: ts > 0 ? Math.round((s.totalSize / ts) * 10000) / 100 : 0
-      }))
+      reportType: 'summary', listKey: 'directories', cursor,
+      toRow: d => {
+        const row = { directory: d.path, fileCount: d.file_count, totalSize: d.total_size, totalSizeFormatted: formatFileSize(d.total_size) };
+        totalFiles += d.file_count || 0;
+        totalSize += d.total_size || 0;
+        return row;
+      },
+      totals: count => ({ totalDirectories: count, totalFiles, totalSize })
     };
   }
 
-  throw new Error(`Unknown report type: ${reportType}. Use: full, summary, media, large, stats`);
+  return null;
+}
+
+async function generateStatsReport(db) {
+  const nasFiles = db.collection('nas_files');
+  const [statsByExt, totalFiles, totalSize] = await Promise.all([
+    nasFiles.aggregate([
+      { $group: { _id: '$ext', count: { $sum: 1 }, totalSize: { $sum: '$size' }, avgSize: { $avg: '$size' }, maxSize: { $max: '$size' } } },
+      { $sort: { totalSize: -1 } }
+    ]).toArray(),
+    nasFiles.countDocuments(),
+    nasFiles.aggregate([{ $group: { _id: null, total: { $sum: '$size' } } }]).toArray()
+  ]);
+  const ts = totalSize[0]?.total || 0;
+  return {
+    reportType: 'statistics', generatedAt: new Date().toISOString(),
+    overview: { totalFiles, totalSize: ts, totalSizeFormatted: formatFileSize(ts) },
+    extensionStats: statsByExt.map(s => ({
+      extension: s._id || 'none', fileCount: s.count,
+      totalSize: s.totalSize, totalSizeFormatted: formatFileSize(s.totalSize),
+      avgSize: Math.round(s.avgSize), maxSize: s.maxSize,
+      pct: ts > 0 ? Math.round((s.totalSize / ts) * 10000) / 100 : 0
+    }))
+  };
 }
 
 function csvCell(value) {
@@ -153,12 +133,80 @@ function csvCell(value) {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+function csvLine(values) {
+  return values.map(csvCell).join(',');
+}
+
 function convertToCSV(data) {
   const list = data.files || data.directories || data.extensionStats || [];
   if (!Array.isArray(list) || list.length === 0) return 'No data\n';
   const headers = Object.keys(list[0]);
-  const rows = list.map(item => headers.map(h => csvCell(item[h])).join(','));
-  return [headers.map(csvCell).join(','), ...rows].join('\n');
+  return [csvLine(headers), ...list.map(item => csvLine(headers.map(h => item[h])))].join('\n');
+}
+
+/**
+ * Stream a report to a file, one row per cursor document, as JSON or CSV.
+ * The file is created exclusively, so an existing export is never overwritten.
+ * Documents that cannot be serialized are skipped and counted separately.
+ * On failure the cursor is closed and the partial file is removed.
+ */
+async function streamReport(filePath, source, format, generatedAt = new Date().toISOString()) {
+  const { cursor } = source;
+  const ws = createWriteStream(filePath, { flags: 'wx' });
+  let streamError = null;
+  let opened = false;
+  ws.on('error', (err) => { streamError = err; });
+  let rowCount = 0;
+  let skippedFiles = 0;
+  let headers = null;
+
+  try {
+    await new Promise((resolve, reject) => {
+      ws.once('open', () => { opened = true; resolve(); });
+      ws.once('error', reject);
+    });
+    if (format === 'json') {
+      const head = JSON.stringify({ reportType: source.reportType, generatedAt });
+      await writeChunk(ws, `${head.slice(0, -1)},"${source.listKey}":[\n`);
+    }
+    for (let doc = await cursor.next(); doc; doc = await cursor.next()) {
+      if (streamError) throw streamError;
+      let line;
+      try {
+        const row = source.toRow(doc);
+        if (format === 'json') {
+          line = (rowCount > 0 ? ',\n' : '') + JSON.stringify(row);
+        } else {
+          const keys = headers || Object.keys(row);
+          line = (headers ? '\n' : `${csvLine(keys)}\n`) + csvLine(keys.map(h => row[h]));
+          headers = keys;
+        }
+      } catch {
+        skippedFiles++;
+        continue;
+      }
+      await writeChunk(ws, line);
+      rowCount++;
+    }
+    const totals = source.totals(rowCount);
+    if (format === 'json') {
+      await writeChunk(ws, `\n],${JSON.stringify({ ...totals, skippedFiles }).slice(1)}`);
+    } else if (rowCount === 0) {
+      await writeChunk(ws, 'No data\n');
+    }
+    await new Promise((resolve, reject) => {
+      ws.once('error', reject);
+      ws.end(resolve);
+    });
+    if (streamError) throw streamError;
+    return { rowCount, skippedFiles, totals };
+  } catch (err) {
+    ws.destroy();
+    if (opened) await fs.unlink(filePath).catch(() => {});
+    throw err;
+  } finally {
+    await Promise.resolve(cursor.close?.()).catch(() => {});
+  }
 }
 
 exports.generateReport = async (req, res, next) => {
@@ -186,28 +234,30 @@ exports.generateReport = async (req, res, next) => {
     const filePath = path.join(EXPORT_DIR, filename);
     await ensureDir(EXPORT_DIR);
 
-    // "full" JSON exports stream directly to file (memory-safe for large collections)
-    if (type === 'full' && format === 'json') {
-      const { totalFiles, skippedFiles } = await streamFullReport(db, filePath);
+    const source = await reportSource(db, type);
+    if (source) {
+      const generatedAt = now.toISOString();
+      const { rowCount, skippedFiles, totals } = await streamReport(filePath, source, format, generatedAt);
       const stats = await fs.stat(filePath);
       return res.json({
         status: 'success',
-        data: { filename, size: stats.size, sizeFormatted: formatFileSize(stats.size), recordCount: totalFiles, skippedCount: skippedFiles, generatedAt: now.toISOString() }
+        data: {
+          filename, size: stats.size, sizeFormatted: formatFileSize(stats.size),
+          recordCount: totals.totalFiles ?? rowCount, skippedCount: skippedFiles, generatedAt
+        }
       });
     }
 
-    const data = await generateOptimizedReport(db, type);
-
+    const data = await generateStatsReport(db);
     const content = format === 'csv' ? convertToCSV(data) : JSON.stringify(data, null, 2);
     await fs.writeFile(filePath, content, { flag: 'wx' });
     const stats = await fs.stat(filePath);
 
     res.json({
       status: 'success',
-      data: { filename, size: stats.size, sizeFormatted: formatFileSize(stats.size), recordCount: data.totalFiles || data.totalMediaFiles || data.totalLargeFiles || 0, generatedAt: data.generatedAt }
+      data: { filename, size: stats.size, sizeFormatted: formatFileSize(stats.size), recordCount: data.overview.totalFiles, generatedAt: data.generatedAt }
     });
   } catch (error) {
-    if (error.message.startsWith('Unknown report type')) return res.status(400).json({ status: 'error', message: error.message });
     if (error.code === 'EEXIST') return res.status(409).json({ status: 'error', message: 'An export with this name already exists; retry' });
     next(error);
   }
@@ -233,4 +283,5 @@ exports.deleteExport = async (req, res, next) => {
 };
 
 // Exposed for stream-integrity tests.
-exports.streamFullReport = streamFullReport;
+exports.streamReport = streamReport;
+exports.reportSource = reportSource;

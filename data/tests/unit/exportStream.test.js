@@ -4,7 +4,12 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { streamFullReport } = require('../../controllers/exportController');
+const { streamReport, reportSource } = require('../../controllers/exportController');
+
+async function streamFullReport(db, target) {
+  const { rowCount, skippedFiles } = await streamReport(target, await reportSource(db, 'full'), 'json');
+  return { totalFiles: rowCount, skippedFiles };
+}
 
 function dbWith(cursor) {
   return { collection: () => ({ find: () => ({ sort: () => cursor }) }) };
@@ -21,7 +26,7 @@ function cursorOf(docs, { failAfter } = {}) {
   };
 }
 
-describe('streamFullReport', () => {
+describe('streamReport (full JSON)', () => {
   let dir;
   beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-stream-')); });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
