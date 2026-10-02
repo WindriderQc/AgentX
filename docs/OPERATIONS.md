@@ -85,6 +85,10 @@ when set. Exit codes: 0 completed, 1 failed, 2 usage, 4 refused (held or busy).
 
 An instance can install a small wrapper that exports these variables, so an
 operator session or agent calls a single command.
+The OpenClaw plugin `integrations/openclaw/agentx-maintenance` exposes the
+same actions to configured operator agents as one tool,
+`agentx_maintenance_action`: no shell, validated arguments, and the actor is
+always `openclaw:<agent>`. See its README for the configuration.
 
 ### Moving an instance to a fresh source history
 

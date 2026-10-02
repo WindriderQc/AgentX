@@ -1,0 +1,40 @@
+{
+  "id": "agentx-maintenance",
+  "name": "AgentX Maintenance Actions",
+  "version": "1.0.0",
+  "description": "Bounded AgentX maintenance actions for operator agents: status, deploy, quarantine recovery and judge calibration.",
+  "activation": {
+    "onStartup": true,
+    "onAgentHarnesses": [
+      "openclaw"
+    ]
+  },
+  "contracts": {
+    "tools": [
+      "agentx_maintenance_action"
+    ]
+  },
+  "toolMetadata": {
+    "agentx_maintenance_action": {
+      "optional": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "actionCommand": {
+        "type": "string"
+      },
+      "agentIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "actionCommand"
+    ]
+  }
+}
