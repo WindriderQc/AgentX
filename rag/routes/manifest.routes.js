@@ -12,6 +12,7 @@ const router = express.Router();
 const logger = require('../config/logger');
 const RagManifest = require('../models/RagManifest');
 const { getRagStore } = require('../src/services/ragStore');
+const { resetIndexedFiles } = require('../src/services/nasFileIndexState');
 const { sendError } = require('../src/utils/response');
 
 const MAX_DELETES_DEFAULT = 100;
@@ -238,6 +239,7 @@ router.post('/cleanup', async (req, res) => {
       }
     }
 
+    const filesReset = await resetIndexedFiles(deleted);
     const elapsed = Date.now() - startTime;
 
     res.json({
@@ -248,6 +250,7 @@ router.post('/cleanup', async (req, res) => {
         manifestGeneratedAt: manifest.generatedAt,
         deleted,
         errors,
+        filesReset,
         stats: {
           attempted: stale.length,
           succeeded: deleted.length,

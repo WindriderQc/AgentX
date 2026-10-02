@@ -304,14 +304,20 @@ case-sensitive phrase `DELETE <full document ID>` in `confirmation`. This
 destructive-action confirmation is an additional safety gate; it does not
 replace or grant operator authorization at the deployment boundary.
 
-**Errors:** 400 `CONFIRMATION_REQUIRED`, 404
+**Errors:** 400 `CONFIRMATION_REQUIRED`, 404 when no chunk carries that ID
 
 ```bash
 curl -X DELETE http://127.0.0.1:3182/api/rag/documents/abc123 \
   -H 'Content-Type: application/json' \
   -d '{ "confirmation": "DELETE abc123" }'
-# => { "ok": true, "data": { "documentId": "abc123" } }
+# => { "ok": true, "data": { "documentId": "abc123", "filesReset": 1 } }
 ```
+
+Deleting a document also clears the index state of the scanned file records
+(`nas_files`) that produced it; `filesReset` counts them (`null` when MongoDB
+was unavailable). A file still under an ingest root is therefore ingested
+again by the next scan. To keep a file out of the index, exclude it through
+the ingestion policy instead.
 
 When confirmation is missing or does not match the decoded route ID exactly,
 the store is not called. The error includes
@@ -381,7 +387,7 @@ After reviewing that result, an explicitly confirmed deletion uses:
 curl -X POST http://127.0.0.1:3182/api/rag/cleanup \
   -H 'Content-Type: application/json' \
   -d '{ "source": "local-import", "dryRun": false, "maxDeletes": 100, "confirmation": "DELETE STALE DOCUMENTS FROM local-import" }'
-# => { "ok": true, "data": { "dryRun": false, "deleted": ["doc1"], "errors": [], "stats": { "attempted": 1, "succeeded": 1, "failed": 0, "elapsedMs": 150 } } }
+# => { "ok": true, "data": { "dryRun": false, "deleted": ["doc1"], "errors": [], "filesReset": 1, "stats": { "attempted": 1, "succeeded": 1, "failed": 0, "elapsedMs": 150 } } }
 ```
 
 ## Embedding Migration

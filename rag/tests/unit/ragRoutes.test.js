@@ -8,6 +8,7 @@ jest.mock('../../src/services/ragStore', () => {
     search: jest.fn(),
     listDocuments: jest.fn(),
     deleteDocument: jest.fn(),
+    getDocument: jest.fn(),
     getStats: jest.fn(),
     vectorStore: { healthCheck: jest.fn().mockResolvedValue({ healthy: true }) },
   };
@@ -16,6 +17,10 @@ jest.mock('../../src/services/ragStore', () => {
     _mockStore: mockStore,
   };
 });
+
+jest.mock('../../src/services/nasFileIndexState', () => ({
+  resetIndexedFiles: jest.fn().mockResolvedValue(1),
+}));
 
 jest.mock('../../src/services/embeddings', () => ({
   getEmbeddingsService: () => ({
@@ -323,6 +328,7 @@ describe('DELETE /api/rag/documents/:id', () => {
   });
 
   it('deletes only after confirming the full decoded documentId', async () => {
+    mockStore.getDocument.mockResolvedValue({ documentId: 'guide/v2 résumé #final' });
     mockStore.deleteDocument.mockResolvedValue(true);
     const documentId = 'guide/v2 résumé #final';
 
@@ -334,10 +340,14 @@ describe('DELETE /api/rag/documents/:id', () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.data.documentId).toBe(documentId);
     expect(mockStore.deleteDocument).toHaveBeenCalledWith(documentId);
+    const { resetIndexedFiles } = require('../../src/services/nasFileIndexState');
+    expect(resetIndexedFiles).toHaveBeenCalledWith([documentId]);
+    expect(res.body.data.filesReset).toBe(1);
   });
 
-  it('returns 404 when document not found', async () => {
-    mockStore.deleteDocument.mockResolvedValue(false);
+  it('returns 404 when document not found, without deleting', async () => {
+    mockStore.getDocument.mockResolvedValue(null);
+    mockStore.deleteDocument.mockClear();
 
     const res = await request(buildApp())
       .delete('/api/rag/documents/missing')
@@ -345,9 +355,11 @@ describe('DELETE /api/rag/documents/:id', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.ok).toBe(false);
+    expect(mockStore.deleteDocument).not.toHaveBeenCalled();
   });
 
   it('returns 500 on error', async () => {
+    mockStore.getDocument.mockResolvedValue({ documentId: 'x' });
     mockStore.deleteDocument.mockRejectedValue(new Error('fail'));
 
     const res = await request(buildApp())

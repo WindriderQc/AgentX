@@ -48,6 +48,7 @@ const {
 const { sendError } = require('../src/utils/response');
 const { classifyRagAvailabilityError } = require('../src/utils/ragAvailability');
 const { handleSearch } = require('./ragSearch');
+const { resetIndexedFiles } = require('../src/services/nasFileIndexState');
 const { sanitizePublicProjection } = require('../src/utils/publicProjection');
 
 // ── Helpers ──────────────────────────────────────────────
@@ -406,11 +407,13 @@ router.delete('/documents/:documentId', async (req, res) => {
     if (!requireDocumentDeleteConfirmation(req, res, documentId)) return;
 
     const ragStore = getRagStore();
-    const deleted = await ragStore.deleteDocument(documentId);
-    if (!deleted) {
+    // Qdrant deletes by filter succeed for unknown ids; check existence first.
+    if (!(await ragStore.getDocument(documentId))) {
       return res.status(404).json({ ok: false, error: 'Document not found' });
     }
-    res.json({ ok: true, data: { documentId } });
+    await ragStore.deleteDocument(documentId);
+    const filesReset = await resetIndexedFiles([documentId]);
+    res.json({ ok: true, data: { documentId, filesReset } });
   } catch (err) {
     logger.error('Delete document error:', err);
     sendError(res, 500, 'Failed to delete document', err.message);
