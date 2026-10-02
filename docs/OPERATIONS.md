@@ -320,6 +320,15 @@ Personal spoken turns carry their current selected context as labelled reference
 data beside the request, keeping native identity, permissions and tool guidance
 stable. Core's canonical transcript still contains the submitted user text.
 
+`HOUSEHOLD_PERSONA_VOICES` optionally gives personas an instance voice without
+editing the shared catalog: a JSON object maps a persona id, or `"*"` for every
+persona, to `provider|voice` (`kokoro`, `windows_sapi` or `voxcpm`), for example
+a VoxCPM2 voice cloned on the voice host. Persona catalog snapshots carry it, so
+browser conversations and server replies speak with it in both languages. A
+browser's own voice selection still wins; invalid entries keep the catalog voice.
+The chosen engine must be available: an unavailable VoxCPM2 worker leaves the
+reply unspoken rather than substituting another voice.
+
 VoiX requires `VOIX_BASE_URL` for its player, speech recognition/synthesis and
 native-device APIs. `DATAAPI_BASE_URL` is optional. Email actions require
 `LEANTIME_BASE_URL`, `LEANTIME_API_KEY`, `LEANTIME_EMAIL_ACTION_PROJECT_ID` and
