@@ -55,7 +55,7 @@ take_runtime_lease() {
   scope="$(runtime_guard_scope "$@")"
   [[ -n "$scope" ]] || return 0
   if [[ -n "$FORCE_RUNTIME" ]]; then
-    echo "--force-runtime: recreating without Core's runtime lease; a running Benchmark workload may be cut." >&2
+    echo "--force-runtime: recreating without Core's runtime lease; running work may be cut and its host quarantined." >&2
     return 0
   fi
   local published
@@ -71,22 +71,23 @@ take_runtime_lease() {
     exit 4
   fi
   if [[ "$scope" == "benchmark" ]]; then
-    if runtime_workloads_active "http://$published"; then
-      echo "Not recreating Benchmark: wait for that work to finish, or use --force-runtime for an operator recovery." >&2
+    if runtime_deploy_blocked "http://$published" benchmark; then
+      echo "Not recreating Benchmark: cancel that work through its route or wait for it to finish (--force-runtime is for operator recovery only)." >&2
       exit 4
     fi
     echo "No Benchmark workload is active; recreating Benchmark does not touch conversations, so no global lease is taken."
     return 0
   fi
-  local rc=0
-  runtime_lease_acquire "http://$published" runtime-deploy || rc=$?
+  local rc=0 lease_scope
+  lease_scope="$(runtime_lease_scope "$scope")"
+  runtime_lease_acquire "http://$published" "$lease_scope" || rc=$?
   case "$rc" in
     0)
       trap runtime_lease_release EXIT
-      echo "Runtime lease $RUNTIME_LEASE_ID held: new Benchmark work waits until this recreate finishes."
+      echo "Runtime lease $RUNTIME_LEASE_ID ($lease_scope) held: new work waits until this recreate finishes; running profiles continue."
       ;;
     10)
-      echo "Not recreating: wait for that work to finish, or use --force-runtime for an operator recovery." >&2
+      echo "Not recreating: cancel that work through its route or wait for it to finish (--force-runtime is for operator recovery only)." >&2
       exit 4
       ;;
     *)
@@ -198,7 +199,7 @@ Commands:
   rebuild [--no-deps] [service...]
                         Rebuild images, then recreate the requested services
                         Recreating core or benchmark on a running instance first takes
-                        Core's runtime lease and stops if Benchmark work is active;
+                        Core's runtime lease and stops if it would cut running work;
                         --force-runtime skips that check for an operator recovery
   action <name> [--option value...]
                         Bounded maintenance action on a running instance: status,

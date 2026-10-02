@@ -30,7 +30,7 @@ const PERSONAL_OPERATOR_SURFACE_CONTRACT = [
 // enough that a detailed question was cut mid-sentence -- an answer about autumn
 // leaves ended on "les champignons, les bacteries et les petits" -- so the
 // ceiling now leaves room for a long answer to finish.
-const FAMILY_AGENT_PROMPT = fs.readFileSync(path.join(__dirname, 'family-agent.md'), 'utf8').trim();
+const FAMILY_AGENT_PROMPT = `${fs.readFileSync(path.join(__dirname, 'family-agent.md'), 'utf8').trim()}\n\n${require('./family-context').FAMILY_TONE}`;
 
 const PACKS = Object.freeze([
   Object.freeze({

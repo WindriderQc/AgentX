@@ -14,6 +14,7 @@ const {
   releaseWorkloadAdmission,
   transitionWorkloadRecovery
 } = require('../../clients/coreApiClient');
+const { heartbeatThroughCoreOutage } = require('../benchmark/coreRestartTolerance');
 
 async function acquireProfilerClaimLease(hostUrls, operationId, estimatedDurationMs, options = {}) {
   const uniqueHosts = [...new Set((hostUrls || []).filter(Boolean))];
@@ -71,6 +72,17 @@ async function acquireProfilerClaimLease(hostUrls, operationId, estimatedDuratio
     throw err;
   }
 
+  // Renews the admission before a dispatch or the release; through a Core
+  // restart (#47) it waits while the admission Core confirmed stays valid.
+  const renewThroughCoreOutage = async signal => {
+    const renewed = await heartbeatThroughCoreOutage(
+      () => heartbeatWorkloadAdmission(operationId, estimatedDurationMs),
+      { confirmedExpiresAt: () => heartbeat.confirmedExpiresAt?.(), signal, retryMs: options.coreOutageRetryMs,
+        onOutage: error => logger.warn('Core unreachable; profiler waits while its admission stays valid',
+          { operationId, error: error.message }) });
+    if (renewed?.heartbeat === true) heartbeat.noteConfirmedExpiry?.(renewed.expiresAt);
+    return renewed;
+  };
   let releasePromise = null;
   let abandonPromise = null;
   let abandoned = false;
@@ -114,7 +126,7 @@ async function acquireProfilerClaimLease(hostUrls, operationId, estimatedDuratio
     assertActive: heartbeat.assertActive,
     async assertDispatchActive() {
       heartbeat.assertActive();
-      const renewed = await heartbeatWorkloadAdmission(operationId, estimatedDurationMs);
+      const renewed = await renewThroughCoreOutage(leaseAbort.signal);
       if (renewed?.heartbeat !== true) throw Object.assign(new Error('Profiler workload no longer owns dispatch'),
         { code: 'BENCHMARK_CLAIM_LOST', retainAdmission: true });
       heartbeat.assertActive();
@@ -167,6 +179,9 @@ async function acquireProfilerClaimLease(hostUrls, operationId, estimatedDuratio
         releasePromise = (async () => {
           const { beforeWorkloadRelease = null, ...claimReleaseOptions } = options;
           if (typeof heartbeat.drainHosts === 'function') await heartbeat.drainHosts();
+          // Release only once Core answers, so a profile ending during a Core
+          // restart is not retained as UNKNOWN. A refusal is decided below.
+          await renewThroughCoreOutage(null).catch(() => {});
           const result = await releaseBenchmarkClaims(claimed, operationId, {
             ...claimReleaseOptions,
             releaseWorkloadAdmission: false

@@ -121,7 +121,7 @@ describe('Inference control-plane API', () => {
       .query({ target: 'primary' })
       .expect(200);
 
-    expect(fetch).toHaveBeenCalledWith('http://primary:11434/api/tags');
+    expect(fetch).toHaveBeenCalledWith('http://primary:11434/api/tags', { signal: expect.any(AbortSignal) });
     expect(response.body).toEqual({
       status: 'success',
       data: [
@@ -130,6 +130,30 @@ describe('Inference control-plane API', () => {
         { name: 'nomic-embed-text:v1.5', size: 1, modified_at: '2026-07-03T00:00:00Z' }
       ]
     });
+  });
+
+  it('drops an unanswered Ollama catalog read when its caller leaves (#17)', async () => {
+    let seenSignal;
+    let markCalled;
+    const called = new Promise(resolve => { markCalled = resolve; });
+    fetch.mockImplementationOnce((url, { signal }) => new Promise((resolve, reject) => {
+      seenSignal = signal;
+      signal.addEventListener('abort', () => reject(signal.reason));
+      markCalled();
+    }));
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise(resolve => server.once('listening', resolve));
+    try {
+      const client = require('node:http').get(`http://127.0.0.1:${server.address().port}/api/ollama/models?target=primary`);
+      client.on('error', () => {});
+      await called;
+      expect(seenSignal.aborted).toBe(false);
+      client.destroy();
+      await new Promise(resolve => seenSignal.addEventListener('abort', resolve));
+      expect(seenSignal.aborted).toBe(true);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
   });
 
   it('rejects an arbitrary Ollama catalog target before proxying', async () => {

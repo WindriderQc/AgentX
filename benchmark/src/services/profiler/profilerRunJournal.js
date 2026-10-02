@@ -37,6 +37,7 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
   let uncertain = false;
   let sequence = 0;
   const tickets = new Set();
+  let cancellation = null;
   async function update(fields, requireLease = true) {
     if (requireLease) lease.assertActive();
     const result = await HostProfile.updateOne(filter, { $set: Object.fromEntries(
@@ -45,16 +46,34 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
     if (result.matchedCount !== 1) throw journalError('Profiler journal writer epoch was replaced');
     if (requireLease) lease.assertActive();
   }
+  // An operator cancel aborted the pending request: it becomes terminal only
+  // with the runtime's stop proof, otherwise it stays UNKNOWN as before.
+  async function settleCancelAbort(error) {
+    const result = await cancellation.resolveAbort();
+    if (result.proven) {
+      await update({ pendingRequests: 0, serverTerminalObserved: true, serverTerminalAt: new Date(),
+        cancelAbort: { proven: true, receipt: result.receipt }, ownerClaimedAt: new Date(), reason: null }, false);
+      tickets.clear(); pending = 0;
+      error.cancelAbortReceipt = result.receipt;
+      return;
+    }
+    uncertain = true;
+    error.cancelStopUnproven = true;
+    error.message = `${error.message}; ${result.reason}. The request stays UNKNOWN until a runtime restart attestation`;
+    await update({ cancelAbort: { proven: false, reason: result.reason, evidence: result.evidence } }, false);
+  }
   const journal = {
     hostId,
     heartbeat: () => update({ ownerClaimedAt: new Date() }),
-    async beforeMutation() {
+    async beforeMutation(request = null) {
+      cancellation?.assertNotCancelled();
       if (uncertain || pending) throw journalError('Prior profiler request has no terminal receipt', 'PROFILER_MUTATION_OUTCOME_UNKNOWN');
       await lease.assertDispatchActive();
       const ticket = ++sequence;
       await update({ state: 'mutating', pendingRequests: 1, serverTerminalObserved: false,
         serverTerminalAt: null, ownerClaimedAt: new Date(), reason: 'Runtime request dispatched; terminal receipt pending' });
       pending = 1; tickets.add(ticket);
+      cancellation?.track(ticket, request);
       return ticket;
     },
     async completeMutation(ticket) {
@@ -62,13 +81,19 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
       await update({ pendingRequests: 0, serverTerminalObserved: true, serverTerminalAt: new Date(),
         ownerClaimedAt: new Date(), reason: null });
       tickets.delete(ticket); pending = 0;
+      cancellation?.settle(ticket);
     },
-    async unknownMutation(_ticket, error) {
+    async unknownMutation(ticket, error) {
+      if (!uncertain && error?.code === 'PROFILE_CANCELLED' && cancellation?.isAbortedTicket(ticket)) {
+        await update({ reason: 'Profile cancel aborted the request; awaiting runtime stop proof' }, false);
+        return;
+      }
       uncertain = true;
       await update({ state: 'unknown', serverTerminalObserved: false,
         reason: error?.code || 'Profiler request terminality unknown' }, false);
     },
-    async run(operation, modelName) {
+    async run(operation, modelName, { cancellation: runCancellation = null } = {}) {
+      cancellation = runCancellation;
       try {
         await update({ model: modelName, ownerClaimedAt: new Date() });
         const result = await withMutationJournal(journal, operation);
@@ -76,13 +101,19 @@ async function createRunJournal(lease, { hostId, hostUrl, modelName }) {
         await update({ state: 'pending_reconciliation', reason: 'Profile requests settled; exact host restoration pending' });
         return result;
       } catch (error) {
+        if (pending && !uncertain && [...tickets].some(ticket => cancellation?.isAbortedTicket(ticket))) {
+          await settleCancelAbort(error).catch(() => { uncertain = true; });
+        }
         if (pending || uncertain || error.retainAdmission || lease.signal.aborted) {
           uncertain = true;
-          await update({ state: 'unknown', serverTerminalObserved: false, reason: error.code || 'Profiler interrupted' }, false);
+          await update({ state: 'unknown', serverTerminalObserved: false,
+            reason: error.cancelStopUnproven ? 'PROFILE_CANCEL_STOP_UNPROVEN' : error.code || 'Profiler interrupted' }, false);
           error.retainAdmission = true;
           await lease.abandon(error);
         } else await update({ state: 'pending_reconciliation', reason: 'Profile ended; acknowledged runtime requests require restoration' });
         throw error;
+      } finally {
+        cancellation = null;
       }
     },
     async beforeWorkloadRelease(result) {
@@ -104,7 +135,7 @@ async function journalFor(lease, host) {
 async function prepareProfilerRunJournals(lease, hosts, modelName) {
   for (const host of hosts) await journalFor(lease, { ...host, modelName });
 }
-async function runJournaledProfile(lease, host, operation) {
-  return (await journalFor(lease, host)).run(operation, host.modelName);
+async function runJournaledProfile(lease, host, operation, options = {}) {
+  return (await journalFor(lease, host)).run(operation, host.modelName, options);
 }
 module.exports = { runJournaledProfile, createRunJournal, prepareProfilerRunJournals };

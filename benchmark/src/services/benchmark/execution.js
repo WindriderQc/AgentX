@@ -34,7 +34,7 @@ const { batchAdmissionScope } = require('./batchAdmissionScope');
 const authorityReconciliation = require('./benchmarkAuthorityReconciliation');
 const {
     buildOllamaTarget,
-    buildQualityCohortFingerprint,
+    buildPromptFingerprint, buildQualityCohortFingerprint,
     normalizeBatchTargets,
     normalizeBenchmarkTarget
 } = require('../../../../shared/benchmarkTargetContract');
@@ -230,7 +230,6 @@ async function startBatch({
 
     const repeats = Math.max(1, Math.min(5, Number(normalizedExecutionConfig.repeats) || 1));
     const qualityCohortFingerprint = buildQualityCohortFingerprint({
-        prompts: await require('./qualityCohort').loadCohortCatalog(selectedPrompts), // catalog, not the batch's subset
         scorerVersion: SCORER_VERSION,
         judgeTarget,
         executionConfig: normalizedExecutionConfig,
@@ -239,6 +238,7 @@ async function startBatch({
     const batchContractFingerprint = fingerprint({
         schema: 'agentx.benchmark-batch-contract/v1',
         qualityCohortFingerprint,
+        promptFingerprints: selectedPrompts.map(buildPromptFingerprint).sort(),
         targetFingerprints: normalizedTargets.map((target) => target.fingerprint).sort(),
         repeats,
         campaignKind: campaign_kind,

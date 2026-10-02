@@ -11,6 +11,15 @@ const { classifyBenchmarkError } = require('./errorClassifier');
 const { normalizeScoringCategory, DEFAULT_SCORING_CATEGORY } = require('../scoring/scoringConfigs');
 const authorityReconciliation = require('./benchmarkAuthorityReconciliation');
 const { EXECUTION_REVIEW_REASONS } = require('./executionReview');
+const { buildPromptFingerprint } = require('../../../../shared/benchmarkTargetContract');
+
+/** The catalog prompt a result ran, pinned by id and content fingerprint. */
+function promptIdentity(prompt) {
+    return {
+        prompt_id: prompt?._id ? String(prompt._id) : null,
+        prompt_fingerprint: buildPromptFingerprint(prompt)
+    };
+}
 
 async function retractAmbiguousResult(resultId, batchId, authorityError, phase) {
     try {
@@ -157,6 +166,7 @@ async function persistSuccessfulResult({
         provider_usage: providerUsage,
         provider_cost: providerCost,
         quality_cohort_fingerprint: qualityCohortFingerprint,
+        ...promptIdentity(prompt),
         prompt: promptText,
         prompt_level: prompt.level,
         prompt_category: prompt.category,
@@ -338,6 +348,7 @@ async function persistFailedResult({ batchId, judgeConfig, queueBatchProgress, f
             provider_usage: providerUsage,
             provider_cost: providerCost,
             quality_cohort_fingerprint: qualityCohortFingerprint,
+            ...promptIdentity(prompt),
             prompt: frozenPromptText,
             prompt_level: prompt.level,
             prompt_category: prompt.category,
