@@ -171,7 +171,9 @@ tool share it; there is no separate note file writer. Pack/space and audience
 are bound on the server. Family reads require explicit household/normal labels.
 Expired and forgotten notes are excluded, and voice retries cannot resurrect a
 forgotten note. Notes are not copied into a second RAG index, so a correction or
-forgetting takes effect on the next retrieval.
+forgetting takes effect on the next retrieval. A daily sweep deletes notes that
+have been forgotten or expired for longer than `MEMORY_NOTE_RETENTION_DAYS`
+(default 30; 0 keeps them).
 
 ## Access and identity
 

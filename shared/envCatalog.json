@@ -1716,6 +1716,17 @@
       "secret": false,
       "description": "Leantime URL for household email actions and agent-ops links. Unset: email actions answer 503."
     },
+    "MEMORY_NOTE_RETENTION_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "fallback": "30",
+      "category": "memory",
+      "secret": false,
+      "description": "Days a forgotten or expired memory note is kept before Core deletes its text (daily sweep). 0 keeps hidden notes forever."
+    },
     "MEMORY_REVIEW_AUTOMATION_MODE": {
       "services": [
         "core"

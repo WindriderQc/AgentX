@@ -519,6 +519,19 @@ async function startServer() {
     }
   }
 
+  // Forgotten and expired notes are hidden at once; remove their text after retention.
+  const memoryRetentionDays = require('./src/services/memoryNoteRetention').retentionDays();
+  if (memoryRetentionDays) {
+    try {
+      const retention = require('./src/services/memoryNoteRetention').createMemoryNoteRetention();
+      await startCoreSingletonDaemon({ name: 'memory-note-retention', label: 'Memory Note Retention',
+        start: async () => { retention.start(); console.log(`   ✓ Memory Note Retention: Active (${memoryRetentionDays} days, daily sweep)`); },
+        stop: async () => retention.stop() });
+    } catch (err) {
+      console.log(`   ⚠ Memory Note Retention: ${err.message}`);
+    }
+  }
+
   // Council sessions only advance inside the process that started them. Close
   // any pending/running session a previous process left behind so the Council
   // page never shows a RUNNING status that nothing can complete.
