@@ -51,6 +51,10 @@ jobs:
         run: npm run setup:integrations
       - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
         run: python3 -m unittest discover -s integrations/voix -p 'test_*.py'
+      # integrations/coding/tests is not a package, so its modules run by
+      # dotted name from the repository root instead of through discover.
+      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
+        run: python3 -m unittest $(ls integrations/coding/tests/test_*.py | sed 's#/#.#g; s#\.py$##')
       - if: steps.scope.outputs.run == 'true'
         run: npm run build --if-present
         working-directory: ${{ matrix.service }}
