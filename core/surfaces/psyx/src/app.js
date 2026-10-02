@@ -186,6 +186,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.delete('/state/items/:key/:id', asyncRoute(async (req, res) => responseData(res, await stateRepository.deleteItem(res.locals.psyxUserId, req.params.key, cleanText(req.params.id, 80)))));
   api.post('/state/experiments', asyncRoute(async (req, res) => responseData(res, await stateRepository.addExperiment(res.locals.psyxUserId, req.body || {}))));
   api.patch('/state/experiments/:id', asyncRoute(async (req, res) => responseData(res, await stateRepository.updateExperiment(res.locals.psyxUserId, cleanText(req.params.id, 80), req.body || {}))));
+  api.post('/state/check-ins', asyncRoute(async (req, res) => responseData(res, await stateRepository.addCheckIn(res.locals.psyxUserId, {
+    score: req.body?.score, phase: req.body?.phase, conversationId: cleanText(req.body?.conversationId, 80)
+  }))));
   api.post('/state/proposals/:id/accept', asyncRoute(async (req, res) => responseData(res, await stateRepository.acceptProposal(res.locals.psyxUserId, cleanText(req.params.id, 80), req.body || {}))));
   api.post('/state/proposals/:id/reject', asyncRoute(async (req, res) => responseData(res, await stateRepository.rejectProposal(res.locals.psyxUserId, cleanText(req.params.id, 80)))));
   api.get('/review/status', (req, res) => responseData(res, review.status(res.locals.psyxUserId, cleanText(req.query.conversationId, 80))));

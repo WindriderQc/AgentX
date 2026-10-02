@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const proposals = require('./proposals');
+const followUp = require('./followUp');
 
 const PSYX_STATE_VERSION = 2;
 const STATE_ITEM_KEYS = ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops'];
@@ -124,6 +125,8 @@ function sanitizeExperiments(value) {
       expectedSignal: cleanText(item?.expectedSignal, 1000),
       result: cleanText(item?.result, 1500),
       status: ['planned', 'active', 'completed', 'abandoned'].includes(item?.status) ? item.status : 'planned',
+      outcome: followUp.EXPERIMENT_OUTCOMES.includes(item?.outcome) ? item.outcome : null,
+      checkInAt: followUp.dateOrNull(item?.checkInAt),
       fingerprint: experimentFingerprint(hypothesis, action),
       createdAt: normalizeDate(item?.createdAt, now),
       updatedAt: normalizeDate(item?.updatedAt, now)
@@ -145,6 +148,7 @@ function emptyState(userId = 'default') {
     proposals: [],
     settledProposals: [],
     sessionDigests: [],
+    checkIns: [],
     updatedAt: null
   };
 }
@@ -161,6 +165,7 @@ function normalizeState(doc, userId = 'default') {
     proposals: proposals.normalizeProposals(doc.proposals),
     settledProposals: proposals.normalizeSettled(doc.settledProposals),
     sessionDigests: proposals.normalizeDigests(doc.sessionDigests),
+    checkIns: followUp.normalizeCheckIns(doc.checkIns),
     resetAt: normalizeDate(doc.resetAt),
     updatedAt: normalizeDate(doc.updatedAt)
   };
@@ -189,7 +194,8 @@ function stateForPrompt(state, { conversationId = null } = {}) {
   compact.experiments = (state.experiments || [])
     .filter((item) => item.status === 'planned' || item.status === 'active')
     .slice(-10)
-    .map(({ id, hypothesis, action, expectedSignal, result, status }) => ({ id, hypothesis, action, expectedSignal, result, status }));
+    .map(({ id, hypothesis, action, expectedSignal, result, status, checkInAt }) => ({ id, hypothesis, action, expectedSignal, result, status, checkInAt, due: followUp.isDue({ status, checkInAt }) }));
+  compact.recentCheckIns = (state.checkIns || []).slice(-5).map(({ score, phase, at }) => ({ score, phase, at }));
   // Digests of other recent conversations give continuity across sessions.
   compact.recentSessions = (state.sessionDigests || [])
     .filter((item) => item.conversationId !== conversationId)
@@ -246,6 +252,8 @@ function createExperiment(body = {}) {
     expectedSignal: cleanText(body.expectedSignal, 1000),
     result: '',
     status: 'planned',
+    outcome: null,
+    checkInAt: followUp.checkInAtFrom(body.checkInDays),
     fingerprint: experimentFingerprint(hypothesis, action),
     createdAt: now,
     updatedAt: now
@@ -320,6 +328,7 @@ function createStateRepository({ collection, logger }) {
             proposals: [],
             settledProposals: [],
             sessionDigests: [],
+            checkIns: [],
             createdAt: now,
             updatedAt: now
           }
@@ -413,6 +422,17 @@ function createStateRepository({ collection, logger }) {
       set['experiments.$[experiment].expectedSignal'] = expectedSignal;
       semanticChanges.push({ experiments: { $elemMatch: { id, expectedSignal: { $ne: expectedSignal } } } });
     }
+    if ('outcome' in body) {
+      const changes = followUp.outcomeChanges(body.outcome);
+      for (const [field, value] of Object.entries(changes)) set[`experiments.$[experiment].${field}`] = value;
+      semanticChanges.push({ experiments: { $elemMatch: { id, outcome: { $ne: changes.outcome } } } });
+      if (changes.checkInAt) semanticChanges.push({ experiments: { $elemMatch: { id, checkInAt: { $ne: changes.checkInAt } } } });
+    }
+    if ('checkInDays' in body) {
+      const checkInAt = followUp.checkInAtFrom(body.checkInDays);
+      set['experiments.$[experiment].checkInAt'] = checkInAt;
+      semanticChanges.push({ experiments: { $elemMatch: { id, checkInAt: { $ne: checkInAt } } } });
+    }
     if (Object.keys(set).length === 0) {
       const error = new Error('No supported experiment changes supplied');
       error.statusCode = 400;
@@ -431,7 +451,7 @@ function createStateRepository({ collection, logger }) {
   async function reset(userId) {
     await ensureDocument(userId);
     const now = new Date();
-    const cleared = Object.fromEntries([...STATE_ITEM_KEYS, 'experiments', 'proposals', 'settledProposals', 'sessionDigests'].map((key) => [key, []]));
+    const cleared = Object.fromEntries([...STATE_ITEM_KEYS, 'experiments', 'proposals', 'settledProposals', 'sessionDigests', 'checkIns'].map((key) => [key, []]));
     await collection.updateOne(
       { userId },
       {
@@ -498,7 +518,18 @@ function createStateRepository({ collection, logger }) {
       $set: { updatedAt: new Date() }
     };
     let item;
-    if (proposal.kind === 'experiments') {
+    let options;
+    if (proposal.kind === 'experimentResult') {
+      // Applies to the experiment it names; if that experiment is gone the proposal is only settled.
+      const changes = followUp.outcomeChanges(proposal.outcome);
+      const result = cleanText(edits.result, 1500) || proposal.result;
+      if (state.experiments.some((entry) => entry.id === proposal.experimentId)) {
+        update.$set = { ...update.$set, 'experiments.$[experiment].updatedAt': new Date().toISOString() };
+        for (const [field, value] of Object.entries({ ...changes, ...(result ? { result } : {}) })) update.$set[`experiments.$[experiment].${field}`] = value;
+        options = { arrayFilters: [{ 'experiment.id': proposal.experimentId }] };
+      }
+      item = { experimentId: proposal.experimentId, ...changes, result };
+    } else if (proposal.kind === 'experiments') {
       item = createExperiment({ ...proposal, ...pick(edits, ['hypothesis', 'action', 'expectedSignal']) });
       if (!state.experiments.some((entry) => entry.fingerprint === item.fingerprint)) {
         update.$push.experiments = { $each: [item], $slice: -STATE_LIMITS.experiments };
@@ -514,7 +545,7 @@ function createStateRepository({ collection, logger }) {
         update.$push[proposal.kind] = { $each: [item], $slice: -STATE_LIMITS[proposal.kind] };
       }
     }
-    const result = await collection.updateOne({ userId, 'proposals.id': id }, update);
+    const result = await collection.updateOne({ userId, 'proposals.id': id }, update, options);
     if (!result.modifiedCount) throw proposalNotFound();
     return { kind: proposal.kind, item, state: await read(userId) };
   }
@@ -534,7 +565,28 @@ function createStateRepository({ collection, logger }) {
     return { state: await read(userId) };
   }
 
+  // A short self-rating of how heavy things feel, 0 (light) to 10 (heaviest).
+  async function addCheckIn(userId, body = {}) {
+    const checkIn = followUp.normalizeCheckIn({
+      id: crypto.randomUUID(), score: Number(body.score), phase: body.phase,
+      conversationId: body.conversationId, at: new Date().toISOString()
+    });
+    if (!checkIn) {
+      const error = new Error('score must be an integer from 0 to 10');
+      error.statusCode = 400;
+      throw error;
+    }
+    await ensureDocument(userId);
+    await collection.updateOne({ userId }, {
+      $push: { checkIns: { $each: [checkIn], $slice: -followUp.CHECK_IN_LIMIT } },
+      $inc: { revision: 1 },
+      $set: { updatedAt: new Date() }
+    });
+    return { checkIn, state: await read(userId) };
+  }
+
   return {
+    addCheckIn,
     ensureInfrastructure,
     read,
     addItem,

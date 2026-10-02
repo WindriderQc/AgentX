@@ -23,7 +23,8 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
       taskType: config.review?.taskType || 'deep_reasoning',
       timeoutMs: config.requestTimeoutMs
     });
-    const review = readReview(result.content, { conversationId, settled: state.settledProposals });
+    const openExperimentIds = state.experiments.filter(item => ['planned', 'active'].includes(item.status)).map(item => item.id);
+    const review = readReview(result.content, { conversationId, settled: state.settledProposals, openExperimentIds });
     if (!review) throw Object.assign(new Error('The background review returned no usable result'), { code: 'PSYX_REVIEW_UNUSABLE' });
     // The conversation may have been deleted or archived, or memory reset, while the model was thinking.
     if (!jobs.has(key(userId, conversationId)) || !await conversationRepository.context(userId, conversationId, 1)) return { added: 0, digest: null };

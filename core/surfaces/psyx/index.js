@@ -15,7 +15,7 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
   // Never run the legacy duplicate-merge/delete helper during application startup.
   // Imported conflicts must be reviewed before a unique owner index can be built.
   const stateRepository = Object.fromEntries(['read', 'addItem', 'deleteItem', 'addExperiment', 'updateExperiment', 'reset',
-    'recordReview', 'forgetConversation', 'acceptProposal', 'rejectProposal']
+    'recordReview', 'forgetConversation', 'acceptProposal', 'rejectProposal', 'addCheckIn']
     .map(name => [name, async (...args) => { await ensureStateIndex(); return domain[name](...args); }]));
   const database = {
     stateRepository,
