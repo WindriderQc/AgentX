@@ -45,10 +45,16 @@
     <button id="btn-more-documents" class="btn btn-secondary" type="button">Load more documents</button>
   </div>
 
+  <details id="excluded-files" class="filter-panel">
+    <summary><i class="fa-solid fa-ban" aria-hidden="true"></i> Excluded files</summary>
+    <div class="filter-bar"><span>Files removed with <strong>Delete and exclude</strong>. Scans skip them, even when they change. Restore one to index it again on the next scan.</span><span id="excluded-files-status" role="status" aria-live="polite"></span></div>
+    <div class="table-scroll"><table class="data-table"><thead><tr><th>File</th><th>Excluded</th><th><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="excluded-files-tbody"></tbody></table></div>
+  </details>
+
   <dialog id="delete-document-dialog" class="delete-confirm-dialog" aria-labelledby="delete-document-title" aria-describedby="delete-document-description">
     <form id="delete-document-form" class="delete-confirm-form">
       <h2 id="delete-document-title">Delete indexed document?</h2>
-      <p id="delete-document-description">This removes the document and all of its indexed passages. A file still in an ingest folder is indexed again by the next scan.</p>
+      <p id="delete-document-description">This removes the document and all of its indexed passages. <strong>Delete</strong>: a file still in an ingest folder is indexed again by the next scan. <strong>Delete and exclude</strong>: the file stays out of the index until you restore it under Excluded files.</p>
       <dl class="delete-confirm-context">
         <div><dt>Document ID</dt><dd><code id="delete-document-id"></code></dd></div>
         <div><dt>Source provenance</dt><dd id="delete-document-source"></dd></div>
@@ -58,7 +64,8 @@
       <div id="delete-document-error" class="delete-confirm-error" role="status" aria-live="polite"></div>
       <div class="delete-confirm-actions">
         <button id="delete-document-cancel" class="btn btn-secondary" type="button">Cancel</button>
-        <button id="delete-document-submit" class="btn btn-danger" type="submit" disabled>Delete document</button>
+        <button id="delete-document-submit" class="btn btn-danger" type="submit" value="delete" disabled>Delete</button>
+        <button id="delete-document-exclude" class="btn btn-danger" type="submit" value="exclude" disabled>Delete and exclude</button>
       </div>
     </form>
   </dialog>

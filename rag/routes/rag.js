@@ -48,7 +48,7 @@ const {
 const { sendError } = require('../src/utils/response');
 const { classifyRagAvailabilityError } = require('../src/utils/ragAvailability');
 const { handleSearch } = require('./ragSearch');
-const { resetIndexedFiles } = require('../src/services/nasFileIndexState');
+const { resetIndexedFiles, excludeIndexedFiles } = require('../src/services/nasFileIndexState');
 const { sanitizePublicProjection } = require('../src/utils/publicProjection');
 
 // ── Helpers ──────────────────────────────────────────────
@@ -412,6 +412,10 @@ router.delete('/documents/:documentId', async (req, res) => {
       return res.status(404).json({ ok: false, error: 'Document not found' });
     }
     await ragStore.deleteDocument(documentId);
+    // exclude=true keeps the scanned file out of later scans instead of re-ingesting it.
+    if (req.body?.exclude === true) {
+      return res.json({ ok: true, data: { documentId, filesExcluded: await excludeIndexedFiles([documentId]) } });
+    }
     const filesReset = await resetIndexedFiles([documentId]);
     res.json({ ok: true, data: { documentId, filesReset } });
   } catch (err) {

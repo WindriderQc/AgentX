@@ -20,6 +20,7 @@ jest.mock('../../src/services/ragStore', () => {
 
 jest.mock('../../src/services/nasFileIndexState', () => ({
   resetIndexedFiles: jest.fn().mockResolvedValue(1),
+  excludeIndexedFiles: jest.fn().mockResolvedValue(1),
 }));
 
 jest.mock('../../src/services/embeddings', () => ({
@@ -340,9 +341,42 @@ describe('DELETE /api/rag/documents/:id', () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.data.documentId).toBe(documentId);
     expect(mockStore.deleteDocument).toHaveBeenCalledWith(documentId);
-    const { resetIndexedFiles } = require('../../src/services/nasFileIndexState');
+    const { resetIndexedFiles, excludeIndexedFiles } = require('../../src/services/nasFileIndexState');
     expect(resetIndexedFiles).toHaveBeenCalledWith([documentId]);
+    expect(excludeIndexedFiles).not.toHaveBeenCalled();
     expect(res.body.data.filesReset).toBe(1);
+  });
+
+  it('with exclude marks the scanned files excluded instead of resetting them', async () => {
+    const { resetIndexedFiles, excludeIndexedFiles } = require('../../src/services/nasFileIndexState');
+    resetIndexedFiles.mockClear();
+    mockStore.getDocument.mockResolvedValue({ documentId: '/notes/a.md' });
+    mockStore.deleteDocument.mockResolvedValue(true);
+
+    const res = await request(buildApp())
+      .delete(`/api/rag/documents/${encodeURIComponent('/notes/a.md')}`)
+      .send({ confirmation: 'DELETE /notes/a.md', exclude: true });
+
+    expect(res.status).toBe(200);
+    expect(mockStore.deleteDocument).toHaveBeenCalledWith('/notes/a.md');
+    expect(excludeIndexedFiles).toHaveBeenCalledWith(['/notes/a.md']);
+    expect(resetIndexedFiles).not.toHaveBeenCalled();
+    expect(res.body.data).toMatchObject({ documentId: '/notes/a.md', filesExcluded: 1 });
+    expect(res.body.data.filesReset).toBeUndefined();
+  });
+
+  it('with exclude reports 0 for a document that has no scanned file', async () => {
+    const { excludeIndexedFiles } = require('../../src/services/nasFileIndexState');
+    excludeIndexedFiles.mockResolvedValueOnce(0);
+    mockStore.getDocument.mockResolvedValue({ documentId: 'api-doc' });
+    mockStore.deleteDocument.mockResolvedValue(true);
+
+    const res = await request(buildApp())
+      .delete('/api/rag/documents/api-doc')
+      .send({ confirmation: 'DELETE api-doc', exclude: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.filesExcluded).toBe(0);
   });
 
   it('returns 404 when document not found, without deleting', async () => {

@@ -98,12 +98,27 @@
    * DELETE /api/rag/documents/:id — delete a document.
    * @param {string} id - Full opaque document identifier.
    * @param {string} confirmation - Exact `DELETE <id>` typed confirmation.
+   * @param {boolean} [exclude] - Keep the scanned file out of later scans.
    */
-  async function deleteDocument(id, confirmation) {
+  async function deleteDocument(id, confirmation, exclude) {
     return apiFetch('/api/rag/documents/' + encodeURIComponent(id), {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmation: confirmation })
+      body: JSON.stringify(exclude ? { confirmation: confirmation, exclude: true } : { confirmation: confirmation })
+    });
+  }
+
+  /** GET /api/rag/ingestion/excluded — files kept out of the index. */
+  async function listExcludedFiles() {
+    return apiFetch('/api/rag/ingestion/excluded');
+  }
+
+  /** POST /api/rag/ingestion/excluded/restore — the next scan ingests the file again. */
+  async function restoreExcludedFile(path) {
+    return apiFetch('/api/rag/ingestion/excluded/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path })
     });
   }
 
@@ -203,6 +218,8 @@
     getDocument: getDocument,
     getDocumentChunks: getDocumentChunks,
     deleteDocument: deleteDocument,
+    listExcludedFiles: listExcludedFiles,
+    restoreExcludedFile: restoreExcludedFile,
     search: search,
     ingestDocument: ingestDocument,
     getLatestManifest: getLatestManifest,

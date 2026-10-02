@@ -141,7 +141,7 @@ app.get('/documents', (req, res) => {
     activePage: 'rag-documents',
     ragWorkflowStep: 'documents',
     headCss: ragHeadCss,
-    footerJs: '<script src="/js/api.js"></script>\n<script src="/js/document-context.js"></script>\n<script src="/js/documents.js"></script>'
+    footerJs: '<script src="/js/api.js"></script>\n<script src="/js/document-context.js"></script>\n<script src="/js/documents.js"></script>\n<script src="/js/excluded-files.js"></script>'
   });
 });
 
@@ -228,6 +228,7 @@ app.use('/api/rag', (req, res, next) => {
 app.use('/api/rag', require('./routes/rag'));
 app.use('/api/rag', require('./routes/document.routes'));
 app.use('/api/rag', require('./routes/manifest.routes'));
+app.use('/api/rag', require('./routes/ingestExclusions.routes'));
 app.use('/api/rag', require('./routes/migration.routes'));
 app.use('/api/rag', require('./routes/metrics.routes'));
 app.use('/api/rag', require('./routes/telemetry.routes'));

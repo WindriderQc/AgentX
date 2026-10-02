@@ -316,12 +316,51 @@ curl -X DELETE http://127.0.0.1:3182/api/rag/documents/abc123 \
 Deleting a document also clears the index state of the scanned file records
 (`nas_files`) that produced it; `filesReset` counts them (`null` when MongoDB
 was unavailable). A file still under an ingest root is therefore ingested
-again by the next scan. To keep a file out of the index, exclude it through
-the ingestion policy instead.
+again by the next scan.
+
+To keep the file out of the index, add `"exclude": true` to the body. The
+matching records are marked `indexed_status: "excluded"` (with `excluded_at`)
+instead of reset, and scans skip them even when the file changes on disk. The
+response carries `filesExcluded` instead of `filesReset`; it is `0` for a
+document that did not come from a scanned file (upload, API ingest) and `null`
+when MongoDB was unavailable.
+
+```bash
+curl -X DELETE http://127.0.0.1:3182/api/rag/documents/abc123 \
+  -H 'Content-Type: application/json' \
+  -d '{ "confirmation": "DELETE abc123", "exclude": true }'
+# => { "ok": true, "data": { "documentId": "abc123", "filesExcluded": 1 } }
+```
+
+To exclude whole folders, use the ingestion policy instead.
 
 When confirmation is missing or does not match the decoded route ID exactly,
 the store is not called. The error includes
 `confirmation: { "field": "confirmation", "expected": "DELETE abc123" }`.
+
+### GET /api/rag/ingestion/excluded
+
+List scanned files excluded by a delete with `exclude`, newest first (at most
+200). **Errors:** 503 `MONGODB_UNAVAILABLE`
+
+```bash
+curl http://127.0.0.1:3182/api/rag/ingestion/excluded
+# => { "ok": true, "data": { "files": [{ "path": "/data/notes/a.md", "excludedAt": "2026-10-02T08:00:00.000Z" }], "count": 1 } }
+```
+
+### POST /api/rag/ingestion/excluded/restore
+
+Lift one exclusion. The record's index state is cleared, so the next scan
+ingests the file again if it is still under an ingest root. The Documents page
+offers the same action under **Excluded files**.
+**Errors:** 400 missing `path`, 404 no excluded file at that path, 503 `MONGODB_UNAVAILABLE`
+
+```bash
+curl -X POST http://127.0.0.1:3182/api/rag/ingestion/excluded/restore \
+  -H 'Content-Type: application/json' \
+  -d '{ "path": "/data/notes/a.md" }'
+# => { "ok": true, "data": { "path": "/data/notes/a.md", "restored": 1 } }
+```
 
 ## Manifests & Cleanup
 
