@@ -381,6 +381,16 @@ gateway route `/api/nestor/media`, which serves only image files inside OpenClaw
 media directory (`<state dir>/media`, or the plugin's `mediaRoot`); Core uses
 `OPENCLAW_GATEWAY_URL` and `OPENCLAW_GATEWAY_TOKEN` for it. Other `MEDIA:` files,
 such as synthesized speech, keep their existing handling.
+Super Dad accepts photos up to 50 MB. The model receives a JPEG copy within the
+2 MB attachment limit (vision models downscale to about 1,000 pixels anyway).
+When `IMAGE_ARCHIVE_DIR` names a writable directory in the Core container
+(mount a host folder there through the instance Compose override), Core keeps
+the original of every attached photo, and every generated picture it relays, at
+full quality: `<origin>/<year>/<month>/<sha256>.<ext>` with a JSON sidecar
+(`origin` is `uploaded` or `generated`). The same image is stored once. The
+archive is independent of conversations: forgetting a conversation does not
+delete its archived images. Unset, nothing is archived and photos are still
+reduced for the model.
 The private parent journal lists, under each child-safe turn, what reached the
 child's screen: each block with its title and a short preview, every picture
 with its source and a thumbnail, whether a math picture was drawn in 3D, and

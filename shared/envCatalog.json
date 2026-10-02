@@ -1516,6 +1516,16 @@
       "secret": false,
       "description": "provider/model sent to OpenClaw for personal Nestor voice turns on the main agent. Unset: native OpenClaw model policy applies."
     },
+    "IMAGE_ARCHIVE_DIR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Writable directory, inside the Core container, where the original of every attached photo and every generated image is kept at full quality. Unset: nothing is archived."
+    },
     "INFERENCE_FETCH_TIMEOUT_MS": {
       "services": [
         "core"
