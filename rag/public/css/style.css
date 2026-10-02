@@ -209,9 +209,6 @@ a:hover {
 }
 
 .rag-workflow-map {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
   margin: 0 0 18px;
 }
 
@@ -221,10 +218,7 @@ a:hover {
   gap: 10px;
   align-items: start;
   min-width: 0;
-  min-height: 76px;
-  padding: 11px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
   background: rgba(255, 255, 255, 0.03);
   color: var(--text-muted);
   text-decoration: none;
@@ -246,13 +240,9 @@ a:hover {
 .rag-flow-index {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
   color: var(--accent-warm);
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.72rem;
   font-weight: 700;
 }
 
@@ -271,7 +261,6 @@ a:hover {
 .rag-flow-copy strong {
   overflow: hidden;
   color: var(--text);
-  font-size: 0.82rem;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -346,7 +335,6 @@ a:hover {
 
 .flow-status {
   margin: 12px 0 0;
-  grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
   align-items: center;
 }
 
@@ -563,7 +551,6 @@ a:hover {
 /* ── Buttons ────────────────────────────────────────────── */
 
 .btn {
-  display: inline-block;
   padding: 8px 20px;
   border-radius: 6px;
   border: none;
@@ -579,7 +566,6 @@ a:hover {
 
 .btn-primary {
   background: linear-gradient(135deg, var(--accent-strong), var(--accent));
-  color: #fff;
 }
 
 .btn-danger {
@@ -836,9 +822,7 @@ a:hover {
 .search-textarea {
   width: 100%;
   resize: vertical;
-  min-height: 60px;
   margin-bottom: 16px;
-  font-size: 0.95rem;
   line-height: 1.5;
 }
 
@@ -858,7 +842,6 @@ a:hover {
 
 .control-group label {
   font-size: 0.8rem;
-  color: #a0a0b8;
 }
 
 .slider {
@@ -892,7 +875,6 @@ a:hover {
 
 .search-meta {
   font-size: 0.9rem;
-  color: var(--text-muted);
   margin-bottom: 16px;
 }
 
@@ -905,10 +887,7 @@ a:hover {
 }
 
 .result-card {
-  background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 16px 20px;
 }
 
 .result-header {
@@ -939,9 +918,6 @@ a:hover {
 }
 
 .result-text {
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  line-height: 1.5;
   margin-bottom: 10px;
   cursor: pointer;
   word-break: break-word;
@@ -959,12 +935,6 @@ a:hover {
 }
 
 /* ── Tab Toggle ────────────────────────────────────────── */
-
-.tab-toggle {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
-}
 
 .tab-btn {
   padding: 8px 20px;
@@ -997,35 +967,15 @@ a:hover {
 
 .upload-textarea {
   width: 100%;
-  min-height: 180px;
   resize: vertical;
-  font-size: 0.95rem;
   line-height: 1.5;
-}
-
-.char-count {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  text-align: right;
-  margin-top: 4px;
 }
 
 /* ── Drop Zone ────────────────────────────────────────── */
 
 .drop-zone {
-  border: 2px dashed rgba(108, 180, 174, 0.2);
-  border-radius: 8px;
-  padding: 40px 20px;
   text-align: center;
-  color: var(--text-dim);
-  cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
-}
-
-.drop-zone:hover,
-.drop-zone.drag-over {
-  border-color: var(--accent);
-  background: rgba(105, 217, 172, 0.08);
 }
 
 .file-info {
@@ -1054,7 +1004,6 @@ a:hover {
 }
 
 .form-row .control-group {
-  flex: 1;
   min-width: 160px;
 }
 
@@ -1260,11 +1209,6 @@ a:hover {
 
 /* ── Button disabled state ────────────────────────────────── */
 
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 /* ── Responsive ─────────────────────────────────────────── */
 
 @media (max-width: 900px) {
@@ -1281,7 +1225,6 @@ a:hover {
   }
 
   .rag-workflow-map {
-    display: flex;
     gap: 8px;
     overflow-x: auto;
     padding-bottom: 4px;
@@ -1331,10 +1274,6 @@ a:hover {
 
   .rag-workflow-map {
     margin-bottom: 16px;
-  }
-
-  .flow-status {
-    grid-template-columns: 1fr;
   }
 
   .stat-value {
