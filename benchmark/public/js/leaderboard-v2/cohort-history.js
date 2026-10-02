@@ -71,6 +71,28 @@ export function provenanceHtml(entry) {
     return `<dl class="cb-prov">${items.map(([label, value, title]) => `<div title="${title}"><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl>`;
 }
 
+function promptLabel(prompt) {
+    return `${prompt.name || 'unnamed prompt'} (${prompt.category || 'uncategorized'} L${prompt.level ?? '?'})`;
+}
+
+/**
+ * Which prompts a ranked row is compared on: rows of one cohort may cover
+ * different prompts, so the board says how many it covers, how many every
+ * ranked row and the leader share with it, and which it has not run.
+ */
+export function promptCoverageText(entry) {
+    const coverage = entry?.promptCoverage;
+    if (!coverage) return '';
+    const shared = [`${coverage.sharedByAll} shared by every ranked row`];
+    if (coverage.sharedWithLeader != null) shared.push(`${coverage.sharedWithLeader} shared with the leader`);
+    let text = `Prompts: compared on ${coverage.covered} of the ${coverage.boardPrompts} prompts the board covers; ${shared.join(', ')}.`;
+    if (coverage.missingCount > 0) {
+        const more = coverage.missingCount - (coverage.missing || []).length;
+        text += ` Not run: ${(coverage.missing || []).map(promptLabel).join(', ')}${more > 0 ? ` and ${more} more` : ''}.`;
+    }
+    return text;
+}
+
 function amount(value) {
     return Math.abs(Number(value) || 0).toFixed(2);
 }
@@ -127,7 +149,8 @@ function historyAttempts(row) {
 
 function historyRowHtml(row) {
     const reasons = verdictReasons(row);
-    const why = [describeHistoryRow(row), ...reasons.map(reasonLabel)].join(' · ');
+    const edited = (row.stalePrompts || []).length ? [`edited: ${row.stalePrompts.join(', ')}`] : [];
+    const why = [describeHistoryRow(row), ...reasons.map(reasonLabel), ...edited].join(' · ');
     const cell = (label, value, title = '') => `<td data-label="${label}"${title ? ` title="${esc(title)}"` : ''}>${value}</td>`;
     return `<tr data-cohort="${esc(row.qualityCohortFingerprint || '')}">
       ${cell('Dates', esc(formatDateRange(row.earliestTimestamp, row.latestTimestamp)))}
