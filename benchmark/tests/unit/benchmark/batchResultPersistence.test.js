@@ -32,7 +32,7 @@ const {
     persistSuccessfulResult,
     persistFailedResult
 } = require('../../../src/services/benchmark/batchResultPersistence');
-const { normalizeBenchmarkTarget } = require('../../../../shared/benchmarkTargetContract');
+const { buildPromptFingerprint, normalizeBenchmarkTarget } = require('../../../../shared/benchmarkTargetContract');
 
 const hex = character => character.repeat(64);
 
@@ -124,6 +124,13 @@ describe('batchResultPersistence truncation quarantine', () => {
         expect(savedDocs[0].needs_review).toBe(false);
         expect(savedDocs[0].success).toBe(true);
         expect(savedDocs[0].provider_usage.toolCalls).toBe(2);
+    });
+
+    it('pins the prompt each result ran by id and content fingerprint', async () => {
+        const args = baseArgs();
+        await persistSuccessfulResult(args);
+        expect(savedDocs[0].prompt_id).toBe('prompt-id');
+        expect(savedDocs[0].prompt_fingerprint).toBe(buildPromptFingerprint(args.prompt));
     });
 
     it('does not persist an unlabeled prompt-eval duration as TTFT', async () => {
@@ -375,6 +382,7 @@ describe('batchResultPersistence truncation quarantine', () => {
         expect(doc.needs_review).toBe(true);
         expect(doc.excluded_from_leaderboard).toBe(true);
         expect(doc.review_reason).toMatch(/Infrastructure failure/);
+        expect(doc.prompt_fingerprint).toBe(buildPromptFingerprint(args.prompt));
     });
 
     it('persists harness results with the public receipt, its digest and a timestamp', async () => {

@@ -65,6 +65,27 @@ build revision. This checkout has no automatic production pull/deploy scheduler.
 Configure [parental access](PARENTAL_ACCESS.md) at the LAN HTTPS gateway before
 opening the full profile to family devices.
 
+### Bounded maintenance actions
+
+`./agentx action <name>` runs one action from a closed list on a running
+instance, never a free shell. It reads the instance from `AGENTX_ENV_FILE`,
+`AGENTX_PROJECT_NAME` and `AGENTX_COMPOSE_OVERRIDE` and refuses to guess them.
+A mutating action also needs `AGENTX_LEAD_FILE`, the instance's `LEAD.md`
+coordination file, and `--actor <who>`: it takes that lease, refuses while
+another operator holds it, releases it with a note, and prints a JSON receipt
+(`agentx.maintenance-action/v1`), also written to `AGENTX_ACTION_RECEIPTS_DIR`
+when set. Exit codes: 0 completed, 1 failed, 2 usage, 4 refused (held or busy).
+
+| Action | Effect |
+|---|---|
+| `status` | Read-only: checkout revision, revision served by Core, Benchmark and RAG, active coordination, lease holder, running deploys. |
+| `deploy --services core,benchmark[,...] [--revision origin/main] [--wait-minutes 10]` | Clean tree, no other deploy, revision on `origin/main` and a fast-forward of the checkout; waits for the instance to be idle, then `./agentx up --build --no-deps` (Core's runtime lease still applies) and checks the served revision. |
+| `recover-quarantine --host <ollama url>` | For an UNKNOWN inference on a local Ollama: refuses while an inference or a workload is active there, restarts the unit named for that host in `AGENTX_ACTION_OLLAMA_UNITS` (`{"<url>": {"unit": "...", "scope": "system"\|"user"}}`, `sudo -n` for system units), checks a new process answers, then attests each UNKNOWN admission with `recover-runtime-restart`. Workloads keep the profiler procedure below. |
+| `recalibrate-judges [--host <url> --model <name>]` | Runs Benchmark's quick judge calibration (the default judge when no target is given) and returns its report. |
+
+An instance can install a small wrapper that exports these variables, so an
+operator session or agent calls a single command.
+
 ### Moving an instance to a fresh source history
 
 When a source repository starts a new history, do not merge the previous Git
@@ -96,19 +117,37 @@ Rebuild only the services whose code changed (`core`, `benchmark` with
 `benchmark-runner`, `rag`, `data`); `--no-deps` leaves the other containers
 running. Always pass the instance's project name: without it the launcher uses
 the default `agentx` project. When `up` or `rebuild` would recreate Core or
-Benchmark on a running instance, the launcher first takes Core's `runtime-deploy`
-maintenance lease. Core refuses it while a Benchmark workload or an inference is
-active: the launcher then names that work (from
-`/api/nerve-center/runtime-coordination/active`) and stops with exit code 4
-without touching a container. Images are built first (`up --build` included),
-so the lease, which pauses all inference, covers only the recreate: it keeps
-new work out, is heartbeated and is released once health is green. Recreating
-mid-batch would otherwise cut the workload and quarantine its host for the rest
-of its admission. `--force-runtime` (or `AGENTX_FORCE_RUNTIME=1`) skips the lease
-for an operator recovery; with Core not running, no lease is needed. A
-Benchmark-only recreate (`benchmark`, `benchmark-runner`) does not touch
-conversations, which go from Core to Ollama: it takes no lease and waits only
-until no Benchmark workload is active. A Core container that exists but does
+Benchmark on a running instance, Core decides from what that recreate would
+cut, and the launcher prints its verdict:
+
+- Core alone takes Core's `core-recreate` maintenance lease. A running Profiler
+  workload does not block it: its writer is in Benchmark, it reaches Ollama
+  directly, Core keeps its admission through the restart and Benchmark keeps
+  heartbeating once Core answers again (it waits while Core is down, within the
+  admission Core last confirmed). While the lease is held the profile keeps
+  its own inference through Core, which drains admitted requests before it
+  exits. Core inference, batches and judges (which go
+  through Core inference), a workload in recovery or about to expire, and another
+  maintenance lease block it.
+- Benchmark alone (`benchmark`, `benchmark-runner`) owns every workload writer:
+  it takes no lease (conversations go from Core to Ollama) and waits until Core
+  reports no workload.
+- Both, or every service when none is named, take the global `runtime-deploy`
+  lease, refused while any workload or inference is active.
+
+A refusal stops with exit code 4 without touching a container and names each
+blocker (kind, id, hosts, owner, start, reason) with its clean cancel route:
+the Profiler panel or `POST /api/profiler/pipeline/profile/:profileId/cancel`,
+`POST /api/profiler/pipeline/profile-host/:queueId/cancel`,
+`POST /api/profiler/hosts/test/run-fleet/:queueId/cancel` or
+`POST /api/benchmark/batch/:id/stop` on Benchmark. Core serves the same verdict
+at `/api/nerve-center/runtime-coordination/deploy-blockers?service=core|benchmark|all`.
+Images are built first (`up --build` included), so the lease, which keeps new
+work out, covers only the recreate: it is heartbeated and released once health
+is green. Recreating mid-batch would otherwise cut the workload and quarantine
+its host for the rest of its admission. `--force-runtime` (or
+`AGENTX_FORCE_RUNTIME=1`) skips the lease for an operator recovery only; with
+Core not running, no lease is needed. A Core container that exists but does
 not answer its health check makes the launcher stop (exit code 4), since
 another recreate may be in progress. Recreate
 Core or Benchmark on a running instance only through the launcher
@@ -403,6 +442,11 @@ only the fact that a secret was shown.
 Opening Super Dad on any device offers to resume its latest conversation when
 the last exchange is less than 24 hours old; the conversation, its history and
 attachments come from Core, not from the browser. Famille does not offer it.
+Famille keeps the Nestor personality but replaces its adult temperament with a
+playful, curious tone for children (`FAMILY_TONE` in
+`core/surfaces/household/family-context.js`), sent with the family surface
+contract on the OpenClaw backend and appended to the family pack prompt on the
+AgentX backend. Accuracy and the safety rules still come first.
 Every Super Dad turn also receives the active child profiles of the Family page
 (`/dad/family`) as approved knowledge, so the children's names and age bands
 do not depend on which notes a search selects. Famille turns do not.
@@ -904,11 +948,23 @@ is separate from a successful runtime restoration. A verified journal left
 after an acknowledged Core release resolves from its durable release receipt.
 
 A running single-model profile can be cancelled from its Profiler panel or with
-`POST /api/profiler/pipeline/profile/:profileId/cancel`. It stops at its next
-checkpoint, once the current runtime request has returned (a CPU context
-sample can take minutes), and Core then restores the pinned models as after any
-profile; the profile ends as `cancelled`. Prefer it to restarting Ollama, which
-leaves the interrupted request UNKNOWN.
+`POST /api/profiler/pipeline/profile/:profileId/cancel`. When the request in
+flight is a direct Ollama request whose model was resident at the request's
+context, the cancel samples `/api/ps` and aborts it. `/api/ps` lists no
+requests, but Ollama sets a runner's `expires_at` only when its last request
+ends. The aborted request is terminal once, after `PROFILE_CANCEL_SETTLE_MS`
+(default 15 seconds), two `/api/ps` samples are identical and the model shows
+a different `expires_at` than before the abort, or is no longer loaded. The run
+journal keeps the receipt (`reconciliation.cancelAbort`), and Core restores the
+pinned models as after any profile. Without that proof within
+`PROFILE_CANCEL_PROOF_BUDGET_MS` (default 60 seconds) the request stays UNKNOWN
+with reason `PROFILE_CANCEL_STOP_UNPROVEN` and needs the restart attestation
+below. Any other request (a model still loading, a streamed or Core-routed
+request) is not aborted: the cancel lands at the next checkpoint, once it has
+returned. The panel shows which case applies and the remaining proof time. The
+profile ends as `cancelled`. Prefer it to restarting Ollama, which leaves the
+interrupted request UNKNOWN. A profile inside a host queue has no cancel of its
+own (`409`); the queue is cancelled instead.
 
 An UNKNOWN inference (not a workload) is released by the watchdog without a
 runtime restart in two bounded cases. A watchdog probe is released after

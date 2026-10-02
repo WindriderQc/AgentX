@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const { inferenceConflict } = require('./runtimeInferenceConflict');
+const { createMaintenanceAcquisition } = require('./runtimeMaintenanceAcquire');
+const { WORKLOAD_INFERENCE_MAINTENANCE_FILTER } = require('./runtimeDeployGate');
 
 const MIN_TTL_MS = 15_000;
 const MAX_TTL_MS = 30 * 60_000;
@@ -93,10 +95,6 @@ function buildInferenceResidencyKey(input) {
   return `sha256:${crypto.createHash('sha256').update(JSON.stringify(spec)).digest('hex')}`;
 }
 
-function sameMaintenanceIntent(existing, { scope }) {
-  return existing?.scope === scope;
-}
-
 function sameWorkloadIntent(existing, { workloadId, kind, batchId, hosts }) {
   const existingHosts = normalizedHosts(existing?.hosts);
   const requestedHosts = normalizedHosts(hosts);
@@ -182,66 +180,7 @@ async function reapExpired(now = new Date()) {
   );
 }
 
-async function acquireMaintenance({ principal, requestId, scope, ttl } = {}) {
-  principal = clean(principal);
-  requestId = clean(requestId);
-  scope = clean(scope) || 'runtime-deploy';
-  if (!principal || !requestId) return { acquired: false, reason: 'principal and requestId required' };
-  await reapExpired();
-  const current = await RuntimeCoordination.findById('runtime').lean();
-  if (current?.maintenance?.requestId === requestId && current.maintenance.principal === principal) {
-    if (!sameMaintenanceIntent(current.maintenance, { scope })) {
-      return { acquired: false, reason: 'idempotency key already binds a different maintenance intent' };
-    }
-    if ((current.maintenance.state || 'ACTIVE') !== 'ACTIVE'
-      || new Date(current.maintenance.expiresAt).getTime() <= Date.now()) {
-      return { acquired: false, recoveryRequired: true, reason: 'maintenance lease requires operator reconciliation' };
-    }
-    return { acquired: true, ...current.maintenance, idempotent: true };
-  }
-  const now = new Date();
-  const duration = ttlMs(ttl);
-  const lease = {
-    leaseId: secret(),
-    generation: secret(),
-    principal,
-    requestId,
-    scope,
-    acquiredAt: now,
-    heartbeatAt: now,
-    expiresAt: new Date(now.getTime() + duration),
-    state: 'ACTIVE',
-    unknownAt: null,
-    unknownReason: null
-  };
-  const updated = await RuntimeCoordination.findOneAndUpdate(
-    {
-      _id: 'runtime',
-      maintenance: null,
-      'workloads.0': { $exists: false },
-      'inferences.0': { $exists: false }
-    },
-    { $set: { maintenance: lease } },
-    { new: true }
-  ).lean();
-  if (updated) return { acquired: true, ...updated.maintenance };
-  // A concurrent retry with the same idempotency key may have won the CAS
-  // between our read and update. Return only that principal's Core-minted
-  // proof; never translate a different owner's lease into capability.
-  const raced = await RuntimeCoordination.findById('runtime').lean();
-  if (raced?.maintenance?.requestId === requestId
-    && raced.maintenance.principal === principal) {
-    if (!sameMaintenanceIntent(raced.maintenance, { scope })) {
-      return { acquired: false, reason: 'idempotency key already binds a different maintenance intent' };
-    }
-    if ((raced.maintenance.state || 'ACTIVE') !== 'ACTIVE'
-      || new Date(raced.maintenance.expiresAt).getTime() <= Date.now()) {
-      return { acquired: false, recoveryRequired: true, reason: 'maintenance lease requires operator reconciliation' };
-    }
-    return { acquired: true, ...raced.maintenance, idempotent: true };
-  }
-  return { acquired: false, reason: 'active workload, inference admission, or maintenance lease blocks maintenance' };
-}
+const { acquireMaintenance, listDeployBlockers } = createMaintenanceAcquisition({ clean, ttlMs, secret, reapExpired });
 
 function sameInferenceIntent(existing, {
   host, model, residencyKey, kind, mode, workloadAdmissionId, workloadGeneration
@@ -344,7 +283,7 @@ async function acquireInference({
   };
   const workloadFilter = {
     _id: 'runtime',
-    maintenance: null,
+    ...WORKLOAD_INFERENCE_MAINTENANCE_FILTER,
     inferences: { $not: { $elemMatch: {
       $or: [
         { requestId, principal },
@@ -1537,6 +1476,7 @@ module.exports = {
   release,
   recoverRelease,
   listActive,
+  listDeployBlockers,
   reapExpired,
   _internal: {
     ttlMs,

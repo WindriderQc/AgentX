@@ -14,6 +14,7 @@ access codes and backup generations outside the checkout.
 | `backup-critical-runtime-state.sh` | `BACKUP_ROOT`, `CRITICAL_BACKUP_VOLUMES`, optional `CRITICAL_BACKUP_MYSQL_CONTAINER` | Archives selected Docker volumes and optional transactional SQL, with SHA-256 evidence |
 | `restore-drill-critical-runtime-state.sh` | Exact archive path | Restores into disposable volumes/MySQL and removes only those disposable resources |
 | `offhost-backup-replication.ps1` | Required `SourceHost`, `SourceRoot`, private `DestinationRoot` | Copies Mongo, configuration, Qdrant and native-state archives; verifies hashes; retention is opt-in |
+| `archive_mirror.py` | Required `--source-host`, `--source-root`, private `--destination`; optional `--latest-zfs-snapshot`, `--remote-receipt` | Append-only pull of a private archive directory (for example the Secretary evidence archive); copies new and changed files, verifies each by SHA-256, keeps replaced versions, never deletes |
 
 Core defaults to loopback port 3180; Data defaults to 3183. Linux helpers on the
 same host use the internal/loopback endpoint. Windows consumers using the HTTPS
@@ -50,3 +51,18 @@ The existing Linux Compose CI job runs `tests/backup-roundtrip.sh` with disposab
 volumes and MySQL: full backup/restore, old archive compatibility, volume-only
 restore and rejection of corrupt payloads. Native task activation and real backup
 acceptance are per-instance work.
+
+`archive_mirror.py` mirrors a directory that only grows, such as the Secretary
+evidence archive, to another machine. It lists the source over SSH, transfers
+new or changed files as one tar stream per batch, and accepts a file only when
+its SHA-256 equals the source's. A file that changed at the source moves the
+previous local copy to `versions/<run>/`; a file that disappeared at the source
+is only counted (`missingAtSource`). Transient paths (`downloads/*`, `*.tmp`,
+`*.partial`, `backfill.lock`) are skipped. With `--latest-zfs-snapshot` it reads
+the newest snapshot under `<source-root>/.zfs/snapshot`, so listing, hashes and
+content come from one consistent point in time. Files live under
+`<destination>/current`; `latest-run.json` and `runs/` hold counts only, and
+`--remote-receipt` writes the same counts back to the source host so its age can
+be watched there. On Windows the destination gets an owner, SYSTEM and
+Administrators ACL without inheritance. Schedule it with an existing Windows task
+or systemd timer; a missed run is caught up on the next one.

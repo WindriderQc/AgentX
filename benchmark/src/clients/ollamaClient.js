@@ -190,17 +190,20 @@ const getVersion = (host, opts) => ollamaFetch(host, '/api/version', { timeoutMs
 const showModel = (host, model, opts) =>
     ollamaFetch(host, '/api/show', { method: 'POST', body: { name: model }, timeoutMs: 15_000, ...opts });
 
+// Identifies a request that a profile cancel may abort and prove stopped.
+const abortableRequest = body => ({ model: body?.model, numCtx: body?.options?.num_ctx });
+
 /** POST /api/generate — text completion */
 const generate = async (host, body, opts) => observeJsonMutation(async () => requireExactTerminal(
     await ollamaFetch(host, '/api/generate', { method: 'POST', body, ...opts }),
     'generate'
-));
+), abortableRequest(body));
 
 /** POST /api/chat — chat completion */
 const chat = async (host, body, opts) => observeJsonMutation(async () => requireExactTerminal(
     await ollamaFetch(host, '/api/chat', { method: 'POST', body, ...opts }),
     'chat'
-));
+), abortableRequest(body));
 
 /** Custom model deployment remains an explicit fail-closed tombstone. */
 const createModel = (host, body, opts) =>

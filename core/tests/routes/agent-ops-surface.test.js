@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const ejs = require('ejs');
+const { readSource } = require('../../../shared/testing/readSource');
 
 const root = path.resolve(__dirname, '../..');
 const viewPath = path.join(root, 'views/pages/agent-ops.ejs');
@@ -28,7 +29,7 @@ describe('read-only Agent Ops shell', () => {
     expect(html).toContain('href="/pipeline"');
     expect(html).toContain('docs/TRUSTED_EXTENSIONS.md');
     expect(html).not.toContain('href="/api/openclaw/control-launch/overview"');
-    expect(fs.readFileSync(stylePath, 'utf8')).toMatch(/\[data-openclaw-native\]\[hidden\][\s\S]*display:\s*none\s*!important/);
+    expect(readSource(stylePath)).toMatch(/\[data-openclaw-native\]\[hidden\][\s\S]*display:\s*none\s*!important/);
     expect(html).not.toContain('agent-ops-launchpad');
     expect(html).not.toContain('agent-ops-handoff-panel');
     expect(html).not.toContain('id="agentOpsCapabilities"');
