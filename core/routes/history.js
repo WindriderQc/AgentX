@@ -4,10 +4,7 @@ const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
 const { getUserId } = require('../src/helpers/userHelpers');
 const conversationSearchService = require('../src/services/conversationSearchService');
-const {
-    isPlaygroundConversation,
-    withPlaygroundHistoryFilter
-} = require('../src/services/conversationSurfacePolicy');
+const { withPlaygroundHistoryFilter } = require('../src/services/conversationSurfacePolicy');
 const logger = require('../config/logger');
 const { requireTypedConfirmation } = require('../src/helpers/typedConfirmation');
 const {
@@ -134,12 +131,17 @@ router.get('/', async (req, res) => {
             'lifecycle.status': { $ne: 'archived' }
         });
 
+        // The visibility filter runs in the query so the limit counts only
+        // visible rows; only the last message is loaded for the preview.
         const conversations = await Conversation.find(query)
             .sort({ updatedAt: -1 })
             .limit(50)
-            .select('title updatedAt model messages quality_assessment.overall_score quality_assessment.judged_at');
+            .select({
+                title: 1, updatedAt: 1, model: 1, messages: { $slice: -1 },
+                'quality_assessment.overall_score': 1, 'quality_assessment.judged_at': 1
+            });
 
-        const previews = conversations.filter(isPlaygroundConversation).map(c => {
+        const previews = conversations.map(c => {
             const lastMessage = c.messages && c.messages.length > 0
                 ? c.messages[c.messages.length - 1]
                 : null;
@@ -235,9 +237,12 @@ router.get('/search', async (req, res) => {
 
         const result = await conversationSearchService.searchConversations(searchOptions);
 
+        // Search text stays out of logs; only its length is recorded.
         logger.info('Conversation search executed', {
             userId,
-            query,
+            queryLength: typeof query === 'string' ? query.length : 0,
+            page: pageNum,
+            limit: limitNum,
             resultsCount: result.data.results.length,
             totalResults: result.data.pagination.totalResults
         });
@@ -248,7 +253,7 @@ router.get('/search', async (req, res) => {
         logger.error('Conversation search failed', {
             error: err.message,
             userId: getUserId(res),
-            query: req.query
+            queryLength: typeof req.query?.q === 'string' ? req.query.q.length : 0
         });
         res.status(500).json({ status: 'error', message: err.message });
     }
@@ -291,17 +296,24 @@ router.get('/conversations', async (req, res) => {
             'lifecycle.status': { $ne: 'archived' }
         });
 
-        const conversations = await Conversation.find(query)
-            .sort({ updatedAt: -1 })
-            .limit(50)
-            .select('title updatedAt model messages');
+        const conversations = await Conversation.aggregate([
+            { $match: query },
+            { $sort: { updatedAt: -1 } },
+            { $limit: 50 },
+            {
+                $project: {
+                    title: 1, updatedAt: 1, model: 1,
+                    messageCount: { $size: { $ifNull: ['$messages', []] } }
+                }
+            }
+        ]);
 
-        const previews = conversations.filter(isPlaygroundConversation).map(c => ({
+        const previews = conversations.map(c => ({
             id: publicId(c._id),
             title: c.title,
             date: publicDate(c.updatedAt),
             model: c.model,
-            messageCount: c.messages?.length || 0
+            messageCount: c.messageCount || 0
         }));
 
         res.json({ status: 'success', data: previews });

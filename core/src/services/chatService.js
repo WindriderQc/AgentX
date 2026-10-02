@@ -124,6 +124,7 @@ const handleChatRequest = async ({
         ragUsed,
         ragSources,
         ragContext,
+        ragStatus,
         webSearchResults,
         webSearchContext
     } = await prepareChatOrchestration({
@@ -317,7 +318,7 @@ const handleChatRequest = async ({
         userId, conversationId, clientTurnId, model: effectiveModel,
         effectiveSystemPrompt, message, assistantContent: assistantMessageContent,
         activePrompt,
-        metadata: { thinking, options, webSearchResults, routingInfo: routingPayload },
+        metadata: { thinking, options, webSearchResults, routingInfo: routingPayload, ragStatus },
         stats, ragUsed, useRag, ragSources
     });
 
@@ -339,6 +340,7 @@ const handleChatRequest = async ({
         stats: stats || null,
         ragUsed,
         ragSources,
+        ragStatus,
         webSearchResults: webSearchResults.length > 0 ? webSearchResults : undefined,
         warning: hasQualifiedThinkingCapability(inferenceContract)
             ? 'This deployed model artifact has qualified thinking capabilities. Enable streaming for better response quality.'

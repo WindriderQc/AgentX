@@ -165,6 +165,7 @@ router.post('/chat', async (req, res) => {
         autoRouted: result.routing?.autoRouted || false,
         ragUsed: result.ragUsed,
         ragSources: result.ragSources,
+        ragStatus: result.ragStatus,
         warning: result.warning,
         ...(turnAction ? { turnAction } : {})
     });
