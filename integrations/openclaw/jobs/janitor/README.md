@@ -47,28 +47,5 @@ python3 integrations/openclaw/jobs/janitor/openclaw_shared_drive_janitor.py \
 Instance values (Data URL, dashboard URL, schedule, job id, delivery target)
 live in the native OpenClaw job configuration outside Git.
 
-## Helper receiver
-
-`openclaw_janitor_helper_receiver.py` is an SSH forced-command receiver that
-installs or checks exactly one janitor helper file. The client sends one ASCII
-JSON header line (`protocol` `agentx-openclaw-janitor-helper-v2`, `action`
-`check` or `install`, lowercase `sha256`, `size` up to 512 KiB) followed by the
-payload on stdin. Any `SSH_ORIGINAL_COMMAND` is refused. An install writes a
-candidate beside the target, compiles it, runs it with `--help`, replaces the
-target atomically and validates it again; it answers one JSON line with status
-`updated`, `unchanged` or `drift` (check only). Errors print `ERROR: ...` on
-stderr and exit 1.
-
-The target is `--target`, else `AGENTX_JANITOR_HELPER_TARGET`, else
-`openclaw_shared_drive_janitor.py` beside the receiver. It must be absolute.
-The entry script imports its sibling modules, so a target outside a directory
-holding this package fails validation and is not installed.
-
-Restrict the dedicated key in `~/.ssh/authorized_keys` on the native host:
-
-```text
-command="python3 <checkout>/integrations/openclaw/jobs/janitor/openclaw_janitor_helper_receiver.py --target <helper path>",restrict <public key>
-```
-
 Tests use synthetic data and no network; they run with
 `node scripts/test-native-tools.cjs`.
