@@ -18,6 +18,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from typing import Any
 
 LABELS = {"urgent": "Secretary/Urgent", "needs-reply": "Secretary/Needs Reply"}
@@ -28,6 +29,10 @@ REVIEW_LABEL = "Secretary/Review"
 SENDER_SAMPLE = 300
 SENDER_TOP = 25
 ADDRESS = re.compile(r"[^\s<>\"',;]+@[^\s<>\"',;]+")
+EVIDENCE_ROOT = Path(os.environ.get("GMAIL_SECRETARY_ROOT") or Path.home() / ".local/share/agentx/secretary-evidence")
+CATCHUP_FIELDS = ("phase", "startedAt", "updatedAt", "finishedAt", "pending", "reviewed", "failed",
+                  "remaining", "pagesPerHour", "etaHours", "lane")
+CATCHUP_LOCK_FRESH_SECONDS = 1800
 
 
 class MailDeskError(RuntimeError):
@@ -67,6 +72,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     backlog.add_argument("--days", type=int, default=7)
     senders = commands.add_parser("senders")
     senders.add_argument("--max", type=int, default=SENDER_SAMPLE)
+    commands.add_parser("catchup")
     return parser.parse_args(argv)
 
 
@@ -242,6 +248,30 @@ def review_senders(args: argparse.Namespace) -> dict[str, Any]:
             "more": bool(isinstance(payload, dict) and payload.get("nextPageToken")), "senders": ranked[:SENDER_TOP]}
 
 
+def catchup(_args: argparse.Namespace, root: Path | None = None) -> dict[str, Any]:
+    """Counts of the archive catch-up job (mail_catchup.py): no Gmail call, no content."""
+    root = root or EVIDENCE_ROOT
+
+    def read(name: str, default: Any) -> Any:
+        try:
+            return json.loads((root / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return default
+    status = read("catchup-status.json", {})
+    proposals = read("catchup-proposals.json", [])
+    proposals = proposals if isinstance(proposals, list) else []
+    lock = root / "catchup.lock"
+    try:
+        running = time.time() - lock.stat().st_mtime < CATCHUP_LOCK_FRESH_SECONDS
+    except OSError:
+        running = False
+    paused = status.get("paused") if isinstance(status.get("paused"), dict) else None
+    return {"known": bool(status), "running": running, **{key: status.get(key) for key in CATCHUP_FIELDS},
+            "paused": {"reason": str(paused.get("reason"))[:120], "since": paused.get("since")} if paused else None,
+            "proposalsPending": sum(1 for p in proposals if isinstance(p, dict) and p.get("state") == "pending"),
+            "proposalsQueued": sum(1 for p in proposals if isinstance(p, dict) and p.get("state") == "queued")}
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         args = parse_args(argv)
@@ -251,6 +281,10 @@ def main(argv: list[str] | None = None) -> int:
                           "message": "the Secretary mail request is not valid"}))
         return 0
     try:
+        if args.command == "catchup":
+            # Reads the private archive status only; no Gmail account is involved.
+            print(json.dumps({"status": "success", "data": catchup(args)}, ensure_ascii=False))
+            return 0
         if not args.account or not args.keyring_password_file:
             raise MailDeskError("Configure the Secretary account and keyring password file", "SECRETARY_MAIL_CONFIGURATION_INVALID")
         data = {"threads": list_threads, "handled": mark_handled, "backlog": backlog, "senders": review_senders}[args.command](args)

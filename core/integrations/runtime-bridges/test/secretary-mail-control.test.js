@@ -80,3 +80,16 @@ test('concurrent desk loads share one host request, and a failure is not cached'
   await assert.rejects(() => flaky.backlog(), error => error.code === 'SECRETARY_MAIL_HOST_UNAVAILABLE');
   assert.equal((await flaky.backlog()).unlabelled, 2);
 });
+
+test('the archive catch-up status is read once a minute and shared by concurrent desk loads', async () => {
+  let now = 1000;
+  const commands = [];
+  const control = configured(async (_target, command) => { commands.push(command); return envelope({ known: true, reviewed: commands.length }); }, { now: () => now });
+  const [first, second] = await Promise.all([control.catchup(), control.catchup()]);
+  assert.equal(first, second);
+  assert.deepEqual(commands, [`${script} catchup`]);
+  now += 59000;
+  assert.equal((await control.catchup()).reviewed, 1);
+  now += 2000;
+  assert.equal((await control.catchup()).reviewed, 2);
+});
