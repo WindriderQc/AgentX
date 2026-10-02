@@ -46,8 +46,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   work (triage, review, diagnosis, watch reports, tool use) against planted
   findings. A leaderboard rank is authoritative only when every judge
   behind it holds a recorded qualification for the row's scorer version;
-  otherwise it is provisional and says why. Each result carries a
-  qualification card. The Profiler shows runtime continuity and, after a
+  otherwise it is provisional and says why. Ranked rows share one quality
+  cohort (judge, scorer version, generation settings) and compare only
+  results on prompts as the catalog holds them today: adding a prompt keeps
+  earlier results comparable, editing one takes only its results out, and
+  each row says which prompts it shares with the board and the leader. Each
+  result carries a qualification card. The Profiler shows runtime continuity and, after a
   profile, a pin context proposal that Core applies with a speed check and
   rollback. It profiles and benchmarks CPU-resident hosts too, and leaderboard
   rows show their host's residency.

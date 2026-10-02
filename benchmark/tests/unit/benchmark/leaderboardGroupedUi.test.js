@@ -234,6 +234,23 @@ describe('grouped board rendering', () => {
         expect(qwen).toContain('<td data-label="Score">not scored</td>');
     });
 
+    test('says which prompts a row is compared on and which edited prompts left the comparison', async () => {
+        const data = JSON.parse(JSON.stringify(fixture.generalistRes.data));
+        const group = data.groups.find(item => item.comparable);
+        group.headline.promptCoverage = {
+            covered: 2, boardPrompts: 3, sharedByAll: 2, sharedWithLeader: 2, missingCount: 2,
+            missing: [{ name: 'Coding <one>', category: 'coding', level: 3 }]
+        };
+        group.history[0].stalePrompts = ['Reasoning two'];
+        const target = container();
+        await board.renderCombinedBoard(target, viewModel.groupsFromResponse(data, { scoreAxis: 'quality', hostNameMap }));
+
+        expect(target.innerHTML).toContain('<p class="cb-prompt-coverage">Prompts: compared on 2 of the 3 prompts the board covers; '
+            + '2 shared by every ranked row, 2 shared with the leader. Not run: Coding &lt;one&gt; (coding L3) and 1 more.</p>');
+        expect(target.innerHTML).toContain('edited: Reasoning two</td>');
+        expect(text.humanizeReason('prompt_content_changed')).toMatch(/^Edited prompt: /);
+    });
+
     test('spells out every non-comparable verdict and never shows an unknown success rate as 100 %', async () => {
         const target = container();
         await board.renderCombinedBoard(target, fixtureGroups());
