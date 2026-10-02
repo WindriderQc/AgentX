@@ -2737,6 +2737,16 @@
       "secret": false,
       "description": "Base URL of the VoiX service for household player, transcription, synthesis and PsyX voice. Unset: VoiX routes answer 503 VOIX_NOT_CONFIGURED."
     },
+    "VOIX_FALLBACK_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional backup VoiX base URL. Transcription, synthesis, the voice catalog and the player script use it while VOIX_BASE_URL fails its cached /health probe (15 s period, 1.5 s timeout), and retry on it once after a primary network error or 502/503/504. Native sessions, media vault and config stay on the primary. Unset: no failover."
+    },
     "VOIX_LONG_TIMEOUT_MS": {
       "services": [
         "core"

@@ -8,28 +8,32 @@
 const CACHE_MS = 5 * 60_000;
 const MAX_BYTES = 4 * 1024 * 1024;
 
-function createScriptRelay({ resolveUrl, fetchWithTimeout, unavailable, now = () => Date.now(), timeoutMs = 10_000 }) {
+// fetchUpstream(url, timeoutMs) optionally replaces the single fetch, e.g. with
+// VoiX's primary/backup choice; it resolves to { response, upstream }.
+function createScriptRelay({ resolveUrl, fetchWithTimeout, unavailable, now = () => Date.now(), timeoutMs = 10_000, fetchUpstream }) {
+  const load = fetchUpstream || (async (url, ms) => ({ response: await fetchWithTimeout(url, {}, ms) }));
   let cached = null;
   return async function relay(_req, res) {
     let url;
     try { url = resolveUrl(); } catch (error) { return unavailable(res, error); }
-    if (cached && cached.url === url && now() - cached.at < CACHE_MS) return send(res, cached.body);
+    if (cached && cached.url === url && now() - cached.at < CACHE_MS) return send(res, cached.body, cached.upstream);
     try {
-      const response = await fetchWithTimeout(url, {}, timeoutMs);
+      const { response, upstream } = await load(url, timeoutMs);
       if (!response.ok) return unavailable(res, Object.assign(new Error(`Upstream answered ${response.status}`), { status: 503 }));
       const body = await response.text();
       if (Buffer.byteLength(body) > MAX_BYTES) return unavailable(res, Object.assign(new Error('Relayed script is too large'), { status: 502 }));
-      cached = { url, body, at: now() };
-      return send(res, body);
+      cached = { url, body, at: now(), upstream };
+      return send(res, body, upstream);
     } catch (error) {
       // A stale copy beats a missing avatar or player while the upstream restarts.
-      if (cached && cached.url === url) return send(res, cached.body);
+      if (cached && cached.url === url) return send(res, cached.body, cached.upstream);
       return unavailable(res, error);
     }
   };
 }
 
-function send(res, body) {
+function send(res, body, upstream) {
+  if (upstream) res.set('X-Voix-Upstream', upstream);
   return res.type('application/javascript').set('Cache-Control', 'public, max-age=300').send(body);
 }
 
