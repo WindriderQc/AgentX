@@ -2,6 +2,7 @@
 
 const { createHash } = require('node:crypto');
 const MemoryNote = require('../../models/MemoryNote');
+const { sealText } = require('./identifierVault');
 
 const error = (message, statusCode = 400) => Object.assign(new Error(message), {
   statusCode, code: 'MEMORY_NOTE_INVALID'
@@ -17,6 +18,8 @@ const cleanText = (value, max = 4000) => {
   }
   return value.trim();
 };
+// Provenance of a new note; a trusted caller may name its channel.
+const sourceOf = value => (typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test(value) ? value : 'explicit-ui');
 const limitOf = (value, fallback = 25) => Math.max(1, Math.min(100, Math.trunc(Number(value)) || fallback));
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const stopWords = new Set(['les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'avec', 'mon', 'mes', 'moi', 'est', 'this', 'that', 'the', 'and', 'you', 'what', 'remember', 'retiens',
@@ -73,9 +76,14 @@ function forSpace({ audience, scopeId, packIds } = {}) {
       truncated: skip + rows.length < total, nextOffset: skip + rows.length < total ? skip + rows.length : null };
   }
 
+  // Owner notes only: a family space has no way to reveal a sealed value.
+  const seal = value => (audience === 'owner' ? sealText(value, { seenIn: 'memory-note' }) : { text: value, sealed: [] });
+
   async function remember(input = {}) {
-    const text = cleanText(input.text);
+    const raw = cleanText(input.text);
     if (input.kind !== undefined && !['fact', 'preference', 'decision'].includes(input.kind)) throw error('Choose fact, preference or decision');
+    if (input.id !== undefined) noteId(input.id);
+    const { text, sealed } = await seal(raw);
     const id = input.id === undefined ? digest([scopeId, packs[0], text].join('\n')).slice(0, 24) : noteId(input.id);
     const existing = await MemoryNote.findOne({ ...boundary, _id: id }).lean();
     if (input.id !== undefined && (!existing || existing.status === 'forgotten')) throw error('The selected note no longer exists', 404);
@@ -84,7 +92,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     const kind = input.kind || existing?.kind || 'fact';
     const changed = !existing || existing.status === 'forgotten' || existing.text !== text || existing.kind !== kind
       || String(existing.expiresAt || '') !== String(expiresAt || '');
-    if (!changed) return { ok: true, authority: 'agentx.core', id, text, created: false, changed: false, updatedAt: existing.updatedAt };
+    if (!changed) return { ok: true, authority: 'agentx.core', id, text, kind, sealed, created: false, changed: false, updatedAt: existing.updatedAt };
     // An explicit correction keeps an existing classification. In particular it
     // cannot downgrade a highly-private note by using a different presentation.
     const labels = existing?.scope && existing?.sensitivity
@@ -93,7 +101,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     const update = { $set: {
       text, kind, ...labels, expiresAt, status: 'active', forgottenAt: null,
       contentHash: digest(text.toLowerCase())
-    }, $setOnInsert: { packId: packs[0], scopeId, topic: 'general', type: 'fact', source: 'explicit-ui' } };
+    }, $setOnInsert: { packId: packs[0], scopeId, topic: 'general', type: 'fact', source: sourceOf(input.source) } };
     let result;
     try {
       result = await MemoryNote.findOneAndUpdate(filter, update,
@@ -107,11 +115,11 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     }
     const row = result.value;
     if (!row) throw error('The selected note no longer exists', 404);
-    return { ok: true, authority: 'agentx.core', ...project(row), created: Boolean(result.lastErrorObject?.upserted), changed: true };
+    return { ok: true, authority: 'agentx.core', ...project(row), sealed, created: Boolean(result.lastErrorObject?.upserted), changed: true };
   }
 
   async function record(input = {}) {
-    const text = cleanText(input.text);
+    const { text } = await seal(cleanText(input.text));
     const values = { packId: packs[0], scopeId, ...classification, text,
       topic: typeof input.topic === 'string' ? input.topic.slice(0, 80) : 'general',
       type: input.type === 'summary' ? 'summary' : 'fact', source: input.source || 'explicit-ui',
@@ -167,7 +175,8 @@ async function operatePersonal(input = {}) {
     result = { ...matched, notes: [...matched.notes, ...preferences.notes.filter(note => !matched.notes.some(hit => hit.id === note.id))]
       .slice(0, limitOf(input.limit, 4)) };
   }
-  else if (operation === 'remember') result = await notes.remember(input);
+  // Provenance is set by trusted server callers (MCP), never by a request body.
+  else if (operation === 'remember') result = await notes.remember({ ...input, source: undefined });
   else if (operation === 'forget') result = await notes.forget(input.id);
   else throw error('Choose list, search, remember or forget');
   return { ...result, operation };

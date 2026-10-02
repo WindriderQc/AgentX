@@ -3,18 +3,20 @@ const router = express.Router();
 const { getRagServiceClient } = require('../src/services/ragServiceClient');
 const logger = require('../config/logger');
 const { requireTypedConfirmation } = require('../src/helpers/typedConfirmation');
+const { forAudience } = require('../src/services/memoryReadService');
 
 const ragClient = getRagServiceClient();
 
 function handleError(res, err, context) {
+  const status = err.status || err.statusCode || 500;
   logger.warn('RAG proxy request failed', {
     context,
-    status: err.status || 500,
+    status,
     code: err.code || 'RAG_PROXY_ERROR',
     message: err.message
   });
 
-  return res.status(err.status || 500).json({
+  return res.status(status).json({
     status: 'error',
     message: err.message,
     code: err.code || 'RAG_PROXY_ERROR',
@@ -63,7 +65,9 @@ router.get('/metrics', async (_req, res) => {
 
 router.post('/search', async (req, res) => {
   try {
-    const results = await ragClient.searchSimilarChunks(req.body?.query, req.body || {});
+    // Every /api/rag route is behind the adult boundary, so this is the owner
+    // reader: same query bounds and default score floor as the other readers.
+    const results = await forAudience('owner', { ragClient }).search(req.body?.query, req.body || {});
     return res.json({ status: 'success', data: { results, count: results.length } });
   } catch (err) {
     return handleError(res, err, 'search');

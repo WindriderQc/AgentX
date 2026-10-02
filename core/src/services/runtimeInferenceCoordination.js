@@ -1,0 +1,352 @@
+'use strict';
+
+const RuntimeCoordination = require('../../models/RuntimeCoordination');
+const { inferenceConflict } = require('./runtimeInferenceConflict');
+const { WORKLOAD_INFERENCE_MAINTENANCE_FILTER } = require('./runtimeDeployGate');
+const { clean, ttlMs, secret, canonicalHost, reapExpired } = require('./runtimeCoordinationState');
+const { buildInferenceResidencySpec, buildInferenceResidencyKey } = require('./runtimeInferenceResidency');
+
+function sameInferenceIntent(existing, {
+  host, model, residencyKey, kind, mode, workloadAdmissionId, workloadGeneration
+}) {
+  return existing?.host === host
+    && existing?.model === model
+    && existing?.residencyKey === residencyKey
+    && existing?.kind === kind
+    && (existing?.mode || 'shared') === mode
+    && (existing?.workloadAdmissionId || null) === (workloadAdmissionId || null)
+    && (existing?.workloadGeneration || null) === (workloadGeneration || null);
+}
+
+async function acquireInference({
+  principal,
+  requestId,
+  host,
+  model,
+  kind = 'inference',
+  mode = 'shared',
+  workloadAdmissionId = null,
+  workloadGeneration = null,
+  runtimeOptions = null,
+  keepAlive,
+  ttl
+} = {}) {
+  principal = clean(principal);
+  requestId = clean(requestId);
+  host = canonicalHost(host);
+  model = clean(model, 500);
+  kind = clean(kind) || 'inference';
+  mode = mode === 'exclusive' ? 'exclusive' : 'shared';
+  workloadAdmissionId = clean(workloadAdmissionId);
+  workloadGeneration = clean(workloadGeneration);
+  if (!principal || !requestId || !host || !model) {
+    return { acquired: false, reason: 'principal, requestId, host, and model are required' };
+  }
+  if (Boolean(workloadAdmissionId) !== Boolean(workloadGeneration)) {
+    return { acquired: false, reason: 'workload admission id and generation must be supplied together' };
+  }
+  const keepAliveSupplied = keepAlive !== undefined;
+  const residencySpec = buildInferenceResidencySpec({ model, runtimeOptions, keepAlive, keepAliveSupplied });
+  const residencyKey = buildInferenceResidencyKey({ model, runtimeOptions, keepAlive, keepAliveSupplied });
+  await reapExpired();
+  const current = await RuntimeCoordination.findById('runtime').lean();
+  const existing = (current?.inferences || []).find(item =>
+    item.requestId === requestId && item.principal === principal);
+  if (existing) {
+    if (!sameInferenceIntent(existing, {
+      host, model, residencyKey, kind, mode, workloadAdmissionId, workloadGeneration
+    })) {
+      return { acquired: false, reason: 'idempotency key already binds a different inference intent' };
+    }
+    if (existing.state !== 'ACTIVE' || new Date(existing.expiresAt).getTime() <= Date.now()) {
+      return { acquired: false, recoveryRequired: true, reason: 'inference requires operator runtime recovery' };
+    }
+    return { acquired: true, ...existing, idempotent: true };
+  }
+
+  const now = new Date();
+  const duration = ttlMs(ttl);
+  const admission = {
+    admissionId: secret(),
+    generation: secret(),
+    principal,
+    requestId,
+    host,
+    model,
+    residencyKey,
+    residencySpec,
+    kind,
+    mode,
+    workloadAdmissionId,
+    workloadGeneration,
+    acquiredAt: now,
+    heartbeatAt: now,
+    expiresAt: new Date(now.getTime() + duration),
+    state: 'ACTIVE',
+    unknownAt: null
+  };
+
+  const incompatibleInference = {
+    host,
+    $or: [
+      { state: 'UNKNOWN' },
+      { mode: 'exclusive' },
+      ...(mode === 'exclusive' ? [{}] : [{ residencyKey: { $ne: residencyKey } }])
+    ]
+  };
+  const ordinaryFilter = {
+    _id: 'runtime',
+    maintenance: null,
+    inferences: { $not: { $elemMatch: {
+      $or: [
+        { requestId, principal },
+        incompatibleInference
+      ]
+    } } },
+    workloads: { $not: { $elemMatch: mode === 'exclusive' ? { hosts: host } : { hosts: host, yieldedAt: null } } }
+  };
+  const workloadFilter = {
+    _id: 'runtime',
+    ...WORKLOAD_INFERENCE_MAINTENANCE_FILTER,
+    inferences: { $not: { $elemMatch: {
+      $or: [
+        { requestId, principal },
+        incompatibleInference
+      ]
+    } } },
+    workloads: { $elemMatch: {
+      admissionId: workloadAdmissionId,
+      generation: workloadGeneration,
+      principal,
+      hosts: host,
+      expiresAt: { $gt: now }, yieldedAt: null
+    } }
+  };
+  const updated = await RuntimeCoordination.findOneAndUpdate(
+    workloadAdmissionId ? workloadFilter : ordinaryFilter,
+    { $push: { inferences: admission } },
+    { new: true }
+  ).lean();
+  if (updated) return { acquired: true, ...admission };
+  const blocked = await RuntimeCoordination.findById('runtime').lean();
+  const recoveryRequired = blocked?.maintenance?.state === 'UNKNOWN'
+    || (blocked?.inferences || []).some(item => canonicalHost(item.host) === host && item.state === 'UNKNOWN');
+  return {
+    acquired: false,
+    recoveryRequired,
+    failure: inferenceConflict(blocked, { host, mode, residencyKey, principal, workloadAdmissionId, workloadGeneration }, now),
+    reason: workloadAdmissionId
+      ? 'exact workload proof is absent/expired, or a conflicting inference residency blocks this host'
+      : 'maintenance, workload, UNKNOWN inference, or incompatible residency blocks inference on this host'
+  };
+}
+
+async function heartbeatInference({ id, generation, principal, ttl } = {}) {
+  id = clean(id);
+  generation = clean(generation);
+  principal = clean(principal);
+  if (!id || !generation || !principal) return { heartbeat: false, reason: 'exact inference proof required' };
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlMs(ttl));
+  const updated = await RuntimeCoordination.findOneAndUpdate(
+    {
+      _id: 'runtime',
+      inferences: { $elemMatch: {
+        admissionId: id,
+        generation,
+        principal,
+        state: 'ACTIVE',
+        expiresAt: { $gt: now }
+      } }
+    },
+    { $set: { 'inferences.$.heartbeatAt': now, 'inferences.$.expiresAt': expiresAt } },
+    { new: true }
+  ).lean();
+  if (!updated) return { heartbeat: false, reason: 'inference proof no longer owns active coordination state' };
+  const owned = updated.inferences.find(item => item.admissionId === id && item.generation === generation);
+  return { heartbeat: true, ...owned };
+}
+
+async function releaseInference({ id, generation, principal } = {}) {
+  id = clean(id);
+  generation = clean(generation);
+  principal = clean(principal);
+  if (!id || !generation || !principal) return { released: false, reason: 'exact inference proof required' };
+  const now = new Date();
+  await reapExpired(now);
+  const current = await RuntimeCoordination.findById('runtime').select('+releaseReceipts').lean();
+  const priorReceipt = [...(current?.releaseReceipts || [])].reverse().find(item => (
+    item?.coordinationKind === 'inference'
+    && item?.admissionId === id
+    && item?.generation === generation
+    && item?.principal === principal
+  ));
+  if (priorReceipt) return { ...priorReceipt, idempotent: true };
+  const owned = (current?.inferences || []).find(item => (
+    item?.admissionId === id
+    && item?.generation === generation
+    && item?.principal === principal
+    && item?.state === 'ACTIVE'
+  ));
+  const releasedAt = new Date();
+  const releaseReceipt = {
+    contract: 'agentx.runtime-inference-completion/v1',
+    coordinationKind: 'inference',
+    released: true,
+    admissionId: id,
+    generation,
+    principal,
+    requestId: owned?.requestId || null,
+    host: owned?.host || null,
+    model: owned?.model || null,
+    kind: owned?.kind || null,
+    mode: owned?.mode || 'shared',
+    residencyKey: owned?.residencyKey || null,
+    residencySpec: owned?.residencySpec || null,
+    acquiredAt: owned?.acquiredAt || null,
+    heartbeatAt: owned?.heartbeatAt || null,
+    releasedAt
+  };
+  const released = await RuntimeCoordination.findOneAndUpdate(
+    {
+      _id: 'runtime',
+      inferences: { $elemMatch: {
+        admissionId: id, generation, principal, state: 'ACTIVE', expiresAt: { $gt: releasedAt }
+      } }
+    },
+    {
+      $pull: { inferences: { admissionId: id, generation, principal, state: 'ACTIVE' } },
+      $push: { releaseReceipts: { $each: [releaseReceipt], $slice: -100 } }
+    },
+    { new: false }
+  ).lean();
+  return released
+    ? releaseReceipt
+    : { released: false, reason: 'inference proof is absent or quarantined' };
+}
+
+async function markInferenceUnknown({ id, generation, principal, reason = null, origin = null } = {}) {
+  id = clean(id);
+  generation = clean(generation);
+  principal = clean(principal);
+  if (!id || !generation || !principal) return { quarantined: false, reason: 'exact inference proof required' };
+  const now = new Date();
+  const updated = await RuntimeCoordination.findOneAndUpdate(
+    {
+      _id: 'runtime',
+      inferences: { $elemMatch: { admissionId: id, generation, principal, state: 'ACTIVE' } }
+    },
+    { $set: {
+      'inferences.$.state': 'UNKNOWN',
+      'inferences.$.unknownAt': now,
+      'inferences.$.unknownReason': clean(reason, 500), 'inferences.$.unknownOrigin': origin === 'caller-abort' ? origin : null
+    } },
+    { new: true }
+  ).lean();
+  const owned = updated?.inferences?.find(item => item.admissionId === id && item.generation === generation);
+  if (owned) {
+    return {
+      contract: 'agentx.runtime-inference-quarantine/v1',
+      quarantined: true,
+      admissionId: id,
+      generation,
+      principal,
+      requestId: owned.requestId || null,
+      host: owned.host,
+      model: owned.model,
+      kind: owned.kind,
+      mode: owned.mode || 'shared',
+      residencyKey: owned.residencyKey,
+      residencySpec: owned.residencySpec,
+      acquiredAt: owned.acquiredAt,
+      heartbeatAt: owned.heartbeatAt,
+      expiresAt: owned.expiresAt,
+      unknownAt: owned.unknownAt,
+      reason: owned.unknownReason || null
+    };
+  }
+  const existing = await RuntimeCoordination.findOne({
+    _id: 'runtime',
+    inferences: { $elemMatch: { admissionId: id, generation, principal, state: 'UNKNOWN' } }
+  }).lean();
+  const quarantined = existing?.inferences?.find(item => item.admissionId === id && item.generation === generation);
+  return quarantined
+    ? {
+      contract: 'agentx.runtime-inference-quarantine/v1',
+      quarantined: true,
+      admissionId: id,
+      generation,
+      principal,
+      requestId: quarantined.requestId || null,
+      host: quarantined.host,
+      model: quarantined.model,
+      kind: quarantined.kind,
+      mode: quarantined.mode || 'shared',
+      residencyKey: quarantined.residencyKey,
+      residencySpec: quarantined.residencySpec,
+      acquiredAt: quarantined.acquiredAt,
+      heartbeatAt: quarantined.heartbeatAt,
+      expiresAt: quarantined.expiresAt,
+      unknownAt: quarantined.unknownAt,
+      reason: quarantined.unknownReason || null,
+      idempotent: true
+    }
+    : { quarantined: false, reason: 'inference proof no longer owns active coordination state' };
+}
+
+async function recoverInferenceAfterRuntimeRestart({ id, generation, principal, receipt } = {}) {
+  id = clean(id);
+  generation = clean(generation);
+  principal = clean(principal);
+  const restartedAt = new Date(receipt?.restartedAt || '');
+  const exactReceipt = receipt?.contract === 'agentx.ollama-runtime-restart/v1'
+    && receipt?.runtimeRestarted === true
+    && receipt?.confirmation === 'OLLAMA_RUNTIME_RESTARTED_AND_PRIOR_REQUESTS_TERMINATED'
+    && typeof receipt?.restartedAt === 'string'
+    && Number.isFinite(restartedAt.getTime())
+    && restartedAt.getTime() <= Date.now() + 5 * 60_000;
+  if (!id || !generation || !exactReceipt) {
+    return { recovered: false, reason: 'exact inference proof and runtime restart receipt required' };
+  }
+  const exactInference = {
+    admissionId: id,
+    generation,
+    state: 'UNKNOWN',
+    unknownAt: { $lte: restartedAt },
+    ...(principal && { principal })
+  };
+  const recovered = await RuntimeCoordination.findOneAndUpdate(
+    {
+      _id: 'runtime',
+      inferences: { $elemMatch: exactInference }
+    },
+    { $pull: { inferences: { admissionId: id, generation, state: 'UNKNOWN', ...(principal && { principal }) } } },
+    { new: false }
+  ).lean();
+  const inference = recovered?.inferences?.find((entry) => entry.admissionId === id
+    && entry.generation === generation
+    && entry.state === 'UNKNOWN'
+    && (!principal || entry.principal === principal));
+  return inference
+    ? { recovered: true, admissionId: id, generation, principal: inference.principal, receipt }
+    : { recovered: false, reason: 'matching quarantined inference was not found' };
+}
+
+async function hostHasActiveInferences(host) {
+  host = canonicalHost(host);
+  if (!host) return false;
+  await reapExpired();
+  return Boolean(await RuntimeCoordination.exists({
+    _id: 'runtime',
+    inferences: { $elemMatch: { host } }
+  }));
+}
+
+module.exports = {
+  acquireInference,
+  heartbeatInference,
+  releaseInference,
+  markInferenceUnknown,
+  recoverInferenceAfterRuntimeRestart,
+  hostHasActiveInferences
+};

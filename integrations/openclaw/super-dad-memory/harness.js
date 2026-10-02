@@ -50,13 +50,18 @@ export async function recordTool(workspace, event, context) {
   const tool = String(event.toolName || "");
   if (!tool || ['tool_call', 'tool_search'].includes(tool)) return;
   const data = decodeResult(event.result);
-  const failed = Boolean(event.error || event.result?.isError || data?.error || data?.ok === false);
+  const healthTool = ['agentx__check_health', 'check_health'].includes(tool);
+  const healthResult = healthTool && typeof data?.ok === 'boolean'
+    && typeof data?.core?.mongodb === 'string' && typeof data?.core?.ollama === 'string'
+    && typeof data?.rag?.ok === 'boolean';
+  const failed = Boolean(event.error || event.result?.isError || data?.error || (data?.ok === false && !healthResult));
   const task = data?.task || data;
   const soundTool = ['agentx__get_sound', 'get_sound'].includes(tool);
   const soundId = !failed && soundTool && data?.status === 'available'
     && /^[a-z][a-z0-9-]{0,63}$/.test(data?.sound?.id || '') ? data.sound.id : null;
   const proved = tool === "personal_memory" ? data?.ok === true
     : soundTool ? Boolean(soundId)
+    : healthTool ? healthResult
     : /agentx__(add|update|complete)_personal_task/.test(tool) ? Boolean(task?.id && task?.status)
       : tool === "agentx__list_personal_tasks" ? Array.isArray(data?.tasks)
       : tool === "agentx__shopping_list" ? Array.isArray(data?.items) : false;

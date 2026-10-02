@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
+const { readPipelineSource, loadPipelineParts } = require('../helpers/pipelineScripts');
 
-const source = fs.readFileSync(path.join(__dirname, '../../public/js/pipeline.js'), 'utf8');
+const source = readPipelineSource();
 
 describe('Pipeline Mark superseded is a previewed, confirmed, cancellable human decision', () => {
   test('the drawer offers the action on open tasks with replacement, reason and identity', () => {

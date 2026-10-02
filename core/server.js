@@ -109,7 +109,11 @@ const shutdown = createServerShutdown({
     await drainRuntimeOperations();
   },
   flush: () => require('./src/middleware/performanceTracker').stop(),
-  disconnect: () => require('mongoose').disconnect()
+  disconnect: () => {
+    // Registered work is drained; sockets still open belong to departed callers.
+    require('./src/helpers/httpAgent').destroyOutboundSockets();
+    return require('mongoose').disconnect();
+  }
 });
 process.on('SIGTERM', () => { shutdown.run('SIGTERM'); });
 process.on('SIGINT', () => { shutdown.run('SIGINT'); });
@@ -516,6 +520,19 @@ async function startServer() {
         stop: async () => networkWatch.stop() });
     } catch (err) {
       console.log(`   ⚠ Network Device Watch: ${err.message}`);
+    }
+  }
+
+  // Forgotten and expired notes are hidden at once; remove their text after retention.
+  const memoryRetentionDays = require('./src/services/memoryNoteRetention').retentionDays();
+  if (memoryRetentionDays) {
+    try {
+      const retention = require('./src/services/memoryNoteRetention').createMemoryNoteRetention();
+      await startCoreSingletonDaemon({ name: 'memory-note-retention', label: 'Memory Note Retention',
+        start: async () => { retention.start(); console.log(`   ✓ Memory Note Retention: Active (${memoryRetentionDays} days, daily sweep)`); },
+        stop: async () => retention.stop() });
+    } catch (err) {
+      console.log(`   ⚠ Memory Note Retention: ${err.message}`);
     }
   }
 

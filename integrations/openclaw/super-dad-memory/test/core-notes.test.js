@@ -22,6 +22,11 @@ test('native personal_memory forwards only note inputs and validates the Core re
   assert.deepEqual(JSON.parse(captured.options.body), { action: 'remember', text: ' Synthetic note ' });
   assert.equal(captured.options.redirect, 'error');
   assert.equal(calls, 1);
+  // Core may seal an identifier; any other text change is still refused.
+  const answer = data => createCoreNotesClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async () => ({ ok: true,
+    json: async () => ({ status: 'success', data: { ok: true, authority: 'agentx.core', operation: 'remember', id, ...data } }) }) });
+  assert.equal((await answer({ text: 'NIQ [coffre: NIQ …7890]', sealed: [{ label: 'NIQ' }] })({ action: 'remember', text: 'NIQ 1234567890' })).id, id);
+  await assert.rejects(answer({ text: 'Something else' })({ action: 'remember', text: 'NIQ 1234567890' }), /receipt is invalid/);
   for (const data of [{ ok: true, authority: 'openclaw.nestor', operation: 'list', notes: [] },
     { ok: true, authority: 'agentx.core', operation: 'list' }]) {
     const broken = createCoreNotesClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async () => ({ ok: true,
@@ -70,6 +75,25 @@ test('the harness keeps native receipts and transient context, while Core owns e
   assert.equal((await readState(workspace)).receipts.length, 1);
   await assert.rejects(operate({ operation: 'remember', text: 'No local note store' }), /notes belong to AgentX Core/);
   assert.equal(nativeTurnAnswer({ ...history, messages: [{ ...history.messages[0], phase: 'commentary' }] }, sessionKey, runId).status, 'unavailable');
+});
+
+test('health receipts distinguish a verified unhealthy system from a failed or incomplete tool call', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-health-receipts-'));
+  t.after(() => rm(workspace, { recursive: true }));
+  const context = { runId: 'synthetic-run', sessionKey: 'synthetic-session' };
+  const record = async (toolCallId, result) => {
+    await recordTool(workspace, { toolName: 'agentx__check_health', result }, { ...context, toolCallId });
+    return (await readState(workspace)).receipts.at(-1);
+  };
+  const healthy = await record('healthy', { details: { ok: true, core: { mongodb: 'connected', ollama: 'connected' }, rag: { ok: true } } });
+  assert.equal(healthy.status, 'verified');
+  assert.equal(healthy.observed, true);
+  const unhealthy = await record('unhealthy', { details: { ok: false, core: { mongodb: 'connected', ollama: 'disconnected' }, rag: { ok: false } } });
+  assert.equal(unhealthy.status, 'verified', 'the health result was received even though a dependency is unhealthy');
+  const incomplete = await record('incomplete', { details: { ok: true, core: { mongodb: 'connected' } } });
+  assert.equal(incomplete.status, 'unknown');
+  const failed = await record('failed', { isError: true, content: [{ type: 'text', text: 'Synthetic failure' }] });
+  assert.equal(failed.status, 'failed');
 });
 
 test('a run that yielded to a sub-agent answers with the announce run that settles its session', () => {

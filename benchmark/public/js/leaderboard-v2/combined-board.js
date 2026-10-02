@@ -14,7 +14,7 @@ import {
   authorityReasons, collectReasonCodes, coverageGaps, describeHeadline, graderSummary, humanizeReason,
   isAuthoritative, isComparable, isPartialCoverage, reasonLabel, reasonLegendHtml, verdictReasons
 } from './verdict.js';
-import { historyHtml, metricsHtml, provenanceHtml, scorePartsText, successText, SUCCESS_DEFINITION } from './cohort-history.js';
+import { historyHtml, metricsHtml, promptCoverageText, provenanceHtml, scorePartsText, successText, SUCCESS_DEFINITION } from './cohort-history.js';
 import { buildCsvFromGroups, csvFilename, downloadCsv } from './leaderboard-csv.js';
 import { CATEGORY_KEYS, BENCHMARK_CATEGORY_META } from '../benchmark-categories.js';
 
@@ -328,6 +328,7 @@ function verdictBlock(entry, group, comparable) {
     ${graderBlock(entry)}
     ${provenanceHtml(entry)}
     <p class="cb-score-parts">${esc(scorePartsText(entry))}</p>
+    ${entry.promptCoverage ? `<p class="cb-prompt-coverage">${esc(promptCoverageText(entry))}</p>` : ''}
     ${metricsHtml(entry)}
     ${historyHtml(group)}
   </div>`;

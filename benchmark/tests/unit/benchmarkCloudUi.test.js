@@ -2,9 +2,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const { readSource } = require('../../../shared/testing/readSource');
+const { readBatchConfigSource } = require('../helpers/batchConfigSource');
 
 const benchmarkRoot = path.resolve(__dirname, '../..');
-const read = (relative) => fs.readFileSync(path.join(benchmarkRoot, relative), 'utf8');
+const read = (relative) => readSource(path.join(benchmarkRoot, relative));
 
 describe('cloud benchmark UI contracts', () => {
   test('leaderboard defaults to cloud-visible and sends server-side includeCloud filtering', () => {
@@ -27,7 +29,7 @@ describe('cloud benchmark UI contracts', () => {
 
   test('benchmark groups harness targets and exposes only isolated judges', () => {
     const models = read('public/js/benchmark-v2/batch-config-models.js');
-    const config = read('public/js/benchmark-v2/batch-config.js');
+    const config = readBatchConfigSource();
     expect(models).toContain('${esc(harness)}</span>');
     expect(models).toContain('AGENT WITH TOOLS');
     expect(models).toContain('data-execution-kind="harness"');
@@ -40,7 +42,7 @@ describe('cloud benchmark UI contracts', () => {
 
   test('the unified picker searches all target evidence and groups dynamic sources', () => {
     const models = read('public/js/benchmark-v2/batch-config-models.js');
-    const config = read('public/js/benchmark-v2/batch-config.js');
+    const config = readBatchConfigSource();
     const page = read('public/js/benchmark-v2/index.js');
     expect(models).toContain('Search model, provider, harness or capability');
     expect(models).toContain('data-source-filter="${esc(sourceKey(harness))}"');
@@ -54,7 +56,7 @@ describe('cloud benchmark UI contracts', () => {
 
   test('paid cloud targets are locked by default and recipes cannot select them', () => {
     const models = read('public/js/benchmark-v2/batch-config-models.js');
-    const config = read('public/js/benchmark-v2/batch-config.js');
+    const config = readBatchConfigSource();
     expect(models).toContain('id="bv2-allow-paid"');
     expect(models).toContain('data-paid-lock="${paid && ready}"');
     expect(models).toContain('Manual selection only · SpendGrant still required');
@@ -94,7 +96,7 @@ describe('cloud benchmark UI contracts', () => {
 
   test('cloud-only batches are represented as having a valid execution target', () => {
     const page = read('public/js/benchmark-v2/index.js');
-    const config = read('public/js/benchmark-v2/batch-config.js');
+    const config = readBatchConfigSource();
     expect(page).toContain('localModelCount === 0 && cloudModelCount > 0');
     expect(page).toContain('state.executionTargetReady');
     expect(page).not.toContain('!state.host || state.modelCount === 0 ? \'locked\'');
@@ -104,7 +106,7 @@ describe('cloud benchmark UI contracts', () => {
 
   test('launch summary agrees that isolated cloud targets do not require an Ollama host', () => {
     const summary = read('public/js/benchmark-v2/launch-summary.js');
-    const config = read('public/js/benchmark-v2/batch-config.js');
+    const config = readBatchConfigSource();
     expect(summary).toContain('localModelCount === 0 && cloudModelCount > 0');
     expect(summary).toContain('<strong>Harnesses</strong>');
     expect(summary).toContain('attested harness targets');
@@ -130,7 +132,7 @@ describe('cloud benchmark UI contracts', () => {
   });
 
   test('a failed launch restores the primary action for a safe retry', () => {
-    const config = read('public/js/benchmark-v2/batch-config.js');
+    const config = readBatchConfigSource();
     expect(config).toContain('await onLaunch(batchConfig)');
     expect(config).toMatch(/finally\s*{[\s\S]*?_resetLaunchButton\(\)/);
   });

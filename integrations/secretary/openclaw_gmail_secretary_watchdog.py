@@ -238,6 +238,14 @@ def check_evidence_health(records, status_file, *, now=None, stale_seconds=7200)
     return bool(status.get("pending"))
 
 
+def catchup_running(root: Path, *, fresh_seconds: int = 1800) -> bool:
+    lock = root / "catchup.lock"
+    try:
+        return datetime.now(timezone.utc).timestamp() - lock.stat().st_mtime < fresh_seconds
+    except OSError:
+        return False
+
+
 def duration_milliseconds(value: str) -> int:
     match = re.fullmatch(r"([1-9]\d*)([mh])", value)
     if not match:
@@ -371,6 +379,8 @@ def main() -> int:
             incomplete_grace_seconds=args.incomplete_grace_seconds,
         )
         evidence_pending = check_evidence_health(records, args.evidence_status, stale_seconds=args.audit_stale_seconds)
+        # The bounded catch-up job owns the deep review while it runs; the triage turn stays steady.
+        evidence_pending = evidence_pending and not catchup_running(Path(args.evidence_status).parent)
         cadence = reconcile_cadence(
             openclaw=args.openclaw,
             job_id=args.triage_job_id,

@@ -49,7 +49,7 @@ function loadLeaderboardTextModules() {
     const verdict = loadBrowserModule('leaderboard-v2/verdict.js',
         'esc, REASON_TEXT, HEADLINE_REASON_TEXT, HISTORY_REASON_TEXT, humanizeReason, reasonLabel, shortCohort, isComparable, verdictReasons, isPartialCoverage, coverageGaps, describeHeadline, describeHistoryRow, collectReasonCodes, reasonLegendHtml, GRADER_CAUSE_TEXT, describeGraderCause, isAuthoritative, authorityReasons, graderSummary');
     const history = loadBrowserModule('leaderboard-v2/cohort-history.js',
-        'formatDate, formatDateRange, formatScorerVersions, formatContexts, successText, SUCCESS_DEFINITION, provenanceHtml, scorePartsText, metricsHtml, historyHtml',
+        'formatDate, formatDateRange, formatScorerVersions, formatContexts, successText, SUCCESS_DEFINITION, provenanceHtml, scorePartsText, metricsHtml, historyHtml, promptCoverageText',
         verdict);
     const csv = loadBrowserModule('leaderboard-v2/leaderboard-csv.js',
         'CSV_HEADERS, buildCsvFromGroups, csvFilename',

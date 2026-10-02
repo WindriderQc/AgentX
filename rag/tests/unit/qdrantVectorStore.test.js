@@ -148,7 +148,7 @@ describe('complete corpus reads beyond 10,000 points', () => {
     expect(chunks.at(-1).text).toBe('passage-10000');
     store._collectionVerified = true;
     await store.upsertDocument('large-source', { source: 'api' }, [{ chunkIndex: 0, text: 'replacement', embedding: [1, 0] }]);
-    const deletion = JSON.parse(fetch.mock.calls.find(([url]) => url.endsWith('/points/delete'))[1].body);
+    const deletion = JSON.parse(fetch.mock.calls.find(([url]) => new URL(url).pathname.endsWith('/points/delete'))[1].body);
     expect(deletion.filter.must).toEqual([{ key: 'documentId', match: { value: 'large-source' } }]);
     expect(deletion.filter.must_not).toEqual([{ key: 'revision', match: { value: expect.any(String) } }]);
   });

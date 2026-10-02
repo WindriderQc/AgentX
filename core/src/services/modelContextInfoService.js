@@ -56,7 +56,8 @@ function pickContextLengthFromModelInfo(modelInfo) {
   return null;
 }
 
-async function showModelOnHost(hostUrl, model, timeoutMs = 5000) {
+async function showModelOnHost(hostUrl, model, callerSignal = null, timeoutMs = 5000) {
+  if (callerSignal?.aborted) return null;
   const fetchFn = await getFetch();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -65,7 +66,7 @@ async function showModelOnHost(hostUrl, model, timeoutMs = 5000) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: model }),
-      signal: controller.signal
+      signal: callerSignal ? AbortSignal.any([callerSignal, controller.signal]) : controller.signal
     });
     if (!res.ok) return null;
     return await res.json();
@@ -166,8 +167,9 @@ async function fromContextProfile(model, hostUrl, artifact, deps = {}, workload 
 async function getContextInfo(model, hostUrlRaw, options = {}) {
   if (!model) throw new Error('model is required');
   const hostUrl = hostUrlRaw ? resolveTarget(hostUrlRaw) : null;
+  const signal = options.signal || null;
   const artifact = options.artifactIdentity || (hostUrl
-    ? await resolveArtifactIdentity(model, hostUrl, options.deps || {})
+    ? await resolveArtifactIdentity(model, hostUrl, { ...(options.deps || {}), ...(signal && { signal }) })
     : null);
   const workload = ['interactive', 'document', 'capacity'].includes(options.workload)
     ? options.workload
@@ -194,7 +196,7 @@ async function getContextInfo(model, hostUrlRaw, options = {}) {
   }
 
   if (hostUrl) {
-    const data = await showModelOnHost(hostUrl, model);
+    const data = await showModelOnHost(hostUrl, model, signal);
     if (data) {
       const parsed = parseNumCtxFromParameters(data.parameters);
       if (!num_ctx && parsed) {
@@ -245,7 +247,8 @@ async function getContextInfo(model, hostUrlRaw, options = {}) {
 
   // Preparation can publish a first profile without changing artifact identity.
   // Do not keep an unresolved context for five minutes after that publication.
-  if (num_ctx) cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  // A read cut short by its caller is not evidence worth keeping.
+  if (num_ctx && !signal?.aborted) cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
 }
 

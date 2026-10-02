@@ -538,6 +538,16 @@ router.get('/runtime-coordination/active', async (_req, res) => {
   }
 });
 
+// What recreating a service would cut (#47): ?service=core|benchmark|all.
+router.get('/runtime-coordination/deploy-blockers', async (req, res) => {
+  try {
+    const data = await runtimeCoordinationService.listDeployBlockers({ service: String(req.query.service || 'all') });
+    return res.json({ status: 'success', data });
+  } catch (error) {
+    return res.status(500).json({ status: 'error', code: 'RUNTIME_DEPLOY_BLOCKERS_FAILED', message: error.message });
+  }
+});
+
 /**
  * POST /host-preferences/benchmark-claims/reap
  * Manually trigger the stale-claim reaper. Normally runs every 5 min via

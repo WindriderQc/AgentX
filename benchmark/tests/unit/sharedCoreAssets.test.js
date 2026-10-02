@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const expressApp = require('../../server');
+const { SHARED_CORE_ASSETS } = require('../../../shared/sharedCoreAssets');
 const { startTestHttpHarness } = require('../helpers/testHttpServer');
 const originalFetch = global.fetch;
 const originalCoreUrl = process.env.CORE_URL;
@@ -86,13 +87,14 @@ describe('shared Core assets', () => {
     expect(response.text).toContain('class PollingController');
   });
 
-  it('packages and serves the typed-confirmation control required by the shared footer', async () => {
+  it('copies exactly the shared Core asset list into the image', () => {
     const dockerfilePath = path.resolve(__dirname, '..', '..', '..', 'docker', 'benchmark.Dockerfile');
-    const dockerfile = fs.readFileSync(dockerfilePath, 'utf8');
-    expect(dockerfile).toContain(
-      'COPY core/public/js/utils/typed-confirmation.js /core/public/js/utils/typed-confirmation.js'
-    );
+    const copied = [...fs.readFileSync(dockerfilePath, 'utf8').matchAll(/^COPY core\/\S+ \/core\/public\/(\S+)$/gm)]
+      .map(match => match[1]);
+    expect(copied.sort()).toEqual([...SHARED_CORE_ASSETS].sort());
+  });
 
+  it('serves the typed-confirmation control required by the shared footer', async () => {
     const response = await api.get('/js/utils/typed-confirmation.js');
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toMatch(/javascript/);

@@ -3,12 +3,12 @@
 const logger = require('../../config/logger');
 const { normalizeHostUrl, validateHostUrl } = require('../helpers/ollamaHostConfig');
 const { buildRequestSummary, summarizeRecommendation, buildRoutingDifference } = require('./routing/routingTraceSummary');
-const { ensureTaskModelOverridesLoaded, getAdvisoryModelForTask, getModelForTask, getRoutingConfigVersion } = require('./modelRouterConfig');
-const { getTargetForModel, recordInference, resolveHostKey } = require('./modelRouter');
+const { ensureTaskModelOverridesLoaded, getAdvisoryModelForTask, getModelForTask } = require('./modelRouterConfig');
+const { getTargetForModel, resolveHostKey } = require('./modelRouter');
 const { emit: emitBuddyEvent } = require('./buddyEvents');
 const { getModelReadiness } = require('./modelReadinessService');
 const { scheduleShadowEvaluation } = require('./routing/shadowEvaluation');
-const { buildRouteDecision, DECISION_MODES, REJECTION_REASONS, ROUTE_OUTCOME_CODES, ROUTE_OUTCOME_STAGES, fingerprintRuntimeOptions } = require('./routing/routeDecision');
+const { DECISION_MODES, REJECTION_REASONS, ROUTE_OUTCOME_CODES, ROUTE_OUTCOME_STAGES, fingerprintRuntimeOptions } = require('./routing/routeDecision');
 const { tryDegradedResponse } = require('./routing/degradedRetryResponse');
 const { executeAdmittedOllamaAttempt, settleAdmissionFailure } = require('./routing/inferenceAttemptExecutor');
 const { buildInferenceClientData, classifyHttpRetryFailure, buildInferenceResponseHeaders, setRouteOutcomeHeader } = require('./routing/inferenceResponsePresenter');
@@ -16,19 +16,15 @@ const { prepareInferenceRuntime } = require('./inferenceRuntimePolicy');
 const lanePolicy = require('./inferenceLanePolicy');
 const { resolveCallerPolicy } = require('./routing/callerPolicy');
 const { assertHostAvailableForConsumer } = require('./benchmarkClaimGuard');
-const alertService = require('./alertService');
-const { summarizeOllamaOutcome } = require('./laneObservabilityService');
-const { fallbackReasonCode, fallbackAfterRefusal, refusedBeforeDispatch } = require('./routing/taskFallbackLadder');
+const { fallbackAfterRefusal, refusedBeforeDispatch } = require('./routing/taskFallbackLadder');
+const { createGenerateRouteDecisionBuilder, observeRouteDecision, createAttemptRecorder } = require('./routing/inferenceRouteRecorder');
+const { evaluateResponseAlerts, evaluateTransportFailureAlert } = require('./routing/inferenceAlerts');
+const { createGenerateRoutingTrace } = require('./routing/generateRoutingTrace');
+const { buildClaimAdmissionRejection } = require('./routing/claimAdmissionRejection');
 
 const LADDER_RETRY = Symbol('taskFallbackLadderRetry');
 
 const INFERENCE_FETCH_TIMEOUT_MS = parseInt(process.env.INFERENCE_FETCH_TIMEOUT_MS, 10) || 600000;
-
-function safeRoutingConfigVersion() {
-    return typeof getRoutingConfigVersion === 'function'
-        ? getRoutingConfigVersion()
-        : 'router-unversioned-v1';
-}
 
 function requireProfiledModels() {
   return process.env.REQUIRE_PROFILED_MODELS === 'true';
@@ -131,75 +127,11 @@ async function executeInferenceOnce(body = {}, {
         requestedPolicy && effectivePolicy && requestedPolicy !== effectivePolicy
     );
 
-    /** One payload-free builder for persisted attempts and structured rejects. */
-    const buildGenerateRouteDecision = ({
-        selectedModel = model || null,
-        selectedHost = routedHostKey || resolveHostKey(target),
-        selectedHostUrl = target,
-        primaryModel = model || null,
-        primaryHost = routedHostKey || resolveHostKey(target),
-        primaryHostUrl = target,
-        selectionSource = routingSource,
-        attempt = telemetryContext.attempt,
-        attemptOptions,
-        fallbackUsed = false,
-        fallbackReason = null,
-        rejections = [],
-        outcomeStage = ROUTE_OUTCOME_STAGES.UNKNOWN,
-        outcomeCode = ROUTE_OUTCOME_CODES.UNKNOWN,
-        outcomeReasonCode = null,
-        durationMs = Date.now() - startedAt,
-    } = {}) => {
-        try {
-            return buildRouteDecision({
-                configVersion: safeRoutingConfigVersion(),
-                mode: decisionMode,
-                taskType: taskType || null,
-                caller: 'proxy',
-                callerDetail: body.callerDetail || null,
-                consumerContract,
-                correlationId: telemetryContext.correlationId,
-                workItemId: telemetryContext.workItemId,
-                runtime: telemetryContext.runtime,
-                attempt,
-                requestedModel: requestedModel || null,
-                requestedHost: resolveHostKey(safeRequestedHost),
-                requestedHostUrl: safeRequestedHost,
-                primaryModel,
-                primaryHost,
-                primaryHostUrl,
-                selectedModel,
-                selectedHost,
-                selectedHostUrl,
-                selectionSource,
-                requestedPolicy,
-                effectivePolicy,
-                effectiveLane: laneName,
-                policyDowngraded,
-                outcomeStage,
-                outcomeCode,
-                outcomeReasonCode,
-                rejections,
-                fallbackUsed,
-                fallbackReason,
-                degraded: Boolean(fallbackUsed),
-                degradedReason: fallbackReason,
-                runtimeOptions: attemptOptions,
-                totalMs: durationMs,
-            });
-        } catch (err) {
-            logger.debug('[InferenceProxy] route decision build failed', { error: err.message });
-            return null;
-        }
-    };
-
-    const observeRouteDecision = (routeDecision) => {
-        logger.info('[InferenceProxy] route outcome', {
-            routeDecision,
-            outcomeCode: routeDecision?.outcome?.code || ROUTE_OUTCOME_CODES.UNKNOWN,
-        });
-        return routeDecision;
-    };
+    const buildGenerateRouteDecision = createGenerateRouteDecisionBuilder({
+        current: () => ({ model, target, routedHostKey, routingSource, safeRequestedHost }),
+        startedAt, telemetryContext, decisionMode, taskType, body, consumerContract,
+        requestedModel, requestedPolicy, effectivePolicy, laneName, policyDowngraded,
+    });
 
     const observeRouteOutcome = (evidence) => (
         observeRouteDecision(buildGenerateRouteDecision(evidence))
@@ -245,33 +177,9 @@ async function executeInferenceOnce(body = {}, {
     }
     const allowlistedHostOverride = generateHostCheck.host || '';
     safeRequestedHost = allowlistedHostOverride || null;
-    const routingTrace = {
-        version: 1,
-        request: {
-            requestedModel: requestedModel || null,
-            taskType: taskType || null,
-            hostOverride: safeRequestedHost,
-            callerDetail: body.callerDetail || null,
-            lane: laneName,
-            laneRoutesTasks: lane.route === true,
-            crossModelFallbackOptIn,
-            routeManaged,
-            summary: null
-        },
-        lane: {
-            name: laneName,
-            route: lane.route === true,
-            admit: lane.admit !== false,
-            recordInferenceSync: lane.recordInferenceSync === true,
-            alert: lane.alert
-        },
-        configured: null,
-        recommendation: null,
-        selected: null,
-        artifactResolution: null,
-        ollama: null,
-        difference: null
-    };
+    const routingTrace = createGenerateRoutingTrace({
+        requestedModel, taskType, safeRequestedHost, body, laneName, lane, crossModelFallbackOptIn, routeManaged,
+    });
 
     if (lane.route && !model && taskType) {
         await ensureTaskModelOverridesLoaded();
@@ -362,37 +270,9 @@ async function executeInferenceOnce(body = {}, {
             path: '/api/inference/generate'
         });
     } catch (err) {
-        const benchmarkClaim = err?.code === 'BENCHMARK_CLAIM_ACTIVE';
-        if (Number.isFinite(err.retryAfterMs)) headers['Retry-After'] = String(Math.max(1, Math.ceil(err.retryAfterMs / 1000)));
-        return refusedResult(err, rejectRoute({
-            status: err.statusCode || 503,
-            outcomeStage: ROUTE_OUTCOME_STAGES.ADMISSION,
-            outcomeCode: benchmarkClaim
-                ? ROUTE_OUTCOME_CODES.BENCHMARK_CLAIMED
-                : ROUTE_OUTCOME_CODES.PRE_DISPATCH_ERROR,
-            outcomeReasonCode: err.code || 'BENCHMARK_CLAIM_ACTIVE',
-            rejections: benchmarkClaim ? [{
-                model,
-                host: routedHostKey || resolveHostKey(target),
-                hostUrl: target,
-                reason: REJECTION_REASONS.BENCHMARK_CLAIMED,
-            }] : [],
-            payload: {
-                status: 'error',
-                code: err.code || 'BENCHMARK_CLAIM_ACTIVE',
-                message: err.message,
-                data: {
-                    host: err.hostUrl || target,
-                    batchId: err.batchId || null,
-                    lane: laneName,
-                    ...(Number.isFinite(err.retryAfterMs) && {
-                        retryAfterMs: Math.max(0, err.retryAfterMs),
-                        holdExpiresAt: err.holdExpiresAt || null,
-                        holdModel: err.holdModel || null
-                    })
-                }
-            },
-        }));
+        return refusedResult(err, rejectRoute(buildClaimAdmissionRejection(err, {
+            headers, target, routedHostKey, model, laneName,
+        })));
     }
 
     // Exact-artifact invariant: never rewrite the caller-selected model tag.
@@ -524,104 +404,10 @@ async function executeInferenceOnce(body = {}, {
     //   - automated:   keep admission
     const skipGate = !lane.admit;
 
-    // recordInference dispatcher honoring the lane's sync/async preference.
-    // recordInference is self-contained (only reads its `data` arg, no req/res
-    // capture) so deferring via process.nextTick is safe.
-    const dispatchRecord = (entry) => {
-        if (lane.recordInferenceSync) {
-            recordInference(entry);
-        } else {
-            process.nextTick(() => recordInference(entry));
-        }
-    };
-
-    const dispatchAttemptRecord = ({
-        hostUrl,
-        hostKey,
-        attemptModel,
-        attempt,
-        attemptData,
-        attemptTrace,
-        attemptContract = inferenceContract,
-        attemptOptions,
-        attemptNumCtxSource,
-        durationMs,
-        status,
-        error,
-        fallbackUsed = Boolean(taskFallback),
-        fallbackReason = fallbackReasonCode(taskFallback),
-        outcomeStage,
-        outcomeCode,
-        outcomeReasonCode,
-        rejections = [],
-    }) => {
-        const resolvedOutcomeStage = outcomeStage || (
-            fallbackUsed ? ROUTE_OUTCOME_STAGES.FALLBACK : ROUTE_OUTCOME_STAGES.EXECUTION
-        );
-        const resolvedOutcomeCode = outcomeCode || (
-            status === 'success'
-                ? (fallbackUsed ? ROUTE_OUTCOME_CODES.FALLBACK_SUCCEEDED : ROUTE_OUTCOME_CODES.EXECUTION_SUCCEEDED)
-                : status === 'timeout'
-                    ? ROUTE_OUTCOME_CODES.UPSTREAM_TIMEOUT
-                    : (fallbackUsed ? ROUTE_OUTCOME_CODES.FALLBACK_FAILED : ROUTE_OUTCOME_CODES.UPSTREAM_ERROR)
-        );
-        const routeDecision = buildGenerateRouteDecision({
-            selectedModel: attemptModel,
-            selectedHost: hostKey || resolveHostKey(hostUrl),
-            selectedHostUrl: hostUrl,
-            selectionSource: attemptTrace?.selected?.routingSource || routingSource,
-            attempt,
-            attemptOptions,
-            fallbackUsed,
-            fallbackReason,
-            rejections,
-            outcomeStage: resolvedOutcomeStage,
-            outcomeCode: resolvedOutcomeCode,
-            outcomeReasonCode: outcomeReasonCode || fallbackReason,
-            durationMs,
-        });
-
-        dispatchRecord({
-            host: hostUrl,
-            model: attemptModel,
-            caller: 'proxy',
-            callerDetail: body.callerDetail || null,
-            consumerContract,
-            ...telemetryContext,
-            routeDecision,
-            observability: {
-                contract: attemptContract,
-                outcome: attemptData && status === 'success'
-                    ? summarizeOllamaOutcome(attemptData)
-                    : null,
-                lane: laneName,
-                campaignId: body.campaignId || body.batchId || telemetryContext.workItemId || null,
-            },
-            attempt,
-            taskType: taskType || null,
-            routed: !!taskType,
-            routedModel: attemptModel,
-            routedHost: hostKey || resolveHostKey(hostUrl),
-            routedHostUrl: hostUrl,
-            routingTrace: attemptTrace,
-            num_ctx: attemptOptions?.num_ctx ?? null,
-            num_ctx_source: attemptNumCtxSource,
-            // Captured before dispatch from Core's context-budget estimator, so a
-            // timeout with tokensIn=0 still records how large the request was.
-            estimatedInputTokensAtDispatch:
-                attemptContract?.contextBudget?.input?.estimatedTokens
-                ?? attemptContract?.input?.estimatedTokens
-                ?? null,
-            tokensIn: attemptData?.prompt_eval_count || 0,
-            tokensOut: attemptData?.eval_count || 0,
-            fallbackUsed,
-            fallbackReason,
-            durationMs,
-            status,
-            error: error || null,
-        });
-        return routeDecision;
-    };
+    const dispatchAttemptRecord = createAttemptRecorder({
+        lane, inferenceContract, taskFallback, routingSource, buildGenerateRouteDecision,
+        body, consumerContract, telemetryContext, laneName, taskType,
+    });
 
     let primaryAttemptRecorded = false;
     const dispatchPrimaryAttemptRecord = (entry) => {
@@ -745,42 +531,7 @@ async function executeInferenceOnce(body = {}, {
         });
         observeRouteDecision(primaryRouteDecision);
 
-        // Fire-and-forget alert evaluation. Lane policy:
-        //   - 'error-only': skip latency alerts; keep error alerts
-        //   - true: full alerts
-        //   - false: would skip entirely (no lane uses this today)
-        if (lane.alert) {
-            try {
-                const alertSvc = alertService;
-                if (alertSvc) {
-                    const durationMs = Date.now() - startedAt;
-                    const alertComponent = routedHostKey || resolveHostKey(target) || 'inference';
-                    if (response.ok) {
-                        alertSvc.resolveRecoveredInferenceAlerts?.({
-                            host: target,
-                            hostKey: alertComponent,
-                            model,
-                            latencyMs: durationMs
-                        }).catch(() => {});
-                    }
-                    if (response.ok && durationMs > 10000 && lane.alert !== 'error-only') {
-                        alertSvc.evaluateEvent({
-                            component: alertComponent, metric: 'latency',
-                            value: durationMs, threshold: 10000, trend: 'spike',
-                            source: 'inference-proxy',
-                            additionalData: { model, host: target, caller: body.callerDetail, taskType: taskType || null, lane: laneName }
-                        }).catch(() => {});
-                    }
-                    if (!response.ok) {
-                        alertSvc.evaluateEvent({
-                            component: alertComponent, metric: 'error',
-                            value: 1, source: 'inference-proxy',
-                            additionalData: { model, host: target, status: response.status, taskType: taskType || null, lane: laneName }
-                        }).catch(() => {});
-                    }
-                }
-            } catch { /* never block inference response */ }
-        }
+        evaluateResponseAlerts({ lane, response, startedAt, routedHostKey, target, model, body, taskType, laneName });
 
         if (!response.ok) {
             if (isCancelled()) return undefined;
@@ -878,21 +629,7 @@ async function executeInferenceOnce(body = {}, {
         });
         observeRouteDecision(primaryFailureDecision);
 
-        // Fire-and-forget alert evaluation for host unreachable.
-        // 'error-only' direct lane still emits these; 'false' (no lane today) would skip.
-        if (lane.alert) {
-            try {
-                const alertSvc = alertService;
-                if (alertSvc) {
-                    alertSvc.evaluateEvent({
-                        component: routedHostKey || resolveHostKey(target) || 'inference',
-                        metric: isTimeout ? 'fetch_timeout' : 'host_unreachable',
-                        value: 1, source: 'inference-proxy',
-                        additionalData: { model, host: target, error: err.message, taskType: taskType || null, lane: laneName }
-                    }).catch(() => {});
-                }
-            } catch { /* never block */ }
-        }
+        evaluateTransportFailureAlert({ lane, isTimeout, err, routedHostKey, target, model, taskType, laneName });
 
         const degradedResult = await attemptDegradedResponse(
             isTimeout
