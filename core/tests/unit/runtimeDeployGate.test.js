@@ -62,6 +62,27 @@ describe('runtime deploy gate', () => {
       principal: 'benchmark-service', ttl: 5 * 60_000 })).resolves.toMatchObject({ heartbeat: true });
   });
 
+  test('under a Core-recreate lease the profile keeps its own inference; other inference waits', async () => {
+    const profile = await workload('profile-prime', 'profiler');
+    await expect(lease('core-recreate')).resolves.toMatchObject({ acquired: true });
+    await expect(service.acquireInference({ principal: 'core-chat', requestId: 'chat-during',
+      host: 'http://host-b:11434', model: 'qwen3:8b' })).resolves.toMatchObject({ acquired: false,
+      failure: { cause: 'maintenance_active' } });
+    await expect(service.acquireInference({ principal: 'benchmark-service', requestId: 'loaded-prime',
+      host: HOST_A, model: 'qwen3:8b', workloadAdmissionId: profile.admissionId,
+      workloadGeneration: profile.generation })).resolves.toMatchObject({ acquired: true });
+  });
+
+  test('any other maintenance lease still refuses a workload its own inference', async () => {
+    const profile = await workload('profile-pin', 'profiler');
+    await RuntimeCoordination.updateOne({ _id: 'runtime' }, { $set: { maintenance: {
+      leaseId: 'pin-lease', generation: 'g', principal: 'operator', requestId: 'pin', scope: 'pin-apply',
+      acquiredAt: new Date(), heartbeatAt: new Date(), expiresAt: new Date(Date.now() + 60_000), state: 'ACTIVE' } } });
+    await expect(service.acquireInference({ principal: 'benchmark-service', requestId: 'prime-under-pin',
+      host: HOST_A, model: 'qwen3:8b', workloadAdmissionId: profile.admissionId,
+      workloadGeneration: profile.generation })).resolves.toMatchObject({ acquired: false });
+  });
+
   test.each([
     ['benchmark', 'batch-1', { batchId: 'batch-1' }, 'Benchmark POST /api/benchmark/batch/batch-1/stop'],
     ['judge', 'judge:xyz', {}, expect.stringContaining('no cancel route')]

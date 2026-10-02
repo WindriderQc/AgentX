@@ -5,6 +5,7 @@ const RuntimeCoordination = require('../../models/RuntimeCoordination');
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const { inferenceConflict } = require('./runtimeInferenceConflict');
 const { createMaintenanceAcquisition } = require('./runtimeMaintenanceAcquire');
+const { WORKLOAD_INFERENCE_MAINTENANCE_FILTER } = require('./runtimeDeployGate');
 
 const MIN_TTL_MS = 15_000;
 const MAX_TTL_MS = 30 * 60_000;
@@ -282,7 +283,7 @@ async function acquireInference({
   };
   const workloadFilter = {
     _id: 'runtime',
-    maintenance: null,
+    ...WORKLOAD_INFERENCE_MAINTENANCE_FILTER,
     inferences: { $not: { $elemMatch: {
       $or: [
         { requestId, principal },

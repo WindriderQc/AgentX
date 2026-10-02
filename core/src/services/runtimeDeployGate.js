@@ -17,6 +17,15 @@ const CORE_RECREATE_SCOPE = 'core-recreate';
 const DEPLOY_SERVICES = Object.freeze(['core', 'benchmark', 'all']);
 const RECOVERY_DOC = 'follow "Profiler restoration and UNKNOWN recovery" in docs/OPERATIONS.md';
 
+// A Core-recreate lease keeps new work out but lets a running profiler use
+// its own proof-bound inference: Core drains admitted requests before it
+// exits, so the recreate does not cut them, and refusing them would fail the
+// profile instead.
+const WORKLOAD_INFERENCE_MAINTENANCE_FILTER = Object.freeze({ $or: [
+  { maintenance: null },
+  { 'maintenance.scope': CORE_RECREATE_SCOPE, 'maintenance.state': 'ACTIVE' }
+] });
+
 function iso(value) {
   const date = value ? new Date(value) : null;
   return date && !Number.isNaN(date.getTime()) ? date.toISOString() : null;
@@ -115,6 +124,7 @@ module.exports = {
   CORE_RESTART_MIN_REMAINING_MS,
   CORE_RESTART_TOLERANT_KINDS,
   DEPLOY_SERVICES,
+  WORKLOAD_INFERENCE_MAINTENANCE_FILTER,
   coreRecreateWorkloadFilter,
   deployBlockers
 };
