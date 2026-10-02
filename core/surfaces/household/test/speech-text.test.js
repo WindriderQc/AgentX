@@ -30,8 +30,8 @@ test('Kokoro never receives a quote-only sentence after spoken punctuation', () 
 });
 
 test('spoken lists omit enumeration markers while preserving numbers in their content', () => {
-  const reply = 'Voici les étapes :\n1. Prépare 3 billets à 7 dollars.\n2) Il reste 2 dollars.\n10. Garde la version 2.5 et 192.168.2.1.';
-  assert.equal(speechText(reply), 'Voici les étapes :\nPrépare 3 billets à 7 dollars.\nIl reste 2 dollars.\nGarde la version 2.5 et 192.168.2.1.');
+  const reply = 'Voici les étapes :\n1. Prépare 3 billets à 7 dollars.\n2) Il reste 2 dollars.\n10. Garde la version 2.5 et 192.0.2.1.';
+  assert.equal(speechText(reply), 'Voici les étapes :\nPrépare 3 billets à 7 dollars.\nIl reste 2 dollars.\nGarde la version 2.5 et 192.0.2.1.');
   assert.equal(speechText('1.5 dollars restent. 2026. Le projet continue.'), '1.5 dollars restent. 2026. Le projet continue.');
 });
 
