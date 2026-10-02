@@ -186,6 +186,13 @@ forgetting takes effect on the next retrieval. A daily sweep deletes notes that
 have been forgotten or expired for longer than `MEMORY_NOTE_RETENTION_DAYS`
 (default 30; 0 keeps them).
 
+Native action provenance follows `shared/agentActionProvenance.cjs`. The
+OpenClaw adapter derives session origin from host context and configured jobs,
+never tool arguments. Native outbound gates inspect that origin, and existing
+gateway, mail audit and Nestor receipt projections retain it. Provenance grants
+no authority and observes session origin rather than the causal source of an
+individual model decision; Core remains the owner of business data.
+
 Dated mail digests do not belong in notes. Core's mail journal
 (`MailJournalEntry`, `mailJournalService`) keeps one owner-only entry per thread
 or message: when it happened, who, a short summary and a reference to the

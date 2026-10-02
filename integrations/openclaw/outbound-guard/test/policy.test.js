@@ -35,5 +35,5 @@ test('the plugin entry parses (the OpenClaw SDK import is stubbed)', async () =>
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const body = source.replace(/^import .*$/gm, '').replace('export default', 'return');
-  assert.doesNotThrow(() => new Function('definePluginEntry', 'outboundApproval', body));
+  assert.doesNotThrow(() => new Function('definePluginEntry', 'outboundDecision', 'nativeActionProvenance', 'toolActionReceipt', body));
 });

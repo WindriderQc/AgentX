@@ -5,6 +5,8 @@ import { addAttachments, assertSafeAttachments, bodyFlags, buildOrganizeCommand,
   mutateBase, optionalFlag, readBase, recipientFlags, required, runEvidence, runGog, settings } from "./gmail.js";
 import { TRIAGE_CATEGORIES, applyTriage, continueBacklogMessage, nextBacklogMessage } from "./backlog.js";
 import { assertFullyRead, readReading, writeReading } from "./backlog-reading.js";
+import { nativeActionProvenance, toolActionReceipt } from '../../action-provenance.mjs';
+import { isBackgroundAction } from '../../../../shared/agentActionProvenance.cjs';
 
 export * from "./gmail.js";
 export * from "./backlog.js";
@@ -257,10 +259,29 @@ export function createPlugin(definePluginEntry) { return definePluginEntry({
       skipAttachments: Type.Optional(Type.Boolean()),
     }, { additionalProperties: false }), buildSendCommand);
 
-    api.on("before_tool_call", async (event) => {
+    api.on("before_tool_call", (event, context) => {
+      if (!Object.values(TOOL_NAMES).includes(event.toolName)) return;
+      const provenance = nativeActionProvenance(context, api.config, api.pluginConfig);
       const approval = approvalFor(event.toolName, event.params);
+      const blocked = Boolean(approval && isBackgroundAction(provenance));
+      // Gate decisions never wait for filesystem I/O: a timed-out hook must
+      // not turn a refused action into an executed one.
+      try {
+        api.logger?.info?.(JSON.stringify(toolActionReceipt(event, provenance, 'requested',
+          blocked ? 'blocked' : approval ? 'approval_required' : 'unchanged')));
+      } catch {
+        return { block: true, blockReason: 'The action provenance receipt could not be recorded.' };
+      }
+      if (blocked) return { block: true, blockReason: `ADR 0003: ${provenance.origin} sessions cannot send mail or perform destructive mailbox changes; ask the owner in a conversation.` };
       if (!approval) return;
-      return { requireApproval: { ...approval, allowedDecisions: ["allow-once", "deny"], timeoutMs: 300000, timeoutBehavior: "deny" } };
+      return { requireApproval: { ...approval,
+        description: `${approval.description} [origin: ${provenance.origin}]`.slice(0, 256),
+        allowedDecisions: ["allow-once", "deny"], timeoutMs: 300000, timeoutBehavior: "deny" } };
+    });
+    api.on('after_tool_call', async (event, context) => {
+      if (!Object.values(TOOL_NAMES).includes(event.toolName)) return;
+      await audit(settings(api.pluginConfig), toolActionReceipt(event,
+        nativeActionProvenance(context, api.config, api.pluginConfig), 'observed'));
     });
   },
 }); }

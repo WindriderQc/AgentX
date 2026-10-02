@@ -30,6 +30,11 @@ into the owner's vault inbox (Core's `VAULT_INBOX_PATH`); only the owner context
 receives it, and an invalid receipt is reported as not saved.
 The gateway continuity endpoint only projects agent catalogs and exact native
 run evidence. It does not read or write personal notes.
+Its existing tool and run receipt capsules include session provenance from the
+host context, never the model's arguments or returned provenance. `unknown`
+keeps missing legacy context explicit. Provenance grants no action authority;
+the native outbound gates retain their own controls. The adapter uses shared
+modules from the AgentX checkout.
 The gateway media endpoint (`GET /api/nestor/media?path=`) serves one image
 file from OpenClaw's media directory (`<state dir>/media`, or `mediaRoot`) so
 Household can show a picture the agent generated. It refuses any other

@@ -74,9 +74,25 @@ test('the harness keeps native receipts and transient context, while Core owns e
   assert.equal(evidence.answer.text, 'Synthetic final answer');
   assert.equal(evidence.run.status, 'completed');
   assert.equal(evidence.receipts[0].status, 'verified');
+  assert.equal(evidence.receipts[0].provenance.schema, 'agentx.action-provenance/v1');
+  assert.equal(evidence.receipts[0].provenance.origin, 'unknown', 'legacy hook context without agentId proves no owner');
+  assert.equal(evidence.receipts[0].provenance.authority, 'none');
   assert.equal((await readState(workspace)).receipts.length, 1);
   await assert.rejects(operate({ operation: 'remember', text: 'No local note store' }), /notes belong to AgentX Core/);
   assert.equal(nativeTurnAnswer({ ...history, messages: [{ ...history.messages[0], phase: 'commentary' }] }, sessionKey, runId).status, 'unavailable');
+});
+
+test('the existing Nestor receipt capsule preserves trusted session origin on internal writes', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-origin-receipts-'));
+  t.after(() => rm(workspace, { recursive: true }));
+  const context = { agentId: 'mail', sessionKey: 'agent:mail:cron:review:run', runId: 'review-run' };
+  const pluginConfig = { secretarySessionKeys: ['agent:mail:cron:review'] };
+  await recordTool(workspace, { toolName: 'personal_memory', result: { details: { ok: true, id: 'a'.repeat(24),
+    provenance: { origin: 'owner_turn' } } } }, context, { pluginConfig });
+  await recordRun(workspace, { success: true }, context, { pluginConfig });
+  const state = await readState(workspace);
+  assert.equal(state.receipts[0].provenance.origin, 'ingested_content');
+  assert.equal(state.runs[0].provenance.origin, 'ingested_content');
 });
 
 test('health receipts distinguish a verified unhealthy system from a failed or incomplete tool call', async t => {

@@ -1,4 +1,5 @@
 // The native tool is a client of Core, never a second personal-note store.
+export { configuredJobContext } from '../action-provenance.mjs';
 export function createCoreNotesClient({ baseUrl, fetchImpl = fetch } = {}) {
   if (!baseUrl) throw new Error('Configure the canonical AgentX URL for this OpenClaw instance');
   const url = new URL('/api/consumers/nestor/v1/memory/notes', baseUrl);
@@ -30,9 +31,3 @@ export function createCoreNotesClient({ baseUrl, fetchImpl = fetch } = {}) {
 // Existing native jobs remain optional instance configuration. No operator
 // cron IDs, identities or machine addresses are included in the repository.
 // A key names the agent that owns the job; only that agent's session matches.
-export function configuredJobContext(context, sessionKeys = []) {
-  if (!context.agentId || context.sandboxed) return false;
-  const prefix = `agent:${context.agentId}:`;
-  return sessionKeys.some(key => typeof key === 'string' && key.startsWith(prefix)
-    && (context.sessionKey === key || context.sessionKey?.startsWith(key + ':')));
-}

@@ -55,8 +55,14 @@ deletion and bulk changes (`integrations/openclaw/gmail-secretary`), and any
 native `message` tool action toward a destination outside the owner's own
 conversations (`integrations/openclaw/outbound-guard`).
 
-Open work is tracked as issues: origin labels on notes derived from mail
-(#207) and provenance on actions (#208).
+Agent-written notes retain their configured session origin. Native tool calls
+and observed results carry `agentx.action-provenance/v1`, derived from trusted
+session context rather than model parameters. Background message calls only
+send reports to configured owner destinations; other messaging effects, Gmail
+sending and destructive mailbox changes are blocked. Owner conversations keep
+their one-time outbound approval gates. Provenance describes the session and
+grants no authority; it does not prove which prompt content caused an action.
+Native gateway activation and acceptance remain instance operations (#208).
 
 ## Consequences
 
