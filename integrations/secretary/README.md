@@ -37,6 +37,35 @@ shipped. Configure the existing native job after reviewing its current state,
 with backup copies outside Git. Existing synthetic Python tests run through
 `node scripts/test-native-tools.cjs`; this does not contact Gmail/OpenClaw.
 
+## One-time mailbox catch-up
+
+`mailbox_backfill.py` copies every discovered but uncollected thread into the
+same private archive, back to back and without a model, then stops. It is the
+catch-up job, not a schedule: start it once (for example as a transient
+`systemd-run --user` unit on the native host), let it finish, and leave the
+steady Secretary run to handle new mail.
+
+It first finishes any incomplete discovery and adds mail newer than the
+completed inventories, then collects threads newest first through the same
+read-only `gog` collector and attachment store. Provider calls are spaced
+(`--min-interval`, default 0.2 s) and transient failures are retried with
+backoff; several failed threads in a row stop the run as `stopped`, since that
+means quota, credentials or network. Every collected thread survives an
+interruption, so running it again resumes. `--max-threads N` makes a measured
+trial run.
+
+Only one runner works on an archive (`backfill.lock`, taken over when its
+process is gone). While the lock is fresh, the triage-driven `native_next`
+skips its own collection and keeps reviewing pages. `--status` prints
+`backfill-status.json`: phase, threads collected and failed, remaining, rate,
+ETA and provider calls. Failed thread ids are kept in `backfill-errors.json`.
+Neither file contains message content.
+
+```bash
+python3 integrations/secretary/mailbox_backfill.py --root "$GMAIL_SECRETARY_ROOT" --max-threads 50
+python3 integrations/secretary/mailbox_backfill.py --root "$GMAIL_SECRETARY_ROOT" --status
+```
+
 ## Household document discovery
 
 `household_documents.py` searches the existing private attachment register and
