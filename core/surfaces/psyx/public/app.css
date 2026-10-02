@@ -258,7 +258,7 @@ footer span:last-child { text-align: right; overflow-wrap: anywhere; }
 
 .state-header { padding-bottom: 10px; }
 .save-status { color: var(--muted-2); font-size: 9px; }
-.state-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; padding: 7px; border-bottom: 1px solid var(--border-soft); }
+.state-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 7px; border-bottom: 1px solid var(--border-soft); }
 .state-tab { border: 0; background: transparent; color: #75828d; padding: 7px 3px; border-radius: 8px; font-size: 9px; }
 .state-tab.active { background: #222b34; color: #e7edf2; }
 .state-content { overflow: auto; padding: 10px; }

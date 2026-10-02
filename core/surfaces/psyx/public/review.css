@@ -90,3 +90,6 @@
 .check-in-trend { color: #9cc8a1; }
 .check-in-trend svg { display: block; width: 100%; max-width: 280px; height: 56px; overflow: visible; }
 .check-in-trend circle { fill: currentColor; }
+
+#formulationList textarea { box-sizing: border-box; border: 1px solid #34414c; border-radius: 7px; margin: 6px 0; background: #0d1217; }
+#formulationList small { display: block; overflow-wrap: anywhere; color: var(--muted); margin: 4px 0; }

@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const proposals = require('./proposals');
 const followUp = require('./followUp');
+const { createItemCorrection } = require('./stateItemCorrection');
 
 const PSYX_STATE_VERSION = 2;
 const STATE_ITEM_KEYS = ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops'];
@@ -67,6 +68,8 @@ function normalizeStateItem(raw, key) {
     id: cleanText(raw.id || crypto.randomUUID(), 80),
     text,
     source: ['user', 'psyx', 'legacy', 'import'].includes(raw.source) ? raw.source : 'user',
+    sourceConversationId: cleanText(raw.sourceConversationId, 80) || null,
+    correctedBy: raw.correctedBy === 'user' ? 'user' : null,
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
     evidence: Array.isArray(raw.evidence)
       ? raw.evidence.map((item) => cleanText(item, 240)).filter(Boolean).slice(0, 20)
@@ -92,6 +95,7 @@ function createStateItem(key, body = {}, source = 'user') {
     id: crypto.randomUUID(),
     text,
     source: ['user', 'psyx', 'import'].includes(source) ? source : 'user',
+    sourceConversationId: source === 'psyx' ? cleanText(body.sourceConversationId, 80) || null : null,
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
     evidence: Array.isArray(body.evidence)
       ? body.evidence.map((item) => cleanText(item, 240)).filter(Boolean).slice(0, 20)
@@ -188,6 +192,7 @@ function stateForPrompt(state, { conversationId = null } = {}) {
     compact[key] = (state[key] || []).slice(-30).map((item) => ({
       text: item.text,
       source: item.source,
+      correctedBy: item.correctedBy || null,
       confidence: item.confidence,
       evidence: item.evidence,
       status: item.status
@@ -476,26 +481,26 @@ function createStateRepository({ collection, logger }) {
   // proposals already known (memory, pending or settled by the user) are dropped.
   async function recordReview(userId, { conversationId, digest = null, proposals: incoming = [], resetAt = null, stillWanted = null }) {
     await ensureDocument(userId);
-    const state = await read(userId);
-    if ((state.resetAt || null) !== (resetAt || null)) return { added: 0, digest: null, skipped: 'reset', state };
-    const known = new Set([
-      ...state.proposals.map((item) => item.fingerprint),
-      ...state.settledProposals,
-      ...STATE_ITEM_KEYS.flatMap((key) => state[key].map((item) => proposals.proposalFingerprint(key, item.text))),
-      ...state.experiments.map((item) => proposals.proposalFingerprint('experiments', item.hypothesis, item.action))
-    ]);
-    const fresh = incoming.filter((item) => !known.has(item.fingerprint));
-    // A conversation deleted after the review started must not regain a digest.
-    if (stillWanted && !await stillWanted()) return { added: 0, digest: null, skipped: 'gone', state };
-    const push = {};
-    if (fresh.length) push.proposals = { $each: fresh, $slice: -proposals.PROPOSAL_LIMITS.pending };
-    if (digest) push.sessionDigests = { $each: [digest], $slice: -proposals.PROPOSAL_LIMITS.digests };
-    if (Object.keys(push).length) {
-      await collection.updateOne({ userId }, { $push: push, $inc: { revision: 1 }, $set: { updatedAt: new Date(), version: PSYX_STATE_VERSION } });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const state = await read(userId);
+      if ((state.resetAt || null) !== (resetAt || null)) return { added: 0, digest: null, skipped: 'reset', state };
+      const known = new Set([
+        ...state.proposals.map((item) => item.fingerprint), ...state.settledProposals,
+        ...STATE_ITEM_KEYS.flatMap((key) => state[key].map((item) => proposals.proposalFingerprint(key, item.text))),
+        ...state.experiments.map((item) => proposals.proposalFingerprint('experiments', item.hypothesis, item.action))
+      ]);
+      const fresh = incoming.filter((item) => !known.has(item.fingerprint));
+      if (stillWanted && !await stillWanted()) return { added: 0, digest: null, skipped: 'gone', state };
+      if (!fresh.length && !digest) return { added: 0, digest: null, state };
+      const set = { updatedAt: new Date(), version: PSYX_STATE_VERSION };
+      if (fresh.length) set.proposals = [...state.proposals, ...fresh].slice(-proposals.PROPOSAL_LIMITS.pending);
+      if (digest) set.sessionDigests = [...state.sessionDigests.filter(item => item.conversationId !== conversationId), digest].slice(-proposals.PROPOSAL_LIMITS.digests);
+      // Reset, erasure and proposal decisions change the revision. Replace both
+      // derived arrays together, or reread; stale model output cannot undo them.
+      const result = await collection.updateOne({ userId, revision: state.revision }, { $set: set, $inc: { revision: 1 } });
+      if (result.modifiedCount) return { added: fresh.length, digest, state: await read(userId) };
     }
-    // Then drop the conversation's older digests; readers already prefer the latest.
-    if (digest) await collection.updateOne({ userId }, { $pull: { sessionDigests: { conversationId, id: { $ne: digest.id } } } });
-    return { added: fresh.length, digest, state: await read(userId) };
+    throw Object.assign(new Error('PsyX state changed during review'), { statusCode: 409, code: 'PSYX_REVIEW_STATE_CONFLICT' });
   }
 
   // A permanently deleted conversation leaves nothing derived from it in PsyX memory.
@@ -547,6 +552,7 @@ function createStateRepository({ collection, logger }) {
     } else {
       item = createStateItem(proposal.kind, {
         text: cleanText(edits.text) || proposal.text,
+        sourceConversationId: proposal.conversationId,
         evidence: proposal.evidence,
         confidence: proposal.confidence,
         status: proposal.kind === 'hypotheses' ? 'working' : 'active'
@@ -593,6 +599,7 @@ function createStateRepository({ collection, logger }) {
   }
 
   return {
+    updateItem: createItemCorrection({ collection, read, keys: STATE_ITEM_KEYS, cleanText, fingerprint: stateItemFingerprint }),
     addCheckIn,
     ensureInfrastructure,
     read,

@@ -92,6 +92,7 @@ function renderPsyXState() {
   renderStateItems('hypothesesList', 'hypotheses');
   renderExperiments();
   renderProposals();
+  renderFormulation();
   renderFollowUp();
   updateControlExplanation();
   renderSessions();
@@ -111,6 +112,7 @@ function activateStateTab(tab, { focus = false } = {}) {
     view.classList.toggle('active', active);
     view.hidden = !active;
   }
+  if (tab.dataset.tab === 'setup') void refreshSetup();
   if (focus) tab.focus();
 }
 

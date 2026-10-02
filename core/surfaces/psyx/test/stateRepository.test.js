@@ -115,11 +115,11 @@ class MemoryCollection {
     if (inserted && update.$setOnInsert) Object.assign(doc, clone(update.$setOnInsert));
     if (update.$set) {
       for (const [path, value] of Object.entries(update.$set)) {
-        const match = path.match(/^experiments\.\$\[experiment\]\.(.+)$/);
+        const match = path.match(/^(\w+)\.\$\[(\w+)\]\.(.+)$/);
         if (match) {
-          const id = options.arrayFilters?.[0]?.['experiment.id'];
-          const item = doc.experiments?.find((entry) => entry.id === id);
-          if (item) item[match[1]] = clone(value);
+          const id = options.arrayFilters?.[0]?.[`${match[2]}.id`];
+          const item = doc[match[1]]?.find((entry) => entry.id === id);
+          if (item) item[match[3]] = clone(value);
         } else {
           doc[path] = clone(value);
         }
@@ -428,4 +428,75 @@ test('experiments from before follow-ups become due three days after creation', 
   ]);
   assert.equal(legacy.checkInAt, '2026-09-04T10:00:00.000Z');
   assert.equal(done.checkInAt, null);
+});
+
+test('correcting an accepted observation preserves its evidence and session provenance', async () => {
+  const collection = new MemoryCollection();
+  const repository = createStateRepository({ collection });
+  const { readReview } = require('../../../src/domains/psyx/review');
+  const review = readReview({ proposals: [{ kind: 'patterns', text: 'Synthetic observation', evidence: ['Synthetic evidence'], confidence: 0.6 }] }, { conversationId: 'synthetic-session' });
+  await repository.recordReview('u', { conversationId: 'synthetic-session', ...review });
+  let state = await repository.read('u');
+  await repository.acceptProposal('u', state.proposals[0].id);
+  state = await repository.read('u');
+  const original = state.patterns[0];
+  assert.equal(original.sourceConversationId, 'synthetic-session');
+  const corrected = await repository.updateItem('u', 'patterns', original.id, { text: 'Corrected by the user', expectedRevision: state.revision });
+  assert.deepEqual(corrected.state.patterns[0].evidence, ['Synthetic evidence']);
+  assert.equal(corrected.state.patterns[0].source, 'psyx');
+  assert.equal(corrected.state.patterns[0].sourceConversationId, 'synthetic-session');
+  assert.equal(corrected.state.patterns[0].correctedBy, 'user');
+  assert.equal(corrected.state.patterns[0].text, 'Corrected by the user');
+  await assert.rejects(repository.updateItem('u', 'patterns', original.id, { text: 'Stale browser', expectedRevision: state.revision }), { statusCode: 409 });
+  const { stateForPrompt } = require('../../../src/domains/psyx/stateRepository');
+  assert.equal(stateForPrompt(corrected.state).patterns[0].text, 'Corrected by the user');
+  assert.equal(stateForPrompt(corrected.state).patterns[0].correctedBy, 'user');
+});
+
+test('corrections cannot write another owner or resurrect an erased observation', async () => {
+  const repository = createStateRepository({ collection: new MemoryCollection() });
+  const added = await repository.addItem('owner', 'notes', { text: 'Synthetic private note' });
+  const changes = { text: 'Corrected', expectedRevision: added.state.revision };
+  await assert.rejects(repository.updateItem('other', 'notes', added.item.id, changes), { statusCode: 404 });
+  await assert.rejects(repository.updateItem('owner', 'unknown', added.item.id, changes), { statusCode: 404 });
+  await assert.rejects(repository.updateItem('owner', 'notes', added.item.id, { text: 'No revision' }), { statusCode: 400 });
+  await repository.reset('owner');
+  await assert.rejects(repository.updateItem('owner', 'notes', added.item.id, changes), { statusCode: 404 });
+});
+
+test('a reset between review read and write cannot resurrect its digest or proposals', async () => {
+  const collection = new MemoryCollection();
+  const repository = createStateRepository({ collection });
+  await repository.addItem('u', 'notes', { text: 'Before reset' });
+  const { readReview } = require('../../../src/domains/psyx/review');
+  const review = readReview({ digest: { summary: 'Synthetic old digest' }, proposals: [{ kind: 'notes', text: 'Old proposal', evidence: ['Old turn'] }] }, { conversationId: 'c' });
+  const update = collection.updateOne.bind(collection);
+  let reset = false;
+  collection.updateOne = async (filter, changes, options) => {
+    if (!reset && changes.$set?.sessionDigests) { reset = true; await repository.reset('u'); }
+    return update(filter, changes, options);
+  };
+  const result = await repository.recordReview('u', { conversationId: 'c', ...review });
+  assert.equal(result.skipped, 'reset');
+  assert.deepEqual(result.state.sessionDigests, []);
+  assert.deepEqual(result.state.proposals, []);
+});
+
+test('a user rejecting a proposal during a review wins over the stale review snapshot', async () => {
+  const collection = new MemoryCollection();
+  const repository = createStateRepository({ collection });
+  const { readReview } = require('../../../src/domains/psyx/review');
+  const review = readReview({ digest: { summary: 'Synthetic digest' }, proposals: [{ kind: 'notes', text: 'Candidate', evidence: ['Synthetic turn'] }] }, { conversationId: 'c' });
+  await repository.recordReview('u', { conversationId: 'c', ...review });
+  const state = await repository.read('u');
+  const update = collection.updateOne.bind(collection);
+  let rejected = false;
+  collection.updateOne = async (filter, changes, options) => {
+    if (!rejected && changes.$set?.sessionDigests) { rejected = true; await repository.rejectProposal('u', state.proposals[0].id); }
+    return update(filter, changes, options);
+  };
+  const result = await repository.recordReview('u', { conversationId: 'c', ...review });
+  assert.deepEqual(result.state.proposals, []);
+  assert.equal(result.added, 0);
+  assert.equal(result.state.sessionDigests.length, 1);
 });

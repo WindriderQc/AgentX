@@ -139,6 +139,7 @@ function showGate(message = '') {
   state.history = [];
   state.sessions = [];
   state.psyxState = null;
+  clearSetup();
   // The static intro stays; the conversation and the recap of past sessions go.
   clearRenderedConversation();
   if ($('openingRecap')) { $('openingRecap').replaceChildren(); $('openingRecap').hidden = true; }
@@ -497,6 +498,7 @@ async function bootstrap() {
   try {
     const payload = await api('/api/psyx/bootstrap', { method: 'POST', body: '{}' });
     if (payload?.persona?.active !== true) throw new Error('Le persona PsyX n’est pas actif');
+    setSetupCapabilities(payload);
     state.modeConfig = payload.modes || {};
     state.depthConfig = payload.depths || {};
     state.voice.enabled = payload.voice?.enabled === true;
@@ -509,6 +511,7 @@ async function bootstrap() {
     await Promise.all([loadPsyXState(), loadRouting(), loadSessions(), loadVoiceStatus()]);
     await restoreConversation();
     assertCurrentAccess(accessEpoch);
+    renderSetup();
     setReady(true, 'PsyX prêt');
     input.focus();
   } catch (error) {
@@ -971,6 +974,8 @@ $('lockPsyxSettings').addEventListener('click', lockPsyxNow);
 async function start() {
   wireVoiceControls();
   wireStatePanel();
+  wireFormulation();
+  wireSetup();
   wireReview();
   wireCare();
   wireFollowUp();

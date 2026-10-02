@@ -10,7 +10,7 @@ const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRe
 const domain = require('../../../src/domains/psyx/domain');
 const { detectRecentCrisis } = require('../../../src/domains/psyx/safety');
 
-const VERSION = '2.5.0';
+const VERSION = '2.5.1';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -47,7 +47,7 @@ function providerHandlers(res) {
   };
 }
 
-function serviceStatus(config) {
+function serviceStatus(config, accessConfigured = false) {
   return {
     extension: 'psyx',
     extensionVersion: VERSION,
@@ -64,10 +64,11 @@ function serviceStatus(config) {
       deepTaskType: domain.DEPTH_CONFIG.deep.taskType,
       configEndpoint: '/api/psyx/routing'
     },
+    frontier: { supported: false, enabled: false, location: 'local' },
     stateVersion: 2,
     privacy: {
       protected: config.accessMode !== 'trusted-network',
-      configured: config.accessMode === 'trusted-network' || Boolean(config.accessToken),
+      configured: config.accessMode === 'trusted-network' || Boolean(config.accessToken) || accessConfigured,
       accessMode: config.accessMode,
       sessionHours: config.sessionTtlMs / 3600000
     },
@@ -178,11 +179,12 @@ function createApp({ config, database, provider, voice = null, logger = console,
   });
   api.use(auth.requireSession);
 
-  api.get('/status', (_req, res) => responseData(res, serviceStatus(config)));
-  api.post('/bootstrap', (_req, res) => responseData(res, serviceStatus(config)));
+  api.get('/status', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)))));
+  api.post('/bootstrap', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)))));
   api.get('/state', asyncRoute(async (_req, res) => responseData(res, await stateRepository.read(res.locals.psyxUserId))));
   api.get('/state/prompt-context', asyncRoute(async (_req, res) => responseData(res, stateForPrompt(await stateRepository.read(res.locals.psyxUserId)))));
   api.post('/state/items/:key', asyncRoute(async (req, res) => responseData(res, await stateRepository.addItem(res.locals.psyxUserId, req.params.key, req.body || {}))));
+  api.patch('/state/items/:key/:id', asyncRoute(async (req, res) => responseData(res, await stateRepository.updateItem(res.locals.psyxUserId, req.params.key, cleanText(req.params.id, 80), req.body || {}))));
   api.delete('/state/items/:key/:id', asyncRoute(async (req, res) => responseData(res, await stateRepository.deleteItem(res.locals.psyxUserId, req.params.key, cleanText(req.params.id, 80)))));
   api.post('/state/experiments', asyncRoute(async (req, res) => responseData(res, await stateRepository.addExperiment(res.locals.psyxUserId, req.body || {}))));
   api.patch('/state/experiments/:id', asyncRoute(async (req, res) => responseData(res, await stateRepository.updateExperiment(res.locals.psyxUserId, cleanText(req.params.id, 80), req.body || {}))));

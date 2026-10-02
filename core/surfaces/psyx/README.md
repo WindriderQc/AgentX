@@ -1,6 +1,6 @@
 # PsyX in AgentX
 
-The full profile serves the PsyX 2.5 conversation UI at `/psyx`. Psychological
+The full profile serves the PsyX 2.5.1 conversation UI at `/psyx`. Psychological
 domain rules and longitudinal state live in `core/src/domains/psyx`; generic
 conversation persistence/lifecycle and admitted inference are Core capabilities.
 No separate PsyX server, database client or inference router starts here.
@@ -63,6 +63,17 @@ reset and longitudinal experiments remain available. A source response is saved
 only after the admitted stream has a terminal result and settled host receipt.
 The transcript is never silently sliced; request
 context remains bounded to the latest 40 messages and the domain text budget.
+
+Memory's Understanding tab projects the approved observations and pending review
+proposals with their evidence and source session. The user can correct or remove
+any approved statement; corrections retain the original provenance and use the
+state revision to refuse stale writes. Older observations explicitly show when
+no source session was recorded. Pending proposals stay outside response context.
+
+The Configuration tab checks protected access, local response routes, automatic
+review, VoiX reachability and this browser's microphone permission. Only the
+explicit microphone test requests capture, then immediately stops every track;
+it records and uploads no audio. Frontier remains unsupported and disabled.
 
 Experiments carry a check-in date (three days by default) and an outcome: worked,
 partly, did not work, or not done, which reopens it for three more days. Due
