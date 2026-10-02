@@ -5,10 +5,11 @@ const path = require('path');
 const vm = require('vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../../public/js/chat/chat-messaging.js'), 'utf8');
+const outcomeSource = fs.readFileSync(path.join(__dirname, '../../public/js/chat/chat-turn-outcome.js'), 'utf8');
 
 function loadFailureHelper() {
   const start = source.indexOf('function safeChatFailureMessage');
-  const end = source.indexOf('\nasync function errorFromResponse', start);
+  const end = source.indexOf('\nexport async function sendMessageStreamFetch', start);
   if (start < 0 || end < 0) throw new Error('chatFailureDetails source not found');
   const helperSource = source.slice(start, end).replace(/export function/g, 'function');
   const context = {};
@@ -57,7 +58,7 @@ describe('Playground failure recovery', () => {
   });
 
   test('persists stopped and failed outcomes instead of marking them ephemeral', () => {
-    expect(source).toContain("fetch('/api/history/turn-outcome'");
+    expect(outcomeSource).toContain("fetch('/api/history/turn-outcome'");
     expect(source).toContain("outcome: 'stopped'");
     expect(source).toContain("outcome: 'failed'");
     expect(source).toContain('clientTurnId: terminalAttemptId');
