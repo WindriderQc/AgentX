@@ -34,6 +34,12 @@ class FakeClient:
     def busy(self):
         return self.busy_reasons.pop(0) if self.busy_reasons else None
 
+    def propose(self, proposal):
+        if getattr(self, "core_down", False):
+            raise catchup.Busy("Core unreachable")
+        self.proposed = getattr(self, "proposed", []) + [proposal["key"]]
+        return "idea-" + proposal["key"][:6]
+
     def extract(self, system, prompt, light=False):
         self.calls.append({"prompt": prompt, "light": light, "system": system})
         reply = self.replies(prompt) if callable(self.replies) else review()
@@ -114,7 +120,9 @@ class CatchupTests(unittest.TestCase):
         status = self.run_catchup(client)
         proposals = catchup.load(self.root / catchup.PROPOSALS_NAME)
         self.assertEqual((status["proposals"], len(proposals)), (1, 1))
-        self.assertEqual((proposals[0]["threadId"], proposals[0]["state"], proposals[0]["due"]), ("thread-recent", "pending", None))
+        self.assertEqual((proposals[0]["threadId"], proposals[0]["state"], proposals[0]["due"]), ("thread-recent", "queued", None))
+        self.assertEqual((proposals[0]["state"], proposals[0]["ideaId"], len(proposals[0]["key"])), ("queued", "idea-" + proposals[0]["key"][:6], 32))
+        self.assertEqual(client.proposed, [proposals[0]["key"]])
         saved = catchup.load(self.root / "reviews/thread-old.json")["actions"][0]
         self.assertEqual((saved["status"], saved["messageId"]), ("current", "thread-old-m"))
 
@@ -133,6 +141,17 @@ class CatchupTests(unittest.TestCase):
             status = self.run_catchup(client)
         self.assertEqual((status["reviewed"], status["failed"], client.calls), (0, 0, []))
         self.assertEqual(self.archive.native_status()["pendingTextPages"], 2)
+
+    def test_an_unreachable_core_keeps_proposals_pending_until_the_next_run(self):
+        self.thread("thread-recent", "Please send the signed form")
+        action = {"text": "Envoyer le formulaire", "status": "current", "owner": "owner", "due": "unknown"}
+        client = FakeClient(replies=lambda _: review(actions=[dict(action)]))
+        client.core_down = True
+        self.run_catchup(client)
+        self.assertEqual(catchup.load(self.root / catchup.PROPOSALS_NAME)[0]["state"], "pending")
+        client.core_down = False
+        self.run_catchup(client)
+        self.assertEqual(catchup.load(self.root / catchup.PROPOSALS_NAME)[0]["state"], "queued")
 
     def test_review_normalizes_unknowns_and_cites_the_page_attachment(self):
         page = {"pageId": "p1", "messageId": "m1", "attachment": {"sha256": "a" * 64}}

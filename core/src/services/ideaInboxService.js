@@ -8,7 +8,9 @@ const mongoose = require('mongoose');
 const PlanningItem = require('../../models/PlanningItem');
 const { cleanProfileId } = require('../domains/household/family');
 
-const ORIGINS = Object.freeze(['nestor', 'family']);
+const ORIGINS = Object.freeze(['nestor', 'family', 'secretary']);
+// A capture that names its source once (for example a mail finding) is idempotent.
+const SOURCE_KEY = /^[a-z0-9][a-z0-9-]{7,63}$/;
 const KINDS = Object.freeze(['idea', 'reminder']);
 const REVIEWABLE = Object.freeze(['inbox', 'triaged']);
 const EXECUTION_TARGETS = Object.freeze(['personal', 'task']);
@@ -44,13 +46,21 @@ async function captureIdea(input = {}) {
   const kind = KINDS.includes(input.kind) ? input.kind : 'idea';
   const profileId = text(input.profileId, 80) ? cleanProfileId(input.profileId) : '';
   const area = (Array.isArray(input.tags) ? input.tags : []).map((tag) => text(tag, 40)).filter(Boolean).slice(0, 5);
+  if (input.sourceKey !== undefined && !SOURCE_KEY.test(String(input.sourceKey))) {
+    throw failure(400, 'IDEA_BAD_SOURCE_KEY', 'sourceKey is invalid');
+  }
+  const sourceTag = input.sourceKey ? `source:${input.sourceKey}` : '';
+  if (sourceTag) {
+    const existing = await PlanningItem.findOne({ type: 'idea', tags: sourceTag }).lean();
+    if (existing) return { idea: publicIdea(existing), review: 'parent', duplicate: true };
+  }
   const item = await planning().createItem({
     type: 'idea',
     title: words.slice(0, 120),
     summary: words,
-    tags: [`origin:${origin}`, `kind:${kind}`, ...(profileId ? [`profile:${profileId}`] : []), ...area],
+    tags: [`origin:${origin}`, `kind:${kind}`, ...(profileId ? [`profile:${profileId}`] : []), ...(sourceTag ? [sourceTag] : []), ...area],
     owner: origin === 'family' ? 'household-family' : 'nestor',
-    by: origin === 'family' ? 'household-family' : 'nestor-secretary'
+    by: origin === 'family' ? 'household-family' : origin === 'secretary' ? 'secretary-catchup' : 'nestor-secretary'
   });
   return { idea: publicIdea(item), review: 'parent' };
 }
