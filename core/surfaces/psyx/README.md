@@ -1,6 +1,6 @@
 # PsyX in AgentX
 
-The full profile serves the PsyX 2.4 conversation UI at `/psyx`. Psychological
+The full profile serves the PsyX 2.5 conversation UI at `/psyx`. Psychological
 domain rules and longitudinal state live in `core/src/domains/psyx`; generic
 conversation persistence/lifecycle and admitted inference are Core capabilities.
 No separate PsyX server, database client or inference router starts here.

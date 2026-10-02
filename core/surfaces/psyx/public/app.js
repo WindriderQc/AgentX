@@ -136,6 +136,8 @@ function showGate(message = '') {
   state.voice.recorder = null;
   state.voice.mediaStream = null;
   state.voice.chunks = [];
+  stopReviewWatch();
+  review.last = null;
   state.unlocked = false;
   state.ready = false;
   state.history = [];
@@ -352,6 +354,7 @@ async function restoreConversation(conversationId = state.conversationId) {
     updateContextStatus();
     sessionLabel.textContent = conversation.title || `Session ${state.conversationId.slice(-8)}`;
     highlightActiveSession();
+    void resumeReviewStatus(state.conversationId);
   } catch (error) {
     if (error.code !== 'PSYX_LOCKED') console.warn('PsyX session restore skipped', error);
     if (state.unlocked) startNewSession(false);
@@ -436,7 +439,7 @@ function renderSessions() {
     <article class="session-card ${String(item.id) === state.conversationId ? 'active' : ''}" data-session-id="${escapeHtml(item.id)}">
       <button class="session-open" type="button" ${state.sessionStatus === 'archived' ? `data-session-options="${escapeHtml(item.id)}"` : `data-session-open="${escapeHtml(item.id)}"`}>
         <strong>${escapeHtml(item.title || 'PsyX conversation')}</strong>
-        <span>${escapeHtml(item.preview || 'No preview')}</span>
+        <span>${escapeHtml(sessionDigest(item.id)?.summary || item.preview || 'No preview')}</span>
         <small>${state.sessionStatus === 'archived' ? 'Archived · ' : ''}${escapeHtml(relativeDate(item.updatedAt))}${item.model ? ` · ${escapeHtml(item.model)}` : ''}${item.promptVersion ? ` · prompt v${escapeHtml(item.promptVersion)}` : ''}</small>
       </button>
       <div class="session-actions">
@@ -460,6 +463,7 @@ async function bootstrap() {
     state.modeConfig = payload.modes || {};
     state.depthConfig = payload.depths || {};
     state.voice.enabled = payload.voice?.enabled === true;
+    review.enabled = payload.review?.automatic === true;
     const lifecycle = payload.conversationLifecycle || {};
     $('lifecycleStatus').textContent = lifecycle.archive
       ? 'PsyX-owned conversation archive and restore are available.'
@@ -595,6 +599,7 @@ async function sendMessage(text, overrides = {}) {
     updateBrainRouting(finalResult);
     if (effectiveDepth === 'deep' && !state.thinkingObserved) brainThinking.textContent = 'thinking requested · not observed';
     await loadSessions();
+    if (finalResult?.review?.scheduled) watchReview(state.conversationId);
     if (state.voice.prefs.spokenReplies) void speakText(assistantContent);
   } catch (error) {
     if (!state.unlocked || state.turnSequence !== turnSequence) return;
@@ -639,6 +644,9 @@ function startNewSession(focus = true) {
   state.conversationId = null;
   state.history = [];
   localStorage.removeItem(STORAGE_KEY);
+  stopReviewWatch();
+  review.last = null;
+  renderReviewIndicator();
   sessionLabel.textContent = 'New conversation';
   clearRenderedConversation();
   updateContextStatus();
@@ -750,10 +758,6 @@ $('newSession').addEventListener('click', async () => {
   startNewSession();
   await loadSessions();
 });
-$('reflectAction').addEventListener('click', () => sendMessage(
-  '',
-  { mode: 'analyze', depth: 'deep', action: 'deep_reflection' }
-));
 $('planAction').addEventListener('click', () => {
   state.nextMode = state.nextMode === 'plan' ? null : 'plan';
   updateControlExplanation();
@@ -944,6 +948,7 @@ $('lockPsyxSettings').addEventListener('click', lockPsyxNow);
 async function start() {
   wireVoiceControls();
   wireStatePanel();
+  wireReview();
   wireSegmented('modeControl', 'mode');
   wireSegmented('depthControl', 'depth');
   resizeInput();

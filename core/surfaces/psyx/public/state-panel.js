@@ -86,7 +86,23 @@ function renderPsyXState() {
   renderStateItems('patternsList', 'patterns');
   renderStateItems('hypothesesList', 'hypotheses');
   renderExperiments();
+  renderProposals();
   stateSaveStatus.textContent = `synced · r${state.psyxState?.revision ?? 0}`;
+}
+
+function activateStateTab(tab, { focus = false } = {}) {
+  for (const node of document.querySelectorAll('.state-tab')) {
+    const active = node === tab;
+    node.classList.toggle('active', active);
+    node.setAttribute('aria-selected', active ? 'true' : 'false');
+    node.tabIndex = active ? 0 : -1;
+  }
+  for (const view of document.querySelectorAll('.state-view')) {
+    const active = view.dataset.view === tab.dataset.tab;
+    view.classList.toggle('active', active);
+    view.hidden = !active;
+  }
+  if (focus) tab.focus();
 }
 
 function wireStatePanel() {
@@ -121,21 +137,6 @@ function wireStatePanel() {
       renderPsyXState();
     }
   });
-
-  function activateStateTab(tab, { focus = false } = {}) {
-    for (const node of document.querySelectorAll('.state-tab')) {
-      const active = node === tab;
-      node.classList.toggle('active', active);
-      node.setAttribute('aria-selected', active ? 'true' : 'false');
-      node.tabIndex = active ? 0 : -1;
-    }
-    for (const view of document.querySelectorAll('.state-view')) {
-      const active = view.dataset.view === tab.dataset.tab;
-      view.classList.toggle('active', active);
-      view.hidden = !active;
-    }
-    if (focus) tab.focus();
-  }
 
   document.querySelectorAll('.state-tab').forEach((tab) => {
     tab.addEventListener('click', () => activateStateTab(tab));

@@ -7,8 +7,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>PsyX</title>
-  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.4.0">
-  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.4.0">
+  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.5.0">
+  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.5.0">
+  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.5.0">
 </head>
 <body class="psyx-locked">
   <div id="privacyGate" class="privacy-gate" role="dialog" aria-modal="true" aria-labelledby="privacyTitle">
@@ -33,7 +34,7 @@
         <div class="eyebrow">PRIVATE · LOCAL-FIRST</div>
         <div class="brand-line">
           <h1>PsyX</h1>
-          <span class="version-pill">V2.4.0</span>
+          <span class="version-pill">V2.5.0</span>
         </div>
         <p class="subtitle">Psychological thinking partner · durable behavior change</p>
       </div>
@@ -128,8 +129,9 @@
           </article>
         </section>
 
+        <button id="reviewStatus" class="review-chip" type="button" aria-live="polite" hidden></button>
+
         <div class="quick-actions" aria-label="PsyX quick actions">
-          <button id="reflectAction" type="button" class="quick-action">Deep reflection</button>
           <button id="captureAction" type="button" class="quick-action">Capture thread</button>
           <button id="planAction" type="button" class="quick-action" aria-pressed="false">Make next response actionable</button>
         </div>
@@ -170,6 +172,7 @@
 
         <div class="state-content">
           <section id="viewMemory" class="state-view active" role="tabpanel" aria-labelledby="tabMemory" data-view="memory">
+            <div id="proposalsSection" class="state-section proposals-section" hidden><div class="state-section-title">Proposed by PsyX</div><p class="state-help">From the automatic reflection after your conversations. Nothing enters memory until you keep it; dismissed proposals are not suggested again.</p><div id="proposalsList" class="proposals-list"></div></div>
             <div class="state-section"><div class="state-section-title">Active threads</div><div id="threadsList" class="state-items"></div><form class="inline-add" data-state-add="activeThreads"><input type="text" maxlength="500" placeholder="Add a thread"><button type="submit">+</button></form></div>
             <div class="state-section"><div class="state-section-title">Explicit notes</div><div id="notesList" class="state-items"></div><form class="inline-add" data-state-add="notes"><input type="text" maxlength="1000" placeholder="Something PsyX should remember"><button type="submit">+</button></form></div>
             <div class="state-section"><div class="state-section-title">Open loops</div><div id="loopsList" class="state-items"></div><form class="inline-add" data-state-add="openLoops"><input type="text" maxlength="500" placeholder="Unresolved loop"><button type="submit">+</button></form></div>
@@ -186,6 +189,7 @@
             <div class="state-section"><div class="state-section-title">Current routing</div><div id="routingDetails" class="routing-details">Loading inference routing…</div></div>
             <div class="state-section"><div class="state-section-title">Conversation context</div><p id="contextStatus" class="state-help">Up to 40 recent messages are loaded from PsyX-owned storage.</p><p id="lifecycleStatus" class="state-help">PsyX owns archive, restore, and permanent deletion.</p></div>
             <div class="state-section"><div class="state-section-title">Depth semantics</div><div class="depth-card"><strong>Normal</strong><span>Strong local reasoning using the configured provider's <code>analysis</code> lane.</span></div><div class="depth-card"><strong>Deep</strong><span>Uses <code>deep_reasoning</code> and requests thinking. Request and verification are shown separately.</span></div></div>
+            <div class="state-section"><div class="state-section-title">Automatic reflection</div><p class="state-help">After each reply, PsyX rereads the conversation in the background with a deeper model. It writes a short digest of the session, used to keep continuity in later sessions, and proposes what deserves durable memory. It never writes into the conversation, and proposals wait for your decision in Memory.</p></div>
           </section>
         </div>
       </aside>
@@ -280,9 +284,10 @@
   </dialog>
 
   <script src="/psyx/assets/voice-audio.js?v=local-voice-0680" defer></script>
-  <script src="/psyx/assets/voice-preferences.js?v=2.4.0" defer></script>
-  <script src="/psyx/assets/voice-controls.js?v=2.4.0" defer></script>
-  <script src="/psyx/assets/state-panel.js?v=2.4.0" defer></script>
-  <script src="/psyx/assets/app.js?v=2.4.0" defer></script>
+  <script src="/psyx/assets/voice-preferences.js?v=2.5.0" defer></script>
+  <script src="/psyx/assets/voice-controls.js?v=2.5.0" defer></script>
+  <script src="/psyx/assets/state-panel.js?v=2.5.0" defer></script>
+  <script src="/psyx/assets/review.js?v=2.5.0" defer></script>
+  <script src="/psyx/assets/app.js?v=2.5.0" defer></script>
 </body>
 </html>
