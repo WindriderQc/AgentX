@@ -413,9 +413,10 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
     const titleHtml = extra?.title || `<span class="mp-prof-title-pulse"></span><span class="mp-prof-title-text">Profiling <strong>${modelName}</strong> <span class="mp-prof-title-on">on</span> <span class="mp-prof-title-host">${hostName}</span></span><span class="mp-prof-depth-chip">${depth}</span>`;
     const metricsHtml = extra?.metrics ?? renderMetricsRow();
     const activeElapsed = !isTerminal ? Math.max(0, elSec() - stepStartSec) : null;
-    // A running profile can be cancelled; it stops after its current request.
+    // A running profile can be cancelled; the label shows the expected delay.
+    const cancelText = cancelLabel();
     const closeBtn = isTerminal ? `<button class="mp-prof-close" type="button" aria-label="Dismiss">×</button>`
-      : profileId ? `<button class="mp-prof-cancel" type="button" data-profile-id="${profileId}">${cancelRequested ? 'Cancelling…' : 'Cancel'}</button>` : '';
+      : profileId ? `<button class="mp-prof-cancel" type="button" data-profile-id="${profileId}" title="${cancelText.title}">${cancelText.label}</button>` : '';
 
     // The activity log already shows the latest status verbatim, so we drop
     // the standalone italic status line. We also drop the separate "Up next"
@@ -426,7 +427,7 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
       cls, titleHtml, activeIdx, statuses, metricsHtml,
       chart: extra?.chart || '',
       activity: activity.length, lastMsg,
-      stepTimes, isTerminal
+      stepTimes, isTerminal, cancelText
     });
 
     if (sig === lastSignature) {
@@ -454,12 +455,29 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
   pushActivity(reattaching ? 'Reattached to running profile' : 'Starting profile');
   let profileId = existingProfileId;
   let cancelRequested = false;
+  // Server cancel state; proofDeadline is local time derived from remainingMs.
+  let cancelState = null;
+  const trackCancel = (cancel) => {
+    if (!cancel) return;
+    cancelState = { ...cancel, proofDeadline: cancel.remainingMs != null ? Date.now() + cancel.remainingMs : null };
+  };
+  function cancelLabel() {
+    if (!cancelRequested) return { label: 'Cancel', title: 'Cancel this profile' };
+    const phase = cancelState?.phase;
+    if (phase === 'awaiting_stop_proof') {
+      const left = Math.max(0, Math.ceil((cancelState.proofDeadline - Date.now()) / 1000));
+      return { label: `Stopping… ≤${left}s`, title: 'Request aborted; waiting for Ollama to confirm it stopped. Without confirmation the host stays quarantined (UNKNOWN).' };
+    }
+    if (phase === 'stopped') return { label: 'Restoring pins…', title: 'Ollama confirmed the request stopped; restoring pinned models' };
+    if (phase === 'stop_unproven') return { label: 'Stop unproven', title: 'Ollama did not confirm the aborted request stopped; the host stays quarantined (UNKNOWN)' };
+    return { label: 'Cancelling…', title: 'Stops after the current request, which cannot be aborted safely; a CPU context sample can take minutes' };
+  }
   const onCancelClick = async (event) => {
     const button = event.target.closest?.('.mp-prof-cancel');
     if (!button || !profileId || button.dataset.profileId !== profileId || cancelRequested) return;
     cancelRequested = true;
-    currentStatusMsg = 'Cancelling after the current request…';
-    try { await api.cancelProfile(profileId); } catch (error) { cancelRequested = false; pushActivity(`Cancel failed: ${error.message}`); }
+    currentStatusMsg = 'Cancelling…';
+    try { trackCancel((await api.cancelProfile(profileId))?.cancel); } catch (error) { cancelRequested = false; pushActivity(`Cancel failed: ${error.message}`); }
   };
   document.addEventListener('click', onCancelClick);
   showPanel(0, reattaching ? 'Reattached—resuming live updates…' : 'Starting profile…');
@@ -495,6 +513,7 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
           const progress = await api.getProfileProgress(profileId);
           const stepIdx = progress.stepsCompleted || 0;
           const msg = progress.statusMessage || 'Working…';
+          if (progress.cancelRequested) { cancelRequested = true; trackCancel(progress.cancel); }
 
           // Track step transitions → record duration of the step that just finished
           if (stepIdx > lastStepIdx) {
@@ -547,7 +566,7 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
             resolve(progress.result);
           } else if (progress.profileStatus === 'failed' || progress.profileStatus === 'cancelled') {
             clearInterval(poll);
-            reject(new Error(progress.profileStatus === 'cancelled' ? 'Profile cancelled; pinned models restored' : (progress.error || 'Profile failed')));
+            reject(new Error(progress.profileStatus === 'cancelled' ? (progress.statusMessage || 'Profile cancelled') : (progress.error || 'Profile failed')));
           }
         } catch (pollErr) {
           // Tolerate transient poll errors

@@ -145,14 +145,18 @@ describe('profile-host queue depth selection', () => {
     const profileId = started.body.data.profileId;
     await flushPromises();
 
+    // No abortable request is in flight: the cancel lands at the next checkpoint.
     const cancel = await request(pipelineApp).post(`/api/profiler/pipeline/profile/${profileId}/cancel`);
-    expect(cancel.body.data).toEqual({ profileStatus: 'running', cancelRequested: true });
-    expect((await request(pipelineApp).get(`/api/profiler/pipeline/profile/${profileId}/progress`)).body.data.cancelRequested).toBe(true);
+    expect(cancel.body.data).toMatchObject({ profileStatus: 'running', cancelRequested: true,
+      cancel: { phase: 'checkpoint', abortedAt: null, budgetMs: 60_000 } });
+    const progress = (await request(pipelineApp).get(`/api/profiler/pipeline/profile/${profileId}/progress`)).body.data;
+    expect(progress).toMatchObject({ cancelRequested: true, cancel: { phase: 'checkpoint' }, statusMessage: 'Cancelling after the current request…' });
 
     reachCheckpoint();
     await flushPromises();
     const tracker = activeProfiles.get(profileId);
     expect(tracker.status).toBe('cancelled');
+    expect(tracker.statusMessage).toBe('Cancelled; pinned models restored');
     expect(coreApiClient.releaseBenchmarkClaim).toHaveBeenCalled();
     expect((await request(pipelineApp).post(`/api/profiler/pipeline/profile/${profileId}/cancel`)).body.data)
       .toEqual({ profileStatus: 'cancelled', cancelRequested: false });
