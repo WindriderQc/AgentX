@@ -266,7 +266,8 @@ inbox outside approved ingestion roots (e.g. `RAG/Inbox` beside `RAG/Docs`):
 moving a note into the documents folder is the owner's approval.
 
 External agents reach the owner's durable memory through the same `/mcp`
-endpoint, which sits behind the adult boundary: `memory_search` searches the
+endpoint, which needs the adult session or bearer through the gateway (like
+every `/mcp` tool, it is open to trusted unmarked loopback/Docker callers): `memory_search` searches the
 owner's personal notes and `memory_remember` saves or corrects one fact,
 preference or decision. They use the store Nestor and the memory editor use,
 labelled owner/private, refuse secret-like text and record `mcp-agent` as the

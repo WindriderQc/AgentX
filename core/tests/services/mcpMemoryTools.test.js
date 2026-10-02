@@ -19,8 +19,8 @@ describe('Core MCP owner memory tools with real Mongo', () => {
     expect(saved.isError).toBe(false);
     expect(saved.structuredContent).toMatchObject({ created: true, changed: true, kind: 'preference' });
 
-    const again = await call('memory_remember', { text: 'Synthetic owner prefers tea in the morning', kind: 'preference' });
-    expect(again.structuredContent).toMatchObject({ id: saved.structuredContent.id, created: false, changed: false });
+    const again = await call('memory_remember', { text: 'Synthetic owner prefers tea in the morning' });
+    expect(again.structuredContent).toMatchObject({ id: saved.structuredContent.id, created: false, changed: false, kind: 'preference' });
 
     const row = await MemoryNote.findById(saved.structuredContent.id).lean();
     expect(row).toMatchObject({ packId: 'personal_operator', scopeId: 'personal', scope: 'owner', sensitivity: 'private', source: 'mcp-agent' });
@@ -52,5 +52,11 @@ describe('Core MCP owner memory tools with real Mongo', () => {
   test('invalid arguments are tool errors', async () => {
     expect((await call('memory_search', {})).structuredContent.error).toBe('INVALID_ARGUMENTS');
     expect((await call('memory_remember', { text: 'x', kind: 'rumour' })).structuredContent.error).toBe('INVALID_ARGUMENTS');
+  });
+
+  test('a request body cannot choose the provenance of a REST note', async () => {
+    const { operatePersonal } = require('../../src/services/memoryNoteService');
+    const saved = await operatePersonal({ operation: 'remember', text: 'Synthetic REST note', source: 'mcp-agent' });
+    expect((await MemoryNote.findById(saved.id).lean()).source).toBe('explicit-ui');
   });
 });

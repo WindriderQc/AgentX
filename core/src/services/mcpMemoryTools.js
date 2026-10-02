@@ -74,7 +74,7 @@ async function memoryRemember(args, deps = {}) {
     ...(input.id === undefined ? {} : { id: input.id }),
     ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),
   });
-  return { id: note.id, created: note.created, changed: note.changed, kind: note.kind || input.kind || 'fact', text: note.text };
+  return { id: note.id, created: note.created, changed: note.changed, kind: note.kind, text: note.text };
 }
 
 module.exports = { MEMORY_TOOLS, MEMORY_TOOL_HANDLERS: { memory_search: memorySearch, memory_remember: memoryRemember } };

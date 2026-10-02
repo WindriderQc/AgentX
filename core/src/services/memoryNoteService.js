@@ -86,7 +86,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     const kind = input.kind || existing?.kind || 'fact';
     const changed = !existing || existing.status === 'forgotten' || existing.text !== text || existing.kind !== kind
       || String(existing.expiresAt || '') !== String(expiresAt || '');
-    if (!changed) return { ok: true, authority: 'agentx.core', id, text, created: false, changed: false, updatedAt: existing.updatedAt };
+    if (!changed) return { ok: true, authority: 'agentx.core', id, text, kind, created: false, changed: false, updatedAt: existing.updatedAt };
     // An explicit correction keeps an existing classification. In particular it
     // cannot downgrade a highly-private note by using a different presentation.
     const labels = existing?.scope && existing?.sensitivity
@@ -169,7 +169,8 @@ async function operatePersonal(input = {}) {
     result = { ...matched, notes: [...matched.notes, ...preferences.notes.filter(note => !matched.notes.some(hit => hit.id === note.id))]
       .slice(0, limitOf(input.limit, 4)) };
   }
-  else if (operation === 'remember') result = await notes.remember(input);
+  // Provenance is set by trusted server callers (MCP), never by a request body.
+  else if (operation === 'remember') result = await notes.remember({ ...input, source: undefined });
   else if (operation === 'forget') result = await notes.forget(input.id);
   else throw error('Choose list, search, remember or forget');
   return { ...result, operation };
