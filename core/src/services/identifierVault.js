@@ -3,28 +3,38 @@
 const { createCipheriv, createDecipheriv, createHmac, randomBytes } = require('node:crypto');
 const IdentifierVaultEntry = require('../../models/IdentifierVaultEntry');
 
-// Sensitive identifiers found in text Nestor stores (memory notes, mail
-// journal) are moved into an encrypted vault and replaced by a reference.
-// Detection is anchored on the identifier's name, plus card numbers that pass
-// the Luhn check. Without IDENTIFIER_VAULT_KEY the text is stored unchanged.
+// Sensitive identifiers found in text Nestor stores for the owner (memory
+// notes, mail journal) are moved into an encrypted vault and replaced by a
+// reference. Every pattern is anchored on the identifier's name, and the value
+// must look like that identifier. Without IDENTIFIER_VAULT_KEY the text is
+// stored unchanged.
+const NOT_IN_WORD = '(?<![\\p{L}\\p{N}])';
+const anchored = (names, gap, value) => new RegExp(`${NOT_IN_WORD}(${names})(?![\\p{L}])([^0-9\\n]{0,${gap}})(${value})(?![\\p{L}\\p{N}])`, 'giu');
 const PATTERNS = [
-  { kind: 'niq', label: 'NIQ', re: /\b(NIQ)\b([^0-9\n]{0,30})(\d{10})\b/gi },
-  { kind: 'nas', label: 'NAS', re: /\b(NAS|num[ée]ro d['’]assurance sociale|SIN)\b([^0-9\n]{0,30})(\d{3}[ -]?\d{3}[ -]?\d{3})\b/gi },
-  { kind: 'reee', label: 'REEE', re: /\b(REEE|RESP)\b([^0-9\n]{0,40})(\d[\d-]{4,}\d)\b/gi },
-  { kind: 'account', label: 'compte', re: /\b(compte|folio|account)\b([^0-9\n]{0,25})(\d[\d -]{4,}\d)\b/gi },
+  { kind: 'niq', label: 'NIQ', re: anchored('NIQ', 30, '\\d(?: ?\\d){9}') },
+  { kind: 'nas', label: 'NAS', re: anchored("NAS|N\\.A\\.S\\.|SIN|assurance sociale", 30, '\\d{3}[ -]?\\d{3}[ -]?\\d{3}') },
+  // Upper case only: "resp." is an abbreviation in French prose.
+  { kind: 'reee', label: 'REEE', re: new RegExp(`${NOT_IN_WORD}(REEE|RESP)(?![\\p{L}])([^0-9\\n]{0,40})(\\d[\\d -]{4,}\\d)(?![\\p{L}\\p{N}])`, 'gu') },
+  { kind: 'account', label: 'compte', re: anchored('comptes?|folio|account', 15, '\\d[\\d-]{5,18}\\d') },
+  { kind: 'card', label: 'carte', re: anchored('cartes?|card|visa|mastercard|amex', 25, '\\d(?:[ -]?\\d){12,18}') },
 ];
-const CARD = /\b(?:\d[ -]?){12,18}\d\b/g;
 const DATE = /^\d{4}-\d{2}-\d{2}$|^\d{2}-\d{2}-\d{4}$/;
+const YEARS = /^(?:19|20)\d{2}(?:[ -]+(?:19|20)\d{2})*$/;
+const PHONE = /^\d{3}-\d{3}-\d{4}$/;
+
+function keyError(message, code) {
+  return Object.assign(new Error(message), { statusCode: 503, code });
+}
 
 function vaultKey(env = process.env) {
   const raw = String(env.IDENTIFIER_VAULT_KEY || '').trim();
   if (!raw) return null;
   const key = Buffer.from(raw, 'base64');
-  if (key.length !== 32) throw Object.assign(new Error('IDENTIFIER_VAULT_KEY must be 32 bytes in base64'), { code: 'IDENTIFIER_VAULT_KEY_INVALID' });
+  if (key.length !== 32) throw keyError('IDENTIFIER_VAULT_KEY must be 32 bytes in base64', 'IDENTIFIER_VAULT_KEY_INVALID');
   return key;
 }
 
-const digitsOf = value => value.replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+const digitsOf = value => value.replace(/[^0-9]/g, '');
 function luhn(digits) {
   let sum = 0;
   for (let i = 0; i < digits.length; i += 1) {
@@ -35,12 +45,14 @@ function luhn(digits) {
   return sum % 10 === 0;
 }
 
-// A match must also look like the identifier it names: a NAS passes Luhn, an
-// account number has 7 to 20 digits and is not a date.
+// The value must look like the identifier its name announces.
 function plausible(kind, value) {
-  const digits = value.replace(/[^0-9]/g, '');
+  const digits = digitsOf(value);
+  if (DATE.test(value) || YEARS.test(value) || PHONE.test(value)) return false;
   if (kind === 'nas') return luhn(digits);
-  if (kind === 'account') return digits.length >= 7 && digits.length <= 20 && !DATE.test(value.trim());
+  if (kind === 'card') return digits.length >= 13 && luhn(digits);
+  if (kind === 'reee') return digits.length >= 6 && digits.length <= 20;
+  if (kind === 'account') return digits.length >= 7 && digits.length <= 20;
   return true;
 }
 
@@ -53,30 +65,37 @@ function encrypt(key, value) {
 
 function decrypt(key, sealed) {
   const [iv, tag, body] = sealed.split('.').map(part => Buffer.from(part, 'base64'));
-  const decipher = createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(body), decipher.final()]).toString('utf8');
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(body), decipher.final()]).toString('utf8');
+  } catch {
+    throw keyError('This identifier was sealed with another IDENTIFIER_VAULT_KEY', 'IDENTIFIER_VAULT_KEY_MISMATCH');
+  }
 }
 
-// Finds identifiers in text: [{ kind, label, value, start, end }] (value only).
+// Finds identifiers in text: [{ kind, label, value, start, end }]. When two
+// matches overlap, the longer one wins.
 function findIdentifiers(text) {
   const found = [];
   for (const { kind, label, re } of PATTERNS) {
     for (const match of String(text).matchAll(re)) {
-      const value = match[3].trim();
+      const value = match[3];
       if (!plausible(kind, value)) continue;
       const start = match.index + match[1].length + match[2].length;
       found.push({ kind, label, value, start, end: start + value.length });
     }
   }
-  for (const match of String(text).matchAll(CARD)) {
-    const digits = digitsOf(match[0]);
-    if (digits.length >= 13 && luhn(digits) && !found.some(f => match.index < f.end && f.start < match.index + match[0].length)) {
-      found.push({ kind: 'card', label: 'carte', value: match[0], start: match.index, end: match.index + match[0].length });
+  const kept = [];
+  for (const item of found.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start))) {
+    const last = kept[kept.length - 1];
+    if (last && item.start < last.end) {
+      if (item.end - item.start > last.end - last.start) kept[kept.length - 1] = item;
+      continue;
     }
+    kept.push(item);
   }
-  return found.sort((a, b) => a.start - b.start)
-    .filter((f, i, all) => i === 0 || f.start >= all[i - 1].end);
+  return kept;
 }
 
 async function store(key, { kind, label, value }, seenIn) {
@@ -118,7 +137,7 @@ async function list() {
 
 async function reveal(id) {
   const key = vaultKey();
-  if (!key) throw Object.assign(new Error('The identifier vault is not configured'), { statusCode: 503, code: 'IDENTIFIER_VAULT_NOT_CONFIGURED' });
+  if (!key) throw keyError('The identifier vault is not configured', 'IDENTIFIER_VAULT_NOT_CONFIGURED');
   if (typeof id !== 'string' || !/^[a-f0-9]{24}$/.test(id)) throw Object.assign(new Error('Choose an identifier id'), { statusCode: 400, code: 'IDENTIFIER_INVALID' });
   const row = await IdentifierVaultEntry.findById(id).lean();
   if (!row) throw Object.assign(new Error('Identifier not found'), { statusCode: 404, code: 'IDENTIFIER_NOT_FOUND' });

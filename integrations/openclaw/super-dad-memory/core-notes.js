@@ -19,7 +19,7 @@ export function createCoreNotesClient({ baseUrl, fetchImpl = fetch } = {}) {
         || (['list', 'search', 'context'].includes(action) && !Array.isArray(data.notes))
         || (['remember', 'forget'].includes(action) && !/^[a-f0-9]{24}$/.test(data.id || ''))
         // Core may replace an identifier by a vault reference; nothing else may change.
-        || (action === 'remember' && data.text !== input.text?.trim() && !data.sealed?.length)
+        || (action === 'remember' && data.text !== input.text?.trim() && !(data.sealed?.length && data.text?.includes('[coffre: ')))
         || (action === 'forget' && data.id !== input.id)) {
       throw new Error('Core personal-note receipt is invalid; refresh before retrying a write');
     }

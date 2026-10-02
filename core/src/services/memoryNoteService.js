@@ -74,9 +74,14 @@ function forSpace({ audience, scopeId, packIds } = {}) {
       truncated: skip + rows.length < total, nextOffset: skip + rows.length < total ? skip + rows.length : null };
   }
 
+  // Owner notes only: a family space has no way to reveal a sealed value.
+  const seal = value => (audience === 'owner' ? sealText(value, { seenIn: 'memory-note' }) : { text: value, sealed: [] });
+
   async function remember(input = {}) {
-    const { text, sealed } = await sealText(cleanText(input.text), { seenIn: 'memory-note' });
+    const raw = cleanText(input.text);
     if (input.kind !== undefined && !['fact', 'preference', 'decision'].includes(input.kind)) throw error('Choose fact, preference or decision');
+    if (input.id !== undefined) noteId(input.id);
+    const { text, sealed } = await seal(raw);
     const id = input.id === undefined ? digest([scopeId, packs[0], text].join('\n')).slice(0, 24) : noteId(input.id);
     const existing = await MemoryNote.findOne({ ...boundary, _id: id }).lean();
     if (input.id !== undefined && (!existing || existing.status === 'forgotten')) throw error('The selected note no longer exists', 404);
@@ -112,7 +117,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
   }
 
   async function record(input = {}) {
-    const { text } = await sealText(cleanText(input.text), { seenIn: 'memory-note' });
+    const { text } = await seal(cleanText(input.text));
     const values = { packId: packs[0], scopeId, ...classification, text,
       topic: typeof input.topic === 'string' ? input.topic.slice(0, 80) : 'general',
       type: input.type === 'summary' ? 'summary' : 'fact', source: input.source || 'explicit-ui',

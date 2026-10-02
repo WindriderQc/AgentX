@@ -71,11 +71,11 @@ async function record(input = {}, { now = new Date(), days = retentionDays() } =
     // Retention counts from when the mail happened, not from when it was filed.
     expiresAt: days ? new Date(occurredAt.getTime() + days * DAY_MS) : null
   };
-  values.summary = (await sealText(values.summary, { seenIn: 'mail-journal' })).text;
-  values.subject = (await sealText(values.subject, { seenIn: 'mail-journal' })).text;
   if (values.expiresAt && values.expiresAt <= now) {
     return { ok: true, authority: 'agentx.core', recorded: false, reason: 'older than the journal retention' };
   }
+  values.summary = (await sealText(values.summary, { seenIn: 'mail-journal' })).text;
+  values.subject = (await sealText(values.subject, { seenIn: 'mail-journal' })).text;
   const key = `${threadId}\n${messageId}`;
   const write = upsert => MailJournalEntry.findOneAndUpdate({ key }, { $set: values, $setOnInsert: { key } },
     { new: true, upsert, runValidators: true, includeResultMetadata: true });
