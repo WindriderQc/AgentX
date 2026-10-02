@@ -698,7 +698,7 @@ function throwIfAborted(signal) {
  * @returns {Promise<object>} HostPerformanceSnapshot-compatible snapshot
  */
 async function testModelOnHost(modelName, hostUrl, options = {}) {
-  const cfg = getConfig(options);
+  const cfg = getConfig({ ...options, timeoutMs: require('./probePlacement').residencyTimeoutMs(hostUrl, getConfig(options).timeoutMs) });
   const { hostId, _skipHostCheck } = options;
   const checkpoint = typeof options.assertClaimActive === 'function' ? options.assertClaimActive : () => {};
   const signal = options.signal || null;

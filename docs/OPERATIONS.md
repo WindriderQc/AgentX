@@ -597,7 +597,10 @@ becomes a Profiler and benchmark target with its residency. On a CPU host the
 Profiler proves a measurement with no VRAM share instead of a full one, and its
 context probe stops at `CONTEXT_PROBE_CPU_MAX_CTX` (default 32768) with a
 per-step timeout of `CONTEXT_PROBE_CPU_TIMEOUT_MS` (default 20 minutes): CPU
-prefill takes minutes. A probe unloads models only on its own Ollama instance,
+prefill takes minutes. Every other Profiler request on a CPU host (throughput,
+generation stability, prefill/decode matrix, thinking) waits at least as long,
+so a 512-token answer at a few tokens per second is not cut at the GPU-sized
+`testTimeoutSec` and left without a terminal receipt. A probe unloads models only on its own Ollama instance,
 so profiling the CPU instance leaves the machine's GPU pins resident.
 Leaderboard rows carry their host's residency (`local · CPU`), and
 `GET /api/benchmark/generalist-leaderboard?residency=cpu|gpu` keeps one kind;

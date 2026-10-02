@@ -9,7 +9,7 @@ jest.mock('../../../src/services/profiler/settingsService');
 jest.mock('../../../config/logger', () => ({ info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() }));
 
 const hostConfig = require('../../../src/helpers/ollamaHostConfig');
-const { placementVerified, placementMismatch, cpuProbeLimits } = require('../../../src/services/probePlacement');
+const { placementVerified, placementMismatch, cpuProbeLimits, residencyTimeoutMs } = require('../../../src/services/probePlacement');
 const { assessStep } = require('../../../src/services/profiler/contextProposal');
 const contextProbeService = require('../../../src/services/contextProbeService');
 const orchestrator = require('../../../src/services/profiler/profilerOrchestrator');
@@ -47,6 +47,15 @@ describe('placement rule', () => {
     process.env.CONTEXT_PROBE_CPU_MAX_CTX = '16384';
     try { expect(cpuProbeLimits(CPU_URL).maxCtx).toBe(16384); } finally { delete process.env.CONTEXT_PROBE_CPU_MAX_CTX; }
     expect(cpuProbeLimits(GPU_URL)).toEqual({});
+  });
+
+  test('a profiler request on a CPU host is never bounded at a GPU-sized 60 s', () => {
+    delete process.env.CONTEXT_PROBE_CPU_TIMEOUT_MS;
+    expect(residencyTimeoutMs(CPU_URL, 60000)).toBe(1200000);
+    expect(residencyTimeoutMs(CPU_URL, 3600000)).toBe(3600000);
+    expect(residencyTimeoutMs(CPU_URL, undefined)).toBe(1200000);
+    expect(residencyTimeoutMs(GPU_URL, 60000)).toBe(60000);
+    expect(residencyTimeoutMs(GPU_URL, undefined)).toBeUndefined();
   });
 });
 

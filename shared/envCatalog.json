@@ -705,7 +705,7 @@
       "default": null,
       "category": "benchmark",
       "secret": false,
-      "description": "Per-step timeout of the Profiler context probe on a CPU-resident host, in ms. Unset: 1200000."
+      "description": "Per-step timeout of the Profiler context probe on a CPU-resident host, and the minimum bound of every other Profiler request there, in ms. Unset: 1200000."
     },
     "CONTEXT_PROBE_MAX_CTX": {
       "services": [

@@ -979,7 +979,7 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
   notify('prefill_decode_matrix', { message: 'Running fixed prefill/decode matrix…' });
   profileData.prefillDecodeMatrix = await runPrefillDecodeMatrix(hostUrl, modelName, {
     safeNumCtx: profileData.spill?.lastSafeNumCtx || maxCtx,
-    timeoutMs: Math.max(120000, (Number(settings.testTimeoutSec) || 60) * 1000),
+    timeoutMs: require('../probePlacement').residencyTimeoutMs(hostUrl, Math.max(120000, (Number(settings.testTimeoutSec) || 60) * 1000)),
     assertClaimActive: checkpoint,
     signal,
     repeats: Math.max(5, Number(settings.fullPhaseRepeats) || 5),
