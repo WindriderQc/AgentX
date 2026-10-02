@@ -16,6 +16,10 @@ module.exports = new Schema({
     agentId: { type: String, default: 'main' },
     backend: { type: String, enum: ['openclaw', 'agentx'], default: null },
     agentSessionKey: { type: String, default: null },
+    // Native session keys of the team members addressed directly in this conversation (#41).
+    agentSessionKeys: { type: Object, default: undefined },
+    // The last direct exchange with a member, given once to the conversation's agent.
+    teamExchange: { type: Object, default: undefined },
     llmx: { type: Object, default: null },
     // Historical Household proposal evidence. Retained on import/export only;
     // the current runtime does not execute or resume this retired action field.

@@ -43,6 +43,8 @@ module.exports = new Schema({
     knowledgeCorpusFingerprint: String,
     personalContinuity: { type: Object, default: null },
     toolEvidence: { type: Object, default: null },
+    // The team member who answered when the turn addressed one directly (#41).
+    speakerAgentId: { type: String, default: '' },
     durationMs: Number,
     source: { type: String, default: 'household-persona' },
     sourceTurnId: { type: String, default: '' },

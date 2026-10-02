@@ -130,6 +130,7 @@ function publicAudit(doc) {
     knowledgeCorpusFingerprint: doc?.knowledgeCorpusFingerprint || null,
     personalContinuity: doc?.personalContinuity || null,
     toolEvidence: doc?.toolEvidence || null,
+    speakerAgentId: doc?.speakerAgentId || '',
     durationMs: doc?.durationMs || 0,
     source: doc?.source || 'household-persona',
     sourceTurnId: doc?.sourceTurnId || '',
@@ -153,7 +154,9 @@ function sessionHistoryMessages(rows = [], pack = {}) {
   return rows.slice(0, Math.ceil(maximumMessages / 2)).reverse().flatMap((row) => {
     const audit = publicAudit(row);
     const input = cleanText(audit.inputText, maximumCharacters);
-    const reply = cleanText(replyChannels.historyText(audit.replyText, audit.display), maximumCharacters)
+    // A team member's direct answer is labelled, so the conversation agent never takes it for its own.
+    const said = cleanText(replyChannels.historyText(audit.replyText, audit.display), maximumCharacters);
+    const reply = (said && audit.speakerAgentId ? `[Answered directly by team member ${audit.speakerAgentId}] ` : '') + said
       + (audit.interrupted ? '\n[The user interrupted this reply during playback and may not have heard all of it.]' : '')
       + (audit.origin === 'application_opening' && ['cancelled', 'failed'].includes(audit.outcome)
         ? `\n[This application opening ${audit.outcome}; delivery to the visitor was not confirmed.]` : '');

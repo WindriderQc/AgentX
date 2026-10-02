@@ -109,6 +109,43 @@ describe('built-in Household surface on Core', () => {
       }
     }
   });
+  test('a turn that names a team member runs in its own session and voice, then the conversation agent hears about it (#41)', async () => {
+    const names = ['HOUSEHOLD_TEAM_MEMBERS', 'OPENCLAW_GATEWAY_URL', 'OPENCLAW_GATEWAY_TOKEN'];
+    const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+    Object.assign(process.env, { HOUSEHOLD_TEAM_MEMBERS: JSON.stringify({ secretary: ['secrétaire', 'secretary'] }),
+      OPENCLAW_GATEWAY_URL: 'http://openclaw.example.test', OPENCLAW_GATEWAY_TOKEN: 'synthetic-token' });
+    const originalFetch = global.fetch;
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async (url, options) => {
+      if (!String(url).startsWith('http://openclaw.example.test/')) return originalFetch(url, options);
+      return new Response(JSON.stringify({ ok: true, authority: 'openclaw.nestor', operation: 'agents',
+        agents: [{ id: 'main', name: 'Main' }, { id: 'secretary', name: 'Secrétaire' }] }), { headers: { 'Content-Type': 'application/json' } });
+    });
+    try {
+      const created = await request(app).post('/api/voice-personas/private/sessions')
+        .send({ packId: 'personal_operator', scopeId: 'personal', backend: 'openclaw', agentId: 'main' }).expect(201);
+      const id = created.body.data.session.sessionId;
+      const turn = text => request(app).post(`/api/voice-personas/private/sessions/${id}/turns/text`).send({ text, channel: 'voice' }).expect(200);
+      await turn('Bonjour Nestor');
+      const direct = await turn("Bonjour Nestor, est-ce que tu peux demander à secrétaire si j'ai des factures à payer?");
+      const member = agentForTest.mock.calls.at(-1)[0];
+      expect(member.session).toMatchObject({ agentId: 'secretary', agentSessionKey: `agent:secretary:household:direct:${id}` });
+      expect(member.instructions).toContain('addressed you (Secretary) directly');
+      expect(direct.body.data.reply.speaker).toEqual({ agentId: 'secretary', name: 'Secretary', personaId: 'secretary' });
+      expect(direct.body.data.reply.speech).toMatchObject({ provider: 'kokoro', voice: 'ff_siwis' });
+      const back = (await turn('Merci, et toi Nestor?'), agentForTest.mock.calls.at(-1)[0]);
+      expect(back.session).toMatchObject({ agentId: 'main', agentSessionKey: `agent:main:household:direct:${id}` });
+      expect(back.instructions).toContain('just asked Secretary directly');
+      await turn('Est-ce que la secrétaire a trié mes courriels hier?');
+      const passing = agentForTest.mock.calls.at(-1)[0];
+      expect(passing.session.agentId).toBe('main');
+      expect(passing.instructions).not.toContain('just asked Secretary directly');
+      const audit = (await request(app).get(`/api/voice-personas/audit/recent?sessionId=${id}`).expect(200)).body.data.audit;
+      expect(audit.map(row => row.speakerAgentId).filter(Boolean)).toEqual(['secretary']);
+    } finally {
+      fetchMock.mockRestore();
+      for (const name of names) { if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name]; }
+    }
+  });
   test('the PCM proxy removes Kokoro quote-only fragments without changing other providers', async () => {
     const quoted = 'Le hibou dit : « Tu gagnes. »';
     const upstreamBody = '{"type":"done","frames":1,"samples":1}\n';
