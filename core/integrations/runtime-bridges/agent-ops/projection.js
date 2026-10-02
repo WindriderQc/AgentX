@@ -267,7 +267,7 @@ function parseScheduled(source) {
 function inferOwnerId(owner, trigger) {
   const text = `${owner} ${trigger}`.toLowerCase();
   for (const [needle, id] of [
-    ['clawdx', 'clawdx-coder'], ['deepcoding', 'deepcoding'], ['overseer', 'overseer'],
+    ['clawdx', 'clawdx-worker'],
     ['leadx', 'leadx'], ['openclaw `main`', 'main'], ['nestor', 'main'], ['secretary', 'main'],
     ['hermes', 'hermes'], ['codex', 'codex'], ['agentx-core', 'agentx-core']
   ]) if (text.includes(needle)) return id;
