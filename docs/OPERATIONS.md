@@ -738,9 +738,12 @@ docker exec agentx-core-1 node scripts/migrate-mail-digests.js --apply --backup 
 ```
 
 Each digest becomes its own journal entry (tag `migrated-from-notes`, dated by
-when the note was filed) and its note is forgotten, so it stays restorable
-until the memory retention removes it. `--ids <file.json>` limits a run to
-chosen note ids. Copy the files out of the container before it is recreated.
+when the note was filed) and its note is forgotten: hidden from every reader,
+recoverable from the backup. Digests filed longer ago than the journal
+retention, and notes that cannot be read, stay notes and are listed as skipped.
+A 16-digit number without letters is never taken for a Gmail id.
+`--ids <file.json>` limits a run to chosen note ids. Copy the files out of the
+container before it is recreated.
 
 ## Qdrant payload indexes
 

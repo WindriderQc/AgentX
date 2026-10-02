@@ -13,6 +13,10 @@ export function createCoreJournalClient({ baseUrl, fetchImpl = fetch } = {}) {
     }
     const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
       headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    if (response.status === 400) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(`Core refused the mail-journal input: ${detail.message || 'invalid input'}`);
+    }
     if (!response.ok) throw new Error(`Core mail journal unavailable (${response.status}); do not claim the entry was saved`);
     const body = await response.json();
     const data = body.data;

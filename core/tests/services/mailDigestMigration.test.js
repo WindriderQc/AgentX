@@ -19,6 +19,7 @@ describe('mail digest migration with real Mongo', () => {
     expect(classify({ text: long('Selon la facture du plombier') })).toEqual({ kind: 'review' });
     expect(classify({ text: 'Synthetic owner prefers tea' })).toEqual({ kind: 'fact' });
     expect(classify({ text: 'Short courriel mention' })).toEqual({ kind: 'fact' });
+    expect(classify({ text: 'Synthetic card 4500123412341234 expires soon' })).toEqual({ kind: 'fact' });
   });
 
   test('dry run changes nothing; apply journals each digest, forgets its note and keeps facts', async () => {
@@ -47,5 +48,13 @@ describe('mail digest migration with real Mongo', () => {
     expect((await MemoryNote.findById(a._id).lean()).status).toBe('forgotten');
     expect((await MemoryNote.findById(fact._id).lean()).status).toBe('active');
     expect(await MemoryNote.countDocuments({ status: 'active' })).toBe(2);
+  });
+
+  test('a legacy note without timestamps is dated by its id and never stops the run', async () => {
+    const legacy = await MemoryNote.collection.insertOne({ ...base, text: 'Selon le courriel 0a1b2c3d4e5f6a7b, synthetic legacy' });
+    await MemoryNote.collection.insertOne({ ...base, text: 'Selon le courriel 1a1b2c3d4e5f6a7b, synthetic broken', _id: 'not-an-object-id' });
+    const result = await applyMigration();
+    expect(result.moved.map(row => row.id)).toContain(String(legacy.insertedId));
+    expect(result.moved.length + result.skipped.length).toBe(2);
   });
 });

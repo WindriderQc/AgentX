@@ -14,7 +14,9 @@ function retentionDays(env = process.env) {
   const raw = env.MAIL_JOURNAL_RETENTION_DAYS;
   if (raw === undefined || raw === '') return DEFAULT_RETENTION_DAYS;
   const value = Number(raw);
-  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  if (value === 0) return 0;
+  // A typo must not silently keep mail forever: anything else falls back.
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_RETENTION_DAYS;
 }
 
 function text(value, field, max, { required = false } = {}) {
@@ -26,6 +28,12 @@ function text(value, field, max, { required = false } = {}) {
   const trimmed = value.trim();
   if (required && !trimmed) throw error(`${field} is required`);
   return trimmed;
+}
+
+function identifier(value, field, { required = false } = {}) {
+  const id = text(value, field, 200, { required });
+  if (/[\u0000-\u001f]/.test(id)) throw error(`${field} cannot contain control characters`);
+  return id;
 }
 
 function dateOf(value, field) {
@@ -42,8 +50,8 @@ function project(row) {
 }
 
 async function record(input = {}, { now = new Date(), days = retentionDays() } = {}) {
-  const threadId = text(input.threadId, 'threadId', 200, { required: true });
-  const messageId = text(input.messageId, 'messageId', 200);
+  const threadId = identifier(input.threadId, 'threadId', { required: true });
+  const messageId = identifier(input.messageId, 'messageId');
   const occurredAt = dateOf(input.occurredAt, 'occurredAt');
   if (occurredAt.getTime() > now.getTime() + DAY_MS) throw error('occurredAt cannot be in the future');
   const tags = input.tags === undefined ? [] : input.tags;
@@ -66,8 +74,16 @@ async function record(input = {}, { now = new Date(), days = retentionDays() } =
     return { ok: true, authority: 'agentx.core', recorded: false, reason: 'older than the journal retention' };
   }
   const key = `${threadId}\n${messageId}`;
-  const result = await MailJournalEntry.findOneAndUpdate({ key }, { $set: values, $setOnInsert: { key } },
-    { new: true, upsert: true, runValidators: true, includeResultMetadata: true });
+  const write = upsert => MailJournalEntry.findOneAndUpdate({ key }, { $set: values, $setOnInsert: { key } },
+    { new: true, upsert, runValidators: true, includeResultMetadata: true });
+  let result;
+  try {
+    result = await write(true);
+  } catch (failure) {
+    if (failure.code !== 11000) throw failure;
+    // A concurrent first record of the same key won; replace its entry.
+    result = await write(false);
+  }
   return { ok: true, authority: 'agentx.core', recorded: true,
     created: Boolean(result.lastErrorObject?.upserted), entry: project(result.value) };
 }

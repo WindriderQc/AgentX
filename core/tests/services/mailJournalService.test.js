@@ -50,5 +50,7 @@ describe('mail journal with real Mongo', () => {
     expect((await journal.operate({ action: 'search' })).action).toBe('search');
     expect(journal.retentionDays({})).toBe(365);
     expect(journal.retentionDays({ MAIL_JOURNAL_RETENTION_DAYS: '0' })).toBe(0);
+    expect(journal.retentionDays({ MAIL_JOURNAL_RETENTION_DAYS: '365d' })).toBe(365);
+    await expect(journal.record({ threadId: 'a\nb', occurredAt: '2026-09-01', summary: 'x' }, { now })).rejects.toMatchObject({ statusCode: 400 });
   });
 });

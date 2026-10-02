@@ -13,7 +13,7 @@
 require('dotenv').config();
 const fs = require('node:fs');
 const mongoose = require('mongoose');
-const { planMigration, applyMigration } = require('../src/services/mailDigestMigration');
+const { planMigration, digestNotes, applyMigration } = require('../src/services/mailDigestMigration');
 
 function option(name) {
   const index = process.argv.indexOf(name);
@@ -35,10 +35,7 @@ async function main() {
     }
     const idsFile = option('--ids');
     const ids = idsFile ? JSON.parse(fs.readFileSync(idsFile, 'utf8')) : undefined;
-    const plan = await planMigration();
-    const digests = plan.rows.filter(row => row.kind === 'digest' && (!ids || ids.includes(row.id))).map(row => row.id);
-    const MemoryNote = require('../models/MemoryNote');
-    fs.writeFileSync(target, JSON.stringify(await MemoryNote.find({ _id: { $in: digests } }).lean(), null, 2), { mode: 0o600 });
+    fs.writeFileSync(target, JSON.stringify(await digestNotes(ids), null, 2), { mode: 0o600 });
     const result = await applyMigration({ ids });
     console.log(`moved ${result.moved.length} digests to the mail journal, skipped ${result.skipped.length}; backup ${target}`);
     result.skipped.forEach(row => console.log(`  skipped ${row.id}: ${row.reason}`));
