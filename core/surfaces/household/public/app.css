@@ -762,6 +762,8 @@ a.service { text-decoration: none; }
 .conversation-audio summary { cursor: pointer; }
 .conversation-audio-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .conversation-audio-actions[hidden] { display: none; }
+.conversation-browser-stt { margin: 4px 0; color: #f2c46d; font-weight: 600; }
+.conversation-browser-stt[hidden] { display: none; }
 .conversation-audio-actions button { min-height: 44px; white-space: normal; }
 .conversation-audio-transcript { white-space: pre-wrap; overflow-wrap: anywhere; }
 .conversation-transcript { min-height: 120px; max-height: 44vh; overflow-y: auto; overscroll-behavior: contain; padding: 12px 0; }

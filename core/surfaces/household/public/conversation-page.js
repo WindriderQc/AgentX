@@ -42,10 +42,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <p id="conversationPreferencesStatus" class="muted">Ces préférences de personnalité sont conservées sur ce navigateur.</p><button id="conversationReset" type="button" class="button">Rétablir la personnalité</button></details>
       <details id="conversationNotes" hidden></details>
       <details><summary>Écoute</summary><label class="conversation-toggle"><input id="conversationInterruption" type="checkbox" checked> Interrompre Nestor en parlant</label><p id="conversationInterruptionStatus" class="muted">Utilise l’annulation d’écho du navigateur. Un casque peut aider dans une pièce bruyante.</p>
-      <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Exiger « Hey Nestor »</label><p class="muted">Avec réveil vocal, Nestor revient en veille après 30 secondes sans intervention ou dès « Merci Nestor ». En conversation ouverte, il répond aux paroles tant que le micro est actif. Les phrases sont transcrites sur le réseau local avant la détection du nom ; seules les phrases adressées à Nestor entrent dans la conversation.</p>${family ? '' : '<a href="/voice/native" class="conversation-native">Appareils et diagnostic audio</a>'}</details>
+      <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Exiger « Hey Nestor »</label><p class="muted">Avec réveil vocal, Nestor revient en veille après 30 secondes sans intervention ou dès « Merci Nestor ». En conversation ouverte, il répond aux paroles tant que le micro est actif. Les phrases sont transcrites sur le réseau local avant la détection du nom ; seules les phrases adressées à Nestor entrent dans la conversation.</p><div id="conversationBrowserSttSettings" hidden></div>${family ? '' : '<a href="/voice/native" class="conversation-native">Appareils et diagnostic audio</a>'}</details>
     </details><section class="conversation-stage" aria-label="Conversation">
       <div id="conversationPresence" class="conversation-presence" data-state="idle" aria-hidden="true"><span id="conversationInitial">N</span></div>
       <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Préparation de Nestor…</p><p id="conversationDevice" class="muted">Microphone et haut-parleurs de cet appareil</p><p id="conversationVoiceNotice" class="muted" role="status" hidden></p>
+      <p id="conversationBrowserSttIndicator" class="conversation-browser-stt" hidden></p><section id="conversationBrowserSttNotice" class="conversation-audio" aria-label="Reconnaissance du navigateur" role="alert" hidden></section>
       <div class="conversation-actions"><button id="conversationStart" type="button" class="button primary" hidden disabled>Activer Nestor</button><button id="conversationPause" type="button" class="button" disabled>Pause</button><button id="conversationEnd" type="button" class="button danger" disabled>Arrêter</button></div>
       <details id="conversationAudio" class="conversation-audio"><summary>Audio & transcription</summary>
         <p class="muted">Replay up to 20 seconds from this microphone. One excerpt stays in this tab for at most 2 minutes. Pause, End or leaving the page erases it.</p>
@@ -348,10 +349,21 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const activity = (kind, detail = {}) => window.dispatchEvent(new CustomEvent('persona-activity', { detail: { space, kind, ...detail } }));
   let lastGreeting = '', lastWakeReply = '';
   const avatar = window.AvatarDock?.mount({ space: family ? 'family' : 'personal' });
+  // Browser speech recognition only with the instance gate and this browser's consent (per space).
+  let renderSpeechFallback = () => {};
+  const speechFallback = NestorSpeechFallback.createSpeechFallback({ space, storage, allowed: runtime?.browserSpeechFallback?.[family ? 'family' : 'personal'] === true,
+    Recognition: window.SpeechRecognition || window.webkitSpeechRecognition, onChange: state => renderSpeechFallback(state),
+    listening: () => ['listening', 'hearing', 'transcribing', 'waiting', 'thinking', 'preparing', 'speaking'].includes(conversation.state),
+    language: () => conversation.selection?.language || language.value,
+    async transcribeLocal(blob, lang, signal) {
+      const body = new FormData(); body.append('file', blob, 'speech.wav');
+      body.append('language', NestorSpeech.transcriptionLanguage(lang));
+      return api('/api/voix/transcribe', { method: 'POST', body, signal });
+    } });
   const conversation = new NestorConversation.Conversation({
     readyToSpeak: () => avatar?.ready,
     openAudio: (signal, onError, options) => NestorConversation.openAudio(signal, onError, { ...options, observeSpeech: true,
-      onPlaybackMetrics: metrics => { el('voiceDescription').title = `Last segment: ${metrics.first_scheduled_ms} ms to schedule; ${metrics.buffer_gaps} buffer gaps (${metrics.buffer_gap_ms} ms). Browser timing, not acoustic measurement.`; } }), createSession, message, turn: streamedTurn,
+      onPlaybackMetrics: metrics => { el('voiceDescription').title = `Last segment: ${metrics.first_scheduled_ms} ms to schedule; ${metrics.buffer_gaps} buffer gaps (${metrics.buffer_gap_ms} ms). Browser timing, not acoustic measurement.`; } }).then(audio => speechFallback.wrapAudio(audio)), createSession, message, turn: streamedTurn,
     async interrupt(session, turnId, signal) {
       let result;
       do {
@@ -366,12 +378,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (row) { row.dataset.interrupted = 'true'; row.setAttribute('aria-label', 'Interrupted reply'); }
       partial = null;
     },
-    async transcribe(blob, lang, signal) {
-      const body = new FormData(); body.append('file', blob, 'speech.wav');
-      body.append('language', NestorSpeech.transcriptionLanguage(lang));
-      const result = await api('/api/voix/transcribe', { method: 'POST', body, signal });
-      return result;
-    },
+    transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
     async synthesize(reply, signal) {
       const lang = NestorSpeech.replySpeechLanguage(reply.text, reply.language);
       const persona = conversation.session?.persona || selected();
@@ -393,6 +400,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     }
   }, (state, detail) => {
     if (state === 'idle' && !open.checked) void releaseOpen();
+    if (state === 'starting') void speechFallback.probe(() => api('/api/voix/health'));
+    speechFallback.sync();
     el('conversationStatus').textContent = detail || (state === 'listening' && conversation.selection?.wakeWord ? (conversation.wake.active() ? 'Je t’écoute. Continue, ou dis « Merci Nestor ».' : 'En veille · dis « Hey Nestor ».') : labels[state]);
     el('conversationPresence').dataset.state = state;
     const reviewing = state === 'reviewing';
@@ -421,6 +430,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         // Waiting for "Hey Nestor": the face dozes until the word wakes him.
         asleep: () => !!conversation.selection?.wakeWord && ['listening', 'hearing'].includes(conversation.state) && !conversation.wake.active() } } }));
   });
+  renderSpeechFallback = NestorSpeechFallback.mountSpeechFallbackPanel(speechFallback, { notice: el('conversationBrowserSttNotice'),
+    settings: el('conversationBrowserSttSettings'), indicator: el('conversationBrowserSttIndicator') },
+  { onConsent: () => { if (conversation.state === 'reviewing') void conversation.start(selection()); } });
   function renderAudioReview() {
     if (conversation.state === 'listening' && conversation.selection?.wakeWord) el('conversationStatus').textContent = conversation.wake.active() ? 'Je t’écoute. Continue, ou dis « Merci Nestor ».' : 'En veille · dis « Hey Nestor ».';
     const info = conversation.audio?.reviewStatus();

@@ -1393,6 +1393,16 @@
       "secret": false,
       "description": "URL of the GraphysX llmx-face.js module relayed by Core for the avatar dock. Unset: the relay answers 404 and the dock shows a 2D orb."
     },
+    "HOUSEHOLD_BROWSER_STT_FALLBACK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Allow the browser's own speech recognition when local transcription (VoiX) is unavailable: false, personal (Super Dad only) or true (Super Dad and Famille). Each browser must still consent per space; Chrome and Edge send the audio to the vendor's cloud. Unset: off."
+    },
     "HOUSEHOLD_BRAIN_ENABLED": {
       "services": [
         "core"

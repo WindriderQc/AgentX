@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const personaCatalog = require('./persona-catalog');
 const { createNestorClient } = require('./personal-continuity');
 const { createAgentClient } = require('./conversation-agent');
-const { configuredOpenClaw, conversationBackend, createConversationExecutor } = require('./conversation-executor');
+const { browserSpeechFallback, configuredOpenClaw, conversationBackend, createConversationExecutor } = require('./conversation-executor');
 const llmx = require('./llmx-conversation');
 const { visual: normalizeVisual, selections: voiceSelections } = require('./public/persona-presentation');
 const path = require('path');
@@ -237,7 +237,8 @@ function register(api) {
     catch { return fail(res, 503, 'OpenClaw agents are unavailable.', 'CONVERSATION_AGENTS_UNAVAILABLE'); }
   });
   personas.get('/catalog', async (_req, res) => {
-    try { await ensureCatalog(); return envelope(res, { personas: (await runtimeServices.personas.list()).map(personaCatalog.snapshot), runtime: { defaultBackend: conversationBackend(null, conversationEnv), openclawConfigured: configuredOpenClaw(conversationEnv) } }); }
+    try { await ensureCatalog(); return envelope(res, { personas: (await runtimeServices.personas.list()).map(personaCatalog.snapshot), runtime: { defaultBackend: conversationBackend(null, conversationEnv), openclawConfigured: configuredOpenClaw(conversationEnv),
+      browserSpeechFallback: browserSpeechFallback(conversationEnv) } }); }
     catch (error) { return fail(res, error.statusCode || 503, error.message); }
   });
   personas.get('/catalog/:name', async (req, res) => {
