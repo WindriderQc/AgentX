@@ -22,6 +22,11 @@ test('native personal_memory forwards only note inputs and validates the Core re
   assert.deepEqual(JSON.parse(captured.options.body), { action: 'remember', text: ' Synthetic note ' });
   assert.equal(captured.options.redirect, 'error');
   assert.equal(calls, 1);
+  // Core may seal an identifier; any other text change is still refused.
+  const answer = data => createCoreNotesClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async () => ({ ok: true,
+    json: async () => ({ status: 'success', data: { ok: true, authority: 'agentx.core', operation: 'remember', id, ...data } }) }) });
+  assert.equal((await answer({ text: 'NIQ [coffre: NIQ …7890]', sealed: [{ label: 'NIQ' }] })({ action: 'remember', text: 'NIQ 1234567890' })).id, id);
+  await assert.rejects(answer({ text: 'Something else' })({ action: 'remember', text: 'NIQ 1234567890' }), /receipt is invalid/);
   for (const data of [{ ok: true, authority: 'openclaw.nestor', operation: 'list', notes: [] },
     { ok: true, authority: 'agentx.core', operation: 'list' }]) {
     const broken = createCoreNotesClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async () => ({ ok: true,

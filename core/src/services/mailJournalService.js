@@ -1,6 +1,7 @@
 'use strict';
 
 const MailJournalEntry = require('../../models/MailJournalEntry');
+const { sealText } = require('./identifierVault');
 
 // The mail journal holds dated digests of the owner's mail so they stay out of
 // memory notes. Entries expire after MAIL_JOURNAL_RETENTION_DAYS (default 365,
@@ -73,6 +74,8 @@ async function record(input = {}, { now = new Date(), days = retentionDays() } =
   if (values.expiresAt && values.expiresAt <= now) {
     return { ok: true, authority: 'agentx.core', recorded: false, reason: 'older than the journal retention' };
   }
+  values.summary = (await sealText(values.summary, { seenIn: 'mail-journal' })).text;
+  values.subject = (await sealText(values.subject, { seenIn: 'mail-journal' })).text;
   const key = `${threadId}\n${messageId}`;
   const write = upsert => MailJournalEntry.findOneAndUpdate({ key }, { $set: values, $setOnInsert: { key } },
     { new: true, upsert, runValidators: true, includeResultMetadata: true });
