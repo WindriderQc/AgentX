@@ -14,7 +14,8 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
     { unique: true, name: 'psyx_state_user_unique' }).catch(error => { stateIndex = null; throw error; });
   // Never run the legacy duplicate-merge/delete helper during application startup.
   // Imported conflicts must be reviewed before a unique owner index can be built.
-  const stateRepository = Object.fromEntries(['read', 'addItem', 'deleteItem', 'addExperiment', 'updateExperiment', 'reset']
+  const stateRepository = Object.fromEntries(['read', 'addItem', 'deleteItem', 'addExperiment', 'updateExperiment', 'reset',
+    'recordReview', 'acceptProposal', 'rejectProposal']
     .map(name => [name, async (...args) => { await ensureStateIndex(); return domain[name](...args); }]));
   const database = {
     stateRepository,

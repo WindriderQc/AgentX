@@ -20,6 +20,17 @@ existing `psyxstates` domain collection, with a unique owner index. Startup does
 not merge or delete duplicate state records. No PsyX text is automatically added
 to selected notes or RAG, and inference itself does not persist another transcript.
 
+After each completed turn, a background review rereads the conversation with the
+longitudinal state. It runs through Core's admitted inference on the router task
+`PSYX_REVIEW_TASK` (default `deep_reasoning`), never writes into the transcript and
+is never cancelled once admitted; turns completing meanwhile coalesce into one
+follow-up review. It stores a digest per conversation, which later conversations
+receive as `recentSessions`, and at most five memory proposals with evidence.
+Proposals stay pending and outside the prompt until the user accepts (optionally
+edited) or rejects them; settled proposals are not proposed again. The interface
+always shows when a review runs and what it proposed. `PSYX_AUTO_REVIEW=false`
+disables it.
+
 Normal and deep requests use Core's configured `analysis` and `deep_reasoning`
 routes. Review those routes against the accepted PsyX model/host before real
 private inference. There is no PsyX-owned provider: a routing failure does not

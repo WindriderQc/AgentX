@@ -60,17 +60,17 @@ function controlSystemMessage(control) {
   return lines.join('\n');
 }
 
-function longitudinalSystemMessage(state) {
-  const compact = stateForPrompt(state);
+function longitudinalSystemMessage(state, { conversationId = null } = {}) {
+  const compact = stateForPrompt(state, { conversationId });
   if (!Object.values(compact).some((items) => items.length)) return '';
   return `PSYX LONGITUDINAL STATE — fallible working memory, not diagnosis or unquestionable truth.\n${JSON.stringify(compact)}`;
 }
 
-function composeSystemContext(state, control) {
+function composeSystemContext(state, control, { conversationId = null } = {}) {
   // AgentX's external contract caps an individual message at 16k characters.
   // Preserve persona and current controls, then spend the remaining bounded
   // budget on fallible longitudinal memory.
-  const memory = cleanText(longitudinalSystemMessage(state), 9000);
+  const memory = cleanText(longitudinalSystemMessage(state, { conversationId }), 9000);
   return [SYSTEM_PROMPT, memory, controlSystemMessage(control)].filter(Boolean).join('\n\n');
 }
 

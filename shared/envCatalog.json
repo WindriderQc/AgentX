@@ -2486,6 +2486,16 @@
       "secret": true,
       "description": "Private access code that unlocks PsyX in token mode. Unset: PsyX private APIs stay locked."
     },
+    "PSYX_AUTO_REVIEW": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "true",
+      "category": "household",
+      "secret": false,
+      "description": "PsyX background review after each completed turn (digest and memory proposals the user approves). false disables it. Unset: true."
+    },
     "PSYX_LOOPBACK_BYPASS": {
       "services": [
         "core"
@@ -2495,6 +2505,16 @@
       "category": "household",
       "secret": false,
       "description": "true lets loopback requests bypass the PsyX access code. Any other value or unset: loopback requests need the code too."
+    },
+    "PSYX_REVIEW_TASK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "deep_reasoning",
+      "category": "household",
+      "secret": false,
+      "description": "Router task type of the PsyX background review. Unset: deep_reasoning."
     },
     "PSYX_VOICE_MODE": {
       "services": [

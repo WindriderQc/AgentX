@@ -19,6 +19,17 @@ function createCoreProvider(runtimeServices) {
       return { ...await readAdmittedInferenceStream(result, {
         signal: request.signal, onToken: handlers.onToken, onThinking: handlers.onThinking
       }), routing: result.metadata };
+    },
+    // Background work (the review): one JSON answer, no stream, no thinking, no
+    // cancellation once admitted.
+    async complete(request) {
+      const result = await runtimeServices.inference.execute({
+        mode: 'chat', stream: false, taskType: request.taskType, think: false, format: 'json', timeoutMs: request.timeoutMs,
+        messages: request.messages, options: { temperature: 0.2 }, callerDetail: 'psyx/review'
+      }, { consumerContract: 'psyx' });
+      if (!result?.ok) throw Object.assign(new Error(result?.body?.message || 'PsyX review inference failed'), { code: 'PSYX_REVIEW_INFERENCE_FAILED' });
+      const body = result.body || {};
+      return { content: body.message?.content || body.response || body.choices?.[0]?.message?.content || '', model: body.model || result.metadata?.model || null };
     }
   };
 }

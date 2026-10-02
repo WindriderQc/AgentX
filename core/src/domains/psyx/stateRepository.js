@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const proposals = require('./proposals');
 
 const PSYX_STATE_VERSION = 2;
 const STATE_ITEM_KEYS = ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops'];
@@ -141,6 +142,9 @@ function emptyState(userId = 'default') {
     hypotheses: [],
     openLoops: [],
     experiments: [],
+    proposals: [],
+    settledProposals: [],
+    sessionDigests: [],
     updatedAt: null
   };
 }
@@ -154,6 +158,9 @@ function normalizeState(doc, userId = 'default') {
     version: PSYX_STATE_VERSION,
     revision: Number.isInteger(doc.revision) && doc.revision >= 0 ? doc.revision : 0,
     experiments: sanitizeExperiments(doc.experiments || []),
+    proposals: proposals.normalizeProposals(doc.proposals),
+    settledProposals: proposals.normalizeSettled(doc.settledProposals),
+    sessionDigests: proposals.normalizeDigests(doc.sessionDigests),
     updatedAt: normalizeDate(doc.updatedAt)
   };
   for (const key of STATE_ITEM_KEYS) {
@@ -167,7 +174,7 @@ function normalizeState(doc, userId = 'default') {
   return result;
 }
 
-function stateForPrompt(state) {
+function stateForPrompt(state, { conversationId = null } = {}) {
   const compact = {};
   for (const key of STATE_ITEM_KEYS) {
     compact[key] = (state[key] || []).slice(-30).map((item) => ({
@@ -182,6 +189,11 @@ function stateForPrompt(state) {
     .filter((item) => item.status === 'planned' || item.status === 'active')
     .slice(-10)
     .map(({ id, hypothesis, action, expectedSignal, result, status }) => ({ id, hypothesis, action, expectedSignal, result, status }));
+  // Digests of other recent conversations give continuity across sessions.
+  compact.recentSessions = (state.sessionDigests || [])
+    .filter((item) => item.conversationId !== conversationId)
+    .slice(-3)
+    .map(({ summary, movement, commitment, updatedAt }) => ({ summary, movement, commitment, updatedAt }));
   return compact;
 }
 
@@ -215,6 +227,32 @@ function mergeStateDocuments(documents, userId = 'default') {
     STATE_LIMITS.experiments
   );
   return merged;
+}
+
+function createExperiment(body = {}) {
+  const hypothesis = cleanText(body.hypothesis, 1000);
+  const action = cleanText(body.action, 1000);
+  if (!hypothesis || !action) {
+    const error = new Error('hypothesis and action are required');
+    error.statusCode = 400;
+    throw error;
+  }
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    hypothesis,
+    action,
+    expectedSignal: cleanText(body.expectedSignal, 1000),
+    result: '',
+    status: 'planned',
+    fingerprint: experimentFingerprint(hypothesis, action),
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function pick(source, keys) {
+  return Object.fromEntries(keys.filter((key) => cleanText(source?.[key])).map((key) => [key, source[key]]));
 }
 
 function unknownSectionError() {
@@ -278,6 +316,9 @@ function createStateRepository({ collection, logger }) {
             hypotheses: [],
             openLoops: [],
             experiments: [],
+            proposals: [],
+            settledProposals: [],
+            sessionDigests: [],
             createdAt: now,
             updatedAt: now
           }
@@ -329,25 +370,7 @@ function createStateRepository({ collection, logger }) {
 
   async function addExperiment(userId, body = {}) {
     await ensureDocument(userId);
-    const hypothesis = cleanText(body.hypothesis, 1000);
-    const action = cleanText(body.action, 1000);
-    if (!hypothesis || !action) {
-      const error = new Error('hypothesis and action are required');
-      error.statusCode = 400;
-      throw error;
-    }
-    const now = new Date().toISOString();
-    const item = {
-      id: crypto.randomUUID(),
-      hypothesis,
-      action,
-      expectedSignal: cleanText(body.expectedSignal, 1000),
-      result: '',
-      status: 'planned',
-      fingerprint: experimentFingerprint(hypothesis, action),
-      createdAt: now,
-      updatedAt: now
-    };
+    const item = createExperiment(body);
     const result = await collection.updateOne(
       { userId, 'experiments.fingerprint': { $ne: item.fingerprint } },
       {
@@ -407,7 +430,7 @@ function createStateRepository({ collection, logger }) {
   async function reset(userId) {
     await ensureDocument(userId);
     const now = new Date();
-    const cleared = Object.fromEntries([...STATE_ITEM_KEYS, 'experiments'].map((key) => [key, []]));
+    const cleared = Object.fromEntries([...STATE_ITEM_KEYS, 'experiments', 'proposals', 'settledProposals', 'sessionDigests'].map((key) => [key, []]));
     await collection.updateOne(
       { userId },
       {
@@ -418,6 +441,83 @@ function createStateRepository({ collection, logger }) {
     return read(userId);
   }
 
+  // Background review output: a digest replaces the conversation's previous one;
+  // proposals already known (memory, pending or settled by the user) are dropped.
+  async function recordReview(userId, { conversationId, digest = null, proposals: incoming = [] }) {
+    await ensureDocument(userId);
+    const state = await read(userId);
+    const known = new Set([
+      ...state.proposals.map((item) => item.fingerprint),
+      ...state.settledProposals,
+      ...STATE_ITEM_KEYS.flatMap((key) => state[key].map((item) => proposals.proposalFingerprint(key, item.text))),
+      ...state.experiments.map((item) => proposals.proposalFingerprint('experiments', item.hypothesis, item.action))
+    ]);
+    const fresh = incoming.filter((item) => !known.has(item.fingerprint));
+    if (digest) await collection.updateOne({ userId }, { $pull: { sessionDigests: { conversationId } } });
+    const push = {};
+    if (fresh.length) push.proposals = { $each: fresh, $slice: -proposals.PROPOSAL_LIMITS.pending };
+    if (digest) push.sessionDigests = { $each: [digest], $slice: -proposals.PROPOSAL_LIMITS.digests };
+    if (Object.keys(push).length) {
+      await collection.updateOne({ userId }, { $push: push, $inc: { revision: 1 }, $set: { updatedAt: new Date(), version: PSYX_STATE_VERSION } });
+    }
+    return { added: fresh.length, digest, state: await read(userId) };
+  }
+
+  function proposalNotFound() {
+    const error = new Error('PsyX proposal not found');
+    error.statusCode = 404;
+    return error;
+  }
+
+  // Accepting moves a proposal into memory as a PsyX-sourced item; the user may edit its text first.
+  async function acceptProposal(userId, id, edits = {}) {
+    const state = await read(userId);
+    const proposal = state.proposals.find((item) => item.id === id);
+    if (!proposal) throw proposalNotFound();
+    // The original fingerprint is settled too, so an edited acceptance is not proposed again.
+    const update = {
+      $pull: { proposals: { id } },
+      $push: { settledProposals: { $each: [proposal.fingerprint], $slice: -proposals.PROPOSAL_LIMITS.settled } },
+      $inc: { revision: 1 },
+      $set: { updatedAt: new Date() }
+    };
+    let item;
+    if (proposal.kind === 'experiments') {
+      item = createExperiment({ ...proposal, ...pick(edits, ['hypothesis', 'action', 'expectedSignal']) });
+      if (!state.experiments.some((entry) => entry.fingerprint === item.fingerprint)) {
+        update.$push.experiments = { $each: [item], $slice: -STATE_LIMITS.experiments };
+      }
+    } else {
+      item = createStateItem(proposal.kind, {
+        text: cleanText(edits.text) || proposal.text,
+        evidence: proposal.evidence,
+        confidence: proposal.confidence,
+        status: proposal.kind === 'hypotheses' ? 'working' : 'active'
+      }, 'psyx');
+      if (!state[proposal.kind].some((entry) => entry.fingerprint === item.fingerprint)) {
+        update.$push[proposal.kind] = { $each: [item], $slice: -STATE_LIMITS[proposal.kind] };
+      }
+    }
+    const result = await collection.updateOne({ userId, 'proposals.id': id }, update);
+    if (!result.modifiedCount) throw proposalNotFound();
+    return { kind: proposal.kind, item, state: await read(userId) };
+  }
+
+  // A rejected proposal is settled by fingerprint so the review does not propose it again.
+  async function rejectProposal(userId, id) {
+    const state = await read(userId);
+    const proposal = state.proposals.find((item) => item.id === id);
+    if (!proposal) throw proposalNotFound();
+    const result = await collection.updateOne({ userId, 'proposals.id': id }, {
+      $pull: { proposals: { id } },
+      $push: { settledProposals: { $each: [proposal.fingerprint], $slice: -proposals.PROPOSAL_LIMITS.settled } },
+      $inc: { revision: 1 },
+      $set: { updatedAt: new Date() }
+    });
+    if (!result.modifiedCount) throw proposalNotFound();
+    return { state: await read(userId) };
+  }
+
   return {
     ensureInfrastructure,
     read,
@@ -425,7 +525,10 @@ function createStateRepository({ collection, logger }) {
     deleteItem,
     addExperiment,
     updateExperiment,
-    reset
+    reset,
+    recordReview,
+    acceptProposal,
+    rejectProposal
   };
 }
 

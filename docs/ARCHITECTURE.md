@@ -234,7 +234,10 @@ finance (`/api/finance`, `/finance`) are in the demo exclusion list of
   review in memory per conversation, and a new turn cancels it.
 - `core/surfaces/psyx`: uses the Core conversation lifecycle and admitted
   inference. `core/src/domains/psyx` owns longitudinal state and reflection
-  rules. Browser access uses the shared [parental session](PARENTAL_ACCESS.md);
+  rules. After each completed turn a background review (router task
+  `PSYX_REVIEW_TASK`, default `deep_reasoning`) writes a conversation digest and
+  memory proposals into PsyX state; proposals enter memory only when the user
+  accepts them. Browser access uses the shared [parental session](PARENTAL_ACCESS.md);
   native consumers keep a separate access token.
 - `core/surfaces/data-toolbox`: UI served by Core, consuming the optional
   Data process over HTTP. It is read-only except for naming a network device

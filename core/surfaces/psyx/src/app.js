@@ -5,6 +5,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const { createAuth } = require('./auth');
 const { createVoiceClient } = require('./voice');
+const { createReviewer } = require('./reviewer');
 const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRepository');
 const domain = require('../../../src/domains/psyx/domain');
 
@@ -76,7 +77,12 @@ function serviceStatus(config) {
       restore: true,
       permanentDelete: true,
       transcriptExport: true,
-      sessionDigest: false
+      sessionDigest: config.review?.enabled !== false
+    },
+    review: {
+      automatic: config.review?.enabled !== false,
+      taskType: config.review?.taskType || 'deep_reasoning',
+      statusEndpoint: '/api/psyx/review/status'
     },
     voice: {
       enabled: config.voice?.mode === 'voix',
@@ -104,12 +110,13 @@ function exportDocument({ state, metadata, conversations }) {
   };
 }
 
-function createApp({ config, database, provider, voice = null, logger = console, accessAuth = null }) {
+function createApp({ config, database, provider, voice = null, logger = console, accessAuth = null, reviewer = null }) {
   if (!config || !database || !provider) throw new Error('config, database, and provider are required');
   const app = express();
   const auth = accessAuth || createAuth(config);
   const voiceClient = voice || createVoiceClient(config);
   const { stateRepository, conversationRepository } = database;
+  const review = reviewer || createReviewer({ config, provider, stateRepository, conversationRepository, logger });
 
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -177,6 +184,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.delete('/state/items/:key/:id', asyncRoute(async (req, res) => responseData(res, await stateRepository.deleteItem(res.locals.psyxUserId, req.params.key, cleanText(req.params.id, 80)))));
   api.post('/state/experiments', asyncRoute(async (req, res) => responseData(res, await stateRepository.addExperiment(res.locals.psyxUserId, req.body || {}))));
   api.patch('/state/experiments/:id', asyncRoute(async (req, res) => responseData(res, await stateRepository.updateExperiment(res.locals.psyxUserId, cleanText(req.params.id, 80), req.body || {}))));
+  api.post('/state/proposals/:id/accept', asyncRoute(async (req, res) => responseData(res, await stateRepository.acceptProposal(res.locals.psyxUserId, cleanText(req.params.id, 80), req.body || {}))));
+  api.post('/state/proposals/:id/reject', asyncRoute(async (req, res) => responseData(res, await stateRepository.rejectProposal(res.locals.psyxUserId, cleanText(req.params.id, 80)))));
+  api.get('/review/status', (req, res) => responseData(res, review.status(res.locals.psyxUserId, cleanText(req.query.conversationId, 80))));
   api.post('/state/reset', asyncRoute(async (req, res) => {
     if (req.body?.confirmation !== 'RESET PSYX MEMORY') return res.status(400).json({ ok: false, status: 'error', code: 'PSYX_RESET_CONFIRMATION_REQUIRED', message: 'Type RESET PSYX MEMORY to confirm.' });
     return responseData(res, await stateRepository.reset(res.locals.psyxUserId));
@@ -271,7 +281,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const context = conversationId ? await conversationRepository.context(userId, conversationId, 40) : [];
     if (conversationId && !context) return res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
     const longitudinal = await stateRepository.read(userId);
-    const system = domain.composeSystemContext(longitudinal, control);
+    const system = domain.composeSystemContext(longitudinal, control, { conversationId });
     const providerContext = domain.boundedContext(context || []);
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -308,7 +318,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
         provider: provider.id,
         routing: result.routing
       });
+      const reviewScheduled = review.schedule(userId, session.id);
       handlers.send('done', {
+        review: { scheduled: reviewScheduled },
         response: assistant,
         conversationId: session.id,
         model: result.model,
