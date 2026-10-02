@@ -31,6 +31,8 @@ const ProbeSampleSchema = new mongoose.Schema({
   gpuSizeTotal: Number,
   gpuSizeVram: Number,
   ollamaContextLength: Number,
+  // Host residency the placement was judged against (a CPU host expects no VRAM).
+  residency: { type: String, enum: ['gpu', 'cpu'], default: undefined },
   coResidents: { type: [CoResidentSchema], default: undefined },
   passed: Boolean,
   // 'transport': the request ended without a verdict from Ollama while the
@@ -65,6 +67,8 @@ const ProbeStepSchema = new mongoose.Schema({
   gpuSizeTotal: Number,
   gpuSizeVram: Number,
   ollamaContextLength: Number,
+  // Host residency the placement was judged against (a CPU host expects no VRAM).
+  residency: { type: String, enum: ['gpu', 'cpu'], default: undefined },
   coResidents: { type: [CoResidentSchema], default: undefined },
   latencyMs: Number,
   promptFillPct: Number,
