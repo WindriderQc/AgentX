@@ -64,7 +64,6 @@ async function refreshSetup() {
 }
 
 function wireSetup() {
-  $('tabSetup').addEventListener('click', refreshSetup);
   $('refreshSetup').addEventListener('click', refreshSetup);
   $('testSetupMicrophone').addEventListener('click', async () => {
     if (!state.unlocked) return;
