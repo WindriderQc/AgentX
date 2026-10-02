@@ -15,6 +15,7 @@ const {
 } = require('../clients/serviceOutboundClient');
 const { getRagStore } = require('./ragStore');
 const { prepareMarkdownIngest } = require('./markdownDocument');
+const { EXCLUDED_STATUS } = require('./nasFileIndexState');
 const {
   classificationForPath,
   classifyIngestionPath,
@@ -158,9 +159,8 @@ function normalizeMtimeMs(mtime) {
 }
 
 function needsReindex(record) {
-  if (!record || !record.indexed_at) {
-    return true;
-  }
+  if (record?.indexed_status === EXCLUDED_STATUS) return false; // operator exclusion outlives edits
+  if (!record || !record.indexed_at) return true;
   const indexedAt = new Date(record.indexed_at);
   if (Number.isNaN(indexedAt.getTime())) {
     return true;

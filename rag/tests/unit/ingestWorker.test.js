@@ -131,6 +131,15 @@ describe('ingestWorker utilities', () => {
     })).toBe(false);
   });
 
+  it('never reindexes an operator-excluded record, even after the file changes', () => {
+    expect(needsReindex({
+      mtime: 1710000000,
+      indexed_at: '2024-03-08T15:59:59.000Z',
+      indexed_status: 'excluded'
+    })).toBe(false);
+    expect(needsReindex({ mtime: 1710000000, indexed_status: 'excluded' })).toBe(false);
+  });
+
   it('skips keys directories and oversized files', () => {
     expect(describeSkip({
       path: '/data/imports/docs/keys/private.txt',
