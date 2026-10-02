@@ -166,6 +166,12 @@ function reciprocalRankFusion(list1, list2, k = 60) {
     }));
 }
 
+/** Retrieval modes that run for the given options; hybrid takes precedence over expansion. */
+function appliedSearchModes(options = {}) {
+  const hybrid = options.hybrid === true;
+  return { hybrid, expand: options.expand === true && !hybrid };
+}
+
 module.exports = {
   DOCUMENT_IDENTITY_VERSION,
   buildDocumentIdentity,
@@ -174,5 +180,6 @@ module.exports = {
   hashText,
   normalizeSourceIdentity,
   splitIntoChunks,
-  reciprocalRankFusion
+  reciprocalRankFusion,
+  appliedSearchModes
 };

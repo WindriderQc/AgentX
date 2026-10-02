@@ -217,6 +217,12 @@
       var response = await window.RAG.search(query, topK, minScore, Object.keys(filters).length ? filters : undefined, options);
       var elapsed = Math.round(performance.now() - started);
       var results = response.data.results || [];
+      var applied = response.data.applied;
+      if (applied) {
+        // Report the retrieval modes that ran, not the ones requested.
+        enhancements = enhancements.filter(function (key) { return (key !== 'expand' && key !== 'hybrid') || applied[key]; });
+        if (applied.keywordSearchFailed) enhancements.push('keyword search failed, vector results only');
+      }
       els.meta.hidden = false;
       els.meta.textContent = results.length + ' passage' + (results.length === 1 ? '' : 's') + ' found in ' + elapsed + ' ms' + (enhancements.length ? ' · ' + enhancements.join(', ') : '');
       if (!results.length) {
@@ -243,6 +249,9 @@
     var initialQuery = new URLSearchParams(window.location.search).get('query');
     if (initialQuery) els.query.value = initialQuery;
     els.btnSearch.addEventListener('click', executeSearch);
+    // Hybrid search and query expansion do not compose; keep one at a time.
+    els.optHybrid.addEventListener('change', function () { if (els.optHybrid.checked) els.optExpand.checked = false; });
+    els.optExpand.addEventListener('change', function () { if (els.optExpand.checked) els.optHybrid.checked = false; });
     els.recheck.addEventListener('click', checkReadiness);
     els.query.addEventListener('keydown', function (event) {
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); executeSearch(); }

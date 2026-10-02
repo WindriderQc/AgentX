@@ -5,9 +5,10 @@ jest.mock('../../config/logger', () => ({
 jest.mock('../../src/services/ragStore', () => {
   const mockStore = {
     upsertDocumentWithChunks: jest.fn(),
-    searchSimilarChunks: jest.fn(),
+    search: jest.fn(),
     listDocuments: jest.fn(),
     deleteDocument: jest.fn(),
+    getDocument: jest.fn(),
     getStats: jest.fn(),
     vectorStore: { healthCheck: jest.fn().mockResolvedValue({ healthy: true }) },
   };
@@ -16,6 +17,10 @@ jest.mock('../../src/services/ragStore', () => {
     _mockStore: mockStore,
   };
 });
+
+jest.mock('../../src/services/nasFileIndexState', () => ({
+  resetIndexedFiles: jest.fn().mockResolvedValue(1),
+}));
 
 jest.mock('../../src/services/embeddings', () => ({
   getEmbeddingsService: () => ({
@@ -204,9 +209,10 @@ describe('POST /api/rag/documents', () => {
 
 describe('POST /api/rag/search', () => {
   it('returns search results', async () => {
-    mockStore.searchSimilarChunks.mockResolvedValue([
-      { text: 'match', score: 0.9 },
-    ]);
+    mockStore.search.mockResolvedValue({
+      results: [{ text: 'match', score: 0.9 }],
+      applied: { hybrid: false, expand: false }
+    });
 
     const res = await request(buildApp())
       .post('/api/rag/search')
@@ -216,6 +222,7 @@ describe('POST /api/rag/search', () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.data.results).toHaveLength(1);
     expect(res.body.data.count).toBe(1);
+    expect(res.body.data.applied).toEqual({ hybrid: false, expand: false });
   });
 
   it('returns 400 when query is missing', async () => {
@@ -236,7 +243,7 @@ describe('POST /api/rag/search', () => {
   });
 
   it('returns 503 on embedding service failure', async () => {
-    mockStore.searchSimilarChunks.mockRejectedValue(new Error('embedding service 503'));
+    mockStore.search.mockRejectedValue(new Error('embedding service 503'));
 
     const res = await request(buildApp())
       .post('/api/rag/search')
@@ -321,6 +328,7 @@ describe('DELETE /api/rag/documents/:id', () => {
   });
 
   it('deletes only after confirming the full decoded documentId', async () => {
+    mockStore.getDocument.mockResolvedValue({ documentId: 'guide/v2 résumé #final' });
     mockStore.deleteDocument.mockResolvedValue(true);
     const documentId = 'guide/v2 résumé #final';
 
@@ -332,10 +340,14 @@ describe('DELETE /api/rag/documents/:id', () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.data.documentId).toBe(documentId);
     expect(mockStore.deleteDocument).toHaveBeenCalledWith(documentId);
+    const { resetIndexedFiles } = require('../../src/services/nasFileIndexState');
+    expect(resetIndexedFiles).toHaveBeenCalledWith([documentId]);
+    expect(res.body.data.filesReset).toBe(1);
   });
 
-  it('returns 404 when document not found', async () => {
-    mockStore.deleteDocument.mockResolvedValue(false);
+  it('returns 404 when document not found, without deleting', async () => {
+    mockStore.getDocument.mockResolvedValue(null);
+    mockStore.deleteDocument.mockClear();
 
     const res = await request(buildApp())
       .delete('/api/rag/documents/missing')
@@ -343,9 +355,11 @@ describe('DELETE /api/rag/documents/:id', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.ok).toBe(false);
+    expect(mockStore.deleteDocument).not.toHaveBeenCalled();
   });
 
   it('returns 500 on error', async () => {
+    mockStore.getDocument.mockResolvedValue({ documentId: 'x' });
     mockStore.deleteDocument.mockRejectedValue(new Error('fail'));
 
     const res = await request(buildApp())
@@ -412,7 +426,7 @@ describe('error classification', () => {
   });
 
   it('classifies "embedding" errors as EMBEDDING_SERVICE_UNAVAILABLE', async () => {
-    mockStore.searchSimilarChunks.mockRejectedValue(new Error('embedding generation failed'));
+    mockStore.search.mockRejectedValue(new Error('embedding generation failed'));
 
     const res = await request(buildApp())
       .post('/api/rag/search')

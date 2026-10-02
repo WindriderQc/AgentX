@@ -224,8 +224,8 @@ Semantic vector search across chunks.
 | topK | int | no | 5 | 1-20 |
 | minScore | number | no | 0.0 | 0-1 |
 | filters | object | no | -- | `{ source, tags }` |
-| expand | bool | no | false | LLM query expansion; adds inference work |
-| hybrid | bool | no | false | Semantic + keyword retrieval |
+| expand | bool | no | false | LLM query expansion; adds inference work; not combined with `hybrid` |
+| hybrid | bool | no | false | Semantic + keyword retrieval; takes precedence over `expand` |
 | rerank | bool | no | false | LLM judge re-ranking; adds inference work |
 | compress | bool | no | false | Extract query-relevant sentences after retrieval; fail-soft |
 | followLinks | bool or number | no | false | Follow retrieved Markdown links; true adds up to 2 notes, numeric values are truncated/clamped to 0-3 |
@@ -243,9 +243,15 @@ curl -X POST http://127.0.0.1:3182/api/rag/search \
 { "ok": true, "data": {
   "results": [{ "text": "The alert system monitors...", "score": 0.87,
     "metadata": { "source": "docs", "documentId": "abc123", "chunkIndex": 2 } }],
-  "count": 1
+  "count": 1,
+  "applied": { "hybrid": false, "expand": false }
 } }
 ```
+
+`applied` reports the retrieval modes that ran. Hybrid search and query
+expansion do not compose: when both are requested, hybrid runs and
+`applied.expand` is `false`. When the keyword half of a hybrid search fails,
+the vector results are returned and `applied.keywordSearchFailed` is `true`.
 
 **Errors:** 400 (validation), 503 `VECTOR_STORE_UNAVAILABLE`, 503 `EMBEDDING_SERVICE_UNAVAILABLE`
 
@@ -298,14 +304,20 @@ case-sensitive phrase `DELETE <full document ID>` in `confirmation`. This
 destructive-action confirmation is an additional safety gate; it does not
 replace or grant operator authorization at the deployment boundary.
 
-**Errors:** 400 `CONFIRMATION_REQUIRED`, 404
+**Errors:** 400 `CONFIRMATION_REQUIRED`, 404 when no chunk carries that ID
 
 ```bash
 curl -X DELETE http://127.0.0.1:3182/api/rag/documents/abc123 \
   -H 'Content-Type: application/json' \
   -d '{ "confirmation": "DELETE abc123" }'
-# => { "ok": true, "data": { "documentId": "abc123" } }
+# => { "ok": true, "data": { "documentId": "abc123", "filesReset": 1 } }
 ```
+
+Deleting a document also clears the index state of the scanned file records
+(`nas_files`) that produced it; `filesReset` counts them (`null` when MongoDB
+was unavailable). A file still under an ingest root is therefore ingested
+again by the next scan. To keep a file out of the index, exclude it through
+the ingestion policy instead.
 
 When confirmation is missing or does not match the decoded route ID exactly,
 the store is not called. The error includes
@@ -375,7 +387,7 @@ After reviewing that result, an explicitly confirmed deletion uses:
 curl -X POST http://127.0.0.1:3182/api/rag/cleanup \
   -H 'Content-Type: application/json' \
   -d '{ "source": "local-import", "dryRun": false, "maxDeletes": 100, "confirmation": "DELETE STALE DOCUMENTS FROM local-import" }'
-# => { "ok": true, "data": { "dryRun": false, "deleted": ["doc1"], "errors": [], "stats": { "attempted": 1, "succeeded": 1, "failed": 0, "elapsedMs": 150 } } }
+# => { "ok": true, "data": { "dryRun": false, "deleted": ["doc1"], "errors": [], "filesReset": 1, "stats": { "attempted": 1, "succeeded": 1, "failed": 0, "elapsedMs": 150 } } }
 ```
 
 ## Embedding Migration

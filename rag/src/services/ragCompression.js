@@ -55,7 +55,7 @@ class RAGCompressionService {
     const originalTokens = this._estimateTokens(chunks);
 
     logger.info('Starting contextual compression', {
-      query: query.substring(0, 50),
+      queryLength: query.length,
       chunkCount: chunks.length,
       originalTokens
     });
@@ -69,7 +69,7 @@ class RAGCompressionService {
       if (useCache && this.compressionCache.has(cacheKey)) {
         const cached = this.compressionCache.get(cacheKey);
         if (Date.now() - cached.timestamp < this.cacheTTL) {
-          logger.debug('Compression cache hit', { cacheKey: cacheKey.substring(0, 40) });
+          logger.debug('Compression cache hit');
           return cached.result;
         }
         // Expired — remove stale entry
@@ -194,7 +194,7 @@ Extract the most relevant sentences:`;
       // Handle "no content" case
       if (extractedText.includes('NO_RELEVANT_CONTENT') || extractedText.length < 10) {
         logger.debug('No relevant content found in chunk', {
-          query: query.substring(0, 50)
+          queryLength: query.length
         });
         return {
           ...chunk,

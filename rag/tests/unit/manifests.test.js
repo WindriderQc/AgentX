@@ -25,6 +25,10 @@ jest.mock('../../src/services/embeddings', () => ({
   })
 }));
 
+jest.mock('../../src/services/nasFileIndexState', () => ({
+  resetIndexedFiles: jest.fn().mockResolvedValue(1)
+}));
+
 jest.mock('../../src/services/vectorStore/factory', () => ({
   createVectorStore: () => mockVectorStore
 }));
@@ -267,6 +271,9 @@ describe('POST /api/rag/cleanup', () => {
     expect(res.body.data.manifestId).toBeDefined();
     expect(res.body.data.manifestGeneratedAt).toBeDefined();
     expect(mockVectorStore.deleteDocument).toHaveBeenCalledWith('gone.txt');
+    // The scanned file record is reset so a later scan can re-ingest it.
+    expect(require('../../src/services/nasFileIndexState').resetIndexedFiles).toHaveBeenCalledWith(['gone.txt']);
+    expect(res.body.data.filesReset).toBe(1);
   });
 
   it('defaults to dry-run when dryRun not specified', async () => {

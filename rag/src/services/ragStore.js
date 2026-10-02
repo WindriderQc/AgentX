@@ -13,7 +13,8 @@ const {
   generateDocumentId,
   normalizeSourceIdentity,
   splitIntoChunks,
-  reciprocalRankFusion
+  reciprocalRankFusion,
+  appliedSearchModes
 } = require('./ragStoreUtils');
 const { expandQuery } = require('./queryExpansion');
 const { keywordSearch } = require('./keywordSearch');
@@ -285,8 +286,18 @@ class RagStore {
   }
 
   async searchSimilarChunks(query, options = {}) {
-    const useHybrid = options.hybrid === true;
-    const useExpansion = options.expand === true;
+    return (await this.search(query, options)).results;
+  }
+
+  /**
+   * Search and report which retrieval modes actually ran. Hybrid search and
+   * query expansion are not combined: when both are requested, hybrid runs
+   * and expansion is reported as not applied.
+   */
+  async search(query, options = {}) {
+    const applied = appliedSearchModes(options);
+    const useHybrid = applied.hybrid;
+    const useExpansion = applied.expand;
     const useRerank = options.rerank === true;
     const useCompress = options.compress === true;
     const topK = Math.min(options.topK || 5, 20);
@@ -309,6 +320,11 @@ class RagStore {
         keywordSearch(this.vectorStore, query, {
           topK: candidateTopK * 2,
           filters: options.filters
+        }).catch((error) => {
+          // Fall back to vector results, but say so in the response.
+          logger.error('Keyword search failed; hybrid search uses vector results only', { error: error.message });
+          applied.keywordSearchFailed = true;
+          return [];
         })
       ]);
 
@@ -316,7 +332,7 @@ class RagStore {
       results = fused.slice(0, candidateTopK);
 
       logger.info('Hybrid search completed', {
-        query: query.substring(0, 50),
+        queryLength: query.length,
         vectorCount: vectorResults.length,
         keywordCount: keywordResults.length,
         fusedCount: results.length
@@ -355,7 +371,7 @@ class RagStore {
         .slice(0, candidateTopK);
 
       logger.info('Expanded search completed', {
-        original: query.substring(0, 50),
+        queryLength: query.length,
         queryCount: queriesToSearch.length,
         rawResults: allResults.length,
         dedupedResults: results.length
@@ -392,7 +408,7 @@ class RagStore {
       }
     }
 
-    return results;
+    return { results, applied };
   }
 
   /**
