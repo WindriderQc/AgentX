@@ -130,6 +130,23 @@ component. Delivery (local log, Telegram) comes from the instance's alert rules
 for those two metrics. `--dry-run` reports without posting; the last result is
 in `forwarding-status.json`.
 
+## Archive verification and restore drill
+
+`verify_archive.py <copy root>` checks any copy of the archive (the live root,
+an off-host mirror's `current` directory or a restored tree) without contacting
+a provider or writing inside it. It re-reads every recorded file against its
+SHA-256: originals (and their Message-ID against the archived thread),
+attachments, Outlook items and the kept PST exports, and lists missing or
+mismatched ones by id or relative path. `--sample N` restores N originals into
+a disposable directory (removed afterwards unless `--restore-to` is given) and
+opens each like a mail client, decoding every MIME part. It has no dependency on
+the other Secretary modules, so it runs on the machine that holds the copy.
+Exit code 0 means intact; the report holds counts and identifiers only.
+
+```bash
+python3 integrations/secretary/verify_archive.py /path/to/copy --sample 50 --report /outside/the/copy/drill.json
+```
+
 ## Household document discovery
 
 `household_documents.py` searches the existing private attachment register and
