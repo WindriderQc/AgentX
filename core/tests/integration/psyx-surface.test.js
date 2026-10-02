@@ -94,4 +94,26 @@ describe('PsyX built into Core with private scope', () => {
     expect((await auth(request(app).get('/api/psyx/state')).expect(200)).body.data.notes).toHaveLength(0);
     await auth(request(app).post('/api/psyx/state/items/unknown')).send({ text: 'ignored' }).expect(404);
   });
+
+  test('accepted review observations remain correctable with atomic revision and original provenance', async () => {
+    const { createStateRepository } = require('../../src/domains/psyx/stateRepository');
+    const { readReview } = require('../../src/domains/psyx/review');
+    const repository = createStateRepository({ collection: mongoose.connection.collection('psyxstates') });
+    const reviewed = readReview({ proposals: [{ kind: 'hypotheses', text: 'Synthetic hypothesis', evidence: ['Synthetic user statement'] }] }, { conversationId: 'synthetic-origin' });
+    await repository.recordReview('default', { conversationId: 'synthetic-origin', ...reviewed });
+    let state = (await auth(request(app).get('/api/psyx/state')).expect(200)).body.data;
+    await auth(request(app).post(`/api/psyx/state/proposals/${state.proposals[0].id}/accept`)).send({}).expect(200);
+    state = (await auth(request(app).get('/api/psyx/state')).expect(200)).body.data;
+    const item = state.hypotheses[0];
+    const url = `/api/psyx/state/items/hypotheses/${item.id}`;
+    await request(app).patch(url).send({ text: 'Unauthorized', expectedRevision: state.revision }).expect(401);
+    const corrected = (await auth(request(app).patch(url)).send({ text: 'User corrected hypothesis', expectedRevision: state.revision }).expect(200)).body.data.state;
+    expect(corrected.hypotheses[0]).toMatchObject({ text: 'User corrected hypothesis', sourceConversationId: 'synthetic-origin', correctedBy: 'user', evidence: ['Synthetic user statement'] });
+    await auth(request(app).patch(url)).send({ text: 'Stale', expectedRevision: state.revision }).expect(409);
+    const prompt = (await auth(request(app).get('/api/psyx/state/prompt-context')).expect(200)).body.data;
+    expect(prompt.hypotheses[0].text).toBe('User corrected hypothesis');
+    await auth(request(app).post('/api/psyx/state/reset')).send({ confirmation: 'RESET PSYX MEMORY' }).expect(200);
+    await auth(request(app).patch(url)).send({ text: 'Resurrected', expectedRevision: corrected.revision }).expect(404);
+  });
+
 });

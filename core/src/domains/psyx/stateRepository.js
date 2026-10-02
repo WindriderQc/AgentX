@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const proposals = require('./proposals');
 const followUp = require('./followUp');
+const { createItemCorrection } = require('./stateItemCorrection');
 
 const PSYX_STATE_VERSION = 2;
 const STATE_ITEM_KEYS = ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops'];
@@ -67,6 +68,8 @@ function normalizeStateItem(raw, key) {
     id: cleanText(raw.id || crypto.randomUUID(), 80),
     text,
     source: ['user', 'psyx', 'legacy', 'import'].includes(raw.source) ? raw.source : 'user',
+    sourceConversationId: cleanText(raw.sourceConversationId, 80) || null,
+    correctedBy: raw.correctedBy === 'user' ? 'user' : null,
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
     evidence: Array.isArray(raw.evidence)
       ? raw.evidence.map((item) => cleanText(item, 240)).filter(Boolean).slice(0, 20)
@@ -92,6 +95,7 @@ function createStateItem(key, body = {}, source = 'user') {
     id: crypto.randomUUID(),
     text,
     source: ['user', 'psyx', 'import'].includes(source) ? source : 'user',
+    sourceConversationId: source === 'psyx' ? cleanText(body.sourceConversationId, 80) || null : null,
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
     evidence: Array.isArray(body.evidence)
       ? body.evidence.map((item) => cleanText(item, 240)).filter(Boolean).slice(0, 20)
@@ -547,6 +551,7 @@ function createStateRepository({ collection, logger }) {
     } else {
       item = createStateItem(proposal.kind, {
         text: cleanText(edits.text) || proposal.text,
+        sourceConversationId: proposal.conversationId,
         evidence: proposal.evidence,
         confidence: proposal.confidence,
         status: proposal.kind === 'hypotheses' ? 'working' : 'active'
@@ -593,6 +598,7 @@ function createStateRepository({ collection, logger }) {
   }
 
   return {
+    updateItem: createItemCorrection({ collection, read, keys: STATE_ITEM_KEYS, cleanText, fingerprint: stateItemFingerprint }),
     addCheckIn,
     ensureInfrastructure,
     read,

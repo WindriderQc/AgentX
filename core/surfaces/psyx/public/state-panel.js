@@ -92,6 +92,7 @@ function renderPsyXState() {
   renderStateItems('hypothesesList', 'hypotheses');
   renderExperiments();
   renderProposals();
+  renderFormulation();
   renderFollowUp();
   updateControlExplanation();
   renderSessions();

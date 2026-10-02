@@ -284,3 +284,36 @@ test('namespaced chat and routing endpoints support the LAN HTTPS proxy', async 
     assert.match(await response.text(), /event: done/);
   });
 });
+
+test('configuration reports gateway access without disclosing the code and keeps frontier disabled', async () => {
+  const accessAuth = {
+    isLoopback: () => true, configured: () => true,
+    requireSession: (_req, res, next) => { res.locals.psyxUserId = 'gateway-owner'; next(); }
+  };
+  await withServer(createApp({ config: { ...config(), accessToken: '' }, database: repositories(), provider: {}, accessAuth }), async base => {
+    const status = (await (await fetch(`${base}/api/psyx/status`)).json()).data;
+    assert.equal(status.privacy.configured, true);
+    assert.equal(status.privacy.protected, true);
+    assert.deepEqual(status.frontier, { supported: false, enabled: false, location: 'local' });
+    assert.equal(status.voice.enabled, false);
+    assert.doesNotMatch(JSON.stringify(status), /psyx-secret/);
+  });
+});
+
+test('memory corrections use authenticated ownership, stay protected, and serve both new views', async () => {
+  const calls = [];
+  const database = repositories();
+  database.stateRepository.updateItem = async (...args) => { calls.push(args); return { state: {} }; };
+  await withServer(createApp({ config: config(), database, provider: {} }), async base => {
+    const url = `${base}/api/psyx/state/items/patterns/item`;
+    assert.equal((await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401);
+    const changes = { text: 'Synthetic correction', expectedRevision: 2, userId: 'another-owner' };
+    assert.equal((await fetch(url, { method: 'PATCH', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' }, body: JSON.stringify(changes) })).status, 200);
+    assert.equal(calls[0][0], 'default');
+    assert.equal(calls[0][1], 'patterns');
+    for (const asset of ['formulation.js', 'setup.js']) assert.equal((await fetch(`${base}/psyx/assets/${asset}`)).status, 200);
+    const html = await (await fetch(`${base}/psyx`)).text();
+    assert.match(html, /Comment psyX te comprend/);
+    assert.match(html, /Configuration de psyX/);
+  });
+});

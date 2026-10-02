@@ -7,9 +7,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>PsyX</title>
-  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.5.0">
-  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.5.0">
-  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.5.0">
+  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.5.1">
+  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.5.1">
+  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.5.1">
 </head>
 <body class="psyx-locked">
   <div id="privacyGate" class="privacy-gate" role="dialog" aria-modal="true" aria-labelledby="privacyTitle">
@@ -161,6 +161,8 @@
           <button id="tabMemory" class="state-tab active" role="tab" aria-selected="true" aria-controls="viewMemory" tabindex="0" type="button" data-tab="memory">Mémoire</button>
           <button id="tabPatterns" class="state-tab" role="tab" aria-selected="false" aria-controls="viewPatterns" tabindex="-1" type="button" data-tab="patterns">Tendances</button>
           <button id="tabExperiments" class="state-tab" role="tab" aria-selected="false" aria-controls="viewExperiments" tabindex="-1" type="button" data-tab="experiments">Expériences</button>
+          <button id="tabUnderstanding" class="state-tab" role="tab" aria-selected="false" aria-controls="viewUnderstanding" tabindex="-1" type="button" data-tab="understanding">Compréhension</button>
+          <button id="tabSetup" class="state-tab" role="tab" aria-selected="false" aria-controls="viewSetup" tabindex="-1" type="button" data-tab="setup">Configuration</button>
           <button id="tabBrain" class="state-tab" role="tab" aria-selected="false" aria-controls="viewBrain" tabindex="-1" type="button" data-tab="brain">Cerveau</button>
         </nav>
 
@@ -180,6 +182,21 @@
 
           <section id="viewExperiments" class="state-view" role="tabpanel" aria-labelledby="tabExperiments" data-view="experiments" hidden><div class="state-section"><div class="state-section-title">Expériences de changement</div><p class="state-help">Hypothèse → action → signal → résultat.</p><div id="experimentsList" class="experiments-list"></div><button id="newExperiment" class="full-ghost" type="button">+ Nouvelle expérience</button></div></section>
 
+          <section id="viewUnderstanding" class="state-view" role="tabpanel" aria-labelledby="tabUnderstanding" data-view="understanding" hidden>
+            <h3>Comment psyX te comprend</h3>
+            <p class="state-help">Des observations révisables, pas des diagnostics. Les revues proposent; tu décides ce qui reste. Tu peux corriger ou retirer chaque affirmation. Une correction garde sa source et prend effet à la prochaine réponse.</p>
+            <div id="formulationList"></div>
+            <div id="formulationStatus" role="status" aria-live="polite"></div>
+            <button id="formulationProposals" type="button">Revoir les propositions en attente</button>
+          </section>
+          <section id="viewSetup" class="state-view" role="tabpanel" aria-labelledby="tabSetup" data-view="setup" hidden>
+            <h3>Configuration de psyX</h3>
+            <p class="state-help">La voix est facultative. Les permissions du microphone appartiennent à ce navigateur.</p>
+            <div id="setupChecklist" class="state-items" role="status" aria-live="polite"></div>
+            <button id="refreshSetup" type="button">Revérifier</button>
+            <button id="testSetupMicrophone" type="button">Tester l’accès au microphone</button>
+            <p id="setupNotice" class="state-help" role="status" aria-live="polite"></p>
+          </section>
           <section id="viewBrain" class="state-view" role="tabpanel" aria-labelledby="tabBrain" data-view="brain" hidden>
             <div class="state-section"><div class="state-section-title">Routage actuel</div><div id="routingDetails" class="routing-details">Chargement du routage…</div></div>
             <div class="state-section"><div class="state-section-title">Contexte de conversation</div><p id="contextStatus" class="state-help">Jusqu’à 40 messages récents sont chargés depuis le stockage de PsyX.</p><p id="lifecycleStatus" class="state-help">PsyX gère l’archivage, la restauration et la suppression définitive.</p></div>
@@ -270,12 +287,14 @@
   </dialog>
 
   <script src="/psyx/assets/voice-audio.js?v=local-voice-0680" defer></script>
-  <script src="/psyx/assets/voice-preferences.js?v=2.5.0" defer></script>
-  <script src="/psyx/assets/voice-controls.js?v=2.5.0" defer></script>
-  <script src="/psyx/assets/state-panel.js?v=2.5.0" defer></script>
-  <script src="/psyx/assets/review.js?v=2.5.0" defer></script>
-  <script src="/psyx/assets/care.js?v=2.5.0" defer></script>
-  <script src="/psyx/assets/follow-up.js?v=2.5.0" defer></script>
-  <script src="/psyx/assets/app.js?v=2.5.0" defer></script>
+  <script src="/psyx/assets/voice-preferences.js?v=2.5.1" defer></script>
+  <script src="/psyx/assets/voice-controls.js?v=2.5.1" defer></script>
+  <script src="/psyx/assets/state-panel.js?v=2.5.1" defer></script>
+  <script src="/psyx/assets/review.js?v=2.5.1" defer></script>
+  <script src="/psyx/assets/care.js?v=2.5.1" defer></script>
+  <script src="/psyx/assets/follow-up.js?v=2.5.1" defer></script>
+  <script src="/psyx/assets/formulation.js?v=2.5.1" defer></script>
+  <script src="/psyx/assets/setup.js?v=2.5.1" defer></script>
+  <script src="/psyx/assets/app.js?v=2.5.1" defer></script>
 </body>
 </html>
