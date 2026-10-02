@@ -213,6 +213,85 @@ both the bundled clips and instance-owned additions in it, with `CREDITS.md`.
 Use catalog filenames. Keep private recordings out of Git history and release
 archives. This configuration does not establish any right to redistribute them.
 
+## Personalize your instance and manage private data
+
+The public repository contains code, generic defaults and redistributable assets.
+Your instance owns the data created or imported while using AgentX. Publishing
+or updating source does not upload those databases to GitHub. External adapters
+and the inference endpoint you select determine which other systems receive data.
+
+### Where your data lives
+
+| Material | Default storage | What to keep private |
+|---|---|---|
+| Conversations, memory, tasks, family profiles and conversation attachments | MongoDB, in `${project}_canonical_mongo_data` | The database, exports and dumps; attachments include their file bytes |
+| Document retrieval | MongoDB document/chunk records and `${project}_canonical_qdrant_data` vectors | Both stores; an embedding index is instance data too |
+| Docker Ollama models | `${project}_canonical_ollama_data` | The local model store; native/LAN Ollama has its own independent storage |
+| Recovery archives | `${project}_canonical_recovery_data`, mounted at `/backups` in Core | Backups, including copies of deleted application content |
+| Logs, benchmark settings and execution files | The project's `core_logs`, `benchmark_logs`, `rag_logs`, `benchmark_config` and `benchmark_jobs` named volumes | Logs, instance host settings and generated execution material |
+| Original documents, photos, media, sound packs and integration settings | External directories explicitly selected by the instance owner | The originals, credentials and external backup copies |
+
+Here `${project}` is the Compose project name: `agentx` by default, or the value
+selected with `AGENTX_PROJECT_NAME`. Docker manages named volumes outside the
+source checkout. Bind mounts keep files at their configured host paths; stopping
+containers does not move or delete those originals. Inspect the selected
+instance's mounts rather than assuming a Docker host filesystem path.
+
+### Personalize without editing public defaults
+
+Keep a directory outside the checkout for your `instance.env`, optional Compose
+override, integration settings and asset packs. Select `AGENTX_ENV_FILE`,
+`AGENTX_COMPOSE_OVERRIDE` when used, and the same `AGENTX_PROJECT_NAME` for every
+launcher operation. These paths are examples, not directories AgentX creates:
+
+```text
+AgentX-instance/
+  instance.env
+  compose.override.yml
+  sounds/
+  documents/
+  photos/
+  integration-settings/
+```
+
+Use the external env file for the full/demo profile, model endpoint and ports.
+Use Nerve Center for registered inference hosts and supported model/task settings;
+its Configuration view reports environment settings but does not edit them.
+Follow [Operations](OPERATIONS.md) for routing and voice settings, and
+[Data's guide](../data/README.md) for explicitly approved document roots.
+Set `HOUSEHOLD_PHOTOS_DIR` and `HOUSEHOLD_MEDIA_DIR` to external directories when
+using those mounts. Use the [private sound pack override](#private-sound-packs)
+for your own recordings. Enabling the full profile does not import these files.
+Configure [parental access](PARENTAL_ACCESS.md) before sharing with family devices.
+
+Reusable changes to code or interfaces belong in a reviewed source PR. Actual
+family names, prompts containing personal memories, host inventories, secrets,
+media and production configuration remain instance material. `.gitignore` helps
+avoid accidental additions; it neither encrypts files nor removes old Git history.
+
+### Stop, delete or start over
+
+- **Stop or update:** `./agentx down` preserves named volumes. Use the same
+  project and external settings when restarting so the existing data is reused.
+- **Remove a document:** remove it from the approved ingestion source, retire its
+  exact indexed ID using the [RAG retirement procedure](OPERATIONS.md), then verify
+  it is absent from the document list and search. Removing an original file alone
+  does not delete an existing index entry. Check any copied attachments separately.
+- **Remove other content:** use the relevant application controls and check the
+  scope of deletion. There is no documented single command that erases a person
+  across conversations, memory, attachments, indexes, integrations and backups.
+- **Discard a disposable instance:** after checking the project and selected
+  settings, `./agentx reset` removes its containers, named data volumes and recovery
+  archives after confirmation. Windows uses `.\agentx.ps1 reset`. This also removes
+  that project's Docker Ollama model volume. It does not delete external source
+  folders, native/LAN Ollama stores or off-host backups. Do not use it for routine
+  cleanup of a live personal instance.
+
+A retained backup can still contain deleted content, and a restore can bring it
+back. Choose a retention policy for recovery archives, off-host copies, logs and
+integration exports, and apply it to each actual storage location. These actions
+are application/storage cleanup, not a guarantee of secure physical erasure.
+
 ## Troubleshooting
 
 | Symptom | Check |
