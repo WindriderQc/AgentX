@@ -224,8 +224,8 @@ Semantic vector search across chunks.
 | topK | int | no | 5 | 1-20 |
 | minScore | number | no | 0.0 | 0-1 |
 | filters | object | no | -- | `{ source, tags }` |
-| expand | bool | no | false | LLM query expansion; adds inference work |
-| hybrid | bool | no | false | Semantic + keyword retrieval |
+| expand | bool | no | false | LLM query expansion; adds inference work; not combined with `hybrid` |
+| hybrid | bool | no | false | Semantic + keyword retrieval; takes precedence over `expand` |
 | rerank | bool | no | false | LLM judge re-ranking; adds inference work |
 | compress | bool | no | false | Extract query-relevant sentences after retrieval; fail-soft |
 | followLinks | bool or number | no | false | Follow retrieved Markdown links; true adds up to 2 notes, numeric values are truncated/clamped to 0-3 |
@@ -243,9 +243,14 @@ curl -X POST http://127.0.0.1:3182/api/rag/search \
 { "ok": true, "data": {
   "results": [{ "text": "The alert system monitors...", "score": 0.87,
     "metadata": { "source": "docs", "documentId": "abc123", "chunkIndex": 2 } }],
-  "count": 1
+  "count": 1,
+  "applied": { "hybrid": false, "expand": false }
 } }
 ```
+
+`applied` reports the retrieval modes that ran. Hybrid search and query
+expansion do not compose: when both are requested, hybrid runs and
+`applied.expand` is `false`.
 
 **Errors:** 400 (validation), 503 `VECTOR_STORE_UNAVAILABLE`, 503 `EMBEDDING_SERVICE_UNAVAILABLE`
 

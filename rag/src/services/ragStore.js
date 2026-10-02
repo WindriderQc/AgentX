@@ -13,7 +13,8 @@ const {
   generateDocumentId,
   normalizeSourceIdentity,
   splitIntoChunks,
-  reciprocalRankFusion
+  reciprocalRankFusion,
+  appliedSearchModes
 } = require('./ragStoreUtils');
 const { expandQuery } = require('./queryExpansion');
 const { keywordSearch } = require('./keywordSearch');
@@ -285,8 +286,18 @@ class RagStore {
   }
 
   async searchSimilarChunks(query, options = {}) {
-    const useHybrid = options.hybrid === true;
-    const useExpansion = options.expand === true;
+    return (await this.search(query, options)).results;
+  }
+
+  /**
+   * Search and report which retrieval modes actually ran. Hybrid search and
+   * query expansion are not combined: when both are requested, hybrid runs
+   * and expansion is reported as not applied.
+   */
+  async search(query, options = {}) {
+    const applied = appliedSearchModes(options);
+    const useHybrid = applied.hybrid;
+    const useExpansion = applied.expand;
     const useRerank = options.rerank === true;
     const useCompress = options.compress === true;
     const topK = Math.min(options.topK || 5, 20);
@@ -392,7 +403,7 @@ class RagStore {
       }
     }
 
-    return results;
+    return { results, applied };
   }
 
   /**

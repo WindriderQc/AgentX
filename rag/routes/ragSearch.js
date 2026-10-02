@@ -5,6 +5,7 @@
 const crypto = require('crypto');
 const logger = require('../config/logger');
 const { getRagStore } = require('../src/services/ragStore');
+const { appliedSearchModes } = require('../src/services/ragStoreUtils');
 const SearchEvent = require('../models/SearchEvent');
 const buddyRagEvents = require('../src/services/buddyRagEvents');
 const { sendError } = require('../src/utils/response');
@@ -58,15 +59,15 @@ async function handleSearch(req, res) {
       topK: safeTopK,
       minScore: safeMinScore,
       filterCount: filters && typeof filters === 'object' ? Object.keys(filters).length : 0,
-      hybrid: searchOptions.hybrid,
+      ...appliedSearchModes(searchOptions),
       rerank: searchOptions.rerank,
-      expand: searchOptions.expand,
       compress: searchOptions.compress
     };
 
     let results;
+    let applied;
     try {
-      results = await ragStore.searchSimilarChunks(query, searchOptions);
+      ({ results, applied } = await ragStore.search(query, searchOptions));
     } catch (searchErr) {
       const classifiedSearch = classifyRagAvailabilityError(searchErr);
       recordSearchEvent({
@@ -97,7 +98,7 @@ async function handleSearch(req, res) {
       buddyRagEvents.searchEmpty(`RAG search returned no matches (query length ${query.length})`);
     }
 
-    res.json({ ok: true, data: { results: resultList, count: resultList.length } });
+    res.json({ ok: true, data: { results: resultList, count: resultList.length, applied } });
   } catch (err) {
     // Fire-and-forget Buddy surface event (intent:warning, surfaceScope:rag).
     buddyRagEvents.searchFailed(`RAG search failed: ${(err.message || 'unknown').slice(0, 120)}`);
