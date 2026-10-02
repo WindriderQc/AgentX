@@ -95,7 +95,6 @@ Issues hold the current work and remaining acceptance:
 | Nestor private knowledge across sources | [#24](https://github.com/WindriderQc/AgentX/issues/24) |
 | Instance inventory and storage placement tooling | [#25](https://github.com/WindriderQc/AgentX/issues/25) |
 | Household photo metadata and staged visual retrieval | [#26](https://github.com/WindriderQc/AgentX/issues/26) |
-| Keep the configured language and voice consistent within a turn | [#27](https://github.com/WindriderQc/AgentX/issues/27) |
 | Qualify French Canadian speech recognition | [#28](https://github.com/WindriderQc/AgentX/issues/28) |
 | Local French Canadian voices and custom voice profiles | [#29](https://github.com/WindriderQc/AgentX/issues/29) |
 
