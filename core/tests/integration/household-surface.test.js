@@ -298,6 +298,26 @@ describe('built-in Household surface on Core', () => {
     }
   });
 
+  test('a second LLMx opening request while the first is generating reports it pending', async () => {
+    const base = '/api/consumers/nestor/v1/llmx';
+    const id = (await request(app).post(`${base}/sessions`).send({ backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    let release;
+    const calls = executeForTest.mock.calls.length;
+    executeForTest.mockImplementationOnce(() => new Promise(resolve => {
+      release = () => resolve({ ok: true, body: { response: 'Hello, synthetic visitor.' }, metadata: { model: 'synthetic' } });
+    }));
+    const opening = { requestId: 'synthetic-pending-opening', openingVersion: 1, channel: 'text' };
+    const first = request(app).post(`${base}/sessions/${id}/opening`).send(opening).then(response => response);
+    for (let attempt = 0; attempt < 200 && executeForTest.mock.calls.length === calls; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    expect(executeForTest.mock.calls.length).toBe(calls + 1);
+    const pending = await request(app).post(`${base}/sessions/${id}/opening`).send(opening).expect(202);
+    expect(pending.body.data.opening.status).toBe('pending');
+    release();
+    expect((await first).status).toBe(200);
+  });
+
   test('LLMx opening and rejected scene result resume from the same canonical messages', async () => {
     const base = '/api/consumers/nestor/v1/llmx';
     const created = await request(app).post(`${base}/sessions`).send({ backend: 'agentx' }).expect(201);
