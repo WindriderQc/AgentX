@@ -21,8 +21,7 @@ const {
 const { registerFamilyRoutes } = require('./family-routes');
 const { plainReply } = require('./reply-channels'), { createVisuals } = require('./visuals'), { createBrain } = require('./brain');
 const { registerSecretaryMcp } = require('./secretary-mcp');
-const { registerSecretaryMailRoutes, secretaryMailControl } = require('./secretary-mail-routes');
-const { checkEmailActionReadiness } = require('./email-action');
+const { secretaryMailControl } = require('./secretary-mail-routes');
 const { householdActivation } = require('./readiness');
 const { voiceContract } = require('./voice-contract');
 const { avatarModuleUrl, createScriptRelay } = require('./asset-relay');
@@ -34,9 +33,10 @@ const {
 const deviceAcceptance = require('./device-acceptance');
 const nestorKnowledge = require('./nestor-knowledge');
 const soundLibrary = require('./sound-library');
-const { openClawCrew, openClawPanelStatus, panelCrewReady } = require('./panel-status');
+const { openClawCrew } = require('./panel-status');
 const {
-  fetchWithTimeout, upstreamJson, publicVoixConfig, publicVoixConversation, publicVoixEvent, publicVoixMediaClip, publicVoixMediaVault, publicVoixMetrics, publicVoixSession
+  fetchWithTimeout, publicVoixConfig, publicVoixConversation, publicVoixEvent, publicVoixMediaClip,
+  publicVoixMediaVault, publicVoixMetrics, publicVoixSession
 } = require('./voix-client');
 const { registerVoixRoutes } = require('./voix-routes');
 const { registerNativeConsumers } = require('./native-consumers');
@@ -63,8 +63,10 @@ const {
   createModels, publicSession, publicAudit, sessionHistoryMessages, loadSessionAuditRows
 } = require('./persona-records');
 const {
-  serviceHealth, projectedJson, cachedProjectedJson, hermesCrew, fleetSummary
+  cachedProjectedJson, hermesCrew, fleetSummary
 } = require('./panel-sources');
+const { registerPanelRoutes } = require('./panel-routes');
+const { registerSecretaryRoutes } = require('./secretary-routes');
 
 const CORE_SELF_URL = () => String(process.env.CORE_INTERNAL_URL || 'http://127.0.0.1:3080').replace(/\/+$/, '');
 const VOIX_FAMILY_PACK_ID = 'kidx_nestor';
@@ -760,110 +762,10 @@ function register(api) {
   });
   app.use('/api/voice-personas', personas);
 
-  const secretary = express.Router();
-  secretary.use(standardJsonParser);
-  secretary.get('/tasks', async (req, res) => {
-    try {
-      return envelope(res, await personalTasks.list(req.query));
-    } catch (error) {
-      return fail(res, error.status || 500, error.message, error.code || 'SECRETARY_LIST_FAILED', error.details);
-    }
+  registerSecretaryRoutes(app, {
+    express, standardJsonParser, envelope, personalTasks, fail, CORE_SELF_URL,
+    bridgeProjection, secretaryMail, familyTasks, models, knowledgeState, mongoose
   });
-  secretary.get('/briefing', async (_req, res) => {
-    try {
-      const [report, tasks] = await Promise.all([
-        cachedProjectedJson(
-          `${CORE_SELF_URL()}/api/reports/morning-brief`,
-          (body) => body,
-          { unavailable: true },
-          8000
-        ),
-        personalTasks.list({ limit: 100 }).then(result => result.tasks)
-      ]);
-      return envelope(res, dadBriefing(report, tasks));
-    } catch (error) {
-      return fail(res, 500, error.message, 'SECRETARY_BRIEFING_FAILED');
-    }
-  });
-  secretary.get('/desk', async (_req, res) => {
-    try {
-      const [report, tasks, cron, mailBacklog, family, latestDevice, budget] = await Promise.all([
-        cachedProjectedJson(
-          `${CORE_SELF_URL()}/api/reports/morning-brief`,
-          (body) => body,
-          { unavailable: true },
-          8000
-        ),
-        personalTasks.list({ limit: 100 }).then(result => result.tasks),
-        bridgeProjection(
-          'getOpenClawCronProjection',
-          (body) => body,
-          { unavailable: true },
-          { includeDisabled: true }
-        ),
-        // The count is cached by its owner. Neither a Gmail failure nor a slow
-        // host delays the desk: a late count simply shows on the next refresh.
-        Promise.race([
-          secretaryMail().backlog(),
-          new Promise((resolve) => { setTimeout(resolve, 6000, { error: 'The unlabelled count is still being read.' }).unref?.(); })
-        ]).catch((error) => ({ error: error.message })),
-        Promise.all([
-          familyTasks.listProfiles().then(result => result.profiles),
-          familyTasks.list().then(result => result.chores)
-        ]).then(([profiles, chores]) => ({ profiles, chores })),
-        models.DeviceAcceptance.findOne({ phase: deviceAcceptance.PHASE }).sort({ completedAt: -1 }).lean(),
-        cachedProjectedJson(
-          `${CORE_SELF_URL()}/api/budget/status`,
-          (body) => body?.data || body,
-          { unavailable: true },
-          8000
-        )
-      ]);
-      const activation = householdActivation({
-        family,
-        cron,
-        knowledge: knowledgeState.status,
-        device: deviceAcceptance.contract(latestDevice)
-      });
-      return envelope(res, {
-        ...dadDesk(report, tasks, cron, new Date(), family, activation, budget, mailBacklog),
-        activation
-      });
-    } catch (error) {
-      return fail(res, 500, error.message, 'SECRETARY_DESK_FAILED');
-    }
-  });
-  // Dad's two actionable Gmail labels and the owner's sender triage rules.
-  registerSecretaryMailRoutes({ app, router: secretary, mongoose, envelope, fail });
-  secretary.get('/email-action/readiness', async (_req, res) => {
-    const readiness = await checkEmailActionReadiness();
-    if (readiness.code === 'EMAIL_ACTION_READY') return envelope(res, { readiness });
-    return fail(res, 503, 'Email-action readiness is unavailable', readiness.code, { readiness });
-  });
-  secretary.post('/tasks', async (req, res) => {
-    try {
-      const task = await personalTasks.create(req.body || {});
-      return envelope(res, { task }, 201);
-    } catch (error) {
-      return fail(res, error.status || 500, error.message, error.code || 'SECRETARY_CREATE_FAILED', error.details);
-    }
-  });
-  secretary.post('/tasks/update', async (req, res) => {
-    try {
-      const task = await personalTasks.update(req.body || {});
-      return envelope(res, { task });
-    } catch (error) {
-      return fail(res, error.status || 500, error.message, error.code || 'SECRETARY_UPDATE_FAILED', error.details);
-    }
-  });
-  secretary.post('/tasks/complete', async (req, res) => {
-    try {
-      return envelope(res, await personalTasks.complete(req.body || {}));
-    } catch (error) {
-      return fail(res, error.status || 500, error.message, error.code || 'SECRETARY_COMPLETE_FAILED', error.details);
-    }
-  });
-  app.use('/api/secretary', secretary);
   registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds });
 
   registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, conversations });
@@ -907,82 +809,9 @@ function register(api) {
   });
   app.use('/api/household/device-acceptance', device);
 
-  const panel = express.Router();
-  panel.use(standardJsonParser);
-  panel.get('/status', async (_req, res) => {
-    const [services, voixStatus, openclaw, fleet] = await Promise.all([
-      Promise.all([
-        serviceHealth('Core', `${CORE_SELF_URL()}/health`),
-        serviceHealth('Benchmark', String(process.env.BENCHMARK_SERVICE_URL || 'http://benchmark:3081').replace(/\/+$/, '') + '/health'),
-        serviceHealth('RAG', String(process.env.RAG_SERVICE_URL || 'http://rag:3082').replace(/\/+$/, '') + '/health'),
-        ...(process.env.DATAAPI_BASE_URL ? [serviceHealth('Data', String(process.env.DATAAPI_BASE_URL).replace(/\/+$/, '') + '/health')] : [])
-      ]),
-      upstreamJson('/health')
-        .then((health) => ({ status: health?.status === 'ok' ? 'ok' : 'down', health }))
-        .catch((error) => ({ status: 'down', error: error.message })),
-      openClawPanelStatus(app.locals?.aioOpsRuntimeEvidence),
-      projectedJson(
-        `${CORE_SELF_URL()}/api/nerve-center/ecosystem`,
-        fleetSummary,
-        fleetSummary({})
-      )
-    ]);
-    const serviceCount = services.filter((service) => service.status === 'ok').length;
-    const agentx = {
-      id: 'agentx',
-      name: 'AgentX',
-      role: 'Router · RAG · shared memory authority',
-      status: serviceCount === services.length ? 'ok' : 'down',
-      detail: `${serviceCount}/${services.length} platform services ready`,
-      href: '/agent-ops'
-    };
-    const nestor = {
-      id: 'nestor',
-      name: 'Nestor',
-      role: 'Family front door',
-      status: agentx.status === 'ok' && fleet.status === 'ok' ? 'ok' : 'down',
-      detail: knowledgeState.status.enabled
-        ? `${knowledgeState.status.documentCount} approved knowledge document(s)`
-        : 'child-safe lane · approved knowledge waiting',
-      href: '#family-nestor'
-    };
-    const voix = {
-      id: 'voix',
-      name: 'VoiX',
-      role: 'Private ears & voice',
-      status: voixStatus.status,
-      detail: voixStatus.status === 'ok'
-        ? cleanText(voixStatus.health?.version || voixStatus.health?.serviceVersion || 'local speech ready', 120)
-        : 'local speech unavailable',
-      href: '/voice'
-    };
-    const crew = [nestor, openclaw, agentx, voix];
-    const ready = panelCrewReady(crew, fleet);
-    return envelope(res, {
-      generatedAt: new Date().toISOString(),
-      status: ready && !fleet.attention.length ? 'ok' : 'degraded',
-      services,
-      voix: voixStatus,
-      crew,
-      fleet,
-      memory: {
-        sharedAuthority: 'AgentX Memory Review',
-        sharedHref: '/memory-review',
-        familyNotebook: 'scoped household notebook',
-        retiredHermesCorpus: 'Retained read-only for explicit Memory Review compatibility; no live Hermès service.'
-      },
-      knowledge: knowledgeState.status,
-      reader: { status: 'ok', packId: 'kidx_reader' },
-      secretary: { status: 'ok', store: 'pipelinetasks' },
-      home: { status: 'not_configured', entities: [] }
-    });
+  registerPanelRoutes(app, {
+    express, standardJsonParser, CORE_SELF_URL, knowledgeState, cleanText, envelope
   });
-  panel.post('/heartbeat', (req, res) => envelope(res, {
-    accepted: true,
-    deviceId: cleanText(req.body?.deviceId || 'house-panel', 120),
-    at: new Date().toISOString()
-  }, 202));
-  app.use('/api/panel', panel);
 
   app.get('/api/household/status', (_req, res) => envelope(res, {
     extension: 'agentx-household',
