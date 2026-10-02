@@ -477,7 +477,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (box.hidden) return;
     el('conversationToolsStatus').textContent = evidence.status === 'not_supported' ? 'AgentX / Ollama · réponse avec contexte, sans outils OpenClaw.' : evidence.status === 'unavailable'
       ? 'Les reçus des outils sont indisponibles.'
-      : receipts.map(receipt => receipt.tool + (receipt.status === 'failed' ? ' · échec' : ' · résultat reçu')).join(' · ');
+      : receipts.map(receipt => receipt.tool + (receipt.status === 'failed' ? ' · échec'
+        : receipt.status === 'verified' ? ' · résultat reçu'
+          : receipt.observed ? ' · appel observé, résultat non vérifié' : ' · résultat indisponible')).join(' · ');
     el('conversationToolsReceipt').textContent = JSON.stringify(evidence, null, 2);
   }
   el('conversationInspectMic').onclick = () => { conversation.review('microphone'); renderAudioReview(); };

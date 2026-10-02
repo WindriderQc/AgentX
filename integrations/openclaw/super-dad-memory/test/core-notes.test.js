@@ -72,6 +72,25 @@ test('the harness keeps native receipts and transient context, while Core owns e
   assert.equal(nativeTurnAnswer({ ...history, messages: [{ ...history.messages[0], phase: 'commentary' }] }, sessionKey, runId).status, 'unavailable');
 });
 
+test('health receipts distinguish a verified unhealthy system from a failed or incomplete tool call', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-health-receipts-'));
+  t.after(() => rm(workspace, { recursive: true }));
+  const context = { runId: 'synthetic-run', sessionKey: 'synthetic-session' };
+  const record = async (toolCallId, result) => {
+    await recordTool(workspace, { toolName: 'agentx__check_health', result }, { ...context, toolCallId });
+    return (await readState(workspace)).receipts.at(-1);
+  };
+  const healthy = await record('healthy', { details: { ok: true, core: { mongodb: 'connected', ollama: 'connected' }, rag: { ok: true } } });
+  assert.equal(healthy.status, 'verified');
+  assert.equal(healthy.observed, true);
+  const unhealthy = await record('unhealthy', { details: { ok: false, core: { mongodb: 'connected', ollama: 'disconnected' }, rag: { ok: false } } });
+  assert.equal(unhealthy.status, 'verified', 'the health result was received even though a dependency is unhealthy');
+  const incomplete = await record('incomplete', { details: { ok: true, core: { mongodb: 'connected' } } });
+  assert.equal(incomplete.status, 'unknown');
+  const failed = await record('failed', { isError: true, content: [{ type: 'text', text: 'Synthetic failure' }] });
+  assert.equal(failed.status, 'failed');
+});
+
 test('a run that yielded to a sub-agent answers with the announce run that settles its session', () => {
   const sessionKey = 'agent:main:household:direct:11111111-1111-4111-8111-111111111111';
   const runId = 'resp_22222222-2222-4222-8222-222222222222';
