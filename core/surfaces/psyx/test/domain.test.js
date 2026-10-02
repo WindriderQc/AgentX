@@ -33,3 +33,16 @@ test('auto stance and depth follow the review recommendation, explicit choices w
   assert.deepEqual([firstTurn.mode, firstTurn.depth, firstTurn.reason], ['talk', 'normal', '']);
   assert.doesNotMatch(controlSystemMessage(normalizeControl({})), /Chosen automatically/);
 });
+
+test('crisis detection favours explicit phrasing over figures of speech', () => {
+  const { detectCrisis } = require('../../../src/domains/psyx/safety');
+  for (const text of ['Je pense à me suicider', 'J’ai envie d’en finir.', 'je n’ai plus envie de vivre', 'tout le monde serait mieux sans moi',
+    'je me coupe encore', 'I want to kill myself', 'j’ai peur de lui faire du mal', 'J’ai pris tous mes médicaments']) {
+    assert.ok(detectCrisis(text), text);
+  }
+  for (const text of ['Ça me tue de rire', 'Je veux en finir avec ce projet', 'le travail me tue', 'I need to end my shift', 'je suis crevé']) {
+    assert.equal(detectCrisis(text), null, text);
+  }
+  assert.ok(detectCrisis('Je veux mourir').resources.some(item => item.contact === '9-8-8'));
+});
+

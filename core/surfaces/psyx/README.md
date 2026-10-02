@@ -38,6 +38,12 @@ defaulting to talk and normal before the first review; an explicit choice always
 wins. The stream announces the applied stance, depth and reason in a `control`
 event before the first token.
 
+A deterministic check (`core/src/domains/psyx/safety.js`) looks for explicit crisis
+phrasing in each user message, in French and English. A match overrides the stance
+(talk, normal depth, lower temperature), adds a safety instruction to the system
+context and streams a `safety` event; the interface then shows Québec resources
+(911, 9-8-8, 1 866 APPELLE, 811) as call links. It does not depend on the model.
+
 Normal and deep requests use Core's configured `analysis` and `deep_reasoning`
 routes. Review those routes against the accepted PsyX model/host before real
 private inference. There is no PsyX-owned provider: a routing failure does not

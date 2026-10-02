@@ -132,6 +132,7 @@ function showGate(message = '') {
   state.voice.chunks = [];
   stopReviewWatch();
   review.last = null;
+  hideSafety();
   state.unlocked = false;
   state.ready = false;
   state.history = [];
@@ -593,6 +594,8 @@ async function sendMessage(text, overrides = {}) {
       else if (event === 'control') {
         state.applied = data;
         renderStance();
+      } else if (event === 'safety') {
+        showSafety(data.resources);
       } else if (event === 'thinking') {
         state.thinkingObserved = true;
       } else if (event === 'done') {
@@ -673,6 +676,7 @@ function startNewSession(focus = true) {
   review.last = null;
   renderReviewIndicator();
   sessionLabel.textContent = 'Nouvelle conversation';
+  hideSafety();
   clearRenderedConversation();
   updateContextStatus();
   updateBrainRouting();
@@ -959,6 +963,7 @@ async function start() {
   wireVoiceControls();
   wireStatePanel();
   wireReview();
+  wireCare();
   wireSegmented('modeControl', 'mode');
   wireSegmented('depthControl', 'depth');
   resizeInput();

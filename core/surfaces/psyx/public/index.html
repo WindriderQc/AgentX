@@ -120,6 +120,12 @@
 
         <button id="reviewStatus" class="review-chip" type="button" aria-live="polite" hidden></button>
 
+        <aside id="safetyBanner" class="safety-banner" role="alert" hidden>
+          <div class="safety-head"><strong>Tu n’as pas à traverser ça tout seul.</strong><button id="safetyClose" type="button" aria-label="Masquer les ressources">×</button></div>
+          <p>Si tu es en danger ou que tu penses à te faire du mal, parle à quelqu’un maintenant :</p>
+          <ul id="safetyResources"></ul>
+        </aside>
+
 
         <form id="composer" class="composer">
           <textarea id="input" rows="1" maxlength="12000" placeholder="Qu’est-ce qui se passe?" autocomplete="off" disabled></textarea>
@@ -264,6 +270,7 @@
   <script src="/psyx/assets/voice-controls.js?v=2.5.0" defer></script>
   <script src="/psyx/assets/state-panel.js?v=2.5.0" defer></script>
   <script src="/psyx/assets/review.js?v=2.5.0" defer></script>
+  <script src="/psyx/assets/care.js?v=2.5.0" defer></script>
   <script src="/psyx/assets/app.js?v=2.5.0" defer></script>
 </body>
 </html>

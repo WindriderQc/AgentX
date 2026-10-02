@@ -1,6 +1,7 @@
 'use strict';
 
 const { cleanText, stateForPrompt } = require('./stateRepository');
+const { SAFETY_INSTRUCTION } = require('./safety');
 
 const PROMPT_VERSION = 2;
 const MODE_CONFIG = Object.freeze({
@@ -83,12 +84,12 @@ function longitudinalSystemMessage(state, { conversationId = null } = {}) {
   return `PSYX LONGITUDINAL STATE — fallible working memory, not diagnosis or unquestionable truth.\n${JSON.stringify(compact)}`;
 }
 
-function composeSystemContext(state, control, { conversationId = null } = {}) {
+function composeSystemContext(state, control, { conversationId = null, safety = null } = {}) {
   // AgentX's external contract caps an individual message at 16k characters.
   // Preserve persona and current controls, then spend the remaining bounded
   // budget on fallible longitudinal memory.
   const memory = cleanText(longitudinalSystemMessage(state, { conversationId }), 9000);
-  return [SYSTEM_PROMPT, memory, controlSystemMessage(control)].filter(Boolean).join('\n\n');
+  return [SYSTEM_PROMPT, memory, controlSystemMessage(control), safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
 }
 
 function boundedContext(messages, { maxMessages = 40, maxMessageCharacters = 12000, maxTotalCharacters = 35000 } = {}) {

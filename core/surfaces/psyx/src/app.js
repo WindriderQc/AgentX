@@ -8,6 +8,7 @@ const { createVoiceClient } = require('./voice');
 const { createReviewer } = require('./reviewer');
 const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRepository');
 const domain = require('../../../src/domains/psyx/domain');
+const { detectCrisis } = require('../../../src/domains/psyx/safety');
 
 const VERSION = '2.5.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
@@ -282,8 +283,11 @@ function createApp({ config, database, provider, voice = null, logger = console,
     if (conversationId && !context) return res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
     const longitudinal = await stateRepository.read(userId);
     const recommendation = conversationId ? longitudinal.sessionDigests?.find(item => item.conversationId === conversationId)?.next : null;
-    const control = domain.resolveControl(requested, recommendation);
-    const system = domain.composeSystemContext(longitudinal, control, { conversationId });
+    // A crisis signal overrides any stance: stay with the person, answer promptly.
+    const safety = action ? null : detectCrisis(input);
+    const resolved = domain.resolveControl(requested, recommendation);
+    const control = safety ? { ...resolved, mode: 'talk', depth: 'normal', reason: '' } : resolved;
+    const system = domain.composeSystemContext(longitudinal, control, { conversationId, safety });
     const providerContext = domain.boundedContext(context || []);
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -295,8 +299,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
     res.on('close', () => { if (!res.writableEnded) abortController.abort(); });
     const heartbeat = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(': ping\n\n'); }, 15000);
     const handlers = providerHandlers(res);
-    const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason };
+    const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety) };
     handlers.send('control', applied);
+    if (safety) handlers.send('safety', safety);
 
     try {
       const result = await provider.stream({
@@ -305,7 +310,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
         message: input,
         taskType: control.depth === 'deep' ? 'deep_reasoning' : 'analysis',
         think: control.depth === 'deep',
-        options: { temperature: control.mode === 'challenge' ? 0.55 : 0.7 },
+        options: { temperature: safety ? 0.4 : control.mode === 'challenge' ? 0.55 : 0.7 },
         timeoutMs: config.requestTimeoutMs,
         signal: abortController.signal
       }, handlers);
