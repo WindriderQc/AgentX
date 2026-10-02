@@ -57,7 +57,7 @@ const {
 } = require('./persona-prompt');
 const {
   VOIX_MEMORY_SCHEMA_VERSION, VOIX_MEMORY_SCOPE_ID, explicitMemoryStatement, forgetMemoryStatement, normalizeVoixMemoryTurn,
-  inferredMemoryCandidate, voiceMemoryCandidateId, normalizeVoixTranscriptionMultipart
+  inferredMemoryCandidate, normalizeVoixTranscriptionMultipart
 } = require('./voice-memory-turns');
 const {
   createModels, publicSession, publicAudit, sessionHistoryMessages, loadSessionAuditRows
@@ -67,6 +67,9 @@ const {
 } = require('./panel-sources');
 const { registerPanelRoutes } = require('./panel-routes');
 const { registerSecretaryRoutes } = require('./secretary-routes');
+const { registerDeviceAcceptanceRoutes } = require('./device-routes');
+const { createVoixMemoryAuditWorker } = require('./voice-memory-audit');
+const { createBrowserSessionControls } = require('./browser-session-controls');
 
 const CORE_SELF_URL = () => String(process.env.CORE_INTERNAL_URL || 'http://127.0.0.1:3080').replace(/\/+$/, '');
 const VOIX_FAMILY_PACK_ID = 'kidx_nestor';
@@ -208,139 +211,9 @@ function register(api) {
     loadTurns: session => loadSessionAuditRows(conversations, session, { historyTurns: 12 }).then(rows => rows.slice().reverse().map(publicAudit)) });
 
 
-  const processVoixMemoryAudit = async (traceId) => {
-    const now = new Date();
-    const claimed = await conversations.updateTurn(
-      {
-        traceId,
-        source: 'voix-native',
-        memoryState: 'captured',
-        $or: [{ memoryNextAttemptAt: null }, { memoryNextAttemptAt: { $lte: now } }]
-      },
-      { $set: { memoryState: 'processing', memoryClaimedAt: new Date(), memoryError: '' } });
-    if (!claimed) return null;
-    const audit = typeof claimed.toObject === 'function' ? claimed.toObject() : claimed;
-    const safety = assessSafety(audit.inputText);
-    const blocked = safety.flagIds.some((id) => [
-      'private_information', 'self_harm', 'immediate_danger', 'abuse_or_threat'
-    ].includes(id));
-    const forget = blocked ? '' : forgetMemoryStatement(audit.inputText);
-    const explicit = blocked || forget ? '' : explicitMemoryStatement(audit.inputText);
-    const memoryIds = [];
-    try {
-      if (forget) {
-        const matches = await personalNotes.list({ query: forget, limit: 20 });
-        const ids = matches.notes.map(row => row.id);
-        if (ids.length) {
-          for (const id of ids) await personalNotes.forget(id);
-          memoryIds.push(...ids.map((id) => `forgotten:${String(id)}`));
-        } else {
-          memoryIds.push('forgotten:no-match');
-        }
-      } else if (explicit) {
-        const memory = await personalNotes.record({ text: explicit, type: 'fact',
-          source: 'voix-explicit', sourceTraceId: traceId });
-        const memoryId = memory.id;
-        if (memoryId) memoryIds.push(memoryId);
-        const candidateId = voiceMemoryCandidateId(traceId, 'explicit_memory', explicit);
-        await models.MemoryCandidate.findOneAndUpdate(
-          { candidateId },
-          {
-            $setOnInsert: {
-              candidateId,
-              traceId,
-              sessionId: audit.sessionId,
-              turnId: audit.sourceTurnId,
-              scopeId: audit.scopeId,
-              persona: audit.persona,
-              type: 'explicit_memory',
-              statement: explicit,
-              rationale: 'Explicit voice memory request from a completed Dad turn.',
-              confidence: 1,
-              status: 'applied',
-              review: { by: 'explicit-owner-request', at: new Date() },
-              memoryId
-            }
-          },
-          { new: true, upsert: true }
-        );
-      } else if (!blocked) {
-        const inferred = inferredMemoryCandidate(audit.inputText);
-        if (inferred) {
-          const candidateId = voiceMemoryCandidateId(traceId, inferred.type, inferred.statement);
-          await models.MemoryCandidate.findOneAndUpdate(
-            { candidateId },
-            {
-              $setOnInsert: {
-                candidateId,
-                traceId,
-                sessionId: audit.sessionId,
-                turnId: audit.sourceTurnId,
-                scopeId: audit.scopeId,
-                persona: audit.persona,
-                ...inferred,
-                status: 'proposed'
-              }
-            },
-            { new: true, upsert: true }
-          );
-          memoryIds.push(`candidate:${candidateId}`);
-        }
-      }
-      await conversations.updateTurn(
-        { traceId },
-        {
-          $set: {
-            memoryState: 'processed',
-            memoryProcessedAt: new Date(),
-            memoryNextAttemptAt: null,
-            memoryError: blocked ? `skipped:${safety.flagIds.join(',')}` : '',
-            memoryIds
-          }
-        }
-      );
-      return { traceId, memoryIds, explicit: Boolean(explicit), forget: Boolean(forget), blocked };
-    } catch (error) {
-      const attempts = Math.max(0, Number(audit.memoryAttempts) || 0) + 1;
-      const terminal = attempts >= 5;
-      const retryDelaySeconds = Math.min(300, 2 ** Math.min(attempts, 8));
-      await conversations.updateTurn(
-        { traceId },
-        {
-          $set: {
-            memoryState: terminal ? 'failed' : 'captured',
-            memoryAttempts: attempts,
-            memoryNextAttemptAt: terminal ? null : new Date(Date.now() + retryDelaySeconds * 1000),
-            memoryError: cleanText(error.message, 500)
-          }
-        }
-      ).catch(() => {});
-      throw error;
-    }
-  };
-
-  const drainVoixMemoryAudits = async (limit = 10) => {
-    const staleClaimBefore = new Date(Date.now() - 5 * 60 * 1000);
-    await conversations.updateTurns(
-      {
-        source: 'voix-native',
-        memoryState: 'processing',
-        memoryClaimedAt: { $lt: staleClaimBefore }
-      },
-      { $set: { memoryState: 'captured', memoryError: 'recovered_stale_processing_claim' } }
-    );
-    const rows = await conversations.listTurns({
-      source: 'voix-native',
-      memoryState: 'captured',
-      $or: [{ memoryNextAttemptAt: null }, { memoryNextAttemptAt: { $lte: new Date() } }]
-    }, { sort: { sourceCompletedAt: 1, sequence: 1 }, limit: Math.max(1, Math.min(Number(limit) || 10, 50)) });
-    const results = [];
-    for (const row of rows) {
-      try { results.push(await processVoixMemoryAudit(row.traceId)); }
-      catch (error) { logger?.error?.('VoiX memory processing failed', { traceId: row.traceId, error: error.message }); }
-    }
-    return results.filter(Boolean);
-  };
+  const { drainVoixMemoryAudits } = createVoixMemoryAuditWorker({
+    conversations, personalNotes, models, cleanText, logger
+  });
 
   app.use('/assets/household', express.static(publicRoot, { fallthrough: false, maxAge: '5m' }));
   app.get('/dad/nestor', (_req, res) => res.redirect(302, '/voice'));
@@ -487,147 +360,10 @@ function register(api) {
     } : {}) };
   };
   const validClientTurnId = value => typeof value === 'string' && /^[a-zA-Z0-9-]{16,80}$/.test(value);
-  function registerBrowserSessionControls(prefix, packId, scopeId, router = personas, consumer = null) {
-    const sessionScope = consumer === 'llmx' ? llmx.sessionScope(scopeId === 'family' ? 'family' : 'personal')
-      : { packId, ...(scopeId ? { scopeId } : {}) };
-    router.get(`${prefix}/sessions/recent`, async (req, res) => {
-      try {
-        const limit = Math.max(1, Math.min(Number(req.query.limit) || 3, 5));
-        const pack = packById(packId);
-        const personaOnly = req.query.personaOnly === 'true';
-        const sessions = await conversations.listSessions({
-          ...sessionScope,
-          status: 'active',
-          turnCount: { $gt: 0 }, ...(Date.parse(req.query.before) ? { lastTurnAt: { $lt: new Date(req.query.before) } } : {}), // older page
-          ...(personaOnly ? { 'persona.id': { $exists: true, $ne: '' } } : {})
-        }, { sort: { lastTurnAt: -1, createdAt: -1 }, limit: limit * 3 });
-        const resumable = sessions.filter((session) => pack.modes.some((mode) => mode.id === session.modeId)
-          && (!personaOnly || session.persona?.id)).slice(0, limit);
-        return envelope(res, {
-          sessions: await Promise.all(resumable.map(async session => {
-            const result = publicSession(session);
-            if (!personaOnly && req.query.preview !== 'true') return result; // previews without narrowing
-            // At most five indexed, session-scoped reads of the latest audit row.
-            const [last] = await loadSessionAuditRows(conversations, session, { historyTurns: 2 });
-            return { ...result, lastTurn: last ? {
-              inputPreview: cleanText(last.inputText || last.inputPreview, 240),
-              replyPreview: cleanText(last.replyText || last.replyPreview, 240)
-            } : null };
-          })),
-          policy: {
-            historyAuthority: 'agentx.core.conversations',
-            automaticResume: consumer === 'llmx' ? 'exact-client-stored-session-only' : false,
-            childResume: packId === 'kidx_nestor',
-            maximumSessions: 5
-          }
-        });
-      } catch (error) {
-        return fail(res, 500, error.message, 'VOICE_PERSONA_PRIVATE_SESSIONS_FAILED');
-      }
-    });
-    router.get(`${prefix}/sessions/:sessionId/history`, async (req, res) => {
-      try {
-        const session = await conversations.getSession({
-          sessionId: cleanText(req.params.sessionId, 64),
-          ...sessionScope,
-          status: 'active'
-        });
-        if (!session) return fail(res, 404, 'Conversation not found in this space', 'VOICE_PERSONA_SESSION_NOT_FOUND');
-        const pack = packById(packId);
-        if (!pack.modes.some((mode) => mode.id === session.modeId)) {
-          return fail(res, 409, 'This session uses a retired mode and cannot be resumed.', 'VOICE_PERSONA_SESSION_MODE_UNAVAILABLE');
-        }
-        const rows = await loadSessionAuditRows(conversations, session, pack);
-        let lastReply = null;
-        if (consumer === 'llmx') {
-          const [completed] = await conversations.listTurns({ sessionId: session.sessionId, packId, scopeId: session.scopeId,
-            source: 'graphysx-llmx', outcome: 'completed' }, { sort: { createdAt: -1 }, limit: 1 });
-          if (completed?.replyText?.trim()) {
-            const language = spokenReplyLanguage(completed.replyText, completed.inputText || '');
-            lastReply = { turnId: completed.clientTurnId, reply: { text: completed.replyText, language,
-              speech: personaCatalog.speechFor(session.persona, language, session.voice) } };
-          }
-        }
-        return envelope(res, {
-          session: { ...publicSession(session), ...(consumer === 'llmx' ? { llmx: { schemaVersion: 1, opening: llmx.publicOpening(session.llmx.opening, activePersonaTurns.has(session.sessionId)) } } : {}) },
-          turns: rows.slice().reverse().map(publicAudit),
-          history: sessionHistoryMessages(rows, pack),
-          ...(consumer === 'llmx' ? { lastReply } : {}),
-          policy: {
-            historyAuthority: 'agentx.core.conversations',
-            automaticResume: consumer === 'llmx' ? 'exact-client-stored-session-only' : false,
-            childResume: packId === 'kidx_nestor',
-            maximumMessages: pack.historyTurns
-          }
-        });
-      } catch (error) {
-        return fail(res, 500, error.message, 'VOICE_PERSONA_PRIVATE_HISTORY_FAILED');
-      }
-    });
-
-    router.post(`${prefix}/sessions/:sessionId/interrupt`, async (req, res) => {
-      const clientTurnId = req.body?.turnId;
-      if (!validClientTurnId(clientTurnId)) return fail(res, 400, 'A valid turnId is required', 'VOICE_INTERRUPTION_INVALID');
-      const entry = activePersonaTurns.get(req.params.sessionId);
-      let timer;
-      try {
-        if (entry) {
-          if (entry.clientTurnId !== clientTurnId) {
-            return fail(res, 409, 'This is not the current browser turn', 'VOICE_INTERRUPTION_MISMATCH');
-          }
-          let wrongScope = false;
-          const settlement = (async () => {
-            // Admission owns the turn synchronously, before Mongo resolves its
-            // session. A correlated interruption waits for that validation;
-            // an absent snapshot is not evidence of an absent conversation.
-            const snapshot = entry.snapshot || await entry.ready;
-            if (!snapshot || snapshot.packId !== packId || (scopeId && snapshot.scopeId !== scopeId)
-                || (consumer === 'llmx' && (!entry.llmx || snapshot.modeId !== sessionScope.modeId))) {
-              wrongScope = true; return true;
-            }
-            entry.interrupted = true;
-            entry.abort.abort();
-            await entry.finished;
-            return true;
-          })();
-          const settled = await Promise.race([settlement, new Promise(resolve => {
-            timer = setTimeout(() => resolve(false), 10000);
-          })]);
-          if (!settled) return envelope(res, { interrupted: false, pending: true, turnId: clientTurnId }, 202);
-          if (wrongScope) return fail(res, 404, 'Conversation not found in this space', 'VOICE_PERSONA_SESSION_NOT_FOUND');
-          if (entry.error && !entry.executionSettled) throw entry.error;
-        }
-        if (consumer === 'llmx' && !await conversations.getSession({ sessionId: cleanText(req.params.sessionId, 64),
-          ...sessionScope, status: 'active' })) return fail(res, 404, 'Conversation not found in this space', 'VOICE_PERSONA_SESSION_NOT_FOUND');
-        // Short replies may have finished generating before playback is interrupted.
-        // Mark the same existing audit so history never implies it was fully heard.
-        const audit = await conversations.updateTurn({
-          sessionId: cleanText(req.params.sessionId, 64), clientTurnId,
-          packId, ...(scopeId ? { scopeId } : {}), ...(consumer === 'llmx' ? { source: 'graphysx-llmx' } : { channel: 'voice' })
-        }, { $set: { interrupted: true } });
-        if (!audit) return fail(res, 409, 'The voice turn is no longer available', 'VOICE_INTERRUPTION_UNAVAILABLE');
-        if (audit.interruptionState === 'failed') {
-          const native = audit.toolEvidence;
-          if (native?.sessionKey?.endsWith(`:household:direct:${audit.sessionId}`) && /^resp_[a-f0-9-]{36}$/.test(native.runId || '')) {
-            // A hook can arrive after the original stop deadline. Observe only
-            // this recorded run; never retry inference or adopt another session.
-            const evidence = await nestorClient({ operation: 'turn', sessionKey: native.sessionKey, runId: native.runId });
-            if (evidence?.run?.runId === native.runId && evidence.run.sessionKey === native.sessionKey
-                && ['completed', 'failed'].includes(evidence.run.status)) {
-              await conversations.updateTurn({ _id: audit._id, interruptionState: 'failed' },
-                { $set: { interruptionState: 'confirmed', 'toolEvidence.run': evidence.run } });
-              return envelope(res, { interrupted: true, turnId: clientTurnId });
-            }
-          }
-          return fail(res, 503, 'La fin du tour précédent reste non confirmée. Son historique est conservé. Utilise Nouvelle conversation pour reprendre.'
-            + (consumer === 'llmx' ? ' Le monde 3D sera conservé.' : ''), 'VOICE_INTERRUPTION_FAILED');
-        }
-        return envelope(res, { interrupted: true, turnId: clientTurnId });
-      } catch (error) {
-        return fail(res, 503, error.message || 'Unable to stop the previous turn', 'VOICE_INTERRUPTION_FAILED');
-      } finally { clearTimeout(timer); }
-    });
-  }
+  const registerBrowserSessionControls = createBrowserSessionControls({
+    personas, conversations, envelope, cleanText, fail, activePersonaTurns,
+    validClientTurnId, nestorClient
+  });
   registerBrowserSessionControls('/private', 'personal_operator'); visuals.register(personas); brain.register(personas);
   registerBrowserSessionControls('/family', 'kidx_nestor', 'family');
   const personalAttachments = sessionId => runtimeServices.attachments.forConversation({
@@ -769,45 +505,9 @@ function register(api) {
   registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds });
 
   registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, conversations });
-  const device = express.Router();
-  device.use(standardJsonParser);
-  device.get('/contract', async (_req, res) => {
-    try {
-      const latest = await models.DeviceAcceptance.findOne({ phase: deviceAcceptance.PHASE })
-        .sort({ completedAt: -1 })
-        .lean();
-      return envelope(res, deviceAcceptance.contract(latest));
-    } catch (error) {
-      return fail(res, 500, error.message, 'DEVICE_ACCEPTANCE_READ_FAILED');
-    }
+  registerDeviceAcceptanceRoutes(app, {
+    express, standardJsonParser, models, envelope, fail, cleanText
   });
-  device.get('/latest', async (_req, res) => {
-    try {
-      const latest = await models.DeviceAcceptance.findOne({ phase: deviceAcceptance.PHASE })
-        .sort({ completedAt: -1 })
-        .lean();
-      return envelope(res, { phase: deviceAcceptance.PHASE, latest: deviceAcceptance.publicReceipt(latest) });
-    } catch (error) {
-      return fail(res, 500, error.message, 'DEVICE_ACCEPTANCE_READ_FAILED');
-    }
-  });
-  device.post('/receipts', async (req, res) => {
-    try {
-      const receipt = deviceAcceptance.buildReceipt(req.body || {});
-      const saved = await models.DeviceAcceptance.create(receipt);
-      return envelope(res, { receipt: deviceAcceptance.publicReceipt(saved) }, 201);
-    } catch (error) {
-      if (error?.code === 11000) {
-        const existing = await models.DeviceAcceptance.findOne({ runId: cleanText(req.body?.runId, 80) }).lean().catch(() => null);
-        if (existing) {
-          return envelope(res, { receipt: deviceAcceptance.publicReceipt(existing), alreadyRecorded: true });
-        }
-        return fail(res, 409, 'This physical acceptance run was already recorded', 'DEVICE_ACCEPTANCE_DUPLICATE');
-      }
-      return fail(res, error.status || 500, error.message, error.code || 'DEVICE_ACCEPTANCE_WRITE_FAILED', error.details);
-    }
-  });
-  app.use('/api/household/device-acceptance', device);
 
   registerPanelRoutes(app, {
     express, standardJsonParser, CORE_SELF_URL, knowledgeState, cleanText, envelope
