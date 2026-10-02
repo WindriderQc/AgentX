@@ -91,6 +91,10 @@ const buildSystemPrompt = (basePrompt, userProfile, ragContext) => {
     if (userProfile.preferences?.customInstructions) {
         effectiveSystemPrompt += `\n\nCustom Instructions:\n${userProfile.preferences.customInstructions}`;
     }
+    const { language, role, style } = userProfile.preferences || {};
+    if (language) effectiveSystemPrompt += `\n\nPreferred Language: ${language}`;
+    if (role) effectiveSystemPrompt += `\n\nUser Role / Context: ${role}`;
+    if (style) effectiveSystemPrompt += `\n\nResponse Style:\n${style}`;
 
     return effectiveSystemPrompt;
 };
