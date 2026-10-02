@@ -28,6 +28,7 @@ const {
 const { buildCoarseCandidates, buildRefinementStages, refinePassingBracket } = require('./contextProbeLadder');
 const { resolveHostUrl, fetchModelMetadata, fetchModelTheoreticalMax } = require('./contextProbeTarget');
 const { persistProbeSnapshot, getProbeStatus } = require('./contextProbeSnapshot');
+const { residencyOf } = require('./probePlacement');
 
 // Full-window probes can legitimately spend several minutes reloading a large
 // resident model and prefilling the requested context. A production 262K Qwen
@@ -181,10 +182,12 @@ async function probeModelContext(modelName, options = {}) {
     }
 
     // Test an already-loaded candidate before the ascending sweep changes
-    // num_ctx. Large resident models can otherwise spend most of Ollama's
+    // num_ctx. Large resident GPU models can otherwise spend most of Ollama's
     // fixed request window reloading back to their original context. Cache the
     // raw result here and assess it against the baseline when the sweep reaches
     // that candidate, preserving the existing evidence and pass semantics.
+    // CPU probes start small so a slow resident prefill cannot consume the
+    // first deadline before any lower context has been verified.
     let residentCandidate = null;
     try {
       const running = await listRunning(hostUrl, { timeoutMs: 8000, signal: options.signal });
@@ -194,6 +197,7 @@ async function probeModelContext(modelName, options = {}) {
       const residentNumCtx = Number(resident?.context_length);
       if (
         Number.isFinite(residentNumCtx)
+        && residencyOf(hostUrl) !== 'cpu'
         && residentNumCtx > coarseCandidates[0]
         && coarseCandidates.includes(residentNumCtx)
       ) {
@@ -208,6 +212,11 @@ async function probeModelContext(modelName, options = {}) {
           modelContext,
           probeOptions
         );
+        if (residentCandidate.requestStopProven) {
+          steps.push(residentCandidate);
+          throw Object.assign(new Error('Resident context request timed out before a baseline was verified; probe stopped'),
+            { requestStopProven: true });
+        }
         probeNotify({
           type: 'resident',
           numCtx: residentNumCtx,
@@ -218,6 +227,7 @@ async function probeModelContext(modelName, options = {}) {
       }
     } catch (err) {
       if (options.signal?.aborted) throw (options.signal.reason instanceof Error ? options.signal.reason : err);
+      if (err.requestStopProven) throw err;
       logger.debug(`Could not pretest resident context for ${normalizedModel}: ${err.message}`);
     }
 

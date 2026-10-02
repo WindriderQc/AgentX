@@ -8,6 +8,23 @@ jest.mock('../../../src/services/ollamaVramService', () => ({ getHostVram: async
 jest.mock('../../../src/clients/coreApiClient', () => ({
   getWorkloadRecoveryIdentity: () => ({ recoveryId: 'recovery-1', recoveryRequestId: 'request-1' })
 }));
+jest.mock('../../../src/services/profiler/artifactIdentityService', () => ({
+  identitiesMatch: (left, right) => left.digest === right.digest && left.runtimeFingerprint === right.runtimeFingerprint,
+  resolveArtifactIdentity: async (model, hostId, hostUrl) => ({ model, hostId, hostUrl,
+    digest: 'sha256:fixture', runtimeFingerprint: 'fixture-runtime' })
+}));
+jest.mock('../../../src/services/modelContextResolver', () => ({
+  normalizeModelName: name => name,
+  resolveModelNumCtxDetails: async () => ({ num_ctx: 32768, source: 'fixture' })
+}));
+jest.mock('../../../src/services/modelContextProfileService', () => ({
+  getByIdentityForAuthority: async () => null,
+  updateFromProbeSnapshot: async snapshot => ({ maxVerifiedContext: snapshot.testedNumCtx })
+}));
+jest.mock('../../../src/services/benchmark/benchmarkAuthorityReconciliation', () => ({
+  prepareProfilerAuthorityWrite: async ({ details }) => ({ _id: 'fixture-context-write', details }),
+  completeProfilerAuthorityWrite: async () => ({ published: true })
+}));
 jest.mock('../../../config/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
@@ -16,6 +33,7 @@ const { createRunJournal } = require('../../../src/services/profiler/profilerRun
 const { createProfileCancellation } = require('../../../src/services/profiler/profileCancellation');
 const { runStep } = require('../../../src/services/contextProbeStep');
 const { assessProbeStep } = require('../../../src/services/contextProbeService')._internal;
+const { probeModelContext } = require('../../../src/services/contextProbeService');
 const { observeJsonMutation } = require('../../../src/services/profiler/profilerMutationObservation');
 const { listenLoopback } = require('../../../../shared/testing/listenLoopback');
 
@@ -30,22 +48,30 @@ let ollama;
 function fakeOllama() {
   // A CPU runner already resident at the probe context; `onAbort` decides what
   // /api/ps shows once the client closed the request.
-  const state = { expiresAt: '2026-10-02T10:00:00.000000001Z', resident: true, generates: [], closed: 0, onAbort: 'release' };
+  const state = { expiresAt: '2026-10-02T10:00:00.000000001Z', contextLength: CTX,
+    resident: true, generates: [], closed: 0, onAbort: 'release' };
   server = http.createServer((req, res) => {
     if (req.url === '/api/ps') {
       res.setHeader('content-type', 'application/json');
       return res.end(JSON.stringify({ models: state.resident ? [{ name: MODEL, model: MODEL, digest: 'sha256:fixture',
-        size: 18_000_000_000, size_vram: 0, context_length: CTX, expires_at: state.expiresAt }] : [] }));
+        size: 18_000_000_000, size_vram: 0, context_length: state.contextLength, expires_at: state.expiresAt }] : [] }));
+    }
+    if (req.url === '/api/show') {
+      req.resume();
+      res.setHeader('content-type', 'application/json');
+      return res.end(JSON.stringify({ model_info: { 'general.context_length': CTX } }));
     }
     if (req.url === '/api/generate') {
       let body = '';
       req.on('data', chunk => { body += chunk; });
       req.on('end', () => {
         const numCtx = JSON.parse(body).options?.num_ctx;
+        state.contextLength = numCtx;
         state.generates.push(numCtx);
         if (numCtx < CTX) {
           res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ done: true, eval_count: 64, eval_duration: 8e9, prompt_eval_count: 13_000 }));
+          res.end(JSON.stringify({ done: true, eval_count: 64, eval_duration: 8e9,
+            prompt_eval_count: Math.floor(numCtx * 0.8) }));
           return;
         }
         // A slow CPU prefill that outlasts the deadline. Closing the connection cancels it.
@@ -163,4 +189,27 @@ test('a request answered before its deadline is untouched', async () => {
   expect(step).toMatchObject({ requestSucceeded: true, requestStopProven: false });
   expect(await read()).toMatchObject({ state: 'pending_reconciliation', pendingRequests: 0 });
   expect((await read()).deadlineAbort).toBeUndefined();
+});
+
+test('the whole CPU ladder keeps 16K after a proven 32K deadline and leaves a terminal run journal', async () => {
+  const owner = lease();
+  const cancellation = createProfileCancellation({ hostUrl, ...fastProof });
+  const journal = await createRunJournal(owner, { hostId: 'fixture', hostUrl, modelName: MODEL });
+  const result = await journal.run(() => probeModelContext(MODEL, {
+    hostUrl, artifactIdentity: { model: MODEL, hostId: 'fixture', hostUrl,
+      digest: 'sha256:fixture', runtimeFingerprint: 'fixture-runtime' },
+    acknowledgeMaintenance: true, workloadId: owner.operationId,
+    maxCtx: CTX, timeoutMs: DEADLINE_MS
+  }), MODEL, { cancellation });
+
+  expect(result).toMatchObject({ status: 'completed', testedNumCtx: 16384, ceilingFailureKind: 'transport' });
+  expect(result.steps.find(step => step.numCtx === CTX)).toMatchObject({
+    passed: false, requestSucceeded: false, failureKind: 'transport', failureCode: 'ETIMEDOUT',
+    reason: expect.stringContaining('Ollama confirmed the request stopped')
+  });
+  expect(ollama.generates).toEqual([2048, 2048, 4096, 4096, 8192, 8192, 16384, 16384, CTX]);
+  expect(ollama.closed).toBe(1);
+  expect(owner.abandon).not.toHaveBeenCalled();
+  expect(await read()).toMatchObject({ state: 'pending_reconciliation', pendingRequests: 0,
+    serverTerminalObserved: true, deadlineAbort: { proven: true, receipt: { trigger: 'deadline', numCtx: CTX } } });
 });
