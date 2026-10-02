@@ -9,6 +9,19 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const REPLACED_STREAM = /cannot be represented as an append-only response stream/i;
 const TOOL_PREAMBLE = /^(?:(?:i(?:'ll| will| am going to)|let me)\s+(?:check|search|look(?:\s+up|\s+into)?|consult|review|read|fetch|find|verify|inspect)|(?:je vais|laisse-moi)\s+(?:regarder|v[eé]rifier|chercher|consulter|lire|ouvrir|voir|faire une recherche)|je\s+(?:regarde|v[eé]rifie|cherche|consulte))\b/i;
 
+// OpenClaw opens a Responses stream with lifecycle rows and an empty message
+// scaffold while its agent is still preparing context. Only content, a tool call
+// or reasoning proves that the run started generating.
+const STREAM_LIFECYCLE = new Set(['response.created', 'response.queued', 'response.in_progress']);
+function startsGeneration(row) {
+  if (STREAM_LIFECYCLE.has(row.type)) return false;
+  if (row.type === 'response.output_item.added') {
+    return row.item?.type !== 'message' || (row.item.content || []).some(part => part?.text);
+  }
+  if (row.type === 'response.content_part.added') return Boolean(row.part?.text);
+  return true;
+}
+
 function unfinishedToolPreamble(answer) {
   const text = String(answer || '').trim();
   // A progress line is not a final answer even if a tool ran. Its actual
@@ -111,7 +124,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
         const value = line.slice(5).trim();
         if (!value || value === '[DONE]') return;
         const row = JSON.parse(value);
-        if (row.type !== 'response.created') generating = true;
+        if (startsGeneration(row)) generating = true;
         if (row.type === 'response.created') {
           runId = row.response?.id;
           if (!/^resp_[a-f0-9-]{36}$/.test(runId || '')) throw new Error('Nestor returned an invalid run identity.');

@@ -435,3 +435,43 @@ test('a turn cancelled after the model started still waits for native terminatio
     })() }) });
   await assert.rejects(client({ session, text: 'Question', signal: abort.signal }), /pas encore confirmé/);
 });
+
+// The gateway opens its stream with lifecycle rows and an empty message
+// scaffold before the agent has produced anything.
+const scaffold = [
+  row({ type: 'response.in_progress', response: { id: runId } }),
+  row({ type: 'response.output_item.added', output_index: 0, item: { type: 'message', role: 'assistant', content: [], status: 'in_progress' } }),
+  row({ type: 'response.content_part.added', output_index: 0, content_index: 0, part: { type: 'output_text', text: '' } })
+];
+
+test('a cancel during the gateway stream scaffold settles at once, without an agent_end receipt', async () => {
+  const abort = new AbortController(); const settled = [];
+  const client = createAgentClient({ env, settleMs: 20000, continuity: async () => ({}),
+    fetchImpl: async () => ({ ok: true, body: (async function* () {
+      yield created; for (const item of scaffold) yield item;
+      abort.abort(); throw abort.signal.reason;
+    })() }) });
+  const started = Date.now();
+  const result = await client({ session, text: 'Question', signal: abort.signal, onSettled: (...args) => settled.push(args) });
+  assert.equal(result.interrupted, true);
+  assert.ok(Date.now() - started < 5000, 'no 20 s wait for an agent_end that never comes');
+  assert.deepEqual(settled, [[sessionKeyFor(session), runId]]);
+});
+
+for (const [label, started] of [
+  ['a tool call item', row({ type: 'response.output_item.added', output_index: 1, item: { type: 'function_call', name: 'tool_search', call_id: 'call_1' } })],
+  ['a reasoning item', row({ type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', summary: [] } })],
+  ['a text delta after the scaffold', row({ type: 'response.output_text.delta', delta: 'Bon' })]
+]) {
+  test(`a cancel after ${label} keeps waiting for native termination evidence`, async () => {
+    const abort = new AbortController(); const settled = [];
+    const client = createAgentClient({ env, settleMs: 300, continuity: async () => ({}),
+      fetchImpl: async () => ({ ok: true, body: (async function* () {
+        yield created; for (const item of scaffold) yield item; yield started;
+        abort.abort(); throw abort.signal.reason;
+      })() }) });
+    await assert.rejects(client({ session, text: 'Question', signal: abort.signal, onSettled: (...args) => settled.push(args) }),
+      /L’arrêt de Nestor n’est pas encore confirmé/);
+    assert.deepEqual(settled, [], 'an unconfirmed stop never releases the turn');
+  });
+}
