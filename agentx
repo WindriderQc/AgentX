@@ -201,6 +201,10 @@ Commands:
                         Recreating core or benchmark on a running instance first takes
                         Core's runtime lease and stops if it would cut running work;
                         --force-runtime skips that check for an operator recovery
+  action <name> [--option value...]
+                        Bounded maintenance action on a running instance: status,
+                        deploy, recover-quarantine or recalibrate-judges (see
+                        docs/OPERATIONS.md, "Bounded maintenance actions")
   ollama-doctor         Detect native Ollama; never install or download
   ollama-up             Start the opt-in isolated Docker Ollama stack
   ollama-status         Show Docker Ollama status and installed models
@@ -264,6 +268,9 @@ case "$cmd" in
     docker compose "${COMPOSE[@]}" up -d --wait --wait-timeout 180 ${SERVICE_ARGS[@]+"${SERVICE_ARGS[@]}"}
     wait_published_product_endpoints
     runtime_lease_release
+    ;;
+  action)
+    exec node "$ROOT/scripts/maintenance-actions.cjs" "$@"
     ;;
   ollama-doctor)
     ollama_cli="$(command -v ollama 2>/dev/null || true)"
