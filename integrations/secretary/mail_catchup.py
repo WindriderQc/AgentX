@@ -5,13 +5,14 @@ Reviews every unread evidence page back to back, by priority lane, through
 Core's task-routed inference with schema-constrained JSON, then records it with
 the same validation as the agent's single-page cursor. No OpenClaw session or
 transcript is created, nothing is written to the owner's tasks or memory:
-current actions and personal facts are queued in a private proposals file for
-the owner to confirm. The job yields to benchmark and maintenance work, then stops
+current actions and personal facts from recent mail go to Dad's idea inbox
+through Core, to promote or set aside. The job yields to benchmark and maintenance work, then stops
 by itself. Status files hold counts and identifiers only, never message content.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -128,6 +129,15 @@ class CoreClient:
         kinds = sorted({w.get("kind") or "workload" for w in data.get("workloads") or []})
         return f"{', '.join(kinds)} running" if kinds else None
 
+    def propose(self, proposal):
+        """Queue one finding in Dad's idea inbox; Core ignores a key it already holds."""
+        body = {key: proposal.get(key) for key in ("kind", "text", "due", "gmailUrl", "key")}
+        _, reply, _ = self._call("POST", "/api/secretary/catchup/proposals", body)
+        idea = (reply.get("data") or {}).get("idea") or {}
+        if not idea.get("id"):
+            raise RuntimeError("Core did not return the queued idea")
+        return idea["id"]
+
     def extract(self, system, prompt, light=False):
         body = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
                 "stream": False, "think": False, "format": REVIEW_SCHEMA, "options": {"temperature": 0},
@@ -229,9 +239,25 @@ def proposals_for(page, value, clock=time.time):
         return []
     return [{"kind": kind, "text": item["text"], "due": item.get("due"), "owner": item.get("owner"),
              "messageId": page["messageId"], "threadId": page["threadId"], "gmailUrl": page["gmailUrl"],
-             "pageId": page["pageId"], "foundAt": now(), "state": "pending"}
+             "pageId": page["pageId"], "foundAt": now(), "state": "pending",
+             "key": hashlib.sha256(f"{page['pageId']}|{kind}|{item['text']}".encode()).hexdigest()[:32]}
             for section, kind in (("actions", "action"), ("memories", "memory"))
             for item in value[section] if item["status"] == "current"]
+
+
+def forward_proposals(client, proposals):
+    """Send pending proposals to Core; an unreachable Core leaves them pending for the next try."""
+    sent = 0
+    for proposal in proposals:
+        if proposal.get("state") != "pending" or not proposal.get("key"):
+            continue
+        try:
+            proposal["ideaId"] = client.propose(proposal)
+        except (Busy, RuntimeError, ValueError):
+            break
+        proposal.update(state="queued", queuedAt=now())
+        sent += 1
+    return sent
 
 
 def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions="", sleep=time.sleep,
@@ -253,7 +279,12 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
         save(root / STATUS_NAME, status)
         lock.touch()
 
+    def forward():
+        if forward_proposals(client, proposals):
+            save(root / PROPOSALS_NAME, proposals)
+
     def finish(phase, **changes):
+        forward()
         if unexported:
             archive.export()
         archive.native_status()
@@ -262,6 +293,7 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
         report(phase=phase, finishedAt=now(), **changes)
         return status
 
+    forward()  # proposals an earlier run could not deliver
     report()
     for lane in lanes:
         for page in queues[lane]:
@@ -308,6 +340,7 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
             if new:
                 proposals.extend(new)
                 save(root / PROPOSALS_NAME, proposals)
+                forward()
             if unexported >= export_every:
                 archive.export()
                 archive.native_status()

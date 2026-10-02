@@ -181,6 +181,21 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
       const waiting = backlog.unlabelled > 0;
       return `<div class="service"><div><strong>Courriels sans étiquette</strong><small>${esc(backlog.days)} derniers jours${backlog.checkedAt ? ` · compté à ${esc(new Date(backlog.checkedAt).toLocaleTimeString('fr-CA', { timeStyle: 'short' }))}` : ''}</small></div><span class="pill ${waiting && mail.status === 'stopped' ? 'down' : waiting ? '' : 'ok'}">${esc(backlog.unlabelled)}${backlog.capped ? '+' : ''}</span></div>`;
     };
+    // The archive catch-up job (#130): counts only, shown while it runs and once it ends.
+    const catchupState = { running: ['en cours', 'ok'], paused: ['en pause', ''], done: ['terminée', 'ok'], partial: ['partielle', ''], stopped: ['arrêtée', 'down'], idle: ['en attente', ''], unavailable: ['inconnue', ''] };
+    const catchupRow = (mail) => {
+      const job = mail.catchup;
+      if (!job) return '';
+      const [label, tone] = catchupState[job.status] || catchupState.idle;
+      const total = (job.reviewed ?? 0) + (job.remaining ?? 0) + (job.failed ?? 0);
+      const detail = job.status === 'unavailable' ? (job.error || 'état indisponible')
+        : [`${job.reviewed ?? 0} / ${total} pages relues`,
+          job.failed ? `${job.failed} en erreur` : '',
+          job.status === 'running' && job.etaHours !== null ? `fin estimée dans ${job.etaHours} h (${job.pagesPerHour} pages/h)` : '',
+          job.paused ? `pause : ${job.paused}` : '',
+          job.proposalsQueued ? `${job.proposalsQueued} à confirmer dans la boîte à idées` : ''].filter(Boolean).join(' · ');
+      return `<div class="service"><div><strong>Relecture des archives</strong><small>${esc(detail)}</small></div><span class="pill ${tone}">${esc(label)}</span></div>`;
+    };
     // Each decision says what and links to where it is settled; nothing hides behind a bare "needs decisions".
     const decisionChip = (decision) => `<a class="dad-decide-chip ${decision.severity === 'warning' ? 'warning' : ''}" href="${esc(decision.href || '/dad')}"><strong>${esc(decision.title)}</strong><small>${esc(decision.detail)}</small></a>`;
     const mailLabel = { ready: ['en marche', 'ok'], stopped: ['arrêté', 'down'], attention: ['à vérifier', 'waiting'], unavailable: ['indisponible', 'down'] };
@@ -223,7 +238,7 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
         setPill('dadMailPill', mailState[0], mailState[1]);
         byId('dadMailSummary').textContent = data.mail.summary;
         byId('dadMailSummary').classList.toggle('dad-alert', data.mail.status === 'stopped');
-        byId('dadMailJobs').innerHTML = jobRow(data.mail.triage, 'Tri Gmail (plus anciens d\'abord)') + backlogRow(data.mail) + jobRow(data.mail.watchdog, 'Surveillance de santé') + jobRow(data.mail.morning, 'Briefing du matin');
+        byId('dadMailJobs').innerHTML = jobRow(data.mail.triage, 'Tri Gmail (courriel nouveau)') + backlogRow(data.mail) + catchupRow(data.mail) + jobRow(data.mail.watchdog, 'Surveillance de santé') + jobRow(data.mail.morning, 'Briefing du matin');
         setPill('dadReminderState', data.reminder.status, ['active', 'pending'].includes(data.reminder.status) ? 'ok' : data.reminder.status === 'off' ? '' : 'down');
         byId('dadReminderSummary').textContent = `${data.reminder.summary} · ${data.reminder.schedule}`;
         byId('dadReminderConsent').textContent = data.reminder.consent;

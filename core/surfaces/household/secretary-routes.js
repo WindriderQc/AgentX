@@ -9,6 +9,13 @@ const { dadBriefing, dadDesk } = require('./briefing');
 const { householdActivation } = require('./readiness');
 const { registerSecretaryMailRoutes } = require('./secretary-mail-routes');
 const { checkEmailActionReadiness } = require('./email-action');
+const { registerSecretaryCatchupRoutes } = require('./secretary-catchup');
+
+// A slow or unreachable host never delays the desk; its late answer shows on the next refresh.
+const hostRead = (read, pending) => Promise.race([
+  read(),
+  new Promise((resolve) => { setTimeout(resolve, 6000, { error: pending }).unref?.(); })
+]).catch((error) => ({ error: error.message }));
 
 function registerSecretaryRoutes(app, {
   express, standardJsonParser, envelope, personalTasks, fail, CORE_SELF_URL,
@@ -41,7 +48,7 @@ function registerSecretaryRoutes(app, {
   });
   secretary.get('/desk', async (_req, res) => {
     try {
-      const [report, tasks, cron, mailBacklog, family, latestDevice, budget] = await Promise.all([
+      const [report, tasks, cron, mailBacklog, family, latestDevice, budget, mailCatchup] = await Promise.all([
         cachedProjectedJson(
           `${CORE_SELF_URL()}/api/reports/morning-brief`,
           (body) => body,
@@ -55,12 +62,8 @@ function registerSecretaryRoutes(app, {
           { unavailable: true },
           { includeDisabled: true }
         ),
-        // The count is cached by its owner. Neither a Gmail failure nor a slow
-        // host delays the desk: a late count simply shows on the next refresh.
-        Promise.race([
-          secretaryMail().backlog(),
-          new Promise((resolve) => { setTimeout(resolve, 6000, { error: 'The unlabelled count is still being read.' }).unref?.(); })
-        ]).catch((error) => ({ error: error.message })),
+        // The count is cached by its owner; a Gmail failure only shows on its row.
+        hostRead(() => secretaryMail().backlog(), 'The unlabelled count is still being read.'),
         Promise.all([
           familyTasks.listProfiles().then(result => result.profiles),
           familyTasks.list().then(result => result.chores)
@@ -71,7 +74,8 @@ function registerSecretaryRoutes(app, {
           (body) => body?.data || body,
           { unavailable: true },
           8000
-        )
+        ),
+        hostRead(() => secretaryMail().catchup(), 'The archive catch-up status is still being read.')
       ]);
       const activation = householdActivation({
         family,
@@ -80,7 +84,7 @@ function registerSecretaryRoutes(app, {
         device: deviceAcceptance.contract(latestDevice)
       });
       return envelope(res, {
-        ...dadDesk(report, tasks, cron, new Date(), family, activation, budget, mailBacklog),
+        ...dadDesk(report, tasks, cron, new Date(), family, activation, budget, mailBacklog, mailCatchup),
         activation
       });
     } catch (error) {
@@ -89,6 +93,7 @@ function registerSecretaryRoutes(app, {
   });
   // Dad's two actionable Gmail labels and the owner's sender triage rules.
   registerSecretaryMailRoutes({ app, router: secretary, mongoose, envelope, fail });
+  registerSecretaryCatchupRoutes({ router: secretary, envelope, fail });
   secretary.get('/email-action/readiness', async (_req, res) => {
     const readiness = await checkEmailActionReadiness();
     if (readiness.code === 'EMAIL_ACTION_READY') return envelope(res, { readiness });

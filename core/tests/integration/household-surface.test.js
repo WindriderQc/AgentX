@@ -598,6 +598,22 @@ describe('built-in Household surface on Core', () => {
     expect((await PlanningItem.findById(idea._id).lean()).promotedTask).toEqual({ kind: 'personal', pipelineId: promoted.task.pipelineId });
   });
 
+  test('a current finding from the archive catch-up lands once in the idea inbox for Dad (#130)', async () => {
+    const finding = { kind: 'action', text: 'Synthetic: return the signed form', due: '2026-10-09',
+      gmailUrl: 'https://mail.google.com/mail/u/0/#all/abcdef1234567890', key: 'a'.repeat(32) };
+    const first = await request(app).post('/api/secretary/catchup/proposals').send(finding).expect(201);
+    expect(first.body.data.idea).toMatchObject({ origin: 'secretary', kind: 'reminder', status: 'inbox' });
+    expect(first.body.data.idea.text).toBe('Action : Synthetic: return the signed form (échéance : 2026-10-09) — https://mail.google.com/mail/u/0/#all/abcdef1234567890');
+    const again = await request(app).post('/api/secretary/catchup/proposals').send(finding).expect(200);
+    expect(again.body.data).toMatchObject({ duplicate: true, idea: { id: first.body.data.idea.id } });
+    expect(await PlanningItem.countDocuments({ type: 'idea', tags: `source:catchup-${'a'.repeat(32)}` })).toBe(1);
+    const fact = await request(app).post('/api/secretary/catchup/proposals')
+      .send({ kind: 'memory', text: 'Synthetic dated fact', key: 'b'.repeat(32), gmailUrl: 'javascript:alert(1)' }).expect(201);
+    expect(fact.body.data.idea).toMatchObject({ kind: 'idea', text: 'À retenir : Synthetic dated fact' });
+    expect((await request(app).post('/api/secretary/catchup/proposals').send({ ...finding, kind: 'send' }).expect(400)).body.code).toBe('CATCHUP_PROPOSAL_BAD_KIND');
+    expect((await request(app).post('/api/secretary/catchup/proposals').send({ ...finding, key: 'x' }).expect(400)).body.code).toBe('CATCHUP_PROPOSAL_BAD_KEY');
+  });
+
   test('a family math question streams its picture first and Nestor answers without waiting for inference (#131)', async () => {
     const base = '/api/voice-personas/family/sessions';
     const id = (await request(app).post(base).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session.sessionId;

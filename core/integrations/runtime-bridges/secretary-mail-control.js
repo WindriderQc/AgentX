@@ -7,6 +7,7 @@ const { buildSshArgs } = require('./openclaw/agentInventory');
 const execFileAsync = promisify(execFile);
 const DEFAULT_TIMEOUT_MS = 45000;
 const BACKLOG_TTL_MS = 5 * 60 * 1000;
+const CATCHUP_TTL_MS = 60 * 1000;
 const LABELS = Object.freeze(['urgent', 'needs-reply']);
 const THREAD_ID = /^[0-9a-f]{10,32}$/;
 
@@ -64,6 +65,8 @@ class SecretaryMailControl {
     this.now = options.now || (() => Date.now());
     this.cachedBacklog = null;
     this.pendingBacklog = null;
+    this.cachedCatchup = null;
+    this.pendingCatchup = null;
   }
 
   get available() { return Boolean(this.target && this.root); }
@@ -118,6 +121,18 @@ class SecretaryMailControl {
         .finally(() => { this.pendingBacklog = null; });
     }
     return this.pendingBacklog;
+  }
+
+  // Counts of the archive catch-up job (no Gmail call); one host read a minute.
+  async catchup() {
+    const now = this.now();
+    if (this.cachedCatchup && now - this.cachedCatchup.at < CATCHUP_TTL_MS) return this.cachedCatchup.data;
+    if (!this.pendingCatchup) {
+      this.pendingCatchup = this.call('catchup')
+        .then((data) => { this.cachedCatchup = { at: now, data }; return data; })
+        .finally(() => { this.pendingCatchup = null; });
+    }
+    return this.pendingCatchup;
   }
 }
 

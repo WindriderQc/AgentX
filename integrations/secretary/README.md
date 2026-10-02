@@ -86,8 +86,12 @@ outages also pause on the same page instead of failing it. Invalid model output
 is logged in `catchup-errors.json`; several failures in a row stop the run.
 
 Nothing is written to the owner's tasks or memory. A finding the model marks
-`current` in mail from the last 30 days is queued in `catchup-proposals.json`
-(state `pending`) for the owner to confirm. `--instructions-file` adds private
+`current` in mail from the last 30 days is kept in `catchup-proposals.json` and
+sent to Core's `POST /api/secretary/catchup/proposals`, which files it once (by
+its key) as an idea in Dad's inbox to promote or set aside; the file then marks
+it `queued` with the idea id, and an unreachable Core leaves it `pending` for the
+next try. Dad's desk shows the job's progress from `secretary_mail_desk.py
+catchup` (counts only). `--instructions-file` adds private
 owner instructions kept outside Git (for example which correspondence matters).
 While `catchup.lock` is fresh, `native_next` only collects new mail and returns
 `empty`, and the watchdog no longer holds triage at catch-up cadence for deep
