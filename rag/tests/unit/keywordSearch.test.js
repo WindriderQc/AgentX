@@ -1,6 +1,6 @@
 'use strict';
 
-const { keywordSearch, scoreChunk } = require('../../src/services/keywordSearch');
+const { keywordSearch, scoreChunk, tokenizeQuery } = require('../../src/services/keywordSearch');
 
 // ═══════════════════════════════════════════════════════════
 // scoreChunk — BM25-like scoring
@@ -37,6 +37,34 @@ describe('scoreChunk', () => {
 
   it('returns 0 for empty query terms', () => {
     expect(scoreChunk('some text', [])).toBe(0);
+  });
+
+  it('matches whole words only, not substrings', () => {
+    expect(scoreChunk('the main idea', ['ia'])).toBe(0);
+    expect(scoreChunk('serverless functions', ['server'])).toBe(0);
+    expect(scoreChunk('l\'ia générative', ['ia'])).toBeGreaterThan(0);
+  });
+
+  it('treats accented letters as part of a word', () => {
+    expect(scoreChunk('une décision rapide', ['cision'])).toBe(0);
+    expect(scoreChunk('une décision rapide', ['décision'])).toBeGreaterThan(0);
+    expect(scoreChunk('le café est prêt', ['caf'])).toBe(0);
+  });
+});
+
+describe('tokenizeQuery', () => {
+  it('keeps two-letter terms such as IA and AI', () => {
+    expect(tokenizeQuery('IA locale')).toEqual(['ia', 'locale']);
+    expect(tokenizeQuery('AI agents')).toEqual(['ai', 'agents']);
+  });
+
+  it('drops two-letter stopwords and single characters', () => {
+    expect(tokenizeQuery('le rôle de la IA à la maison')).toEqual(['rôle', 'ia', 'maison']);
+    expect(tokenizeQuery('what is a model')).toEqual(['what', 'model']);
+  });
+
+  it('strips surrounding punctuation', () => {
+    expect(tokenizeQuery('"IA", (décision)? serveur.')).toEqual(['ia', 'décision', 'serveur']);
   });
 });
 
@@ -94,7 +122,7 @@ describe('keywordSearch', () => {
     expect(results).toEqual([]);
   });
 
-  it('returns empty array for short query terms (length <= 2)', async () => {
+  it('returns empty array when the query holds only stopwords', async () => {
     const store = makeMockStore(docs, chunks);
     const results = await keywordSearch(store, 'is at', { topK: 10 });
 
@@ -123,6 +151,26 @@ describe('keywordSearch', () => {
     const results = await keywordSearch(store, 'test query', { topK: 10 });
 
     expect(results).toEqual([]);
+  });
+
+  it('finds two-letter terms and accented words as whole words', async () => {
+    const store = makeMockStore([docs[0]], { 'doc-1': [
+      { text: 'L\'IA locale tourne sur le serveur.', chunkIndex: 0 },
+      { text: 'The main idea is simple.', chunkIndex: 1 },
+      { text: 'Une décision a été prise.', chunkIndex: 2 }
+    ] });
+    const ia = await keywordSearch(store, 'IA?', { topK: 10 });
+    expect(ia.map(r => r.metadata.chunkIndex)).toEqual([0]);
+    const decision = await keywordSearch(store, '"Décision"', { topK: 10 });
+    expect(decision.map(r => r.metadata.chunkIndex)).toEqual([2]);
+  });
+
+  it('propagates store errors to the caller', async () => {
+    const store = {
+      listDocuments: jest.fn(async () => { throw new Error('qdrant down'); }),
+      getDocumentChunks: jest.fn()
+    };
+    await expect(keywordSearch(store, 'MongoDB', { topK: 10 })).rejects.toThrow('qdrant down');
   });
 
   it('returns empty array when getDocumentChunks is not supported', async () => {

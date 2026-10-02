@@ -320,6 +320,11 @@ class RagStore {
         keywordSearch(this.vectorStore, query, {
           topK: candidateTopK * 2,
           filters: options.filters
+        }).catch((error) => {
+          // Fall back to vector results, but say so in the response.
+          logger.error('Keyword search failed; hybrid search uses vector results only', { error: error.message });
+          applied.keywordSearchFailed = true;
+          return [];
         })
       ]);
 

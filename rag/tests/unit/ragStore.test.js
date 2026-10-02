@@ -433,6 +433,16 @@ describe('RagStore (in-memory, mocked embeddings)', () => {
       expect(applied).toEqual({ hybrid: true, expand: false });
     });
 
+    test('hybrid reports a failed keyword search and keeps the vector results', async () => {
+      await store.upsertDocumentWithChunks('Vector only content', { source: 'test', documentId: 'kw-fail-doc' });
+      store.vectorStore.listDocuments = jest.fn().mockRejectedValue(new Error('scroll failed'));
+
+      const { results, applied } = await store.search('vector content', { topK: 3, hybrid: true });
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(applied).toEqual({ hybrid: true, expand: false, keywordSearchFailed: true });
+    });
+
     test('search reports expansion as applied when it runs alone', async () => {
       const { applied } = await store.search('test query', { topK: 3, expand: true });
       expect(applied).toEqual({ hybrid: false, expand: true });

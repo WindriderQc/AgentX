@@ -250,7 +250,8 @@ curl -X POST http://127.0.0.1:3182/api/rag/search \
 
 `applied` reports the retrieval modes that ran. Hybrid search and query
 expansion do not compose: when both are requested, hybrid runs and
-`applied.expand` is `false`.
+`applied.expand` is `false`. When the keyword half of a hybrid search fails,
+the vector results are returned and `applied.keywordSearchFailed` is `true`.
 
 **Errors:** 400 (validation), 503 `VECTOR_STORE_UNAVAILABLE`, 503 `EMBEDDING_SERVICE_UNAVAILABLE`
 

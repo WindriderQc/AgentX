@@ -221,6 +221,7 @@
       if (applied) {
         // Report the retrieval modes that ran, not the ones requested.
         enhancements = enhancements.filter(function (key) { return (key !== 'expand' && key !== 'hybrid') || applied[key]; });
+        if (applied.keywordSearchFailed) enhancements.push('keyword search failed, vector results only');
       }
       els.meta.hidden = false;
       els.meta.textContent = results.length + ' passage' + (results.length === 1 ? '' : 's') + ' found in ' + elapsed + ' ms' + (enhancements.length ? ' · ' + enhancements.join(', ') : '');
