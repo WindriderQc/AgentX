@@ -221,7 +221,7 @@ const handleChatRequest = async ({
                 url,
                 error: err,
                 model: effectiveModel,
-                timeoutMessage: 'Ollama request timed out (2m limit).'
+                timeoutMessage: 'Ollama request timed out (5m limit).'
             });
         }
     } catch (err) {

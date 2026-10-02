@@ -589,7 +589,7 @@ describe('chatService', () => {
                  message: 'Hi'
              };
 
-             await expect(handleChatRequest(request)).rejects.toThrow('Ollama request timed out');
+             await expect(handleChatRequest(request)).rejects.toThrow('Ollama request timed out (5m limit).');
         });
     });
 
