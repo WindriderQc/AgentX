@@ -10,7 +10,7 @@ const llmx = require('./llmx-conversation');
 
 function registerNativeConsumers(app, {
   express, standardJsonParser, conversations, conversationEnv, activePersonaTurns,
-  createPersonaSession, createNativeFamilySession, handlePersonaTurn, registerBrowserSessionControls,
+  createPersonaSession, createNativeFamilySession, handlePersonaTurn, registerBrowserSessionControls, openingPayload,
   envelope, fail, cleanText, requireVoixMemoryConsumer,
   VOIX_FAMILY_PACK_ID, VOIX_FAMILY_MODE_ID, VOIX_FAMILY_SCOPE_ID
 }) {

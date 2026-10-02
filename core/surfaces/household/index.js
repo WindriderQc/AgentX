@@ -1935,7 +1935,7 @@ function register(api) {
   personas.post('/family/sessions/:sessionId/turns/text', (req, res) => handlePersonaTurn(req, res, 'child', { packId: VOIX_FAMILY_PACK_ID, modeId: VOIX_FAMILY_MODE_ID, scopeId: VOIX_FAMILY_SCOPE_ID, browser: true }));
   registerNativeConsumers(app, {
     express, standardJsonParser, conversations, conversationEnv, activePersonaTurns,
-    createPersonaSession, createNativeFamilySession, handlePersonaTurn, registerBrowserSessionControls,
+    createPersonaSession, createNativeFamilySession, handlePersonaTurn, registerBrowserSessionControls, openingPayload,
     envelope, fail, cleanText, requireVoixMemoryConsumer,
     VOIX_FAMILY_PACK_ID, VOIX_FAMILY_MODE_ID, VOIX_FAMILY_SCOPE_ID
   });
