@@ -181,7 +181,7 @@ host inventories or runtime volumes.
 |---|---|
 | Default `demo` | Playground, Ollama discovery, RAG and Benchmark |
 | `AGENTX_PROFILE=full` | Also Nestor (`/dad`), Household (`/panel`) and operational surfaces |
-| Full plus `COMPOSE_PROFILES=data` | Also optional Data and `/data-toolbox` |
+| `COMPOSE_PROFILES=data` | Also the optional Data service; Core shows `/data-toolbox` in `full` only |
 
 Set these values in the external env file. Data binds to loopback 3183 and has
 no collector target, storage mount or background job enabled by default. See

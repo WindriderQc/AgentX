@@ -599,8 +599,8 @@ IOSchedulingClass=idle
 MemoryMax=24G
 ```
 
-Benchmark reads the registry from Core every 30 seconds, so a registered host
-becomes a Profiler and benchmark target with its residency. On a CPU host the
+In the `full` profile Benchmark reads the registry from Core every 30 seconds,
+so a registered host becomes a Profiler and benchmark target with its residency. On a CPU host the
 Profiler proves a measurement with no VRAM share instead of a full one, and its
 context probe stops at `CONTEXT_PROBE_CPU_MAX_CTX` (default 32768) with a
 per-step timeout of `CONTEXT_PROBE_CPU_TIMEOUT_MS` (default 20 minutes): CPU
@@ -808,7 +808,8 @@ resident does not authorize replay. Active inference or changed ownership
 prevents restoration effects.
 
 The existing startup/periodic `profilerProjectionRecovery` resumes these
-journals. It claims a writer epoch, adopts Core recovery ownership, restores
+journals in both profiles, like Benchmark's startup claim recovery and
+authority reconciliation. It claims a writer epoch, adopts Core recovery ownership, restores
 the exact host claims, records VERIFIED then RESTORED and releases the workload.
 A failed pass is retried after 1, 2, 4 … minutes, capped at an hour
 (`failedAttempts`, `nextAttemptAt`). After six failures automatic recovery

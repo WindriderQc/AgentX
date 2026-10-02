@@ -13,7 +13,6 @@ const { buildEnvStatus, summarizeForLog } = require('../shared/envStatus');
 const { registerLocalStyleVendorAssets } = require('../shared/localStyleVendorAssets');
 const { admitOllamaTargetResolved } = require('./src/helpers/ollamaTargetAdmission');
 const { readBoundedJson } = require('./src/helpers/boundedJsonResponse');
-const { shouldRecoverBenchmarkClaims } = require('./src/helpers/benchmarkProfileCapabilities');
 
 require('dotenv').config({
   path: path.join(__dirname, '.env')
@@ -378,34 +377,7 @@ async function start() {
   const benchmarkService = require('./src/services/benchmark');
   await benchmarkService.seedPrompts();
 
-  // Recover orphaned judge queue entries from previous crash
-  const { recoverJudgeQueue } = require('./src/services/benchmark/judgeQueueRecovery');
-  recoverJudgeQueue().catch(err => logger.warn('Judge queue recovery error', { error: err.message }));
-
-  // Claim coordination is a full-profile capability. In demo, Core
-  // intentionally disables the Nerve Center routes, so Benchmark must not
-  // probe them and manufacture a misleading startup warning.
-  if (shouldRecoverBenchmarkClaims(app.locals.agentxProfile)) {
-    // Reconcile benchmark claims with actual batch state. A process crash
-    // mid-batch can otherwise leave a host claimed until the hard-cap reaper.
-    const {
-      recoverLeakedClaims,
-      reacquireActiveBatchClaims
-    } = require('./src/services/benchmark/claimRecovery');
-    recoverLeakedClaims()
-      .then(() => reacquireActiveBatchClaims())
-      .catch(err => logger.warn('Claim recovery error', { error: err.message }));
-    // Hosts registered in Core's Nerve Center become profiling and benchmark targets.
-    require('./src/services/registeredHostSync').startRegisteredHostSync();
-    const { startProfilerProjectionRecovery } = require('./src/services/profiler/profilerProjectionRecovery');
-    startProfilerProjectionRecovery();
-    const {
-      startBenchmarkAuthorityReconciliation
-    } = require('./src/services/benchmark/benchmarkAuthorityReconciliation');
-    startBenchmarkAuthorityReconciliation();
-  } else {
-    logger.info('[ClaimRecovery] Disabled by the demo product profile');
-  }
+  require('./src/services/startupRecovery').startStartupRecovery(app.locals.agentxProfile);
 
   app.listen(PORT, HOST, () => {
     logger.info(`agentx-benchmark listening on ${HOST}:${PORT}`);

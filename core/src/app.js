@@ -9,7 +9,6 @@ const cookieParser = require('cookie-parser');
 const logger = require('../config/logger');
 const { requestLogger, errorLogger } = require('./middleware/logging');
 const systemHealth = require('./systemHealth');
-const { normalizeHostUrl } = require('./helpers/ollamaHostConfig');
 const { getHostHomeLink } = require('./helpers/hostHomeLink');
 const { refreshOllamaHealth } = require('./services/ollamaHealthProbe');
 const { normalizePublicUrls } = require('../../shared/browserPublicUrls');
@@ -521,46 +520,8 @@ app.get('/health', async (_req, res) => {
   });
 });
 
-// Config endpoint - expose server configuration
-app.get('/api/config', (_req, res) => {
-  const ollamaHost = normalizeHostUrl(process.env.OLLAMA_HOST);
-
-  if (!ollamaHost) {
-    return res.status(500).json({
-      status: 'error',
-      message: 'OLLAMA_HOST environment variable is not configured'
-    });
-  }
-
-  const match = ollamaHost.match(/^(?:https?:\/\/)?([^:]+)(?::(\d+))?/);
-  const host = match ? match[1] : 'localhost';
-  const port = match && match[2] ? match[2] : '11434';
-
-  res.json({
-    profile: agentxProfile,
-    ollama: {
-      host,
-      port,
-      fullUrl: ollamaHost
-    },
-    features: {},
-    // Browser-reachable URLs for cross-service navigation. Public JS
-    // and EJS pages use these instead of hardcoded localhost:<port>
-    // so remote browsers reach the right host.
-    publicUrls: app.locals.publicUrls,
-    // Optional same-origin return path supplied by the composing host. It is
-    // absent by default so standalone and shareable Product remain neutral.
-    hostHome: app.locals.hostHome,
-    // Validated launchers supplied by trusted extensions. Benchmark and RAG
-    // read this projection so every Product service renders the same
-    // "External runtimes" entries; the launcher hrefs are Core routes.
-    navigation: {
-      trustedRuntimeNavItems: isDemoProfile(agentxProfile)
-        ? []
-        : normalizeTrustedRuntimeNavItems(app.locals.trustedRuntimeNavItems)
-    }
-  });
-});
+// Public browser configuration; inference may be unconfigured.
+app.get('/api/config', require('../routes/public-config').createPublicConfigHandler({ app, profile: agentxProfile }));
 
 // Live portal status — server-side aggregation of each service's /health so the
 // portal landing page shows live status without any cross-origin requests.
