@@ -1908,6 +1908,16 @@
       "secret": false,
       "description": "Timeout of Nestor memory RAG calls, 1000 to 30000. Unset: 5000."
     },
+    "NETWORK_DEVICE_WATCH_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Interval at which Core checks the Data network inventory for new unknown devices, minimum 60000. Unset: no check and no network-new-device alert."
+    },
     "NETWORK_SCAN_CIDR": {
       "services": [
         "data"
