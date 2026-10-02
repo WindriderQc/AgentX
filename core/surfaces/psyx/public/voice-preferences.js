@@ -26,7 +26,7 @@
     inputDeviceId: ''
   });
   const PROVIDER_LABELS = Object.freeze({ kokoro: 'Kokoro', windows_sapi: 'Windows SAPI', voxcpm: 'VoxCPM2' });
-  const LANGUAGE_LABELS = Object.freeze({ fr: 'French', en: 'English' });
+  const LANGUAGE_LABELS = Object.freeze({ fr: 'Français', en: 'Anglais' });
 
   function lower(value) {
     return String(value == null ? '' : value).trim().toLowerCase();
@@ -99,6 +99,15 @@
     return `${PROVIDER_LABELS[prefs.ttsProvider]} · ${LANGUAGE_LABELS[prefs.language]}${voice ? ` · ${voice}` : ''}`;
   }
 
+  function preferredFemaleVoice(catalog, language = 'fr') {
+    const voices = (Array.isArray(catalog?.voices) ? catalog.voices : []).filter(voice =>
+      voice.available === true && voice.gender === 'female' && voice.language === language
+      && TTS_PROVIDERS.includes(voice.provider) && isValidVoice(voice.id, voice.provider)
+      && !catalog.providers?.some(provider => provider.id === voice.provider && provider.available === false));
+    return voices.find(voice => voice.locale?.toLowerCase() === `${language}-ca`)
+      || voices.find(voice => voice.provider === 'kokoro') || voices[0] || null;
+  }
+
   function testSentence(preferences) {
     return normalizePreferences(preferences).language === 'fr'
       ? 'Bonjour. La voix locale de PsyX est prête.'
@@ -118,6 +127,7 @@
     synthesisRequest,
     defaultVoiceFor,
     describePreferences,
+    preferredFemaleVoice,
     testSentence
   });
 });

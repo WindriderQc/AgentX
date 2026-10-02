@@ -120,6 +120,7 @@ function clearRenderedConversation() {
 }
 
 function showGate(message = '') {
+  stopVoiceSession();
   state.accessEpoch += 1;
   state.turnSequence += 1;
   state.activeAbort?.abort();
@@ -376,6 +377,7 @@ function assertCurrentAccess(epoch) {
 }
 
 async function restoreConversation(conversationId = state.conversationId) {
+  stopVoiceSession();
   if (!conversationId) return;
   try {
     const conversation = await api(`/api/psyx/sessions/${encodeURIComponent(conversationId)}`);
@@ -587,6 +589,10 @@ async function sendMessage(text, overrides = {}) {
   state.applied = null;
   const stream = createStreamingAssistant();
   state.activeAbort = new AbortController();
+  const requestAbort = state.activeAbort;
+  const cancelVoice = () => requestAbort.abort();
+  overrides.signal?.addEventListener('abort', cancelVoice, { once: true });
+  if (overrides.signal?.aborted) cancelVoice();
 
   let finalResult = null;
   let streamError = null;
@@ -595,10 +601,10 @@ async function sendMessage(text, overrides = {}) {
     await streamChat({
       message: humanText,
       conversationId: state.conversationId || undefined,
-      psyx: { mode: effectiveMode, depth: effectiveDepth, action: actionType }
+      psyx: { mode: effectiveMode, depth: effectiveDepth, action: actionType, source: overrides.source === 'voice' ? 'voice' : 'text' }
     }, (event, data) => {
       if (!state.unlocked || state.turnSequence !== turnSequence) return;
-      if (event === 'token') stream.append(data.content || '');
+      if (event === 'token') { stream.append(data.content || ''); overrides.onDelta?.(data.content || ''); }
       else if (event === 'control') {
         state.applied = data;
         renderStance();
@@ -644,7 +650,8 @@ async function sendMessage(text, overrides = {}) {
     await loadSessions();
     if (finalResult?.review?.scheduled) watchReview(state.conversationId);
     maybeAskCheckIn();
-    if (state.voice.prefs.spokenReplies) void speakText(assistantContent);
+    if (state.voice.prefs.spokenReplies && !overrides.voiceSession) void speakText(assistantContent);
+    return { text: assistantContent, language: state.voice.prefs.language };
   } catch (error) {
     if (!state.unlocked || state.turnSequence !== turnSequence) return;
     if (error.name === 'AbortError') {
@@ -666,18 +673,21 @@ async function sendMessage(text, overrides = {}) {
         turnSequence
       );
     }
+    if (overrides.voiceSession) throw error;
   } finally {
+    overrides.signal?.removeEventListener('abort', cancelVoice);
     if (state.turnSequence === turnSequence) {
       state.activeAbort = null;
       setBusy(false);
       state.applied = null;
       updateControlExplanation();
-      if (state.unlocked) input.focus();
+      if (state.unlocked && !overrides.voiceSession) input.focus();
     }
   }
 }
 
 function startNewSession(focus = true) {
+  stopVoiceSession();
   state.conversationId = null;
   state.history = [];
   localStorage.removeItem(STORAGE_KEY);

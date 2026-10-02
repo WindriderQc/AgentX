@@ -97,14 +97,14 @@ function longitudinalSystemMessage(state, { conversationId = null } = {}) {
 
 const SESSION_OPENING = 'This is the first message of a new session. Acknowledge what the user brings first. Then, if recent sessions or active experiments in the longitudinal state relate to it, connect in one sentence and ask how a planned experiment went. Never force it.';
 
-function composeSystemContext(state, control, { conversationId = null, safety = null } = {}) {
+function composeSystemContext(state, control, { conversationId = null, safety = null, voice = false } = {}) {
   // AgentX's external contract caps an individual message at 16k characters.
   // Preserve persona and current controls, then spend the remaining bounded
   // budget on fallible longitudinal memory.
   const memory = cleanText(longitudinalSystemMessage(state, { conversationId }), 9000);
   const opening = !conversationId && (state.sessionDigests?.length || state.experiments?.some(item => ['planned', 'active'].includes(item.status)))
     ? SESSION_OPENING : '';
-  return [SYSTEM_PROMPT, memory, controlSystemMessage(control), opening, safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
+  return [SYSTEM_PROMPT, memory, controlSystemMessage(control), opening, voice ? 'This is a spoken turn. Answer naturally in two to five short sentences, usually 30 to 90 words, without headings, Markdown, tables or lists. Ask at most one question. Preserve all necessary crisis resources and safety instructions even when this needs a longer answer.' : '', safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
 }
 
 function boundedContext(messages, { maxMessages = 40, maxMessageCharacters = 12000, maxTotalCharacters = 35000 } = {}) {

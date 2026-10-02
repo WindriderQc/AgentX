@@ -33,6 +33,7 @@ function syncVoicePreferenceControls() {
 }
 
 function updateVoicePreference(field, value) {
+  stopVoiceSession();
   state.voice.speech?.cancel();
   state.voice.prefs = { ...state.voice.prefs, ...(field === 'ttsProvider' || field === 'language' ? { ttsVoice: '' } : {}), [field]: value };
   saveVoicePreferences();
@@ -78,6 +79,7 @@ function renderVoiceStatus(status = null, error = null) {
 }
 
 async function loadVoiceStatus() {
+  const accessEpoch = state.accessEpoch;
   if (!state.voice.enabled) {
     state.voice.reachable = false;
     renderVoiceStatus();
@@ -86,12 +88,15 @@ async function loadVoiceStatus() {
   $('voiceStatusText').textContent = 'Vérification de VoiX local…';
   try {
     const [status, catalog] = await Promise.all([api('/api/psyx/voice/status', { cache: 'no-store' }), api('/api/psyx/voice/catalog', { cache: 'no-store' }).catch(() => null)]);
+    assertCurrentAccess(accessEpoch);
     state.voice.catalog = catalog;
+    chooseInitialVoice(catalog);
     state.voice.reachable = Boolean(status.reachable);
     // Service defaults are shown for context only; this browser's preferences stay its own.
     state.voice.status = status;
     renderVoiceStatus(status);
   } catch (error) {
+    if (accessEpoch !== state.accessEpoch) return;
     state.voice.reachable = false;
     state.voice.status = null;
     renderVoiceStatus(null, error);
@@ -134,7 +139,7 @@ async function transcribeRecording(blob) {
   input.value = input.value.trim() ? `${input.value.trim()} ${transcript}` : transcript;
   resizeInput();
   $('voiceActionStatus').textContent = 'Transcrit localement. Aucun audio n’a été conservé.';
-  if (state.voice.prefs.autoSend) await sendMessage(input.value);
+  if (state.voice.prefs.autoSend) await sendMessage(input.value, { source: 'voice' });
   else input.focus();
 }
 
@@ -158,6 +163,7 @@ async function stopVoiceRecording() {
 }
 
 async function startVoiceRecording() {
+  if ($('voiceSessionDialog').open) return;
   const accessEpoch = state.accessEpoch;
   if (!state.unlocked) return;
   if (!voiceSecureContextAvailable()) throw new Error('Utilise l’adresse HTTPS de confiance de PsyX pour enregistrer.');
@@ -209,7 +215,7 @@ async function speakText(text) {
       onReceipt: receipt => { $('voiceActionStatus').textContent = `Voix : ${receipt.provider} · ${receipt.voice} · ${receipt.language}`; },
       onMetrics: metrics => { $('voiceActionStatus').title = JSON.stringify(metrics); },
     });
-    const request = voicePreferences.synthesisRequest(text, state.voice.prefs);
+    const request = voicePreferences.synthesisRequest(spokenVoiceText(text), state.voice.prefs);
     await state.voice.speech.speak(async signal => {
       const response = await fetch('/api/psyx/voice/synthesize/stream', {
         method: 'POST', signal, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
@@ -257,7 +263,8 @@ function wireVoiceControls() {
   $('voiceTtsProvider').addEventListener('change', () => updateVoicePreference('ttsProvider', $('voiceTtsProvider').value));
   $('voiceTtsVoice').addEventListener('change', () => updateVoicePreference('ttsVoice', $('voiceTtsVoice').value.trim()));
   $('voiceTest').addEventListener('click', () => speakText(voicePreferences.testSentence(state.voice.prefs)));
-  $('voiceStop').addEventListener('click', () => { state.voice.speech?.cancel(); $('voiceActionStatus').textContent = 'Voix arrêtée.'; });
+  $('voiceStop').addEventListener('click', () => { stopVoiceSession(); state.voice.speech?.cancel(); $('voiceActionStatus').textContent = 'Voix arrêtée.'; });
   $('voiceTtsCustom').addEventListener('change', () => updateVoicePreference('ttsVoice', $('voiceTtsCustom').value.trim()));
+  wireVoiceSession();
   voiceRecord.addEventListener('click', toggleVoiceRecording);
 }

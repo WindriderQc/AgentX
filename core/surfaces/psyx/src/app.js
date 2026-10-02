@@ -10,7 +10,7 @@ const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRe
 const domain = require('../../../src/domains/psyx/domain');
 const { detectRecentCrisis } = require('../../../src/domains/psyx/safety');
 
-const VERSION = '2.5.1';
+const VERSION = '2.6.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -299,7 +299,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const safety = detectRecentCrisis(action ? '' : input, context || []);
     const resolved = domain.resolveControl(requested, recommendation);
     const control = safety ? { ...resolved, mode: 'talk', depth: 'normal', reason: '' } : resolved;
-    const system = domain.composeSystemContext(longitudinal, control, { conversationId, safety });
+    const system = domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice' });
     const providerContext = domain.boundedContext(context || []);
 
     res.setHeader('Content-Type', 'text/event-stream');
