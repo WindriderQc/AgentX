@@ -173,6 +173,26 @@ Expired and forgotten notes are excluded, and voice retries cannot resurrect a
 forgotten note. Notes are not copied into a second RAG index, so a correction or
 forgetting takes effect on the next retrieval.
 
+## Access and identity
+
+AgentX is a single-household application on a trusted LAN. It has no user
+accounts and is not multi-tenant. Several separate mechanisms decide what a
+request can reach; none of them replaces another.
+
+| Mechanism | What it decides | What it does not do |
+|---|---|---|
+| Runtime profile (`demo`/`full`, `shared/agentxRuntimeProfile.js`) | Which surfaces and APIs this installation serves | Authenticate anyone or restrict who reaches a served route |
+| [Parental access](PARENTAL_ACCESS.md) | Whether a browser session, or a bearer carrying the configured code, reaches adult pages and private data through the gateway | Identify a person; it is one shared-device boundary |
+| Specialized tokens (for example PsyX native access, runtime bridges, external consumers) | Whether one integration's own routes accept a caller | Grant anything beyond those routes |
+| Memory audiences (`memoryReadService.forAudience`, Memory Policy V2 labels) | Which memory an already-admitted caller's request reads, owner or household | Admit the caller; it is an information filter |
+| Browser origin guard (`shared/browserOriginGuard.js`) | CORS for AgentX's own origins; refusal of state-changing requests a browser marks cross-site | Stop non-browser clients, or act as adult access or a firewall |
+| User identity (`core/src/helpers/userHelpers.js`) | Nothing yet: every request runs as user `default` | Separate people's conversations, profiles or memory |
+
+Requests without browser headers (curl, harnesses, service-to-service calls)
+keep the trusted-network contract: backend ports are bound to loopback, and
+the LAN gateway is the only browser entry. Exposing a port or a route that
+bypasses the gateway removes the parental boundary.
+
 ## Surfaces
 
 Core registers surfaces for the `full` profile only; `demo` keeps the
