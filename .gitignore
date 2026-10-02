@@ -17,6 +17,7 @@ test-results/
 **/test-results/
 playwright-report/
 reports/
+!integrations/openclaw/jobs/reports/
 
 # Runtime data and caches
 .agentx/
