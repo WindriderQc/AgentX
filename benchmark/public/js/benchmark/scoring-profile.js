@@ -1,4 +1,5 @@
 import { showToast } from '../components/toast.js';
+import { CATEGORY_KEYS, CATEGORY_META } from '../benchmark-categories.js';
 
 /**
  * scoring-profile.js — Scoring Profile Panel
@@ -15,12 +16,8 @@ import { showToast } from '../components/toast.js';
  *   POST /api/benchmark/scoring-profile/reset
  */
 
-const CATEGORIES = ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'];
-const CAT_LABELS = {
-    coding: 'Coding', reasoning: 'Reasoning', math: 'Math',
-    knowledge: 'Knowledge', instruction: 'Instruction',
-    creative: 'Creative', translation: 'Translation'
-};
+const CATEGORIES = CATEGORY_KEYS;
+const CAT_LABELS = Object.fromEntries(CATEGORY_KEYS.map(key => [key, CATEGORY_META[key].label]));
 const SCORING_PROFILE_RESET_CONFIRMATION = 'RESET SCORING PROFILE';
 
 // ---------------------------------------------------------------------------
@@ -154,8 +151,8 @@ function renderFormulaSection(profile) {
                    value="${(g.requiredPromptLevels || [4, 5]).join(',')}">
         </div>
         ${numRow('gp-minFullScopeResults', 'Min Full-Scope Results',
-            g.minFullScopeResults || 28, 0, 1000, 1,
-            'Minimum scored rows required before a model/host can rank as full-scope. Default 28 = 7 categories x L4/L5 evidence.')}
+            g.minFullScopeResults || CATEGORY_KEYS.length * 4, 0, 1000, 1,
+            `Minimum scored rows required before a model/host can rank as full-scope. Default ${CATEGORY_KEYS.length * 4} = ${CATEGORY_KEYS.length} categories x 4 L4/L5 results.`)}
         ${numRow('gp-evidenceConfidenceTarget', 'Evidence Confidence Target (0-1)',
             g.evidenceConfidenceTarget || 0.75, 0, 1, 0.05,
             'Average judge confidence target before the evidence-confidence penalty disappears.')}

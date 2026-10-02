@@ -4,6 +4,7 @@
  */
 
 const mongoose = require('mongoose');
+const { BENCHMARK_CATEGORY_KEYS } = require('../config/categories');
 
 const BenchmarkPromptSchema = new mongoose.Schema({
     name: {
@@ -27,7 +28,7 @@ const BenchmarkPromptSchema = new mongoose.Schema({
         required: true,
         // Benchmark corpus categories. `factual` scores via the knowledge profile
         // but remains a distinct prompt/result category for reporting.
-        enum: ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation', 'factual'],
+        enum: [...BENCHMARK_CATEGORY_KEYS, 'factual'],
         index: true
     },
     expected_answer: {
@@ -44,7 +45,7 @@ const BenchmarkPromptSchema = new mongoose.Schema({
     },
     scoring_type: {
         type: String,
-        enum: ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation', 'custom'],
+        enum: [...BENCHMARK_CATEGORY_KEYS, 'custom'],
         // An absent override must leave the stored category authoritative.
         default: undefined
     },

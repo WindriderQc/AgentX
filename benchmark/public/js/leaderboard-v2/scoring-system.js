@@ -3,6 +3,7 @@
 // and the standalone Shared Weight pill row at the bottom of the podium.
 
 import { openScoringProfilePanel } from '../benchmark/scoring-profile.js';
+import { CATEGORY_KEYS, CATEGORY_META } from '../benchmark-categories.js';
 
 const WEIGHT_COLORS = {
   high:   { bg: '#1a2a1a', text: '#66bb6a' },
@@ -26,7 +27,7 @@ function weightsPills(weights) {
 }
 
 const HOW_SCORING_BODY = `
-  <p><strong>Quality Ranking + Performance Stats — combined.</strong> Each model is scored across 7 evaluation categories (Coding, Reasoning, Math, Knowledge, Instruction, Creative, Translation) and benchmarked for throughput / latency on its host.</p>
+  <p><strong>Quality Ranking + Performance Stats — combined.</strong> Each model is scored across ${CATEGORY_KEYS.length} evaluation categories (${CATEGORY_KEYS.map(key => CATEGORY_META[key].label).join(', ')}) and benchmarked for throughput / latency on its host.</p>
   <p class="cb-explainer-formula"><strong>UGRank formula:</strong> weighted_quality &minus; category_coverage_penalty &minus; hard_level_penalty &minus; evidence_confidence_penalty (divided by 10 for 0–10 scale).</p>
   <ul>
     <li><strong>Weighted Quality:</strong> Average quality (0–10) across categories, weighted by category importance.</li>

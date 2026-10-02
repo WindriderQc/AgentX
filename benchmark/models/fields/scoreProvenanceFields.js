@@ -10,6 +10,7 @@
  */
 
 const mongoose = require('mongoose');
+const { BENCHMARK_CATEGORY_KEYS } = require('../../config/categories');
 
 const scoreProvenanceFields = {
     // Dual scoring: semantic correctness vs format compliance
@@ -104,7 +105,7 @@ const scoreProvenanceFields = {
     },
     scoring_type: {
         type: String,
-        enum: ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation', 'factual', 'custom', null],
+        enum: [...BENCHMARK_CATEGORY_KEYS, 'factual', 'custom', null],
         default: null
     },
     scoring_time_ms: {

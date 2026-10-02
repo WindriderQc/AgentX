@@ -359,7 +359,7 @@ class BenchmarkServiceClient {
    * @returns {Promise<Object>} { category: recommendations[] }
    */
   async getAllCategoryRecommendations() {
-    const categories = ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'];
+    const categories = require('../../../shared/benchmarkCategories').BENCHMARK_CATEGORY_KEYS;
     const result = {};
 
     const fetches = await Promise.allSettled(

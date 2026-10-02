@@ -12,6 +12,7 @@
  */
 
 const mongoose = require('mongoose');
+const { BENCHMARK_CATEGORY_KEYS } = require('../../config/categories');
 
 const promptSnapshotFields = {
     prompt_name: {
@@ -26,7 +27,7 @@ const promptSnapshotFields = {
     },
     prompt_category: {
         type: String,
-        enum: ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation', 'factual'],
+        enum: [...BENCHMARK_CATEGORY_KEYS, 'factual'],
         index: true
     },
     expected_answer: {

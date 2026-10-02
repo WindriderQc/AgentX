@@ -48,7 +48,7 @@ const AVAILABLE_COLUMNS = {
     model: { label: 'Model', sortable: true, width: 'auto', tooltip: 'The model that generated this response.' },
     prompt: { label: 'Prompt', sortable: false, width: '180px', tooltip: 'The recorded prompt name or a short text preview. Select results to read their full prompts and answers together.' },
     host: { label: 'Host', sortable: true, width: 'auto', tooltip: 'The Ollama host that ran this model.' },
-    category: { label: 'Category', sortable: true, width: '120px', tooltip: 'Which of the 7 evaluation categories this prompt belongs to (coding, reasoning, math, knowledge, instruction, creative, translation).' },
+    category: { label: 'Category', sortable: true, width: '120px', tooltip: 'Which evaluation category this prompt belongs to.' },
     level: { label: 'Level', sortable: true, width: '80px', tooltip: 'Difficulty level (1=basic, 5=master). Higher levels test harder tasks requiring deeper expertise.' },
     quality_score: { label: 'Quality', sortable: true, width: '90px', tooltip: 'Recorded quality score (0-10). Compare responses to see its source: rule-based checks, a judge, both, or a human override.' },
     composite_score: { label: 'Composite', sortable: true, width: '100px', tooltip: 'Combined score (0-100) blending quality, latency, and speed. Weights vary by category (e.g., coding weights quality more heavily).' },
@@ -72,10 +72,8 @@ let charts = {
     modelBar: null
 };
 
-// Categories for filters
-const CATEGORIES = [
-    'coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'
-];
+// Categories for filters, from /js/benchmark-categories.global.js (shared list)
+const CATEGORIES = window.AgentXBenchmarkCategories?.keys || [];
 
 // ── Server-backed filtering and URL state ───────────────────────────────────
 

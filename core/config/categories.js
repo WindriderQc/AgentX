@@ -26,15 +26,8 @@ const MANUAL_CATEGORIES = {
   judge:      { label: 'Judge',      faIcon: 'fa-gavel',          color: '#f59e0b' }
 };
 
-const BENCHMARK_CATEGORIES = {
-  coding:      { label: 'Coding',      faIcon: 'fa-code',         color: '#7c9fff' },
-  reasoning:   { label: 'Reasoning',   faIcon: 'fa-brain',        color: '#a78bfa' },
-  math:        { label: 'Math',        faIcon: 'fa-calculator',   color: '#fbbf24' },
-  knowledge:   { label: 'Knowledge',   faIcon: 'fa-book',         color: '#34d399' },
-  instruction: { label: 'Instruction', faIcon: 'fa-list-check',   color: '#06b6d4' },
-  creative:    { label: 'Creative',    faIcon: 'fa-paint-brush',  color: '#f87171' },
-  translation: { label: 'Translation', faIcon: 'fa-language',     color: '#f472b6' }
-};
+// Prompt categories, weights and tabs live in shared/ so every service reads one list.
+const { BENCHMARK_CATEGORIES, GENERALIST_CATEGORY_WEIGHTS, LEADERBOARD_TAB_GROUPS } = require('../../shared/benchmarkCategories');
 
 const BENCHMARK_CATEGORY_ALIASES = {
   code: 'coding',
@@ -68,33 +61,7 @@ function normalizeBenchmarkCategory(rawCategory, fallback = null) {
   return normalized;
 }
 
-/**
- * Generalist category weights for quality scoring.
- * Weights MUST sum to 1.0 (100%).
- */
-const GENERALIST_CATEGORY_WEIGHTS = {
-  coding:      0.20,
-  reasoning:   0.20,
-  math:        0.10,
-  knowledge:   0.15,
-  instruction: 0.15,
-  creative:    0.10,
-  translation: 0.10
-};
 
-/**
- * Leaderboard tab groups - 1:1 mapping with benchmark categories plus "All".
- */
-const LEADERBOARD_TAB_GROUPS = [
-  { key: '',            label: 'All Models',  faIcon: 'fa-globe',       categories: [] },
-  { key: 'coding',      label: 'Coding',      faIcon: 'fa-code',        categories: ['coding'] },
-  { key: 'reasoning',   label: 'Reasoning',   faIcon: 'fa-brain',       categories: ['reasoning'] },
-  { key: 'math',        label: 'Math',        faIcon: 'fa-calculator',  categories: ['math'] },
-  { key: 'knowledge',   label: 'Knowledge',   faIcon: 'fa-book',        categories: ['knowledge'] },
-  { key: 'instruction', label: 'Instruction', faIcon: 'fa-list-check',  categories: ['instruction'] },
-  { key: 'creative',    label: 'Creative',    faIcon: 'fa-paint-brush', categories: ['creative'] },
-  { key: 'translation', label: 'Translation', faIcon: 'fa-language',    categories: ['translation'] }
-];
 
 /**
  * Task-to-category routing map for model router.

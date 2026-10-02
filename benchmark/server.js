@@ -115,6 +115,9 @@ app.get('/public/js/utils/polling-controller.js', (_req, res) => {
   res.sendFile(path.join(__dirname, '..', 'core', 'public', 'js', 'utils', 'polling-controller.js'));
 });
 
+// Benchmark prompt categories for pages, generated from shared/ (one list).
+require('../shared/benchmarkCategories').mountBrowserCategories(app);
+
 // Static files — Benchmark plus an explicit allowlist of shared Core assets.
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
@@ -275,6 +278,7 @@ app.get('/results-explorer', (req, res) => {
       '<script src="/vendor/chart.js/4.4.1/chart.umd.js"></script>'
     ].join('\n'),
     footerJs: [
+      '<script src="/js/benchmark-categories.global.js"></script>',
       '<script src="/js/results-explorer.js"></script>',
       '<script src="/js/results-explorer-charts.js"></script>',
       '<script src="/js/results-explorer-comparison.js"></script>',

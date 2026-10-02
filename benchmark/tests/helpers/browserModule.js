@@ -10,6 +10,14 @@ const path = require('path');
 const vm = require('vm');
 
 const PUBLIC_JS = path.join(__dirname, '../../public/js');
+// `/js/benchmark-categories.js` is generated from shared/; modules that
+// import it receive the same values here.
+const { BENCHMARK_CATEGORIES, BENCHMARK_CATEGORY_KEYS } = require('../../../shared/benchmarkCategories');
+const CATEGORY_STUBS = {
+    CATEGORY_KEYS: BENCHMARK_CATEGORY_KEYS,
+    CATEGORY_META: BENCHMARK_CATEGORIES,
+    BENCHMARK_CATEGORY_META: BENCHMARK_CATEGORIES
+};
 
 function loadBrowserModule(relativeFile, exportNames, stubs = {}) {
     const sourcePath = path.join(PUBLIC_JS, relativeFile);
@@ -25,6 +33,7 @@ function loadBrowserModule(relativeFile, exportNames, stubs = {}) {
         console,
         document: { addEventListener: () => {}, querySelector: () => null },
         localStorage: { getItem: () => null },
+        ...CATEGORY_STUBS,
         ...stubs
     };
     context.global = context;
