@@ -2,7 +2,9 @@
 
 // Effective routing snapshot exposed to trusted extensions and external
 // consumers: configured task routes, host preferences and per-task context
-// and contract evidence.
+// and contract evidence. Resolving a task reads its host's Ollama catalog, so
+// a caller's `signal` is carried to every read, and once it aborts no further
+// read starts (#189).
 const { frozenCopy } = require('../../helpers/frozenCopy');
 
 function positiveInteger(value) {
@@ -48,12 +50,23 @@ function buildTaskSnapshot(taskType, task, routerConfig, preferencesByHost, mode
   };
 }
 
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw signal.reason || new Error('routing snapshot aborted');
+}
+
 async function resolveTaskEvidence(deps, resolved, options) {
+  const { signal } = options;
   const contractInput = { model: resolved.model, host: resolved.hostUrl };
+  const contractOptions = {
+    ...(options.includeArtifactIdentity === true && { includeArtifactIdentity: true }),
+    ...(signal && { signal })
+  };
   const [contextInfo, inferenceContract] = await Promise.all([
-    deps.getContextInfo(resolved.model, resolved.hostUrl),
-    options.includeArtifactIdentity === true
-      ? deps.resolveInferenceContract(contractInput, { includeArtifactIdentity: true })
+    signal
+      ? deps.getContextInfo(resolved.model, resolved.hostUrl, { signal })
+      : deps.getContextInfo(resolved.model, resolved.hostUrl),
+    Object.keys(contractOptions).length
+      ? deps.resolveInferenceContract(contractInput, contractOptions)
       : deps.resolveInferenceContract(contractInput)
   ]);
   if (!resolved.contextSize && positiveInteger(contextInfo?.num_ctx)) {
@@ -84,6 +97,8 @@ async function readActiveCatalog(deps) {
 }
 
 async function buildEffectiveRoutingSnapshot(deps, options = {}) {
+  const { signal } = options;
+  throwIfAborted(signal);
   const [routerConfig, rawPreferences] = await Promise.all([
     deps.buildRouterConfigPayload(options.routerOptions || {}),
     deps.hostPreferenceService.getAll()
@@ -96,6 +111,8 @@ async function buildEffectiveRoutingSnapshot(deps, options = {}) {
   const warnings = [];
 
   for (const [taskType, task] of Object.entries(routerConfig.taskModels || {})) {
+    // A departed caller must not open further host reads.
+    throwIfAborted(signal);
     const resolved = buildTaskSnapshot(taskType, task, routerConfig, preferencesByHost, deps.modelsMatch);
     if (resolved.model) {
       try {
@@ -106,6 +123,7 @@ async function buildEffectiveRoutingSnapshot(deps, options = {}) {
     }
     tasks[taskType] = resolved;
   }
+  throwIfAborted(signal);
 
   let catalog = [];
   if (options.includeCatalog !== false) {

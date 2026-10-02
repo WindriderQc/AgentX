@@ -125,6 +125,25 @@ test('full Core exits by itself after SIGTERM while a departed caller waits on a
   expectNaturalExit(result, run.output);
 }, 30000);
 
+test('full Core exits by itself after SIGTERM while a departed /routing caller waits on a jammed host (#189)', async () => {
+  const port = await freePort();
+  const run = startCore({ profile: 'full', port, ollamaUrl });
+  await run.ready;
+
+  // The routing snapshot reads the host catalog once per task; its caller
+  // leaves while the first read hangs.
+  ollama.state.hung = true;
+  const caller = http.get({ host: '127.0.0.1', port, path: '/api/consumers/v1/routing', agent: false });
+  caller.on('error', () => {});
+  const heldTags = () => ollama.state.held.filter(url => url === '/api/tags').length;
+  const before = heldTags();
+  while (heldTags() <= before) await new Promise(resolve => setTimeout(resolve, 20));
+  caller.destroy();
+
+  const result = await terminate(run);
+  expectNaturalExit(result, run.output);
+}, 30000);
+
 test('demo Core exits by itself after SIGTERM', async () => {
   const port = await freePort();
   const run = startCore({ profile: 'demo', port, ollamaUrl });

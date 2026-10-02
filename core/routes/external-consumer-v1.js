@@ -225,12 +225,20 @@ function createExternalConsumerV1Routes({ runtimeServices, systemHealth } = {}) 
   });
 
   router.get('/routing', async (req, res) => {
+    // The snapshot reads each host's catalog; a caller that leaves cancels
+    // those reads so none outlives it or Core shutdown (#189).
+    const disconnect = createDisconnectSignal(req, res);
     try {
       res.set('Cache-Control', 'no-store');
-      const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
+      const snapshot = await runtimeServices.routing.getEffectiveSnapshot({
+        includeCatalog: false,
+        signal: disconnect.signal,
+      });
       envelope.success(res, sanitizeRoutingSnapshot(snapshot));
     } catch (error) {
-      sendError(res, error);
+      if (!disconnect.signal.aborted) sendError(res, error);
+    } finally {
+      disconnect.complete();
     }
   });
 
