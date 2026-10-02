@@ -7,6 +7,9 @@
 
 const SIGNALS = Object.freeze([
   { kind: 'suicide', pattern: /\b(suicid\w*|me (tuer|suicider|pendre|jeter (sous|du haut))|(envie d'|veux |vais )en finir(?! avec)|en finir avec (la vie|tout|moi)|mettre fin a (mes jours|ma vie)|(plus|pas) (envie|le gout) de vivre|veux (mourir|disparaitre)|voudrais (mourir|disparaitre)|mieux (sans moi|si j'?etais mort)|kill myself|end (it all|my life)|want to die|better off dead|no reason to live)\b/ },
+  // Passive ideation: wishing not to exist, without a stated plan. Errs toward
+  // asking; the safety instruction covers what is clearly something else.
+  { kind: 'passive_ideation', pattern: /\b(si je (n'?etais|ne serais|n'?existais) plus (la|ici)|si je disparaissais|(serait|serais|seraient) (mieux|plus simple|plus facile) sans moi|j'?aimerais (ne )?(pas|plus) me reveiller|wish i (were|was) (dead|gone)|not wake up)\b/ },
   { kind: 'self_harm', pattern: /\b(me (faire du mal|blesser|blesse|couper|coupe|scarifier|scarifie|bruler|brule)|automutil\w*|scarification|self[- ]?harm\w*|cut(ting)? myself|hurt(ing)? myself)\b/ },
   { kind: 'harm_to_others', pattern: /\b(envie|peur) de (le|la|les|lui) (tuer|frapper|faire du mal)|vais (le|la|les|lui) (tuer|faire du mal)|(want|going) to (kill|hurt) (him|her|them)\b/ },
   { kind: 'immediate_danger', pattern: /\b(j'?ai (pris|avale) (des|trop de|tous mes) (pilules|medicaments|comprimes)|overdos\w*|surdos\w*|i took (all|too many) (pills|meds))\b/ }
