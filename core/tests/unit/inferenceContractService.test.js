@@ -616,4 +616,37 @@ describe('inferenceContractService', () => {
       exact: false
     });
   });
+
+  it('includes a separate system instruction alongside chat messages', () => {
+    const messages = [{ role: 'user', content: 'hello' }];
+    const base = estimateInputTokens({ messages });
+    const expanded = estimateInputTokens({ messages, system: 's'.repeat(400) });
+    expect(expanded.characters).toBeGreaterThan(base.characters + 399);
+    expect(expanded.tokens).toBeGreaterThan(base.tokens);
+    expect(expanded.exact).toBe(false);
+  });
+
+  it('counts structured message content and native tool-call arguments', () => {
+    const structured = [{ role: 'user', content: [{ type: 'text', text: 'x'.repeat(400) }] },
+      { role: 'assistant', content: null,
+        tool_calls: [{ function: { name: 'read', arguments: { input: 'y'.repeat(400) } } }] }];
+    const expanded = estimateInputTokens({ messages: structured });
+    expect(expanded.characters).toBeGreaterThan(800);
+    expect(expanded.tokens).toBeGreaterThan(estimateInputTokens({
+      messages: [{ role: 'user', content: '[object Object]' }, { role: 'assistant', content: '' }]
+    }).tokens);
+    expect(structured[0].content[0].text).toHaveLength(400);
+  });
+
+  it('reports a budget overflow caused by tool schemas even when the message fits', async () => {
+    const input = { model: 'synthetic', requestedNumCtx: 256, requestedMaxOutputTokens: 64,
+      messages: [{ role: 'user', content: 'hello' }] };
+    const plain = await resolveContextBudget(input);
+    const tools = [{ type: 'function', function: { name: 'read', description: 'z'.repeat(800) } }];
+    const expanded = await resolveContextBudget({ ...input, tools });
+    expect(plain.input.overflowTokens).toBe(0);
+    expect(expanded.input.overflowTokens).toBeGreaterThan(0);
+    expect(expanded.warnings).toContain('estimated input exceeds the available context budget; upstream truncation is possible');
+    expect(expanded.input.estimation.exact).toBe(false);
+  });
 });

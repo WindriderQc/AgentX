@@ -68,6 +68,29 @@ async function drain(stream) {
 }
 
 describe('trusted runtime services', () => {
+  test('accounts for the same tools and tool-call messages sent to the native chat wire', async () => {
+    const deps = inferenceDeps();
+    const messages = [{ role: 'assistant', content: '',
+      tool_calls: [{ function: { name: 'read', arguments: { query: 'Complete input' } } }] }];
+    const tools = [{ type: 'function', function: { name: 'read', description: 'Complete tool schema' } }];
+    await executeRoutedInference(deps, { mode: 'chat', model: 'model-a', messages, tools });
+    const payload = JSON.parse(deps.fetch.mock.calls[0][1].body);
+    expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.objectContaining({
+      messages: payload.messages, tools: payload.tools
+    }));
+    expect(payload.tools).toEqual(tools);
+  });
+
+  test('accounts for the same system instruction sent to the native generation wire', async () => {
+    const deps = inferenceDeps();
+    await executeRoutedInference(deps, { mode: 'generate', model: 'model-a',
+      prompt: 'hello', system: 'Complete system instruction' });
+    const payload = JSON.parse(deps.fetch.mock.calls[0][1].body);
+    expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: payload.prompt, system: payload.system
+    }));
+  });
+
   test('vision is verified on the exact routed model and images reach the same admitted request', async () => {
     const deps = inferenceDeps();
     deps.fetch.mockResolvedValueOnce(response({ body: { capabilities: ['completion', 'vision'] } }));

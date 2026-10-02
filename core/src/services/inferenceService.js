@@ -329,7 +329,7 @@ async function executeInferenceOnce(body = {}, {
     }
 
     const runtime = await prepareInferenceRuntime({
-        model, host: target, prompt, messages, system, options, keepAlive,
+        model, host: target, prompt, messages, system, tools: requestedTools, options, keepAlive,
         think, thinkingMode, taskType, callerDetail: body.callerDetail,
         laneName, rawResponseRequested, stream,
         includeArtifactIdentity: requireProfiledModels(),
