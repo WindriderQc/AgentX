@@ -62,9 +62,14 @@ function residentSatisfiesPin(observed, pin, residency = 'gpu') {
   return !(pin.contextSize > 0) || Number(observed.contextLength) === pin.contextSize;
 }
 
-/** Classify one probe step against the host's other pins. */
-function assessStep(step, otherPins) {
-  const samples = Array.isArray(step?.samples) ? step.samples : [];
+/**
+ * Classify one probe step against the host's other pins. A sample saved
+ * without its residency is read with the host's (profiles saved before it was
+ * persisted would otherwise read a CPU sample as a GPU spill).
+ */
+function assessStep(step, otherPins, hostResidency = 'gpu') {
+  const samples = (Array.isArray(step?.samples) ? step.samples : [])
+    .map(sample => (sample && !sample.residency ? { ...sample, residency: hostResidency } : sample));
   if (step?.passed !== true || samples.length === 0) return { proven: false, recorded: false, missing: [] };
   const recorded = samples.every(sample => Array.isArray(sample?.coResidents));
   if (!recorded) return { proven: false, recorded: false, missing: otherPins.map(pin => pin.model) };
@@ -144,7 +149,8 @@ function buildContextProposal({ modelName, hostId, hostUrl, evidence, hostPrefer
   }
 
   const otherPins = pins.filter(entry => entry !== pin);
-  const assessed = steps.map(step => ({ step, ...assessStep(step, otherPins) }));
+  const hostResidency = require('../probePlacement').residencyOf(hostUrl);
+  const assessed = steps.map(step => ({ step, ...assessStep(step, otherPins, hostResidency) }));
   const proven = assessed.filter(item => item.proven).sort((a, b) => b.step.numCtx - a.step.numCtx)[0] || null;
 
   if (!proven) {
