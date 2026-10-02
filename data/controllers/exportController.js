@@ -8,6 +8,7 @@ const { formatFilePath } = require('../utils/fileHelpers');
 const fs = require('fs/promises');
 const { createWriteStream } = require('fs');
 const { randomBytes } = require('crypto');
+const { csvCell } = require('../../shared/csvCell');
 
 const EXPORT_DIR = path.join(__dirname, '../exports');
 const REPORT_TYPES = new Set(['full', 'summary', 'media', 'large', 'stats']);
@@ -121,20 +122,15 @@ async function generateStatsReport(db) {
   };
 }
 
-function csvCell(value) {
+function csvValue(value) {
   if (value == null) return '';
-  let text = Array.isArray(value) ? `${value.length} items`
-    : typeof value === 'object' ? JSON.stringify(value) : String(value);
-  // Text must remain inert when opened in a spreadsheet. Numeric values,
-  // including negative numbers, keep their existing numeric representation.
-  if (typeof value === 'string' && (/^\s*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text))) {
-    text = `'${text}`;
-  }
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  // Lists and objects become readable text; the cell rule then applies.
+  return Array.isArray(value) ? `${value.length} items`
+    : typeof value === 'object' ? JSON.stringify(value) : value;
 }
 
 function csvLine(values) {
-  return values.map(csvCell).join(',');
+  return values.map((value) => csvCell(csvValue(value))).join(',');
 }
 
 function convertToCSV(data) {
