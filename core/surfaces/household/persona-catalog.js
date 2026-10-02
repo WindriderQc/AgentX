@@ -18,13 +18,26 @@ function generatedPersonas() {
   });
 }
 
+// The instance may give personas another voice (for example a locally cloned
+// one) without editing the shared catalog: HOUSEHOLD_PERSONA_VOICES maps a
+// persona id, or "*" for every persona, to "provider|voice". A browser's own
+// selection still wins. Invalid entries keep the catalog voice.
+function instanceVoice(personaId, voice = {}, env = process.env) {
+  let map;
+  try { map = JSON.parse(env.HOUSEHOLD_PERSONA_VOICES || '{}'); } catch { return voice; }
+  const choice = map?.[personaId] ?? map?.['*'];
+  const match = typeof choice === 'string' && /^(kokoro|windows_sapi|voxcpm)\|([^\r\n|]{1,120})$/.exec(choice);
+  if (!match) return voice;
+  return { ...voice, provider: match[1], voices: { fr: match[2], en: match[2] }, source: 'instance' };
+}
+
 function snapshot(row) {
   const layout = row.uiConfig?.layoutConfig || {};
   return { id: row.name, version: row.version, promptConfigId: String(row._id),
     name: layout.label || row.name, description: row.description || '', identity: row.systemPrompt,
     identitySha256: crypto.createHash('sha256').update(row.systemPrompt).digest('hex'),
     sourceRef: `PromptConfig/${row.name}@${row.version}`,
-    voice: layout.voice || {}, visual: layout.visual || null };
+    voice: instanceVoice(row.name, layout.voice || {}), visual: layout.visual || null };
 }
 
 const { speechFor } = require('./public/persona-presentation');
@@ -58,4 +71,4 @@ async function readReplyStream(stream, onDelta, signal) {
   return answer;
 }
 
-module.exports = { generatedPersonas, snapshot, speechFor, readReplyStream };
+module.exports = { generatedPersonas, snapshot, speechFor, readReplyStream, instanceVoice };

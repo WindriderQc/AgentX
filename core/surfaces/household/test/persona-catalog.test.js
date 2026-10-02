@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Readable, PassThrough } = require('node:stream');
-const { generatedPersonas, snapshot, speechFor, readReplyStream } = require('../persona-catalog');
+const { generatedPersonas, snapshot, speechFor, readReplyStream, instanceVoice } = require('../persona-catalog');
 
 test('generated private catalog preserves every former voice preset and the requested voice defaults', () => {
   const rows = generatedPersonas();
@@ -48,4 +48,18 @@ test('cancelled voice replies drain to EOF without delivering or returning late 
   assert.equal(await reply, '');
   assert.deepEqual(received, ['first']);
   assert.equal(stream.readableEnded, true);
+});
+
+test('an instance voice replaces catalog voices per persona or for every persona, and a browser selection still wins', () => {
+  const catalog = { provider: 'kokoro', presentation: 'masculine', voices: { fr: 'catalog-fr', en: 'catalog-en' } };
+  const env = { HOUSEHOLD_PERSONA_VOICES: JSON.stringify({ '*': 'voxcpm|example-clone', jarvis: 'kokoro|example-jarvis' }) };
+  const nestor = instanceVoice('nestor', catalog, env);
+  assert.deepEqual(nestor, { provider: 'voxcpm', presentation: 'masculine', voices: { fr: 'example-clone', en: 'example-clone' }, source: 'instance' });
+  assert.equal(instanceVoice('jarvis', catalog, env).voices.fr, 'example-jarvis');
+  for (const language of ['fr', 'en']) assert.deepEqual(speechFor({ voice: nestor }, language), { provider: 'voxcpm', language, voice: 'example-clone', presentation: 'masculine' });
+  assert.equal(speechFor({ voice: nestor }, 'fr', { presentation: 'feminine' }).voice, 'example-clone');
+  assert.equal(speechFor({ voice: nestor }, 'fr', { selections: { fr: 'kokoro|ff_siwis' } }).voice, 'ff_siwis');
+  for (const value of ['', 'not json', JSON.stringify({ '*': 'unknown|x' }), JSON.stringify({ '*': 'voxcpm|' }), JSON.stringify({ '*': 'voxcpm|a\nb' })]) {
+    assert.equal(instanceVoice('nestor', catalog, { HOUSEHOLD_PERSONA_VOICES: value }), catalog);
+  }
 });
