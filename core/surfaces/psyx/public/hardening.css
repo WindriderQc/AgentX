@@ -76,11 +76,6 @@ body.psyx-locked .app-shell { display: none; }
   font-weight: 700;
 }
 .cancel-button:hover { border-color: #805656; color: #f0bcbc; }
-.quick-action.armed {
-  border-color: #667786;
-  color: #eef3f6;
-  background: #26313a;
-}
 
 .session-card:focus-within .session-actions { opacity: 1; }
 .state-item > div { min-width: 0; }

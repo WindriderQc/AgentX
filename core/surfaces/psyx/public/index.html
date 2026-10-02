@@ -51,33 +51,38 @@
       </div>
     </header>
 
-    <section class="control-deck" aria-label="PsyX session controls">
-      <div class="control-block">
-        <div class="control-heading">
-          <span class="control-label">Mode · how PsyX responds</span>
-          <span id="modeSummary" class="control-summary">Talk · Stay with the lived experience.</span>
-        </div>
-        <div class="segmented" id="modeControl">
-          <button type="button" data-mode="talk" class="active" aria-pressed="true">Talk</button>
-          <button type="button" data-mode="analyze" aria-pressed="false">Analyze</button>
-          <button type="button" data-mode="challenge" aria-pressed="false">Challenge</button>
-          <button type="button" data-mode="plan" aria-pressed="false">Plan</button>
-        </div>
+    <section class="stance-bar" aria-label="How PsyX answers">
+      <div class="stance-now" role="status" aria-live="polite">
+        <span id="stanceDot" class="stance-dot" data-stance="talk"></span>
+        <div><strong id="stanceLabel">Talk · auto</strong><small id="stanceReason">PsyX chooses its stance after reflecting on the conversation.</small></div>
       </div>
-
-      <div class="control-block depth-block">
-        <div class="control-heading">
-          <span class="control-label">Depth · how much compute</span>
-          <span id="depthSummary" class="control-summary">Normal · Strong local psychological reasoning.</span>
+      <button id="stanceToggle" class="icon-btn" type="button" aria-expanded="false" aria-controls="stancePanel">Adjust</button>
+      <div id="stancePanel" class="stance-panel" hidden>
+        <div class="control-block">
+          <div class="control-heading">
+            <span class="control-label">Stance · how PsyX responds</span>
+            <span id="modeSummary" class="control-summary">Auto · PsyX decides.</span>
+          </div>
+          <div class="segmented" id="modeControl">
+            <button type="button" data-mode="auto" class="active" aria-pressed="true">Auto</button>
+            <button type="button" data-mode="talk" aria-pressed="false">Talk</button>
+            <button type="button" data-mode="analyze" aria-pressed="false">Analyze</button>
+            <button type="button" data-mode="challenge" aria-pressed="false">Challenge</button>
+            <button type="button" data-mode="plan" aria-pressed="false">Plan</button>
+          </div>
         </div>
-        <div class="segmented" id="depthControl">
-          <button type="button" data-depth="normal" class="active" aria-pressed="true">Normal</button>
-          <button type="button" data-depth="deep" aria-pressed="false">Deep</button>
+        <div class="control-block depth-block">
+          <div class="control-heading">
+            <span class="control-label">Depth · how much reasoning</span>
+            <span id="depthSummary" class="control-summary">Auto · PsyX decides.</span>
+          </div>
+          <div class="segmented" id="depthControl">
+            <button type="button" data-depth="auto" class="active" aria-pressed="true">Auto</button>
+            <button type="button" data-depth="normal" aria-pressed="false">Normal</button>
+            <button type="button" data-depth="deep" aria-pressed="false">Deep</button>
+          </div>
         </div>
-      </div>
-
-      <div class="control-explainer" id="controlExplainer" aria-live="polite">
-        <strong>Talk</strong> changes PsyX's stance. <strong>Normal</strong> chooses the standard strong reasoning lane.
+        <div class="control-explainer" id="controlExplainer" aria-live="polite"></div>
       </div>
     </section>
 
@@ -103,38 +108,18 @@
       </aside>
 
       <section class="conversation-panel">
-        <div class="brain-strip">
-          <div class="brain-primary">
-            <span class="brain-dot"></span>
-            <div>
-              <div id="brainMode" class="brain-title">Normal · strong local</div>
-              <div id="brainRoute" class="brain-subtitle">Resolving model and host…</div>
-            </div>
-          </div>
-          <div class="brain-stats">
-            <span id="brainModel" class="brain-chip">model —</span>
-            <span id="brainHost" class="brain-chip">host —</span>
-            <span id="brainThinking" class="brain-chip">thinking off</span>
-            <span id="brainContext" class="brain-chip">40 recent max</span>
-          </div>
-        </div>
-
         <section id="messages" class="messages" aria-live="polite" aria-relevant="additions">
           <article class="message assistant intro">
             <div class="avatar">PX</div>
             <div class="bubble intro-bubble">
               <p><strong>I’m PsyX.</strong> Bring me the thing that is actually taking space in your head.</p>
-              <p>Mode changes my stance. Depth changes the reasoning effort.</p>
+              <p>After each reply I reflect on our conversation in the background: I adapt how I answer, keep a short digest of the session and propose what is worth remembering. You decide what I keep.</p>
             </div>
           </article>
         </section>
 
         <button id="reviewStatus" class="review-chip" type="button" aria-live="polite" hidden></button>
 
-        <div class="quick-actions" aria-label="PsyX quick actions">
-          <button id="captureAction" type="button" class="quick-action">Capture thread</button>
-          <button id="planAction" type="button" class="quick-action" aria-pressed="false">Make next response actionable</button>
-        </div>
 
         <form id="composer" class="composer">
           <textarea id="input" rows="1" maxlength="12000" placeholder="What’s going on?" autocomplete="off" disabled></textarea>
@@ -232,15 +217,6 @@
     </form>
   </dialog>
 
-  <dialog id="captureDialog" class="modal">
-    <form method="dialog" id="captureForm" class="modal-card">
-      <div class="modal-header"><div><div class="panel-kicker">Longitudinal memory</div><h2>Capture thread</h2></div><button value="cancel" class="icon-btn" type="submit" aria-label="Close">×</button></div>
-      <label>Thread<input id="captureText" name="thread" maxlength="500" required placeholder="Short durable title for this topic"></label>
-      <label>Optional context<textarea id="captureContext" name="context" rows="3" maxlength="240" placeholder="Why this matters or what to return to"></textarea></label>
-      <p class="state-help">You decide what becomes durable memory. PsyX will not silently turn the last sentence into a thread.</p>
-      <div class="modal-actions"><button value="cancel" class="ghost-button" type="submit">Cancel</button><button id="saveCapture" class="primary-button" type="button">Save thread</button></div>
-    </form>
-  </dialog>
 
   <dialog id="dataDialog" class="modal">
     <form method="dialog" class="modal-card data-card">

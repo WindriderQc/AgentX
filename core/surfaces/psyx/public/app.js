@@ -8,9 +8,9 @@ const MAX_CONTEXT_MESSAGES = 40;
 const ACTION_PREFIX = '[PSYX_ACTION:';
 
 const state = {
-  mode: 'talk',
-  depth: 'normal',
-  nextMode: null,
+  mode: 'auto',
+  depth: 'auto',
+  applied: null,
   conversationId: localStorage.getItem(STORAGE_KEY) || null,
   history: [],
   busy: false,
@@ -54,17 +54,11 @@ const routeLabel = $('routeLabel');
 const modeSummary = $('modeSummary');
 const depthSummary = $('depthSummary');
 const controlExplainer = $('controlExplainer');
-const brainMode = $('brainMode');
-const brainRoute = $('brainRoute');
-const brainModel = $('brainModel');
-const brainHost = $('brainHost');
-const brainThinking = $('brainThinking');
 const stateSaveStatus = $('stateSaveStatus');
 const privacyGate = $('privacyGate');
 const appShell = $('appShell');
 const drawerBackdrop = $('drawerBackdrop');
 const cancelGeneration = $('cancelGeneration');
-const brainContext = $('brainContext');
 const dataDialog = $('dataDialog');
 const resetMemoryDialog = $('resetMemoryDialog');
 const sessionDataDialog = $('sessionDataDialog');
@@ -183,11 +177,15 @@ function setReady(ready, label) {
   setBusy(false);
 }
 
+const AUTO_INFO = { title: 'Auto', short: 'PsyX decides.', description: 'After each reply PsyX reflects on the conversation and chooses how to answer next.' };
+
 function currentModeInfo(mode = state.mode) {
+  if (mode === 'auto') return AUTO_INFO;
   return state.modeConfig[mode] || { title: mode, short: '', description: '' };
 }
 
 function currentDepthInfo(depth = state.depth) {
+  if (depth === 'auto') return AUTO_INFO;
   return state.depthConfig[depth] || {
     title: depth,
     short: '',
@@ -197,24 +195,44 @@ function currentDepthInfo(depth = state.depth) {
   };
 }
 
+// What the next reply will use: an explicit choice, or the review's
+// recommendation for this conversation when the choice is auto.
+function upcomingControl() {
+  const next = state.conversationId ? sessionDigest(state.conversationId)?.next : null;
+  const autoMode = state.mode === 'auto';
+  const autoDepth = state.depth === 'auto';
+  return {
+    mode: autoMode ? next?.stance || 'talk' : state.mode,
+    depth: autoDepth ? next?.depth || 'normal' : state.depth,
+    auto: { mode: autoMode, depth: autoDepth },
+    reason: (autoMode || autoDepth) ? next?.reason || '' : ''
+  };
+}
+
+function renderStance() {
+  const control = state.busy && state.applied ? state.applied : upcomingControl();
+  const stance = currentModeInfo(control.mode).title || control.mode;
+  const prefix = state.busy && state.applied ? 'Answering' : 'Next reply';
+  $('stanceDot').dataset.stance = control.mode;
+  $('stanceLabel').textContent = `${prefix}: ${stance}${control.auto.mode ? ' · auto' : ''}${control.depth === 'deep' ? ' · deep reflection' : ''}`;
+  $('stanceReason').textContent = control.reason
+    || (control.auto.mode || control.auto.depth
+      ? 'PsyX chooses its stance after reflecting on the conversation.'
+      : 'Set by you. Choose Auto to let PsyX decide again.');
+}
+
 function updateControlExplanation() {
   const mode = currentModeInfo();
   const depth = currentDepthInfo();
   modeSummary.textContent = `${mode.title || state.mode} · ${mode.short || ''}`;
   depthSummary.textContent = `${depth.title || state.depth} · ${depth.short || ''}`;
-  const armed = state.nextMode ? `<br><strong>Next turn:</strong> ${escapeHtml(currentModeInfo(state.nextMode).title)} (one-shot)` : '';
-  controlExplainer.innerHTML = `<strong>${escapeHtml(mode.title || state.mode)}</strong>: ${escapeHtml(mode.description || '')}<br><strong>${escapeHtml(depth.title || state.depth)}</strong>: ${escapeHtml(depth.description || '')}${armed}`;
-  brainMode.textContent = `${depth.title || state.depth} · ${state.depth === 'deep' ? 'deliberate' : 'strong local'}`;
-  brainThinking.textContent = depth.think ? 'thinking requested' : 'thinking off';
+  controlExplainer.innerHTML = `<strong>${escapeHtml(mode.title || state.mode)}</strong>: ${escapeHtml(mode.description || '')}<br><strong>${escapeHtml(depth.title || state.depth)}</strong>: ${escapeHtml(depth.description || '')}`;
+  renderStance();
   updateBrainRouting();
-  const planArmed = state.nextMode === 'plan';
-  $('planAction').classList.toggle('armed', planArmed);
-  $('planAction').setAttribute('aria-pressed', String(planArmed));
 }
 
 function updateContextStatus() {
   const recentCount = state.history.filter((item) => item.role !== 'action').length;
-  brainContext.textContent = `${recentCount}/${MAX_CONTEXT_MESSAGES} recent`;
   $('contextStatus').textContent = `${recentCount} recent message${recentCount === 1 ? '' : 's'} shown (maximum ${MAX_CONTEXT_MESSAGES}). The trusted context is rebuilt from PsyX-owned storage.`;
 }
 
@@ -372,22 +390,20 @@ async function loadRouting() {
   }
 }
 
-function getLaneConfig(depth = state.depth) {
+function getLaneConfig(depth = upcomingControl().depth) {
   const taskType = depth === 'deep' ? 'deep_reasoning' : 'analysis';
   const entry = state.routing?.taskConfigState?.[taskType]?.effective || state.routing?.taskModels?.[taskType] || null;
   return { taskType, entry };
 }
 
-function updateBrainRouting(lastResult = null) {
-  const { taskType, entry } = getLaneConfig();
+// The footer keeps the technical route discreet; the Brain tab has the details.
+function updateBrainRouting(lastResult = null, note = '') {
+  const depth = lastResult?.control?.depth || upcomingControl().depth;
+  const { entry } = getLaneConfig(depth);
   const routing = lastResult?.routing || {};
   const model = routing.routedModel || lastResult?.model || entry?.model || 'model unresolved';
-  const host = routing.routedHost || entry?.host || 'host unresolved';
-  brainRoute.textContent = `${model} @ ${host}`;
-  brainModel.textContent = model;
-  brainHost.textContent = String(host).toUpperCase();
-  routeLabel.textContent = `${currentDepthInfo().title || state.depth} · ${model}${host ? ` @ ${host}` : ''}`;
-  brainRoute.dataset.taskType = taskType;
+  const host = routing.routedHost || entry?.host || '';
+  routeLabel.textContent = `${currentDepthInfo(depth).title || depth} · ${model}${host ? ` @ ${host}` : ''}${note ? ` · ${note}` : ''}`;
 }
 
 function renderRoutingDetails() {
@@ -532,9 +548,8 @@ async function sendMessage(text, overrides = {}) {
   const actionType = overrides.action || null;
   if ((!humanText && !actionType) || state.busy || !state.ready) return;
 
-  const effectiveMode = overrides.mode || state.nextMode || state.mode;
+  const effectiveMode = overrides.mode || state.mode;
   const effectiveDepth = overrides.depth || state.depth;
-  const depthInfo = currentDepthInfo(effectiveDepth);
   const turnSequence = ++state.turnSequence;
   const previousHistorySignature = historySignature(state.history);
 
@@ -545,7 +560,7 @@ async function sendMessage(text, overrides = {}) {
   resizeInput();
   setBusy(true);
   state.thinkingObserved = false;
-  brainThinking.textContent = depthInfo.think ? 'thinking requested' : 'thinking off';
+  state.applied = null;
   const stream = createStreamingAssistant();
   state.activeAbort = new AbortController();
 
@@ -560,9 +575,11 @@ async function sendMessage(text, overrides = {}) {
     }, (event, data) => {
       if (!state.unlocked || state.turnSequence !== turnSequence) return;
       if (event === 'token') stream.append(data.content || '');
-      else if (event === 'thinking') {
+      else if (event === 'control') {
+        state.applied = data;
+        renderStance();
+      } else if (event === 'thinking') {
         state.thinkingObserved = true;
-        brainThinking.textContent = 'thinking observed';
       } else if (event === 'done') {
         finalResult = data;
       } else if (event === 'error') {
@@ -596,8 +613,8 @@ async function sendMessage(text, overrides = {}) {
       localStorage.setItem(STORAGE_KEY, state.conversationId);
       sessionLabel.textContent = `Session ${state.conversationId.slice(-8)}`;
     }
-    updateBrainRouting(finalResult);
-    if (effectiveDepth === 'deep' && !state.thinkingObserved) brainThinking.textContent = 'thinking requested · not observed';
+    const deep = (finalResult.control?.depth || effectiveDepth) === 'deep';
+    updateBrainRouting(finalResult, deep ? (state.thinkingObserved ? 'thinking observed' : 'thinking requested, not observed') : '');
     await loadSessions();
     if (finalResult?.review?.scheduled) watchReview(state.conversationId);
     if (state.voice.prefs.spokenReplies) void speakText(assistantContent);
@@ -605,7 +622,6 @@ async function sendMessage(text, overrides = {}) {
     if (!state.unlocked || state.turnSequence !== turnSequence) return;
     if (error.name === 'AbortError') {
       stream.set('Cancelled.');
-      brainThinking.textContent = 'cancelled';
     } else {
       stream.article.classList.add('error');
       const partial = stream.text().trim();
@@ -621,20 +637,14 @@ async function sendMessage(text, overrides = {}) {
         actionType,
         previousHistorySignature,
         turnSequence
-      ).then((reconciled) => {
-        if (reconciled && state.turnSequence === turnSequence && !state.busy) {
-          brainThinking.textContent = effectiveDepth === 'deep'
-            ? (state.thinkingObserved ? 'thinking observed' : 'thinking requested · not observed')
-            : 'thinking off';
-        }
-      });
+      );
     }
   } finally {
     if (state.turnSequence === turnSequence) {
       state.activeAbort = null;
-      state.nextMode = null;
-      updateControlExplanation();
       setBusy(false);
+      state.applied = null;
+      updateControlExplanation();
       if (state.unlocked) input.focus();
     }
   }
@@ -675,7 +685,6 @@ function wireSegmented(containerId, stateKey) {
     const button = event.target.closest('button');
     if (!button || state.busy) return;
     state[stateKey] = button.dataset[stateKey];
-    if (stateKey === 'mode') state.nextMode = null;
     syncSegmentedControls();
     updateControlExplanation();
   });
@@ -758,24 +767,10 @@ $('newSession').addEventListener('click', async () => {
   startNewSession();
   await loadSessions();
 });
-$('planAction').addEventListener('click', () => {
-  state.nextMode = state.nextMode === 'plan' ? null : 'plan';
-  updateControlExplanation();
-  input.focus();
-});
-
-$('captureAction').addEventListener('click', () => {
-  $('captureText').value = '';
-  $('captureContext').value = '';
-  $('captureDialog').showModal();
-  setTimeout(() => $('captureText').focus(), 0);
-});
-$('saveCapture').addEventListener('click', async () => {
-  const value = $('captureText').value.trim();
-  if (!value) return;
-  const context = $('captureContext').value.trim();
-  await addStateItem('activeThreads', value, context ? { evidence: [context] } : {});
-  $('captureDialog').close();
+$('stanceToggle').addEventListener('click', () => {
+  const open = $('stancePanel').hidden;
+  $('stancePanel').hidden = !open;
+  $('stanceToggle').setAttribute('aria-expanded', String(open));
 });
 
 $('sessionsList').addEventListener('click', async (event) => {

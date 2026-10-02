@@ -87,6 +87,8 @@ function renderPsyXState() {
   renderStateItems('hypothesesList', 'hypotheses');
   renderExperiments();
   renderProposals();
+  updateControlExplanation();
+  renderSessions();
   stateSaveStatus.textContent = `synced · r${state.psyxState?.revision ?? 0}`;
 }
 
