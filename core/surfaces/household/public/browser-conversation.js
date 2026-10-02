@@ -461,12 +461,11 @@
         this.show('thinking'); this.turnPending = true;
         let pending = '', streamed = false, firstChunk = true, speechError = null, playback = Promise.resolve();
         let synthesis = Promise.resolve(), prefetchSlot = Promise.resolve();
-        let spokenLanguage = speechLanguage.replySpeechLanguage(text, this.selection.language);
+        let spokenLanguage = speechLanguage.turnSpeechLanguage(text, result?.detectedLanguage, this.selection.language);
         const speak = text => {
           text = speechLanguage.speechText(text);
           if (!text.trim() || !this.owns(turn)) return false;
-          const language = speechLanguage.replySpeechLanguage(text, spokenLanguage);
-          spokenLanguage = language;
+          const language = spokenLanguage;
           const previousPlayback = playback, availableSlot = prefetchSlot;
           // Serialize synthesis, at most one clause ahead of the current sound.
           // A third clause waits for the first playback to finish, bounding audio.

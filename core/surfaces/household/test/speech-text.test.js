@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { speechText, synthesisText, transcriptionLanguage, withoutMediaReferences } = require('../public/speech-language');
+const { scoreSpeechLanguage, speechText, synthesisText, transcriptionLanguage, withoutMediaReferences } = require('../public/speech-language');
 
 test('a verified recording displays its prose without raw delivery metadata', () => {
   const text = 'Voici un éléphant. 🐘\n\nMEDIA:/assets/household/sounds/elephant-reviewed.ogg';
@@ -57,4 +57,10 @@ test('composed emoji are silent while natural words, numbers, math and identifie
   assert.equal(speechText('## Bilan\n- **Disponible** : `MongoDB`\n> _À vérifier_ : __Ollama__'), 'Bilan\nDisponible : MongoDB\nÀ vérifier : Ollama');
   assert.equal(speechText('```sh\ncheck_health --timeout=7\n```'), 'check_health --timeout=7');
   assert.equal(speechText(speechText('🦉 **C’est prêt.**')), 'C’est prêt.');
+});
+
+test('Québécois French is the default: English needs more English than French words', () => {
+  assert.equal(scoreSpeechLanguage('OK').language, 'fr');
+  assert.equal(scoreSpeechLanguage('Le build a passé, le deploy est OK.').language, 'fr');
+  assert.equal(scoreSpeechLanguage('Can you check the hosts?').language, 'en');
 });

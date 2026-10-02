@@ -48,5 +48,6 @@ async def transcriptions_with_controls(request: Request):
     text, ms = await loop.run_in_executor(None, _transcribe_bytes, raw, filename, language)
     if str(response_format or "json").strip().lower() == "text":
         return Response(content=text, media_type="text/plain; charset=utf-8")
-    return JSONResponse({"text": text, "language": language, "model": model or settings.whisper_model,
+    return JSONResponse({"text": text, "language": language, "detectedLanguage": getattr(text, "language", "") or None,
+                         "model": model or settings.whisper_model,
                          "sttMs": round(ms) + control_ms})
