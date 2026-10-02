@@ -40,7 +40,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   Resident pin sets are edited with verified add, update and rollback, with an
   optional CPU thread count per pin. Hosts show observed request concurrency,
   and Ollama reachability stays separate from GPU residency.
-- **Benchmark.** A leaderboard rank is authoritative only when every judge
+- **Benchmark.** Prompts span eight categories, listed once in
+  `shared/benchmarkCategories.js`; the agent category scores background agent
+  work (triage, review, diagnosis, watch reports, tool use) against planted
+  findings. A leaderboard rank is authoritative only when every judge
   behind it holds a recorded qualification for the row's scorer version;
   otherwise it is provisional and says why. Each result carries a
   qualification card. The Profiler shows runtime continuity and, after a
