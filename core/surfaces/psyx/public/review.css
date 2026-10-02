@@ -56,7 +56,7 @@
 .proposal-actions .proposal-keep { color: #0d1217; background: #9cc8a1; border-color: #9cc8a1; font-weight: 700; }
 .proposal-actions .proposal-keep:hover { color: #0d1217; background: #b3d9b7; }
 
-/* Care cues: crisis resources. */
+/* Care cues: crisis resources and the opening recap. */
 .safety-banner { margin: 8px 14px 0; padding: 10px 12px; border: 1px solid #8a6a4a; border-radius: 12px; background: rgba(217,168,108,.08); font-size: 12px; line-height: 1.5; }
 .safety-banner[hidden] { display: none; }
 .safety-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -66,3 +66,7 @@
 .safety-banner li { display: flex; gap: 10px; align-items: baseline; }
 .safety-banner a { min-width: 150px; color: #f0d2a8; font-weight: 800; text-decoration: none; }
 .safety-banner li span { color: var(--muted); }
+.opening-recap { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border-soft); color: #c7d0d8; font-size: 13px; }
+.opening-recap[hidden] { display: none; }
+.opening-recap p { margin: 0 0 6px; }
+.opening-recap em { display: block; color: var(--muted); }

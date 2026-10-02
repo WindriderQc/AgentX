@@ -388,6 +388,7 @@ async function restoreConversation(conversationId = state.conversationId) {
     updateContextStatus();
     sessionLabel.textContent = conversation.title || `Séance ${state.conversationId.slice(-8)}`;
     highlightActiveSession();
+    renderOpening();
     void resumeReviewStatus(state.conversationId);
   } catch (error) {
     if (error.code !== 'PSYX_LOCKED') console.warn('PsyX session restore skipped', error);
@@ -677,6 +678,7 @@ function startNewSession(focus = true) {
   renderReviewIndicator();
   sessionLabel.textContent = 'Nouvelle conversation';
   hideSafety();
+  renderOpening();
   clearRenderedConversation();
   updateContextStatus();
   updateBrainRouting();

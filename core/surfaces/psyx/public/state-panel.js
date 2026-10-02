@@ -93,6 +93,7 @@ function renderPsyXState() {
   renderProposals();
   updateControlExplanation();
   renderSessions();
+  renderOpening();
   stateSaveStatus.textContent = `synchronisé · r${state.psyxState?.revision ?? 0}`;
 }
 

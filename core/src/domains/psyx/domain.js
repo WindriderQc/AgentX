@@ -84,12 +84,16 @@ function longitudinalSystemMessage(state, { conversationId = null } = {}) {
   return `PSYX LONGITUDINAL STATE — fallible working memory, not diagnosis or unquestionable truth.\n${JSON.stringify(compact)}`;
 }
 
+const SESSION_OPENING = 'This is the first message of a new session. If recent sessions or active experiments in the longitudinal state relate to what the user brings, connect to them in one sentence and ask how a planned experiment went. Never force it: follow what the user brings first.';
+
 function composeSystemContext(state, control, { conversationId = null, safety = null } = {}) {
   // AgentX's external contract caps an individual message at 16k characters.
   // Preserve persona and current controls, then spend the remaining bounded
   // budget on fallible longitudinal memory.
   const memory = cleanText(longitudinalSystemMessage(state, { conversationId }), 9000);
-  return [SYSTEM_PROMPT, memory, controlSystemMessage(control), safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
+  const opening = !conversationId && (state.sessionDigests?.length || state.experiments?.some(item => ['planned', 'active'].includes(item.status)))
+    ? SESSION_OPENING : '';
+  return [SYSTEM_PROMPT, memory, controlSystemMessage(control), opening, safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
 }
 
 function boundedContext(messages, { maxMessages = 40, maxMessageCharacters = 12000, maxTotalCharacters = 35000 } = {}) {

@@ -44,6 +44,10 @@ phrasing in each user message, in French and English. A match overrides the stan
 context and streams a `safety` event; the interface then shows Québec resources
 (911, 9-8-8, 1 866 APPELLE, 811) as call links. It does not depend on the model.
 
+A new conversation opens with a recap of the last session digest and the open
+experiments. The model is told it may connect to them in one sentence and ask how
+a planned experiment went, without forcing it.
+
 Normal and deep requests use Core's configured `analysis` and `deep_reasoning`
 routes. Review those routes against the accepted PsyX model/host before real
 private inference. There is no PsyX-owned provider: a routing failure does not

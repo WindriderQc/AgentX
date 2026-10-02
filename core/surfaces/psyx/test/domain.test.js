@@ -46,3 +46,11 @@ test('crisis detection favours explicit phrasing over figures of speech', () => 
   assert.ok(detectCrisis('Je veux mourir').resources.some(item => item.contact === '9-8-8'));
 });
 
+test('a new session is invited to connect to recent sessions and open experiments, never forced', () => {
+  const base = { activeThreads: [], notes: [], patterns: [], hypotheses: [], openLoops: [], experiments: [], sessionDigests: [] };
+  const control = normalizeControl({});
+  assert.doesNotMatch(composeSystemContext(base, control), /first message of a new session/);
+  const withHistory = { ...base, sessionDigests: [{ conversationId: 'old', summary: 'Hard week.', commitment: 'Pause before replying' }] };
+  assert.match(composeSystemContext(withHistory, control), /first message of a new session[\s\S]*Never force it/);
+  assert.doesNotMatch(composeSystemContext(withHistory, control, { conversationId: 'old' }), /first message of a new session/);
+});
