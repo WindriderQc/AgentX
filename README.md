@@ -72,6 +72,8 @@ The default `demo` profile includes chat, Ollama discovery, RAG and Benchmark.
 The `full` profile adds Nestor, Household and operational surfaces; Data is
 optional. Neither profile imports personal data or installs a private integration.
 See the guide before enabling family access or private content.
+[Personalization and private data](docs/INSTALLATION.md#personalize-your-instance-and-manage-private-data)
+explains instance settings, storage, backups and cleanup.
 
 ## Explore the code
 
