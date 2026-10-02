@@ -36,6 +36,11 @@ function normalizeDate(value, fallback = null) {
   return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
 }
 
+// A missing confidence stays unknown; Number(null) would read as 0%.
+function confidenceValue(value) {
+  return value == null || value === '' ? NaN : Number(value);
+}
+
 function normalizeStateItem(raw, key) {
   if (typeof raw === 'string') {
     const text = cleanText(raw, key === 'notes' ? 1000 : 500);
@@ -55,7 +60,7 @@ function normalizeStateItem(raw, key) {
   if (!raw || typeof raw !== 'object') return null;
   const text = cleanText(raw.text, key === 'notes' ? 1000 : 500);
   if (!text) return null;
-  const confidence = Number(raw.confidence);
+  const confidence = confidenceValue(raw.confidence);
   return {
     id: cleanText(raw.id || crypto.randomUUID(), 80),
     text,
@@ -80,7 +85,7 @@ function createStateItem(key, body = {}, source = 'user') {
     throw error;
   }
   const now = new Date().toISOString();
-  const confidence = Number(body.confidence);
+  const confidence = confidenceValue(body.confidence);
   return {
     id: crypto.randomUUID(),
     text,

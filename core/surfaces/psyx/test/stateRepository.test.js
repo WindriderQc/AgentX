@@ -231,3 +231,9 @@ test('experiments validate mutations, deduplicate, and reset only the PsyX longi
   assert.equal(reset.version, 2);
   assert.equal(reset.revision, 4);
 });
+
+test('a stored item without confidence stays unknown instead of reading as zero', () => {
+  const { normalizeStateItem } = require('../../../src/domains/psyx/stateRepository');
+  assert.equal(normalizeStateItem({ text: 'note', confidence: null }, 'notes').confidence, null);
+  assert.equal(normalizeStateItem({ text: 'note', confidence: 0 }, 'notes').confidence, 0);
+});
