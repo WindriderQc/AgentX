@@ -445,7 +445,7 @@ function createStateRepository({ collection, logger }) {
 
   // Background review output: a digest replaces the conversation's previous one;
   // proposals already known (memory, pending or settled by the user) are dropped.
-  async function recordReview(userId, { conversationId, digest = null, proposals: incoming = [], resetAt = null }) {
+  async function recordReview(userId, { conversationId, digest = null, proposals: incoming = [], resetAt = null, stillWanted = null }) {
     await ensureDocument(userId);
     const state = await read(userId);
     if ((state.resetAt || null) !== (resetAt || null)) return { added: 0, digest: null, skipped: 'reset', state };
@@ -456,6 +456,8 @@ function createStateRepository({ collection, logger }) {
       ...state.experiments.map((item) => proposals.proposalFingerprint('experiments', item.hypothesis, item.action))
     ]);
     const fresh = incoming.filter((item) => !known.has(item.fingerprint));
+    // A conversation deleted after the review started must not regain a digest.
+    if (stillWanted && !await stillWanted()) return { added: 0, digest: null, skipped: 'gone', state };
     const push = {};
     if (fresh.length) push.proposals = { $each: fresh, $slice: -proposals.PROPOSAL_LIMITS.pending };
     if (digest) push.sessionDigests = { $each: [digest], $slice: -proposals.PROPOSAL_LIMITS.digests };

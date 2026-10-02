@@ -81,3 +81,13 @@ test('crisis phrasing found by the adversarial review is detected, and the safet
   const later = [...context, { role: 'user', content: 'ok' }, { role: 'assistant', content: '…' }, { role: 'user', content: 'merci' }];
   assert.equal(detectRecentCrisis('on parle d’autre chose', later), null, 'two calmer messages end it');
 });
+
+test('crisis detection after the second review: past intent caught, everyday cuts and bruises not', () => {
+  const { detectCrisis } = require('../../../src/domains/psyx/safety');
+  assert.ok(detectCrisis('j’ai pensé à en finir'));
+  assert.ok(detectCrisis('je me coupe, je sais pas pourquoi'));
+  assert.ok(detectCrisis('je me suis coupée hier soir'));
+  for (const text of ['je me coupe les cheveux demain', 'je me suis blessé au genou', 'je me suis coupé avec un couteau en cuisinant']) {
+    assert.equal(detectCrisis(text), null, text);
+  }
+});

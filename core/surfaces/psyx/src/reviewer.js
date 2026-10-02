@@ -27,7 +27,8 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
     if (!review) throw Object.assign(new Error('The background review returned no usable result'), { code: 'PSYX_REVIEW_UNUSABLE' });
     // The conversation may have been deleted or archived, or memory reset, while the model was thinking.
     if (!jobs.has(key(userId, conversationId)) || !await conversationRepository.context(userId, conversationId, 1)) return { added: 0, digest: null };
-    const recorded = await stateRepository.recordReview(userId, { conversationId, ...review, resetAt });
+    const stillWanted = () => jobs.has(key(userId, conversationId));
+    const recorded = await stateRepository.recordReview(userId, { conversationId, ...review, resetAt, stillWanted });
     return { added: recorded.added, digest: Boolean(review.digest), model: result.model || null };
   }
 
@@ -37,7 +38,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
     job.rerun = false;
     job.timer = setTimeout(async () => {
       // Do not compete with a reply the user is waiting for; try again shortly.
-      if (isBusy(userId)) return start(userId, conversationId);
+      if (isBusy(userId)) return setTimeout(() => start(userId, conversationId), Math.max(1000, delayMs)).unref?.();
       job.status = 'running';
       job.startedAt = new Date().toISOString();
       try {

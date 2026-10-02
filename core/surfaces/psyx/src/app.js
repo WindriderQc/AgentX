@@ -226,7 +226,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const deleted = await conversationRepository.permanentlyDelete(res.locals.psyxUserId, req.params.id);
     if (!deleted) return res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
     review.forget?.(res.locals.psyxUserId, req.params.id);
-    await stateRepository.forgetConversation(res.locals.psyxUserId, cleanText(req.params.id, 80));
+    // The conversation is gone either way; a failed memory cleanup is logged, not reported as a failed delete.
+    await stateRepository.forgetConversation(res.locals.psyxUserId, cleanText(req.params.id, 80))
+      .catch(error => logger.error?.('PsyX could not forget a deleted conversation', { message: error.message }));
     return responseData(res, { id: req.params.id });
   }));
 
@@ -288,7 +290,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const longitudinal = await stateRepository.read(userId);
     const recommendation = conversationId ? longitudinal.sessionDigests?.find(item => item.conversationId === conversationId)?.next : null;
     // A crisis signal overrides any stance: stay with the person, answer promptly.
-    const safety = action ? null : detectRecentCrisis(input, context || []);
+    // Actions carry no words of their own, but a crisis in the last messages still holds.
+    const safety = detectRecentCrisis(action ? '' : input, context || []);
     const resolved = domain.resolveControl(requested, recommendation);
     const control = safety ? { ...resolved, mode: 'talk', depth: 'normal', reason: '' } : resolved;
     const system = domain.composeSystemContext(longitudinal, control, { conversationId, safety });

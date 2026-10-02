@@ -195,7 +195,7 @@ test('a review waits while the user is being answered and drops results for a co
   await tick(30);
   assert.equal(calls.complete.length, 0, 'no review while a reply streams');
   busy = false;
-  await tick(30);
+  await tick(1100); // the busy retry waits at least a second
   assert.equal(calls.complete.length, 1);
   exists = false;
   release();
