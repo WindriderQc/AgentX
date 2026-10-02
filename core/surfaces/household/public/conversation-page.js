@@ -57,6 +57,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         </div>
       </details>
       <section id="conversationVisual" class="conversation-board conversation-visual" aria-label="Images" hidden></section>
+      <div id="conversationResume" class="conversation-resume" role="region" aria-label="Reprendre" hidden></div>
       <div id="conversationTranscript" class="conversation-transcript" role="log" aria-label="Transcript" aria-live="polite"><p class="empty">Nos échanges apparaîtront ici.</p></div>
       <section id="conversationBoard" class="conversation-board" aria-label="À l’écran" hidden></section>
       <section id="conversationBrain" class="conversation-board conversation-brain" aria-label="Pistes" hidden></section>
@@ -205,7 +206,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     inference: { open: !family && open.checked }, voice: { presentation: chosenVoice(), selections: P.selections({ fr: voice.value, en: voiceEnglish.value }) }, language: language.value,
     visual: visualSelection(), interruption: interruption.checked });
   const message = (role, text, interrupted = false, sound = null, attachments = []) => {
-    transcript.querySelector('.empty')?.remove();
+    transcript.querySelector('.empty')?.remove(); el('conversationResume').hidden = true;
     let row = role === 'assistant' ? partial : null;
     if (!row) { row = document.createElement('div'); row.className = `conversation-message ${role}`; transcript.append(row); }
     row.textContent = role === 'assistant' && sound ? NestorSpeech.withoutMediaReferences(text) : text; partial = null;
@@ -568,7 +569,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationPause').onclick = () => { conversation.stop(true); };
   el('conversationEnd').onclick = () => { stopPreview(); conversation.stop(); void releaseOpen(); restoreProfile(); describe(); showTools(null); };
   el('conversationNew').onclick = () => {
-    setHistoryOpen(false); stopPreview(); conversation.stop(); void releaseOpen(); partial = null;
+    el('conversationResume').hidden = true; setHistoryOpen(false); stopPreview(); conversation.stop(); void releaseOpen(); partial = null;
     transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; board.clear(); brain.reset();
     personalNotes.show(null);
     showTools(null);
@@ -639,10 +640,44 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationHistory').onkeydown = event => {
     if (event.key === 'Escape') { event.preventDefault(); setHistoryOpen(false, true); }
   };
+  // Opens a saved conversation from Core: the same on every device (#120).
+  async function resumeSession(session, button) {
+    el('conversationResume').hidden = true; stopPreview(); conversation.stop();
+    void releaseOpen();
+    const epoch = conversation.epoch;
+    button.disabled = true;
+    el('conversationStatus').textContent = 'Chargement de la conversation…';
+    try {
+      const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/history`);
+      if (epoch !== conversation.epoch) return;
+      conversation.session = data.session;
+      draftFiles = []; renderDraftFiles();
+      const saved = data.session;
+      if (saved.persona && !personas.some(p => p.id === saved.persona.id)) { personas.push(saved.persona); picker.add(new Option(saved.persona.name, saved.persona.id)); }
+      if (!agents.some(agent => agent.id === (saved.agentId || 'main'))) {
+        agents.push({ id: saved.agentId, name: saved.agentId }); agentPicker.add(new Option(saved.agentId, saved.agentId));
+      }
+      agentPicker.value = saved.agentId || 'main';
+      backendPicker.value = saved.backend || runtime?.defaultBackend || 'openclaw';
+      picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open; voice.value = saved.voice?.presentation || '';
+      language.value = data.session.voice?.language || 'auto';
+      appearance.value = data.session.visual?.style || ''; color.value = data.session.visual?.color || '#52cfc5';
+      transcript.replaceChildren(); partial = null; board.clear(); brain.reset();
+      (data.turns || []).forEach(turn => {
+        if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);
+        if (turn.replyText) message('assistant', turn.replyText, turn.interrupted);
+        board.restore(turn.display);
+      });
+      personalNotes.show(data.turns?.at(-1)?.personalContinuity);
+      showTools(data.turns?.at(-1)?.toolEvidence);
+      describe(); conversation.show('paused'); setHistoryOpen(false); el('conversationStart').focus();
+    } catch (error) { if (epoch === conversation.epoch) el('conversationStatus').textContent = error.message; }
+    finally { button.disabled = false; }
+  }
   async function loadRecent(request) {
     const recent = el('conversationRecent'); recent.textContent = 'Chargement des échanges…';
     try {
-      const { sessions } = await api(sessionBase + '/recent?limit=5');
+      const { sessions } = await api(sessionBase + '/recent?limit=5' + (family ? '' : '&preview=true'));
       if (request !== historyRequest) return;
       recent.replaceChildren();
       for (const session of (sessions || [])) {
@@ -659,39 +694,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         const when = date && Number.isFinite(date.getTime()) ? date.toLocaleString('fr-CA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Date unavailable';
         const count = Number.isFinite(session.turnCount) ? ' · ' + session.turnCount + (session.turnCount === 1 ? ' échange' : ' échanges') : '';
         button.querySelector('.conversation-history-date').textContent = when + count;
-        button.onclick = async () => {
-          stopPreview(); conversation.stop();
-          void releaseOpen();
-          const epoch = conversation.epoch;
-          button.disabled = true;
-          el('conversationStatus').textContent = 'Chargement de la conversation…';
-          try {
-            const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/history`);
-            if (epoch !== conversation.epoch) return;
-            conversation.session = data.session;
-            draftFiles = []; renderDraftFiles();
-            const saved = data.session;
-            if (saved.persona && !personas.some(p => p.id === saved.persona.id)) { personas.push(saved.persona); picker.add(new Option(saved.persona.name, saved.persona.id)); }
-            if (!agents.some(agent => agent.id === (saved.agentId || 'main'))) {
-              agents.push({ id: saved.agentId, name: saved.agentId }); agentPicker.add(new Option(saved.agentId, saved.agentId));
-            }
-            agentPicker.value = saved.agentId || 'main';
-            backendPicker.value = saved.backend || runtime?.defaultBackend || 'openclaw';
-            picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open; voice.value = saved.voice?.presentation || '';
-            language.value = data.session.voice?.language || 'auto';
-            appearance.value = data.session.visual?.style || ''; color.value = data.session.visual?.color || '#52cfc5';
-            transcript.replaceChildren(); partial = null; board.clear(); brain.reset();
-            (data.turns || []).forEach(turn => {
-              if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);
-              if (turn.replyText) message('assistant', turn.replyText, turn.interrupted);
-              board.restore(turn.display);
-            });
-            personalNotes.show(data.turns?.at(-1)?.personalContinuity);
-            showTools(data.turns?.at(-1)?.toolEvidence);
-            describe(); conversation.show('paused'); setHistoryOpen(false); el('conversationStart').focus();
-          } catch (error) { if (epoch === conversation.epoch) el('conversationStatus').textContent = error.message; }
-          finally { button.disabled = false; }
-        };
+        button.onclick = () => resumeSession(session, button);
         const item = document.createElement('div'); item.className = 'conversation-history-entry';
         item.append(button);
         if (!family) {
@@ -717,6 +720,29 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (request === historyRequest) recent.textContent = 'Les conversations récentes sont indisponibles. Ferme puis rouvre l’historique pour réessayer.';
     }
   }
+  // Super Dad offers its latest conversation on every device, so an exchange
+  // started on the phone continues on the PC with one tap (#120). Famille does not.
+  const RESUME_WINDOW_MS = 24 * 60 * 60 * 1000;
+  async function offerResume() {
+    const card = el('conversationResume');
+    try {
+      const { sessions = [] } = await api(sessionBase + '/recent?limit=1&preview=true');
+      const [latest] = sessions, at = Date.parse(latest?.lastTurnAt || '');
+      if (!latest || !Number.isFinite(at) || Date.now() - at > RESUME_WINDOW_MS
+        || conversation.session?.sessionId === latest.sessionId || transcript.querySelector('.conversation-message')) return;
+      const minutes = Math.max(1, Math.round((Date.now() - at) / 60000));
+      card.innerHTML = '<p><strong>Reprendre la dernière conversation</strong> <span class="muted"></span></p>'
+        + '<p class="conversation-resume-preview"></p><div class="conversation-resume-actions">'
+        + '<button type="button" class="button primary">Reprendre</button><button type="button" class="button">Ignorer</button></div>';
+      card.querySelector('.muted').textContent = '· ' + (minutes < 60 ? `il y a ${minutes} min` : `il y a ${Math.round(minutes / 60)} h`);
+      card.querySelector('.conversation-resume-preview').textContent = latest.lastTurn?.inputPreview || latest.lastTurn?.replyPreview || '';
+      const [resume, dismiss] = card.querySelectorAll('button');
+      resume.onclick = () => resumeSession(latest, resume);
+      dismiss.onclick = () => { card.hidden = true; };
+      card.hidden = false;
+    } catch { card.hidden = true; }
+  }
+  if (!family) void offerResume();
   if (autoStart && !document.hidden) {
     try {
       const permission = await navigator.permissions?.query({ name: 'microphone' });
