@@ -155,11 +155,11 @@ export default definePluginEntry({
 
     api.on("after_tool_call", async (event, context) => {
       const workspace = householdWorkspace(context, api.config, resolveWorkspace) || (privateOwnerContext(context, api.config) ? workspaceFor(context) : null);
-      if (workspace) await recordTool(workspace, event, context);
+      if (workspace) await recordTool(workspace, event, context, { config: api.config, pluginConfig: api.pluginConfig });
     });
     api.on("agent_end", async (event, context) => {
       const workspace = householdWorkspace(context, api.config, resolveWorkspace) || (privateOwnerContext(context, api.config) ? workspaceFor(context) : null);
-      if (workspace) await recordRun(workspace, event, context);
+      if (workspace) await recordRun(workspace, event, context, { config: api.config, pluginConfig: api.pluginConfig });
     });
   },
 });

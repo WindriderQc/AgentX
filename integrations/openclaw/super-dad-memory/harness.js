@@ -1,4 +1,5 @@
 import { digest, nowIso, readState, updateState } from "./store.js";
+import { nativeActionProvenance } from '../action-provenance.mjs';
 
 export function decodeResult(result) {
   if (result?.isError) return { error: "tool_error" };
@@ -46,7 +47,7 @@ export async function contextFor(workspace, query, { includeMemory = false, incl
   return result;
 }
 
-export async function recordTool(workspace, event, context) {
+export async function recordTool(workspace, event, context, { config, pluginConfig } = {}) {
   const tool = String(event.toolName || "");
   if (!tool || ['tool_call', 'tool_search'].includes(tool)) return;
   const data = decodeResult(event.result);
@@ -72,19 +73,21 @@ export async function recordTool(workspace, event, context) {
     { id, tool, status: failed ? "failed" : proved ? "verified" : "unknown", resultRef,
       runId: context.runId || event.runId || null, sessionKey: context.sessionKey || null,
       observed: event.result !== undefined,
+      provenance: nativeActionProvenance(context, config, pluginConfig),
       ...(soundId ? { soundId } : {}),
       deliveryState: "unknown", at: nowIso() }].slice(-40) }));
 }
 
 // Project native lifecycle evidence into the existing private receipt capsule.
 // This does not execute, retry, schedule or retain another conversation.
-export async function recordRun(workspace, event, context) {
+export async function recordRun(workspace, event, context, { config, pluginConfig } = {}) {
   const runId = event.runId || context.runId;
   if (!runId) return;
   return updateState(workspace, state => ({ ...state,
     runs: [...(state.runs || []).filter(run => run.runId !== runId), {
       runId, sessionKey: context.sessionKey, status: event.success ? "completed" : "failed",
       model: context.modelId || null, provider: context.modelProviderId || null,
+      provenance: nativeActionProvenance(context, config, pluginConfig),
       at: nowIso(), durationMs: event.durationMs || null
     }].slice(-40)
   }));
