@@ -207,3 +207,25 @@ test('a review waits while the user is being answered and drops results for a co
   await tick(30);
   assert.equal(reviewer.status('u', 'd').status, 'idle');
 });
+
+test('check-ins are recorded through the protected API only', async () => {
+  const recorded = [];
+  const database = {
+    ping: async () => true,
+    stateRepository: { read: async () => emptyState(), addCheckIn: async (userId, body) => { recorded.push([userId, body]); return { state: emptyState() }; } },
+    conversationRepository: {}
+  };
+  const config = { env: 'test', accessMode: 'token', accessToken: 'psyx-secret', sessionTtlMs: 3600000, loopbackBypass: false, maxBodyBytes: 262144, requestTimeoutMs: 1000, voice: { mode: 'disabled' } };
+  const reviewer = { enabled: false, schedule: () => false, status: () => ({ status: 'disabled' }) };
+  const server = createApp({ config, database, provider: { id: 'x' }, reviewer, logger: { error() {} } }).listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/api/psyx/state/check-ins`;
+  try {
+    assert.equal((await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"score":3}' })).status, 401);
+    const response = await fetch(url, { method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' }, body: JSON.stringify({ score: 6, phase: 'start', conversationId: 'c1', extra: 'ignored' }) });
+    assert.equal(response.status, 200);
+    assert.deepEqual(recorded, [['default', { score: 6, phase: 'start', conversationId: 'c1' }]]);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});

@@ -6,7 +6,7 @@
 // helpers these functions use at call time.
 
 const PROPOSAL_LABELS = {
-  activeThreads: 'Sujet', notes: 'Note', patterns: 'Tendance', hypotheses: 'Hypothèse', openLoops: 'Question ouverte', experiments: 'Expérience'
+  activeThreads: 'Sujet', notes: 'Note', patterns: 'Tendance', hypotheses: 'Hypothèse', openLoops: 'Question ouverte', experiments: 'Expérience', experimentResult: 'Résultat d’expérience'
 };
 const REVIEW_POLL_MS = 2500;
 const REVIEW_POLL_LIMIT_MS = 10 * 60 * 1000;
@@ -94,6 +94,13 @@ async function resumeReviewStatus(conversationId) {
 }
 
 function proposalBody(item) {
+  if (item.kind === 'experimentResult') {
+    const experiment = (state.psyxState?.experiments || []).find((entry) => entry.id === item.experimentId);
+    const result = review.editing === item.id
+      ? `<textarea data-proposal-text="${escapeHtml(item.id)}" rows="3" maxlength="1500" aria-label="Modifier le résultat">${escapeHtml(item.result)}</textarea>`
+      : item.result ? `<span>${escapeHtml(item.result)}</span>` : '';
+    return `<strong>${escapeHtml(experiment?.action || 'Expérience')}</strong><span><b>Résultat :</b> ${escapeHtml(OUTCOME_LABELS[item.outcome] || item.outcome)}</span>${result}`;
+  }
   if (item.kind === 'experiments') {
     return `<strong>${escapeHtml(item.hypothesis)}</strong><span><b>Action :</b> ${escapeHtml(item.action)}</span>${item.expectedSignal ? `<span><b>Signal :</b> ${escapeHtml(item.expectedSignal)}</span>` : ''}`;
   }
@@ -155,7 +162,7 @@ function wireReview() {
     if (accept) {
       const id = accept.dataset.proposalAccept;
       const text = $('proposalsList').querySelector(`[data-proposal-text="${CSS.escape(id)}"]`)?.value.trim();
-      await settleProposal(id, 'accept', text ? { text } : {});
+      await settleProposal(id, 'accept', text ? { text, result: text } : {});
       return;
     }
     const reject = event.target.closest('[data-proposal-reject]');

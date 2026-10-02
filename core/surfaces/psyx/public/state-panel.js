@@ -77,6 +77,7 @@ function renderExperiments() {
       <strong>${escapeHtml(item.hypothesis || 'Expérience')}</strong>
       <p><b>Action :</b> ${escapeHtml(item.action || '—')}</p>
       ${item.expectedSignal ? `<p><b>Signal :</b> ${escapeHtml(item.expectedSignal)}</p>` : ''}
+      ${experimentFollowUpHtml(item)}
       <textarea data-experiment-result="${escapeHtml(item.id)}" rows="2" placeholder="Qu’est-ce qui s’est passé?">${escapeHtml(item.result || '')}</textarea>
       <button type="button" class="experiment-save" data-experiment-save="${escapeHtml(item.id)}">Enregistrer le résultat</button>
     </article>
@@ -91,6 +92,7 @@ function renderPsyXState() {
   renderStateItems('hypothesesList', 'hypotheses');
   renderExperiments();
   renderProposals();
+  renderFollowUp();
   updateControlExplanation();
   renderSessions();
   renderOpening();

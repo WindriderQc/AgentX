@@ -5,8 +5,9 @@
 // Proposals never reach the prompt until accepted; digests do.
 
 const crypto = require('crypto');
+const { EXPERIMENT_OUTCOMES } = require('./followUp');
 
-const PROPOSAL_KINDS = Object.freeze(['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops', 'experiments']);
+const PROPOSAL_KINDS = Object.freeze(['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops', 'experiments', 'experimentResult']);
 const PROPOSAL_LIMITS = Object.freeze({ pending: 30, perReview: 5, settled: 200, digests: 50 });
 // Same keys as the domain's MODE_CONFIG and DEPTH_CONFIG (asserted by the domain tests).
 const STANCES = Object.freeze(['talk', 'analyze', 'challenge', 'plan']);
@@ -47,6 +48,11 @@ function normalizeProposal(raw, { conversationId = null, now = new Date().toISOS
     conversationId: clean(raw.conversationId || conversationId, 80) || null,
     createdAt: normalizeDate(raw.createdAt, now)
   };
+  if (raw.kind === 'experimentResult') {
+    const experimentId = clean(raw.experimentId, 80);
+    if (!experimentId || !EXPERIMENT_OUTCOMES.includes(raw.outcome)) return null;
+    return { ...base, experimentId, outcome: raw.outcome, result: clean(raw.result, 1500), fingerprint: fingerprint(raw.kind, experimentId, raw.outcome) };
+  }
   if (raw.kind === 'experiments') {
     const hypothesis = clean(raw.hypothesis, 1000);
     const action = clean(raw.action, 1000);

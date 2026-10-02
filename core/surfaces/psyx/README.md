@@ -64,6 +64,14 @@ only after the admitted stream has a terminal result and settled host receipt.
 The transcript is never silently sliced; request
 context remains bounded to the latest 40 messages and the domain text budget.
 
+Experiments carry a check-in date (three days by default) and an outcome: worked,
+partly, did not work, or not done, which reopens it for three more days. Due
+experiments are flagged to the model and in the interface, and the review may
+propose an outcome the user reported in conversation, applied only once accepted.
+The user can also record 0-10 ratings of how heavy things feel, at the start of a
+session or once during a long one; the latest five reach the prompt and Memory
+shows their trend.
+
 `eval/` holds a small set of synthetic scenarios, one per therapeutic skill, and a
 runner that builds each reply exactly as the chat does (prompt, stance, state,
 safety check), asks Core's router for it and scores it with deterministic checks

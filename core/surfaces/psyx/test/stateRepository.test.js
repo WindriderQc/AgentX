@@ -330,3 +330,60 @@ test('an interrupted digest replacement still reads as one digest per conversati
   ]);
   assert.deepEqual(digests.map((item) => `${item.conversationId}:${item.summary}`), ['b:other', 'a:new']);
 });
+
+test('experiments come due for a check-in, record an outcome, and not done asks again later', async () => {
+  const { isDue, DAY_MS } = require('../../../src/domains/psyx/followUp');
+  const { stateForPrompt } = require('../../../src/domains/psyx/stateRepository');
+  const harness = createHarness();
+  await harness.repository.ensureInfrastructure();
+  const created = await harness.repository.addExperiment('default', { hypothesis: 'Fatigue lowers tolerance', action: 'Ten minutes alone', checkInDays: 2 });
+  const inTwoDays = new Date(created.item.checkInAt).getTime() - Date.now();
+  assert.ok(Math.abs(inTwoDays - 2 * DAY_MS) < 60000);
+  assert.equal(isDue(created.item), false);
+  assert.equal(isDue(created.item, Date.now() + 3 * DAY_MS), true);
+
+  // Make it due now, then check what the prompt sees.
+  harness.collection.documents[0].experiments[0].checkInAt = new Date(Date.now() - 1000).toISOString();
+  assert.equal(stateForPrompt(await harness.repository.read('default')).experiments[0].due, true);
+
+  const skipped = await harness.repository.updateExperiment('default', created.item.id, { outcome: 'not_done' });
+  const reopened = skipped.state.experiments[0];
+  assert.deepEqual([reopened.status, reopened.outcome, isDue(reopened)], ['planned', 'not_done', false]);
+
+  const done = await harness.repository.updateExperiment('default', created.item.id, { outcome: 'partly', result: 'Two evenings out of four' });
+  assert.deepEqual([done.state.experiments[0].status, done.state.experiments[0].outcome, done.state.experiments[0].result], ['completed', 'partly', 'Two evenings out of four']);
+  await assert.rejects(harness.repository.updateExperiment('default', created.item.id, { outcome: 'great' }), /Invalid experiment outcome/);
+});
+
+test('an experiment result heard by the review applies only once the user accepts it', async () => {
+  const { readReview } = require('../../../src/domains/psyx/review');
+  const harness = createHarness();
+  await harness.repository.ensureInfrastructure();
+  const { item: experiment } = await harness.repository.addExperiment('default', { hypothesis: 'A pause helps', action: 'Breathe ten seconds' });
+  const raw = JSON.stringify({ proposals: [
+    { kind: 'experimentResult', experimentId: experiment.id, outcome: 'worked', result: 'Fewer outbursts', evidence: ['ça a marché trois soirs'] },
+    { kind: 'experimentResult', experimentId: 'unknown', outcome: 'worked', evidence: ['x'] }
+  ] });
+  const review = readReview(raw, { conversationId: 'c1', openExperimentIds: [experiment.id] });
+  assert.equal(review.proposals.length, 1);
+  const recorded = await harness.repository.recordReview('default', { conversationId: 'c1', ...review });
+  assert.equal(recorded.state.experiments[0].status, 'planned', 'nothing changes before acceptance');
+
+  const accepted = await harness.repository.acceptProposal('default', recorded.state.proposals[0].id, { result: 'Fewer outbursts, three evenings' });
+  const updated = accepted.state.experiments[0];
+  assert.deepEqual([updated.status, updated.outcome, updated.result], ['completed', 'worked', 'Fewer outbursts, three evenings']);
+  assert.deepEqual(accepted.state.proposals, []);
+});
+
+test('check-ins are bounded 0-10 self-ratings that the prompt sees', async () => {
+  const { stateForPrompt } = require('../../../src/domains/psyx/stateRepository');
+  const harness = createHarness();
+  await harness.repository.ensureInfrastructure();
+  for (const score of [8, 6, 5]) await harness.repository.addCheckIn('default', { score, phase: 'start', conversationId: 'c1' });
+  await assert.rejects(harness.repository.addCheckIn('default', { score: 11 }), /0 to 10/);
+  await assert.rejects(harness.repository.addCheckIn('default', { score: 4.5 }), /0 to 10/);
+  const state = await harness.repository.read('default');
+  assert.deepEqual(state.checkIns.map((item) => item.score), [8, 6, 5]);
+  assert.deepEqual(stateForPrompt(state).recentCheckIns.map((item) => item.score), [8, 6, 5]);
+  assert.deepEqual((await harness.repository.reset('default')).checkIns, []);
+});
