@@ -61,6 +61,7 @@ const handleChatRequest = async ({
     persona,
     promptVersion,
     conversationId,
+    clientTurnId = null,
     useRag,
     ragEnabled,
     ragTopK,
@@ -313,7 +314,7 @@ const handleChatRequest = async ({
     // Persist conversation
     const routingPayload = buildRoutingPayload(routingInfo, effectiveModel, effectiveTarget, autoRoute);
     const { conversation, assistantMessageId } = await persistConversation({
-        userId, conversationId, model: effectiveModel,
+        userId, conversationId, clientTurnId, model: effectiveModel,
         effectiveSystemPrompt, message, assistantContent: assistantMessageContent,
         activePrompt,
         metadata: { thinking, options, webSearchResults, routingInfo: routingPayload },

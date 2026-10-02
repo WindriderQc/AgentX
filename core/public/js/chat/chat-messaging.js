@@ -8,6 +8,7 @@ import {
 } from './chat-config.js';
 import { fetchWithDeadline } from './chat-network.js';
 import { buildRoutingInfo } from './chat-routing-info.js';
+import { errorFromResponse, outcomeAttemptId, persistTerminalTurn } from './chat-turn-outcome.js';
 
 export { buildRoutingInfo };
 
@@ -834,6 +835,12 @@ export function chatFailureDetails(error) {
     guidance = 'Retry the turn. The interrupted attempt remains in history.';
     status = 'Response interrupted';
     tone = 'warning';
+  } else if (/conversation_not_found/.test(normalized)) {
+    guidance = 'This conversation is archived or no longer exists. Start a new chat to continue.';
+    status = 'Conversation unavailable';
+  } else if (/conversation_persist_failed/.test(normalized)) {
+    guidance = 'The reply was generated but not saved to history. Retry the turn.';
+    status = 'Reply not saved';
   } else if (/no readable stream|streaming not supported/.test(normalized)) {
     guidance = 'Turn streaming off and retry; this browser or proxy did not provide a readable stream.';
     status = 'Streaming unavailable';
@@ -843,65 +850,13 @@ export function chatFailureDetails(error) {
   return { code: code || null, message, guidance, status, tone };
 }
 
-function outcomeAttemptId(sourceUserMessageId) {
-  const randomPart = globalThis.crypto?.randomUUID?.()
-    || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  return `terminal:${String(sourceUserMessageId || 'turn').slice(0, 80)}:${randomPart}`.slice(0, 160);
-}
-
-async function errorFromResponse(response, fallbackMessage) {
-  const raw = await response.text().catch(() => '');
-  let parsed = null;
-  try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
-  const error = new Error(parsed?.message || parsed?.error || raw || fallbackMessage || `Request failed (${response.status})`);
-  error.code = parsed?.code || null;
-  error.statusCode = response.status;
-  return error;
-}
-
-async function persistTerminalTurn(ctx, {
-  clientTurnId,
-  sourceUserMessageId = null,
-  userMessage,
-  assistantContent,
-  outcome,
-  model,
-  error = null
-}) {
-  const { state, helpers } = ctx;
-  const response = await fetch('/api/history/turn-outcome', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({
-      conversationId: state.conversationId,
-      clientTurnId,
-      sourceUserMessageId,
-      userMessage,
-      assistantContent,
-      outcome,
-      model: model || 'unknown',
-      errorCode: error?.code || null,
-      errorMessage: error?.message || null
-    })
-  });
-  if (!response.ok) throw await errorFromResponse(response, 'Failed to preserve the chat turn.');
-  const envelope = await response.json();
-  if (envelope.status !== 'success' || !envelope.data?.conversationId) {
-    throw new Error('The history service returned no conversation receipt.');
-  }
-  state.conversationId = envelope.data.conversationId;
-  await helpers.loadHistoryList();
-  await helpers.loadConversation(state.conversationId, true);
-  return envelope.data;
-}
-
 export async function sendMessageStreamFetch(
   ctx,
   msgInput,
   modelInput,
   currentUserMessageId = null,
-  turnAction = null
+  turnAction = null,
+  clientTurnId = null
 ) {
   const { elements, state, defaults, helpers } = ctx;
   const message = msgInput || elements.messageInput.value.trim();
@@ -914,7 +869,10 @@ export async function sendMessageStreamFetch(
     currentUserMessageId,
     turnAction
   );
-  const terminalAttemptId = outcomeAttemptId(currentUserMessageId);
+  // One id per turn: the server stores a repeated send once, and a failed
+  // turn's outcome record agrees with the chat request it belongs to.
+  const terminalAttemptId = clientTurnId || outcomeAttemptId(currentUserMessageId);
+  payload.clientTurnId = terminalAttemptId;
 
   const assistantMessageDiv = document.createElement('div');
   assistantMessageDiv.className = 'message assistant';
@@ -1129,7 +1087,7 @@ export async function sendMessageStreamFetch(
     console.error('Fetch streaming error:', streamError);
     if (elements.chatWindow.contains(assistantMessageDiv)) elements.chatWindow.removeChild(assistantMessageDiv);
     const failure = chatFailureDetails(streamError);
-    const failedContent = `\u26a0\ufe0f ${failure.message}\n\n${failure.guidance}`;
+    const failedContent = `${fullContent ? `${fullContent}\n\n` : ''}\u26a0\ufe0f ${failure.message}\n\n${failure.guidance}`;
     helpers.appendMessage(
       {
         role: 'assistant',
@@ -1257,7 +1215,7 @@ export async function sendMessage(ctx, turnAction = null) {
   elements.sendBtn.textContent = 'Sending\u2026';
 
   if (elements.streamToggle && elements.streamToggle.checked) {
-    await sendMessageStreamFetch(ctx, message, model, currentUserMessageId, requestTurnAction);
+    await sendMessageStreamFetch(ctx, message, model, currentUserMessageId, requestTurnAction, terminalAttemptId);
     return;
   }
 
@@ -1271,6 +1229,7 @@ export async function sendMessage(ctx, turnAction = null) {
         currentUserMessageId,
         requestTurnAction
       ),
+      clientTurnId: terminalAttemptId,
       stream: false
     };
     const res = await fetch('/api/chat', {

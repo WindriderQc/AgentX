@@ -5,10 +5,11 @@ const path = require('path');
 const vm = require('vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../../public/js/chat/chat-messaging.js'), 'utf8');
+const outcomeSource = fs.readFileSync(path.join(__dirname, '../../public/js/chat/chat-turn-outcome.js'), 'utf8');
 
 function loadFailureHelper() {
   const start = source.indexOf('function safeChatFailureMessage');
-  const end = source.indexOf('\nasync function errorFromResponse', start);
+  const end = source.indexOf('\nexport async function sendMessageStreamFetch', start);
   if (start < 0 || end < 0) throw new Error('chatFailureDetails source not found');
   const helperSource = source.slice(start, end).replace(/export function/g, 'function');
   const context = {};
@@ -56,8 +57,15 @@ describe('Playground failure recovery', () => {
     expect(result.message).not.toContain('super-secret');
   });
 
+  test('an unsaved reply or a vanished conversation is reported, never shown as saved', () => {
+    expect(chatFailureDetails({ code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found or archived.' }))
+      .toEqual(expect.objectContaining({ status: 'Conversation unavailable', guidance: expect.stringContaining('Start a new chat') }));
+    expect(chatFailureDetails({ code: 'CONVERSATION_PERSIST_FAILED', message: 'The reply could not be saved.' }))
+      .toEqual(expect.objectContaining({ status: 'Reply not saved', tone: 'error' }));
+  });
+
   test('persists stopped and failed outcomes instead of marking them ephemeral', () => {
-    expect(source).toContain("fetch('/api/history/turn-outcome'");
+    expect(outcomeSource).toContain("fetch('/api/history/turn-outcome'");
     expect(source).toContain("outcome: 'stopped'");
     expect(source).toContain("outcome: 'failed'");
     expect(source).toContain('clientTurnId: terminalAttemptId');

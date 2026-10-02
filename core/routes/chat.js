@@ -77,6 +77,7 @@ async function resolveChatRequest(payload, userId) {
     promptVersion,
     options = {},
     conversationId,
+    clientTurnId,
     useRag,
     ragEnabled,
     ragTopK,
@@ -103,6 +104,11 @@ async function resolveChatRequest(payload, userId) {
     invalid('messages must be an array of messages with a role and string content');
   }
   if (!options || typeof options !== 'object' || Array.isArray(options)) invalid('options must be an object');
+  // One id per client turn: a repeated request stores the turn once.
+  if (clientTurnId !== undefined && clientTurnId !== null && (typeof clientTurnId !== 'string'
+      || !/^[\x21-\x7e]{1,160}$/.test(clientTurnId))) {
+    invalid('clientTurnId must be 1 to 160 printable characters');
+  }
 
   // Omitted target stays omitted so the router can choose the host.
   const allowlistedTarget = resolveAllowlistedTarget(target);
@@ -110,6 +116,7 @@ async function resolveChatRequest(payload, userId) {
 
   return {
     model, message, messages, system, persona, promptVersion, conversationId,
+    clientTurnId: clientTurnId || null,
     useRag, ragEnabled, ragTopK, ragFilters, autoRoute, taskType, enableWebSearch, think,
     options: { ...options, ...(ragCompress !== undefined ? { ragCompress: ragCompress === true } : {}) },
     target: allowlistedTarget.target,

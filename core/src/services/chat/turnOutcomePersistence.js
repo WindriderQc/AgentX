@@ -73,12 +73,21 @@ function idOf(value) {
   return String(value);
 }
 
-function findOutcomeMessage(conversation, clientTurnId) {
-  return Array.from(conversation?.messages || []).find(message => (
-    message?.role === 'assistant'
-    && message?.metadata?.clientTurnId === clientTurnId
-    && OUTCOMES.has(message?.metadata?.outcome)
-  )) || null;
+// The receipt of a turn already stored under this clientTurnId, whether it was
+// recorded here or by the main chat path (which then completed after all).
+function storedTurnReceipt(conversation, clientTurnId) {
+  const turn = Array.from(conversation?.messages || [])
+    .filter(message => message?.metadata?.clientTurnId === clientTurnId);
+  const reply = turn.find(message => message.role === 'assistant');
+  if (!reply) return null;
+  const user = turn.find(message => message.role === 'user');
+  return {
+    conversationId: idOf(conversation._id),
+    userMessageId: idOf(reply.metadata?.sourceUserMessageId || user?._id),
+    assistantMessageId: idOf(reply._id),
+    outcome: reply.metadata?.outcome || 'completed',
+    idempotent: true
+  };
 }
 
 // Only Playground conversations owned by the server-resolved identity are
@@ -92,72 +101,15 @@ function playgroundScope(userId) {
   });
 }
 
-// userId is the server-resolved identity and is passed separately from the
-// client body so no body field can select the owner or scope.
-async function persistTurnOutcome(userId, rawInput = {}) {
-  const owner = typeof userId === 'string' ? userId.trim() : '';
-  if (!owner || owner.startsWith('surface:')) {
-    throw new TurnOutcomeError('Conversation not found', 404, 'CONVERSATION_NOT_FOUND');
-  }
-  const input = normalizeTurnOutcome(rawInput);
-  let conversation = null;
-
-  if (input.conversationId) {
-    conversation = await Conversation.findOne({
-      ...playgroundScope(owner),
-      _id: input.conversationId
-    });
-    if (!conversation) {
-      throw new TurnOutcomeError('Conversation not found', 404, 'CONVERSATION_NOT_FOUND');
-    }
-  } else {
-    conversation = await Conversation.findOne({
-      ...playgroundScope(owner),
-      'messages.metadata.clientTurnId': input.clientTurnId
-    });
-  }
-
-  const existing = findOutcomeMessage(conversation, input.clientTurnId);
-  if (existing) {
-    const sourceUserMessageId = existing.metadata?.sourceUserMessageId || null;
-    return {
-      conversationId: idOf(conversation._id),
-      userMessageId: idOf(sourceUserMessageId),
-      assistantMessageId: idOf(existing._id),
-      outcome: existing.metadata.outcome,
-      idempotent: true
-    };
-  }
-
-  if (!conversation) {
-    conversation = new Conversation({
-      userId: owner,
-      model: input.model,
-      source: 'agentx',
-      title: input.userMessage.slice(0, 50) || 'Agent X Chat',
-      messages: []
-    });
-  }
-
-  let userMessage = null;
-  if (input.sourceUserMessageId) {
-    userMessage = Array.from(conversation.messages || []).find(message => (
-      message?.role === 'user' && idOf(message?._id) === input.sourceUserMessageId
-    )) || null;
-    if (!userMessage) {
-      throw new TurnOutcomeError('Source user message not found', 400, 'SOURCE_USER_MESSAGE_NOT_FOUND');
-    }
-  } else {
-    userMessage = conversation.messages.create({
-      role: 'user',
-      content: input.userMessage,
-      metadata: {
-        clientTurnId: input.clientTurnId,
-        outcomeRecord: true
-      }
-    });
-  }
-  const assistantMessage = conversation.messages.create({
+function buildTurnMessages(input, sourceUserMessage) {
+  const userMessage = sourceUserMessage || {
+    _id: new mongoose.Types.ObjectId(),
+    role: 'user',
+    content: input.userMessage,
+    metadata: { clientTurnId: input.clientTurnId, outcomeRecord: true }
+  };
+  const assistantMessage = {
+    _id: new mongoose.Types.ObjectId(),
     role: 'assistant',
     content: input.assistantContent,
     metadata: {
@@ -170,25 +122,104 @@ async function persistTurnOutcome(userId, rawInput = {}) {
         ? { code: input.errorCode, message: input.errorMessage }
         : null
     }
-  });
-
-  if (!input.sourceUserMessageId) conversation.messages.push(userMessage);
-  conversation.messages.push(assistantMessage);
-  conversation.updatedAt = new Date();
-  await conversation.save();
-
+  };
   return {
-    conversationId: idOf(conversation._id),
+    userMessage,
+    assistantMessage,
+    messages: sourceUserMessage ? [assistantMessage] : [userMessage, assistantMessage]
+  };
+}
+
+function receiptOf(conversationId, { userMessage, assistantMessage }, outcome) {
+  return {
+    conversationId: idOf(conversationId),
     userMessageId: idOf(userMessage._id),
     assistantMessageId: idOf(assistantMessage._id),
-    outcome: input.outcome,
+    outcome,
     idempotent: false
   };
 }
 
+// Appends to an existing conversation with one conditional update, so
+// concurrent copies of the same clientTurnId store the pair once.
+async function appendToConversation(owner, input) {
+  const scope = { ...playgroundScope(owner), _id: input.conversationId };
+  const conversation = await Conversation.findOne(scope);
+  if (!conversation) {
+    throw new TurnOutcomeError('Conversation not found', 404, 'CONVERSATION_NOT_FOUND');
+  }
+  const existing = storedTurnReceipt(conversation, input.clientTurnId);
+  if (existing) return existing;
+
+  let sourceUserMessage = null;
+  if (input.sourceUserMessageId) {
+    sourceUserMessage = Array.from(conversation.messages || []).find(message => (
+      message?.role === 'user' && idOf(message?._id) === input.sourceUserMessageId
+    )) || null;
+    if (!sourceUserMessage) {
+      throw new TurnOutcomeError('Source user message not found', 400, 'SOURCE_USER_MESSAGE_NOT_FOUND');
+    }
+  }
+  const turn = buildTurnMessages(input, sourceUserMessage);
+  const updated = await Conversation.findOneAndUpdate(
+    { ...scope, 'messages.metadata.clientTurnId': { $ne: input.clientTurnId } },
+    { $push: { messages: { $each: turn.messages } }, $set: { updatedAt: new Date() } },
+    { new: true, runValidators: true }
+  );
+  if (updated) return receiptOf(updated._id, turn, input.outcome);
+
+  const stored = storedTurnReceipt(await Conversation.findOne(scope), input.clientTurnId);
+  if (stored) return stored;
+  throw new TurnOutcomeError('Conversation not found', 404, 'CONVERSATION_NOT_FOUND');
+}
+
+// A first turn creates its conversation; the unique (userId, clientTurnId)
+// index turns a concurrent copy into a duplicate key, answered with the
+// receipt of the conversation that won.
+async function createConversation(owner, input) {
+  const existing = storedTurnReceipt(await Conversation.findOne({
+    ...playgroundScope(owner),
+    'messages.metadata.clientTurnId': input.clientTurnId
+  }), input.clientTurnId);
+  if (existing) return existing;
+
+  const turn = buildTurnMessages(input, null);
+  const conversation = new Conversation({
+    userId: owner,
+    model: input.model,
+    source: 'agentx',
+    clientTurnId: input.clientTurnId,
+    title: input.userMessage.slice(0, 50) || 'Agent X Chat',
+    messages: turn.messages
+  });
+  try {
+    await conversation.save();
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+    const stored = storedTurnReceipt(await Conversation.findOne({
+      userId: owner, clientTurnId: input.clientTurnId
+    }), input.clientTurnId);
+    if (stored) return stored;
+    throw err;
+  }
+  return receiptOf(conversation._id, turn, input.outcome);
+}
+
+// userId is the server-resolved identity and is passed separately from the
+// client body so no body field can select the owner or scope.
+async function persistTurnOutcome(userId, rawInput = {}) {
+  const owner = typeof userId === 'string' ? userId.trim() : '';
+  if (!owner || owner.startsWith('surface:')) {
+    throw new TurnOutcomeError('Conversation not found', 404, 'CONVERSATION_NOT_FOUND');
+  }
+  const input = normalizeTurnOutcome(rawInput);
+  return input.conversationId
+    ? appendToConversation(owner, input)
+    : createConversation(owner, input);
+}
+
 module.exports = {
   TurnOutcomeError,
-  findOutcomeMessage,
   normalizeTurnOutcome,
   persistTurnOutcome,
   sanitizeErrorDetail

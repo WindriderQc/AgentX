@@ -342,13 +342,19 @@ router.get('/:id', async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
         }
 
+        // Same scope as chat persistence: an archived conversation is not
+        // reopened in the Playground, because a new turn could not be saved to it.
         const userId = getUserId(res);
-        const query = { _id: new mongoose.Types.ObjectId(req.params.id), userId };
+        const query = {
+            _id: new mongoose.Types.ObjectId(req.params.id),
+            userId,
+            'lifecycle.status': { $ne: 'archived' }
+        };
 
         const conversation = await Conversation.findOne(query);
 
         if (!conversation) {
-            return res.status(404).json({ status: 'error', message: 'Conversation not found' });
+            return res.status(404).json({ status: 'error', code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found' });
         }
 
         res.json({ status: 'success', data: publicConversation(conversation) });

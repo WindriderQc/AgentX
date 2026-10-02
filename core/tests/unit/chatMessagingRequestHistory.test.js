@@ -88,7 +88,9 @@ describe('Playground request history contract', () => {
   });
 
   test('threads the current-turn id through streaming and non-streaming dispatch', () => {
-    expect(source).toContain('sendMessageStreamFetch(ctx, message, model, currentUserMessageId, requestTurnAction)');
+    expect(source).toContain('sendMessageStreamFetch(ctx, message, model, currentUserMessageId, requestTurnAction, terminalAttemptId)');
+    expect(source).toContain('payload.clientTurnId = terminalAttemptId;');
+    expect(source).toContain('clientTurnId: terminalAttemptId,\n      stream: false');
     expect(source).toContain('currentUserMessageId,\n        requestTurnAction');
     expect(source).toContain('messages: historyBeforeCurrentTurn(state.history, currentUserMessageId)');
   });

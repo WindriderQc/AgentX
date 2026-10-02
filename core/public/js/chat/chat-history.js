@@ -198,7 +198,11 @@ export async function loadConversation(id, state, elements, helpers, preserveMod
     if (!res.ok) {
       if (res.status === 404) {
         console.warn(`Conversation ${id} not found.`);
-        state.conversationId = null;
+        // The active conversation vanished (archived or deleted): say so and
+        // keep its id, so the next send is refused instead of silently forking.
+        if (id === state.conversationId) {
+          helpers.setFeedback?.('This conversation is archived or no longer exists. Start a new chat to continue.', 'error');
+        }
         return false;
       }
       throw new Error(`Failed to load conversation: ${res.status}`);
