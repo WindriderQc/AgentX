@@ -181,11 +181,18 @@ starts a run.
 Data is available through Compose profile `data`. Set `COMPOSE_PROFILES=data`
 and `AGENTX_PROFILE=full`, then use the existing `up` command. Startup waits for
 Data's Mongo-backed health endpoint too. The Core portal links to `/data-toolbox`;
-the UI exposes only read routes. Native collectors require explicit external
+the UI exposes read routes plus one write, naming a network device or marking it
+known. Native collectors require explicit external
 targets/roots. Background jobs are disabled unless
 `DATA_BACKGROUND_JOBS_ENABLED=true`. The optional Obsidian inventory requires
 an external `OBSIDIAN_VAULT_POLICY_PATH` and read-only mount. The historical
 instance policy is intentionally not shipped. See [Data](../data/README.md).
+
+Set `NETWORK_DEVICE_WATCH_MS` (for example `300000`) to let Core check the
+network inventory and raise the `network-new-device` alert once per unknown
+device. The first check accepts the current inventory as the baseline; name a
+device or mark it known in the Data Toolbox to acknowledge it. The rule
+targets `telegram`, so the operations relay delivers it when configured.
 
 `config/obsidian-vault/` holds generic household note templates (appliance,
 routine, recipe, procedure) and `Maison.base`, an Obsidian Base listing

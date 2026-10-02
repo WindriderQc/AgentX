@@ -10,7 +10,8 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 - **Surfaces.** The full profile serves Nestor (`/dad`), Household (`/panel`),
   Reader (`/lecture`), animal sounds (`/kids/sounds`), PsyX (`/psyx`) and the
-  read-only Data Toolbox (`/data-toolbox`). The `demo` profile keeps chat,
+  Data Toolbox (`/data-toolbox`), read-only except naming or acknowledging a
+  network device. The `demo` profile keeps chat,
   model discovery, RAG and Benchmark.
 - **Core ownership.** Conversations, selected notes, tasks, attachments and
   memory reads have one owner each, in Core. Surfaces and native harnesses

@@ -210,8 +210,9 @@ function recordJanitorReview(button, decision) {
   persistJanitorReviewDraft();
 }
 
-async function api(route) {
-  const response = await fetch(`/api/data-toolbox${route}`, { headers: { Accept: 'application/json' } });
+async function api(route, { method = 'GET', payload } = {}) {
+  const headers = { Accept: 'application/json', ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }) };
+  const response = await fetch(`/api/data-toolbox${route}`, { method, headers, body: payload === undefined ? undefined : JSON.stringify(payload) });
   let body;
   try { body = await response.json(); } catch { throw new Error('Data projection returned an unreadable response. Try again.'); }
   if (!body || typeof body !== 'object') throw new Error('Data projection returned an unreadable response. Try again.');
@@ -423,7 +424,7 @@ async function network() {
   const referenceLine = summary
     ? `Reference time ${date(summary.referenceTime)} · online = seen within ${ttlLabel(summary.onlineTtlMs)} by a reporting collector · recent = within ${ttlLabel(summary.recentTtlMs)} · ${number(summary.reportedOnline)} rows still carry a raw online flag`
     : 'Data did not report the observation windows; "online now" is not observed.';
-  content.innerHTML = `${heading('Network inventory', 'Observed devices and the host-native Data collectors that can see the real LAN. Discovery cannot be started from this console.', '<button class="button" data-action="refresh">Refresh</button>')}
+  content.innerHTML = `${heading('Network inventory', 'Observed devices and the host-native Data collectors that can see the real LAN. Discovery cannot be started from this console; naming a device or marking it known is the only change made here.', '<button class="button" data-action="refresh">Refresh</button>')}
     <div class="grid">
       ${metric(number(devices.length), 'known devices')}
       ${metric(onlineNow, 'online now')}
@@ -436,9 +437,25 @@ async function network() {
     ${heading('Where network collection runs', 'Current supervisors are explicit. An inactive unmapped row is retained history, not a configured runtime.')}
     <div class="grid two">${agents.length ? agents.map((agent) => collectorCard(agent, 'network')).join('') : '<div class="empty">No network collectors registered.</div>'}</div>
     ${heading('Devices', 'Every retained observation from Data; the state column is derived from the age of the last sighting, not from the raw flag.')}
-    <div class="table-wrap"><table><thead><tr><th>Device</th><th>IP</th><th>MAC</th><th>Vendor / type</th><th>Observation</th><th>Reported by</th><th>Last seen</th></tr></thead><tbody>
-      ${devices.length ? devices.map((device) => `<tr><td>${e(device.hostname || device.name || device.label || 'unknown')}</td><td class="mono">${e(device.ip || device.ip_address)}</td><td class="mono muted">${e(device.mac || device.mac_address)}</td><td>${e(device.vendor || device.device_type || device.type || '—')}</td><td>${observationPill(device.observation)}</td><td class="mono muted">${e(device.observation?.source || device.scanSource || '—')}</td><td>${date(device.observation?.lastSeenAt || device.last_seen || device.lastSeen || device.updated_at)}</td></tr>`).join('') : noRows(7)}
+    <div class="table-wrap"><table><thead><tr><th>Device</th><th>IP</th><th>MAC</th><th>Vendor / type</th><th>Observation</th><th>Reported by</th><th>Last seen</th><th>Acknowledged</th></tr></thead><tbody>
+      ${devices.length ? devices.map((device) => `<tr><td>${e(device.alias || device.hostname || device.name || device.label || 'unknown')}${device.alias && device.hostname ? `<br><span class="muted">${e(device.hostname)}</span>` : ''}</td><td class="mono">${e(device.ip || device.ip_address)}</td><td class="mono muted">${e(device.mac || device.mac_address)}</td><td>${e(device.vendor || device.device_type || device.type || '—')}</td><td>${observationPill(device.observation)}</td><td class="mono muted">${e(device.observation?.source || device.scanSource || '—')}</td><td>${date(device.observation?.lastSeenAt || device.last_seen || device.lastSeen || device.updated_at)}</td><td>${deviceActions(device)}</td></tr>`).join('') : noRows(8)}
     </tbody></table></div>`;
+}
+
+// Naming a device or marking it known acknowledges it: Core no longer alerts
+// on it as a new device. Devices without a MAC cannot be acknowledged.
+function deviceActions(device) {
+  const mac = device.mac || device.mac_address;
+  if (!mac) return '<span class="muted">no MAC</span>';
+  const known = Boolean(device.alias || device.knownAt);
+  return `<span class="pill ${known ? 'good' : ''}">${known ? 'known' : 'new'}</span>
+    <button class="button" data-action="device-name" data-mac="${e(mac)}" data-alias="${e(device.alias || '')}">Name</button>
+    <button class="button" data-action="device-known" data-mac="${e(mac)}" data-known="${device.knownAt ? 'false' : 'true'}">${device.knownAt ? 'Unmark' : 'Mark known'}</button>`;
+}
+
+async function updateDevice(mac, update) {
+  await api(`/network/devices/${encodeURIComponent(mac)}`, { method: 'PATCH', payload: update });
+  await network();
 }
 
 async function databases() {
@@ -838,6 +855,11 @@ document.addEventListener('click', async (event) => {
       event.target.textContent = 'Copied';
     }
     if (action === 'janitor-download-review') downloadJanitorReview();
+    if (action === 'device-name') {
+      const alias = window.prompt('Device name (empty to clear)', event.target.dataset.alias || '');
+      if (alias !== null) await updateDevice(event.target.dataset.mac, { alias });
+    }
+    if (action === 'device-known') await updateDevice(event.target.dataset.mac, { known: event.target.dataset.known === 'true' });
     if (action === 'janitor-clear-review') {
       clearJanitorReviewDraft();
       await janitor();

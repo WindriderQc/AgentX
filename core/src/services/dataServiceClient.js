@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Core's read client for the optional Data service (DATAAPI_BASE_URL,
+ * Core's client for the optional Data service (DATAAPI_BASE_URL,
  * default the Compose-internal http://data:3083). Shared by the Data Toolbox
  * relay and Core capabilities that consume Data projections.
  */
@@ -17,11 +17,14 @@ function dataBaseUrl(env = process.env) {
   return url.toString().replace(/\/$/, '');
 }
 
-async function fetchData(relativePath, { query = '', timeoutMs = 10000 } = {}) {
+async function fetchData(relativePath, { query = '', timeoutMs = 10000, method = 'GET', payload } = {}) {
   const suffix = query ? `?${query}` : '';
   const url = `${dataBaseUrl()}${relativePath}${suffix}`;
   const headers = { Accept: 'application/json' };
-  const response = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+  if (payload !== undefined) headers['Content-Type'] = 'application/json';
+  const response = await fetch(url, {
+    method, headers, body: payload === undefined ? undefined : JSON.stringify(payload), signal: AbortSignal.timeout(timeoutMs),
+  });
   const text = await response.text();
   let body;
   try { body = JSON.parse(text); }
