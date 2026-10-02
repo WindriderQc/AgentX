@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { readSource } = require('../../../shared/testing/readSource');
 
 const benchmarkRoot = path.resolve(__dirname, '..', '..');
-const read = (...segments) => fs.readFileSync(path.join(benchmarkRoot, ...segments), 'utf8');
+const read = (...segments) => readSource(path.join(benchmarkRoot, ...segments));
 
 class FakeSetupElement {
     constructor() {
