@@ -450,6 +450,7 @@ test('correcting an accepted observation preserves its evidence and session prov
   await assert.rejects(repository.updateItem('u', 'patterns', original.id, { text: 'Stale browser', expectedRevision: state.revision }), { statusCode: 409 });
   const { stateForPrompt } = require('../../../src/domains/psyx/stateRepository');
   assert.equal(stateForPrompt(corrected.state).patterns[0].text, 'Corrected by the user');
+  assert.equal(stateForPrompt(corrected.state).patterns[0].correctedBy, 'user');
 });
 
 test('corrections cannot write another owner or resurrect an erased observation', async () => {

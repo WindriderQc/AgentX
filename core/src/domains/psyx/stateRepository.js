@@ -192,6 +192,7 @@ function stateForPrompt(state, { conversationId = null } = {}) {
     compact[key] = (state[key] || []).slice(-30).map((item) => ({
       text: item.text,
       source: item.source,
+      correctedBy: item.correctedBy || null,
       confidence: item.confidence,
       evidence: item.evidence,
       status: item.status
