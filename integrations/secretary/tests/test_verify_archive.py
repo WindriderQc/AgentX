@@ -25,13 +25,13 @@ raw_messages = load_module("raw_messages")
 evidence = sys.modules["secretary_evidence"]
 backfill = sys.modules["mailbox_backfill"]
 
-ATTACHMENT = b"%PDF synthetic attachment"
+ATTACHMENT = b"synthetic binary attachment"
 
 
 def rfc822(mid):
     return ("Message-ID: <%s@example.invalid>\r\nSubject: Synthetic\r\nMIME-Version: 1.0\r\n"
             "Content-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
-            "Synthetic body\r\n--b\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=a.pdf\r\n"
+            "Synthetic body\r\n--b\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=a.bin\r\n"
             "Content-Transfer-Encoding: base64\r\n\r\n%s\r\n--b--\r\n" % (mid, base64.b64encode(ATTACHMENT).decode())).encode()
 
 
@@ -40,7 +40,7 @@ def provider(command):
         return {"thread": {"messages": [{
             "id": f"message{n}", "threadId": command[3], "internalDate": str(n), "body": "x",
             "headers": {"message-id": f"<message{n}@example.invalid>"},
-            "payload": {"parts": [{"partId": "1", "filename": "a.pdf", "mimeType": "application/pdf",
+            "payload": {"parts": [{"partId": "1", "filename": "a.bin", "mimeType": "application/octet-stream",
                                    "body": {"data": base64.urlsafe_b64encode(ATTACHMENT).decode()}}]}}
             for n in (1, 2)]}}
     mid = command[2]
@@ -85,7 +85,7 @@ class VerifyArchiveTests(unittest.TestCase):
     def test_damaged_and_missing_files_are_reported_by_id(self):
         receipt = json.loads((self.copy / "raw-receipts" / "message1.json").read_text())
         (self.copy / receipt["path"]).write_bytes(b"X" * receipt["bytes"])
-        attachment = next((self.copy / "files").glob("*.pdf"))
+        attachment = next((self.copy / "files").glob("*.bin"))
         attachment.unlink()
         report, _ = module.verify(self.copy)
         self.assertFalse(report["intact"])
