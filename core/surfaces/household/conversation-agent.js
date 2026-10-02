@@ -66,7 +66,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
     const deadline = setTimeout(() => controller.abort(new Error('Nestor agent timed out.')), 600000);
     const abort = () => controller.abort(signal.reason);
     signal?.addEventListener('abort', abort, { once: true });
-    let runId, terminal = false, answer = '', evidence, browserCall, replacedStream = false, delegated = false;
+    let runId, terminal = false, generating = false, answer = '', evidence, browserCall, replacedStream = false, delegated = false;
     const readEvidence = () => continuity({ operation: 'turn', sessionKey, runId });
     // Report each native tool call once, so Household can say what Nestor does.
     const reported = new Set();
@@ -75,6 +75,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
       for (const item of Array.isArray(projected?.progress) ? projected.progress : []) {
         if (!item?.id || reported.has(item.id)) continue;
         reported.add(item.id);
+        generating = true;
         if (item.agentId) consulted = item.agentId;
         lastTool = item.tool;
         await onActivity({ kind: 'tool', tool: item.tool, ...(item.agentId ? { agentId: item.agentId } : {}) });
@@ -110,6 +111,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
         const value = line.slice(5).trim();
         if (!value || value === '[DONE]') return;
         const row = JSON.parse(value);
+        if (row.type !== 'response.created') generating = true;
         if (row.type === 'response.created') {
           runId = row.response?.id;
           if (!/^resp_[a-f0-9-]{36}$/.test(runId || '')) throw new Error('Nestor returned an invalid run identity.');
@@ -223,15 +225,18 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
           controller.abort();
           // Closing HTTP requests cancels the native run. Wait for its actual
           // agent_end receipt before the browser may start another turn.
-          const until = Date.now() + settleMs;
+          const until = Date.now() + (generating || !signal?.aborted ? settleMs : Math.min(settleMs, 1500));
           while (Date.now() < until) {
             try { evidence = await readEvidence(); if (evidence.run) { settled = true; break; } } catch { /* retry observation only */ }
             await pause(250);
           }
+          // A run cancelled while the gateway was still preparing (no output, no tool) never
+          // writes agent_end. The native session lane serializes the next turn, so it is over.
+          if (!settled && !generating && signal?.aborted) settled = true;
           if (!settled) throw new Error('L’arrêt de Nestor n’est pas encore confirmé. La conversation est en pause.');
           if (signal?.aborted) return { text: answer, sessionKey, runId, interrupted: true,
-            tools: { status: 'observed', authority: `openclaw/${agentIdFor(session)}`, runId, receipts: evidence.receipts || [], run: evidence.run },
-            metadata: { model: evidence.run.model || '', provider: evidence.run.provider || '', routingSource: `openclaw/${agentIdFor(session)}`, runId } };
+            tools: { status: evidence?.run ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId, receipts: evidence?.receipts || [], run: evidence?.run || null },
+            metadata: { model: evidence?.run?.model || '', provider: evidence?.run?.provider || '', routingSource: `openclaw/${agentIdFor(session)}`, runId } };
         }
       } finally {
         if (runId && settled) await onSettled(sessionKey, runId);
