@@ -108,6 +108,28 @@ python3 integrations/secretary/outlook_import.py --root "$GMAIL_SECRETARY_ROOT" 
 python3 integrations/secretary/outlook_import.py --root "$GMAIL_SECRETARY_ROOT" status
 ```
 
+## Forwarded mailbox watch
+
+When another mailbox forwards its incoming mail into the archived Gmail
+account, `forwarding_check.py` watches that the forwarding keeps working,
+reading only archived headers. It distinguishes two silences and posts each to
+Core's alert intake (`/api/alerts/evaluate`, source
+`secretary-forwarding-check`) on every run while it lasts; Core resolves the
+alert itself once runs stop reporting it:
+
+- `mail_archive_stale`: no message reached the archive within
+  `SECRETARY_ARCHIVE_STALE_HOURS` (24 by default), so the archive sync is the problem;
+- `mail_forwarding_quiet`: the archive is fresh but no message addressed to
+  `SECRETARY_FORWARDED_ADDRESS` arrived within `SECRETARY_FORWARD_QUIET_HOURS`
+  (72 by default).
+
+`SECRETARY_FORWARD_MARKER_HEADER` (for example the header the forwarding
+provider adds) ignores mail sent to both addresses. The address is an instance
+setting and never appears in the event; `SECRETARY_FORWARDED_LABEL` names the
+component. Delivery (local log, Telegram) comes from the instance's alert rules
+for those two metrics. `--dry-run` reports without posting; the last result is
+in `forwarding-status.json`.
+
 ## Household document discovery
 
 `household_documents.py` searches the existing private attachment register and
