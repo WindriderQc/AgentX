@@ -2,10 +2,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const { readChatMessagingSource } = require('../helpers/chatMessagingSource');
 
 const root = path.join(__dirname, '../..');
 const configSource = fs.readFileSync(path.join(root, 'public/js/chat/chat-config.js'), 'utf8');
-const messagingSource = fs.readFileSync(path.join(root, 'public/js/chat/chat-messaging.js'), 'utf8');
+const messagingSource = readChatMessagingSource();
 const viewSource = fs.readFileSync(path.join(root, 'views/pages/chat.ejs'), 'utf8');
 
 describe('Playground routing modes', () => {

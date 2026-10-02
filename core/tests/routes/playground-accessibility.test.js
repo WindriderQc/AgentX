@@ -1,13 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const ejs = require('ejs');
+const { readChatMessagingSource } = require('../helpers/chatMessagingSource');
 
 const root = path.resolve(__dirname, '../..');
 const viewPath = path.join(root, 'views/pages/chat.ejs');
 const agentsPath = path.join(root, 'public/js/chat/chat-agents.js');
 const configPath = path.join(root, 'public/js/chat/chat-config.js');
 const mainPath = path.join(root, 'public/js/chat/chat-main.js');
-const messagingPath = path.join(root, 'public/js/chat/chat-messaging.js');
 
 async function renderChat() {
   return ejs.renderFile(viewPath, { agentxProfile: 'full' });
@@ -62,7 +62,7 @@ describe('Playground accessibility contract', () => {
 
   test('announces completed responses once instead of streaming every token', async () => {
     const html = await renderChat();
-    const messaging = fs.readFileSync(messagingPath, 'utf8');
+    const messaging = readChatMessagingSource();
 
     expect(html).toContain('id="chatWindow" role="region" aria-label="Conversation transcript"');
     expect(html).toContain('id="chatAnnouncements" role="status" aria-live="polite" aria-atomic="true"');
