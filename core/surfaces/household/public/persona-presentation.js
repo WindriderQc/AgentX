@@ -30,6 +30,7 @@
     const id = saved?.personaId || legacy?.personaId;
     return { personaId: personas.some(p => p.id === id) ? id : personas.find(p => p.id === 'nestor')?.id || personas[0]?.id,
       interruption: saved?.interruption !== false,
+      agentId: typeof saved?.agentId === 'string' && /^[a-z0-9_-]{1,64}$/.test(saved.agentId) ? saved.agentId : null,
       lastVoice: profile({ voice: saved?.lastVoice }).voice, profiles };
   }
   function save(storage, preferences) {

@@ -19,7 +19,8 @@
         "fr": "am_michael:0.50+ff_siwis:0.50"
       }
     },
-    "selfName": "Nestor"
+    "selfName": "Nestor",
+    "agentId": "main"
   },
   {
     "label": "Nestor · Stratège",
@@ -109,6 +110,7 @@
         "fr": "ff_siwis"
       }
     },
-    "selfName": "Secretary"
+    "selfName": "Secretary",
+    "agentId": "secretary"
   }
 ]
