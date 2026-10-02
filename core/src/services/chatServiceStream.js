@@ -125,6 +125,7 @@ const handleChatRequestStream = async ({
             ragUsed,
             ragSources,
             ragContext,
+            ragStatus,
             webSearchResults,
             webSearchContext
         } = await prepareChatOrchestration({
@@ -361,7 +362,7 @@ const handleChatRequestStream = async ({
                 userId, conversationId, clientTurnId, model: effectiveModel,
                 effectiveSystemPrompt, message, assistantContent: fullContent,
                 activePrompt,
-                metadata: { thinking: thinkingContent || null, options, webSearchResults, routingInfo: routingPayload },
+                metadata: { thinking: thinkingContent || null, options, webSearchResults, routingInfo: routingPayload, ragStatus },
                 stats, ragUsed, useRag, ragSources
             });
             conversation = saved.conversation;
@@ -385,7 +386,7 @@ const handleChatRequestStream = async ({
                 numCtx: streamSanitized.num_ctx || null,
                 inferenceContract,
                 stats: stats || null,
-                ragUsed, ragSources,
+                ragUsed, ragSources, ragStatus,
                 webSearchResults: webSearchResults.length > 0 ? webSearchResults : undefined,
                 thinking: thinkingContent || null,
                 warning: hasQualifiedThinkingCapability(inferenceContract)

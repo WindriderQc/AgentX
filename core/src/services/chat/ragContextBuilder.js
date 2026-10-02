@@ -46,10 +46,17 @@ ${source.text}`;
   }).join("\n\n");
 }
 
+// ragStatus: 'not_requested' | 'no_match' | 'used' | 'unavailable'.
+// A retrieval failure is reported as 'unavailable', never as an empty match.
+function emptyRagResult(ragStatus) {
+  return { ragUsed: false, ragSources: [], ragContext: null, ragStatus };
+}
+
 async function buildRagContext(query, ragStore, options = {}) {
-  if (!ragStore || !query || typeof query !== 'string' || query.trim().length === 0) {
-    return { ragUsed: false, ragSources: [], ragContext: null };
+  if (!query || typeof query !== 'string' || query.trim().length === 0) {
+    return emptyRagResult('not_requested');
   }
+  if (!ragStore) return emptyRagResult('unavailable');
 
   try {
     const useHybrid = options.ragOptions?.ragHybrid === true;
@@ -68,18 +75,19 @@ async function buildRagContext(query, ragStore, options = {}) {
     });
 
     if (!Array.isArray(results) || results.length === 0) {
-      return { ragUsed: false, ragSources: [], ragContext: null };
+      return emptyRagResult('no_match');
     }
 
     const ragSources = results.map(toRagSource);
     return {
       ragUsed: true,
       ragSources,
-      ragContext: buildRagContextText(ragSources)
+      ragContext: buildRagContextText(ragSources),
+      ragStatus: 'used'
     };
   } catch (error) {
     logger.warn('Standalone RAG lookup failed', { error: error.message });
-    return { ragUsed: false, ragSources: [], ragContext: null };
+    return emptyRagResult('unavailable');
   }
 }
 

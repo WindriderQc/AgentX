@@ -183,6 +183,26 @@ describe('chatService', () => {
             expect(Conversation).toHaveBeenCalled(); // New conversation created
         });
 
+        it('reports an unavailable knowledge base distinctly from no match', async () => {
+            mockRagStore.searchSimilarChunks.mockRejectedValueOnce(new Error('RAG down'));
+            const unavailable = await handleChatRequest({
+                userId: 'user123', model: 'llama2', message: 'What is in my notes?',
+                useRag: true, ragStore: mockRagStore
+            });
+            expect(unavailable.ragUsed).toBe(false);
+            expect(unavailable.ragStatus).toBe('unavailable');
+
+            mockRagStore.searchSimilarChunks.mockResolvedValueOnce([]);
+            const noMatch = await handleChatRequest({
+                userId: 'user123', model: 'llama2', message: 'What is in my notes?',
+                useRag: true, ragStore: mockRagStore
+            });
+            expect(noMatch.ragStatus).toBe('no_match');
+
+            const notRequested = await handleChatRequest({ userId: 'user123', model: 'llama2', message: 'Hi' });
+            expect(notRequested.ragStatus).toBe('not_requested');
+        });
+
         it('should include the current user message in the Ollama payload', async () => {
             await handleChatRequest({
                 userId: 'user123',

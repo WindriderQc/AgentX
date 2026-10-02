@@ -52,6 +52,7 @@ const { getRagServiceClient } = require('../ragServiceClient');
  *   ragUsed: boolean,
  *   ragSources: Array,
  *   ragContext: string|null,
+ *   ragStatus: 'not_requested'|'no_match'|'used'|'unavailable',
  *   webSearchResults: Array,
  *   webSearchContext: string|null
  * }>}
@@ -110,6 +111,7 @@ async function prepareChatOrchestration({
     let ragUsed = false;
     let ragSources = [];
     let ragContext = null;
+    let ragStatus = 'not_requested';
 
     if (ragRequested && message) {
         const store = ragStore || getRagServiceClient();
@@ -122,6 +124,7 @@ async function prepareChatOrchestration({
         ragUsed = ragResult.ragUsed;
         ragSources = ragResult.ragSources;
         ragContext = ragResult.ragContext;
+        ragStatus = ragResult.ragStatus || (ragUsed ? 'used' : 'no_match');
     }
 
     // 3. Web search — surface callbacks so the stream path can emit SSE events
@@ -153,6 +156,7 @@ async function prepareChatOrchestration({
         ragUsed,
         ragSources,
         ragContext,
+        ragStatus,
         webSearchResults,
         webSearchContext
     };
