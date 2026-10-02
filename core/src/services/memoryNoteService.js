@@ -17,6 +17,8 @@ const cleanText = (value, max = 4000) => {
   }
   return value.trim();
 };
+// Provenance of a new note; a trusted caller may name its channel.
+const sourceOf = value => (typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test(value) ? value : 'explicit-ui');
 const limitOf = (value, fallback = 25) => Math.max(1, Math.min(100, Math.trunc(Number(value)) || fallback));
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const stopWords = new Set(['les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'avec', 'mon', 'mes', 'moi', 'est', 'this', 'that', 'the', 'and', 'you', 'what', 'remember', 'retiens',
@@ -93,7 +95,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     const update = { $set: {
       text, kind, ...labels, expiresAt, status: 'active', forgottenAt: null,
       contentHash: digest(text.toLowerCase())
-    }, $setOnInsert: { packId: packs[0], scopeId, topic: 'general', type: 'fact', source: 'explicit-ui' } };
+    }, $setOnInsert: { packId: packs[0], scopeId, topic: 'general', type: 'fact', source: sourceOf(input.source) } };
     let result;
     try {
       result = await MemoryNote.findOneAndUpdate(filter, update,
