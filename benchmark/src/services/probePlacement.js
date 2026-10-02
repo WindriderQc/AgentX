@@ -42,4 +42,14 @@ function cpuProbeLimits(hostUrl) {
   };
 }
 
-module.exports = { residencyOf, placementVerified, placementMismatch, cpuProbeLimits };
+/**
+ * A profiler request on a CPU host decodes at a few tokens per second, so a
+ * GPU-sized bound (60 s) cuts it mid-answer and leaves no terminal receipt.
+ * On a CPU host every profiler request gets at least the CPU probe timeout.
+ */
+function residencyTimeoutMs(hostUrl, timeoutMs) {
+  const requested = Number(timeoutMs) > 0 ? Number(timeoutMs) : 0;
+  return Math.max(requested, cpuProbeLimits(hostUrl).timeoutMs || 0) || timeoutMs;
+}
+
+module.exports = { residencyOf, placementVerified, placementMismatch, cpuProbeLimits, residencyTimeoutMs };
