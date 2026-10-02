@@ -14,6 +14,9 @@ jest.mock('../../src/extensions/trustedRuntimeServices', () => {
 
 process.env.PSYX_ACCESS_TOKEN = 'synthetic-psyx-access';
 process.env.PSYX_LOOPBACK_BYPASS = 'false';
+// The background review is covered by the surface tests; here it must not add
+// inference calls in the middle of the exact call counts below.
+process.env.PSYX_REVIEW_DELAY_MS = '600000';
 const request = require('supertest');
 const mongoose = require('mongoose');
 const Conversation = require('../../models/Conversation');
@@ -49,6 +52,7 @@ describe('PsyX built into Core with private scope', () => {
     const record = await Conversation.findById(first.conversationId).lean();
     expect(record).toMatchObject({ userId: 'surface:psyx:default', surface: 'psyx', promptName: 'psyx' });
     expect(record.messages).toHaveLength(2);
+    expect(first.review).toEqual({ scheduled: true });
     await request(app).get(`/api/history/${first.conversationId}`).expect(404);
     const second = done(await auth(request(app).post('/api/psyx/chat/stream')).send({
       conversationId: first.conversationId, psyx: { action: 'deep_reflection', depth: 'deep' },

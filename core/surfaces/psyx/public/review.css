@@ -1,0 +1,72 @@
+/* PsyX background review: indicator and proposals. */
+.review-chip {
+  align-self: flex-start;
+  margin: 6px 14px 0;
+  padding: 5px 10px 5px 22px;
+  position: relative;
+  border: 1px solid #2d3741;
+  border-radius: 999px;
+  background: rgba(255,255,255,.025);
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+.review-chip[hidden] { display: none; }
+.review-chip::before {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--muted-2);
+}
+.review-chip.running::before { background: #8fb3d9; animation: review-breathe 1.6s ease-in-out infinite; }
+.review-chip.has-proposals { color: var(--text); border-color: #4a5f74; }
+.review-chip.has-proposals::before { background: #9cc8a1; }
+.review-chip.failed::before { background: #c98e6c; }
+.review-chip:hover { border-color: #3c4955; background: #182029; }
+@keyframes review-breathe { 50% { opacity: .3; transform: scale(.7); } }
+
+[data-badge]:not([data-badge=""])::after {
+  content: attr(data-badge);
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #9cc8a1;
+  color: #0d1217;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.proposals-section { border: 1px solid #34465a; border-radius: 12px; padding: 10px; background: rgba(143,179,217,.04); }
+.proposals-list { display: grid; gap: 8px; }
+.proposal-card { padding: 9px; border: 1px solid #222b33; border-radius: 9px; background: #121820; font-size: 10px; line-height: 1.45; }
+.proposal-kind { color: var(--muted-2); font-size: 9px; text-transform: uppercase; letter-spacing: .1em; font-weight: 700; }
+.proposal-body { display: grid; gap: 3px; margin-top: 4px; overflow-wrap: anywhere; }
+.proposal-body strong { color: var(--text); font-weight: 600; }
+.proposal-body textarea { width: 100%; box-sizing: border-box; font: inherit; color: var(--text); background: #0d1217; border: 1px solid #34414c; border-radius: 7px; padding: 6px; }
+.proposal-card blockquote { margin: 6px 0 0; padding-left: 8px; border-left: 2px solid #34414c; color: var(--muted); font-style: italic; }
+.proposal-card .state-help { margin: 4px 0 0; }
+.proposal-actions { display: flex; gap: 6px; margin-top: 8px; }
+.proposal-actions button { padding: 4px 9px; border: 1px solid #2d3741; border-radius: 7px; background: transparent; color: var(--muted); font-size: 10px; }
+.proposal-actions button:hover { color: var(--text); border-color: #3c4955; }
+.proposal-actions .proposal-keep { color: #0d1217; background: #9cc8a1; border-color: #9cc8a1; font-weight: 700; }
+.proposal-actions .proposal-keep:hover { color: #0d1217; background: #b3d9b7; }
+
+/* Care cues: crisis resources and the opening recap. */
+.safety-banner { margin: 8px 14px 0; padding: 10px 12px; border: 1px solid #8a6a4a; border-radius: 12px; background: rgba(217,168,108,.08); font-size: 12px; line-height: 1.5; }
+.safety-banner[hidden] { display: none; }
+.safety-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.safety-head button { border: 0; background: transparent; color: var(--muted); font-size: 16px; }
+.safety-banner p { margin: 4px 0 6px; color: var(--muted); }
+.safety-banner ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.safety-banner li { display: flex; gap: 10px; align-items: baseline; }
+.safety-banner a { min-width: 150px; color: #f0d2a8; font-weight: 800; text-decoration: none; }
+.safety-banner li span { color: var(--muted); }
+.opening-recap { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border-soft); color: #c7d0d8; font-size: 13px; }
+.opening-recap[hidden] { display: none; }
+.opening-recap p { margin: 0 0 6px; }
+.opening-recap em { display: block; color: var(--muted); }

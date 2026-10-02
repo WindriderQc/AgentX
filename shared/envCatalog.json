@@ -1,6 +1,26 @@
 {
   "version": 1,
   "variables": {
+    "AGENTX_ACCESS_CODE_FILE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": true,
+      "description": "Path of a file holding the access code, read by the PsyX scenario evaluation (core/surfaces/psyx/eval) on the operator's machine. Unset: ~/.agentx/access/parental-code."
+    },
+    "AGENTX_BASE_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Core URL the PsyX scenario evaluation (core/surfaces/psyx/eval) calls from the operator's machine. Unset: the runner requires --base."
+    },
     "AGENTX_BENCHMARK_HARNESS_URL": {
       "services": [
         "benchmark"
@@ -2538,6 +2558,16 @@
       "secret": true,
       "description": "Private access code that unlocks PsyX in token mode. Unset: PsyX private APIs stay locked."
     },
+    "PSYX_AUTO_REVIEW": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "true",
+      "category": "household",
+      "secret": false,
+      "description": "PsyX background review after each completed turn (digest and memory proposals the user approves). false disables it. Unset: true."
+    },
     "PSYX_LOOPBACK_BYPASS": {
       "services": [
         "core"
@@ -2547,6 +2577,16 @@
       "category": "household",
       "secret": false,
       "description": "true lets loopback requests bypass the PsyX access code. Any other value or unset: loopback requests need the code too."
+    },
+    "PSYX_REVIEW_TASK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "deep_reasoning",
+      "category": "household",
+      "secret": false,
+      "description": "Router task type of the PsyX background review. Unset: deep_reasoning."
     },
     "PSYX_VOICE_MODE": {
       "services": [

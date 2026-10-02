@@ -173,10 +173,10 @@ test('voice stays protected, permits this origin, and relays audio without persi
     assert.match(page.headers.get('permissions-policy'), /microphone=\(self\)/);
     const html = await page.text();
     assert.match(html, /voice-preferences\.js/);
-    // app.js calls functions declared by the voice and panel scripts, so they load first.
-    assert.match(html, /psyx-voice\.js[^]*psyx-panels\.js[^]*assets\/app\.js/);
+    // app.js calls functions declared by the voice, state, review and care scripts, so they load first.
+    assert.match(html, /voice-controls\.js[^]*state-panel\.js[^]*review\.js[^]*care\.js[^]*assets\/app\.js/);
     assert.equal((await fetch(`${base}/api/psyx/voice/status`)).status, 401);
-    for (const asset of ['voice-preferences.js', 'psyx-voice.js', 'psyx-panels.js']) {
+    for (const asset of ['voice-preferences.js', 'voice-controls.js', 'state-panel.js', 'review.js', 'care.js']) {
       assert.equal((await fetch(`${base}/psyx/assets/${asset}`)).status, 200);
     }
 
