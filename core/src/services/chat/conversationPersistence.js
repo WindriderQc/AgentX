@@ -233,4 +233,4 @@ async function persistConversation(params) {
     return { conversation, assistantMessageId };
 }
 
-module.exports = { persistConversation, buildRagSourceEntries, findConversationForUpdate };
+module.exports = { persistConversation, buildRagSourceEntries, findConversationForUpdate, conversationNotFound };
