@@ -1,6 +1,7 @@
 // public/js/efficiency-map/ranked-table.js
 import { scoreColor } from '../components/score-color.js';
 import { NO_THROUGHPUT_MESSAGE, rankableEfficiencyEntries } from './evidence.js';
+import { csvCell } from '../csv-cell.js';
 
 const COLUMNS = [
     { key: 'rank',            label: '#',         sortable: false },
@@ -53,12 +54,12 @@ function formatCell(col, entry) {
 function buildCsv(sorted) {
     const headers = ['rank', 'model', 'host', 'quality', 'tokPerSec', 'ttft', 'efficiencyScore', 'paretoOptimal', 'speedSampleCount', 'testCount'];
     const rows = sorted.map((e, i) => [
-        i + 1, `"${e.model}"`, `"${e.host}"`, e.avgQuality.toFixed(2), e.avgTokPerSec.toFixed(1),
+        i + 1, e.model, e.host, e.avgQuality.toFixed(2), e.avgTokPerSec.toFixed(1),
         e.avgTtft, e.efficiencyScore.toFixed(2), e.paretoOptimal,
         Number.isFinite(e.throughputTestCount) ? e.throughputTestCount : e.testCount,
         e.testCount
     ]);
-    return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    return [headers.join(','), ...rows.map(r => r.map(value => csvCell(value)).join(','))].join('\n');
 }
 
 function downloadCsv(csv, filename) {

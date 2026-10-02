@@ -304,6 +304,13 @@ describe('history, insights and export', () => {
   const analysis = require('../../src/services/finance/financeInsights');
   const { exportCsv, amount } = require('../../src/services/finance/financeExport');
 
+  async function exportText(filters) {
+    const { fileName, chunks } = await exportCsv(filters);
+    let csv = '';
+    for await (const chunk of chunks) csv += chunk;
+    return { csv, fileName };
+  }
+
   function month(period, rows) {
     let balance = 100000;
     const tx = rows.map(([date, description, cents]) => {
@@ -347,8 +354,8 @@ describe('history, insights and export', () => {
   });
 
   test('exports an Excel-friendly CSV with totals', async () => {
-    const { csv, fileName, rows } = await exportCsv({ tag: 'karate' });
-    expect(rows).toBe(2);
+    const { csv, fileName } = await exportText({ tag: 'karate' });
+    expect(csv).toContain('\r\n2 opération(s);;;;;\r\n');
     expect(fileName).toBe('finances_karate.csv');
     expect(csv.charCodeAt(0)).toBe(0xFEFF);
     const lines = csv.slice(1).trim().split('\r\n');
@@ -356,6 +363,30 @@ describe('history, insights and export', () => {
     expect(lines[1]).toBe('2025-01-09;EOP;DOJO XYZ;Enfants et activités;karate;-149,00');
     expect(lines).toContain('Total sorties;;;;;-298,00');
     expect(amount(-5)).toBe('-0,05');
+  });
+
+  test('exports every matching row, newest last, with totals over all of them', async () => {
+    const lines = (await exportText({})).csv.trim().split('\r\n');
+    expect(lines[12]).toBe('2026-01-20;EOP;VIREMENT A EPARGNE;Virements internes;;-500,00');
+    expect(lines.slice(13)).toEqual(['', 'Total entrées;;;;;12100,00', 'Total sorties;;;;;-1271,96',
+      'Net;;;;;10828,04', '12 opération(s);;;;;']);
+  });
+
+  test('streams the export route and answers a bad filter with JSON', async () => {
+    const app = require('express')().use('/api/finance', require('../../routes/finance')());
+    const request = require('supertest');
+    const ok = await request(app).get('/api/finance/export.csv').query({ q: 'paie' }).expect(200);
+    expect(ok.headers['content-type']).toMatch(/^text\/csv/);
+    expect(ok.headers['content-disposition']).toBe('attachment; filename="finances_paie.csv"');
+    expect(ok.text).toContain('\r\n4 opération(s);;;;;\r\n');
+    const bad = await request(app).get('/api/finance/export.csv').query({ to: 'yesterday' }).expect(400);
+    expect(bad.body).toMatchObject({ status: 'error', code: 'FINANCE_QUERY_INVALID' });
+  });
+
+  test('keeps a formula-like description inert in the CSV', async () => {
+    await FinanceTransaction.updateOne({ date: '2025-03-09' }, { $set: { description: '=HYPERLINK("http://x";"go")' } });
+    const { csv } = await exportText({ tag: 'karate' });
+    expect(csv).toContain('\r\n2025-03-09;EOP;"\'=HYPERLINK(""http://x"";""go"")";Enfants et activités;karate;-149,00\r\n');
   });
 });
 
@@ -628,7 +659,9 @@ describe('money flow seen from the owner', () => {
     expect(karate.totals).toMatchObject({ count: 1, inCents: 0, outCents: -14941, netCents: -14941 });
     expect(karate.rows[0]).toMatchObject({ amountCents: 14941, flowCents: -14941 });
     expect((await query.merchants({})).merchants[0]).toMatchObject({ description: 'KARATE SPORTIF', outCents: -14941 });
-    const { csv } = await require('../../src/services/finance/financeExport').exportCsv({ q: 'karate' });
+    const { chunks } = await require('../../src/services/finance/financeExport').exportCsv({ q: 'karate' });
+    let csv = '';
+    for await (const chunk of chunks) csv += chunk;
     expect(csv).toContain(';-149,41');
   });
 
