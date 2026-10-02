@@ -395,6 +395,9 @@ The private parent journal lists, under each child-safe turn, what reached the
 child's screen: each block with its title and a short preview, every picture
 with its source and a thumbnail, whether a math picture was drawn in 3D, and
 only the fact that a secret was shown.
+Every Super Dad turn also receives the active child profiles of the Family page
+(`/dad/family`) as approved knowledge, so the children's names and age bands
+do not depend on which notes a search selects. Famille turns do not.
 The background brain runs after each Super Dad and Famille turn when
 `HOUSEHOLD_BRAIN_ENABLED=true` (the Compose default; `HOUSEHOLD_BRAIN_FAMILY=false`
 leaves Famille out). It uses the router's `master_brain` lane unless
