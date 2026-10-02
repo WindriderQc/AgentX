@@ -1,7 +1,14 @@
 name: ${AGENTX_PROJECT_NAME:-agentx}
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   mongo:
+    logging: *default-logging
     image: mongo:7.0.34@sha256:c1a84ab5d0c17deed1e0dba1d24bd7c76e5c7b281145fe536911939b1551754c
     restart: unless-stopped
     volumes:
@@ -14,12 +21,14 @@ services:
       start_period: 20s
 
   qdrant:
+    logging: *default-logging
     image: qdrant/qdrant:v1.18.1@sha256:45f8e3ddc2570a4d029877e1b5ec1045c19b3852b4e22a55c7f43b05aea0ca89
     restart: unless-stopped
     volumes:
       - qdrant_data:/qdrant/storage
 
   core:
+    logging: *default-logging
     stop_grace_period: 11m
     build:
       context: .
@@ -147,6 +156,7 @@ services:
       - ${HOUSEHOLD_MEDIA_DIR:-./docker/empty}:/mnt/household/media:ro
 
   benchmark:
+    logging: *default-logging
     build:
       context: .
       dockerfile: docker/benchmark.Dockerfile
@@ -195,6 +205,7 @@ services:
       - benchmark_jobs:/jobs
 
   benchmark-runner:
+    logging: *default-logging
     # Runs candidate code for Benchmark's coding prompts. It only sees the
     # jobs volume: no network, a read-only image, a tmpfs scratch, one CPU,
     # 512 MB, 128 processes, and jobs run as `nobody`. The capabilities kept
@@ -232,6 +243,7 @@ services:
       start_period: 10s
 
   rag:
+    logging: *default-logging
     build:
       context: .
       dockerfile: docker/rag.Dockerfile
@@ -273,6 +285,7 @@ services:
       - rag_logs:/app/logs
 
   data:
+    logging: *default-logging
     profiles: [data]
     build:
       context: .

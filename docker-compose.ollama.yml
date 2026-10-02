@@ -1,7 +1,14 @@
 name: ${AGENTX_PROJECT_NAME:-agentx}
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   ollama:
+    logging: *default-logging
     image: ollama/ollama:0.33.2@sha256:020e4134285e2ef4d8fd801234176de3b4faadc992a3eb06c8e66a2f9d4c4ba2
     restart: unless-stopped
     volumes:
