@@ -144,9 +144,10 @@ trusting executed scores: the `code runner started` line of
 as available. If either flag is false, jobs still run inside the container
 limits but without the per-job uid drop or rlimits.
 
-`BENCHMARK_DRIVER_SMOKE=1 npm run test:unit --prefix benchmark` also runs the
-opt-in tests that execute generated drivers and the daemon with the local
-interpreters.
+`npm run test:drivers --prefix benchmark` runs the tests that execute generated
+drivers and the daemon with the local interpreters; CI runs it through
+Benchmark's `test:surfaces`, and it takes a few seconds. The regular suite skips
+them unless `BENCHMARK_DRIVER_SMOKE=1` is set.
 
 ## Tests
 
