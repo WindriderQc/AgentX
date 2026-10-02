@@ -90,6 +90,8 @@
     fr: ['Un instant…', 'Je regarde ça…', 'Laisse-moi réfléchir une seconde…'],
     en: ['One moment…', 'Let me check…', 'Give me a second…']
   });
+  // Silence before a reply's first words after which Nestor says one holding phrase.
+  const HOLDING_DELAY_MS = 3000;
   function holdingPhrase(language, index = 0) {
     const phrases = HOLDING[language === 'en' ? 'en' : 'fr'];
     return phrases[index % phrases.length];
@@ -545,9 +547,13 @@
       }, { turnId: turn.id, onNotice: speak, ...(attachments.length && { attachmentIds: attachments.map(item => item.id) }) });
       // A long silent wait made people speak again and cancel the turn; say once that
       // Nestor is working when no reply text has arrived after a few seconds.
-      const holdingDelay = this.io.holdingDelayMs === undefined ? 3000 : this.io.holdingDelayMs;
+      // Its words join turn.spoken, so hearing them back is echo, not an interruption.
+      const holdingDelay = this.io.holdingDelayMs === undefined ? HOLDING_DELAY_MS : this.io.holdingDelayMs;
       const holding = holdingDelay === null ? null : setTimeout(() => {
-        if (!streamed && this.owns(turn) && !turn.interrupted) speak(holdingPhrase(spokenLanguage, this.holdingIndex = (this.holdingIndex || 0) + 1));
+        if (streamed || !this.owns(turn) || turn.interrupted) return;
+        if (!speak(holdingPhrase(spokenLanguage, this.holdingIndex = (this.holdingIndex || 0) + 1))) return;
+        // Nestor is still thinking once the phrase ends; do not show it as speaking.
+        playback.then(() => { if (!streamed && this.owns(turn) && this.turnPending && this.state === 'speaking') this.show('thinking'); });
       }, holdingDelay);
       holding?.unref?.();
       response.finally(() => clearTimeout(holding)).catch(() => {});
@@ -828,7 +834,7 @@
     return response.arrayBuffer();
   }
 
-  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isTranscriptHallucination, isSpokenEcho, holdingPhrase, nextSpeechChunkLength };
+  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isTranscriptHallucination, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, nextSpeechChunkLength };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.NestorConversation = api;
 })(typeof window === 'undefined' ? globalThis : window);
