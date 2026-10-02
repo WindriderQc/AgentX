@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isTranscriptHallucination } = require('../public/browser-conversation');
+const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isTranscriptHallucination, isSpokenEcho } = require('../public/browser-conversation');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 10));
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { resolve, promise }; };
@@ -99,12 +99,13 @@ test('ordinary short corrections and English speech keep their original transcri
   assert.deepEqual(submitted, ['Orion.', "Let's go.", 'Numéro 6', 'Stop, explique le budget.']);
 });
 
-for (const kind of ['empty', 'hallucinated', 'digit', 'failed']) {
+for (const kind of ['empty', 'hallucinated', 'digit', 'failed', 'echo']) {
   test(`a ${kind} noise candidate during playback resumes the same response without cancelling history`, async () => {
     const playing = deferred(); let transcriptions = 0, turns = 0, syntheses = 0;
     const h = harness({ transcribe: async () => {
       if (++transcriptions === 1) return 'Bonjour';
       if (kind === 'failed') throw new Error('STT unavailable');
+      if (kind === 'echo') return 'Réponse à terminer';
       return kind === 'empty' ? '' : kind === 'digit' ? '6.' : 'Thanks for watching.';
     }, turn: async () => { turns++; return { text: 'Une réponse à terminer.' }; },
     synthesize: async () => { syntheses++; return new ArrayBuffer(10); },
@@ -1028,4 +1029,25 @@ test('the language Whisper recognized decides the turn voice, and French is the 
     assert.deepEqual(spoken, [expected]);
     h.conversation.stop();
   }
+});
+
+test('a transcript made of the words the reply just spoke is echo; other words are the user', () => {
+  const spoken = 'Voici le résumé de ta journée. Le build a passé, pis le serveur est correct.';
+  assert.equal(isSpokenEcho('le build a passé pis le serveur', spoken), true);
+  assert.equal(isSpokenEcho('Le résumé de ta journée.', spoken), true);
+  assert.equal(isSpokenEcho('Attends, peux-tu répéter la météo?', spoken), false);
+  assert.equal(isSpokenEcho('', spoken), false);
+  assert.equal(isSpokenEcho('le build a passé', ''), false);
+});
+
+test('different words during playback still interrupt the reply', async () => {
+  const playing = deferred(); let transcriptions = 0, interrupts = 0;
+  const h = harness({ transcribe: async () => (++transcriptions === 1 ? 'Bonjour' : 'Attends, change de sujet'),
+    turn: async () => ({ text: 'Une longue réponse que Gazz est en train de lire.' }),
+    async interrupt() { interrupts++; } });
+  h.audio.canInterrupt = true; h.audio.play = (bytes, signal) => { signal.addEventListener('abort', playing.resolve, { once: true }); return playing.promise; };
+  await h.conversation.start({}); const first = h.say(); await tick();
+  h.beginSpeech(); await h.say(); await first;
+  assert.equal(interrupts, 1);
+  h.conversation.stop();
 });

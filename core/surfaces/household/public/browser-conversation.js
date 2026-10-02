@@ -82,6 +82,18 @@
     return /^\d$/.test(value) || TRANSCRIPT_HALLUCINATIONS.has(value);
   }
 
+  // Phones delay and process their own speaker output beyond what EchoGuard's
+  // short acoustic window can match, so a reply heard back through the mic
+  // was transcribed and treated as the user interrupting. Words that the
+  // current reply has just spoken are an echo, not a new request.
+  function isSpokenEcho(text, spoken) {
+    const words = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+      .match(/[a-z0-9]+/g) || [];
+    const heard = words(text), said = new Set(words(spoken));
+    if (!heard.length || !said.size) return false;
+    return heard.filter(word => said.has(word)).length / heard.length >= 0.7;
+  }
+
   // One contiguous microphone window and one expiring excerpt, owned by this
   // capture only. Never persisted or used as an inference input by replay.
   class AudioHistory {
@@ -428,6 +440,7 @@
         transcribed = true;
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text, typeof result === 'object' && result ? result : {});
         if (isTranscriptHallucination(text)) text = '';
+        if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) text = '';
         if (previous?.candidate && this.owns(previous)) {
           if (!text.trim() && !stopControl) { this.resumeCandidate(previous); return; }
           this.interrupt(previous);
@@ -465,6 +478,7 @@
         const speak = text => {
           text = speechLanguage.speechText(text);
           if (!text.trim() || !this.owns(turn)) return false;
+          turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
           const language = spokenLanguage;
           const previousPlayback = playback, availableSlot = prefetchSlot;
           // Serialize synthesis, at most one clause ahead of the current sound.
@@ -746,7 +760,7 @@
     return response.arrayBuffer();
   }
 
-  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, isTranscriptHallucination, nextSpeechChunkLength };
+  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, isTranscriptHallucination, isSpokenEcho, nextSpeechChunkLength };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.NestorConversation = api;
 })(typeof window === 'undefined' ? globalThis : window);
