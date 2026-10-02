@@ -8,16 +8,14 @@
  */
 
 const logger = require('../../../config/logger');
-const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
-const BenchmarkTimelineEntry = require('../../../models/BenchmarkTimelineEntry');
 const { getConfiguredHosts } = require('../../helpers/ollamaHostConfig');
 
 // Import sub-modules
 const { DEFAULT_EXECUTION_CONFIG } = require('./config');
 const { seedPrompts, cleanupStaleBatches, getPrompts, getConfigPresets } = require('./init');
 const { residencyOf } = require('../probePlacement');
-const { runTest, startBatch, resumeBatch, executeBatch, stopBatch, getActiveBatchId, getActiveHeartbeatInterval } = require('./execution');
+const { runTest, startBatch, resumeBatch, executeBatch, stopBatch } = require('./execution');
 const { getResults, getSummary, getDashboard, compareModels, getQualityBreakdown, getModelTrends, compareBatches, getBatchQualityBreakdown } = require('./results');
 const {
     getBatches,
@@ -44,71 +42,8 @@ const {
 } = require('./promptComparison');
 const { getTopCategoryFromAverages } = require('./modelMetadata');
 const { getCurrentHostModelSnapshot, isModelAvailableForRow, serializeHostModelSnapshot } = require('./modelAvailability');
-const { judgeResult, judgeBatch, stopJudging, getJudgingStatus, stopAllJudging } = require('./judging');
+const { judgeResult, judgeBatch, stopJudging, getJudgingStatus } = require('./judging');
 const { getEfficiencyMap } = require('./efficiencyMap');
-const { buildIdleCurrentTest } = require('./batchHelpers');
-
-// Graceful shutdown handler - mark batch as interrupted when the process restarts
-process.on('SIGTERM', async () => {
-    const SHUTDOWN_DEADLINE_MS = 5000;  // 5 second hard deadline
-    const deadline = Date.now() + SHUTDOWN_DEADLINE_MS;
-
-    const activeBatchId = getActiveBatchId();
-    const activeHeartbeatInterval = getActiveHeartbeatInterval();
-
-    const shutdown = async () => {
-        // Stop all active judging jobs
-        stopAllJudging();
-
-        if (activeBatchId) {
-            logger.warn('SIGTERM received - marking active batch as interrupted', { batchId: activeBatchId });
-            try {
-                if (activeHeartbeatInterval) {
-                    clearInterval(activeHeartbeatInterval);
-                }
-                await BenchmarkTimelineEntry.create({
-                    batchId: activeBatchId,
-                    timestamp: new Date(),
-                    event: 'sigterm_interrupted',
-                    success: false,
-                    error: 'Process received SIGTERM signal'
-                }).catch(() => {});
-
-                await BenchmarkBatch.updateOne(
-                    { _id: activeBatchId, status: 'running' },
-                    {
-                        $set: {
-                            status: 'interrupted',
-                            completed_at: new Date(),
-                            last_activity_at: new Date(),
-                            current_test: buildIdleCurrentTest(),
-                            active_slot: null
-                        }
-                    }
-                );
-                logger.info('Batch marked as interrupted', { batchId: activeBatchId });
-            } catch (err) {
-                logger.error('Failed to mark batch as interrupted on SIGTERM', {
-                    batchId: activeBatchId,
-                    error: err.message
-                });
-            }
-        }
-    };
-
-    // Race between shutdown logic and hard deadline
-    const sleepUntilDeadline = () => new Promise(resolve => {
-        const remaining = deadline - Date.now();
-        if (remaining > 0) setTimeout(resolve, remaining);
-        else resolve();
-    });
-
-    try {
-        await Promise.race([shutdown(), sleepUntilDeadline()]);
-    } finally {
-        process.exit(0);
-    }
-});
 
 /**
  * BenchmarkService class - facade preserving original API
