@@ -66,6 +66,39 @@ python3 integrations/secretary/mailbox_backfill.py --root "$GMAIL_SECRETARY_ROOT
 python3 integrations/secretary/mailbox_backfill.py --root "$GMAIL_SECRETARY_ROOT" --status
 ```
 
+## Catch-up review of collected pages
+
+`mail_catchup.py` reviews every unread evidence page back to back, then stops.
+It replaces the two pages per triage turn for a large archive: each page goes
+through Core's `/api/inference/generate` (`--task-type`, default `analysis`) with
+a JSON schema, and is recorded by `evidence_record.record_page`, the same
+validation the agent's `gmail_secretary_evidence` record uses. No OpenClaw
+session or transcript is created, so a long catch-up never grows an agent's
+session store.
+
+Pages run by lane: named correspondence (`contact`), invoice attachments,
+invoice mail, the rest of the mailbox, and Gmail promotions/social/updates/forums
+(`bulk`) last. `--light-model` (with `--light-host`) sends the bulk lane to a
+smaller model; `--lanes` restricts or reorders lanes and `--max-pages N` makes a
+measured trial run. Before each page it reads Core's runtime coordination and
+pauses while maintenance or a benchmark workload is active; Core refusals and
+outages also pause on the same page instead of failing it. Invalid model output
+is logged in `catchup-errors.json`; several failures in a row stop the run.
+
+Nothing is written to the owner's tasks or memory. A finding the model marks
+`current` in mail from the last 30 days is queued in `catchup-proposals.json`
+(state `pending`) for the owner to confirm. `--instructions-file` adds private
+owner instructions kept outside Git (for example which correspondence matters).
+While `catchup.lock` is fresh, `native_next` only collects new mail and returns
+`empty`, and the watchdog no longer holds triage at catch-up cadence for deep
+review. `--status` prints `catchup-status.json`: phase, per-lane counts,
+proposals, pages per hour, ETA, pause reason and last error, never content.
+
+```bash
+python3 integrations/secretary/mail_catchup.py --root "$GMAIL_SECRETARY_ROOT" --lanes contact --max-pages 20
+python3 integrations/secretary/mail_catchup.py --root "$GMAIL_SECRETARY_ROOT" --status
+```
+
 ## Original messages and completeness
 
 `raw_messages.py sync` stores the original of every message in every archived
