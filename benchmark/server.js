@@ -366,10 +366,11 @@ async function start() {
 
   require('./src/services/startupRecovery').startStartupRecovery(app.locals.agentxProfile);
 
-  app.listen(PORT, HOST, () => {
+  const server = app.listen(PORT, HOST, () => {
     logger.info(`agentx-benchmark listening on ${HOST}:${PORT}`);
     logger.info(summarizeForLog(buildEnvStatus({ service: 'benchmark' })));
   });
+  require('./src/serverShutdown').installShutdown(server);
 }
 
 if (require.main === module) {
