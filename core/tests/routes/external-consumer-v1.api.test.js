@@ -136,7 +136,10 @@ describe('external consumer v1 routes', () => {
     });
     expect(JSON.stringify(response.body)).not.toContain('http://private-host');
     expect(response.headers['x-agentx-consumer-contract']).toBe('1.0.0');
-    expect(runtimeServices.routing.getEffectiveSnapshot).toHaveBeenCalledWith({ includeCatalog: false });
+    expect(runtimeServices.routing.getEffectiveSnapshot).toHaveBeenCalledWith({
+      includeCatalog: false,
+      signal: expect.any(AbortSignal),
+    });
   });
 
   test('redacts deployment locations from degraded error projections', async () => {

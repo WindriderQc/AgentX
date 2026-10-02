@@ -164,6 +164,8 @@ export function toGeneralistBoardEntry(entry, scoreAxis = 'composite') {
         pricing:         entry.pricing || null,
         providerCostNanodollars: entry.providerCostNanodollars || 0,
         qualityCohortFingerprint: entry.qualityCohortFingerprint || null,
+        promptCoverage:  entry.promptCoverage || null,
+        stalePrompts:    entry.stalePrompts || [],
         performance: perf,
         thinking: perf?.thinking || null,
         attempts: entry.attempts || null

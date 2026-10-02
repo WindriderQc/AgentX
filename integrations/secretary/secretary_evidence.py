@@ -23,6 +23,8 @@ import tempfile
 import time
 import zipfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from evidence_store import load, now, save  # noqa: E402,F401  (re-exported for existing callers)
 
 DEFAULT_ROOT = Path(os.environ.get("GMAIL_SECRETARY_ROOT", Path.home() / ".local/share/agentx/secretary-evidence"))
 REVIEW_PAGE_CHARS = 4000
@@ -136,22 +138,6 @@ def accounting_row(invoice):
         if difference:
             row["unexplainedDifferenceCents"] = difference
     return row
-
-
-def now():
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
-def load(file, default=None):
-    return json.loads(file.read_text(encoding="utf-8")) if file.exists() else default
-
-
-def save(file, value):
-    file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temp = file.with_name(file.name + ".tmp")
-    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temp.chmod(0o600)
-    temp.replace(file)
 
 
 def sha(data):
@@ -627,7 +613,10 @@ class Archive:
         state_file = self.root / "native-worker.json"
         state = load(state_file, {"lane": 0})
         issued = state.get("issued")
-        if issued and not (self.root / "page-reviews" / (issued["pageId"] + ".json")).exists():
+        # A running mail_catchup.py reviews pages back to back; this turn then only collects new mail.
+        catchup = self.root / "catchup.lock"
+        catching_up = catchup.exists() and time.time() - catchup.stat().st_mtime < 1800
+        if issued and not catching_up and not (self.root / "page-reviews" / (issued["pageId"] + ".json")).exists():
             current = load(self.root / "threads" / issued["threadId"] / "manifest.json", {})
             if current.get("evidenceHash") == issued["evidenceHash"]:
                 # Retry precisely the same page after an interrupted model run.
@@ -638,7 +627,9 @@ class Archive:
         # One collection scope per tool call bounds work for attachment-heavy
         # threads. Completed downloads survive interruption independently.
         scope_index = state.get("collectionScope", 0) % len(QUERIES)
-        for scope in [list(QUERIES)[scope_index]]:
+        # A running mailbox_backfill owns collection; it refreshes its lock after every thread.
+        lock = self.root / "backfill.lock"
+        for scope in [] if lock.exists() and time.time() - lock.stat().st_mtime < 1800 else [list(QUERIES)[scope_index]]:
             # Refresh the newest page independently, without resetting historical pagination.
             inventory_file = self.root / f"inventory-{scope}.json"
             inventory = load(inventory_file, {})
@@ -658,7 +649,11 @@ class Archive:
         if time.monotonic() - started < 60:
             # The plugin allows 240 s per call: one bounded machine reading fits after a quick collection.
             self.ocr_pending(1)
-        contact = {m["threadId"] for m in load(self.root / "inventory-contact.json", {}).get("messages", {}).values()}
+        if catching_up:
+            state.update(issued=None)
+            save(state_file, state)
+            return {"outcome": "empty", "catchup": True, "progress": self.native_status()}
+        contact ={m["threadId"] for m in load(self.root / "inventory-contact.json", {}).get("messages", {}).values()}
         lane = state.get("lane", 0) % 2
         manifests = sorted(self.manifests(), key=lambda m: max(int(r.get("internalDate") or 0) for r in m["messages"]), reverse=True)
         # Alternate named correspondence and the rest of the mailbox; neither can starve.
@@ -681,45 +676,13 @@ class Archive:
         state_file = self.root / "native-worker.json"
         state = load(state_file, {})
         page = state.get("issued")
-        if not page or value.get("pageId") != page["pageId"]:
+        if not page:
             raise ValueError("Review must match the issued source page")
-        if not isinstance(value.get("summary"), str) or not value["summary"].strip():
-            raise ValueError("A substantive page summary is required")
-        manifest = load(self.root / "threads" / page["threadId"] / "manifest.json")
-        if page["evidenceHash"] != manifest["evidenceHash"]:
-            raise ValueError("Evidence changed; retrieve a fresh page")
-        review = load(self.root / "reviews" / (page["threadId"] + ".json"), {})
-        review.update(threadId=page["threadId"], evidenceHash=page["evidenceHash"], coverage="partial")
-        for section in ("actions", "memories", "deliverables", "invoices"):
-            additions = value.get(section, [])
-            if not isinstance(additions, list):
-                raise ValueError(f"{section} must be an array")
-            existing = review.setdefault(section, [])
-            for item in additions:
-                if not isinstance(item, dict) or item.get("messageId") != page["messageId"]:
-                    raise ValueError("Findings must cite the issued messageId")
-                if section in ("actions", "memories", "deliverables") and not item.get("text"):
-                    raise ValueError("A finding needs text")
-                if item not in existing:
-                    existing.append(item)
-        unresolved = value.get("unresolved", [])
-        if not isinstance(unresolved, list) or any(not isinstance(x, str) for x in unresolved):
-            raise ValueError("unresolved must be an array of strings")
-        review["unresolved"] = list(dict.fromkeys(review.get("unresolved", []) + unresolved))
-        summaries = review.setdefault("pageSummaries", {})
-        summaries[page["pageId"]] = {"messageId": page["messageId"], "summary": value["summary"]}
-        review.setdefault("summary", value["summary"])
-        pages = list(self.review_pages(manifest))
-        all_read = all(p["pageId"] == page["pageId"] or (self.root / "page-reviews" / (p["pageId"] + ".json")).exists() for p in pages)
-        visual_pending = any(a["status"] != "text_extracted" for m in manifest["messages"] for a in m["attachments"])
-        if all_read and not visual_pending and not review["unresolved"]:
-            review["coverage"] = "complete"
-        # Existing receipt validation runs before advancing the durable reading cursor.
-        self.review(review)
-        save(self.root / "page-reviews" / (page["pageId"] + ".json"), {**value, "threadId": page["threadId"], "at": now()})
+        from evidence_record import record_page
+        result = record_page(self, page, value)
         state.update(issued=None, lane=1 - state.get("lane", 0), lastRecordedAt=now())
         save(state_file, state)
-        return {"saved": True, "pageId": page["pageId"], "coverage": review["coverage"], "progress": self.native_status()}
+        return {**result, "progress": self.native_status()}
 
     def status(self):
         manifests = self.manifests()
@@ -744,7 +707,7 @@ class Archive:
                 "offset": offset, "totalChars": len(packet), "nextOffset": end if end < len(packet) else None,
                 "externalUntrustedContent": packet[offset:end]}
 
-    def review(self, value):
+    def review(self, value, export=True):
         tid = identifier(value["threadId"])
         manifest = load(self.root / "threads" / tid / "manifest.json")
         if not manifest or manifest["evidenceHash"] != value.get("evidenceHash"):
@@ -764,7 +727,8 @@ class Archive:
         # Never infer paid/unpaid, liability, or reimbursement percentages.
         value["reviewedAt"] = now()
         save(self.root / "reviews" / (tid + ".json"), value)
-        self.export()
+        if export:  # a batch caller exports once per batch instead of once per page
+            self.export()
         return {"saved": True, "threadId": tid, "coverage": value["coverage"]}
 
     def export(self):
@@ -922,8 +886,7 @@ def main():
     read.add_argument("thread_id")
     read.add_argument("--offset", type=int, default=0)
     read.add_argument("--size", type=int, default=16000)
-    review = sub.add_parser("review")
-    review.add_argument("file", type=Path)
+    sub.add_parser("review").add_argument("file", type=Path)
     sub.add_parser("status")
     sub.add_parser("export")
     ocr = sub.add_parser("ocr", help="Machine-read scans/photos already in the archive; no Gmail access")
@@ -934,8 +897,7 @@ def main():
     sub.add_parser("native_status")
     sub.add_parser("native_record", help="Read a source-linked page review from JSON stdin")
     sub.add_parser("read_source", help="Read a bounded message/thread page; JSON parameters on stdin")
-    thread_state = sub.add_parser("thread_state")
-    thread_state.add_argument("thread_id")
+    sub.add_parser("thread_state").add_argument("thread_id")
     args = parser.parse_args()
     archive = Archive(args.root)
     if args.command == "collect":

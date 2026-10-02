@@ -65,6 +65,31 @@ build revision. This checkout has no automatic production pull/deploy scheduler.
 Configure [parental access](PARENTAL_ACCESS.md) at the LAN HTTPS gateway before
 opening the full profile to family devices.
 
+### Bounded maintenance actions
+
+`./agentx action <name>` runs one action from a closed list on a running
+instance, never a free shell. It reads the instance from `AGENTX_ENV_FILE`,
+`AGENTX_PROJECT_NAME` and `AGENTX_COMPOSE_OVERRIDE` and refuses to guess them.
+A mutating action also needs `AGENTX_LEAD_FILE`, the instance's `LEAD.md`
+coordination file, and `--actor <who>`: it takes that lease, refuses while
+another operator holds it, releases it with a note, and prints a JSON receipt
+(`agentx.maintenance-action/v1`), also written to `AGENTX_ACTION_RECEIPTS_DIR`
+when set. Exit codes: 0 completed, 1 failed, 2 usage, 4 refused (held or busy).
+
+| Action | Effect |
+|---|---|
+| `status` | Read-only: checkout revision, revision served by Core, Benchmark and RAG, active coordination, lease holder, running deploys. |
+| `deploy --services core,benchmark[,...] [--revision origin/main] [--wait-minutes 10]` | Clean tree, no other deploy, revision on `origin/main` and a fast-forward of the checkout; waits for the instance to be idle, then `./agentx up --build --no-deps` (Core's runtime lease still applies) and checks the served revision. |
+| `recover-quarantine --host <ollama url>` | For an UNKNOWN inference on a local Ollama: refuses while an inference or a workload is active there, restarts the unit named for that host in `AGENTX_ACTION_OLLAMA_UNITS` (`{"<url>": {"unit": "...", "scope": "system"\|"user"}}`, `sudo -n` for system units), checks a new process answers, then attests each UNKNOWN admission with `recover-runtime-restart`. Workloads keep the profiler procedure below. |
+| `recalibrate-judges [--host <url> --model <name>]` | Runs Benchmark's quick judge calibration (the default judge when no target is given) and returns its report. |
+
+An instance can install a small wrapper that exports these variables, so an
+operator session or agent calls a single command.
+The OpenClaw plugin `integrations/openclaw/agentx-maintenance` exposes the
+same actions to configured operator agents as one tool,
+`agentx_maintenance_action`: no shell, validated arguments, and the actor is
+always `openclaw:<agent>`. See its README for the configuration.
+
 ### Moving an instance to a fresh source history
 
 When a source repository starts a new history, do not merge the previous Git
@@ -96,19 +121,37 @@ Rebuild only the services whose code changed (`core`, `benchmark` with
 `benchmark-runner`, `rag`, `data`); `--no-deps` leaves the other containers
 running. Always pass the instance's project name: without it the launcher uses
 the default `agentx` project. When `up` or `rebuild` would recreate Core or
-Benchmark on a running instance, the launcher first takes Core's `runtime-deploy`
-maintenance lease. Core refuses it while a Benchmark workload or an inference is
-active: the launcher then names that work (from
-`/api/nerve-center/runtime-coordination/active`) and stops with exit code 4
-without touching a container. Images are built first (`up --build` included),
-so the lease, which pauses all inference, covers only the recreate: it keeps
-new work out, is heartbeated and is released once health is green. Recreating
-mid-batch would otherwise cut the workload and quarantine its host for the rest
-of its admission. `--force-runtime` (or `AGENTX_FORCE_RUNTIME=1`) skips the lease
-for an operator recovery; with Core not running, no lease is needed. A
-Benchmark-only recreate (`benchmark`, `benchmark-runner`) does not touch
-conversations, which go from Core to Ollama: it takes no lease and waits only
-until no Benchmark workload is active. A Core container that exists but does
+Benchmark on a running instance, Core decides from what that recreate would
+cut, and the launcher prints its verdict:
+
+- Core alone takes Core's `core-recreate` maintenance lease. A running Profiler
+  workload does not block it: its writer is in Benchmark, it reaches Ollama
+  directly, Core keeps its admission through the restart and Benchmark keeps
+  heartbeating once Core answers again (it waits while Core is down, within the
+  admission Core last confirmed). While the lease is held the profile keeps
+  its own inference through Core, which drains admitted requests before it
+  exits. Core inference, batches and judges (which go
+  through Core inference), a workload in recovery or about to expire, and another
+  maintenance lease block it.
+- Benchmark alone (`benchmark`, `benchmark-runner`) owns every workload writer:
+  it takes no lease (conversations go from Core to Ollama) and waits until Core
+  reports no workload.
+- Both, or every service when none is named, take the global `runtime-deploy`
+  lease, refused while any workload or inference is active.
+
+A refusal stops with exit code 4 without touching a container and names each
+blocker (kind, id, hosts, owner, start, reason) with its clean cancel route:
+the Profiler panel or `POST /api/profiler/pipeline/profile/:profileId/cancel`,
+`POST /api/profiler/pipeline/profile-host/:queueId/cancel`,
+`POST /api/profiler/hosts/test/run-fleet/:queueId/cancel` or
+`POST /api/benchmark/batch/:id/stop` on Benchmark. Core serves the same verdict
+at `/api/nerve-center/runtime-coordination/deploy-blockers?service=core|benchmark|all`.
+Images are built first (`up --build` included), so the lease, which keeps new
+work out, covers only the recreate: it is heartbeated and released once health
+is green. Recreating mid-batch would otherwise cut the workload and quarantine
+its host for the rest of its admission. `--force-runtime` (or
+`AGENTX_FORCE_RUNTIME=1`) skips the lease for an operator recovery only; with
+Core not running, no lease is needed. A Core container that exists but does
 not answer its health check makes the launcher stop (exit code 4), since
 another recreate may be in progress. Recreate
 Core or Benchmark on a running instance only through the launcher
@@ -265,6 +308,16 @@ Notes are named `YYYY-MM-DD Title.md`, carry `author`, `created` and
 inbox outside approved ingestion roots (e.g. `RAG/Inbox` beside `RAG/Docs`):
 moving a note into the documents folder is the owner's approval.
 
+External agents reach the owner's durable memory through the same `/mcp`
+endpoint, which needs the adult session or bearer through the gateway (like
+every `/mcp` tool, it is open to trusted unmarked loopback/Docker callers): `memory_search` searches the
+owner's personal notes and `memory_remember` saves or corrects one fact,
+preference or decision. They use the store Nestor and the memory editor use,
+labelled owner/private, refuse secret-like text and record `mcp-agent` as the
+source of new notes. They never read or write family notes. Infrastructure
+knowledge belongs in the docs or a vault note, not in owner memory; RAG
+documents are searched with `rag_search`.
+
 The personal finance capability is described for a new maintainer in
 [FINANCE.md](FINANCE.md). The personal finance ledger ingests bank and credit-card statements dropped in
 `FINANCE_INBOX_PATH`. Core reads the PDF text layer (`pdftotext -layout`), a
@@ -338,6 +391,18 @@ browser's own voice selection still wins; invalid entries keep the catalog voice
 The chosen engine must be available: an unavailable VoxCPM2 worker leaves the
 reply unspoken rather than substituting another voice.
 
+Live voice transcribes through VoiX. `HOUSEHOLD_BROWSER_STT_FALLBACK` optionally
+lets Super Dad (`personal`) or both spaces (`true`) fall back to the browser's own
+speech recognition when VoiX is unreachable (transcription 502/503/504, a network
+error, or `/api/voix/health` down at start). The default `false` hides it: in
+Chrome and Edge that recognition sends the microphone audio to the browser
+vendor's cloud service, which breaks the local-only default. Even when allowed it
+never starts on its own: the page shows a French notice with that warning and a
+button, the choice is remembered per space in that browser and revocable under
+Réglages › Écoute, and a banner stays visible while it is in use. The recognizer
+only replaces transcription; wake word, Stop, echo and interruption handling are
+unchanged. Leave it `false` or `personal` when the family space must stay local.
+
 VoiX requires `VOIX_BASE_URL` for its player, speech recognition/synthesis and
 native-device APIs. `DATAAPI_BASE_URL` is optional. Email actions require
 `LEANTIME_BASE_URL`, `LEANTIME_API_KEY`, `LEANTIME_EMAIL_ACTION_PROJECT_ID` and
@@ -360,6 +425,11 @@ instance installs and qualifies its model. False preserves ordinary transcriptio
 During a response, microphone energy holds playback reversibly while transcription
 checks the candidate. Empty or failed transcription resumes the remaining audio;
 confirmed speech or a Stop control cancels the old turn before another starts.
+When no reply text has arrived 3 s after a voice turn starts, Nestor says one short
+holding phrase (« Un instant… ») and shows that it is still thinking; hearing that
+phrase back is echo, not an interruption. Cancelling an OpenClaw turn before it
+streamed content, a tool call or reasoning settles at once; after that, Core waits
+for the run's native end and otherwise pauses the conversation with a French notice.
 The Super Dad and Famille avatar dock loads GraphysX's `<llmx-face>` module from
 `HOUSEHOLD_AVATAR_MODULE_URL` (a GraphysX build's `/embed/llmx-face.js`). Core
 relays it at `/api/household/avatar/llmx-face.js`, like the VoiX player, so the
@@ -379,10 +449,43 @@ gateway route `/api/nestor/media`, which serves only image files inside OpenClaw
 media directory (`<state dir>/media`, or the plugin's `mediaRoot`); Core uses
 `OPENCLAW_GATEWAY_URL` and `OPENCLAW_GATEWAY_TOKEN` for it. Other `MEDIA:` files,
 such as synthesized speech, keep their existing handling.
+Super Dad accepts photos up to 50 MB. The model receives a JPEG copy within the
+2 MB attachment limit (vision models downscale to about 1,000 pixels anyway).
+When `IMAGE_ARCHIVE_DIR` names a writable directory in the Core container
+(mount a host folder there through the instance Compose override), Core keeps
+the original of every attached photo, and every generated picture it relays, at
+full quality: `<origin>/<year>/<month>/<sha256>.<ext>` with a JSON sidecar
+(`origin` is `uploaded` or `generated`). The same image is stored once. The
+archive is independent of conversations: forgetting a conversation does not
+delete its archived images. Unset, nothing is archived and photos are still
+reduced for the model.
 The private parent journal lists, under each child-safe turn, what reached the
 child's screen: each block with its title and a short preview, every picture
 with its source and a thumbnail, whether a math picture was drawn in 3D, and
 only the fact that a secret was shown.
+Opening Super Dad on any device offers to resume its latest conversation when
+the last exchange is less than 24 hours old; the conversation, its history and
+attachments come from Core, not from the browser. Famille does not offer it.
+Famille keeps the Nestor personality but replaces its adult temperament with a
+playful, curious tone for children (`FAMILY_TONE` in
+`core/surfaces/household/family-context.js`), sent with the family surface
+contract on the OpenClaw backend and appended to the family pack prompt on the
+AgentX backend. Accuracy and the safety rules still come first.
+Every Super Dad turn also receives the active child profiles of the Family page
+(`/dad/family`) as approved knowledge, so the children's names and age bands
+do not depend on which notes a search selects. Famille turns do not.
+A parent may record an optional birth date (`YYYY-MM-DD`, from 1900 to today)
+for each profile on `/dad/family`. It is stored with the profile in
+`household_profiles` and travels with the MongoDB backup. Only the adult
+routes `GET /api/family/profiles/details` and `POST /api/family/profiles/birth-date`
+read or change it; both stay behind the parental gate. Super Dad receives the
+age in years, computed for the turn's date (`PLANNING_TIME_ZONE` when set,
+otherwise the server's local date), and the birthday as day and month, never
+the stored date. Without a birth date it keeps the age band. Famille turns, the
+Family page and the child-facing profile and room routes see the age band only.
+When the profiles, notes or memory hold only part of an answer, Super Dad says
+what they establish and plainly what they do not, without guessing exact ages,
+dates or relationships.
 The background brain runs after each Super Dad and Famille turn when
 `HOUSEHOLD_BRAIN_ENABLED=true` (the Compose default; `HOUSEHOLD_BRAIN_FAMILY=false`
 leaves Famille out). It uses the router's `master_brain` lane unless
@@ -443,7 +546,7 @@ invalid value keeps the default):
 
 | Variable | Default | Applies to |
 |---|---|---|
-| `MEMORY_SEARCH_MIN_SCORE` | 0.6 | Memory reads that do not choose a floor, so an unrelated question returns nothing instead of the nearest noise. Hybrid searches and callers with an explicit `minScore` keep theirs. |
+| `MEMORY_SEARCH_MIN_SCORE` | 0.6 | Memory reads that do not choose a floor, so an unrelated question returns nothing instead of the nearest noise. This includes Core `POST /api/rag/search` and the MCP `rag_search` tool. Hybrid searches and callers with an explicit `minScore` keep theirs. |
 | `CHAT_RAG_MIN_SCORE` | 0.3 | Chat RAG context (semantic search; hybrid RRF ranks keep 0.15). |
 | `MEMORY_REVIEW_RAG_MIN_SCORE` | 0.55 | Memory review searches for existing memory. |
 | `MEMORY_REVIEW_DUPLICATE_SCORE` | 0.8 | Memory review score above which a candidate is flagged as a duplicate. |
@@ -688,6 +791,62 @@ the host declares (fully in VRAM, or none of it on a CPU host) and a short-promp
 rollback. The response reports `rollback: verified` or `unverified`; an
 unverified rollback keeps the runtime lease quarantined.
 
+## Moving mail digests out of memory notes
+
+Mail digests saved as personal notes before the mail journal existed are moved
+with `core/scripts/migrate-mail-digests.js`, run in the Core container. A note
+carrying a Gmail thread/message id is a digest; one that reads like mail
+without an id is listed for review and never moved; everything else stays a
+note. Report and backup hold private text: write them to the instance backups,
+never into the checkout.
+
+```bash
+docker exec agentx-core-1 node scripts/migrate-mail-digests.js --report /tmp/digests-plan.json
+docker exec agentx-core-1 node scripts/migrate-mail-digests.js --apply --backup /tmp/digests-backup.json
+```
+
+Each digest becomes its own journal entry (tag `migrated-from-notes`, dated by
+when the note was filed) and its note is forgotten: hidden from every reader,
+recoverable from the backup. Digests filed longer ago than the journal
+retention, and notes that cannot be read, stay notes and are listed as skipped.
+A 16-digit number without letters is never taken for a Gmail id.
+`--ids <file.json>` limits a run to chosen note ids. Copy the files out of the
+container before it is recreated.
+
+## Identifier vault
+
+Generate the key once on the host and add it to the instance env (never Git):
+
+```bash
+echo "IDENTIFIER_VAULT_KEY=$(openssl rand -base64 32)" >> /srv/agentx/instance/instance.env
+```
+
+Recreate Core, then seal identifiers already stored in notes and the mail
+journal: the dry run prints counts by kind only; `--apply` writes the original
+texts to a backup first (clear text: keep it outside Git and delete it once the
+result is checked).
+
+```bash
+docker exec agentx-core-1 node scripts/seal-identifiers.js
+docker exec agentx-core-1 node scripts/seal-identifiers.js --apply --backup /tmp/identifiers-backup.json
+```
+
+Back the key up with the instance secrets: without it, stored values cannot be
+read.
+
+## Qdrant payload indexes
+
+RAG creates the payload indexes its filters use (`documentId`, `revision`,
+`chunkIndex`, `source`, `tags`, `scope`, `sensitivity`, `sourceIdentity`,
+`contentHash`, `noteName`, `aliases`) and a full-text index on `text` for
+keyword search. They are created with a new collection, and the missing ones
+are added the first time RAG verifies an existing collection. Qdrant builds
+them in the background: on a collection of about 100,000 chunks this is a
+one-time cost of a few seconds. A failed index creation is logged as a warning
+and does not stop ingestion or search; without the `text` index the keyword
+half of a hybrid search fails and reports `applied.keywordSearchFailed`.
+Keyword search scores at most 500 candidate chunks that contain a query term.
+
 ## Switching the embedding model
 
 The embedding model and its dimension belong to one Qdrant collection. A new
@@ -834,11 +993,35 @@ is separate from a successful runtime restoration. A verified journal left
 after an acknowledged Core release resolves from its durable release receipt.
 
 A running single-model profile can be cancelled from its Profiler panel or with
-`POST /api/profiler/pipeline/profile/:profileId/cancel`. It stops at its next
-checkpoint, once the current runtime request has returned (a CPU context
-sample can take minutes), and Core then restores the pinned models as after any
-profile; the profile ends as `cancelled`. Prefer it to restarting Ollama, which
-leaves the interrupted request UNKNOWN.
+`POST /api/profiler/pipeline/profile/:profileId/cancel`. When the request in
+flight is a direct Ollama request whose model was resident at the request's
+context, the cancel samples `/api/ps` and aborts it. `/api/ps` lists no
+requests, but Ollama sets a runner's `expires_at` only when its last request
+ends. The aborted request is terminal once, after `PROFILE_CANCEL_SETTLE_MS`
+(default 15 seconds), two `/api/ps` samples are identical and the model shows
+a different `expires_at` than before the abort, or is no longer loaded. The run
+journal keeps the receipt (`reconciliation.cancelAbort`), and Core restores the
+pinned models as after any profile. Without that proof within
+`PROFILE_CANCEL_PROOF_BUDGET_MS` (default 60 seconds) the request stays UNKNOWN
+with reason `PROFILE_CANCEL_STOP_UNPROVEN` and needs the restart attestation
+below. Any other request (a model still loading, a streamed or Core-routed
+request) is not aborted: the cancel lands at the next checkpoint, once it has
+returned. The panel shows which case applies and the remaining proof time. The
+profile ends as `cancelled`. Prefer it to restarting Ollama, which leaves the
+interrupted request UNKNOWN. A profile inside a host queue has no cancel of its
+own (`409`); the queue is cancelled instead.
+
+The same proof applies when the deadline of such a request expires, in any
+profile run (single, host queue or pipeline). For example, a CPU context probe
+step that outlasts `CONTEXT_PROBE_CPU_TIMEOUT_MS`. The run samples `/api/ps`,
+aborts the request and waits for the stop proof. Proven: the journal keeps the
+receipt (`reconciliation.deadlineAbort`), the step is recorded as timed out at
+that context, the probe sends no further request, and the profile completes with
+the context verified below it. Not proven: the request stays UNKNOWN with reason
+`PROFILE_DEADLINE_STOP_UNPROVEN`, the profile fails with that explanation and
+needs the restart attestation below. A request that cannot carry the proof (a
+model still loading at the deadline, a streamed or Core-routed request) keeps
+the client deadline and stays UNKNOWN when it expires.
 
 An UNKNOWN inference (not a workload) is released by the watchdog without a
 runtime restart in two bounded cases. A watchdog probe is released after

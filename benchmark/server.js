@@ -128,23 +128,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
-const sharedPublicRoot = path.join(__dirname, '..', 'core', 'public');
-const sharedAssets = {
-  '/dist/shared-tokens.css': ['dist', 'shared-tokens.css'],
-  '/dist/shared-utils.js': ['dist', 'shared-utils.js'],
-  '/css/local-fonts.css': ['css', 'local-fonts.css'],
-  '/css/platform-chrome.css': ['css', 'platform-chrome.css'],
-  '/js/utils/polling-controller.js': ['js', 'utils', 'polling-controller.js'],
-  '/js/utils/polling-controller-global.js': ['js', 'utils', 'polling-controller-global.js'],
-  '/js/utils/shared.js': ['js', 'utils', 'shared.js'],
-  '/js/utils/typed-confirmation.js': ['js', 'utils', 'typed-confirmation.js'],
-  '/js/utils/shortcut-hints.js': ['js', 'utils', 'shortcut-hints.js'],
-  '/js/utils/shortcuts-modal.js': ['js', 'utils', 'shortcuts-modal.js'],
-  '/js/utils/toast.js': ['js', 'utils', 'toast.js']
-};
-for (const [route, segments] of Object.entries(sharedAssets)) {
-  app.get(route, (_req, res) => res.sendFile(path.join(sharedPublicRoot, ...segments)));
-}
+require('../shared/sharedCoreAssets').mountSharedCoreAssets(app);
 
 // Core's /api/config is the browser URL authority in the composed platform.
 // Standalone Benchmark keeps the environment-driven localhost defaults.
@@ -382,10 +366,11 @@ async function start() {
 
   require('./src/services/startupRecovery').startStartupRecovery(app.locals.agentxProfile);
 
-  app.listen(PORT, HOST, () => {
+  const server = app.listen(PORT, HOST, () => {
     logger.info(`agentx-benchmark listening on ${HOST}:${PORT}`);
     logger.info(summarizeForLog(buildEnvStatus({ service: 'benchmark' })));
   });
+  require('./src/serverShutdown').installShutdown(server);
 }
 
 if (require.main === module) {

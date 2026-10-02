@@ -10,6 +10,7 @@ const {
 const { getRagServiceClient } = require('./ragServiceClient');
 const { createTaskInMongo } = require('./pipelineTaskService');
 const { createVaultInbox } = require('./vaultInboxService');
+const { MEMORY_TOOLS, MEMORY_TOOL_HANDLERS } = require('./mcpMemoryTools');
 
 const PROTOCOL_VERSION = '2025-06-18';
 const SERVER_INFO = { name: 'agentx-core-skill-bus', title: 'AgentX Core Skill Bus', version: '0.1.0' };
@@ -52,7 +53,7 @@ const TOOLS = [
     inputSchema: objectSchema({
       query: { type: 'string', minLength: 1, maxLength: 10000 },
       topK: { type: 'integer', minimum: 1, maximum: 20, default: 5 },
-      minScore: { type: 'number', minimum: 0, maximum: 1, default: 0 },
+      minScore: { type: 'number', minimum: 0, maximum: 1, description: 'Defaults to the memory search floor (MEMORY_SEARCH_MIN_SCORE); ignored for hybrid search.' },
       filters: { type: 'object', additionalProperties: true },
       expand: { type: 'boolean', default: false },
       hybrid: { type: 'boolean', default: false },
@@ -108,6 +109,7 @@ const TOOLS = [
     }, ['title', 'body']),
     annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
   },
+  ...MEMORY_TOOLS,
 ];
 
 function jsonRpcResult(id, result) {
@@ -163,9 +165,12 @@ async function ragSearch(args, deps) {
   const filters = input.filters === undefined ? undefined : ensurePlainObject(input.filters, 'filters');
   const ragClient = deps.ragClient || getRagServiceClient();
   const memory = deps.memory || require('./memoryReadService').forAudience('owner', { ragClient });
+  // Without an explicit minScore the reader applies the configured memory
+  // floor, so an unrelated question returns nothing instead of nearest noise.
+  const minScore = input.minScore === undefined ? {} : { minScore: clampNumber(input.minScore, { min: 0, max: 1, fallback: 0 }) };
   const results = await memory.search(query, {
     topK: clampInteger(input.topK, { min: 1, max: 20, fallback: 5 }),
-    minScore: clampNumber(input.minScore, { min: 0, max: 1, fallback: 0 }),
+    ...minScore,
     filters,
     expand: input.expand === true,
     hybrid: input.hybrid === true,
@@ -320,6 +325,7 @@ const TOOL_HANDLERS = {
   get_escalation_recommendation: getEscalationRecommendation,
   create_todo: createTodoTool,
   write_vault_note: writeVaultNoteTool,
+  ...MEMORY_TOOL_HANDLERS,
 };
 
 async function callTool(params, deps = {}) {
@@ -350,7 +356,7 @@ async function handleMcpMessage(message, deps = {}) {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER_INFO,
-      instructions: 'Agent X exposes a narrow product bus for health, RAG, routing recommendations, and local task creation, and vault inbox notes.',
+      instructions: 'Agent X exposes a narrow product bus for health, RAG, routing recommendations, local task creation, vault inbox notes, and owner memory notes.',
     });
   }
   if (method === 'tools/list') {

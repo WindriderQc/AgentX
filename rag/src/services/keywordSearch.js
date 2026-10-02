@@ -57,8 +57,12 @@ function scoreChunk(text, queryTerms) {
   return score;
 }
 
+// Chunks read per query. The store returns chunks containing any query term;
+// they are scored here, so the cap bounds work, not result quality on small corpora.
+const CANDIDATE_LIMIT = 500;
+
 /**
- * Run keyword search across all documents in the vector store.
+ * Run keyword search across the vector store.
  *
  * @param {object} vectorStore - VectorStoreAdapter instance
  * @param {string} query - Search query
@@ -70,14 +74,8 @@ async function keywordSearch(vectorStore, query, options = {}) {
   const topK = options.topK || 10;
   const filters = options.filters || {};
 
-  if (typeof vectorStore.getDocumentChunks !== 'function') {
+  if (typeof vectorStore.findKeywordCandidates !== 'function') {
     logger.warn('Keyword search not supported by current vector store adapter');
-    return [];
-  }
-
-  const { documents: allDocuments } = await vectorStore.listDocuments(filters);
-
-  if (!allDocuments || allDocuments.length === 0) {
     return [];
   }
 
@@ -86,35 +84,28 @@ async function keywordSearch(vectorStore, query, options = {}) {
     return [];
   }
 
+  const candidates = await vectorStore.findKeywordCandidates(queryTerms, { filters, limit: CANDIDATE_LIMIT });
   const results = [];
 
-  for (const doc of allDocuments) {
-    const docId = doc.documentId || doc.id;
-    if (!docId) continue;
+  for (const chunk of candidates || []) {
+    if (!chunk || typeof chunk.text !== 'string') continue;
+    const meta = chunk.metadata || {};
+    if (!meta.documentId) continue;
 
-    const chunks = await vectorStore.getDocumentChunks(docId);
-    if (!chunks) continue;
-
-    for (const chunk of chunks) {
-      if (!chunk || typeof chunk.text !== 'string') continue;
-
-      const text = chunk.text.normalize('NFC').toLowerCase();
-      const rawScore = scoreChunk(text, queryTerms);
-
-      if (rawScore > 0) {
-        results.push({
-          text: chunk.text,
-          score: Math.min(rawScore / 10, 1.0), // Normalize to 0-1
-          metadata: {
-            documentId: docId,
-            chunkIndex: chunk.chunkIndex || 0,
-            source: doc.source,
-            ...(doc.scope ? { scope: doc.scope, sensitivity: doc.sensitivity } : {}),
-            title: doc.title,
-            searchType: 'keyword'
-          }
-        });
-      }
+    const rawScore = scoreChunk(chunk.text.normalize('NFC').toLowerCase(), queryTerms);
+    if (rawScore > 0) {
+      results.push({
+        text: chunk.text,
+        score: Math.min(rawScore / 10, 1.0), // Normalize to 0-1
+        metadata: {
+          documentId: meta.documentId,
+          chunkIndex: chunk.chunkIndex || 0,
+          source: meta.source,
+          ...(meta.scope ? { scope: meta.scope, sensitivity: meta.sensitivity } : {}),
+          title: meta.title,
+          searchType: 'keyword'
+        }
+      });
     }
   }
 

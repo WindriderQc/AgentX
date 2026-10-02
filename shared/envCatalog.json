@@ -1393,6 +1393,16 @@
       "secret": false,
       "description": "URL of the GraphysX llmx-face.js module relayed by Core for the avatar dock. Unset: the relay answers 404 and the dock shows a 2D orb."
     },
+    "HOUSEHOLD_BROWSER_STT_FALLBACK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Allow the browser's own speech recognition when local transcription (VoiX) is unavailable: false, personal (Super Dad only) or true (Super Dad and Famille). Each browser must still consent per space; Chrome and Edge send the audio to the vendor's cloud. Unset: off."
+    },
     "HOUSEHOLD_BRAIN_ENABLED": {
       "services": [
         "core"
@@ -1505,6 +1515,26 @@
       "category": "household",
       "secret": false,
       "description": "provider/model sent to OpenClaw for personal Nestor voice turns on the main agent. Unset: native OpenClaw model policy applies."
+    },
+    "IDENTIFIER_VAULT_KEY": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "security",
+      "secret": true,
+      "description": "32-byte key in base64 that encrypts the owner's sensitive identifiers (NIQ, NAS, REEE, account and card numbers) moved out of notes and the mail journal. Keep it in the instance env on the host; losing it makes stored values unreadable. Unset: identifiers stay in the text as written."
+    },
+    "IMAGE_ARCHIVE_DIR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Writable directory, inside the Core container, where the original of every attached photo and every generated image is kept at full quality. Unset: nothing is archived."
     },
     "INFERENCE_FETCH_TIMEOUT_MS": {
       "services": [
@@ -1695,6 +1725,28 @@
       "category": "bridges",
       "secret": false,
       "description": "Leantime URL for household email actions and agent-ops links. Unset: email actions answer 503."
+    },
+    "MAIL_JOURNAL_RETENTION_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "fallback": "365",
+      "category": "memory",
+      "secret": false,
+      "description": "Days a mail journal entry is kept, counted from the mail's date; Mongo removes it afterwards. Applies to entries recorded after a change. 0 keeps entries forever; an invalid value uses 365."
+    },
+    "MEMORY_NOTE_RETENTION_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "fallback": "30",
+      "category": "memory",
+      "secret": false,
+      "description": "Days a forgotten or expired memory note is kept before Core deletes its text (daily sweep). 0 keeps hidden notes forever."
     },
     "MEMORY_REVIEW_AUTOMATION_MODE": {
       "services": [
@@ -2425,6 +2477,26 @@
       "category": "benchmark",
       "secret": false,
       "description": "Interval of profiler projection recovery. Unset: a built-in default."
+    },
+    "PROFILE_CANCEL_PROOF_BUDGET_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "How long a profile waits for Ollama /api/ps to prove a request it aborted (operator cancel or expired deadline) stopped before leaving it UNKNOWN, in ms, at least 10000. Unset: 60000."
+    },
+    "PROFILE_CANCEL_SETTLE_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Minimum wait after a profile aborts a request (operator cancel or expired deadline) before /api/ps can prove it stopped, in ms, at least 5000. Unset: 15000."
     },
     "PROMPT_ANALYSIS_MODEL": {
       "services": [

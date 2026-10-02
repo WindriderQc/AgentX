@@ -18,6 +18,7 @@ const DEFAULT_INTERVAL_MS = 60_000;
 const FETCH_TIMEOUT_MS = 5_000;
 
 let _interval = null;
+let _initialPoll = null;
 let _state = new Map(); // hostKey → last poll result (for API consumers)
 
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
@@ -156,10 +157,14 @@ function start(intervalMs = DEFAULT_INTERVAL_MS) {
   if (_interval) return;
   logger.info('Ollama Enrichment: Active', { intervalMs });
 
-  // Initial poll after short delay (let DB connect first)
-  setTimeout(() => pollAll().catch(err => {
-    logger.warn('Ollama Enrichment: initial poll failed', { error: err.message });
-  }), 5_000);
+  // Initial poll after short delay (let DB connect first). stop() cancels it,
+  // so a shutdown inside this window does not start a poll after the drain.
+  _initialPoll = setTimeout(() => {
+    _initialPoll = null;
+    pollAll().catch(err => {
+      logger.warn('Ollama Enrichment: initial poll failed', { error: err.message });
+    });
+  }, 5_000);
 
   _interval = setInterval(() => {
     pollAll().catch(err => {
@@ -169,6 +174,10 @@ function start(intervalMs = DEFAULT_INTERVAL_MS) {
 }
 
 function stop() {
+  if (_initialPoll) {
+    clearTimeout(_initialPoll);
+    _initialPoll = null;
+  }
   if (_interval) {
     clearInterval(_interval);
     _interval = null;

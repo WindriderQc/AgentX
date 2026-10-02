@@ -120,6 +120,17 @@ describe('InMemoryVectorStore', () => {
     expect(chunks[1].text).toBe('second');
   });
 
+  test('findKeywordCandidates returns filtered chunks holding any term', async () => {
+    await store.upsertDocument('doc1', { source: 'a' }, [
+      { text: 'L\'IA locale', embedding: [1, 0, 0], chunkIndex: 0 },
+      { text: 'Recette du jour', embedding: [0, 1, 0], chunkIndex: 1 }
+    ]);
+    await store.upsertDocument('doc2', { source: 'b' }, [{ text: 'IA partout', embedding: [1, 0, 0], chunkIndex: 0 }]);
+
+    const chunks = await store.findKeywordCandidates(['ia'], { filters: { source: 'a' } });
+    expect(chunks).toEqual([{ text: 'L\'IA locale', chunkIndex: 0, metadata: expect.objectContaining({ documentId: 'doc1', source: 'a' }) }]);
+  });
+
   test('getStats returns counts and dimension', async () => {
     await store.upsertDocument('doc1', { source: 'test' }, [
       { text: 'a', embedding: [1, 0, 0], chunkIndex: 0 },

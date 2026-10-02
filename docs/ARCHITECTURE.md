@@ -43,6 +43,17 @@ quarantine checks answers, and the reply is marked degraded. Every other task
 is strict and never changes model
 ([configuration](OPERATIONS.md#light-task-fallback-ladder)).
 
+### Fallback matrix
+
+Four mechanisms may retry or substitute a model call. None escalates to cloud.
+
+| Mechanism | Applies to | Trigger | Requested vs used | Replay of an executed request | Control |
+| --- | --- | --- | --- | --- | --- |
+| Transport retry (`core/src/services/routing/inferenceRetry.js`) | Trusted-runtime inference (`runtimeServices.inference.execute`) whose caller opts in; today OpenClaw pipeline turns. Household turns and OpenClaw conversations only wait for a reserved host to yield. | Failure marked `retryable` and `safeToRetry`: workload reservation or transient admission conflict, request not sent, provider 429/503. Up to 6 attempts within 120 s, exponential backoff. | Same model and host; attempts and causes reported as `retry` progress. | No. An unknown outcome is not retryable, and a returned stream is never re-entered. | Caller option `retry.enabled`; interactive wait at most 60 s. |
+| Task fallback ladder (`core/src/services/routing/taskFallbackLadder.js`) | Seven light tasks with a configured ladder; strict tasks never degrade. | Before dispatch: primary unconfigured, down, claimed, held, blocked, quarantined, busy or VRAM-spilled. After dispatch: one move to the next rung on a refusal proven before output. | `fallbackFrom` / `fallbackTo` marker, `X-AgentX-Degraded*` headers, `routing.degraded` on chat. | No. Only pre-dispatch refusal codes or `ollamaRequestNotSent` move the request (`refusedBeforeDispatch`). | `AGENTX_TASK_FALLBACKS_JSON`, `AGENTX_TASK_FALLBACK_WAIT_MS`. |
+| Degraded fallback (`core/src/services/routing/degradedFallback.js`) | `/api/inference/generate` and Core inference for `quick_chat`, `buddy_reaction`, `nestor_answer_light`, or a route-managed request with `allowCrossModelFallback`. | Connection failure, pre-response timeout, HTTP 502/503/504, verified missing model. Same model on another approved host, or an operator-pinned qualified model. | `agentx_degraded` (`requested`, `primary`, `actual`, `modelChanged`) and `X-AgentX-Degraded-Primary-Model` / `-Actual-Model`. | Possibly: a non-streamed request that timed out or lost its connection may have run on the first host. Nothing reached the client: streaming requests are never retried, and only one retry happens. | `DEGRADED_FALLBACK=true`. |
+| OpenClaw conversation opt-in (`core/integrations/runtime-bridges/openclaw/conversation-fallback.js`) | OpenClaw turns carrying `x-agentx-busy-reply: conversation` on a routed model; cron turns and pipelines never. | Primary busy, down, quarantined or spilled before dispatch (a claim first gets a yield wait), or a refusal before output. Uses the borrowed task's ladder, without tools or thinking. | `X-AgentX-Degraded-Primary-Model` / `-Actual-Model` and a one-line notice at the start of the reply. | No. Only `refusedBeforeOutput` errors move the turn, once. | `OPENCLAW_CONVERSATION_FALLBACK_TASK`. |
+
 ### Tasks
 
 Core owns task persistence (`PipelineTask`, atomic `Counter`). Trusted server
@@ -171,7 +182,29 @@ tool share it; there is no separate note file writer. Pack/space and audience
 are bound on the server. Family reads require explicit household/normal labels.
 Expired and forgotten notes are excluded, and voice retries cannot resurrect a
 forgotten note. Notes are not copied into a second RAG index, so a correction or
-forgetting takes effect on the next retrieval.
+forgetting takes effect on the next retrieval. A daily sweep deletes notes that
+have been forgotten or expired for longer than `MEMORY_NOTE_RETENTION_DAYS`
+(default 30; 0 keeps them).
+
+Dated mail digests do not belong in notes. Core's mail journal
+(`MailJournalEntry`, `mailJournalService`) keeps one owner-only entry per thread
+or message: when it happened, who, a short summary and a reference to the
+private evidence. Recording the same thread again replaces its entry, and Mongo
+removes entries `MAIL_JOURNAL_RETENTION_DAYS` (default 365) after the mail's
+date. The mail assistant and owner Nestor reach it with the OpenClaw
+`mail_journal` tool through `/api/consumers/nestor/v1/mail-journal`; a lasting
+fact drawn from mail is still saved as one note. There is no household reader.
+
+Sensitive identifiers (NIQ, NAS, REEE, account numbers named as such, and card
+numbers that pass the Luhn check) never stay in a note or journal text when
+`IDENTIFIER_VAULT_KEY` is set: `identifierVault` encrypts each value once
+(AES-256-GCM) in `identifier_vault` and the text keeps `[coffre: label …1234]`.
+Only owner notes and journal entries are sealed. Nestor's
+`personal_identifier` tool lists labels anywhere the owner talks to him; the
+OpenClaw plugin reveals a value only in the owner's Household session, which
+stays on the local network. Core's consumer route itself trusts its unmarked
+loopback callers, like the note route. The vault protects data at rest: a
+revealed value stays in that conversation's history.
 
 ## Access and identity
 
@@ -378,3 +411,4 @@ See [operational screens](OPERATOR_UI.md) for user-facing states and actions.
 
 - [ADR 0001: one canonical repository](adr/0001-one-repository.md)
 - [ADR 0002: reuse existing memory classification](adr/0002-memory-access.md)
+- [ADR 0003: ingested content is data, never authority](adr/0003-ingested-content.md)

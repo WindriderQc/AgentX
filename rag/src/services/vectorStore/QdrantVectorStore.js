@@ -24,6 +24,24 @@ const METADATA_PAGE_SIZE = 1000;
 // Facts every point of one stored revision shares. Points that disagree mean
 // an interrupted or legacy write left more than one version of the document.
 const REVISION_FIELDS = ['revision', 'hash', 'contentHash', 'chunkSize', 'chunkOverlap', 'chunkCount'];
+// Payload indexes for every field the store filters on. Without them each
+// filtered read scans the whole collection. `text` serves keyword search.
+const TEXT_INDEX_SCHEMA = Object.freeze({ type: 'text', tokenizer: 'word', min_token_len: 2, lowercase: true });
+const PAYLOAD_INDEXES = Object.freeze({
+  documentId: 'keyword',
+  revision: 'keyword',
+  chunkIndex: 'integer',
+  source: 'keyword',
+  tags: 'keyword',
+  scope: 'keyword',
+  sensitivity: 'keyword',
+  sourceIdentity: 'keyword',
+  contentHash: 'keyword',
+  noteName: 'keyword',
+  aliases: 'keyword',
+  text: TEXT_INDEX_SCHEMA
+});
+const KEYWORD_RESULT_FIELDS = ['text', 'chunkIndex', 'documentId', 'source', 'scope', 'sensitivity', 'title'];
 
 class QdrantVectorStore extends VectorStoreAdapter {
   constructor(config = {}) {
@@ -34,6 +52,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     this.collectionName = config.collectionName || process.env.QDRANT_COLLECTION || 'agentx_embeddings';
     this.vectorDimension = Number(config.vectorDimension || process.env.EMBEDDING_DIMENSION) || 0;
     this._collectionVerified = false;
+    this._textIndexReady = false;
   }
 
   _outboundContext(operationId) {
@@ -60,6 +79,8 @@ class QdrantVectorStore extends VectorStoreAdapter {
         this._outboundContext(SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_READ)
       );
       if (res.ok) {
+        const info = await res.json().catch(() => ({}));
+        await this._ensurePayloadIndexes(info?.result?.payload_schema || {});
         this._collectionVerified = true;
         return;
       }
@@ -86,8 +107,35 @@ class QdrantVectorStore extends VectorStoreAdapter {
       const text = await res.text();
       throw new Error(`Failed to create Qdrant collection: ${res.status} ${text}`);
     }
-    this._collectionVerified = true;
     logger.info(`Created Qdrant collection "${this.collectionName}" with vector size ${vectorSize}`);
+    await this._ensurePayloadIndexes({});
+    this._collectionVerified = true;
+  }
+
+  /**
+   * Create the payload indexes missing from `payloadSchema`. Qdrant builds
+   * them in the background; on a large existing collection this happens once
+   * and takes seconds. A failure is logged and never blocks ingest or search.
+   */
+  async _ensurePayloadIndexes(payloadSchema) {
+    for (const [field, schema] of Object.entries(PAYLOAD_INDEXES)) {
+      if (payloadSchema[field]) {
+        if (field === 'text') this._textIndexReady = true;
+        continue;
+      }
+      try {
+        await this.createPayloadIndex(field, schema);
+        if (field === 'text') this._textIndexReady = true;
+        logger.info('Created Qdrant payload index', { collection: this.collectionName, field });
+      } catch (err) {
+        logger.warn('Qdrant payload index creation failed', { collection: this.collectionName, field, error: err.message });
+      }
+    }
+  }
+
+  _forgetCollection() {
+    this._collectionVerified = false;
+    this._textIndexReady = false;
   }
 
   _generatePointId(documentId, revision, chunkIndex) {
@@ -160,7 +208,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     try {
       for (let i = 0; i < points.length; i += batchSize) {
         const batch = points.slice(i, i + batchSize);
-        const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points`, {
+        const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points?wait=true`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ points: batch })
@@ -314,6 +362,33 @@ class QdrantVectorStore extends VectorStoreAdapter {
     return chunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
   }
 
+  /**
+   * Chunks whose text contains any of `terms` (lowercased words), read through
+   * the full-text payload index in one bounded scroll. Without that index
+   * Qdrant would match case-sensitive substrings, so the read fails instead.
+   */
+  async findKeywordCandidates(terms, { filters = {}, limit = 500 } = {}) {
+    if (!terms.length) return [];
+    if (!this._textIndexReady) {
+      const info = await this.getCollectionInfo();
+      if (!info) return [];
+      await this._ensurePayloadIndexes(info.payloadSchema);
+      if (!this._textIndexReady) throw new Error('Qdrant full-text index on "text" is unavailable');
+    }
+    const must = this._buildMustFilters(filters);
+    const filter = { should: terms.map(term => ({ key: 'text', match: { text: term } })) };
+    if (must.length) filter.must = must;
+    const candidates = [];
+    for await (const points of this._scrollPages({
+      filter, limit, withPayload: { include: KEYWORD_RESULT_FIELDS }, pageSize: limit
+    })) {
+      for (const { payload } of points) {
+        candidates.push({ text: payload.text, chunkIndex: payload.chunkIndex || 0, metadata: payload });
+      }
+    }
+    return candidates;
+  }
+
   async deleteDocument(documentId) {
     return this._deleteByDocumentId(documentId);
   }
@@ -323,7 +398,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
   }
 
   async _deleteByFilter(filter) {
-    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points/delete`, {
+    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points/delete?wait=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filter })
@@ -358,7 +433,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         if (this._isMissingCollectionResponse(res.status, text)) {
-          this._collectionVerified = false;
+          this._forgetCollection();
           // A collection absent before traversal is empty. Losing it after a
           // page (or after successful stats metadata) is an unavailable read.
           if (missingCollectionIsEmpty && offset === null) return;
@@ -389,7 +464,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       if (this._isMissingCollectionResponse(res.status, text)) {
-        this._collectionVerified = false;
+        this._forgetCollection();
         return {
           documentCount: 0,
           chunkCount: 0,
@@ -448,7 +523,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
 
   /** Create one payload index; `fieldSchema` is a Qdrant type name or params object. */
   async createPayloadIndex(fieldName, fieldSchema) {
-    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/index`, {
+    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/index?wait=true`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ field_name: fieldName, field_schema: fieldSchema })
@@ -507,7 +582,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
       throw new Error(`cannot set originalText: no chunk-0 for ${documentId}`);
     }
     const res = await fetchWithTimeout(
-      `${this.qdrantUrl}/collections/${this.collectionName}/points/payload`,
+      `${this.qdrantUrl}/collections/${this.collectionName}/points/payload?wait=true`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -525,5 +600,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     }
   }
 }
+
+QdrantVectorStore.PAYLOAD_INDEXES = PAYLOAD_INDEXES;
 
 module.exports = QdrantVectorStore;

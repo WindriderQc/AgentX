@@ -11,7 +11,7 @@ const { agentInstructions, agentIdFor, personalVoice } = require('./conversation
 const { conversationBackend } = require('./conversation-executor');
 const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
-const { familyTurn } = require('./family-context');
+const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
 const { mathTurnFor } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels;
@@ -19,7 +19,7 @@ const { scoreSpeechLanguage } = require('./public/speech-language');
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
 
-const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools.';
+const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
 
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent,
@@ -155,9 +155,10 @@ function createPersonaTurnHandler({
           await conversations.updateSession({ sessionId: session.sessionId }, { $set: { backend, agentId: agentIdFor(session) } });
           session.backend = backend;
         }
-        let memories = [], savedNow = false, family = {};
+        let memories = [], savedNow = false, family = {}, members = '';
         if (!isOpening) {
           const notes = notesFor(pack, session.scopeId);
+          if (!pack.childSafe) members = await householdMembers(familyTasks, { logger });
           // Kids Room routines, and a child's idea or reminder kept for Dad (#41, #13).
           if (pack.childSafe) ({ savedNow, ...family } = await familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, withChores: pack.id === VOIX_FAMILY_PACK_ID }));
           try {
@@ -174,7 +175,7 @@ function createPersonaTurnHandler({
         }
         const browserSoundPlayback = (!requiredSession || requiredSession.browser === true) && req.body?.soundPlayback === true;
         sound = pack.childSafe && (!requiredSession || requiredSession.browser === true) ? sounds.select(userText) : null;
-        const context = { memories, savedNow, captured: family.captured, knowledgeContext: [knowledge.context, family.chores].filter(Boolean).join('\n\n'),
+        const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores].filter(Boolean).join('\n\n'),
           modeId: session.modeId, sound, latestUserText: userText };
         let lastProposal = null, previousBrowserOutput = null;
         const nativeBrowserReply = sceneEnabled && backend === 'openclaw';
@@ -388,4 +389,4 @@ function createPersonaTurnHandler({
   };
 }
 
-module.exports = { createPersonaTurnHandler };
+module.exports = { createPersonaTurnHandler, FAMILY_SURFACE_CONTRACT };

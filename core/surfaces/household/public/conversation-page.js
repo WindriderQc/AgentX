@@ -42,10 +42,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <p id="conversationPreferencesStatus" class="muted">Ces préférences de personnalité sont conservées sur ce navigateur.</p><button id="conversationReset" type="button" class="button">Rétablir la personnalité</button></details>
       <details id="conversationNotes" hidden></details>
       <details><summary>Écoute</summary><label class="conversation-toggle"><input id="conversationInterruption" type="checkbox" checked> Interrompre Nestor en parlant</label><p id="conversationInterruptionStatus" class="muted">Utilise l’annulation d’écho du navigateur. Un casque peut aider dans une pièce bruyante.</p>
-      <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Exiger « Hey Nestor »</label><p class="muted">Avec réveil vocal, Nestor revient en veille après 30 secondes sans intervention ou dès « Merci Nestor ». En conversation ouverte, il répond aux paroles tant que le micro est actif. Les phrases sont transcrites sur le réseau local avant la détection du nom ; seules les phrases adressées à Nestor entrent dans la conversation.</p>${family ? '' : '<a href="/voice/native" class="conversation-native">Appareils et diagnostic audio</a>'}</details>
+      <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Exiger « Hey Nestor »</label><p class="muted">Avec réveil vocal, Nestor revient en veille après 30 secondes sans intervention ou dès « Merci Nestor ». En conversation ouverte, il répond aux paroles tant que le micro est actif. Les phrases sont transcrites sur le réseau local avant la détection du nom ; seules les phrases adressées à Nestor entrent dans la conversation.</p><div id="conversationBrowserSttSettings" hidden></div>${family ? '' : '<a href="/voice/native" class="conversation-native">Appareils et diagnostic audio</a>'}</details>
     </details><section class="conversation-stage" aria-label="Conversation">
       <div id="conversationPresence" class="conversation-presence" data-state="idle" aria-hidden="true"><span id="conversationInitial">N</span></div>
       <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Préparation de Nestor…</p><p id="conversationDevice" class="muted">Microphone et haut-parleurs de cet appareil</p><p id="conversationVoiceNotice" class="muted" role="status" hidden></p>
+      <p id="conversationBrowserSttIndicator" class="conversation-browser-stt" hidden></p><section id="conversationBrowserSttNotice" class="conversation-audio" aria-label="Reconnaissance du navigateur" role="alert" hidden></section>
       <div class="conversation-actions"><button id="conversationStart" type="button" class="button primary" hidden disabled>Activer Nestor</button><button id="conversationPause" type="button" class="button" disabled>Pause</button><button id="conversationEnd" type="button" class="button danger" disabled>Arrêter</button></div>
       <details id="conversationAudio" class="conversation-audio"><summary>Audio & transcription</summary>
         <p class="muted">Replay up to 20 seconds from this microphone. One excerpt stays in this tab for at most 2 minutes. Pause, End or leaving the page erases it.</p>
@@ -56,6 +57,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         </div>
       </details>
       <section id="conversationVisual" class="conversation-board conversation-visual" aria-label="Images" hidden></section>
+      <div id="conversationResume" class="conversation-resume" role="region" aria-label="Reprendre" hidden></div>
       <div id="conversationTranscript" class="conversation-transcript" role="log" aria-label="Transcript" aria-live="polite"><p class="empty">Nos échanges apparaîtront ici.</p></div>
       <section id="conversationBoard" class="conversation-board" aria-label="À l’écran" hidden></section>
       <section id="conversationBrain" class="conversation-board conversation-brain" aria-label="Pistes" hidden></section>
@@ -65,7 +67,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         <details><summary>Résultat des outils</summary><pre id="conversationToolsReceipt"></pre></details>
       </section>
       <form id="conversationText" class="conversation-text"><label class="sr-only" for="conversationMessage">Message</label><textarea id="conversationMessage" rows="2" placeholder="Ou écris un message… (Entrée pour envoyer)" required maxlength="4000"></textarea><button class="button" type="submit">Envoyer</button></form>
-      ${family ? '' : '<section class="conversation-attachments" aria-label="Pièces jointes"><label for="conversationFiles">Joindre une image ou un document</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">3 fichiers maximum · 2 Mo chacun · JPEG, PNG, texte ou PDF texte (20 pages, 24 000 caractères maximum). Ajoute un message pour les envoyer.</p><div id="conversationDraftFiles" aria-live="polite"></div></section>'}
+      ${family ? '' : '<section class="conversation-attachments" aria-label="Pièces jointes"><label for="conversationFiles">Joindre une image ou un document</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">3 fichiers maximum · photos JPEG ou PNG jusqu’à 50 Mo (Nestor reçoit une copie réduite, l’original est archivé) · texte ou PDF texte de 2 Mo (20 pages, 24 000 caractères maximum). Ajoute un message pour les envoyer.</p><div id="conversationDraftFiles" aria-live="polite"></div></section>'}
       <p id="conversationAgentContext" class="conversation-context muted"></p>
     </section></div></section>`;
   const el = id => document.getElementById(id);
@@ -135,14 +137,16 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   if (!family) el('conversationFiles').onchange = event => {
     const files = Array.from(event.target.files || []);
-    if (files.length + draftFiles.length > 3 || files.some(file => file.size > 2 * 1024 * 1024)) {
-      el('conversationStatus').textContent = 'Choisis au plus 3 fichiers de 2 Mo chacun.';
+    if (files.length + draftFiles.length > 3 || !files.every(NestorAttachmentImages.accepts)) {
+      el('conversationStatus').textContent = 'Choisis au plus 3 fichiers : photos de 50 Mo, documents de 2 Mo.';
     } else { draftFiles.push(...files); renderDraftFiles(); }
     event.target.value = '';
   };
   async function uploadDraftFiles(session, signal) {
     const refs = [];
-    for (const file of draftFiles) {
+    for (const original of draftFiles) {
+      const image = NestorAttachmentImages.isImage(original);
+      const file = image ? await NestorAttachmentImages.reduce(original) : original;
       const types = { txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json', pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
       const mimeType = types[file.name.split('.').at(-1).toLowerCase()] || file.type;
       const dataUrl = await new Promise((resolve, reject) => {
@@ -152,6 +156,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/attachments`, {
         method: 'POST', signal, body: JSON.stringify({ name: file.name, dataUrl }) });
       refs.push(data.attachment);
+      // The archive keeps the photo as taken; a missing archive never blocks the turn.
+      if (image) await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/attachments/${encodeURIComponent(data.attachment.id)}/original`, {
+        method: 'POST', signal, body: original,
+        headers: { 'Content-Type': original.type || 'application/octet-stream', 'X-Original-Name': encodeURIComponent(original.name) } })
+        .catch(error => { if (signal?.aborted) throw error; console.warn('Original photo not archived', error.message); });
     }
     return refs;
   }
@@ -197,7 +206,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     inference: { open: !family && open.checked }, voice: { presentation: chosenVoice(), selections: P.selections({ fr: voice.value, en: voiceEnglish.value }) }, language: language.value,
     visual: visualSelection(), interruption: interruption.checked });
   const message = (role, text, interrupted = false, sound = null, attachments = []) => {
-    transcript.querySelector('.empty')?.remove();
+    transcript.querySelector('.empty')?.remove(); el('conversationResume').hidden = true;
     let row = role === 'assistant' ? partial : null;
     if (!row) { row = document.createElement('div'); row.className = `conversation-message ${role}`; transcript.append(row); }
     row.textContent = role === 'assistant' && sound ? NestorSpeech.withoutMediaReferences(text) : text; partial = null;
@@ -355,10 +364,23 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const activity = (kind, detail = {}) => window.dispatchEvent(new CustomEvent('persona-activity', { detail: { space, kind, ...detail } }));
   let lastGreeting = '', lastWakeReply = '';
   const avatar = window.AvatarDock?.mount({ space: family ? 'family' : 'personal' });
+  // Browser speech recognition only with the instance gate and this browser's consent (per space).
+  let renderSpeechFallback = () => {};
+  const speechFallback = NestorSpeechFallback.createSpeechFallback({ space, storage, allowed: runtime?.browserSpeechFallback?.[family ? 'family' : 'personal'] === true,
+    Recognition: window.SpeechRecognition || window.webkitSpeechRecognition, onChange: state => renderSpeechFallback(state),
+    listening: () => ['listening', 'hearing', 'transcribing', 'waiting', 'thinking', 'preparing', 'speaking'].includes(conversation.state),
+    language: () => conversation.selection?.language || language.value,
+    async transcribeLocal(blob, lang, signal) {
+      const body = new FormData(); body.append('file', blob, 'speech.wav');
+      body.append('language', NestorSpeech.transcriptionLanguage(lang));
+      const result = await api('/api/voix/transcribe', { method: 'POST', body, signal });
+      refreshUpstream();
+      return result;
+    } });
   const conversation = new NestorConversation.Conversation({
     readyToSpeak: () => avatar?.ready,
     openAudio: (signal, onError, options) => NestorConversation.openAudio(signal, onError, { ...options, observeSpeech: true,
-      onPlaybackMetrics: metrics => { el('voiceDescription').title = `Last segment: ${metrics.first_scheduled_ms} ms to schedule; ${metrics.buffer_gaps} buffer gaps (${metrics.buffer_gap_ms} ms). Browser timing, not acoustic measurement.`; } }), createSession, message, turn: streamedTurn,
+      onPlaybackMetrics: metrics => { el('voiceDescription').title = `Last segment: ${metrics.first_scheduled_ms} ms to schedule; ${metrics.buffer_gaps} buffer gaps (${metrics.buffer_gap_ms} ms). Browser timing, not acoustic measurement.`; } }).then(audio => speechFallback.wrapAudio(audio)), createSession, message, turn: streamedTurn,
     async interrupt(session, turnId, signal) {
       let result;
       do {
@@ -373,13 +395,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (row) { row.dataset.interrupted = 'true'; row.setAttribute('aria-label', 'Interrupted reply'); }
       partial = null;
     },
-    async transcribe(blob, lang, signal) {
-      const body = new FormData(); body.append('file', blob, 'speech.wav');
-      body.append('language', NestorSpeech.transcriptionLanguage(lang));
-      const result = await api('/api/voix/transcribe', { method: 'POST', body, signal });
-      refreshUpstream();
-      return result;
-    },
+    transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
     async synthesize(reply, signal) {
       const lang = NestorSpeech.replySpeechLanguage(reply.text, reply.language);
       const persona = conversation.session?.persona || selected();
@@ -401,6 +417,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     }
   }, (state, detail) => {
     if (state === 'idle' && !open.checked) void releaseOpen();
+    if (state === 'starting') void speechFallback.probe(() => api('/api/voix/health'));
+    speechFallback.sync();
     el('conversationStatus').textContent = detail || (state === 'listening' && conversation.selection?.wakeWord ? (conversation.wake.active() ? 'Je t’écoute. Continue, ou dis « Merci Nestor ».' : 'En veille · dis « Hey Nestor ».') : labels[state]);
     el('conversationPresence').dataset.state = state;
     const reviewing = state === 'reviewing';
@@ -413,8 +431,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationEnd').disabled = !active && !conversation.session;
     [backendPicker, agentPicker, picker, open, voice, voiceEnglish, language, appearance, color, interruption, el('conversationReset')].forEach(node => { node.disabled = active || !!conversation.session || textBusy || (node === agentPicker && (family || !agentCatalog || backendPicker.value !== 'openclaw')); });
     el('conversationWake').disabled = textBusy || !['idle', 'paused', 'error', 'listening'].includes(state);
-    el('conversationText').querySelector('button').disabled = active || reviewing || textBusy;
-    if (!family) { el('conversationFiles').disabled = active || reviewing || textBusy; renderDraftFiles(); }
+    // Waiting voice (open listening or wake standby) accepts a typed message as its next turn.
+    const typing = active && !conversation.canType();
+    el('conversationText').querySelector('button').disabled = typing || reviewing || textBusy;
+    if (!family) { el('conversationFiles').disabled = typing || reviewing || textBusy; renderDraftFiles(); }
     el('conversationPreview').disabled = active || reviewing || textBusy;
     if (conversation.audio) el('conversationInterruptionStatus').textContent = !interruption.checked
       ? 'Spoken interruption is off. Listening resumes after each reply.'
@@ -429,6 +449,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         // Waiting for "Hey Nestor": the face dozes until the word wakes him.
         asleep: () => !!conversation.selection?.wakeWord && ['listening', 'hearing'].includes(conversation.state) && !conversation.wake.active() } } }));
   });
+  renderSpeechFallback = NestorSpeechFallback.mountSpeechFallbackPanel(speechFallback, { notice: el('conversationBrowserSttNotice'),
+    settings: el('conversationBrowserSttSettings'), indicator: el('conversationBrowserSttIndicator') },
+  { onConsent: () => { if (conversation.state === 'reviewing') void conversation.start(selection()); } });
   function renderAudioReview() {
     if (conversation.state === 'listening' && conversation.selection?.wakeWord) el('conversationStatus').textContent = conversation.wake.active() ? 'Je t’écoute. Continue, ou dis « Merci Nestor ».' : 'En veille · dis « Hey Nestor ».';
     const info = conversation.audio?.reviewStatus();
@@ -463,7 +486,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (box.hidden) return;
     el('conversationToolsStatus').textContent = evidence.status === 'not_supported' ? 'AgentX / Ollama · réponse avec contexte, sans outils OpenClaw.' : evidence.status === 'unavailable'
       ? 'Les reçus des outils sont indisponibles.'
-      : receipts.map(receipt => receipt.tool + (receipt.status === 'failed' ? ' · échec' : ' · résultat reçu')).join(' · ');
+      : receipts.map(receipt => receipt.tool + (receipt.status === 'failed' ? ' · échec'
+        : receipt.status === 'verified' ? ' · résultat reçu'
+          : receipt.observed ? ' · appel observé, résultat non vérifié' : ' · résultat indisponible')).join(' · ');
     el('conversationToolsReceipt').textContent = JSON.stringify(evidence, null, 2);
   }
   el('conversationInspectMic').onclick = () => { conversation.review('microphone'); renderAudioReview(); };
@@ -555,7 +580,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationPause').onclick = () => { conversation.stop(true); };
   el('conversationEnd').onclick = () => { stopPreview(); conversation.stop(); void releaseOpen(); restoreProfile(); describe(); showTools(null); };
   el('conversationNew').onclick = () => {
-    setHistoryOpen(false); stopPreview(); conversation.stop(); void releaseOpen(); partial = null;
+    el('conversationResume').hidden = true; setHistoryOpen(false); stopPreview(); conversation.stop(); void releaseOpen(); partial = null;
     transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; board.clear(); brain.reset();
     personalNotes.show(null);
     showTools(null);
@@ -569,6 +594,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   });
   el('conversationText').onsubmit = async event => {
     event.preventDefault();
+    if (!textBusy && conversation.canType()) return typedDuringVoice();
     if (textBusy || !['idle', 'paused', 'error'].includes(conversation.state)) return;
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
     let shown = false;
@@ -596,6 +622,18 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     }
     finally { textBusy = false; conversation.show(conversation.state, el('conversationStatus').textContent); }
   };
+  async function typedDuringVoice() {
+    const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
+    stopPreview(); textBusy = true; conversation.show(conversation.state);
+    let attachments = null, failure = '';
+    try { attachments = await uploadDraftFiles(conversation.session, conversation.abort.signal); }
+    catch (error) { failure = error.message; }
+    textBusy = false;
+    if (!attachments) { conversation.show(conversation.state, failure); return; }
+    if (input.value.trim() === text) input.value = '';
+    draftFiles = []; renderDraftFiles();
+    if (!await conversation.typed(text, { attachments }) && !input.value.trim()) input.value = text;
+  }
   document.addEventListener('visibilitychange', () => { if (document.hidden) { stopPreview(); conversation.stop(true); void releaseOpen(); } });
   window.addEventListener('pagehide', () => { clearInterval(audioReviewClock); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
@@ -613,10 +651,44 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationHistory').onkeydown = event => {
     if (event.key === 'Escape') { event.preventDefault(); setHistoryOpen(false, true); }
   };
+  // Opens a saved conversation from Core: the same on every device (#120).
+  async function resumeSession(session, button) {
+    el('conversationResume').hidden = true; stopPreview(); conversation.stop();
+    void releaseOpen();
+    const epoch = conversation.epoch;
+    button.disabled = true;
+    el('conversationStatus').textContent = 'Chargement de la conversation…';
+    try {
+      const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/history`);
+      if (epoch !== conversation.epoch) return;
+      conversation.session = data.session;
+      draftFiles = []; renderDraftFiles();
+      const saved = data.session;
+      if (saved.persona && !personas.some(p => p.id === saved.persona.id)) { personas.push(saved.persona); picker.add(new Option(saved.persona.name, saved.persona.id)); }
+      if (!agents.some(agent => agent.id === (saved.agentId || 'main'))) {
+        agents.push({ id: saved.agentId, name: saved.agentId }); agentPicker.add(new Option(saved.agentId, saved.agentId));
+      }
+      agentPicker.value = saved.agentId || 'main';
+      backendPicker.value = saved.backend || runtime?.defaultBackend || 'openclaw';
+      picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open; voice.value = saved.voice?.presentation || '';
+      language.value = data.session.voice?.language || 'auto';
+      appearance.value = data.session.visual?.style || ''; color.value = data.session.visual?.color || '#52cfc5';
+      transcript.replaceChildren(); partial = null; board.clear(); brain.reset();
+      (data.turns || []).forEach(turn => {
+        if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);
+        if (turn.replyText) message('assistant', turn.replyText, turn.interrupted);
+        board.restore(turn.display);
+      });
+      personalNotes.show(data.turns?.at(-1)?.personalContinuity);
+      showTools(data.turns?.at(-1)?.toolEvidence);
+      describe(); conversation.show('paused'); setHistoryOpen(false); el('conversationStart').focus();
+    } catch (error) { if (epoch === conversation.epoch) el('conversationStatus').textContent = error.message; }
+    finally { button.disabled = false; }
+  }
   async function loadRecent(request) {
     const recent = el('conversationRecent'); recent.textContent = 'Chargement des échanges…';
     try {
-      const { sessions } = await api(sessionBase + '/recent?limit=5');
+      const { sessions } = await api(sessionBase + '/recent?limit=5' + (family ? '' : '&preview=true'));
       if (request !== historyRequest) return;
       recent.replaceChildren();
       for (const session of (sessions || [])) {
@@ -633,39 +705,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         const when = date && Number.isFinite(date.getTime()) ? date.toLocaleString('fr-CA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Date unavailable';
         const count = Number.isFinite(session.turnCount) ? ' · ' + session.turnCount + (session.turnCount === 1 ? ' échange' : ' échanges') : '';
         button.querySelector('.conversation-history-date').textContent = when + count;
-        button.onclick = async () => {
-          stopPreview(); conversation.stop();
-          void releaseOpen();
-          const epoch = conversation.epoch;
-          button.disabled = true;
-          el('conversationStatus').textContent = 'Chargement de la conversation…';
-          try {
-            const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/history`);
-            if (epoch !== conversation.epoch) return;
-            conversation.session = data.session;
-            draftFiles = []; renderDraftFiles();
-            const saved = data.session;
-            if (saved.persona && !personas.some(p => p.id === saved.persona.id)) { personas.push(saved.persona); picker.add(new Option(saved.persona.name, saved.persona.id)); }
-            if (!agents.some(agent => agent.id === (saved.agentId || 'main'))) {
-              agents.push({ id: saved.agentId, name: saved.agentId }); agentPicker.add(new Option(saved.agentId, saved.agentId));
-            }
-            agentPicker.value = saved.agentId || 'main';
-            backendPicker.value = saved.backend || runtime?.defaultBackend || 'openclaw';
-            picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open; voice.value = saved.voice?.presentation || '';
-            language.value = data.session.voice?.language || 'auto';
-            appearance.value = data.session.visual?.style || ''; color.value = data.session.visual?.color || '#52cfc5';
-            transcript.replaceChildren(); partial = null; board.clear(); brain.reset();
-            (data.turns || []).forEach(turn => {
-              if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);
-              if (turn.replyText) message('assistant', turn.replyText, turn.interrupted);
-              board.restore(turn.display);
-            });
-            personalNotes.show(data.turns?.at(-1)?.personalContinuity);
-            showTools(data.turns?.at(-1)?.toolEvidence);
-            describe(); conversation.show('paused'); setHistoryOpen(false); el('conversationStart').focus();
-          } catch (error) { if (epoch === conversation.epoch) el('conversationStatus').textContent = error.message; }
-          finally { button.disabled = false; }
-        };
+        button.onclick = () => resumeSession(session, button);
         const item = document.createElement('div'); item.className = 'conversation-history-entry';
         item.append(button);
         if (!family) {
@@ -691,6 +731,29 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (request === historyRequest) recent.textContent = 'Les conversations récentes sont indisponibles. Ferme puis rouvre l’historique pour réessayer.';
     }
   }
+  // Super Dad offers its latest conversation on every device, so an exchange
+  // started on the phone continues on the PC with one tap (#120). Famille does not.
+  const RESUME_WINDOW_MS = 24 * 60 * 60 * 1000;
+  async function offerResume() {
+    const card = el('conversationResume');
+    try {
+      const { sessions = [] } = await api(sessionBase + '/recent?limit=1&preview=true');
+      const [latest] = sessions, at = Date.parse(latest?.lastTurnAt || '');
+      if (!latest || !Number.isFinite(at) || Date.now() - at > RESUME_WINDOW_MS
+        || conversation.session?.sessionId === latest.sessionId || transcript.querySelector('.conversation-message')) return;
+      const minutes = Math.max(1, Math.round((Date.now() - at) / 60000));
+      card.innerHTML = '<p><strong>Reprendre la dernière conversation</strong> <span class="muted"></span></p>'
+        + '<p class="conversation-resume-preview"></p><div class="conversation-resume-actions">'
+        + '<button type="button" class="button primary">Reprendre</button><button type="button" class="button">Ignorer</button></div>';
+      card.querySelector('.muted').textContent = '· ' + (minutes < 60 ? `il y a ${minutes} min` : `il y a ${Math.round(minutes / 60)} h`);
+      card.querySelector('.conversation-resume-preview').textContent = latest.lastTurn?.inputPreview || latest.lastTurn?.replyPreview || '';
+      const [resume, dismiss] = card.querySelectorAll('button');
+      resume.onclick = () => resumeSession(latest, resume);
+      dismiss.onclick = () => { card.hidden = true; };
+      card.hidden = false;
+    } catch { card.hidden = true; }
+  }
+  if (!family) void offerResume();
   if (autoStart && !document.hidden) {
     try {
       const permission = await navigator.permissions?.query({ name: 'microphone' });

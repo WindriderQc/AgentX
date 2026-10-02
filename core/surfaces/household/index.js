@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const personaCatalog = require('./persona-catalog');
 const { createNestorClient } = require('./personal-continuity');
 const { createAgentClient } = require('./conversation-agent');
-const { configuredOpenClaw, conversationBackend, createConversationExecutor } = require('./conversation-executor');
+const { browserSpeechFallback, configuredOpenClaw, conversationBackend, createConversationExecutor } = require('./conversation-executor');
 const llmx = require('./llmx-conversation');
 const { visual: normalizeVisual, selections: voiceSelections } = require('./public/persona-presentation');
 const path = require('path');
@@ -237,7 +237,8 @@ function register(api) {
     catch { return fail(res, 503, 'OpenClaw agents are unavailable.', 'CONVERSATION_AGENTS_UNAVAILABLE'); }
   });
   personas.get('/catalog', async (_req, res) => {
-    try { await ensureCatalog(); return envelope(res, { personas: (await runtimeServices.personas.list()).map(personaCatalog.snapshot), runtime: { defaultBackend: conversationBackend(null, conversationEnv), openclawConfigured: configuredOpenClaw(conversationEnv) } }); }
+    try { await ensureCatalog(); return envelope(res, { personas: (await runtimeServices.personas.list()).map(personaCatalog.snapshot), runtime: { defaultBackend: conversationBackend(null, conversationEnv), openclawConfigured: configuredOpenClaw(conversationEnv),
+      browserSpeechFallback: browserSpeechFallback(conversationEnv) } }); }
     catch (error) { return fail(res, error.statusCode || 503, error.message); }
   });
   personas.get('/catalog/:name', async (req, res) => {
@@ -386,18 +387,7 @@ function register(api) {
     try { return envelope(res, await conversations.deleteSession((req.params.space === 'family' ? familySessionScope : personalSessionScope)(req.params.sessionId))); }
     catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Effacement incomplet. Réessaie pour terminer.', error.code); }
   });
-  personas.post('/private/sessions/:sessionId/attachments', async (req, res) => {
-    try { return envelope(res, { attachment: await personalAttachments(req.params.sessionId).upload(req.body) }, 201); }
-    catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Pièce jointe indisponible.', error.code); }
-  });
-  personas.get('/private/sessions/:sessionId/attachments/:attachmentId', async (req, res) => {
-    try {
-      const attachment = await personalAttachments(req.params.sessionId).download(req.params.attachmentId);
-      res.set({ 'Content-Type': attachment.mimeType, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
-        'Content-Disposition': `${attachment.kind === 'image' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(attachment.name)}` });
-      return res.send(attachment.data);
-    } catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Pièce jointe indisponible.', error.code); }
-  });
+  require('./attachment-routes').registerAttachmentRoutes(personas, { express, personalAttachments, envelope, fail });
   const handlePersonaTurn = createPersonaTurnHandler({
     logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,

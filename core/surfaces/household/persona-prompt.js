@@ -28,6 +28,13 @@ function detectMemoryRequest(text) {
   return MEMORY_REQUEST_PATTERN.test(String(text || ''));
 }
 
+// A note derived from mail, a scheduled job or a review keeps its origin in the
+// prompt, so a later turn still reads it as data from that source (ADR 0003).
+const NOTE_ORIGINS = Object.freeze({
+  'nestor-mail-review': 'from mail review', 'nestor-scheduled': 'from a scheduled job',
+  'memory-review': 'from memory review', 'openclaw-note-import': 'imported from an agent'
+});
+
 function memoryBlock(memories) {
   if (!Array.isArray(memories) || !memories.length) return '';
   const lines = [];
@@ -35,7 +42,8 @@ function memoryBlock(memories) {
   for (const entry of memories) {
     const text = cleanText(entry?.text, 400);
     if (!text) continue;
-    const line = `- ${text}`;
+    const origin = NOTE_ORIGINS[entry?.source];
+    const line = origin ? `- [${origin}] ${text}` : `- ${text}`;
     if (used + line.length > MEMORY_BLOCK_MAX_CHARS) break;
     used += line.length;
     lines.push(line);

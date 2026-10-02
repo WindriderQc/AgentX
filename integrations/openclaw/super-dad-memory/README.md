@@ -8,11 +8,23 @@ collection, shared with the Nestor browser UI and native voice.
 Configure `agentxUrl` explicitly for the intended AgentX instance. Optional
 `secretarySessionKeys` and `briefingSessionKeys` contain the existing native job
 session keys; there are no operator IDs, new schedules or delivery actions here.
+A key (`agent:<id>:...`) names the agent that owns the job, so a dedicated mail
+agent's triage job can record personal notes without any other agent gaining them.
 The existing owner Telegram/Household context checks remain in effect.
 
 `personal_memory` uses `/api/consumers/nestor/v1/memory/notes`. A failed or
 ambiguous write is never retried automatically or redirected to a local note
 file. List/search coverage and Core receipts are returned to the native tool.
+`mail_journal` records and searches the owner-only mail journal through
+`/api/consumers/nestor/v1/mail-journal` (one dated digest per thread or
+message). It is offered to the owner context and to the configured
+`secretarySessionKeys`; `personal_memory` keeps lasting facts only and its
+description sends mail summaries to the journal.
+`personal_identifier` lists the owner's sealed identifiers (labels and last
+digits) through `/api/consumers/nestor/v1/identifiers` and reveals one value
+only in the owner's Household session; on Telegram it says the value can be
+shown in Super Dad. Core seals identifiers found in notes and journal entries,
+so `personal_memory` may return `[coffre: label …1234]` instead of the number.
 `vault_note` files a Markdown note through `/api/consumers/nestor/v1/vault/notes`
 into the owner's vault inbox (Core's `VAULT_INBOX_PATH`); only the owner context
 receives it, and an invalid receipt is reported as not saved.

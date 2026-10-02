@@ -265,8 +265,14 @@ function executionHost(target) {
   return target.executionKind === 'ollama' ? target.host : `harness:${target.harness.name}`;
 }
 
-function buildQualityCohortFingerprint({ prompts, scorerVersion, judgeTarget, executionConfig, profileContract = 'isolated-model-v1' }) {
-  const promptRows = (Array.isArray(prompts) ? prompts : []).map((prompt) => ({
+/**
+ * The fingerprint of one prompt as a result ran it: its identity and its
+ * scoring content. Two results compare on a prompt only when they carry the
+ * same prompt fingerprint; an edited prompt (same id, other content) gets a
+ * new one.
+ */
+function buildPromptFingerprint(prompt) {
+  return fingerprint({
     id: String(prompt?._id || prompt?.id || prompt?.name || ''),
     name: String(prompt?.name || ''),
     level: Number(prompt?.level) || null,
@@ -278,7 +284,16 @@ function buildQualityCohortFingerprint({ prompts, scorerVersion, judgeTarget, ex
       scoringCriteria: prompt?.scoring_criteria ?? prompt?.scoringCriteria ?? null,
       expectedFormat: prompt?.expected_format ?? prompt?.expectedFormat ?? null,
     }),
-  })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  });
+}
+
+/**
+ * The quality cohort: the terms every result of a comparison shares (scorer
+ * version, judge identity, generation settings, profile contract). Prompts
+ * are not part of it; each result carries its own prompt fingerprint, so a
+ * catalog edit only affects the results on the edited prompt.
+ */
+function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, executionConfig, profileContract = 'isolated-model-v1' }) {
   const normalizedJudge = judgeTarget
     ? normalizeBenchmarkTarget(judgeTarget, { allowMissingCatalogFingerprint: judgeTarget.executionKind === 'ollama' })
     : null;
@@ -294,7 +309,7 @@ function buildQualityCohortFingerprint({ prompts, scorerVersion, judgeTarget, ex
     api: normalizedJudge.api,
   } : null;
   return fingerprint({
-    prompts: promptRows,
+    schema: 'agentx.benchmark-quality-cohort/v2',
     scorerVersion: String(scorerVersion || ''),
     judgeIdentity,
     generation: {
@@ -355,6 +370,7 @@ module.exports = {
   EXECUTION_MODES,
   TIERS,
   buildOllamaTarget,
+  buildPromptFingerprint,
   buildQualityCohortFingerprint,
   contractError,
   executionHost,

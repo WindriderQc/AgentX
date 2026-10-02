@@ -435,7 +435,7 @@ describe('RagStore (in-memory, mocked embeddings)', () => {
 
     test('hybrid reports a failed keyword search and keeps the vector results', async () => {
       await store.upsertDocumentWithChunks('Vector only content', { source: 'test', documentId: 'kw-fail-doc' });
-      store.vectorStore.listDocuments = jest.fn().mockRejectedValue(new Error('scroll failed'));
+      store.vectorStore.findKeywordCandidates = jest.fn().mockRejectedValue(new Error('scroll failed'));
 
       const { results, applied } = await store.search('vector content', { topK: 3, hybrid: true });
 

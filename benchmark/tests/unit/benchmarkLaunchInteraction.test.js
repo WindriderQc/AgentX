@@ -1,11 +1,8 @@
-const fs = require('fs');
-const path = require('path');
 const vm = require('vm');
+const { batchConfigScript } = require('../helpers/batchConfigSource');
 
 function loadLaunch(profilingCheck) {
-  const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/benchmark-v2/batch-config.js'), 'utf8')
-    .replace(/^import[\s\S]*?from ['"][^'"]+['"];\r?\n/gm, '')
-    .replace(/export function/g, 'function');
+  const source = batchConfigScript();
   const button = { disabled: false, textContent: '', style: {} };
   const error = { textContent: '', style: {} };
   const container = {

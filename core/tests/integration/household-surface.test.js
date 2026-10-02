@@ -33,6 +33,9 @@ const { promisify } = require('node:util');
 const { pathToFileURL } = require('node:url');
 const path = require('node:path');
 const { listenLoopback } = require('../../../shared/testing/listenLoopback');
+const { ageInYears, instanceToday } = require('../../src/domains/household/familyBirthDate');
+// Super Dad says what the records hold and what they do not (#119 follow-up).
+const KNOWN_UNKNOWN = 'dis simplement ce que tu ne sais pas; ne devine jamais un âge exact';
 
 describe('built-in Household surface on Core', () => {
   test('the panel stays ready when optional OpenClaw evidence is absent', async () => {
@@ -95,6 +98,7 @@ describe('built-in Household surface on Core', () => {
         .send({ text: channel === 'voice' ? 'Rappelle-moi observatory' : 'observatory', channel }).expect(200);
       const native = agentForTest.mock.calls.at(-1)[0];
       expect(native.session.sessionId).toBe(id);
+      expect(native.instructions).toContain(KNOWN_UNKNOWN);
       if (channel === 'voice') {
         expect(native.turnContext).toContain(note);
         expect(native.instructions).not.toContain(note);
@@ -170,6 +174,43 @@ describe('built-in Household surface on Core', () => {
       delete app.locals.aioOpsSecretaryMail;
       expect((await request(app).get('/api/secretary/mail?label=urgent').expect(503)).body.code).toBe('SECRETARY_MAIL_UNAVAILABLE');
     } finally { app.locals.aioOpsSecretaryMail = previous; }
+  });
+  test('the original of a personal photo goes to the image archive, never through Famille', async () => {
+    const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+    const base = '/api/voice-personas/private/sessions';
+    const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0WQAAAAASUVORK5CYII=';
+    const attached = (await request(app).post(`${base}/${id}/attachments`).send({ name: 'photo.png', dataUrl: `data:image/png;base64,${png}` }).expect(201)).body.data.attachment;
+    const original = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), Buffer.alloc(3 * 1024 * 1024, 5)]);
+    const post = () => request(app).post(`${base}/${id}/attachments/${attached.id}/original`)
+      .set('Content-Type', 'image/jpeg').set('X-Original-Name', encodeURIComponent('IMG_0042.jpg')).send(original);
+    const previous = process.env.IMAGE_ARCHIVE_DIR;
+    delete process.env.IMAGE_ARCHIVE_DIR;
+    expect((await post().expect(404)).body.message).toMatch(/archive/);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'household-archive-'));
+    process.env.IMAGE_ARCHIVE_DIR = dir;
+    try {
+      const archived = (await post().expect(201)).body.data.attachment;
+      expect(archived).toMatchObject({ id: attached.id, original: { mimeType: 'image/jpeg', size: original.length } });
+      const [year] = fs.readdirSync(path.join(dir, 'uploaded'));
+      const [month] = fs.readdirSync(path.join(dir, 'uploaded', year));
+      expect(fs.readdirSync(path.join(dir, 'uploaded', year, month)).sort()).toEqual([`${archived.original.sha256}.jpg`, `${archived.original.sha256}.json`]);
+      await request(app).post(`/api/voice-personas/family/sessions/${id}/attachments/${attached.id}/original`).set('Content-Type', 'image/jpeg').send(original.subarray(0, 64)).expect(404);
+    } finally {
+      if (previous === undefined) delete process.env.IMAGE_ARCHIVE_DIR; else process.env.IMAGE_ARCHIVE_DIR = previous;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test('the latest Super Dad conversation is offered with its preview to any device (#120)', async () => {
+    const base = '/api/voice-personas/private/sessions';
+    const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Synthetic phone question about the garden' }).expect(200);
+    // A second device holds no browser state: it only asks Core for the latest conversation.
+    const [latest] = (await request(app).get(`${base}/recent?limit=1&preview=true`).expect(200)).body.data.sessions;
+    expect(latest).toMatchObject({ sessionId: id, lastTurn: { inputPreview: 'Synthetic phone question about the garden' } });
+    expect(Date.parse(latest.lastTurnAt)).toBeGreaterThan(Date.now() - 60_000);
+    const history = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+    expect(history.turns.at(-1).inputText).toBe('Synthetic phone question about the garden');
   });
   test('personal attachments survive HTTP resume and stay outside family and other conversations', async () => {
     const base = '/api/voice-personas/private/sessions';
@@ -383,6 +424,16 @@ describe('built-in Household surface on Core', () => {
     expect(created.body.data.authority).toBe('agentx.core');
     const native = await request(app).post('/api/consumers/nestor/v1/memory/notes').send({ action: 'search', query: 'observatory' }).expect(200);
     expect(native.body.data.notes).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
+    const journal = '/api/consumers/nestor/v1/mail-journal';
+    const filed = await request(app).post(journal).send({ action: 'record', threadId: 'synthetic-thread',
+      occurredAt: new Date().toISOString(), summary: 'Synthetic observatory newsletter arrived' }).expect(200);
+    expect(filed.body.data).toMatchObject({ authority: 'agentx.core', action: 'record', recorded: true });
+    const recalled = await request(app).post(journal).send({ action: 'search', query: 'observatory' }).expect(200);
+    expect(recalled.body.data.entries.map(entry => entry.threadId)).toEqual(['synthetic-thread']);
+    // Mail digests never surface as memory notes.
+    const notesAfter = await request(app).post('/api/consumers/nestor/v1/memory/notes').send({ action: 'search', query: 'newsletter' }).expect(200);
+    expect(notesAfter.body.data.notes).toEqual([]);
+    await request(app).post(journal).send({ action: 'delete' }).expect(400);
     const voice = await request(app).get('/api/voix/memory/active').expect(200);
     expect(voice.body.data.memories).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
     const session = await request(app).post(`${base}/private/sessions`).send({ packId: 'personal_operator', backend: 'agentx' }).expect(201);
@@ -391,6 +442,41 @@ describe('built-in Household surface on Core', () => {
     const family = await request(app).post(`${base}/sessions`).send({ packId: 'kidx_nestor', backend: 'agentx' }).expect(201);
     await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'observatory' }).expect(200);
     expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Synthetic observatory preference');
+    const HouseholdProfile = require('../../models/HouseholdProfile');
+    await HouseholdProfile.create([{ profileId: 'synthetic-a', displayName: 'Synthetic Alex', ageBand: 'school' },
+      { profileId: 'synthetic-b', displayName: 'Synthetic Sam', ageBand: 'little' }]);
+    try {
+      await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Comment s’appellent mes enfants?' }).expect(200);
+      const personal = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      expect(personal).toContain('Synthetic Alex (âge scolaire)');
+      expect(personal).toContain('Synthetic Sam (petite enfance)');
+      expect(personal).toContain(KNOWN_UNKNOWN);
+      await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'Comment s’appellent les enfants?' }).expect(200);
+      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Enfants de la maison');
+      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain(KNOWN_UNKNOWN);
+      // A parent-set birth date gives Super Dad the age and birthday; Famille and child projections keep the band only.
+      const set = await request(app).post('/api/family/profiles/birth-date').send({ profileId: 'synthetic-a', birthDate: '2016-03-14' }).expect(200);
+      expect(set.body.data.profile.birthDate).toBe('2016-03-14');
+      expect((await request(app).post('/api/family/profiles/birth-date').send({ profileId: 'synthetic-a', birthDate: '2016-02-30' }).expect(400)).body.code)
+        .toBe('FAMILY_PROFILE_BAD_BIRTH_DATE');
+      const details = (await request(app).get('/api/family/profiles/details').expect(200)).body.data.profiles;
+      expect(details.find(profile => profile.id === 'synthetic-a').birthDate).toBe('2016-03-14');
+      const childProfiles = (await request(app).get('/api/family/profiles').expect(200)).body.data.profiles;
+      expect(JSON.stringify(childProfiles)).not.toMatch(/birthDate|2016-03-14/);
+      expect(JSON.stringify((await request(app).get('/api/family/room?profileId=synthetic-a').expect(200)).body.data)).not.toMatch(/birthDate|2016/);
+      const age = ageInYears('2016-03-14', instanceToday());
+      await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
+      const aged = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      expect(aged).toContain(`Synthetic Alex (${age} ans, anniversaire le 14 mars)`);
+      expect(aged).not.toContain('2016');
+      await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
+      const familyPrompt = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      expect(familyPrompt).not.toContain('anniversaire le 14 mars');
+      expect(familyPrompt).not.toContain('2016');
+      await request(app).post('/api/family/profiles/birth-date').send({ profileId: 'synthetic-a', birthDate: null }).expect(200);
+      await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
+      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('Synthetic Alex (âge scolaire)');
+    } finally { await HouseholdProfile.deleteMany({ profileId: { $in: ['synthetic-a', 'synthetic-b'] } }); }
     await request(app).post('/api/voix/memory/' + id + '/forget').send({}).expect(200);
     expect((await request(app).post(`${base}/private/notes`).send({ operation: 'list' })).body.data.notes.some(note => note.id === id)).toBe(false);
   });

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { choreSummary, familyCaptureKind, familyTurn } = require('../family-context');
+const { choreSummary, familyCaptureKind, familyTurn, householdMembers } = require('../family-context');
 
 test('a child idea or reminder is told apart from an ordinary "remember" note', () => {
   assert.equal(familyCaptureKind("J'ai une idée : une cabane"), 'idea');
@@ -38,4 +38,65 @@ test('the chore summary is read-only Kids Room rows and fails closed to nothing'
   assert.match(summary, /- Enfant A : à faire : Nourrir le poisson \(en retard\) ; en attente de papa : Ranger ; approuvées aujourd’hui : 1\./);
   assert.equal(await choreSummary({ listProfiles: async () => { throw new Error('down'); } }), '');
   assert.equal(await choreSummary({ listProfiles: async () => ({ profiles: [] }) }), '');
+});
+
+test('every active child profile is listed, so notes about one child never hide another (#119)', async () => {
+  const familyTasks = { listProfileDetails: async () => ({ profiles: [
+    { id: 'kid-a', displayName: 'Alex', ageBand: 'school', active: true },
+    { id: 'kid-b', displayName: 'Sam', ageBand: 'little', active: true },
+    { id: 'old', displayName: 'Retired', ageBand: 'teen', active: false }
+  ] }) };
+  const line = await householdMembers(familyTasks);
+  assert.match(line, /^Enfants de la maison .*fait foi sur les notes/);
+  assert.match(line, /Alex \(âge scolaire\), Sam \(petite enfance\)\.$/);
+  assert.doesNotMatch(line, /Retired/);
+  assert.equal(await householdMembers({ listProfileDetails: async () => ({ profiles: [] }) }), '');
+  const warnings = [];
+  assert.equal(await householdMembers({ listProfileDetails: async () => { throw new Error('down'); } },
+    { logger: { warn: (...args) => warnings.push(args) } }), '');
+  assert.equal(warnings.length, 1);
+});
+
+test('a parent-set birth date gives Super Dad the current age and birthday, never the raw date', async () => {
+  const previous = process.env.PLANNING_TIME_ZONE;
+  process.env.PLANNING_TIME_ZONE = 'UTC';
+  try {
+    const familyTasks = { listProfileDetails: async () => ({ profiles: [
+      { id: 'kid-a', displayName: 'Alex', ageBand: 'school', birthDate: '2016-03-14' },
+      { id: 'kid-b', displayName: 'Sam', ageBand: 'little', birthDate: '2025-03-01' },
+      { id: 'kid-c', displayName: 'Robin', ageBand: 'teen' }
+    ] }) };
+    const before = await householdMembers(familyTasks, { now: new Date('2026-03-13T12:00:00Z') });
+    assert.match(before, /Alex \(9 ans, anniversaire le 14 mars\), Sam \(1 an, anniversaire le 1er mars\), Robin \(adolescence\)\.$/);
+    assert.doesNotMatch(before, /2016|2025/);
+    const on = await householdMembers(familyTasks, { now: new Date('2026-03-14T12:00:00Z') });
+    assert.match(on, /Alex \(10 ans, anniversaire le 14 mars\)/);
+  } finally {
+    if (previous === undefined) delete process.env.PLANNING_TIME_ZONE; else process.env.PLANNING_TIME_ZONE = previous;
+  }
+});
+
+test('Famille sounds playful with children on both conversation backends (#121)', () => {
+  const { FAMILY_TONE } = require('../family-context');
+  const { packById } = require('../packs');
+  const { FAMILY_SURFACE_CONTRACT } = require('../persona-turn');
+  assert.match(FAMILY_TONE, /playful, curious and encouraging/);
+  assert.match(FAMILY_TONE, /replaces the selected personality's adult temperament/);
+  assert.match(FAMILY_TONE, /Fun never overrides accuracy or the safety rules/);
+  // AgentX backend: the family pack prompt; OpenClaw backend: the family surface contract sent each turn.
+  assert.ok(packById('kidx_nestor').systemPrompt.endsWith(FAMILY_TONE));
+  assert.ok(FAMILY_SURFACE_CONTRACT.endsWith(FAMILY_TONE));
+  assert.doesNotMatch(packById('personal_operator').systemPrompt || '', /Tone with children/);
+});
+
+test('a note from mail review or another non-owner source shows its origin in the prompt (#207)', () => {
+  const { memoryBlock } = require('../persona-prompt');
+  const block = memoryBlock([
+    { text: 'Synthetic fact from a mail', source: 'nestor-mail-review' },
+    { text: 'Synthetic owner preference', source: 'explicit-ui' },
+    { text: 'Synthetic agent note', source: 'nestor-conversation' }
+  ]);
+  assert.match(block, /- \[from mail review\] Synthetic fact from a mail/);
+  assert.match(block, /\n- Synthetic owner preference/);
+  assert.match(block, /\n- Synthetic agent note/);
 });

@@ -385,6 +385,36 @@ describe('contextProbeService', () => {
       );
     });
 
+    it('stops the ladder after a timed-out request proven stopped, keeping the verified context (#187)', async () => {
+      ollamaClient.showModel.mockResolvedValue({ model_info: { 'general.context_length': 16384 } });
+      let unloaded = false;
+      ollamaClient.listRunning.mockImplementation(async () => ({ models: unloaded ? [] : [{
+        name: 'gemma4:26b', model: 'gemma4:26b', size: 100, size_vram: 100, context_length: 262144 }] }));
+      ollamaClient.generate.mockImplementation(async (_hostUrl, payload) => {
+        const numCtx = payload.options.num_ctx;
+        if (numCtx < 8192) return { eval_count: 64, eval_duration: 1e9, prompt_eval_count: Math.floor(numCtx * 0.8) };
+        // The run journal aborted it at its deadline and proved it stopped;
+        // the runner was unloaded since, so the in-flight sample is the placement.
+        unloaded = true;
+        throw Object.assign(transportError(), { stopProof: { outcome: 'runner_unloaded',
+          baseline: { size: 100, sizeVram: 100, contextLength: 8192 } } });
+      });
+
+      const result = await contextProbeService.probeModelContext('gemma4:26b', {
+        hostUrl: 'http://192.0.2.66:11434', artifactIdentity: ARTIFACT, acknowledgeMaintenance: true,
+        workloadId: 'context-workload-1', maxCtx: 16384
+      });
+
+      expect(result).toEqual(expect.objectContaining({ status: 'completed', testedNumCtx: 4096, ceilingFailureKind: 'transport' }));
+      expect(result.steps.find(step => step.numCtx === 8192)).toMatchObject({
+        passed: false, failureKind: 'transport', failureCode: 'ETIMEDOUT', requestStopProven: true, gpuPercent: 100
+      });
+      // One sample at 8192, then no refinement and no larger candidate.
+      const sent = ollamaClient.generate.mock.calls.map(([, payload]) => payload.options.num_ctx);
+      expect(sent.filter(numCtx => numCtx > 4096)).toEqual([8192]);
+      expect(result.steps.filter(step => step.passed).map(step => step.numCtx)).toEqual([2048, 4096]);
+    });
+
     it('reports the committed ceiling when the context profile retained a higher one', async () => {
       modelContextProfileService.updateFromProbeSnapshot.mockResolvedValue({ maxVerifiedContext: 4096 });
 

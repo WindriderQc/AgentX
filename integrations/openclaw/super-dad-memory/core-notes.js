@@ -7,7 +7,7 @@ export function createCoreNotesClient({ baseUrl, fetchImpl = fetch } = {}) {
     const action = input?.action;
     if (!['remember', 'forget', 'list', 'search', 'context'].includes(action)) throw new Error('Unsupported personal-memory operation');
     const payload = { action };
-    for (const key of ['id', 'text', 'query', 'kind', 'expiresAt', 'limit', 'offset']) {
+    for (const key of ['id', 'text', 'query', 'kind', 'expiresAt', 'limit', 'offset', 'provenance']) {
       if (Object.hasOwn(input, key)) payload[key] = input[key];
     }
     const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
@@ -18,7 +18,8 @@ export function createCoreNotesClient({ baseUrl, fetchImpl = fetch } = {}) {
     if (body.status !== 'success' || data?.ok !== true || data.authority !== 'agentx.core' || data.operation !== action
         || (['list', 'search', 'context'].includes(action) && !Array.isArray(data.notes))
         || (['remember', 'forget'].includes(action) && !/^[a-f0-9]{24}$/.test(data.id || ''))
-        || (action === 'remember' && data.text !== input.text?.trim())
+        // Core may replace an identifier by a vault reference; nothing else may change.
+        || (action === 'remember' && data.text !== input.text?.trim() && !(data.sealed?.length && data.text?.includes('[coffre: ')))
         || (action === 'forget' && data.id !== input.id)) {
       throw new Error('Core personal-note receipt is invalid; refresh before retrying a write');
     }
@@ -28,8 +29,10 @@ export function createCoreNotesClient({ baseUrl, fetchImpl = fetch } = {}) {
 
 // Existing native jobs remain optional instance configuration. No operator
 // cron IDs, identities or machine addresses are included in the repository.
+// A key names the agent that owns the job; only that agent's session matches.
 export function configuredJobContext(context, sessionKeys = []) {
-  return context.agentId === 'main' && !context.sandboxed && sessionKeys.some(key =>
-    typeof key === 'string' && key.startsWith('agent:main:')
-      && (context.sessionKey === key || context.sessionKey?.startsWith(key + ':')));
+  if (!context.agentId || context.sandboxed) return false;
+  const prefix = `agent:${context.agentId}:`;
+  return sessionKeys.some(key => typeof key === 'string' && key.startsWith(prefix)
+    && (context.sessionKey === key || context.sessionKey?.startsWith(key + ':')));
 }

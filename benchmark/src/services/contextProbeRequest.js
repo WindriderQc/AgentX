@@ -42,7 +42,9 @@ async function sendProbeRequest(hostUrl, modelName, prompt, numCtx, timeoutMs, s
       error: err.message,
       errorCode: err.code || null,
       // Set by ollamaClient when Ollama returned no verdict at all.
-      transportFailure: err.transportFailure === true
+      transportFailure: err.transportFailure === true,
+      // Set by the run journal when a request aborted at its deadline was proven stopped.
+      stopProof: err.stopProof || null
     };
   }
 }

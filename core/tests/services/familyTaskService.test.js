@@ -134,4 +134,21 @@ describe('family task domain in the canonical Core store', () => {
     expect((await PipelineTask.findOne({ pipelineId: chore.id }).lean()).dueAt.toISOString())
       .toBe('2030-01-02T15:00:00.000Z');
   });
+  test('a parent birth date is set and cleared, and child-facing projections never carry it', async () => {
+    await family.addProfile({ profileId: 'sample-child', displayName: 'Sample child', ageBand: 'school' });
+    const set = await family.setProfileBirthDate({ profileId: 'sample-child', birthDate: '2016-03-14' });
+    expect(set.profile).toMatchObject({ id: 'sample-child', birthDate: '2016-03-14' });
+    expect((await family.listProfileDetails()).profiles[0].birthDate).toBe('2016-03-14');
+    const childViews = [(await family.listProfiles()).profiles[0], (await family.room({ profileId: 'sample-child' })).profile];
+    for (const view of childViews) {
+      expect(view).not.toHaveProperty('birthDate');
+      expect(JSON.stringify(view)).not.toContain('2016');
+    }
+    await expect(family.setProfileBirthDate({ profileId: 'sample-child', birthDate: '2999-01-01' }))
+      .rejects.toMatchObject({ status: 400, code: 'FAMILY_PROFILE_BAD_BIRTH_DATE' });
+    await expect(family.setProfileBirthDate({ profileId: 'missing-child', birthDate: '2016-03-14' }))
+      .rejects.toMatchObject({ status: 404 });
+    expect((await family.setProfileBirthDate({ profileId: 'sample-child', birthDate: '' })).profile.birthDate).toBeNull();
+    expect(await Profile.findOne({ profileId: 'sample-child' }).lean()).not.toHaveProperty('birthDate');
+  });
 });

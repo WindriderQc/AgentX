@@ -160,7 +160,8 @@ function sortNewestFirst(rows) {
 // is the most recent row the headline.
 function pickHeadline(members, selectedCohort) {
     if (selectedCohort) {
-        const inCohort = members.filter(row => row.qualityCohortFingerprint === selectedCohort);
+        // Results on edited prompts share the cohort but are not compared.
+        const inCohort = members.filter(row => row.qualityCohortFingerprint === selectedCohort && row.promptContentStale !== true);
         const headline = inCohort.find(hasScore) || inCohort[0] || null;
         if (headline) return { headline, headlineReason: HEADLINE_REASON.COMPARABLE_COHORT };
     }

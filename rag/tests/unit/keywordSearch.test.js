@@ -73,10 +73,11 @@ describe('tokenizeQuery', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('keywordSearch', () => {
+  // The store returns candidate chunks (a superset of matches); scoring decides.
   function makeMockStore(documents, chunksByDoc) {
     return {
-      listDocuments: jest.fn(async () => ({ documents, total: documents.length })),
-      getDocumentChunks: jest.fn(async (docId) => chunksByDoc[docId] || [])
+      findKeywordCandidates: jest.fn(async () => documents.flatMap(doc =>
+        (chunksByDoc[doc.documentId] || []).map(chunk => chunk && { ...chunk, metadata: doc })))
     };
   }
 
@@ -165,18 +166,24 @@ describe('keywordSearch', () => {
     expect(decision.map(r => r.metadata.chunkIndex)).toEqual([2]);
   });
 
+  it('asks the store once for chunks holding any query term, with filters and a bound', async () => {
+    const store = makeMockStore(docs, chunks);
+    await keywordSearch(store, 'MongoDB de serveur', { topK: 10, filters: { scope: 'household' } });
+    expect(store.findKeywordCandidates).toHaveBeenCalledTimes(1);
+    expect(store.findKeywordCandidates).toHaveBeenCalledWith(['mongodb', 'serveur'], { filters: { scope: 'household' }, limit: 500 });
+  });
+
   it('propagates store errors to the caller', async () => {
     const store = {
-      listDocuments: jest.fn(async () => { throw new Error('qdrant down'); }),
-      getDocumentChunks: jest.fn()
+      findKeywordCandidates: jest.fn(async () => { throw new Error('qdrant down'); })
     };
     await expect(keywordSearch(store, 'MongoDB', { topK: 10 })).rejects.toThrow('qdrant down');
   });
 
-  it('returns empty array when getDocumentChunks is not supported', async () => {
+  it('returns empty array when keyword candidates are not supported', async () => {
     const store = {
       listDocuments: jest.fn(async () => ({ documents: docs, total: 2 }))
-      // No getDocumentChunks method
+      // No findKeywordCandidates method
     };
     const results = await keywordSearch(store, 'MongoDB', { topK: 10 });
 

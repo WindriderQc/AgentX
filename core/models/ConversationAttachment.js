@@ -11,6 +11,8 @@ const schema = new mongoose.Schema({
   sha256: { type: String, required: true },
   data: { type: Buffer, required: true },
   text: { type: String, default: undefined },
+  // Receipt of the full-quality original kept in the image archive (imageArchive.js).
+  original: { type: mongoose.Schema.Types.Mixed, default: undefined },
   createdAt: { type: Date, default: Date.now }
 });
 // Retrying the same upload in one conversation reuses the immutable attachment.
