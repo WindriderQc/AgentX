@@ -647,6 +647,12 @@ describe('built-in Household surface on Core', () => {
     const fact = await request(app).post('/api/secretary/catchup/proposals')
       .send({ kind: 'memory', text: 'Synthetic dated fact', key: 'b'.repeat(32), gmailUrl: 'javascript:alert(1)' }).expect(201);
     expect(fact.body.data.idea).toMatchObject({ kind: 'idea', text: 'À retenir : Synthetic dated fact' });
+    expect(fact.body.data.idea.memory).toBe(true);
+    expect((await request(app).post(`/api/family/ideas/${first.body.data.idea.id}/promote`).send({ targetType: 'memory' }).expect(400)).body.code).toBe('IDEA_NOT_A_FACT');
+    const remembered = (await request(app).post(`/api/family/ideas/${fact.body.data.idea.id}/promote`).send({ targetType: 'memory' }).expect(201)).body.data;
+    expect(remembered.idea).toMatchObject({ status: 'promoted', promotedTask: { kind: 'memory' } });
+    const notes = (await request(app).post('/api/voice-personas/private/notes').send({ operation: 'list' }).expect(200)).body.data.notes;
+    expect(notes.map(note => note.text)).toContain('Synthetic dated fact');
     expect((await request(app).post('/api/secretary/catchup/proposals').send({ ...finding, kind: 'send' }).expect(400)).body.code).toBe('CATCHUP_PROPOSAL_BAD_KIND');
     expect((await request(app).post('/api/secretary/catchup/proposals').send({ ...finding, key: 'x' }).expect(400)).body.code).toBe('CATCHUP_PROPOSAL_BAD_KEY');
   });

@@ -75,14 +75,14 @@
   function mountIdeas(host) {
     host.dataset.mounted = 'true';
     host.innerHTML = `<div class="row"><div class="grow"><p class="card-kicker">Idées à trier</p><h2>Idées et rappels</h2>
-      <p class="muted">Ce que les enfants ou Nestor ont noté pour vous. Rien n'est fait avant votre choix : tâche perso, TODO AgentX, plus tard ou rejeter.</p></div>
+      <p class="muted">Ce que les enfants ou Nestor ont noté pour vous. Rien n'est fait avant votre choix : retenir (un fait), tâche perso, TODO AgentX, plus tard ou rejeter.</p></div>
       <span data-ideas-count class="pill">…</span></div><p data-ideas-status class="muted" role="status"></p><div data-ideas-list class="stack"></div>`;
     const list = host.querySelector('[data-ideas-list]');
     const status = (message) => { host.querySelector('[data-ideas-status]').textContent = message; };
-    const from = (idea) => `${idea.origin === 'family' ? 'Enfants' : 'Nestor'} · ${idea.kind === 'reminder' ? 'rappel' : 'idée'}${idea.createdAt ? ` · ${day(idea.createdAt)}` : ''}`;
+    const from = (idea) => `${idea.origin === 'family' ? 'Enfants' : idea.origin === 'secretary' ? 'Secrétaire' : 'Nestor'} · ${idea.memory ? 'à retenir' : idea.kind === 'reminder' ? 'rappel' : 'idée'}${idea.createdAt ? ` · ${day(idea.createdAt)}` : ''}`;
     const row = (idea) => `<div class="dad-task" data-idea="${esc(idea.id)}">
         <div class="dad-task-main"><div><strong>${esc(idea.text)}</strong><small>${esc(from(idea))}</small></div></div>
-        <div class="row wrap dad-task-actions"><button class="compact primary" data-idea-action="personal">Tâche perso</button>
+        <div class="row wrap dad-task-actions">${idea.memory ? '<button class="compact primary" data-idea-action="memory">Retenir</button>' : ''}<button class="compact${idea.memory ? '' : ' primary'}" data-idea-action="personal">Tâche perso</button>
         <button class="compact" data-idea-action="task">TODO AgentX</button><button class="compact" data-idea-action="park">Plus tard</button>
         <button class="compact danger" data-idea-action="reject">Rejeter</button></div></div>`;
     async function load() {
@@ -103,7 +103,10 @@
       button.disabled = true;
       host.dataset.touched = 'true';
       try {
-        if (action === 'personal' || action === 'task') {
+        if (action === 'memory') {
+          await post(`/api/family/ideas/${encodeURIComponent(id)}/promote`, { targetType: 'memory' });
+          status('Retenu dans tes souvenirs.');
+        } else if (action === 'personal' || action === 'task') {
           const data = await post(`/api/family/ideas/${encodeURIComponent(id)}/promote`, { targetType: action });
           status(`${action === 'task' ? 'TODO AgentX' : 'Tâche perso'} #${data.task.pipelineId} créée.`);
         } else {
