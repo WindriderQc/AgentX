@@ -84,8 +84,8 @@ describe('quality cohort', () => {
             execution_config: EXEC, campaign_kind: 'model', judge_config: GEMMA
         });
         await BenchmarkResult.collection.insertMany([
-            { batch_id: batchId, scoring_method: 'decomposed', quality_cohort_fingerprint: 'first-judge' },
-            { batch_id: batchId, scoring_method: 'deterministic', quality_cohort_fingerprint: 'first-judge' }
+            { batch_id: batchId, scoring_method: 'decomposed', quality_cohort_fingerprint: 'first-judge', prompt_fingerprint: 'p1' },
+            { batch_id: batchId, scoring_method: 'deterministic', quality_cohort_fingerprint: 'first-judge', prompt_fingerprint: 'p2' }
         ]);
 
         const cohort = await applyJudgeCohort(batchId, QWEN);
@@ -116,6 +116,9 @@ describe('quality cohort', () => {
         await applyJudgeCohort(batchId, QWEN);
         const stored = await BenchmarkResult.collection.find({ batch_id: batchId }).sort({ prompt_level: 1 }).toArray();
         expect(stored.map(r => r.prompt_fingerprint || null)).toEqual([expected('prompt-1'), expected('prompt-2'), null, null]);
+        // A result whose prompt cannot be proven leaves every cohort.
+        const cohort = await cohortFingerprintForBatch({ execution_config: EXEC, campaign_kind: 'model' }, QWEN);
+        expect(stored.map(r => r.quality_cohort_fingerprint)).toEqual([cohort, cohort, null, null]);
         expect(stored[0].prompt_id).toBe(String(catalog.find(prompt => prompt.name === 'prompt-1')._id));
 
         expect(await recoverPromptFingerprints(batchId)).toEqual({ recovered: 0, unrecovered: 2 });

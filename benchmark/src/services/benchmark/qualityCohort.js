@@ -105,17 +105,25 @@ async function recoverPromptFingerprints(batchId, { dryRun = false, signal = nul
 /**
  * After a standalone judge run, every result of the batch belongs to the
  * cohort of the judge that ran, deterministic results included. Results
- * written before prompt fingerprints get theirs where it is provable.
+ * written before prompt fingerprints get theirs where it is provable; a
+ * result whose prompt cannot be proven leaves every cohort (null), since a
+ * cohort no longer pins the catalog and nothing else would pin its prompt.
  */
 async function applyJudgeCohort(batchId, judgeConfig, options = {}) {
     const batch = await BenchmarkBatch.findById(batchId).lean();
     if (!batch) return null;
     const qualityCohortFingerprint = await cohortFingerprintForBatch(batch, judgeConfig);
+    const writeOptions = options.signal ? { signal: options.signal } : undefined;
     await recoverPromptFingerprints(batch._id, { signal: options.signal });
     await BenchmarkResult.updateMany(
-        { batch_id: batch._id },
+        { batch_id: batch._id, prompt_fingerprint: { $type: 'string' } },
         { $set: { quality_cohort_fingerprint: qualityCohortFingerprint } },
-        options.signal ? { signal: options.signal } : undefined
+        writeOptions
+    );
+    await BenchmarkResult.updateMany(
+        { batch_id: batch._id, $or: missingPromptFingerprint() },
+        { $set: { quality_cohort_fingerprint: null } },
+        writeOptions
     );
     return qualityCohortFingerprint;
 }
