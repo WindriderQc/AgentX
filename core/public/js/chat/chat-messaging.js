@@ -9,7 +9,9 @@ import {
 import { fetchWithDeadline } from './chat-network.js';
 import { appendRagDisplay } from './chat-rag-sources.js';
 import { buildRoutingInfo } from './chat-routing-info.js';
-import { errorFromResponse, outcomeAttemptId, persistTerminalTurn } from './chat-turn-outcome.js';
+import {
+  errorFromResponse, failedTurnMessage, outcomeAttemptId, persistTerminalTurn, recordFailedTurn
+} from './chat-turn-outcome.js';
 
 export { buildRoutingInfo };
 
@@ -993,33 +995,19 @@ export async function sendMessageStreamFetch(
     const failure = chatFailureDetails(streamError);
     const failedContent = `${fullContent ? `${fullContent}\n\n` : ''}\u26a0\ufe0f ${failure.message}\n\n${failure.guidance}`;
     helpers.appendMessage(
-      {
-        role: 'assistant',
-        content: failedContent,
-        createdAt: new Date().toISOString(),
-        retryUserMessageId: currentUserMessageId,
-        metadata: { outcome: 'failed', retryable: true, error: { code: failure.code, message: failure.message } }
-      },
+      failedTurnMessage(failure, failedContent, currentUserMessageId),
       { announcement: 'Response failed. Recovery guidance is shown.' }
     );
     helpers.setStatus(failure.status, failure.tone);
     const statusHelp = document.getElementById('chatStatusHelp');
     if (statusHelp) statusHelp.textContent = failure.guidance;
-    try {
-      await persistTerminalTurn(ctx, {
-        clientTurnId: terminalAttemptId,
-        sourceUserMessageId: turnAction?.kind === 'retry' ? turnAction.sourceUserMessageId : null,
-        userMessage: message,
-        assistantContent: failedContent,
-        outcome: 'failed',
-        model: payload.model,
-        error: failure
-      });
-      helpers.setFeedback(`${failure.message} The failed turn was saved in history.`, failure.tone);
-    } catch (persistError) {
-      console.error('Failed to preserve failed turn:', persistError);
-      helpers.setFeedback(`${failure.message} This turn is visible here but could not be saved; keep this page open and retry.`, 'error');
-    }
+    await recordFailedTurn(ctx, failure, {
+      clientTurnId: terminalAttemptId,
+      sourceUserMessageId: turnAction?.kind === 'retry' ? turnAction.sourceUserMessageId : null,
+      userMessage: message,
+      assistantContent: failedContent,
+      model: payload.model
+    });
   } finally {
     if (state.streamAbortController === requestAbortController) {
       state.streamAbortController = null;
@@ -1199,33 +1187,19 @@ export async function sendMessage(ctx, turnAction = null) {
     const failure = chatFailureDetails(err);
     const failedContent = `\u26a0\ufe0f ${failure.message}\n\n${failure.guidance}`;
     helpers.appendMessage(
-      {
-        role: 'assistant',
-        content: failedContent,
-        createdAt: new Date().toISOString(),
-        retryUserMessageId: currentUserMessageId,
-        metadata: { outcome: 'failed', retryable: true, error: { code: failure.code, message: failure.message } }
-      },
+      failedTurnMessage(failure, failedContent, currentUserMessageId),
       { announcement: 'Response failed. Recovery guidance is shown.' }
     );
     helpers.setStatus(failure.status, failure.tone);
     const statusHelp = document.getElementById('chatStatusHelp');
     if (statusHelp) statusHelp.textContent = failure.guidance;
-    try {
-      await persistTerminalTurn(ctx, {
-        clientTurnId: terminalAttemptId,
-        sourceUserMessageId: requestTurnAction?.kind === 'retry' ? requestTurnAction.sourceUserMessageId : null,
-        userMessage: message,
-        assistantContent: failedContent,
-        outcome: 'failed',
-        model: payload.model,
-        error: failure
-      });
-      helpers.setFeedback(`${failure.message} The failed turn was saved in history.`, failure.tone);
-    } catch (persistError) {
-      console.error('Failed to preserve failed turn:', persistError);
-      helpers.setFeedback(`${failure.message} This turn is visible here but could not be saved; keep this page open and retry.`, 'error');
-    }
+    await recordFailedTurn(ctx, failure, {
+      clientTurnId: terminalAttemptId,
+      sourceUserMessageId: requestTurnAction?.kind === 'retry' ? requestTurnAction.sourceUserMessageId : null,
+      userMessage: message,
+      assistantContent: failedContent,
+      model: payload.model
+    });
   } finally {
     state.sending = false;
     elements.sendBtn.textContent = 'Send';

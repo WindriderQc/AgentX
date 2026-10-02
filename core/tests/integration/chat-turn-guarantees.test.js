@@ -10,19 +10,23 @@ const { startTestHttpHarness } = require('../helpers/testHttpServer');
 
 jest.mock('../../src/services/buddyEvents', () => ({ emit: jest.fn() }));
 jest.mock('../../src/services/ragServiceClient', () => ({ getRagServiceClient: () => ({}) }));
+const mockInference = { calls: 0 };
 jest.mock('../../src/services/chatService', () => {
   const { persistConversation } = jest.requireActual('../../src/services/chat/conversationPersistence');
-  const persistTurn = (input) => persistConversation({
-    userId: input.userId,
-    conversationId: input.conversationId,
-    clientTurnId: input.clientTurnId,
-    model: 'fixture-model',
-    effectiveSystemPrompt: 'Fixture system prompt',
-    message: input.message,
-    assistantContent: 'Fixture reply',
-    activePrompt: { name: 'default_chat', version: 1 },
-    metadata: {}
-  });
+  const persistTurn = (input) => {
+    mockInference.calls += 1;
+    return persistConversation({
+      userId: input.userId,
+      conversationId: input.conversationId,
+      clientTurnId: input.clientTurnId,
+      model: 'fixture-model',
+      effectiveSystemPrompt: 'Fixture system prompt',
+      message: input.message,
+      assistantContent: 'Fixture reply',
+      activePrompt: { name: 'default_chat', version: 1 },
+      metadata: {}
+    });
+  };
   const receipt = ({ conversation, assistantMessageId }) => ({
     response: 'Fixture reply', model: 'fixture-model',
     conversationId: conversation?._id || null, messageId: assistantMessageId
@@ -75,7 +79,7 @@ async function send(endpoint, body) {
   if (!endpoint.endsWith('stream')) return { status: response.status, body: response.body };
   const events = sseEvents(response.text);
   const terminal = events.find(({ event }) => event === 'done' || event === 'error');
-  return { status: response.status, terminal };
+  return { status: response.status, terminal, body: response.body };
 }
 
 async function playground(overrides = {}) {
@@ -107,18 +111,15 @@ describe.each(['/chat', '/chat/stream'])('%s honest save state', (endpoint) => {
     ['unknown', async () => new mongoose.Types.ObjectId().toHexString()],
     ['archived', async () => (await playground({ lifecycle: { status: 'archived', archivedAt: new Date() } })).id],
     ['invalid', async () => 'not-an-object-id']
-  ])('an %s conversationId is refused with 404 and nothing is forked', async (_label, makeId) => {
+  ])('an %s conversationId is refused with 404 before inference', async (_label, makeId) => {
     const conversationId = await makeId();
     const before = await Conversation.find({}).lean();
+    mockInference.calls = 0;
     const result = await send(endpoint, { conversationId });
-    if (isStream) {
-      expect(result.terminal).toEqual({ event: 'error', data: expect.objectContaining({
-        code: 'CONVERSATION_NOT_FOUND', statusCode: 404
-      }) });
-    } else {
-      expect(result.status).toBe(404);
-      expect(result.body.code).toBe('CONVERSATION_NOT_FOUND');
-    }
+    // Refused before inference, so the stream route answers before opening SSE.
+    expect(result.status).toBe(404);
+    expect(result.body.code).toBe('CONVERSATION_NOT_FOUND');
+    expect(mockInference.calls).toBe(0);
     expect(await Conversation.find({}).lean()).toEqual(before);
   });
 

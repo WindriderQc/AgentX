@@ -11,6 +11,10 @@ const {
   TurnActionProvenanceError,
   validateTurnActionProvenance
 } = require('../src/helpers/turnActionProvenance');
+const {
+  findConversationForUpdate,
+  conversationNotFound
+} = require('../src/services/chat/conversationPersistence');
 const ragStore = getRagServiceClient();
 
 function resolveAllowlistedTarget(target) {
@@ -28,7 +32,8 @@ function resolveAllowlistedTarget(target) {
 }
 
 function sendChatInputError(res, error) {
-  const isContractError = error instanceof TurnActionProvenanceError || error.code === 'CHAT_REQUEST_INVALID';
+  const isContractError = error instanceof TurnActionProvenanceError
+    || error.code === 'CHAT_REQUEST_INVALID' || error.code === 'CONVERSATION_NOT_FOUND';
   const statusCode = isContractError ? error.statusCode : 500;
   if (!isContractError) {
     logger.error('Turn action provenance validation failed', {
@@ -113,6 +118,10 @@ async function resolveChatRequest(payload, userId) {
   // Omitted target stays omitted so the router can choose the host.
   const allowlistedTarget = resolveAllowlistedTarget(target);
   if (!allowlistedTarget.ok) invalid(allowlistedTarget.message);
+  // Refuse an unknown or archived conversation before inference: its save would be refused.
+  if (conversationId && !(await findConversationForUpdate({ conversationId, userId }))) {
+    throw conversationNotFound();
+  }
 
   return {
     model, message, messages, system, persona, promptVersion, conversationId,
