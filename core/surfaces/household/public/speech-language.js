@@ -53,9 +53,8 @@
     return '';
   }
 
-  // `decided` separates "this is English" from "nothing scored, so English is
-  // only the fallback". Callers that must not guess -- the reply-language
-  // directive sent to the model -- use it to stay silent instead.
+  // Nestor speaks Québécois French by default: English needs more English than
+  // French words. `decided` separates a real score from that default.
   function scoreSpeechLanguage(text) {
     const source = String(text || '').toLowerCase();
     const words = source.normalize('NFKC').match(/[\p{L}']+/gu) || [];
@@ -65,7 +64,7 @@
       if (FRENCH_WORDS.has(word)) french += 1;
       if (ENGLISH_WORDS.has(word)) english += 1;
     }
-    return { french, english, language: french > english ? 'fr' : 'en', decided: french !== english };
+    return { french, english, language: english > french ? 'en' : 'fr', decided: french !== english };
   }
 
   function detectSpeechLanguage(text, hint = '') {
@@ -83,6 +82,14 @@
   function replySpeechLanguage(text, fallback = '') {
     const score = scoreSpeechLanguage(text);
     return score.decided ? score.language : normalizeSpeechLanguage(fallback) || score.language;
+  }
+
+  // One voice per turn: a franglais reply must not switch speakers between
+  // clauses. The language recognized in the user's speech wins, then the words
+  // they used, then the chosen preference, then French.
+  function turnSpeechLanguage(text, recognized = '', preferred = '') {
+    const score = scoreSpeechLanguage(text);
+    return normalizeSpeechLanguage(recognized) || (score.decided ? score.language : normalizeSpeechLanguage(preferred) || 'fr');
   }
 
   function withoutMediaReferences(text) {
@@ -132,6 +139,7 @@
     normalizeSpeechLanguage,
     scoreSpeechLanguage,
     replySpeechLanguage,
+    turnSpeechLanguage,
     speechText,
     synthesisText,
     withoutMediaReferences,
