@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isTranscriptHallucination, isSpokenEcho } = require('../public/browser-conversation');
+const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isTranscriptHallucination, isSpokenEcho, holdingPhrase } = require('../public/browser-conversation');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 10));
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { resolve, promise }; };
@@ -16,7 +16,7 @@ function harness(overrides = {}) {
     async play() { calls.push('play'); }
   };
   const io = {
-    wakeAckDelayMs: 0,
+    wakeAckDelayMs: 0, holdingDelayMs: null,
     async openAudio() { return audio; },
     async createSession(selection) { calls.push(selection); return { sessionId: 'private-1' }; },
     async transcribe() { return 'Bonjour'; },
@@ -1059,4 +1059,24 @@ test('a failure keeps the conversation so starting again continues it', async ()
   await h.conversation.start({}); await h.say();
   assert.equal(h.conversation.state, 'error');
   assert.equal(h.conversation.session.sessionId, 'private-1');
+});
+
+test('a silent wait speaks one holding phrase in the turn language; a quick reply speaks none', async () => {
+  const slow = deferred(), spoken = [];
+  const h = harness({ holdingDelayMs: 5, transcribe: async () => 'Bonjour Nestor',
+    turn: () => slow.promise, async synthesize(reply) { spoken.push(reply); return new ArrayBuffer(4); } });
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await nextTimer(); await nextTimer();
+  assert.equal(spoken.length, 1);
+  assert.equal(spoken[0].language, 'fr');
+  assert.ok(['Un instant…', 'Je regarde ça…', 'Laisse-moi réfléchir une seconde…'].includes(spoken[0].text));
+  slow.resolve({ text: 'Voici la réponse.' }); await exchange;
+  assert.deepEqual(spoken.map(row => row.text).slice(1), ['Voici la réponse.']);
+  h.conversation.stop();
+  const quick = []; const q = harness({ holdingDelayMs: 50, turn: async () => ({ text: 'Tout de suite.' }),
+    async synthesize(reply) { quick.push(reply.text); return new ArrayBuffer(4); } });
+  await q.conversation.start({ language: 'fr' }); await q.say(); await new Promise(r => setTimeout(r, 80));
+  assert.deepEqual(quick, ['Tout de suite.']);
+  q.conversation.stop();
+  assert.equal(holdingPhrase('en', 0), 'One moment…');
 });
