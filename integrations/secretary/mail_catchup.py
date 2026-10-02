@@ -179,6 +179,11 @@ def pending_pages(archive):
     return queues
 
 
+def changed(root, page):
+    """True when collection changed the thread after the page list was built."""
+    return load(root / "threads" / page["threadId"] / "manifest.json", {}).get("evidenceHash") != page["evidenceHash"]
+
+
 def page_prompt(archive, page, named):
     previous = load(archive.root / "reviews" / (page["threadId"] + ".json"), {})
     attachment = page.get("attachment") or None
@@ -262,8 +267,8 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
         for page in queues[lane]:
             if max_pages is not None and status["reviewed"] + status["failed"] >= max_pages:
                 return finish("partial")
-            if (root / "page-reviews" / (page["pageId"] + ".json")).exists():
-                continue
+            if (root / "page-reviews" / (page["pageId"] + ".json")).exists() or changed(root, page):
+                continue  # read meanwhile, or a new reply/OCR reissues it under a new page id next run
             while True:
                 if stop():
                     return finish("stopped")

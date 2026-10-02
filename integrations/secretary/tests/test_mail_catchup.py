@@ -118,6 +118,22 @@ class CatchupTests(unittest.TestCase):
         saved = catchup.load(self.root / "reviews/thread-old.json")["actions"][0]
         self.assertEqual((saved["status"], saved["messageId"]), ("current", "thread-old-m"))
 
+    def test_a_thread_changed_by_collection_is_skipped_without_a_model_call_or_failure(self):
+        self.thread("thread-mail1", "Ordinary synthetic mail")
+        client = FakeClient()
+        original = catchup.pending_pages
+
+        def collected_meanwhile(archive):
+            queues = original(archive)
+            self.threads["thread-mail1"]["thread"]["messages"].append(
+                {"id": "thread-mail1-r", "body": "A new reply", "headers": {}, "internalDate": "2"})
+            archive.collect_thread("thread-mail1")
+            return queues
+        with mock.patch.object(catchup, "pending_pages", collected_meanwhile):
+            status = self.run_catchup(client)
+        self.assertEqual((status["reviewed"], status["failed"], client.calls), (0, 0, []))
+        self.assertEqual(self.archive.native_status()["pendingTextPages"], 2)
+
     def test_review_normalizes_unknowns_and_cites_the_page_attachment(self):
         page = {"pageId": "p1", "messageId": "m1", "attachment": {"sha256": "a" * 64}}
         raw = review(invoices=[{"supplier": "Synthetic clinic", "grossAmount": "130,00", "insurer": "unknown"}],
