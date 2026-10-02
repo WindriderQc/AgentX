@@ -8,6 +8,7 @@ import { resolveAgentWorkspaceDir, resolveAgentEffectiveModelPrimary } from "ope
 import { createCoreNotesClient, configuredJobContext } from "./core-notes.js";
 import { createCoreVaultClient } from "./core-vault.js";
 import { createCoreJournalClient } from "./core-journal.js";
+import { createCoreIdentifiersClient, householdOwnerSession } from "./core-identifiers.js";
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
@@ -19,6 +20,7 @@ export default definePluginEntry({
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const writeVaultNote = createCoreVaultClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const mailJournal = createCoreJournalClient({ baseUrl: api.pluginConfig?.agentxUrl });
+    const identifiers = createCoreIdentifiersClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const secretaryContext = context => configuredJobContext(context, api.pluginConfig?.secretarySessionKeys);
     const morningContext = context => configuredJobContext(context, api.pluginConfig?.briefingSessionKeys);
     const readTasks = () => agentxRead(api.pluginConfig?.agentxUrl,
@@ -78,6 +80,24 @@ export default definePluginEntry({
         async execute(_id, params) { return receipt(await mailJournal(params)); },
       };
     }, { name: "mail_journal", optional: true });
+
+    api.registerTool(context => {
+      if (!privateOwnerContext(context, api.config)) return null;
+      return {
+        name: "personal_identifier", label: "Personal Identifier",
+        description: "The owner's sensitive identifiers (NIQ, NAS, REEE, account and card numbers) are kept encrypted; notes and mail entries show them as [coffre: label …1234]. list: labels and last digits. reveal: the full value of one id, only when the owner needs it for a task, and only in Super Dad; on Telegram, say it can be shown in Super Dad. To keep a new identifier, save it in a note: Core moves it to the vault.",
+        parameters: { type: "object", properties: {
+          action: { type: "string", enum: ["list", "reveal"] },
+          id: { type: "string", pattern: "^[a-f0-9]{24}$" },
+        }, required: ["action"], additionalProperties: false },
+        async execute(_id, params) {
+          if (params.action === "reveal" && !householdOwnerSession(context)) {
+            return receipt({ ok: false, shown: false, reason: "Identifier values are shown only in Super Dad, on the home network." });
+          }
+          return receipt(await identifiers(params));
+        },
+      };
+    }, { name: "personal_identifier", optional: true });
 
     api.registerTool(context => {
       if (!privateOwnerContext(context, api.config)) return null;

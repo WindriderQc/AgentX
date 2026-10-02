@@ -32,6 +32,13 @@ test('only the closed list of actions and deployable services is accepted', () =
   assert.throws(() => actions.parseServices(''), { exitCode: 2 });
 });
 
+test('a deploy labels its images with the commit it fast-forwarded to, not a stale caller value', () => {
+  const config = { envFile: 'x', project: 'p', override: null };
+  const env = { ...{ AGENTX_BUILD_REVISION: 'b93538815' }, ...actions.launcherEnv(config, '86e1d217d') };
+  assert.equal(env.AGENTX_BUILD_REVISION, '86e1d217d');
+  assert.equal('AGENTX_BUILD_REVISION' in actions.launcherEnv(config), false);
+});
+
 test('an action never guesses the instance: project, env file and lease file are required', () => {
   assert.throws(() => actions.instance({}, { mutating: false }), /AGENTX_ENV_FILE, AGENTX_PROJECT_NAME/);
   assert.throws(() => actions.instance({ AGENTX_ENV_FILE: 'x', AGENTX_PROJECT_NAME: 'p' }, { mutating: true }), /AGENTX_LEAD_FILE/);

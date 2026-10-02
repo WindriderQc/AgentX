@@ -803,6 +803,27 @@ A 16-digit number without letters is never taken for a Gmail id.
 `--ids <file.json>` limits a run to chosen note ids. Copy the files out of the
 container before it is recreated.
 
+## Identifier vault
+
+Generate the key once on the host and add it to the instance env (never Git):
+
+```bash
+echo "IDENTIFIER_VAULT_KEY=$(openssl rand -base64 32)" >> /srv/agentx/instance/instance.env
+```
+
+Recreate Core, then seal identifiers already stored in notes and the mail
+journal: the dry run prints counts by kind only; `--apply` writes the original
+texts to a backup first (clear text: keep it outside Git and delete it once the
+result is checked).
+
+```bash
+docker exec agentx-core-1 node scripts/seal-identifiers.js
+docker exec agentx-core-1 node scripts/seal-identifiers.js --apply --backup /tmp/identifiers-backup.json
+```
+
+Back the key up with the instance secrets: without it, stored values cannot be
+read.
+
 ## Qdrant payload indexes
 
 RAG creates the payload indexes its filters use (`documentId`, `revision`,

@@ -13,7 +13,8 @@
     "media.js",
     "core-notes.js",
     "core-vault.js",
-    "core-journal.js"
+    "core-journal.js",
+    "core-identifiers.js"
   ],
   "scripts": {
     "test": "node --test test/*.test.js"

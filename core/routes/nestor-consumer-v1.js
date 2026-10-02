@@ -292,6 +292,12 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
     envelope.success(res, await require('../src/services/mailJournalService').operate(req.body || {}));
   }));
 
+  // Sensitive identifiers: labels for listing, a value only on request.
+  router.post('/identifiers', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    envelope.success(res, await require('../src/services/identifierVault').operate(req.body || {}));
+  }));
+
   // Nestor files a Markdown note for the owner to review in the vault inbox.
   router.post('/vault/notes', asyncRoute(async (req, res) => {
     res.set('Cache-Control', 'no-store');
