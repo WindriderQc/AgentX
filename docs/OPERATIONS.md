@@ -718,7 +718,10 @@ so a registered host becomes a Profiler and benchmark target with its residency.
 Profiler proves a measurement with no VRAM share instead of a full one, and its
 context probe stops at `CONTEXT_PROBE_CPU_MAX_CTX` (default 32768) with a
 per-step timeout of `CONTEXT_PROBE_CPU_TIMEOUT_MS` (default 20 minutes): CPU
-prefill takes minutes. Every other Profiler request on a CPU host (throughput,
+prefill takes minutes. CPU context probes measure the ascending ladder before
+trying a larger context that was already resident, so an early timeout does
+not precede every lower-context measurement. Every other Profiler request on a
+CPU host (throughput,
 generation stability, prefill/decode matrix, thinking) waits at least as long,
 so a 512-token answer at a few tokens per second is not cut at the GPU-sized
 `testTimeoutSec` and left without a terminal receipt. A probe unloads models only on its own Ollama instance,
