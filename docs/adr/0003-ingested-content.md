@@ -51,10 +51,12 @@ chat and Roundtable, the Gmail backlog triage fields and earlier attachments
 are framed by the change that introduces this ADR.
 
 Gated in code: Gmail send, reply, forward, draft send, archive, trash, label
-deletion and bulk changes (`integrations/openclaw/gmail-secretary`).
+deletion and bulk changes (`integrations/openclaw/gmail-secretary`), and any
+native `message` tool action toward a destination outside the owner's own
+conversations (`integrations/openclaw/outbound-guard`).
 
-Open work is tracked as issues: a code gate for native OpenClaw messaging,
-origin labels on notes derived from mail, and provenance on actions.
+Open work is tracked as issues: origin labels on notes derived from mail
+(#207) and provenance on actions (#208).
 
 ## Consequences
 
