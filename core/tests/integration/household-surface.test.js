@@ -146,6 +146,29 @@ describe('built-in Household surface on Core', () => {
       for (const name of names) { if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name]; }
     }
   });
+  test('a voice whose engine fails before its first sound is reported unavailable so the browser falls back', async () => {
+    const originalFetch = global.fetch, previousUrl = process.env.VOIX_BASE_URL;
+    process.env.VOIX_BASE_URL = 'http://voix.example.test';
+    let body = '{"type":"error","message":"Local speech synthesis failed"}\n';
+    const upstream = jest.spyOn(global, 'fetch').mockImplementation(async (url, options) => {
+      if (!String(url).endsWith('/api/tts/stream')) return originalFetch(url, options);
+      return new Response(body, { headers: { 'Content-Type': 'application/x-ndjson' } });
+    });
+    try {
+      const failed = await request(app).post('/api/voix/synthesize/stream')
+        .send({ text: 'Bonjour', language: 'fr', tts_provider: 'voxcpm', voice: 'example' }).expect(503);
+      expect(failed.body.code).toBe('VOIX_SYNTHESIS_FAILED');
+      body = '{"type":"meta","protocol":"voix-pcm-v1"}\n{"type":"done","frames":1,"samples":1}\n';
+      const spoken = await request(app).post('/api/voix/synthesize/stream')
+        .send({ text: 'Bonjour', language: 'fr', tts_provider: 'voxcpm', voice: 'example' })
+        .buffer(true).parse((res, done) => { let text = ''; res.setEncoding('utf8'); res.on('data', d => { text += d; }); res.on('end', () => done(null, text)); })
+        .expect(200);
+      expect(spoken.body).toBe(body);
+    } finally {
+      upstream.mockRestore();
+      if (previousUrl === undefined) delete process.env.VOIX_BASE_URL; else process.env.VOIX_BASE_URL = previousUrl;
+    }
+  });
   test('the PCM proxy removes Kokoro quote-only fragments without changing other providers', async () => {
     const quoted = 'Le hibou dit : « Tu gagnes. »';
     const upstreamBody = '{"type":"done","frames":1,"samples":1}\n';
