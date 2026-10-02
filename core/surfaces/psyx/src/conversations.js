@@ -1,5 +1,7 @@
 'use strict';
 
+const { PROMPT_VERSION } = require('../../../src/domains/psyx/domain');
+
 // PsyX keeps its domain language; Core owns generic conversation persistence
 // and lifecycle. The namespace cannot be supplied by browser requests.
 function createConversationAdapter({ conversationLifecycle: core }) {
@@ -45,7 +47,7 @@ function createConversationAdapter({ conversationLifecycle: core }) {
         .map(m => ({ role: m.role === 'action' ? 'user' : m.role, content: m.content }));
     },
     async saveCompletedTurn(input) {
-      return view(await core.recordCompletedTurn({ ...input, ...scope(input.userId), surface: 'psyx', promptVersion: 2 }));
+      return view(await core.recordCompletedTurn({ ...input, ...scope(input.userId), surface: 'psyx', promptVersion: PROMPT_VERSION }));
     },
     rename: mutate('renameConversation'), archive: mutate('archiveConversation'), restore: mutate('restoreConversation'),
     async permanentlyDelete(userId, id) {
