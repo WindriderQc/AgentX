@@ -144,6 +144,7 @@ describe('Agent X runtime profile', () => {
     for (const [method, path] of [
       ['POST', '/workload-admissions'],
       ['POST', '/workload-admissions/run-1/heartbeat'],
+      ['POST', '/workload-admissions/run-1/yield-point'],
       ['POST', `/host-preferences/${host}/benchmark-claim`],
       ['POST', `/host-preferences/${host}/benchmark-claim/run-1/heartbeat`],
       ['DELETE', `/host-preferences/${host}/benchmark-claim/run-1`],
@@ -154,6 +155,7 @@ describe('Agent X runtime profile', () => {
 
     expect(demoSurfaceDisabled(`${prefix}/host-preferences/${host}`, 'PUT')).toBe(true);
     expect(demoSurfaceDisabled(`${prefix}/host-preferences/${host}/swap`, 'POST')).toBe(true);
+    expect(demoSurfaceDisabled(`${prefix}/host-preferences/${host}/pin/context`, 'POST')).toBe(true);
     expect(demoSurfaceDisabled(`${prefix}/maintenance-leases`, 'POST')).toBe(true);
     expect(demoSurfaceDisabled(`${prefix}/ecosystem`, 'GET')).toBe(true);
     expect(demoSurfaceDisabled(`${prefix}/workload-admissions`, 'GET')).toBe(true);

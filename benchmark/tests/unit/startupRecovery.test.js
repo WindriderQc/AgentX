@@ -50,15 +50,12 @@ describe('startup recovery', () => {
   });
 });
 
-// Every Core operation the recovery paths call: claim recovery, profiler
-// projection recovery and authority reconciliation.
-const RECOVERY_OPERATIONS = [
-  'HOST_PREFERENCES', 'HOST_RELOAD', 'CLAIMS_ACTIVE', 'CLAIM_ACQUIRE', 'CLAIM_HEARTBEAT', 'CLAIM_RELEASE',
-  'CLAIM_RELEASE_RECOVERY', 'WORKLOAD_ACQUIRE', 'WORKLOAD_HEARTBEAT', 'WORKLOAD_RELEASE',
-  'WORKLOAD_RELEASE_RECOVERY', 'WORKLOAD_RECOVERY_ARM', 'WORKLOAD_RECOVERY_ADOPT',
-  'WORKLOAD_RECOVERY_HEARTBEAT', 'WORKLOAD_RECOVERY_ASSERT', 'WORKLOAD_RECOVERY_TRANSITION',
-  'WORKLOAD_RECOVERY_HOST_RESTORE', 'WORKLOAD_RECOVERY_RELEASE'
-];
+// Every Core operation Benchmark calls in both profiles: claim recovery,
+// profiler projection recovery, authority reconciliation, batch execution
+// and the interactive-priority yield point. Pin context editing stays
+// full-only (operator-confirmed Profiler proposal under Nerve Center).
+const FULL_ONLY_OPERATIONS = ['PIN_CONTEXT_APPLY'];
+const DEMO_OPERATIONS = Object.keys(CORE_OPERATIONS).filter(name => !FULL_ONLY_OPERATIONS.includes(name));
 
 function samplePath(pattern) {
   const target = pattern.replace(/^\^|\$$/g, '').replace(/\[\^\/\]\+/g, encodeURIComponent('http://127.0.0.1:11434'));
@@ -75,11 +72,22 @@ function throughDemoGuard(method, target) {
 }
 
 describe('demo Core profile guard', () => {
-  it.each(RECOVERY_OPERATIONS)('accepts the recovery operation %s', name => {
+  it('covers the workload yield point', () => {
+    expect(DEMO_OPERATIONS).toContain('WORKLOAD_YIELD_POINT');
+  });
+
+  it.each(DEMO_OPERATIONS)('accepts the Benchmark operation %s', name => {
     const spec = CORE_OPERATION_SPECS[CORE_OPERATIONS[name]];
     const { next, res } = throughDemoGuard(spec.method, samplePath(spec.pathPattern));
     expect(res.status).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(FULL_ONLY_OPERATIONS)('rejects the full-only operation %s', name => {
+    const spec = CORE_OPERATION_SPECS[CORE_OPERATIONS[name]];
+    const { next, res } = throughDemoGuard(spec.method, samplePath(spec.pathPattern));
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it('rejects the full-only registered-host list', () => {

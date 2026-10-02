@@ -84,14 +84,15 @@ function matchesPrefix(pathname, prefix) {
 
 // Benchmark and profiling need Core's existing coordination handlers in both
 // profiles. Their placement under Nerve Center does not make them operator UI.
-// Keep pin editing, manual swaps, maintenance, and the cockpit full-profile.
+// The yield point lets a running workload give way to interactive chat.
+// Keep pin editing (including the Profiler's pin context proposal), manual swaps, maintenance, and the cockpit full-profile.
 function isProductCoordination(path, method) {
   if (method === 'GET') {
     return path === '/api/nerve-center/host-preferences'
       || path === '/api/nerve-center/host-preferences/benchmark-claims/active';
   }
   if (method === 'POST') {
-    return /^\/api\/nerve-center\/workload-admissions(?:\/[^/]+\/(?:heartbeat|recovery|release-receipt))?$/.test(path)
+    return /^\/api\/nerve-center\/workload-admissions(?:\/[^/]+\/(?:heartbeat|recovery|release-receipt|yield-point))?$/.test(path)
       || /^\/api\/nerve-center\/workload-recoveries\/[^/]+\/(?:adopt|heartbeat|assert|transition|restore-hosts)$/.test(path)
       || /^\/api\/nerve-center\/host-preferences\/[^/]+\/(?:reload|benchmark-claim(?:\/[^/]+\/(?:heartbeat|release-receipt))?)$/.test(path);
   }
