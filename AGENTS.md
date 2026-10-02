@@ -18,8 +18,9 @@ and docs/OPERATIONS.md before changing architecture.
 - Never commit secrets, personal content, transcripts, memory stores, host inventories,
   machine-specific configuration, generated reports or runtime volumes here. Keep secret
   values outside Git entirely; only generic configuration examples belong here.
-- Local/LAN only. Do not expose the application publicly. Public source visibility
-  is a separate decision after a repository and history privacy audit.
+- Local/LAN only. Do not expose the application publicly. The source repository is
+  public: every commit is published, so instance data, secrets and private assets
+  stay in the private instance repository or outside Git (ADR 0001).
 - Run existing relevant tests and wait for their completed result. Distinguish
   code/tests, containers, deployment and real-device acceptance.
 - Keep commits in English and responses to the owner in French. One clear change
