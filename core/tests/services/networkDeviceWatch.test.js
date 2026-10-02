@@ -92,6 +92,25 @@ describe('network device watch', () => {
     await expect(Alert.countDocuments({ ruleId: 'network-new-device' })).resolves.toBe(1);
   });
 
+  test('the first check waits one minute after start, then follows the interval', () => {
+    jest.useFakeTimers();
+    try {
+      let calls = 0;
+      const timed = createNetworkDeviceWatch({ loadDevices: async () => { calls += 1; return []; } });
+      expect(timed.start(300000)).toBe(true);
+      expect(timed.start(300000)).toBe(false);
+      jest.advanceTimersByTime(59999);
+      expect(calls).toBe(0);
+      jest.advanceTimersByTime(1);
+      expect(calls).toBe(1);
+      timed.stop();
+      jest.advanceTimersByTime(600000);
+      expect(calls).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('is opt-in with a one-minute floor and normalizes MACs', () => {
     expect(watchIntervalMs({})).toBe(0);
     expect(watchIntervalMs({ NETWORK_DEVICE_WATCH_MS: '1000' })).toBe(60000);
