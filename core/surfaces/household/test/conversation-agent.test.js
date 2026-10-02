@@ -410,3 +410,28 @@ test('a delegated turn that never settles fails plainly after its bound', async 
     fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
   await assert.rejects(client({ session, text: 'Combien ?' }), /autre agent n’a pas répondu/);
 });
+
+test('a turn cancelled while the gateway is still preparing settles quickly without native evidence', async () => {
+  const abort = new AbortController(); const settled = [];
+  const client = createAgentClient({ env, settleMs: 20000, continuity: async () => ({}),
+    fetchImpl: async (_url, options) => ({ ok: true, body: (async function* () {
+      yield created; abort.abort(); assert.equal(options.signal.aborted, true);
+      throw abort.signal.reason;
+    })() }) });
+  const started = Date.now();
+  const result = await client({ session, text: 'Question', signal: abort.signal, onSettled: (...args) => settled.push(args) });
+  assert.equal(result.interrupted, true);
+  assert.equal(result.tools.status, 'unavailable');
+  assert.ok(Date.now() - started < 5000, 'no 20 s wait for an agent_end that never comes');
+  assert.deepEqual(settled, [[sessionKeyFor(session), runId]]);
+});
+
+test('a turn cancelled after the model started still waits for native termination evidence', async () => {
+  const abort = new AbortController();
+  const client = createAgentClient({ env, settleMs: 300, continuity: async () => ({}),
+    fetchImpl: async () => ({ ok: true, body: (async function* () {
+      yield created; yield row({ type: 'response.output_text.delta', delta: 'Bon' }); abort.abort();
+      throw abort.signal.reason;
+    })() }) });
+  await assert.rejects(client({ session, text: 'Question', signal: abort.signal }), /pas encore confirmé/);
+});
