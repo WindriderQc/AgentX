@@ -13,7 +13,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
   const jobs = new Map();
   const key = (userId, conversationId) => `${userId}:${conversationId}`;
 
-  async function run(userId, conversationId) {
+  async function run(userId, conversationId, job) {
     const turns = await conversationRepository.context(userId, conversationId, 40);
     if (!turns?.length) return { added: 0, digest: null };
     const state = await stateRepository.read(userId);
@@ -27,23 +27,31 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
     const review = readReview(result.content, { conversationId, settled: state.settledProposals, openExperimentIds });
     if (!review) throw Object.assign(new Error('The background review returned no usable result'), { code: 'PSYX_REVIEW_UNUSABLE' });
     // The conversation may have been deleted or archived, or memory reset, while the model was thinking.
-    if (!jobs.has(key(userId, conversationId)) || !await conversationRepository.context(userId, conversationId, 1)) return { added: 0, digest: null };
-    const stillWanted = () => jobs.has(key(userId, conversationId));
+    if (jobs.get(key(userId, conversationId)) !== job || !await conversationRepository.context(userId, conversationId, 1)) return { added: 0, digest: null };
+    const stillWanted = () => jobs.get(key(userId, conversationId)) === job;
     const recorded = await stateRepository.recordReview(userId, { conversationId, ...review, resetAt, stillWanted });
     return { added: recorded.added, digest: Boolean(review.digest), model: result.model || null };
   }
 
   function start(userId, conversationId) {
     const job = jobs.get(key(userId, conversationId));
+    if (!job) return;
     job.status = 'queued';
     job.rerun = false;
     job.timer = setTimeout(async () => {
       // Do not compete with a reply the user is waiting for; try again shortly.
-      if (isBusy(userId)) return setTimeout(() => start(userId, conversationId), Math.max(1000, delayMs)).unref?.();
+      if (jobs.get(key(userId, conversationId)) !== job) return;
+      if (isBusy(userId)) {
+        job.timer = setTimeout(() => {
+          if (jobs.get(key(userId, conversationId)) === job) start(userId, conversationId);
+        }, Math.max(1000, delayMs));
+        job.timer.unref?.();
+        return;
+      }
       job.status = 'running';
       job.startedAt = new Date().toISOString();
       try {
-        const outcome = await run(userId, conversationId);
+        const outcome = await run(userId, conversationId, job);
         Object.assign(job, { status: 'done', error: null, lastAdded: outcome.added, model: outcome.model, completedAt: new Date().toISOString() });
       } catch (error) {
         Object.assign(job, { status: 'failed', error: error.code || 'PSYX_REVIEW_FAILED', completedAt: new Date().toISOString() });

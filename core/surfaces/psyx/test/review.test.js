@@ -229,3 +229,14 @@ test('check-ins are recorded through the protected API only', async () => {
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test('forgetting a busy deferred review clears its retry and never runs orphan work', async () => {
+  const { calls, provider, stateRepository, conversationRepository } = fakes();
+  const reviewer = createReviewer({ config: { review: { delayMs: 0 } }, provider, stateRepository, conversationRepository, isBusy: () => true });
+  reviewer.schedule('u', 'c');
+  await tick(10);
+  reviewer.forget('u', 'c');
+  await tick(1100);
+  assert.equal(reviewer.status('u', 'c').status, 'idle');
+  assert.equal(calls.complete.length, 0);
+});
