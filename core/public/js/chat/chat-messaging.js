@@ -3,7 +3,7 @@
  */
 import {
   describePendingRuntimeChange, getHostChatState, getRagOptions, isAutoRoutingMode, isRouterMode,
-  readProfileInputs, selectedHostPreference, sessionTaskType, targetHost
+  readOptions, readProfileInputs, selectedHostPreference, sessionTaskType, targetHost
 } from './chat-config.js';
 import { buildRoutingInfo } from './chat-routing-info.js';
 import {
