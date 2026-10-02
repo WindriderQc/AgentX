@@ -86,6 +86,7 @@ function createInferenceDisconnectSignal(req, res) {
     };
 }
 
+const OLLAMA_TAGS_TIMEOUT_MS = 5000;
 function requireProfiledModels() {
   return process.env.REQUIRE_PROFILED_MODELS === 'true';
 }
@@ -110,20 +111,19 @@ router.get('/ollama/models', async (req, res) => {
         }
         resolvedTarget = validation.host || target;
     }
+    // Bound the read and drop it with its caller: an unanswered host must not
+    // keep an orphaned socket open past Core shutdown (#17).
+    const disconnect = createInferenceDisconnectSignal(req, res);
     try {
-        const url = `${resolveTarget(resolvedTarget)}/api/tags`;
-        const response = await fetch(url);
-        const data = await response.json();
-        const allModels = Array.isArray(data?.models) ? data.models : [];
-        const models = allModels
-            .map((model) => ({
-                name: model.name,
-                size: model.size,
-                modified_at: model.modified_at,
-            }));
+        const signal = AbortSignal.any([disconnect.signal, AbortSignal.timeout(OLLAMA_TAGS_TIMEOUT_MS)]);
+        const data = await (await fetch(`${resolveTarget(resolvedTarget)}/api/tags`, { signal })).json();
+        const models = (Array.isArray(data?.models) ? data.models : [])
+            .map(({ name, size, modified_at }) => ({ name, size, modified_at }));
         res.json({ status: 'success', data: models });
     } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
+        if (!disconnect.isDisconnected()) res.status(500).json({ status: 'error', message: err.message });
+    } finally {
+        disconnect.cleanup();
     }
 });
 
