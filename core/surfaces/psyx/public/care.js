@@ -23,13 +23,14 @@ function renderOpening() {
   const recap = $('openingRecap');
   const last = (state.psyxState?.sessionDigests || []).at(-1);
   const experiments = (state.psyxState?.experiments || []).filter((item) => ['planned', 'active'].includes(item.status)).slice(-2);
-  if (state.conversationId || (!last && !experiments.length)) {
+  if (state.conversationId) {
     recap.hidden = true;
     return;
   }
   recap.innerHTML = [
     last ? `<p><strong>La dernière fois :</strong> ${escapeHtml(last.summary)}${last.commitment ? ` <em>Tu voulais : ${escapeHtml(last.commitment)}</em>` : ''}</p>` : '',
-    ...experiments.map((item) => `<p><strong>Expérience en cours :</strong> ${escapeHtml(item.action)}</p>`)
+    ...experiments.map((item) => `<p><strong>${experimentIsDue(item) ? 'À faire le point' : 'Expérience en cours'} :</strong> ${escapeHtml(item.action)}</p>`),
+    openingCheckInHtml()
   ].join('');
   recap.hidden = false;
 }

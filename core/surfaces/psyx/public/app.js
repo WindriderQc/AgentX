@@ -133,6 +133,7 @@ function showGate(message = '') {
   stopReviewWatch();
   review.last = null;
   hideSafety();
+  $('checkInPrompt').hidden = true;
   state.unlocked = false;
   state.ready = false;
   state.history = [];
@@ -639,6 +640,7 @@ async function sendMessage(text, overrides = {}) {
     updateBrainRouting(finalResult, deep ? (state.thinkingObserved ? 'thinking observed' : 'thinking requested, not observed') : '');
     await loadSessions();
     if (finalResult?.review?.scheduled) watchReview(state.conversationId);
+    maybeAskCheckIn();
     if (state.voice.prefs.spokenReplies) void speakText(assistantContent);
   } catch (error) {
     if (!state.unlocked || state.turnSequence !== turnSequence) return;
@@ -681,6 +683,8 @@ function startNewSession(focus = true) {
   renderReviewIndicator();
   sessionLabel.textContent = 'Nouvelle conversation';
   hideSafety();
+  $('checkInPrompt').hidden = true;
+  followUp.openingDone = false;
   renderOpening();
   clearRenderedConversation();
   updateContextStatus();
@@ -969,6 +973,7 @@ async function start() {
   wireStatePanel();
   wireReview();
   wireCare();
+  wireFollowUp();
   wireSegmented('modeControl', 'mode');
   wireSegmented('depthControl', 'depth');
   resizeInput();
