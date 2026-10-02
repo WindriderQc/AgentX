@@ -31,7 +31,6 @@
     "chartjs-4-5-1": "npm:chart.js@4.5.1",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
     "cron-parser": "^5.5.0",
     "dompurify": "3.4.16",
     "dotenv": "^17.2.3",

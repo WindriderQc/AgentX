@@ -249,8 +249,8 @@ app.use(responseEnvelopeCompatibility);
 
 // Trusted extensions are separately installed absolute-path modules. They are
 // disabled by default and outside the demo profile. Registration happens after
-// the shared API limiter but before built-in routes so an extension can protect
-// Core-owned paths without bypassing the product's admission controls.
+// the origin guard, body parsers, sanitizer and profile guard but before built-in
+// routes so an extension can protect Core-owned paths without bypassing them.
 const runtimeServices = createTrustedRuntimeServices();
 if (!isDemoProfile(agentxProfile)) {
   require('../surfaces/household').register({
