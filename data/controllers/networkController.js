@@ -190,7 +190,10 @@ exports.updateDevice = async (req, res, next) => {
   try {
     const db = req.app.locals.db;
     const { id } = req.params;
-    const { alias, notes, type, location } = req.body;
+    const { alias, notes, type, location, known } = req.body;
+    if (known !== undefined && typeof known !== 'boolean') {
+      return res.status(400).json({ status: 'error', message: 'known must be a boolean' });
+    }
 
     const filter = id.match(/^[0-9a-fA-F]{24}$/)
       ? { _id: new ObjectId(id) }
@@ -201,9 +204,17 @@ exports.updateDevice = async (req, res, next) => {
     if (notes !== undefined) update.notes = notes;
     if (location !== undefined) update.location = location;
     if (type !== undefined) update['hardware.type'] = type;
+    // Marking a device known acknowledges it: Core stops treating it as new.
+    if (known === true) update.knownAt = new Date();
+    const changes = {};
+    if (Object.keys(update).length) changes.$set = update;
+    if (known === false) changes.$unset = { knownAt: '' };
+    if (!Object.keys(changes).length) {
+      return res.status(400).json({ status: 'error', message: 'No device field to update' });
+    }
 
     const result = await db.collection('network_devices').findOneAndUpdate(
-      filter, { $set: update }, { returnDocument: 'after' }
+      filter, changes, { returnDocument: 'after' }
     );
 
     if (!result) return res.status(404).json({ status: 'error', message: 'Device not found' });

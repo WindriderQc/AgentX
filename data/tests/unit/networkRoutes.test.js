@@ -392,4 +392,21 @@ describe('PATCH /api/v1/network/devices/:id', () => {
 
     expect(res.body.message).toMatch(/not found/i);
   });
+
+  test('marks a device known and clears the mark', async () => {
+    const findOneAndUpdate = jest.fn().mockResolvedValue({ _id: 'd1' });
+    const app = buildApp(buildDb({ network_devices: { findOneAndUpdate } }));
+
+    await request(app).patch('/api/v1/network/devices/AA:BB:CC:DD:EE:FF').send({ known: true }).expect(200);
+    expect(findOneAndUpdate.mock.calls[0][1].$set.knownAt).toBeInstanceOf(Date);
+
+    await request(app).patch('/api/v1/network/devices/AA:BB:CC:DD:EE:FF').send({ known: false }).expect(200);
+    expect(findOneAndUpdate.mock.calls[1][1]).toEqual({ $unset: { knownAt: '' } });
+  });
+
+  test('rejects a non-boolean known flag and an empty update', async () => {
+    const app = buildApp(buildDb());
+    await request(app).patch('/api/v1/network/devices/AA:BB:CC:DD:EE:FF').send({ known: 'yes' }).expect(400);
+    await request(app).patch('/api/v1/network/devices/AA:BB:CC:DD:EE:FF').send({}).expect(400);
+  });
 });
