@@ -167,6 +167,50 @@ class ArchiveMirrorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.Remote("host", "/archive/../etc")
 
+    def test_tar_links_and_unrequested_paths_are_never_extracted(self):
+        buffer = io.BytesIO()
+        outside = Path(self.temp.name) / "escaped.txt"
+        with tarfile.open(fileobj=buffer, mode="w") as archive:
+            link = tarfile.TarInfo("threads/thread01/original.json")
+            link.type, link.linkname = tarfile.SYMTYPE, str(outside)
+            archive.addfile(link)
+            for name in (str(outside), "../escaped.txt", "unrequested.txt"):
+                item = tarfile.TarInfo(name)
+                item.size = 7
+                archive.addfile(item, io.BytesIO(b"escaped"))
+        buffer.seek(0)
+
+        class Process:
+            stdout = buffer
+
+            def wait(self):
+                return 0
+
+        self.remote.stream = lambda root, paths: Process()
+        report = self.run_mirror()
+        self.assertEqual((report["status"], report["mismatched"], report["copied"]), ("partial", 2, 0))
+        self.assertFalse(outside.exists())
+        self.assertFalse((self.destination / "current" / "unrequested.txt").exists())
+
+    def test_tar_size_must_match_the_source_listing(self):
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w") as archive:
+            item = tarfile.TarInfo("threads/thread01/original.json")
+            item.size = 100
+            archive.addfile(item, io.BytesIO(b"X" * 100))
+        buffer.seek(0)
+
+        class Process:
+            stdout = buffer
+
+            def wait(self):
+                return 0
+
+        self.remote.stream = lambda root, paths: Process()
+        report = self.run_mirror()
+        self.assertEqual(report["copied"], 0)
+        self.assertEqual(report["mismatched"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

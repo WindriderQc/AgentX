@@ -175,8 +175,17 @@ def mirror(remote, destination, excludes=DEFAULT_EXCLUDES, latest_snapshot=False
         process = remote.stream(root, chunk)
         with tarfile.open(fileobj=process.stdout, mode="r|") as archive:
             for member in archive:
-                if member.isfile() and member.name in expected:
-                    archive.extract(member, staging, filter="data")
+                # Copy only the requested regular-file bytes. Do not apply tar
+                # paths, links, permissions or ownership. This also works on
+                # Python versions without tarfile's backported data filter.
+                if (member.isfile() and member.name in expected
+                        and member.name in listing and SAFE_PATH.fullmatch(member.name)
+                        and ".." not in member.name.split("/")
+                        and member.size == listing[member.name]["bytes"]):
+                    target = staging / member.name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with archive.extractfile(member) as source, open(target, "wb") as output:
+                        shutil.copyfileobj(source, output)
         # tarfile stops at the end-of-archive marker, but tar pads its last
         # record and ssh only exits once the whole stream has been read.
         while process.stdout.read(1 << 16):

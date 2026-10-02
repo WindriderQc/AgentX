@@ -66,3 +66,7 @@ content come from one consistent point in time. Files live under
 be watched there. On Windows the destination gets an owner, SYSTEM and
 Administrators ACL without inheritance. Schedule it with an existing Windows task
 or systemd timer; a missed run is caught up on the next one.
+
+The transfer copies only requested regular-file bytes with the listed size;
+tar links, metadata and unrequested paths are ignored. It does not require the
+`tarfile` extraction filter added in Python 3.11.4.
