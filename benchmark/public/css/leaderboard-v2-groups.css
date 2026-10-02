@@ -103,6 +103,7 @@
 .cb-prov dd { overflow: hidden; margin: 0; color: #d3deec; text-overflow: ellipsis; white-space: nowrap; }
 
 .cb-score-parts { margin: 0; color: #dbe6f5; font-variant-numeric: tabular-nums; }
+.cb-prompt-coverage { margin: 0; color: #b8c6da; font-size: 0.85em; }
 
 .cb-metrics { display: flex; margin: 0; padding: 0; gap: 0.3rem 1.1rem; flex-wrap: wrap; list-style: none; }
 .cb-metrics li { display: flex; flex-direction: column; gap: 0.05rem; }

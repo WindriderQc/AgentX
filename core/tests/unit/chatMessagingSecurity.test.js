@@ -3,12 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { readChatMessagingSource } = require('../helpers/chatMessagingSource');
 
 describe('chat messaging browser security boundary', () => {
-  const source = fs.readFileSync(
-    path.resolve(__dirname, '../../public/js/chat/chat-messaging.js'),
-    'utf8'
-  );
+  const source = readChatMessagingSource();
 
   test('sanitizes model-controlled thinking markdown before assigning innerHTML', () => {
     expect(source).toMatch(

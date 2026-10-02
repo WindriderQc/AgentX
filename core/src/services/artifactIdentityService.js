@@ -27,12 +27,15 @@ async function readLiveDigest(model, host, deps = {}) {
   if (typeof deps.resolveArtifactDigest === 'function') {
     return deps.resolveArtifactDigest(model, host);
   }
+  if (deps.signal?.aborted) return null;
   if (process.env.NODE_ENV === 'test' && !deps.fetchImpl) return null;
   const fetchImpl = deps.fetchImpl || require('node-fetch');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
+  // A caller that leaves takes its catalog read with it (#189).
+  const signal = deps.signal ? AbortSignal.any([deps.signal, controller.signal]) : controller.signal;
   try {
-    const response = await fetchImpl(`${host}/api/tags`, { signal: controller.signal });
+    const response = await fetchImpl(`${host}/api/tags`, { signal });
     if (!response.ok) return null;
     const payload = await response.json();
     const match = (Array.isArray(payload?.models) ? payload.models : []).find((entry) =>

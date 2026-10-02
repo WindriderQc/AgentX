@@ -286,6 +286,12 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
     envelope.success(res, result);
   }));
 
+  // Dated mail digests: owner-only journal, kept out of memory notes.
+  router.post('/mail-journal', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    envelope.success(res, await require('../src/services/mailJournalService').operate(req.body || {}));
+  }));
+
   // Nestor files a Markdown note for the owner to review in the vault inbox.
   router.post('/vault/notes', asyncRoute(async (req, res) => {
     res.set('Cache-Control', 'no-store');

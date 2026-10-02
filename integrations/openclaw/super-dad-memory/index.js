@@ -7,6 +7,7 @@ import { resolveAgentWorkspaceDir, resolveAgentEffectiveModelPrimary } from "ope
 
 import { createCoreNotesClient, configuredJobContext } from "./core-notes.js";
 import { createCoreVaultClient } from "./core-vault.js";
+import { createCoreJournalClient } from "./core-journal.js";
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
@@ -17,6 +18,7 @@ export default definePluginEntry({
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const writeVaultNote = createCoreVaultClient({ baseUrl: api.pluginConfig?.agentxUrl });
+    const mailJournal = createCoreJournalClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const secretaryContext = context => configuredJobContext(context, api.pluginConfig?.secretarySessionKeys);
     const morningContext = context => configuredJobContext(context, api.pluginConfig?.briefingSessionKeys);
     const readTasks = () => agentxRead(api.pluginConfig?.agentxUrl,
@@ -33,7 +35,7 @@ export default definePluginEntry({
       return {
         name: "personal_memory",
         label: "Personal Memory",
-        description: "Remember only an explicit personal fact, preference or decision. Search/list private notes; correct a note using its existing id; forget an exact id. Notes use AgentX Core, shared with the owner Nestor UI and voice. Confirm only the receipt; forgetting does not erase chat history.",
+        description: "Remember only an explicit, lasting personal fact, preference or decision in one sentence. Never a summary of a mail, thread or document (use mail_journal), never identifiers or account numbers. Search/list private notes; correct a note using its existing id; forget an exact id. Notes use AgentX Core, shared with the owner Nestor UI and voice. Confirm only the receipt; forgetting does not erase chat history.",
         parameters: {
           type: "object",
           properties: {
@@ -52,6 +54,30 @@ export default definePluginEntry({
         },
       };
     }, { name: "personal_memory", optional: true });
+
+    api.registerTool(context => {
+      if (!privateOwnerContext(context, api.config) && !secretaryContext(context)) return null;
+      return {
+        name: "mail_journal", label: "Mail Journal",
+        description: "Owner-only journal of what happened in the owner's mail. record: one dated digest per thread (or per message for a separate event) with the thread id, when it happened, who and a short factual summary; recording the same thread/message again replaces it. search: find past mail events by words, thread or dates. Entries expire after the journal retention. A lasting fact, deadline or decision drawn from mail also goes to personal_memory in one sentence.",
+        parameters: { type: "object", properties: {
+          action: { type: "string", enum: ["record", "search"] },
+          threadId: { type: "string", minLength: 1, maxLength: 200 },
+          messageId: { type: "string", maxLength: 200 },
+          occurredAt: { type: "string", maxLength: 40 },
+          subject: { type: "string", maxLength: 300 },
+          counterpart: { type: "string", maxLength: 200 },
+          summary: { type: "string", minLength: 1, maxLength: 4000 },
+          tags: { type: "array", items: { type: "string", maxLength: 40 }, maxItems: 12 },
+          sourceRef: { type: "string", maxLength: 500 },
+          query: { type: "string", maxLength: 500 },
+          since: { type: "string", maxLength: 40 },
+          until: { type: "string", maxLength: 40 },
+          limit: { type: "integer", minimum: 1, maximum: 50 },
+        }, required: ["action"], additionalProperties: false },
+        async execute(_id, params) { return receipt(await mailJournal(params)); },
+      };
+    }, { name: "mail_journal", optional: true });
 
     api.registerTool(context => {
       if (!privateOwnerContext(context, api.config)) return null;

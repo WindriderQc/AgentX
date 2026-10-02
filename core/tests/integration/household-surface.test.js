@@ -201,6 +201,17 @@ describe('built-in Household surface on Core', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+  test('the latest Super Dad conversation is offered with its preview to any device (#120)', async () => {
+    const base = '/api/voice-personas/private/sessions';
+    const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Synthetic phone question about the garden' }).expect(200);
+    // A second device holds no browser state: it only asks Core for the latest conversation.
+    const [latest] = (await request(app).get(`${base}/recent?limit=1&preview=true`).expect(200)).body.data.sessions;
+    expect(latest).toMatchObject({ sessionId: id, lastTurn: { inputPreview: 'Synthetic phone question about the garden' } });
+    expect(Date.parse(latest.lastTurnAt)).toBeGreaterThan(Date.now() - 60_000);
+    const history = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+    expect(history.turns.at(-1).inputText).toBe('Synthetic phone question about the garden');
+  });
   test('personal attachments survive HTTP resume and stay outside family and other conversations', async () => {
     const base = '/api/voice-personas/private/sessions';
     const create = async () => (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
@@ -413,6 +424,16 @@ describe('built-in Household surface on Core', () => {
     expect(created.body.data.authority).toBe('agentx.core');
     const native = await request(app).post('/api/consumers/nestor/v1/memory/notes').send({ action: 'search', query: 'observatory' }).expect(200);
     expect(native.body.data.notes).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
+    const journal = '/api/consumers/nestor/v1/mail-journal';
+    const filed = await request(app).post(journal).send({ action: 'record', threadId: 'synthetic-thread',
+      occurredAt: new Date().toISOString(), summary: 'Synthetic observatory newsletter arrived' }).expect(200);
+    expect(filed.body.data).toMatchObject({ authority: 'agentx.core', action: 'record', recorded: true });
+    const recalled = await request(app).post(journal).send({ action: 'search', query: 'observatory' }).expect(200);
+    expect(recalled.body.data.entries.map(entry => entry.threadId)).toEqual(['synthetic-thread']);
+    // Mail digests never surface as memory notes.
+    const notesAfter = await request(app).post('/api/consumers/nestor/v1/memory/notes').send({ action: 'search', query: 'newsletter' }).expect(200);
+    expect(notesAfter.body.data.notes).toEqual([]);
+    await request(app).post(journal).send({ action: 'delete' }).expect(400);
     const voice = await request(app).get('/api/voix/memory/active').expect(200);
     expect(voice.body.data.memories).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
     const session = await request(app).post(`${base}/private/sessions`).send({ packId: 'personal_operator', backend: 'agentx' }).expect(201);

@@ -32,7 +32,7 @@ describe('Qdrant collection metadata helpers', () => {
     fetch.mockResolvedValueOnce(mockOk({ result: { status: 'acknowledged' } }));
     await store.createPayloadIndex('documentId', 'keyword');
     const [url, options, , context] = fetch.mock.calls[0];
-    expect(url).toBe('http://qdrant:6333/collections/target/index');
+    expect(url).toBe('http://qdrant:6333/collections/target/index?wait=true');
     expect(options.method).toBe('PUT');
     expect(JSON.parse(options.body)).toEqual({ field_name: 'documentId', field_schema: 'keyword' });
     expect(context.operationId).toBe('rag.qdrant.payload-index-create');
@@ -41,7 +41,7 @@ describe('Qdrant collection metadata helpers', () => {
 
 describe('Qdrant payload indexes', () => {
   let store;
-  const indexCalls = () => fetch.mock.calls.filter(([url]) => url.endsWith('/index'))
+  const indexCalls = () => fetch.mock.calls.filter(([url]) => new URL(url).pathname.endsWith('/index'))
     .map(([, options]) => JSON.parse(options.body));
   beforeEach(() => {
     fetch.mockReset();

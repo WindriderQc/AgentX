@@ -2,12 +2,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { readPipelineSource, loadPipelineParts } = require('../helpers/pipelineScripts');
 
 function load(clipboard) {
   const Toast = { success: jest.fn(), error: jest.fn() };
   const context = { window: { location: { origin: 'https://my-agent.example:8443', search: '?status=blocked' } }, navigator: { clipboard },
     document: { addEventListener() {} }, URL, URLSearchParams, Toast };
   const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/pipeline.js'), 'utf8');
+  loadPipelineParts(context);
   vm.runInNewContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.copyLink = copyTaskLink;\n})();'), context);
   return { copy: context.copyLink, Toast };
 }

@@ -1,0 +1,122 @@
+.planning-task-context {
+  border: 1px solid rgba(196, 181, 253, 0.13);
+  border-radius: 10px;
+  padding: 11px;
+  background: rgba(196, 181, 253, 0.045);
+}
+
+.planning-task-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 41px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  padding: 0 10px;
+  background: #101827;
+  color: #67768b;
+}
+
+.planning-task-search:focus-within {
+  border-color: rgba(103, 232, 249, 0.52);
+  box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.065);
+}
+
+.planning-task-search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #dce7f4;
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+.planning-task-modal-body label {
+  display: grid;
+  gap: 6px;
+}
+
+.planning-task-modal-body label span {
+  color: #8998ac;
+  font-size: 0.63rem;
+  font-weight: 850;
+}
+
+.planning-task-modal-body select {
+  width: 100%;
+  min-height: 41px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  padding: 0 10px;
+  outline: 0;
+  background: #101827;
+  color: #dce7f4;
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+.planning-task-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+@media (max-width: 700px) {
+  .planning-intake-list {
+    grid-template-columns: 1fr;
+  }
+
+  .planning-delivery-intake > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .planning-drawer {
+    width: 100vw;
+    border-left: 0;
+  }
+
+  .planning-drawer-command-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .planning-drawer-status-control,
+  .planning-drawer-actions {
+    flex-wrap: wrap;
+  }
+
+  .planning-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .planning-intake-task {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .planning-intake-task .planning-btn {
+    width: 100%;
+  }
+  .planning-detail-grid,
+  .planning-form-grid,
+  .planning-evidence-form {
+    grid-template-columns: 1fr;
+  }
+
+  .planning-form-wide,
+  .planning-evidence-form textarea,
+  .planning-evidence-form button {
+    grid-column: auto;
+  }
+
+  .planning-drawer-header,
+  .planning-drawer-body {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+}

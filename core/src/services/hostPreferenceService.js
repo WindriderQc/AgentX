@@ -17,15 +17,15 @@
  *   - the shared pin/loaded-model helpers → ./hostPinPrimitives
  *   - the reconciler + grace-period state machine → ./pinReconciler
  *   - the health-check interval scheduler → ./hostHealthDaemon
- * This file remains the facade: it keeps pin CRUD, the warm/restore
- * primitives, and re-exports every name the extracted modules own so the
+ *   - the warm/unload requests and loadedModel/status writes → ./hostModelRuntime
+ *   - the benchmark residency snapshot → ./benchmarkRuntimeSnapshot
+ * This file remains the facade: it keeps pin CRUD, the warm/restore/swap
+ * orchestration, and re-exports every name the extracted modules own so the
  * public export surface is UNCHANGED. (The benchmark-claim lifecycle had already
  * moved to ./benchmarkClaimService; those re-exports stay.)
  */
 
 const HostPreference = require('../../models/HostPreference');
-const crypto = require('crypto');
-const { isOllamaPermanentExpiry } = require('../../../shared/ollamaResidency');
 const hostGate = require('./hostGate');
 const logger = require('../../config/logger');
 const { observePinRestoreFailure } = require('./laneObservabilityService');
@@ -64,11 +64,15 @@ const {
 // moved to pinReconciler.js.
 const { hasActiveBenchmarkClaim } = benchmarkClaimService;
 const { hasActiveSessionHold, observeSessionHold } = require('./hostSessionHoldService');
-
-let pinWarmTimeoutMs = parseInt(process.env.PIN_WARM_TIMEOUT_MS, 10);
-if (!Number.isFinite(pinWarmTimeoutMs) || pinWarmTimeoutMs < 30_000) {
-  pinWarmTimeoutMs = 600_000;
-}
+// Warm/unload requests and loadedModel/status writes live in ./hostModelRuntime;
+// the benchmark residency snapshot lives in ./benchmarkRuntimeSnapshot.
+const { warmDefaultModel, unloadModel, updateLoadedModel, setHostStatus } = require('./hostModelRuntime');
+const {
+  benchmarkRuntimeSnapshotIdentity,
+  captureBenchmarkRuntime,
+  desiredBenchmarkResidents,
+  benchmarkResidentExpiryMatches
+} = require('./benchmarkRuntimeSnapshot');
 
 const activePinRestores = new Map();
 
@@ -101,240 +105,6 @@ async function deletePreference(hostUrl) {
 // fetchRunningModelInfos, verifyPinnedEntriesLoaded, the normalize aliases,
 // etc.) live in ./hostPinPrimitives and are imported above. They are
 // re-exported below where they were part of the public surface.
-
-// ── Warmup ──────────────────────────────────────────────────
-
-function combineRuntimeSignal(signal, timeoutMs) {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  return signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-}
-
-async function warmDefaultModel(hostUrl, model, {
-  keepAlive = -1,
-  contextSize = 0,
-  numThread = 0,
-  signal = null,
-  assertAuthorityActive = null,
-  timeoutMs = pinWarmTimeoutMs
-} = {}) {
-  let requestSignal = null;
-  try {
-    assertAuthorityActive?.();
-    const isEmbedding = isEmbeddingModelName(model);
-    const endpoint = isEmbedding ? 'embeddings' : 'generate';
-    const payload = buildWarmPayload(model, { keepAlive, contextSize, numThread });
-    requestSignal = combineRuntimeSignal(signal, timeoutMs);
-    const response = await fetch(`${hostUrl}/api/${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: requestSignal
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      return { host: hostUrl, model, status: 'error', error: text };
-    }
-    const raw = await response.text();
-    assertAuthorityActive?.();
-    let terminal;
-    try { terminal = JSON.parse(raw); } catch { terminal = null; }
-    const errorFree = terminal && typeof terminal === 'object' && !Array.isArray(terminal)
-      && typeof terminal.error !== 'string';
-    const exactTerminal = isEmbedding
-      ? errorFree && (Array.isArray(terminal.embedding) || Array.isArray(terminal.embeddings))
-      : errorFree && terminal.done === true;
-    if (!exactTerminal) {
-      throw Object.assign(new Error(isEmbedding
-        ? 'Ollama embedding warmup ended without a terminal embedding array'
-        : 'Ollama warmup ended without an exact terminal done object'), {
-        code: 'OLLAMA_RESPONSE_INCOMPLETE'
-      });
-    }
-    return { host: hostUrl, model, status: 'ok' };
-  } catch (err) {
-    if (signal?.aborted) {
-      throw signal.reason instanceof Error ? signal.reason : err;
-    }
-    if (requestSignal?.aborted) {
-      const error = new Error(`Ollama warmup outcome is unknown after its bounded request expired: ${err.message}`);
-      error.code = 'RUNTIME_MUTATION_OUTCOME_UNKNOWN';
-      error.cause = err;
-      throw error;
-    }
-    return { host: hostUrl, model, status: 'error', error: err.message };
-  }
-}
-
-async function unloadModel(hostUrl, model, options = {}) {
-  let requestSignal = null;
-  try {
-    options.assertAuthorityActive?.();
-    requestSignal = combineRuntimeSignal(options.signal, options.timeoutMs || 30_000);
-    const response = await fetch(`${hostUrl}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, keep_alive: 0 }),
-      signal: requestSignal
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      return { host: hostUrl, model, status: 'error', error: text };
-    }
-    const raw = await response.text();
-    options.assertAuthorityActive?.();
-    let terminal;
-    try { terminal = JSON.parse(raw); } catch { terminal = null; }
-    if (!terminal || typeof terminal !== 'object' || Array.isArray(terminal)
-      || typeof terminal.error === 'string' || terminal.done !== true) {
-      throw Object.assign(new Error('Ollama unload ended without an exact terminal done object'), {
-        code: 'OLLAMA_RESPONSE_INCOMPLETE'
-      });
-    }
-    return { host: hostUrl, model, status: 'ok' };
-  } catch (err) {
-    if (options.signal?.aborted) {
-      throw options.signal.reason instanceof Error ? options.signal.reason : err;
-    }
-    if (requestSignal?.aborted) {
-      const error = new Error(`Ollama unload outcome is unknown after its bounded request expired: ${err.message}`);
-      error.code = 'RUNTIME_MUTATION_OUTCOME_UNKNOWN';
-      error.cause = err;
-      throw error;
-    }
-    return { host: hostUrl, model, status: 'error', error: err.message };
-  }
-}
-
-function benchmarkSnapshotKeepAlive(modelInfo, capturedAt) {
-  const expiresAt = modelInfo?.expires_at || modelInfo?.expiresAt;
-  const parsed = expiresAt ? new Date(expiresAt) : null;
-  if (!parsed || !Number.isFinite(parsed.getTime())) {
-    const error = new Error(`Ollama did not expose an expiry for resident model ${modelInfo?.name || modelInfo?.model || 'unknown'}`);
-    error.code = 'BENCHMARK_RUNTIME_SNAPSHOT_INCOMPLETE';
-    throw error;
-  }
-  // Ollama represents an infinite keep-alive with a far-future timestamp.
-  if (isOllamaPermanentExpiry(parsed, capturedAt)) return { keepAlive: -1, expiresAt: parsed };
-  return {
-    keepAlive: Math.max(1, Math.ceil((parsed.getTime() - capturedAt.getTime()) / 1000)),
-    expiresAt: parsed
-  };
-}
-
-function benchmarkRuntimeSnapshotIdentity(snapshot) {
-  const residents = (snapshot?.residents || []).map(entry => ({
-    model: entry.model,
-    digest: entry.digest,
-    artifactSize: Number(entry.artifactSize),
-    sizeVram: Number(entry.sizeVram),
-    contextLength: Number(entry.contextLength),
-    keepAlive: Number(entry.keepAlive),
-    expiresAt: entry.expiresAt ? new Date(entry.expiresAt).toISOString() : null
-  })).sort((left, right) => left.model.localeCompare(right.model));
-  return crypto.createHash('sha256').update(JSON.stringify({
-    capturedAt: snapshot?.capturedAt ? new Date(snapshot.capturedAt).toISOString() : null,
-    source: snapshot?.source || null,
-    exact: snapshot?.exact === true,
-    residents
-  })).digest('hex');
-}
-
-/**
- * Capture the exact observable Ollama residency for a benchmark claim.
- * Called only after Core has fenced the host, and before claim acquisition is
- * returned to Benchmark, so no profiler mutation can precede the snapshot.
- */
-async function captureBenchmarkRuntime(hostUrl) {
-  const drainTimeoutMs = Math.max(1_000, Number(process.env.BENCHMARK_CLAIM_DRAIN_TIMEOUT_MS) || 30_000);
-  const drainDeadline = Date.now() + drainTimeoutMs;
-  while (true) {
-    while (await hostGate.hostHasInflightAnywhere(hostUrl)) {
-      if (Date.now() >= drainDeadline) {
-        const error = new Error(`Timed out draining in-flight inference on ${hostUrl} before benchmark snapshot`);
-        error.code = 'BENCHMARK_HOST_DRAIN_TIMEOUT';
-        throw error;
-      }
-      await sleep(50);
-    }
-    // One quiet interval closes the release-to-next-waiter transition:
-    // requests admitted before the claim may move from queued to in-flight as
-    // the prior request releases, but new requests fail the status fence.
-    await sleep(50);
-    if (!await hostGate.hostHasInflightAnywhere(hostUrl)) break;
-    if (Date.now() >= drainDeadline) {
-      const error = new Error(`Timed out draining in-flight inference on ${hostUrl} before benchmark snapshot`);
-      error.code = 'BENCHMARK_HOST_DRAIN_TIMEOUT';
-      throw error;
-    }
-  }
-  const capturedAt = new Date();
-  const running = await fetchRunningModelInfosStrict(hostUrl);
-  const residents = running.map((entry) => {
-    const model = entry?.name || entry?.model;
-    if (!model) {
-      const error = new Error('Ollama returned a resident model without an identity');
-      error.code = 'BENCHMARK_RUNTIME_SNAPSHOT_INCOMPLETE';
-      throw error;
-    }
-    const contextLength = readLoadedContextLength(entry);
-    if (!contextLength) {
-      const error = new Error(`Ollama did not expose context_length for resident model ${model}`);
-      error.code = 'BENCHMARK_RUNTIME_SNAPSHOT_INCOMPLETE';
-      throw error;
-    }
-    const digest = typeof entry?.digest === 'string' && entry.digest.trim()
-      ? entry.digest.trim()
-      : null;
-    const artifactSize = Number(entry?.size ?? entry?.artifact_size ?? entry?.artifactSize);
-    const sizeVram = Number(entry?.size_vram ?? entry?.sizeVram);
-    if (!digest
-      || !Number.isFinite(artifactSize) || artifactSize <= 0
-      || !Number.isFinite(sizeVram) || sizeVram < 0) {
-      const error = new Error(`Ollama did not expose digest/size/size_vram for resident model ${model}`);
-      error.code = 'BENCHMARK_RUNTIME_SNAPSHOT_INCOMPLETE';
-      throw error;
-    }
-    const expiry = benchmarkSnapshotKeepAlive(entry, capturedAt);
-    return {
-      model,
-      digest,
-      artifactSize,
-      sizeVram,
-      contextLength,
-      keepAlive: expiry.keepAlive,
-      expiresAt: expiry.expiresAt
-    };
-  });
-  const snapshot = {
-    capturedAt,
-    source: 'ollama_ps',
-    exact: true,
-    residents,
-    error: null
-  };
-  return { ...snapshot, identityDigest: benchmarkRuntimeSnapshotIdentity(snapshot) };
-}
-
-function desiredBenchmarkResidents(snapshot, now = Date.now()) {
-  return (snapshot?.residents || []).filter((entry) => {
-    if (Number(entry.keepAlive) === -1) return true;
-    const expiry = entry.expiresAt ? new Date(entry.expiresAt).getTime() : NaN;
-    return Number.isFinite(expiry) && expiry > now;
-  });
-}
-
-function benchmarkResidentExpiryMatches(target, runningEntry, now = Date.now()) {
-  const actualRaw = runningEntry?.expires_at || runningEntry?.expiresAt;
-  const actual = actualRaw ? new Date(actualRaw) : null;
-  if (!actual || !Number.isFinite(actual.getTime())) return false;
-  const targetIsPermanent = Number(target.keepAlive) === -1
-    || isOllamaPermanentExpiry(target.expiresAt, now);
-  if (targetIsPermanent) return isOllamaPermanentExpiry(actual, now);
-  const expected = target.expiresAt ? new Date(target.expiresAt).getTime() : NaN;
-  if (!Number.isFinite(expected) || expected <= now) return false;
-  // Ollama exposes second-resolution expiry and reload itself consumes time.
-  return Math.abs(actual.getTime() - expected) <= 5_000;
-}
 
 async function restoreBenchmarkRuntime(hostUrl, snapshot, benchmarkClaim) {
   return require('./benchmarkRuntimeRestore').restoreBenchmarkRuntime(hostUrl, snapshot, benchmarkClaim,
@@ -541,60 +311,6 @@ async function getPinnedModelsMap() {
 
 // Pin CRUD lives in hostPinService; the facade keeps its public API.
 
-
-async function updateLoadedModel(hostUrl, model, options = {}) {
-  options.assertAuthorityActive?.();
-  const pref = await HostPreference.findOne(
-    { hostUrl },
-    null,
-    options.signal ? { signal: options.signal } : {}
-  ).lean();
-  options.assertAuthorityActive?.();
-  const fencedClaim = options.benchmarkClaim || null;
-  if (fencedClaim && (pref?.status !== 'benchmarking'
-    || pref?.benchmarkClaim?.batchId !== fencedClaim.batchId
-    || pref?.benchmarkClaim?.claimGeneration !== fencedClaim.claimGeneration)) {
-    const error = new Error('Benchmark claim no longer owns the host while restoring pins');
-    error.code = 'BENCHMARK_CLAIM_LOST';
-    throw error;
-  }
-  const update = { loadedModel: model };
-  const primary = getPrimaryPinnedModel(pref);
-  if (!fencedClaim && primary && primary === model) {
-    update.status = 'ready';
-  } else if (!fencedClaim && (pref?.status === 'swapping' || pref?.status === 'restoring')) {
-    update.status = 'idle';
-  }
-  const filter = { hostUrl };
-  if (fencedClaim) {
-    filter.status = 'benchmarking';
-    filter['benchmarkClaim.batchId'] = fencedClaim.batchId;
-    filter['benchmarkClaim.claimGeneration'] = fencedClaim.claimGeneration;
-  }
-  const updated = await HostPreference.findOneAndUpdate(
-    filter,
-    { $set: update },
-    { new: true, ...(options.signal ? { signal: options.signal } : {}) }
-  ).lean();
-  options.assertAuthorityActive?.();
-  if (fencedClaim && !updated) {
-    const error = new Error('Benchmark claim changed during fenced pin restore');
-    error.code = 'BENCHMARK_CLAIM_LOST';
-    throw error;
-  }
-  return updated;
-}
-
-async function setHostStatus(hostUrl, status, options = {}) {
-  options.assertAuthorityActive?.();
-  const updated = await HostPreference.findOneAndUpdate(
-    { hostUrl },
-    { $set: { status } },
-    { new: true, ...(options.signal ? { signal: options.signal } : {}) }
-  ).lean();
-  options.assertAuthorityActive?.();
-  return updated;
-}
 
 /**
  * Restore every pinned model on a host that isn't currently loaded. Unloads

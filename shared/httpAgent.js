@@ -29,9 +29,20 @@ function destroyAgents() {
   httpsAgent.destroy();
 }
 
+// Outbound sockets belong to the agent that opened them: these shared agents,
+// or Node's global agents for requests made without one. Once a server has
+// drained its registered work, a socket still open is an orphaned request
+// whose caller left; it must not keep the process alive.
+function destroyOutboundSockets() {
+  destroyAgents();
+  http.globalAgent.destroy();
+  https.globalAgent.destroy();
+}
+
 module.exports = {
   AGENT_CONFIG,
   destroyAgents,
+  destroyOutboundSockets,
   getAgent,
   getFetchOptions,
   httpAgent,

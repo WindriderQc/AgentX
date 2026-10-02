@@ -2440,6 +2440,90 @@ describe('Benchmark System - Integration Tests', () => {
         });
     });
 
+    describe('per-prompt comparison inside a cohort', () => {
+        const { SCORER_VERSION } = require('../../src/services/scoring/scorerVersion');
+        const { buildPromptFingerprint } = require('../../../shared/benchmarkTargetContract');
+        const cohort = 'a'.repeat(64);
+        const BOARD = '/api/benchmark/generalist-leaderboard?axis=quality&includeUnavailableModels=true&includeCloud=true';
+
+        async function seedCatalog() {
+            const [p1, p2, c1] = await BenchmarkPrompt.create([
+                { name: 'Reasoning one', prompt: 'Reason about one.', level: 3, category: 'reasoning' },
+                { name: 'Reasoning two', prompt: 'Reason about two.', level: 3, category: 'reasoning' },
+                { name: 'Coding one', prompt: 'Write one function.', level: 3, category: 'coding' }
+            ]);
+            return { p1, p2, c1 };
+        }
+
+        async function seedResults(rows, { pinned = true } = {}) {
+            await BenchmarkResult.create(rows.map(([model, prompt, score]) => ({
+                model, host: 'http://localhost:11434', prompt: prompt.prompt, prompt_name: prompt.name,
+                prompt_category: prompt.category, prompt_level: prompt.level, success: true, response: 'An answer',
+                scorer_version: SCORER_VERSION, scoring_method: 'decomposed', quality_cohort_fingerprint: cohort,
+                quality_score: score, judge_model: 'judge:27b', judge_host: 'http://judge:11434',
+                ...(pinned ? { prompt_id: String(prompt._id), prompt_fingerprint: buildPromptFingerprint(prompt.toObject()) } : {})
+            })));
+        }
+
+        const byModel = body => Object.fromEntries(body.data.groups.map(group => [group.model, group]));
+
+        it('keeps existing results comparable when a prompt is added and says which prompts rows share', async () => {
+            const { p1, p2, c1 } = await seedCatalog();
+            await seedResults([
+                ['model-a', p1, 8], ['model-a', p2, 8], ['model-a', c1, 8],
+                ['model-b', p1, 6], ['model-b', p2, 6]
+            ]);
+            await BenchmarkPrompt.create({ name: 'Coding two', prompt: 'Write another function.', level: 3, category: 'coding' });
+
+            const response = await api.get(BOARD);
+            expect(response.status).toBe(200);
+            const groups = byModel(response.body);
+            expect(groups['model-a']).toMatchObject({ rank: 1, comparable: true });
+            expect(groups['model-b']).toMatchObject({ rank: 2, comparable: true });
+            expect(response.body.data.comparison.promptSet).toEqual({ perPrompt: true, boardPrompts: 3, sharedByAll: 2, catalogPrompts: 4 });
+            expect(groups['model-a'].headline.promptCoverage).toMatchObject({ covered: 3, missingCount: 0, sharedWithLeader: 3 });
+            expect(groups['model-b'].headline.promptCoverage).toMatchObject({
+                covered: 2, boardPrompts: 3, sharedByAll: 2, sharedWithLeader: 2, missingCount: 1,
+                missing: [{ name: 'Coding one', category: 'coding', level: 3 }]
+            });
+        });
+
+        it('takes only the results on an edited prompt out of the comparison', async () => {
+            const { p1, p2, c1 } = await seedCatalog();
+            await seedResults([
+                ['model-a', p1, 8], ['model-a', p2, 8], ['model-a', c1, 8],
+                ['model-b', p1, 6], ['model-b', p2, 6], ['model-b', c1, 6]
+            ]);
+            await BenchmarkPrompt.updateOne({ _id: p2._id }, { $set: { prompt: 'Reason about two, reworded.' } });
+
+            const response = await api.get(BOARD);
+            const groups = byModel(response.body);
+            for (const model of ['model-a', 'model-b']) {
+                expect(groups[model]).toMatchObject({ comparable: true });
+                expect(groups[model].headline).toMatchObject({ totalTests: 2, promptCoverage: { covered: 2, missingCount: 0 } });
+                expect(groups[model].history).toHaveLength(1);
+                expect(groups[model].history[0]).toMatchObject({
+                    qualityCohortFingerprint: cohort, filterReason: 'prompt_content_changed', promptContentStale: true,
+                    stalePrompts: ['Reasoning two'], totalTests: 1, rankable: false
+                });
+            }
+            expect(groups['model-a'].rank).toBe(1);
+        });
+
+        it('compares a cohort written before prompt fingerprints as one catalog-wide cohort', async () => {
+            const { p1, c1 } = await seedCatalog();
+            await seedResults([['model-a', p1, 8], ['model-a', c1, 8], ['model-b', p1, 6]], { pinned: false });
+            await BenchmarkPrompt.updateOne({ _id: p1._id }, { $set: { prompt: 'Reworded.' } });
+
+            const response = await api.get(BOARD);
+            const groups = byModel(response.body);
+            expect(response.body.data.comparison.promptSet).toEqual({ perPrompt: false });
+            expect(groups['model-a']).toMatchObject({ rank: 1, comparable: true });
+            expect(groups['model-b']).toMatchObject({ rank: 2, comparable: true });
+            expect(groups['model-a'].headline.promptCoverage).toBeUndefined();
+        });
+    });
+
     describe('grader qualification', () => {
         const JudgeQualification = require('../../models/JudgeQualification');
         const { SCORER_VERSION } = require('../../src/services/scoring/scorerVersion');

@@ -173,7 +173,7 @@ const handleChatRequestStream = async ({
         if (webSearchContext && formattedMessages.length > 1) {
             formattedMessages.splice(formattedMessages.length - 1, 0, {
                 role: 'user',
-                content: `Use these web search results as additional context for your analysis:\n\n${webSearchContext}`
+                content: require('./webSearch').untrustedSearchMessage(webSearchContext)
             });
         }
 

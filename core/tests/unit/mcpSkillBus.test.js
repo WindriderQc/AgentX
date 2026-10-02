@@ -58,8 +58,10 @@ describe('mcpSkillBus product tools', () => {
       'get_escalation_recommendation',
       'create_todo',
       'write_vault_note',
+      'memory_search',
+      'memory_remember',
     ]);
-    expect(TOOLS).toHaveLength(5);
+    expect(TOOLS).toHaveLength(7);
   });
 
   test('rag_search uses an injected RAG client and returns structured content', async () => {

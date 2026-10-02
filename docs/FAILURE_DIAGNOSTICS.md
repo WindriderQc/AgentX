@@ -80,3 +80,5 @@ moving durable timestamps. Phone and voice acceptance is outside this matrix.
 | Worker result committed, Core dies before responding | Real death | One result; identical exact-lease retry returns `alreadyRecorded` and releases only its orphan slot; changed retries stay refused | same |
 | Human decision committed, Core dies before responding | Real death | Decision persists; repetition is a no-op; stale worker cannot reopen it | same |
 | Shutdown during a probe or with a missing terminal | Real process, signals | Exact receipt or quarantine; bounded exit | `core/tests/integration/serverShutdown.process.test.js` |
+| SIGTERM while a departed catalog or `/routing` caller waits on a jammed Ollama host | Real Core process, synthetic peer | Exit 0 after the drain, no live handle left | `core/tests/integration/coreShutdown.process.test.js` |
+| SIGTERM or SIGINT on Benchmark, idle or with a running batch | Real Benchmark process, fixture batch | Listener closed, batch marked interrupted, exit 0 by itself within the 5 s deadline | `benchmark/tests/integration/serverShutdown.process.test.js` |

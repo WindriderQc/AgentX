@@ -504,6 +504,7 @@ async function refreshCostBreakdown() {
 
 let systemMetricsBackoffMs = 0;
 let systemMetricsCooldownUntil = 0;
+let systemMetricsLast429LogAt = 0;
 
 async function refreshSystem() {
   const now = Date.now();

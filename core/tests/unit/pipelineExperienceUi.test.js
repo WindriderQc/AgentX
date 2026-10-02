@@ -2,10 +2,11 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { readPipelineSource, loadPipelineParts } = require('../helpers/pipelineScripts');
 
 describe('Pipeline open-work experience', () => {
   const view = fs.readFileSync(path.resolve(__dirname, '../../views/pages/pipeline.ejs'), 'utf8');
-  const script = fs.readFileSync(path.resolve(__dirname, '../../public/js/pipeline.js'), 'utf8');
+  const script = readPipelineSource();
 
   test('offers visible service, lane, and status-card filters', () => {
     for (const id of ['pipelineServiceFilter', 'pipelineLaneFilter']) {

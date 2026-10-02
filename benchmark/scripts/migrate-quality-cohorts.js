@@ -2,18 +2,28 @@
 'use strict';
 
 /**
- * Re-assign benchmark results to the catalog-wide quality cohort.
+ * Re-assign benchmark results to the quality cohort as new batches and judge
+ * runs compute it.
  *
- * Until 2026-09-24 the cohort fingerprint covered the prompts one batch
- * selected, so a campaign run one level per batch produced one cohort per
- * batch and the leaderboard compared none of them. A re-judge also left the
- * first judge's cohort on its results. This script recomputes the cohort of
- * each named batch the way new batches and judge runs now do: over the whole
- * catalog, with the judge that actually judged the batch.
+ * The cohort covers the judge, scorer version, generation settings and
+ * profile contract; each result pins the prompt it ran with prompt_id and
+ * prompt_fingerprint. Older results carry a cohort fingerprint over the whole
+ * catalog of their day and no prompt fingerprint, so any catalog edit left
+ * them out of the comparison. For each named batch this script gives every
+ * result the fingerprint of the catalog prompt its snapshot provably matches
+ * (name, level, category, expected and reference answers, prompt text) and
+ * the cohort of the judge that actually judged the batch. A result whose
+ * snapshot matches no current catalog prompt (its prompt was edited or
+ * removed since) gets no prompt fingerprint and no cohort: it is not
+ * compared and needs a rerun. Run with --dry-run first to see the counts.
+ *
+ * Idempotent: results that already carry a prompt fingerprint keep it, and
+ * the cohort is recomputed to the same value.
  *
  * Usage (inside the benchmark container, MONGODB_URI set):
  *   node scripts/migrate-quality-cohorts.js --tag campaign-2026-09-23 [--dry-run]
  *   node scripts/migrate-quality-cohorts.js --batch <id> [--batch <id> ...] [--dry-run]
+ *   node scripts/migrate-quality-cohorts.js --all [--dry-run]
  *
  * The judge of a batch is the judge recorded on its LLM-judged results
  * (the most frequent judge model and host); a batch whose results were all
@@ -47,28 +57,32 @@ async function effectiveJudge(BenchmarkResult, batch) {
 async function main() {
     const tags = argValues('--tag');
     const ids = argValues('--batch');
-    if (!tags.length && !ids.length) {
-        console.error('Name the batches: --tag <tag> or --batch <id>');
+    const all = process.argv.includes('--all');
+    if (!all && !tags.length && !ids.length) {
+        console.error('Name the batches: --tag <tag>, --batch <id> or --all');
         process.exit(2);
     }
     await mongoose.connect(MONGO_URI);
     const BenchmarkBatch = require('../models/BenchmarkBatch');
     const BenchmarkResult = require('../models/BenchmarkResult');
-    const { applyJudgeCohort, cohortFingerprintForBatch } = require('../src/services/benchmark/qualityCohort');
+    const { applyJudgeCohort, cohortFingerprintForBatch, recoverPromptFingerprints } = require('../src/services/benchmark/qualityCohort');
 
-    const filter = { $or: [] };
-    if (tags.length) filter.$or.push({ tags: { $in: tags } });
-    if (ids.length) filter.$or.push({ _id: { $in: ids.map(id => new mongoose.Types.ObjectId(id)) } });
+    const filter = all ? {} : { $or: [] };
+    if (!all && tags.length) filter.$or.push({ tags: { $in: tags } });
+    if (!all && ids.length) filter.$or.push({ _id: { $in: ids.map(id => new mongoose.Types.ObjectId(id)) } });
     const batches = await BenchmarkBatch.find(filter).sort({ _id: 1 }).lean();
 
     for (const batch of batches) {
         const judge = await effectiveJudge(BenchmarkResult, batch);
         const results = await BenchmarkResult.countDocuments({ batch_id: batch._id });
+        // Counted before applying: applyJudgeCohort recovers the same prompts.
+        const prompts = await recoverPromptFingerprints(batch._id, { dryRun: true });
         const fingerprint = DRY_RUN
             ? await cohortFingerprintForBatch(batch, judge)
             : await applyJudgeCohort(batch._id, judge);
         console.log([batch._id.toString(), batch.run_name || '', `results=${results}`,
             `judge=${judge.model}@${judge.host}`, `cohort=${String(fingerprint).slice(0, 12)}`,
+            `prompts recovered=${prompts.recovered} unrecovered=${prompts.unrecovered}`,
             DRY_RUN ? 'dry-run' : 'updated'].join(' | '));
     }
     await mongoose.disconnect();

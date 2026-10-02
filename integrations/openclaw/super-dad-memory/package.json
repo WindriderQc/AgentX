@@ -12,7 +12,8 @@
     "continuity.js",
     "media.js",
     "core-notes.js",
-    "core-vault.js"
+    "core-vault.js",
+    "core-journal.js"
   ],
   "scripts": {
     "test": "node --test test/*.test.js"

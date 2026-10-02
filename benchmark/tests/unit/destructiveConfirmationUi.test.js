@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { readBatchConfigSource } = require('../helpers/batchConfigSource');
 
 const benchmarkRoot = path.resolve(__dirname, '..', '..');
 const read = (...segments) => fs.readFileSync(path.join(benchmarkRoot, ...segments), 'utf8');
@@ -57,7 +58,7 @@ describe('Benchmark destructive confirmation UI wiring', () => {
             body: { confirm: confirmation }
         });
 
-        const batchConfig = read('public', 'js', 'benchmark-v2', 'batch-config.js');
+        const batchConfig = readBatchConfigSource();
         expect(batchConfig).toContain('const expectedConfirmation = `DELETE TEMPLATE ${delBtn.dataset.id}`;');
         expect(batchConfig).toContain('const confirmation = window.prompt(');
         expect(batchConfig).toContain('await deleteTemplate(delBtn.dataset.id, confirmation);');
