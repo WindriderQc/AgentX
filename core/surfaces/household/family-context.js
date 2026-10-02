@@ -52,6 +52,25 @@ async function choreSummary(familyTasks, { logger } = {}) {
   }
 }
 
+const AGE_LABELS = Object.freeze({ little: 'petite enfance', school: 'âge scolaire', teen: 'adolescence' });
+
+// Who the children are comes from the parent's Family page, not from whatever
+// notes a search happens to select (#119): notes about one child must never
+// make Nestor forget another. A failure leaves the turn without the list.
+async function householdMembers(familyTasks, { logger } = {}) {
+  try {
+    const { profiles = [] } = await familyTasks.listProfiles();
+    const names = profiles.filter(profile => profile.active !== false).slice(0, MAX_PROFILES)
+      .map(profile => `${String(profile.displayName || profile.id).slice(0, 80)} (${AGE_LABELS[profile.ageBand] || AGE_LABELS.school})`);
+    return names.length
+      ? `Enfants de la maison (profils de la page Famille de papa; cette liste fait foi sur les notes) : ${names.join(', ')}.`
+      : '';
+  } catch (error) {
+    logger?.warn?.('Household members unavailable', { error: error.message });
+    return '';
+  }
+}
+
 // One explicit request per turn: an idea or reminder goes to the parent's
 // inbox; otherwise an explicit "remember" keeps a family note as before.
 async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true }) {
@@ -82,4 +101,4 @@ function capturedPrompt(captured) {
   return ` The child asked to keep ${captured === 'reminder' ? 'a reminder' : 'an idea'} and it has been saved for Dad to review; confirm plainly that Dad will see it, without promising that he will act on it.`;
 }
 
-module.exports = { capturedPrompt, choreSummary, familyCaptureKind, familyTurn };
+module.exports = { capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers };

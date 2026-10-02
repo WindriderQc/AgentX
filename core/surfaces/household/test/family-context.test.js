@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { choreSummary, familyCaptureKind, familyTurn } = require('../family-context');
+const { choreSummary, familyCaptureKind, familyTurn, householdMembers } = require('../family-context');
 
 test('a child idea or reminder is told apart from an ordinary "remember" note', () => {
   assert.equal(familyCaptureKind("J'ai une idée : une cabane"), 'idea');
@@ -38,4 +38,21 @@ test('the chore summary is read-only Kids Room rows and fails closed to nothing'
   assert.match(summary, /- Enfant A : à faire : Nourrir le poisson \(en retard\) ; en attente de papa : Ranger ; approuvées aujourd’hui : 1\./);
   assert.equal(await choreSummary({ listProfiles: async () => { throw new Error('down'); } }), '');
   assert.equal(await choreSummary({ listProfiles: async () => ({ profiles: [] }) }), '');
+});
+
+test('every active child profile is listed, so notes about one child never hide another (#119)', async () => {
+  const familyTasks = { listProfiles: async () => ({ profiles: [
+    { id: 'kid-a', displayName: 'Alex', ageBand: 'school', active: true },
+    { id: 'kid-b', displayName: 'Sam', ageBand: 'little', active: true },
+    { id: 'old', displayName: 'Retired', ageBand: 'teen', active: false }
+  ] }) };
+  const line = await householdMembers(familyTasks);
+  assert.match(line, /^Enfants de la maison .*fait foi sur les notes/);
+  assert.match(line, /Alex \(âge scolaire\), Sam \(petite enfance\)\.$/);
+  assert.doesNotMatch(line, /Retired/);
+  assert.equal(await householdMembers({ listProfiles: async () => ({ profiles: [] }) }), '');
+  const warnings = [];
+  assert.equal(await householdMembers({ listProfiles: async () => { throw new Error('down'); } },
+    { logger: { warn: (...args) => warnings.push(args) } }), '');
+  assert.equal(warnings.length, 1);
 });

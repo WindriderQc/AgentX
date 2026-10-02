@@ -417,6 +417,17 @@ describe('built-in Household surface on Core', () => {
     const family = await request(app).post(`${base}/sessions`).send({ packId: 'kidx_nestor', backend: 'agentx' }).expect(201);
     await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'observatory' }).expect(200);
     expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Synthetic observatory preference');
+    const HouseholdProfile = require('../../models/HouseholdProfile');
+    await HouseholdProfile.create([{ profileId: 'synthetic-a', displayName: 'Synthetic Alex', ageBand: 'school' },
+      { profileId: 'synthetic-b', displayName: 'Synthetic Sam', ageBand: 'little' }]);
+    try {
+      await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Comment s’appellent mes enfants?' }).expect(200);
+      const personal = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      expect(personal).toContain('Synthetic Alex (âge scolaire)');
+      expect(personal).toContain('Synthetic Sam (petite enfance)');
+      await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'Comment s’appellent les enfants?' }).expect(200);
+      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Enfants de la maison');
+    } finally { await HouseholdProfile.deleteMany({ profileId: { $in: ['synthetic-a', 'synthetic-b'] } }); }
     await request(app).post('/api/voix/memory/' + id + '/forget').send({}).expect(200);
     expect((await request(app).post(`${base}/private/notes`).send({ operation: 'list' })).body.data.notes.some(note => note.id === id)).toBe(false);
   });
