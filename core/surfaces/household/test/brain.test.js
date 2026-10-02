@@ -10,7 +10,7 @@ const TURNS = [{ inputText: 'Combien de pattes a une araignée?', replyText: 'Si
 function inferenceReturning(content, calls = []) {
   return { execute: async (body, options) => {
     calls.push({ body, options });
-    if (options.signal.aborted) return { ok: false };
+    if (options.signal?.aborted) return { ok: false };
     return { ok: true, body: { message: { content } }, metadata: { model: 'synthetic-brain' } };
   } };
 }
@@ -47,8 +47,9 @@ test('a scheduled review is delivered to a waiting page and informs the next tur
   assert.deepEqual(review.suggestions, ['Et un insecte?']);
   assert.equal(calls[0].body.taskType, 'master_brain');
   assert.equal(calls[0].body.model, 'synthetic:32b');
-  assert.equal(calls[0].body.exclusiveHost, true);
+  assert.equal(calls[0].body.exclusiveHost, undefined, 'exclusive admission is opt-in');
   assert.equal(calls[0].options.hostUrl, 'http://gpu.example.test:11434');
+  assert.equal(calls[0].options.signal, undefined, 'a dedicated host request is never cancelled');
   assert.equal(calls[0].body.think, false);
   const context = brain.contextFor(SESSION.sessionId);
   assert.match(context, /advisory/);
@@ -76,6 +77,26 @@ test('a new turn cancels the running review, and the brain is off unless enabled
   const familyOff = createBrain({ inference, loadTurns: async () => TURNS, env: { HOUSEHOLD_BRAIN_ENABLED: 'true', HOUSEHOLD_BRAIN_FAMILY: 'false' } });
   assert.equal(familyOff.schedule({ session: SESSION, pack: { childSafe: true }, traceId: 't' }), false);
   assert.equal(familyOff.enabled(false), true);
+});
+
+test('on a dedicated host a newer turn discards the running review without cancelling its request', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const calls = [];
+  const inference = { execute: async (body, options) => { calls.push({ body, options }); await gate; return { ok: true, body: { response: REVIEW } }; } };
+  const env = { HOUSEHOLD_BRAIN_ENABLED: 'true', HOUSEHOLD_BRAIN_HOST_URL: 'http://gpu.example.test:11434' };
+  const brain = createBrain({ inference, loadTurns: async () => TURNS, delayMs: 0, env });
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'trace-1' });
+  while (!calls.length) await new Promise(resolve => setTimeout(resolve, 1));
+  brain.cancel(SESSION.sessionId);
+  assert.equal(calls[0].options.signal, undefined);
+  release(); await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(brain.latest(SESSION.sessionId), null, 'a superseded review is never delivered');
+  const exclusive = createBrain({ inference: inferenceReturning(REVIEW, calls), loadTurns: async () => TURNS, delayMs: 0,
+    env: { ...env, HOUSEHOLD_BRAIN_EXCLUSIVE: 'true' } });
+  exclusive.schedule({ session: SESSION, pack: {}, traceId: 'trace-2' });
+  await exclusive.wait(SESSION.sessionId, 'trace-2');
+  assert.equal(calls.at(-1).body.exclusiveHost, true);
 });
 
 test('the route serves a review only within its own space', async () => {
