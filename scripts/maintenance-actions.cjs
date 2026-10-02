@@ -127,8 +127,14 @@ function run(command, args, { env, allowFailure = false, timeoutMs = 30 * 60_000
   return { status: result.status, output };
 }
 
-function launcherEnv(config) {
-  return { AGENTX_ENV_FILE: config.envFile, AGENTX_PROJECT_NAME: config.project, ...(config.override && { AGENTX_COMPOSE_OVERRIDE: config.override }) };
+// The build revision is the commit the deploy fast-forwarded to: an
+// AGENTX_BUILD_REVISION left in the caller's environment would otherwise label
+// the images with another commit, and the served-revision check would fail.
+function launcherEnv(config, revision) {
+  return {
+    AGENTX_ENV_FILE: config.envFile, AGENTX_PROJECT_NAME: config.project, ...(config.override && { AGENTX_COMPOSE_OVERRIDE: config.override }),
+    ...(revision && { AGENTX_BUILD_REVISION: revision })
+  };
 }
 
 function composeArgs(config) {
@@ -211,7 +217,7 @@ async function deploy(config, options) {
   const core = publishedUrl(config, 'core', 3080);
   if (core) await waitIdle(core, Number(options['wait-minutes'] || 10) * 60_000);
   run('git', ['merge', '--ff-only', '--quiet', revision]);
-  const launched = run('./agentx', ['up', '--build', '--no-deps', ...services], { env: launcherEnv(config), allowFailure: true });
+  const launched = run('./agentx', ['up', '--build', '--no-deps', ...services], { env: launcherEnv(config, revision), allowFailure: true });
   if (launched.status !== 0) {
     throw new ActionError(`The launcher did not recreate ${services.join(', ')} (exit ${launched.status})`,
       { exitCode: launched.status === 4 ? 4 : 1, outcome: launched.status === 4 ? 'refused' : 'failed', details: { revision, before, tail: launched.output.slice(-2000) } });
@@ -325,4 +331,4 @@ async function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) main().then(code => { process.exitCode = code; });
 
-module.exports = { main, parseArgs, parseServices, readLead, acquireLead, releaseLead, instance, ActionError, DEPLOYABLE };
+module.exports = { main, parseArgs, parseServices, readLead, acquireLead, releaseLead, instance, launcherEnv, ActionError, DEPLOYABLE };
