@@ -41,7 +41,9 @@ function reviewMessages({ state, turns, maxCharacters = 24000 }) {
     selected.unshift({ role: turn.role, content });
     characters += content.length;
   }
-  const pending = (state.proposals || []).map(item => item.text || `${item.hypothesis} → ${item.action}`);
+  const pending = (state.proposals || []).map(item => item.kind === 'experimentResult'
+    ? `result of experiment ${item.experimentId}: ${item.outcome}`
+    : item.text || `${item.hypothesis} → ${item.action}`);
   const context = {
     longitudinalState: stateForPrompt(state),
     pendingProposals: pending
