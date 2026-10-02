@@ -6,6 +6,14 @@
 const logger = require('../../config/logger');
 
 /**
+ * Request path without its query string. Query strings can carry user text
+ * (search terms, GET /api/chat/stream messages), so logs keep only the path.
+ */
+function requestPath(req) {
+  return String(req.originalUrl || req.url || '').split('?', 1)[0];
+}
+
+/**
  * Morgan-like request logger using Winston
  */
 function requestLogger(req, res, next) {
@@ -17,7 +25,7 @@ function requestLogger(req, res, next) {
   // Log request
   logger.http('Incoming request', {
     method: req.method,
-    url: req.originalUrl || req.url,
+    url: requestPath(req),
     ip: req.ip || req.connection.remoteAddress,
     userAgent: req.get('user-agent'),
     correlationId: req.correlationId,
@@ -34,7 +42,7 @@ function requestLogger(req, res, next) {
 
     logger.log(level, 'Request completed', {
       method: req.method,
-      url: req.originalUrl || req.url,
+      url: requestPath(req),
       statusCode: res.statusCode,
       duration: `${duration}ms`,
       contentLength: res.get('content-length') || 0,
@@ -54,7 +62,7 @@ function requestLogger(req, res, next) {
 function errorLogger(err, req, res, next) {
   logger.error('Request error', {
     method: req.method,
-    url: req.originalUrl || req.url,
+    url: requestPath(req),
     error: err.message,
     stack: err.stack,
     statusCode: err.statusCode || 500,
@@ -67,4 +75,5 @@ function errorLogger(err, req, res, next) {
 module.exports = {
   requestLogger,
   errorLogger,
+  requestPath,
 };
