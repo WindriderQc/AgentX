@@ -96,19 +96,37 @@ Rebuild only the services whose code changed (`core`, `benchmark` with
 `benchmark-runner`, `rag`, `data`); `--no-deps` leaves the other containers
 running. Always pass the instance's project name: without it the launcher uses
 the default `agentx` project. When `up` or `rebuild` would recreate Core or
-Benchmark on a running instance, the launcher first takes Core's `runtime-deploy`
-maintenance lease. Core refuses it while a Benchmark workload or an inference is
-active: the launcher then names that work (from
-`/api/nerve-center/runtime-coordination/active`) and stops with exit code 4
-without touching a container. Images are built first (`up --build` included),
-so the lease, which pauses all inference, covers only the recreate: it keeps
-new work out, is heartbeated and is released once health is green. Recreating
-mid-batch would otherwise cut the workload and quarantine its host for the rest
-of its admission. `--force-runtime` (or `AGENTX_FORCE_RUNTIME=1`) skips the lease
-for an operator recovery; with Core not running, no lease is needed. A
-Benchmark-only recreate (`benchmark`, `benchmark-runner`) does not touch
-conversations, which go from Core to Ollama: it takes no lease and waits only
-until no Benchmark workload is active. A Core container that exists but does
+Benchmark on a running instance, Core decides from what that recreate would
+cut, and the launcher prints its verdict:
+
+- Core alone takes Core's `core-recreate` maintenance lease. A running Profiler
+  workload does not block it: its writer is in Benchmark, it reaches Ollama
+  directly, Core keeps its admission through the restart and Benchmark keeps
+  heartbeating once Core answers again (it waits while Core is down, within the
+  admission Core last confirmed). While the lease is held the profile keeps
+  its own inference through Core, which drains admitted requests before it
+  exits. Core inference, batches and judges (which go
+  through Core inference), a workload in recovery or about to expire, and another
+  maintenance lease block it.
+- Benchmark alone (`benchmark`, `benchmark-runner`) owns every workload writer:
+  it takes no lease (conversations go from Core to Ollama) and waits until Core
+  reports no workload.
+- Both, or every service when none is named, take the global `runtime-deploy`
+  lease, refused while any workload or inference is active.
+
+A refusal stops with exit code 4 without touching a container and names each
+blocker (kind, id, hosts, owner, start, reason) with its clean cancel route:
+the Profiler panel or `POST /api/profiler/pipeline/profile/:profileId/cancel`,
+`POST /api/profiler/pipeline/profile-host/:queueId/cancel`,
+`POST /api/profiler/hosts/test/run-fleet/:queueId/cancel` or
+`POST /api/benchmark/batch/:id/stop` on Benchmark. Core serves the same verdict
+at `/api/nerve-center/runtime-coordination/deploy-blockers?service=core|benchmark|all`.
+Images are built first (`up --build` included), so the lease, which keeps new
+work out, covers only the recreate: it is heartbeated and released once health
+is green. Recreating mid-batch would otherwise cut the workload and quarantine
+its host for the rest of its admission. `--force-runtime` (or
+`AGENTX_FORCE_RUNTIME=1`) skips the lease for an operator recovery only; with
+Core not running, no lease is needed. A Core container that exists but does
 not answer its health check makes the launcher stop (exit code 4), since
 another recreate may be in progress. Recreate
 Core or Benchmark on a running instance only through the launcher

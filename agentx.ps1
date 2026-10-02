@@ -239,9 +239,10 @@ function Wait-PublishedProductEndpoints {
     return $false
 }
 
-# Runtime maintenance lease (#93): recreating Core or Benchmark while a
-# Benchmark workload runs cuts it and quarantines its host. Core's maintenance
-# lease is refused while work is active and keeps new work out while held.
+# Runtime maintenance lease (#93, #47): recreating Core or Benchmark can cut
+# running work and quarantine its host. Core grants its maintenance lease only
+# when the recreate cuts nothing, keeps new work out while it is held, and
+# names what blocks it with the clean cancel route; this script prints that.
 $script:runtimeLease = $null
 $script:forceRuntime = [bool]$env:AGENTX_FORCE_RUNTIME
 $runtimeLeaseTtlMs = 900000
@@ -254,14 +255,32 @@ function Split-ForceRuntime([object[]] $arguments) {
     return ,$kept
 }
 
-# Core carries every inference, so recreating it (or every service) needs the
-# global lease. Benchmark and its runner carry only Benchmark workloads, so a
-# Benchmark-only recreate waits only for those. Returns core, benchmark or ''.
+# Recreating Core alone cuts Core inference but not a Benchmark profile: Core
+# decides with its core-recreate lease. Benchmark and its runner own every
+# workload writer, so a Benchmark-only recreate needs Core's verdict that no
+# workload runs. Both, or every service, need the global runtime-deploy lease.
+# Returns all, core, benchmark or ''.
 function Get-RuntimeGuardScope([object[]] $arguments) {
     $named = @($arguments | Where-Object { -not "$_".StartsWith('-') })
-    if ($named.Count -eq 0 -or $named -contains 'core') { return 'core' }
-    if ($named | Where-Object { $_ -in @('benchmark', 'benchmark-runner') }) { return 'benchmark' }
+    $core = $named -contains 'core'
+    $benchmark = [bool]($named | Where-Object { $_ -in @('benchmark', 'benchmark-runner') })
+    if ($named.Count -eq 0 -or ($core -and $benchmark)) { return 'all' }
+    if ($core) { return 'core' }
+    if ($benchmark) { return 'benchmark' }
     return ''
+}
+
+function Write-RuntimeBlockers([object[]] $blockers) {
+    foreach ($blocker in @($blockers | Select-Object -First 20)) { if ($blocker) { [Console]::Error.WriteLine("  - $($blocker.summary)") } }
+}
+
+function Write-RuntimeActiveWork([string] $published) {
+    try {
+        $active = (Invoke-AgentXBoundedRestMethod -Uri "http://$published/api/nerve-center/runtime-coordination/active" -TimeoutSec 10 -MaximumResponseBytes $agentXHealthResponseLimitBytes -MaximumRedirection 0).data
+        foreach ($workload in @($active.workloads)) { if ($workload) { [Console]::Error.WriteLine("  workload $($workload.workloadId) ($($workload.kind)) on $(@($workload.hosts) -join ', ')") } }
+        foreach ($inference in @($active.inferences)) { if ($inference) { [Console]::Error.WriteLine("  inference $($inference.kind) $($inference.state) on $($inference.host)") } }
+        return [bool](@($active.workloads | Where-Object { $_ }).Count)
+    } catch { return $false }
 }
 
 function Test-RuntimeGuardNeeded([object[]] $arguments) {
@@ -275,7 +294,9 @@ function Invoke-RuntimeLeaseRequest([string] $Method, [string] $Path, [hashtable
     try { return @{ Status = 200; Data = (Invoke-RestMethod @parameters).data } }
     catch {
         $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
-        return @{ Status = $status; Data = $null }
+        $data = $null
+        try { $data = ($_.ErrorDetails.Message | ConvertFrom-Json).data } catch { }
+        return @{ Status = $status; Data = $data }
     }
 }
 
@@ -283,7 +304,7 @@ function Enter-RuntimeLease([object[]] $arguments) {
     $scope = Get-RuntimeGuardScope $arguments
     if (-not $scope) { return }
     if ($script:forceRuntime) {
-        [Console]::Error.WriteLine('--force-runtime: recreating without Core''s runtime lease; a running Benchmark workload may be cut.')
+        [Console]::Error.WriteLine('--force-runtime: recreating without Core''s runtime lease; running work may be cut and its host quarantined.')
         return
     }
     $published = & docker compose @compose port core 3080 2>$null
@@ -298,21 +319,29 @@ function Enter-RuntimeLease([object[]] $arguments) {
         exit 4
     }
     if ($scope -eq 'benchmark') {
-        $active = $null
-        try { $active = (Invoke-AgentXBoundedRestMethod -Uri "http://$published/api/nerve-center/runtime-coordination/active" -TimeoutSec 10 -MaximumResponseBytes $agentXHealthResponseLimitBytes -MaximumRedirection 0).data } catch { }
-        $workloads = @(if ($active) { $active.workloads | Where-Object { $_ } })
-        if ($workloads.Count) {
-            [Console]::Error.WriteLine('Benchmark work is active. Workloads reported by Core:')
-            foreach ($workload in $workloads) { [Console]::Error.WriteLine("  workload $($workload.workloadId) ($($workload.kind)) on $(@($workload.hosts) -join ', ')") }
-            [Console]::Error.WriteLine('Not recreating Benchmark: wait for that work to finish, or use --force-runtime for an operator recovery.')
+        $verdict = $null
+        try { $verdict = (Invoke-AgentXBoundedRestMethod -Uri "http://$published/api/nerve-center/runtime-coordination/deploy-blockers?service=benchmark" -TimeoutSec 10 -MaximumResponseBytes $agentXHealthResponseLimitBytes -MaximumRedirection 0).data } catch { }
+        $blocked = $false
+        if ($verdict -and $verdict.allowed -eq $false) {
+            [Console]::Error.WriteLine('Core reports work that recreating benchmark would cut:')
+            Write-RuntimeBlockers $verdict.blockers
+            $blocked = $true
+        } elseif (-not $verdict) {
+            # A Core without the verdict endpoint: fall back to its workload list.
+            [Console]::Error.WriteLine('Workloads reported by Core:')
+            $blocked = Write-RuntimeActiveWork $published
+        }
+        if ($blocked) {
+            [Console]::Error.WriteLine('Not recreating Benchmark: cancel that work through its route or wait for it to finish (--force-runtime is for operator recovery only).')
             exit 4
         }
         Write-Output 'No Benchmark workload is active; recreating Benchmark does not touch conversations, so no global lease is taken.'
         return
     }
     $script:runtimeLease = @{ Core = "http://$published" }
+    $leaseScope = if ($scope -eq 'core') { 'core-recreate' } else { 'runtime-deploy' }
     $acquired = Invoke-RuntimeLeaseRequest POST '/api/nerve-center/maintenance-leases' @{
-        requestId = "launcher-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())-$PID"; scope = 'runtime-deploy'; ttlMs = $runtimeLeaseTtlMs }
+        requestId = "launcher-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())-$PID"; scope = $leaseScope; ttlMs = $runtimeLeaseTtlMs }
     if ($acquired.Status -eq 200 -and $acquired.Data.leaseId -and $acquired.Data.generation) {
         $script:runtimeLease.Id = $acquired.Data.leaseId
         $script:runtimeLease.Generation = $acquired.Data.generation
@@ -325,18 +354,19 @@ function Enter-RuntimeLease([object[]] $arguments) {
                 try { Invoke-RestMethod -Method POST -Uri "$core/api/nerve-center/maintenance-leases/$id/heartbeat" -TimeoutSec 10 -Headers @{ 'X-AgentX-Caller' = 'operator' } -ContentType 'application/json' -Body $body | Out-Null } catch { }
             }
         }
-        Write-Output "Runtime lease $($acquired.Data.leaseId) held: new Benchmark work waits until this recreate finishes."
+        Write-Output "Runtime lease $($acquired.Data.leaseId) ($leaseScope) held: new work waits until this recreate finishes; running profiles continue."
         return
     }
     $script:runtimeLease = $null
     if ($acquired.Status -eq 409) {
-        [Console]::Error.WriteLine('Core refused the runtime lease: work is active. Holders reported by Core:')
-        try {
-            $active = (Invoke-AgentXBoundedRestMethod -Uri "http://$published/api/nerve-center/runtime-coordination/active" -TimeoutSec 10 -MaximumResponseBytes $agentXHealthResponseLimitBytes -MaximumRedirection 0).data
-            foreach ($workload in @($active.workloads)) { if ($workload) { [Console]::Error.WriteLine("  workload $($workload.workloadId) ($($workload.kind)) on $(@($workload.hosts) -join ', ')") } }
-            foreach ($inference in @($active.inferences)) { if ($inference) { [Console]::Error.WriteLine("  inference $($inference.kind) $($inference.state) on $($inference.host)") } }
-        } catch { }
-        [Console]::Error.WriteLine('Not recreating: wait for that work to finish, or use --force-runtime for an operator recovery.')
+        if ($acquired.Data -and $acquired.Data.blockers) {
+            [Console]::Error.WriteLine('Core refused the runtime lease: this work would be cut:')
+            Write-RuntimeBlockers $acquired.Data.blockers
+        } else {
+            [Console]::Error.WriteLine('Core refused the runtime lease: work is active. Holders reported by Core:')
+            Write-RuntimeActiveWork $published | Out-Null
+        }
+        [Console]::Error.WriteLine('Not recreating: cancel that work through its route or wait for it to finish (--force-runtime is for operator recovery only).')
         exit 4
     }
     [Console]::Error.WriteLine('Core is running but did not grant or refuse the runtime lease. Not recreating; use --force-runtime if the runtime is known to be idle.')
@@ -374,7 +404,7 @@ Commands:
   rebuild [--no-deps] [service...]
                         Rebuild images, then recreate the requested services
                         Recreating core or benchmark on a running instance first takes
-                        Core's runtime lease and stops if Benchmark work is active;
+                        Core's runtime lease and stops if it would cut running work;
                         --force-runtime skips that check for an operator recovery
   ollama-doctor         Detect native Ollama; never install or download
   ollama-up             Start the opt-in isolated Docker Ollama stack
