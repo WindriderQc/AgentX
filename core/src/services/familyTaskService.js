@@ -9,6 +9,7 @@ const {
   cleanProfileId, familyChore, familyLaunchInput, familyProfile,
   familyProfileInput, familyRoom, familyRoutineInput, nextRoutineDue
 } = require('../domains/household/family');
+const { familyBirthDate } = require('../domains/household/familyBirthDate');
 
 const OPEN_FAMILY_STATUSES = Object.freeze(['queued', 'in_progress', 'review']);
 const FAMILY_PIPELINE_ASSIGNEE = 'household-family';
@@ -83,6 +84,23 @@ async function getTask(ref, childId) {
 async function listProfiles() {
   const rows = await Profile.find({ active: true }).sort({ createdAt: 1 }).limit(20).lean();
   return { profiles: rows.map(familyProfile) };
+}
+
+// Adult-only: the public projection plus the parent's birth date. Child-facing
+// routes use listProfiles/room, whose projection never includes it.
+const adultProfile = profile => ({ ...familyProfile(profile), birthDate: profile.birthDate || null });
+
+async function listProfileDetails() {
+  const rows = await Profile.find({ active: true }).sort({ createdAt: 1 }).limit(20).lean();
+  return { profiles: rows.map(adultProfile) };
+}
+
+async function setProfileBirthDate(input = {}) {
+  const birthDate = familyBirthDate(input.birthDate);
+  const profile = await getProfile(profileId(input.profileId));
+  profile.birthDate = birthDate || undefined;
+  await profile.save();
+  return { profile: adultProfile(profile) };
 }
 
 async function createProfile(input = {}, createdBy = 'household-parent') {
@@ -203,4 +221,4 @@ async function cancel(input = {}) {
   return { chore: familyChore(await cancelTask(task, 'household-parent', 'Cancelled from the parent household surface.')) };
 }
 
-module.exports = { listProfiles, addProfile, archiveProfile, launch, room, list, create, checkIn, approve, reopen, cancel };
+module.exports = { listProfiles, listProfileDetails, setProfileBirthDate, addProfile, archiveProfile, launch, room, list, create, checkIn, approve, reopen, cancel };

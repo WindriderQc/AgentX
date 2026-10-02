@@ -403,6 +403,15 @@ only the fact that a secret was shown.
 Every Super Dad turn also receives the active child profiles of the Family page
 (`/dad/family`) as approved knowledge, so the children's names and age bands
 do not depend on which notes a search selects. Famille turns do not.
+A parent may record an optional birth date (`YYYY-MM-DD`, from 1900 to today)
+for each profile on `/dad/family`. It is stored with the profile in
+`household_profiles` and travels with the MongoDB backup. Only the adult
+routes `GET /api/family/profiles/details` and `POST /api/family/profiles/birth-date`
+read or change it; both stay behind the parental gate. Super Dad receives the
+age in years, computed for the turn's date (`PLANNING_TIME_ZONE` when set,
+otherwise the server's local date), and the birthday as day and month, never
+the stored date. Without a birth date it keeps the age band. Famille turns, the
+Family page and the child-facing profile and room routes see the age band only.
 The background brain runs after each Super Dad and Famille turn when
 `HOUSEHOLD_BRAIN_ENABLED=true` (the Compose default; `HOUSEHOLD_BRAIN_FAMILY=false`
 leaves Famille out). It uses the router's `master_brain` lane unless

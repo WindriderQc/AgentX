@@ -33,6 +33,7 @@ const { promisify } = require('node:util');
 const { pathToFileURL } = require('node:url');
 const path = require('node:path');
 const { listenLoopback } = require('../../../shared/testing/listenLoopback');
+const { ageInYears, instanceToday } = require('../../src/domains/household/familyBirthDate');
 
 describe('built-in Household surface on Core', () => {
   test('the panel stays ready when optional OpenClaw evidence is absent', async () => {
@@ -427,6 +428,28 @@ describe('built-in Household surface on Core', () => {
       expect(personal).toContain('Synthetic Sam (petite enfance)');
       await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'Comment s’appellent les enfants?' }).expect(200);
       expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Enfants de la maison');
+      // A parent-set birth date gives Super Dad the age and birthday; Famille and child projections keep the band only.
+      const set = await request(app).post('/api/family/profiles/birth-date').send({ profileId: 'synthetic-a', birthDate: '2016-03-14' }).expect(200);
+      expect(set.body.data.profile.birthDate).toBe('2016-03-14');
+      expect((await request(app).post('/api/family/profiles/birth-date').send({ profileId: 'synthetic-a', birthDate: '2016-02-30' }).expect(400)).body.code)
+        .toBe('FAMILY_PROFILE_BAD_BIRTH_DATE');
+      const details = (await request(app).get('/api/family/profiles/details').expect(200)).body.data.profiles;
+      expect(details.find(profile => profile.id === 'synthetic-a').birthDate).toBe('2016-03-14');
+      const childProfiles = (await request(app).get('/api/family/profiles').expect(200)).body.data.profiles;
+      expect(JSON.stringify(childProfiles)).not.toMatch(/birthDate|2016-03-14/);
+      expect(JSON.stringify((await request(app).get('/api/family/room?profileId=synthetic-a').expect(200)).body.data)).not.toMatch(/birthDate|2016/);
+      const age = ageInYears('2016-03-14', instanceToday());
+      await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
+      const aged = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      expect(aged).toContain(`Synthetic Alex (${age} ans, anniversaire le 14 mars)`);
+      expect(aged).not.toContain('2016');
+      await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
+      const familyPrompt = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      expect(familyPrompt).not.toContain('anniversaire le 14 mars');
+      expect(familyPrompt).not.toContain('2016');
+      await request(app).post('/api/family/profiles/birth-date').send({ profileId: 'synthetic-a', birthDate: null }).expect(200);
+      await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
+      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('Synthetic Alex (âge scolaire)');
     } finally { await HouseholdProfile.deleteMany({ profileId: { $in: ['synthetic-a', 'synthetic-b'] } }); }
     await request(app).post('/api/voix/memory/' + id + '/forget').send({}).expect(200);
     expect((await request(app).post(`${base}/private/notes`).send({ operation: 'list' })).body.data.notes.some(note => note.id === id)).toBe(false);
