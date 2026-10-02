@@ -122,7 +122,10 @@ describe('Agent X Knowledge progressive-disclosure experience', () => {
     expect(documentsJs).toContain('els.deleteDocumentId.textContent = documentData.documentId');
     expect(documentsJs).toContain("els.deleteSource.textContent = documentData.source || 'Unknown provenance'");
     expect(documentsJs).toContain('els.deleteInput.value === els.deleteExpected.textContent');
-    expect(documentsJs).toContain('await window.RAG.deleteDocument(docId, confirmation)');
+    expect(documentsJs).toContain('await window.RAG.deleteDocument(docId, confirmation, exclude)');
+    expect(documents).toContain('id="delete-document-exclude"');
+    expect(documents).toContain('>Delete and exclude</button>');
+    expect(documents).toContain('id="excluded-files"');
     expect(documentsJs).toContain('showDeleteReceipt(documentData)');
     expect(documentsJs).toContain('Other indexed documents may remain.');
     expect(documentsJs).toContain('showDeleteFailure(err, opener)');

@@ -233,7 +233,7 @@ test('deleting a loaded document adjusts the next offset so the following docume
   await flush();
   el('doc-tbody').children[0].querySelector('.btn-delete').fire('click');
   await flush();
-  expect(deleteDocument).toHaveBeenCalledWith('doc-0', 'DELETE doc-0');
+  expect(deleteDocument).toHaveBeenCalledWith('doc-0', 'DELETE doc-0', false);
   el('btn-more-documents').fire('click');
   await flush();
   expect(getDocuments).toHaveBeenLastCalledWith({ limit: 200, offset: 199 });
