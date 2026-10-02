@@ -9,13 +9,15 @@ and docs/OPERATIONS.md before changing architecture.
   and events belong to Core capabilities. Surfaces and personas compose them.
 - Nestor is the personal assistant. Household is the family surface. External
   harnesses are replaceable and must not become the canonical business or memory owner.
-- Distribute the same code through profiles/capabilities. No parallel product/ops repository.
+- Distribute the same code through profiles/capabilities. No parallel product/ops repository:
+  an instance may keep a private instance repository for its own configuration,
+  runbooks and assets, never product code (ADR 0001).
 - Ask the owner, grouping questions, if an unknown affects keeping, deleting,
   merging a capability or changing product behavior. Preserve useful capabilities
   until their replacement has evidence.
 - Never commit secrets, personal content, transcripts, memory stores, host inventories,
-  machine-specific configuration, generated reports or runtime volumes. Keep those
-  outside Git; only generic configuration examples belong here.
+  machine-specific configuration, generated reports or runtime volumes here. Keep secret
+  values outside Git entirely; only generic configuration examples belong here.
 - Local/LAN only. Do not expose the application publicly. Public source visibility
   is a separate decision after a repository and history privacy audit.
 - Run existing relevant tests and wait for their completed result. Distinguish

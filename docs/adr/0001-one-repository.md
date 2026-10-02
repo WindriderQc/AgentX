@@ -19,3 +19,17 @@ shipped; selected ones are tracked as AgentX issues.
 
 Source publication requires an audit of current files, history and repository
 metadata. Public source visibility does not expose a runtime.
+
+## Amendment: private instance repository
+
+Accepted by the owner on 2026-10-02.
+
+An instance owner may keep a private instance repository beside this one. It
+holds that instance's configuration templates without secret values, external
+harness configuration, operating runbooks, service units, private assets (for
+example a licensed sound pack) and the private tracking of personal work. It
+holds no product code and is not a fork: a capability the instance needs is
+added here behind a profile or capability, and the instance deploys a chosen
+revision of this repository. Secret values stay on the host. External harnesses
+may read the instance repository and act through Core's bounded actions; they
+do not own it.
