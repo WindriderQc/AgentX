@@ -10,6 +10,11 @@ function mockOk(jsonBody = {}) {
 function mockFail(status = 500, body = 'error') {
   return { ok: false, status, text: async () => body };
 }
+// Collection read whose payload schema already holds every index the store ensures.
+function mockIndexedCollection() {
+  const payloadSchema = Object.fromEntries(Object.keys(QdrantVectorStore.PAYLOAD_INDEXES).map(field => [field, {}]));
+  return mockOk({ result: { payload_schema: payloadSchema } });
+}
 
 describe('bounded corpus traversal payloads', () => {
   let requests;
@@ -245,12 +250,8 @@ describe('QdrantVectorStore._ensureCollection caching', () => {
   });
 
   it('only calls Qdrant once across multiple upserts', async () => {
-    // _ensureCollection check — collection exists
-    fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ result: { points: [] } }),
-      text: async () => ''
-    });
+    // _ensureCollection check — collection exists with its payload indexes
+    fetch.mockResolvedValue(mockIndexedCollection());
 
     const store = new QdrantVectorStore({
       qdrantUrl: 'http://qdrant:6333',
@@ -382,8 +383,8 @@ describe('QdrantVectorStore.upsertDocument', () => {
   it('calls _ensureCollection, checks for existing points, upserts, cleans up and returns result', async () => {
     store._collectionVerified = false;
 
-    // _ensureCollection — collection exists
-    fetch.mockResolvedValueOnce(mockOk());
+    // _ensureCollection — collection exists with its payload indexes
+    fetch.mockResolvedValueOnce(mockIndexedCollection());
     // Scroll — no existing points
     fetch.mockResolvedValueOnce(mockOk({ result: { points: [] } }));
     // upsert batch, then cleanup of other revisions
