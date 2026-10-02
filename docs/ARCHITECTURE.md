@@ -173,6 +173,15 @@ Expired and forgotten notes are excluded, and voice retries cannot resurrect a
 forgotten note. Notes are not copied into a second RAG index, so a correction or
 forgetting takes effect on the next retrieval.
 
+Dated mail digests do not belong in notes. Core's mail journal
+(`MailJournalEntry`, `mailJournalService`) keeps one owner-only entry per thread
+or message: when it happened, who, a short summary and a reference to the
+private evidence. Recording the same thread again replaces its entry, and Mongo
+removes entries `MAIL_JOURNAL_RETENTION_DAYS` (default 365) after the mail's
+date. The mail assistant and owner Nestor reach it with the OpenClaw
+`mail_journal` tool through `/api/consumers/nestor/v1/mail-journal`; a lasting
+fact drawn from mail is still saved as one note. There is no household reader.
+
 ## Access and identity
 
 AgentX is a single-household application on a trusted LAN. It has no user
