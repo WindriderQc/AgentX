@@ -357,6 +357,12 @@ describe('history, insights and export', () => {
     expect(lines).toContain('Total sorties;;;;;-298,00');
     expect(amount(-5)).toBe('-0,05');
   });
+
+  test('keeps a formula-like description inert in the CSV', async () => {
+    await FinanceTransaction.updateOne({ date: '2025-03-09' }, { $set: { description: '=HYPERLINK("http://x";"go")' } });
+    const { csv } = await exportCsv({ tag: 'karate' });
+    expect(csv).toContain('\r\n2025-03-09;EOP;"\'=HYPERLINK(""http://x"";""go"")";Enfants et activités;karate;-149,00\r\n');
+  });
 });
 
 describe('deterministic alerts', () => {

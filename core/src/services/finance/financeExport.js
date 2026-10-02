@@ -5,13 +5,12 @@
 
 const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { transactionFilter } = require('./financeQueryService');
+const { csvCell } = require('../../../../shared/csvCell');
 
 const MAX_EXPORT_ROWS = 20000;
 
-function cell(value) {
-  const text = String(value ?? '');
-  return /[";\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
+// Bank descriptions are third-party text: the shared rule keeps them inert.
+const cell = (value) => csvCell(value, ';');
 
 function amount(cents) {
   const sign = cents < 0 ? '-' : '';
