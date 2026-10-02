@@ -1,0 +1,15 @@
+# AIOps policy overlay for the single-capacity local-inference coding lane.
+# The wrapper also holds a host-wide flock; disabling these tools prevents one
+# DSH turn from creating hidden in-process fan-out behind that lock.
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-subagent-report
+  disabled: true
+- id: tool-workflow
+  disabled: true

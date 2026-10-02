@@ -1,0 +1,46 @@
+filters:
+  and:
+    - file.inFolder("Docs/Maison")
+properties:
+  note.garantie_fin:
+    displayName: Garantie jusqu'au
+  note.achat:
+    displayName: Acheté le
+  note.piece:
+    displayName: Pièce
+views:
+  - type: table
+    name: Garanties
+    filters:
+      and:
+        - type == "appareil"
+    order:
+      - file.name
+      - note.piece
+      - note.marque
+      - note.achat
+      - note.garantie_fin
+      - note.manuel
+  - type: table
+    name: Routines
+    filters:
+      and:
+        - type == "routine"
+    order:
+      - file.name
+      - note.quand
+      - note.qui
+  - type: table
+    name: Recettes et procédures
+    filters:
+      or:
+        - type == "recette"
+        - type == "procedure"
+    groupBy:
+      property: note.type
+      direction: ASC
+    order:
+      - file.name
+      - note.portions
+      - note.temps
+      - note.quand

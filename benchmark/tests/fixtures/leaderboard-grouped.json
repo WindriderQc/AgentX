@@ -1,0 +1,4066 @@
+{
+  "_note": "Static fixture for tests/fixtures/leaderboard-grouped.html and tests/unit/benchmark/leaderboardGroupedUi.test.js. Generated from synthetic rows through the real leaderboardGrouping module; no live data.",
+  "dashboardRes": {
+    "status": "success",
+    "data": {
+      "overview": {
+        "total_tests": 299,
+        "total_models": 7
+      },
+      "model_stats": [
+        {
+          "model": "qwen3.8:27b",
+          "host": "http://gpu-a.lan:11434",
+          "total_tests": 42,
+          "quality_tests": 42
+        },
+        {
+          "model": "qwen3.8:27b",
+          "host": "http://gpu-a.lan:11434",
+          "total_tests": 28,
+          "quality_tests": 28
+        },
+        {
+          "model": "qwen3.8:27b",
+          "host": "http://gpu-a.lan:11434",
+          "total_tests": 14,
+          "quality_tests": 14
+        },
+        {
+          "model": "qwen3.8:27b",
+          "host": "http://gpu-a.lan:11434",
+          "total_tests": 21,
+          "quality_tests": 21
+        },
+        {
+          "model": "gemma3:12b",
+          "host": "http://gpu-a.lan:11434",
+          "total_tests": 35,
+          "quality_tests": 35
+        },
+        {
+          "model": "llama3.3:70b",
+          "host": "http://gpu-b.lan:11434",
+          "total_tests": 40,
+          "quality_tests": 40
+        },
+        {
+          "model": "llama3.3:70b",
+          "host": "http://gpu-b.lan:11434",
+          "total_tests": 12,
+          "quality_tests": 12
+        },
+        {
+          "model": "mistral-small:24b",
+          "host": "http://gpu-a.lan:11434",
+          "total_tests": 30,
+          "quality_tests": 30
+        },
+        {
+          "model": "phi4:14b",
+          "host": "http://gpu-a.lan:11434",
+          "total_tests": 9,
+          "quality_tests": 9
+        },
+        {
+          "model": "deepseek-r1:32b",
+          "host": "http://gpu-b.lan:11434",
+          "total_tests": 26,
+          "quality_tests": 26
+        },
+        {
+          "model": "deepseek-r1:32b",
+          "host": "http://gpu-b.lan:11434",
+          "total_tests": 26,
+          "quality_tests": 26
+        },
+        {
+          "model": "broken-model:7b",
+          "host": "http://gpu-a.lan:11434",
+          "total_tests": 16,
+          "quality_tests": 16
+        }
+      ]
+    }
+  },
+  "generalistRes": {
+    "status": "success",
+    "data": {
+      "leaderboard": [
+        {
+          "model": "qwen3.8:27b",
+          "host": "http://gpu-a.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+          "rankable": true,
+          "harnessEvidence": {
+            "rankable": true,
+            "reason": null
+          },
+          "generalistScore": 82.4,
+          "weightedSum": 86.1,
+          "coveragePenalty": 0,
+          "difficultyPenalty": 0,
+          "difficultyCoverage": 100,
+          "fullScopeMinLevel": 4,
+          "requiredPromptLevels": [
+            4,
+            5
+          ],
+          "missingRequiredLevelsByCategory": {},
+          "minFullScopeResults": 28,
+          "minConsistencyResults": 42,
+          "fullScopeEligible": true,
+          "evidenceStatus": "full_scope",
+          "consistencyBonus": 0,
+          "evidenceConfidence": 0.82,
+          "evidenceConfidenceCoverage": 1,
+          "evidenceConfidenceTarget": 0.8,
+          "evidenceConfidencePenalty": 0,
+          "avgWithinCategoryStdDev": 9.1,
+          "coverage": 100,
+          "testedCategories": 7,
+          "totalTests": 42,
+          "confidenceMargin": 4.2,
+          "confidenceMethod": "weighted_category_prompt_means_t95",
+          "confidenceSampleSize": 14,
+          "confidenceRepeatCount": 42,
+          "confidenceWeighted": false,
+          "categoryConfidence": null,
+          "recommended_category": "coding",
+          "categoryAverages": {
+            "coding": 88,
+            "reasoning": 84,
+            "math": 81,
+            "knowledge": 79,
+            "instruction": 90,
+            "creative": 76,
+            "translation": 85
+          },
+          "categoryEvidence": {
+            "coding": "scored",
+            "reasoning": "scored",
+            "math": "scored",
+            "knowledge": "scored",
+            "instruction": "scored",
+            "creative": "scored",
+            "translation": "scored"
+          },
+          "promptLevelCounts": {
+            "4": 21,
+            "5": 21
+          },
+          "minPromptLevel": 4,
+          "maxPromptLevel": 5,
+          "contextCounts": {
+            "65536": 42
+          },
+          "judgeModels": [
+            "judge-qwen3:32b"
+          ],
+          "judgeTargets": [
+            {
+              "model": "judge-qwen3:32b",
+              "host": "http://gpu-a.lan:11434"
+            }
+          ],
+          "needsReviewCount": 0,
+          "lowConfidenceCount": 1,
+          "earliestTimestamp": "2026-09-18T09:12:00.000Z",
+          "latestTimestamp": "2026-09-21T17:40:00.000Z",
+          "evidenceCompatibility": "comparable",
+          "filtered": false,
+          "filterReason": null,
+          "emptyRate": 3,
+          "performance": {
+            "rows": 42,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 8.61,
+              "sampleSize": 42
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 38.4,
+              "median": 38.4,
+              "sampleSize": 42
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": 46.1,
+              "median": 46.1,
+              "sampleSize": 42
+            },
+            "latencyMs": {
+              "mean": 1840,
+              "p95": 3320,
+              "sampleSize": 42
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": 410,
+                "sampleSize": 42
+              },
+              "hostBaseline": 355
+            },
+            "judgeModel": "judge-qwen3:32b",
+            "judgeModels": {
+              "judge-qwen3:32b": 42
+            },
+            "contexts": {
+              "65536": 42
+            },
+            "scorerVersions": {
+              "2.16.0": 42
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-09-18T09:12:00.000Z",
+            "latestTimestamp": "2026-09-21T17:40:00.000Z"
+          },
+          "attempts": {
+            "attempts": 44,
+            "successes": 42,
+            "executionFailures": 1,
+            "infraErrors": 1,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 98,
+            "successRateDenominator": 43,
+            "excludedFromDenominator": {
+              "infraErrors": 1
+            }
+          },
+          "scorerVersions": {
+            "2.16.0": 42
+          },
+          "verdict": {
+            "comparable": true,
+            "reasons": [],
+            "notes": [],
+            "scorerVersion": "2.16.0",
+            "scorerFamily": "2.16",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [
+              "grader_qualification_unknown"
+            ],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "no_calibration_record"
+            ]
+          },
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": "2.16.0",
+            "causes": [
+              "no_calibration_record"
+            ],
+            "judges": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434",
+                "status": "unknown",
+                "causes": [
+                  "no_calibration_record"
+                ],
+                "record": null
+              }
+            ]
+          }
+        },
+        {
+          "model": "qwen3.8:27b",
+          "host": "http://gpu-a.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:9c1e4d7a2b6f0e3c5d8a1b4c7e0f2a5b8c1d4e7f0a3b6c9d2e5f8a1b4c7d0e3f",
+          "rankable": false,
+          "generalistScore": null,
+          "totalTests": 28,
+          "evidenceStatus": "non_comparable_cohort",
+          "evidenceCompatibility": "non_comparable",
+          "filterReason": "quality_cohort_fingerprint_mismatch",
+          "latestTimestamp": "2026-09-02T22:10:00.000Z",
+          "categoryAverages": {},
+          "categoryEvidence": {},
+          "testedCategories": 0,
+          "coverage": 0,
+          "fullScopeEligible": false,
+          "filtered": false,
+          "performance": {
+            "rows": 28,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 8.3,
+              "sampleSize": 28
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 44.9,
+              "median": 44.9,
+              "sampleSize": 28
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": 52,
+              "median": 52,
+              "sampleSize": 28
+            },
+            "latencyMs": {
+              "mean": 2210,
+              "p95": 4100,
+              "sampleSize": 28
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": 380,
+                "sampleSize": 28
+              },
+              "hostBaseline": 355
+            },
+            "judgeModel": "judge-qwen3:32b",
+            "judgeModels": {
+              "judge-qwen3:32b": 28
+            },
+            "contexts": {
+              "32768": 28
+            },
+            "scorerVersions": {
+              "2.15.2": 28
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-08-30T08:00:00.000Z",
+            "latestTimestamp": "2026-09-02T22:10:00.000Z"
+          },
+          "attempts": {
+            "attempts": 30,
+            "successes": 28,
+            "executionFailures": 1,
+            "infraErrors": 1,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 97,
+            "successRateDenominator": 29,
+            "excludedFromDenominator": {
+              "infraErrors": 1
+            }
+          },
+          "scorerVersions": {
+            "2.15.2": 28
+          },
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "quality_cohort_fingerprint_mismatch"
+            ],
+            "notes": [],
+            "scorerVersion": "2.15.2",
+            "scorerFamily": "2.15",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "judge_identity_missing"
+            ]
+          },
+          "historyReason": "other_cohort",
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": "2.15.2",
+            "causes": [
+              "judge_identity_missing"
+            ],
+            "judges": []
+          }
+        },
+        {
+          "model": "qwen3.8:27b",
+          "host": "http://gpu-a.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:5b8a2c6e0d4f7a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b",
+          "rankable": false,
+          "generalistScore": null,
+          "totalTests": 14,
+          "evidenceStatus": "non_comparable_cohort",
+          "evidenceCompatibility": "non_comparable",
+          "filterReason": "quality_cohort_fingerprint_mismatch",
+          "latestTimestamp": "2026-07-12T02:15:00.000Z",
+          "categoryAverages": {},
+          "categoryEvidence": {},
+          "testedCategories": 0,
+          "coverage": 0,
+          "fullScopeEligible": false,
+          "filtered": false,
+          "performance": {
+            "rows": 14,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 7.6,
+              "sampleSize": 14
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 31.2,
+              "median": 31.2,
+              "sampleSize": 14
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": null,
+              "median": null,
+              "sampleSize": 0
+            },
+            "latencyMs": {
+              "mean": 2210,
+              "p95": 4100,
+              "sampleSize": 14
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": null,
+                "sampleSize": 0
+              },
+              "hostBaseline": 355
+            },
+            "judgeModel": "judge-llama3.1:70b",
+            "judgeModels": {
+              "judge-llama3.1:70b": 14
+            },
+            "contexts": {
+              "32768": 14
+            },
+            "scorerVersions": {
+              "2.14.0": 14
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-07-11T10:30:00.000Z",
+            "latestTimestamp": "2026-07-12T02:15:00.000Z"
+          },
+          "attempts": {
+            "attempts": 16,
+            "successes": 14,
+            "executionFailures": 1,
+            "infraErrors": 1,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 93,
+            "successRateDenominator": 15,
+            "excludedFromDenominator": {
+              "infraErrors": 1
+            }
+          },
+          "scorerVersions": {
+            "2.14.0": 14
+          },
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "quality_cohort_fingerprint_mismatch"
+            ],
+            "notes": [],
+            "scorerVersion": "2.14.0",
+            "scorerFamily": "2.14",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "judge_identity_missing"
+            ]
+          },
+          "historyReason": "other_cohort",
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": "2.14.0",
+            "causes": [
+              "judge_identity_missing"
+            ],
+            "judges": []
+          }
+        },
+        {
+          "model": "qwen3.8:27b",
+          "host": "http://gpu-a.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:1d3f5a7b9c1e3f5a7b9c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a",
+          "rankable": false,
+          "generalistScore": null,
+          "totalTests": 21,
+          "evidenceStatus": "non_comparable_cohort",
+          "evidenceCompatibility": "non_comparable",
+          "filterReason": "quality_cohort_fingerprint_mismatch",
+          "latestTimestamp": "2026-06-03T18:45:00.000Z",
+          "categoryAverages": {},
+          "categoryEvidence": {},
+          "testedCategories": 0,
+          "coverage": 0,
+          "fullScopeEligible": false,
+          "filtered": false,
+          "performance": {
+            "rows": 21,
+            "score": null,
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 31.2,
+              "median": 31.2,
+              "sampleSize": 21
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": null,
+              "median": null,
+              "sampleSize": 0
+            },
+            "latencyMs": {
+              "mean": 2210,
+              "p95": 4100,
+              "sampleSize": 21
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": null,
+                "sampleSize": 0
+              },
+              "hostBaseline": 355
+            },
+            "judgeModel": "judge-llama3.1:70b",
+            "judgeModels": {
+              "judge-llama3.1:70b": 21
+            },
+            "contexts": {
+              "16384": 21
+            },
+            "scorerVersions": {
+              "unversioned": 21
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-06-02T12:00:00.000Z",
+            "latestTimestamp": "2026-06-03T18:45:00.000Z"
+          },
+          "attempts": {
+            "attempts": 23,
+            "successes": 21,
+            "executionFailures": 1,
+            "infraErrors": 1,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 95,
+            "successRateDenominator": 22,
+            "excludedFromDenominator": {
+              "infraErrors": 1
+            }
+          },
+          "scorerVersions": {
+            "unversioned": 21
+          },
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "quality_cohort_fingerprint_mismatch"
+            ],
+            "notes": [],
+            "scorerVersion": null,
+            "scorerFamily": null,
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "scorer_version_missing",
+              "judge_identity_missing"
+            ]
+          },
+          "historyReason": "other_cohort",
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": null,
+            "causes": [
+              "scorer_version_missing",
+              "judge_identity_missing"
+            ],
+            "judges": []
+          }
+        },
+        {
+          "model": "gemma3:12b",
+          "host": "http://gpu-a.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+          "rankable": true,
+          "harnessEvidence": {
+            "rankable": true,
+            "reason": null
+          },
+          "generalistScore": 74.9,
+          "weightedSum": 78.2,
+          "coveragePenalty": 0,
+          "difficultyPenalty": 0,
+          "difficultyCoverage": 100,
+          "fullScopeMinLevel": 4,
+          "requiredPromptLevels": [
+            4,
+            5
+          ],
+          "missingRequiredLevelsByCategory": {},
+          "minFullScopeResults": 28,
+          "minConsistencyResults": 42,
+          "fullScopeEligible": true,
+          "evidenceStatus": "full_scope",
+          "consistencyBonus": 0,
+          "evidenceConfidence": 0.82,
+          "evidenceConfidenceCoverage": 1,
+          "evidenceConfidenceTarget": 0.8,
+          "evidenceConfidencePenalty": 0,
+          "avgWithinCategoryStdDev": 9.1,
+          "coverage": 100,
+          "testedCategories": 7,
+          "totalTests": 35,
+          "confidenceMargin": 4.2,
+          "confidenceMethod": "weighted_category_prompt_means_t95",
+          "confidenceSampleSize": 14,
+          "confidenceRepeatCount": 35,
+          "confidenceWeighted": false,
+          "categoryConfidence": null,
+          "recommended_category": "coding",
+          "categoryAverages": {
+            "coding": 72,
+            "reasoning": 79,
+            "math": 70,
+            "knowledge": 81,
+            "instruction": 83,
+            "creative": 77,
+            "translation": 80
+          },
+          "categoryEvidence": {
+            "coding": "scored",
+            "reasoning": "scored",
+            "math": "scored",
+            "knowledge": "scored",
+            "instruction": "scored",
+            "creative": "scored",
+            "translation": "scored"
+          },
+          "promptLevelCounts": {
+            "4": 18,
+            "5": 17
+          },
+          "minPromptLevel": 4,
+          "maxPromptLevel": 5,
+          "contextCounts": {
+            "65536": 35
+          },
+          "judgeModels": [
+            "judge-qwen3:32b"
+          ],
+          "judgeTargets": [
+            {
+              "model": "judge-qwen3:32b",
+              "host": "http://gpu-a.lan:11434"
+            }
+          ],
+          "needsReviewCount": 0,
+          "lowConfidenceCount": 1,
+          "earliestTimestamp": "2026-09-19T07:05:00.000Z",
+          "latestTimestamp": "2026-09-21T15:20:00.000Z",
+          "evidenceCompatibility": "comparable",
+          "filtered": false,
+          "filterReason": null,
+          "emptyRate": 3,
+          "performance": {
+            "rows": 35,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 7.82,
+              "sampleSize": 35
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 61.7,
+              "median": 61.7,
+              "sampleSize": 35
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": 70.2,
+              "median": 70.2,
+              "sampleSize": 35
+            },
+            "latencyMs": {
+              "mean": 1120,
+              "p95": 2050,
+              "sampleSize": 35
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": 290,
+                "sampleSize": 35
+              },
+              "hostBaseline": 270
+            },
+            "judgeModel": "judge-qwen3:32b",
+            "judgeModels": {
+              "judge-qwen3:32b": 35
+            },
+            "contexts": {
+              "65536": 35
+            },
+            "scorerVersions": {
+              "2.16.0": 35
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-09-19T07:05:00.000Z",
+            "latestTimestamp": "2026-09-21T15:20:00.000Z"
+          },
+          "attempts": {
+            "attempts": 36,
+            "successes": 35,
+            "executionFailures": 1,
+            "infraErrors": 0,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 97,
+            "successRateDenominator": 36,
+            "excludedFromDenominator": {
+              "infraErrors": 0
+            }
+          },
+          "scorerVersions": {
+            "2.16.0": 35
+          },
+          "verdict": {
+            "comparable": true,
+            "reasons": [],
+            "notes": [],
+            "scorerVersion": "2.16.0",
+            "scorerFamily": "2.16",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [
+              "grader_qualification_unknown"
+            ],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "no_calibration_record"
+            ]
+          },
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": "2.16.0",
+            "causes": [
+              "no_calibration_record"
+            ],
+            "judges": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434",
+                "status": "unknown",
+                "causes": [
+                  "no_calibration_record"
+                ],
+                "record": null
+              }
+            ]
+          }
+        },
+        {
+          "model": "llama3.3:70b",
+          "host": "http://gpu-b.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+          "rankable": false,
+          "harnessEvidence": {
+            "rankable": true,
+            "reason": null
+          },
+          "generalistScore": 84,
+          "weightedSum": 85.5,
+          "coveragePenalty": 0,
+          "difficultyPenalty": 0,
+          "difficultyCoverage": 100,
+          "fullScopeMinLevel": 4,
+          "requiredPromptLevels": [
+            4,
+            5
+          ],
+          "missingRequiredLevelsByCategory": {},
+          "minFullScopeResults": 28,
+          "minConsistencyResults": 42,
+          "fullScopeEligible": true,
+          "evidenceStatus": "full_scope",
+          "consistencyBonus": 0,
+          "evidenceConfidence": 0.82,
+          "evidenceConfidenceCoverage": 1,
+          "evidenceConfidenceTarget": 0.8,
+          "evidenceConfidencePenalty": 0,
+          "avgWithinCategoryStdDev": 9.1,
+          "coverage": 100,
+          "testedCategories": 7,
+          "totalTests": 40,
+          "confidenceMargin": 4.2,
+          "confidenceMethod": "weighted_category_prompt_means_t95",
+          "confidenceSampleSize": 14,
+          "confidenceRepeatCount": 40,
+          "confidenceWeighted": false,
+          "categoryConfidence": null,
+          "recommended_category": "coding",
+          "categoryAverages": {
+            "coding": 86,
+            "reasoning": 88,
+            "math": 82,
+            "knowledge": 84,
+            "instruction": 87,
+            "creative": 80,
+            "translation": 86
+          },
+          "categoryEvidence": {
+            "coding": "scored",
+            "reasoning": "scored",
+            "math": "scored",
+            "knowledge": "scored",
+            "instruction": "scored",
+            "creative": "scored",
+            "translation": "scored"
+          },
+          "promptLevelCounts": {
+            "4": 20,
+            "5": 20
+          },
+          "minPromptLevel": 4,
+          "maxPromptLevel": 5,
+          "contextCounts": {
+            "65536": 40
+          },
+          "judgeModels": [
+            "judge-qwen3:32b"
+          ],
+          "judgeTargets": [
+            {
+              "model": "judge-qwen3:32b",
+              "host": "http://gpu-a.lan:11434"
+            }
+          ],
+          "needsReviewCount": 0,
+          "lowConfidenceCount": 1,
+          "earliestTimestamp": "2026-09-17T11:00:00.000Z",
+          "latestTimestamp": "2026-09-21T09:30:00.000Z",
+          "evidenceCompatibility": "comparable",
+          "filtered": false,
+          "filterReason": "mixed_scorer_versions",
+          "emptyRate": 3,
+          "performance": {
+            "rows": 40,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 8.55,
+              "sampleSize": 40
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 19.4,
+              "median": 19.4,
+              "sampleSize": 40
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": 23.8,
+              "median": 23.8,
+              "sampleSize": 40
+            },
+            "latencyMs": {
+              "mean": 4210,
+              "p95": 7900,
+              "sampleSize": 40
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": 820,
+                "sampleSize": 40
+              },
+              "hostBaseline": 610
+            },
+            "judgeModel": "judge-qwen3:32b",
+            "judgeModels": {
+              "judge-qwen3:32b": 40
+            },
+            "contexts": {
+              "65536": 40
+            },
+            "scorerVersions": {
+              "2.16.0": 22,
+              "2.15.2": 18
+            },
+            "mixedScorerVersions": true,
+            "earliestTimestamp": "2026-09-17T11:00:00.000Z",
+            "latestTimestamp": "2026-09-21T09:30:00.000Z"
+          },
+          "attempts": {
+            "attempts": 41,
+            "successes": 40,
+            "executionFailures": 1,
+            "infraErrors": 0,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 98,
+            "successRateDenominator": 41,
+            "excludedFromDenominator": {
+              "infraErrors": 0
+            }
+          },
+          "scorerVersions": {
+            "2.16.0": 22,
+            "2.15.2": 18
+          },
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "mixed_scorer_versions"
+            ],
+            "notes": [],
+            "scorerVersion": "2.16.0",
+            "scorerFamily": "2.16",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "mixed_scorer_versions",
+              "scorer_version_missing"
+            ]
+          },
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": null,
+            "causes": [
+              "mixed_scorer_versions",
+              "scorer_version_missing"
+            ],
+            "judges": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434",
+                "status": "unknown",
+                "causes": [
+                  "scorer_version_missing"
+                ],
+                "record": null
+              }
+            ]
+          }
+        },
+        {
+          "model": "llama3.3:70b",
+          "host": "http://gpu-b.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9f",
+          "rankable": false,
+          "generalistScore": null,
+          "totalTests": 12,
+          "evidenceStatus": "non_comparable_cohort",
+          "evidenceCompatibility": "non_comparable",
+          "filterReason": "quality_cohort_fingerprint_mismatch",
+          "latestTimestamp": "2026-07-20T21:30:00.000Z",
+          "categoryAverages": {},
+          "categoryEvidence": {},
+          "testedCategories": 0,
+          "coverage": 0,
+          "fullScopeEligible": false,
+          "filtered": false,
+          "performance": {
+            "rows": 12,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 8.1,
+              "sampleSize": 12
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 18,
+              "median": 18,
+              "sampleSize": 12
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": null,
+              "median": null,
+              "sampleSize": 0
+            },
+            "latencyMs": {
+              "mean": 2210,
+              "p95": 4100,
+              "sampleSize": 12
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": null,
+                "sampleSize": 0
+              },
+              "hostBaseline": 355
+            },
+            "judgeModel": "judge-llama3.1:70b",
+            "judgeModels": {
+              "judge-llama3.1:70b": 12
+            },
+            "contexts": {
+              "32768": 12
+            },
+            "scorerVersions": {
+              "2.14.0": 12
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-07-20T09:00:00.000Z",
+            "latestTimestamp": "2026-07-20T21:30:00.000Z"
+          },
+          "attempts": {
+            "attempts": 14,
+            "successes": 12,
+            "executionFailures": 1,
+            "infraErrors": 1,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 92,
+            "successRateDenominator": 13,
+            "excludedFromDenominator": {
+              "infraErrors": 1
+            }
+          },
+          "scorerVersions": {
+            "2.14.0": 12
+          },
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "quality_cohort_fingerprint_mismatch"
+            ],
+            "notes": [],
+            "scorerVersion": "2.14.0",
+            "scorerFamily": "2.14",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "judge_identity_missing"
+            ]
+          },
+          "historyReason": "other_cohort",
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": "2.14.0",
+            "causes": [
+              "judge_identity_missing"
+            ],
+            "judges": []
+          }
+        },
+        {
+          "model": "mistral-small:24b",
+          "host": "http://gpu-a.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+          "rankable": true,
+          "harnessEvidence": {
+            "rankable": true,
+            "reason": null
+          },
+          "generalistScore": 71.3,
+          "weightedSum": 71.3,
+          "coveragePenalty": 0,
+          "difficultyPenalty": 0,
+          "difficultyCoverage": 100,
+          "fullScopeMinLevel": 4,
+          "requiredPromptLevels": [
+            4,
+            5
+          ],
+          "missingRequiredLevelsByCategory": {},
+          "minFullScopeResults": 28,
+          "minConsistencyResults": 42,
+          "fullScopeEligible": true,
+          "evidenceStatus": "full_scope",
+          "consistencyBonus": 0,
+          "evidenceConfidence": 0.82,
+          "evidenceConfidenceCoverage": 1,
+          "evidenceConfidenceTarget": 0.8,
+          "evidenceConfidencePenalty": 0,
+          "avgWithinCategoryStdDev": 9.1,
+          "coverage": 100,
+          "testedCategories": 7,
+          "totalTests": 30,
+          "confidenceMargin": 4.2,
+          "confidenceMethod": "weighted_category_prompt_means_t95",
+          "confidenceSampleSize": 14,
+          "confidenceRepeatCount": 30,
+          "confidenceWeighted": false,
+          "categoryConfidence": null,
+          "recommended_category": "coding",
+          "categoryAverages": {
+            "coding": 70,
+            "reasoning": 73,
+            "math": 68,
+            "knowledge": 72,
+            "instruction": 75,
+            "creative": 69,
+            "translation": 72
+          },
+          "categoryEvidence": {
+            "coding": "scored",
+            "reasoning": "scored",
+            "math": "scored",
+            "knowledge": "scored",
+            "instruction": "scored",
+            "creative": "scored",
+            "translation": "scored"
+          },
+          "promptLevelCounts": {
+            "4": 15,
+            "5": 15
+          },
+          "minPromptLevel": 4,
+          "maxPromptLevel": 5,
+          "contextCounts": {
+            "65536": 30
+          },
+          "judgeModels": [
+            "judge-qwen3:32b"
+          ],
+          "judgeTargets": [
+            {
+              "model": "judge-qwen3:32b",
+              "host": "http://gpu-a.lan:11434"
+            }
+          ],
+          "needsReviewCount": 0,
+          "lowConfidenceCount": 1,
+          "earliestTimestamp": "2026-09-18T13:00:00.000Z",
+          "latestTimestamp": "2026-09-20T19:10:00.000Z",
+          "evidenceCompatibility": "comparable",
+          "filtered": false,
+          "filterReason": null,
+          "emptyRate": 3,
+          "performance": {
+            "rows": 30,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 7.13,
+              "sampleSize": 30
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 47.3,
+              "median": 47.3,
+              "sampleSize": 30
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": null,
+              "median": null,
+              "sampleSize": 0
+            },
+            "latencyMs": {
+              "mean": 1510,
+              "p95": 2700,
+              "sampleSize": 30
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": null,
+                "sampleSize": 0
+              },
+              "hostBaseline": 330
+            },
+            "judgeModel": "judge-qwen3:32b",
+            "judgeModels": {
+              "judge-qwen3:32b": 30
+            },
+            "contexts": {
+              "65536": 30
+            },
+            "scorerVersions": {
+              "unversioned": 30
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-09-18T13:00:00.000Z",
+            "latestTimestamp": "2026-09-20T19:10:00.000Z"
+          },
+          "attempts": {
+            "attempts": 31,
+            "successes": 30,
+            "executionFailures": 1,
+            "infraErrors": 0,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 97,
+            "successRateDenominator": 31,
+            "excludedFromDenominator": {
+              "infraErrors": 0
+            }
+          },
+          "scorerVersions": {
+            "unversioned": 30
+          },
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "unversioned_scorer"
+            ],
+            "notes": [],
+            "scorerVersion": null,
+            "scorerFamily": null,
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "scorer_version_missing"
+            ]
+          },
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": null,
+            "causes": [
+              "scorer_version_missing"
+            ],
+            "judges": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434",
+                "status": "unknown",
+                "causes": [
+                  "scorer_version_missing"
+                ],
+                "record": null
+              }
+            ]
+          }
+        },
+        {
+          "model": "phi4:14b",
+          "host": "http://gpu-a.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+          "rankable": true,
+          "harnessEvidence": {
+            "rankable": true,
+            "reason": null
+          },
+          "generalistScore": 61.7,
+          "weightedSum": 79,
+          "coveragePenalty": 12.5,
+          "difficultyPenalty": 4.8,
+          "difficultyCoverage": 60,
+          "fullScopeMinLevel": 4,
+          "requiredPromptLevels": [
+            4,
+            5
+          ],
+          "missingRequiredLevelsByCategory": {},
+          "minFullScopeResults": 28,
+          "minConsistencyResults": 42,
+          "fullScopeEligible": false,
+          "evidenceStatus": "partial_scope",
+          "consistencyBonus": 0,
+          "evidenceConfidence": 0.82,
+          "evidenceConfidenceCoverage": 1,
+          "evidenceConfidenceTarget": 0.8,
+          "evidenceConfidencePenalty": 0,
+          "avgWithinCategoryStdDev": 9.1,
+          "coverage": 71,
+          "testedCategories": 5,
+          "totalTests": 9,
+          "confidenceMargin": null,
+          "confidenceMethod": "weighted_category_prompt_means_t95",
+          "confidenceSampleSize": 14,
+          "confidenceRepeatCount": 9,
+          "confidenceWeighted": false,
+          "categoryConfidence": null,
+          "recommended_category": "coding",
+          "categoryAverages": {
+            "coding": 80,
+            "reasoning": 77,
+            "math": 81,
+            "knowledge": null,
+            "instruction": 78,
+            "creative": null,
+            "translation": 79
+          },
+          "categoryEvidence": {
+            "coding": "scored",
+            "reasoning": "scored",
+            "math": "scored",
+            "knowledge": "untested",
+            "instruction": "scored",
+            "creative": "untested",
+            "translation": "scored"
+          },
+          "promptLevelCounts": {
+            "4": 9
+          },
+          "minPromptLevel": 4,
+          "maxPromptLevel": 5,
+          "contextCounts": {
+            "32768": 9
+          },
+          "judgeModels": [
+            "judge-qwen3:32b"
+          ],
+          "judgeTargets": [
+            {
+              "model": "judge-qwen3:32b",
+              "host": "http://gpu-a.lan:11434"
+            }
+          ],
+          "needsReviewCount": 0,
+          "lowConfidenceCount": 1,
+          "earliestTimestamp": "2026-09-20T06:00:00.000Z",
+          "latestTimestamp": "2026-09-20T11:45:00.000Z",
+          "evidenceCompatibility": "comparable",
+          "filtered": false,
+          "filterReason": null,
+          "emptyRate": 3,
+          "performance": {
+            "rows": 9,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 7.9,
+              "sampleSize": 9
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 55,
+              "median": 55,
+              "sampleSize": 9
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": 63.2,
+              "median": 63.2,
+              "sampleSize": 9
+            },
+            "latencyMs": {
+              "mean": 980,
+              "p95": 1700,
+              "sampleSize": 9
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": 240,
+                "sampleSize": 9
+              },
+              "hostBaseline": 230
+            },
+            "judgeModel": "judge-qwen3:32b",
+            "judgeModels": {
+              "judge-qwen3:32b": 9
+            },
+            "contexts": {
+              "32768": 9
+            },
+            "scorerVersions": {
+              "2.16.0": 9
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-09-20T06:00:00.000Z",
+            "latestTimestamp": "2026-09-20T11:45:00.000Z"
+          },
+          "attempts": {
+            "attempts": 3,
+            "successes": 0,
+            "executionFailures": 0,
+            "infraErrors": 3,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": null,
+            "successRateDenominator": 0,
+            "excludedFromDenominator": {
+              "infraErrors": 3
+            }
+          },
+          "scorerVersions": {
+            "2.16.0": 9
+          },
+          "verdict": {
+            "comparable": true,
+            "reasons": [],
+            "notes": [
+              "partial_scope"
+            ],
+            "scorerVersion": "2.16.0",
+            "scorerFamily": "2.16",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [
+              "grader_qualification_unknown"
+            ],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "no_calibration_record"
+            ]
+          },
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": "2.16.0",
+            "causes": [
+              "no_calibration_record"
+            ],
+            "judges": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434",
+                "status": "unknown",
+                "causes": [
+                  "no_calibration_record"
+                ],
+                "record": null
+              }
+            ]
+          }
+        },
+        {
+          "model": "deepseek-r1:32b",
+          "host": "http://gpu-b.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:2a4c6e8f0b2d4f6a8c0e2f4a6c8e0f2a4c6e8f0a2c4e6f8a0c2e4f6a8c0e2f4a",
+          "rankable": false,
+          "generalistScore": null,
+          "totalTests": 26,
+          "evidenceStatus": "non_comparable_cohort",
+          "evidenceCompatibility": "non_comparable",
+          "filterReason": "quality_cohort_fingerprint_mismatch",
+          "latestTimestamp": "2026-09-04T20:00:00.000Z",
+          "categoryAverages": {},
+          "categoryEvidence": {},
+          "testedCategories": 0,
+          "coverage": 0,
+          "fullScopeEligible": false,
+          "filtered": false,
+          "performance": {
+            "rows": 26,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 8.7,
+              "sampleSize": 26
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 24.6,
+              "median": 24.6,
+              "sampleSize": 26
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": 29.9,
+              "median": 29.9,
+              "sampleSize": 26
+            },
+            "latencyMs": {
+              "mean": 2210,
+              "p95": 4100,
+              "sampleSize": 26
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": 640,
+                "sampleSize": 26
+              },
+              "hostBaseline": 355
+            },
+            "judgeModel": "judge-llama3.1:70b",
+            "judgeModels": {
+              "judge-llama3.1:70b": 26
+            },
+            "contexts": {
+              "32768": 26
+            },
+            "scorerVersions": {
+              "2.15.2": 26
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-09-01T08:00:00.000Z",
+            "latestTimestamp": "2026-09-04T20:00:00.000Z"
+          },
+          "attempts": {
+            "attempts": 28,
+            "successes": 26,
+            "executionFailures": 1,
+            "infraErrors": 1,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 96,
+            "successRateDenominator": 27,
+            "excludedFromDenominator": {
+              "infraErrors": 1
+            }
+          },
+          "scorerVersions": {
+            "2.15.2": 26
+          },
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "quality_cohort_fingerprint_mismatch"
+            ],
+            "notes": [],
+            "scorerVersion": "2.15.2",
+            "scorerFamily": "2.15",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "judge_identity_missing"
+            ]
+          },
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": "2.15.2",
+            "causes": [
+              "judge_identity_missing"
+            ],
+            "judges": []
+          }
+        },
+        {
+          "model": "deepseek-r1:32b",
+          "host": "http://gpu-b.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:8c0e2f4a6c8e0f2a4c6e8f0a2c4e6f8a0c2e4f6a8c0e2f4a6c8e0f2a4c6e8f0a",
+          "rankable": false,
+          "generalistScore": null,
+          "totalTests": 26,
+          "evidenceStatus": "non_comparable_cohort",
+          "evidenceCompatibility": "non_comparable",
+          "filterReason": "quality_cohort_fingerprint_mismatch",
+          "latestTimestamp": "2026-07-27T20:00:00.000Z",
+          "categoryAverages": {},
+          "categoryEvidence": {},
+          "testedCategories": 0,
+          "coverage": 0,
+          "fullScopeEligible": false,
+          "filtered": false,
+          "performance": {
+            "rows": 26,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 8.4,
+              "sampleSize": 26
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 24.1,
+              "median": 24.1,
+              "sampleSize": 26
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": null,
+              "median": null,
+              "sampleSize": 0
+            },
+            "latencyMs": {
+              "mean": 2210,
+              "p95": 4100,
+              "sampleSize": 26
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": null,
+                "sampleSize": 0
+              },
+              "hostBaseline": 355
+            },
+            "judgeModel": "judge-llama3.1:70b",
+            "judgeModels": {
+              "judge-llama3.1:70b": 26
+            },
+            "contexts": {
+              "32768": 26
+            },
+            "scorerVersions": {
+              "2.14.0": 26
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-07-25T08:00:00.000Z",
+            "latestTimestamp": "2026-07-27T20:00:00.000Z"
+          },
+          "attempts": {
+            "attempts": 28,
+            "successes": 26,
+            "executionFailures": 1,
+            "infraErrors": 1,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 96,
+            "successRateDenominator": 27,
+            "excludedFromDenominator": {
+              "infraErrors": 1
+            }
+          },
+          "scorerVersions": {
+            "2.14.0": 26
+          },
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "quality_cohort_fingerprint_mismatch"
+            ],
+            "notes": [],
+            "scorerVersion": "2.14.0",
+            "scorerFamily": "2.14",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "judge_identity_missing"
+            ]
+          },
+          "historyReason": "other_cohort",
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": "2.14.0",
+            "causes": [
+              "judge_identity_missing"
+            ],
+            "judges": []
+          }
+        },
+        {
+          "model": "broken-model:7b",
+          "host": "http://gpu-a.lan:11434",
+          "host_available": true,
+          "executionTarget": null,
+          "provider": "ollama",
+          "tier": "local",
+          "harness": null,
+          "pricing": null,
+          "providerCostNanodollars": 0,
+          "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+          "rankable": true,
+          "harnessEvidence": {
+            "rankable": true,
+            "reason": null
+          },
+          "generalistScore": 0,
+          "weightedSum": 0,
+          "coveragePenalty": 0,
+          "difficultyPenalty": 0,
+          "difficultyCoverage": 100,
+          "fullScopeMinLevel": 4,
+          "requiredPromptLevels": [
+            4,
+            5
+          ],
+          "missingRequiredLevelsByCategory": {},
+          "minFullScopeResults": 28,
+          "minConsistencyResults": 42,
+          "fullScopeEligible": false,
+          "evidenceStatus": "partial_scope",
+          "consistencyBonus": 0,
+          "evidenceConfidence": 0.82,
+          "evidenceConfidenceCoverage": 1,
+          "evidenceConfidenceTarget": 0.8,
+          "evidenceConfidencePenalty": 0,
+          "avgWithinCategoryStdDev": 9.1,
+          "coverage": 0,
+          "testedCategories": 0,
+          "totalTests": 16,
+          "confidenceMargin": 4.2,
+          "confidenceMethod": "weighted_category_prompt_means_t95",
+          "confidenceSampleSize": 14,
+          "confidenceRepeatCount": 16,
+          "confidenceWeighted": false,
+          "categoryConfidence": null,
+          "recommended_category": "coding",
+          "categoryAverages": {
+            "coding": null,
+            "reasoning": null,
+            "math": null,
+            "knowledge": null,
+            "instruction": null,
+            "creative": null,
+            "translation": null
+          },
+          "categoryEvidence": {
+            "coding": "untested",
+            "reasoning": "untested",
+            "math": "untested",
+            "knowledge": "untested",
+            "instruction": "untested",
+            "creative": "untested",
+            "translation": "untested"
+          },
+          "promptLevelCounts": {
+            "4": 16
+          },
+          "minPromptLevel": 4,
+          "maxPromptLevel": 5,
+          "contextCounts": {
+            "32768": 16
+          },
+          "judgeModels": [
+            "judge-qwen3:32b"
+          ],
+          "judgeTargets": [
+            {
+              "model": "judge-qwen3:32b",
+              "host": "http://gpu-a.lan:11434"
+            }
+          ],
+          "needsReviewCount": 0,
+          "lowConfidenceCount": 1,
+          "earliestTimestamp": "2026-09-19T00:00:00.000Z",
+          "latestTimestamp": "2026-09-19T03:00:00.000Z",
+          "evidenceCompatibility": "comparable",
+          "filtered": true,
+          "filterReason": "excessive_empty_responses",
+          "emptyRate": 62,
+          "performance": {
+            "rows": 16,
+            "score": {
+              "field": "quality_score",
+              "scale": 10,
+              "mean": 0,
+              "sampleSize": 16
+            },
+            "tokensPerSecTotal": {
+              "definition": "output tokens over the whole request time, including prompt evaluation",
+              "mean": 90.2,
+              "median": 90.2,
+              "sampleSize": 16
+            },
+            "tokensPerSecGeneration": {
+              "definition": "output tokens over the time after prompt evaluation",
+              "mean": 95,
+              "median": 95,
+              "sampleSize": 16
+            },
+            "latencyMs": {
+              "mean": 300,
+              "p95": 500,
+              "sampleSize": 16
+            },
+            "ttftMs": {
+              "measured": {
+                "mean": 120,
+                "sampleSize": 16
+              },
+              "hostBaseline": 140
+            },
+            "judgeModel": "judge-qwen3:32b",
+            "judgeModels": {
+              "judge-qwen3:32b": 16
+            },
+            "contexts": {
+              "32768": 16
+            },
+            "scorerVersions": {
+              "2.16.0": 16
+            },
+            "mixedScorerVersions": false,
+            "earliestTimestamp": "2026-09-19T00:00:00.000Z",
+            "latestTimestamp": "2026-09-19T03:00:00.000Z"
+          },
+          "attempts": {
+            "attempts": 20,
+            "successes": 16,
+            "executionFailures": 4,
+            "infraErrors": 0,
+            "needsReview": 0,
+            "excluded": 0,
+            "unscored": 0,
+            "successRate": 80,
+            "successRateDenominator": 20,
+            "excludedFromDenominator": {
+              "infraErrors": 0
+            }
+          },
+          "scorerVersions": {
+            "2.16.0": 16
+          },
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "excessive_empty_responses"
+            ],
+            "notes": [],
+            "scorerVersion": "2.16.0",
+            "scorerFamily": "2.16",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "no_calibration_record"
+            ]
+          },
+          "graderQualification": {
+            "schema": "agentx.benchmark-grader-qualification/v1",
+            "status": "unknown",
+            "authoritative": false,
+            "scorer_version": "2.16.0",
+            "causes": [
+              "no_calibration_record"
+            ],
+            "judges": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434",
+                "status": "unknown",
+                "causes": [
+                  "no_calibration_record"
+                ],
+                "record": null
+              }
+            ]
+          }
+        }
+      ],
+      "groups": [
+        {
+          "key": "qwen3.8:27b@@http://gpu-a.lan:11434",
+          "model": "qwen3.8:27b",
+          "host": "http://gpu-a.lan:11434",
+          "rank": 1,
+          "comparable": true,
+          "verdict": {
+            "comparable": true,
+            "reasons": [],
+            "notes": [],
+            "scorerVersion": "2.16.0",
+            "scorerFamily": "2.16",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [
+              "grader_qualification_unknown"
+            ],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "no_calibration_record"
+            ]
+          },
+          "headline": {
+            "model": "qwen3.8:27b",
+            "host": "http://gpu-a.lan:11434",
+            "host_available": true,
+            "executionTarget": null,
+            "provider": "ollama",
+            "tier": "local",
+            "harness": null,
+            "pricing": null,
+            "providerCostNanodollars": 0,
+            "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+            "rankable": true,
+            "harnessEvidence": {
+              "rankable": true,
+              "reason": null
+            },
+            "generalistScore": 82.4,
+            "weightedSum": 86.1,
+            "coveragePenalty": 0,
+            "difficultyPenalty": 0,
+            "difficultyCoverage": 100,
+            "fullScopeMinLevel": 4,
+            "requiredPromptLevels": [
+              4,
+              5
+            ],
+            "missingRequiredLevelsByCategory": {},
+            "minFullScopeResults": 28,
+            "minConsistencyResults": 42,
+            "fullScopeEligible": true,
+            "evidenceStatus": "full_scope",
+            "consistencyBonus": 0,
+            "evidenceConfidence": 0.82,
+            "evidenceConfidenceCoverage": 1,
+            "evidenceConfidenceTarget": 0.8,
+            "evidenceConfidencePenalty": 0,
+            "avgWithinCategoryStdDev": 9.1,
+            "coverage": 100,
+            "testedCategories": 7,
+            "totalTests": 42,
+            "confidenceMargin": 4.2,
+            "confidenceMethod": "weighted_category_prompt_means_t95",
+            "confidenceSampleSize": 14,
+            "confidenceRepeatCount": 42,
+            "confidenceWeighted": false,
+            "categoryConfidence": null,
+            "recommended_category": "coding",
+            "categoryAverages": {
+              "coding": 88,
+              "reasoning": 84,
+              "math": 81,
+              "knowledge": 79,
+              "instruction": 90,
+              "creative": 76,
+              "translation": 85
+            },
+            "categoryEvidence": {
+              "coding": "scored",
+              "reasoning": "scored",
+              "math": "scored",
+              "knowledge": "scored",
+              "instruction": "scored",
+              "creative": "scored",
+              "translation": "scored"
+            },
+            "promptLevelCounts": {
+              "4": 21,
+              "5": 21
+            },
+            "minPromptLevel": 4,
+            "maxPromptLevel": 5,
+            "contextCounts": {
+              "65536": 42
+            },
+            "judgeModels": [
+              "judge-qwen3:32b"
+            ],
+            "judgeTargets": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434"
+              }
+            ],
+            "needsReviewCount": 0,
+            "lowConfidenceCount": 1,
+            "earliestTimestamp": "2026-09-18T09:12:00.000Z",
+            "latestTimestamp": "2026-09-21T17:40:00.000Z",
+            "evidenceCompatibility": "comparable",
+            "filtered": false,
+            "filterReason": null,
+            "emptyRate": 3,
+            "performance": {
+              "rows": 42,
+              "score": {
+                "field": "quality_score",
+                "scale": 10,
+                "mean": 8.61,
+                "sampleSize": 42
+              },
+              "tokensPerSecTotal": {
+                "definition": "output tokens over the whole request time, including prompt evaluation",
+                "mean": 38.4,
+                "median": 38.4,
+                "sampleSize": 42
+              },
+              "tokensPerSecGeneration": {
+                "definition": "output tokens over the time after prompt evaluation",
+                "mean": 46.1,
+                "median": 46.1,
+                "sampleSize": 42
+              },
+              "latencyMs": {
+                "mean": 1840,
+                "p95": 3320,
+                "sampleSize": 42
+              },
+              "ttftMs": {
+                "measured": {
+                  "mean": 410,
+                  "sampleSize": 42
+                },
+                "hostBaseline": 355
+              },
+              "judgeModel": "judge-qwen3:32b",
+              "judgeModels": {
+                "judge-qwen3:32b": 42
+              },
+              "contexts": {
+                "65536": 42
+              },
+              "scorerVersions": {
+                "2.16.0": 42
+              },
+              "mixedScorerVersions": false,
+              "earliestTimestamp": "2026-09-18T09:12:00.000Z",
+              "latestTimestamp": "2026-09-21T17:40:00.000Z"
+            },
+            "attempts": {
+              "attempts": 44,
+              "successes": 42,
+              "executionFailures": 1,
+              "infraErrors": 1,
+              "needsReview": 0,
+              "excluded": 0,
+              "unscored": 0,
+              "successRate": 98,
+              "successRateDenominator": 43,
+              "excludedFromDenominator": {
+                "infraErrors": 1
+              }
+            },
+            "scorerVersions": {
+              "2.16.0": 42
+            },
+            "verdict": {
+              "comparable": true,
+              "reasons": [],
+              "notes": [],
+              "scorerVersion": "2.16.0",
+              "scorerFamily": "2.16",
+              "comparisonScorerFamily": "2.16",
+              "authoritative": false,
+              "authorityReasons": [
+                "grader_qualification_unknown"
+              ],
+              "graderStatus": "unknown",
+              "graderCauses": [
+                "no_calibration_record"
+              ]
+            },
+            "graderQualification": {
+              "schema": "agentx.benchmark-grader-qualification/v1",
+              "status": "unknown",
+              "authoritative": false,
+              "scorer_version": "2.16.0",
+              "causes": [
+                "no_calibration_record"
+              ],
+              "judges": [
+                {
+                  "model": "judge-qwen3:32b",
+                  "host": "http://gpu-a.lan:11434",
+                  "status": "unknown",
+                  "causes": [
+                    "no_calibration_record"
+                  ],
+                  "record": null
+                }
+              ]
+            }
+          },
+          "headlineReason": "comparable_cohort",
+          "history": [
+            {
+              "model": "qwen3.8:27b",
+              "host": "http://gpu-a.lan:11434",
+              "host_available": true,
+              "executionTarget": null,
+              "provider": "ollama",
+              "tier": "local",
+              "harness": null,
+              "pricing": null,
+              "providerCostNanodollars": 0,
+              "qualityCohortFingerprint": "sha256:9c1e4d7a2b6f0e3c5d8a1b4c7e0f2a5b8c1d4e7f0a3b6c9d2e5f8a1b4c7d0e3f",
+              "rankable": false,
+              "generalistScore": null,
+              "totalTests": 28,
+              "evidenceStatus": "non_comparable_cohort",
+              "evidenceCompatibility": "non_comparable",
+              "filterReason": "quality_cohort_fingerprint_mismatch",
+              "latestTimestamp": "2026-09-02T22:10:00.000Z",
+              "categoryAverages": {},
+              "categoryEvidence": {},
+              "testedCategories": 0,
+              "coverage": 0,
+              "fullScopeEligible": false,
+              "filtered": false,
+              "performance": {
+                "rows": 28,
+                "score": {
+                  "field": "quality_score",
+                  "scale": 10,
+                  "mean": 8.3,
+                  "sampleSize": 28
+                },
+                "tokensPerSecTotal": {
+                  "definition": "output tokens over the whole request time, including prompt evaluation",
+                  "mean": 44.9,
+                  "median": 44.9,
+                  "sampleSize": 28
+                },
+                "tokensPerSecGeneration": {
+                  "definition": "output tokens over the time after prompt evaluation",
+                  "mean": 52,
+                  "median": 52,
+                  "sampleSize": 28
+                },
+                "latencyMs": {
+                  "mean": 2210,
+                  "p95": 4100,
+                  "sampleSize": 28
+                },
+                "ttftMs": {
+                  "measured": {
+                    "mean": 380,
+                    "sampleSize": 28
+                  },
+                  "hostBaseline": 355
+                },
+                "judgeModel": "judge-qwen3:32b",
+                "judgeModels": {
+                  "judge-qwen3:32b": 28
+                },
+                "contexts": {
+                  "32768": 28
+                },
+                "scorerVersions": {
+                  "2.15.2": 28
+                },
+                "mixedScorerVersions": false,
+                "earliestTimestamp": "2026-08-30T08:00:00.000Z",
+                "latestTimestamp": "2026-09-02T22:10:00.000Z"
+              },
+              "attempts": {
+                "attempts": 30,
+                "successes": 28,
+                "executionFailures": 1,
+                "infraErrors": 1,
+                "needsReview": 0,
+                "excluded": 0,
+                "unscored": 0,
+                "successRate": 97,
+                "successRateDenominator": 29,
+                "excludedFromDenominator": {
+                  "infraErrors": 1
+                }
+              },
+              "scorerVersions": {
+                "2.15.2": 28
+              },
+              "verdict": {
+                "comparable": false,
+                "reasons": [
+                  "quality_cohort_fingerprint_mismatch"
+                ],
+                "notes": [],
+                "scorerVersion": "2.15.2",
+                "scorerFamily": "2.15",
+                "comparisonScorerFamily": "2.16",
+                "authoritative": false,
+                "authorityReasons": [],
+                "graderStatus": "unknown",
+                "graderCauses": [
+                  "judge_identity_missing"
+                ]
+              },
+              "historyReason": "other_cohort",
+              "graderQualification": {
+                "schema": "agentx.benchmark-grader-qualification/v1",
+                "status": "unknown",
+                "authoritative": false,
+                "scorer_version": "2.15.2",
+                "causes": [
+                  "judge_identity_missing"
+                ],
+                "judges": []
+              }
+            },
+            {
+              "model": "qwen3.8:27b",
+              "host": "http://gpu-a.lan:11434",
+              "host_available": true,
+              "executionTarget": null,
+              "provider": "ollama",
+              "tier": "local",
+              "harness": null,
+              "pricing": null,
+              "providerCostNanodollars": 0,
+              "qualityCohortFingerprint": "sha256:5b8a2c6e0d4f7a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b",
+              "rankable": false,
+              "generalistScore": null,
+              "totalTests": 14,
+              "evidenceStatus": "non_comparable_cohort",
+              "evidenceCompatibility": "non_comparable",
+              "filterReason": "quality_cohort_fingerprint_mismatch",
+              "latestTimestamp": "2026-07-12T02:15:00.000Z",
+              "categoryAverages": {},
+              "categoryEvidence": {},
+              "testedCategories": 0,
+              "coverage": 0,
+              "fullScopeEligible": false,
+              "filtered": false,
+              "performance": {
+                "rows": 14,
+                "score": {
+                  "field": "quality_score",
+                  "scale": 10,
+                  "mean": 7.6,
+                  "sampleSize": 14
+                },
+                "tokensPerSecTotal": {
+                  "definition": "output tokens over the whole request time, including prompt evaluation",
+                  "mean": 31.2,
+                  "median": 31.2,
+                  "sampleSize": 14
+                },
+                "tokensPerSecGeneration": {
+                  "definition": "output tokens over the time after prompt evaluation",
+                  "mean": null,
+                  "median": null,
+                  "sampleSize": 0
+                },
+                "latencyMs": {
+                  "mean": 2210,
+                  "p95": 4100,
+                  "sampleSize": 14
+                },
+                "ttftMs": {
+                  "measured": {
+                    "mean": null,
+                    "sampleSize": 0
+                  },
+                  "hostBaseline": 355
+                },
+                "judgeModel": "judge-llama3.1:70b",
+                "judgeModels": {
+                  "judge-llama3.1:70b": 14
+                },
+                "contexts": {
+                  "32768": 14
+                },
+                "scorerVersions": {
+                  "2.14.0": 14
+                },
+                "mixedScorerVersions": false,
+                "earliestTimestamp": "2026-07-11T10:30:00.000Z",
+                "latestTimestamp": "2026-07-12T02:15:00.000Z"
+              },
+              "attempts": {
+                "attempts": 16,
+                "successes": 14,
+                "executionFailures": 1,
+                "infraErrors": 1,
+                "needsReview": 0,
+                "excluded": 0,
+                "unscored": 0,
+                "successRate": 93,
+                "successRateDenominator": 15,
+                "excludedFromDenominator": {
+                  "infraErrors": 1
+                }
+              },
+              "scorerVersions": {
+                "2.14.0": 14
+              },
+              "verdict": {
+                "comparable": false,
+                "reasons": [
+                  "quality_cohort_fingerprint_mismatch"
+                ],
+                "notes": [],
+                "scorerVersion": "2.14.0",
+                "scorerFamily": "2.14",
+                "comparisonScorerFamily": "2.16",
+                "authoritative": false,
+                "authorityReasons": [],
+                "graderStatus": "unknown",
+                "graderCauses": [
+                  "judge_identity_missing"
+                ]
+              },
+              "historyReason": "other_cohort",
+              "graderQualification": {
+                "schema": "agentx.benchmark-grader-qualification/v1",
+                "status": "unknown",
+                "authoritative": false,
+                "scorer_version": "2.14.0",
+                "causes": [
+                  "judge_identity_missing"
+                ],
+                "judges": []
+              }
+            },
+            {
+              "model": "qwen3.8:27b",
+              "host": "http://gpu-a.lan:11434",
+              "host_available": true,
+              "executionTarget": null,
+              "provider": "ollama",
+              "tier": "local",
+              "harness": null,
+              "pricing": null,
+              "providerCostNanodollars": 0,
+              "qualityCohortFingerprint": "sha256:1d3f5a7b9c1e3f5a7b9c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a",
+              "rankable": false,
+              "generalistScore": null,
+              "totalTests": 21,
+              "evidenceStatus": "non_comparable_cohort",
+              "evidenceCompatibility": "non_comparable",
+              "filterReason": "quality_cohort_fingerprint_mismatch",
+              "latestTimestamp": "2026-06-03T18:45:00.000Z",
+              "categoryAverages": {},
+              "categoryEvidence": {},
+              "testedCategories": 0,
+              "coverage": 0,
+              "fullScopeEligible": false,
+              "filtered": false,
+              "performance": {
+                "rows": 21,
+                "score": null,
+                "tokensPerSecTotal": {
+                  "definition": "output tokens over the whole request time, including prompt evaluation",
+                  "mean": 31.2,
+                  "median": 31.2,
+                  "sampleSize": 21
+                },
+                "tokensPerSecGeneration": {
+                  "definition": "output tokens over the time after prompt evaluation",
+                  "mean": null,
+                  "median": null,
+                  "sampleSize": 0
+                },
+                "latencyMs": {
+                  "mean": 2210,
+                  "p95": 4100,
+                  "sampleSize": 21
+                },
+                "ttftMs": {
+                  "measured": {
+                    "mean": null,
+                    "sampleSize": 0
+                  },
+                  "hostBaseline": 355
+                },
+                "judgeModel": "judge-llama3.1:70b",
+                "judgeModels": {
+                  "judge-llama3.1:70b": 21
+                },
+                "contexts": {
+                  "16384": 21
+                },
+                "scorerVersions": {
+                  "unversioned": 21
+                },
+                "mixedScorerVersions": false,
+                "earliestTimestamp": "2026-06-02T12:00:00.000Z",
+                "latestTimestamp": "2026-06-03T18:45:00.000Z"
+              },
+              "attempts": {
+                "attempts": 23,
+                "successes": 21,
+                "executionFailures": 1,
+                "infraErrors": 1,
+                "needsReview": 0,
+                "excluded": 0,
+                "unscored": 0,
+                "successRate": 95,
+                "successRateDenominator": 22,
+                "excludedFromDenominator": {
+                  "infraErrors": 1
+                }
+              },
+              "scorerVersions": {
+                "unversioned": 21
+              },
+              "verdict": {
+                "comparable": false,
+                "reasons": [
+                  "quality_cohort_fingerprint_mismatch"
+                ],
+                "notes": [],
+                "scorerVersion": null,
+                "scorerFamily": null,
+                "comparisonScorerFamily": "2.16",
+                "authoritative": false,
+                "authorityReasons": [],
+                "graderStatus": "unknown",
+                "graderCauses": [
+                  "scorer_version_missing",
+                  "judge_identity_missing"
+                ]
+              },
+              "historyReason": "other_cohort",
+              "graderQualification": {
+                "schema": "agentx.benchmark-grader-qualification/v1",
+                "status": "unknown",
+                "authoritative": false,
+                "scorer_version": null,
+                "causes": [
+                  "scorer_version_missing",
+                  "judge_identity_missing"
+                ],
+                "judges": []
+              }
+            }
+          ],
+          "cohortCount": 4,
+          "resultCount": 105,
+          "earliestTimestamp": "2026-06-02T12:00:00.000Z",
+          "latestTimestamp": "2026-09-21T17:40:00.000Z",
+          "authoritative": false
+        },
+        {
+          "key": "gemma3:12b@@http://gpu-a.lan:11434",
+          "model": "gemma3:12b",
+          "host": "http://gpu-a.lan:11434",
+          "rank": 2,
+          "comparable": true,
+          "verdict": {
+            "comparable": true,
+            "reasons": [],
+            "notes": [],
+            "scorerVersion": "2.16.0",
+            "scorerFamily": "2.16",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [
+              "grader_qualification_unknown"
+            ],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "no_calibration_record"
+            ]
+          },
+          "headline": {
+            "model": "gemma3:12b",
+            "host": "http://gpu-a.lan:11434",
+            "host_available": true,
+            "executionTarget": null,
+            "provider": "ollama",
+            "tier": "local",
+            "harness": null,
+            "pricing": null,
+            "providerCostNanodollars": 0,
+            "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+            "rankable": true,
+            "harnessEvidence": {
+              "rankable": true,
+              "reason": null
+            },
+            "generalistScore": 74.9,
+            "weightedSum": 78.2,
+            "coveragePenalty": 0,
+            "difficultyPenalty": 0,
+            "difficultyCoverage": 100,
+            "fullScopeMinLevel": 4,
+            "requiredPromptLevels": [
+              4,
+              5
+            ],
+            "missingRequiredLevelsByCategory": {},
+            "minFullScopeResults": 28,
+            "minConsistencyResults": 42,
+            "fullScopeEligible": true,
+            "evidenceStatus": "full_scope",
+            "consistencyBonus": 0,
+            "evidenceConfidence": 0.82,
+            "evidenceConfidenceCoverage": 1,
+            "evidenceConfidenceTarget": 0.8,
+            "evidenceConfidencePenalty": 0,
+            "avgWithinCategoryStdDev": 9.1,
+            "coverage": 100,
+            "testedCategories": 7,
+            "totalTests": 35,
+            "confidenceMargin": 4.2,
+            "confidenceMethod": "weighted_category_prompt_means_t95",
+            "confidenceSampleSize": 14,
+            "confidenceRepeatCount": 35,
+            "confidenceWeighted": false,
+            "categoryConfidence": null,
+            "recommended_category": "coding",
+            "categoryAverages": {
+              "coding": 72,
+              "reasoning": 79,
+              "math": 70,
+              "knowledge": 81,
+              "instruction": 83,
+              "creative": 77,
+              "translation": 80
+            },
+            "categoryEvidence": {
+              "coding": "scored",
+              "reasoning": "scored",
+              "math": "scored",
+              "knowledge": "scored",
+              "instruction": "scored",
+              "creative": "scored",
+              "translation": "scored"
+            },
+            "promptLevelCounts": {
+              "4": 18,
+              "5": 17
+            },
+            "minPromptLevel": 4,
+            "maxPromptLevel": 5,
+            "contextCounts": {
+              "65536": 35
+            },
+            "judgeModels": [
+              "judge-qwen3:32b"
+            ],
+            "judgeTargets": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434"
+              }
+            ],
+            "needsReviewCount": 0,
+            "lowConfidenceCount": 1,
+            "earliestTimestamp": "2026-09-19T07:05:00.000Z",
+            "latestTimestamp": "2026-09-21T15:20:00.000Z",
+            "evidenceCompatibility": "comparable",
+            "filtered": false,
+            "filterReason": null,
+            "emptyRate": 3,
+            "performance": {
+              "rows": 35,
+              "score": {
+                "field": "quality_score",
+                "scale": 10,
+                "mean": 7.82,
+                "sampleSize": 35
+              },
+              "tokensPerSecTotal": {
+                "definition": "output tokens over the whole request time, including prompt evaluation",
+                "mean": 61.7,
+                "median": 61.7,
+                "sampleSize": 35
+              },
+              "tokensPerSecGeneration": {
+                "definition": "output tokens over the time after prompt evaluation",
+                "mean": 70.2,
+                "median": 70.2,
+                "sampleSize": 35
+              },
+              "latencyMs": {
+                "mean": 1120,
+                "p95": 2050,
+                "sampleSize": 35
+              },
+              "ttftMs": {
+                "measured": {
+                  "mean": 290,
+                  "sampleSize": 35
+                },
+                "hostBaseline": 270
+              },
+              "judgeModel": "judge-qwen3:32b",
+              "judgeModels": {
+                "judge-qwen3:32b": 35
+              },
+              "contexts": {
+                "65536": 35
+              },
+              "scorerVersions": {
+                "2.16.0": 35
+              },
+              "mixedScorerVersions": false,
+              "earliestTimestamp": "2026-09-19T07:05:00.000Z",
+              "latestTimestamp": "2026-09-21T15:20:00.000Z"
+            },
+            "attempts": {
+              "attempts": 36,
+              "successes": 35,
+              "executionFailures": 1,
+              "infraErrors": 0,
+              "needsReview": 0,
+              "excluded": 0,
+              "unscored": 0,
+              "successRate": 97,
+              "successRateDenominator": 36,
+              "excludedFromDenominator": {
+                "infraErrors": 0
+              }
+            },
+            "scorerVersions": {
+              "2.16.0": 35
+            },
+            "verdict": {
+              "comparable": true,
+              "reasons": [],
+              "notes": [],
+              "scorerVersion": "2.16.0",
+              "scorerFamily": "2.16",
+              "comparisonScorerFamily": "2.16",
+              "authoritative": false,
+              "authorityReasons": [
+                "grader_qualification_unknown"
+              ],
+              "graderStatus": "unknown",
+              "graderCauses": [
+                "no_calibration_record"
+              ]
+            },
+            "graderQualification": {
+              "schema": "agentx.benchmark-grader-qualification/v1",
+              "status": "unknown",
+              "authoritative": false,
+              "scorer_version": "2.16.0",
+              "causes": [
+                "no_calibration_record"
+              ],
+              "judges": [
+                {
+                  "model": "judge-qwen3:32b",
+                  "host": "http://gpu-a.lan:11434",
+                  "status": "unknown",
+                  "causes": [
+                    "no_calibration_record"
+                  ],
+                  "record": null
+                }
+              ]
+            }
+          },
+          "headlineReason": "comparable_cohort",
+          "history": [],
+          "cohortCount": 1,
+          "resultCount": 35,
+          "earliestTimestamp": "2026-09-19T07:05:00.000Z",
+          "latestTimestamp": "2026-09-21T15:20:00.000Z",
+          "authoritative": false
+        },
+        {
+          "key": "phi4:14b@@http://gpu-a.lan:11434",
+          "model": "phi4:14b",
+          "host": "http://gpu-a.lan:11434",
+          "rank": 3,
+          "comparable": true,
+          "verdict": {
+            "comparable": true,
+            "reasons": [],
+            "notes": [
+              "partial_scope"
+            ],
+            "scorerVersion": "2.16.0",
+            "scorerFamily": "2.16",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [
+              "grader_qualification_unknown"
+            ],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "no_calibration_record"
+            ]
+          },
+          "headline": {
+            "model": "phi4:14b",
+            "host": "http://gpu-a.lan:11434",
+            "host_available": true,
+            "executionTarget": null,
+            "provider": "ollama",
+            "tier": "local",
+            "harness": null,
+            "pricing": null,
+            "providerCostNanodollars": 0,
+            "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+            "rankable": true,
+            "harnessEvidence": {
+              "rankable": true,
+              "reason": null
+            },
+            "generalistScore": 61.7,
+            "weightedSum": 79,
+            "coveragePenalty": 12.5,
+            "difficultyPenalty": 4.8,
+            "difficultyCoverage": 60,
+            "fullScopeMinLevel": 4,
+            "requiredPromptLevels": [
+              4,
+              5
+            ],
+            "missingRequiredLevelsByCategory": {},
+            "minFullScopeResults": 28,
+            "minConsistencyResults": 42,
+            "fullScopeEligible": false,
+            "evidenceStatus": "partial_scope",
+            "consistencyBonus": 0,
+            "evidenceConfidence": 0.82,
+            "evidenceConfidenceCoverage": 1,
+            "evidenceConfidenceTarget": 0.8,
+            "evidenceConfidencePenalty": 0,
+            "avgWithinCategoryStdDev": 9.1,
+            "coverage": 71,
+            "testedCategories": 5,
+            "totalTests": 9,
+            "confidenceMargin": null,
+            "confidenceMethod": "weighted_category_prompt_means_t95",
+            "confidenceSampleSize": 14,
+            "confidenceRepeatCount": 9,
+            "confidenceWeighted": false,
+            "categoryConfidence": null,
+            "recommended_category": "coding",
+            "categoryAverages": {
+              "coding": 80,
+              "reasoning": 77,
+              "math": 81,
+              "knowledge": null,
+              "instruction": 78,
+              "creative": null,
+              "translation": 79
+            },
+            "categoryEvidence": {
+              "coding": "scored",
+              "reasoning": "scored",
+              "math": "scored",
+              "knowledge": "untested",
+              "instruction": "scored",
+              "creative": "untested",
+              "translation": "scored"
+            },
+            "promptLevelCounts": {
+              "4": 9
+            },
+            "minPromptLevel": 4,
+            "maxPromptLevel": 5,
+            "contextCounts": {
+              "32768": 9
+            },
+            "judgeModels": [
+              "judge-qwen3:32b"
+            ],
+            "judgeTargets": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434"
+              }
+            ],
+            "needsReviewCount": 0,
+            "lowConfidenceCount": 1,
+            "earliestTimestamp": "2026-09-20T06:00:00.000Z",
+            "latestTimestamp": "2026-09-20T11:45:00.000Z",
+            "evidenceCompatibility": "comparable",
+            "filtered": false,
+            "filterReason": null,
+            "emptyRate": 3,
+            "performance": {
+              "rows": 9,
+              "score": {
+                "field": "quality_score",
+                "scale": 10,
+                "mean": 7.9,
+                "sampleSize": 9
+              },
+              "tokensPerSecTotal": {
+                "definition": "output tokens over the whole request time, including prompt evaluation",
+                "mean": 55,
+                "median": 55,
+                "sampleSize": 9
+              },
+              "tokensPerSecGeneration": {
+                "definition": "output tokens over the time after prompt evaluation",
+                "mean": 63.2,
+                "median": 63.2,
+                "sampleSize": 9
+              },
+              "latencyMs": {
+                "mean": 980,
+                "p95": 1700,
+                "sampleSize": 9
+              },
+              "ttftMs": {
+                "measured": {
+                  "mean": 240,
+                  "sampleSize": 9
+                },
+                "hostBaseline": 230
+              },
+              "judgeModel": "judge-qwen3:32b",
+              "judgeModels": {
+                "judge-qwen3:32b": 9
+              },
+              "contexts": {
+                "32768": 9
+              },
+              "scorerVersions": {
+                "2.16.0": 9
+              },
+              "mixedScorerVersions": false,
+              "earliestTimestamp": "2026-09-20T06:00:00.000Z",
+              "latestTimestamp": "2026-09-20T11:45:00.000Z"
+            },
+            "attempts": {
+              "attempts": 3,
+              "successes": 0,
+              "executionFailures": 0,
+              "infraErrors": 3,
+              "needsReview": 0,
+              "excluded": 0,
+              "unscored": 0,
+              "successRate": null,
+              "successRateDenominator": 0,
+              "excludedFromDenominator": {
+                "infraErrors": 3
+              }
+            },
+            "scorerVersions": {
+              "2.16.0": 9
+            },
+            "verdict": {
+              "comparable": true,
+              "reasons": [],
+              "notes": [
+                "partial_scope"
+              ],
+              "scorerVersion": "2.16.0",
+              "scorerFamily": "2.16",
+              "comparisonScorerFamily": "2.16",
+              "authoritative": false,
+              "authorityReasons": [
+                "grader_qualification_unknown"
+              ],
+              "graderStatus": "unknown",
+              "graderCauses": [
+                "no_calibration_record"
+              ]
+            },
+            "graderQualification": {
+              "schema": "agentx.benchmark-grader-qualification/v1",
+              "status": "unknown",
+              "authoritative": false,
+              "scorer_version": "2.16.0",
+              "causes": [
+                "no_calibration_record"
+              ],
+              "judges": [
+                {
+                  "model": "judge-qwen3:32b",
+                  "host": "http://gpu-a.lan:11434",
+                  "status": "unknown",
+                  "causes": [
+                    "no_calibration_record"
+                  ],
+                  "record": null
+                }
+              ]
+            }
+          },
+          "headlineReason": "comparable_cohort",
+          "history": [],
+          "cohortCount": 1,
+          "resultCount": 9,
+          "earliestTimestamp": "2026-09-20T06:00:00.000Z",
+          "latestTimestamp": "2026-09-20T11:45:00.000Z",
+          "authoritative": false
+        },
+        {
+          "key": "llama3.3:70b@@http://gpu-b.lan:11434",
+          "model": "llama3.3:70b",
+          "host": "http://gpu-b.lan:11434",
+          "rank": null,
+          "comparable": false,
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "mixed_scorer_versions"
+            ],
+            "notes": [],
+            "scorerVersion": "2.16.0",
+            "scorerFamily": "2.16",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "mixed_scorer_versions",
+              "scorer_version_missing"
+            ]
+          },
+          "headline": {
+            "model": "llama3.3:70b",
+            "host": "http://gpu-b.lan:11434",
+            "host_available": true,
+            "executionTarget": null,
+            "provider": "ollama",
+            "tier": "local",
+            "harness": null,
+            "pricing": null,
+            "providerCostNanodollars": 0,
+            "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+            "rankable": false,
+            "harnessEvidence": {
+              "rankable": true,
+              "reason": null
+            },
+            "generalistScore": 84,
+            "weightedSum": 85.5,
+            "coveragePenalty": 0,
+            "difficultyPenalty": 0,
+            "difficultyCoverage": 100,
+            "fullScopeMinLevel": 4,
+            "requiredPromptLevels": [
+              4,
+              5
+            ],
+            "missingRequiredLevelsByCategory": {},
+            "minFullScopeResults": 28,
+            "minConsistencyResults": 42,
+            "fullScopeEligible": true,
+            "evidenceStatus": "full_scope",
+            "consistencyBonus": 0,
+            "evidenceConfidence": 0.82,
+            "evidenceConfidenceCoverage": 1,
+            "evidenceConfidenceTarget": 0.8,
+            "evidenceConfidencePenalty": 0,
+            "avgWithinCategoryStdDev": 9.1,
+            "coverage": 100,
+            "testedCategories": 7,
+            "totalTests": 40,
+            "confidenceMargin": 4.2,
+            "confidenceMethod": "weighted_category_prompt_means_t95",
+            "confidenceSampleSize": 14,
+            "confidenceRepeatCount": 40,
+            "confidenceWeighted": false,
+            "categoryConfidence": null,
+            "recommended_category": "coding",
+            "categoryAverages": {
+              "coding": 86,
+              "reasoning": 88,
+              "math": 82,
+              "knowledge": 84,
+              "instruction": 87,
+              "creative": 80,
+              "translation": 86
+            },
+            "categoryEvidence": {
+              "coding": "scored",
+              "reasoning": "scored",
+              "math": "scored",
+              "knowledge": "scored",
+              "instruction": "scored",
+              "creative": "scored",
+              "translation": "scored"
+            },
+            "promptLevelCounts": {
+              "4": 20,
+              "5": 20
+            },
+            "minPromptLevel": 4,
+            "maxPromptLevel": 5,
+            "contextCounts": {
+              "65536": 40
+            },
+            "judgeModels": [
+              "judge-qwen3:32b"
+            ],
+            "judgeTargets": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434"
+              }
+            ],
+            "needsReviewCount": 0,
+            "lowConfidenceCount": 1,
+            "earliestTimestamp": "2026-09-17T11:00:00.000Z",
+            "latestTimestamp": "2026-09-21T09:30:00.000Z",
+            "evidenceCompatibility": "comparable",
+            "filtered": false,
+            "filterReason": "mixed_scorer_versions",
+            "emptyRate": 3,
+            "performance": {
+              "rows": 40,
+              "score": {
+                "field": "quality_score",
+                "scale": 10,
+                "mean": 8.55,
+                "sampleSize": 40
+              },
+              "tokensPerSecTotal": {
+                "definition": "output tokens over the whole request time, including prompt evaluation",
+                "mean": 19.4,
+                "median": 19.4,
+                "sampleSize": 40
+              },
+              "tokensPerSecGeneration": {
+                "definition": "output tokens over the time after prompt evaluation",
+                "mean": 23.8,
+                "median": 23.8,
+                "sampleSize": 40
+              },
+              "latencyMs": {
+                "mean": 4210,
+                "p95": 7900,
+                "sampleSize": 40
+              },
+              "ttftMs": {
+                "measured": {
+                  "mean": 820,
+                  "sampleSize": 40
+                },
+                "hostBaseline": 610
+              },
+              "judgeModel": "judge-qwen3:32b",
+              "judgeModels": {
+                "judge-qwen3:32b": 40
+              },
+              "contexts": {
+                "65536": 40
+              },
+              "scorerVersions": {
+                "2.16.0": 22,
+                "2.15.2": 18
+              },
+              "mixedScorerVersions": true,
+              "earliestTimestamp": "2026-09-17T11:00:00.000Z",
+              "latestTimestamp": "2026-09-21T09:30:00.000Z"
+            },
+            "attempts": {
+              "attempts": 41,
+              "successes": 40,
+              "executionFailures": 1,
+              "infraErrors": 0,
+              "needsReview": 0,
+              "excluded": 0,
+              "unscored": 0,
+              "successRate": 98,
+              "successRateDenominator": 41,
+              "excludedFromDenominator": {
+                "infraErrors": 0
+              }
+            },
+            "scorerVersions": {
+              "2.16.0": 22,
+              "2.15.2": 18
+            },
+            "verdict": {
+              "comparable": false,
+              "reasons": [
+                "mixed_scorer_versions"
+              ],
+              "notes": [],
+              "scorerVersion": "2.16.0",
+              "scorerFamily": "2.16",
+              "comparisonScorerFamily": "2.16",
+              "authoritative": false,
+              "authorityReasons": [],
+              "graderStatus": "unknown",
+              "graderCauses": [
+                "mixed_scorer_versions",
+                "scorer_version_missing"
+              ]
+            },
+            "graderQualification": {
+              "schema": "agentx.benchmark-grader-qualification/v1",
+              "status": "unknown",
+              "authoritative": false,
+              "scorer_version": null,
+              "causes": [
+                "mixed_scorer_versions",
+                "scorer_version_missing"
+              ],
+              "judges": [
+                {
+                  "model": "judge-qwen3:32b",
+                  "host": "http://gpu-a.lan:11434",
+                  "status": "unknown",
+                  "causes": [
+                    "scorer_version_missing"
+                  ],
+                  "record": null
+                }
+              ]
+            }
+          },
+          "headlineReason": "comparable_cohort",
+          "history": [
+            {
+              "model": "llama3.3:70b",
+              "host": "http://gpu-b.lan:11434",
+              "host_available": true,
+              "executionTarget": null,
+              "provider": "ollama",
+              "tier": "local",
+              "harness": null,
+              "pricing": null,
+              "providerCostNanodollars": 0,
+              "qualityCohortFingerprint": "sha256:7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9f",
+              "rankable": false,
+              "generalistScore": null,
+              "totalTests": 12,
+              "evidenceStatus": "non_comparable_cohort",
+              "evidenceCompatibility": "non_comparable",
+              "filterReason": "quality_cohort_fingerprint_mismatch",
+              "latestTimestamp": "2026-07-20T21:30:00.000Z",
+              "categoryAverages": {},
+              "categoryEvidence": {},
+              "testedCategories": 0,
+              "coverage": 0,
+              "fullScopeEligible": false,
+              "filtered": false,
+              "performance": {
+                "rows": 12,
+                "score": {
+                  "field": "quality_score",
+                  "scale": 10,
+                  "mean": 8.1,
+                  "sampleSize": 12
+                },
+                "tokensPerSecTotal": {
+                  "definition": "output tokens over the whole request time, including prompt evaluation",
+                  "mean": 18,
+                  "median": 18,
+                  "sampleSize": 12
+                },
+                "tokensPerSecGeneration": {
+                  "definition": "output tokens over the time after prompt evaluation",
+                  "mean": null,
+                  "median": null,
+                  "sampleSize": 0
+                },
+                "latencyMs": {
+                  "mean": 2210,
+                  "p95": 4100,
+                  "sampleSize": 12
+                },
+                "ttftMs": {
+                  "measured": {
+                    "mean": null,
+                    "sampleSize": 0
+                  },
+                  "hostBaseline": 355
+                },
+                "judgeModel": "judge-llama3.1:70b",
+                "judgeModels": {
+                  "judge-llama3.1:70b": 12
+                },
+                "contexts": {
+                  "32768": 12
+                },
+                "scorerVersions": {
+                  "2.14.0": 12
+                },
+                "mixedScorerVersions": false,
+                "earliestTimestamp": "2026-07-20T09:00:00.000Z",
+                "latestTimestamp": "2026-07-20T21:30:00.000Z"
+              },
+              "attempts": {
+                "attempts": 14,
+                "successes": 12,
+                "executionFailures": 1,
+                "infraErrors": 1,
+                "needsReview": 0,
+                "excluded": 0,
+                "unscored": 0,
+                "successRate": 92,
+                "successRateDenominator": 13,
+                "excludedFromDenominator": {
+                  "infraErrors": 1
+                }
+              },
+              "scorerVersions": {
+                "2.14.0": 12
+              },
+              "verdict": {
+                "comparable": false,
+                "reasons": [
+                  "quality_cohort_fingerprint_mismatch"
+                ],
+                "notes": [],
+                "scorerVersion": "2.14.0",
+                "scorerFamily": "2.14",
+                "comparisonScorerFamily": "2.16",
+                "authoritative": false,
+                "authorityReasons": [],
+                "graderStatus": "unknown",
+                "graderCauses": [
+                  "judge_identity_missing"
+                ]
+              },
+              "historyReason": "other_cohort",
+              "graderQualification": {
+                "schema": "agentx.benchmark-grader-qualification/v1",
+                "status": "unknown",
+                "authoritative": false,
+                "scorer_version": "2.14.0",
+                "causes": [
+                  "judge_identity_missing"
+                ],
+                "judges": []
+              }
+            }
+          ],
+          "cohortCount": 2,
+          "resultCount": 52,
+          "earliestTimestamp": "2026-07-20T09:00:00.000Z",
+          "latestTimestamp": "2026-09-21T09:30:00.000Z",
+          "authoritative": false
+        },
+        {
+          "key": "mistral-small:24b@@http://gpu-a.lan:11434",
+          "model": "mistral-small:24b",
+          "host": "http://gpu-a.lan:11434",
+          "rank": null,
+          "comparable": false,
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "unversioned_scorer"
+            ],
+            "notes": [],
+            "scorerVersion": null,
+            "scorerFamily": null,
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "scorer_version_missing"
+            ]
+          },
+          "headline": {
+            "model": "mistral-small:24b",
+            "host": "http://gpu-a.lan:11434",
+            "host_available": true,
+            "executionTarget": null,
+            "provider": "ollama",
+            "tier": "local",
+            "harness": null,
+            "pricing": null,
+            "providerCostNanodollars": 0,
+            "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+            "rankable": true,
+            "harnessEvidence": {
+              "rankable": true,
+              "reason": null
+            },
+            "generalistScore": 71.3,
+            "weightedSum": 71.3,
+            "coveragePenalty": 0,
+            "difficultyPenalty": 0,
+            "difficultyCoverage": 100,
+            "fullScopeMinLevel": 4,
+            "requiredPromptLevels": [
+              4,
+              5
+            ],
+            "missingRequiredLevelsByCategory": {},
+            "minFullScopeResults": 28,
+            "minConsistencyResults": 42,
+            "fullScopeEligible": true,
+            "evidenceStatus": "full_scope",
+            "consistencyBonus": 0,
+            "evidenceConfidence": 0.82,
+            "evidenceConfidenceCoverage": 1,
+            "evidenceConfidenceTarget": 0.8,
+            "evidenceConfidencePenalty": 0,
+            "avgWithinCategoryStdDev": 9.1,
+            "coverage": 100,
+            "testedCategories": 7,
+            "totalTests": 30,
+            "confidenceMargin": 4.2,
+            "confidenceMethod": "weighted_category_prompt_means_t95",
+            "confidenceSampleSize": 14,
+            "confidenceRepeatCount": 30,
+            "confidenceWeighted": false,
+            "categoryConfidence": null,
+            "recommended_category": "coding",
+            "categoryAverages": {
+              "coding": 70,
+              "reasoning": 73,
+              "math": 68,
+              "knowledge": 72,
+              "instruction": 75,
+              "creative": 69,
+              "translation": 72
+            },
+            "categoryEvidence": {
+              "coding": "scored",
+              "reasoning": "scored",
+              "math": "scored",
+              "knowledge": "scored",
+              "instruction": "scored",
+              "creative": "scored",
+              "translation": "scored"
+            },
+            "promptLevelCounts": {
+              "4": 15,
+              "5": 15
+            },
+            "minPromptLevel": 4,
+            "maxPromptLevel": 5,
+            "contextCounts": {
+              "65536": 30
+            },
+            "judgeModels": [
+              "judge-qwen3:32b"
+            ],
+            "judgeTargets": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434"
+              }
+            ],
+            "needsReviewCount": 0,
+            "lowConfidenceCount": 1,
+            "earliestTimestamp": "2026-09-18T13:00:00.000Z",
+            "latestTimestamp": "2026-09-20T19:10:00.000Z",
+            "evidenceCompatibility": "comparable",
+            "filtered": false,
+            "filterReason": null,
+            "emptyRate": 3,
+            "performance": {
+              "rows": 30,
+              "score": {
+                "field": "quality_score",
+                "scale": 10,
+                "mean": 7.13,
+                "sampleSize": 30
+              },
+              "tokensPerSecTotal": {
+                "definition": "output tokens over the whole request time, including prompt evaluation",
+                "mean": 47.3,
+                "median": 47.3,
+                "sampleSize": 30
+              },
+              "tokensPerSecGeneration": {
+                "definition": "output tokens over the time after prompt evaluation",
+                "mean": null,
+                "median": null,
+                "sampleSize": 0
+              },
+              "latencyMs": {
+                "mean": 1510,
+                "p95": 2700,
+                "sampleSize": 30
+              },
+              "ttftMs": {
+                "measured": {
+                  "mean": null,
+                  "sampleSize": 0
+                },
+                "hostBaseline": 330
+              },
+              "judgeModel": "judge-qwen3:32b",
+              "judgeModels": {
+                "judge-qwen3:32b": 30
+              },
+              "contexts": {
+                "65536": 30
+              },
+              "scorerVersions": {
+                "unversioned": 30
+              },
+              "mixedScorerVersions": false,
+              "earliestTimestamp": "2026-09-18T13:00:00.000Z",
+              "latestTimestamp": "2026-09-20T19:10:00.000Z"
+            },
+            "attempts": {
+              "attempts": 31,
+              "successes": 30,
+              "executionFailures": 1,
+              "infraErrors": 0,
+              "needsReview": 0,
+              "excluded": 0,
+              "unscored": 0,
+              "successRate": 97,
+              "successRateDenominator": 31,
+              "excludedFromDenominator": {
+                "infraErrors": 0
+              }
+            },
+            "scorerVersions": {
+              "unversioned": 30
+            },
+            "verdict": {
+              "comparable": false,
+              "reasons": [
+                "unversioned_scorer"
+              ],
+              "notes": [],
+              "scorerVersion": null,
+              "scorerFamily": null,
+              "comparisonScorerFamily": "2.16",
+              "authoritative": false,
+              "authorityReasons": [],
+              "graderStatus": "unknown",
+              "graderCauses": [
+                "scorer_version_missing"
+              ]
+            },
+            "graderQualification": {
+              "schema": "agentx.benchmark-grader-qualification/v1",
+              "status": "unknown",
+              "authoritative": false,
+              "scorer_version": null,
+              "causes": [
+                "scorer_version_missing"
+              ],
+              "judges": [
+                {
+                  "model": "judge-qwen3:32b",
+                  "host": "http://gpu-a.lan:11434",
+                  "status": "unknown",
+                  "causes": [
+                    "scorer_version_missing"
+                  ],
+                  "record": null
+                }
+              ]
+            }
+          },
+          "headlineReason": "comparable_cohort",
+          "history": [],
+          "cohortCount": 1,
+          "resultCount": 30,
+          "earliestTimestamp": "2026-09-18T13:00:00.000Z",
+          "latestTimestamp": "2026-09-20T19:10:00.000Z",
+          "authoritative": false
+        },
+        {
+          "key": "broken-model:7b@@http://gpu-a.lan:11434",
+          "model": "broken-model:7b",
+          "host": "http://gpu-a.lan:11434",
+          "rank": null,
+          "comparable": false,
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "excessive_empty_responses"
+            ],
+            "notes": [],
+            "scorerVersion": "2.16.0",
+            "scorerFamily": "2.16",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "no_calibration_record"
+            ]
+          },
+          "headline": {
+            "model": "broken-model:7b",
+            "host": "http://gpu-a.lan:11434",
+            "host_available": true,
+            "executionTarget": null,
+            "provider": "ollama",
+            "tier": "local",
+            "harness": null,
+            "pricing": null,
+            "providerCostNanodollars": 0,
+            "qualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+            "rankable": true,
+            "harnessEvidence": {
+              "rankable": true,
+              "reason": null
+            },
+            "generalistScore": 0,
+            "weightedSum": 0,
+            "coveragePenalty": 0,
+            "difficultyPenalty": 0,
+            "difficultyCoverage": 100,
+            "fullScopeMinLevel": 4,
+            "requiredPromptLevels": [
+              4,
+              5
+            ],
+            "missingRequiredLevelsByCategory": {},
+            "minFullScopeResults": 28,
+            "minConsistencyResults": 42,
+            "fullScopeEligible": false,
+            "evidenceStatus": "partial_scope",
+            "consistencyBonus": 0,
+            "evidenceConfidence": 0.82,
+            "evidenceConfidenceCoverage": 1,
+            "evidenceConfidenceTarget": 0.8,
+            "evidenceConfidencePenalty": 0,
+            "avgWithinCategoryStdDev": 9.1,
+            "coverage": 0,
+            "testedCategories": 0,
+            "totalTests": 16,
+            "confidenceMargin": 4.2,
+            "confidenceMethod": "weighted_category_prompt_means_t95",
+            "confidenceSampleSize": 14,
+            "confidenceRepeatCount": 16,
+            "confidenceWeighted": false,
+            "categoryConfidence": null,
+            "recommended_category": "coding",
+            "categoryAverages": {
+              "coding": null,
+              "reasoning": null,
+              "math": null,
+              "knowledge": null,
+              "instruction": null,
+              "creative": null,
+              "translation": null
+            },
+            "categoryEvidence": {
+              "coding": "untested",
+              "reasoning": "untested",
+              "math": "untested",
+              "knowledge": "untested",
+              "instruction": "untested",
+              "creative": "untested",
+              "translation": "untested"
+            },
+            "promptLevelCounts": {
+              "4": 16
+            },
+            "minPromptLevel": 4,
+            "maxPromptLevel": 5,
+            "contextCounts": {
+              "32768": 16
+            },
+            "judgeModels": [
+              "judge-qwen3:32b"
+            ],
+            "judgeTargets": [
+              {
+                "model": "judge-qwen3:32b",
+                "host": "http://gpu-a.lan:11434"
+              }
+            ],
+            "needsReviewCount": 0,
+            "lowConfidenceCount": 1,
+            "earliestTimestamp": "2026-09-19T00:00:00.000Z",
+            "latestTimestamp": "2026-09-19T03:00:00.000Z",
+            "evidenceCompatibility": "comparable",
+            "filtered": true,
+            "filterReason": "excessive_empty_responses",
+            "emptyRate": 62,
+            "performance": {
+              "rows": 16,
+              "score": {
+                "field": "quality_score",
+                "scale": 10,
+                "mean": 0,
+                "sampleSize": 16
+              },
+              "tokensPerSecTotal": {
+                "definition": "output tokens over the whole request time, including prompt evaluation",
+                "mean": 90.2,
+                "median": 90.2,
+                "sampleSize": 16
+              },
+              "tokensPerSecGeneration": {
+                "definition": "output tokens over the time after prompt evaluation",
+                "mean": 95,
+                "median": 95,
+                "sampleSize": 16
+              },
+              "latencyMs": {
+                "mean": 300,
+                "p95": 500,
+                "sampleSize": 16
+              },
+              "ttftMs": {
+                "measured": {
+                  "mean": 120,
+                  "sampleSize": 16
+                },
+                "hostBaseline": 140
+              },
+              "judgeModel": "judge-qwen3:32b",
+              "judgeModels": {
+                "judge-qwen3:32b": 16
+              },
+              "contexts": {
+                "32768": 16
+              },
+              "scorerVersions": {
+                "2.16.0": 16
+              },
+              "mixedScorerVersions": false,
+              "earliestTimestamp": "2026-09-19T00:00:00.000Z",
+              "latestTimestamp": "2026-09-19T03:00:00.000Z"
+            },
+            "attempts": {
+              "attempts": 20,
+              "successes": 16,
+              "executionFailures": 4,
+              "infraErrors": 0,
+              "needsReview": 0,
+              "excluded": 0,
+              "unscored": 0,
+              "successRate": 80,
+              "successRateDenominator": 20,
+              "excludedFromDenominator": {
+                "infraErrors": 0
+              }
+            },
+            "scorerVersions": {
+              "2.16.0": 16
+            },
+            "verdict": {
+              "comparable": false,
+              "reasons": [
+                "excessive_empty_responses"
+              ],
+              "notes": [],
+              "scorerVersion": "2.16.0",
+              "scorerFamily": "2.16",
+              "comparisonScorerFamily": "2.16",
+              "authoritative": false,
+              "authorityReasons": [],
+              "graderStatus": "unknown",
+              "graderCauses": [
+                "no_calibration_record"
+              ]
+            },
+            "graderQualification": {
+              "schema": "agentx.benchmark-grader-qualification/v1",
+              "status": "unknown",
+              "authoritative": false,
+              "scorer_version": "2.16.0",
+              "causes": [
+                "no_calibration_record"
+              ],
+              "judges": [
+                {
+                  "model": "judge-qwen3:32b",
+                  "host": "http://gpu-a.lan:11434",
+                  "status": "unknown",
+                  "causes": [
+                    "no_calibration_record"
+                  ],
+                  "record": null
+                }
+              ]
+            }
+          },
+          "headlineReason": "comparable_cohort",
+          "history": [],
+          "cohortCount": 1,
+          "resultCount": 16,
+          "earliestTimestamp": "2026-09-19T00:00:00.000Z",
+          "latestTimestamp": "2026-09-19T03:00:00.000Z",
+          "authoritative": false
+        },
+        {
+          "key": "deepseek-r1:32b@@http://gpu-b.lan:11434",
+          "model": "deepseek-r1:32b",
+          "host": "http://gpu-b.lan:11434",
+          "rank": null,
+          "comparable": false,
+          "verdict": {
+            "comparable": false,
+            "reasons": [
+              "quality_cohort_fingerprint_mismatch"
+            ],
+            "notes": [],
+            "scorerVersion": "2.15.2",
+            "scorerFamily": "2.15",
+            "comparisonScorerFamily": "2.16",
+            "authoritative": false,
+            "authorityReasons": [],
+            "graderStatus": "unknown",
+            "graderCauses": [
+              "judge_identity_missing"
+            ]
+          },
+          "headline": {
+            "model": "deepseek-r1:32b",
+            "host": "http://gpu-b.lan:11434",
+            "host_available": true,
+            "executionTarget": null,
+            "provider": "ollama",
+            "tier": "local",
+            "harness": null,
+            "pricing": null,
+            "providerCostNanodollars": 0,
+            "qualityCohortFingerprint": "sha256:2a4c6e8f0b2d4f6a8c0e2f4a6c8e0f2a4c6e8f0a2c4e6f8a0c2e4f6a8c0e2f4a",
+            "rankable": false,
+            "generalistScore": null,
+            "totalTests": 26,
+            "evidenceStatus": "non_comparable_cohort",
+            "evidenceCompatibility": "non_comparable",
+            "filterReason": "quality_cohort_fingerprint_mismatch",
+            "latestTimestamp": "2026-09-04T20:00:00.000Z",
+            "categoryAverages": {},
+            "categoryEvidence": {},
+            "testedCategories": 0,
+            "coverage": 0,
+            "fullScopeEligible": false,
+            "filtered": false,
+            "performance": {
+              "rows": 26,
+              "score": {
+                "field": "quality_score",
+                "scale": 10,
+                "mean": 8.7,
+                "sampleSize": 26
+              },
+              "tokensPerSecTotal": {
+                "definition": "output tokens over the whole request time, including prompt evaluation",
+                "mean": 24.6,
+                "median": 24.6,
+                "sampleSize": 26
+              },
+              "tokensPerSecGeneration": {
+                "definition": "output tokens over the time after prompt evaluation",
+                "mean": 29.9,
+                "median": 29.9,
+                "sampleSize": 26
+              },
+              "latencyMs": {
+                "mean": 2210,
+                "p95": 4100,
+                "sampleSize": 26
+              },
+              "ttftMs": {
+                "measured": {
+                  "mean": 640,
+                  "sampleSize": 26
+                },
+                "hostBaseline": 355
+              },
+              "judgeModel": "judge-llama3.1:70b",
+              "judgeModels": {
+                "judge-llama3.1:70b": 26
+              },
+              "contexts": {
+                "32768": 26
+              },
+              "scorerVersions": {
+                "2.15.2": 26
+              },
+              "mixedScorerVersions": false,
+              "earliestTimestamp": "2026-09-01T08:00:00.000Z",
+              "latestTimestamp": "2026-09-04T20:00:00.000Z"
+            },
+            "attempts": {
+              "attempts": 28,
+              "successes": 26,
+              "executionFailures": 1,
+              "infraErrors": 1,
+              "needsReview": 0,
+              "excluded": 0,
+              "unscored": 0,
+              "successRate": 96,
+              "successRateDenominator": 27,
+              "excludedFromDenominator": {
+                "infraErrors": 1
+              }
+            },
+            "scorerVersions": {
+              "2.15.2": 26
+            },
+            "verdict": {
+              "comparable": false,
+              "reasons": [
+                "quality_cohort_fingerprint_mismatch"
+              ],
+              "notes": [],
+              "scorerVersion": "2.15.2",
+              "scorerFamily": "2.15",
+              "comparisonScorerFamily": "2.16",
+              "authoritative": false,
+              "authorityReasons": [],
+              "graderStatus": "unknown",
+              "graderCauses": [
+                "judge_identity_missing"
+              ]
+            },
+            "graderQualification": {
+              "schema": "agentx.benchmark-grader-qualification/v1",
+              "status": "unknown",
+              "authoritative": false,
+              "scorer_version": "2.15.2",
+              "causes": [
+                "judge_identity_missing"
+              ],
+              "judges": []
+            }
+          },
+          "headlineReason": "latest_evidence",
+          "history": [
+            {
+              "model": "deepseek-r1:32b",
+              "host": "http://gpu-b.lan:11434",
+              "host_available": true,
+              "executionTarget": null,
+              "provider": "ollama",
+              "tier": "local",
+              "harness": null,
+              "pricing": null,
+              "providerCostNanodollars": 0,
+              "qualityCohortFingerprint": "sha256:8c0e2f4a6c8e0f2a4c6e8f0a2c4e6f8a0c2e4f6a8c0e2f4a6c8e0f2a4c6e8f0a",
+              "rankable": false,
+              "generalistScore": null,
+              "totalTests": 26,
+              "evidenceStatus": "non_comparable_cohort",
+              "evidenceCompatibility": "non_comparable",
+              "filterReason": "quality_cohort_fingerprint_mismatch",
+              "latestTimestamp": "2026-07-27T20:00:00.000Z",
+              "categoryAverages": {},
+              "categoryEvidence": {},
+              "testedCategories": 0,
+              "coverage": 0,
+              "fullScopeEligible": false,
+              "filtered": false,
+              "performance": {
+                "rows": 26,
+                "score": {
+                  "field": "quality_score",
+                  "scale": 10,
+                  "mean": 8.4,
+                  "sampleSize": 26
+                },
+                "tokensPerSecTotal": {
+                  "definition": "output tokens over the whole request time, including prompt evaluation",
+                  "mean": 24.1,
+                  "median": 24.1,
+                  "sampleSize": 26
+                },
+                "tokensPerSecGeneration": {
+                  "definition": "output tokens over the time after prompt evaluation",
+                  "mean": null,
+                  "median": null,
+                  "sampleSize": 0
+                },
+                "latencyMs": {
+                  "mean": 2210,
+                  "p95": 4100,
+                  "sampleSize": 26
+                },
+                "ttftMs": {
+                  "measured": {
+                    "mean": null,
+                    "sampleSize": 0
+                  },
+                  "hostBaseline": 355
+                },
+                "judgeModel": "judge-llama3.1:70b",
+                "judgeModels": {
+                  "judge-llama3.1:70b": 26
+                },
+                "contexts": {
+                  "32768": 26
+                },
+                "scorerVersions": {
+                  "2.14.0": 26
+                },
+                "mixedScorerVersions": false,
+                "earliestTimestamp": "2026-07-25T08:00:00.000Z",
+                "latestTimestamp": "2026-07-27T20:00:00.000Z"
+              },
+              "attempts": {
+                "attempts": 28,
+                "successes": 26,
+                "executionFailures": 1,
+                "infraErrors": 1,
+                "needsReview": 0,
+                "excluded": 0,
+                "unscored": 0,
+                "successRate": 96,
+                "successRateDenominator": 27,
+                "excludedFromDenominator": {
+                  "infraErrors": 1
+                }
+              },
+              "scorerVersions": {
+                "2.14.0": 26
+              },
+              "verdict": {
+                "comparable": false,
+                "reasons": [
+                  "quality_cohort_fingerprint_mismatch"
+                ],
+                "notes": [],
+                "scorerVersion": "2.14.0",
+                "scorerFamily": "2.14",
+                "comparisonScorerFamily": "2.16",
+                "authoritative": false,
+                "authorityReasons": [],
+                "graderStatus": "unknown",
+                "graderCauses": [
+                  "judge_identity_missing"
+                ]
+              },
+              "historyReason": "other_cohort",
+              "graderQualification": {
+                "schema": "agentx.benchmark-grader-qualification/v1",
+                "status": "unknown",
+                "authoritative": false,
+                "scorer_version": "2.14.0",
+                "causes": [
+                  "judge_identity_missing"
+                ],
+                "judges": []
+              }
+            }
+          ],
+          "cohortCount": 2,
+          "resultCount": 52,
+          "earliestTimestamp": "2026-07-25T08:00:00.000Z",
+          "latestTimestamp": "2026-09-04T20:00:00.000Z",
+          "authoritative": false
+        }
+      ],
+      "comparison": {
+        "comparableCount": 3,
+        "groupCount": 7,
+        "scorerFamily": "2.16",
+        "selectedQualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+        "rule": "most recent quality cohort (judge, scorer version, contexts) with results in scope",
+        "authoritativeCount": 0
+      },
+      "categoryWeights": {
+        "coding": 0.2,
+        "reasoning": 0.2,
+        "math": 0.15,
+        "knowledge": 0.15,
+        "instruction": 0.1,
+        "creative": 0.1,
+        "translation": 0.1
+      },
+      "confidenceWeighted": false,
+      "axis": "quality",
+      "hostScope": "all",
+      "hostFilterApplied": false,
+      "configuredHosts": [
+        {
+          "name": "gpu-a",
+          "url": "http://gpu-a.lan:11434"
+        },
+        {
+          "name": "gpu-b",
+          "url": "http://gpu-b.lan:11434"
+        }
+      ],
+      "primaryHostUrl": "http://gpu-a.lan:11434",
+      "includeUnavailableModels": false,
+      "includeCloud": true,
+      "requestedAxis": "quality",
+      "selectedQualityCohortFingerprint": "sha256:3f9a2c7d1e5b48a0c6f2d9e7b1a3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9",
+      "hostModelSnapshot": null,
+      "challengeScope": "advanced",
+      "challengeFilterApplied": true,
+      "challengeLevelRange": {
+        "min": 4,
+        "max": 5
+      }
+    }
+  },
+  "hostsRes": {
+    "hosts": [
+      {
+        "id": "gpu-a",
+        "name": "gpu-a",
+        "url": "http://gpu-a.lan:11434",
+        "available": true,
+        "models": [
+          "qwen3.8:27b",
+          "gemma3:12b",
+          "mistral-small:24b",
+          "phi4:14b"
+        ],
+        "gpu": {
+          "model": "RTX 3090 ×2"
+        }
+      },
+      {
+        "id": "gpu-b",
+        "name": "gpu-b",
+        "url": "http://gpu-b.lan:11434",
+        "available": false,
+        "models": [
+          "llama3.3:70b",
+          "deepseek-r1:32b"
+        ]
+      }
+    ]
+  },
+  "coverageRes": {
+    "status": "success",
+    "data": {
+      "hard_scope": {
+        "ready": false,
+        "cells_meeting_target": 6,
+        "total_cells": 14,
+        "target_per_cell": 5
+      }
+    }
+  }
+}

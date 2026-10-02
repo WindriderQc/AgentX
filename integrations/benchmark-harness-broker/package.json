@@ -1,0 +1,11 @@
+{
+  "name": "@agentx/benchmark-harness-broker",
+  "private": true,
+  "version": "1.1.0",
+  "scripts": {
+    "fingerprint:pins": "node pinset.js",
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=24" }
+}

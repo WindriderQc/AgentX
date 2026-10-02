@@ -1,0 +1,2810 @@
+{
+  "version": 1,
+  "variables": {
+    "AGENTX_BENCHMARK_HARNESS_URL": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Credential-free HTTP(S) origin of the external benchmark harness broker. Unset while BENCHMARK_HARNESS_ENABLED=true: broker calls fail with HARNESS_BROKER_NOT_CONFIGURED (503)."
+    },
+    "AGENTX_CLASSIFIER_RESPECT_PRIMARY_PIN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "false lets the request classifier use its configured model instead of the primary host pin. Unset: the pin is respected."
+    },
+    "AGENTX_CODING_CONFIG": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Path of the coding dispatcher JSON config read for the OpenClaw model-policy projection. Unset: reads config/coding-dispatcher.json under AGENTX_INSTANCE_ROOT, AGENTX_REPO_ROOT or /etc/agentx."
+    },
+    "AGENTX_DEFAULT_CHAT_MODEL": {
+      "services": [
+        "benchmark",
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Default chat model for Core routing and the Benchmark judge fallback. Unset: gemma4:26b-a4b-it-qat in Core, llama3.2:3b for the judge."
+    },
+    "AGENTX_EXTERNAL_CONSUMER_TOKEN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "security",
+      "secret": true,
+      "description": "Token required from the VoiX voice-memory consumer. Unset: that consumer answers 503 not configured."
+    },
+    "AGENTX_FACE_UNLOCK_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "true enables face unlock of the adult space once a parental code exists (configured or set from the host). Any other value or unset: face unlock is off."
+    },
+    "AGENTX_FACE_UNLOCK_MAX_DISTANCE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "0.4",
+      "category": "household",
+      "secret": false,
+      "description": "Maximum face-descriptor distance accepted by face unlock, from 0.3 to 0.5; a value outside that range fails startup. Unset: 0.4."
+    },
+    "AGENTX_HOST_HOME_LABEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Label of the \"back to host\" link shown in Core pages, trimmed to 80 characters. Unset: \"Back to host\". Only used when AGENTX_HOST_HOME_URL is set."
+    },
+    "AGENTX_HOST_HOME_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Same-origin absolute path (starting with /) of a host home page linked from Core pages. Unset or not a path: no link is shown."
+    },
+    "AGENTX_INSTANCE_ROOT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Container path of the mounted external instance directory read by runtime bridges (agent registry, coding dispatcher config). Unset: falls back to AGENTX_REPO_ROOT, then a built-in default."
+    },
+    "AGENTX_OLLAMA_ALLOWED_TARGETS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Comma-separated extra Ollama origins on non-standard ports that the Benchmark setup and profiler may target. Unset: only port 11434 or already configured targets are admitted."
+    },
+    "AGENTX_OPENCLAW_MANIFEST_MAX_AGE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Maximum age of the OpenClaw manifest in the agent-ops projection before it counts as stale. Unset: a built-in default."
+    },
+    "AGENTX_PARENTAL_CODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "security",
+      "secret": true,
+      "description": "Optional parental code that unlocks the adult space through the gateway and bearer access; when set it takes precedence and cannot be changed from the UI. Unset: the code is set and changed from the unlock page and stored hashed in MongoDB; until it is set from the AgentX host, adult pages stay locked."
+    },
+    "AGENTX_PARENTAL_SESSION_MINUTES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "30",
+      "category": "security",
+      "secret": false,
+      "description": "Lifetime in minutes of an adult session after unlock, from 5 to 480; a value outside that range fails startup. Unset: 30."
+    },
+    "AGENTX_PLATFORM_MAP_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Path of the platform map read for host usage aggregation. Unset: the built-in default paths."
+    },
+    "AGENTX_PRINTER_VISION_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "other",
+      "secret": false,
+      "description": "true registers the /api/printer-vision routes in Core. Any other value or unset: the printer evidence adapter is not loaded."
+    },
+    "AGENTX_PROFILE": {
+      "services": [
+        "benchmark",
+        "core",
+        "rag"
+      ],
+      "forwarded": true,
+      "default": "demo",
+      "category": "operations",
+      "secret": false,
+      "description": "Runtime profile, demo or full. demo disables operator, household and integration routes; full enables them and Benchmark claim recovery. Unset: demo."
+    },
+    "AGENTX_RAG_EVENT_THROTTLE_MS": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Minimum interval between RAG ingest progress events. Unset: 3000 ms."
+    },
+    "AGENTX_REPO_ROOT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Instance root used by runtime bridges when AGENTX_INSTANCE_ROOT is unset. Unset: a built-in default path."
+    },
+    "AGENTX_RESTORE_REHEARSAL_ENABLED": {
+      "services": [
+        "core",
+        "rag"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "operations",
+      "secret": false,
+      "description": "true allows restore rehearsal in Core backups and RAG Qdrant snapshots. Any other value or unset: restore rehearsal is refused."
+    },
+    "AGENTX_RUNTIME_BRIDGES_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "bridges",
+      "secret": false,
+      "description": "true registers the OpenClaw, Hermes, DSH and coding runtime bridges in Core (full profile). Any other value or unset: the bridges are not loaded."
+    },
+    "AGENTX_TASK_FALLBACK_WAIT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "How long a busy, claimed or blocked primary is re-checked before a light task degrades to its fallback ladder, at most 10000. Unset: 2000 ms."
+    },
+    "AGENTX_TASK_FALLBACKS_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "One-line JSON ladder of {model, host} fallbacks per light task type. Unset: no task degrades; an invalid value is rejected as a whole at startup."
+    },
+    "ALERT_RENOTIFY_MAX_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Cap on the growing re-notification interval of a firing alert. Unset: 21600000 (6 h)."
+    },
+    "ALERT_STALE_RESOLVE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Age after which an alert that stopped firing is resolved as stale. Unset: 900000 (15 minutes)."
+    },
+    "ALERT_STALE_SWEEP_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Interval of the stale alert sweep. Unset: 300000 (5 minutes)."
+    },
+    "AQI_INTERVAL_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Poll interval of the Data air-quality feed. Unset: 1 hour."
+    },
+    "AQI_MAX_AGE_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Retention of Data air-quality points. Unset: 30 days."
+    },
+    "BACKUP_INTERVAL_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Backup interval, used only when BACKUP_SCHEDULE_CRON is set to an empty string. Unset: a built-in default."
+    },
+    "BACKUP_MAX_RETRIES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Retries of a failed scheduled backup. Unset: a built-in default."
+    },
+    "BACKUP_OWNER_GID": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Group id applied to written backup files. Unset: ownership is left unchanged."
+    },
+    "BACKUP_OWNER_UID": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "User id applied to written backup files. Unset: ownership is left unchanged."
+    },
+    "BACKUP_RETENTION_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Days backups are kept; 0 keeps them forever. Unset: 30."
+    },
+    "BACKUP_RETRY_DELAY_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Delay before retrying a failed scheduled backup. Unset: a built-in default."
+    },
+    "BACKUP_SCHEDULE_CRON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Cron expression of scheduled backups. Unset: a default daily cron; an empty string uses BACKUP_INTERVAL_MS instead."
+    },
+    "BACKUP_SCHEDULE_TZ": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Time zone of the backup cron. Unset: PLANNING_TIME_ZONE or its default."
+    },
+    "BACKUP_STARTUP_DELAY_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Delay after startup before the backup scheduler runs. Unset: a built-in default."
+    },
+    "BASIC_HEALTH_OLLAMA_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Timeout of the basic Ollama health probe. Unset: a built-in default."
+    },
+    "BATCH_MAX_DOCS": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Maximum documents per RAG batch ingest, from 1 to 500. Unset: 50."
+    },
+    "BENCHMARK_CLAIM_DRAIN_TIMEOUT_MS": {
+      "services": [
+        "benchmark",
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "How long a benchmark host claim waits for other work to drain. Unset: 30000 ms."
+    },
+    "BENCHMARK_CLAIM_FINALIZE_HEARTBEAT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Heartbeat interval of a finalizing benchmark claim. Unset: 60000 ms, bounded by the finalize TTL."
+    },
+    "BENCHMARK_CLAIM_REAP_INTERVAL_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Interval of the stale benchmark claim reaper in Core. Unset: 300000 (5 minutes)."
+    },
+    "BENCHMARK_CODE_RUNNER": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": true,
+      "default": "volume",
+      "category": "benchmark",
+      "secret": false,
+      "description": "Code runner mode for coding prompts with reference tests: volume (sidecar), local (refused in production) or off. Unset: volume when the jobs directory exists, otherwise off; unknown values mean off."
+    },
+    "BENCHMARK_HARNESS_ENABLED": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "benchmark",
+      "secret": false,
+      "description": "true enables the external benchmark harness broker (needs AGENTX_BENCHMARK_HARNESS_URL) and skips the setup redirect. Any other value or unset: the broker is off."
+    },
+    "BENCHMARK_PUBLIC_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "http://127.0.0.1:${BENCHMARK_PORT:-3181}",
+      "hostVar": "BENCHMARK_PORT",
+      "category": "network",
+      "secret": false,
+      "description": "Browser-facing Benchmark URL used for Core portal links and accepted as a parental-gateway origin. Compose sets it from BENCHMARK_PORT; unset natively: no Benchmark link."
+    },
+    "BENCHMARK_TERMINAL_FAILURE_RATE_THRESHOLD": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Failure rate, 0 to 1, at which a benchmark batch is treated as failing. Unset: 0.25."
+    },
+    "BUDGET_CLOUD_HOSTS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Comma-separated host patterns counted as cloud in budget accounting. Unset: built-in patterns."
+    },
+    "BUDGET_CLOUD_PROVIDERS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Comma-separated providers counted as cloud in budget accounting. Unset: built-in providers."
+    },
+    "CELESTRAK_GP_URL": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Source URL of the Data satellites TLE feed. Unset: the CelesTrak stations group."
+    },
+    "CHAT_RAG_MIN_SCORE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Cosine floor, 0 to 1, for semantic chat RAG context. Unset or invalid: 0.3."
+    },
+    "CLAWDX_OLLAMA_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Ollama URL checked as the ClawdX host by operations health. Unset: OLLAMA_HOST_TERTIARY, OLLAMA_HOST_3, then a default."
+    },
+    "CLOUD_DAILY_TOKEN_LIMIT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Daily billable cloud token limit for the budget gate. Unset: DAILY_TOKEN_LIMIT."
+    },
+    "CODEX_SUBSCRIPTION_MONTHLY_USD": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Monthly Codex subscription cost used in usage-value analytics. Unset: no cost is shown."
+    },
+    "CODEX_SUBSCRIPTION_PLAN_NAME": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Codex plan name shown in usage analytics. Unset: the plan type reported by the account."
+    },
+    "CODING_DELIVERY_COMPOSE_OVERRIDE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Compose override file passed to the read-only production delivery probe on the delivery host. Unset: the probe uses no override."
+    },
+    "CODING_DELIVERY_DEPLOY_WORKFLOW": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "GitHub deployment workflow observed by coding delivery. Unset: none."
+    },
+    "CODING_DELIVERY_ENV_FILE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Instance env file on the delivery host used by the read-only production delivery probe. Unset: the production probe is not configured and reports unavailable."
+    },
+    "CODING_DELIVERY_GITHUB_REPOSITORY": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "owner/name GitHub repository observed for coding delivery. Unset: WindriderQc/AgentX; an invalid value makes delivery report a configuration error."
+    },
+    "CODING_DELIVERY_GITHUB_TOKEN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": true,
+      "description": "GitHub token used to read pull requests and workflow runs for coding delivery. Unset: GitHub delivery observation reports not configured."
+    },
+    "CODING_DELIVERY_LEGACY_PRODUCT_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "true enables reading old receipts from the legacy product repository. Unset: off."
+    },
+    "CODING_DELIVERY_PROJECT_NAME": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Compose project name inspected by the production delivery probe. Unset: agentx."
+    },
+    "CODING_DELIVERY_PROMOTION_RECEIPT_ROOT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Absolute directory on the delivery host holding coding promotion receipts. Unset: /home/agentx/.local/state/agentx/coding-promotions."
+    },
+    "CODING_DELIVERY_REMOTE_ROOT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Absolute checkout path on the delivery host inspected by the production delivery probe. Unset: /srv/agentx/AgentX."
+    },
+    "CODING_DELIVERY_SSH_TARGET": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "user@host SSH target of the read-only production delivery probe. Unset: the production probe is not configured and reports unavailable."
+    },
+    "CODING_DISPATCHER_REMOTE_ROOT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Absolute checkout path of the coding dispatcher scripts on its SSH host, also the Secretary mail fallback root. Unset: /srv/agentx/AgentX; an invalid path fails bridge startup."
+    },
+    "CODING_DISPATCHER_SSH_TARGET": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "user@host SSH target where Core launches coding dispatcher runs. Unset: dispatch reports unavailable; an invalid value fails bridge startup."
+    },
+    "COMPRESSION_CACHE_TTL": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Cache lifetime of RAG compressed chunks in milliseconds. Unset: 1 hour."
+    },
+    "COMPRESSION_CONCURRENCY": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Parallel RAG chunk compression calls. Unset: 2."
+    },
+    "CONTEXT_PROBE_CPU_MAX_CTX": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Largest context the Profiler probes on a CPU-resident host. Unset: 32768."
+    },
+    "CONTEXT_PROBE_CPU_TIMEOUT_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Per-step timeout of the Profiler context probe on a CPU-resident host, in ms. Unset: 1200000."
+    },
+    "CONTEXT_PROBE_MAX_CTX": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Largest context tried by the Benchmark context probe. Unset: a built-in default."
+    },
+    "CONTEXT_PROBE_MIN_COMPLETION_TOKENS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Minimum tokens a context probe completion must produce. Unset: half of CONTEXT_PROBE_NUM_PREDICT, at least 4."
+    },
+    "CONTEXT_PROBE_MIN_CTX": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Smallest context tried by the Benchmark context probe. Unset: a built-in default."
+    },
+    "CONTEXT_PROBE_NUM_PREDICT": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Tokens generated per context probe step. Unset: 64."
+    },
+    "CONTEXT_PROBE_TIMEOUT_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Timeout of one context probe step. Unset: a built-in default."
+    },
+    "CORE_INTERNAL_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "URL household code uses to call Core itself. Unset: http://127.0.0.1:3080."
+    },
+    "CORE_LEADER_LEASE_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Enables the Core leader lease. Unset: off."
+    },
+    "CORE_PUBLIC_URL": {
+      "services": [
+        "benchmark",
+        "core"
+      ],
+      "forwarded": true,
+      "default": "http://127.0.0.1:${CORE_PORT:-3180}",
+      "hostVar": "CORE_PORT",
+      "category": "network",
+      "secret": false,
+      "description": "Browser-facing Core URL used for portal links, the parental gateway unlock redirect and runtime-bridge exports. Unset: bridges derive it from the request host and the unlock redirect is skipped."
+    },
+    "COST_CURRENCY": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Currency label of cost analytics. Unset: USD."
+    },
+    "COST_PRICING_CACHE_TTL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Pricing cache lifetime in seconds. Unset: 3600."
+    },
+    "COST_TRACKING_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "false disables cost calculation. Unset: on."
+    },
+    "DAILY_TOKEN_LIMIT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Daily token limit used for budget health. Unset: 500000."
+    },
+    "DATA_BACKGROUND_JOBS_ENABLED": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "operations",
+      "secret": false,
+      "description": "true starts Data background feeds and janitor schedules (outside tests). Any other value or unset: only manual Data APIs run."
+    },
+    "DATA_COLLECTOR_PLACEMENT_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "JSON display map (network/storage rows with host, supervisor, runtime, cadence) for Data Toolbox collectors, at most 32 KiB. Unset: the Toolbox shows registrations only."
+    },
+    "DATA_HARDWARE_HISTORY_TTL_DAYS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": "7",
+      "category": "operations",
+      "secret": false,
+      "description": "Retention in days of GPU hardware sample history, at most 90, applied to the TTL index at startup. Unset or invalid: 7 days."
+    },
+    "DATA_PATH_ROLE_ALIASES_FILE": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Container path of an out-of-Git JSON file adding folder-name aliases to Data path roles. Unset: never read; an invalid file logs one warning and built-in roles apply."
+    },
+    "DATA_TOOLBOX_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Timeout of Data Toolbox relay requests, 1000 to 30000. Unset: 10000."
+    },
+    "DATAAPI_BASE_URL": {
+      "services": [
+        "benchmark",
+        "core"
+      ],
+      "forwarded": true,
+      "default": "http://data:3083",
+      "category": "network",
+      "secret": false,
+      "description": "Base URL of the Data service read by Core (Toolbox, hardware, health) and Benchmark (hardware collector). Unset: Core uses http://data:3083; Benchmark skips hardware collection."
+    },
+    "DATAAPI_PUBLIC_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Browser-facing Data URL for links and parental-gateway origins. Unset: no Data link."
+    },
+    "DEFAULT_FALLBACK_COMPLETION_COST_PER_1M": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Completion cost per million tokens for models without pricing. Unset: 0."
+    },
+    "DEFAULT_FALLBACK_PROMPT_COST_PER_1M": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Prompt cost per million tokens for models without pricing. Unset: 0."
+    },
+    "DEGRADED_FALLBACK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "true allows one retry on another host after a failed dispatch for interactive lanes. Unset: off."
+    },
+    "DSH_STUDIO_ACCESS_SECRET": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": true,
+      "description": "HMAC secret, at least 32 characters, signing DSH Studio launch tokens. Required when DSH_STUDIO_PUBLIC_URL is set; shorter or unset then fails bridge startup."
+    },
+    "DSH_STUDIO_ISOLATION": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "DSH Studio isolation, bubblewrap or host. Unset: bubblewrap."
+    },
+    "DSH_STUDIO_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Model name displayed for DSH Studio in the agent-ops projection and studio config. Unset: no model is shown."
+    },
+    "DSH_STUDIO_PUBLIC_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "HTTPS origin (HTTP on loopback) of DSH Studio, same hostname as CORE_PUBLIC_URL. Unset: DSH Studio is not configured and its launcher is hidden."
+    },
+    "DSH_STUDIO_SESSION_TTL_SECONDS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "DSH Studio launch session lifetime in seconds, at least 300. Unset: a built-in default."
+    },
+    "ECOSYSTEM_SNAPSHOT_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Timeout of the ecosystem snapshot. Unset: a built-in default."
+    },
+    "EMBED_PROBE_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Timeout of the embedding host probe. Unset: 3000 ms."
+    },
+    "EMBED_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Timeout of one embedding request. Unset: 60000 ms."
+    },
+    "EMBEDDING_CACHE_SIZE": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Entries kept in the RAG embedding cache. Unset: 1000."
+    },
+    "EMBEDDING_CACHE_TTL_MS": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Lifetime of RAG embedding cache entries. Unset: 24 hours."
+    },
+    "EMBEDDING_DIMENSION": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": true,
+      "default": "768",
+      "category": "memory",
+      "secret": false,
+      "description": "Vector dimension of the RAG embedding model, used for the Qdrant collection and migrations. Unset: 768."
+    },
+    "EMBEDDING_HEALTH_TTL_MS": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Cache lifetime of the RAG embedding health check. Unset: 300000 ms."
+    },
+    "EMBEDDING_MODEL": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": true,
+      "default": "nomic-embed-text:v1.5",
+      "category": "memory",
+      "secret": false,
+      "description": "Embedding model RAG requests through the Core proxy. Unset: nomic-embed-text:v1.5. Similarity floors were measured with that model."
+    },
+    "FINANCE_ALERT_CATEGORY_SPIKE_CENTS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "10000",
+      "category": "finance",
+      "secret": false,
+      "description": "Minimum monthly increase in cents, with a 50 % rise, for a category spike finance alert. Unset: 10000 (100 $)."
+    },
+    "FINANCE_ALERT_LARGE_EXPENSE_CENTS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "100000",
+      "category": "finance",
+      "secret": false,
+      "description": "Amount in cents above which an expense in the last 45 days raises a finance alert. Unset: 100000 (1 000 $)."
+    },
+    "FINANCE_ALERT_MIN_BALANCE_ACCOUNTS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "EOP",
+      "category": "finance",
+      "secret": false,
+      "description": "Comma-separated accounts checked by the minimum-balance finance alert. Unset: EOP."
+    },
+    "FINANCE_ALERT_MIN_BALANCE_CENTS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Balance in cents under which the listed accounts raise a finance alert. Unset: 0, so the minimum-balance alert is off."
+    },
+    "FINANCE_ALERT_STALE_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "45",
+      "category": "finance",
+      "secret": false,
+      "description": "Days without a new statement before a finance alert is raised. Unset: 45."
+    },
+    "FINANCE_ARCHIVE_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Absolute directory where reconciled statements move, under <year>/. Unset or relative: the finance inbox is off."
+    },
+    "FINANCE_EXTRACTION_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Model pinned for statement extraction and finance suggestions. Unset: the analysis route selects the model.",
+      "fallback": "chosen by the analysis route"
+    },
+    "FINANCE_EXTRACTION_RETRIES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "3",
+      "category": "finance",
+      "secret": false,
+      "description": "Retries after a statement fails to reconcile, from 0 to 5. Unset: 3."
+    },
+    "FINANCE_INBOX_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Absolute directory scanned for bank and credit-card statements to ingest. Unset or relative: the finance inbox is off."
+    },
+    "FINANCE_INBOX_POLL_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "900000",
+      "category": "finance",
+      "secret": false,
+      "description": "Finance inbox scan interval in milliseconds, at least 60000. Unset or lower: 900000 (15 minutes)."
+    },
+    "FINANCE_REVIEW_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "finance",
+      "secret": false,
+      "description": "Absolute directory where statements that do not reconcile move. Unset: <inbox>/a-verifier."
+    },
+    "GATE_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "false disables the per-host, per-model admission gate. Unset: on."
+    },
+    "GATE_MAX_INFLIGHT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "Maximum in-flight requests per host and model in the admission gate; a registered host's own limit (Nerve Center, Inference hosts) wins. Unset: 2."
+    },
+    "GATE_SHARED_RETRY_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "Retry interval for a shared admission slot. Unset: 100 ms."
+    },
+    "GATE_SHARED_SLOT_TTL_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "Lifetime of a shared admission slot, at least 60000. Unset: 30 minutes."
+    },
+    "GATE_SHARED_STATE_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "Enables shared admission gate state (1, true, yes, on). Unset: off."
+    },
+    "HEALTH_CHECK_INTERVAL_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Interval of the host health daemon. Unset: 60000 ms."
+    },
+    "HEALTH_REFRESH_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Interval of the Core health refresh timer. Unset: 30000 ms."
+    },
+    "HERMES_API_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Timeout of the Hermes status request. Unset: 5000 ms."
+    },
+    "HERMES_AUTHORITY_CONTEXT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Positive integer context size exported for the Hermes authority model. Unset: the daily lane context for a local model, none for a cloud model.",
+      "fallback": "the daily lane context"
+    },
+    "HERMES_AUTHORITY_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Model exported as Hermes authority and added to its approved models. Unset: the daily lane model.",
+      "fallback": "the daily lane model"
+    },
+    "HERMES_DASHBOARD_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Hermes dashboard URL polled for status evidence and shown as its host. Unset: falls back to HERMES_PUBLIC_URL; with neither, Hermes status answers 503."
+    },
+    "HERMES_GATEWAY_STALE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Age after which Hermes gateway evidence is stale, at least 60000. Unset: 24 hours."
+    },
+    "HERMES_OPENAI_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Inference timeout for the Hermes OpenAI-compatible bridge. Unset: the inference default."
+    },
+    "HERMES_PUBLIC_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Browser-facing Hermes URL shown in the agent-ops projection and used for status when HERMES_DASHBOARD_URL is unset. Unset: host shows \"external runtime\"."
+    },
+    "HOST_BASELINE_MODEL": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Baseline model for Benchmark host tests."
+    },
+    "HOST_TEST_CONTEXT_FILL_PCT": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Percent of num_ctx filled by a host test prompt. Unset: 25."
+    },
+    "HOST_TEST_MAX_PROMPT_TOKENS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Maximum prompt tokens of a host test. Unset: 2048."
+    },
+    "HOST_TEST_NUM_PREDICT": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Tokens generated by a host test. Unset: 64."
+    },
+    "HOST_TEST_TIMEOUT_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Per-model host test timeout. Unset: 60000 ms."
+    },
+    "HOST_TEST_WARMUP": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "false disables host test warm-up. Unset: on."
+    },
+    "HOUSEHOLD_AVATAR_MODULE_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "URL of the GraphysX llmx-face.js module relayed by Core for the avatar dock. Unset: the relay answers 404 and the dock shows a 2D orb."
+    },
+    "HOUSEHOLD_BRAIN_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "true",
+      "category": "household",
+      "secret": false,
+      "description": "Run a bounded background review after each Household turn. Unset: enabled in Compose."
+    },
+    "HOUSEHOLD_BRAIN_FAMILY": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "true",
+      "category": "household",
+      "secret": false,
+      "description": "Allow the background review on the Famille surface. Unset: enabled in Compose."
+    },
+    "HOUSEHOLD_BRAIN_HOST_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Optional Ollama host pinned for Household background reviews so they do not compete with voice inference. Unset: use router selection.",
+      "fallback": "router host selection"
+    },
+    "HOUSEHOLD_BRAIN_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Optional Ollama model for Household background reviews. Unset: use the router master_brain lane.",
+      "fallback": "the router master_brain lane"
+    },
+    "HOUSEHOLD_CONVERSATION_BACKEND": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "auto",
+      "category": "household",
+      "secret": false,
+      "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
+    },
+    "HOUSEHOLD_IMAGE_FAMILY_SOURCES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "web,photos,media,generated",
+      "category": "household",
+      "secret": false,
+      "description": "Image source types Famille may show. Unset: web, photos, media and generated images."
+    },
+    "HOUSEHOLD_IMAGE_ROOTS_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "JSON mapping of Household image sources to canonical Data indexed roots. Unset: no local source roots."
+    },
+    "HOUSEHOLD_PERMISSIVE_PRIMARY_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Model of the household permissive personal-operator pack. Unset: a built-in default model."
+    },
+    "HOUSEHOLD_VOICE_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "provider/model sent to OpenClaw for personal Nestor voice turns on the main agent. Unset: native OpenClaw model policy applies."
+    },
+    "INFERENCE_FETCH_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Timeout of one inference request. Unset: 600000 ms."
+    },
+    "INFERENCE_LOG_TTL_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Retention of InferenceLog rows in days. Unset: 30."
+    },
+    "INGEST_BATCH_DELAY_MS": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Delay between RAG ingest batches. Unset: a built-in default."
+    },
+    "INGEST_MAX_FILE_SIZE_BYTES": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Largest file RAG ingests, capped by the ingestion policy. Unset: a built-in default."
+    },
+    "INGEST_ROOTS": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Comma-separated RAG ingest roots, which must lie inside the approved roots. Unset: the policy roots."
+    },
+    "ISS_API_URL": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Source URL of the Data ISS position feed. Unset: wheretheiss.at."
+    },
+    "ISS_INTERVAL_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Poll interval of the Data ISS feed. Unset: 60000 ms."
+    },
+    "ISS_MAX_LOGS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Maximum stored ISS positions. Unset: 8000."
+    },
+    "JANITOR_ALLOWED_ROOTS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Comma-separated roots the Data janitor may scan or clean. Unset: /mnt/datalake/."
+    },
+    "JANITOR_EXECUTION_ENABLED": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "true allows live janitor maintenance. Unset: only previews run."
+    },
+    "JANITOR_PREVIEW_TTL_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Lifetime of a janitor preview. Unset: a built-in default."
+    },
+    "JUDGE_FALLBACK_MODEL": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Judge model used when the requested judge is not valid on the judge host. Unset: no fallback."
+    },
+    "JUDGE_HOST": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Ollama host of the Benchmark judge. Unset: OLLAMA_HOST."
+    },
+    "JUDGE_MODEL": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Benchmark judge model selected by the operator. Unset: AGENTX_DEFAULT_CHAT_MODEL, then llama3.2:3b."
+    },
+    "JUDGE_NUM_CTX": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "num_ctx sent to the Benchmark judge. Unset: omitted."
+    },
+    "JUDGE_NUM_PREDICT": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Tokens the Benchmark judge may generate. Unset: 800."
+    },
+    "JUDGE_SEED": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Seed of the Benchmark judge; an empty string disables it. Unset: 7."
+    },
+    "JUDGE_TEMPERATURE": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Temperature of the Benchmark judge. Unset: 0.1."
+    },
+    "LEANTIME_BASE_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Leantime URL for household email actions and agent-ops links. Unset: email actions answer 503."
+    },
+    "MEMORY_REVIEW_AUTOMATION_MODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Memory review automation: off, shadow or safe; only safe applies automatically. Unset: off."
+    },
+    "MEMORY_REVIEW_DUPLICATE_SCORE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Score above which a memory review candidate is a duplicate. Unset: 0.8."
+    },
+    "MEMORY_REVIEW_EXCEPTION_BUDGET": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Maximum review exceptions per memory review run. Unset: a built-in limit."
+    },
+    "MEMORY_REVIEW_JOB_ID": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Expected id of the memory-review-shadow job in coverage checks. Unset: matched by name only."
+    },
+    "MEMORY_REVIEW_RAG_MIN_SCORE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Cosine floor of memory review searches. Unset: 0.55."
+    },
+    "MEMORY_REVIEW_RAG_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Timeout of memory review RAG searches, 1000 to 20000. Unset: 5000."
+    },
+    "MEMORY_SEARCH_MIN_SCORE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Cosine floor of memory reads without an explicit floor. Unset: 0.6."
+    },
+    "MODEL_HEALTH_CACHE_TTL_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Cache lifetime of model health checks. Unset: 1000 ms."
+    },
+    "MODEL_HEALTH_SLOW_THRESHOLD_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Latency above which a model health check is slow. Unset: 6000 ms."
+    },
+    "MODEL_HEALTH_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Timeout of a model health check. Unset: 3000 ms."
+    },
+    "MODEL_SYNC_UNCONFIGURED_HOST_RETIRE_GRACE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Grace before model sync retires models of an unconfigured host. Unset: a built-in default."
+    },
+    "MONGODB_TEST_SERVER_SELECTION_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "storage",
+      "secret": false,
+      "description": "MongoDB server selection timeout in tests. Unset: a built-in default."
+    },
+    "MONGODB_URI_TEST": {
+      "services": [
+        "benchmark",
+        "core",
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "storage",
+      "secret": false,
+      "description": "Isolated MongoDB URI used when NODE_ENV=test. Benchmark tests require it."
+    },
+    "MQTT_BROKER_URL": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "MQTT broker for Data live feeds. Unset: MQTT is skipped."
+    },
+    "MQTT_ISS_TOPIC": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "MQTT topic of ISS positions. Unset: liveData/iss."
+    },
+    "MQTT_PASSWORD": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "security",
+      "secret": true,
+      "description": "Password of the Data MQTT connection."
+    },
+    "MQTT_PRESSURE_TOPIC": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "MQTT topic of weather pressure. Unset: liveData/pressure."
+    },
+    "MQTT_USERNAME": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Username of the Data MQTT connection."
+    },
+    "N8N_WEBHOOK_BASE_URL": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "n8n base URL combined with N8N_WEBHOOK_GENERIC when N8N_WEBHOOK_URL is unset."
+    },
+    "N8N_WEBHOOK_GENERIC": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "n8n webhook path appended to N8N_WEBHOOK_BASE_URL."
+    },
+    "N8N_WEBHOOK_URL": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Full n8n webhook URL used by Data storage. Unset: base URL plus generic path, or none."
+    },
+    "NESTOR_KNOWLEDGE_CONFIG_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Path of the Nestor family knowledge configuration. Unset: the built-in empty, disabled configuration."
+    },
+    "NESTOR_MEMORY_RAG_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Timeout of Nestor memory RAG calls, 1000 to 30000. Unset: 5000."
+    },
+    "NETWORK_SCAN_CIDR": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Default IPv4 address or CIDR target of the Data network scan. Unset: a scan needs an explicit target in the request."
+    },
+    "OBSIDIAN_VAULT_POLICY_PATH": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "External policy file of the Data Obsidian inventory. Unset: the inventory refuses to load."
+    },
+    "OLLAMA_ANALYSIS_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Prompt analysis model when PROMPT_ANALYSIS_MODEL is unset. Unset: OLLAMA_MODEL, then AGENTX_DEFAULT_CHAT_MODEL."
+    },
+    "OLLAMA_HOST": {
+      "services": [
+        "benchmark",
+        "core"
+      ],
+      "forwarded": true,
+      "default": "http://host.docker.internal:11434",
+      "hostVar": "AGENTX_OLLAMA_HOST",
+      "category": "inference",
+      "secret": false,
+      "description": "URL of the first Ollama host for Core and Benchmark (key primary). Further hosts are registered in the Nerve Center (Inference hosts). Compose sets it from AGENTX_OLLAMA_HOST; unset natively: Core warns and model features using it are unavailable until a host is registered."
+    },
+    "OLLAMA_HOST_NAME": {
+      "services": [
+        "benchmark",
+        "core"
+      ],
+      "forwarded": true,
+      "default": "Local Ollama",
+      "category": "inference",
+      "secret": false,
+      "description": "Display name of the primary Ollama host. Unset: Local Ollama."
+    },
+    "OLLAMA_HOST_SECONDARY": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "URL of the secondary Ollama host. Unset: OLLAMA_HOST_2."
+    },
+    "OLLAMA_HOST_TERTIARY": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "URL of the tertiary Ollama host. Unset: OLLAMA_HOST_3."
+    },
+    "OLLAMA_HOST_VRAM_MAP": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Comma-separated host=MB or host:port=MB VRAM sizes; a port-qualified entry wins, so two Ollama instances of one machine stay distinct. Unset: VRAM is not declared."
+    },
+    "OLLAMA_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Legacy default chat model after AGENTX_DEFAULT_CHAT_MODEL and AGENTX_CHAT_MODEL."
+    },
+    "OLLAMA_MODEL_START_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Timeout of an Ollama model start. Unset: a built-in default."
+    },
+    "OLLAMA_PULL_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Timeout of an Ollama model pull. Unset: a built-in default."
+    },
+    "OLLAMA_SSH_KEY_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "SSH key used when OPENCLAW_INVENTORY_SSH_KEY_PATH is unset."
+    },
+    "OLLAMA_SSH_STRICT_HOST_KEY_CHECKING": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "SSH StrictHostKeyChecking when the OpenClaw inventory value is unset. Unset: no."
+    },
+    "OLLAMA_VRAM_CACHE_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Cache lifetime of Benchmark Ollama VRAM reads. Unset: a built-in default."
+    },
+    "OPEN_METEO_AQI_URL": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Source URL of the Data air-quality feed. Unset: Open-Meteo."
+    },
+    "OPENCLAW_AGENTX_PROVIDER_BASE_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Absolute URL, without credentials, query or fragment, exported to OpenClaw as its AgentX provider. Unset: derived from CORE_PUBLIC_URL plus the OpenClaw route."
+    },
+    "OPENCLAW_AGENTX_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Inference timeout for the OpenClaw runtime bridge. Unset: the inference default."
+    },
+    "OPENCLAW_BIN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "OpenClaw CLI executable. Unset: openclaw."
+    },
+    "OPENCLAW_CONFIG_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Path of openclaw.json read for agent inventory and the gateway token fallback. Unset: openclaw.json under OPENCLAW_HOME.",
+      "fallback": "openclaw.json under OPENCLAW_HOME"
+    },
+    "OPENCLAW_CONTROL_UI_LOCAL_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Local URL of the OpenClaw Control UI used in ssh-tunnel mode. Unset: http://127.0.0.1:18790.",
+      "fallback": "http://127.0.0.1:18790"
+    },
+    "OPENCLAW_CONTROL_UI_MODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "OpenClaw Control UI launch mode; ssh-tunnel or tunnel opens the local tunnel URL. Unset or other: direct.",
+      "fallback": "direct"
+    },
+    "OPENCLAW_CONTROL_UI_PUBLIC_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Direct URL of the OpenClaw Control UI; with OPENCLAW_GATEWAY_TOKEN it adds the OpenClaw launcher. Unset: the launcher is hidden and direct mode uses the gateway URL."
+    },
+    "OPENCLAW_CONVERSATION_FALLBACK_TASK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Task whose fallback ladder an OpenClaw conversation borrows when its primary is unavailable, e.g. nestor_answer_light. Unset: the conversation keeps its busy reply."
+    },
+    "OPENCLAW_CONVERSATION_HOSTS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Comma-separated model=http://host:port entries routing an OpenClaw conversation model to one inference host. Unset: the routed task model applies; an invalid entry fails bridge startup."
+    },
+    "OPENCLAW_GATEWAY_TOKEN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": true,
+      "description": "Bearer token for the OpenClaw gateway, used by Nestor household conversations and the Control UI. Unset: household OpenClaw is unavailable and the Control UI reads the token from openclaw.json."
+    },
+    "OPENCLAW_GATEWAY_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "URL of the OpenClaw gateway used by Nestor household conversations and continuity. Unset: household OpenClaw is unavailable; the Control UI assumes http://127.0.0.1:18789."
+    },
+    "OPENCLAW_HOME": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Local OpenClaw home directory for inventory and config lookups. Unset: ~/.openclaw for inventory, /data/openclaw for the Control UI token lookup."
+    },
+    "OPENCLAW_INVENTORY_REMOTE_CLI_HOME": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "OPENCLAW_HOME value prefixed to OpenClaw CLI commands run over SSH. Unset: no prefix is added.",
+      "fallback": "no OPENCLAW_HOME prefix"
+    },
+    "OPENCLAW_INVENTORY_REMOTE_HOME": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "OpenClaw home directory on the SSH inventory host. Unset: /home/agentx/.openclaw."
+    },
+    "OPENCLAW_INVENTORY_SSH_BIN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "SSH executable for bridge SSH calls. Unset: ssh."
+    },
+    "OPENCLAW_INVENTORY_SSH_KEY_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Private key file used for SSH to the OpenClaw, dispatcher and mail hosts. Unset: OLLAMA_SSH_KEY_PATH, otherwise the default SSH identity."
+    },
+    "OPENCLAW_INVENTORY_SSH_KNOWN_HOSTS_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "known_hosts file used when strict host key checking is on. Unset: known_hosts beside the SSH key, if one is set."
+    },
+    "OPENCLAW_INVENTORY_SSH_PORT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "SSH port for the OpenClaw inventory and related bridge SSH calls. Unset: the SSH default port.",
+      "fallback": "the SSH default port"
+    },
+    "OPENCLAW_INVENTORY_SSH_STRICT_HOST_KEY_CHECKING": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "SSH StrictHostKeyChecking for bridge SSH calls. Unset: OLLAMA_SSH_STRICT_HOST_KEY_CHECKING, then no."
+    },
+    "OPENCLAW_INVENTORY_SSH_TARGET": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "user@host where Core reads OpenClaw inventory and runtime evidence and runs Secretary mail actions over SSH. Unset: inventory is read locally and mail actions are unavailable."
+    },
+    "OPENCLAW_INVENTORY_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Timeout of OpenClaw inventory commands. Unset: a built-in default."
+    },
+    "OPENCLAW_RUNTIME_COMMAND_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Timeout of OpenClaw runtime evidence commands. Unset: 25000 ms."
+    },
+    "OPENCLAW_RUNTIME_EVIDENCE_CACHE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Cache lifetime of OpenClaw runtime evidence. Unset: 15000 ms."
+    },
+    "PIN_CONTEXT_SPEED_TOLERANCE_PCT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Allowed speed loss, 0 to 50 percent, when applying a pin context. Unset: 10."
+    },
+    "PIN_RESTORE_GRACE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Wait after a pin is displaced before it is restored. Unset: 120000 ms."
+    },
+    "PIN_RESTORE_VERIFY_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Timeout verifying a restored pin, at least 1000. Unset: a built-in default."
+    },
+    "PIN_WARM_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Timeout warming a pinned model, at least 30000. Unset: a built-in default."
+    },
+    "PLANNING_TIME_ZONE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Time zone of family planning and the default backup schedule. Unset: a built-in default."
+    },
+    "PORTAL_HEALTH_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Timeout of portal service health probes. Unset: 1500 ms."
+    },
+    "PROFILER_MATRIX_DECODE_TOKENS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Comma-separated decode lengths of the profiler matrix. Unset: built-in values."
+    },
+    "PROFILER_MATRIX_PREFILL_TOKENS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Comma-separated prefill lengths of the profiler matrix. Unset: built-in values."
+    },
+    "PROFILER_RECONCILIATION_DELAY_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Delay before profiler projection recovery. Unset: a built-in default."
+    },
+    "PROFILER_RECONCILIATION_INTERVAL_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Interval of profiler projection recovery. Unset: a built-in default."
+    },
+    "PROMPT_ANALYSIS_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Model of prompt analysis. Unset: OLLAMA_ANALYSIS_MODEL, OLLAMA_MODEL, then AGENTX_DEFAULT_CHAT_MODEL."
+    },
+    "PROMPT_ANALYSIS_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Timeout of prompt analysis. Unset: 120000 ms."
+    },
+    "PSYX_ACCESS_MODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "token",
+      "category": "household",
+      "secret": false,
+      "description": "PsyX access mode: token (access code required) or trusted-network (no locking, an operator decision); another value fails startup. Unset: token."
+    },
+    "PSYX_ACCESS_TOKEN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "security",
+      "secret": true,
+      "description": "Private access code that unlocks PsyX in token mode. Unset: PsyX private APIs stay locked."
+    },
+    "PSYX_LOOPBACK_BYPASS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "true lets loopback requests bypass the PsyX access code. Any other value or unset: loopback requests need the code too."
+    },
+    "PSYX_VOICE_MODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "disabled",
+      "category": "household",
+      "secret": false,
+      "description": "PsyX voice mode: disabled or voix (requires a valid VOIX_BASE_URL); another value fails startup. Unset: disabled."
+    },
+    "QDRANT_COLLECTION": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": true,
+      "default": "agentx_product_embeddings",
+      "category": "memory",
+      "secret": false,
+      "description": "Qdrant collection RAG reads, writes and snapshots. Compose default agentx_product_embeddings; unset natively: agentx_embeddings."
+    },
+    "QDRANT_SNAPSHOT_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Timeout of Qdrant snapshot requests for backups. Unset: 120000 ms."
+    },
+    "QUAKES_API_URL": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Source URL of the Data earthquake feed. Unset: USGS daily CSV."
+    },
+    "QUAKES_INTERVAL_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Poll interval of the Data earthquake feed. Unset: 24 hours."
+    },
+    "RAG_API_URL": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "RAG base URL used by the ingest worker. Unset: loopback on the RAG port."
+    },
+    "RAG_CORPUS_STALE_AFTER_MS": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Age after the last ingest at which the RAG corpus is reported stale. Unset: 7 days."
+    },
+    "RAG_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "true adds RAG context to every chat. Unset: only when the request asks for it."
+    },
+    "RAG_EVIDENCE_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Timeout of Nerve Center RAG evidence calls, 500 to 15000. Unset: 5000."
+    },
+    "RAG_PUBLIC_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "http://127.0.0.1:${RAG_PORT:-3182}",
+      "hostVar": "RAG_PORT",
+      "category": "network",
+      "secret": false,
+      "description": "Browser-facing RAG URL used for Core portal links and accepted as a parental-gateway origin. Compose sets it from RAG_PORT; unset natively: no RAG link."
+    },
+    "REQUIRE_PROFILED_MODELS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "true blocks models not profiled on the selected host. Unset: off."
+    },
+    "RERANK_CONCURRENCY": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Parallel RAG rerank calls. Unset: 2."
+    },
+    "ROUNDTABLE_CHAIR_TOKEN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "security",
+      "secret": true,
+      "description": "Token required for roundtable chair actions."
+    },
+    "ROUNDTABLE_JUDGE_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Model of the roundtable quality judge. Unset: the product default model."
+    },
+    "ROUNDTABLE_JUDGE_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "inference",
+      "secret": false,
+      "description": "Timeout of the roundtable quality judge. Unset: 120000 ms."
+    },
+    "ROUNDTABLE_RUNTIME_PARTICIPANTS_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Enables external runtime participants in the roundtable. Unset: off."
+    },
+    "ROUTE_RESOLVER_SHADOW": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "true records shadow route resolver comparisons without changing routing. Unset: off."
+    },
+    "SATELLITES_INTERVAL_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Poll interval of the Data satellites feed. Unset: 6 hours."
+    },
+    "SATELLITES_MAX_AGE_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Retention of Data satellite points. Unset: 7 days."
+    },
+    "SEARXNG_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "SearXNG URL for web search. Unset: web search answers not configured."
+    },
+    "SECRETARY_MAIL_REMOTE_ROOT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Checkout path of Secretary mail scripts on the SSH host. Unset: CODING_DISPATCHER_REMOTE_ROOT."
+    },
+    "SENSORS_MAX_AGE_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Retention of Data sensor points. Unset: 30 days."
+    },
+    "STORAGE_AGENT_SOURCES": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "JSON registry of Data storage agent sources. Unset: built-in sources."
+    },
+    "VAULT_INBOX_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Absolute Obsidian vault inbox directory for agent notes. Unset: the capability answers not configured."
+    },
+    "VECTOR_STORE_TYPE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "RAG vector store, qdrant or memory. Unset: RAG refuses to create a store."
+    },
+    "VOIX_BASE_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Base URL of the VoiX service for household player, transcription, synthesis and PsyX voice. Unset: VoiX routes answer 503 VOIX_NOT_CONFIGURED."
+    },
+    "VOIX_LONG_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Timeout of long VoiX calls such as transcription. Unset: 120000 ms."
+    },
+    "VOIX_SPOKEN_CONTROLS_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "true sends household transcriptions to the VoiX spoken-controls endpoint (local Stop recognition). Any other value or unset: the ordinary transcription endpoint."
+    },
+    "VOIX_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Timeout of ordinary VoiX calls. Unset: 10000 ms."
+    },
+    "WATCHDOG_INTERVAL_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Interval of the Ollama watchdog probe. Unset: 60000 ms."
+    },
+    "WATCHDOG_MAX_CONSECUTIVE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Consecutive failed probes before the watchdog acts. Unset: 2."
+    },
+    "WATCHDOG_PROBE_RECOVERY_SETTLE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Settle window after a probe recovery, at least 60000. Unset: a built-in default."
+    },
+    "WATCHDOG_PROBE_TIMEOUT_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Timeout of an Ollama watchdog probe. Unset: 15000 ms."
+    },
+    "WATCHDOG_RECOVERY_GRACE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Grace after a host recovers during which the watchdog does not unjam. Unset: 5 minutes."
+    },
+    "WATCHDOG_RELOAD": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "false stops the watchdog reloading a model after an unjam. Unset: on."
+    },
+    "WEATHER_API_URL": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Source URL of the Data weather feed. Unset: OpenWeatherMap."
+    },
+    "WEATHER_INTERVAL_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Poll interval of the Data weather feed. Unset: 60000 ms."
+    }
+  }
+}

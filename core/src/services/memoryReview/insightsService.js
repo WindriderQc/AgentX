@@ -1,0 +1,315 @@
+// Deterministic, statement-free product insights over existing review runs.
+// This is a read model only: no second store, model call, or semantic action.
+
+const MemoryReviewRun = require('../../../models/MemoryReviewRun');
+const policy = require('./policy');
+
+// Dreaming is expected to be a recurring collection lane. Once a runtime has
+// contributed, silence for more than two days is evidence that coverage is
+// stale, not evidence that the collector is healthy.
+const DEFAULT_RUNTIME_STALE_AFTER_MS = 48 * 60 * 60 * 1000;
+
+function add(bucket, key, amount = 1) {
+  if (!key) return;
+  bucket[key] = (bucket[key] || 0) + amount;
+}
+
+function countCandidateRisk(candidate) {
+  const risk = candidate.risk || {};
+  return Number(!!risk.secret) + Number(!!risk.promptInjection)
+    + ['privacy', 'governance', 'staleness'].filter((key) => risk[key] && risk[key] !== 'none').length;
+}
+
+function latestRuntimeState(runs) {
+  const latest = {};
+  for (const run of runs) {
+    const runContributions = {};
+    for (const collector of run.collectors || []) {
+      const runtime = policy.publicRuntime(collector.runtime);
+      if (!runtime) continue;
+      if (!runContributions[runtime]) {
+        runContributions[runtime] = {
+          runId: run.runId,
+          runStatus: run.status,
+          at: collector.submittedAt || run.createdAt,
+          errors: [],
+          advisories: [],
+        };
+      }
+      const contribution = runContributions[runtime];
+      const submittedAt = collector.submittedAt || run.createdAt;
+      if (new Date(submittedAt || 0) > new Date(contribution.at || 0)) {
+        contribution.at = submittedAt;
+      }
+      contribution.errors.push(...(collector.errors || []));
+      contribution.advisories.push(...(collector.drift || []));
+    }
+    for (const [runtime, contribution] of Object.entries(runContributions)) {
+      if (!latest[runtime]) latest[runtime] = contribution;
+    }
+  }
+  return latest;
+}
+
+function latestCollectorObservation(runtimes) {
+  const timestamps = Object.values(runtimes)
+    .map((runtime) => new Date(runtime.lastSeen || 0).getTime())
+    .filter((timestamp) => Number.isFinite(timestamp) && timestamp > 0);
+  return timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null;
+}
+
+/**
+ * When did a run last complete, when did eligible evidence last arrive, and
+ * when is the next run due under the freshness window? `runs` is sorted
+ * newest first. Absent facts stay null, never "now".
+ */
+function cadenceFacts(runs, latest, now, expectedWithinMs) {
+  const at = (run) => run?.completedAt || run?.createdAt || null;
+  const iso = (value) => {
+    if (!value) return null;
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? new Date(time).toISOString() : null;
+  };
+  const lastSuccessful = runs.find((run) => run.status === 'completed');
+  const lastEligible = runs.find((run) => (run.collectors || []).some((collector) => (Number(collector.eligibleObservations) || 0) > 0));
+  const latestAt = iso(at(latest));
+  const latestMs = latestAt ? new Date(latestAt).getTime() : null;
+  return {
+    lastRunAt: latestAt,
+    lastSuccessfulRunAt: iso(at(lastSuccessful)),
+    lastEligibleEvidenceAt: iso(at(lastEligible)),
+    expectedWithinMs,
+    nextDueAt: latestMs ? new Date(latestMs + expectedWithinMs).toISOString() : null,
+    ageMs: latestMs ? Math.max(0, now.getTime() - latestMs) : null,
+    overdueRun: latestMs ? now.getTime() > latestMs + expectedWithinMs : false,
+  };
+}
+
+function measuredMetric(value, denominator, evidence) {
+  const hasDenominator = Number.isFinite(denominator) && denominator > 0;
+  return {
+    value: evidence.state === 'current' && hasDenominator ? value : null,
+    lastValue: hasDenominator ? value : null,
+    denominator: Number.isFinite(denominator) ? denominator : 0,
+    state: hasDenominator ? evidence.state : 'insufficient',
+    observedAt: evidence.observedAt,
+  };
+}
+
+function summarizeRuns(runs, limit, now = new Date(), {
+  runtimeStaleAfterMs = DEFAULT_RUNTIME_STALE_AFTER_MS,
+} = {}) {
+  runs = [...runs].sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0));
+  const totals = {
+    runs: runs.length, completedRuns: 0, activeRuns: 0, failedRuns: 0,
+    candidates: 0, pending: 0, reviewed: 0, applied: 0, autoApplied: 0,
+    softStored: 0, shadowed: 0, parked: 0,
+    ownerEvidence: 0, projectEventEvidence: 0, runtimeEvidence: 0,
+    sourceEvents: 0, eligibleObservations: 0, filteredObservations: 0,
+    modelCalls: 0, modelSkips: 0, errors: 0, advisories: 0,
+  };
+  const distributions = { candidateTypes: {}, targets: {}, statuses: {}, evidenceTrust: {}, automation: {} };
+  const quality = { approved: 0, rejected: 0, deferred: 0, conflicts: 0, riskFlags: 0, crossRuntime: 0 };
+  const runtimes = Object.fromEntries(policy.RUNTIMES.map((runtime) => [runtime, {
+    runtime, runs: 0, sourceFiles: 0, sourceEvents: 0, eligible: 0, filtered: 0,
+    ownerEvidence: 0, projectEventEvidence: 0, runtimeEvidence: 0,
+  }]));
+  const rejectionReasons = {};
+
+  for (const run of runs) {
+    if (run.status === 'completed') totals.completedRuns += 1;
+    else if (run.status === 'failed') totals.failedRuns += 1;
+    else totals.activeRuns += 1;
+    if (run.summary?.modelCalled) totals.modelCalls += 1;
+    else if (run.summary?.noEligibleObservations) totals.modelSkips += 1;
+
+    for (const collector of run.collectors || []) {
+      const runtimeKey = policy.publicRuntime(collector.runtime);
+      if (!runtimeKey) continue;
+      const runtime = runtimes[runtimeKey];
+      runtime.runs += 1;
+      runtime.sourceFiles += collector.sourceFilesSeen || 0;
+      runtime.sourceEvents += collector.sourceEventsSeen || 0;
+      runtime.eligible += collector.eligibleObservations || 0;
+      runtime.filtered += collector.rejectedObservations || 0;
+      totals.sourceEvents += collector.sourceEventsSeen || 0;
+      totals.eligibleObservations += collector.eligibleObservations || 0;
+      totals.filteredObservations += collector.rejectedObservations || 0;
+      totals.errors += (collector.errors || []).length;
+      totals.advisories += (collector.drift || []).length;
+      Object.entries(collector.rejectionCounts || {}).forEach(([reason, count]) => add(rejectionReasons, reason, Number(count) || 0));
+    }
+
+    for (const observation of run.observations || []) {
+      const trust = String(observation.trust || 'unknown');
+      const runtimeKey = policy.publicRuntime(observation.runtime);
+      add(distributions.evidenceTrust, trust);
+      if (['explicit_memory_request', 'authenticated_owner_statement', 'repeated_owner_preference'].includes(trust)) {
+        totals.ownerEvidence += 1;
+        if (runtimeKey && runtimes[runtimeKey]) runtimes[runtimeKey].ownerEvidence += 1;
+      } else if (['observed_project_event', 'verified_git_or_test_outcome'].includes(trust)) {
+        totals.projectEventEvidence += 1;
+        if (runtimeKey && runtimes[runtimeKey]) runtimes[runtimeKey].projectEventEvidence += 1;
+      } else if (trust === 'verified_runtime_evidence') {
+        totals.runtimeEvidence += 1;
+        if (runtimeKey && runtimes[runtimeKey]) runtimes[runtimeKey].runtimeEvidence += 1;
+      }
+    }
+
+    for (const candidate of run.candidates || []) {
+      totals.candidates += 1;
+      add(distributions.candidateTypes, candidate.type);
+      add(distributions.targets, candidate.target?.kind);
+      add(distributions.statuses, candidate.status);
+      add(distributions.automation, candidate.automation?.disposition);
+      if (['proposed', 'deferred', 'apply_failed'].includes(candidate.status)) totals.pending += 1;
+      if (['approved', 'rejected', 'applied', 'apply_failed'].includes(candidate.status) && !candidate.apply?.automated) totals.reviewed += 1;
+      if (['approved', 'applied', 'apply_failed'].includes(candidate.status) && !candidate.apply?.automated) quality.approved += 1;
+      if (candidate.status === 'rejected') quality.rejected += 1;
+      if (candidate.status === 'deferred') quality.deferred += 1;
+      if (candidate.status === 'applied') {
+        totals.applied += 1;
+        if (candidate.apply?.automated) totals.autoApplied += 1;
+        if (candidate.target?.kind === 'soft_memory') totals.softStored += 1;
+      }
+      if (candidate.status === 'shadowed') totals.shadowed += 1;
+      if (candidate.status === 'parked') totals.parked += 1;
+      quality.conflicts += (candidate.conflicts || []).length;
+      quality.riskFlags += countCandidateRisk(candidate);
+      if ((candidate.recurrence?.independentRuntimes || 0) > 1) quality.crossRuntime += 1;
+    }
+  }
+
+  const latestByRuntime = latestRuntimeState(runs);
+  Object.values(runtimes).forEach((runtime) => {
+    const current = latestByRuntime[runtime.runtime];
+    runtime.lastSeen = current?.at || null;
+    runtime.lastRunId = current?.runId || null;
+    runtime.currentErrors = current?.errors?.length || 0;
+    runtime.currentAdvisories = [...new Set(current?.advisories || [])].length;
+    const lastSeenMs = new Date(runtime.lastSeen || 0).getTime();
+    runtime.ageMs = Number.isFinite(lastSeenMs) && lastSeenMs > 0
+      ? Math.max(0, now.getTime() - lastSeenMs)
+      : null;
+    runtime.staleAfterMs = runtimeStaleAfterMs;
+    runtime.health = runtime.currentErrors
+      ? 'attention'
+      : runtime.ageMs === null
+        ? 'not_seen'
+        : runtime.ageMs > runtimeStaleAfterMs
+          ? 'stale'
+          : 'healthy';
+  });
+
+  const currentErrors = Object.values(runtimes).reduce((sum, runtime) => sum + runtime.currentErrors, 0);
+  const currentAdvisories = Object.values(runtimes).reduce((sum, runtime) => sum + runtime.currentAdvisories, 0);
+  const staleRuntimes = Object.values(runtimes)
+    .filter((runtime) => runtime.health === 'stale')
+    .map((runtime) => runtime.runtime);
+  const missingRuntimes = Object.values(runtimes)
+    .filter((runtime) => runtime.health === 'not_seen')
+    .map((runtime) => runtime.runtime);
+  const activeRuns = runs.filter((run) => ['collecting', 'synthesizing'].includes(run.status));
+  const activeRun = activeRuns[0] || null;
+  const activeReconciliation = activeRun ? policy.reconciliationStatus(activeRun, now) : null;
+  const overdue = activeRuns.filter((run) => policy.reconciliationStatus(run, now).overdue).length;
+  const latest = runs.find((run) => ['ready_for_review', 'partially_reviewed', 'completed'].includes(run.status)) || runs[0] || null;
+  const decided = quality.approved + quality.rejected;
+  const observed = totals.eligibleObservations + totals.filteredObservations;
+  const observedAt = latestCollectorObservation(runtimes);
+  const evidenceState = !runs.length || !observedAt
+    ? 'unavailable'
+    : currentErrors || overdue
+      ? 'attention'
+      : staleRuntimes.length
+        ? 'stale'
+        : missingRuntimes.length
+          ? 'partial'
+          : 'current';
+  const qualityEvidence = {
+    state: evidenceState,
+    observedAt,
+    missingRuntimes,
+    staleRuntimes,
+  };
+  const approvalPrecision = decided ? Math.round((quality.approved / decided) * 100) : null;
+  const filterRate = observed ? Math.round((totals.filteredObservations / observed) * 100) : null;
+
+  return {
+    window: {
+      limit,
+      from: runs.length ? runs[runs.length - 1].createdAt : null,
+      to: runs.length ? runs[0].createdAt : null,
+    },
+    health: {
+      state: !runs.length ? 'waiting' : (currentErrors || overdue || staleRuntimes.length || missingRuntimes.length) ? 'attention' : 'healthy',
+      errors: currentErrors,
+      advisories: currentAdvisories,
+      stale: staleRuntimes.length,
+      staleRuntimes,
+      missing: missingRuntimes.length,
+      missingRuntimes,
+      runtimeStaleAfterMs,
+      collecting: activeRuns.length > 0,
+      overdue,
+      activeRun: activeRun ? {
+        runId: activeRun.runId,
+        status: activeRun.status,
+        createdAt: activeRun.createdAt,
+        reconciliation: activeReconciliation,
+      } : null,
+    },
+    latest: latest ? {
+      runId: latest.runId,
+      status: latest.status,
+      createdAt: latest.createdAt,
+      completedAt: latest.completedAt,
+      candidates: (latest.candidates || []).length,
+      pending: (latest.candidates || []).filter((candidate) => ['proposed', 'deferred', 'apply_failed'].includes(candidate.status)).length,
+      modelCalled: !!latest.summary?.modelCalled,
+      quiet: !!latest.summary?.noEligibleObservations,
+      // Cadence facts, so "quiet" can be judged against when evidence last
+      // arrived and when the next run is due, instead of read as healthy by default.
+      ...cadenceFacts(runs, latest, now, runtimeStaleAfterMs),
+    } : null,
+    totals,
+    quality: {
+      ...quality,
+      evidence: qualityEvidence,
+      metrics: {
+        filterRate: measuredMetric(filterRate, observed, qualityEvidence),
+        approvalPrecision: measuredMetric(approvalPrecision, decided, qualityEvidence),
+        modelSkips: measuredMetric(totals.modelSkips, totals.runs, qualityEvidence),
+        crossRuntime: measuredMetric(quality.crossRuntime, totals.candidates, qualityEvidence),
+        conflicts: measuredMetric(quality.conflicts, totals.candidates, qualityEvidence),
+        riskFlags: measuredMetric(quality.riskFlags, totals.candidates, qualityEvidence),
+      },
+      approvalPrecision: evidenceState === 'current' ? approvalPrecision : null,
+      filterRate: evidenceState === 'current' ? filterRate : null,
+    },
+    runtimes: Object.values(runtimes),
+    distributions,
+    rejectionReasons,
+    safeDigest: latest
+      ? `Dreaming Review: ${totals.autoApplied} auto-applied (${totals.softStored} soft), ${totals.pending} exception(s) awaiting review across ${totals.runs} recent runs; ${currentErrors ? `${currentErrors} collector error(s)` : overdue ? `${overdue} overdue reconciliation(s)` : staleRuntimes.length ? `${staleRuntimes.length} stale collector(s)` : missingRuntimes.length ? `${missingRuntimes.length} collector(s) not observed` : 'collectors healthy'}.`
+      : 'Dreaming Review: no runs recorded yet.',
+  };
+}
+
+async function buildInsights({ limit = 30 } = {}) {
+  const bounded = Math.min(Math.max(Math.trunc(Number(limit) || 30), 1), 100);
+  const runs = await MemoryReviewRun.find({}, {
+    runId: 1, status: 1, createdAt: 1, completedAt: 1, summary: 1,
+    'collectors.runtime': 1, 'collectors.submittedAt': 1,
+    'collectors.sourceFilesSeen': 1, 'collectors.sourceEventsSeen': 1,
+    'collectors.eligibleObservations': 1, 'collectors.rejectedObservations': 1,
+    'collectors.rejectionCounts': 1, 'collectors.errors': 1, 'collectors.drift': 1,
+    'observations.runtime': 1, 'observations.trust': 1,
+    'candidates.type': 1, 'candidates.status': 1, 'candidates.target.kind': 1,
+    'candidates.recurrence': 1, 'candidates.conflicts': 1, 'candidates.risk': 1,
+    'candidates.automation': 1, 'candidates.apply.automated': 1,
+  }).sort({ createdAt: -1 }).limit(bounded).lean();
+  return summarizeRuns(runs, bounded);
+}
+
+module.exports = { DEFAULT_RUNTIME_STALE_AFTER_MS, buildInsights, summarizeRuns };

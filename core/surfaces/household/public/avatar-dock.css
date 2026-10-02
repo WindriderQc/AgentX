@@ -1,0 +1,46 @@
+/* The docked avatar (avatar-dock.js). Modes: bulle, quart (a quarter of the screen),
+   moitie (the right half; the conversation keeps the left), cache (a small reopen tab). */
+/* Below the sticky topbar (z-index 20), so its menus ("Réglages et outils") open over the dock. */
+.avatar-dock { --avatar-tint: #52cfc5; position: fixed; z-index: 15; right: 16px; bottom: 16px; display: grid;
+  border: 1px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: var(--shadow);
+  background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--avatar-tint) 14%, #101c27), #060d14 72%);
+  transition: width .25s ease, height .25s ease, border-radius .25s ease; }
+/* Keep the section links below the topbar clickable at desktop widths. */
+.avatar-dock[data-mode=quart] { top: 134px; bottom: auto; width: min(40vw, 600px); height: min(50vh, 460px); }
+.avatar-dock[data-mode=moitie] { top: 134px; right: 0; bottom: 0; width: 50vw; height: auto; border-radius: 0; border-width: 0 0 0 1px; }
+.avatar-dock[data-mode=bulle] { width: 104px; height: 104px; border-radius: 50%; cursor: zoom-in; }
+.avatar-dock[data-mode=cache] { width: auto; height: auto; border-radius: 999px; background: var(--panel); }
+.avatar-dock-stage { position: relative; min-height: 0; grid-area: 1 / 1; }
+.avatar-dock[data-mode=cache] .avatar-dock-stage, .avatar-dock[data-mode=cache] .avatar-dock-bar { display: none; }
+.avatar-dock-reopen { display: none; grid-area: 1 / 1; padding: 8px 14px; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; }
+.avatar-dock[data-mode=cache] .avatar-dock-reopen { display: block; }
+.avatar-dock llmx-face { position: absolute; inset: 0; width: 100%; height: 100%; }
+.avatar-dock-bar { grid-area: 1 / 1; align-self: start; justify-self: end; display: flex; gap: 4px; padding: 8px; opacity: 0; transition: opacity .2s; }
+.avatar-dock:hover .avatar-dock-bar, .avatar-dock:focus-within .avatar-dock-bar { opacity: 1; }
+.avatar-dock[data-mode=bulle] .avatar-dock-bar { display: none; }
+.avatar-dock-bar button { width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line); background: #0b1620cc; color: var(--soft); font: inherit; cursor: pointer; }
+.avatar-dock-bar button[aria-pressed=true] { color: var(--text); border-color: var(--avatar-tint); }
+/* Fallback orb: shown until the face arrives, and instead of it when it cannot. */
+.avatar-dock-orb { --avatar-level: 0; position: absolute; inset: 0; margin: auto; width: 46%; aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #efffff, var(--avatar-tint) 30%, #0c1d2b 76%);
+  box-shadow: 0 0 calc(18px + 40px * var(--avatar-level)) var(--avatar-tint); transform: scale(calc(1 + .12 * var(--avatar-level))); transition: box-shadow .08s, transform .08s, opacity .4s; }
+.avatar-dock-orb[data-phase=waiting], .avatar-dock-orb[data-phase=generating] { animation: avatar-think 1.6s ease-in-out infinite alternate; }
+.avatar-dock-orb[data-phase=sleeping] { opacity: .35; }
+.avatar-dock[data-renderer=face] .avatar-dock-orb { opacity: 0; }
+/* The picture in words when the 3D face is unavailable: "8 + 5 = 13". */
+@keyframes avatar-think { from { filter: brightness(.85); } to { filter: brightness(1.25); } }
+/* The conversation makes room for the dock; its own small presence mark steps aside. */
+body.avatar-docked .conversation-presence { display: none; }
+@media (min-width: 701px) and (max-width: 1000px) {
+  .avatar-dock[data-mode=quart], .avatar-dock[data-mode=moitie] { top: 170px; }
+}
+@media (min-width: 701px) {
+  body[data-avatar-mode=moitie] #app { width: 50vw; margin: 0; }
+  body[data-avatar-mode=quart] #app { width: calc(100vw - min(40vw, 600px) - 32px); margin: 0; }
+}
+@media (max-width: 700px) {
+  .avatar-dock[data-mode=quart], .avatar-dock[data-mode=moitie] { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 40vh; border-radius: 22px 22px 0 0; border-width: 1px 0 0; }
+  .avatar-dock[data-mode=bulle] { width: 76px; height: 76px; right: 12px; bottom: 12px; }
+  body[data-avatar-mode=quart] .conversation-stage, body[data-avatar-mode=moitie] .conversation-stage { padding-bottom: 42vh; }
+}
+@media (prefers-reduced-motion: reduce) { .avatar-dock, .avatar-dock-orb { transition: none; } }

@@ -1,0 +1,19 @@
+[Unit]
+Description=AgentX Benchmark Harness Broker
+After=network-online.target
+
+[Service]
+Type=simple
+User=agentx
+WorkingDirectory=/srv/agentx/AgentX/integrations/benchmark-harness-broker
+EnvironmentFile=/etc/agentx/benchmark-harness-broker.env
+ExecStart=/usr/bin/node /srv/agentx/AgentX/integrations/benchmark-harness-broker/server.js
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/agentx/benchmark-harness /var/log/agentx
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,197 @@
+/** Human entry point for the Benchmark laboratory. */
+import { fetchActiveProfilingState, findProfilingForHost } from './profiling-lockout.js';
+
+(function () {
+  'use strict';
+
+  var els = {};
+  var refreshRevision = 0;
+
+  function cacheElements() {
+    els.cockpit = document.getElementById('benchmark-cockpit');
+    els.primary = document.getElementById('evaluation-primary-action');
+    els.primaryLabel = document.getElementById('evaluation-primary-label');
+    els.primaryDetail = document.getElementById('evaluation-primary-detail');
+    els.readiness = document.getElementById('evaluation-readiness');
+    els.readinessLabel = document.getElementById('evaluation-readiness-label');
+    els.readinessDetail = document.getElementById('evaluation-readiness-detail');
+    els.refresh = document.getElementById('evaluation-refresh');
+    els.historyDetail = document.getElementById('evaluation-history-detail');
+  }
+
+  function setReadiness(state, label, detail) {
+    var icons = { ok: 'fa-circle-check', warn: 'fa-circle-info', error: 'fa-circle-exclamation', unknown: 'fa-circle-question', loading: 'fa-circle-notch fa-spin' };
+    els.readiness.className = 'evaluation-readiness is-' + state;
+    els.readiness.querySelector('.evaluation-readiness-icon i').className = 'fas ' + icons[state];
+    els.readinessLabel.textContent = label;
+    els.readinessDetail.textContent = detail;
+  }
+
+  function setPrimary(label, detail, href) {
+    els.primaryLabel.textContent = label;
+    els.primaryDetail.textContent = detail;
+    els.primary.href = href;
+  }
+
+  function openCockpit() {
+    els.cockpit.open = true;
+    requestAnimationFrame(function () {
+      var firstStep = document.getElementById('infrastructure');
+      if (firstStep) {
+        firstStep.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+        firstStep.focus({ preventScroll: true });
+      }
+    });
+  }
+
+  function syncCockpitAccessibility() {
+    var surface = els.cockpit.querySelector('.evaluation-cockpit-surface');
+    if (!surface) return;
+    if (els.cockpit.open) {
+      surface.removeAttribute('inert');
+      surface.removeAttribute('aria-hidden');
+      return;
+    }
+    surface.setAttribute('inert', '');
+    surface.setAttribute('aria-hidden', 'true');
+  }
+
+  async function fetchJson(url) {
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, 12000);
+    try {
+      var response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+      if (!response.ok) throw new Error('Request failed (' + response.status + ')');
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async function refreshExperience() {
+    var revision = ++refreshRevision;
+    setReadiness('loading', 'Checking evaluation…', 'Confirming models, host profile, judge and history');
+    var responses = await Promise.allSettled([
+      fetchJson('/api/ollama-hosts'),
+      fetchJson('/api/profiler/hosts'),
+      fetchJson('/api/benchmark/batches?status=completed&limit=1'),
+      fetchJson('/api/benchmark/batches/active'),
+      fetchJson('/api/benchmark/judge/readiness'),
+      fetchActiveProfilingState()
+    ]);
+    if (revision !== refreshRevision) return;
+
+    var runtimes = responses[0].status === 'fulfilled' ? (responses[0].value.hosts || []) : [];
+    var profilePayload = responses[1].status === 'fulfilled' ? responses[1].value : {};
+    var profiles = profilePayload.data || profilePayload || [];
+    var batchPayload = responses[2].status === 'fulfilled' ? (responses[2].value || {}) : {};
+    var completedTotal = batchPayload.data && batchPayload.data.total;
+    var activePayload = responses[3].status === 'fulfilled' ? responses[3].value : {};
+    var activeData = activePayload.data || activePayload;
+    var active = Array.isArray(activeData)
+      ? (activeData[0] || null)
+      : (activeData && (activeData.batch || activeData)) || null;
+    var activeId = active && (active._id || active.id);
+    var judgePayload = responses[4].status === 'fulfilled' ? responses[4].value : {};
+    var judgeReadiness = judgePayload.data || judgePayload;
+    var onlineModels = runtimes.reduce(function (count, host) {
+      return count + (host.available && Array.isArray(host.models) ? host.models.length : 0);
+    }, 0);
+    var readyProfiles = Array.isArray(profiles) ? profiles.filter(function (host) {
+      return host.status === 'online' && host.baseline && host.baseline.testedAt;
+    }) : [];
+
+    els.historyDetail.textContent = Number.isInteger(completedTotal) && completedTotal >= 0
+      ? (completedTotal ? completedTotal + ' completed comparison' + (completedTotal === 1 ? '' : 's') : 'No completed comparisons yet')
+      : 'Comparison history unavailable';
+
+    if (responses[0].status !== 'fulfilled') {
+      setReadiness('unknown', 'Model runtime status is unknown', 'The live check did not finish. Refresh or open connection setup.');
+      setPrimary('Open connection setup', 'Verify the runtime without guessing its state', '/setup');
+      return;
+    }
+
+    if (activeId) {
+      setReadiness('ok', 'Comparison in progress', 'Live evidence is updating in the expert lab');
+      setPrimary('View live comparison', 'Follow progress, rankings and anomalies', '#benchmark-cockpit');
+      els.cockpit.open = true;
+      return;
+    }
+    if (responses[3].status !== 'fulfilled') {
+      setReadiness('unknown', 'Comparison status is unknown', 'Refresh or inspect the lab before starting another comparison.');
+      setPrimary('Check comparison progress', 'Verify whether a comparison is already running', '#benchmark-cockpit');
+      return;
+    }
+    if (onlineModels === 0) {
+      setReadiness('error', 'No model runtime available', 'Connect an Ollama host before comparing models.');
+      setPrimary('Set up evaluation', 'Connect a model host and verify it', '/setup');
+      return;
+    }
+    if (!readyProfiles.length) {
+      setReadiness('warn', 'Host baseline needed', onlineModels + ' model' + (onlineModels === 1 ? '' : 's') + ' online · performance baseline required');
+      setPrimary('Prepare the host', 'Run one baseline so comparisons are trustworthy', '/profiler');
+      return;
+    }
+
+    var profiling = responses[5].status === 'fulfilled' ? responses[5].value : null;
+    if (!profiling || !profiling.available) {
+      setReadiness('unknown', 'Preparation status is unknown', 'Refresh to check whether a host is still profiling models.');
+      setPrimary('Check model preparation', 'Inspect profile progress before starting', '/profiler');
+      return;
+    }
+    if (readyProfiles.every(function (host) { return findProfilingForHost(host, profiling).length > 0; })) {
+      setReadiness('warn', 'Models are being prepared', 'Wait for profiling to finish before starting a comparison on this host.');
+      setPrimary('View preparation progress', 'Follow the active model profiles', '/profiler');
+      return;
+    }
+
+    if (responses[4].status !== 'fulfilled') {
+      setReadiness('unknown', 'Judge status is unknown', 'Models and host profile are ready, but judge readiness could not be verified.');
+      setPrimary('Check judge setup', 'Verify an installed judge model before launching', '/setup?focus=judge&return=%2F');
+      return;
+    }
+    if (judgeReadiness.ready !== true) {
+      setReadiness('error', 'Judge is not ready', judgeReadiness.summary || 'Choose a reachable, already-installed judge model.');
+      setPrimary('Configure the judge', 'Choose and verify an installed model explicitly', '/setup?focus=judge&return=%2F');
+      return;
+    }
+
+    setReadiness('ok', 'Ready to compare', onlineModels + ' model' + (onlineModels === 1 ? '' : 's') + ' available on a prepared host · judge available');
+    setPrimary('Set up a comparison', 'Choose contenders and a focused test depth', '#benchmark-cockpit');
+  }
+
+  function requestRefresh() {
+    var pending = refreshExperience();
+    var revision = refreshRevision;
+    return pending.catch(function (error) {
+      if (revision !== refreshRevision) return;
+      setReadiness('error', 'Could not check evaluation', error.message || 'Benchmark did not respond.');
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    cacheElements();
+    els.primary.addEventListener('click', function (event) {
+      if (els.primary.getAttribute('href') !== '#benchmark-cockpit') return;
+      event.preventDefault();
+      openCockpit();
+    });
+    els.refresh.addEventListener('click', requestRefresh);
+    els.cockpit.addEventListener('toggle', syncCockpitAccessibility);
+    if (location.hash === '#benchmark-cockpit' || document.body.classList.contains('state-live')) els.cockpit.open = true;
+    syncCockpitAccessibility();
+    var wasLive = document.body.classList.contains('state-live') && !document.body.classList.contains('state-finished');
+    new MutationObserver(function () {
+      var isLive = document.body.classList.contains('state-live') && !document.body.classList.contains('state-finished');
+      if (isLive) {
+        els.cockpit.open = true;
+        syncCockpitAccessibility();
+      }
+      if (isLive !== wasLive) {
+        wasLive = isLive;
+        requestRefresh();
+      }
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    requestRefresh();
+  });
+})();

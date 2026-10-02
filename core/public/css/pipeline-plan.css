@@ -1,0 +1,18 @@
+.pipeline-plan { padding: 14px; border: 1px solid #536176; border-radius: 10px; color: #e2e8f0; font-size: .85rem; line-height: 1.5; overflow-wrap: anywhere; margin-bottom: 12px; }
+.pipeline-plan > summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.pipeline-plan .pipeline-muted { color: #cbd5e1; margin: 8px 0; }
+.pipeline-plan-text { white-space: pre-wrap; max-height: 22rem; overflow: auto; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px; background: rgba(0, 0, 0, .22); }
+.pipeline-plan-steps { margin: 8px 0; padding-left: 1.4rem; }
+.pipeline-plan code { background: rgba(0, 0, 0, .28); border: 1px solid rgba(255, 255, 255, .1); border-radius: 5px; padding: 1px 6px; font-size: .78rem; }
+.pipeline-plan-notice, .pipeline-plan-unknown { margin: 8px 0; padding: 8px 10px; border-left: 3px solid #fcd34d; background: rgba(255, 255, 255, .03); }
+.pipeline-plan-decided { margin: 8px 0; padding: 8px 10px; border-left: 3px solid #7cf0ff; }
+[data-plan-state="approved"] { color: #86efac; }
+[data-plan-state="changes_requested"], [data-plan-state="stale"] { color: #fcd34d; }
+.pipeline-plan-decision { display: grid; gap: 8px; margin-top: 10px; }
+.pipeline-plan-decision label { display: grid; gap: 4px; color: #cbd5e1; font-size: .8rem; }
+.pipeline-plan-decision input { min-height: 40px; padding: 6px 10px; border: 1px solid #536176; border-radius: 6px; background: rgba(0, 0, 0, .25); color: #e2e8f0; font: inherit; }
+.pipeline-plan-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pipeline-plan-actions .pipeline-btn { min-height: 44px; }
+.pipeline-plan-message:empty { display: none; }
+.pipeline-plan-message { margin: 0; color: #fcd34d; }
+.pipeline-plan > summary:focus-visible, .pipeline-plan-decision input:focus-visible, .pipeline-plan-actions .pipeline-btn:focus-visible { outline: 3px solid #7cf0ff; outline-offset: 3px; }

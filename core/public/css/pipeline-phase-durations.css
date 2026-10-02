@@ -1,0 +1,22 @@
+.pipeline-phase-durations { padding: 12px 16px 14px; border-bottom: 1px solid rgba(255, 255, 255, .07); color: #cbd5e1; font-size: .8rem; }
+.pipeline-phase-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-bottom: 10px; }
+.pipeline-phase-head span { color: #94a3b8; font-size: .74rem; overflow-wrap: anywhere; }
+.pipeline-phase-state { margin: 0 0 10px; color: #cbd5e1; }
+.pipeline-phase-state[data-tone="inconsistent"] { color: #fde68a; }
+.pipeline-phase-state[data-tone="unavailable"] { color: #fecaca; }
+.pipeline-phase-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.pipeline-phase { display: grid; align-content: start; gap: 5px; padding: 11px 12px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 8px; background: rgba(15, 20, 34, .98); min-width: 0; }
+.pipeline-phase[data-instrumented="false"] { border-style: dashed; background: transparent; }
+.pipeline-phase header { display: flex; justify-content: space-between; gap: 8px; color: #94a3b8; font-size: .7rem; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.pipeline-phase header em { font-style: normal; font-weight: 700; letter-spacing: 0; text-transform: none; color: #7c8aa0; }
+.pipeline-phase strong { color: #f8fafc; font-size: 1.2rem; line-height: 1.1; }
+.pipeline-phase small { color: #94a3b8; font-size: .74rem; line-height: 1.35; }
+.pipeline-phase .pipeline-phase-coverage { color: #cbd5e1; }
+.pipeline-phase p { margin: 0; color: #8391a7; font-size: .72rem; line-height: 1.4; }
+.pipeline-phase-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.pipeline-phase-chips span { border: 1px solid rgba(148, 163, 184, .25); border-radius: 6px; padding: 1px 6px; color: #94a3b8; font-size: .72rem; white-space: nowrap; }
+.pipeline-phase-chips b { color: #e2e8f0; font-weight: 700; }
+.pipeline-phase-chips [data-status="pending"] b { color: #fde68a; }
+.pipeline-phase-chips [data-status="inconsistent"] { border-color: rgba(251, 191, 36, .45); }
+.pipeline-phase-chips [data-status="inconsistent"] b { color: #fbbf24; }
+.pipeline-phase-chips [data-status="missing"] b { color: #94a3b8; font-style: italic; }

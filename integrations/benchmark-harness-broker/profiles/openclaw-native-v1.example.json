@@ -1,0 +1,18 @@
+{
+  "models": {
+    "mode": "replace",
+    "providers": {
+      "ollama": {
+        "baseUrl": "http://127.0.0.1:3180/api/openclaw-ollama",
+        "api": "ollama",
+        "apiKey": "ollama-local",
+        "models": [{ "id": "example-model", "name": "Example local model", "reasoning": true, "input": ["text"], "contextWindow": 8192, "maxTokens": 2048, "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 } }]
+      }
+    }
+  },
+  "agents": { "defaults": { "model": { "primary": "ollama/example-model", "fallbacks": [] }, "skipBootstrap": true } },
+  "tools": { "profile": "coding", "allow": ["read", "write", "edit"], "fs": { "workspaceOnly": true } },
+  "plugins": { "allow": ["ollama"], "entries": { "ollama": { "enabled": true } } },
+  "skills": { "allowBundled": [] },
+  "env": { "shellEnv": { "enabled": false } }
+}

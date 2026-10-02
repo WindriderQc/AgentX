@@ -1,0 +1,425 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const vm = require('node:vm');
+
+const toolbox = require('../index');
+
+function browserEvidence(fetchImpl) {
+  const content = { innerHTML: '' };
+  const listeners = {};
+  const form = { elements: { search: {}, root: {} } };
+  const context = {
+    document: {
+      querySelector(selector) { return selector === '#content' ? content : selector === '#fileFilters' ? form : {}; },
+      addEventListener(name, callback) { listeners[name] = callback; }
+    },
+    window: { addEventListener() {}, alert(message) { throw new Error(message); } },
+    fetch: fetchImpl, URLSearchParams, console
+  };
+  const source = fs.readFileSync(path.join(__dirname, '../public/app.js'), 'utf8')
+    .replace(/\nrender\(\);\s*$/, '\nglobalThis.evidence = { api, overview, files, number, bytes, percent, signedNumber, signedBytes, trend };');
+  vm.runInNewContext(source, context);
+  return { ...context.evidence, content, listeners, form };
+}
+
+test('unavailable measurements remain unknown while observed zero stays zero', () => {
+  const browser = browserEvidence();
+  for (const value of [null, undefined, '', ' ', NaN, Infinity]) {
+    for (const name of ['number', 'bytes', 'percent', 'signedNumber', 'signedBytes']) {
+      assert.equal(browser[name](value), '—', `${name} must preserve missing ${String(value)}`);
+    }
+    assert.doesNotMatch(browser.trend(value, 'Change'), /trend positive/);
+  }
+  assert.equal(browser.number(0), '0');
+  assert.equal(browser.bytes(0), '0 B');
+  assert.equal(browser.percent(0), '0.00%');
+});
+
+test('unreadable successful upstream responses cannot count as healthy capabilities', async (t) => {
+  const original = global.fetch;
+  t.after(() => { global.fetch = original; });
+  global.fetch = async () => ({ ok: true, status: 200, text: async () => '<html>wrong destination</html>' });
+  const status = await toolbox.buildStatus();
+  assert.equal(status.dataService.healthy, 0);
+  assert.ok(Object.values(status.sources).every(source => source.ok === false));
+});
+
+test('valid error envelopes are unavailable and obsolete Data keys are not transmitted', async (t) => {
+  const original = global.fetch;
+  const previous = process.env.DATAAPI_API_KEY;
+  t.after(() => {
+    global.fetch = original;
+    if (previous === undefined) delete process.env.DATAAPI_API_KEY;
+    else process.env.DATAAPI_API_KEY = previous;
+  });
+  process.env.DATAAPI_API_KEY = 'obsolete-setting';
+  global.fetch = async (_url, options) => {
+    assert.equal(options.headers['X-API-Key'], undefined);
+    return { ok: true, status: 200, text: async () => JSON.stringify({ ok: false, status: 'error', message: 'Unavailable' }) };
+  };
+  assert.equal((await toolbox.buildStatus()).dataService.healthy, 0);
+});
+
+test('browser rejects invalid JSON and failed envelopes even with HTTP 200', async () => {
+  for (const body of [{ ok: false, message: 'Storage unavailable' }, { status: 'error', message: 'Storage unavailable' }, null, 'html']) {
+    const browser = browserEvidence(async () => ({ ok: true, status: 200, json: async () => body }));
+    await assert.rejects(browser.api('/storage/summary'));
+  }
+  const browser = browserEvidence(async () => ({ ok: true, status: 200, json: async () => { throw new Error('parse'); } }));
+  await assert.rejects(browser.api('/storage/summary'));
+});
+
+test('failed overview sources are not rendered as zero devices, feeds or profiles', async () => {
+  const browser = browserEvidence(async () => ({ ok: true, status: 200, json: async () => ({ data: {
+    dataService: { healthy: 0, total: 7 }, sources: {
+      health: { ok: false }, resources: { ok: false }, storage: { ok: false },
+      network: { ok: false }, liveData: { ok: false }, databases: { ok: false },
+      janitor: { ok: false }
+    }
+  } }) }));
+  await browser.overview();
+  assert.match(browser.content.innerHTML, /—<\/strong><span class="metric-label">known network devices/);
+  assert.doesNotMatch(browser.content.innerHTML, /0\/0 enabled/);
+  assert.match(browser.content.innerHTML, /Janitor profiles<\/span><strong>—/);
+});
+
+test('a partial status projection cannot claim zero of seven healthy capabilities', async () => {
+  const browser = browserEvidence(async () => ({ ok: true, status: 200, json: async () => ({ data: {
+    dataService: { healthy: 0, total: 7 }, sources: { network: { ok: false } }
+  } }) }));
+  await assert.rejects(browser.overview(), /unexpected response/);
+  assert.doesNotMatch(browser.content.innerHTML, /0\/7/);
+});
+
+test('file pagination reaches later rows and keeps the selected filters', async () => {
+  const requests = [];
+  const browser = browserEvidence(async (url) => {
+    const query = new URL(url, 'http://localhost').searchParams;
+    requests.push(query);
+    const page = Number(query.get('page'));
+    return { ok: true, status: 200, json: async () => ({ data: {
+      files: [{ filename: `source-page-${page}` }], pagination: { page, pages: 2, total: 51 }
+    } }) };
+  });
+  await browser.files(new URLSearchParams({ search: 'notes', root: '/mnt/media' }));
+  assert.match(browser.content.innerHTML, /data-action="files-next"/);
+  await browser.listeners.click({ target: { closest(selector) {
+    return selector === '[data-action]' ? { dataset: { action: 'files-next' } } : null;
+  } } });
+  assert.equal(requests.at(-1).get('page'), '2');
+  assert.equal(requests.at(-1).get('search'), 'notes');
+  assert.equal(requests.at(-1).get('root'), '/mnt/media');
+  assert.match(browser.content.innerHTML, /source-page-2/);
+  assert.match(browser.content.innerHTML, /data-action="files-next" disabled/);
+});
+
+function registeredSurface() {
+  const mounts = [];
+  const routers = [];
+  const express = {
+    static(root, options) { return { kind: 'static', root, options }; },
+    Router() {
+      const routes = [];
+      const router = {
+        routes,
+        get(routePath, handler) { routes.push({ method: 'get', path: routePath, handler }); }
+      };
+      routers.push(router);
+      return router;
+    }
+  };
+  const app = {
+    use(routePath, handler) { mounts.push({ method: 'use', path: routePath, handler }); },
+    get(routePath, handler) { mounts.push({ method: 'get', path: routePath, handler }); }
+  };
+  toolbox.register({ contractVersion: 2, app, express });
+  return { mounts, routers };
+}
+
+test('manifest identifies the read-only AIOps Data Toolbox contract', () => {
+  assert.equal(toolbox.id, 'aio-ops-data-toolbox');
+  assert.equal(toolbox.version, '1.3.2');
+  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection']);
+  assert.throws(() => toolbox.register({ contractVersion: 1 }), /contract v2/);
+});
+
+test('query projection keeps only allowlisted, bounded values', () => {
+  const query = toolbox.pickQuery({ limit: '999', page: '-4', sort: 'sideways', q: 'x'.repeat(30), ignored: 'secret' }, {
+    limit: { type: 'int', fallback: 10, min: 1, max: 100 },
+    page: { type: 'int', fallback: 1, min: 1, max: 1000 },
+    sort: { values: ['asc', 'desc'] },
+    q: { maxLength: 20 }
+  });
+  assert.equal(query, `limit=100&page=1&q=${'x'.repeat(20)}`);
+  assert.equal(toolbox.boundedInt('nope', 7, 1, 10), 7);
+  assert.equal(toolbox.safeName('nas_files', 'collection'), 'nas_files');
+  assert.throws(() => toolbox.safeName('../private', 'collection'), /Invalid collection/);
+});
+
+test('registration mounts the cockpit and GET-only proxy families', () => {
+  const { mounts, routers } = registeredSurface();
+  const appPaths = mounts.map((entry) => entry.path);
+  assert.ok(appPaths.includes('/assets/data-toolbox'));
+  assert.ok(appPaths.includes('/data-toolbox'));
+  assert.ok(appPaths.includes('/api/data-toolbox'));
+  assert.deepEqual(mounts.filter((entry) => entry.method === 'get').map((entry) => entry.path), ['/data-toolbox']);
+
+  const routes = routers.flatMap((router) => router.routes);
+  assert.ok(routes.length >= 20);
+  assert.ok(routes.every((route) => route.method === 'get'), 'toolbox must not mount mutation methods');
+  for (const route of [
+    '/status', '/storage/summary', '/storage/files', '/network/devices',
+    '/databases/collections', '/live-data/feeds', '/janitor/profiles', '/janitor/dedup-report',
+    '/janitor/profiles/:id/runs', '/janitor/runs/:id', '/janitor/strategy/latest', '/janitor/strategy/latest/raw'
+  ]) assert.ok(routes.some((entry) => entry.path === route), `missing GET ${route}`);
+});
+
+test('shared-drive strategy projection is bounded and keeps decision evidence', () => {
+  const report = {
+    generatedAt: '2026-08-24T06:03:31.246Z',
+    status: 'ready_for_review',
+    policy: { duplicateSurvivor: 'canonical_active', maintenanceAuthorization: 'explicit_per_action' },
+    decisions_required: [],
+    evidence: {
+      verifiedDuplicateGroups: 5084,
+      verifiedDuplicateFiles: 18753,
+      provenSavingsBytes: 144167193354,
+      duplicateCandidates: { groups: 23127, files: 202758, candidateBytes: 170000000000, filesToHash: 198918, bytesToHash: 118335822850 },
+      verifiedDuplicateEvidence: Array.from({ length: 35 }, (_, group) => ({
+        sha256: `hash-${group}`,
+        proof: 'sha256-current-metadata',
+        size: 1000,
+        count: 10,
+        provenSavingsBytes: 9000,
+        files: Array.from({ length: 10 }, (_, file) => ({ path: `/mnt/media/${group}/${file}`, storageRole: 'canonical' }))
+      })),
+      perRoot: [{ root: '/mnt/media', totalFiles: 10, totalBytes: 1000 }],
+      verificationOutlook: { status: 'measured', filesToHash: 198918, bytesToHash: 118335822850 }
+    },
+    organizationStrategy: {
+      workItems: Array.from({ length: 15 }, (_, index) => ({
+        id: `work-${index}`, title: `Work ${index}`, evidence: { files: 10, bytes: 100 }, filesystemMutationAllowed: false
+      }))
+    },
+    maintenance: { proposals: Array.from({ length: 5084 }, (_, index) => ({ id: index })), executableActions: [] },
+    safety: { sharedDriveMutations: 0, approvalEndpointsCalled: false, deleteMoveArchiveExecuted: false }
+  };
+  const projection = toolbox.projectJanitorStrategy({ data: { report } });
+  assert.equal(projection.summary.proposals, 5084);
+  assert.equal(projection.summary.provenSavingsBytes, 144167193354);
+  assert.equal(projection.duplicates.length, 30);
+  assert.ok(projection.duplicates.every(group => group.files.length === 8 && group.filesOmitted === 2));
+  assert.equal(projection.organization.workItems.length, 12);
+  assert.ok(projection.organization.workItems.every(item => item.filesystemMutationAllowed === false));
+  assert.equal(projection.maintenance.executableActions, 0);
+  assert.equal(projection.safety.sharedDriveMutations, 0);
+  assert.equal(Object.prototype.hasOwnProperty.call(projection.maintenance, 'proposals'), false);
+});
+
+test('recorded per-root hash limits preserve configured values and unknown measurements', () => {
+  const report = { evidence: { perRoot: [
+    { root: '/mnt/media', latestHashingScan: { hashMaxBytes: 10 * 1024 ** 3 } },
+    { root: '/mnt/datalake', latestHashingScan: { hashMaxBytes: 50 * 1024 ** 3 } },
+    { root: '/unknown', latestHashingScan: {} }
+  ] } };
+  const projection = toolbox.projectJanitorStrategy({ data: { report } });
+  assert.deepEqual(projection.metadata.perRoot.map(root => root.latestHashingScan.hashMaxBytes), [10 * 1024 ** 3, 50 * 1024 ** 3, null]);
+});
+
+test('browser bundle keeps all operator domains and explicit guardrails', () => {
+  const root = path.resolve(__dirname, '..', 'public');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'app.css'), 'utf8');
+  for (const tab of ['overview', 'storage', 'files', 'network', 'databases', 'live-data', 'janitor']) {
+    assert.match(html, new RegExp(`data-tab=["']${tab}["']`));
+  }
+  assert.match(html, /Filesystem-safe review console/);
+  assert.match(html, /Survivor choices and accept\/reject decisions stay in a local draft/);
+  assert.match(html, /href="\/playground">Chat/);
+  assert.match(app, /Shared-drive Janitor/);
+  assert.match(app, /Download full JSON/);
+  assert.match(app, /proven duplicate savings/i);
+  assert.match(app, /This is not an executable deletion plan/);
+  assert.match(app, /Historical sets must be regenerated before preview/);
+  assert.match(app, /historical · rerun required/);
+  assert.match(app, /Open exact run JSON/);
+  assert.match(app, /Accept for preview/);
+  assert.match(app, /Reject deletion/);
+  assert.match(app, /authorizesFilesystemMutation:\s*false/);
+  assert.match(app, /Choose the path to keep before accepting this group for preview/);
+  assert.match(app, /Pinned near the top/);
+  assert.match(app, /individual unhashed file above its root's recorded byte budget remains unverified/);
+  assert.match(app, /\/janitor\/strategy\/latest/);
+  assert.match(app, /Historical registration only/);
+  assert.match(app, /not an AgentX Product or LLM agent/);
+  assert.match(app, /agentx\.data-toolbox\.janitor-review-draft\.v1/);
+  assert.match(app, /localStorage\.setItem\(JANITOR_REVIEW_STORAGE_KEY/);
+  // The draft is content-addressed (SHA-256): it must survive portfolio
+  // regeneration, a still-loading report, and internal tab changes.
+  assert.doesNotMatch(app, /draft\.portfolioGeneratedAt === portfolioGeneratedAt/);
+  assert.match(app, /state\.janitorReview = \{ \.\.\.restored, \.\.\.state\.janitorReview \}/);
+  assert.match(app, /content hashes do not change between reports/);
+  assert.match(app, /draft\.authorizesFilesystemMutation === false/);
+  assert.match(app, /clearJanitorReviewDraft\(\)/);
+  assert.match(app, /saved in this browser across refreshes, tab changes, and portfolio regenerations/);
+  assert.doesNotMatch(app, /method:\s*["'](?:POST|PUT|PATCH|DELETE)/i);
+  assert.match(css, /@media \(max-width: 620px\)/);
+});
+
+test('Janitor preserves unavailable portfolio totals and renders the remaining root evidence', async () => {
+  const appPath = path.resolve(__dirname, '..', 'public', 'app.js');
+  const source = fs.readFileSync(appPath, 'utf8').replace(
+    /\nrender\(\);\s*$/,
+    '\nglobalThis.renderJanitor = janitor;'
+  );
+  for (const unavailable of [null, undefined, '', 'invalid']) {
+    const report = toolbox.projectJanitorStrategy({ evidence: {
+      metadataFirst: { status: 'unavailable', indexedFiles: unavailable, indexedBytes: unavailable },
+      perRoot: [{ root: '/archive', totalFiles: 42, totalBytes: 2048, latestScan: { status: 'failed' } }]
+    } });
+    assert.equal(report.metadata.indexedFiles, null);
+    assert.equal(report.metadata.indexedBytes, null);
+    const content = { innerHTML: '' };
+    const context = {
+      document: { querySelector() { return content; }, addEventListener() {} },
+      window: { addEventListener() {}, location: { hash: '' } },
+      localStorage: { getItem() { return null; }, removeItem() {} },
+      fetch: async (url) => ({ ok: true, json: async () => ({ data: url.endsWith('/profiles') ? { profiles: [] } : report }) }),
+      console, Date, setTimeout, clearTimeout
+    };
+    vm.runInNewContext(source, context, { filename: appPath });
+    await context.renderJanitor();
+    assert.match(content.innerHTML, /Current portfolio total unavailable/);
+    assert.doesNotMatch(content.innerHTML, /0 indexed files/);
+    assert.match(content.innerHTML, /42 files/);
+    assert.match(content.innerHTML, /2\.0 KiB/);
+
+    report.metadata.indexedFiles = 0;
+    report.metadata.indexedBytes = 0;
+    await context.renderJanitor();
+    assert.match(content.innerHTML, /0 indexed files · 0 B total, counted once/);
+  }
+});
+
+test('Janitor review decisions survive report changes, tab changes, and page reloads', () => {
+  const appPath = path.resolve(__dirname, '..', 'public', 'app.js');
+  const source = fs.readFileSync(appPath, 'utf8').replace(
+    /\nrender\(\);\s*$/,
+    '\nglobalThis.__janitorDraftTest = { state, persistJanitorReviewDraft, restoreJanitorReviewDraft };'
+  );
+  const values = new Map();
+  const localStorage = {
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) { values.set(key, String(value)); },
+    removeItem(key) { values.delete(key); }
+  };
+  const loadBrowserBundle = () => {
+    const context = {
+      document: {
+        querySelector() { return {}; },
+        addEventListener() {}
+      },
+      window: { addEventListener() {}, location: { hash: '' } },
+      localStorage,
+      console,
+      Date,
+      setTimeout,
+      clearTimeout
+    };
+    vm.runInNewContext(source, context, { filename: appPath });
+    return context.__janitorDraftTest;
+  };
+  const first = loadBrowserBundle();
+  first.state.janitorReportGeneratedAt = '2026-09-01T10:00:00.000Z';
+  first.state.janitorReview['hash-still-visible'] = {
+    sha256: 'hash-still-visible',
+    decision: 'accept_for_preview',
+    keepPath: '/keep/a',
+    removePaths: ['/remove/a'],
+    reason: 'operator-selected survivor; complete SHA-256 preview required'
+  };
+  first.state.janitorReview['hash-outside-next-report'] = {
+    sha256: 'hash-outside-next-report',
+    decision: 'reject_keep_all',
+    keepPath: null,
+    removePaths: [],
+    reason: 'operator rejected deletion proposal; keep every member'
+  };
+  assert.equal(first.persistJanitorReviewDraft(), true);
+
+  // Internal tab navigation does not reload or clear the in-memory draft.
+  first.state.tab = 'storage';
+  first.state.tab = 'janitor';
+  assert.equal(Object.keys(first.state.janitorReview).length, 2);
+
+  // A regenerated portfolio restores both the still-visible group and the
+  // content-addressed decision that is outside the new report's bounded rows.
+  first.restoreJanitorReviewDraft('2026-09-02T10:00:00.000Z');
+  assert.deepEqual(Object.keys(first.state.janitorReview).sort(), [
+    'hash-outside-next-report',
+    'hash-still-visible'
+  ]);
+
+  // A full page reload reads the same durable, non-authorizing envelope.
+  const reloaded = loadBrowserBundle();
+  reloaded.restoreJanitorReviewDraft('2026-09-03T10:00:00.000Z');
+  assert.equal(reloaded.state.janitorReview['hash-still-visible'].keepPath, '/keep/a');
+  assert.equal(reloaded.state.janitorReview['hash-outside-next-report'].decision, 'reject_keep_all');
+});
+
+test('a missing stored Janitor draft never erases newer in-memory decisions', () => {
+  const appPath = path.resolve(__dirname, '..', 'public', 'app.js');
+  const source = fs.readFileSync(appPath, 'utf8').replace(
+    /\nrender\(\);\s*$/,
+    '\nglobalThis.__janitorDraftTest = { state, restoreJanitorReviewDraft };'
+  );
+  const context = {
+    document: { querySelector() { return {}; }, addEventListener() {} },
+    window: { addEventListener() {}, location: { hash: '' } },
+    localStorage: { getItem() { return null; }, removeItem() {} },
+    console,
+    Date,
+    setTimeout,
+    clearTimeout
+  };
+  vm.runInNewContext(source, context, { filename: appPath });
+  context.__janitorDraftTest.state.janitorReview['hash-new'] = {
+    sha256: 'hash-new', decision: 'reject_keep_all', keepPath: null, removePaths: []
+  };
+  context.__janitorDraftTest.restoreJanitorReviewDraft('2026-09-04T10:00:00.000Z');
+  assert.equal(context.__janitorDraftTest.state.janitorReview['hash-new'].decision, 'reject_keep_all');
+});
+
+test('the built-in Toolbox serves its page and rejects mutation methods', async () => {
+  const express = require('express');
+  const request = require('supertest');
+  const app = express();
+  toolbox.register({ contractVersion: 2, app, express });
+  assert.match((await request(app).get('/data-toolbox').expect(200)).text, /assets\/data-toolbox\/app.js/);
+  await request(app).post('/api/data-toolbox/storage/scans').send({}).expect(404);
+  await request(app).delete('/api/data-toolbox/databases/collections/example').expect(404);
+});
+
+test('collector placement comes only from bounded external display metadata', (t) => {
+  const previous = process.env.DATA_COLLECTOR_PLACEMENT_JSON;
+  t.after(() => {
+    if (previous === undefined) delete process.env.DATA_COLLECTOR_PLACEMENT_JSON;
+    else process.env.DATA_COLLECTOR_PLACEMENT_JSON = previous;
+  });
+  delete process.env.DATA_COLLECTOR_PLACEMENT_JSON;
+  assert.deepEqual(toolbox.collectorPlacement(), {});
+  process.env.DATA_COLLECTOR_PLACEMENT_JSON = JSON.stringify({ network: {
+    example: { host: 'Example node', runtime: 'example.service', token: 'must not appear', cadence: 'x'.repeat(300) }
+  } });
+  const row = toolbox.collectorPlacement().network.example;
+  assert.equal(row.host, 'Example node');
+  assert.equal(row.token, undefined);
+  assert.equal(row.cadence.length, 200);
+  process.env.DATA_COLLECTOR_PLACEMENT_JSON = 'invalid';
+  assert.throws(() => toolbox.collectorPlacement());
+});

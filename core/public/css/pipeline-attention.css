@@ -1,0 +1,19 @@
+/* Paginated attention queue (public/js/pipeline-attention.js). */
+#pipelineAttention .pipeline-panel-header { flex-wrap: wrap; gap: 10px; }
+.pipeline-attention-scopes { display: flex; flex-wrap: wrap; gap: 6px; }
+.pipeline-attention-scopes .pipeline-btn.active { border-color: #7dd3fc; color: #f8fafc; background: rgba(125, 211, 252, 0.14); }
+.pipeline-attention-notes { margin: 0; padding: 10px 14px 0; color: #fbbf24; font-size: .8rem; line-height: 1.45; }
+.pipeline-attention-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 0 14px 14px; }
+.pipeline-attention-pager[hidden], .pipeline-attention-notes[hidden] { display: none; }
+.pipeline-attention-pageinfo { color: #cbd5e1; font-size: .82rem; }
+.pipeline-attention-new { display: inline-block; padding: 1px 6px; border-radius: 999px; background: #0369a1; color: #f0f9ff; font-size: .7rem; vertical-align: 1px; }
+.pipeline-attention-item.is-new { box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.45); }
+.pipeline-attention-list[aria-busy="true"] { opacity: .85; }
+.pipeline-attention-item:focus-visible, .pipeline-attention-pager .pipeline-btn:focus-visible,
+.pipeline-attention-scopes .pipeline-btn:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 2px; }
+.pipeline-attention-live { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+@media (max-width: 460px) {
+  .pipeline-attention-pager .pipeline-btn { min-height: 44px; flex: 1 1 40%; justify-content: center; }
+  .pipeline-attention-pageinfo { order: -1; flex-basis: 100%; text-align: center; }
+  .pipeline-attention-scopes .pipeline-btn { min-height: 40px; }
+}

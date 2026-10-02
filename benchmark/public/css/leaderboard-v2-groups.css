@@ -1,0 +1,196 @@
+/* leaderboard-v2-groups.css — grouped model board: one row per model and host,
+   verdict strip, provenance, score parts, labelled figures, cohort history,
+   legend and export. Companion to leaderboard-v2.css (which stays as is). */
+
+/* ─── Toolbar: triage chips + export ─── */
+.cb-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+.cb-toolbar .cb-triage { flex: 1 1 auto; margin-bottom: 0; }
+.cb-export-btn {
+  display: inline-flex;
+  min-height: 2rem;
+  padding: 0.38rem 0.7rem;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid rgba(139, 217, 243, 0.28);
+  border-radius: 8px;
+  background: rgba(79, 195, 247, 0.07);
+  color: #a9e5f5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.cb-export-btn:hover { border-color: #8bd9f3; background: rgba(79, 195, 247, 0.13); }
+.cb-export-btn:focus-visible { outline: 2px solid #8bd9f3; outline-offset: 2px; }
+
+/* ─── Filter bar: a <details> is not a flex container, its body is ─── */
+.r-filter-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.7rem 1.5rem;
+}
+
+/* ─── Sections: ranked, then other evidence in a closed disclosure ─── */
+.cb-unranked { margin-top: 0.6rem; }
+.cb-unranked > summary { cursor: pointer; list-style: none; }
+.cb-unranked > summary::-webkit-details-marker { display: none; }
+.cb-unranked > summary::before { content: '▸'; color: #7c8ba1; }
+.cb-unranked[open] > summary::before { content: '▾'; }
+.cb-summary-state[data-partial="true"] { color: #e0b463; }
+.cb-summary-state:empty { display: none; }
+.cb-row-verdict .cb-headline-why { margin: 0; }
+.cb-section-title {
+  display: flex;
+  margin: 0.55rem 0 0.2rem;
+  align-items: baseline;
+  gap: 0.5rem;
+  color: #9fd8ea;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.cb-section-title small { color: #7c8ba1; font-size: 0.62rem; font-weight: 600; letter-spacing: 0.02em; text-transform: none; }
+.cb-section-title.cb-section-unranked { color: #e0b463; }
+.cb-section-note {
+  margin: 0.4rem 0 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed rgba(224, 180, 99, 0.45);
+  border-radius: 10px;
+  color: #e6cc95;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.cb-row.cb-comparable { border-left: 3px solid rgba(79, 195, 247, 0.55); }
+.cb-row.cb-not-comparable { border-left: 3px solid rgba(224, 180, 99, 0.55); }
+.cb-rank-none { color: #6f7d92; font-weight: 600; }
+/* Category-mode rank: "1st" over the category name, inside the 44px rank column. */
+.cb-rank-cat { display: flex; max-width: 100%; flex-direction: column; align-items: center; line-height: 1.05; text-align: center; }
+.cb-rank-cat b { font-size: 0.86rem; font-weight: 800; }
+.cb-rank-cat small { overflow: hidden; max-width: 44px; color: #8fd2e8; font-size: 0.48rem; font-weight: 750; letter-spacing: 0.04em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.cb-summary-state[data-comparable="true"] { color: #8fd2e8; }
+.cb-summary-state[data-comparable="false"] { color: #e0b463; }
+
+/* ─── Verdict strip under the summary row ─── */
+.cb-row-verdict {
+  display: flex;
+  padding: 0.45rem 0.75rem 0.6rem;
+  flex-direction: column;
+  gap: 0.3rem;
+  border-top: 1px solid rgba(132, 151, 180, 0.14);
+  color: #98a6ba;
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+.cb-headline-why { margin: 0; color: #a9c4dd; }
+.cb-reasons { margin: 0; padding: 0; list-style: none; }
+.cb-reasons li { position: relative; padding-left: 1.05rem; color: #ffc267; }
+.cb-reasons li::before { content: '⚠'; position: absolute; left: 0; }
+
+.cb-prov { display: flex; margin: 0; gap: 0.35rem 1rem; flex-wrap: wrap; }
+.cb-prov > div { display: inline-flex; min-width: 0; align-items: baseline; gap: 0.3rem; }
+.cb-prov dt { color: #6f7d92; font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.cb-prov dd { overflow: hidden; margin: 0; color: #d3deec; text-overflow: ellipsis; white-space: nowrap; }
+
+.cb-score-parts { margin: 0; color: #dbe6f5; font-variant-numeric: tabular-nums; }
+
+.cb-metrics { display: flex; margin: 0; padding: 0; gap: 0.3rem 1.1rem; flex-wrap: wrap; list-style: none; }
+.cb-metrics li { display: flex; flex-direction: column; gap: 0.05rem; }
+.cb-metrics li span { color: #6f7d92; font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.cb-metrics li strong { color: #dbe6f5; font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+
+/* ─── Cohort history ─── */
+.cb-history { margin-top: 0.25rem; }
+.cb-history > summary {
+  color: #9fd8ea;
+  cursor: pointer;
+  font-weight: 700;
+}
+.cb-history > summary:focus-visible { outline: 2px solid #8bd9f3; outline-offset: 2px; }
+.cb-history-table {
+  width: 100%;
+  margin-top: 0.4rem;
+  border-collapse: collapse;
+  font-size: 0.64rem;
+}
+.cb-history-table th,
+.cb-history-table td {
+  padding: 0.32rem 0.45rem;
+  border-top: 1px solid rgba(132, 151, 180, 0.14);
+  text-align: left;
+  vertical-align: top;
+}
+.cb-history-table th { color: #6f7d92; font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.cb-history-table td { color: #c9d5e5; }
+.cb-history-table td[data-label="Why not headline"] { color: #e0b463; }
+
+/* ─── Legend ─── */
+.cb-legend { margin-top: 0.8rem; color: #98a6ba; font-size: 0.66rem; line-height: 1.45; }
+.cb-legend > summary { color: #9fd8ea; cursor: pointer; font-weight: 700; }
+.cb-legend > summary:focus-visible { outline: 2px solid #8bd9f3; outline-offset: 2px; }
+.cb-legend p { margin: 0.4rem 0; }
+.cb-legend dl { display: grid; margin: 0.4rem 0 0; grid-template-columns: max-content minmax(0, 1fr); gap: 0.25rem 0.8rem; }
+.cb-legend dt { color: #e0b463; font-weight: 750; }
+.cb-legend dd { margin: 0; }
+
+/* ─── Detail sheet additions ─── */
+.cb-detail-verdict { margin: 0.1rem 0 0.85rem; color: #a9c4dd; font-size: 0.7rem; line-height: 1.45; }
+.cb-speedo-gen { display: block; color: #8993a5; font-size: 0.58rem; text-align: center; }
+
+/* ─── Podium without a comparable verdict ─── */
+.pod-no-verdict { padding: 0.8rem 0.9rem; border: 1px dashed rgba(224, 180, 99, 0.45); border-radius: 10px; color: #e6cc95; font-size: 0.74rem; line-height: 1.45; }
+
+/* ─── Phone width: stacked cards, history rows as cards ─── */
+@media (max-width: 700px) {
+  .cb-toolbar { align-items: stretch; flex-direction: column; }
+  .cb-export-btn { justify-content: center; }
+  .cb-row-verdict { padding: 0.45rem 0.55rem 0.55rem; }
+  .cb-prov { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem 0.6rem; }
+  .cb-prov > div { flex-direction: column; align-items: flex-start; gap: 0.05rem; }
+  .cb-prov dd { white-space: normal; overflow-wrap: anywhere; }
+  .cb-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cb-history-table, .cb-history-table tbody { display: block; width: 100%; }
+  .cb-history-table thead { display: none; }
+  .cb-history-table tr {
+    display: block;
+    margin-top: 0.4rem;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid rgba(132, 151, 180, 0.18);
+    border-radius: 8px;
+  }
+  .cb-history-table td {
+    display: grid;
+    padding: 0.16rem 0;
+    grid-template-columns: 6.4rem minmax(0, 1fr);
+    gap: 0.4rem;
+    border-top: 0;
+    overflow-wrap: anywhere;
+  }
+  .cb-history-table td::before {
+    content: attr(data-label);
+    color: #6f7d92;
+    font-size: 0.56rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .cb-legend dl { grid-template-columns: minmax(0, 1fr); }
+  .cb-legend dd { margin-bottom: 0.3rem; }
+}
+
+/* Grader qualification: a comparable rank without a qualified grader is provisional. */
+.cb-rank-provisional { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.05; }
+.cb-rank-provisional small { color: #ffc267; font-size: 0.46rem; font-weight: 700; letter-spacing: 0; text-transform: uppercase; }
+.cb-grader { color: #b9c6d8; }
+.cb-grader strong { color: #6f7d92; font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.cb-grader ul { margin: 0.1rem 0 0; padding: 0 0 0 1rem; overflow-wrap: anywhere; }

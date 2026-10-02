@@ -1,0 +1,275 @@
+<main class="finance-page" id="main-content">
+  <header class="finance-header">
+    <div class="finance-title-row">
+      <h1>Wallet Beefer</h1>
+      <nav class="finance-ledger-switch" aria-label="Grand livre">
+        <a href="/finance" id="ledgerPerso">Personnel</a>
+        <a href="/finance?ledger=corp" id="ledgerCorp">Corporation</a>
+      </nav>
+    </div>
+    <p class="finance-phase" id="financePhase"></p>
+    <p class="finance-sub" id="financeCoverage">Ledger réconcilié au sou · chargement…</p>
+  </header>
+
+  <p class="finance-error" id="financeError" role="alert" hidden></p>
+
+  <section class="finance-card finance-alerts finance-perso-only" id="financeAlertsCard" aria-labelledby="alertsTitle" hidden>
+    <h2 id="alertsTitle">Alertes</h2>
+    <ul class="finance-alert-list" id="financeAlerts"></ul>
+  </section>
+
+  <section class="finance-perso-only" aria-labelledby="situationTitle">
+    <h2 id="situationTitle">Ma situation</h2>
+    <div class="finance-tiles finance-tiles-wide" id="financeSituation"></div>
+    <p class="finance-note" id="financeSituationNote"></p>
+  </section>
+
+  <section class="finance-card finance-perso-only" aria-labelledby="netTitle">
+    <div class="finance-card-head">
+      <h2 id="netTitle">Solde net par mois</h2>
+      <p class="finance-note" id="financeNetNote"></p>
+    </div>
+    <div class="finance-chart"><canvas id="netChart" aria-label="Solde net par mois" role="img"></canvas></div>
+  </section>
+
+  <section class="finance-card finance-perso-only" id="financeOpenCard" aria-labelledby="openTitle" hidden>
+    <h2 id="openTitle">Ce qui reste — dossiers ouverts</h2>
+    <ol class="finance-open" id="financeOpen"></ol>
+  </section>
+
+  <section class="finance-card finance-perso-only" id="financeAllocCard" aria-labelledby="allocTitle" hidden>
+    <h2 id="allocTitle">Affectation de l'encaisse — plan</h2>
+    <div class="finance-table-scroll" role="region" aria-label="Affectation de l'encaisse, défilement horizontal" tabindex="0">
+      <table class="finance-table finance-wide" id="financeAlloc">
+        <thead><tr><th>Geste</th><th class="num">Montant</th><th>Statut / effet</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="finance-card finance-perso-only" id="financeDebtsCard" aria-labelledby="debtsTitle" hidden>
+    <h2 id="debtsTitle">Dettes actives</h2>
+    <div class="finance-table-scroll" role="region" aria-label="Dettes actives, défilement horizontal" tabindex="0">
+      <table class="finance-table finance-wide" id="financeDebts">
+        <thead><tr><th>Dette</th><th class="num">Solde</th><th class="num">Taux</th><th class="num">Paiement</th><th>Statut</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="finance-card finance-perso-only" id="financeCreditCard" aria-labelledby="creditTitle" hidden>
+    <h2 id="creditTitle">Crédit disponible — le risque de rechute</h2>
+    <div class="finance-table-scroll" role="region" aria-label="Crédit disponible, défilement horizontal" tabindex="0">
+      <table class="finance-table finance-wide" id="financeCredit">
+        <thead><tr><th>Compte</th><th class="num">Limite</th><th class="num">Utilisé</th><th class="num">Disponible</th><th>Statut</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="finance-card finance-perso-only" id="financeWatchCard" aria-labelledby="watchTitle" hidden>
+    <h2 id="watchTitle">Vigie — prochaines échéances</h2>
+    <div class="finance-table-scroll" role="region" aria-label="Prochaines échéances, défilement horizontal" tabindex="0">
+      <table class="finance-table finance-wide" id="financeWatch">
+        <thead><tr><th>Date</th><th>Quoi</th><th>Statut</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="finance-card finance-perso-only" id="financeBudgetCard" aria-labelledby="budgetTitle" hidden>
+    <div class="finance-card-head">
+      <h2 id="budgetTitle">Où va l'argent — réel vs budget</h2>
+      <p class="finance-note" id="financeBudgetNote"></p>
+    </div>
+    <div class="finance-table-scroll" role="region" aria-label="Budget, défilement horizontal" tabindex="0">
+      <table class="finance-table finance-wide finance-budget" id="financeBudget">
+        <thead><tr><th>Poste</th><th class="num">Budget / mois</th><th class="num">Réel / mois</th><th class="num">Écart</th><th class="finance-budget-bar-col">Réel vs budget</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="finance-card finance-perso-only" id="financeProvisionsCard" aria-labelledby="provisionsTitle" hidden>
+    <div class="finance-card-head">
+      <h2 id="provisionsTitle">Dépenses annuelles — à provisionner</h2>
+      <p class="finance-note" id="financeProvisionsNote"></p>
+    </div>
+    <div class="finance-table-scroll" role="region" aria-label="Dépenses annuelles, défilement horizontal" tabindex="0">
+      <table class="finance-table finance-wide" id="financeProvisions">
+        <thead><tr><th>Dépense</th><th class="num">Annuel</th><th class="num">Par mois</th><th>Échéance / note</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="finance-card finance-perso-only" aria-labelledby="debtSimTitle">
+    <h2 id="debtSimTitle">Dette nette — trajectoire selon un scénario</h2>
+    <form class="finance-filters finance-sim-form" id="debtForm">
+      <label>Paiement additionnel / mois ($) <input type="text" inputmode="decimal" id="simExtra" value="0"></label>
+      <label>Montant forfaitaire ($) <input type="text" inputmode="decimal" id="simLump" value="0"></label>
+      <label>… versé au mois n° <input type="number" id="simLumpMonth" value="1" min="1" max="360"></label>
+      <label>Bonus annuel en décembre ($) <input type="text" inputmode="decimal" id="simBonus" value="0"></label>
+      <label>Horizon (années) <input type="number" id="simYears" value="6" min="1" max="30"></label>
+      <button type="submit" class="finance-button">Simuler</button>
+    </form>
+    <div class="finance-chart finance-chart-tall"><canvas id="debtChart" aria-label="Trajectoire de la dette" role="img"></canvas></div>
+    <ul class="finance-result" id="debtResult"></ul>
+    <p class="finance-note">Dettes amortissables du plan (taux et paiement connus), soldes tirés du ledger. L'argent en surplus va à la
+      dette au taux le plus élevé d'abord (avalanche); une dette éteinte libère son paiement pour les autres.</p>
+  </section>
+
+  <section class="finance-card finance-perso-only" aria-labelledby="forecastTitle">
+    <h2 id="forecastTitle">Prévision de cash-flow — 12 mois</h2>
+    <form class="finance-filters finance-sim-form" id="forecastForm">
+      <label>Revenus / mois ($) <input type="text" inputmode="decimal" id="fcIncome" placeholder="budget"></label>
+      <label>Dépenses / mois ($) <input type="text" inputmode="decimal" id="fcSpend" placeholder="budget"></label>
+      <label>Coussin visé ($) <input type="text" inputmode="decimal" id="fcCushion" value="15000"></label>
+      <label class="finance-check"><input type="checkbox" id="fcProvisions" checked> Mettre de côté les provisions</label>
+      <label class="finance-wide-label">Événements ponctuels, un par ligne : <code>AAAA-MM ; montant ; libellé</code> (négatif = sortie)
+        <textarea id="fcEvents" rows="3" placeholder="2026-12 ; 6000 ; bonus CGI&#10;2027-02 ; -26000 ; cotisation REER"></textarea></label>
+      <button type="submit" class="finance-button">Recalculer</button>
+    </form>
+    <div class="finance-chart finance-chart-tall"><canvas id="forecastChart" aria-label="Prévision de l'encaisse" role="img"></canvas></div>
+    <p class="finance-note" id="forecastNote"></p>
+    <details>
+      <summary>Voir le tableau</summary>
+      <div class="finance-table-scroll" role="region" aria-label="Prévision de l'encaisse, défilement horizontal" tabindex="0">
+        <table class="finance-table finance-wide" id="forecastTable">
+          <thead><tr><th>Mois</th><th class="num">Revenus</th><th class="num">Dépenses + provisions</th><th class="num">Ponctuel</th><th class="num">Encaisse fin de mois</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <section class="finance-card" aria-labelledby="historyTitle">
+    <div class="finance-card-head">
+      <h2 id="historyTitle">Trajectoires — soldes des comptes au fil des relevés</h2>
+      <label class="finance-inline-label">Voir <select id="histKind">
+        <option value="debt">dettes et cartes</option><option value="cash">compte courant</option><option value="all">tout</option>
+      </select></label>
+    </div>
+    <div class="finance-chart finance-chart-tall"><canvas id="historyChart" aria-label="Soldes au fil des relevés" role="img"></canvas></div>
+    <p class="finance-note" id="historyNote">Solde de fermeture de chaque relevé réconcilié; un trou = relevé manquant.</p>
+  </section>
+
+  <section class="finance-card" aria-labelledby="catMonthsTitle">
+    <div class="finance-card-head">
+      <h2 id="catMonthsTitle">Dépenses par catégorie, mois par mois</h2>
+      <label class="finance-inline-label">Période <select id="catMonths">
+        <option value="12">12 mois</option><option value="24">24 mois</option><option value="60">5 ans</option>
+      </select></label>
+    </div>
+    <div class="finance-chart finance-chart-tall"><canvas id="categoryMonthsChart" aria-label="Dépenses par catégorie et par mois" role="img"></canvas></div>
+    <p class="finance-note" id="categoryMonthsNote">Virements internes exclus; les catégories au-delà des 7 plus importantes sont regroupées.</p>
+  </section>
+
+  <details class="finance-card finance-perso-only" id="financeMilestonesCard" hidden>
+    <summary><h2 class="finance-inline">Ce qui a été réglé</h2></summary>
+    <ul class="finance-checklist" id="financeDone"></ul>
+  </details>
+
+  <section aria-labelledby="balancesTitle">
+    <h2 id="balancesTitle">Soldes des comptes (dernier relevé)</h2>
+    <div class="finance-tiles" id="financeBalances"></div>
+  </section>
+
+  <section class="finance-card finance-analysis" aria-labelledby="analysisTitle">
+    <h2 id="analysisTitle">Analyse de l'historique</h2>
+    <p class="finance-note">Ces filtres s'appliquent à toute l'analyse ci-dessous : graphique, catégories, dépenses, recherche,
+      totaux par année et export.</p>
+    <div class="finance-filters" role="group" aria-label="Filtres de l'analyse">
+      <label>Compte <select id="financeAccount"><option value="">Tous les comptes</option></select></label>
+      <label>Du <input type="date" id="financeFrom"></label>
+      <label>Au <input type="date" id="financeTo"></label>
+      <label>Catégorie <select id="financeCategory"><option value="">Toutes</option></select></label>
+      <label>Tag <select id="financeTag"><option value="">Aucun</option></select></label>
+      <label class="finance-check"><input type="checkbox" id="financeExcludeTransfers" checked> Exclure les virements internes</label>
+    </div>
+    <p class="finance-note finance-help">Un <strong>tag</strong> est une étiquette posée par une règle sur des transactions :
+      une personne (<code>nathalie</code>, <code>olivier</code>), une activité (<code>karate</code>) ou un usage
+      (<code>partageable</code>). Choisir un tag montre seulement ces transactions.</p>
+  </section>
+
+  <section class="finance-card" aria-labelledby="monthlyTitle">
+    <div class="finance-card-head">
+      <h2 id="monthlyTitle">Entrées et sorties par mois</h2>
+      <p class="finance-note" id="monthlyNote"></p>
+    </div>
+    <div class="finance-legend" aria-hidden="true">
+      <span><i class="swatch swatch-in"></i>Entrées</span>
+      <span><i class="swatch swatch-out"></i>Sorties</span>
+    </div>
+    <div class="finance-chart"><canvas id="monthlyChart" aria-label="Entrées et sorties par mois" role="img"></canvas></div>
+    <details>
+      <summary>Voir le tableau</summary>
+      <table class="finance-table" id="monthlyTable">
+        <thead><tr><th>Mois</th><th class="num">Entrées</th><th class="num">Sorties</th><th class="num">Net</th><th class="num">Opérations</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </section>
+
+  <section class="finance-card" aria-labelledby="categoriesTitle">
+    <h2 id="categoriesTitle">Dépenses par catégorie</h2>
+    <ol class="finance-bars" id="financeCategories"></ol>
+    <p class="finance-note" id="financeUncategorized"></p>
+  </section>
+
+  <section class="finance-card" aria-labelledby="merchantsTitle">
+    <h2 id="merchantsTitle">Plus grosses dépenses par marchand</h2>
+    <ol class="finance-bars" id="financeMerchants"></ol>
+  </section>
+
+  <section class="finance-card" aria-labelledby="searchTitle">
+    <h2 id="searchTitle">Combien chez…</h2>
+    <form class="finance-search" id="financeSearch">
+      <input type="search" id="financeQuery" placeholder="Costco, dojo, Hydro…" maxlength="80" aria-label="Marchand ou description">
+      <button type="submit">Chercher</button>
+    </form>
+    <div class="finance-search-result" id="financeSearchResult" aria-live="polite"></div>
+    <p class="finance-note"><a id="financeExport" href="/api/finance/export.csv" download>Exporter en CSV (Excel)</a> — selon les filtres et la recherche.</p>
+  </section>
+
+  <section class="finance-card" aria-labelledby="yearlyTitle">
+    <h2 id="yearlyTitle">Totaux par année</h2>
+    <p class="finance-note">Selon les filtres de l'analyse et la recherche : par exemple le tag <code>nathalie</code> donne ce
+      qui a été envoyé et reçu chaque année.</p>
+    <div class="finance-table-scroll" role="region" aria-label="Totaux par année, défilement horizontal" tabindex="0">
+      <table class="finance-table finance-wide" id="yearlyTable">
+        <thead><tr><th>Année</th><th class="num">Entrées</th><th class="num">Sorties</th><th class="num">Net</th><th class="num">Opérations</th><th>Couverture</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="finance-card" aria-labelledby="classifyTitle">
+    <div class="finance-card-head">
+      <h2 id="classifyTitle">À classer</h2>
+      <button type="button" class="finance-button" id="financeSuggest">Proposer des catégories</button>
+    </div>
+    <p class="finance-note">Le modèle local propose une catégorie pour les descriptions les plus lourdes. Corrige au besoin,
+      coche ce qui est bon, puis enregistre : chaque ligne devient une règle appliquée à tout l'historique.</p>
+    <div id="financeSuggestStatus" class="finance-note" aria-live="polite"></div>
+    <table class="finance-table finance-classify" id="financeSuggestTable" hidden>
+      <thead><tr><th>✓</th><th>Description</th><th class="num">Nb</th><th class="num">Total</th><th>Catégorie</th><th>Tags</th><th>Confiance</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button type="button" class="finance-button" id="financeSaveRules" hidden>Enregistrer les règles cochées</button>
+  </section>
+
+  <section class="finance-card" aria-labelledby="statementsTitle">
+    <h2 id="statementsTitle">Relevés</h2>
+    <h3 class="finance-subtitle">Couverture et mois manquants</h3>
+    <ul class="finance-coverage" id="financeCoverageList"></ul>
+    <details>
+      <summary>Tous les relevés</summary>
+      <table class="finance-table" id="statementsTable">
+        <thead><tr><th>Relevé</th><th>Période</th><th>Comptes</th><th>Statut</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+    <p class="finance-note">Déposer un relevé PDF dans l'inbox Finance : il est lu, vérifié au sou, puis archivé (vérification aux 15 minutes).</p>
+  </section>
+</main>

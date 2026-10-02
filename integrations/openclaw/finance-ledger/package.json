@@ -1,0 +1,31 @@
+{
+  "name": "@agentx/openclaw-finance-ledger",
+  "version": "1.5.0",
+  "type": "module",
+  "description": "Read-only AgentX finance ledger tool for the OpenClaw finance persona.",
+  "files": [
+    "index.js",
+    "core-finance.js",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.9.4"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.9.4"
+    }
+  }
+}

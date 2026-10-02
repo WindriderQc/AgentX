@@ -1,0 +1,19 @@
+{
+  "chatId": "-1000000000000",
+  "topicId": "0",
+  "tokenFile": "/home/operator/.agentx-secrets/openclaw-secrets.json",
+  "tokenPointer": "/openclaw/channels/telegram/botToken",
+  "coreUrl": "http://127.0.0.1:3180",
+  "alertsUrl": "https://agentx.example.lan/nerve-center",
+  "maxPerRun": 5,
+  "maxAgeHours": 24,
+  "quietHours": {
+    "start": "23:59",
+    "end": "07:00",
+    "timeZone": "America/Toronto",
+    "allowSeverities": [
+      "critical"
+    ]
+  },
+  "stateFile": "/home/operator/.local/state/agentx/alert-telegram-relay.json"
+}

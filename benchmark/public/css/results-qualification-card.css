@@ -1,0 +1,25 @@
+/* Qualification card in the Test Inspector (results-qualification-card.js). */
+.qc-card {
+    margin-bottom: 1rem;
+    padding: 0.85rem 1rem;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 3px solid #d29922;
+    border-radius: 8px;
+}
+.qc-card-authoritative { border-left-color: #3fb950; }
+.qc-card h4 { margin: 0 0 0.6rem; font-size: 0.9rem; line-height: 1.35; }
+.qc-sections {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    gap: 0.5rem 1rem;
+    margin: 0;
+}
+.qc-section { min-width: 0; }
+.qc-section dt { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(255, 255, 255, 0.62); }
+.qc-section dd { margin: 0.15rem 0 0; font-size: 0.8rem; overflow-wrap: anywhere; }
+.qc-status { margin-left: 0.35rem; padding: 0 0.35rem; border-radius: 4px; font-size: 0.68rem; text-transform: none; letter-spacing: 0; }
+.qc-ok .qc-status { background: rgba(63, 185, 80, 0.18); color: #56d364; }
+.qc-warn .qc-status { background: rgba(210, 153, 34, 0.18); color: #e3b341; }
+.qc-bad .qc-status { background: rgba(248, 81, 73, 0.18); color: #ff7b72; }
+.qc-causes { margin: 0.25rem 0 0; padding-left: 1rem; }

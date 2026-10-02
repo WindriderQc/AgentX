@@ -1,0 +1,10 @@
+# Extend the existing private LAN HTTPS gateway; no public ingress or new service.
+# All application/backend published ports must remain bound to loopback.
+# Replace the example hostname and reuse the instance's existing TLS configuration.
+household.example.invalid {
+    reverse_proxy 127.0.0.1:3180 {
+        # Always overwrite the client-supplied value, including on static/API routes.
+        header_up X-AgentX-Entry household
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

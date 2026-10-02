@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "family-knowledge",
+  "status": "disabled_pending_approved_corpus",
+  "retrieval": {
+    "enabled": false,
+    "topK": 4,
+    "minScore": 0.3,
+    "timeoutMs": 5000,
+    "maxContextCharacters": 4000
+  },
+  "documents": []
+}

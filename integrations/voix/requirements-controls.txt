@@ -1,0 +1,2 @@
+# Install into the existing VoiX environment; other dependencies belong to VoiX.
+vosk==0.3.45

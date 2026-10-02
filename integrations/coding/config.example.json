@@ -1,0 +1,91 @@
+{
+  "schema": "agentx.coding-dispatcher-config/v1",
+  "enabled": false,
+  "defaultMode": "shadow",
+  "maxConcurrent": 1,
+  "maxCandidates": 1000,
+  "apiBase": "http://127.0.0.1:3180",
+  "policies": {
+    "agentx.reviewed-code/v1": {
+      "repository": "agentx",
+      "requireAuthoritySources": true,
+      "allowedPathPrefixes": [
+        "docs/",
+        "integrations/coding/tests/"
+      ],
+      "protectedPathPrefixes": [
+        ".github/",
+        "docker-compose.yml",
+        "integrations/coding/coding-dispatcher.py",
+        "integrations/coding/clawdx-guarded-dispatch.py",
+        "integrations/coding/coding_team_promotion.py"
+      ],
+      "allowedDataClassifications": [
+        "public",
+        "internal"
+      ],
+      "allowedOperations": [
+        "create",
+        "update"
+      ],
+      "executionProfiles": [
+        "clawdx-file-tools/v1"
+      ],
+      "verificationProfiles": [
+        "agentx-dispatcher-tests/v1"
+      ],
+      "ceilings": {
+        "maxScopeFiles": 8,
+        "maxSourceFiles": 12,
+        "maxDurationMs": 900000,
+        "maxAttempts": 2,
+        "maxCostNanodollars": 0
+      }
+    }
+  },
+  "executionProfiles": {
+    "clawdx-file-tools/v1": {
+      "adapter": "clawdx-guarded",
+      "pipelineApiBase": "http://127.0.0.1:3180",
+      "host": "operator@worker.example.invalid",
+      "remoteRepo": "/home/operator/.openclaw/workspace-coding-worker/AgentX",
+      "sourceRepo": "/srv/agentx/AgentX",
+      "agent": "coding-worker",
+      "workerHelper": "/srv/agentx/AgentX/integrations/coding/openclaw_pipeline_worker.py",
+      "model": "ollama/agentx-pipeline",
+      "costEvidenceMode": "local-zero",
+      "attestAttribution": true,
+      "localEnergyEvidence": {
+        "measurementScope": "gpu-incremental-lower-bound",
+        "meterHost": "operator@inference.example.invalid",
+        "gpuIndices": [
+          0
+        ],
+        "baselineSeconds": 10,
+        "sampleIntervalSeconds": 1
+      },
+      "telegramNotifications": {
+        "enabled": false,
+        "uiBase": "https://household.example.invalid/pipeline"
+      },
+      "repository": "agentx"
+    }
+  },
+  "verificationProfiles": {
+    "agentx-dispatcher-tests/v1": {
+      "command": "python3 -m unittest discover -s integrations/coding/tests -v",
+      "timeoutSeconds": 900,
+      "maxChangedFiles": 8,
+      "maxChangedBytes": 100000
+    }
+  },
+  "promotion": {
+    "enabled": false,
+    "mode": "accepted-review-to-pr",
+    "repository": "owner/AgentX",
+    "baseBranch": "main",
+    "branchPrefix": "agentx/coding-task-",
+    "receiptRoot": "/home/operator/.local/state/agentx/coding-promotions",
+    "maxPerRun": 1
+  }
+}

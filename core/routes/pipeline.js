@@ -1,0 +1,574 @@
+const express = require('express');
+const router = express.Router();
+const envelope = require('../src/helpers/responseEnvelope');
+const PipelineTask = require('../models/PipelineTask');
+const workerTaskScope = require('../src/helpers/workerTaskScope');
+const taskEditor = require('../src/services/pipelineTaskEditorService');
+const taskDraft = require('../src/services/pipelineDraftService');
+const { safePlanningWorkerContext } = require('../src/services/planningWorkerContextService');
+const {
+  createTaskInMongo,
+  findNextEligibleTask,
+  claimEligibleTask,
+  assertLeaseMutationAllowed,
+  heartbeatClaim,
+  releaseAutomationSlot,
+} = require('../src/services/pipelineTaskService');
+const {
+  PIPELINE_AUTOMATION_EVIDENCE_SCHEMA,
+  normalizePipelineAutomationEvidence,
+} = require('../../shared/pipelineAutomationContract');
+const {
+  buildPipelineAutomationPerformance,
+} = require('../src/services/pipelineAutomationPerformanceService');
+const { statusTransition, supersedeTransition } = require('../src/services/pipelineTaskTransitionPaths');
+const { expectedStatusGuard } = require('../src/services/pipelineExpectedStatus');
+const STATUSES = ['queued', 'in_progress', 'review', 'blocked', 'done'];
+
+const ACTIVE_STATUSES = ['queued', 'in_progress', 'review', 'blocked'];
+router.use(require('./pipeline-diagnostics'), require('./pipeline-deliverables'), require('./pipeline-plans'));
+
+// One-release compatibility shim. Board integrations are separately deployed
+// adapters and consume the product-owned task API instead of running in Core.
+router.post('/leantime-sync', (_req, res) => {
+  return envelope.error(
+    res,
+    410,
+    'The embedded Leantime adapter was removed. Install a separately operated adapter that consumes /api/pipeline/tasks.',
+    'ADAPTER_REQUIRED'
+  );
+});
+
+// Create a task directly in Mongo (the membrane). POST .../tasks { title|objective, ... }
+router.post('/tasks', async (req, res) => {
+  try {
+    const task = await createTaskInMongo(req.body || {});
+    return envelope.success(res, { task: redactTaskLeaseIds(task) }, null, 201);
+  } catch (err) { return envelope.error(res, err.status || 400, err.message, err.code || 'TASK_CREATE_ERROR'); }
+});
+
+// Drafting never writes a task. The editor applies a proposal to its own form.
+router.post('/draft', async (req, res) => {
+  const controller = new AbortController();
+  const disconnect = () => { if (!res.writableEnded) controller.abort(); };
+  req.once('aborted', disconnect);
+  res.once('close', disconnect);
+  try {
+    const proposal = await taskDraft.proposeDraft(req.body, { signal: controller.signal });
+    if (!controller.signal.aborted) return envelope.success(res, proposal);
+  } catch (error) {
+    if (!controller.signal.aborted) return envelope.error(res, error.status || 500, error.message, error.code);
+  } finally {
+    req.off('aborted', disconnect);
+    res.off('close', disconnect);
+  }
+});
+
+router.patch('/tasks/:id', async (req, res) => {
+  try {
+    const task = await taskEditor.editTask(req.params.id, req.body);
+    return envelope.success(res, { task: redactTaskLeaseIds(task), editToken: taskEditor.editToken(task) });
+  } catch (error) { return envelope.error(res, error.status || 500, error.message, error.code); }
+});
+
+const { SUMMARY_FIELDS, projectTaskRows, redactTaskLeaseIds } = require('../src/services/pipelineTaskProjectionReadService');
+
+function truthy(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').toLowerCase());
+}
+
+function buildTaskListQuery(params = {}) {
+  const q = {};
+  if (params.status) {
+    q.status = params.status;
+  } else if (!truthy(params.includeDone)) {
+    q.status = { $in: ACTIVE_STATUSES };
+  }
+  if (params.assignee) q.assignee = params.assignee;
+  if (params.service) q.service = params.service;
+  if (params.source) q.source = params.source;
+  return q;
+}
+
+async function aggregateTaskCounts(query) {
+  const rows = await PipelineTask.aggregate([
+    { $match: query },
+    { $group: { _id: '$status', count: { $sum: 1 } } }
+  ]);
+  const byStatus = Object.fromEntries(STATUSES.map(status => [status, 0]));
+  for (const row of rows) {
+    if (STATUSES.includes(row?._id)) byStatus[row._id] = Number(row.count) || 0;
+  }
+  const matchedCount = Object.values(byStatus).reduce((sum, count) => sum + count, 0);
+  const openCount = ACTIVE_STATUSES.reduce((sum, status) => sum + byStatus[status], 0);
+  return { byStatus, matchedCount, openCount, doneCount: byStatus.done };
+}
+
+function taskListEvidence(query, limit, returnedCount, summary, observedAt) {
+  const filteredStatuses = typeof query.status === 'string'
+    ? [query.status]
+    : (Array.isArray(query.status?.$in) ? query.status.$in : STATUSES);
+  const filters = {};
+  for (const key of ['assignee', 'service', 'source']) {
+    if (query[key]) filters[key] = query[key];
+  }
+  return {
+    authority: 'core.pipeline',
+    source: {
+      service: 'core',
+      store: 'mongodb',
+      collection: PipelineTask.collection?.collectionName || 'pipelinetasks'
+    },
+    scope: {
+      statuses: filteredStatuses,
+      includesDone: filteredStatuses.includes('done'),
+      filters,
+      timeWindow: {
+        kind: 'all_time',
+        label: 'All matching task records; no date filter',
+        from: null,
+        to: observedAt
+      }
+    },
+    rows: {
+      order: 'pipelineId ascending',
+      limit,
+      returnedCount,
+      matchedCount: summary.matchedCount,
+      truncated: returnedCount < summary.matchedCount
+    },
+    countBasis: 'Exact MongoDB status aggregation over the stated scope',
+    consistency: 'Counts and rows are sampled during one request but are not a database transaction',
+    observedAt
+  };
+}
+
+function performanceWindow(value) {
+  const match = String(value || '30d').trim().match(/^(7|30|90)d$/);
+  return match ? Number(match[1]) : null;
+}
+
+// List tasks (queryable). GET /api/pipeline/tasks?status=&assignee=&limit=&view=summary
+router.get('/tasks', async (req, res) => {
+  try {
+    const q = buildTaskListQuery(req.query);
+    const limit = Math.min(Number(req.query.limit) || 200, 1000);
+    const observedAt = new Date().toISOString();
+    let query = PipelineTask.find(q).sort({ pipelineId: 1 }).limit(limit);
+    if (req.query.view === 'summary') {
+      query = query.select(SUMMARY_FIELDS);
+    }
+    const [tasks, summary] = await Promise.all([
+      query.lean(),
+      aggregateTaskCounts(q)
+    ]);
+    const evidence = taskListEvidence(q, limit, tasks.length, summary, observedAt);
+    const rows = await projectTaskRows(tasks, { summary: req.query.view === 'summary', now: new Date(observedAt) });
+    return envelope.success(res, { count: rows.length, tasks: rows, summary, evidence });
+  } catch (err) { return envelope.error(res, 500, err.message); }
+});
+
+// Privacy-safe team performance over persisted autonomous attempts. Missing
+// evidence remains null and is reported through coverage rather than becoming
+// a false zero. GET /api/pipeline/performance?window=7d|30d|90d
+router.get('/performance', async (req, res) => {
+  const windowDays = performanceWindow(req.query.window);
+  if (!windowDays) {
+    return envelope.error(res, 400, 'window must be one of 7d, 30d, or 90d', 'INVALID_PERFORMANCE_WINDOW');
+  }
+  try {
+    const now = new Date();
+    const from = new Date(now.getTime() - windowDays * 86_400_000);
+    const tasks = await PipelineTask.find({
+      'automationAttempts.acquiredAt': { $gte: from, $lte: now },
+    }).select('pipelineId createdAt automation automationAttempts').lean();
+    return envelope.success(res, {
+      performance: buildPipelineAutomationPerformance(tasks, { now, windowDays }),
+    });
+  } catch (err) { return envelope.error(res, 500, err.message); }
+});
+
+// Next queued task for an agent to pick up.
+router.get('/tasks/next', async (req, res) => {
+  try {
+    const task = await findNextEligibleTask(req.query);
+    return envelope.success(res, {
+      task: task ? redactTaskLeaseIds(task) : null,
+      nextTaskId: task?.pipelineId || null,
+      pipelineId: task?.pipelineId || null
+    });
+  } catch (err) { return envelope.error(res, 500, err.message); }
+});
+
+// Bounded exact-task read for a guarded worker. It deliberately excludes the
+// private lanes and never changes eligibility or claim state.
+// Registered before /tasks/:id so the literal worker suffix keeps priority.
+router.get('/tasks/:id/worker', async (req, res) => {
+  try {
+    const agent = String(req.query.agent || '').trim();
+    const task = await PipelineTask.findOne({
+      pipelineId: req.params.id,
+      ...workerTaskScope(),
+      $or: [
+        { status: 'queued', assignee: null },
+        ...(agent ? [{ status: { $in: ['in_progress', 'review', 'blocked'] }, assignee: agent }] : []),
+      ],
+    }).lean();
+    if (!task) {
+      return envelope.error(res, 404, 'Task is unavailable to this worker identity', 'WORKER_TASK_UNAVAILABLE');
+    }
+    // Bounded Planning "why", computed at read time; reference data only.
+    return envelope.success(res, { task: { ...task, planningContext: await safePlanningWorkerContext(task) } });
+  } catch (err) { return envelope.error(res, err.status || 500, err.message, err.code); }
+});
+
+// Full task detail (spec + feedback audit trail) for the human Pipeline UI.
+// Registered after /tasks/next so the literal segment keeps priority.
+// GET /api/pipeline/tasks/:id
+router.get('/tasks/:id', async (req, res) => {
+  try {
+    const task = await PipelineTask.findOne({ pipelineId: req.params.id }).lean();
+    if (!task) return envelope.error(res, 404, 'Task not found', 'NOT_FOUND');
+    const [projected] = await projectTaskRows([task]);
+    return envelope.success(res, { task: projected, editToken: taskEditor.editToken(task) });
+  } catch (err) { return envelope.error(res, 500, err.message); }
+});
+
+// Reconcile one previously unknown completed-attempt cost from a bounded
+// operator-reviewed provider/runtime receipt. This is write-once: an existing
+// cost may be confirmed idempotently but never replaced or contradicted.
+router.post(
+  '/tasks/:id/automation-attempts/:attempt/cost',
+  async (req, res) => {
+    const attemptNumber = Number(req.params.attempt);
+    const body = req.body || {};
+    const by = String(body.by || '').trim();
+    if (!Number.isInteger(attemptNumber) || attemptNumber < 1 || attemptNumber > 10) {
+      return envelope.error(res, 400, 'attempt must be an integer from 1 through 10', 'INVALID_ATTEMPT');
+    }
+    if (!by || by.length > 160) {
+      return envelope.error(res, 400, 'by is required and must be at most 160 characters', 'INVALID_RECONCILER');
+    }
+    try {
+      const current = await PipelineTask.findOne({ pipelineId: req.params.id });
+      if (!current) return envelope.error(res, 404, 'Task not found', 'NOT_FOUND');
+      const attempts = Array.isArray(current.automationAttempts) ? current.automationAttempts : [];
+      const attempt = attempts.find((item) => Number(item?.attempt) === attemptNumber);
+      if (!attempt) return envelope.error(res, 404, 'Automation attempt not found', 'ATTEMPT_NOT_FOUND');
+      if (!attempt.completedAt || attempt.finalState === 'active') {
+        return envelope.error(res, 409, 'Only a completed automation attempt may be reconciled', 'ATTEMPT_NOT_COMPLETED');
+      }
+
+      const existing = attempt.evidence?.toObject
+        ? attempt.evidence.toObject({ depopulate: true })
+        : (attempt.evidence || null);
+      const normalized = normalizePipelineAutomationEvidence({
+        schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA,
+        verification: existing?.verification || { status: 'unknown' },
+        changes: existing?.changes || {},
+        usage: {
+          ...(existing?.usage || {}),
+          costNanodollars: body.costNanodollars,
+          costKind: body.costKind,
+          costSource: body.costSource,
+          costEvidenceFingerprint: body.costEvidenceFingerprint,
+        },
+        failureCodes: existing?.failureCodes || [],
+        workerReceiptFingerprint: existing?.workerReceiptFingerprint || null,
+        source: existing?.source || 'cost-reconciliation/v1',
+      });
+      if (normalized.usage.costNanodollars == null
+        || !normalized.usage.costKind
+        || !normalized.usage.costSource
+        || !normalized.usage.costEvidenceFingerprint) {
+        return envelope.error(
+          res,
+          400,
+          'costNanodollars, costKind, costSource, and costEvidenceFingerprint are required',
+          'INCOMPLETE_COST_EVIDENCE'
+        );
+      }
+
+      const priorUsage = existing?.usage || {};
+      if (priorUsage.costNanodollars != null) {
+        const idempotent = Number(priorUsage.costNanodollars) === normalized.usage.costNanodollars
+          && String(priorUsage.costKind || '') === normalized.usage.costKind
+          && String(priorUsage.costSource || '') === normalized.usage.costSource
+          && String(priorUsage.costEvidenceFingerprint || '') === normalized.usage.costEvidenceFingerprint;
+        if (!idempotent) {
+          return envelope.error(
+            res,
+            409,
+            'Existing attempt cost evidence cannot be replaced or contradicted',
+            'COST_EVIDENCE_CONFLICT'
+          );
+        }
+        return envelope.success(res, {
+          task: redactTaskLeaseIds(current),
+          costReconciliation: { attempt: attemptNumber, reconciled: false, idempotent: true },
+        });
+      }
+
+      const audit = {
+        by,
+        at: new Date(),
+        text: `Reconciled automation attempt ${attemptNumber} ${normalized.usage.costKind} as ${normalized.usage.costNanodollars} nanodollars from ${normalized.usage.costSource}.`,
+      };
+      const task = await PipelineTask.findOneAndUpdate(
+        {
+          pipelineId: req.params.id,
+          automationAttempts: {
+            $elemMatch: {
+              attempt: attemptNumber,
+              completedAt: { $ne: null },
+              'evidence.usage.costNanodollars': null,
+            },
+          },
+        },
+        {
+          $set: { 'automationAttempts.$[attempt].evidence': normalized },
+          $push: { feedback: audit },
+        },
+        { new: true, arrayFilters: [{ 'attempt.attempt': attemptNumber }] }
+      );
+      if (!task) {
+        return envelope.error(res, 409, 'Attempt cost evidence changed before reconciliation', 'COST_EVIDENCE_CONFLICT');
+      }
+      return envelope.success(res, {
+        task: redactTaskLeaseIds(task),
+        costReconciliation: {
+          attempt: attemptNumber,
+          reconciled: true,
+          idempotent: false,
+          costNanodollars: normalized.usage.costNanodollars,
+          costKind: normalized.usage.costKind,
+          costSource: normalized.usage.costSource,
+          costEvidenceFingerprint: normalized.usage.costEvidenceFingerprint,
+        },
+      });
+    } catch (err) {
+      return envelope.error(res, err.status || 400, err.message, err.code || 'COST_RECONCILIATION_ERROR');
+    }
+  }
+);
+
+// Atomically claim a task — kills the multi-agent race. POST .../tasks/:id/claim { assignee }
+router.post('/tasks/:id/claim', async (req, res) => {
+  const body = req.body || {};
+  const assignee = body.assignee || 'unknown-agent';
+  try {
+    const task = body.automated === true
+      ? await claimEligibleTask(req.params.id, assignee, new Date(), {
+        automated: true,
+        leaseDurationMs: body.leaseDurationMs,
+        dispatchRequestId: body.dispatchRequestId,
+      })
+      : await claimEligibleTask(req.params.id, assignee);
+    return envelope.success(res, { task });
+  } catch (err) { return envelope.error(res, err.status || 500, err.message, err.code); }
+});
+
+// Operator status update. Automated workers submit results through feedback;
+// accepted results and explicit operator overrides remain visible in the audit trail.
+router.post('/tasks/:id/status', async (req, res) => {
+  const b = req.body || {};
+  const status = b.status;
+  if (!STATUSES.includes(status)) return envelope.error(res, 400, `status must be one of ${STATUSES.join('|')}`, 'INVALID_STATUS');
+  try {
+    const current = await PipelineTask.findOne({ pipelineId: req.params.id });
+    if (!current) return envelope.error(res, 404, 'Task not found', 'NOT_FOUND');
+
+    // A superseded task never leaves `done` by accident: reopening it is a
+    // separate, explicit decision.
+    if (current.resolution?.kind === 'superseded' && status !== 'done' && b.reopen !== true) {
+      return envelope.error(
+        res,
+        409,
+        `Task ${current.pipelineId} was superseded by ${current.resolution.supersededBy}; pass reopen:true to reopen it deliberately`,
+        'TASK_SUPERSEDED'
+      );
+    }
+
+    const update = { $set: { status } };
+    if (current.resolution?.kind === 'superseded' && status !== 'done' && b.reopen === true) {
+      update.$unset = { ...(update.$unset || {}), resolution: 1 };
+      update.$push = { feedback: { by: String(b.by || 'operator'), text: `Reopened after supersession by ${current.resolution.supersededBy}.`, at: new Date() } };
+    }
+    // Re-queue means release. Keeping the previous worker and heartbeat here
+    // creates a queued-but-unclaimable zombie because both /next and /claim
+    // intentionally require assignee:null.
+    if (status === 'queued') {
+      update.$set.assignee = null;
+      update.$set.heartbeatAt = null;
+    }
+
+    // Operator calls carry no lease. A caller naming a lease acts for that
+    // attempt only; once it is closed or decided, it cannot change the task.
+    let workerLease = null;
+    if (String(b.leaseId || '').trim()) {
+      try {
+        workerLease = assertLeaseMutationAllowed(current, { assignee: b.leaseAssignee || b.by, leaseId: b.leaseId });
+      } catch (err) {
+        return envelope.error(res, 409, err.message, err.code);
+      }
+    }
+
+    const terminalAutomationLease = current.automationLease?.leaseId && status !== 'in_progress'
+      ? {
+        leaseId: String(current.automationLease.leaseId),
+        pipelineId: current.pipelineId,
+        assignee: String(current.automationLease.assignee || current.assignee || ''),
+      }
+      : null;
+    if (terminalAutomationLease) {
+      update.$set['automationAttempts.$[attempt].finalState'] = status === 'queued' ? 'released' : status;
+      update.$set['automationAttempts.$[attempt].completedAt'] = new Date();
+      update.$unset = { automationLease: 1 };
+    }
+
+    const latestAttempt = Array.isArray(current.automationAttempts)
+      ? current.automationAttempts.slice().reverse().find((attempt) => attempt?.leaseId)
+      : null;
+    const reviewOutcome = !terminalAutomationLease && latestAttempt
+      ? (
+        status === 'done' && current.status === 'review' ? 'accepted'
+          : status === 'queued' && ['review', 'blocked'].includes(current.status) ? 'requeued'
+            : status === 'blocked' && current.status === 'review' ? 'rejected'
+              : null
+      )
+      : null;
+    if (reviewOutcome) {
+      update.$set['automationAttempts.$[reviewAttempt].reviewOutcome'] = reviewOutcome;
+      update.$set['automationAttempts.$[reviewAttempt].reviewedAt'] = new Date();
+    }
+
+    if (status === 'done' && current.status !== 'done') {
+      const by = String(b.by || '').trim();
+      update.$push = { feedback: { by: by || 'operator', text: `Confirmed ${current.status} -> done${by ? ` by ${by}` : ' (operator override)'}.`, at: new Date() } };
+    }
+
+    const mutationQuery = { pipelineId: req.params.id };
+    if (b.expected !== undefined) {
+      try { Object.assign(mutationQuery, expectedStatusGuard(current, b.expected)); }
+      catch (err) { return envelope.error(res, err.status || 400, err.message, err.code || 'INVALID_EXPECTED_VERSION'); }
+    }
+    if (workerLease) {
+      mutationQuery.status = 'in_progress';
+      mutationQuery.assignee = workerLease.assignee;
+      mutationQuery['automationLease.leaseId'] = workerLease.leaseId;
+      const activeLease = { 'automationLease.expiresAt': { $gt: new Date() } };
+      if (b.expected !== undefined) {
+        mutationQuery.$and = [...(mutationQuery.$and || []), activeLease];
+      } else {
+        Object.assign(mutationQuery, activeLease);
+      }
+    }
+    const options = { new: true };
+    if (terminalAutomationLease) {
+      options.arrayFilters = [{ 'attempt.leaseId': current.automationLease.leaseId }];
+    } else if (reviewOutcome) {
+      options.arrayFilters = [{ 'reviewAttempt.leaseId': latestAttempt.leaseId }];
+    }
+    const transition = statusTransition(mutationQuery, update, current, { status, body: b, reviewOutcome, latestAttempt, workerLease });
+    const task = await PipelineTask.findOneAndUpdate(mutationQuery, update, options);
+    if (!task && b.expected !== undefined) {
+      return envelope.error(res, 409, 'Task changed since the diagnosis; reload it', 'TASK_EXPECTED_VERSION_CONFLICT');
+    }
+    if (!task && workerLease) {
+      return envelope.error(res, 409, 'automation lease changed before status was recorded', 'TASK_LEASE_MISMATCH');
+    }
+    if (!task && transition) return envelope.error(res, 409, 'Task changed before its status was recorded; reload it', 'TASK_TRANSITION_CONFLICT');
+    if (!task) return envelope.error(res, 404, 'Task not found', 'NOT_FOUND');
+    if (terminalAutomationLease) await releaseAutomationSlot(terminalAutomationLease);
+    return envelope.success(res, { task: redactTaskLeaseIds(task) });
+  } catch (err) { return envelope.error(res, 500, err.message); }
+});
+
+// Submit feedback. "done" sends it to REVIEW (overseer-gated). POST .../tasks/:id/feedback { text, status?, by? }
+/**
+ * Supersede: close a task in favour of its replacement with an explicit,
+ * signed reason. Without `confirm: true` the route returns a preview of the
+ * exact transition and every check, and touches nothing, so the operator can
+ * cancel. With `confirm: true` and every check passing it moves the task to
+ * `done`, records an immutable `resolution`, appends the decision to both
+ * tasks' audit trails, and never re-queues anything. A superseded task cannot
+ * leave `done` through /status without an explicit `reopen: true`.
+ */
+router.post('/tasks/:id/supersede', async (req, res) => {
+  const b = req.body || {};
+  const supersededBy = String(b.supersededBy || '').trim();
+  const reason = String(b.reason || '').trim();
+  const by = String(b.by || '').trim();
+  const confirm = b.confirm === true;
+  try {
+    const current = await PipelineTask.findOne({ pipelineId: req.params.id });
+    if (!current) return envelope.error(res, 404, 'Task not found', 'NOT_FOUND');
+    const replacement = supersededBy && supersededBy !== current.pipelineId
+      ? await PipelineTask.findOne({ pipelineId: supersededBy })
+      : null;
+
+    const checks = [
+      { id: 'replacement_required', ok: Boolean(supersededBy), detail: supersededBy ? `Replacement: ${supersededBy}` : 'A replacement task id is required.' },
+      { id: 'replacement_differs', ok: Boolean(supersededBy) && supersededBy !== current.pipelineId, detail: supersededBy === current.pipelineId ? 'A task cannot supersede itself.' : 'Replacement is a different task.' },
+      { id: 'replacement_exists', ok: Boolean(replacement), detail: replacement ? `${replacement.pipelineId} · ${replacement.status}${replacement.title ? ` · ${replacement.title}` : ''}` : 'Replacement task not found.' },
+      { id: 'replacement_not_superseded', ok: Boolean(replacement) && replacement.resolution?.kind !== 'superseded', detail: replacement?.resolution?.kind === 'superseded' ? `${replacement.pipelineId} was itself superseded by ${replacement.resolution.supersededBy}.` : 'Replacement is not itself superseded.' },
+      { id: 'reason_required', ok: reason.length >= 8, detail: reason.length >= 8 ? 'Reason recorded verbatim in both audit trails.' : 'A reason of at least 8 characters is required.' },
+      { id: 'decision_signed', ok: Boolean(by), detail: by ? `Decided by ${by}` : 'A human identity must sign the decision.' },
+      { id: 'not_already_closed', ok: current.status !== 'done', detail: current.status === 'done' ? `Task is already done${current.resolution?.kind === 'superseded' ? ` (superseded by ${current.resolution.supersededBy})` : ''}.` : `Current status: ${current.status}.` },
+      { id: 'no_active_automation_lease', ok: !current.automationLease?.leaseId, detail: current.automationLease?.leaseId ? 'An automation lease is active; release it first.' : 'No automation lease.' },
+    ];
+    const blocked = checks.filter((check) => !check.ok).map((check) => check.id);
+    const transition = {
+      pipelineId: current.pipelineId,
+      from: current.status,
+      to: 'done',
+      resolution: { kind: 'superseded', supersededBy: supersededBy || null, reason: reason || null, by: by || null },
+      clearsHeartbeat: Boolean(current.heartbeatAt),
+      keepsAssignee: current.assignee || null,
+      requeue: false,
+      reopen: 'only through /status with reopen:true',
+    };
+
+    if (!confirm) {
+      return envelope.success(res, { preview: true, applied: false, ok: blocked.length === 0, blocked, checks, transition });
+    }
+    if (blocked.length) {
+      return envelope.error(res, 409, `Cannot supersede ${current.pipelineId}: ${blocked.join(', ')}`, 'SUPERSEDE_BLOCKED');
+    }
+
+    const at = new Date();
+    const resolution = { kind: 'superseded', supersededBy, reason, by, at };
+    const query = { pipelineId: current.pipelineId, status: current.status };
+    const update = {
+      $set: { status: 'done', resolution, heartbeatAt: null },
+      $push: { feedback: { by, text: `Superseded by ${supersededBy}: ${reason}`, at } },
+    };
+    supersedeTransition(query, update, current, resolution);
+    const updated = await PipelineTask.findOneAndUpdate(query, update, { new: true });
+    if (!updated) return envelope.error(res, 409, 'Task changed while superseding; preview it again', 'SUPERSEDE_CONFLICT');
+    await PipelineTask.updateOne(
+      { pipelineId: supersededBy },
+      { $push: { feedback: { by, text: `Supersedes ${current.pipelineId}: ${reason}`, at } } }
+    );
+    return envelope.success(res, { preview: false, applied: true, checks, transition, task: redactTaskLeaseIds(updated) });
+  } catch (err) {
+    return envelope.error(res, 500, err.message, 'SUPERSEDE_FAILED');
+  }
+});
+
+router.use(require('./pipeline-feedback'));
+
+// Heartbeat a claimed task. POST .../tasks/:id/heartbeat
+router.post('/tasks/:id/heartbeat', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const task = await heartbeatClaim(req.params.id, {
+      assignee: body.leaseAssignee || body.assignee,
+      leaseId: body.leaseId,
+    });
+    if (!task) return envelope.error(res, 404, 'Task not found', 'NOT_FOUND');
+    return envelope.success(res, { pipelineId: task.pipelineId, heartbeatAt: task.heartbeatAt });
+  } catch (err) { return envelope.error(res, err.status || 500, err.message, err.code); }
+});
+
+module.exports = router;

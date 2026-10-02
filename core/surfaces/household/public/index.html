@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07131d">
+  <title>AgentX · chez vous</title>
+  <link rel="stylesheet" href="/access-assets/client.css">
+  <script src="/access-assets/client.js" defer></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/assets/household/app.css?v=dad-day-3">
+  <link rel="stylesheet" href="/assets/household/avatar-dock.css?v=avatar-5">
+  <link rel="stylesheet" href="/assets/household/display-board.css?v=journal-1">
+</head>
+<body>
+  <a class="skip" href="#app">Aller au contenu</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AgentX · Accueil">
+      <span class="brand-mark">A</span>
+      <span><strong>AgentX</strong><small>chez vous</small></span>
+    </a>
+    <nav class="primary-nav" aria-label="Navigation principale">
+      <a href="/" data-section="home" data-access="adult">Accueil</a>
+      <a href="/dad" data-section="personal" data-access="adult">Super Dad</a>
+      <a href="/panel" data-section="family">Famille</a>
+    </nav>
+    <details class="nav-tools" id="householdTools">
+      <summary>Réglages et outils</summary>
+      <div class="nav-tools-panel">
+        <a href="/unlock?next=%2F" data-access="unlock">Espace adulte <small>Code parental · Super Dad, AgentX et réglages</small></a>
+        <a href="/portal" data-access="adult">Toutes les applications</a>
+        <a href="/playground" data-access="adult">AgentX Chat <small>Modèles et prompts</small></a>
+        <a href="/api/openclaw/control-launch/chat" data-access="adult">Espace agents <small>OpenClaw</small></a>
+        <a href="/voice/native" data-access="adult">Appareils audio <small>Microphone du PC hôte</small></a>
+        <button type="button" id="readingVoiceSettings">Voix des lectures <small>Ce navigateur</small></button>
+        <a href="/device-check" data-access="adult">Vérifier un appareil</a>
+        <span class="runtime-pill" id="runtimePill">checking</span>
+      </div>
+    </details>
+  </header>
+  <nav id="householdSectionNav" class="section-nav" aria-label="Dans cet espace" hidden></nav>
+  <main id="app" tabindex="-1"></main>
+  <dialog id="readingVoiceDialog" aria-labelledby="readingVoiceTitle">
+    <h2 id="readingVoiceTitle">Voix des lectures</h2>
+    <p>Pour les lectures et réponses parlées de Famille, Enfants et Super Dad sur ce navigateur.</p>
+    <label>Français<select id="readingVoiceFr"><option value="">Voix par défaut</option></select></label>
+    <label>English<select id="readingVoiceEn"><option value="">Default voice</option></select></label>
+    <p id="readingVoiceStatus" role="status"></p>
+    <div class="actions"><button type="button" id="readingVoicePreview">Écouter le français</button><button type="button" id="readingVoiceStop">Arrêter</button><button type="button" id="readingVoiceSave">Enregistrer</button><button type="button" id="readingVoiceClose">Fermer</button></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/assets/household/speech-language.js?v=voice-controls-2" defer></script>
+  <script src="/api/voix/player.js?v=1.56.4" defer></script>
+  <script src="/assets/household/persona-presentation.js?v=1.56.4" defer></script>
+  <script src="/assets/household/playback-hold.js?v=voice-noise-1" defer></script>
+  <script src="/assets/household/browser-conversation.js?v=voice-ready-2" defer></script>
+  <script src="/assets/household/open-hold.js?v=1.56.4" defer></script>
+  <script src="/assets/household/personal-notes.js?v=core-notes-1" defer></script>
+  <script src="/assets/household/greetings.js?v=greet-1" defer></script>
+  <script src="/assets/household/avatar-dock.js?v=avatar-8" defer></script>
+  <script src="/assets/household/agent-activity.js?v=activity-1" defer></script>
+  <script src="/assets/household/display-board.js?v=review-fix-1" defer></script>
+  <script src="/assets/household/brain-panel.js?v=brain-1" defer></script>
+  <script src="/assets/household/conversation-page.js?v=voice-ready-1" defer></script>
+  <script src="/assets/household/secretary-rules.js?v=rules-1" defer></script>
+  <script src="/assets/household/desk-cards.js?v=desk-cards-4" defer></script>
+  <script src="/assets/household/family-conversations.js?v=family-erase-3" defer></script>
+  <script src="/assets/household/dad-day.js?v=dad-day-3" defer></script>
+  <script src="/assets/household/journal-display.js?v=journal-1" defer></script>
+  <script src="/assets/household/app.js?v=journal-1" defer></script>
+</body>
+</html>

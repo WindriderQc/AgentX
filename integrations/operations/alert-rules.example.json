@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "authority": "agentx-operator",
+  "managedRules": [
+    {
+      "ruleId": "operator-memory-review-no-eligible-evidence",
+      "name": "Memory review has no eligible evidence",
+      "enabled": false,
+      "reason": "Enable only in the external instance configuration after selecting the intended evidence sources.",
+      "severity": "warning",
+      "conditions": { "all": [{ "fact": "metric", "operator": "equal", "value": "memory_review_no_eligible_evidence" }] },
+      "channels": ["local_log"],
+      "cooldownMs": 300000,
+      "renotifyMs": 86400000
+    }
+  ],
+  "detectors": {
+    "inferenceActivity": { "windowHours": 24 },
+    "memoryReviewQuiet": {
+      "enabled": false,
+      "displayName": "Memory review",
+      "source": "operator-memory-review",
+      "windowRuns": 7,
+      "minimumRuns": 3,
+      "maximumEligible": 0,
+      "expectedEvidenceClasses": ["owner"]
+    }
+  }
+}

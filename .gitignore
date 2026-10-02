@@ -1,0 +1,61 @@
+# Secrets and local configuration
+.env
+.env.*
+*.local.env
+config/*.local.env
+config/secrets.json
+
+# Dependencies and generated output
+node_modules
+coverage/
+**/coverage/
+dist/
+build/
+logs/
+**/logs/
+test-results/
+**/test-results/
+playwright-report/
+reports/
+
+# Runtime data and caches
+.agentx/
+/backups/
+agentx-recovery-v1-*/
+.agentx-recovery-partial-*/
+recovery-drill-receipt*.json
+.agentx-recovery-receipt-partial-*
+.tmp/
+.cache/
+__pycache__/
+*.pyc
+.playwright-cli/
+*.log
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+
+# jest mongodb-memory-server runtime data
+core/tests/.jest-mongo/
+
+# Local operator material and generated migration evidence
+/work/
+/outputs/
+/output/
+/private/
+/runtime/
+config/local/
+*.bundle
+
+# Instance-only sound recordings without redistribution terms
+/core/surfaces/household/public/sounds/*-google.ogg
+/core/surfaces/household/public/sounds/whale-humpback.ogg
+
+# Local coding-agent settings
+/.claude/

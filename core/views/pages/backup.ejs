@@ -1,0 +1,207 @@
+<div class="bg-grid"></div>
+
+<main class="backup-page">
+  <header class="backup-header">
+    <div>
+      <div class="eyebrow">OPERATIONS · RECOVERY</div>
+      <h1><i class="fas fa-shield-halved" aria-hidden="true"></i> Backup control room</h1>
+      <p class="lede">See whether MongoDB, Qdrant, and supported product configuration are protected in persistent recovery storage before browsing individual artifacts.</p>
+    </div>
+    <button id="backupRefreshAllBtn" class="btn backup-refresh-all" type="button">
+      <i class="fas fa-sync-alt" aria-hidden="true"></i> Refresh all
+    </button>
+  </header>
+
+  <div id="toast" class="backup-toast" role="status" aria-live="polite"></div>
+
+  <section id="backupControlRoom" class="backup-control-room is-loading" aria-labelledby="backupOverallTitle">
+    <div class="backup-overall">
+      <div id="backupOverallIcon" class="backup-overall-icon" aria-hidden="true"><i class="fas fa-circle-notch fa-spin"></i></div>
+      <div>
+        <div id="backupOverallKicker" class="backup-kicker">CHECKING RECOVERY STATE</div>
+        <h2 id="backupOverallTitle">Reading the latest backup cycle…</h2>
+        <p id="backupOverallSummary">Scheduler evidence is loading.</p>
+      </div>
+    </div>
+
+    <div id="backupIncidentPanel" class="backup-incident" role="alert" hidden>
+      <div class="backup-incident-heading"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Operator attention</div>
+      <div id="backupIncidentSummary"></div>
+    </div>
+
+    <div class="backup-signal-grid">
+      <article class="backup-signal">
+        <span>Last cycle</span>
+        <strong id="cfgLastCycle">—</strong>
+        <small id="cfgLastCycleAt">Waiting for evidence</small>
+      </article>
+      <article class="backup-signal">
+        <span>Layer health</span>
+        <strong id="cfgLayerCoverage">—</strong>
+        <small>Mongo · Config · Qdrant</small>
+      </article>
+      <article class="backup-signal">
+        <span>Next run</span>
+        <strong id="cfgNextRun">—</strong>
+        <small id="cfgNextRunReason">Waiting for schedule</small>
+      </article>
+      <article class="backup-signal">
+        <span>Retention</span>
+        <strong id="cfgRetentionOverview">—</strong>
+        <small id="cfgRetryBudget">Retry budget —</small>
+      </article>
+    </div>
+  </section>
+
+  <details class="backup-section backup-settings">
+    <summary>
+      <span><i class="fas fa-gear" aria-hidden="true"></i> Policy &amp; settings</span>
+      <small>Cadence, retention, storage lifecycle, and restore boundary</small>
+    </summary>
+    <div class="backup-settings-body">
+      <div class="backup-settings-grid">
+        <label>Recovery storage</label>
+        <span id="cfgStorage">—</span>
+        <small id="cfgStorageLifecycle">—</small>
+
+        <label>Host-loss protection</label>
+        <span id="cfgStorageExport">—</span>
+        <small>not implied by local persistence</small>
+
+        <label for="cfgRetentionDays">Retention (days, 0 = forever)</label>
+        <div class="backup-inline-control">
+          <input id="cfgRetentionDays" type="number" min="0" step="1">
+          <button id="cfgSaveBtn" class="btn btn-primary" type="button">Save</button>
+        </div>
+        <small id="cfgRetentionSrc">—</small>
+
+        <label>Config backup scope</label>
+        <span id="cfgConfigScope">—</span>
+        <small>Runtime env files, credentials, private adapters, data, and crontab are never captured.</small>
+
+        <label>Restore policy</label>
+        <span id="cfgRestorePolicy" class="backup-warning-text">—</span>
+        <small>no coherent recovery-set proof yet</small>
+      </div>
+
+      <div id="cfgPolicyPanel" class="backup-policy-panel" role="status" aria-live="polite">
+        <strong>Creation cadence</strong><span id="cfgScheduleStatus">Loading effective scheduler policy (cron occurrence in a configured time zone, e.g. daily at 03:00 America/Toronto)…</span>
+        <strong>Failure retry</strong><span id="cfgScheduleDetail">—</span>
+        <strong>Retention enforcement</strong><span id="cfgRetentionPolicy">—</span>
+        <strong>Growth risk</strong><span id="cfgGrowthRisk">—</span>
+        <div id="cfgPolicyWarnings" class="backup-policy-warnings"></div>
+      </div>
+
+      <div class="backup-note">
+        <i class="fas fa-info-circle" aria-hidden="true"></i>
+        <span><strong>Retention</strong> is runtime-editable and pruning runs after each successful backup operation; changing it does not delete anything immediately. Ordinary <code>down</code> preserves recovery storage. Only the exact confirmed <code>reset</code> removes it.</span>
+      </div>
+    </div>
+  </details>
+
+  <div class="backup-layer-stack">
+    <section class="backup-section backup-layer" data-backup-layer="mongo" aria-labelledby="mongoTitle">
+      <div class="backup-layer-header">
+        <div class="backup-layer-identity">
+          <span class="backup-layer-icon mongo"><i class="fas fa-leaf" aria-hidden="true"></i></span>
+          <div>
+            <div class="backup-kicker">DATABASE</div>
+            <h2 id="mongoTitle">MongoDB</h2>
+            <p id="mongoEvidence">Loading inventory basis…</p>
+          </div>
+        </div>
+        <div class="backup-layer-actions">
+          <span id="mongoStatus" class="backup-count">—</span>
+          <button id="mongoBackupBtn" class="btn btn-primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> Create backup</button>
+          <button id="mongoRefreshBtn" class="btn backup-icon-button" type="button" title="Refresh MongoDB inventory" aria-label="Refresh MongoDB inventory"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
+        </div>
+      </div>
+      <details class="backup-inventory">
+        <summary>Browse MongoDB recovery artifacts <span>full inventory</span></summary>
+        <div class="backup-table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Date</th><th class="align-right">Size</th><th class="align-right">Actions</th></tr></thead>
+            <tbody id="mongoBackupsList"><tr><td colspan="4" class="backup-empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div id="mongoPager" class="backup-pager" aria-live="polite"></div>
+      </details>
+    </section>
+
+    <section class="backup-section backup-layer" data-backup-layer="qdrant" aria-labelledby="qdrantTitle">
+      <div class="backup-layer-header">
+        <div class="backup-layer-identity">
+          <span class="backup-layer-icon qdrant"><i class="fas fa-cube" aria-hidden="true"></i></span>
+          <div>
+            <div class="backup-kicker">VECTOR MEMORY</div>
+            <h2 id="qdrantTitle">Qdrant</h2>
+            <p id="qdrantEvidence">Loading inventory basis…</p>
+          </div>
+        </div>
+        <div class="backup-layer-actions">
+          <span id="qdrantStatus" class="backup-count">—</span>
+          <button id="qdrantBackupBtn" class="btn btn-primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> Create snapshot</button>
+          <button id="qdrantRefreshBtn" class="btn backup-icon-button" type="button" title="Refresh Qdrant inventory" aria-label="Refresh Qdrant inventory"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
+        </div>
+      </div>
+      <details class="backup-inventory">
+        <summary>Browse Qdrant snapshots <span>full inventory</span></summary>
+        <div class="backup-table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Created</th><th class="align-right">Size</th><th class="align-right">Actions</th></tr></thead>
+            <tbody id="qdrantBackupsList"><tr><td colspan="4" class="backup-empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div id="qdrantPager" class="backup-pager" aria-live="polite"></div>
+      </details>
+    </section>
+
+    <section class="backup-section backup-layer" data-backup-layer="config" aria-labelledby="configTitle">
+      <div class="backup-layer-header">
+        <div class="backup-layer-identity">
+          <span class="backup-layer-icon config"><i class="fas fa-sliders" aria-hidden="true"></i></span>
+          <div>
+            <div class="backup-kicker">PRODUCT CONFIG</div>
+            <h2 id="configTitle">Configuration</h2>
+            <p id="configEvidence">Loading inventory basis…</p>
+          </div>
+        </div>
+        <div class="backup-layer-actions">
+          <span id="configStatus" class="backup-count">—</span>
+          <button id="configBackupBtn" class="btn btn-primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> Create backup</button>
+          <button id="configRefreshBtn" class="btn backup-icon-button" type="button" title="Refresh configuration inventory" aria-label="Refresh configuration inventory"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
+        </div>
+      </div>
+      <details class="backup-inventory">
+        <summary>Browse configuration artifacts <span>full inventory</span></summary>
+        <div class="backup-table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Date</th><th class="align-right">Size</th><th class="align-right">Actions</th></tr></thead>
+            <tbody id="configBackupsList"><tr><td colspan="4" class="backup-empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div id="configPager" class="backup-pager" aria-live="polite"></div>
+      </details>
+    </section>
+  </div>
+
+  <footer class="backup-footer">
+    <i class="fas fa-circle-info" aria-hidden="true"></i>
+    <span>These artifacts are recovery inputs, not proof of a coherent or restorable recovery set. MongoDB and Qdrant restore remain unavailable in the running product until a controlled offline release rehearsal is explicitly enabled; exact typed confirmation remains required after that gate.</span>
+  </footer>
+</main>
+
+<dialog id="backupConfirmDialog" class="backup-dialog" aria-labelledby="backupConfirmTitle" aria-describedby="backupConfirmDescription">
+  <form id="backupConfirmForm">
+    <div class="backup-dialog-icon"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i></div>
+    <h2 id="backupConfirmTitle"></h2>
+    <p id="backupConfirmDescription"></p>
+    <label for="backupConfirmInput">Type <code id="backupConfirmExpected"></code> exactly</label>
+    <input id="backupConfirmInput" type="text" autocomplete="off" spellcheck="false" aria-describedby="backupConfirmError">
+    <div id="backupConfirmError" role="status" aria-live="polite"></div>
+    <div class="backup-dialog-actions">
+      <button id="backupConfirmCancel" class="btn" type="button">Cancel</button>
+      <button id="backupConfirmSubmit" class="btn backup-danger" type="submit" disabled>Confirm permanent deletion</button>
+    </div>
+  </form>
+</dialog>

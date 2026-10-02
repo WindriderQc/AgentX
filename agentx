@@ -1,0 +1,332 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+ENV_FILE="${AGENTX_ENV_FILE:-$ROOT/config/agentx.env}"
+PROJECT_NAME="${AGENTX_PROJECT_NAME:-agentx}"
+if [[ ! "$PROJECT_NAME" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+  echo "AGENTX_PROJECT_NAME must be a lowercase Compose project name." >&2
+  exit 2
+fi
+COMPOSE=(--project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f docker-compose.yml)
+OLLAMA_COMPOSE=("${COMPOSE[@]}" -f docker-compose.ollama.yml)
+if [[ -n "${AGENTX_COMPOSE_OVERRIDE:-}" ]]; then
+  COMPOSE+=(-f "$AGENTX_COMPOSE_OVERRIDE")
+  OLLAMA_COMPOSE+=(-f "$AGENTX_COMPOSE_OVERRIDE")
+fi
+if [[ -z "${AGENTX_BUILD_REVISION:-}" ]]; then
+  AGENTX_BUILD_REVISION="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+  if [[ -n "$(git status --porcelain --untracked-files=normal 2>/dev/null || true)" ]]; then
+    AGENTX_BUILD_REVISION+="-dirty"
+  fi
+  export AGENTX_BUILD_REVISION
+fi
+
+# shellcheck source=scripts/runtime-lease.sh
+source "$ROOT/scripts/runtime-lease.sh"
+
+FORCE_RUNTIME="${AGENTX_FORCE_RUNTIME:-}"
+strip_force_runtime() {
+  SERVICE_ARGS=()
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == "--force-runtime" ]]; then FORCE_RUNTIME=1; else SERVICE_ARGS+=("$arg"); fi
+  done
+}
+
+# The lease blocks all inference while held, so `up --build` builds first and
+# holds the lease only for the recreate itself.
+build_before_lease() {
+  local arg kept=() build=0 services=()
+  for arg in ${SERVICE_ARGS[@]+"${SERVICE_ARGS[@]}"}; do
+    if [[ "$arg" == "--build" ]]; then build=1; continue; fi
+    kept+=("$arg")
+    [[ "$arg" == -* ]] || services+=("$arg")
+  done
+  [[ $build -eq 1 ]] || return 0
+  docker compose "${COMPOSE[@]}" build ${services[@]+"${services[@]}"}
+  SERVICE_ARGS=(${kept[@]+"${kept[@]}"})
+}
+
+take_runtime_lease() {
+  local scope
+  scope="$(runtime_guard_scope "$@")"
+  [[ -n "$scope" ]] || return 0
+  if [[ -n "$FORCE_RUNTIME" ]]; then
+    echo "--force-runtime: recreating without Core's runtime lease; a running Benchmark workload may be cut." >&2
+    return 0
+  fi
+  local published
+  published="$(docker compose "${COMPOSE[@]}" port core 3080 2>/dev/null || true)"
+  if [[ -z "$published" ]]; then
+    echo "Core is not running here; no runtime lease is needed."
+    return 0
+  fi
+  # A Core container that exists but does not answer may be another recreate in
+  # progress: two recreates racing left Core down on 2026-09-25 (#105).
+  if ! curl --fail --silent --max-time 5 "http://$published/health" >/dev/null 2>&1; then
+    echo "Core exists but does not answer its health check; another deploy may be in progress. Not recreating; use --force-runtime to recover a Core that is known to be broken." >&2
+    exit 4
+  fi
+  if [[ "$scope" == "benchmark" ]]; then
+    if runtime_workloads_active "http://$published"; then
+      echo "Not recreating Benchmark: wait for that work to finish, or use --force-runtime for an operator recovery." >&2
+      exit 4
+    fi
+    echo "No Benchmark workload is active; recreating Benchmark does not touch conversations, so no global lease is taken."
+    return 0
+  fi
+  local rc=0
+  runtime_lease_acquire "http://$published" runtime-deploy || rc=$?
+  case "$rc" in
+    0)
+      trap runtime_lease_release EXIT
+      echo "Runtime lease $RUNTIME_LEASE_ID held: new Benchmark work waits until this recreate finishes."
+      ;;
+    10)
+      echo "Not recreating: wait for that work to finish, or use --force-runtime for an operator recovery." >&2
+      exit 4
+      ;;
+    *)
+      echo "Core is running but did not grant or refuse the runtime lease. Not recreating; use --force-runtime if the runtime is known to be idle." >&2
+      exit 4
+      ;;
+  esac
+}
+
+require_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker was not found on PATH. Install Docker Engine or Docker Desktop, then reopen the terminal." >&2
+    exit 3
+  fi
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "Docker Compose v2 is unavailable. Install or update the Docker Compose plugin." >&2
+    exit 3
+  fi
+  compose_up_help="$(docker compose up --help 2>&1 || true)"
+  if [[ "$compose_up_help" != *"--wait"* || "$compose_up_help" != *"--wait-timeout"* ]]; then
+    echo "Docker Compose is too old for health-aware startup. Update Docker Desktop or the Compose v2 plugin." >&2
+    exit 3
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "Docker is installed, but its engine is not reachable. Start Docker Engine or Docker Desktop and retry." >&2
+    exit 3
+  fi
+}
+
+show_product_health() {
+  local failed=0
+  local label container needs_health state runtime health display services
+  services="$(docker compose "${COMPOSE[@]}" config --services)" || return 1
+  while IFS= read -r label; do
+    [[ -n "$label" ]] || continue
+    needs_health=no
+    case "$label" in mongo|core|benchmark|rag|data|ollama) needs_health=yes;; esac
+    container="$(docker compose "${COMPOSE[@]}" ps -a -q "$label")" || return 1
+    state="$(docker inspect --format '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container" 2>/dev/null || true)"
+    if [[ -z "$state" ]]; then
+      echo "$label: not created"
+      failed=1
+      continue
+    fi
+    IFS='|' read -r runtime health <<<"$state"
+    display="$runtime"
+    [[ -n "$health" ]] && display="$runtime/$health"
+    echo "$label: $display"
+    if [[ "$runtime" != "running" || ("$needs_health" == "yes" && "$health" != "healthy") ]]; then
+      failed=1
+    fi
+  done <<<"$services"
+
+  if [[ $failed -ne 0 ]]; then
+    echo "Agent X is not healthy yet. Run './agentx status' and './agentx logs core' for details." >&2
+    return 1
+  fi
+  echo "Product services are healthy. Ollama and models remain optional."
+}
+
+wait_published_product_endpoints() {
+  local deadline=$((SECONDS + 30))
+  local ready endpoint service internal published services
+  local endpoints=()
+  services="$(docker compose "${COMPOSE[@]}" config --services)" || return 1
+  while IFS= read -r service; do
+    case "$service" in core) internal=3080;; benchmark) internal=3081;; rag) internal=3082;; data) internal=3083;; *) continue;; esac
+    published="$(docker compose "${COMPOSE[@]}" port "$service" "$internal")" || return 1
+    if [[ ! "$published" =~ ^127\.0\.0\.1:[0-9]+$ ]]; then
+      echo "Keep $service published on loopback and put LAN HTTPS in front of it." >&2
+      return 1
+    fi
+    endpoints+=("http://$published/health")
+  done <<<"$services"
+
+  while (( SECONDS < deadline )); do
+    ready=1
+    for endpoint in "${endpoints[@]}"; do
+      if command -v curl >/dev/null 2>&1; then
+        curl --fail --silent --max-time 2 "$endpoint" >/dev/null || ready=0
+      else
+        echo "curl is required to verify published HTTP health." >&2
+        return 1
+      fi
+    done
+    if [[ $ready -eq 1 ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "Containers are healthy, but the loopback-published product endpoints did not become reachable within 30 seconds." >&2
+  return 1
+}
+
+usage() {
+  cat <<'EOF'
+AgentX
+
+Usage: ./agentx <command> [args...]
+
+Commands:
+  doctor                Check Docker CLI, Compose, and engine availability
+  up                    Start the selected product profile (demo by default) and wait for health
+  health                Verify containers in the selected project and profiles
+  down                  Stop product and Docker Ollama; preserve volumes
+  status                Show product service status
+  logs [service]        Follow logs; defaults to core
+  rebuild [--no-deps] [service...]
+                        Rebuild images, then recreate the requested services
+                        Recreating core or benchmark on a running instance first takes
+                        Core's runtime lease and stops if Benchmark work is active;
+                        --force-runtime skips that check for an operator recovery
+  ollama-doctor         Detect native Ollama; never install or download
+  ollama-up             Start the opt-in isolated Docker Ollama stack
+  ollama-status         Show Docker Ollama status and installed models
+  ollama-pull <model>   Explicitly download one model into its named volume
+  ollama-down           Stop the Ollama-backed stack; preserve volumes
+  reset                 Delete containers, data volumes, and recovery archives
+
+Open http://127.0.0.1:3180/ after startup.
+AGENTX_ENV_FILE selects an external env file; AGENTX_PROJECT_NAME isolates an instance.
+AGENTX_COMPOSE_OVERRIDE optionally adds one external instance override.
+EOF
+}
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  doctor)
+    require_docker
+    echo "Docker CLI, Compose, and engine are ready."
+    ;;
+  up)
+    require_docker
+    strip_force_runtime "$@"
+    build_before_lease
+    take_runtime_lease ${SERVICE_ARGS[@]+"${SERVICE_ARGS[@]}"}
+    if ! docker compose "${COMPOSE[@]}" up -d --wait --wait-timeout 180 ${SERVICE_ARGS[@]+"${SERVICE_ARGS[@]}"}; then
+      echo "Startup did not become healthy within 180 seconds. Run './agentx status' and './agentx logs core'." >&2
+      exit 1
+    fi
+    wait_published_product_endpoints || exit 1
+    runtime_lease_release || exit 1
+    echo "AgentX $PROJECT_NAME started: http://$(docker compose "${COMPOSE[@]}" port core 3080)/"
+    ;;
+  health)
+    require_docker
+    show_product_health
+    ;;
+  down)
+    require_docker
+    docker compose "${OLLAMA_COMPOSE[@]}" down "$@"
+    ;;
+  status|ps)
+    require_docker
+    docker compose "${OLLAMA_COMPOSE[@]}" ps
+    ;;
+  logs)
+    require_docker
+    service="${1:-core}"
+    docker compose "${OLLAMA_COMPOSE[@]}" logs -f --tail=200 "$service"
+    ;;
+  rebuild)
+    require_docker
+    strip_force_runtime "$@"
+    # Building touches no running container; only the recreate needs the lease.
+    # Options such as --no-deps belong to the recreate, not to the build.
+    BUILD_SERVICES=()
+    for arg in ${SERVICE_ARGS[@]+"${SERVICE_ARGS[@]}"}; do [[ "$arg" == -* ]] || BUILD_SERVICES+=("$arg"); done
+    docker compose "${COMPOSE[@]}" build --no-cache ${BUILD_SERVICES[@]+"${BUILD_SERVICES[@]}"}
+    take_runtime_lease ${SERVICE_ARGS[@]+"${SERVICE_ARGS[@]}"}
+    docker compose "${COMPOSE[@]}" up -d --wait --wait-timeout 180 ${SERVICE_ARGS[@]+"${SERVICE_ARGS[@]}"}
+    wait_published_product_endpoints
+    runtime_lease_release
+    ;;
+  ollama-doctor)
+    ollama_cli="$(command -v ollama 2>/dev/null || true)"
+    if command -v curl >/dev/null 2>&1 && curl --fail --silent --max-time 3 http://127.0.0.1:11434/api/version >/dev/null; then
+      echo "Native Ollama is healthy at http://127.0.0.1:11434."
+      [[ -n "$ollama_cli" ]] && echo "CLI: $ollama_cli"
+      exit 0
+    fi
+    if [[ -n "$ollama_cli" ]] && ollama list >/dev/null 2>&1; then
+      echo "Native Ollama is healthy through its CLI."
+      echo "CLI: $ollama_cli"
+      exit 0
+    fi
+    if [[ -n "$ollama_cli" ]]; then
+      echo "Ollama is installed at $ollama_cli, but its API is not responding."
+      echo "Start its service or run 'ollama serve' in another terminal."
+      exit 1
+    fi
+    echo "Ollama is not installed or not on PATH."
+    echo "Review https://docs.ollama.com/linux; Agent X will not install it automatically."
+    exit 1
+    ;;
+  ollama-up)
+    require_docker
+    if ! docker compose "${OLLAMA_COMPOSE[@]}" up -d --wait --wait-timeout 180 "$@"; then
+      echo "The Docker Ollama stack did not become healthy within 180 seconds. Run './agentx status' and inspect logs." >&2
+      exit 1
+    fi
+    wait_published_product_endpoints || exit 1
+    echo "Agent X started with isolated Docker Ollama. No model was downloaded."
+    ;;
+  ollama-status)
+    require_docker
+    docker compose "${OLLAMA_COMPOSE[@]}" ps
+    docker compose "${OLLAMA_COMPOSE[@]}" exec ollama ollama list
+    ;;
+  ollama-pull)
+    if [[ $# -ne 1 ]]; then
+      echo "Usage: ./agentx ollama-pull <model>" >&2
+      exit 2
+    fi
+    require_docker
+    docker compose "${OLLAMA_COMPOSE[@]}" exec ollama ollama pull "$1"
+    ;;
+  ollama-down)
+    require_docker
+    docker compose "${OLLAMA_COMPOSE[@]}" down "$@"
+    ;;
+  reset)
+    require_docker
+    echo "This deletes $PROJECT_NAME containers, network, named data volumes, and persistent recovery archives."
+    read -r -p "Type 'delete $PROJECT_NAME data and recovery archives' to continue: " confirm
+    if [[ "$confirm" == "delete $PROJECT_NAME data and recovery archives" ]]; then
+      docker compose "${OLLAMA_COMPOSE[@]}" down --volumes
+    else
+      echo "Cancelled."
+    fi
+    ;;
+  ''|-h|--help|help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage
+    exit 2
+    ;;
+esac

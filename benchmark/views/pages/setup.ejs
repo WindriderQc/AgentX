@@ -1,0 +1,65 @@
+<div class="setup-container">
+
+  <a id="setup-return-link" class="setup-return-link" href="/" hidden>&larr; Back to Benchmark</a>
+
+  <div class="setup-header">
+    <div class="setup-logo">&#9889;</div>
+    <h1>AgentX Benchmark</h1>
+    <p class="setup-subtitle">Connect an existing Ollama endpoint and explicitly choose a judge</p>
+  </div>
+
+  <!-- Step 1: Connect -->
+  <div id="step-connect" class="step-card">
+    <h2>1. Connect to Ollama</h2>
+    <p>Use <code>host.docker.internal</code> when AgentX runs with the default Docker Compose profile, or <code>localhost</code> when Benchmark runs directly on the same machine. You can also enter another reachable URL.</p>
+    <div id="configured-host-field" class="configured-host-field" hidden>
+      <label for="configured-host">Configured host</label>
+      <select id="configured-host" class="setup-select"></select>
+    </div>
+    <div class="input-row">
+      <label class="sr-only" for="ollama-ip">Ollama endpoint URL</label>
+      <input type="text" id="ollama-ip" placeholder="http://host.docker.internal:11434" autocomplete="url" spellcheck="false" inputmode="url">
+    </div>
+    <div class="input-hint">
+      <details>
+        <summary>Using a different port?</summary>
+        <div style="margin-top:0.4rem;">
+          Enter the full address, for example <code>http://ollama.example.test:8080</code>.
+        </div>
+      </details>
+    </div>
+    <button id="btn-connect" class="setup-btn primary">Test Connection</button>
+    <div id="connect-status" class="status-msg"></div>
+  </div>
+
+  <!-- Step 2: Models found -->
+  <div id="step-models" class="step-card" style="display:none">
+    <h2>2. Models Found</h2>
+    <p id="models-subtitle"></p>
+    <div id="model-grid" class="model-grid"></div>
+  </div>
+
+  <!-- Step 3: Judge + Save -->
+  <div id="step-judge" class="step-card" style="display:none">
+    <h2>3. Judge Model</h2>
+    <p>The judge evaluates benchmark responses for quality scoring. Choose one model already installed on the selected host. AgentX never downloads or silently chooses a judge.</p>
+    <div class="judge-field">
+      <label for="judge-model">Judge Model</label>
+      <select id="judge-model" class="setup-select" aria-describedby="judge-status"></select>
+      <div id="judge-status" class="status-msg" aria-live="polite"></div>
+    </div>
+    <button id="btn-save" class="setup-btn primary large" disabled>Save &amp; Start Benchmarking &#8594;</button>
+  </div>
+
+  <!-- Already configured banner -->
+  <div id="already-configured" style="display:none">
+    <div class="step-card" style="text-align:center;">
+      <h2 style="color:var(--r-good);">&#10003; Already Configured</h2>
+      <p>Your Ollama connection is set up. You can reconfigure below or go to the benchmark.</p>
+      <a href="/" class="setup-btn primary" style="display:inline-block;text-decoration:none;">
+        Go to Benchmark &#8594;
+      </a>
+    </div>
+  </div>
+
+</div>

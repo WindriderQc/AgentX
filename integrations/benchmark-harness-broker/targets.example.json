@@ -1,0 +1,176 @@
+{
+  "schema": "agentx.benchmark-harness-catalog/v1",
+  "broker": { "name": "aiops-benchmark-harness-broker", "version": "1.0.0" },
+  "catalog": { "observedAt": null, "expiresAt": null },
+  "targets": [
+    {
+      "target": {
+        "id": "host-a-qwen35-9b-isolated-example",
+        "label": "host-a Qwen 3.5 9B isolated example",
+        "mode": "isolated_model",
+        "tier": "local",
+        "provider": "ollama",
+        "model": "qwen3.5:9b",
+        "modelVersion": "manifest-6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+        "harness": { "name": "aiops-benchmark-harness-broker", "version": "1.1.0" },
+        "adapter": { "name": "ollama-isolated", "version": "1.0.0" },
+        "profile": { "id": "host-a-ollama-8192", "version": "1", "fingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+        "api": { "name": "ollama-chat", "version": "v1" },
+        "contextWindow": 8192,
+        "capabilities": { "candidate": true, "judge": true },
+        "pricing": null,
+        "available": false,
+        "observedAt": null,
+        "catalogFingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "attestations": { "noMemory": true, "noTools": true, "noFallback": true, "noFanOut": true, "noDelivery": true, "ephemeralSession": true },
+      "executor": {
+        "command": "/usr/bin/node",
+        "args": [
+          "/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/ollama-isolated-executor.js",
+          "--base-url-env",
+          "OLLAMA_HOST_A_BENCHMARK_BASE_URL",
+          "--version-env",
+          "OLLAMA_HOST_A_BENCHMARK_VERSION"
+        ],
+        "envAllowlist": ["OLLAMA_HOST_A_BENCHMARK_BASE_URL", "OLLAMA_HOST_A_BENCHMARK_VERSION"],
+        "lock": "ollama-host-a-isolated",
+        "capacity": 1,
+        "timeoutMs": 900000,
+        "maxOutputBytes": 2000000,
+        "pins": {
+          "runtime": [
+            { "name": "node", "path": "/usr/bin/node", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+            { "name": "ollama-isolated-executor", "path": "/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/ollama-isolated-executor.js", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" }
+          ],
+          "profile": [
+            { "name": "host-a-ollama-8192-profile", "path": "/etc/agentx/benchmark/host-a-ollama-8192.json", "sha256": "6666666666666666666666666666666666666666666666666666666666666666" }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "id": "openclaw-isolated-example",
+        "label": "OpenClaw isolated example",
+        "mode": "isolated_model",
+        "tier": "free_cloud",
+        "provider": "provider-id",
+        "model": "model-id",
+        "modelVersion": "model-id",
+        "harness": { "name": "openclaw", "version": "pinned-version" },
+        "adapter": { "name": "openclaw-benchmark", "version": "2.1.0" },
+        "profile": { "id": "benchmark-isolated", "version": "1", "fingerprint": "ae1be5391c38a439ecc985f7b6379458410d7ccde6cfe4c4df110e085d0ed23c" },
+        "api": { "name": "openclaw-agent-exec", "version": "pinned-version" },
+        "contextWindow": 128000,
+        "capabilities": { "candidate": true, "judge": true },
+        "pricing": { "kind": "free", "currency": "USD", "source": "operator-declared-free", "effectiveAt": null, "inputNanodollarsPerMillion": 0, "outputNanodollarsPerMillion": 0, "callNanodollars": 0 },
+        "available": false,
+        "observedAt": null,
+        "catalogFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "attestations": { "noMemory": true, "noTools": true, "noFallback": true, "noFanOut": true, "noDelivery": true, "ephemeralSession": true },
+      "executor": {
+        "command": "/usr/bin/node",
+        "args": ["/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "--openclaw", "/usr/local/bin/openclaw", "--config", "/etc/agentx/openclaw/benchmark-isolated.json"],
+        "envAllowlist": ["OPENCLAW_RUNTIME_VERSION"],
+        "lock": "openclaw-benchmark-isolated",
+        "capacity": 1,
+        "timeoutMs": 600000,
+        "maxOutputBytes": 2000000,
+        "pins": {
+          "runtime": [
+            { "name": "node", "path": "/usr/bin/node", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+            { "name": "openclaw-executor", "path": "/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
+            { "name": "openclaw", "path": "/usr/local/bin/openclaw", "sha256": "6666666666666666666666666666666666666666666666666666666666666666" }
+          ],
+          "profile": [
+            { "name": "openclaw-isolated-profile", "path": "/etc/agentx/openclaw/benchmark-isolated.json", "sha256": "1111111111111111111111111111111111111111111111111111111111111111" }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "id": "hermes-isolated-example",
+        "label": "Hermès isolated example",
+        "mode": "isolated_model",
+        "tier": "paid_cloud",
+        "provider": "provider-id",
+        "model": "model-id",
+        "modelVersion": "model-id",
+        "harness": { "name": "hermes", "version": "pinned-version" },
+        "adapter": { "name": "hermes-openai-compatible", "version": "1.0.0" },
+        "profile": { "id": "hermes-benchmark-isolated", "version": "1", "fingerprint": "af578cdd11ceae09c037916479e1f3b743b9d53c17a4e4fc60b58cd900bc2afa" },
+        "api": { "name": "openai-compatible", "version": "v1" },
+        "contextWindow": 128000,
+        "capabilities": { "candidate": true, "judge": true },
+        "pricing": { "kind": "manual_per_token", "currency": "USD", "source": "operator-price-snapshot", "effectiveAt": "2026-08-31T00:00:00.000Z", "inputNanodollarsPerMillion": 100000000, "outputNanodollarsPerMillion": 300000000, "callNanodollars": 0 },
+        "available": false,
+        "observedAt": null,
+        "catalogFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "attestations": { "noMemory": true, "noTools": true, "noFallback": true, "noFanOut": true, "noDelivery": true, "ephemeralSession": true },
+      "executor": {
+        "command": "/usr/bin/node",
+        "args": ["/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/hermes-isolated-executor.js"],
+        "envAllowlist": ["HERMES_BENCHMARK_BASE_URL", "HERMES_BENCHMARK_TOKEN"],
+        "lock": "hermes-benchmark-isolated",
+        "capacity": 1,
+        "timeoutMs": 600000,
+        "maxOutputBytes": 2000000,
+        "pins": {
+          "runtime": [
+            { "name": "node", "path": "/usr/bin/node", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+            { "name": "hermes-executor", "path": "/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/hermes-isolated-executor.js", "sha256": "7777777777777777777777777777777777777777777777777777777777777777" }
+          ],
+          "profile": [
+            { "name": "hermes-isolated-profile", "path": "/etc/agentx/hermes/benchmark-isolated.json", "sha256": "2222222222222222222222222222222222222222222222222222222222222222" }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "id": "openclaw-native-example",
+        "label": "OpenClaw native-agent example",
+        "mode": "native_agent",
+        "tier": "free_cloud",
+        "provider": "provider-id",
+        "model": "model-id",
+        "modelVersion": "model-id",
+        "harness": { "name": "openclaw", "version": "pinned-version" },
+        "adapter": { "name": "openclaw-benchmark", "version": "2.1.0" },
+        "profile": { "id": "native-agent", "version": "1", "fingerprint": "ba1f400f7b70c2c85a1cbe274820666ff247977a37ca626ed90f52474d42556b" },
+        "nativePolicy": { "tools": [], "filesystemMode": "workspace_write", "allowedOperations": ["read", "list", "create", "update", "execute"], "networkDestinations": [], "maxTurns": 50, "maxToolCalls": 100 },
+        "api": { "name": "openclaw-agent-exec", "version": "pinned-version" },
+        "contextWindow": 128000,
+        "capabilities": { "candidate": true, "judge": false, "nativeAgent": true },
+        "pricing": { "kind": "free", "currency": "USD", "source": "operator-declared-free", "effectiveAt": null, "inputNanodollarsPerMillion": 0, "outputNanodollarsPerMillion": 0, "callNanodollars": 0 },
+        "available": false,
+        "observedAt": null,
+        "catalogFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "attestations": { "ephemeralSession": true },
+      "executor": {
+        "command": "/usr/bin/node",
+        "args": ["/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "--openclaw", "/usr/local/bin/openclaw", "--config", "/etc/agentx/openclaw/native-agent.json"],
+        "envAllowlist": ["OPENCLAW_RUNTIME_VERSION"],
+        "lock": "openclaw-native-agent",
+        "capacity": 1,
+        "timeoutMs": 1200000,
+        "maxOutputBytes": 2000000,
+        "pins": {
+          "runtime": [
+            { "name": "node", "path": "/usr/bin/node", "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+            { "name": "openclaw-executor", "path": "/srv/agentx/AgentX/integrations/benchmark-harness-broker/executors/openclaw-executor.js", "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
+            { "name": "openclaw", "path": "/usr/local/bin/openclaw", "sha256": "6666666666666666666666666666666666666666666666666666666666666666" }
+          ],
+          "profile": [
+            { "name": "openclaw-native-profile", "path": "/etc/agentx/openclaw/native-agent.json", "sha256": "3333333333333333333333333333333333333333333333333333333333333333" }
+          ]
+        }
+      }
+    }
+  ]
+}

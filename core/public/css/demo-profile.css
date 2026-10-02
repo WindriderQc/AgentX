@@ -1,0 +1,20 @@
+.agentx-demo-profile #ciToggleBtn,
+.agentx-demo-profile #profileBtn,
+.agentx-demo-profile #profileModal,
+.agentx-demo-profile .demo-optional-integration {
+  display: none !important;
+}
+
+.agentx-demo-profile .page {
+  min-height: 100vh;
+}
+
+.agentx-demo-profile .agent-selector-panel [hidden] {
+  display: none !important;
+}
+
+.agentx-demo-profile .chat-command-bar { padding-left: 46px; }
+
+@media (max-width: 900px) {
+  .agentx-demo-profile .chat-command-bar { padding-left: 62px; }
+}

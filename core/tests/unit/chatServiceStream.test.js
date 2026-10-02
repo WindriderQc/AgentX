@@ -1,0 +1,727 @@
+const { PassThrough } = require('node:stream');
+const mockFetch = jest.fn();
+const mockGetActivePrompt = jest.fn();
+const mockBuildSystemPrompt = jest.fn();
+const mockGetOrCreateProfile = jest.fn();
+const mockPersistConversation = jest.fn();
+const mockGetHostPreference = jest.fn();
+
+jest.mock('node-fetch', () => mockFetch);
+jest.mock('../../src/services/chat/chatPromptHelpers', () => ({
+  isThinkingModel: jest.fn(() => false),
+  getActivePrompt: mockGetActivePrompt,
+  buildSystemPrompt: mockBuildSystemPrompt
+}));
+jest.mock('../../src/helpers/userHelpers', () => ({
+  getOrCreateProfile: mockGetOrCreateProfile
+}));
+jest.mock('../../src/helpers/ollamaResponseHandler', () => ({
+  buildOllamaPayload: jest.fn(({ model, messages, options, streamEnabled }) => ({
+    model,
+    messages,
+    options,
+    stream: streamEnabled
+  })),
+  buildOllamaStats: jest.fn((data, content = '') => {
+    const promptTokens = data.prompt_eval_count || 0;
+    const completionTokens = data.eval_count || 0;
+    const evalDuration = data.eval_duration || 0;
+    const hasContent = typeof content === 'string' && content.trim().length > 0;
+    return {
+      usage: {
+        promptTokens,
+        completionTokens,
+        totalTokens: promptTokens + completionTokens
+      },
+      performance: {
+        totalDuration: data.total_duration || 0,
+        evalDuration,
+        tokensPerSecond: hasContent && completionTokens > 0 && evalDuration > 0
+          ? Number((completionTokens / (evalDuration / 1e9)).toFixed(2))
+          : null
+      }
+    };
+  }),
+  isThinkingModel: jest.fn(() => false),
+  extractResponse: jest.fn()
+}));
+jest.mock('../../src/helpers/ollamaUtils', () => ({
+  sanitizeOptions: jest.fn((options) => ({ ...options })),
+  resolveTarget: jest.fn((target) => target || 'http://192.0.2.66:11434')
+}));
+jest.mock('../../src/services/modelRouter', () => ({
+  routeRequest: jest.fn(),
+  getTargetForModel: jest.fn(() => 'http://192.0.2.66:11434'),
+  recordInference: jest.fn()
+}));
+jest.mock('../../src/services/hostPreferenceService', () => {
+  const primitives = jest.requireActual('../../src/services/hostPinPrimitives');
+  return {
+    getByHost: mockGetHostPreference,
+    hasActiveBenchmarkClaim: jest.fn(() => false),
+    resolvePinnedRuntimeOptions: primitives.resolvePinnedRuntimeOptions
+  };
+});
+jest.mock('../../src/services/inferenceAdmissionService', () => ({
+  beginInferenceAdmission: jest.fn(async ({ signal } = {}) => ({
+    signal: signal || new AbortController().signal,
+    markDispatched: jest.fn(),
+    assertActive: jest.fn(),
+    complete: jest.fn(async () => ({ released: true })),
+    abandon: jest.fn(async () => ({ released: true }))
+  }))
+}));
+jest.mock('../../src/services/chat/ragContextBuilder', () => ({
+  buildRagContext: jest.fn()
+}));
+jest.mock('../../src/services/chat/conversationPersistence', () => ({
+  persistConversation: mockPersistConversation
+}));
+jest.mock('../../src/services/ragServiceClient', () => ({
+  getRagServiceClient: jest.fn()
+}));
+jest.mock('../../config/logger', () => ({
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn()
+}));
+jest.mock('../../models/Conversation', () => jest.fn());
+
+const { handleChatRequestStream } = require('../../src/services/chatServiceStream');
+const { routeRequest, recordInference } = require('../../src/services/modelRouter');
+const { buildOllamaPayload, buildOllamaStats } = require('../../src/helpers/ollamaResponseHandler');
+const { beginInferenceAdmission } = require('../../src/services/inferenceAdmissionService');
+
+describe('chatServiceStream', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetActivePrompt.mockResolvedValue({
+      _id: 'prompt-1',
+      name: 'default_chat',
+      version: 'v1',
+      systemPrompt: 'You are helpful.'
+    });
+    mockBuildSystemPrompt.mockReturnValue('You are helpful.');
+    mockGetOrCreateProfile.mockResolvedValue({ about: '', preferences: {} });
+    mockPersistConversation.mockResolvedValue({
+      conversation: { _id: 'conv-1' },
+      assistantMessageId: 'msg-1'
+    });
+    mockGetHostPreference.mockResolvedValue(null);
+  });
+
+  it('surfaces Ollama error details without masking them in finally cleanup', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      statusText: 'Bad Request',
+      text: jest.fn().mockResolvedValue(JSON.stringify({
+        error: 'invalid options: frequency_penalty'
+      }))
+    });
+
+    const onError = jest.fn();
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'qwen3:14b',
+      message: 'hello',
+      target: 'http://192.0.2.66:11434',
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete: jest.fn(),
+      onError
+    });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0].message).toContain('invalid options: frequency_penalty');
+  });
+
+  it('classifies missing Ollama models in streaming mode', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      text: jest.fn().mockResolvedValue(JSON.stringify({
+        error: "model 'missing-stream-model:latest' not found"
+      }))
+    });
+
+    const onError = jest.fn();
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'missing-stream-model:latest',
+      message: 'hello',
+      target: 'http://192.0.2.66:11434',
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete: jest.fn(),
+      onError
+    });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0]).toMatchObject({
+      code: 'MODEL_UNAVAILABLE',
+      statusCode: 404,
+      upstreamStatus: 404,
+      upstreamMessage: "model 'missing-stream-model:latest' not found"
+    });
+  });
+
+  it('records streaming router analytics fields on successful auto-routed requests', async () => {
+    routeRequest.mockResolvedValue({
+      routed: true,
+      autoRouted: true,
+      classificationMs: 31,
+      model: 'qwen3-2507-30b-long-48k',
+      target: 'http://192.0.2.66:11434',
+      host: 'primary',
+      taskType: 'analysis'
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({
+          message: { content: 'Hello' },
+          done: false
+        }) + '\n');
+        yield Buffer.from(JSON.stringify({
+          done: true,
+          eval_count: 5,
+          prompt_eval_count: 3,
+          total_duration: 2000000000,
+          eval_duration: 1000000000,
+          prompt_eval_duration: 500000000
+        }) + '\n');
+      })()
+    });
+
+    const onComplete = jest.fn();
+    mockGetActivePrompt.mockResolvedValueOnce({
+      _id: 'prompt-4',
+      name: 'reviewer',
+      version: 4,
+      systemPrompt: 'Review carefully.'
+    });
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'auto',
+      message: 'Analyze this',
+      persona: 'reviewer',
+      promptVersion: 4,
+      autoRoute: true,
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete,
+      onError: jest.fn()
+    });
+
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: {
+        name: 'reviewer',
+        version: 4,
+        exact: true,
+        requestedVersion: 4
+      },
+      routing: expect.objectContaining({
+        taskType: 'analysis',
+        routed: true,
+        autoRouted: true,
+        classificationMs: 31,
+        routedModel: 'qwen3-2507-30b-long-48k',
+        routedHost: 'primary',
+        routedHostUrl: 'http://192.0.2.66:11434'
+      })
+    }));
+    expect(mockGetActivePrompt).toHaveBeenCalledWith(undefined, 'reviewer', {
+      preferSystem: false,
+      promptVersion: 4
+    });
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      taskType: 'analysis',
+      routed: true,
+      autoRouted: true,
+      classificationMs: 31,
+      routedModel: 'qwen3-2507-30b-long-48k',
+      routedHost: 'primary',
+      routedHostUrl: 'http://192.0.2.66:11434'
+    }));
+  });
+
+  // RouteDecision attribution: the stream path used to drop the
+  // decision routeRequest built. Assert presence on the recorded row itself.
+  it('threads the routeRequest decision onto the streaming telemetry row', async () => {
+    const decision = {
+      decisionVersion: 1,
+      attribution: { caller: 'chat', callerDetail: 'chat-user-1' }
+    };
+    routeRequest.mockResolvedValue({
+      routed: true,
+      autoRouted: true,
+      classificationMs: 7,
+      model: 'qwen3-2507-30b-long-48k',
+      target: 'http://192.0.2.66:11434',
+      host: 'primary',
+      taskType: 'analysis',
+      decision
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({
+          message: { content: 'Hello' },
+          done: false
+        }) + '\n');
+        yield Buffer.from(JSON.stringify({ done: true, eval_count: 2 }) + '\n');
+      })()
+    });
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'auto',
+      message: 'Analyze this',
+      autoRoute: true,
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete: jest.fn(),
+      onError: jest.fn()
+    });
+
+    expect(routeRequest).toHaveBeenCalledWith('Analyze this', expect.objectContaining({
+      callerDetail: expect.any(String)
+    }));
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'success',
+      routeDecision: expect.objectContaining({
+        outcome: expect.objectContaining({
+          stage: 'execution',
+          code: 'execution_succeeded'
+        })
+      }),
+      observability: expect.objectContaining({
+        contract: expect.objectContaining({ version: 'agentx.inference-contract.v1' }),
+        outcome: expect.objectContaining({ visibleFinal: true, completed: true })
+      })
+    }));
+  });
+
+  it('records streaming upstream failures with a terminal error decision', async () => {
+    routeRequest.mockResolvedValue({
+      routed: true,
+      model: 'qwen3:14b',
+      target: 'http://192.0.2.66:11434',
+      host: 'primary',
+      taskType: 'analysis',
+      decision: { decisionVersion: 1, selected: { model: 'qwen3:14b', host: 'primary' } }
+    });
+    mockFetch.mockRejectedValue(new Error('connection refused'));
+    const onError = jest.fn();
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'qwen3:14b',
+      message: 'Analyze this',
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete: jest.fn(),
+      onError
+    });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      routeDecision: expect.objectContaining({
+        outcome: expect.objectContaining({ code: 'upstream_error' })
+      })
+    }));
+  });
+
+  it('includes the current user message in the streaming Ollama payload', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({
+          message: { content: 'Hello' },
+          done: false
+        }) + '\n');
+        yield Buffer.from(JSON.stringify({
+          done: true,
+          eval_count: 1,
+          prompt_eval_count: 1,
+          total_duration: 1000000000,
+          eval_duration: 1000000000
+        }) + '\n');
+      })()
+    });
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'qwen3:14b',
+      message: 'Stream this',
+      messages: [{ role: 'assistant', content: 'Prior answer' }],
+      target: 'http://192.0.2.66:11434',
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete: jest.fn(),
+      onError: jest.fn()
+    });
+
+    expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [
+        { role: 'system', content: 'You are helpful.' },
+        { role: 'assistant', content: 'Prior answer' },
+        { role: 'user', content: 'Stream this' }
+      ]
+    }));
+  });
+
+  it('uses the matching pin context and keep-alive for streaming chat', async () => {
+    mockGetHostPreference.mockResolvedValue({
+      pinnedModels: [{
+        model: 'ax/gemma4:31b-it-qat',
+        keepAlive: -1,
+        contextSize: 49152,
+        autoRestore: true
+      }]
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({ message: { content: 'Done' }, done: false }) + '\n');
+        yield Buffer.from(JSON.stringify({
+          done: true,
+          eval_count: 1,
+          prompt_eval_count: 1,
+          total_duration: 1000000000,
+          eval_duration: 1000000000
+        }) + '\n');
+      })()
+    });
+    const onComplete = jest.fn();
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'ax/gemma4:31b-it-qat',
+      message: 'Think deeply',
+      target: 'http://192.0.2.199:11434',
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete,
+      onError: jest.fn()
+    });
+
+    expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'ax/gemma4:31b-it-qat',
+      options: expect.objectContaining({ num_ctx: 49152, keep_alive: -1 })
+    }));
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ numCtx: 49152 }));
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      num_ctx: 49152,
+      num_ctx_source: 'host_preference_pin'
+    }));
+  });
+
+  it('keeps authoritative stateless external turns bounded with exact telemetry', async () => {
+    routeRequest.mockResolvedValue({
+      routed: true,
+      model: 'ax/gemma4:26b-a4b-it-qat',
+      target: 'http://192.0.2.199:11434',
+      host: 'primary',
+      taskType: 'nestor_answer_light'
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        const line = JSON.stringify({ message: { content: 'Bonjour.' }, done: false }) + '\n';
+        yield Buffer.from(line.slice(0, 17));
+        yield Buffer.from(line.slice(17));
+        yield Buffer.from(JSON.stringify({
+          done: true,
+          eval_count: 1,
+          prompt_eval_count: 2,
+          total_duration: 500000000,
+          eval_duration: 100000000
+        }) + '\n');
+      })()
+    });
+    const onToken = jest.fn();
+
+    await handleChatRequestStream({
+      userId: 'nestor-answer-light',
+      callerDetail: 'nestor/turn/answer-light',
+      message: 'Allô?',
+      system: 'Nestor local system.',
+      authoritativeSystem: true,
+      persist: false,
+      allowTools: false,
+      allowRag: false,
+      loadUserProfile: false,
+      taskType: 'nestor_answer_light',
+      onToken,
+      onThinking: jest.fn(),
+      onComplete: jest.fn(),
+      onError: jest.fn()
+    });
+
+    expect(mockGetActivePrompt).toHaveBeenCalledWith(
+      'Nestor local system.',
+      'default_chat',
+      { preferSystem: true }
+    );
+    expect(onToken).toHaveBeenCalledWith('Bonjour.');
+    expect(mockGetOrCreateProfile).not.toHaveBeenCalled();
+    expect(mockPersistConversation).not.toHaveBeenCalled();
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      callerDetail: 'nestor/turn/answer-light',
+      taskType: 'nestor_answer_light',
+      routedModel: 'ax/gemma4:26b-a4b-it-qat',
+      routedHost: 'primary'
+    }));
+  });
+
+  it('does not report tokens per second when the streaming response is empty', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({
+          done: true,
+          eval_count: 1,
+          prompt_eval_count: 2,
+          total_duration: 1000000,
+          eval_duration: 1000
+        }) + '\n');
+      })()
+    });
+
+    const onComplete = jest.fn();
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'qwen3:14b',
+      message: 'Stream this',
+      target: 'http://192.0.2.66:11434',
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete,
+      onError: jest.fn()
+    });
+
+    expect(buildOllamaStats).toHaveBeenCalledWith(expect.objectContaining({
+      eval_count: 1,
+      prompt_eval_count: 2,
+      eval_duration: 1000
+    }), '');
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({
+      response: '',
+      stats: expect.objectContaining({
+        performance: expect.objectContaining({
+          tokensPerSecond: null
+        })
+      })
+    }));
+  });
+
+  it('waits for EOF before accepting a terminal NDJSON record', async () => {
+    const body = new PassThrough();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body
+    });
+    const onComplete = jest.fn();
+
+    const pending = handleChatRequestStream({
+      userId: 'user-1', model: 'qwen3:14b', message: 'finish cleanly',
+      target: 'http://192.0.2.66:11434', onToken: jest.fn(), onThinking: jest.fn(),
+      onComplete, onError: jest.fn()
+    });
+    body.write(JSON.stringify({ message: { content: 'Done' }, done: false }) + '\n');
+    body.write(JSON.stringify({ done: true, eval_count: 1, total_duration: 1000000, eval_duration: 1000000 }) + '\n');
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(onComplete).not.toHaveBeenCalled();
+    body.end();
+    await pending;
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects data after a terminal NDJSON record', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({ done: true }) + '\n');
+        yield Buffer.from(JSON.stringify({ message: { content: 'late' }, done: false }) + '\n');
+      })()
+    });
+    const onComplete = jest.fn();
+    const onError = jest.fn();
+
+    await handleChatRequestStream({
+      userId: 'user-1', model: 'qwen3:14b', message: 'reject late data',
+      target: 'http://192.0.2.66:11434',
+      onToken: jest.fn(), onThinking: jest.fn(), onComplete, onError
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'OLLAMA_STREAM_INCOMPLETE' }));
+  });
+
+  it('rejects a closed stream without an Ollama terminal record', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({ message: { content: '(stopped)' }, done: false }) + '\n');
+      })()
+    });
+    const onComplete = jest.fn();
+    const onError = jest.fn();
+
+    await handleChatRequestStream({
+      userId: 'user-1', model: 'qwen3:14b', message: 'do not wedge',
+      target: 'http://192.0.2.66:11434', onToken: jest.fn(), onThinking: jest.fn(),
+      onComplete, onError
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+      code: 'OLLAMA_STREAM_INCOMPLETE'
+    }));
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
+  });
+
+  it('keeps quarantine when a stopped stream ends without terminal proof', async () => {
+    const controller = new AbortController();
+    const lifecycle = {
+      signal: new AbortController().signal,
+      markDispatched: jest.fn(),
+      assertActive: jest.fn(),
+      complete: jest.fn(async () => ({ released: true })),
+      abandon: jest.fn(async () => ({ quarantined: true }))
+    };
+    beginInferenceAdmission.mockResolvedValueOnce(lifecycle);
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* disconnectingStream() {
+        yield Buffer.from(JSON.stringify({ message: { content: 'first' }, done: false }) + '\n');
+        controller.abort(new Error('client disconnected'));
+        yield Buffer.from(JSON.stringify({ message: { content: 'late' }, done: false }) + '\n');
+      })()
+    });
+
+    await handleChatRequestStream({
+      userId: 'user-1', model: 'qwen3:14b', message: 'disconnect me',
+      target: 'http://192.0.2.66:11434', abortSignal: controller.signal,
+      onToken: jest.fn(), onThinking: jest.fn(), onComplete: jest.fn(), onError: jest.fn()
+    });
+
+    expect(lifecycle.markDispatched).toHaveBeenCalledTimes(1);
+    expect(lifecycle.complete).not.toHaveBeenCalled();
+    expect(lifecycle.abandon).toHaveBeenCalledWith(expect.objectContaining({
+      code: 'OLLAMA_STREAM_INCOMPLETE'
+    }));
+  });
+
+  it('drains a stopped response to terminal proof without sending or saving late text', async () => {
+    const controller = new AbortController();
+    // Stop after delivery of the first token, independent of stream prefetch.
+    const onToken = jest.fn(() => controller.abort());
+    const onComplete = jest.fn();
+    const onError = jest.fn();
+    let upstreamSignal;
+    mockFetch.mockImplementation(async (_url, { signal }) => {
+      upstreamSignal = signal;
+      return { ok: true, body: (async function* () {
+        yield Buffer.from(JSON.stringify({ message: { content: 'first' }, done: false }) + '\n');
+        expect(upstreamSignal.aborted).toBe(false);
+        yield Buffer.from(JSON.stringify({ message: { content: 'late' }, done: false }) + '\n');
+        yield Buffer.from(JSON.stringify({ done: true, eval_count: 2 }) + '\n');
+      })() };
+    });
+    await handleChatRequestStream({
+      userId: 'user-1', model: 'qwen3:14b', message: 'stop me',
+      target: 'http://192.0.2.66:11434', abortSignal: controller.signal,
+      onToken, onThinking: jest.fn(), onComplete, onError
+    });
+    const lifecycle = await beginInferenceAdmission.mock.results.at(-1).value;
+    expect(lifecycle.complete).toHaveBeenCalledTimes(1);
+    expect(lifecycle.abandon).not.toHaveBeenCalled();
+    expect(upstreamSignal.aborted).toBe(false);
+    expect(onToken.mock.calls).toEqual([['first']]);
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(mockPersistConversation).not.toHaveBeenCalled();
+    expect(recordInference).not.toHaveBeenCalled();
+  });
+
+  it('releases an undispatched admission if Stop arrives while acquiring it', async () => {
+    const controller = new AbortController();
+    const lifecycle = { abandon: jest.fn(), markDispatched: jest.fn() };
+    beginInferenceAdmission.mockImplementationOnce(async () => {
+      controller.abort();
+      return lifecycle;
+    });
+    await handleChatRequestStream({
+      userId: 'user-1', model: 'qwen3:14b', message: 'stop before dispatch',
+      target: 'http://192.0.2.66:11434', abortSignal: controller.signal,
+      onToken: jest.fn(), onThinking: jest.fn(), onComplete: jest.fn(), onError: jest.fn()
+    });
+    expect(mockFetch).not.toHaveBeenCalledWith(expect.stringMatching(/\/api\/chat$/), expect.anything());
+    expect(lifecycle.markDispatched).not.toHaveBeenCalled();
+    expect(lifecycle.abandon).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])('keeps the upstream deadline while the body is stalled (caller stopped: %s)', async stopped => {
+    const controller = new AbortController();
+    let upstreamSignal;
+    let markStreaming;
+    const streaming = new Promise(resolve => { markStreaming = resolve; });
+    mockFetch.mockImplementation(async (_url, options) => {
+      upstreamSignal = options.signal;
+      return {
+        ok: true,
+        body: (async function* stalledStream() {
+          markStreaming();
+          await new Promise((resolve, reject) => {
+            const abort = () => {
+              const error = new Error('aborted');
+              error.name = 'AbortError';
+              reject(error);
+            };
+            if (upstreamSignal.aborted) abort();
+            else upstreamSignal.addEventListener('abort', abort, { once: true });
+          });
+          yield Buffer.from('');
+        })()
+      };
+    });
+    const onError = jest.fn();
+
+    const request = handleChatRequestStream({
+      userId: 'user-1', model: 'qwen3:14b', message: 'bounded deep request',
+      target: 'http://192.0.2.66:11434', upstreamTimeoutMs: 20,
+      abortSignal: controller.signal,
+      onToken: jest.fn(), onThinking: jest.fn(), onComplete: jest.fn(), onError
+    });
+    await streaming;
+    if (stopped) controller.abort();
+    expect(upstreamSignal.aborted).toBe(false);
+    await request;
+
+    expect(upstreamSignal.aborted).toBe(true);
+    const lifecycle = await beginInferenceAdmission.mock.results.at(-1).value;
+    expect(lifecycle.complete).not.toHaveBeenCalled();
+    expect(lifecycle.abandon).toHaveBeenCalledTimes(1);
+    if (stopped) {
+      expect(onError).not.toHaveBeenCalled();
+      expect(recordInference).not.toHaveBeenCalled();
+      return;
+    }
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'AbortError',
+      code: 'OLLAMA_TIMEOUT',
+      message: 'Ollama request timed out (5m limit).'
+    }));
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({ status: 'timeout' }));
+  });
+});

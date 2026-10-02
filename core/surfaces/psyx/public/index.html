@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <link rel="stylesheet" href="/access-assets/client.css">
+  <script src="/access-assets/client.js" defer></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>PsyX</title>
+  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.4.0">
+  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.4.0">
+</head>
+<body class="psyx-locked">
+  <div id="privacyGate" class="privacy-gate" role="dialog" aria-modal="true" aria-labelledby="privacyTitle">
+    <form id="unlockForm" class="privacy-card">
+      <div class="eyebrow">PSYX · PERSONAL · PROTECTED</div>
+      <h1 id="privacyTitle">Unlock PsyX</h1>
+      <p>Your psychological conversations and longitudinal state are protected from other LAN clients. Use your PsyX access code.</p>
+      <label>
+        Access code
+        <input id="unlockCode" type="password" autocomplete="current-password" required>
+      </label>
+      <button id="unlockButton" class="primary-button" type="submit">Unlock</button>
+      <div id="unlockStatus" class="privacy-status" role="status" aria-live="polite"></div>
+    </form>
+  </div>
+
+  <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+
+  <main id="appShell" class="app-shell" aria-hidden="true">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="eyebrow">PRIVATE · LOCAL-FIRST</div>
+        <div class="brand-line">
+          <h1>PsyX</h1>
+          <span class="version-pill">V2.4.0</span>
+        </div>
+        <p class="subtitle">Psychological thinking partner · durable behavior change</p>
+      </div>
+      <div class="top-actions">
+        <button id="sessionsToggle" class="icon-btn adaptive-toggle" type="button" aria-controls="sessionsPanel" aria-expanded="false">Sessions</button>
+        <button id="insightsToggle" class="icon-btn adaptive-toggle" type="button" aria-controls="insightsPanel" aria-expanded="false">State</button>
+        <button id="voiceSettings" class="icon-btn" type="button">Voice</button>
+        <button id="settingsPsyx" class="icon-btn" type="button">Data</button>
+        <button id="lockPsyx" class="icon-btn" type="button" title="Lock PsyX">Lock</button>
+        <div class="status-wrap" role="status" aria-live="polite">
+          <span id="statusDot" class="status-dot"></span>
+          <span id="statusText">Starting PsyX…</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="control-deck" aria-label="PsyX session controls">
+      <div class="control-block">
+        <div class="control-heading">
+          <span class="control-label">Mode · how PsyX responds</span>
+          <span id="modeSummary" class="control-summary">Talk · Stay with the lived experience.</span>
+        </div>
+        <div class="segmented" id="modeControl">
+          <button type="button" data-mode="talk" class="active" aria-pressed="true">Talk</button>
+          <button type="button" data-mode="analyze" aria-pressed="false">Analyze</button>
+          <button type="button" data-mode="challenge" aria-pressed="false">Challenge</button>
+          <button type="button" data-mode="plan" aria-pressed="false">Plan</button>
+        </div>
+      </div>
+
+      <div class="control-block depth-block">
+        <div class="control-heading">
+          <span class="control-label">Depth · how much compute</span>
+          <span id="depthSummary" class="control-summary">Normal · Strong local psychological reasoning.</span>
+        </div>
+        <div class="segmented" id="depthControl">
+          <button type="button" data-depth="normal" class="active" aria-pressed="true">Normal</button>
+          <button type="button" data-depth="deep" aria-pressed="false">Deep</button>
+        </div>
+      </div>
+
+      <div class="control-explainer" id="controlExplainer" aria-live="polite">
+        <strong>Talk</strong> changes PsyX's stance. <strong>Normal</strong> chooses the standard strong reasoning lane.
+      </div>
+    </section>
+
+    <section class="workspace">
+      <aside id="sessionsPanel" class="side-panel sessions-panel" aria-label="PsyX sessions" tabindex="-1">
+        <div class="panel-header">
+          <div>
+            <div class="panel-kicker">History</div>
+            <h2>Sessions</h2>
+          </div>
+          <div class="panel-actions">
+            <button id="newSession" class="primary-small" type="button">+ New</button>
+            <button class="icon-btn drawer-close" type="button" data-close-drawer aria-label="Close sessions">×</button>
+          </div>
+        </div>
+        <div class="session-filters" role="group" aria-label="Session view">
+          <button type="button" data-session-status="active" aria-pressed="true">Active</button>
+          <button type="button" data-session-status="archived" aria-pressed="false">Archived</button>
+        </div>
+        <div id="sessionsList" class="sessions-list">
+          <div class="panel-empty">Loading sessions…</div>
+        </div>
+      </aside>
+
+      <section class="conversation-panel">
+        <div class="brain-strip">
+          <div class="brain-primary">
+            <span class="brain-dot"></span>
+            <div>
+              <div id="brainMode" class="brain-title">Normal · strong local</div>
+              <div id="brainRoute" class="brain-subtitle">Resolving model and host…</div>
+            </div>
+          </div>
+          <div class="brain-stats">
+            <span id="brainModel" class="brain-chip">model —</span>
+            <span id="brainHost" class="brain-chip">host —</span>
+            <span id="brainThinking" class="brain-chip">thinking off</span>
+            <span id="brainContext" class="brain-chip">40 recent max</span>
+          </div>
+        </div>
+
+        <section id="messages" class="messages" aria-live="polite" aria-relevant="additions">
+          <article class="message assistant intro">
+            <div class="avatar">PX</div>
+            <div class="bubble intro-bubble">
+              <p><strong>I’m PsyX.</strong> Bring me the thing that is actually taking space in your head.</p>
+              <p>Mode changes my stance. Depth changes the reasoning effort.</p>
+            </div>
+          </article>
+        </section>
+
+        <div class="quick-actions" aria-label="PsyX quick actions">
+          <button id="reflectAction" type="button" class="quick-action">Deep reflection</button>
+          <button id="captureAction" type="button" class="quick-action">Capture thread</button>
+          <button id="planAction" type="button" class="quick-action" aria-pressed="false">Make next response actionable</button>
+        </div>
+
+        <form id="composer" class="composer">
+          <textarea id="input" rows="1" maxlength="12000" placeholder="What’s going on?" autocomplete="off" disabled></textarea>
+          <div class="composer-actions">
+            <button id="voiceRecord" class="voice-button" type="button" aria-label="Record a voice message" title="Record a voice message" disabled>Mic</button>
+            <button id="cancelGeneration" class="cancel-button" type="button" hidden>Cancel</button>
+            <button id="send" class="send" type="submit" aria-label="Send message" disabled>Send</button>
+          </div>
+        </form>
+
+        <footer>
+          <span id="sessionLabel">New conversation</span>
+          <span id="routeLabel">Normal · routing pending</span>
+        </footer>
+      </section>
+
+      <aside id="insightsPanel" class="side-panel insights-panel" aria-label="PsyX state" tabindex="-1">
+        <div class="panel-header state-header">
+          <div>
+            <div class="panel-kicker">Longitudinal</div>
+            <h2>PsyX State</h2>
+          </div>
+          <div class="panel-actions">
+            <span id="stateSaveStatus" class="save-status">synced</span>
+            <button class="icon-btn drawer-close" type="button" data-close-drawer aria-label="Close state">×</button>
+          </div>
+        </div>
+
+        <nav class="state-tabs" role="tablist" aria-label="PsyX state sections">
+          <button id="tabMemory" class="state-tab active" role="tab" aria-selected="true" aria-controls="viewMemory" tabindex="0" type="button" data-tab="memory">Memory</button>
+          <button id="tabPatterns" class="state-tab" role="tab" aria-selected="false" aria-controls="viewPatterns" tabindex="-1" type="button" data-tab="patterns">Patterns</button>
+          <button id="tabExperiments" class="state-tab" role="tab" aria-selected="false" aria-controls="viewExperiments" tabindex="-1" type="button" data-tab="experiments">Experiments</button>
+          <button id="tabBrain" class="state-tab" role="tab" aria-selected="false" aria-controls="viewBrain" tabindex="-1" type="button" data-tab="brain">Brain</button>
+        </nav>
+
+        <div class="state-content">
+          <section id="viewMemory" class="state-view active" role="tabpanel" aria-labelledby="tabMemory" data-view="memory">
+            <div class="state-section"><div class="state-section-title">Active threads</div><div id="threadsList" class="state-items"></div><form class="inline-add" data-state-add="activeThreads"><input type="text" maxlength="500" placeholder="Add a thread"><button type="submit">+</button></form></div>
+            <div class="state-section"><div class="state-section-title">Explicit notes</div><div id="notesList" class="state-items"></div><form class="inline-add" data-state-add="notes"><input type="text" maxlength="1000" placeholder="Something PsyX should remember"><button type="submit">+</button></form></div>
+            <div class="state-section"><div class="state-section-title">Open loops</div><div id="loopsList" class="state-items"></div><form class="inline-add" data-state-add="openLoops"><input type="text" maxlength="500" placeholder="Unresolved loop"><button type="submit">+</button></form></div>
+          </section>
+
+          <section id="viewPatterns" class="state-view" role="tabpanel" aria-labelledby="tabPatterns" data-view="patterns" hidden>
+            <div class="state-section"><div class="state-section-title">Patterns</div><p class="state-help">Working observations, not diagnoses. Provenance and confidence remain visible.</p><div id="patternsList" class="state-items"></div><form class="inline-add" data-state-add="patterns"><input type="text" maxlength="500" placeholder="Recurring pattern"><button type="submit">+</button></form></div>
+            <div class="state-section"><div class="state-section-title">Hypotheses</div><p class="state-help">Ideas to test, revise or reject—not facts.</p><div id="hypothesesList" class="state-items"></div><form class="inline-add" data-state-add="hypotheses"><input type="text" maxlength="500" placeholder="Hypothesis to test"><button type="submit">+</button></form></div>
+          </section>
+
+          <section id="viewExperiments" class="state-view" role="tabpanel" aria-labelledby="tabExperiments" data-view="experiments" hidden><div class="state-section"><div class="state-section-title">Change experiments</div><p class="state-help">Hypothesis → action → signal → result.</p><div id="experimentsList" class="experiments-list"></div><button id="newExperiment" class="full-ghost" type="button">+ New experiment</button></div></section>
+
+          <section id="viewBrain" class="state-view" role="tabpanel" aria-labelledby="tabBrain" data-view="brain" hidden>
+            <div class="state-section"><div class="state-section-title">Current routing</div><div id="routingDetails" class="routing-details">Loading inference routing…</div></div>
+            <div class="state-section"><div class="state-section-title">Conversation context</div><p id="contextStatus" class="state-help">Up to 40 recent messages are loaded from PsyX-owned storage.</p><p id="lifecycleStatus" class="state-help">PsyX owns archive, restore, and permanent deletion.</p></div>
+            <div class="state-section"><div class="state-section-title">Depth semantics</div><div class="depth-card"><strong>Normal</strong><span>Strong local reasoning using the configured provider's <code>analysis</code> lane.</span></div><div class="depth-card"><strong>Deep</strong><span>Uses <code>deep_reasoning</code> and requests thinking. Request and verification are shown separately.</span></div></div>
+          </section>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <dialog id="experimentDialog" class="modal">
+    <form method="dialog" id="experimentForm" class="modal-card">
+      <div class="modal-header"><div><div class="panel-kicker">Behavior change</div><h2>New experiment</h2></div><button value="cancel" class="icon-btn" type="submit" aria-label="Close">×</button></div>
+      <label>Hypothesis<textarea name="hypothesis" rows="2" maxlength="1000" required placeholder="What do we think is happening?"></textarea></label>
+      <label>Action<textarea name="action" rows="2" maxlength="1000" required placeholder="Smallest useful intervention"></textarea></label>
+      <label>Expected signal<textarea name="expectedSignal" rows="2" maxlength="1000" placeholder="What result would support or challenge the hypothesis?"></textarea></label>
+      <div class="modal-actions"><button value="cancel" class="ghost-button" type="submit">Cancel</button><button id="saveExperiment" class="primary-button" type="button">Create experiment</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="voiceDialog" class="modal">
+    <form method="dialog" class="modal-card voice-card">
+      <div class="modal-header"><div><div class="panel-kicker">Private local speech</div><h2>PsyX voice</h2></div><button value="cancel" class="icon-btn" type="submit" aria-label="Close voice settings">×</button></div>
+      <div id="voiceSecureNotice" class="voice-notice" role="status"></div>
+      <section class="voice-status-card">
+        <span id="voiceStatusDot" class="status-dot"></span>
+        <div><strong id="voiceStatusText">Checking local voice…</strong><small id="voiceStatusDetail">Audio is processed by your private VoiX service.</small></div>
+        <button id="voiceRefresh" class="ghost-button compact" type="button">Refresh</button>
+      </section>
+      <label class="voice-toggle"><input id="voiceSpokenReplies" type="checkbox"> <span><strong>Spoken replies</strong><small>Read completed PsyX replies aloud with local TTS.</small></span></label>
+      <label class="voice-toggle"><input id="voiceAutoSend" type="checkbox"> <span><strong>Send after transcription</strong><small>Otherwise the transcript stays in the composer for review.</small></span></label>
+      <div class="voice-grid">
+        <label>Speech language<select id="voiceLanguage"><option value="fr">French</option><option value="en">English</option></select></label>
+        <label>Local TTS engine<select id="voiceTtsProvider"><option value="kokoro">Kokoro</option><option value="windows_sapi">Windows SAPI</option><option value="voxcpm">VoxCPM2 · Voice A</option></select></label>
+      </div>
+      <label>Voice<select id="voiceTtsVoice"><option value="">Language default</option></select></label>
+      <details><summary>Custom voice or Kokoro blend</summary><label>Voice name<input id="voiceTtsCustom" type="text" maxlength="120" autocomplete="off" spellcheck="false"></label></details>
+      <p id="voicePreferenceSummary" class="voice-preference-summary" role="status"></p>
+      <label>Browser microphone<select id="voiceInputDevice"><option value="">System default</option></select></label>
+      <div class="voice-actions"><button id="voiceFindDevices" class="ghost-button" type="button">Allow / refresh microphones</button><button id="voiceTest" class="ghost-button" type="button">Test voice</button><button id="voiceStop" class="ghost-button" type="button">Stop speech</button></div>
+      <p class="state-help">Recordings and synthesized audio are relayed in memory and are not added to PsyX transcripts, state, exports, or browser storage. Only your harmless preferences are kept in this browser; they apply to this browser's requests only and never change the shared VoiX service settings.</p>
+      <div id="voiceActionStatus" class="privacy-status" role="status" aria-live="polite"></div>
+      <div class="modal-actions"><button value="cancel" class="primary-button" type="submit">Done</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="captureDialog" class="modal">
+    <form method="dialog" id="captureForm" class="modal-card">
+      <div class="modal-header"><div><div class="panel-kicker">Longitudinal memory</div><h2>Capture thread</h2></div><button value="cancel" class="icon-btn" type="submit" aria-label="Close">×</button></div>
+      <label>Thread<input id="captureText" name="thread" maxlength="500" required placeholder="Short durable title for this topic"></label>
+      <label>Optional context<textarea id="captureContext" name="context" rows="3" maxlength="240" placeholder="Why this matters or what to return to"></textarea></label>
+      <p class="state-help">You decide what becomes durable memory. PsyX will not silently turn the last sentence into a thread.</p>
+      <div class="modal-actions"><button value="cancel" class="ghost-button" type="submit">Cancel</button><button id="saveCapture" class="primary-button" type="button">Save thread</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dataDialog" class="modal">
+    <form method="dialog" class="modal-card data-card">
+      <div class="modal-header"><div><div class="panel-kicker">Privacy and data</div><h2>PsyX data</h2></div><button value="cancel" class="icon-btn" type="submit" aria-label="Close data settings">×</button></div>
+      <section class="data-section">
+        <h3>Privacy</h3>
+        <p id="privacySummary">This browser stays unlocked for up to 8 hours. The access code is never stored in browser storage.</p>
+        <button id="lockPsyxSettings" class="ghost-button" type="button">Lock PsyX now</button>
+      </section>
+      <section class="data-section">
+        <h3>Memory</h3>
+        <p>What PsyX remembers is visible in PsyX State. Conversation history and PsyX longitudinal memory are separate.</p>
+        <div class="data-actions"><button id="exportPsyx" class="ghost-button" type="button">Export PsyX data</button><button id="openResetMemory" class="danger-button" type="button">Reset PsyX memory</button></div>
+        <div id="dataStatus" class="privacy-status" role="status" aria-live="polite"></div>
+      </section>
+      <section class="data-section">
+        <h3>Conversations</h3>
+        <p>PsyX owns conversation transcripts. Archive is the normal cleanup action; archived sessions can be restored. Permanent deletion remains deliberate and irreversible.</p>
+      </section>
+      <div class="modal-actions"><button value="cancel" class="primary-button" type="submit">Close</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="resetMemoryDialog" class="modal">
+    <form method="dialog" class="modal-card">
+      <div class="modal-header"><div><div class="panel-kicker">Memory only</div><h2>Reset PsyX memory</h2></div><button value="cancel" class="icon-btn" type="submit" aria-label="Close reset confirmation">×</button></div>
+      <p>This clears PsyX State only. PsyX conversations and unrelated data are preserved.</p>
+      <label>Type <strong>RESET PSYX MEMORY</strong><input id="resetMemoryConfirmation" type="text" autocomplete="off"></label>
+      <div class="modal-actions"><button value="cancel" class="ghost-button" type="submit">Cancel</button><button id="confirmResetMemory" class="danger-button" type="button" disabled>Reset PsyX memory</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="sessionDataDialog" class="modal">
+    <form method="dialog" class="modal-card">
+      <div class="modal-header"><div><div class="panel-kicker">Conversation</div><h2>Session options</h2></div><button value="cancel" class="icon-btn" type="submit" aria-label="Close session options">×</button></div>
+      <p id="sessionDataTitle" class="session-data-title"></p>
+      <p id="sessionLifecycleCopy">Archive removes this conversation from active sessions without deleting it.</p>
+      <label class="confirm-check"><input id="sessionDeleteConfirmation" type="checkbox"> I understand this permanently deletes the conversation.</label>
+      <div class="modal-actions session-lifecycle-actions"><button value="cancel" class="ghost-button" type="submit">Cancel</button><button id="archiveSession" class="primary-button" type="button">Archive</button><button id="restoreSession" class="primary-button" type="button" hidden>Restore</button><button id="confirmPermanentDelete" class="danger-button" type="button" disabled>Permanently delete conversation</button></div>
+    </form>
+  </dialog>
+
+  <script src="/psyx/assets/voice-audio.js?v=local-voice-0680" defer></script>
+  <script src="/psyx/assets/voice-preferences.js?v=2.4.0" defer></script>
+  <script src="/psyx/assets/app.js?v=2.4.0" defer></script>
+</body>
+</html>

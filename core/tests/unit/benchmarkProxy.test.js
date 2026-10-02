@@ -1,0 +1,149 @@
+jest.mock('../../config/logger', () => ({
+  info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn()
+}));
+
+const mockGetRecommendationView = jest.fn();
+const mockGetAllCategoryRecommendations = jest.fn();
+
+jest.mock('../../src/services/benchmarkServiceClient', () => ({
+  getBenchmarkServiceClient: () => ({
+    getRecommendationView: mockGetRecommendationView,
+    getAllCategoryRecommendations: mockGetAllCategoryRecommendations
+  })
+}));
+
+const express = require('express');
+const { startTestHttpHarness } = require('../helpers/testHttpServer');
+const benchmarkProxy = require('../../routes/benchmark-proxy');
+
+function buildApp() {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/benchmark-proxy', benchmarkProxy);
+  return app;
+}
+
+describe('Benchmark Proxy Routes', () => {
+  let harness;
+
+  beforeAll(async () => {
+    harness = await startTestHttpHarness(buildApp(), {
+      transport: process.platform === 'win32' ? 'pipe' : 'tcp',
+    });
+  });
+  afterAll(async () => { await harness?.close(); });
+  let originalFetch;
+
+  beforeEach(() => {
+    mockGetRecommendationView.mockReset();
+    mockGetAllCategoryRecommendations.mockReset();
+    originalFetch = global.fetch;
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  describe('GET /api/benchmark-proxy/recommend', () => {
+    it('should return 400 when category is missing', async () => {
+      const res = await harness.request.get('/api/benchmark-proxy/recommend');
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/category/);
+    });
+
+    it('should return 400 for invalid category', async () => {
+      const res = await harness.request.get('/api/benchmark-proxy/recommend?category=invalid');
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/Invalid category/);
+    });
+
+    it('should return recommendations for valid category', async () => {
+      const mockRecs = [{ model: 'qwen3:14b', quality_score: 8.4, confidence: 'medium' }];
+      mockGetRecommendationView.mockResolvedValue({
+        category: 'coding',
+        recommendations: mockRecs
+      });
+
+      const res = await harness.request.get('/api/benchmark-proxy/recommend?category=coding');
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('success');
+      expect(res.body.data.category).toBe('coding');
+      expect(res.body.data.recommendations).toEqual(mockRecs);
+      expect(res.body.data.source).toBe('benchmark');
+    });
+
+    it('should forward host and min_quality params', async () => {
+      mockGetRecommendationView.mockResolvedValue({ recommendations: [] });
+
+      await harness.request.get('/api/benchmark-proxy/recommend?category=coding&host=192.0.2.66&min_quality=7');
+
+      expect(mockGetRecommendationView).toHaveBeenCalledWith('coding', {
+        host: '192.0.2.66',
+        min_quality: '7'
+      });
+    });
+
+    it('should return 502 when service client throws', async () => {
+      mockGetRecommendationView.mockRejectedValue(new Error('unexpected'));
+
+      const res = await harness.request.get('/api/benchmark-proxy/recommend?category=math');
+
+      expect(res.status).toBe(502);
+      expect(res.body.message).toMatch(/unavailable/i);
+    });
+  });
+
+  describe('GET /api/benchmark-proxy/recommend/all', () => {
+    it('should return recommendations for all categories', async () => {
+      const mockAll = {
+        coding: [{ model: 'a' }],
+        reasoning: [],
+        math: [{ model: 'b' }],
+        knowledge: [],
+        instruction: [],
+        creative: [],
+        translation: []
+      };
+      mockGetAllCategoryRecommendations.mockResolvedValue(mockAll);
+
+      const res = await harness.request.get('/api/benchmark-proxy/recommend/all');
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('success');
+      expect(res.body.data.categories).toEqual(mockAll);
+      expect(res.body.data.source).toBe('benchmark');
+      expect(mockGetAllCategoryRecommendations).toHaveBeenCalledWith();
+    });
+
+    it('should return 502 on error', async () => {
+      mockGetAllCategoryRecommendations.mockRejectedValue(new Error('fail'));
+
+      const res = await harness.request.get('/api/benchmark-proxy/recommend/all');
+
+      expect(res.status).toBe(502);
+    });
+  });
+
+  describe('Benchmark owns every non-recommendation endpoint', () => {
+    it.each([
+      ['get', '/leaderboard?limit=2'],
+      ['get', '/courthouse'],
+      ['get', '/batches/example/stream'],
+      ['post', '/batches'],
+      ['put', '/batches/example'],
+      ['delete', '/batches/example'],
+      ['post', '/recommend?category=coding'],
+      ['delete', '/recommend/all'],
+    ])('%s %s returns Core 404 without an upstream request', async (method, path) => {
+      await harness.request[method](`/api/benchmark-proxy${path}`)
+        .send({ name: 'never-forwarded' })
+        .expect(404);
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(mockGetRecommendationView).not.toHaveBeenCalled();
+      expect(mockGetAllCategoryRecommendations).not.toHaveBeenCalled();
+    });
+  });
+});

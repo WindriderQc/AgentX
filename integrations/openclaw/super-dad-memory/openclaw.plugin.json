@@ -1,0 +1,62 @@
+{
+  "id": "super-dad-memory",
+  "name": "Nestor Personal Harness",
+  "version": "2.0.0",
+  "description": "Native OpenClaw tools and receipts backed by canonical AgentX Core notes and tasks.",
+  "activation": {
+    "onStartup": true,
+    "onAgentHarnesses": [
+      "openclaw"
+    ]
+  },
+  "contracts": {
+    "tools": [
+      "personal_memory",
+      "vault_note",
+      "nestor_context",
+      "nestor_briefing"
+    ]
+  },
+  "toolMetadata": {
+    "personal_memory": {
+      "optional": true
+    },
+    "vault_note": {
+      "optional": true
+    },
+    "nestor_context": {
+      "optional": true
+    },
+    "nestor_briefing": {
+      "optional": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "agentxUrl": {
+        "type": "string"
+      },
+      "secretarySessionKeys": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "briefingSessionKeys": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "mediaRoot": {
+        "type": "string",
+        "description": "OpenClaw media directory served read-only to Household for generated images. Default: <state dir>/media."
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "agentxUrl"
+    ]
+  }
+}

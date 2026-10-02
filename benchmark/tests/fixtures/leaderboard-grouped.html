@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leaderboard grouped rows — static fixture</title>
+  <!--
+    Static rendering of the leaderboard page from tests/fixtures/leaderboard-grouped.json.
+    No backend: the page imports the real browser modules and feeds them the
+    fixture responses. Serve the benchmark/ directory with any static server,
+    for example from benchmark/:
+        node -e "require('http').createServer((q,s)=>{const f=require('path').join(__dirname,decodeURIComponent(q.url.split('?')[0]));require('fs').readFile(f,(e,d)=>{s.writeHead(e?404:200,{'Content-Type':f.endsWith('.js')?'text/javascript':f.endsWith('.css')?'text/css':f.endsWith('.json')?'application/json':'text/html'});s.end(e?'not found':d)})}).listen(8787)"
+    then open http://localhost:8787/tests/fixtures/leaderboard-grouped.html
+    Fetches to /api/* fail and are tolerated (readiness, calibration).
+  -->
+  <link rel="stylesheet" href="../../node_modules/@fortawesome/fontawesome-free/css/all.min.css">
+  <link rel="stylesheet" href="../../public/css/redesign-tokens.css">
+  <link rel="stylesheet" href="../../public/css/redesign-components.css">
+  <link rel="stylesheet" href="../../public/css/leaderboard-v2.css">
+  <link rel="stylesheet" href="../../public/css/leaderboard-v2-groups.css">
+  <link rel="stylesheet" href="../../public/css/scoring-profile.css">
+  <link rel="stylesheet" href="../../public/css/model-evidence-experience.css">
+  <style>
+    body { margin: 0; background: #0b1119; color: #eef2f8; font-family: system-ui, sans-serif; }
+    main { max-width: 1180px; margin: 0 auto; padding: 0 16px 2rem; }
+    .fixture-banner { margin: 0.6rem 0; padding: 0.4rem 0.7rem; border: 1px dashed #6f7d92; border-radius: 8px; color: #98a6ba; font-size: 0.7rem; }
+  </style>
+</head>
+<body class="page-leaderboard">
+  <main data-leaderboard-source="fixture" data-core-public-url="">
+    <p class="fixture-banner">Loading fixture…</p>
+  </main>
+  <script type="module">
+    import { renderLeaderboardPage } from '../../public/js/leaderboard-v2/index.js';
+    const main = document.querySelector('main');
+    try {
+      const fixture = await fetch('./leaderboard-grouped.json').then(r => r.json());
+      await renderLeaderboardPage(main, fixture);
+      main.insertAdjacentHTML('afterbegin', '<p class="fixture-banner">Static fixture: tests/fixtures/leaderboard-grouped.json — no live data, no backend.</p>');
+    } catch (err) {
+      main.innerHTML = `<p class="fixture-banner">Fixture failed to render: ${err.message}</p>`;
+      console.error(err);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,611 @@
+'use strict';
+
+// Only inference is synthetic. HTTP mounts, persona resolution and Mongo
+// persistence use the real app and the suite-owned disposable database.
+jest.mock('../../src/extensions/trustedRuntimeServices', () => {
+  const actual = jest.requireActual('../../src/extensions/trustedRuntimeServices');
+  const execute = jest.fn(async () => ({ ok: true, body: { response: 'Synthetic response' }, metadata: { model: 'synthetic' } }));
+  return { ...actual, executeForTest: execute,
+    createTrustedRuntimeServices: (...args) => ({ ...actual.createTrustedRuntimeServices(...args), inference: { execute } }) };
+});
+
+jest.mock('../../surfaces/household/conversation-agent', () => {
+  const actual = jest.requireActual('../../surfaces/household/conversation-agent');
+  const agent = jest.fn(async request => {
+    const sessionKey = actual.sessionKeyFor(request.session), runId = 'resp_22222222-2222-4222-8222-222222222222';
+    await request.onStarted(sessionKey, runId); request.onDelta('Synthetic native reply.'); await request.onSettled();
+    return { text: 'Synthetic native reply.', sessionKey, runId, metadata: { model: 'synthetic-native' },
+      tools: { status: 'observed', receipts: [], run: { runId, sessionKey, model: 'synthetic-native' } } };
+  });
+  return { ...actual, createAgentClient: () => agent, agentForTest: agent };
+});
+
+const request = require('supertest');
+const { app } = require('../../src/app');
+const PipelineTask = require('../../models/PipelineTask');
+const Conversation = require('../../models/Conversation');
+const PlanningItem = require('../../models/PlanningItem');
+const { executeForTest } = require('../../src/extensions/trustedRuntimeServices');
+const { agentForTest } = require('../../surfaces/household/conversation-agent');
+const { createServer } = require('node:http');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+const { pathToFileURL } = require('node:url');
+const path = require('node:path');
+const { listenLoopback } = require('../../../shared/testing/listenLoopback');
+
+describe('built-in Household surface on Core', () => {
+  test('the panel stays ready when optional OpenClaw evidence is absent', async () => {
+    const previousEvidence = app.locals.aioOpsRuntimeEvidence;
+    const previousVoixUrl = process.env.VOIX_BASE_URL;
+    const originalFetch = global.fetch;
+    delete app.locals.aioOpsRuntimeEvidence;
+    process.env.VOIX_BASE_URL = 'http://voix.example.test';
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async url => {
+      const pathname = new URL(String(url)).pathname;
+      if (pathname === '/api/nerve-center/ecosystem') {
+        return new Response(JSON.stringify({ data: { health: { status: 'ok', configuredHosts: 1, onlineHosts: 1 },
+          cluster: [{ hostKey: 'primary', status: 'online' }], operationalAttention: { issues: [] } } }),
+        { headers: { 'Content-Type': 'application/json' } });
+      }
+      if (pathname === '/health') {
+        return new Response(JSON.stringify({ status: 'ok' }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    });
+    try {
+      const response = await request(app).get('/api/panel/status').expect(200);
+      expect(response.body.data.crew.find(member => member.id === 'openclaw')).toMatchObject({
+        status: 'unknown', detail: 'agent status unavailable'
+      });
+      expect(response.body.data.status).toBe('ok');
+    } finally {
+      fetchMock.mockRestore();
+      app.locals.aioOpsRuntimeEvidence = previousEvidence;
+      if (previousVoixUrl === undefined) delete process.env.VOIX_BASE_URL;
+      else process.env.VOIX_BASE_URL = previousVoixUrl;
+    }
+  });
+  test('personal native voice moves the same selected Core notes to turn context while text keeps its existing instructions', async () => {
+    const note = 'Synthetic observatory voice context remains available.';
+    await request(app).post('/api/voice-personas/private/notes').send({ operation: 'remember', text: note, kind: 'preference' }).expect(200);
+    const staleSchedule = 'Synthetic archived son prochain quand schedule.';
+    await request(app).post('/api/voice-personas/private/notes').send({ operation: 'remember', text: staleSchedule, kind: 'fact' }).expect(200);
+    const staleDiscussion = 'Synthetic archived déjà tout mais pendant travail.';
+    await request(app).post('/api/voice-personas/private/notes').send({ operation: 'remember', text: staleDiscussion, kind: 'fact' }).expect(200);
+    const creativeNote = 'Synthetic Samuel hockey preference.';
+    await request(app).post('/api/voice-personas/private/notes').send({ operation: 'remember', text: creativeNote, kind: 'preference' }).expect(200);
+    const created = await request(app).post('/api/voice-personas/private/sessions')
+      .send({ packId: 'personal_operator', scopeId: 'personal', backend: 'openclaw', agentId: 'main' }).expect(201);
+    const id = created.body.data.session.sessionId;
+    await request(app).post(`/api/voice-personas/private/sessions/${id}/turns/text`)
+      .send({ text: 'observatory', channel: 'voice' }).expect(200);
+    expect(agentForTest.mock.calls.at(-1)[0].turnContext || '').not.toContain(note);
+    await request(app).post(`/api/voice-personas/private/sessions/${id}/turns/text`)
+      .send({ text: 'Quand joue son prochain match l’équipe des Comètes ?', channel: 'voice' }).expect(200);
+    expect(agentForTest.mock.calls.at(-1)[0].turnContext || '').not.toContain(staleSchedule);
+    await request(app).post(`/api/voice-personas/private/sessions/${id}/turns/text`)
+      .send({ text: 'Déjà tout prêt, mais pendant la pause le travail avance', channel: 'voice' }).expect(200);
+    expect(agentForTest.mock.calls.at(-1)[0].turnContext || '').not.toContain(staleDiscussion);
+    await request(app).post(`/api/voice-personas/private/sessions/${id}/turns/text`)
+      .send({ text: 'Invente une blague sur Samuel et le hockey', channel: 'voice' }).expect(200);
+    expect(agentForTest.mock.calls.at(-1)[0].turnContext || '').toContain(creativeNote);
+    for (const channel of ['voice', 'text']) {
+      await request(app).post(`/api/voice-personas/private/sessions/${id}/turns/text`)
+        .send({ text: channel === 'voice' ? 'Rappelle-moi observatory' : 'observatory', channel }).expect(200);
+      const native = agentForTest.mock.calls.at(-1)[0];
+      expect(native.session.sessionId).toBe(id);
+      if (channel === 'voice') {
+        expect(native.turnContext).toContain(note);
+        expect(native.instructions).not.toContain(note);
+      } else {
+        expect(native.turnContext).toBeUndefined();
+        expect(native.instructions).toContain(note);
+        expect(native.session.agentSessionKey).toContain(id);
+      }
+    }
+  });
+  test('the PCM proxy removes Kokoro quote-only fragments without changing other providers', async () => {
+    const quoted = 'Le hibou dit : « Tu gagnes. »';
+    const upstreamBody = '{"type":"done","frames":1,"samples":1}\n';
+    const requests = [], originalFetch = global.fetch, previousUrl = process.env.VOIX_BASE_URL;
+    process.env.VOIX_BASE_URL = 'http://voix.example.test';
+    const upstream = jest.spyOn(global, 'fetch').mockImplementation(async (url, options) => {
+      if (!String(url).endsWith('/api/tts/stream')) return originalFetch(url, options);
+      requests.push(JSON.parse(options.body));
+      return new Response(upstreamBody, { headers: { 'Content-Type': 'application/x-ndjson' } });
+    });
+    const ndjson = (res, done) => {
+      let body = ''; res.setEncoding('utf8');
+      res.on('data', data => { body += data; }); res.on('end', () => done(null, body));
+    };
+    try {
+      for (const provider of ['kokoro', 'voxcpm']) {
+        const response = await request(app).post('/api/voix/synthesize/stream')
+          .send({ text: quoted, language: 'fr', tts_provider: provider }).buffer(true).parse(ndjson).expect(200);
+        expect(response.body).toBe(upstreamBody);
+      }
+      expect(requests[0]).toMatchObject({ text: 'Le hibou dit : « Tu gagnes.', tts_provider: 'kokoro', save: false });
+      expect(requests[1]).toMatchObject({ text: quoted, tts_provider: 'voxcpm', save: false });
+    } finally {
+      upstream.mockRestore();
+      if (previousUrl === undefined) delete process.env.VOIX_BASE_URL;
+      else process.env.VOIX_BASE_URL = previousUrl;
+    }
+  });
+  test('spoken controls select the optional adapter without changing ordinary uploads', async () => {
+    const previousUrl = process.env.VOIX_BASE_URL, previousControls = process.env.VOIX_SPOKEN_CONTROLS_ENABLED;
+    const requests = [];
+    process.env.VOIX_BASE_URL = 'http://voix.example.test';
+    const upstream = jest.spyOn(global, 'fetch').mockImplementation(async (url, options) => {
+      requests.push({ url: String(url), body: options.body });
+      return new Response(JSON.stringify({ text: '', control: 'stop' }), { headers: { 'Content-Type': 'application/json' } });
+    });
+    try {
+      for (const enabled of ['false', 'true']) {
+        process.env.VOIX_SPOKEN_CONTROLS_ENABLED = enabled;
+        const response = await request(app).post('/api/voix/transcribe')
+          .set('Content-Type', 'audio/wav').send(Buffer.from('synthetic-audio')).expect(200);
+        expect(response.body).toEqual({ text: '', control: 'stop' });
+      }
+      expect(requests.map(row => row.url)).toEqual(['http://voix.example.test/v1/audio/transcriptions',
+        'http://voix.example.test/v1/audio/transcriptions/controls']);
+      expect(requests.every(row => row.body.equals(Buffer.from('synthetic-audio')))).toBe(true);
+    } finally {
+      upstream.mockRestore();
+      if (previousUrl === undefined) delete process.env.VOIX_BASE_URL; else process.env.VOIX_BASE_URL = previousUrl;
+      if (previousControls === undefined) delete process.env.VOIX_SPOKEN_CONTROLS_ENABLED;
+      else process.env.VOIX_SPOKEN_CONTROLS_ENABLED = previousControls;
+    }
+  });
+  test('Secretary mail routes use the native owner and preserve errors', async () => {
+    const previous = app.locals.aioOpsSecretaryMail;
+    const handled = jest.fn(async input => ({ ...input, removed: true, verified: true }));
+    try {
+      app.locals.aioOpsSecretaryMail = { contractVersion: 1,
+        threads: async label => ({ label, threads: [{ threadId: 'abcdef123456' }] }), handled };
+      expect((await request(app).get('/api/secretary/mail?label=urgent').expect(200)).body.data.label).toBe('urgent');
+      await request(app).post('/api/secretary/mail/handled').send({ threadId: 'abcdef123456', label: 'urgent', ignored: true }).expect(200);
+      expect(handled).toHaveBeenCalledWith({ threadId: 'abcdef123456', label: 'urgent' });
+      delete app.locals.aioOpsSecretaryMail;
+      expect((await request(app).get('/api/secretary/mail?label=urgent').expect(503)).body.code).toBe('SECRETARY_MAIL_UNAVAILABLE');
+    } finally { app.locals.aioOpsSecretaryMail = previous; }
+  });
+  test('personal attachments survive HTTP resume and stay outside family and other conversations', async () => {
+    const base = '/api/voice-personas/private/sessions';
+    const create = async () => (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const id = await create(), other = await create();
+    const payload = { name: 'synthetic.txt', dataUrl: `data:text/plain;base64,${Buffer.from('Observatoire bleu').toString('base64')}` };
+    const attached = (await request(app).post(`${base}/${id}/attachments`).send(payload).expect(201)).body.data.attachment;
+    const download = await request(app).get(`${base}/${id}/attachments/${attached.id}`).expect(200);
+    expect(download.text).toBe('Observatoire bleu');
+    expect(download.headers['cache-control']).toBe('private, no-store');
+    await request(app).get(`${base}/${other}/attachments/${attached.id}`).expect(404);
+    await request(app).post(`${base}/${other}/turns/text`).send({ text: 'Read', attachmentIds: [attached.id] }).expect(404);
+    await request(app).get(`/api/voice-personas/family/sessions/${id}/attachments/${attached.id}`).expect(404);
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Lis mon document.', attachmentIds: [attached.id] }).expect(200);
+    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain('Observatoire bleu');
+    const resumed = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+    expect(resumed.turns[0].attachments).toEqual([attached]);
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Quelle couleur?' }).expect(200);
+    expect(executeForTest.mock.calls.at(-1)[0].messages.some(message => message.content.includes('Observatoire bleu'))).toBe(true);
+    const family = (await request(app).post('/api/voice-personas/family/sessions').send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    await request(app).post(`/api/voice-personas/family/sessions/${family}/turns/text`).send({ text: 'Read', attachmentIds: [attached.id] }).expect(400);
+    await request(app).post(`${base}/${family}/attachments`).send(payload).expect(404);
+    const exported = (await request(app).get(`${base}/${id}/export`).expect(200)).body;
+    expect(exported.schema).toBe('agentx.conversation-export/v1');
+    expect(exported.conversation.messages[0].content).toBe('Lis mon document.');
+    expect(exported.attachments).toEqual([expect.objectContaining({ id: attached.id, dataUrl: payload.dataUrl })]);
+    await request(app).get(`${base}/${family}/export`).expect(404);
+    await request(app).delete(`${base}/${id}`).send({}).expect(400);
+    await request(app).delete(`${base}/${family}`).send({ confirmation: 'DELETE CONVERSATION' }).expect(404);
+    await request(app).delete(`${base}/${id}`).send({ confirmation: 'DELETE CONVERSATION' }).expect(200);
+    await request(app).delete(`${base}/${id}`).send({ confirmation: 'DELETE CONVERSATION' }).expect(200);
+    await request(app).get(`${base}/${id}/history`).expect(404);
+    await request(app).get(`${base}/${id}/attachments/${attached.id}`).expect(404);
+    await request(app).get(`${base}/${id}/export`).expect(404);
+    await request(app).post(`${base}/${id}/attachments`).send(payload).expect(404);
+    const tombstone = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
+    expect(tombstone.messages).toHaveLength(0);
+    expect(tombstone.surfaceSession.deletedAt).toBeInstanceOf(Date);
+    expect(JSON.stringify(tombstone)).not.toContain('Observatoire');
+    expect(await require('../../models/ConversationAttachment').countDocuments({ conversationId: tombstone._id })).toBe(0);
+  });
+  test('a parent erases a family conversation through its own scope only', async () => {
+    const familyBase = '/api/voice-personas/family/sessions', privateBase = '/api/voice-personas/private/sessions';
+    const family = (await request(app).post(familyBase).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const personal = (await request(app).post(privateBase).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    await request(app).post(`${familyBase}/${family}/turns/text`).send({ text: 'Synthetic family question about pancakes' }).expect(200);
+    const confirmation = { confirmation: 'DELETE CONVERSATION' };
+    await request(app).delete(`${familyBase}/${family}`).send({}).expect(400);
+    // Each space erases only its own conversations.
+    await request(app).delete(`${familyBase}/${personal}`).send(confirmation).expect(404);
+    await request(app).delete(`${privateBase}/${family}`).send(confirmation).expect(404);
+    await request(app).delete(`${familyBase}/${family}`).send(confirmation).expect(200);
+    await request(app).get(`${familyBase}/${family}/history`).expect(404);
+    const recent = (await request(app).get(`${familyBase}/recent?limit=5`).expect(200)).body.data.sessions;
+    expect(recent.some(session => session.sessionId === family)).toBe(false);
+    const tombstone = await Conversation.findOne({ 'surfaceSession.sessionId': family }).lean();
+    expect(tombstone.messages).toHaveLength(0);
+    expect(JSON.stringify(tombstone)).not.toContain('pancakes');
+    await request(app).get(`${privateBase}/${personal}/history`).expect(200);
+  });
+  test('a parent pages through older family conversations with a before cursor', async () => {
+    const familyBase = '/api/voice-personas/family/sessions';
+    for (let index = 0; index < 7; index++) {
+      const id = (await request(app).post(familyBase).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+      await request(app).post(`${familyBase}/${id}/turns/text`).send({ text: `Synthetic page question ${index}` }).expect(200);
+    }
+    // Previews without narrowing: a family conversation with no persona must still be listed to be erased.
+    const first = (await request(app).get(`${familyBase}/recent?limit=5&preview=true`).expect(200)).body.data.sessions;
+    expect(first).toHaveLength(5);
+    expect(first[0].lastTurn.inputPreview).toMatch(/^Synthetic page question/);
+    const oldest = first.at(-1).lastTurnAt;
+    const second = (await request(app).get(`${familyBase}/recent?limit=5&preview=true&before=${encodeURIComponent(oldest)}`).expect(200)).body.data.sessions;
+    expect(second.length).toBeGreaterThanOrEqual(2);
+    expect(second.some(session => first.some(seen => seen.sessionId === session.sessionId))).toBe(false);
+    expect(second.every(session => new Date(session.lastTurnAt) < new Date(oldest))).toBe(true);
+    // An unreadable cursor is ignored rather than hiding every conversation.
+    expect((await request(app).get(`${familyBase}/recent?limit=5&before=not-a-date`).expect(200)).body.data.sessions).toHaveLength(5);
+  });
+  test('native voice delivery retries preserve one canonical transcript and one turn count', async () => {
+    const previous = process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN;
+    process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = 'synthetic-voice-consumer';
+    const sessionId = 's'.repeat(120), turnId = 't'.repeat(120);
+    const payload = { schemaVersion: 1, sessionId, turnId, eventId: `voix:${sessionId}:${turnId}`, sequence: 1,
+      userText: 'Synthetic native voice input', assistantText: 'Synthetic native voice reply', completedAt: new Date().toISOString() };
+    try {
+      await request(app).post('/api/voix/memory/turns').send(payload).expect(401);
+      const send = () => request(app).post('/api/voix/memory/turns').set('Authorization', 'Bearer synthetic-voice-consumer').send(payload);
+      const first = await send();
+      expect(first.status).toBe(201);
+      expect(first.body.data).toMatchObject({ captured: true, duplicate: false });
+      const replay = await send();
+      expect(replay.body.data).toMatchObject({ captured: true, duplicate: true });
+      const row = await Conversation.findOne({ 'surfaceSession.sessionId': sessionId }).lean();
+      expect(row.surfaceSession.turnCount).toBe(1);
+      expect(row.messages.map(message => message.content)).toEqual([payload.userText, payload.assistantText]);
+      // Wait for the real asynchronous capture worker before the suite closes Mongo.
+      const service = require('../../src/services/surfaceConversationService').forSurface('household');
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        if ((await service.getTurn({ traceId: payload.eventId }))?.memoryState === 'processed') break;
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect((await service.getTurn({ traceId: payload.eventId })).memoryState).toBe('processed');
+    } finally {
+      if (previous === undefined) delete process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN;
+      else process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = previous;
+    }
+  });
+
+  test('LLMx opening and rejected scene result resume from the same canonical messages', async () => {
+    const base = '/api/consumers/nestor/v1/llmx';
+    const created = await request(app).post(`${base}/sessions`).send({ backend: 'agentx' }).expect(201);
+    const id = created.body.data.session.sessionId;
+    executeForTest.mockResolvedValueOnce({ ok: true, body: { response: 'Hello, synthetic visitor.' }, metadata: { model: 'synthetic' } });
+    await request(app).post(`${base}/sessions/${id}/opening`).send({ requestId: 'synthetic-opening-1', openingVersion: 1, channel: 'text' }).expect(200);
+    const calls = executeForTest.mock.calls.length;
+    await request(app).post(`${base}/sessions/${id}/opening`).send({ requestId: 'synthetic-opening-1', openingVersion: 1, channel: 'text' }).expect(200);
+    expect(executeForTest).toHaveBeenCalledTimes(calls);
+    const sceneContext = { schemaVersion: 1, environment: { id: 'synthetic-world', name: 'Synthetic world' }, revision: '1',
+      capabilities: { commandsVersion: 2 }, buildZone: { center: [0, 0, 0], radius: 4 }, entities: [{ id: 'box', type: 'box' }] };
+    executeForTest.mockResolvedValueOnce({ ok: true, body: { response: JSON.stringify({ reply: 'Synthetic proposed scene.',
+      scene: { schemaVersion: 1, intent: 'Move a synthetic box', commands: [{ op: 'update', id: 'box', patch: { transform: { position: [1, 1, 1] } } }] } }) }, metadata: { model: 'synthetic' } });
+    const turnId = 'synthetic-scene-turn-1';
+    await request(app).post(`${base}/sessions/${id}/turns/text`).send({ turnId, text: 'Move the box', sceneContext }).expect(200);
+    const receipt = { turnId, status: 'rejected', entityIds: [], message: 'Synthetic browser rejection.' };
+    await request(app).post(`${base}/sessions/${id}/scene-receipts`).send(receipt).expect(200);
+    expect((await request(app).post(`${base}/sessions/${id}/scene-receipts`).send(receipt).expect(200)).body.data.duplicate).toBe(true);
+    const history = await request(app).get(`${base}/sessions/${id}/history`).expect(200);
+    expect(history.body.data.history).toEqual([
+      expect.objectContaining({ role: 'assistant', content: 'Hello, synthetic visitor.' }),
+      expect.objectContaining({ role: 'user', content: 'Move the box' }),
+      expect.objectContaining({ role: 'assistant', content: 'Synthetic browser rejection.' })
+    ]);
+    expect(history.body.data.session.turnCount).toBe(2);
+    expect(history.body.data.turns[1].sceneReceipt.status).toBe('rejected');
+    await request(app).post(`${base}/sessions/${id}/turns/text`).send({ turnId, text: 'Move the box', sceneContext }).expect(409);
+    await request(app).get(`${base}/family/sessions/${id}/history`).expect(404);
+    const row = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
+    expect(row.messages).toHaveLength(3);
+    expect(row.messages.at(-1).content).toBe(receipt.message);
+  });
+
+  test('the shipped native OpenClaw adapter changes the same real Mongo note as Nestor UI', async () => {
+    const server = createServer(app);
+    const address = await listenLoopback(server);
+    try {
+      const adapterUrl = pathToFileURL(path.resolve(__dirname, '../../../integrations/openclaw/super-dad-memory/core-notes.js')).href;
+      const { stdout } = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', `
+        const { createCoreNotesClient } = await import(process.argv[2]);
+        const client = createCoreNotesClient({ baseUrl: process.argv[1] });
+        const note = await client({ action: 'remember', text: 'Synthetic native adapter note' });
+        const corrected = await client({ action: 'remember', id: note.id, text: 'Synthetic corrected native note' });
+        console.log(JSON.stringify(corrected));
+      `, `http://127.0.0.1:${address.port}`, adapterUrl], { windowsHide: true, timeout: 15000 });
+      const note = JSON.parse(stdout);
+      expect(note.authority).toBe('agentx.core');
+      const listed = await request(app).post('/api/voice-personas/private/notes').send({ operation: 'list' }).expect(200);
+      expect(listed.body.data.notes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: note.id, text: 'Synthetic corrected native note' })
+      ]));
+      await request(app).post('/api/voice-personas/private/notes').send({ operation: 'forget', id: note.id }).expect(200);
+    } finally {
+      await new Promise(resolve => { server.close(resolve); server.closeAllConnections?.(); });
+    }
+  });
+
+  test('Core, Nestor UI and native voice share notes without an OpenClaw dependency', async () => {
+    const base = '/api/voice-personas';
+    const created = await request(app).post(`${base}/private/notes`).send({ operation: 'remember',
+      text: 'Synthetic observatory preference', kind: 'preference' }).expect(200);
+    const id = created.body.data.id;
+    expect(created.body.data.authority).toBe('agentx.core');
+    const native = await request(app).post('/api/consumers/nestor/v1/memory/notes').send({ action: 'search', query: 'observatory' }).expect(200);
+    expect(native.body.data.notes).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
+    const voice = await request(app).get('/api/voix/memory/active').expect(200);
+    expect(voice.body.data.memories).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
+    const session = await request(app).post(`${base}/private/sessions`).send({ packId: 'personal_operator', backend: 'agentx' }).expect(201);
+    await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'observatory' }).expect(200);
+    expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('Synthetic observatory preference');
+    const family = await request(app).post(`${base}/sessions`).send({ packId: 'kidx_nestor', backend: 'agentx' }).expect(201);
+    await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'observatory' }).expect(200);
+    expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Synthetic observatory preference');
+    await request(app).post('/api/voix/memory/' + id + '/forget').send({}).expect(200);
+    expect((await request(app).post(`${base}/private/notes`).send({ operation: 'list' })).body.data.notes.some(note => note.id === id)).toBe(false);
+  });
+
+  test('Nestor keeps one shopping list through MCP', async () => {
+    const call = (id, args) => request(app).post('/mcp').send({ jsonrpc: '2.0', id, method: 'tools/call',
+      params: { name: 'shopping_list', arguments: args } }).expect(200);
+    const tools = await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 1, method: 'tools/list' }).expect(200);
+    expect(tools.body.result.tools.map(tool => tool.name)).toContain('shopping_list');
+    await call(2, { action: 'add', items: ['Synthetic avocado', 'Synthetic lime'] });
+    await call(3, { action: 'add', items: ['synthetic avocado'] });
+    const listed = await call(4, { action: 'list' });
+    expect(listed.body.result.structuredContent.items).toEqual(['Synthetic avocado', 'Synthetic lime']);
+    const refused = await call(5, { action: 'add', items: [] });
+    expect(refused.body.result.isError).toBe(true);
+    // The desk and the Kids Room share the same list over HTTP.
+    await request(app).post('/api/family/shopping/add').send({ items: ['Synthetic bread'] }).expect(200);
+    const bought = await request(app).post('/api/family/shopping/bought').send({ items: ['synthetic lime'] }).expect(200);
+    expect(bought.body.data.items).toEqual(['Synthetic avocado', 'Synthetic bread']);
+    await request(app).post('/api/family/shopping/add').send({ items: [] }).expect(400);
+  });
+
+  test('HTTP and MCP share personal tasks, while family approval uses the same canonical store', async () => {
+    const created = await request(app).post('/api/secretary/tasks').send({ title: 'Synthetic personal task' }).expect(201);
+    const task = created.body.data.task;
+    const listed = await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'list_personal_tasks', arguments: {} } }).expect(200);
+    expect(listed.body.result.structuredContent.tasks).toEqual(expect.arrayContaining([expect.objectContaining({ id: task.id })]));
+    // Weekdays come from the server in the household zone, never from the model (#43):
+    // 02:30Z on the 25th is still Thursday the 24th in America/Toronto.
+    await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 5, method: 'tools/call',
+      params: { name: 'update_personal_task', arguments: { ref: task.id, dueAt: '2026-09-25T02:30:00.000Z' } } }).expect(200);
+    const dated = (await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 6, method: 'tools/call',
+      params: { name: 'list_personal_tasks', arguments: {} } }).expect(200)).body.result.structuredContent;
+    expect(dated.tasks.find(item => item.id === task.id)).toMatchObject({ dueLocal: 'jeudi 24 septembre', relevantUntilLocal: null });
+    expect(dated.todayLocal).toMatch(/^[a-zé]+ \d{1,2} [a-zéû]+$/);
+    const updated = await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 3, method: 'tools/call',
+      params: { name: 'update_personal_task', arguments: { ref: task.id, relevantUntil: '2020-01-01' } } }).expect(200);
+    expect(updated.body.result.structuredContent).toMatchObject({ id: task.id, lane: 'expired' });
+    const briefed = await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 4, method: 'tools/call',
+      params: { name: 'personal_briefing', arguments: {} } }).expect(200);
+    expect(briefed.body.result.structuredContent.text).toContain('Activité passée : 1 tâche à fermer');
+    await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'complete_personal_task', arguments: { ref: task.id } } }).expect(200);
+    expect((await PipelineTask.findOne({ pipelineId: task.id })).status).toBe('done');
+
+    const launched = await request(app).post('/api/family/launch').send({
+      profile: { profileId: 'synthetic-child', displayName: 'Example child' },
+      routines: [{ title: 'Synthetic family task' }]
+    }).expect(201);
+    const chore = launched.body.data.routines[0];
+    expect(Number(chore.id)).toBe(Number(task.id) + 1);
+    await request(app).post('/api/secretary/tasks/complete').send({ ref: chore.id }).expect(404);
+    await request(app).post('/api/family/chores/check-in').send({ ref: chore.id, profileId: 'synthetic-child' }).expect(200);
+    expect((await PipelineTask.findOne({ pipelineId: chore.id })).status).toBe('review');
+    await request(app).post('/api/family/chores/approve').send({ ref: chore.id }).expect(200);
+    expect((await PipelineTask.findOne({ pipelineId: chore.id })).status).toBe('done');
+  });
+
+  test('persists and resumes a personal conversation without exposing it through child routes', async () => {
+    const base = '/api/voice-personas';
+    const created = await request(app).post(`${base}/private/sessions`).send({
+      packId: 'personal_operator', backend: 'agentx', label: 'Synthetic private conversation'
+    }).expect(201);
+    const id = created.body.data.session.sessionId;
+    const turn = await request(app).post(`${base}/private/sessions/${id}/turns/text`).send({ text: 'Synthetic private input' }).expect(200);
+    expect(turn.body.data.reply.text).toBe('Synthetic response');
+    expect(turn.body.data.tools.status).toBe('not_supported');
+    const canonical = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
+    expect(canonical.messages.map(message => message.content)).toEqual(['Synthetic private input', 'Synthetic response']);
+    expect(canonical.surfaceSession.turnCount).toBe(1);
+    await request(app).get(`/api/history/${canonical._id}`).expect(404);
+    const history = await request(app).get(`${base}/private/sessions/${id}/history`).expect(200);
+    expect(history.body.data.policy.historyAuthority).toBe('agentx.core.conversations');
+    expect(history.body.data.history).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'user', content: 'Synthetic private input' }),
+      expect.objectContaining({ role: 'assistant', content: 'Synthetic response' })
+    ]));
+    const recent = await request(app).get(`${base}/private/sessions/recent`).expect(200);
+    expect(recent.body.data.sessions.some(session => session.sessionId === id)).toBe(true);
+    await request(app).post(`${base}/private/sessions/${id}/turns/text`).send({ text: 'Synthetic follow-up' }).expect(200);
+    expect(executeForTest.mock.calls.at(-1)[0].messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'user', content: 'Synthetic private input' })
+    ]));
+    const calls = executeForTest.mock.calls.length;
+    await request(app).get(`${base}/family/sessions/${id}/history`).expect(404);
+    await request(app).post(`${base}/sessions/${id}/turns/text`).send({ text: 'Synthetic child attempt' }).expect(403);
+    await request(app).post(`${base}/sessions`).send({ packId: 'personal_operator' }).expect(403);
+    expect(executeForTest).toHaveBeenCalledTimes(calls);
+  });
+
+  test('family Nestor reads the Kids Room routines and keeps a child idea for the parent (#41, #13)', async () => {
+    await request(app).post('/api/family/launch').send({
+      profile: { profileId: 'idea-child', displayName: 'Synthetic idea child' },
+      routines: [{ title: 'Synthetic feed the fish', cadence: 'daily' }]
+    }).expect(201);
+    await request(app).post('/api/secretary/tasks').send({ title: 'Synthetic adult-only errand' });
+    const base = '/api/voice-personas/family/sessions';
+    const id = (await request(app).post(base).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: "Qu'est-ce que je dois faire aujourd'hui?" }).expect(200);
+    const prompt = executeForTest.mock.calls.at(-1)[0].messages.map(message => message.content).join('\n');
+    expect(prompt).toContain('Synthetic idea child : à faire : Synthetic feed the fish');
+    expect(prompt).not.toContain('Synthetic adult-only errand');
+    expect(prompt).not.toContain('has been saved for Dad');
+
+    const personalBefore = await PipelineTask.countDocuments({ service: 'personal' });
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: "J'ai une idée : une cabane dans l'arbre" }).expect(200);
+    expect(executeForTest.mock.calls.at(-1)[0].messages.map(message => message.content).join('\n')).toContain('an idea and it has been saved for Dad to review');
+    const idea = await PlanningItem.findOne({ type: 'idea', tags: 'origin:family' }).lean();
+    expect(idea).toMatchObject({ status: 'inbox', summary: "J'ai une idée : une cabane dans l'arbre" });
+    expect(idea.tags).toEqual(expect.arrayContaining(['origin:family', 'kind:idea']));
+    expect(await PipelineTask.countDocuments({ service: 'personal' })).toBe(personalBefore);
+
+    const listed = (await request(app).get('/api/family/ideas').expect(200)).body.data.ideas;
+    expect(listed.find(entry => entry.id === String(idea._id))).toMatchObject({ origin: 'family', kind: 'idea', status: 'inbox' });
+    const promoted = (await request(app).post(`/api/family/ideas/${idea._id}/promote`).send({ targetType: 'personal' }).expect(201)).body.data;
+    expect(await PipelineTask.findOne({ pipelineId: promoted.task.pipelineId }).lean()).toMatchObject({ service: 'personal', source: 'planning-idea' });
+    expect((await request(app).post(`/api/family/ideas/${idea._id}/promote`).send({ targetType: 'personal' }).expect(409)).body.code).toBe('IDEA_ALREADY_REVIEWED');
+    expect((await PlanningItem.findById(idea._id).lean()).promotedTask).toEqual({ kind: 'personal', pipelineId: promoted.task.pipelineId });
+  });
+
+  test('a family math question streams its picture first and Nestor answers without waiting for inference (#131)', async () => {
+    const base = '/api/voice-personas/family/sessions';
+    const id = (await request(app).post(base).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const ndjson = (res, done) => { let text = ''; res.setEncoding('utf8'); res.on('data', chunk => { text += chunk; }); res.on('end', () => done(null, text)); };
+    const inferencesBefore = executeForTest.mock.calls.length;
+    const streamed = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Nestor, combien font 8 + 5 ?', stream: true })
+      .buffer(true).parse(ndjson).expect(200);
+    const events = streamed.body.split('\n').filter(Boolean).map(line => JSON.parse(line));
+    expect(events[0]).toEqual({ type: 'scene', scene: { schema: 'agentx.math-scene.v1', kind: 'add', a: 8, b: 5 } });
+    expect(events.at(-1).type).toBe('done');
+    expect(events.at(-1).data.reply.text).toBe('8 plus 5, ça fait 13 ! Regarde : 2 cubes orange complètent la dizaine, et il en reste 3.');
+    expect(events.at(-1).data.reply.language).toBe('fr');
+    expect(events.at(-1).data.routing.tier).toBe('deterministic');
+    expect(executeForTest.mock.calls.length).toBe(inferencesBefore);
+
+    const plain = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Raconte une histoire', stream: true })
+      .buffer(true).parse(ndjson).expect(200);
+    expect(plain.body).not.toContain('"type":"scene"');
+
+    // The mask's receipt is kept once on that turn; the picture is recomputed from the recorded question.
+    const traceId = events.at(-1).data.traceId;
+    const receipt = (await request(app).post('/api/family/math-receipts').send({ sessionId: id, traceId, status: 'applied' }).expect(200)).body.data;
+    expect(receipt).toMatchObject({ duplicate: false, receipt: { schema: 'agentx.math-scene.v1', kind: 'add', a: 8, b: 5, status: 'applied' } });
+    expect((await request(app).post('/api/family/math-receipts').send({ sessionId: id, traceId, status: 'applied' }).expect(200)).body.data.duplicate).toBe(true);
+    expect((await request(app).post('/api/family/math-receipts').send({ sessionId: id, traceId, status: 'rejected', reason: 'no-face' }).expect(409)).body.code).toBe('MATH_RECEIPT_CONFLICT');
+    const plainTrace = plain.body.split('\n').filter(Boolean).map(line => JSON.parse(line)).at(-1).data.traceId;
+    expect((await request(app).post('/api/family/math-receipts').send({ sessionId: id, traceId: plainTrace, status: 'applied' }).expect(409)).body.code).toBe('MATH_RECEIPT_NO_PICTURE');
+    expect((await request(app).post('/api/family/math-receipts').send({ sessionId: id, traceId, status: 'shown' }).expect(400)).body.code).toBe('MATH_RECEIPT_INVALID');
+    // The parent journal sees which picture was drawn on the child's screen (#168).
+    const journal = (await request(app).get('/api/voice-personas/audit/recent?childSafe=true&limit=10').expect(200)).body.data.audit;
+    expect(journal.find(row => row.traceId === traceId).sceneReceipt).toMatchObject({ kind: 'add', a: 8, b: 5, status: 'applied' });
+  });
+
+  test('screen blocks stream as show events, never as speech, and secrets are not retained (#167)', async () => {
+    const base = '/api/voice-personas/private/sessions';
+    const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const ndjson = (res, done) => { let text = ''; res.setEncoding('utf8'); res.on('data', chunk => { text += chunk; }); res.on('end', () => done(null, text)); };
+    executeForTest.mockResolvedValueOnce({ ok: true, metadata: { model: 'synthetic' }, body: { response:
+      'Je t’ai mis les étapes à l’écran.\n<show kind="list" title="Étapes">\n1. Ouvrir\n2. Brancher\n3. Tester\n4. Fermer\n</show>\n'
+      + '<show kind="secret" title="Clé">sk-synthetic-secret-value</show>\nOn commence?' } });
+    const streamed = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Montre-moi les étapes', channel: 'voice', stream: true })
+      .buffer(true).parse(ndjson).expect(200);
+    const events = streamed.body.split('\n').filter(Boolean).map(line => JSON.parse(line));
+    const spoken = events.filter(event => event.type === 'delta').map(event => event.delta).join('');
+    expect(spoken).not.toMatch(/Brancher|sk-synthetic|show/);
+    expect(events.filter(event => event.type === 'show').map(event => event.block.kind)).toEqual(['list', 'secret']);
+    const done = events.at(-1).data;
+    expect(done.reply.text).toBe('Je t’ai mis les étapes à l’écran.\n\nOn commence?');
+    expect(done.display[1]).toMatchObject({ kind: 'secret', body: 'sk-synthetic-secret-value' });
+
+    const resumed = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+    expect(resumed.turns[0].display[0]).toMatchObject({ kind: 'list', title: 'Étapes' });
+    expect(resumed.turns[0].display[1]).toMatchObject({ kind: 'secret', body: '', redacted: true });
+    expect(JSON.stringify(await Conversation.findOne({ 'messages.turn.sessionId': id }).lean())).not.toContain('sk-synthetic-secret-value');
+
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Lis-moi la troisième étape' }).expect(200);
+    const prompt = executeForTest.mock.calls.at(-1)[0];
+    const history = prompt.messages.map(message => message.content).join('\n');
+    expect(history).toContain('3. Tester');
+    expect(history).not.toContain('sk-synthetic-secret-value');
+    expect(prompt.messages[0].content).toContain('kind="secret"');
+  });
+
+  test('an image block is resolved by Core, streamed to the visual zone and kept with the turn (#168)', async () => {
+    const base = '/api/voice-personas/family/sessions';
+    const previous = process.env.SEARXNG_URL, originalFetch = global.fetch, searches = [];
+    process.env.SEARXNG_URL = 'http://searxng.example.test';
+    const upstream = jest.spyOn(global, 'fetch').mockImplementation(async (url, options) => {
+      if (!String(url).startsWith('http://searxng.example.test/')) return originalFetch(url, options);
+      searches.push(new URL(url));
+      return new Response(JSON.stringify({ results: [{ img_src: 'https://images.example.test/giraffe.jpg',
+        url: 'https://zoo.example.test/giraffe', title: 'Girafe' }] }), { headers: { 'Content-Type': 'application/json' } });
+    });
+    const ndjson = (res, done) => { let text = ''; res.setEncoding('utf8'); res.on('data', chunk => { text += chunk; }); res.on('end', () => done(null, text)); };
+    try {
+      const id = (await request(app).post(base).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+      executeForTest.mockResolvedValueOnce({ ok: true, metadata: { model: 'synthetic' }, body: { response:
+        'Je te montre une girafe! <show kind="image" source="web" title="Une girafe">girafe savane</show> Elle mange des feuilles.' } });
+      const streamed = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Montre-moi une girafe', stream: true })
+        .buffer(true).parse(ndjson).expect(200);
+      const events = streamed.body.split('\n').filter(Boolean).map(line => JSON.parse(line));
+      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('<show kind="image" source="web"');
+      expect(events.filter(event => event.type === 'delta').map(event => event.delta).join('')).not.toMatch(/savane|show/);
+      const image = events.find(event => event.type === 'show').block;
+      expect(image).toMatchObject({ kind: 'image', source: 'web', status: 'found',
+        image: { url: 'https://images.example.test/giraffe.jpg', sourceLabel: 'Internet' } });
+      expect(searches[0].searchParams.get('safesearch')).toBe('2');
+      expect(events.at(-1).data.display[0].status).toBe('found');
+      const resumed = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+      expect(resumed.turns[0].display[0]).toMatchObject({ kind: 'image', status: 'found', image: { url: 'https://images.example.test/giraffe.jpg' } });
+      await request(app).get('/api/voice-personas/family/visuals/file?source=photos&path=a.jpg').expect(404);
+    } finally {
+      upstream.mockRestore();
+      if (previous === undefined) delete process.env.SEARXNG_URL; else process.env.SEARXNG_URL = previous;
+    }
+  });
+
+  test('the background brain reviews a recorded turn, the page receives it, and the next turn can correct itself (#169)', async () => {
+    const base = '/api/voice-personas/private/sessions';
+    const previous = process.env.HOUSEHOLD_BRAIN_ENABLED;
+    process.env.HOUSEHOLD_BRAIN_ENABLED = 'true';
+    try {
+      const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+      executeForTest.mockResolvedValueOnce({ ok: true, metadata: { model: 'synthetic' }, body: { response: 'Une araignée a six pattes.' } });
+      executeForTest.mockResolvedValueOnce({ ok: true, metadata: { model: 'synthetic-brain' }, body: { response: JSON.stringify({
+        suggestions: ['Et un scorpion?'], corrections: ['Une araignée a huit pattes, pas six.'], interjection: { text: 'Petite correction : huit pattes.', urgent: false } }) } });
+      const turn = (await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Combien de pattes a une araignée?' }).expect(200)).body.data;
+      const review = (await request(app).get(`${base}/${id}/brain?after=${turn.traceId}`).expect(200)).body.data.review;
+      expect(review).toMatchObject({ traceId: turn.traceId, suggestions: ['Et un scorpion?'], interjection: { text: 'Petite correction : huit pattes.' } });
+      const reviewer = executeForTest.mock.calls.at(-1)[0];
+      expect(reviewer).toMatchObject({ taskType: 'master_brain', think: false, callerDetail: 'agentx-household/brain/private' });
+      expect(reviewer.messages[1].content).toContain('Nestor (spoken): Une araignée a six pattes.');
+      await request(app).get(`/api/voice-personas/family/sessions/${id}/brain`).expect(404);
+
+      process.env.HOUSEHOLD_BRAIN_ENABLED = 'false';
+      await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Tu es sûr?' }).expect(200);
+      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('Possible corrections: Une araignée a huit pattes, pas six.');
+    } finally {
+      if (previous === undefined) delete process.env.HOUSEHOLD_BRAIN_ENABLED; else process.env.HOUSEHOLD_BRAIN_ENABLED = previous;
+    }
+  });
+
+  test('Nestor keeps an idea through add_idea and a parent promotes it once to a pipeline task (#13)', async () => {
+    const kept = await request(app).post('/mcp').send({ jsonrpc: '2.0', id: 9, method: 'tools/call',
+      params: { name: 'add_idea', arguments: { text: 'Synthetic idea: a weekly family game night', tags: ['maison'] } } }).expect(200);
+    const idea = kept.body.result.structuredContent.idea;
+    expect(idea).toMatchObject({ origin: 'nestor', kind: 'idea', status: 'inbox' });
+    expect(await PipelineTask.countDocuments({ sourceKey: `idea:${idea.id}` })).toBe(0);
+    // Planning targets still require a shaped idea; execution targets are the parent's review.
+    expect((await request(app).post(`/api/planning/ideas/${idea.id}/promote`).send({ targetType: 'workstream' }).expect(409)).body.code).toBe('PLANNING_IDEA_NOT_SHAPED');
+    const promoted = (await request(app).post(`/api/planning/ideas/${idea.id}/promote`).send({ targetType: 'task' }).expect(201)).body.data;
+    expect(await PipelineTask.find({ source: 'planning-idea', sourceKey: `idea:${idea.id}` }).lean()).toHaveLength(1);
+    expect(promoted.idea.status).toBe('promoted');
+    const setAside = await request(app).post(`/api/family/ideas/${idea.id}/set-aside`).send({ action: 'reject' }).expect(409);
+    expect(setAside.body.code).toBe('IDEA_ALREADY_REVIEWED');
+  });
+});

@@ -1,0 +1,571 @@
+/**
+ * Model Router Service
+ * Routes chat requests to appropriate Ollama host based on model/task complexity.
+ * Static config (TASK_MODELS, host state) lives in modelRouterConfig.js.
+ * This file handles health checks, failover state, classification, and inference telemetry.
+ */
+
+const logger = require('../../config/logger');
+const fetch = require('node-fetch');
+const alertService = require('./alertService');
+const { getFetchOptions } = require('../helpers/httpAgent');
+const { assertHostAvailableForConsumer } = require('./benchmarkClaimGuard');
+const { characterizeRouteRequest } = require('./routing/routeDecision');
+const { executeAdmittedOllamaAttempt } = require('./routing/inferenceAttemptExecutor');
+// Telemetry lives in routing/inferenceTelemetry.js; re-exported below
+// for symbol stability, matching the benchmarkClaimService precedent.
+const { recordInference } = require('./routing/inferenceTelemetry');
+const {
+    HOSTS,
+    refreshHosts,
+    TASK_MODELS,
+    CLASSIFICATION_MODEL,
+    CLASSIFICATION_HOST,
+    CLASSIFICATION_PROMPT,
+    isClassifiableTask,
+    ensureTaskModelOverridesLoaded,
+    getTargetForModel,
+    getAdvisoryTargetForModel,
+    getModelForTask,
+    getAdvisoryModelForTask,
+    getRoutingConfigVersion,
+    getEquivalentClassifiableTarget
+} = require('./modelRouterConfig');
+
+async function getHostPinStatus(hostUrl) {
+    try {
+        const hostPrefService = require('./hostPreferenceService');
+        const status = await hostPrefService.getPinStatus(hostUrl);
+        return status;
+    } catch {
+        return { status: 'idle', pinnedModels: [], loadedModel: null };
+    }
+}
+
+async function resolveClassificationRuntime(classificationHost, classificationModel) {
+    if ((process.env.AGENTX_CLASSIFIER_RESPECT_PRIMARY_PIN || 'true').toLowerCase() === 'false') {
+        return { model: classificationModel, source: 'configured' };
+    }
+
+    try {
+        const hostPrefService = require('./hostPreferenceService');
+        const pref = await hostPrefService.getByHost(classificationHost);
+        const primaryPin = hostPrefService.getPinnedEntries(pref)?.[0]?.model || null;
+        if (primaryPin) {
+            return { model: primaryPin, source: 'host_preference_pin' };
+        }
+    } catch (err) {
+        logger.debug('Classifier pin lookup skipped', {
+            host: classificationHost,
+            error: err.message
+        });
+    }
+
+    return { model: classificationModel, source: 'configured' };
+}
+
+// ---------------------------------------------------------------------------
+// Back-compat helpers (used by unit tests and older call-sites)
+// ---------------------------------------------------------------------------
+
+const HEALTH_CACHE_TTL_MS = parseInt(process.env.MODEL_HEALTH_CACHE_TTL_MS || '1000', 10);
+const HEALTH_SLOW_THRESHOLD_MS = parseInt(process.env.MODEL_HEALTH_SLOW_THRESHOLD_MS || '6000', 10);
+const configuredHealthTimeoutMs = parseInt(process.env.MODEL_HEALTH_TIMEOUT_MS || '3000', 10);
+const MODEL_HEALTH_TIMEOUT_MS = Number.isFinite(configuredHealthTimeoutMs) && configuredHealthTimeoutMs > 0
+    ? configuredHealthTimeoutMs
+    : 3000;
+const _healthCache = new Map();
+
+async function getModelHealth(hostUrl, _model = null) {
+    refreshHosts();
+    if (!hostUrl) {
+        return { healthy: false, latency: -1, checkedAt: Date.now() };
+    }
+
+    const cacheKey = `${hostUrl}|${_model || ''}`;
+    const now = Date.now();
+    const cached = _healthCache.get(cacheKey);
+    // Guard against undefined/null checkedAt which would result in NaN
+    if (cached && typeof cached.checkedAt === 'number') {
+        const cacheAgeMs = now - cached.checkedAt;
+        if (cacheAgeMs >= 0 && cacheAgeMs < HEALTH_CACHE_TTL_MS) {
+            return cached;
+        }
+    }
+
+    // Delegate to canonical checkHostHealth and map to legacy shape
+    const health = await checkHostHealth(hostUrl);
+    const result = {
+        healthy: health.status === 'online',
+        latency: health.latency,
+        checkedAt: Date.now(),
+        ...(health.error ? { error: health.error } : {})
+    };
+    _healthCache.set(cacheKey, result);
+    return result;
+}
+
+async function classifyAndRoute(message, options = {}) {
+    refreshHosts();
+    const { taskType = null } = options;
+
+    // Minimal deterministic behavior for tests: if taskType is given, route to primary
+    // unless health is slow/unhealthy.
+    const primaryHost = HOSTS.primary;
+    const secondaryHost = HOSTS.secondary;
+
+    if (!primaryHost) {
+        logger.error('No primary Ollama host configured');
+        throw new Error('No primary Ollama host configured');
+    }
+
+    const primaryHealth = await getModelHealth(primaryHost, null);
+    const shouldFailover = !primaryHealth.healthy || primaryHealth.latency > HEALTH_SLOW_THRESHOLD_MS;
+
+    if (!shouldFailover) {
+        return {
+            host: primaryHost,
+            failedOver: false,
+            taskType: taskType || 'default',
+            message
+        };
+    }
+
+    // Alert on failover (best-effort)
+    try {
+        if (alertService?.evaluateEvent) {
+            await alertService.evaluateEvent({
+                component: 'model-router',
+                metric: 'model_failover',
+                value: 1,
+                source: 'model-router',
+                additionalData: {
+                    primary: primaryHost,
+                    backup: secondaryHost,
+                    latency: primaryHealth.latency
+                }
+            });
+        }
+    } catch (_e) {
+        // best-effort
+    }
+
+    // Verify backup quickly (best-effort)
+    await getModelHealth(secondaryHost, null);
+
+    return {
+        host: secondaryHost,
+        failedOver: true,
+        taskType: taskType || 'default',
+        message
+    };
+}
+
+/**
+ * Classify a query using the front-door model (Qwen)
+ * @param {string} message - User message to classify
+ * @param {number} timeout - Request timeout in ms (default 10s)
+ * @returns {Promise<string>} Task classification
+ */
+async function classifyQuery(message, timeout = 10000) {
+    refreshHosts();
+    const classificationHost = HOSTS[CLASSIFICATION_HOST] || HOSTS.secondary || HOSTS.primary;
+    const { model: classificationModel, source: classificationModelSource } =
+        await resolveClassificationRuntime(classificationHost, CLASSIFICATION_MODEL);
+
+    const controller = new AbortController();
+    // NOTE: must always clearTimeout (success or failure) so the timer does
+    // not leak as an open handle (e.g., during tests where fetch is mocked
+    // to reject immediately). Cleared in the finally block below.
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    try {
+        await assertHostAvailableForConsumer(classificationHost, {
+            callerDetail: 'classification',
+            model: classificationModel,
+            path: '/api/generate'
+        });
+
+        const payload = {
+            model: classificationModel,
+            prompt: CLASSIFICATION_PROMPT + message,
+            stream: false,
+            options: {
+                temperature: 0.1,
+                num_predict: 20
+            }
+        };
+        const attempt = await executeAdmittedOllamaAttempt({
+            hostUrl: classificationHost,
+            model: classificationModel,
+            payload,
+            useChat: false,
+            stream: false,
+            timeoutMs: timeout,
+            admissionKind: 'classifier',
+            principal: 'core-classifier',
+            signal: controller.signal
+        });
+        const { response, data } = attempt;
+
+        if (!response.ok) {
+            throw new Error(`Classification failed: ${response.statusText}`);
+        }
+
+        const classification = data.response?.trim().toLowerCase().replace(/[^a-z_]/g, '') || 'general_chat';
+
+        // Validate classification — must be in the CLASSIFIABLE subset.
+        // Direct-invoke categories (rag_*, buddy_reaction, janitor_ai,
+        // embeddings) are deliberately not advertised in the prompt; if one
+        // leaks through (hallucination, prompt drift) fall back to
+        // general_chat rather than routing freeform chat to an RAG/embed
+        // model.
+        if (isClassifiableTask(classification)) {
+            logger.debug('Query classified', {
+                classification,
+                message: message.substring(0, 50),
+                model: classificationModel,
+                modelSource: classificationModelSource
+            });
+            return classification;
+        }
+
+        if (TASK_MODELS[classification]) {
+            logger.warn('Classifier emitted non-classifiable category, defaulting to general_chat', { classification });
+        } else {
+            logger.warn('Unknown classification, defaulting to general_chat', { classification });
+        }
+        return 'general_chat';
+
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            logger.warn('Classification timed out, using default');
+        } else {
+            logger.error('Classification error', { error: err.message });
+        }
+        return 'general_chat';
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+/**
+ * Smart routing: classify query and determine best model/host
+ * @param {string} message - User message
+ * @param {Object} options - Routing options
+ * @param {boolean} options.autoRoute - Enable auto-classification (default: false)
+ * @param {string} options.taskType - Override task type (skip classification)
+ * @param {string} options.preferredModel - Use specific model if available
+ * @returns {Promise<{ model: string, target: string, taskType: string, routed: boolean }>}
+ */
+async function resolveRouteTarget(message, options = {}) {
+    await ensureTaskModelOverridesLoaded();
+    refreshHosts();
+    const { autoRoute = false, taskType, preferredModel, caller = 'model-router', durationMs = 30000 } = options;
+
+    // If preferred model specified, just return its target
+    if (preferredModel) {
+        const advisory = await getAdvisoryTargetForModel(preferredModel, {
+            caller,
+            durationMs,
+            createSoftClaim: true
+        });
+        // Check if host is mid-swap
+        const pinStatus = await getHostPinStatus(advisory.url);
+        if (pinStatus.status === 'swapping' || pinStatus.status === 'restoring') {
+          return {
+            model: preferredModel,
+            target: advisory.url,
+            taskType: 'user_specified',
+            routed: false,
+            autoRouted: false,
+            classificationMs: 0,
+            host: advisory.host,
+            source: advisory.source,
+            claimId: advisory.claimId,
+            hostBusy: true,
+            hostStatus: pinStatus.status
+          };
+        }
+        return {
+            model: preferredModel,
+            target: advisory.url,
+            taskType: 'user_specified',
+            routed: false,
+            autoRouted: false,
+            classificationMs: 0,
+            host: advisory.host,
+            source: advisory.source,
+            claimId: advisory.claimId
+        };
+    }
+
+    // If explicit task type provided
+    if (taskType && TASK_MODELS[taskType]) {
+        const recommendation = await getAdvisoryModelForTask(taskType, {
+            caller,
+            durationMs,
+            createSoftClaim: true
+        });
+        return {
+            model: recommendation.model,
+            target: recommendation.url,
+            taskType,
+            routed: true,
+            autoRouted: false,
+            classificationMs: 0,
+            host: recommendation.host,
+            source: recommendation.source,
+            claimId: recommendation.claimId,
+            ...(recommendation.degraded && { degraded: recommendation.degraded })
+        };
+    }
+
+    // If auto-routing enabled, classify the query
+    if (autoRoute && message) {
+        const equivalent = getEquivalentClassifiableTarget();
+        if (equivalent) {
+            const recommendation = await getAdvisoryModelForTask(equivalent.representativeTaskType, {
+                caller,
+                durationMs,
+                createSoftClaim: true
+            });
+            return {
+                model: recommendation.model,
+                target: recommendation.url,
+                taskType: 'equivalent_route',
+                routed: true,
+                autoRouted: true,
+                classificationMs: 0,
+                host: recommendation.host,
+                source: recommendation.source,
+                claimId: recommendation.claimId,
+                ...(recommendation.degraded && { degraded: recommendation.degraded }),
+                shortCircuited: true,
+                shortCircuitReason: 'classifier_skipped_equivalent_model_and_host'
+            };
+        }
+        const classificationStartedAt = Date.now();
+        const classification = await classifyQuery(message);
+        const classificationMs = Date.now() - classificationStartedAt;
+        const recommendation = await getAdvisoryModelForTask(classification, {
+            caller,
+            durationMs,
+            createSoftClaim: true
+        });
+        return {
+            model: recommendation.model,
+            target: recommendation.url,
+            taskType: classification,
+            routed: true,
+            autoRouted: true,
+            classificationMs,
+            host: recommendation.host,
+            source: recommendation.source,
+            claimId: recommendation.claimId,
+            ...(recommendation.degraded && { degraded: recommendation.degraded })
+        };
+    }
+
+    // Default: use front-door
+    const defaultTask = getModelForTask('general_chat');
+    return {
+        model: defaultTask.model,
+        target: HOSTS[defaultTask.host] || HOSTS.secondary || HOSTS.primary,
+        taskType: 'default',
+        routed: false,
+        autoRouted: false,
+        classificationMs: 0,
+        host: defaultTask.host || resolveHostKey(HOSTS.secondary || HOSTS.primary)
+    };
+}
+
+/**
+ * Public routing entry point.
+ *
+ * Attaches exactly one RouteDecision v1 per call. Selection happens
+ * entirely inside `resolveRouteTarget`; this wrapper only describes what that
+ * decided, which is why adopting the contract cannot move traffic. Doing it here
+ * rather than at the four internal return sites is what makes "exactly one
+ * decision per request" structural instead of a convention every future branch
+ * has to remember.
+ *
+ * Telemetry never breaks routing: a malformed decision is logged and dropped,
+ * and the caller still gets its target.
+ */
+async function routeRequest(message, options = {}) {
+    const startedAt = Date.now();
+    const result = await resolveRouteTarget(message, options);
+    try {
+        result.decision = characterizeRouteRequest(result, {
+            caller: options.caller,
+            callerDetail: options.callerDetail,
+            consumerContract: options.consumerContract,
+            correlationId: options.correlationId,
+            workItemId: options.workItemId,
+            runtime: options.runtime,
+            attempt: options.attempt,
+            requestedModel: options.preferredModel || null,
+            runtimeOptions: options.runtimeOptions,
+            configVersion: getRoutingConfigVersion(),
+            decisionMs: Date.now() - startedAt,
+        });
+    } catch (err) {
+        logger.warn('RouteDecision build failed (non-fatal)', { error: err.message, code: err.code });
+    }
+    return result;
+}
+
+/**
+ * Check health of a specific host
+ * @param {string} hostKey - 'primary' or 'secondary'
+ * @returns {Promise<{ status: string, models: string[], latency: number }>}
+ */
+async function checkHostHealth(hostKey) {
+    refreshHosts();
+    // Accept configured host keys or a full configured URL.
+    let host = null;
+    if (hostKey === 'primary') host = HOSTS.primary;
+    else if (hostKey === 'secondary') host = HOSTS.secondary;
+    else if (hostKey === 'tertiary') host = HOSTS.tertiary;
+    else if (typeof hostKey === 'string' && hostKey.startsWith('http')) host = hostKey;
+    else if (hostKey === HOSTS.primary) host = HOSTS.primary;
+    else if (hostKey === HOSTS.secondary) host = HOSTS.secondary;
+    else if (hostKey === HOSTS.tertiary) host = HOSTS.tertiary;
+    else if (typeof hostKey === 'string') host = HOSTS[hostKey];
+
+    if (!host) {
+        return { status: 'unknown', models: [], latency: -1 };
+    }
+
+    const start = Date.now();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), MODEL_HEALTH_TIMEOUT_MS);
+
+    try {
+        const url = `${host}/api/tags`;
+        const fetchOptions = getFetchOptions(url, { method: 'GET', signal: controller.signal });
+        const response = await fetch(url, fetchOptions);
+
+        const latency = Date.now() - start;
+
+        if (!response.ok) {
+            return { status: 'error', models: [], latency };
+        }
+
+        let models = [];
+        try {
+            const data = await response.json();
+            models = (data.models || []).map(m => m.name);
+        } catch (_) {
+            // Host is reachable but response body is not parseable
+        }
+
+        return {
+            status: 'online',
+            models,
+            latency,
+            gpuHealth: await require('./hostGpuHealthService').readHostGpuHealth(host)
+        };
+
+    } catch (err) {
+        return {
+            status: 'offline',
+            models: [],
+            latency: Date.now() - start,
+            error: err.message
+        };
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+/**
+ * Get all routing info for debugging/dashboard
+ * @returns {Promise<Object>}
+ */
+async function getRoutingStatus() {
+    await ensureTaskModelOverridesLoaded();
+    refreshHosts();
+    const healthChecks = [
+        checkHostHealth('primary'),
+        checkHostHealth('secondary')
+    ];
+    if (HOSTS.tertiary) healthChecks.push(checkHostHealth('tertiary'));
+
+    const [primaryHealth, secondaryHealth, tertiaryHealth] = await Promise.all(healthChecks);
+
+    const hosts = {
+        primary: { url: HOSTS.primary, ...primaryHealth },
+        secondary: { url: HOSTS.secondary, ...secondaryHealth }
+    };
+    if (HOSTS.tertiary) {
+        hosts.tertiary = { url: HOSTS.tertiary, ...tertiaryHealth };
+    }
+
+    return {
+        hosts,
+        taskModels: TASK_MODELS
+    };
+}
+
+/**
+ * Get health and model inventory across all configured hosts.
+ * @returns {Promise<Array<{hostKey: string, hostUrl: string, status: string, latency: number, models: string[], error?: string, checkedAt: string}>>}
+ */
+async function getAllModelsHealth() {
+    refreshHosts();
+
+    const hostEntries = [
+        { hostKey: 'primary', hostUrl: HOSTS.primary },
+        { hostKey: 'secondary', hostUrl: HOSTS.secondary },
+        { hostKey: 'tertiary', hostUrl: HOSTS.tertiary }
+    ].filter((entry) => !!entry.hostUrl);
+
+    const checks = await Promise.all(hostEntries.map(async (entry) => {
+        const health = await checkHostHealth(entry.hostKey);
+        return {
+            hostKey: entry.hostKey,
+            hostUrl: entry.hostUrl,
+            status: health.status,
+            latency: health.latency,
+            models: health.models || [],
+            ...(health.error ? { error: health.error } : {}),
+            checkedAt: new Date().toISOString()
+        };
+    }));
+
+    return checks;
+}
+
+// ---------------------------------------------------------------------------
+// Inference Telemetry
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the host key ('primary' | 'secondary' | 'tertiary') from a host URL.
+ * @param {string} hostUrl
+ * @returns {string|null}
+ */
+function resolveHostKey(hostUrl) {
+    if (!hostUrl) return null;
+    if (hostUrl === HOSTS.primary) return 'primary';
+    if (hostUrl === HOSTS.secondary) return 'secondary';
+    if (hostUrl === HOSTS.tertiary) return 'tertiary';
+    return null;
+}
+
+module.exports = {
+    getTargetForModel,
+    getModelForTask,
+    classifyQuery,
+    routeRequest,
+    classifyAndRoute,
+    checkHostHealth,
+    getModelHealth,
+    getRoutingStatus,
+    getAllModelsHealth,
+    recordInference,
+    resolveHostKey,
+    HOSTS,
+    TASK_MODELS
+};

@@ -1,0 +1,96 @@
+{
+  "id": "gmail-secretary",
+  "name": "Gmail Secretary",
+  "description": "Typed Gmail tools for Nestor, backed by the local gog CLI with native approvals for sensitive actions.",
+  "version": "1.4.0",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "gmail_secretary_search",
+      "gmail_secretary_read",
+      "gmail_secretary_organize",
+      "gmail_secretary_draft",
+      "gmail_secretary_send",
+      "gmail_secretary_backlog_next",
+      "gmail_secretary_apply_triage",
+      "gmail_secretary_evidence"
+    ]
+  },
+  "toolMetadata": {
+    "gmail_secretary_search": {
+      "optional": true
+    },
+    "gmail_secretary_read": {
+      "optional": true
+    },
+    "gmail_secretary_organize": {
+      "optional": true
+    },
+    "gmail_secretary_draft": {
+      "optional": true
+    },
+    "gmail_secretary_send": {
+      "optional": true
+    },
+    "gmail_secretary_backlog_next": {
+      "optional": true
+    },
+    "gmail_secretary_apply_triage": {
+      "optional": true
+    },
+    "gmail_secretary_evidence": {
+      "optional": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "gogPath": {
+        "type": "string"
+      },
+      "account": {
+        "type": "string"
+      },
+      "keyringPasswordFile": {
+        "type": "string"
+      },
+      "timezone": {
+        "type": "string"
+      },
+      "attachmentRoot": {
+        "type": "string"
+      },
+      "auditLog": {
+        "type": "string"
+      },
+      "triageStateFile": {
+        "type": "string"
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 120000
+      },
+      "maxOutputBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 1000000
+      },
+      "evidenceHelperPath": {
+        "type": "string"
+      },
+      "evidenceRoot": {
+        "type": "string"
+      },
+      "coreUrl": {
+        "type": "string"
+      },
+      "readingStateFile": {
+        "type": "string"
+      }
+    }
+  }
+}

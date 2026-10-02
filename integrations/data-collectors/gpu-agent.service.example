@@ -1,0 +1,22 @@
+# systemd user unit for the AgentX GPU collector, on the Core host.
+# Install: copy to ~/.config/systemd/user/agentx-gpu-agent.service, adjust the
+# checkout path, then `systemctl --user daemon-reload` and
+# `systemctl --user enable --now agentx-gpu-agent.service`.
+# The user's SSH key must already be authorized on every remote GPU host and the
+# host keys present in ~/.ssh/known_hosts (BatchMode never prompts).
+[Unit]
+Description=AgentX GPU telemetry collector (Data)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/AgentX/integrations/data-collectors
+Environment=GPU_AGENT_HOSTS_FILE=%h/.config/agentx/gpu-hosts.json
+EnvironmentFile=%h/.config/agentx/gpu-agent.env
+ExecStart=/usr/bin/node %h/AgentX/integrations/data-collectors/gpu-agent.js
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,1453 @@
+/**
+ * Unit Tests for Host Preference Service
+ */
+
+// Mock logger to suppress output during tests
+jest.mock('../../config/logger', () => ({
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn()
+}));
+
+const mockObservePinRestoreFailure = jest.fn(async () => ({ emitted: 1, matched: 1 }));
+jest.mock('../../src/services/laneObservabilityService', () => ({
+  observePinRestoreFailure: (...args) => mockObservePinRestoreFailure(...args)
+}));
+
+const mockRunHostModelOperation = jest.fn(async (_options, operation) => operation({
+  signal: new AbortController().signal,
+  assertActive: jest.fn()
+}));
+jest.mock('../../src/services/inferenceAdmissionService', () => ({
+  runHostModelOperation: (...args) => mockRunHostModelOperation(...args)
+}));
+
+const defaultHostOperationImplementation = async (_options, operation) => operation({
+    signal: new AbortController().signal,
+    assertActive: jest.fn()
+  });
+
+const HostPreference = require('../../models/HostPreference');
+const service = require('../../src/services/hostPreferenceService');
+const hostGate = require('../../src/services/hostGate');
+
+afterEach(async () => {
+  await HostPreference.deleteMany({});
+  mockRunHostModelOperation.mockReset();
+  mockRunHostModelOperation.mockImplementation(defaultHostOperationImplementation);
+});
+
+describe('hostPreferenceService', () => {
+  describe('benchmark runtime snapshot exactness', () => {
+    const HOST_URL = 'http://snapshot-host:11434';
+    let originalFetch;
+
+    beforeEach(() => {
+      originalFetch = global.fetch;
+      jest.spyOn(hostGate, 'hostHasInflightAnywhere').mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+      jest.restoreAllMocks();
+    });
+
+    it('rejects a resident whose context is not observable', async () => {
+      global.fetch = jest.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          models: [{ name: 'qwen:latest', expires_at: '9999-12-31T23:59:59Z' }]
+        })
+      }));
+
+      await expect(service.captureBenchmarkRuntime(HOST_URL)).rejects.toMatchObject({
+        code: 'BENCHMARK_RUNTIME_SNAPSHOT_INCOMPLETE'
+      });
+    });
+
+    it.each([
+      ['digest', { size: 8_000_000_000, size_vram: 7_500_000_000, context_length: 32768 }],
+      ['artifact size', { digest: 'sha256:qwen', size_vram: 7_500_000_000, context_length: 32768 }],
+      ['VRAM size', { digest: 'sha256:qwen', size: 8_000_000_000, context_length: 32768 }]
+    ])('rejects a resident whose %s is not observable', async (_field, resident) => {
+      global.fetch = jest.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          models: [{ name: 'qwen:latest', expires_at: '9999-12-31T23:59:59Z', ...resident }]
+        })
+      }));
+
+      await expect(service.captureBenchmarkRuntime(HOST_URL)).rejects.toMatchObject({
+        code: 'BENCHMARK_RUNTIME_SNAPSHOT_INCOMPLETE'
+      });
+    });
+
+    it('captures resident identity, context and keep-alive expiry exactly', async () => {
+      global.fetch = jest.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          models: [{
+            name: 'qwen:latest',
+            digest: 'sha256:qwen',
+            size: 8_000_000_000,
+            size_vram: 7_500_000_000,
+            context_length: 32768,
+            expires_at: '9999-12-31T23:59:59Z'
+          }]
+        })
+      }));
+
+      await expect(service.captureBenchmarkRuntime(HOST_URL)).resolves.toMatchObject({
+        source: 'ollama_ps',
+        exact: true,
+        identityDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+        residents: [{
+          model: 'qwen:latest',
+          digest: 'sha256:qwen',
+          artifactSize: 8_000_000_000,
+          sizeVram: 7_500_000_000,
+          contextLength: 32768,
+          keepAlive: -1
+        }]
+      });
+    });
+
+    it('recognizes the Ollama 0.33 maximum-duration expiry as permanent residency', async () => {
+      const permanentExpiry = new Date(Date.now() + 292 * 365.25 * 24 * 60 * 60 * 1000);
+      global.fetch = jest.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          models: [{
+            name: 'qwen:latest',
+            digest: 'sha256:qwen',
+            size: 8_000_000_000,
+            size_vram: 7_500_000_000,
+            context_length: 262144,
+            expires_at: permanentExpiry.toISOString()
+          }]
+        })
+      }));
+
+      await expect(service.captureBenchmarkRuntime(HOST_URL)).resolves.toMatchObject({
+        residents: [{ model: 'qwen:latest', keepAlive: -1 }]
+      });
+    });
+
+    it('restores a legacy maximum-duration snapshot with permanent keep-alive semantics', async () => {
+      await HostPreference.create({
+        hostUrl: HOST_URL,
+        hostKey: 'primary',
+        status: 'benchmarking',
+        benchmarkClaim: {
+          batchId: 'batch-permanent',
+          claimGeneration: 'generation-permanent',
+          prevStatus: 'ready',
+          claimedAt: new Date()
+        }
+      });
+      const permanentExpiry = new Date(Date.now() + 292 * 365.25 * 24 * 60 * 60 * 1000);
+      global.fetch = jest.fn(async (url, options = {}) => {
+        if (String(url).endsWith('/api/ps')) {
+          return {
+            ok: true,
+            json: async () => ({
+              models: [{
+                name: 'qwen:latest',
+                digest: 'sha256:qwen',
+                size: 8_000_000_000,
+                size_vram: 7_500_000_000,
+                context_length: 262144,
+                expires_at: permanentExpiry.toISOString()
+              }]
+            })
+          };
+        }
+        expect(JSON.parse(options.body).keep_alive).toBe(-1);
+        return { ok: true, text: async () => JSON.stringify({ done: true }) };
+      });
+      const snapshot = {
+        capturedAt: new Date(),
+        source: 'ollama_ps',
+        exact: true,
+        residents: [{
+          model: 'qwen:latest',
+          digest: 'sha256:qwen',
+          artifactSize: 8_000_000_000,
+          sizeVram: 7_500_000_000,
+          contextLength: 262144,
+          keepAlive: 9_223_372_011,
+          expiresAt: permanentExpiry
+        }]
+      };
+      snapshot.identityDigest = service.benchmarkRuntimeSnapshotIdentity(snapshot);
+
+      await expect(service.restoreBenchmarkRuntime(HOST_URL, snapshot, {
+        batchId: 'batch-permanent',
+        claimGeneration: 'generation-permanent'
+      })).resolves.toMatchObject({
+        status: 'ready',
+        verified: true,
+        mode: 'exact_runtime_snapshot',
+        snapshotIdentity: snapshot.identityDigest
+      });
+    });
+
+    it.each([true, false])('corrects expiry after a slow reload and verifies the correction (%s)', async (honorsCorrection) => {
+      await HostPreference.create({
+        hostUrl: HOST_URL,
+        hostKey: 'primary',
+        status: 'benchmarking',
+        benchmarkClaim: {
+          batchId: 'batch-slow-reload',
+          claimGeneration: 'generation-slow-reload',
+          prevStatus: 'ready',
+          claimedAt: new Date()
+        }
+      });
+      let now = Date.now();
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+      const expiresAt = new Date(now + 120_000);
+      let loaded = null;
+      const requestedLifetimes = [];
+      global.fetch = jest.fn(async (url, options = {}) => {
+        if (String(url).endsWith('/api/ps')) {
+          return { ok: true, json: async () => ({ models: loaded ? [loaded] : [] }) };
+        }
+        const lifetime = JSON.parse(options.body).keep_alive;
+        requestedLifetimes.push(lifetime);
+        if (requestedLifetimes.length === 1) now += 8_000;
+        if (!loaded || honorsCorrection) {
+          loaded = {
+            name: 'qwen:latest', digest: 'sha256:qwen',
+            size: 8_000_000_000, size_vram: 7_500_000_000, context_length: 8192,
+            expires_at: new Date(now + lifetime * 1000).toISOString()
+          };
+        }
+        return { ok: true, text: async () => JSON.stringify({ done: true }) };
+      });
+      const snapshot = {
+        capturedAt: new Date(now), source: 'ollama_ps', exact: true,
+        residents: [{
+          model: 'qwen:latest', digest: 'sha256:qwen',
+          artifactSize: 8_000_000_000, sizeVram: 7_500_000_000, contextLength: 8192,
+          keepAlive: 120, expiresAt
+        }]
+      };
+      snapshot.identityDigest = service.benchmarkRuntimeSnapshotIdentity(snapshot);
+      const result = await service.restoreBenchmarkRuntime(HOST_URL, snapshot, {
+        batchId: 'batch-slow-reload', claimGeneration: 'generation-slow-reload'
+      });
+      expect(requestedLifetimes).toEqual([120, 112]);
+      expect(result.verified).toBe(honorsCorrection);
+      expect(result.status).toBe(honorsCorrection ? 'ready' : 'error');
+    });
+
+    it('fails verification when an infinite pre-claim resident returns with only a finite TTL', async () => {
+      await HostPreference.create({
+        hostUrl: HOST_URL,
+        hostKey: 'primary',
+        status: 'benchmarking',
+        benchmarkClaim: {
+          batchId: 'batch-ttl',
+          claimGeneration: 'generation-ttl',
+          prevStatus: 'ready',
+          claimedAt: new Date()
+        }
+      });
+      global.fetch = jest.fn(async (url) => {
+        if (String(url).endsWith('/api/ps')) {
+          return {
+            ok: true,
+            json: async () => ({
+              models: [{
+                name: 'qwen:latest',
+                digest: 'sha256:qwen',
+                size: 8_000_000_000,
+                size_vram: 7_500_000_000,
+                context_length: 32768,
+                expires_at: new Date(Date.now() + 5 * 60_000).toISOString()
+              }]
+            })
+          };
+        }
+        return { ok: true, text: async () => '' };
+      });
+
+      const snapshot = {
+        capturedAt: new Date(),
+        source: 'ollama_ps',
+        exact: true,
+        residents: [{
+          model: 'qwen:latest',
+          digest: 'sha256:qwen',
+          artifactSize: 8_000_000_000,
+          sizeVram: 7_500_000_000,
+          contextLength: 32768,
+          keepAlive: -1,
+          expiresAt: new Date('9999-12-31T23:59:59Z')
+        }]
+      };
+      snapshot.identityDigest = service.benchmarkRuntimeSnapshotIdentity(snapshot);
+      await expect(service.restoreBenchmarkRuntime(HOST_URL, snapshot, {
+        batchId: 'batch-ttl',
+        claimGeneration: 'generation-ttl'
+      })).resolves.toMatchObject({ status: 'error', verified: false });
+    });
+  });
+
+  describe('host identity normalization', () => {
+    let originalEnv;
+
+    beforeEach(() => {
+      originalEnv = { ...process.env };
+      process.env.OLLAMA_HOST = 'http://primary:11434';
+      process.env.OLLAMA_HOST_NAME = 'Host Alpha';
+      process.env.OLLAMA_HOST_2 = 'http://secondary:11434';
+      process.env.OLLAMA_HOST_2_NAME = 'Host Beta';
+      process.env.OLLAMA_HOST_3 = 'http://tertiary:11434';
+      process.env.OLLAMA_HOST_3_NAME = 'Host Gamma';
+      delete process.env.OLLAMA_HOST_SECONDARY;
+      delete process.env.OLLAMA_HOST_TERTIARY;
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it('renders a configured host with its canonical hostKey and preserves drift metadata', () => {
+      const normalized = service.normalizeHostPreferenceIdentity({
+        hostUrl: 'http://tertiary:11434',
+        hostKey: 'primary',
+        displayName: 'Host Gamma'
+      });
+
+      expect(normalized.hostKey).toBe('tertiary');
+      expect(normalized.persistedHostKey).toBe('primary');
+      expect(normalized.configuredHostKey).toBe('tertiary');
+      expect(normalized.hostKeyDrift).toEqual(expect.objectContaining({
+        type: 'host_key_mismatch',
+        persisted: 'primary',
+        configured: 'tertiary'
+      }));
+    });
+
+    it('detects duplicate persisted host keys while active configured keys stay unique', () => {
+      const drift = service.detectHostPreferenceIdentityDrift([
+        { hostUrl: 'http://primary:11434', hostKey: 'primary', displayName: 'Host Alpha' },
+        { hostUrl: 'http://secondary:11434', hostKey: 'secondary', displayName: 'Host Beta' },
+        { hostUrl: 'http://tertiary:11434', hostKey: 'primary', displayName: 'Host Gamma' }
+      ]);
+
+      expect(drift.mismatches).toHaveLength(1);
+      expect(drift.duplicatePersistedHostKeys).toEqual([
+        expect.objectContaining({ hostKey: 'primary', count: 2 })
+      ]);
+      expect(drift.duplicateActiveHostKeys).toEqual([]);
+      expect(drift.hasDrift).toBe(true);
+    });
+
+    it('normalizes configured hostKey on preference writes', async () => {
+      const pref = await service.updatePreference('http://tertiary:11434', {
+        hostKey: 'primary',
+        displayName: 'Host Gamma'
+      });
+
+      expect(pref.hostKey).toBe('tertiary');
+    });
+  });
+
+  describe('getAll / getByHost', () => {
+    it('should return empty array when no preferences exist', async () => {
+      const all = await service.getAll();
+      expect(all).toEqual([]);
+    });
+
+    it('should return all preferences', async () => {
+      await HostPreference.create({ hostUrl: 'http://host1:11434', hostKey: 'primary', pinnedModels: [{ model: 'm1' }] });
+      await HostPreference.create({ hostUrl: 'http://host2:11434', hostKey: 'secondary', pinnedModels: [{ model: 'm2' }] });
+      const all = await service.getAll();
+      expect(all).toHaveLength(2);
+    });
+
+    it('should get preference by hostUrl', async () => {
+      await HostPreference.create({ hostUrl: 'http://host1:11434', hostKey: 'primary', pinnedModels: [{ model: 'm1' }] });
+      const pref = await service.getByHost('http://host1:11434');
+      expect(service.getPinnedModelNames(pref)).toEqual(['m1']);
+    });
+
+    it('should return null for unknown host', async () => {
+      const pref = await service.getByHost('http://unknown:11434');
+      expect(pref).toBeNull();
+    });
+  });
+
+  describe('updatePreference', () => {
+    it('should upsert a new preference', async () => {
+      const pref = await service.updatePreference('http://host1:11434', {
+        hostKey: 'primary',
+        pinnedModels: [{ model: 'model-a' }],
+        vramTotalMiB: 24576
+      });
+      expect(pref.hostUrl).toBe('http://host1:11434');
+      expect(service.getPinnedModelNames(pref)).toEqual(['model-a']);
+      expect(pref.vramTotalMiB).toBe(24576);
+    });
+
+    it('should update an existing preference', async () => {
+      await service.updatePreference('http://host1:11434', { hostKey: 'primary', pinnedModels: [{ model: 'old' }] });
+      const updated = await service.updatePreference('http://host1:11434', { pinnedModels: [{ model: 'new' }] });
+      expect(service.getPinnedModelNames(updated)).toEqual(['new']);
+    });
+  });
+
+  describe('warmDefaultModel', () => {
+    it('should return error result when host is unreachable', async () => {
+      const result = await service.warmDefaultModel('http://127.0.0.1:99999', 'test-model');
+      expect(result.status).toBe('error');
+      expect(result.host).toBe('http://127.0.0.1:99999');
+      expect(result.model).toBe('test-model');
+    });
+
+    it('uses a bounded non-streaming one-token generate warmup with configured context', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn(async () => ({
+        ok: true,
+        text: async () => '{"done":true}'
+      }));
+
+      try {
+        const result = await service.warmDefaultModel('http://warm-host:11434', 'gemma4:26b', {
+          keepAlive: -1,
+          contextSize: 65536
+        });
+
+        expect(result.status).toBe('ok');
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        const [url, options] = global.fetch.mock.calls[0];
+        expect(url).toBe('http://warm-host:11434/api/generate');
+        const payload = JSON.parse(options.body);
+        expect(payload).toEqual({
+          model: 'gemma4:26b',
+          prompt: 'warmup',
+          stream: false,
+          keep_alive: -1,
+          options: {
+            num_predict: 1,
+            num_ctx: 65536
+          }
+        });
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('uses the embeddings endpoint for embedding-only warmup', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn(async () => ({
+        ok: true,
+        text: async () => JSON.stringify({ embedding: [0] })
+      }));
+
+      try {
+        const result = await service.warmDefaultModel('http://warm-host:11434', 'nomic-embed-text:v1.5', {
+          keepAlive: -1
+        });
+
+        expect(result.status).toBe('ok');
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        const [url, options] = global.fetch.mock.calls[0];
+        expect(url).toBe('http://warm-host:11434/api/embeddings');
+        const payload = JSON.parse(options.body);
+        expect(payload).toEqual({
+          model: 'nomic-embed-text:v1.5',
+          prompt: 'warmup',
+          keep_alive: -1
+        });
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('keeps the swap promise fenced until warmup and projection are terminal', async () => {
+      const originalFetch = global.fetch;
+      const hostUrl = 'http://swap-await-host:11434';
+      await HostPreference.create({
+        hostUrl,
+        hostKey: 'primary',
+        pinnedModels: [],
+        loadedModel: null,
+        loadedModels: [],
+        status: 'idle'
+      });
+      let releaseWarmup;
+      let markWarmupStarted;
+      const warmupStarted = new Promise(resolve => { markWarmupStarted = resolve; });
+      global.fetch = jest.fn(() => new Promise(resolve => {
+        releaseWarmup = () => resolve({ ok: true, text: async () => '{"done":true}' });
+        markWarmupStarted();
+      }));
+      const assertAuthorityActive = jest.fn();
+      let settled = false;
+      let pending;
+
+      try {
+        pending = service.swapModel(hostUrl, 'new:model', {
+          signal: new AbortController().signal,
+          assertAuthorityActive
+        }).then(value => {
+          settled = true;
+          return value;
+        });
+        await Promise.race([warmupStarted, pending]);
+        expect(settled).toBe(false);
+        expect((await HostPreference.findOne({ hostUrl }).lean()).status).toBe('swapping');
+
+        releaseWarmup();
+        await expect(pending).resolves.toEqual({ host: hostUrl, model: 'new:model', status: 'ready' });
+        const stored = await HostPreference.findOne({ hostUrl }).lean();
+        expect(stored.loadedModel).toBe('new:model');
+        expect(assertAuthorityActive).toHaveBeenCalled();
+      } finally {
+        releaseWarmup?.();
+        await pending?.catch(() => {});
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('does not publish a completed swap after its durable fence is aborted', async () => {
+      const originalFetch = global.fetch;
+      const hostUrl = 'http://swap-lost-host:11434';
+      await HostPreference.create({
+        hostUrl,
+        hostKey: 'primary',
+        pinnedModels: [],
+        loadedModel: null,
+        loadedModels: [],
+        status: 'idle'
+      });
+      const controller = new AbortController();
+      let markWarmupStarted;
+      const warmupStarted = new Promise(resolve => { markWarmupStarted = resolve; });
+      global.fetch = jest.fn((_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+        markWarmupStarted();
+      }));
+      let pending;
+
+      try {
+        pending = service.swapModel(hostUrl, 'new:model', {
+          signal: controller.signal,
+          assertAuthorityActive: () => {
+            if (controller.signal.aborted) throw controller.signal.reason;
+          }
+        });
+        await Promise.race([warmupStarted, pending]);
+        const lost = Object.assign(new Error('maintenance generation changed'), {
+          code: 'RUNTIME_MUTATION_LEASE_LOST'
+        });
+        controller.abort(lost);
+
+        await expect(pending).rejects.toBe(lost);
+        const stored = await HostPreference.findOne({ hostUrl }).lean();
+        expect(stored.loadedModel).not.toBe('new:model');
+        expect(stored.status).toBe('swapping');
+      } finally {
+        controller.abort();
+        await pending?.catch(() => {});
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('fails closed instead of accepting a stale swapping projection as terminal', async () => {
+      const hostUrl = 'http://stale-swap-host:11434';
+      await HostPreference.create({
+        hostUrl,
+        hostKey: 'primary',
+        pinnedModels: [],
+        loadedModel: null,
+        loadedModels: [],
+        status: 'swapping'
+      });
+
+      await expect(service.swapModel(hostUrl, 'new:model')).rejects.toMatchObject({
+        code: 'HOST_MODEL_SWAP_IN_PROGRESS',
+        statusCode: 409
+      });
+    });
+
+    it('releases an idle resident pin for an exclusive cross-model handoff without deleting the pin', async () => {
+      const originalFetch = global.fetch;
+      const hostUrl = 'http://exclusive-host:11434';
+      await HostPreference.create({
+        hostUrl,
+        hostKey: 'primary',
+        pinnedModels: [{ model: 'normal-model', keepAlive: -1, autoRestore: true }],
+        loadedModel: 'normal-model',
+        loadedModels: ['normal-model'],
+        status: 'ready'
+      });
+      global.fetch = jest.fn(async (url, options) => {
+        if (String(url).endsWith('/api/ps')) {
+          return { ok: true, json: async () => ({ models: [{ name: 'normal-model' }] }) };
+        }
+        return { ok: true, text: async () => '{"done":true}' };
+      });
+
+      try {
+        const result = await service.prepareExclusiveModel(hostUrl, 'open-model');
+        expect(result).toEqual({
+          host: hostUrl,
+          model: 'open-model',
+          status: 'ready',
+          unloaded: ['normal-model']
+        });
+        const unloadCall = global.fetch.mock.calls.find(([url]) => String(url).endsWith('/api/generate'));
+        expect(JSON.parse(unloadCall[1].body)).toEqual({ model: 'normal-model', keep_alive: 0 });
+        const pref = await service.getByHost(hostUrl);
+        expect(service.getPinnedModelNames(pref)).toEqual(['normal-model']);
+        expect(pref.loadedModels).toEqual([]);
+        expect(pref.status).toBe('swapping');
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('fails closed when exclusive handoff cannot prove the resident model inventory', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn(async () => ({ ok: false, status: 503 }));
+      try {
+        const result = await service.prepareExclusiveModel('http://exclusive-host:11434', 'open-model');
+        expect(result).toMatchObject({ status: 'error', unloaded: [] });
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        expect(String(global.fetch.mock.calls[0][0])).toMatch(/\/api\/ps$/);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('does not publish a late exclusive unload after its admission heartbeat is lost', async () => {
+      const originalFetch = global.fetch;
+      const hostUrl = 'http://exclusive-lost-host:11434';
+      await HostPreference.create({
+        hostUrl,
+        hostKey: 'primary',
+        pinnedModels: [{ model: 'normal-model', keepAlive: -1, autoRestore: true }],
+        loadedModel: 'normal-model',
+        loadedModels: ['normal-model'],
+        status: 'ready'
+      });
+      const controller = new AbortController();
+      let releaseLateUnload;
+      global.fetch = jest.fn((url) => {
+        if (String(url).endsWith('/api/ps')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ models: [{ name: 'normal-model' }] })
+          });
+        }
+        return new Promise(resolve => {
+          releaseLateUnload = () => resolve({ ok: true, text: async () => '{"done":true}' });
+        });
+      });
+      const assertAuthorityActive = () => {
+        if (controller.signal.aborted) throw controller.signal.reason;
+      };
+
+      try {
+        const pending = service.prepareExclusiveModel(hostUrl, 'open-model', {
+          signal: controller.signal,
+          assertAuthorityActive
+        });
+        await new Promise(resolve => setImmediate(resolve));
+        const lost = Object.assign(new Error('inference admission heartbeat was lost'), {
+          code: 'RUNTIME_INFERENCE_ADMISSION_LOST'
+        });
+        controller.abort(lost);
+        releaseLateUnload();
+
+        await expect(pending).rejects.toBe(lost);
+        const stored = await HostPreference.findOne({ hostUrl }).lean();
+        expect(stored.status).toBe('ready');
+        expect(stored.loadedModel).toBe('normal-model');
+        expect(stored.loadedModels).toEqual(['normal-model']);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it.each(['maintenance', 'workload', 'inference'])(
+      'startup pin warm performs no Ollama request or projection write while %s owns coordination',
+      async (blocker) => {
+        const originalFetch = global.fetch;
+        const hostUrl = `http://startup-${blocker}:11434`;
+        await HostPreference.create({
+          hostUrl,
+          hostKey: 'primary',
+          pinnedModels: [{ model: 'normal-model', keepAlive: -1, autoRestore: true }],
+          loadedModel: null,
+          loadedModels: [],
+          status: 'idle'
+        });
+        global.fetch = jest.fn();
+        const denied = Object.assign(new Error(`${blocker} coordination blocks maintenance`), {
+          code: 'RUNTIME_MUTATION_LEASE_DENIED'
+        });
+        mockRunHostModelOperation.mockRejectedValueOnce(denied);
+
+        try {
+          await expect(service.warmAllDefaults()).resolves.toEqual([
+            expect.objectContaining({ host: hostUrl, status: 'error', error: denied.message })
+          ]);
+          expect(mockRunHostModelOperation).toHaveBeenCalledWith(
+            expect.objectContaining({
+              principal: 'core-startup-pin-warm',
+              host: hostUrl, model: 'normal-model', kind: 'pin-warm'
+            }),
+            expect.any(Function)
+          );
+          expect(global.fetch).not.toHaveBeenCalled();
+          const stored = await HostPreference.findOne({ hostUrl }).lean();
+          expect(stored.status).toBe('idle');
+          expect(stored.loadedModel).toBeNull();
+          expect(stored.loadedModels).toEqual([]);
+        } finally {
+          global.fetch = originalFetch;
+        }
+      }
+    );
+
+    it('warmHost does not treat a namespaced artifact as satisfying a bare pin', async () => {
+      const originalFetch = global.fetch;
+      const hostUrl = 'http://adapted-host:11434';
+      await HostPreference.create({
+        hostUrl,
+        hostKey: 'primary',
+        pinnedModels: [{ model: 'gemma4:26b', keepAlive: -1 }],
+        status: 'idle'
+      });
+
+      global.fetch = jest.fn(async (url) => {
+        if (typeof url === 'string' && url.endsWith('/api/ps')) {
+          return {
+            ok: true,
+            json: async () => ({
+              models: [{ name: 'ax/gemma4:26b' }]
+            })
+          };
+        }
+        return {
+          ok: true,
+          text: async () => '{"done":true}'
+        };
+      });
+
+      try {
+        const result = await service.warmHost(hostUrl);
+        expect(result[0].status).toBe('ok');
+        const generateCalls = global.fetch.mock.calls.filter(
+          c => typeof c[0] === 'string' && c[0].endsWith('/api/generate')
+        );
+        expect(generateCalls).toHaveLength(1);
+        expect(JSON.parse(generateCalls[0][1].body)).toMatchObject({
+          model: 'gemma4:26b'
+        });
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('warmHost warms generative pins before embedding pins to preserve both', async () => {
+      const originalFetch = global.fetch;
+      const hostUrl = 'http://mixed-host:11434';
+      await HostPreference.create({
+        hostUrl,
+        hostKey: 'secondary',
+        pinnedModels: [
+          { model: 'ax/qwen2.5:7b-instruct-q5_K_M', keepAlive: -1 },
+          { model: 'nomic-embed-text:v1.5', keepAlive: -1 }
+        ],
+        status: 'idle'
+      });
+
+      global.fetch = jest.fn(async (url) => {
+        if (typeof url === 'string' && url.endsWith('/api/ps')) {
+          return { ok: true, json: async () => ({ models: [] }) };
+        }
+        return {
+          ok: true,
+          text: async () => String(url).endsWith('/api/embeddings')
+            ? '{"embedding":[0]}'
+            : '{"done":true}'
+        };
+      });
+
+      try {
+        const result = await service.warmHost(hostUrl);
+        expect(result.map(r => r.model)).toEqual([
+          'ax/qwen2.5:7b-instruct-q5_K_M',
+          'nomic-embed-text:v1.5'
+        ]);
+        const warmCalls = global.fetch.mock.calls
+          .map(c => c[0])
+          .filter(url => typeof url === 'string' && !url.endsWith('/api/ps'));
+        expect(warmCalls).toEqual([
+          'http://mixed-host:11434/api/generate',
+          'http://mixed-host:11434/api/embeddings'
+        ]);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('warmHost reloads a loaded pin when the resident context differs from contextSize', async () => {
+      const originalFetch = global.fetch;
+      const hostUrl = 'http://ctx-mismatch-host:11434';
+      await HostPreference.create({
+        hostUrl,
+        hostKey: 'primary',
+        pinnedModels: [{ model: 'gemma4:26b', keepAlive: -1, contextSize: 65536 }],
+        status: 'ready'
+      });
+
+      global.fetch = jest.fn(async (url) => {
+        if (typeof url === 'string' && url.endsWith('/api/ps')) {
+          return {
+            ok: true,
+            json: async () => ({
+              models: [{ name: 'ax/gemma4:26b', context_length: 32768 }]
+            })
+          };
+        }
+        return {
+          ok: true,
+          text: async () => '{"done":true}'
+        };
+      });
+
+      try {
+        const result = await service.warmHost(hostUrl);
+        expect(result[0].status).toBe('ok');
+        const generateCalls = global.fetch.mock.calls.filter(
+          c => typeof c[0] === 'string' && c[0].endsWith('/api/generate')
+        );
+        expect(generateCalls).toHaveLength(1);
+        const payload = JSON.parse(generateCalls[0][1].body);
+        expect(payload.model).toBe('gemma4:26b');
+        expect(payload.stream).toBe(false);
+        expect(payload.options).toEqual({ num_predict: 1, num_ctx: 65536 });
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('warmHost refreshes a loaded infinite pin that only has a short TTL', async () => {
+      const originalFetch = global.fetch;
+      const hostUrl = 'http://ttl-mismatch-host:11434';
+      await HostPreference.create({
+        hostUrl,
+        hostKey: 'secondary',
+        pinnedModels: [{ model: 'nomic-embed-text:v1.5', keepAlive: -1 }],
+        status: 'ready'
+      });
+
+      global.fetch = jest.fn(async (url) => {
+        if (typeof url === 'string' && url.endsWith('/api/ps')) {
+          return {
+            ok: true,
+            json: async () => ({
+              models: [{
+                name: 'nomic-embed-text:v1.5',
+                expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString()
+              }]
+            })
+          };
+        }
+        return {
+          ok: true,
+          text: async () => JSON.stringify({ embedding: [0] })
+        };
+      });
+
+      try {
+        const result = await service.warmHost(hostUrl);
+        expect(result[0].status).toBe('ok');
+        const embeddingCalls = global.fetch.mock.calls.filter(
+          c => typeof c[0] === 'string' && c[0].endsWith('/api/embeddings')
+        );
+        expect(embeddingCalls).toHaveLength(1);
+        expect(JSON.parse(embeddingCalls[0][1].body)).toMatchObject({
+          model: 'nomic-embed-text:v1.5',
+          keep_alive: -1
+        });
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('restorePinnedModels does not report success when all names are loaded but the embedding spills', async () => {
+      const hostUrl = 'http://spill-restore-host:11434';
+      await HostPreference.create({ hostUrl, hostKey: 'primary', status: 'ready', pinnedModels: [
+        { model: 'gemma:latest', keepAlive: -1 }, { model: 'qllama/bge-m3:f16', keepAlive: -1 }
+      ] });
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ models: [
+        { name: 'gemma:latest', size: 1000, size_vram: 1000 },
+        { name: 'qllama/bge-m3:f16', size: 100, size_vram: 50 }
+      ] }) }));
+      let now = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockImplementation(() => (now += 20_000));
+      try {
+        const result = await service.restorePinnedModels(hostUrl);
+        expect(result.verified).toBe(false);
+        expect(result.status).toBe('error');
+        expect(result.verification.statuses[1].vramSpill).toEqual({ size: 100, sizeVram: 50 });
+      } finally {
+        clock.mockRestore();
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('restorePinnedModels does not skip a stale restoring state when the pin is absent', async () => {
+      const originalFetch = global.fetch;
+      const hostUrl = 'http://stale-restore-host:11434';
+      await HostPreference.create({
+        hostUrl,
+        hostKey: 'primary',
+        pinnedModels: [{ model: 'gemma4:26b', keepAlive: -1, contextSize: 65536 }],
+        status: 'restoring'
+      });
+
+      let psCalls = 0;
+      global.fetch = jest.fn(async (url) => {
+        if (typeof url === 'string' && url.endsWith('/api/ps')) {
+          psCalls += 1;
+          return {
+            ok: true,
+            json: async () => ({
+              models: psCalls === 1 ? [] : [{ name: 'gemma4:26b', context_length: 65536 }]
+            })
+          };
+        }
+        return {
+          ok: true,
+          text: async () => '{"done":true}'
+        };
+      });
+
+      try {
+        const result = await service.restorePinnedModels(hostUrl);
+        expect(result.status).toBe('ready');
+        expect(result.verified).toBe(true);
+        const generateCalls = global.fetch.mock.calls.filter(
+          c => typeof c[0] === 'string' && c[0].endsWith('/api/generate')
+        );
+        expect(generateCalls).toHaveLength(1);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('emits safe observability when a pin restore fails', async () => {
+      const hostUrl = 'http://no-pin-host:11434';
+      mockObservePinRestoreFailure.mockClear();
+      await HostPreference.create({ hostUrl, hostKey: 'secondary', pinnedModels: [] });
+
+      const result = await service.restorePinnedModels(hostUrl);
+
+      expect(result).toEqual(expect.objectContaining({ status: 'error' }));
+      expect(mockObservePinRestoreFailure).toHaveBeenCalledWith(expect.objectContaining({
+        host: hostUrl,
+        source: 'host-preference-service'
+      }));
+    });
+  });
+
+  describe('legacy-doc fallback (dual-state shape)', () => {
+    // Ensures a doc written in the legacy dual-state shape still resolves pinned
+    // entries correctly. Simulates the migration not having run yet.
+    it('merges defaultModels + pinnedModel into pinned entries', async () => {
+      // Insert raw via driver so we bypass mongoose schema field mapping
+      await HostPreference.collection.insertOne({
+        hostUrl: 'http://legacy:11434',
+        hostKey: 'primary',
+        defaultModels: ['m-default'],
+        pinnedModel: 'm-pin',
+        keepAlive: 300,
+        contextSize: 8192,
+        autoRestore: true,
+        status: 'idle'
+      });
+
+      const pref = await service.getByHost('http://legacy:11434');
+      const entries = service.getPinnedEntries(pref);
+      expect(entries.length).toBe(2);
+      // pinnedModel comes first (that's the priority in the fallback)
+      expect(entries[0].model).toBe('m-pin');
+      expect(entries[0].keepAlive).toBe(-1); // pinnedModel semantics
+      expect(entries[1].model).toBe('m-default');
+      expect(entries[1].keepAlive).toBe(300);
+      expect(entries[1].contextSize).toBe(8192);
+    });
+  });
+
+  describe('pinning', () => {
+    const HOST_URL = 'http://host1:11434';
+
+    beforeEach(async () => {
+      await HostPreference.create({
+        hostUrl: HOST_URL,
+        hostKey: 'primary',
+        pinnedModels: [],
+        status: 'idle'
+      });
+    });
+
+    describe('setPinnedModel', () => {
+      it('preserves the embedding pin and its options when promoting another primary', async () => {
+        await service.addPinnedModel(HOST_URL, 'qllama/bge-m3:f16', { contextSize: 4096, keepAlive: -1 });
+        await service.addPinnedModel(HOST_URL, 'gemma:latest', { contextSize: 32768, keepAlive: 300 });
+        const after = await service.setPinnedModel(HOST_URL, 'gemma');
+        expect(after.pinnedModels.map(entry => entry.model)).toEqual(['gemma:latest', 'qllama/bge-m3:f16']);
+        expect(after.pinnedModels[0].contextSize).toBe(32768);
+        expect(after.pinnedModels[1].keepAlive).toBe(-1);
+        expect(after.maxConcurrentModels).toBe(2);
+      });
+      it('should set pinnedModels and status on host preference', async () => {
+        const result = await service.setPinnedModel(HOST_URL, 'gemma4:26b');
+        expect(service.getPinnedModelNames(result)).toEqual(['gemma4:26b']);
+        expect(result.status).toBe('restoring');
+      });
+
+      it('should set status to ready if model is already loaded', async () => {
+        await HostPreference.findOneAndUpdate({ hostUrl: HOST_URL }, { loadedModel: 'gemma4:26b' });
+        const result = await service.setPinnedModel(HOST_URL, 'gemma4:26b');
+        expect(service.getPrimaryPinnedModel(result)).toBe('gemma4:26b');
+        expect(result.status).toBe('ready');
+      });
+    });
+
+    describe('clearPinnedModel', () => {
+      it('should empty pinnedModels and set status to idle', async () => {
+        await HostPreference.findOneAndUpdate({ hostUrl: HOST_URL }, { pinnedModels: [{ model: 'gemma4:26b' }], status: 'ready' });
+        const result = await service.clearPinnedModel(HOST_URL);
+        expect(result.pinnedModels).toEqual([]);
+        expect(result.status).toBe('idle');
+      });
+    });
+
+    describe('addPinnedModel / removePinnedModel', () => {
+      it('preserves simultaneous additions instead of overwriting a stale list', async () => {
+        await Promise.all([
+          service.addPinnedModel(HOST_URL, 'gemma:latest'),
+          service.addPinnedModel(HOST_URL, 'qllama/bge-m3:f16')
+        ]);
+        const after = await service.getByHost(HOST_URL);
+        expect(service.getPinnedModelNames(after).sort()).toEqual(['gemma:latest', 'qllama/bge-m3:f16']);
+        expect(after.maxConcurrentModels).toBe(2);
+      });
+
+      it('rejects lowering resident slots below the existing pin set', async () => {
+        await service.addPinnedModel(HOST_URL, 'gemma:latest');
+        await service.addPinnedModel(HOST_URL, 'qllama/bge-m3:f16');
+        await expect(service.updatePreference(HOST_URL, { maxConcurrentModels: 1 }))
+          .rejects.toMatchObject({ code: 'HOST_PIN_CAPACITY', statusCode: 400 });
+        expect((await service.getByHost(HOST_URL)).pinnedModels).toHaveLength(2);
+      });
+
+      it('updates only the requested model options and preserves the other resident', async () => {
+        await service.addPinnedModel(HOST_URL, 'gemma:latest', { contextSize: 32768, keepAlive: 300 });
+        await service.addPinnedModel(HOST_URL, 'qllama/bge-m3:f16');
+        const after = await service.updatePinnedModel(HOST_URL, 'gemma', { keepAlive: 600, autoRestore: false });
+        expect(after.pinnedModels[0]).toMatchObject({ contextSize: 32768, keepAlive: 600, autoRestore: false });
+        expect(after.pinnedModels[1]).toMatchObject({ keepAlive: -1, autoRestore: true });
+      });
+
+      it('treats the latest alias as the same pin', async () => {
+        await service.addPinnedModel(HOST_URL, 'bge-m3:latest');
+        await service.addPinnedModel(HOST_URL, 'bge-m3');
+        expect((await service.getByHost(HOST_URL)).pinnedModels).toHaveLength(1);
+      });
+
+      it.each([{ keepAlive: -2 }, { contextSize: 1.2 }, { autoRestore: 'false' }])('rejects invalid options %j', async opts => {
+        await expect(service.addPinnedModel(HOST_URL, 'bge-m3', opts)).rejects.toMatchObject({ code: 'HOST_PIN_INVALID' });
+        expect((await service.getByHost(HOST_URL)).pinnedModels).toHaveLength(0);
+      });
+      it('should append a new entry without overwriting existing entries', async () => {
+        await service.setPinnedModel(HOST_URL, 'first');
+        const after = await service.addPinnedModel(HOST_URL, 'second', { keepAlive: 300 });
+        const names = service.getPinnedModelNames(after);
+        expect(names).toContain('first');
+        expect(names).toContain('second');
+      });
+
+      it('should be idempotent when adding an already-pinned model', async () => {
+        await service.setPinnedModel(HOST_URL, 'only');
+        await service.addPinnedModel(HOST_URL, 'only');
+        const pref = await service.getByHost(HOST_URL);
+        expect(service.getPinnedModelNames(pref)).toEqual(['only']);
+      });
+
+      it('should remove an entry by model name', async () => {
+        await service.setPinnedModel(HOST_URL, 'a');
+        await service.addPinnedModel(HOST_URL, 'b');
+        const after = await service.removePinnedModel(HOST_URL, 'a');
+        expect(service.getPinnedModelNames(after)).toEqual(['b']);
+      });
+    });
+
+    describe('getPinStatus', () => {
+      it('should return pin status for a host', async () => {
+        await HostPreference.findOneAndUpdate({ hostUrl: HOST_URL }, {
+          pinnedModels: [{ model: 'gemma4:26b', autoRestore: true }],
+          loadedModel: 'gemma4:26b',
+          status: 'ready'
+        });
+        const status = await service.getPinStatus(HOST_URL);
+        expect(status.loadedModel).toBe('gemma4:26b');
+        expect(status.status).toBe('ready');
+        expect(status.pinnedModels).toHaveLength(1);
+        expect(status.pinnedModels[0].model).toBe('gemma4:26b');
+        expect(status.pinnedModels[0].autoRestore).toBe(true);
+      });
+
+      it('should return empty pinnedModels when no entries configured', async () => {
+        const status = await service.getPinStatus(HOST_URL);
+        expect(status.pinnedModels).toEqual([]);
+        expect(status.status).toBe('idle');
+      });
+    });
+
+    describe('updateLoadedModel', () => {
+      it('should update loadedModel and set status to ready if it matches primary pin', async () => {
+        await HostPreference.findOneAndUpdate({ hostUrl: HOST_URL }, {
+          pinnedModels: [{ model: 'gemma4:26b' }],
+          status: 'restoring'
+        });
+        const result = await service.updateLoadedModel(HOST_URL, 'gemma4:26b');
+        expect(result.loadedModel).toBe('gemma4:26b');
+        expect(result.status).toBe('ready');
+      });
+
+      it('should keep status as-is if loaded model does not match pin', async () => {
+        await HostPreference.findOneAndUpdate({ hostUrl: HOST_URL }, {
+          pinnedModels: [{ model: 'gemma4:26b' }],
+          status: 'ready'
+        });
+        const result = await service.updateLoadedModel(HOST_URL, 'qwen3-coder:30b');
+        expect(result.loadedModel).toBe('qwen3-coder:30b');
+      });
+    });
+  });
+
+  // Claim-lifecycle describes (claimBenchmark / releaseBenchmarkClaim /
+  // claim-respecting pin paths / listBenchmarkClaims) were moved to
+  // tests/unit/benchmarkClaimService.test.js when the lifecycle was extracted
+  // out of hostPreferenceService.
+
+  // Pin auto-restore grace period.
+  //
+  // The reconciler used to warm the pin on the very first tick that observed
+  // a displacement. Now it stamps `pinFirstDisplacedAt` and waits for
+  // `PIN_RESTORE_GRACE_MS` (default 120s) to elapse before warming. Tests
+  // drive the grace window to small ms-level values via setPinRestoreGraceMs
+  // so the four timing scenarios run in-memory.
+  //
+  // The host is unreachable in tests (port 11434 has no listener), so
+  // `fetch` is mocked per-test to return a controlled `/api/ps` payload.
+  describe('pin auto-restore grace period', () => {
+    const HOST_URL = 'http://grace-host:11434';
+    const PIN_MODEL = 'gemma4:26b';
+    const OTHER_MODEL = 'qwen3.6:27b';
+    const originalFetch = global.fetch;
+    const originalGrace = service.getPinRestoreGraceMs();
+
+    function mockPs(loadedModelNames) {
+      // Returns a stub /api/ps response with the given loaded models.
+      // Anything else fails (we don't want the warm path to actually fire
+      // a real warmDefaultModel that hits a port).
+      global.fetch = jest.fn(async (url) => {
+        if (typeof url === 'string' && url.endsWith('/api/ps')) {
+          return {
+            ok: true,
+            json: async () => ({
+              models: loadedModelNames.map(name => (typeof name === 'string' ? { name } : name))
+            })
+          };
+        }
+        // /api/generate (warmup) — return ok so the reconciler thinks the
+        // warm succeeded and clears the grace stamp.
+        return {
+          ok: true,
+          text: async () => '{"done":true}'
+        };
+      });
+    }
+
+    beforeEach(async () => {
+      await HostPreference.create({
+        hostUrl: HOST_URL,
+        hostKey: 'primary',
+        pinnedModels: [{ model: PIN_MODEL, autoRestore: true, keepAlive: -1 }],
+        status: 'ready'
+      });
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+      service.setPinRestoreGraceMs(originalGrace);
+    });
+
+    it('scenario 1 — pin loaded: no grace stamp, no warm', async () => {
+      service.setPinRestoreGraceMs(60_000);
+      mockPs([PIN_MODEL]);
+      await service.checkAndReloadDefaults();
+      const after = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
+      expect(after.pinFirstDisplacedAt).toBeFalsy();
+      // Status should be 'ready' since the pin is loaded
+      expect(after.status).toBe('ready');
+    });
+
+    it('scenario 2 — pin first displaced: stamps pinFirstDisplacedAt, no warm', async () => {
+      service.setPinRestoreGraceMs(60_000);
+      mockPs([OTHER_MODEL]);
+      const before = Date.now();
+      await service.checkAndReloadDefaults();
+      const after = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
+      expect(after.pinFirstDisplacedAt).toBeTruthy();
+      const stampedAt = new Date(after.pinFirstDisplacedAt).getTime();
+      expect(stampedAt).toBeGreaterThanOrEqual(before - 100);
+      expect(stampedAt).toBeLessThanOrEqual(Date.now() + 100);
+      // Status must NOT have flipped to 'restoring' — we're still in grace
+      expect(after.status).not.toBe('restoring');
+      // Pin was not warmed — the only fetch call should be /api/ps
+      const generateCalls = global.fetch.mock.calls.filter(
+        c => typeof c[0] === 'string' && c[0].endsWith('/api/generate')
+      );
+      expect(generateCalls).toHaveLength(0);
+    });
+
+    it('scenario 3 — pin still in grace: no warm, stamp preserved', async () => {
+      service.setPinRestoreGraceMs(60_000);
+      // Pre-stamp a recent displacement (5s ago — well within 60s grace)
+      const stampedAt = new Date(Date.now() - 5_000);
+      await HostPreference.findOneAndUpdate(
+        { hostUrl: HOST_URL },
+        { $set: { pinFirstDisplacedAt: stampedAt } }
+      );
+      mockPs([OTHER_MODEL]);
+      await service.checkAndReloadDefaults();
+      const after = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
+      // Stamp must be preserved — the same value we stamped
+      expect(after.pinFirstDisplacedAt).toBeTruthy();
+      expect(new Date(after.pinFirstDisplacedAt).getTime()).toBe(stampedAt.getTime());
+      // No warm call
+      const generateCalls = global.fetch.mock.calls.filter(
+        c => typeof c[0] === 'string' && c[0].endsWith('/api/generate')
+      );
+      expect(generateCalls).toHaveLength(0);
+    });
+
+    it('scenario 4 — pin grace elapsed: warms and clears the stamp', async () => {
+      service.setPinRestoreGraceMs(50);
+      // Pre-stamp a displacement 1s ago — far past the 50ms grace
+      await HostPreference.findOneAndUpdate(
+        { hostUrl: HOST_URL },
+        { $set: { pinFirstDisplacedAt: new Date(Date.now() - 1_000) } }
+      );
+      mockPs([OTHER_MODEL]);
+      await service.checkAndReloadDefaults();
+      const after = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
+      // Warm fired — there should be a /api/generate call
+      const generateCalls = global.fetch.mock.calls.filter(
+        c => typeof c[0] === 'string' && c[0].endsWith('/api/generate')
+      );
+      expect(generateCalls.length).toBeGreaterThanOrEqual(1);
+      // Stamp must have been cleared after the successful warm
+      expect(after.pinFirstDisplacedAt).toBeFalsy();
+    });
+
+    it('clears stamp when displacement resolves before grace elapses', async () => {
+      service.setPinRestoreGraceMs(60_000);
+      // Pre-stamp a displacement (e.g. from a prior tick)
+      await HostPreference.findOneAndUpdate(
+        { hostUrl: HOST_URL },
+        { $set: { pinFirstDisplacedAt: new Date(Date.now() - 5_000) } }
+      );
+      // Pin is back this tick (someone reloaded it externally)
+      mockPs([PIN_MODEL]);
+      await service.checkAndReloadDefaults();
+      const after = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
+      expect(after.pinFirstDisplacedAt).toBeFalsy();
+    });
+
+    it('claim short-circuits before the grace check fires (defense in depth)', async () => {
+      service.setPinRestoreGraceMs(50);
+      // Active claim — reconciler must skip BEFORE touching the grace
+      // logic, even though the grace would otherwise have fired.
+      await HostPreference.findOneAndUpdate(
+        { hostUrl: HOST_URL },
+        {
+          $set: {
+            status: 'benchmarking',
+            benchmarkClaim: {
+              batchId: 'batch-x',
+              prevStatus: 'ready',
+              claimedAt: new Date(),
+              estimatedDurationMs: 60_000
+            }
+          }
+        }
+      );
+      mockPs([OTHER_MODEL]);
+      await service.checkAndReloadDefaults();
+      const after = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
+      // Grace stamp must NOT have been set — claim short-circuited first
+      expect(after.pinFirstDisplacedAt).toBeFalsy();
+      // No warm call
+      const generateCalls = global.fetch.mock.calls.filter(
+        c => typeof c[0] === 'string' && c[0].endsWith('/api/generate')
+      );
+      expect(generateCalls).toHaveLength(0);
+      // Status remained 'benchmarking'
+      expect(after.status).toBe('benchmarking');
+    });
+
+    it('treats a loaded pin with the wrong context as displaced', async () => {
+      service.setPinRestoreGraceMs(60_000);
+      await HostPreference.findOneAndUpdate(
+        { hostUrl: HOST_URL },
+        {
+          $set: {
+            pinnedModels: [{ model: PIN_MODEL, autoRestore: true, keepAlive: -1, contextSize: 65536 }]
+          }
+        }
+      );
+
+      mockPs([{ name: PIN_MODEL, context_length: 32768 }]);
+      await service.checkAndReloadDefaults();
+      const after = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
+      expect(after.pinFirstDisplacedAt).toBeTruthy();
+
+      const generateCalls = global.fetch.mock.calls.filter(
+        c => typeof c[0] === 'string' && c[0].endsWith('/api/generate')
+      );
+      expect(generateCalls).toHaveLength(0);
+    });
+  });
+
+  describe('loadedModels array (multi-model hosts)', () => {
+    const HOST_URL = 'http://multi-host:11434';
+
+    it('getPinStatus falls back to scalar loadedModel when array is empty', async () => {
+      await HostPreference.create({
+        hostUrl: HOST_URL,
+        hostKey: 'primary',
+        pinnedModels: [{ model: 'qwen2.5:7b' }],
+        loadedModel: 'qwen2.5:7b'
+        // loadedModels omitted → default []
+      });
+      const status = await service.getPinStatus(HOST_URL);
+      expect(status.loadedModel).toBe('qwen2.5:7b');
+      expect(status.loadedModels).toEqual(['qwen2.5:7b']);
+    });
+
+    it('getPinStatus returns the full loadedModels array when set', async () => {
+      await HostPreference.create({
+        hostUrl: HOST_URL,
+        hostKey: 'primary',
+        pinnedModels: [{ model: 'qwen2.5:7b' }, { model: 'nomic-embed-text:v1.5' }],
+        loadedModel: 'qwen2.5:7b',
+        loadedModels: ['qwen2.5:7b', 'nomic-embed-text:v1.5']
+      });
+      const status = await service.getPinStatus(HOST_URL);
+      expect(status.loadedModels).toEqual(['qwen2.5:7b', 'nomic-embed-text:v1.5']);
+    });
+
+    it('persists loadedModels as an array of strings', async () => {
+      const doc = await HostPreference.create({
+        hostUrl: HOST_URL,
+        hostKey: 'primary',
+        pinnedModels: [],
+        loadedModels: ['a', 'b', 'c']
+      });
+      const round = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
+      expect(round.loadedModels).toEqual(['a', 'b', 'c']);
+      expect(doc.loadedModels.length).toBe(3);
+    });
+  });
+
+  describe('warmDefaultModel embedding pins', () => {
+    const HOST_URL = 'http://embed-host:11434';
+
+    afterEach(() => {
+      if (global.fetch && global.fetch.mockRestore) global.fetch.mockRestore();
+    });
+
+    it('warms a bge pin via the embeddings endpoint, never generate', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => '{"embedding":[0]}' });
+      const result = await service.warmDefaultModel(HOST_URL, 'qllama/bge-m3:f16', { keepAlive: -1, contextSize: 0 });
+      expect(result.status).toBe('ok');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      const [url, init] = global.fetch.mock.calls[0];
+      expect(url).toBe(`${HOST_URL}/api/embeddings`);
+      expect(url).not.toContain('/api/generate');
+      const payload = JSON.parse(init.body);
+      expect(payload.model).toBe('qllama/bge-m3:f16');
+      // keep_alive -1 must pass through so the pin actually sticks
+      // instead of expiring on Ollama's 5-minute default.
+      expect(payload.keep_alive).toBe(-1);
+    });
+
+    it('keeps the seconds-string form for positive embedding keep-alives', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => '{"embedding":[0]}' });
+      await service.warmDefaultModel(HOST_URL, 'nomic-embed-text:v1.5', { keepAlive: 31536000 });
+      const payload = JSON.parse(global.fetch.mock.calls[0][1].body);
+      expect(payload.keep_alive).toBe('31536000s');
+    });
+
+    it('still warms generative models via generate with raw keep_alive', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => '{"done":true}' });
+      await service.warmDefaultModel(HOST_URL, 'ax/gemma4:26b-a4b-it-qat', { keepAlive: -1, contextSize: 83558 });
+      const [url, init] = global.fetch.mock.calls[0];
+      expect(url).toBe(`${HOST_URL}/api/generate`);
+      const payload = JSON.parse(init.body);
+      expect(payload.keep_alive).toBe(-1);
+      expect(payload.options.num_ctx).toBe(83558);
+    });
+
+    it('rejects contradictory done-plus-error terminals for warm and unload', async () => {
+      global.fetch = jest.fn()
+        .mockResolvedValueOnce({ ok: true, text: async () => '{"done":true,"error":"warm failed"}' })
+        .mockResolvedValueOnce({ ok: true, text: async () => '{"done":true,"error":"unload failed"}' });
+
+      await expect(service.warmDefaultModel(HOST_URL, 'ax/gemma4:26b-a4b-it-qat'))
+        .resolves.toMatchObject({ status: 'error' });
+      await expect(service.unloadModel(HOST_URL, 'ax/gemma4:26b-a4b-it-qat'))
+        .resolves.toMatchObject({ status: 'error' });
+    });
+
+    it.each([
+      ['warmup', (signal) => service.warmDefaultModel(
+        HOST_URL,
+        'ax/gemma4:26b-a4b-it-qat',
+        { timeoutMs: 5, signal }
+      )],
+      ['unload', (signal) => service.unloadModel(
+        HOST_URL,
+        'ax/gemma4:26b-a4b-it-qat',
+        { timeoutMs: 5, signal }
+      )]
+    ])('fails %s closed when its internal timeout leaves the mutation outcome unknown', async (_label, run) => {
+      global.fetch = jest.fn((_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      }));
+      const caller = new AbortController();
+
+      await expect(run(caller.signal)).rejects.toMatchObject({
+        code: 'RUNTIME_MUTATION_OUTCOME_UNKNOWN'
+      });
+      expect(caller.signal.aborted).toBe(false);
+    });
+  });
+});

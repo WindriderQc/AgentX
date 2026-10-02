@@ -1,0 +1,614 @@
+'use strict';
+
+const crypto = require('crypto');
+const mongoose = require('mongoose');
+const { getContextInfo } = require('./modelContextInfoService');
+const {
+  getConfiguredHosts,
+  hostUrlKey,
+  normalizeHostUrl
+} = require('../helpers/ollamaHostConfig');
+const { getTokenCounter } = require('./tokenCounter');
+const { modelLookupNames } = require('../helpers/modelNameNormalization');
+const { getBenchmarkServiceClient } = require('./benchmarkServiceClient');
+const { exactModelNamesMatch } = require('../../../shared/artifactIdentity');
+const {
+  profileMatchesArtifact,
+  readLiveDigest,
+  resolveArtifactIdentity
+} = require('./artifactIdentityService');
+
+const CONTRACT_VERSION = 'agentx.inference-contract.v1';
+const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+const PROFILED_STAGES = new Set(['profiled', 'benchmarked']);
+const VALIDATED_CONTEXT_SOURCES = new Set([
+  'model_context_profile',
+  'context_test',
+  'profiled'
+]);
+
+function positiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+function mapValue(mapLike, key) {
+  if (!mapLike || !key) return null;
+  if (mapLike instanceof Map) return mapLike.get(key) || null;
+  return mapLike[key] || null;
+}
+
+async function readArtifactDigest(model, host, deps = {}) {
+  return readLiveDigest(model, host, deps);
+}
+
+function resolveHostIdentity(host, configuredHosts = getConfiguredHosts()) {
+  const normalizedHost = normalizeHostUrl(host);
+  const key = hostUrlKey(normalizedHost);
+  const configured = (configuredHosts || []).find((candidate) =>
+    key && hostUrlKey(candidate?.url) === key
+  );
+  return {
+    host: configured?.url || normalizedHost || null,
+    hostId: configured?.id || null,
+    hostName: configured?.name || null
+  };
+}
+
+function unknownThinkingCapability(source = 'unqualified') {
+  return {
+    supported: null,
+    modes: ['off'],
+    channel: 'unknown',
+    recommendedPolicy: 'unknown',
+    visibleFinalAnswer: {
+      required: true,
+      qualified: false,
+      thinkingOnlyObserved: false
+    },
+    autoRankable: false,
+    source
+  };
+}
+
+async function readBenchmarkEvidence(model, host, deps = {}) {
+  const normalizedHost = normalizeHostUrl(host);
+  const names = modelLookupNames(model);
+  if (!normalizedHost || names.length === 0) {
+    return { hostProfile: null, modelProfile: null };
+  }
+
+  try {
+    if (deps.hostProfilesCollection || deps.modelProfilesCollection) {
+      const [hostProfile, modelProfile] = await Promise.all([
+        deps.hostProfilesCollection
+          ? deps.hostProfilesCollection.findOne(
+            { hostUrl: normalizedHost },
+            { projection: { hostId: 1, hostUrl: 1, displayName: 1, gpu: 1, ollama: 1, cpu: 1 } }
+          )
+          : null,
+        deps.modelProfilesCollection
+          ? deps.modelProfilesCollection.findOne(
+            { name: { $in: names } },
+            {
+              projection: {
+                name: 1,
+                capabilities: 1,
+                thinkingProfiles: 1,
+                readiness: 1,
+                updatedAt: 1
+              }
+            }
+          )
+          : null
+      ]);
+      return { hostProfile, modelProfile };
+    }
+
+    const client = deps.benchmarkClient || getBenchmarkServiceClient();
+    return await client.getInferenceEvidence(names[0], normalizedHost)
+      || { hostProfile: null, modelProfile: null };
+  } catch {
+    return { hostProfile: null, modelProfile: null };
+  }
+}
+
+async function readRegistryThinking(model, deps = {}) {
+  try {
+    if (deps.registryEntry
+      && typeof deps.registryEntry.capabilities?.supportsThinking === 'boolean') {
+      return {
+        supported: deps.registryEntry.capabilities.supportsThinking,
+        modelName: deps.registryEntry.modelName || null
+      };
+    }
+    if (!deps.ModelRegistry && mongoose.connection.readyState !== 1) return null;
+    const ModelRegistry = deps.ModelRegistry || require('../../models/ModelRegistry');
+    const entry = await ModelRegistry.findOne({
+      modelName: { $in: modelLookupNames(model) }
+    })
+      .select('modelName capabilities.supportsThinking')
+      .lean();
+    if (!entry || typeof entry.capabilities?.supportsThinking !== 'boolean') return null;
+    return {
+      supported: entry.capabilities.supportsThinking,
+      modelName: entry.modelName || null
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readExactToolQualification(model, host, artifact, deps = {}) {
+  if (Object.prototype.hasOwnProperty.call(deps, 'toolQualificationEvidence')) {
+    return deps.toolQualificationEvidence;
+  }
+  if (!artifact?.identityQualified) return null;
+  try {
+    if (process.env.NODE_ENV === 'test' && !deps.benchmarkClient) return null;
+    const client = deps.benchmarkClient || getBenchmarkServiceClient();
+    const evidence = await client.getInferenceEvidence(model, normalizeHostUrl(host), artifact);
+    return evidence?.toolQualification || null;
+  } catch {
+    return null;
+  }
+}
+
+function toolEvidenceMatchesArtifact(evidence, artifact) {
+  return Boolean(
+    evidence
+    && artifact?.identityQualified === true
+    && exactModelNamesMatch(evidence.modelName, artifact.model)
+    && String(evidence.hostId || '') === String(artifact.hostId || '')
+    && normalizeHostUrl(evidence.hostUrl) === normalizeHostUrl(artifact.hostUrl)
+    && evidence.artifactDigest === artifact.digest
+    && evidence.runtimeFingerprint === artifact.runtimeFingerprint
+  );
+}
+
+function toolEvidenceDriftReasons(toolQualification, artifact, now = new Date()) {
+  const evidence = toolQualification?.evidence;
+  const expected = toolQualification?.expected || {};
+  const reasons = [];
+  if (!evidence || !artifact?.identityQualified) return reasons;
+  if (!exactModelNamesMatch(evidence.modelName, artifact.model)) reasons.push('model_mismatch');
+  if (String(evidence.hostId || '') !== String(artifact.hostId || '')) reasons.push('host_id_mismatch');
+  if (normalizeHostUrl(evidence.hostUrl) !== normalizeHostUrl(artifact.hostUrl)) reasons.push('host_url_mismatch');
+  if (evidence.artifactDigest !== artifact.digest) reasons.push('artifact_digest_mismatch');
+  if (evidence.runtimeFingerprint !== artifact.runtimeFingerprint) reasons.push('runtime_fingerprint_mismatch');
+  if (!toolQualification?.contract
+    || evidence.schemaVersion !== toolQualification.contract
+    || (expected.schemaVersion && evidence.schemaVersion !== expected.schemaVersion)) {
+    reasons.push('evidence_contract_mismatch');
+  }
+  if (!expected.protocolVersion || evidence.protocolVersion !== expected.protocolVersion) {
+    reasons.push('protocol_version_mismatch');
+  }
+  if (!expected.fixtureVersion || evidence.fixtureVersion !== expected.fixtureVersion) {
+    reasons.push('fixture_version_mismatch');
+  }
+  if (!expected.fixtureFingerprint || evidence.fixtureFingerprint !== expected.fixtureFingerprint) {
+    reasons.push('fixture_fingerprint_mismatch');
+  }
+  if (evidence.outcome !== toolQualification.state) reasons.push('evidence_outcome_mismatch');
+  const repetitionsRequested = Number(evidence.repetitionsRequested);
+  const repetitionsCompleted = Number(evidence.repetitionsCompleted);
+  if (!Number.isInteger(repetitionsRequested)
+    || repetitionsRequested < 3
+    || repetitionsCompleted !== repetitionsRequested) {
+    reasons.push('evidence_repetitions_incomplete');
+  }
+  if (!/^[a-f0-9]{64}$/i.test(String(evidence.evidenceDigest || ''))) {
+    reasons.push('evidence_digest_invalid');
+  }
+  const completedAt = evidence.completedAt ? new Date(evidence.completedAt) : null;
+  if (!completedAt || !Number.isFinite(completedAt.getTime())) reasons.push('evidence_completion_invalid');
+  const validUntil = evidence.validUntil ? new Date(evidence.validUntil) : null;
+  if (!validUntil || !Number.isFinite(validUntil.getTime()) || validUntil.getTime() <= now.getTime()) {
+    reasons.push('evidence_expired');
+  }
+  return [...new Set(reasons)];
+}
+
+function resolveToolCapability(toolQualification, artifact, now = new Date()) {
+  const state = String(toolQualification?.state || 'unknown').toLowerCase();
+  const source = toolQualification
+    ? 'benchmark_tool_capability_qualification'
+    : 'unqualified';
+  if (state === 'stale') {
+    return {
+      supported: null,
+      qualified: false,
+      state: 'stale',
+      source,
+      reasons: Array.isArray(toolQualification?.reasons) ? toolQualification.reasons : ['evidence_stale']
+    };
+  }
+  if (state === 'supported' || state === 'unsupported') {
+    const driftReasons = toolEvidenceDriftReasons(toolQualification, artifact, now);
+    if (driftReasons.length || !toolEvidenceMatchesArtifact(toolQualification?.evidence, artifact)) {
+      return {
+        supported: null,
+        qualified: false,
+        state: 'stale',
+        source,
+        reasons: driftReasons.length ? driftReasons : ['evidence_identity_mismatch']
+      };
+    }
+  }
+  if ((state === 'supported' || state === 'unsupported')
+    && toolQualification?.qualified === true) {
+    return {
+      supported: state === 'supported',
+      qualified: true,
+      state,
+      source,
+      evidenceDigest: toolQualification.evidence.evidenceDigest || null,
+      completedAt: toolQualification.evidence.completedAt || null,
+      validUntil: toolQualification.evidence.validUntil || null,
+      reasons: []
+    };
+  }
+  const reasons = Array.isArray(toolQualification?.reasons)
+    ? [...toolQualification.reasons]
+    : [];
+  if (!artifact?.identityQualified) reasons.push('artifact_identity_unqualified');
+  if (!reasons.length) reasons.push(toolQualification ? `evidence_${state}` : 'evidence_missing');
+  return {
+    supported: null,
+    qualified: false,
+    state: 'unknown',
+    source,
+    reasons: [...new Set(reasons)]
+  };
+}
+
+async function resolveCapabilities(model, host, deps = {}) {
+  const configuredIdentity = resolveHostIdentity(host, deps.configuredHosts);
+  const evidence = await readBenchmarkEvidence(model, configuredIdentity.host, deps);
+  const hostProfile = evidence.hostProfile;
+  const profile = evidence.modelProfile;
+  const identity = {
+    host: hostProfile?.hostUrl || configuredIdentity.host,
+    hostId: hostProfile?.hostId || configuredIdentity.hostId,
+    hostName: hostProfile?.displayName || configuredIdentity.hostName
+  };
+  const exactArtifact = deps.includeArtifactIdentity === true
+    ? await resolveArtifactIdentity(model, identity.host, {
+      ...deps,
+      hostProfile: hostProfile || undefined
+    })
+    : null;
+  if (exactArtifact?.hostId) identity.hostId = exactArtifact.hostId;
+  const toolQualification = await readExactToolQualification(
+    model,
+    identity.host,
+    exactArtifact,
+    deps
+  );
+  const thinkingProfile = mapValue(profile?.thinkingProfiles, identity.hostId);
+  const readiness = mapValue(profile?.readiness, identity.hostId);
+  const stage = readiness?.stage || (thinkingProfile ? 'profiled' : 'unknown');
+  const authorityVerified = readiness?.authorityVerified === true
+    && readiness?.authority?.contract === 'agentx.profiler-readiness/v2'
+    && readiness?.authority?.verified === true
+    && readiness?.authority?.liveIdentityVerified === true;
+  const exactProfile = authorityVerified
+    && (!exactArtifact || profileMatchesArtifact(readiness?.artifact, exactArtifact));
+  const qualified = PROFILED_STAGES.has(stage)
+    && !!identity.hostId
+    && readiness?.benchmarkQualified === true
+    && readiness?.stale !== true
+    && authorityVerified
+    && exactProfile;
+
+  let thinking = unknownThinkingCapability();
+  if (thinkingProfile) {
+    const supported = thinkingProfile.supported === true;
+    const policy = thinkingProfile.recommendedPolicy || 'unknown';
+    thinking = {
+      supported,
+      modes: supported && policy !== 'disallowed' ? ['off', 'on'] : ['off'],
+      channel: thinkingProfile.channel || 'unknown',
+      recommendedPolicy: policy,
+      visibleFinalAnswer: {
+        required: true,
+        qualified: thinkingProfile.visibleFinalAnswerOk === true
+          && thinkingProfile.finalAnswerContractOk === true
+          && thinkingProfile.thinkingOnlyResponse !== true,
+        thinkingOnlyObserved: thinkingProfile.thinkingOnlyResponse === true
+      },
+      autoRankable: false,
+      profiledAt: thinkingProfile.profiledAt || null,
+      source: 'benchmark_model_profile'
+    };
+  } else {
+    const legacy = await readRegistryThinking(model, deps);
+    if (legacy) {
+      thinking = {
+        ...unknownThinkingCapability('model_registry_fallback'),
+        supported: legacy.supported,
+        modes: legacy.supported ? ['off', 'on'] : ['off'],
+        matchedModel: legacy.modelName
+      };
+    }
+  }
+
+  return {
+    artifact: {
+      model: exactArtifact?.model || model,
+      hostId: exactArtifact?.hostId || identity.hostId,
+      host: exactArtifact?.hostUrl || identity.host,
+      digest: exactArtifact?.digest || null,
+      runtimeFingerprint: exactArtifact?.runtimeFingerprint || null,
+      registryId: exactArtifact?.registryId || null,
+      registryDigest: exactArtifact?.registryDigest || null,
+      registryQualified: exactArtifact?.registryQualified === true,
+      identityQualified: exactArtifact?.identityQualified === true,
+      identitySource: exactArtifact?.identityQualified ? 'core_registry+ollama_tags' : 'unresolved',
+      matchedProfile: profile?.name || null,
+      hostName: identity.hostName
+    },
+    qualification: {
+      state: stage,
+      qualified,
+      stale: readiness?.stale === true,
+      exactArtifact: exactProfile,
+      authorityVerified,
+      source: profile ? 'benchmark_model_profile' : 'fallback'
+    },
+    thinking,
+    // ModelProfile.capabilities.tools is a legacy inventory hint. Only the
+    // dedicated exact-artifact Benchmark evidence contract may qualify it.
+    tools: resolveToolCapability(toolQualification, exactArtifact, deps.now || new Date()),
+    streaming: {
+      supported: null,
+      qualified: false,
+      source: 'unqualified'
+    }
+  };
+}
+
+function requestText({ prompt, system, messages }) {
+  if (Array.isArray(messages)) {
+    return messages.map((message) => String(message?.content || '')).join('\n');
+  }
+  return [system, prompt].filter((value) => typeof value === 'string').join('\n');
+}
+
+function estimateInputTokens(input = {}) {
+  const text = requestText(input);
+  const contentTokens = getTokenCounter().countTokens(text);
+  const messageOverhead = Array.isArray(input.messages)
+    ? (input.messages.length * 4) + 2
+    : 0;
+  return {
+    tokens: contentTokens + messageOverhead,
+    characters: text.length,
+    method: 'token_counter_plus_message_overhead',
+    exact: false
+  };
+}
+
+async function resolveContextBudget(input, deps = {}) {
+  const requestedNumCtx = positiveInteger(input.requestedNumCtx);
+  let resolved = null;
+  try {
+    const canUseDefaultResolver = mongoose.connection.readyState === 1;
+    if (deps.resolveContextDetails) {
+      resolved = await deps.resolveContextDetails(input.model, {
+        targetHost: input.host,
+        workload: input.workload || 'interactive',
+        deps: deps.contextDeps
+      });
+    } else if (canUseDefaultResolver) {
+      resolved = await getContextInfo(input.model, input.host, {
+        workload: input.workload || 'interactive',
+        artifactIdentity: deps.artifactIdentity || null
+      });
+    }
+  } catch {
+    resolved = null;
+  }
+
+  const resolvedTokens = positiveInteger(resolved?.num_ctx);
+  const windowTokens = requestedNumCtx || resolvedTokens;
+  const explicitOutput = positiveInteger(input.requestedMaxOutputTokens);
+  const defaultOutput = windowTokens
+    ? Math.min(DEFAULT_MAX_OUTPUT_TOKENS, Math.max(256, Math.floor(windowTokens / 4)))
+    : DEFAULT_MAX_OUTPUT_TOKENS;
+  const reservedOutputTokens = windowTokens
+    ? Math.min(windowTokens, explicitOutput || defaultOutput)
+    : (explicitOutput || defaultOutput);
+  const availableInputTokens = windowTokens
+    ? Math.max(0, windowTokens - reservedOutputTokens)
+    : null;
+  const estimate = estimateInputTokens(input);
+  const overflowTokens = availableInputTokens == null
+    ? null
+    : Math.max(0, estimate.tokens - availableInputTokens);
+  const profiledWindowTokens = positiveInteger(
+    resolved?.details?.verifiedMaxContext || resolved?.verifiedMaxContext
+  );
+  const validatedWindowTokens = profiledWindowTokens
+    || (VALIDATED_CONTEXT_SOURCES.has(resolved?.source) ? resolvedTokens : null);
+  const validatedInputTokens = positiveInteger(
+    resolved?.details?.verifiedInputTokens || resolved?.verifiedInputTokens
+  );
+  const validatedInputOverflowTokens = validatedInputTokens
+    ? Math.max(0, estimate.tokens - validatedInputTokens)
+    : null;
+  const warnings = [];
+
+  if (!windowTokens) {
+    warnings.push('runtime context is unresolved; no context window was inferred');
+  }
+  if (overflowTokens > 0) {
+    warnings.push('estimated input exceeds the available context budget; upstream truncation is possible');
+  }
+  if (windowTokens && validatedWindowTokens && windowTokens > validatedWindowTokens) {
+    warnings.push('runtime context exceeds the latest validated host/model context');
+  }
+  if (validatedInputOverflowTokens > 0) {
+    warnings.push('estimated input exceeds the largest measured successful prompt; execution remains report-only');
+  }
+
+  return {
+    windowTokens,
+    source: requestedNumCtx ? (input.numCtxSource || 'caller') : (resolved?.source || 'unresolved'),
+    resolvedWindowTokens: resolvedTokens,
+    resolvedSource: resolved?.source || 'unresolved',
+    validatedWindowTokens,
+    validatedInputTokens,
+    output: {
+      reservedTokens: reservedOutputTokens,
+      source: explicitOutput ? 'caller' : 'default_reserve'
+    },
+    input: {
+      estimatedTokens: estimate.tokens,
+      characters: estimate.characters,
+      availableTokens: availableInputTokens,
+      remainingTokens: availableInputTokens == null
+        ? null
+        : Math.max(0, availableInputTokens - estimate.tokens),
+      overflowTokens,
+      fits: overflowTokens == null ? null : overflowTokens === 0,
+      validatedOverflowTokens: validatedInputOverflowTokens,
+      validatedFits: validatedInputTokens ? validatedInputOverflowTokens === 0 : null,
+      estimation: {
+        method: estimate.method,
+        exact: estimate.exact
+      }
+    },
+    transformations: {
+      condensation: { applied: false, removedTokens: 0 },
+      truncation: { applied: false, removedTokens: 0 },
+      upstreamTruncationRisk: overflowTokens > 0
+    },
+    enforcement: 'report_only',
+    warnings
+  };
+}
+
+async function resolveInferenceContract(input = {}, deps = {}) {
+  const capabilityContract = await resolveCapabilityContract(input, deps);
+  const contextBudget = await resolveContextBudget(input, {
+    ...deps,
+    artifactIdentity: capabilityContract.artifact
+  });
+
+  return {
+    ...capabilityContract,
+    contextBudget
+  };
+}
+
+async function resolveCapabilityContract(input = {}, deps = {}) {
+  const resolved = await resolveCapabilities(input.model, input.host, deps);
+  return {
+    version: CONTRACT_VERSION,
+    artifact: resolved.artifact,
+    qualification: resolved.qualification,
+    capabilities: {
+      thinking: resolved.thinking,
+      tools: resolved.tools,
+      streaming: resolved.streaming
+    }
+  };
+}
+
+function hasQualifiedThinkingCapability(contract) {
+  const thinking = contract?.capabilities?.thinking;
+  return thinking?.supported === true
+    && thinking.source === 'benchmark_model_profile'
+    && contract?.qualification?.qualified === true
+    && thinking.visibleFinalAnswer?.qualified === true;
+}
+
+function getThinkingCapabilityStatus(contract, fallbackSupported) {
+  const thinking = contract?.capabilities?.thinking;
+  if (typeof thinking?.supported === 'boolean') {
+    return {
+      supported: thinking.supported,
+      qualified: hasQualifiedThinkingCapability(contract),
+      source: thinking.source || 'capability_contract',
+      qualificationState: contract?.qualification?.state || 'unknown',
+      visibleFinalQualified: thinking.visibleFinalAnswer?.qualified === true
+    };
+  }
+  if (typeof fallbackSupported === 'boolean') {
+    return {
+      supported: fallbackSupported,
+      qualified: false,
+      source: 'model_registry_fallback',
+      qualificationState: 'unknown',
+      visibleFinalQualified: false
+    };
+  }
+  return {
+    supported: false,
+    qualified: false,
+    source: 'unqualified',
+    qualificationState: contract?.qualification?.state || 'unknown',
+    visibleFinalQualified: false
+  };
+}
+
+function stableSerialize(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableSerialize).join(',')}]`;
+  }
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`)
+      .join(',')}}`;
+  }
+  return value === undefined ? 'null' : JSON.stringify(value);
+}
+
+function snapshotFingerprint(contract) {
+  return crypto
+    .createHash('sha256')
+    .update(stableSerialize(contract))
+    .digest('hex');
+}
+
+async function resolveInferenceContractSnapshot(input = {}, deps = {}) {
+  const contract = await resolveInferenceContract({
+    model: input.model,
+    host: input.host,
+    requestedNumCtx: input.requestedNumCtx,
+    numCtxSource: input.numCtxSource,
+    requestedMaxOutputTokens: input.requestedMaxOutputTokens
+  }, { ...deps, includeArtifactIdentity: true });
+  return {
+    ...contract,
+    snapshot: {
+      schemaVersion: 1,
+      fingerprint: snapshotFingerprint(contract),
+      resolvedAt: (deps.now || new Date()).toISOString(),
+      scope: 'deployed_artifact_host',
+      freezeRecommended: true,
+      reusePolicy: 'resolve_once_per_campaign'
+    }
+  };
+}
+
+module.exports = {
+  CONTRACT_VERSION,
+  estimateInputTokens,
+  getThinkingCapabilityStatus,
+  hasQualifiedThinkingCapability,
+  modelLookupNames,
+  readArtifactDigest,
+  resolveCapabilities,
+  resolveCapabilityContract,
+  resolveContextBudget,
+  resolveHostIdentity,
+  resolveInferenceContract,
+  resolveInferenceContractSnapshot,
+  resolveToolCapability,
+  snapshotFingerprint
+};

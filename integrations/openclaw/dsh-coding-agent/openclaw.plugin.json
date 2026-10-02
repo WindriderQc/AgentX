@@ -1,0 +1,59 @@
+{
+  "id": "dsh-coding-agent",
+  "name": "DSH Coding Agent",
+  "description": "A single bounded OpenClaw tool for the isolated local DSH coding lane.",
+  "version": "1.0.0",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "wrapperPath": {
+        "type": "string"
+      },
+      "receiptRoot": {
+        "type": "string"
+      },
+      "auditLog": {
+        "type": "string"
+      },
+      "maxOutputBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 1048576
+      },
+      "timeoutBufferMs": {
+        "type": "integer",
+        "minimum": 5000,
+        "maximum": 120000
+      },
+      "model": {
+        "type": "string"
+      },
+      "claimHost": {
+        "type": "string"
+      },
+      "coreUrl": {
+        "type": "string"
+      },
+      "lockFile": {
+        "type": "string"
+      },
+      "nodePath": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "contracts": {
+    "tools": [
+      "dsh_coding_agent"
+    ]
+  },
+  "toolMetadata": {
+    "dsh_coding_agent": {
+      "optional": true
+    }
+  }
+}

@@ -1,0 +1,162 @@
+[
+    {
+        "id": "latency-spike",
+        "name": "Inference latency spike (>10s)",
+        "enabled": true,
+        "severity": "warning",
+        "title": "Slow inference — {{model}} on {{host}}",
+        "message": "{{value}}ms (threshold {{threshold}}ms), task {{taskType}}, lane {{lane}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "latency" },
+            { "fact": "value", "operator": "greaterThan", "value": 10000 }
+        ]},
+        "channels": ["local_log"]
+    },
+    {
+        "id": "inference-error",
+        "name": "Inference error",
+        "enabled": true,
+        "severity": "error",
+        "title": "Inference error — {{model}} on {{host}}",
+        "message": "HTTP {{status}}, task {{taskType}}, lane {{lane}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "error" }
+        ]},
+        "channels": ["local_log"],
+        "renotifyMs": 900000
+    },
+    {
+        "id": "inference-error-rate",
+        "name": "Inference error rate (>5% over 1h)",
+        "enabled": true,
+        "severity": "error",
+        "title": "Inference error rate sustained above 5%",
+        "message": "{{errorRateNumerator}} of {{errorRateTotal}} calls failed ({{errorRate}}%) over {{windowLabel}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "inference_completed" },
+            {
+                "fact": "errorRate",
+                "operator": "greaterThan",
+                "value": 5,
+                "window": {
+                    "source": "inferencelogs",
+                    "durationMs": 3600000,
+                    "minimumSamples": 20,
+                    "numerator": { "field": "status", "values": ["error", "timeout"] }
+                }
+            }
+        ]},
+        "channels": ["local_log"],
+        "renotifyMs": 900000,
+        "description": "Windowed platform-inference error rate. Requires at least 20 inference rows in the preceding hour."
+    },
+    {
+        "id": "host-unreachable",
+        "name": "Ollama host unreachable",
+        "enabled": true,
+        "severity": "critical",
+        "title": "Host unreachable — {{host}}",
+        "message": "{{model}}: {{error}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "host_unreachable" }
+        ]},
+        "channels": ["local_log"],
+        "renotifyMs": 900000
+    },
+    {
+        "id": "vram-displacement",
+        "name": "VRAM displacement triggered",
+        "enabled": true,
+        "severity": "info",
+        "title": "VRAM displacement — {{component}}",
+        "message": "Displacement event on {{component}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "displacement" }
+        ]},
+        "channels": ["local_log"]
+    },
+    {
+        "id": "lane-context-mismatch",
+        "name": "Inference contract context mismatch",
+        "enabled": true,
+        "severity": "warning",
+        "title": "Context contract mismatch — {{model}} on {{host}}",
+        "message": "Runtime {{value}} tokens exceeds validated {{threshold}}. {{remediation}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "lane_context_mismatch" }
+        ]},
+        "channels": ["local_log"],
+        "renotifyMs": 3600000,
+        "description": "Observe-only warning when runtime num_ctx exceeds the validated artifact-host context."
+    },
+    {
+        "id": "lane-output-contract-failure",
+        "name": "Inference output contract failure",
+        "enabled": true,
+        "severity": "error",
+        "title": "Output contract failure — {{model}} on {{host}}",
+        "message": "{{failureKind}} on lane {{lane}}. {{remediation}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "lane_output_contract_failure" }
+        ]},
+        "channels": ["local_log"],
+        "renotifyMs": 3600000,
+        "description": "Evidence-backed truncation, incomplete response, or no-visible-final outcome."
+    },
+    {
+        "id": "benchmark-claim-release-failure",
+        "name": "Benchmark claim release failure",
+        "enabled": true,
+        "severity": "error",
+        "title": "Benchmark claim release failed — {{host}}",
+        "message": "{{failureCode}} for campaign {{campaignId}}. {{remediation}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "benchmark_claim_release_failure" }
+        ]},
+        "channels": ["local_log"],
+        "renotifyMs": 900000,
+        "description": "Observe-only signal for a rejected or failed benchmark-claim release."
+    },
+    {
+        "id": "pin-restore-failure",
+        "name": "Pinned model restoration failure",
+        "enabled": true,
+        "severity": "critical",
+        "title": "Pinned model restore failed — {{host}}",
+        "message": "{{failureCode}} for {{model}}. {{remediation}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "pin_restore_failure" }
+        ]},
+        "channels": ["local_log"],
+        "renotifyMs": 900000,
+        "description": "Observe-only signal when the existing restore path cannot verify pinned artifact/context residency."
+    },
+    {
+        "id": "pin-vram-spill",
+        "name": "Pinned model not in VRAM",
+        "enabled": true,
+        "severity": "critical",
+        "title": "Pinned model off GPU — {{host}}",
+        "message": "{{failureCode}} for {{evidence.modelList}}. {{remediation}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "pin_vram_spill" }
+        ]},
+        "channels": ["local_log"],
+        "renotifyMs": 1800000,
+        "description": "A pinned resident reports size_vram below size, or fresh host telemetry reports no GPU."
+    },
+    {
+        "id": "lane-latency-drift",
+        "name": "Inference lane latency drift",
+        "enabled": true,
+        "severity": "warning",
+        "title": "Lane latency drift — {{model}} on {{host}}",
+        "message": "Recent median {{value}}ms exceeds {{threshold}}ms on {{lane}}. {{remediation}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "lane_latency_drift" }
+        ]},
+        "channels": ["local_log"],
+        "renotifyMs": 3600000,
+        "description": "Recent one-hour median versus the preceding 24-hour baseline, sample-gated and observe-only."
+    }
+]

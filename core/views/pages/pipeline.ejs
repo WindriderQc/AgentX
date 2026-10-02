@@ -1,0 +1,371 @@
+<main class="pipeline-page">
+  <header class="pipeline-hero">
+    <div class="pipeline-hero-copy">
+      <div class="pipeline-eyebrow"><i class="fas fa-list-check"></i> Delivery cockpit</div>
+      <h1>Work in progress</h1>
+      <p>
+        Plan related tasks, follow their progress, and decide what moves next.
+        Keep the work, human reviews and production evidence in view.
+      </p>
+      <div class="pipeline-hero-actions">
+        <button id="pipelineNewTask" class="pipeline-btn primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i><span>New task</span></button>
+        <button id="pipelineRefreshBtn" class="pipeline-btn" type="button">
+          <i class="fas fa-rotate"></i><span>Refresh</span>
+        </button>
+        <button id="pipelineAutoBtn" class="pipeline-btn" type="button" aria-pressed="false"
+          title="Automatically refresh the queue every 60 seconds">
+          <i class="fas fa-clock-rotate-left"></i><span>Auto-refresh</span>
+        </button>
+        <a class="pipeline-btn" href="/agent-ops">
+          <i class="fas fa-circle-nodes"></i><span>Agent Ops</span>
+        </a>
+        <button class="cockpit-help-button" type="button" data-cockpit-guide-open="pipelineGuide">
+          <i class="fas fa-circle-question"></i><span>Page guide</span>
+        </button>
+      </div>
+    </div>
+    <aside class="pipeline-lifecycle" aria-label="Task lifecycle">
+      <div class="pipeline-lifecycle-title"><i class="fas fa-route"></i> One task contract</div>
+      <ol class="pipeline-lifecycle-flow">
+        <li class="stage-queued" data-cockpit-tip-title="Queued" data-cockpit-tip="Ready for any worker to claim atomically. Re-queueing a task releases its worker and heartbeat." tabindex="0"><i class="fas fa-inbox"></i><span>Queued</span></li>
+        <li class="stage-progress" data-cockpit-tip-title="In progress" data-cockpit-tip="Claimed by a worker. Healthy work heartbeats regularly; a silent hour marks it stale." tabindex="0"><i class="fas fa-bolt"></i><span>In progress</span></li>
+        <li class="stage-review" data-cockpit-tip-title="Review" data-cockpit-tip="Human review is required. Current Coding Team attempts carry a receipt; legacy dossiers may not. Workers never self-certify." tabindex="0"><i class="fas fa-magnifying-glass"></i><span>Review</span></li>
+        <li class="stage-done" data-cockpit-tip-title="Done" data-cockpit-tip="Confirmed by a human identity distinct from the worker. Every confirmation lands in the audit trail." tabindex="0"><i class="fas fa-check"></i><span>Done</span></li>
+      </ol>
+      <div class="pipeline-lifecycle-branch" data-cockpit-tip-title="Blocked" data-cockpit-tip="Any stage can report blocked. Blocked work needs an operator or upstream action before it can move." tabindex="0">
+        <i class="fas fa-hand"></i><span>Blocked &mdash; needs intervention</span>
+      </div>
+      <span class="pipeline-lifecycle-api">Done records task closure. Merge and production proof are separate.</span>
+    </aside>
+  </header>
+
+  <section id="pipelineHandoffContext" class="pipeline-context" aria-live="polite" hidden>
+    <span class="pipeline-context-icon"><i class="fas fa-crosshairs"></i></span>
+    <div>
+      <strong id="pipelineContextTitle">Context from Agent Ops</strong>
+      <span id="pipelineContextDetail">The task list is focused without changing pipeline truth.</span>
+    </div>
+    <a href="/pipeline" title="Remove the Agent Ops context and show the full pipeline"><i class="fas fa-xmark"></i> Clear context</a>
+  </section>
+
+  <nav class="pipeline-section-nav" aria-label="Pipeline sections"><a href="#pipelineOverview">Overview</a><a href="#pipelinePrepare">Prepare and launch</a><a href="#pipelineFollow">Follow and decide</a><a href="#pipelineHistory">History and performance</a></nav>
+
+  <section class="pipeline-state" id="pipelineState" data-tone="loading" aria-live="polite">
+    <div>
+      <i class="fas fa-spinner fa-spin" id="pipelineStateIcon" aria-hidden="true"></i>
+      <strong id="pipelineStateTitle">Loading the pipeline&hellip;</strong>
+      <span id="pipelineStateDetail">Reading the product-owned task queue.</span>
+    </div>
+    <time id="pipelineStateUpdated"></time>
+  </section>
+
+  <section class="pipeline-metrics" aria-label="All-time task counts by status — select one to filter the progression below">
+    <button class="pipeline-metric metric-queued" type="button" data-status-filter="queued" aria-pressed="false">
+      <span><i class="fas fa-inbox" aria-hidden="true"></i> Queued</span>
+      <strong id="pipelineCountQueued">--</strong>
+      <small>Waiting for preparation or a worker</small>
+    </button>
+    <button class="pipeline-metric metric-progress" type="button" data-status-filter="in_progress" aria-pressed="false">
+      <span><i class="fas fa-bolt" aria-hidden="true"></i> In progress</span>
+      <strong id="pipelineCountProgress">--</strong>
+      <small>Claimed and actively moving</small>
+    </button>
+    <button class="pipeline-metric metric-review" type="button" data-status-filter="review" aria-pressed="false">
+      <span><i class="fas fa-magnifying-glass" aria-hidden="true"></i> Review</span>
+      <strong id="pipelineCountReview">--</strong>
+      <small>Human review required; receipt status shown in dossier</small>
+    </button>
+    <button class="pipeline-metric metric-blocked" type="button" data-status-filter="blocked" aria-pressed="false">
+      <span><i class="fas fa-hand" aria-hidden="true"></i> Blocked</span>
+      <strong id="pipelineCountBlocked">--</strong>
+      <small>Needs operator or upstream action</small>
+    </button>
+    <button class="pipeline-metric metric-done" type="button" data-status-filter="done" aria-pressed="false">
+      <span><i class="fas fa-check" aria-hidden="true"></i> Done</span>
+      <strong id="pipelineCountDone">--</strong>
+      <small>Confirmed and closed</small>
+    </button>
+  </section>
+
+  <p id="pipelineCountEvidence" class="pipeline-count-evidence" aria-live="polite">
+    Loading count scope and observation evidence&hellip;
+  </p>
+
+  <section class="pipeline-panel pipeline-overview" id="pipelineOverview" aria-labelledby="pipelineOverviewTitle">
+    <div class="pipeline-panel-header">
+      <div><h2 id="pipelineOverviewTitle"><i class="fas fa-diagram-project"></i> Work at a glance</h2><p>Follow tasks in their current stage. Select a card to open its dossier.</p></div>
+      <div class="pipeline-view-switch" role="group" aria-label="Task progression view">
+        <button class="pipeline-btn compact active" type="button" data-pipeline-view="board" aria-pressed="true"><i class="fas fa-table-columns" aria-hidden="true"></i> Board</button>
+        <button class="pipeline-btn compact" type="button" data-pipeline-view="timeline" aria-pressed="false"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i> Timeline</button>
+      </div>
+    </div>
+    <div class="pipeline-toolbar">
+      <div class="pipeline-search">
+        <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+        <input id="pipelineSearch" type="search" placeholder="Search id, title, owner, epic, source&hellip;"
+          aria-label="Search tasks by id, title, owner, epic, or source" autocomplete="off">
+      </div>
+      <label class="pipeline-select">
+        <span>Service</span>
+        <select id="pipelineServiceFilter" aria-label="Filter by service">
+          <option value="">All services</option>
+        </select>
+      </label>
+      <label class="pipeline-select">
+        <span>Lane / source</span>
+        <select id="pipelineLaneFilter" aria-label="Filter by lane or source">
+          <option value="">All lanes / sources</option>
+        </select>
+      </label>
+      <label class="pipeline-select">
+        <span>Sort</span>
+        <select id="pipelineSort" aria-label="Sort the work table">
+          <option value="urgency">Urgency</option>
+          <option value="priority">Priority</option>
+          <option value="recent">Recently updated</option>
+          <option value="id">Task id</option>
+        </select>
+      </label>
+      <label class="pipeline-select pipeline-group-select"><span>Task group / epic</span><select id="pipelineEpicFilter" aria-label="Filter by task group or epic"><option value="">All groups</option></select></label>
+      <button id="pipelineClearFilters" class="pipeline-btn compact" type="button" hidden>
+        <i class="fas fa-filter-circle-xmark"></i><span>Clear filters</span>
+      </button>
+
+    </div>
+
+    <div class="pipeline-overview-scope"><p id="pipelineOverviewMeta" aria-live="polite">Loading progression&hellip;</p><label><input id="pipelineIncludeDone" type="checkbox" checked> Include done</label></div>
+    <div id="pipelineProgression" class="pipeline-progression" tabindex="-1" aria-label="Filtered task progression"><div class="pipeline-empty">Reading the task queue&hellip;</div></div>
+  </section>
+
+  <section class="pipeline-panel pipeline-workbench" id="pipelinePrepare" aria-labelledby="pipelinePrepareTitle">
+    <div class="pipeline-panel-header"><div><h2 id="pipelinePrepareTitle"><i class="fas fa-list-check"></i> Prepare and launch</h2><p>Detailed work queue · uses the overview filters. Open a dossier to edit scope, dependencies or feedback.</p></div><button class="pipeline-btn compact" type="button" data-pipeline-new-task><i class="fas fa-plus"></i> New task</button></div>
+    <div class="pipeline-team-launch" aria-labelledby="pipelineTeamLaunchTitle">
+      <div class="pipeline-team-launch-copy">
+        <div>
+          <strong id="pipelineTeamLaunchTitle"><i class="fas fa-play" aria-hidden="true"></i> Run one task</strong>
+          <span id="pipelineTeamLaunchState" data-tone="loading" aria-live="polite">Checking the operator one-shot control&hellip;</span>
+        </div>
+        <p>Starts one bounded local worker. It stops at review or blocked; scheduling, merge, and deploy stay off.</p>
+      </div>
+      <form id="pipelineTeamLaunchForm" class="pipeline-team-launch-form">
+        <label class="pipeline-team-launch-task">
+          <span>Queued candidate</span>
+          <select id="pipelineTeamLaunchTask" aria-label="Choose one queued coding candidate" disabled>
+            <option value="">No candidate loaded</option>
+          </select>
+        </label>
+        <label class="pipeline-team-launch-confirm">
+          <input id="pipelineTeamLaunchConfirm" type="checkbox" disabled>
+          <span>I confirm this one local run</span>
+        </label>
+        <button id="pipelineTeamLaunchButton" class="pipeline-btn primary compact" type="submit" disabled>
+          <i class="fas fa-play" aria-hidden="true"></i><span>Run one task</span>
+        </button>
+      </form>
+      <p id="pipelineTeamLaunchDetail" class="pipeline-team-launch-detail" aria-live="polite">
+        AIOps revalidates scope, dependencies, locks, budgets, and the zero-provider-spend policy before claiming anything.
+      </p>
+      <div id="pipelineTeamLaunchResult" class="pipeline-launch-result" aria-live="polite" hidden></div>
+      <div class="pipeline-launch-recovery">
+        <button id="pipelineTeamLaunchRefresh" class="pipeline-btn compact" type="button">Refresh launch status</button>
+        <button id="pipelineTeamLaunchRetry" class="pipeline-btn compact" type="button" hidden>Retry the same request</button>
+      </div>
+      <details id="pipelineTeamEligibility" class="pipeline-launch-eligibility">
+        <summary>Why other tasks are unavailable</summary>
+        <div id="pipelineTeamEligibilityReasons">Reading the host admission rules…</div>
+      </details>
+    </div>
+
+    <p class="pipeline-toolbar-meta pipeline-work-scope" id="pipelineOpenMeta" aria-live="polite">Loading task status&hellip;</p>
+    <div class="pipeline-table-wrap">
+      <table class="pipeline-table">
+        <thead>
+          <tr>
+            <th scope="col">ID</th>
+            <th scope="col">Task</th>
+            <th scope="col">Priority</th>
+            <th scope="col">Status</th>
+            <th scope="col">Owner</th>
+            <th scope="col">Service</th>
+            <th scope="col">Due</th>
+            <th scope="col">Activity</th>
+          </tr>
+        </thead>
+        <tbody id="pipelineOpenRows">
+          <tr><td colspan="8" class="pipeline-empty">Loading tasks&hellip;</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="pipeline-follow-grid" id="pipelineFollow">
+    <section class="pipeline-panel" id="pipelineAttention">
+      <div class="pipeline-panel-header">
+        <div>
+          <h2><i class="fas fa-triangle-exclamation"></i> Needs attention</h2>
+          <p id="pipelineAttentionMeta">--</p>
+        </div>
+        <div id="pipelineAttentionScopes" class="pipeline-attention-scopes" role="group" aria-label="Attention queue">
+          <button type="button" class="pipeline-btn compact active" data-attention-scope="engineering" aria-pressed="true">Engineering</button>
+          <button type="button" class="pipeline-btn compact" data-attention-scope="private" aria-pressed="false">Private lanes</button>
+        </div>
+      </div>
+      <p id="pipelineAttentionNotes" class="pipeline-attention-notes" hidden></p>
+      <div id="pipelineAttentionLive" class="pipeline-attention-live" role="status" aria-live="polite"></div>
+      <div id="pipelineAttentionList" class="pipeline-attention-list" aria-busy="true">
+        <div class="pipeline-empty">Loading attention items&hellip;</div>
+      </div>
+      <nav id="pipelineAttentionPager" class="pipeline-attention-pager" aria-label="Attention pages" hidden></nav>
+      <details id="pipelineStallDiagnosis" class="pipeline-stall" open>
+        <summary>Why tasks are not advancing</summary>
+        <p class="pipeline-muted">Read-only diagnosis of active engineering tasks: owner, next step and missing evidence. An expired lease or an old heartbeat does not prove a worker stopped. Nothing here repairs a task.</p>
+        <p class="pipeline-stall-meta" data-stall-meta>Reading task diagnoses&hellip;</p>
+        <p class="pipeline-stall-sr" data-stall-live role="status" aria-live="polite"></p>
+        <div data-stall-list></div>
+        <button type="button" class="pipeline-btn compact" data-refresh-stall-list><i class="fas fa-rotate" aria-hidden="true"></i><span>Refresh diagnosis</span></button>
+      </details>
+    </section>
+
+  <section class="pipeline-panel pipeline-delivery" id="pipelineDeliveryInbox" aria-labelledby="pipelineDeliveryTitle">
+    <div class="pipeline-panel-header pipeline-delivery-header">
+      <div>
+        <span class="pipeline-delivery-eyebrow"><i class="fas fa-inbox" aria-hidden="true"></i> Follow and decide</span>
+        <h2 id="pipelineDeliveryTitle">Delivery decisions and progress</h2>
+        <p>Active deliveries and human decisions. Completed production deliveries are in History below.</p>
+      </div>
+      <span class="pipeline-delivery-count" id="pipelineDeliveryHumanCount" aria-label="Pending human actions">--</span>
+    </div>
+    <div class="pipeline-delivery-state" id="pipelineDeliveryState" data-tone="loading" aria-live="polite">
+      <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
+      <span>Loading exact delivery evidence&hellip;</span>
+    </div>
+    <div class="pipeline-delivery-list" id="pipelineDeliveryList" tabindex="0" role="region" aria-label="Active delivery evidence">
+      <div class="pipeline-empty">Reading accepted attempts, PRs, CI, and deployment proof&hellip;</div>
+    </div>
+    <p class="pipeline-delivery-note" id="pipelineDeliveryMeta">
+      Merge always requires one explicit operator click. Deployment remains a separate protected workflow after merge.
+    </p>
+  </section>
+
+  </div>
+
+  <section class="pipeline-panel pipeline-team" id="pipelineHistory" aria-labelledby="pipelineTeamTitle">
+    <div class="pipeline-panel-header pipeline-team-header">
+      <div>
+        <h2 id="pipelineTeamTitle"><i class="fas fa-people-group"></i> Coding Team history and performance</h2>
+        <p>Attempts started in the selected period, across all tasks. These statistics do not describe the selected launch or the filtered board.</p>
+      </div>
+      <label class="pipeline-select">
+        <span>Window</span>
+        <select id="pipelineTeamWindow" aria-label="Coding Team performance window">
+          <option value="7d">7 days</option>
+          <option value="30d" selected>30 days</option>
+          <option value="90d">90 days</option>
+        </select>
+      </label>
+    </div>
+    <div id="pipelineTeamState" class="pipeline-team-state" data-tone="loading" aria-live="polite">
+      <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
+      <span>Loading autonomous attempt evidence&hellip;</span>
+    </div>
+    <div class="pipeline-team-metrics" aria-label="Coding Team scorecard">
+      <article><span>Accepted</span><strong id="pipelineTeamAccepted">--</strong><small id="pipelineTeamAcceptedDetail">Human-accepted attempts; merge and deployment are separate</small></article>
+      <article><span>First pass</span><strong id="pipelineTeamFirstPass">--</strong><small id="pipelineTeamFirstPassDetail">Share of accepted attempts</small></article>
+      <article><span>Median cycle</span><strong id="pipelineTeamCycle">--</strong><small id="pipelineTeamCycleDetail">Task creation to human decision</small></article>
+      <article><span>Corrections</span><strong id="pipelineTeamInterventions">--</strong><small id="pipelineTeamInterventionsDetail">Requeues and rejections</small></article>
+      <article><span>Cost evidence</span><strong id="pipelineTeamCost">--</strong><small id="pipelineTeamCostDetail">Provider spend, measured energy, and electricity estimates stay distinct</small></article>
+      <article><span>Evidence</span><strong id="pipelineTeamCoverage">--</strong><small id="pipelineTeamCoverageDetail">Structured attempt receipts</small></article>
+    </div>
+    <section id="pipelineTeamPhases" class="pipeline-phase-durations" aria-label="Attempt phase durations" aria-live="polite">
+      <p class="pipeline-phase-state" data-tone="loading">Loading phase durations&hellip;</p>
+    </section>
+    <div class="pipeline-team-attempts">
+      <div class="pipeline-team-attempts-head">
+        <strong>Recent attempts</strong>
+        <span id="pipelineTeamAttemptMeta">--</span>
+      </div>
+      <div class="pipeline-table-wrap">
+        <table class="pipeline-table pipeline-team-table">
+          <thead>
+            <tr>
+              <th scope="col">Task</th>
+              <th scope="col">Worker</th>
+              <th scope="col">Outcome</th>
+              <th scope="col">Verification</th>
+              <th scope="col">Change</th>
+              <th scope="col">Phases</th>
+              <th scope="col">Cost</th>
+            </tr>
+          </thead>
+          <tbody id="pipelineTeamAttemptRows">
+            <tr><td colspan="7" class="pipeline-empty">Loading attempt evidence&hellip;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="pipeline-lower-grid pipeline-history-grid" aria-label="Completed work history">
+    <section class="pipeline-panel">
+      <div class="pipeline-panel-header">
+        <div>
+          <h2><i class="fas fa-flag-checkered"></i> Recently done</h2>
+          <p id="pipelineDoneMeta">--</p>
+        </div>
+      </div>
+      <div id="pipelineDoneList" class="pipeline-done-list">
+        <div class="pipeline-empty">Loading closed tasks&hellip;</div>
+      </div>
+    </section>
+
+    <section class="pipeline-panel pipeline-delivery-history" aria-labelledby="pipelineDeliveryHistoryTitle">
+      <div class="pipeline-panel-header"><div><h2 id="pipelineDeliveryHistoryTitle"><i class="fas fa-rocket"></i> Completed production deliveries</h2><p id="pipelineDeliveryHistoryMeta">Loading production evidence&hellip;</p></div></div>
+      <div id="pipelineDeliveryHistoryList" class="pipeline-delivery-list" tabindex="0" role="region" aria-label="Completed delivery evidence"><div class="pipeline-empty">Delivery history loads independently.</div></div>
+    </section>
+  </section>
+  <%- include('../partials/cockpit-guide', {
+    cockpitGuide: {
+      id: 'pipelineGuide',
+      title: 'Read the queue, then act with the audited contract',
+      summary: 'Pipeline is the human view of the product-owned task queue and its privacy-safe autonomous-attempt scorecard. Agents and external boards consume the same bounded HTTP API — nothing here bypasses it.',
+      sections: [
+        { title: 'Read the counts', body: 'The five status cards are global truth. Select one to focus the board, timeline and detailed queue below on that stage; select it again to release the filter. Other filters remain visible beside the board.' },
+        { title: 'Follow a task group', body: 'Choose a group / epic beside the board to follow related tasks through completion. The board shows current statuses, including done. Timeline uses only recorded creation, update, attempt and decision events; unrecorded transitions and completion dates remain unknown. It does not infer deployment from done.' },
+        { title: 'Measure the coding team', body: 'History and performance measures attempts started in its displayed 7, 30 or 90 day period across all tasks, independently of board filters and Run one task. Accepted attempts, task completion, merge and production proof are distinct. Coverage is always visible and missing metrics stay unknown rather than becoming zero.' },
+        { title: 'Find the work', body: 'Search matches id, title, owner, epic, and source. Service and lane/source filters narrow the loaded rows; urgency sort surfaces blocked and overdue work first.' },
+        { title: 'Create or edit', body: 'Use New task to add work to the queue, or Edit task in a dossier to clarify existing work. Start with a title and description; More details holds dates, dependencies and roadmap links. In a coding dossier, expand Why can this task start, or why is it waiting? to inspect current queue and Coding Team conditions. Edits keep the current status, owner and history.' },
+        { title: 'Get writing help', body: 'Help me write this turns an idea or requested change into a proposal. Review it, choose Use this draft, then save when ready. Manual editing works without a model.' },
+        { title: 'Open the dossier', body: 'Select any row for the full task: specification, declared coding scope, per-attempt verification, measured cost and energy evidence, and the complete feedback audit trail. Inference content is intentionally excluded.' },
+        { title: 'Start with the operator inbox', body: 'Follow and decide contains active deliveries; completed production deliveries remain in History. Evidence loads independently inside stable panels. Each item explains the change, evidence, risks, recommendation, and exact next action; GitHub remains available as a secondary expert link.' },
+        { title: 'Record a human decision', body: 'A task in review can be accepted or returned for correction from its dossier — but only by an identity different from the worker. Current Coding Team attempts show their receipt; legacy dossiers without one are labeled explicitly and must be reconciled from their existing evidence.' },
+        { title: 'Merge explicitly', body: 'Only a sealed exact PR with its accepted task, head SHA, required CI jobs, and GitHub mergeability revalidated can show the protected merge button. A click confirms that exact identity; there is no auto-merge.' },
+        { title: 'Unstick what is stuck', body: 'Re-queue releases a task back to the queue (clearing its worker and heartbeat), and notes land in the same audit trail agents read.' },
+        { title: 'Trust the heartbeat', body: 'In-progress work should heartbeat regularly. A silent hour marks it stale in Activity and raises it under Needs attention.' }
+      ],
+      note: { title: 'One bounded contract', body: 'This page reads and writes /api/pipeline/tasks and reads its aggregate /api/pipeline/performance projection — the same audited Mongo authority used by workers, human reviewers, and separately deployed boards. There is no privileged side channel.' },
+      links: [
+        { href: '/agent-ops', icon: 'fa-circle-nodes', label: 'Agent Ops', detail: 'Who does what, and is it running' },
+        { href: '/planning', icon: 'fa-diagram-project', label: 'Planning', detail: 'Workstreams and outcomes' },
+        { href: '/nerve-center', icon: 'fa-brain', label: 'Nerve Center', detail: 'Fleet and routing health' }
+      ]
+    }
+  }) %>
+
+  <div class="pipeline-drawer-shell" id="pipelineDrawerShell" hidden>
+    <button class="pipeline-drawer-scrim" type="button" data-close-pipeline-drawer aria-label="Close task details"></button>
+    <aside class="pipeline-drawer" role="dialog" aria-modal="true" aria-labelledby="pipelineDrawerTitle">
+      <header class="pipeline-drawer-head">
+        <div>
+          <span class="pipeline-drawer-eyebrow">Task dossier</span>
+          <h2 id="pipelineDrawerTitle">Task</h2>
+          <code id="pipelineDrawerId"></code>
+        </div>
+        <button class="pipeline-drawer-close" type="button" data-close-pipeline-drawer aria-label="Close task details">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </header>
+      <div class="pipeline-drawer-body" id="pipelineDrawerBody"></div>
+    </aside>
+  </div>
+  <%- include('../partials/pipeline-editor') %>
+</main>

@@ -1,0 +1,157 @@
+.privacy-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: radial-gradient(circle at top, #18212a 0%, rgba(8,11,15,.98) 48%);
+}
+.privacy-gate[hidden] { display: none; }
+.privacy-card {
+  width: min(440px, 100%);
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #11171d;
+  box-shadow: 0 30px 90px rgba(0,0,0,.55);
+}
+.privacy-card h1 { margin: 8px 0 10px; font-size: 34px; }
+.privacy-card p { color: var(--muted); font-size: 13px; line-height: 1.55; }
+.privacy-card label { display: grid; gap: 7px; margin: 18px 0 12px; color: #b8c3cc; font-size: 11px; font-weight: 700; }
+.privacy-card input {
+  width: 100%;
+  border: 1px solid #34414c;
+  border-radius: 10px;
+  background: #0b1015;
+  padding: 11px 12px;
+  outline: none;
+}
+.privacy-card .primary-button { width: 100%; }
+.privacy-status { min-height: 20px; margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+body.psyx-locked { overflow: hidden; }
+body.psyx-locked .app-shell { display: none; }
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: rgba(0,0,0,.52);
+  backdrop-filter: blur(2px);
+}
+.drawer-backdrop[hidden] { display: none; }
+.adaptive-toggle, .drawer-close { display: none; }
+.panel-actions, .composer-actions { display: flex; align-items: center; gap: 6px; }
+
+.message.action {
+  max-width: 720px;
+  margin: 0 auto;
+  grid-template-columns: 28px minmax(0,1fr);
+}
+.message.action .avatar {
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border-style: dashed;
+  color: #7e8b96;
+}
+.message.action .bubble {
+  padding: 9px 12px;
+  border-style: dashed;
+  color: #9ca8b2;
+  background: rgba(17,23,29,.55);
+  font-size: 11px;
+}
+.message.streaming .bubble:empty::after {
+  content: 'Thinking…';
+  color: var(--muted);
+}
+
+.cancel-button {
+  border: 1px solid #594343;
+  background: #211719;
+  color: #d8a5a5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+.cancel-button:hover { border-color: #805656; color: #f0bcbc; }
+.quick-action.armed {
+  border-color: #667786;
+  color: #eef3f6;
+  background: #26313a;
+}
+
+.session-card:focus-within .session-actions { opacity: 1; }
+.state-item > div { min-width: 0; }
+.state-item span { overflow-wrap: anywhere; }
+.state-item small {
+  display: block;
+  margin-top: 4px;
+  color: #5f6c77;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.route-row small {
+  grid-column: 2;
+  color: #52606b;
+  font-size: 8px;
+}
+.modal-card input {
+  width: 100%;
+  border: 1px solid #2b3640;
+  background: #0c1116;
+  border-radius: 9px;
+  padding: 9px;
+  font-weight: 400;
+}
+.modal-card {
+  max-height: min(760px, calc(100vh - 24px));
+  overflow: auto;
+}
+.data-card { width: min(620px, calc(100vw - 24px)); }
+.data-section {
+  padding: 12px 0;
+  border-top: 1px solid var(--border-soft);
+}
+.data-section:first-of-type { border-top: 0; }
+.data-section h3 { margin: 0 0 5px; font-size: 12px; }
+.data-section p, .modal-card > p {
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.data-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.danger-button {
+  border: 1px solid #704748;
+  border-radius: 9px;
+  background: #2a181a;
+  color: #e4aaaa;
+  padding: 10px 14px;
+  font-weight: 700;
+}
+.danger-button:hover:not(:disabled) { border-color: #9a5d5f; color: #ffd0d0; }
+.danger-button:disabled { opacity: .42; cursor: not-allowed; }
+.confirm-check {
+  grid-template-columns: auto 1fr !important;
+  align-items: start;
+  font-weight: 500 !important;
+  line-height: 1.45;
+}
+.confirm-check input { width: auto; margin-top: 2px; }
+.session-data-title { color: var(--text) !important; font-weight: 700; }
+
+@media (max-width: 900px) {
+  .adaptive-toggle, .drawer-close { display: inline-flex; }
+  .side-panel { outline: none; }
+}
+
+@media (max-width: 680px) {
+  .privacy-card { padding: 18px; }
+  .privacy-card h1 { font-size: 29px; }
+  .composer-actions { align-self: stretch; }
+  .voice-grid { grid-template-columns: 1fr; }
+  .cancel-button, .send { min-height: 40px; }
+}

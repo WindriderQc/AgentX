@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AgentX · Reconnaissance faciale</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/access-assets/access.css">
+  <script src="/access-assets/camera.js" defer></script>
+  <script src="/access-assets/face-setup.js" defer></script>
+</head>
+<body><main>
+  <a href="/dad">Retour à Super Dad</a>
+  <h1>Reconnaissance faciale</h1>
+  <p>Enregistre au moins trois images de ton visage pour ouvrir l’espace adulte avec la caméra. AgentX garde seulement une empreinte numérique du visage, jamais les photos. Le code parental reste toujours disponible.</p>
+  <p id="faceCount"></p>
+  <video id="faceVideo" class="camera" playsinline muted hidden></video>
+  <button type="button" id="faceStart">Démarrer la caméra</button>
+  <button type="button" id="faceCapture" hidden>Enregistrer une image</button>
+  <p id="faceStatus" role="status"></p>
+  <button type="button" id="faceErase" class="secondary" disabled>Effacer mes données faciales</button>
+  <p class="note">La reconnaissance par caméra est une commodité familiale : une vidéo de toi pourrait la tromper.</p>
+</main></body></html>

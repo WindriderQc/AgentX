@@ -1,0 +1,321 @@
+<main
+  class="agent-ops-page"
+  id="agentOpsRoot"
+  data-rag-base="<%= locals.publicUrls && locals.publicUrls.rag || '' %>"
+  data-data-base=""
+  data-hermes-base=""
+  data-openclaw-control-direct=""
+  data-openclaw-control-launch="/api/openclaw/control-launch"
+  data-openclaw-control-mode="extension"
+  data-openclaw-control-tunnel=""
+>
+  <header class="agent-ops-hero">
+    <div class="agent-ops-hero-copy">
+      <div class="agent-ops-eyebrow"><i class="fas fa-circle-nodes"></i> Control-plane directory</div>
+      <h1>Who does what — and is it running?</h1>
+      <p>
+        One evidence-first view of responsibilities, runtime agents, recurring work,
+        delivery history, and the authority behind each signal. Deliberately read-only by design.
+      </p>
+      <div class="agent-ops-actions">
+        <button class="agent-ops-button primary" id="agentOpsRefresh" type="button">
+          <i class="fas fa-rotate"></i><span>Refresh</span>
+        </button>
+        <a class="agent-ops-button" href="/nerve-center">
+          <i class="fas fa-brain"></i><span>Nerve Center</span>
+        </a>
+        <button class="cockpit-help-button" type="button" data-cockpit-guide-open="agentOpsGuide"><i class="fas fa-circle-question"></i><span>Page guide</span></button>
+      </div>
+    </div>
+    <aside class="agent-ops-orbit" aria-label="Agent Ops control-plane constellation">
+      <div class="agent-ops-orbit-ring outer"></div>
+      <div class="agent-ops-orbit-ring inner"></div>
+      <div class="agent-ops-orbit-core">
+        <i class="fas fa-bolt"></i>
+        <strong>AgentX</strong>
+        <span>Ops graph</span>
+      </div>
+      <div class="agent-ops-orbit-node registry" tabindex="0" data-cockpit-tip-title="Registry" data-cockpit-tip="Configured identity, role, and responsibility authority."><i class="fas fa-address-book"></i><span>Registry</span></div>
+      <div class="agent-ops-orbit-node runtime" tabindex="0" data-cockpit-tip-title="Runtime" data-cockpit-tip="Observed OpenClaw, Hermes, and product evidence; observation does not imply active execution."><i class="fas fa-satellite-dish"></i><span>Runtime</span></div>
+      <div class="agent-ops-orbit-node cadence" tabindex="0" data-cockpit-tip-title="Cadence" data-cockpit-tip="Live automation receipts reconciled with documented recurring obligations."><i class="fas fa-clock"></i><span>Cadence</span></div>
+      <div class="agent-ops-orbit-node delivery" tabindex="0" data-cockpit-tip-title="Delivery" data-cockpit-tip="Open coding work and ownership projected from the Mongo pipeline."><i class="fas fa-list-check"></i><span>Delivery</span></div>
+      <div class="agent-ops-orbit-live"><span></span><strong id="agentOpsOrbitStatus">Checking projection</strong></div>
+    </aside>
+  </header>
+
+  <section class="agent-ops-state" id="agentOpsState" data-tone="loading" aria-live="polite">
+    <div>
+      <i class="fas fa-spinner fa-spin" id="agentOpsStateIcon"></i>
+      <strong id="agentOpsStateTitle">Building the control-plane view…</strong>
+      <span id="agentOpsStateDetail">Checking registry and runtime sources.</span>
+    </div>
+    <time id="agentOpsUpdated"></time>
+  </section>
+
+  <section class="agent-ops-unavailable" id="agentOpsUnavailable" aria-labelledby="agentOpsUnavailableTitle" hidden>
+    <div class="agent-ops-unavailable-icon" aria-hidden="true"><i class="fas fa-plug-circle-xmark"></i></div>
+    <div class="agent-ops-unavailable-copy">
+      <span class="agent-ops-kicker">Optional projection unavailable</span>
+      <h2 id="agentOpsUnavailableTitle">Install an Agent Ops trusted extension to populate this view</h2>
+      <p id="agentOpsUnavailableReason">No installed trusted extension handled the Agent Ops projection.</p>
+      <dl class="agent-ops-unavailable-evidence">
+        <div><dt>Authority</dt><dd id="agentOpsUnavailableAuthority">agentx.trusted-extension · read-only</dd></div>
+        <div><dt>Product data</dt><dd>Not inferred; all counts remain —</dd></div>
+        <div><dt>Setup reference</dt><dd><code id="agentOpsUnavailableDocsPath">docs/TRUSTED_EXTENSIONS.md</code></dd></div>
+      </dl>
+      <p class="agent-ops-unavailable-guidance" id="agentOpsUnavailableGuidance">Install and pin a separately owned Agent Ops extension, enable the full profile, then restart Core.</p>
+      <div class="agent-ops-unavailable-actions">
+        <button class="agent-ops-button primary" id="agentOpsUnavailableRetry" type="button"><i class="fas fa-rotate"></i>Retry projection</button>
+        <a class="agent-ops-button" href="/nerve-center"><i class="fas fa-brain"></i>Nerve Center</a>
+        <a class="agent-ops-button" href="/pipeline"><i class="fas fa-list-check"></i>Pipeline</a>
+        <a class="agent-ops-button" href="https://github.com/WindriderQc/AgentX/blob/main/docs/TRUSTED_EXTENSIONS.md" target="_blank" rel="noopener"><i class="fas fa-book-open"></i>Setup docs</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="agent-ops-metrics" aria-label="Agent Ops summary">
+    <button class="agent-ops-metric cyan" type="button" data-metric-tab="agents" data-metric-preset="all-agents">
+      <span>Registered agents</span>
+      <strong id="agentOpsMetricAgents">—</strong>
+      <small id="agentOpsMetricAgentsDetail">Loading catalog</small>
+      <i class="fas fa-arrow-right agent-ops-card-arrow"></i>
+    </button>
+    <button class="agent-ops-metric violet" type="button" data-metric-tab="agents" data-metric-preset="observed-agents">
+      <span>Observed now</span>
+      <strong id="agentOpsMetricObserved">—</strong>
+      <small id="agentOpsMetricObservedDetail">Runtime evidence</small>
+      <i class="fas fa-arrow-right agent-ops-card-arrow"></i>
+    </button>
+    <button class="agent-ops-metric blue" type="button" data-metric-tab="automations" data-metric-preset="all-automations">
+      <span>Recurring work</span>
+      <strong id="agentOpsMetricAutomations">—</strong>
+      <small id="agentOpsMetricAutomationsDetail">Live + documented</small>
+      <i class="fas fa-arrow-right agent-ops-card-arrow"></i>
+    </button>
+    <button class="agent-ops-metric amber" type="button" data-metric-tab="work" data-metric-preset="all-work">
+      <span>Open work</span>
+      <strong id="agentOpsMetricWork">—</strong>
+      <small id="agentOpsMetricWorkDetail">Mongo pipeline</small>
+      <i class="fas fa-arrow-right agent-ops-card-arrow"></i>
+    </button>
+    <button class="agent-ops-metric red" type="button" data-metric-tab="inbox" data-metric-preset="all-inbox">
+      <span>Needs attention</span>
+      <strong id="agentOpsMetricAttention">—</strong>
+      <small id="agentOpsMetricAttentionDetail">Coverage and failures</small>
+      <i class="fas fa-arrow-right agent-ops-card-arrow"></i>
+    </button>
+  </section>
+
+  <nav class="agent-ops-tabs" aria-label="Agent Ops views" role="tablist">
+    <button type="button" class="active" data-agent-ops-tab="overview" role="tab" aria-selected="true">
+      <i class="fas fa-gauge-high"></i> Overview
+    </button>
+    <button type="button" data-agent-ops-tab="inbox" role="tab" aria-selected="false">
+      <i class="fas fa-inbox"></i> Inbox
+      <span id="agentOpsTabInboxCount">—</span>
+    </button>
+    <button type="button" data-agent-ops-tab="responsibilities" role="tab" aria-selected="false">
+      <i class="fas fa-diagram-project"></i> Ownership
+      <span id="agentOpsTabResponsibilityCount">—</span>
+    </button>
+    <button type="button" data-agent-ops-tab="activity" role="tab" aria-selected="false">
+      <i class="fas fa-wave-square"></i> Activity
+      <span id="agentOpsTabActivityCount">—</span>
+    </button>
+    <button type="button" data-agent-ops-tab="agents" role="tab" aria-selected="false">
+      <i class="fas fa-users-gear"></i> Agents
+      <span id="agentOpsTabAgentCount">—</span>
+    </button>
+    <button type="button" data-agent-ops-tab="automations" role="tab" aria-selected="false">
+      <i class="fas fa-clock"></i> Automations
+      <span id="agentOpsTabAutomationCount">—</span>
+    </button>
+    <button type="button" data-agent-ops-tab="work" role="tab" aria-selected="false">
+      <i class="fas fa-list-check"></i> Work
+      <span id="agentOpsTabWorkCount">—</span>
+    </button>
+  </nav>
+
+  <div class="agent-ops-toolbar" id="agentOpsToolbar" hidden>
+    <label class="agent-ops-search">
+      <i class="fas fa-magnifying-glass"></i>
+      <span class="sr-only">Filter current Agent Ops view</span>
+      <input id="agentOpsSearch" type="search" placeholder="Filter by name, owner, role, or status…" autocomplete="off">
+    </label>
+    <div class="agent-ops-filter-meta">
+      <span id="agentOpsFilterResult">All items</span>
+      <button id="agentOpsClearFilter" type="button" hidden><i class="fas fa-xmark"></i><span>Clear view</span></button>
+    </div>
+  </div>
+
+  <section class="agent-ops-pane active" data-agent-ops-pane="overview" role="tabpanel">
+    <div class="agent-ops-overview-grid">
+      <article class="agent-ops-panel span-two">
+        <header class="agent-ops-panel-head">
+          <div>
+            <span class="agent-ops-kicker">Runtime layers</span>
+            <h2>Control-plane topology <button class="cockpit-help-dot" type="button" data-cockpit-tip-title="Runtime layers" data-cockpit-tip="Select a layer for its bounded dossier. AgentX Core is the product plane; OpenClaw and Hermes remain separately operated runtimes." aria-label="Explain runtime layers"><i class="fas fa-question"></i></button></h2>
+          </div>
+          <a href="/nerve-center">Full topology <i class="fas fa-arrow-right"></i></a>
+        </header>
+        <div class="agent-ops-runtime-grid" id="agentOpsRuntimeLayers">
+          <div class="agent-ops-loading"><i class="fas fa-spinner fa-spin"></i> Loading runtimes…</div>
+        </div>
+      </article>
+
+      <article class="agent-ops-panel">
+        <header class="agent-ops-panel-head">
+          <div>
+            <span class="agent-ops-kicker">Attention</span>
+            <h2>What needs a look <button class="cockpit-help-dot" type="button" data-cockpit-tip-title="Attention queue" data-cockpit-tip="Failures, blocked delivery, and visibility gaps ranked from the same read-only projection used by the Inbox tab." aria-label="Explain the attention queue"><i class="fas fa-question"></i></button></h2>
+          </div>
+        </header>
+        <div class="agent-ops-stack" id="agentOpsWarnings">
+          <div class="agent-ops-loading"><i class="fas fa-spinner fa-spin"></i> Checking coverage…</div>
+        </div>
+      </article>
+
+      <article class="agent-ops-panel">
+        <header class="agent-ops-panel-head">
+          <div>
+            <span class="agent-ops-kicker">Cadence</span>
+            <h2>Next and recurring <button class="cockpit-help-dot" type="button" data-cockpit-tip-title="Recurring work" data-cockpit-tip="The next projected runs combine native automation receipts with documented recurring obligations; evidence confidence remains visible." aria-label="Explain recurring work"><i class="fas fa-question"></i></button></h2>
+          </div>
+          <button type="button" class="agent-ops-link-button" data-open-agent-ops-tab="automations">View all</button>
+        </header>
+        <div class="agent-ops-stack" id="agentOpsNextRuns"></div>
+      </article>
+
+      <article class="agent-ops-panel span-two">
+        <header class="agent-ops-panel-head">
+          <div>
+            <span class="agent-ops-kicker">Coverage</span>
+            <h2>What this view can prove <button class="cockpit-help-dot" type="button" data-cockpit-tip-title="Coverage" data-cockpit-tip="Coverage compares configured facts with observable receipts. A gap stays explicit instead of becoming an invented fallback value." aria-label="Explain evidence coverage"><i class="fas fa-question"></i></button></h2>
+          </div>
+        </header>
+        <div class="agent-ops-coverage" id="agentOpsCoverage"></div>
+      </article>
+
+      <article class="agent-ops-panel span-three agent-ops-signal-panel">
+        <header class="agent-ops-panel-head">
+          <div>
+            <span class="agent-ops-kicker">Signal map</span>
+            <h2>Every source feeding this projection <button class="cockpit-help-dot" type="button" data-cockpit-tip-title="Source telemetry" data-cockpit-tip="Each source reports its own latency, health, and issues. Select one to continue in the narrowest authoritative surface." aria-label="Explain source telemetry"><i class="fas fa-question"></i></button></h2>
+          </div>
+          <a href="/nerve-center">Diagnose sources <i class="fas fa-arrow-right"></i></a>
+        </header>
+        <div class="agent-ops-source-map" id="agentOpsSources"></div>
+      </article>
+
+      <article class="agent-ops-panel span-three">
+        <header class="agent-ops-panel-head">
+          <div>
+            <span class="agent-ops-kicker">Operating roster</span>
+            <h2>People, personas, and machines with the clearest signal <button class="cockpit-help-dot" type="button" data-cockpit-tip-title="Operating roster" data-cockpit-tip="The overview ranks identities by observed status and owned signals. The Agents tab retains the complete registry, including unobserved roles." aria-label="Explain the operating roster"><i class="fas fa-question"></i></button></h2>
+          </div>
+          <button type="button" class="agent-ops-link-button" data-open-agent-ops-tab="agents">Explore all agents</button>
+        </header>
+        <div class="agent-ops-roster" id="agentOpsRoster"></div>
+      </article>
+
+    </div>
+  </section>
+
+  <section class="agent-ops-pane" data-agent-ops-pane="inbox" role="tabpanel" hidden>
+    <div class="agent-ops-section-intro">
+      <div><span class="agent-ops-kicker">Operations inbox</span><h2>Evidence, impact, owner, next move</h2></div>
+      <p>Attention items remain explainable: every signal exposes its source and routes to the narrowest useful action.</p>
+    </div>
+    <div class="agent-ops-inbox-summary" id="agentOpsInboxSummary"></div>
+    <div class="agent-ops-inbox" id="agentOpsInbox"></div>
+  </section>
+
+  <section class="agent-ops-pane" data-agent-ops-pane="responsibilities" role="tabpanel" hidden>
+    <div class="agent-ops-section-intro">
+      <div><span class="agent-ops-kicker">Responsibility map</span><h2>Agent → obligation → active signal</h2></div>
+      <p>Ownership coverage is derived from the registry, live schedules, and Mongo pipeline—not inferred from chat activity.</p>
+    </div>
+    <div class="agent-ops-responsibility-summary" id="agentOpsResponsibilitySummary"></div>
+    <div class="agent-ops-responsibility-layout">
+      <div class="agent-ops-responsibility-lanes" id="agentOpsResponsibilityLanes"></div>
+      <aside class="agent-ops-responsibility-gaps" id="agentOpsResponsibilityGaps"></aside>
+    </div>
+  </section>
+
+  <section class="agent-ops-pane" data-agent-ops-pane="activity" role="tabpanel" hidden>
+    <div class="agent-ops-section-intro">
+      <div><span class="agent-ops-kicker">History &amp; proof</span><h2>What changed, when, and from which authority</h2></div>
+      <p>Recent automation receipts, pipeline transitions, sessions, and source degradation.</p>
+    </div>
+    <div class="agent-ops-activity-controls" role="group" aria-label="Filter Agent Ops activity">
+      <button class="active" type="button" data-activity-kind="all">All</button>
+      <button type="button" data-activity-kind="automation">Automations</button>
+      <button type="button" data-activity-kind="work">Work</button>
+      <button type="button" data-activity-kind="operator">Operator</button>
+      <button type="button" data-activity-kind="source">Sources</button>
+    </div>
+    <div class="agent-ops-activity" id="agentOpsActivity"></div>
+  </section>
+
+  <section class="agent-ops-pane" data-agent-ops-pane="agents" role="tabpanel" hidden>
+    <div class="agent-ops-section-intro">
+      <div><span class="agent-ops-kicker">Responsibilities</span><h2>Registered identities and operating roles</h2></div>
+      <p>“Observed” means the runtime exposed configuration or inventory; it does not claim that a session is currently executing.</p>
+    </div>
+    <div class="agent-ops-agent-grid" id="agentOpsAgents"></div>
+  </section>
+
+  <section class="agent-ops-pane" data-agent-ops-pane="automations" role="tabpanel" hidden>
+    <div class="agent-ops-section-intro">
+      <div><span class="agent-ops-kicker">Recurring work</span><h2>Live schedules and documented obligations <button class="cockpit-help-dot" type="button" data-cockpit-tip-title="Automation evidence" data-cockpit-tip="A failed receipt stays attached to its native runtime. Inspect its dossier for bounded diagnosis and the owning surface that can make the correction." aria-label="Explain automation evidence"><i class="fas fa-question"></i></button></h2></div>
+      <p>Every row states whether its evidence is live, observed, or documentation-only.</p>
+    </div>
+    <div class="agent-ops-automation-list" id="agentOpsAutomations"></div>
+  </section>
+
+  <section class="agent-ops-pane" data-agent-ops-pane="work" role="tabpanel" hidden>
+    <div class="agent-ops-section-intro">
+      <div><span class="agent-ops-kicker">Delivery</span><h2>Active Mongo pipeline ownership</h2></div>
+      <a class="agent-ops-button compact" href="/pipeline">Open Pipeline <i class="fas fa-arrow-right"></i></a>
+    </div>
+    <div class="agent-ops-work-counts" id="agentOpsWorkCounts"></div>
+    <div class="agent-ops-work-list" id="agentOpsWork"></div>
+  </section>
+
+  <%- include('../partials/cockpit-guide', {
+    cockpitGuide: {
+      id: 'agentOpsGuide',
+      title: 'Read the ecosystem, then continue in the authority that owns the action',
+      summary: 'Agent Ops is the cross-platform directory and evidence cockpit. It reconciles identities, receipts, schedules, and delivery without becoming a second control plane.',
+      sections: [
+        { title: 'Start with attention', body: 'Needs Attention and Inbox surface failures, blocked work, and visibility gaps. Every item keeps its owner, impact, source, and narrow next move.' },
+        { title: 'Drill through the counts', body: 'Summary cards and tabs are filters, not separate datasets. They all project the same schema-versioned response.' },
+        { title: 'Inspect the dossier', body: 'Select a runtime, automation, or agent for recent evidence and linked responsibilities. Dossiers remain read-only.' },
+        { title: 'Continue at the authority', body: 'OpenClaw owns native agents, sessions, and cron; Pipeline owns coding delivery; Nerve Center owns hosts, models, and routing health.' },
+        { title: 'Interpret confidence', body: 'Observed means a runtime exposed evidence. Documentation-only means an obligation exists without a live receipt. Neither implies active execution.' },
+        { title: 'Trace the source', body: 'Coverage and Signal Map expose latency, health, and gaps source by source instead of replacing missing data with a fallback.' }
+      ],
+      note: { title: 'Read-only aggregation', body: 'Agent Ops does not assign work, restart automations, mutate runtime state, or query another service’s collections. Actions continue through the owning UI.' },
+      links: [
+        { href: '/playground', icon: 'fa-comments', label: 'Playground', detail: 'Talk with the models' },
+        { href: '/pipeline', icon: 'fa-list-check', label: 'Pipeline', detail: 'Coding delivery queue' },
+        { href: '/nerve-center', icon: 'fa-brain', label: 'Nerve Center', detail: 'Fleet and routing health' }
+      ]
+    }
+  }) %>
+
+  <div class="agent-ops-drawer-shell" id="agentOpsDrawerShell" hidden>
+    <button class="agent-ops-drawer-scrim" type="button" data-close-agent-drawer aria-label="Close agent details"></button>
+    <aside class="agent-ops-drawer" role="dialog" aria-modal="true" aria-labelledby="agentOpsDrawerTitle">
+      <header class="agent-ops-drawer-head">
+        <div class="agent-ops-drawer-identity">
+          <div class="agent-ops-drawer-avatar" id="agentOpsDrawerAvatar"><i class="fas fa-user-gear"></i></div>
+          <div><span class="agent-ops-kicker" id="agentOpsDrawerEyebrow">Agent dossier</span><h2 id="agentOpsDrawerTitle">Agent</h2><code id="agentOpsDrawerId"></code></div>
+        </div>
+        <button class="agent-ops-drawer-close" type="button" data-close-agent-drawer aria-label="Close agent details"><i class="fas fa-xmark"></i></button>
+      </header>
+      <div class="agent-ops-drawer-body" id="agentOpsDrawerBody"></div>
+    </aside>
+  </div>
+
+</main>

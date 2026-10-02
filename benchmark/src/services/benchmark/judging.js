@@ -1,0 +1,452 @@
+/**
+ * Judging Module
+ * Public entry point for benchmark judging orchestration.
+ * Per-result judge execution lives in judgeExecutor.js.
+ *
+ * Judge Configuration Resolution Priority
+ * ========================================
+ * When a result is judged, the judge model and host are resolved in this order
+ * (first non-empty value wins at each level):
+ *
+ * 1. Batch judge_config (per-batch override set in the UI)
+ *    - judgeBatch() receives judgeConfig from route handler options
+ *    - Passed to judgeResult() and then to judgeExecutor.judgeResult()
+ *
+ * 2. Result-level fields (result.judge_model, result.judge_host)
+ *    - Fallback in judgeExecutor.js when batch config doesn't specify a value
+ *    - Populated from the execution plan's per-host judge assignment
+ *
+ * 3. JUDGE_CONFIG defaults (src/services/scoring/judgeCall.js)
+ *    - model uses product configuration; host uses JUDGE_HOST/OLLAMA_HOST
+ *    - num_ctx is omitted unless the operator explicitly configures it
+ *    - Also provides: timeout, temperature, num_predict, and max_retries
+ *
+ * 4. judgeHostResolution.js -- resolveJudgeHost()
+ *    - Used during batch planning (batchPlanner) to determine which host
+ *      each model should be judged on
+ *    - If judge_config.host is explicit, uses that; otherwise defaults to
+ *      the execution host (same-host judging)
+ *
+ * 5. Execution config defaults (config.js -- DEFAULT_EXECUTION_CONFIG)
+ *    - Provides thinking and timeout defaults; resident context remains
+ *      governed by the deployed model unless explicitly overridden
+ */
+
+const logger = require('../../../config/logger');
+const BenchmarkResult = require('../../../models/BenchmarkResult');
+const BenchmarkBatch = require('../../../models/BenchmarkBatch');
+const { JUDGE_CONFIG } = require('../qualityScorer');
+const { SCORER_VERSION } = require('../scoring/scorerVersion');
+const { applyJudgeCohort } = require('./qualityCohort');
+// hardwareProfileService removed — profiler handles hardware detection now
+const ConcurrencyQueue = require('./ConcurrencyQueue');
+const { applyScoresToResult, judgeResult } = require('./judgeExecutor');
+const { beginManagedWorkload } = require('./workloadAdmissionLifecycle');
+const { yieldWaitMs } = require('./workloadYield');
+const { judgeDrainBudgetMs, prepareStandaloneJudge } = require('./standaloneJudgePreparation');
+
+// Active judging job state and helpers managed by judgeMonitor.js
+const {
+    activeJudgingJobs,
+    persistJudgeCounters,
+    getAuthoritativeJudgeCounters,
+    stopJudging,
+    stopPersistedJudging,
+    stopAllJudging,
+    getJudgingStatus
+} = require('./judgeMonitor');
+
+function buildJudgeableResultFilter(batchId, options = {}) {
+    const { force = false } = options;
+    const filter = {
+        batch_id: batchId,
+        success: true,
+        response: { $type: 'string', $nin: ['', null] }
+    };
+
+    if (!force) {
+        // Pending also covers a judged result the judge could not evaluate.
+        filter.$or = [
+            { scoring_method: { $in: ['pending', 'llm_failed'] } },
+            { scoring_method: { $in: ['decomposed', 'reference'] }, quality_score: null }
+        ];
+    }
+
+    return filter;
+}
+
+async function preflightJudgeBatch(batchId, options = {}) {
+    const batch = await BenchmarkBatch.findById(batchId)
+        .select('status judge_status judge_config plan.judge_model plan.exec_hosts')
+        .lean();
+
+    if (!batch) {
+        throw new Error(`Batch not found: ${batchId}`);
+    }
+
+    if (batch.status === 'running') {
+        throw new Error('Cannot judge while batch is still running');
+    }
+
+    if (batch.judge_status === 'running' || activeJudgingJobs.has(batchId)) {
+        throw new Error('Judging is already running for this batch');
+    }
+
+    const pendingCount = await BenchmarkResult.countDocuments(
+        buildJudgeableResultFilter(batchId, options)
+    );
+
+    if (pendingCount === 0) {
+        throw new Error(options.force
+            ? 'No judgeable successful results found (non-empty response required)'
+            : 'No pending judgeable results found (non-empty response required)');
+    }
+
+    return {
+        pendingCount,
+        batchStatus: batch.status || 'unknown',
+        judgeConfig: {
+            ...(batch.judge_config || {}),
+            model: batch.judge_config?.model || batch.plan?.judge_model || null,
+            host: batch.judge_config?.host || batch.plan?.exec_hosts?.[0]?.judge_host || null
+        }
+    };
+}
+
+async function reconcileJudgeCounters(batchId) {
+    const [judgeTotal, judgeCompleted, judgeFailed] = await Promise.all([
+        BenchmarkResult.countDocuments(buildJudgeableResultFilter(batchId, { force: true })),
+        BenchmarkResult.countDocuments({
+            ...buildJudgeableResultFilter(batchId, { force: true }),
+            scoring_method: { $ne: 'pending' }
+        }),
+        BenchmarkResult.countDocuments({
+            ...buildJudgeableResultFilter(batchId, { force: true }),
+            scoring_method: 'llm_failed'
+        })
+    ]);
+
+    return {
+        judge_total: judgeTotal,
+        judge_completed: judgeCompleted,
+        judge_failed: judgeFailed
+    };
+}
+
+async function judgeBatch(batchId, options = {}) {
+    const { judgeConfig = {}, concurrency = 2, force = false, multiJudge = null } = options;
+    const cancelSignal = judgeConfig.cancelSignal || judgeConfig.signal || null;
+    const assertAuthorityActive = () => {
+        if (!cancelSignal?.aborted) return;
+        if (cancelSignal.reason instanceof Error) throw cancelSignal.reason;
+        const error = new Error(`Judge workload admission lost for batch ${batchId}`);
+        error.code = 'BENCHMARK_CLAIM_LOST';
+        throw error;
+    };
+
+    if (activeJudgingJobs.has(batchId)) {
+        throw new Error('Judging is already running for this batch');
+    }
+
+    const batch = await BenchmarkBatch.findById(batchId);
+    if (!batch) {
+        throw new Error(`Batch not found: ${batchId}`);
+    }
+    if (batch.status === 'running') {
+        throw new Error('Cannot judge while batch is still running');
+    }
+
+    const pendingResults = await BenchmarkResult.find(buildJudgeableResultFilter(batchId, { force }))
+        .select('_id prompt_name prompt_level prompt_category')
+        .lean();
+
+    if (pendingResults.length === 0) {
+        return { judged: 0, failed: 0, timedOut: false };
+    }
+
+    assertAuthorityActive();
+    const lockUpdate = await BenchmarkBatch.updateOne(
+        { _id: batchId, judge_status: { $ne: 'running' } },
+        {
+            $set: {
+                judge_status: 'running',
+                judge_total: pendingResults.length,
+                judge_completed: 0,
+                judge_failed: 0,
+                last_activity_at: new Date()
+            }
+        },
+        cancelSignal ? { signal: cancelSignal } : undefined
+    );
+    assertAuthorityActive();
+
+    if (!lockUpdate || lockUpdate.matchedCount === 0) {
+        throw new Error('Judging is already running for this batch');
+    }
+
+    if (multiJudge?.enabled) {
+        if (Array.isArray(multiJudge.family_warnings) && multiJudge.family_warnings.length > 0) {
+            logger.warn('Multi-judge family validation warning', {
+                batchId,
+                warnings: multiJudge.family_warnings,
+                families: multiJudge.judge_families || []
+            });
+        }
+        const pct = Number.isFinite(Number(multiJudge.escalation_budget_percent))
+            ? Math.max(0, Math.min(100, Number(multiJudge.escalation_budget_percent)))
+            : 20;
+        multiJudge._escalation = {
+            budget: pct >= 100 ? Infinity : Math.ceil(pendingResults.length * (pct / 100)),
+            used: 0
+        };
+        logger.info('Multi-judge escalation budget set', {
+            batchId,
+            budget: multiJudge._escalation.budget,
+            percent: pct,
+            pending: pendingResults.length
+        });
+    }
+
+    const queue = new ConcurrencyQueue(concurrency);
+    const job = { queue, stopped: false };
+    activeJudgingJobs.set(batchId, job);
+
+    let judged = 0;
+    let failed = 0;
+    let timedOut = false;
+    let finalStatus = 'failed';
+    // A cancelled or over-budget queue rejects its waiting tasks with this
+    // code: those results were not judged, so they stay pending.
+    const isQueueStop = error => ['QUEUE_CANCELLED', 'JUDGE_BUDGET_EXCEEDED'].includes(error?.code);
+
+    try {
+        const batchHardwareSnapshot = null; // hardware detection removed — handled by profiler pipeline
+        const runJudgeConfig = await prepareStandaloneJudge(judgeConfig, { workloadId: cancelSignal?.workloadId, signal: cancelSignal });
+        assertAuthorityActive();
+
+        for (const result of pendingResults) {
+            assertAuthorityActive();
+            if (job.stopped) {
+                break;
+            }
+
+            queue.add(async () => {
+                assertAuthorityActive();
+                if (job.stopped) {
+                    return;
+                }
+
+                try {
+                    await judgeResult(result._id.toString(), runJudgeConfig, batchHardwareSnapshot, multiJudge);
+                    assertAuthorityActive();
+                    judged++;
+
+                    await BenchmarkBatch.updateOne(
+                        { _id: batchId },
+                        {
+                            $inc: { judge_completed: 1 },
+                            $set: { last_activity_at: new Date() }
+                        },
+                        cancelSignal ? { signal: cancelSignal } : undefined
+                    );
+                    assertAuthorityActive();
+                } catch (error) {
+                    if (cancelSignal?.aborted || error?.code === 'BENCHMARK_CLAIM_LOST') throw error;
+                    failed++;
+                    logger.warn('Judge failed for result', {
+                        batchId,
+                        resultId: result._id.toString(),
+                        prompt_name: result.prompt_name,
+                        error: error.message
+                    });
+
+                    await BenchmarkResult.updateOne(
+                        { _id: result._id },
+                        {
+                            $set: {
+                                scorer_version: SCORER_VERSION,
+                                scoring_method: 'llm_failed',
+                                quality_explanation: error.message,
+                                judge_model: judgeConfig.model || JUDGE_CONFIG.model
+                            }
+                        },
+                        cancelSignal ? { signal: cancelSignal } : undefined
+                    );
+                    assertAuthorityActive();
+
+                    await BenchmarkBatch.updateOne(
+                        { _id: batchId },
+                        { $inc: { judge_completed: 1, judge_failed: 1 } },
+                        cancelSignal ? { signal: cancelSignal } : undefined
+                    );
+                    assertAuthorityActive();
+                }
+            }).catch(async (enqueueError) => {
+                // Lost authority is reported once, after the drain; queued
+                // results it stopped were not judged and stay pending.
+                if (cancelSignal?.aborted || enqueueError?.code === 'BENCHMARK_CLAIM_LOST') return;
+                if (isQueueStop(enqueueError)) return;
+                failed++;
+                logger.error('Failed to enqueue judge task', {
+                    batchId,
+                    resultId: result._id.toString(),
+                    error: enqueueError.message
+                });
+
+                await BenchmarkBatch.updateOne(
+                    { _id: batchId },
+                    { $inc: { judge_completed: 1, judge_failed: 1 } },
+                    cancelSignal ? { signal: cancelSignal } : undefined
+                );
+                assertAuthorityActive();
+            });
+        }
+
+        const drainResult = await queue.drain({
+            timeoutMs: judgeDrainBudgetMs(pendingResults.length, concurrency),
+            stallTimeoutMs: 2 * 60 * 1000,
+            pausedMs: () => yieldWaitMs(cancelSignal?.workloadId),
+            onProgress: (status) => {
+                logger.debug('Judge queue progress', { batchId, ...status });
+            }
+        });
+        if (drainResult.timedOut) {
+            // The run ends here, and its admission with it: no judge call may
+            // outlive it. Queued results stay pending for rejudge-pending.
+            await queue.cancelAndSettle(Object.assign(new Error(`Judge run for batch ${batchId} stopped: ${drainResult.reason}`), { code: 'JUDGE_BUDGET_EXCEEDED' }));
+        }
+
+        timedOut = drainResult.timedOut;
+        finalStatus = job.stopped ? 'stopped' : (timedOut ? 'failed' : 'completed');
+
+        const authoritative = await reconcileJudgeCounters(batchId);
+        await persistJudgeCounters(batchId, {
+            judge_status: finalStatus,
+            ...authoritative
+        }, {
+            signal: cancelSignal,
+            assertAuthorityActive
+        });
+
+        // The batch's results now belong to the cohort of the judge that ran,
+        // deterministic ones included, so a re-judge joins its leaderboard.
+        if (finalStatus !== 'stopped' && judged > 0) {
+            await applyJudgeCohort(batchId, judgeConfig, { signal: cancelSignal });
+            assertAuthorityActive();
+        }
+
+        logger.info('Standalone judging completed', {
+            batchId,
+            finalStatus,
+            authoritative: {
+                total: authoritative.judge_total,
+                completed: authoritative.judge_completed,
+                failed: authoritative.judge_failed
+            }
+        });
+
+        if (finalStatus === 'completed') {
+            try {
+                const freshBatch = await BenchmarkBatch.findById(batchId);
+                if (freshBatch) {
+                    await freshBatch.calculateMetrics();
+                }
+            } catch (error) {
+                logger.warn('Failed to recalculate metrics after judging', {
+                    batchId,
+                    error: error.message
+                });
+            }
+        }
+    } catch (error) {
+        // Nothing of this run may reach a judge once it has failed.
+        await queue.cancelAndSettle(error).catch(() => {});
+        finalStatus = activeJudgingJobs.get(batchId)?.stopped ? 'stopped' : 'failed';
+        logger.error('Standalone judging crashed', {
+            batchId,
+            error: error.message,
+            stack: error.stack
+        });
+
+        try {
+            const authoritative = await getAuthoritativeJudgeCounters(batchId);
+            await persistJudgeCounters(batchId, {
+                judge_status: finalStatus,
+                judge_total: authoritative.judge_total,
+                judge_completed: authoritative.judge_completed,
+                judge_failed: authoritative.judge_failed,
+                authority_state: cancelSignal?.aborted ? 'authority_invalidated' : 'authoritative'
+            });
+            error.authorityCompensated = true;
+        } catch (persistError) {
+            try {
+                await BenchmarkBatch.updateOne(
+                    { _id: batchId },
+                    {
+                        $set: {
+                            authority_state: 'pending_reconciliation',
+                            authority_reconciliation_reason: `judge terminal persistence unverified: ${persistError.message}`
+                        }
+                    }
+                );
+                error.authorityInvalidated = true;
+            } catch (invalidationError) {
+                error.compensationError = persistError;
+                error.invalidationError = invalidationError;
+                error.retainAdmission = true;
+                error.code = 'JUDGE_BATCH_RECONCILIATION_PENDING';
+            }
+        }
+
+        throw error;
+    } finally {
+        activeJudgingJobs.delete(batchId);
+    }
+
+    return {
+        judged,
+        failed,
+        timedOut
+    };
+}
+
+async function startManagedJudgeBatch(batchId, options = {}) {
+    const judgeHost = options.judgeConfig?.host || null;
+    const workloadId = `judge-batch:${batchId}`;
+    const lifecycle = await beginManagedWorkload(workloadId, {
+        requestId: `judge-batch:${batchId}`,
+        kind: 'judge',
+        batchId: String(batchId),
+        hosts: judgeHost ? [judgeHost] : []
+    });
+    const completion = judgeBatch(batchId, {
+        ...options,
+        judgeConfig: {
+            ...(options.judgeConfig || {}),
+            cancelSignal: lifecycle.signal
+        }
+    }).then(async result => {
+        lifecycle.assertActive();
+        await lifecycle.complete();
+        return result;
+    }, async error => {
+        // A failed or cancelled judge may have an uncertain terminal write.
+        // Drain requests but retain the admission for Core TTL recovery.
+        if (error?.retainAdmission === true) await lifecycle.retainForRecovery(error);
+        else await lifecycle.abandon();
+        throw error;
+    });
+    return { workloadId, completion };
+}
+
+module.exports = {
+    applyScoresToResult,
+    judgeResult,
+    judgeBatch,
+    startManagedJudgeBatch,
+    preflightJudgeBatch,
+    stopJudging,
+    stopPersistedJudging,
+    getJudgingStatus,
+    stopAllJudging
+};

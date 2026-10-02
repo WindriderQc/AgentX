@@ -1,0 +1,10 @@
+.pipeline-deliverables { margin-top: 12px; }
+.pipeline-deliverable > header strong { overflow-wrap: anywhere; }
+.pipeline-deliverable-ok { color: #86efac; }
+.pipeline-deliverable-bad { color: #fca5a5; font-weight: 700; }
+.pipeline-deliverable-plain { color: #e2e8f0; }
+.pipeline-deliverable-ok i, .pipeline-deliverable-bad i, .pipeline-deliverable-plain i { margin-right: 6px; }
+.pipeline-deliverables .pipeline-evidence-live:empty { display: none; }
+.pipeline-deliverables .pipeline-evidence-live { margin: 6px 0; color: #cbd5e1; }
+.pipeline-deliverables .pipeline-evidence-actions .pipeline-btn { min-height: 44px; }
+.pipeline-deliverables .pipeline-btn:focus-visible { outline: 3px solid #7cf0ff; outline-offset: 3px; }

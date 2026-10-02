@@ -1,0 +1,7 @@
+.pipeline-task-eligibility { padding: 14px; margin: 14px 0; border: 1px solid #536176; border-radius: 10px; color: #e2e8f0; font-size: .85rem; line-height: 1.5; overflow-wrap: anywhere; }
+.pipeline-task-eligibility summary { cursor: pointer; font-weight: 600; }
+.pipeline-task-eligibility p { margin: 9px 0; }
+.pipeline-eligibility-mode { padding: 10px 0; border-top: 1px solid #536176; }
+.pipeline-eligibility-mode small { color: #cbd5e1; }
+.pipeline-task-eligibility .pipeline-btn { min-height: 44px; }
+.pipeline-drawer :focus-visible { outline: 3px solid #7cf0ff; outline-offset: 3px; }

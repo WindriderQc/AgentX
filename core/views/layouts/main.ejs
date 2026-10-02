@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <% if (locals.parentalAccess) { %>
+    <link rel="stylesheet" href="/access-assets/client.css">
+    <script src="/access-assets/client.js" defer></script>
+  <% } %>
+  <%- include('../partials/head-assets') %>
+  <%- locals.headCss ? headCss : '' %>
+</head>
+<%
+  const surfaceActivePage = String(locals.activePage || '');
+  const surfaceService = String(locals.service || '');
+  const benchmarkSurfaceNames = {
+    benchmark: 'home',
+    'efficiency-map': 'efficiency',
+    'results-explorer': 'results'
+  };
+  const canonicalSurfaceId = locals.surfaceId || (
+    surfaceService === 'core'
+      ? `core-${surfaceActivePage}`
+      : surfaceService === 'benchmark'
+        ? `benchmark-${benchmarkSurfaceNames[surfaceActivePage] || surfaceActivePage}`
+        : surfaceService === 'rag'
+          ? (surfaceActivePage === 'rag' ? 'rag-home' : surfaceActivePage)
+          : ''
+  );
+%>
+<body class="<%= locals.bodyClass || '' %>" data-agentx-profile="<%= locals.agentxProfile || 'full' %>" data-agentx-surface="<%= canonicalSurfaceId %>">
+  <a class="skip-link" id="skipToMainContent" href="#main-content">Skip to main content</a>
+  <% if (locals.showNav !== false) { %>
+    <%- include('../partials/nav', { service: service, activePage: activePage }) %>
+  <% } else { %>
+    <%- include('../partials/shortcuts-modal') %>
+  <% } %>
+  <% if (locals.agentxProfile === 'demo' && activePage !== 'portal') { %>
+    <% const demoCoreBase = String(locals.publicUrls && locals.publicUrls.core || '').replace(/\/+$/, ''); %>
+    <a class="demo-profile-home" href="<%= demoCoreBase %>/portal/" aria-label="Back to Agent X home">
+      <i class="fas fa-arrow-left" aria-hidden="true"></i><span>Agent X</span>
+    </a>
+  <% } %>
+
+  <%- include(pageView) %>
+
+  <script>
+  (function () {
+    var skipLink = document.getElementById('skipToMainContent');
+    if (!skipLink) return;
+    var target = document.getElementById('main-content');
+    var main = document.querySelector('main, [role="main"]');
+    if (!target && main && !main.id) {
+      main.id = 'main-content';
+      target = main;
+    } else if (!target && main) {
+      target = document.createElement('span');
+      target.id = 'main-content';
+      target.className = 'skip-content-target';
+      main.parentNode.insertBefore(target, main);
+    }
+    if (!target) {
+      skipLink.hidden = true;
+      return;
+    }
+    if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+  })();
+  </script>
+
+  <%- include('../partials/toast') %>
+  <%- include('../partials/footer-scripts') %>
+  <%- locals.footerJs ? footerJs : '' %>
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      document.body.dataset.agentxReady = 'true';
+    }, { once: true });
+  </script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+{
+  "id": "finance-ledger",
+  "name": "AgentX Finance Ledger",
+  "version": "1.5.0",
+  "description": "Read-only questions over the canonical AgentX Core finance ledger, for the finance persona only.",
+  "activation": {
+    "onStartup": true,
+    "onAgentHarnesses": [
+      "openclaw"
+    ]
+  },
+  "contracts": {
+    "tools": [
+      "finance_ledger",
+      "finance_categorize",
+      "finance_alerts",
+      "finance_plan"
+    ]
+  },
+  "toolMetadata": {
+    "finance_ledger": {
+      "optional": true
+    },
+    "finance_categorize": {
+      "optional": true
+    },
+    "finance_alerts": {
+      "optional": true
+    },
+    "finance_plan": {
+      "optional": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "agentxUrl": {
+        "type": "string"
+      },
+      "agentIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "agentxUrl"
+    ]
+  }
+}

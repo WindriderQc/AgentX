@@ -1,0 +1,20 @@
+[
+  {
+    "id": "gpu-a",
+    "name": "GPU host A",
+    "ssh": "agentx@gpu-a.example",
+    "ollamaUrl": "http://gpu-a.example:11434"
+  },
+  {
+    "id": "gpu-b",
+    "name": "GPU host B",
+    "ssh": "agentx@gpu-b.example",
+    "sshPort": 22,
+    "ollamaUrl": "http://gpu-b.example:11434"
+  },
+  {
+    "id": "core",
+    "name": "Core host",
+    "local": true
+  }
+]

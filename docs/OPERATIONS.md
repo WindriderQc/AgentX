@@ -1,0 +1,825 @@
+# Operations
+
+For the screen labels, inspection steps and evidence disclosures used by Pipeline,
+Nerve Center and Profiler, see [operational screens](OPERATOR_UI.md).
+
+For a first installation and local Ollama setup, follow [installation](INSTALLATION.md).
+
+## Local foundation
+
+`agentx.ps1` (Windows) and `agentx` (Linux) manage the same Compose definition.
+`doctor`, `up`, `health`, `status`, `logs`, `rebuild` and `down` operate on the
+selected project (`agentx` by default). `AGENTX_PROJECT_NAME` selects another
+instance; its containers, network and volumes are isolated. Default volume names
+remain `agentx_canonical_*`. `down` preserves data. `reset` has a project-specific
+destructive confirmation.
+
+Default application ports: Core 3180, Benchmark 3181, RAG 3182, bound to 127.0.0.1.
+MongoDB and Qdrant are internal. Browsers on a foreign site cannot read or mutate
+AgentX APIs: Core, Benchmark, RAG and Data answer CORS only for the origins of
+`CORE_PUBLIC_URL`, `BENCHMARK_PUBLIC_URL` and `RAG_PUBLIC_URL` (plus their loopback
+variants), and refuse a non-GET request a browser marks `Sec-Fetch-Site: cross-site`
+with 403. AgentX pages on other local ports are same-site; clients that send no
+browser headers (harnesses, curl, service calls) are unaffected. The checked-in `config/agentx.env` contains only
+generic defaults. `AGENTX_ENV_FILE` selects an external instance env file, and
+shell variables override its values. `AGENTX_COMPOSE_OVERRIDE` optionally selects
+one external Compose override for private mounts or additional service settings.
+Launchers read ports and container IDs from Compose, including optional Data;
+they do not execute an env file as shell code. Keep actual operator configuration
+and secrets outside the checkout; never copy production volumes into Git.
+
+### Settings catalog and Configuration view
+
+`shared/envCatalog.json` lists every setting an instance can give the services.
+It has two kinds of entries:
+- variables `docker-compose.yml` forwards from the instance env file (`forwarded: true`, with their compose default);
+- variables the code reads but compose does not forward, which only an instance override can set.
+
+Each entry has a category, a secret flag and a purpose. `node scripts/env-catalog.cjs`
+compares the catalog with compose and the code, and the shared test suite fails on drift. When
+you add or remove a variable, run `node scripts/env-catalog.cjs --write`, then describe
+each new forwarded entry.
+
+The Nerve Center **Configuration** section (`GET /api/nerve-center/config-status`)
+shows each setting per service with one of these states:
+- *customized*: set, and different from its default;
+- *default*: unset or equal to its default, so the default applies;
+- *not configured*: unset with no default, so the option is off;
+- *not reported*: the service does not report its environment. RAG and Data do not yet.
+
+The default filter lists the forwarded options that are not configured, so an
+opt-in feature is not forgotten. Core and Benchmark also log a one-line summary at
+startup. Secret values are never shown, only whether they are set. The view is
+read-only: edit the instance env file, then recreate the service.
+
+The same launcher is the deployment path: select a reviewed checkout and external
+instance configuration, then run `./agentx up --build` (or `./agentx.ps1 up --build`).
+It waits for container and published HTTP health. Builds receive the Git revision,
+with a dirty suffix when appropriate, unless the operator supplies an explicit
+build revision. This checkout has no automatic production pull/deploy scheduler.
+Configure [parental access](PARENTAL_ACCESS.md) at the LAN HTTPS gateway before
+opening the full profile to family devices.
+
+### Moving an instance to a fresh source history
+
+When a source repository starts a new history, do not merge the previous Git
+history into it. Clone the new source into a separate clean checkout, select the
+same external env/override and project name, and rebuild through the launcher.
+Coordinate the deployment with the instance owner and preserve verified backups.
+The existing Docker volumes and external configuration remain instance-owned.
+Keep private sound packs in the external read-only mount described in
+[installation](INSTALLATION.md#private-sound-packs). Old issue/PR references
+belong to the prior private archive; reconcile active delivery references in
+instance configuration before resuming an automated worker.
+
+### Updating a running instance
+
+Deployment is manual and triggered by the operator after a merge to `main`. The
+host holds no GitHub credential, so a workstation with access ships `main` to it
+over SSH as a Git bundle:
+
+```bash
+git fetch origin
+git bundle create agentx-main.bundle refs/remotes/origin/main
+scp agentx-main.bundle <user>@<host>:/tmp/
+```
+
+On the host, in the instance checkout, with the tree clean and no build running:
+
+```bash
+git fetch /tmp/agentx-main.bundle '+refs/remotes/origin/main:refs/remotes/origin/main'
+git merge --ff-only origin/main
+AGENTX_ENV_FILE=<instance.env> AGENTX_PROJECT_NAME=<project> \
+AGENTX_COMPOSE_OVERRIDE=<instance.compose.json> ./agentx up --build --no-deps core
+```
+
+Rebuild only the services whose code changed (`core`, `benchmark` with
+`benchmark-runner`, `rag`, `data`); `--no-deps` leaves the other containers
+running. Always pass the instance's project name: without it the launcher uses
+the default `agentx` project. When `up` or `rebuild` would recreate Core or
+Benchmark on a running instance, the launcher first takes Core's `runtime-deploy`
+maintenance lease. Core refuses it while a Benchmark workload or an inference is
+active: the launcher then names that work (from
+`/api/nerve-center/runtime-coordination/active`) and stops with exit code 4
+without touching a container. Images are built first (`up --build` included),
+so the lease, which pauses all inference, covers only the recreate: it keeps
+new work out, is heartbeated and is released once health is green. Recreating
+mid-batch would otherwise cut the workload and quarantine its host for the rest
+of its admission. `--force-runtime` (or `AGENTX_FORCE_RUNTIME=1`) skips the lease
+for an operator recovery; with Core not running, no lease is needed. A
+Benchmark-only recreate (`benchmark`, `benchmark-runner`) does not touch
+conversations, which go from Core to Ollama: it takes no lease and waits only
+until no Benchmark workload is active. A Core container that exists but does
+not answer its health check makes the launcher stop (exit code 4), since
+another recreate may be in progress. Recreate
+Core or Benchmark on a running instance only through the launcher
+(`./agentx rebuild --no-deps core` or `./agentx up --build --no-deps core`): a
+direct `docker compose up` bypasses the lease. Still coordinate with other
+operators of the instance. A new setting (for example
+`AGENTX_FACE_UNLOCK_ENABLED`) is added to the external env file by hand; code
+deployment never changes instance configuration. The service `/health`
+responses report the deployed `revision`.
+
+### Code runner
+
+Benchmark scores a coding prompt that carries `reference_tests` by running the
+candidate's program instead of asking a judge to read it. The Compose project
+includes `benchmark-runner` for that: a sidecar with no network, a read-only
+image, a tmpfs scratch, one CPU, 512 MB, 128 processes, and jobs run as
+`nobody`. It only sees the `benchmark_jobs` volume, where Benchmark writes a
+job (interpreter, budgets, files) and reads the answer back (exit code, capped
+output). The interpreters it can start are exactly `python3` and `node`.
+
+`BENCHMARK_CODE_RUNNER` selects the mode on the Benchmark service: `volume`
+(the Compose default) hands jobs to the sidecar; `local` runs the same executor
+inside the Benchmark process and is refused when `NODE_ENV` is production;
+`off` answers every job as unavailable. Without a runner, a coding response
+with reference tests is not scored: the row asks for review instead of
+carrying a penalty. Infrastructure is never recorded as a candidate failure.
+
+After the first build of the sidecar on a host, check its isolation before
+trusting executed scores: the `code runner started` line of
+`docker compose logs benchmark-runner` must show `"root":true` (so jobs drop to
+`run_as_uid`) and `"prlimit":true` (so per-job limits apply), and
+`GET /api/benchmark/judge/readiness?refresh=1` must report `execution_scored`
+as available. If either flag is false, jobs still run inside the container
+limits but without the per-job uid drop or rlimits.
+
+`BENCHMARK_DRIVER_SMOKE=1 npm run test:unit --prefix benchmark` also runs the
+opt-in tests that execute generated drivers and the daemon with the local
+interpreters.
+
+## Tests
+
+Run `npm run setup`, then `npm run test:prepare` and `npm test` at the root.
+Core and Benchmark record completed launcher evidence under `test-results/`;
+only a final zero exit code is a pass. RAG uses its existing Jest command.
+Do not add forceExit to hide open resources or use application MongoDB for tests.
+The disposable MongoDB binary is prepared locally. Tests do not prove inference
+against real Ollama, Qdrant ingestion, browser rendering or device audio.
+
+`npm run test:surfaces --prefix core` runs the portable Household tests;
+CI includes them in the existing Core job. HTTP/Mongo surface integration tests
+run in the normal Core suite. The Compose smoke uses the full profile to verify
+the built-in Nestor page and family API inside the production image.
+
+For a private repository, CI uses `AGENTX_CI_RUNNER` when set, otherwise
+GitHub's `ubuntu-latest`. For a public repository, both jobs always use
+`ubuntu-latest`, regardless of that variable. Detach private self-hosted runners
+before publishing: an untrusted pull request can change the workflow itself.
+See [GitHub's runner security guidance](https://docs.github.com/en/actions/reference/security/secure-use).
+The self-hosted runner is installed
+outside Git: a dedicated system user in the `docker` group (the Compose smoke
+needs Docker), and a systemd drop-in that limits the runner to half the CPU
+threads, `Nice=10`, idle IO and a memory cap, so it does not compete with
+inference. If that host is off, unset the variable to fall back to GitHub.
+Run the relevant tests locally before pushing: every push to a pull request
+starts a run.
+
+## Optional surface integrations
+
+Data is available through Compose profile `data`. Set `COMPOSE_PROFILES=data`
+and `AGENTX_PROFILE=full`, then use the existing `up` command. Startup waits for
+Data's Mongo-backed health endpoint too. The Core portal links to `/data-toolbox`;
+the UI exposes only read routes. Native collectors require explicit external
+targets/roots. Background jobs are disabled unless
+`DATA_BACKGROUND_JOBS_ENABLED=true`. The optional Obsidian inventory requires
+an external `OBSIDIAN_VAULT_POLICY_PATH` and read-only mount. The historical
+instance policy is intentionally not shipped. See [Data](../data/README.md).
+
+`config/obsidian-vault/` holds generic household note templates (appliance,
+routine, recipe, procedure) and `Maison.base`, an Obsidian Base listing
+appliances with their warranty dates, routines and recipes under
+`Docs/Maison`. Copy `Templates/` beside the documents folder, not inside it, so
+templates are never ingested; point Obsidian's Templates plugin at it. Note
+properties such as `garantie_fin` are indexed with the note's first chunk.
+
+Data classifies shared-drive files by directory role (backups, install media,
+mail stores, source trees, games, models…). A deployment whose share uses other
+folder names lists them in an out-of-Git JSON file kept in the instance
+directory, named by `DATA_PATH_ROLE_ALIASES_FILE` and mounted read-only into
+the Data container. Shape: `{ "version": 1, "roles": { "BACKUP_DIR":
+["nas-mirror"], "MAIL_DIR": ["re:archive-\\d+"] } }`. Keys are the role sets
+in `data/utils/fileMetadataRoles.js`; each entry is matched as whole path
+segments (a literal may contain `/`), case-insensitively, as a literal unless
+prefixed `re:`; at most 200 entries per role and 64 characters each. When the
+variable is unset the file is never read. An unreadable or invalid file logs
+one warning naming the file and the problem, and Data runs with the built-in
+roles only. No sample with real folder names is shipped.
+
+Live GPU values (Nerve Center cluster cards, Profiler hardware evidence) come
+from `integrations/data-collectors/gpu-agent.js`, a native process on the Core
+host: Data publishes only on loopback, so the collector runs beside it and
+reaches the GPU hosts itself. Each cycle runs
+`nvidia-smi --query-gpu=... --format=csv,noheader,nounits` read-only, locally
+for `"local": true` hosts and over `ssh -o BatchMode=yes -o ConnectTimeout=5`
+for the others, all hosts in parallel with a per-host timeout, and posts the
+results to `/api/v1/hardware/samples`. Nothing is installed on a GPU host.
+
+1. Authorize the collector user's SSH key on every remote GPU host and record
+   their host keys in its `known_hosts`: batch mode never prompts, so a missing
+   key or unknown host key is reported as that host's error. A Windows host
+   without an authorized key is unsupported; it stays "not collected".
+2. Copy `gpu-hosts.example.json` outside Git and list the hosts:
+   `[{"id":"gpu-a","name":"GPU A","ssh":"user@gpu-a","ollamaUrl":"http://gpu-a:11434"},{"id":"core","local":true}]`.
+   Optional per host: `sshPort`, `nvidiaSmi` (executable path). `ollamaUrl`
+   must equal the Ollama URL Core and Benchmark use for that host: it is how
+   they find the host's GPUs.
+3. Copy `gpu-agent.env.example` (set `DATA_URL=http://127.0.0.1:<DATA_PORT>`)
+   and `gpu-agent.service.example` into the user's systemd directory, then
+   enable the unit. `GPU_AGENT_HOSTS_JSON` may replace the file.
+   `GPU_AGENT_INTERVAL_MS` (default 30 s, 5 s to 10 min) and
+   `GPU_AGENT_HOST_TIMEOUT_MS` (default 10 s) bound the work.
+4. Check once with `GPU_AGENT_ONCE=1 node gpu-agent.js` (non-zero exit when a
+   host or the post failed), then
+   `node integrations/operations/verify-native-data-collectors.js --expect-gpu <GPU_AGENT_ID>`.
+
+Core's Nerve Center reads `/api/v1/hardware/latest` through `DATAAPI_BASE_URL`
+and shows a fresh sample's values with its age; a stale, failing or uncollected
+host shows that state instead of numbers. Benchmark reads the same projection
+(its `DATAAPI_BASE_URL`, default `http://data:3083` in Compose) to fill
+`agentx.profiler-hardware-collector/v1`. A retired host-report agent still
+running on a GPU host is removed by hand on that host; Core has no
+host-report route.
+
+Data's existing suites, real Mongo index regression and HTTP capability smoke
+run through `npm test --prefix data` with a launcher-owned disposable MongoDB.
+The existing service CI matrix and Compose smoke cover the optional Data image.
+
+Agents file Markdown notes into the owner's Obsidian vault inbox when Core's
+`VAULT_INBOX_PATH` names an absolute directory, mounted read-write through the
+instance Compose override; unset, the capability answers "not configured".
+External agents use the `write_vault_note` tool on `/mcp`; Nestor uses the
+`vault_note` OpenClaw tool, backed by `/api/consumers/nestor/v1/vault/notes`.
+Notes are named `YYYY-MM-DD Title.md`, carry `author`, `created` and
+`status: inbox` frontmatter, and never overwrite an existing file. Keep the
+inbox outside approved ingestion roots (e.g. `RAG/Inbox` beside `RAG/Docs`):
+moving a note into the documents folder is the owner's approval.
+
+The personal finance capability is described for a new maintainer in
+[FINANCE.md](FINANCE.md). The personal finance ledger ingests bank and credit-card statements dropped in
+`FINANCE_INBOX_PATH`. Core reads the PDF text layer (`pdftotext -layout`), a
+local model returns the accounts and rows as JSON (a PDF with almost no text
+layer is a scan: each page is rendered at 200 dpi and read by the vision model
+one page at a time), and a statement is accepted
+only when every account reconciles to the cent, including each printed running
+balance; on a mismatch the model gets the failing row and retries
+(`FINANCE_EXTRACTION_RETRIES`, default 3, at most 5). Accepted files move to `FINANCE_ARCHIVE_PATH/<year>/` and write
+`finance_statements` / `finance_transactions`; others move to
+`FINANCE_REVIEW_PATH` (default `<inbox>/a-verifier`) and write no transaction.
+Statements dropped in `<inbox>/corp/` go to a separate corporate ledger
+(`ledger: corp`, archived under `<archive>/corp/<year>/`); every finance query takes
+`ledger=corp`, and the plan, simulations and alerts stay personal.
+A busy inference host leaves the file for the next scan
+(`FINANCE_INBOX_POLL_MS`, default 15 minutes). `FINANCE_EXTRACTION_MODEL` pins
+a model; otherwise the `analysis` route applies. The three paths must be
+absolute and mounted through the instance Compose override; the inbox stays
+off otherwise. Keep them outside every approved RAG ingestion root: owner RAG
+search has no exclusion filter. `/api/finance` (statements, balances,
+transactions, monthly summary, top outgoing descriptions, inbox status and
+scan) and the `/finance` page (balances, monthly in/out, where the money goes,
+a "how much at…" search and statement status) require an adult session
+through the gateway.
+Transactions get a category from a fixed list and free tags through rules the
+owner teaches (`/api/finance/rules`: description contains a pattern, the longest
+pattern wins); rules apply to past and future rows, and `/api/finance/uncategorized`
+lists what is left, largest amounts first. The category "Virements internes"
+can be excluded from every summary so transfers between the owner's accounts
+are not counted twice. `/api/finance/summary/yearly` totals each calendar year
+(multi-year questions by tag, category or search), `/api/finance/insights`
+computes the advice material (monthly savings rate, stable recurring charges,
+category trends, large recent expenses) and `/api/finance/export.csv` exports
+the filtered transactions with their totals for a spreadsheet.
+Deterministic alerts are recomputed after each scan that ingests something and
+on `GET /api/finance/alerts`: statement to review, no statement for
+`FINANCE_ALERT_STALE_DAYS` (45), balance of `FINANCE_ALERT_MIN_BALANCE_ACCOUNTS`
+(EOP) under `FINANCE_ALERT_MIN_BALANCE_CENTS` (off when unset), expense over
+`FINANCE_ALERT_LARGE_EXPENSE_CENTS` (1 000 $) in the last 45 days, new stable
+recurring charge, and a category up 50 % and `FINANCE_ALERT_CATEGORY_SPIKE_CENTS`
+(100 $) a month. Each fact is raised once; `POST /api/finance/alerts/report`
+returns the pending alerts and marks them reported for a delivery job.
+The OpenClaw finance persona reads it through the `finance_ledger` tool of the
+`integrations/openclaw/finance-ledger` plugin (loopback Core URL, visible only
+to the configured finance agent); amounts arrive as cents plus a formatted
+string so the model never converts or sums them. Its only write,
+`finance_categorize`, saves rules the owner confirmed in the conversation.
+
+Full profile serves `/dad`, `/panel`, `/kids/sounds` and `/lecture`. The normal
+Core inference configuration is sufficient for text conversation. OpenClaw needs
+explicit `OPENCLAW_GATEWAY_URL` and `OPENCLAW_GATEWAY_TOKEN` in the instance;
+`HOUSEHOLD_CONVERSATION_BACKEND` accepts auto, agentx or openclaw. Auto selects
+OpenClaw only when both values exist. Do not copy runtime credentials into Git.
+
+`HOUSEHOLD_VOICE_MODEL` optionally selects a native `provider/model` per run for
+personal Nestor voice on the main agent. The agent, session history, selected
+notes and tools stay the same. Blank preserves native model policy. Explicit
+Open selection, text conversation, specialist agents and family conversations
+retain their existing model choice. Set this only after qualifying the selected
+model's conversation continuity and tools; it is not a reasoning-quality guarantee.
+Personal spoken turns carry their current selected context as labelled reference
+data beside the request, keeping native identity, permissions and tool guidance
+stable. Core's canonical transcript still contains the submitted user text.
+
+VoiX requires `VOIX_BASE_URL` for its player, speech recognition/synthesis and
+native-device APIs. `DATAAPI_BASE_URL` is optional. Email actions require
+`LEANTIME_BASE_URL`, `LEANTIME_API_KEY`, `LEANTIME_EMAIL_ACTION_PROJECT_ID` and
+`LEANTIME_EMAIL_ACTION_USER_ID`; no owner project/user IDs are shipped.
+Provide these through external runtime configuration/Compose overrides.
+The optional [spoken-controls adapter](../integrations/voix/README.md) adds local
+Stop/silence recognition on the same VoiX process before Whisper transcription.
+`VOIX_SPOKEN_CONTROLS_ENABLED=true` selects that upload endpoint only after the
+instance installs and qualifies its model. False preserves ordinary transcription.
+During a response, microphone energy holds playback reversibly while transcription
+checks the candidate. Empty or failed transcription resumes the remaining audio;
+confirmed speech or a Stop control cancels the old turn before another starts.
+The Super Dad and Famille avatar dock loads GraphysX's `<llmx-face>` module from
+`HOUSEHOLD_AVATAR_MODULE_URL` (a GraphysX build's `/embed/llmx-face.js`). Core
+relays it at `/api/household/avatar/llmx-face.js`, like the VoiX player, so the
+page CSP stays `'self'`; without it the dock shows a 2D orb driven by the same
+conversation signals.
+Pictures beside Nestor come only from sources Core can resolve. `SEARXNG_URL`
+enables internet image search (strict SafeSearch in Famille; the browser loads the
+https image directly without a referrer). Household photos and media need both a
+read-only mount and the Data file index: `HOUSEHOLD_PHOTOS_DIR` /
+`HOUSEHOLD_MEDIA_DIR` are the host folders mounted at `/mnt/household/<source>`,
+and `HOUSEHOLD_IMAGE_ROOTS_JSON` maps each source to the canonical root Data
+indexes for it. A picture is found by file or folder name, so named folders work
+better than camera names. `HOUSEHOLD_IMAGE_FAMILY_SOURCES` lists what Famille may
+show (default all four). A picture the OpenClaw agent generates with its own image
+tool (cited in its reply as `MEDIA:<path>`) is relayed from the Nestor plugin's
+gateway route `/api/nestor/media`, which serves only image files inside OpenClaw's
+media directory (`<state dir>/media`, or the plugin's `mediaRoot`); Core uses
+`OPENCLAW_GATEWAY_URL` and `OPENCLAW_GATEWAY_TOKEN` for it. Other `MEDIA:` files,
+such as synthesized speech, keep their existing handling.
+The private parent journal lists, under each child-safe turn, what reached the
+child's screen: each block with its title and a short preview, every picture
+with its source and a thumbnail, whether a math picture was drawn in 3D, and
+only the fact that a secret was shown.
+The background brain runs after each Super Dad and Famille turn when
+`HOUSEHOLD_BRAIN_ENABLED=true` (the Compose default; `HOUSEHOLD_BRAIN_FAMILY=false`
+leaves Famille out). It uses the router's `master_brain` lane unless
+`HOUSEHOLD_BRAIN_MODEL` names an Ollama model; `HOUSEHOLD_BRAIN_HOST_URL` pins it
+to one Ollama host so it never competes with the voice model's host. A new turn
+cancels a running review, and the browser speaks its remark only while
+listening with no turn in flight.
+The default family knowledge corpus is empty and disabled; an approved external
+configuration may be selected with `NESTOR_KNOWLEDGE_CONFIG_PATH`.
+
+A household documents folder extends that corpus without listing each file. In
+the external RAG ingestion policy (`RAG_INGESTION_POLICY_PATH`),
+`ingestion.classifiedRoots` labels every file under a root beneath an approved
+root, e.g. `{ "root": "<approved root>/Maison", "scope": "household",
+"sensitivity": "normal" }`; add `pdf` to `allowedExtensions` for manuals and
+warranties (scans without a text layer yield no text). The ingested source is
+the folder's first segment below the approved root (`maison`). The Nestor
+knowledge configuration then names it: `"householdDocuments": { "source":
+"maison", "lanes": ["family", "reader", "operator"], "topK": 3, "minScore": 0.45 }`.
+`minScore` (0.3-1) is calibrated for the embedding model: about 0.45 suits
+bge-m3 on French content. Family retrieval accepts only results from that
+source that carry the household/normal labels; putting a file in the folder is
+the parent's approval.
+
+Markdown files are read as Obsidian notes. Frontmatter `tags`, inline `#tags`,
+`title` and `aliases` are kept; other properties are indexed as text in the
+note's first chunk. Chunks follow heading sections and start with their
+breadcrumb (`Title > Section`); `[[links]]` become readable text and their
+targets are stored on the document; `%% comments %%` are not indexed. A note
+may narrow its folder labels with `scope`/`sensitivity` properties but never
+widen them: only a household root yields household labels, and unknown labels
+skip the file. `rag: false` keeps a note out of the index and removes it if it
+was indexed. A Markdown file indexed as flat text is re-chunked on the next scan.
+
+To retire a PDF, move it out of the classified household root, then delete its
+exact indexed ID with `DELETE /api/rag/documents/:documentId` and the JSON body
+`{"confirmation":"DELETE <documentId>"}`. Refresh the Data file inventory and
+verify that the old ID is absent from the RAG document list and from filtered
+search results. Removing the file alone does not revoke an existing index entry.
+For a replacement, verify the new document is searchable before retiring the old
+one. Keep the source original in the private archive when retention is required.
+
+RAG search accepts `followLinks` (0-3): after the direct results, it appends the
+best chunk of notes they link to (by file name or alias), under the same
+filters and marked `linkedFrom`. Household retrieval follows up to two links
+(`householdDocuments.followLinks`); a linked note keeps the household/normal
+label check but not the score floor, because the parent's link is the curation.
+
+Similarity floors are cosine scores, and their meaning depends on the embedding
+model: the defaults were measured with `nomic-embed-text:v1.5`. Each one is a
+Core setting supplied through the instance Compose override (0-1; an unset or
+invalid value keeps the default):
+
+| Variable | Default | Applies to |
+|---|---|---|
+| `MEMORY_SEARCH_MIN_SCORE` | 0.6 | Memory reads that do not choose a floor, so an unrelated question returns nothing instead of the nearest noise. Hybrid searches and callers with an explicit `minScore` keep theirs. |
+| `CHAT_RAG_MIN_SCORE` | 0.3 | Chat RAG context (semantic search; hybrid RRF ranks keep 0.15). |
+| `MEMORY_REVIEW_RAG_MIN_SCORE` | 0.55 | Memory review searches for existing memory. |
+| `MEMORY_REVIEW_DUPLICATE_SCORE` | 0.8 | Memory review score above which a candidate is flagged as a duplicate. |
+
+The household documents floor is `householdDocuments.minScore` in the Nestor
+knowledge configuration.
+
+Every installation needs the parental gateway and the absence of alternate raw
+entries verified before family device access.
+Native agent tools, voice and external evidence panels need their configured
+services; their inclusion as code is not a live operational receipt.
+Selected-note editing and recall use Core and do not require OpenClaw or VoiX.
+
+`npm run build` builds Core assets. `npm run check:compose` renders both base and
+optional Ollama definitions without contacting a Docker daemon. Actual startup
+requires Docker. No tests or compilation result is a deployment receipt.
+
+CI's existing Compose job also builds and starts Core/Benchmark/RAG with fresh
+MongoDB/Qdrant volumes on a disposable GitHub-hosted Linux runner. Inference is
+pointed at a closed loopback port; no operator secrets or homelab endpoints are
+used. It verifies service health and synthetic Qdrant write/read/filter/delete,
+then removes that runner's disposable stack. A passing result validates containers,
+not Ollama inference or the real-phone experience.
+
+## Light-task fallback ladder
+
+Host health reports `gpuHealth` for configured pins. A fresh `/api/ps` sample
+showing a CPU or partial-VRAM pin, including a co-resident embedder, raises one
+`pin-vram-spill` incident through the existing alert engine. Fresh GPU telemetry
+reporting no GPU uses the same host incident. The health tick
+does not reload a model solely because of this diagnostic. The light-task
+ladder excludes a spilled target model or a host with fresh empty GPU inventory
+through its existing admission guards; healthy co-resident targets remain eligible.
+Missing or stale evidence remains unknown, not a GPU failure. This incident
+does not auto-resolve on silence: fresh full residency of every configured pin
+records recovery evidence before resolution. Native service-unit failure
+delivery remains instance configuration; this diagnostic does not install a
+supervisor or modify a driver, pin, context or Modelfile.
+
+Pin restore verification refuses observed CPU/partial residency. Older inventory
+without byte measurements retains loading verification but reports
+`gpuVerified: false`; `verified` alone does not prove full GPU residency.
+
+Every task routes to its configured model and host. When that primary is
+unavailable, a light task may answer with a different model on another host
+instead of refusing. The ladder is instance configuration in the external env
+file; it is empty by default, and Core then routes exactly as before.
+
+```bash
+AGENTX_TASK_FALLBACKS_JSON='{"quick_chat":[{"model":"gemma4:12b-it-qat","host":"tertiary"}],"nestor_answer_light":[{"model":"gemma4:12b-it-qat","host":"tertiary"},{"model":"gemma4:e4b","host":"secondary"}],"rag_query_expansion":[{"model":"gemma4:12b-it-qat","host":"tertiary"}]}'
+AGENTX_TASK_FALLBACK_WAIT_MS=2000
+```
+
+Keep the value on one line. Here a quick chat, a short Nestor answer and RAG
+query expansion fall back to the always-on `tertiary` host, and a short Nestor
+answer tries `secondary` next.
+
+- Keys are task types, values ordered `{ model, host }` fallbacks (at most
+  four). `host` is `primary`, `secondary` or `tertiary` and needs its
+  `OLLAMA_HOST*` URL. Pin the fallback model on its host first.
+- Only `quick_chat`, `buddy_reaction`, `nestor_answer_light`,
+  `rag_query_expansion`, `rag_reranking`, `rag_compression` and `janitor_ai`
+  may degrade. A ladder naming any other task, an unknown task or an
+  unconfigured host is rejected as a whole at startup: Core logs
+  `[TaskFallbackLadder] AGENTX_TASK_FALLBACKS_JSON rejected` with every
+  problem, and no task degrades until the value is fixed.
+- The primary counts as unavailable when its host is not configured or does
+  not answer, a benchmark claim or session hold refuses it, runtime
+  coordination blocks ordinary admission there, an UNKNOWN quarantine fences
+  it, or it is busy: another inference admission is active on that host (the
+  27B serves one request at a time). A busy, claimed or blocked primary is
+  re-checked for up to `AGENTX_TASK_FALLBACK_WAIT_MS` (default 2000, at most
+  10000) before the task degrades with reason `primary_busy`,
+  `benchmark_claim` or `admission_blocked`. Strict tasks keep queueing.
+- Each rung faces the same checks and must list the model among the host's
+  installed models; the first rung that passes serves the request through the
+  usual admission and claim guard. When no rung passes, the caller gets its
+  usual busy or unavailable answer.
+- A target that passed the probe but refuses before any output (claim, session
+  hold, admission refusal, connection refused before the request was sent) is
+  replaced once by the next rung (reason `dispatch_refused` from the primary).
+  A request that reached the model, or that has started streaming, is never
+  resent. This applies to `/api/inference/generate` and to Core inference for
+  Household; the Playground chat uses the probe only.
+- A degraded answer says so: `agentx_routing` and the `X-AgentX-Degraded*`
+  headers on `/api/inference/generate`, `routing.degraded` on chat replies (the
+  Playground badge shows "mode dégradé"), `routing.fallbackUsed` on household
+  turns (the Nestor conversation marks the reply "mode dégradé"). InferenceLog rows record `fallbackUsed` with a
+  `task_fallback_<reason>` code, and the lane observability projection
+  (`taskFallbacks`) counts ladder use since the last start.
+
+The ladder is chosen before dispatch. `DEGRADED_FALLBACK=true` is separate:
+one retry after a failed dispatch, normally of the same model on another host,
+for three interactive lanes.
+
+OpenClaw's conversation provider asks for an exact model rather than a task.
+With `OPENCLAW_CONVERSATION_FALLBACK_TASK=nestor_answer_light` it borrows that
+task's ladder; unset, it keeps its busy reply. Only turns carrying
+`x-agentx-busy-reply: conversation` degrade; cron turns on the plain provider
+keep their 409. Before dispatch the turn degrades when the primary is busy,
+down, quarantined or spilled; a benchmark claim or blocked admission is first
+asked to yield (at most 30 s with a fallback configured), and a refusal before
+any output then moves the turn to a rung once. The degraded turn goes without
+tools or thinking, its system prompt names the brain in use, its reply starts
+with a one-line notice (`🪶 Cerveau léger (…)`), and it carries the
+`X-AgentX-Degraded*` headers. When no rung answers, the busy reply remains.
+
+## Inference hosts
+
+Every Ollama endpoint Core may use is a host. `OLLAMA_HOST` (and the optional
+`OLLAMA_HOST_2`, `OLLAMA_HOST_3`) bootstrap the first hosts under the keys
+`primary`, `secondary` and `tertiary`. Every further endpoint is registered from
+the Nerve Center **Inference hosts** section, without a count limit, and is
+stored in Core's `inference_hosts` collection. Core loads the registry at
+startup, before routing, so a registered host is accepted wherever a
+configured host is: host allowlists, pins, task routing and the light-task
+fallback ladder use its id.
+
+A host is one endpoint, not one machine. A machine that runs a GPU Ollama on
+11434 and a CPU Ollama on 11435 has two hosts. `OLLAMA_HOST_VRAM_MAP` accepts
+`host:port=MiB` entries, and a port-qualified entry wins over a bare `host=MiB`.
+
+Each host declares a residency:
+
+- `gpu` (default): every pin must be wholly in VRAM. A CPU or partial
+  placement is a `pin-vram-spill` incident and the ladder skips that model.
+- `cpu`: every pin must have no VRAM share. A pin found in VRAM raises the same
+  incident with failure code `cpu_host_uses_vram`, which means the instance
+  still sees a GPU. An empty GPU inventory is expected and never degrades it.
+  A partial placement is refused on both.
+
+`maxInflight` caps the requests Core sends to the host at once per model
+(default: `GATE_MAX_INFLIGHT`). Registering a CPU host sets it to 1, so further
+requests wait in Core's host gate instead of inside Ollama. Strict tasks keep
+waiting; light tasks may still take the ladder.
+
+The API is `GET|POST /api/nerve-center/inference-hosts` and
+`PATCH|DELETE /api/nerve-center/inference-hosts/<id>`. A new host needs a
+lowercase id, a private-network or loopback address without path, and a
+residency; Core probes `/api/version` and registers the host even when it does
+not answer, saying so. `PATCH` on `primary`, `secondary` or `tertiary` stores a
+name, residency or limit for that configuration file host. The address of a
+registered host does not change: remove it and add it again. Removal requires
+`REMOVE HOST <id>` confirmation and is refused while the host has pins or a
+task routes to it. Household-entry requests need an adult session, like every
+other Nerve Center change.
+
+A CPU instance is a second Ollama service on the same machine, outside AgentX.
+A generic systemd unit for it:
+
+```ini
+[Service]
+User=ollama
+Environment=OLLAMA_HOST=0.0.0.0:11435
+Environment=CUDA_VISIBLE_DEVICES=
+Environment=OLLAMA_VULKAN=0
+Environment=OLLAMA_MAX_LOADED_MODELS=1
+Environment=OLLAMA_NUM_PARALLEL=1
+ExecStart=/usr/local/bin/ollama serve
+CPUQuota=600%
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=24G
+```
+
+Benchmark reads the registry from Core every 30 seconds, so a registered host
+becomes a Profiler and benchmark target with its residency. On a CPU host the
+Profiler proves a measurement with no VRAM share instead of a full one, and its
+context probe stops at `CONTEXT_PROBE_CPU_MAX_CTX` (default 32768) with a
+per-step timeout of `CONTEXT_PROBE_CPU_TIMEOUT_MS` (default 20 minutes): CPU
+prefill takes minutes. A probe unloads models only on its own Ollama instance,
+so profiling the CPU instance leaves the machine's GPU pins resident.
+Leaderboard rows carry their host's residency (`local · CPU`), and
+`GET /api/benchmark/generalist-leaderboard?residency=cpu|gpu` keeps one kind;
+rank CPU and GPU runs with `axis=quality`, since the composite axis penalises
+latency.
+
+Point `OLLAMA_MODELS` at the machine's existing store to reuse downloaded
+models. On CPU, generation speed follows memory bandwidth divided by active
+weights: prefer mixture-of-experts models with few active parameters. One CPU
+instance serves one request at a time; a second parallel request adds no
+throughput.
+
+## Resident model pins
+
+The Nerve Center host cards show parallel requests **per model** separately from
+resident model slots. This is the last observed `OLLAMA_NUM_PARALLEL` process
+setting, with its observation date, not a measured throughput guarantee or a
+live reading from `/api/ps`. Unobserved hosts show Unknown. Extra requests queue;
+VRAM, context size and AgentX admission can reduce effective concurrency.
+After inspecting the running process environment or its matching startup log,
+record the observation through
+`PUT /api/nerve-center/host-preferences/<encoded-host-url>/ollama-concurrency`
+with `{ numParallel, observedAt, source }`, where `source` is
+`process-environment` or `startup-log`. This updates host metadata only; changing
+Ollama's parallelism requires separate host configuration and qualification.
+
+One host can keep a conversation model and an embedding model resident together.
+`pinnedModels` holds an independent `{ model, keepAlive, contextSize, autoRestore, numThread }`
+entry for each resident. `keepAlive: -1` requests permanent residency; a positive
+`contextSize` sets the runtime context without editing the artifact's Modelfile.
+`numThread` (optional, **CPU threads** in the pin row) sets Ollama's `num_thread`
+for the warm request and for every inference on that model, so a CPU pin leaves
+cores to the machine's other services. Memory bandwidth, not core count, limits
+CPU generation: beyond 6 to 8 threads the gain is small. Unset keeps Ollama's
+own choice.
+
+In the Nerve Center, adding or removing a pin and changing its keep-alive or
+auto-restore setting affects that model. Choosing a primary pin preserves the
+other entries. Clear pinned set removes all pins with operator confirmation.
+Adding pins raises the declared `maxConcurrentModels` to fit the list; an explicit
+slot limit below the pin count is rejected. This value declares AgentX residency
+intent. It does not change the Ollama process or allow concurrent inference
+through the runtime coordination guards.
+
+Configure [`OLLAMA_MAX_LOADED_MODELS`](https://docs.ollama.com/faq#how-does-ollama-handle-concurrent-requests)
+(plural) in the host's external Ollama service
+environment if a fixed runtime limit is needed. Both models and their configured
+contexts must fit in VRAM on a GPU host, and stay outside it on a CPU host
+(see [inference hosts](#inference-hosts)). Pin add/update requests verify the complete set through
+Ollama `/api/ps`; if verification fails, the previous pin settings are restored
+under the same runtime mutation lease and runtime restoration is checked again.
+An unknown mutation outcome keeps its existing coordination quarantine.
+
+The per-host `/api/nerve-center/host-preferences/<encoded-host-url>/pin` API uses
+`POST` to add, `PATCH` to change the named model's options, `PUT` to make the named
+model primary, and `DELETE` with `{ model }` to remove only that pin. `DELETE`
+without a model clears the set and requires `CLEAR HOST PIN` confirmation.
+
+`POST .../pin/context` with `{ model, contextSize, expectedContextSize,
+operatorDecision: "apply" }` changes one pin's context for a Profiler proposal.
+It refuses without writing when the model is not pinned, the pin no longer has
+`expectedContextSize`, the context is unchanged, the model is an embedder, a
+benchmark claim or session hold owns the host, or the current short-prompt decode
+speed cannot be measured. After the write it requires every resident placed as
+the host declares (fully in VRAM, or none of it on a CPU host) and a short-prompt speed within `PIN_CONTEXT_SPEED_TOLERANCE_PCT` (default
+10) of the current pin; otherwise it restores the previous pins through the same
+rollback. The response reports `rollback: verified` or `unverified`; an
+unverified rollback keeps the runtime lease quarantined.
+
+## Switching the embedding model
+
+The embedding model and its dimension belong to one Qdrant collection. A new
+model gets a new collection; the old one stays untouched as the fallback.
+Documents are re-embedded from the `originalText` stored on each document's
+first chunk; a document without it is reported and must be re-ingested from
+its source.
+
+1. Pull the new model on the embedding host and pin it there in the Nerve
+   Center host preferences with `keepAlive` -1, so it stays resident beside the
+   current one.
+2. Snapshot the current collection (`POST /api/rag/snapshots`, or a Core
+   backup) while the instance still points at it.
+3. Count what will move, then copy into the new collection. The script runs
+   inside the RAG container, reads the source collection only and embeds
+   through Core with the model given on the command line:
+
+   ```bash
+   AGENTX_PROJECT_NAME=<project> docker compose --env-file <instance.env> \
+     exec -T -e EMBEDDING_MODEL=<model> -e EMBEDDING_DIMENSION=<dims> rag \
+     node scripts/migrate-embedding-collection.js \
+     --source <current collection> --target <new collection> --dry-run
+   ```
+
+   Rerun without `--dry-run` to copy (`--limit N` for a first trial). The
+   JSON summary lists migrated, skipped and failed documents with reasons; the
+   exit code is non-zero when any failed. The script refuses a target equal to
+   the source, stops when the target's vector size differs from
+   `EMBEDDING_DIMENSION`, and copies the source payload indexes.
+4. Writes continue on the old collection during the copy. Pause ingestion
+   scans and memory review, or run a final pass with `--delta`, which copies
+   only documents missing from the target or whose hashes differ.
+5. Set `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION` and `QDRANT_COLLECTION` in the
+   instance env file and recreate RAG and Core through the launcher.
+   `/api/rag/embedding-migration/status` must report the new model with
+   matching dimensions.
+6. Recalibrate the similarity floors above for the new model.
+7. Keep the old collection until retrieval on the new one is verified; going
+   back is the previous three settings.
+
+## Running a second instance
+
+A different project name isolates containers, networks and volumes. It does not
+choose free host ports: select unused loopback ports in the external env file.
+
+```bash
+export AGENTX_PROJECT_NAME=agentx-canary
+export AGENTX_ENV_FILE=/path/outside/git/agentx-canary.env
+export AGENTX_COMPOSE_OVERRIDE=/path/outside/git/agentx-canary.compose.yml  # optional
+./agentx up --build
+./agentx health
+```
+
+PowerShell uses the same names with `$env:NAME = 'value'` and `./agentx.ps1`.
+These three are launcher inputs: set them in the launching shell and keep the
+same values for `status`, `logs` and `down`. The env file supplies Compose
+settings such as ports, `AGENTX_PROFILE` and `COMPOSE_PROFILES`.
+
+Restored host and routing settings can activate background probes, prewarming
+and watchdogs. For a data-only copy, set the Compose network to `internal: true`
+in the external override, leave credentials and mounts absent, and verify that
+no container can reach the live services. A separate database does not
+coordinate model claims with the live runtime: do not run real inference on a
+second instance until its consumers have one agreed authority.
+
+## Live instance
+
+Native operations helpers live in
+[integrations/operations](../integrations/operations/README.md): backup and
+restore, off-host replication, alert reconciliation, schedule projection and
+usage counters. Instance paths, hosts, volume lists and delivery rules are
+external settings; importing source alone does not activate a task. The backup
+path is deployment-owned: verify the actual mount, and update backup supervisors
+and off-host replication together.
+
+### Backup schedule
+
+Core creates the Mongo, configuration and Qdrant backup set once per
+occurrence of a cron expression. The occurrence state is persisted, so a Core
+restart never adds a cycle and never moves the schedule. These are Core
+environment settings supplied by the external env file or Compose override,
+like the other `BACKUP_*` values; the checked-in Compose file only carries
+`BACKUP_SCHEDULE_ENABLED: "false"`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BACKUP_SCHEDULE_ENABLED` | `false` | Enables automatic creation. |
+| `BACKUP_SCHEDULE_CRON` | `0 3 * * *` | Occurrence cron (five fields, cron-parser syntax). An explicitly empty value switches to the interval anchor. |
+| `BACKUP_SCHEDULE_TZ` | `PLANNING_TIME_ZONE`, else `UTC` | IANA time zone the cron is evaluated in, e.g. `America/Toronto`. |
+| `BACKUP_INTERVAL_MS` | 24 h | Interval anchor only: the next occurrence is the last successful occurrence plus the interval. Ignored, with a startup warning, while a cron is set. |
+| `BACKUP_STARTUP_DELAY_MS` | 5 min | Grace before an overdue occurrence or a resumed retry runs after a start. It never anchors the schedule. |
+| `BACKUP_RETRY_DELAY_MS`, `BACKUP_MAX_RETRIES` | 1 h, 3 | Retry of the failed retryable layers only. A retry never moves the anchor and is dropped when it would overlap the next occurrence. |
+
+An invalid cron or time zone disables automatic creation with a visible reason
+on the backup page instead of failing Core. The backup page shows the effective
+cadence, the next occurrence and why it was chosen. Pick a time outside
+01:00–03:00 local in zones with DST: the default 03:00 keeps its local time
+across both changes in America/Toronto, Europe/Paris and Australia/Sydney,
+whereas an occurrence inside a DST gap or overlap is resolved by cron-parser
+and may shift or repeat on the change day.
+
+Rules that hold for every session, human or agent:
+
+- Read the instance's lead/ownership note before any runtime mutation and
+  respect the current owner. Do not start a second driver.
+- Never run two writers against the same personal database or volumes.
+- Never restore an old dump over current state. When two data sets diverge,
+  freeze writers, preserve both, then reconcile. `down` preserves volumes;
+  `reset` is not a recovery command.
+- Operate the live instance with its external env file and Compose override,
+  never with the checked-in demo values.
+- Keep published ports on loopback and the application off public endpoints.
+- No paid inference, benchmark campaign or canary without explicit approval.
+
+Current state and open acceptance are in [STATUS.md](STATUS.md).
+
+## Profiler restoration and UNKNOWN recovery
+
+Profiler scout, single-profile, host queues and full-profile drivers write a
+`profile_run` journal in `HostProfile.reconciliation` before runtime dispatch.
+Core retains the exact pre-claim resident snapshot: artifact digest, artifact
+and VRAM bytes, context and lifetime. Restore loads generative residents before
+embeddings and verifies the complete set: digest, size, context and lifetime
+exactly; GPU placement by rule. A resident that was wholly in VRAM must be
+wholly in VRAM again; one that had already spilled may return with a different
+GPU share, reported as `placementDrift` in the release receipt. An observed residency mismatch has
+one bounded reload attempt; an unacknowledged warm or an unexpected extra
+resident does not authorize replay. Active inference or changed ownership
+prevents restoration effects.
+
+The existing startup/periodic `profilerProjectionRecovery` resumes these
+journals. It claims a writer epoch, adopts Core recovery ownership, restores
+the exact host claims, records VERIFIED then RESTORED and releases the workload.
+A failed pass is retried after 1, 2, 4 … minutes, capped at an hour
+(`failedAttempts`, `nextAttemptAt`). After six failures automatic recovery
+stops: `operatorRequiredAt` is set, the journal keeps the reason, and the
+recovery view shows "Automatic recovery stopped". Fix the cause, then unset
+`reconciliation.operatorRequiredAt` and `reconciliation.nextAttemptAt` on that
+`HostProfile` to resume.
+All profile-run journals in a multi-host workload must have terminal runtime
+observations before the shared quarantine can be restored. A saved measurement
+is separate from a successful runtime restoration. A verified journal left
+after an acknowledged Core release resolves from its durable release receipt.
+
+For an UNKNOWN workload, use this operator sequence:
+
+1. Inspect the exact operation's journal, Core workload admission and benchmark
+   claim. Preserve the evidence and respect the instance's current writer.
+   Never clear `benchmarkClaim`, delete the admission or edit residency state
+   to make an unavailable host appear ready.
+2. If `serverTerminalObserved` is true, the recovery worker can adopt after the
+   previous owner is no longer live. It reloads and verifies the saved resident
+   set, embedding models included. Failure keeps quarantine for a later sweep.
+3. If a dispatched request lacks its terminal response, process death, quiet
+   telemetry and lease expiry do not prove that Ollama stopped. Stop the old
+   profiler writer and arrange an authorized controlled runtime restart. After
+   independently verifying termination, use the existing Benchmark endpoint
+   `POST /api/profiler/hosts/test/recovery/:hostId/confirm-runtime-restart` with
+   the exact `operationId`, `runtimeInstanceId`, `restartedAt` and confirmation
+   `RUNTIME_RESTARTED_AND_OLLAMA_REQUESTS_TERMINATED`. Each ambiguous host needs
+   its own attestation. This is a restart receipt, not a request to restart.
+4. Verify the recovery receipt, cleared exact host claims, workload release and
+   live resident/GPU state independently. Do not infer conversation or device
+   acceptance from a cleared journal. Pre-upgrade orphans without a durable
+   journal require owner-led reconstruction of the exact admission proof;
+   the worker does not invent it from a host label.
+
+Profiler context recommendations describe their measured workload. A result
+measured with one model does not establish that the same context fits alongside
+embedding or other pins. Preserve benchmarked Modelfiles. A pin context changes
+only through the Profiler proposal described in
+[pin context proposals](PROFILER_CONTEXT.md#pin-context-proposals).
