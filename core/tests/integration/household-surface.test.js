@@ -424,6 +424,16 @@ describe('built-in Household surface on Core', () => {
     expect(created.body.data.authority).toBe('agentx.core');
     const native = await request(app).post('/api/consumers/nestor/v1/memory/notes').send({ action: 'search', query: 'observatory' }).expect(200);
     expect(native.body.data.notes).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
+    const journal = '/api/consumers/nestor/v1/mail-journal';
+    const filed = await request(app).post(journal).send({ action: 'record', threadId: 'synthetic-thread',
+      occurredAt: new Date().toISOString(), summary: 'Synthetic observatory newsletter arrived' }).expect(200);
+    expect(filed.body.data).toMatchObject({ authority: 'agentx.core', action: 'record', recorded: true });
+    const recalled = await request(app).post(journal).send({ action: 'search', query: 'observatory' }).expect(200);
+    expect(recalled.body.data.entries.map(entry => entry.threadId)).toEqual(['synthetic-thread']);
+    // Mail digests never surface as memory notes.
+    const notesAfter = await request(app).post('/api/consumers/nestor/v1/memory/notes').send({ action: 'search', query: 'newsletter' }).expect(200);
+    expect(notesAfter.body.data.notes).toEqual([]);
+    await request(app).post(journal).send({ action: 'delete' }).expect(400);
     const voice = await request(app).get('/api/voix/memory/active').expect(200);
     expect(voice.body.data.memories).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
     const session = await request(app).post(`${base}/private/sessions`).send({ packId: 'personal_operator', backend: 'agentx' }).expect(201);

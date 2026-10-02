@@ -1716,6 +1716,17 @@
       "secret": false,
       "description": "Leantime URL for household email actions and agent-ops links. Unset: email actions answer 503."
     },
+    "MAIL_JOURNAL_RETENTION_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "fallback": "365",
+      "category": "memory",
+      "secret": false,
+      "description": "Days a mail journal entry is kept, counted from the mail's date; Mongo removes it afterwards. Applies to entries recorded after a change. 0 keeps entries forever; an invalid value uses 365."
+    },
     "MEMORY_REVIEW_AUTOMATION_MODE": {
       "services": [
         "core"
