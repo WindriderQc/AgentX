@@ -412,6 +412,9 @@ age in years, computed for the turn's date (`PLANNING_TIME_ZONE` when set,
 otherwise the server's local date), and the birthday as day and month, never
 the stored date. Without a birth date it keeps the age band. Famille turns, the
 Family page and the child-facing profile and room routes see the age band only.
+When the profiles, notes or memory hold only part of an answer, Super Dad says
+what they establish and plainly what they do not, without guessing exact ages,
+dates or relationships.
 The background brain runs after each Super Dad and Famille turn when
 `HOUSEHOLD_BRAIN_ENABLED=true` (the Compose default; `HOUSEHOLD_BRAIN_FAMILY=false`
 leaves Famille out). It uses the router's `master_brain` lane unless

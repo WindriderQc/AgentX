@@ -28,8 +28,10 @@ export function createCoreNotesClient({ baseUrl, fetchImpl = fetch } = {}) {
 
 // Existing native jobs remain optional instance configuration. No operator
 // cron IDs, identities or machine addresses are included in the repository.
+// A key names the agent that owns the job; only that agent's session matches.
 export function configuredJobContext(context, sessionKeys = []) {
-  return context.agentId === 'main' && !context.sandboxed && sessionKeys.some(key =>
-    typeof key === 'string' && key.startsWith('agent:main:')
-      && (context.sessionKey === key || context.sessionKey?.startsWith(key + ':')));
+  if (!context.agentId || context.sandboxed) return false;
+  const prefix = `agent:${context.agentId}:`;
+  return sessionKeys.some(key => typeof key === 'string' && key.startsWith(prefix)
+    && (context.sessionKey === key || context.sessionKey?.startsWith(key + ':')));
 }

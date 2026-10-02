@@ -638,7 +638,9 @@ class Archive:
         # One collection scope per tool call bounds work for attachment-heavy
         # threads. Completed downloads survive interruption independently.
         scope_index = state.get("collectionScope", 0) % len(QUERIES)
-        for scope in [list(QUERIES)[scope_index]]:
+        # A running mailbox_backfill owns collection; it refreshes its lock after every thread.
+        lock = self.root / "backfill.lock"
+        for scope in [] if lock.exists() and time.time() - lock.stat().st_mtime < 1800 else [list(QUERIES)[scope_index]]:
             # Refresh the newest page independently, without resetting historical pagination.
             inventory_file = self.root / f"inventory-{scope}.json"
             inventory = load(inventory_file, {})
@@ -922,8 +924,7 @@ def main():
     read.add_argument("thread_id")
     read.add_argument("--offset", type=int, default=0)
     read.add_argument("--size", type=int, default=16000)
-    review = sub.add_parser("review")
-    review.add_argument("file", type=Path)
+    sub.add_parser("review").add_argument("file", type=Path)
     sub.add_parser("status")
     sub.add_parser("export")
     ocr = sub.add_parser("ocr", help="Machine-read scans/photos already in the archive; no Gmail access")
@@ -934,8 +935,7 @@ def main():
     sub.add_parser("native_status")
     sub.add_parser("native_record", help="Read a source-linked page review from JSON stdin")
     sub.add_parser("read_source", help="Read a bounded message/thread page; JSON parameters on stdin")
-    thread_state = sub.add_parser("thread_state")
-    thread_state.add_argument("thread_id")
+    sub.add_parser("thread_state").add_argument("thread_id")
     args = parser.parse_args()
     archive = Archive(args.root)
     if args.command == "collect":
