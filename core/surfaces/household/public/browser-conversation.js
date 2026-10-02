@@ -86,6 +86,15 @@
   // short acoustic window can match, so a reply heard back through the mic
   // was transcribed and treated as the user interrupting. Words that the
   // current reply has just spoken are an echo, not a new request.
+  const HOLDING = Object.freeze({
+    fr: ['Un instant…', 'Je regarde ça…', 'Laisse-moi réfléchir une seconde…'],
+    en: ['One moment…', 'Let me check…', 'Give me a second…']
+  });
+  function holdingPhrase(language, index = 0) {
+    const phrases = HOLDING[language === 'en' ? 'en' : 'fr'];
+    return phrases[index % phrases.length];
+  }
+
   function isSpokenEcho(text, spoken) {
     const words = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
       .match(/[a-z0-9]+/g) || [];
@@ -511,6 +520,14 @@
             pending = pending.slice(length);
           }
         }, { turnId: turn.id, onNotice: speak });
+        // A long silent wait made people speak again and cancel the turn; say once that
+        // Nestor is working when no reply text has arrived after a few seconds.
+        const holdingDelay = this.io.holdingDelayMs === undefined ? 3000 : this.io.holdingDelayMs;
+        const holding = holdingDelay === null ? null : setTimeout(() => {
+          if (!streamed && this.owns(turn) && !turn.interrupted) speak(holdingPhrase(spokenLanguage, this.holdingIndex = (this.holdingIndex || 0) + 1));
+        }, holdingDelay);
+        holding?.unref?.();
+        response.finally(() => clearTimeout(holding)).catch(() => {});
         // Listen during inference, but confirm speech before cancelling it.
         // Playback still stops immediately when the user speaks over Nestor.
         this.monitor(turn);
@@ -763,7 +780,7 @@
     return response.arrayBuffer();
   }
 
-  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, isTranscriptHallucination, isSpokenEcho, nextSpeechChunkLength };
+  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, isTranscriptHallucination, isSpokenEcho, holdingPhrase, nextSpeechChunkLength };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.NestorConversation = api;
 })(typeof window === 'undefined' ? globalThis : window);
