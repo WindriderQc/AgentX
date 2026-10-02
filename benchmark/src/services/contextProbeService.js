@@ -528,11 +528,14 @@ async function probeModelContext(modelName, options = {}) {
 
     let bestPassingStep = baseline;
 
+    // After a request timed out and was proven stopped, no further request is sent.
+    let deadlineStopped = false;
     async function testCandidate(numCtx) {
       checkpoint();
       if (stepCache.has(numCtx)) {
         return stepCache.get(numCtx);
       }
+      if (deadlineStopped) return { numCtx, passed: false, untested: true };
 
       // The fill percentage is fixed for a whole probe run so throughput
       // remains comparable across verified windows.
@@ -544,6 +547,7 @@ async function probeModelContext(modelName, options = {}) {
 
       stepCache.set(numCtx, evaluatedStep);
       steps.push(evaluatedStep);
+      deadlineStopped ||= evaluatedStep.requestStopProven === true;
       probeNotify({
         type: 'step',
         numCtx,

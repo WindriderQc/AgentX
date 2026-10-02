@@ -50,6 +50,23 @@ async function snapshotVram(hostUrl, signal = null) {
   return { usedMiB: null, totalMiB: null };
 }
 
+// A request aborted at its deadline and proven stopped was observed placed at
+// this context just before the abort; that is its placement while it ran (the
+// runner may have been unloaded since).
+function inFlightPlacement(observed, stopProof) {
+  const baseline = stopProof?.baseline;
+  if (!baseline) return observed;
+  const sizeTotal = Number(baseline.size) > 0 ? Number(baseline.size) : null;
+  const sizeVram = Number.isFinite(Number(baseline.sizeVram)) && baseline.sizeVram !== null ? Number(baseline.sizeVram) : null;
+  return {
+    ...observed,
+    sizeTotal,
+    sizeVram,
+    contextLength: baseline.contextLength || null,
+    gpuPercent: sizeTotal !== null && sizeVram !== null ? Number(((sizeVram / sizeTotal) * 100).toFixed(1)) : null
+  };
+}
+
 async function runStep(hostUrl, modelName, numCtx, timeoutMs, promptFillPct = 80, modelContext = {}, options = {}) {
   const fillRatio = Math.min(100, Math.max(5, Number(promptFillPct) || 80)) / 100;
   const { prompt, estimatedTokens } = generateFillPrompt(Math.floor(numCtx * fillRatio));
@@ -61,10 +78,11 @@ async function runStep(hostUrl, modelName, numCtx, timeoutMs, promptFillPct = 80
     : { plausible: true, detail: null };
   const invalidThroughput = probeResult.ok && !plausibility.plausible;
   const zeroThroughputBoundary = probeResult.ok && probeResult.tokensPerSec === 0;
-  const [vram, offload] = await Promise.all([
+  const [vram, observed] = await Promise.all([
     snapshotVram(hostUrl, options.signal),
     snapshotGpuOffload(hostUrl, modelName, options.signal)
   ]);
+  const offload = inFlightPlacement(observed, probeResult.stopProof);
 
   return {
     numCtx,
@@ -86,6 +104,8 @@ async function runStep(hostUrl, modelName, numCtx, timeoutMs, promptFillPct = 80
     gpuSizeVram: offload.sizeVram,
     ollamaContextLength: offload.contextLength, residency: offload.residency || 'gpu',
     coResidents: offload.coResidents,
+    // Timed out and proven stopped: a terminal, measured outcome at this context.
+    requestStopProven: Boolean(probeResult.stopProof),
     latencyMs: probeResult.latencyMs,
     promptFillPct: Math.round(fillRatio * 100),
     requestedCompletionTokens: PROBE_NUM_PREDICT,

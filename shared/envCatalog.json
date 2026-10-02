@@ -2475,7 +2475,7 @@
       "default": null,
       "category": "benchmark",
       "secret": false,
-      "description": "How long a cancelled profile waits for Ollama /api/ps to prove its aborted request stopped before leaving it UNKNOWN, in ms, at least 10000. Unset: 60000."
+      "description": "How long a profile waits for Ollama /api/ps to prove a request it aborted (operator cancel or expired deadline) stopped before leaving it UNKNOWN, in ms, at least 10000. Unset: 60000."
     },
     "PROFILE_CANCEL_SETTLE_MS": {
       "services": [
@@ -2485,7 +2485,7 @@
       "default": null,
       "category": "benchmark",
       "secret": false,
-      "description": "Minimum wait after a profile cancel aborts a request before /api/ps can prove it stopped, in ms, at least 5000. Unset: 15000."
+      "description": "Minimum wait after a profile aborts a request (operator cancel or expired deadline) before /api/ps can prove it stopped, in ms, at least 5000. Unset: 15000."
     },
     "PROMPT_ANALYSIS_MODEL": {
       "services": [

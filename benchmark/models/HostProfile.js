@@ -77,6 +77,8 @@ const HostProfileSchema = new mongoose.Schema({
     operatorTerminalReceipt: mongoose.Schema.Types.Mixed,
     // Operator cancel of an in-flight request: its runtime stop proof or why it is missing.
     cancelAbort: mongoose.Schema.Types.Mixed,
+    // Last request aborted at its expired deadline: its runtime stop proof or why it is missing.
+    deadlineAbort: mongoose.Schema.Types.Mixed,
     timeoutAt: Date,
     quietSince: Date,
     lastObservedAt: Date,

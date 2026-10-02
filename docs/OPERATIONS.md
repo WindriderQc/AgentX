@@ -1001,6 +1001,18 @@ profile ends as `cancelled`. Prefer it to restarting Ollama, which leaves the
 interrupted request UNKNOWN. A profile inside a host queue has no cancel of its
 own (`409`); the queue is cancelled instead.
 
+The same proof applies when the deadline of such a request expires, in any
+profile run (single, host queue or pipeline). For example, a CPU context probe
+step that outlasts `CONTEXT_PROBE_CPU_TIMEOUT_MS`. The run samples `/api/ps`,
+aborts the request and waits for the stop proof. Proven: the journal keeps the
+receipt (`reconciliation.deadlineAbort`), the step is recorded as timed out at
+that context, the probe sends no further request, and the profile completes with
+the context verified below it. Not proven: the request stays UNKNOWN with reason
+`PROFILE_DEADLINE_STOP_UNPROVEN`, the profile fails with that explanation and
+needs the restart attestation below. A request that cannot carry the proof (a
+model still loading at the deadline, a streamed or Core-routed request) keeps
+the client deadline and stays UNKNOWN when it expires.
+
 An UNKNOWN inference (not a workload) is released by the watchdog without a
 runtime restart in two bounded cases. A watchdog probe is released after
 `WATCHDOG_PROBE_RECOVERY_SETTLE_MS` (default 10 minutes). A caller abort, where
