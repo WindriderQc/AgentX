@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const { createBrowserOriginGuard } = require('../shared/browserOriginGuard');
+const { createServiceIdentity } = require('../shared/serviceIdentity');
 const morgan = require('morgan');
 const { MongoClient } = require('mongodb');
 const { log } = require('./utils/logger');
@@ -30,7 +31,10 @@ if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 // Health
 app.get('/', (req, res) => res.redirect('/health'));
 app.get('/health', (req, res) => {
-  res.status(app.locals.db ? 200 : 503).json({ ok: Boolean(app.locals.db), service: 'agentx-data', version: pjson.version, ts: Date.now() });
+  res.status(app.locals.db ? 200 : 503).json({
+    ok: Boolean(app.locals.db),
+    ...createServiceIdentity({ service: 'agentx-data', version: pjson.version })
+  });
 });
 
 // API routes
