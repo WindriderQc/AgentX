@@ -54,3 +54,54 @@ export async function persistTerminalTurn(ctx, {
   await helpers.loadConversation(state.conversationId, true);
   return envelope.data;
 }
+
+// The server refuses every turn for an unknown or archived conversation, so
+// its outcome cannot be recorded either.
+function isConversationGone(failure) {
+  return failure?.code === 'CONVERSATION_NOT_FOUND';
+}
+
+export function failedTurnMessage(failure, content, retryUserMessageId) {
+  const gone = isConversationGone(failure);
+  return {
+    role: 'assistant',
+    content,
+    createdAt: new Date().toISOString(),
+    retryUserMessageId: gone ? null : retryUserMessageId,
+    metadata: { outcome: 'failed', retryable: !gone, error: { code: failure.code, message: failure.message } }
+  };
+}
+
+function offerNewChat(ctx) {
+  const { elements, helpers } = ctx;
+  if (!elements?.feedback || typeof helpers?.clearChat !== 'function') return;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'ghost';
+  button.textContent = 'Start a new chat';
+  button.style.marginLeft = '8px';
+  button.addEventListener('click', () => {
+    helpers.clearChat();
+    helpers.setFeedback('', 'muted');
+  });
+  elements.feedback.appendChild(button);
+}
+
+// Records a failed turn in history and reports the result in one message.
+export async function recordFailedTurn(ctx, failure, turn) {
+  const { helpers } = ctx;
+  if (isConversationGone(failure)) {
+    helpers.setFeedback('This conversation is archived or no longer exists, so this turn was not saved.', 'error');
+    offerNewChat(ctx);
+    return false;
+  }
+  try {
+    await persistTerminalTurn(ctx, { ...turn, outcome: 'failed', error: failure });
+    helpers.setFeedback(`${failure.message} The failed turn was saved in history.`, failure.tone);
+    return true;
+  } catch (persistError) {
+    console.error('Failed to preserve failed turn:', persistError);
+    helpers.setFeedback(`${failure.message} This turn is visible here but could not be saved; keep this page open and retry.`, 'error');
+    return false;
+  }
+}
