@@ -113,8 +113,11 @@ test('a completed chat turn schedules the review and the browser can follow it a
 test('in auto mode the next turn follows the review recommendation and tells the browser', async () => {
   const { readReview } = require('../../../src/domains/psyx/review');
   const digest = readReview(JSON.stringify({
-    digest: { summary: 'Hard week.', next: { stance: 'challenge', depth: 'deep', reason: 'The story is too convenient.' } }
+    // The shape the review prompt asks for: "next" beside "digest".
+    digest: { summary: 'Hard week.', conversationId: 'model-invented' },
+    next: { stance: 'challenge', depth: 'deep', reason: 'The story is too convenient.' }
   }), { conversationId: '507f1f77bcf86cd799439011' }).digest;
+  assert.equal(digest.conversationId, '507f1f77bcf86cd799439011');
   assert.deepEqual(digest.next, { stance: 'challenge', depth: 'deep', reason: 'The story is too convenient.' });
   assert.equal(readReview(JSON.stringify({ digest: { summary: 'x', next: { stance: 'shout' } } }), { conversationId: 'c' }).digest.next, null);
 

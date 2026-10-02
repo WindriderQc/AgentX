@@ -63,13 +63,18 @@ function readReview(raw, { conversationId, settled = [] } = {}) {
   const proposals = [];
   for (const item of Array.isArray(value.proposals) ? value.proposals : []) {
     // The reviewer generates ids; ours are minted here.
-    const proposal = normalizeProposal({ ...item, id: undefined, createdAt: undefined }, { conversationId, now });
+    // Ids, dates and the conversation come from the caller, never from the model.
+    const proposal = normalizeProposal({ ...item, id: undefined, createdAt: undefined, conversationId: undefined }, { conversationId, now });
     if (!proposal || !proposal.evidence.length || settledSet.has(proposal.fingerprint) || seen.has(proposal.fingerprint)) continue;
     seen.add(proposal.fingerprint);
     proposals.push(proposal);
     if (proposals.length >= PROPOSAL_LIMITS.perReview) break;
   }
-  return { digest: normalizeDigest(value.digest, { conversationId, now }), proposals };
+  // The prompt asks for "next" beside "digest"; a nested one is accepted too.
+  const digest = value.digest && typeof value.digest === 'object'
+    ? normalizeDigest({ ...value.digest, conversationId: undefined, next: value.next ?? value.digest.next }, { conversationId, now })
+    : null;
+  return { digest, proposals };
 }
 
 module.exports = { REVIEW_PROMPT_VERSION, REVIEW_SYSTEM_PROMPT, reviewMessages, readReview };

@@ -56,3 +56,11 @@ test('a new session is invited to connect to recent sessions and open experiment
   assert.match(composeSystemContext(withHistory, control), /first message of a new session[\s\S]*Never force it/);
   assert.doesNotMatch(composeSystemContext(withHistory, control, { conversationId: 'old' }), /first message of a new session/);
 });
+
+test('the review prompt example parses into a digest with its next-turn recommendation', () => {
+  const { REVIEW_SYSTEM_PROMPT, readReview } = require('../../../src/domains/psyx/review');
+  const example = REVIEW_SYSTEM_PROMPT.slice(REVIEW_SYSTEM_PROMPT.indexOf('{'), REVIEW_SYSTEM_PROMPT.indexOf('\n\nRules:'))
+    .replace('talk|analyze|challenge|plan', 'plan').replace('normal|deep', 'deep');
+  const review = readReview(example, { conversationId: 'c1' });
+  assert.deepEqual([review.digest.conversationId, review.digest.next.stance, review.digest.next.depth], ['c1', 'plan', 'deep']);
+});
