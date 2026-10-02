@@ -723,6 +723,25 @@ the host declares (fully in VRAM, or none of it on a CPU host) and a short-promp
 rollback. The response reports `rollback: verified` or `unverified`; an
 unverified rollback keeps the runtime lease quarantined.
 
+## Moving mail digests out of memory notes
+
+Mail digests saved as personal notes before the mail journal existed are moved
+with `core/scripts/migrate-mail-digests.js`, run in the Core container. A note
+carrying a Gmail thread/message id is a digest; one that reads like mail
+without an id is listed for review and never moved; everything else stays a
+note. Report and backup hold private text: write them to the instance backups,
+never into the checkout.
+
+```bash
+docker exec agentx-core-1 node scripts/migrate-mail-digests.js --report /tmp/digests-plan.json
+docker exec agentx-core-1 node scripts/migrate-mail-digests.js --apply --backup /tmp/digests-backup.json
+```
+
+Each digest becomes its own journal entry (tag `migrated-from-notes`, dated by
+when the note was filed) and its note is forgotten, so it stays restorable
+until the memory retention removes it. `--ids <file.json>` limits a run to
+chosen note ids. Copy the files out of the container before it is recreated.
+
 ## Qdrant payload indexes
 
 RAG creates the payload indexes its filters use (`documentId`, `revision`,
