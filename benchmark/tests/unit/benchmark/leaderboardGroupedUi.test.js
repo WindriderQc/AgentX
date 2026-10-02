@@ -11,8 +11,9 @@ const { loadBrowserModule, loadLeaderboardTextModules } = require('../../helpers
 const { VERDICT_REASON } = require('../../../src/services/benchmark/leaderboardGrouping');
 
 const ROOT = path.join(__dirname, '../../..');
-const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
+const read = (relative) => readSource(path.join(ROOT, relative));
 const fixture = require('../../fixtures/leaderboard-grouped.json');
+const { readSource } = require('../../../../shared/testing/readSource');
 
 const text = loadLeaderboardTextModules();
 const viewModel = loadBrowserModule('leaderboard-v2/view-model.js',
