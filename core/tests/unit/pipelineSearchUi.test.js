@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { readPipelineSource, loadPipelineParts } = require('../helpers/pipelineScripts');
 
 function loadSearch() {
   const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/pipeline.js'), 'utf8');
@@ -10,6 +11,7 @@ function loadSearch() {
   if (!input) throw new Error('Pipeline search input handler is missing');
   const context = { window: { location: { search: '' } }, document: { addEventListener() {} }, URLSearchParams };
   const hook = `globalThis.searchTest = { state, matchesFilters, setQuery(value) { const search = { value }; ${input[1].replace(/renderAll\(\);?/g, '')} } };`;
+  loadPipelineParts(context);
   vm.runInNewContext(source.replace(/\}\)\(\);\s*$/, hook + '\n})();'), context);
   return context.searchTest;
 }
