@@ -6,7 +6,7 @@ const { generatedPersonas, snapshot, speechFor, readReplyStream, instanceVoice }
 
 test('generated private catalog preserves every former voice preset and the requested voice defaults', () => {
   const rows = generatedPersonas();
-  assert.deepEqual(rows.map(row => row.name), ['native_personality', 'nestor', 'nestor_strategist', 'nestor_challenger', 'jarvis', 'nestor_companion', 'nestor_concise', 'secretary']);
+  assert.deepEqual(rows.map(row => row.name), ['native_personality', 'nestor', 'nestor_strategist', 'nestor_challenger', 'jarvis', 'nestor_companion', 'nestor_concise', 'secretary', 'comptable']);
   const jarvis = rows.find(row => row.name === 'jarvis');
   assert.ok(jarvis.systemPrompt.startsWith('For this conversation, use the name Jarvis.'));
   assert.equal(jarvis.systemPrompt.includes('You are Nestor'), false);
@@ -20,6 +20,10 @@ test('generated private catalog preserves every former voice preset and the requ
   }
   for (const [name, voice] of [['nestor', 'am_michael'], ['jarvis', 'bm_lewis']]) assert.equal(speechFor(snapshot({ ...rows.find(row => row.name === name), _id: name, version: 1 }), 'en').voice, voice);
   assert.equal(speechFor(snapshot({ ...rows.find(row => row.name === 'secretary'), _id: 'secretary', version: 1 }), 'fr').voice, 'ff_siwis');
+  // The accountant keeps Nestor's former Kokoro French blend and declares its own agent.
+  const comptable = rows.find(row => row.name === 'comptable');
+  assert.equal(speechFor(snapshot({ ...comptable, _id: 'comptable', version: 1 }), 'fr').voice, 'am_michael:0.50+ff_siwis:0.50');
+  assert.equal(comptable.uiConfig.layoutConfig.agentId, 'comptable');
 });
 
 test('split Unicode reply chunks stream intact and require a terminal completion record', async () => {
