@@ -5,14 +5,13 @@
 // supplies its runtime services and the helpers it shares with other routes.
 
 const crypto = require('crypto');
-const { Readable } = require('node:stream');
-const { pipeline: pipeStream } = require('node:stream/promises');
 const personaCatalog = require('./persona-catalog');
 const { voiceContract } = require('./voice-contract');
 const { createScriptRelay } = require('./asset-relay');
-const { normalizeSpeechLanguage, synthesisText, speechProfile } = require('./public/speech-language');
+const { createVoixUpstream } = require('./voix-upstream');
+const { createSynthesisHandler } = require('./voix-synthesis');
 const {
-  VOIX_TIMEOUT_MS, VOIX_MEDIA_VAULT_CATEGORIES, VOIX_MEDIA_VAULT_SUBJECTS, fetchWithTimeout, voixUrl, upstreamJson, finiteNumber,
+  VOIX_TIMEOUT_MS, VOIX_MEDIA_VAULT_CATEGORIES, VOIX_MEDIA_VAULT_SUBJECTS, fetchWithTimeout, voixUrl, upstreamJson, readUpstreamJson, finiteNumber,
   publicVoixConfig, publicVoixConversation, publicVoixEvent, publicVoixMediaClip, publicVoixMediaVault, publicVoixSession
 } = require('./voix-client');
 
@@ -24,7 +23,8 @@ const VOIX_MEMORY_MODE_ID = 'operator';
 function registerVoixRoutes(app, {
   express, logger, models, conversations, personalNotes, runtimeServices, sounds, standardJsonParser, ensureCatalog, drainVoixMemoryAudits,
   envelope, fail, cleanText, assessSafety, detectMemoryRequest, normalizeVoixMemoryTurn, normalizeVoixTranscriptionMultipart, requireVoixMemoryConsumer,
-  MEMORY_BLOCK_MAX_CHARS, MEMORY_RECALL_LIMIT, VOIX_MEMORY_SCHEMA_VERSION, VOIX_MEMORY_SCOPE_ID
+  MEMORY_BLOCK_MAX_CHARS, MEMORY_RECALL_LIMIT, VOIX_MEMORY_SCHEMA_VERSION, VOIX_MEMORY_SCOPE_ID,
+  voixUpstream = createVoixUpstream()
 }) {
   const voix = express.Router();
   voix.get('/contract', (_req, res) => envelope(res, voiceContract({
@@ -44,11 +44,17 @@ function registerVoixRoutes(app, {
     try { return envelope(res, publicVoixConfig(await upstreamJson('/config'))); }
     catch (error) { return fail(res, error.status || 503, error.message, error.code || 'VOIX_UNAVAILABLE'); }
   });
+  // Stateless routes below may be answered by VOIX_FALLBACK_URL; see voix-upstream.
+  voix.get('/upstream', async (_req, res) => envelope(res, await voixUpstream.status()));
   voix.get('/catalog', async (_req, res) => {
-    try { return envelope(res, await upstreamJson('/api/voices')); }
-    catch (error) { return fail(res, 503, error.message, 'VOIX_UNAVAILABLE'); }
+    try {
+      const { response, upstream } = await voixUpstream.send('/api/voices', (url) => fetchWithTimeout(url, {}, VOIX_TIMEOUT_MS()));
+      res.set('X-Voix-Upstream', upstream);
+      return envelope(res, await readUpstreamJson(response));
+    } catch (error) { return fail(res, 503, error.message, 'VOIX_UNAVAILABLE'); }
   });
   voix.get('/player.js', createScriptRelay({ resolveUrl: () => voixUrl('/assets/voice-audio.js'), fetchWithTimeout,
+    fetchUpstream: (_url, ms) => voixUpstream.send('/assets/voice-audio.js', (url) => fetchWithTimeout(url, {}, ms)),
     unavailable: (res, error) => fail(res, 503, error.message || 'Local speech player is unavailable', 'VOIX_UNAVAILABLE') }));
   voix.get('/settings', (_req, res) => envelope(res, {
     source: 'agentx-household',
@@ -101,7 +107,7 @@ function registerVoixRoutes(app, {
     }
   });
   require('./voix-transcription').registerTranscriptionProxy(voix, {
-    express, normalizeMultipart: normalizeVoixTranscriptionMultipart, voixUrl,
+    express, normalizeMultipart: normalizeVoixTranscriptionMultipart, upstream: voixUpstream,
     fetchWithTimeout, timeoutMs: VOIX_LONG_TIMEOUT_MS, fail
   });
   voix.use(standardJsonParser);
@@ -580,62 +586,7 @@ function registerVoixRoutes(app, {
       }
     });
   }
-  const synthesizeSpeech = async (req, res) => {
-    const text = synthesisText(cleanText(req.body?.text || req.body?.input, 4000), req.body?.tts_provider);
-    if (!text) return fail(res, 400, 'text is required', 'VOIX_INVALID_REQUEST');
-    const requestedLanguage = cleanText(req.body?.language, 16);
-    if (requestedLanguage && !normalizeSpeechLanguage(requestedLanguage)) {
-      return fail(res, 400, 'language must be en or fr', 'VOIX_INVALID_LANGUAGE');
-    }
-    const profile = speechProfile(text, requestedLanguage);
-    const requestedVoice = cleanText(req.body?.voice, 120);
-    const provider = cleanText(req.body?.tts_provider, 40) || 'kokoro';
-    if (!['kokoro', 'windows_sapi', 'voxcpm'].includes(provider)) return fail(res, 400, 'Unknown voice provider', 'VOIX_INVALID_TTS_PROVIDER');
-    const streaming = (req.path || '').endsWith('/stream');
-    const abort = new AbortController();
-    const disconnected = () => { if (!res.writableFinished) abort.abort(); };
-    res.once?.('close', disconnected);
-    try {
-      const response = await fetch(voixUrl(streaming ? '/api/tts/stream' : '/api/tts'), {
-        method: 'POST',
-        signal: AbortSignal.any([abort.signal, AbortSignal.timeout(VOIX_LONG_TIMEOUT_MS())]),
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          language: profile.language,
-          voice: requestedVoice || (provider === 'kokoro' && req.body?.native_defaults !== true ? profile.nativeVoice : ''),
-          tts_provider: provider,
-          native_defaults: req.body?.native_defaults === true,
-          response_format: cleanText(req.body?.response_format || 'wav', 16),
-          save: false
-        })
-      });
-      if (!response.ok) {
-        const body = await response.text();
-        return fail(res, response.status >= 500 ? 503 : response.status, body || 'VoiX synthesis failed', 'VOIX_BAD_RESPONSE');
-      }
-      res.status(200).set({
-        'Content-Type': response.headers.get('content-type') || 'audio/wav',
-        'X-Nestor-Speech-Language': profile.language,
-        'X-Nestor-Speech-Voice': response.headers.get('x-voix-voice') || requestedVoice || (provider === 'kokoro' ? profile.nativeVoice : ''),
-        'X-Voix-Provider': response.headers.get('x-voix-provider') || provider,
-        'X-Voix-Voice': response.headers.get('x-voix-voice') || '',
-        'X-Voix-Language': response.headers.get('x-voix-language') || profile.language,
-        'Cache-Control': 'no-store'
-      });
-      if (streaming) {
-        res.set('X-Accel-Buffering', 'no');
-        await pipeStream(Readable.fromWeb(response.body), res);
-        return;
-      }
-      return res.send(Buffer.from(await response.arrayBuffer()));
-    } catch (error) {
-      if (abort.signal.aborted || res.headersSent) { res.destroy(); return; }
-      return fail(res, 503, error.message, 'VOIX_UNAVAILABLE');
-    } finally {
-      res.off?.('close', disconnected);
-    }
-  };
+  const synthesizeSpeech = createSynthesisHandler({ upstream: voixUpstream, timeoutMs: VOIX_LONG_TIMEOUT_MS, fail, cleanText });
   voix.post('/synthesize', synthesizeSpeech);
   voix.post('/synthesize/stream', synthesizeSpeech);
   app.use('/api/voix', voix);

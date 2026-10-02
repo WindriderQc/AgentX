@@ -310,7 +310,13 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     } finally { await reader.cancel().catch(() => {}); }
   }
   const labels = { idle: 'Prêt à écouter.', starting: 'Activation du microphone…', listening: 'Je t’écoute…', hearing: 'Je t’écoute…', transcribing: 'Un instant…', waiting: 'Je termine la réponse précédente…', thinking: 'Je réfléchis…', preparing: 'Je prépare la réponse…', speaking: 'Nestor répond…', paused: 'Micro coupé. Active Nestor pour reprendre.', error: 'Conversation en pause.', reviewing: 'Micro coupé pour la réécoute. Active Nestor pour reprendre.', resuming: 'Reprise après la lecture…' };
-  const voiceNotice = text => { const node = el('conversationVoiceNotice'); node.hidden = !text; node.textContent = text || ''; };
+  // The voice ladder and the VoiX backup (X-Voix-Upstream) share one notice.
+  let ladderNotice = '', voixUpstream = '';
+  const renderVoiceNotice = () => { const text = NestorVoixUpstream.composeNotice(ladderNotice, voixUpstream), node = el('conversationVoiceNotice'); node.hidden = !text; node.textContent = text; };
+  const voiceNotice = text => { ladderNotice = text || ''; renderVoiceNotice(); };
+  const noteUpstream = state => { const active = typeof state === 'string' ? state : state?.active; if (active) { voixUpstream = active; renderVoiceNotice(); } };
+  const refreshUpstream = () => api('/api/voix/upstream').then(noteUpstream, () => {});
+  refreshUpstream();
   async function synthesize(text, lang, persona, voicePrefs, signal, source = 'Conversation') {
     // Fallback ladder: chosen voice, persona voice, catalog voice, then the browser's own voice.
     let response, speech;
@@ -319,6 +325,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         response = await fetch('/api/voix/synthesize/stream', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, language: lang, voice: choice.voice, tts_provider: choice.provider }) });
       } catch (error) { if (signal.aborted) throw error; response = null; break; }
+      noteUpstream(response.headers.get('X-Voix-Upstream'));
       if (response.ok) { speech = choice; voiceNotice(index ? 'Voix choisie indisponible : voix de secours.' : ''); break; }
     }
     if (!response?.ok) {
@@ -366,7 +373,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     async transcribeLocal(blob, lang, signal) {
       const body = new FormData(); body.append('file', blob, 'speech.wav');
       body.append('language', NestorSpeech.transcriptionLanguage(lang));
-      return api('/api/voix/transcribe', { method: 'POST', body, signal });
+      const result = await api('/api/voix/transcribe', { method: 'POST', body, signal });
+      refreshUpstream();
+      return result;
     } });
   const conversation = new NestorConversation.Conversation({
     readyToSpeak: () => avatar?.ready,

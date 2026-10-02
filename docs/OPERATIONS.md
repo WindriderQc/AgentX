@@ -408,6 +408,16 @@ native-device APIs. `DATAAPI_BASE_URL` is optional. Email actions require
 `LEANTIME_BASE_URL`, `LEANTIME_API_KEY`, `LEANTIME_EMAIL_ACTION_PROJECT_ID` and
 `LEANTIME_EMAIL_ACTION_USER_ID`; no owner project/user IDs are shipped.
 Provide these through external runtime configuration/Compose overrides.
+`VOIX_FALLBACK_URL` optionally names a backup VoiX for the stateless routes:
+transcription, synthesis (whole and streamed), the voice catalog and the player
+script. Core probes `VOIX_BASE_URL/health` every 15 s with a 1.5 s timeout (a
+powered-off host times out rather than refusing) and sends those routes to the
+backup while the probe fails. A primary network error or 502/503/504 is retried
+once on the backup; a 4xx is not. Answers carry `X-Voix-Upstream: primary|fallback`,
+`GET /api/voix/upstream` reports the active upstream, and the conversation page
+shows "Voix de secours (serveur principal indisponible) : réponses plus lentes."
+while the backup answers. Native sessions, the media vault and configuration
+stay on the primary.
 The optional [spoken-controls adapter](../integrations/voix/README.md) adds local
 Stop/silence recognition on the same VoiX process before Whisper transcription.
 `VOIX_SPOKEN_CONTROLS_ENABLED=true` selects that upload endpoint only after the
