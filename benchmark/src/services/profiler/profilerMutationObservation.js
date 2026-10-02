@@ -33,15 +33,17 @@ function rejectedBeforeWork(error) {
   return Number.isInteger(status) && status >= 400 && status < 500;
 }
 
-// `request` describes a direct Ollama JSON request ({ model, numCtx }), which an
-// operator cancel may abort and then prove stopped (see profileCancellation).
+// `request` describes a direct Ollama JSON request ({ model, numCtx, timeoutMs }),
+// which an operator cancel or its expired deadline may abort and then prove
+// stopped (see profileCancellation). The operation receives the journal's
+// request control ({ signal, timeoutMs }) when the run owns that deadline.
 async function observeJsonMutation(operation, request = null) {
   const journal = context.getStore();
-  if (!journal) return operation();
+  if (!journal) return operation(null);
   const ticket = await journal.beforeMutation(request && { ...request, abortable: true });
   try {
     const dispatchedAt = Date.now();
-    const result = await operation();
+    const result = await operation(journal.requestControl?.(ticket) ?? null);
     const durationMs = Date.now() - dispatchedAt;
     if (result && typeof result === 'object') jsonTimings.set(result, durationMs);
     await journal.completeMutation(ticket);

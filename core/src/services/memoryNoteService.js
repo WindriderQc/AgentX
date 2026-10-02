@@ -20,6 +20,10 @@ const cleanText = (value, max = 4000) => {
 };
 // Provenance of a new note; a trusted caller may name its channel.
 const sourceOf = value => (typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test(value) ? value : 'explicit-ui');
+// Where an agent-written note came from (ADR 0003, #207/#208). Only these
+// values are accepted from the Nestor consumer; anything else is not a note
+// the owner dictated, but it is never relabelled as one either.
+const AGENT_PROVENANCE = Object.freeze({ conversation: 'nestor-conversation', 'mail-review': 'nestor-mail-review', scheduled: 'nestor-scheduled' });
 const limitOf = (value, fallback = 25) => Math.max(1, Math.min(100, Math.trunc(Number(value)) || fallback));
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const stopWords = new Set(['les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'avec', 'mon', 'mes', 'moi', 'est', 'this', 'that', 'the', 'and', 'you', 'what', 'remember', 'retiens',
@@ -176,10 +180,11 @@ async function operatePersonal(input = {}) {
       .slice(0, limitOf(input.limit, 4)) };
   }
   // Provenance is set by trusted server callers (MCP), never by a request body.
-  else if (operation === 'remember') result = await notes.remember({ ...input, source: undefined });
+  else if (operation === 'remember') result = await notes.remember({ ...input,
+    source: input.provenance === undefined ? undefined : AGENT_PROVENANCE[input.provenance] || 'nestor-conversation' });
   else if (operation === 'forget') result = await notes.forget(input.id);
   else throw error('Choose list, search, remember or forget');
   return { ...result, operation };
 }
 
-module.exports = { forSpace, personal, operatePersonal };
+module.exports = { forSpace, personal, operatePersonal, AGENT_PROVENANCE };

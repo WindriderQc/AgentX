@@ -408,6 +408,16 @@ native-device APIs. `DATAAPI_BASE_URL` is optional. Email actions require
 `LEANTIME_BASE_URL`, `LEANTIME_API_KEY`, `LEANTIME_EMAIL_ACTION_PROJECT_ID` and
 `LEANTIME_EMAIL_ACTION_USER_ID`; no owner project/user IDs are shipped.
 Provide these through external runtime configuration/Compose overrides.
+`VOIX_FALLBACK_URL` optionally names a backup VoiX for the stateless routes:
+transcription, synthesis (whole and streamed), the voice catalog and the player
+script. Core probes `VOIX_BASE_URL/health` every 15 s with a 1.5 s timeout (a
+powered-off host times out rather than refusing) and sends those routes to the
+backup while the probe fails. A primary network error or 502/503/504 is retried
+once on the backup; a 4xx is not. Answers carry `X-Voix-Upstream: primary|fallback`,
+`GET /api/voix/upstream` reports the active upstream, and the conversation page
+shows "Voix de secours (serveur principal indisponible) : réponses plus lentes."
+while the backup answers. Native sessions, the media vault and configuration
+stay on the primary.
 The optional [spoken-controls adapter](../integrations/voix/README.md) adds local
 Stop/silence recognition on the same VoiX process before Whisper transcription.
 `VOIX_SPOKEN_CONTROLS_ENABLED=true` selects that upload endpoint only after the
@@ -1000,6 +1010,18 @@ returned. The panel shows which case applies and the remaining proof time. The
 profile ends as `cancelled`. Prefer it to restarting Ollama, which leaves the
 interrupted request UNKNOWN. A profile inside a host queue has no cancel of its
 own (`409`); the queue is cancelled instead.
+
+The same proof applies when the deadline of such a request expires, in any
+profile run (single, host queue or pipeline). For example, a CPU context probe
+step that outlasts `CONTEXT_PROBE_CPU_TIMEOUT_MS`. The run samples `/api/ps`,
+aborts the request and waits for the stop proof. Proven: the journal keeps the
+receipt (`reconciliation.deadlineAbort`), the step is recorded as timed out at
+that context, the probe sends no further request, and the profile completes with
+the context verified below it. Not proven: the request stays UNKNOWN with reason
+`PROFILE_DEADLINE_STOP_UNPROVEN`, the profile fails with that explanation and
+needs the restart attestation below. A request that cannot carry the proof (a
+model still loading at the deadline, a streamed or Core-routed request) keeps
+the client deadline and stays UNKNOWN when it expires.
 
 An UNKNOWN inference (not a workload) is released by the watchdog without a
 runtime restart in two bounded cases. A watchdog probe is released after

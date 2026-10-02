@@ -1,6 +1,26 @@
 {
   "version": 1,
   "variables": {
+    "AGENTX_ACCESS_CODE_FILE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": true,
+      "description": "Path of a file holding the access code, read by the PsyX scenario evaluation (core/surfaces/psyx/eval) on the operator's machine. Unset: ~/.agentx/access/parental-code."
+    },
+    "AGENTX_BASE_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Core URL the PsyX scenario evaluation (core/surfaces/psyx/eval) calls from the operator's machine. Unset: the runner requires --base."
+    },
     "AGENTX_BENCHMARK_HARNESS_URL": {
       "services": [
         "benchmark"
@@ -2486,7 +2506,7 @@
       "default": null,
       "category": "benchmark",
       "secret": false,
-      "description": "How long a cancelled profile waits for Ollama /api/ps to prove its aborted request stopped before leaving it UNKNOWN, in ms, at least 10000. Unset: 60000."
+      "description": "How long a profile waits for Ollama /api/ps to prove a request it aborted (operator cancel or expired deadline) stopped before leaving it UNKNOWN, in ms, at least 10000. Unset: 60000."
     },
     "PROFILE_CANCEL_SETTLE_MS": {
       "services": [
@@ -2496,7 +2516,7 @@
       "default": null,
       "category": "benchmark",
       "secret": false,
-      "description": "Minimum wait after a profile cancel aborts a request before /api/ps can prove it stopped, in ms, at least 5000. Unset: 15000."
+      "description": "Minimum wait after a profile aborts a request (operator cancel or expired deadline) before /api/ps can prove it stopped, in ms, at least 5000. Unset: 15000."
     },
     "PROMPT_ANALYSIS_MODEL": {
       "services": [
@@ -2828,6 +2848,16 @@
       "category": "household",
       "secret": false,
       "description": "Base URL of the VoiX service for household player, transcription, synthesis and PsyX voice. Unset: VoiX routes answer 503 VOIX_NOT_CONFIGURED."
+    },
+    "VOIX_FALLBACK_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional backup VoiX base URL. Transcription, synthesis, the voice catalog and the player script use it while VOIX_BASE_URL fails its cached /health probe (15 s period, 1.5 s timeout), and retry on it once after a primary network error or 502/503/504. Native sessions, media vault and config stay on the primary. Unset: no failover."
     },
     "VOIX_LONG_TIMEOUT_MS": {
       "services": [

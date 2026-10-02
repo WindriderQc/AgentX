@@ -7,7 +7,7 @@ export function createCoreNotesClient({ baseUrl, fetchImpl = fetch } = {}) {
     const action = input?.action;
     if (!['remember', 'forget', 'list', 'search', 'context'].includes(action)) throw new Error('Unsupported personal-memory operation');
     const payload = { action };
-    for (const key of ['id', 'text', 'query', 'kind', 'expiresAt', 'limit', 'offset']) {
+    for (const key of ['id', 'text', 'query', 'kind', 'expiresAt', 'limit', 'offset', 'provenance']) {
       if (Object.hasOwn(input, key)) payload[key] = input[key];
     }
     const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),

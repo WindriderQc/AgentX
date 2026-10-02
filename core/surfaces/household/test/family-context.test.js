@@ -88,3 +88,15 @@ test('Famille sounds playful with children on both conversation backends (#121)'
   assert.ok(FAMILY_SURFACE_CONTRACT.endsWith(FAMILY_TONE));
   assert.doesNotMatch(packById('personal_operator').systemPrompt || '', /Tone with children/);
 });
+
+test('a note from mail review or another non-owner source shows its origin in the prompt (#207)', () => {
+  const { memoryBlock } = require('../persona-prompt');
+  const block = memoryBlock([
+    { text: 'Synthetic fact from a mail', source: 'nestor-mail-review' },
+    { text: 'Synthetic owner preference', source: 'explicit-ui' },
+    { text: 'Synthetic agent note', source: 'nestor-conversation' }
+  ]);
+  assert.match(block, /- \[from mail review\] Synthetic fact from a mail/);
+  assert.match(block, /\n- Synthetic owner preference/);
+  assert.match(block, /\n- Synthetic agent note/);
+});

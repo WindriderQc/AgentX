@@ -18,6 +18,12 @@
         "docker-compose.yml",
         "integrations/coding/coding-dispatcher.py",
         "integrations/coding/clawdx-guarded-dispatch.py",
+        "integrations/coding/clawdx_dispatch_api.py",
+        "integrations/coding/clawdx_dispatch_attempt.py",
+        "integrations/coding/clawdx_dispatch_message.py",
+        "integrations/coding/clawdx_dispatch_openclaw.py",
+        "integrations/coding/clawdx_dispatch_remote.py",
+        "integrations/coding/coding_dispatch_evidence.py",
         "integrations/coding/coding_team_promotion.py"
       ],
       "allowedDataClassifications": [

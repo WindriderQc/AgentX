@@ -35,7 +35,10 @@ function voixUrl(pathname) {
 }
 
 async function upstreamJson(pathname, options = {}, timeoutMs = VOIX_TIMEOUT_MS()) {
-  const response = await fetchWithTimeout(voixUrl(pathname), options, timeoutMs);
+  return readUpstreamJson(await fetchWithTimeout(voixUrl(pathname), options, timeoutMs));
+}
+
+async function readUpstreamJson(response) {
   const text = await response.text();
   let body;
   try { body = text ? JSON.parse(text) : {}; } catch { body = { response: text }; }
@@ -368,6 +371,7 @@ module.exports = {
   fetchWithTimeout,
   voixUrl,
   upstreamJson,
+  readUpstreamJson,
   finiteNumber,
   publicVoixConfig,
   publicVoixConversation,
