@@ -2,6 +2,7 @@
 
 const { createHash } = require('node:crypto');
 const MemoryNote = require('../../models/MemoryNote');
+const { sealText } = require('./identifierVault');
 
 const error = (message, statusCode = 400) => Object.assign(new Error(message), {
   statusCode, code: 'MEMORY_NOTE_INVALID'
@@ -74,7 +75,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
   }
 
   async function remember(input = {}) {
-    const text = cleanText(input.text);
+    const { text, sealed } = await sealText(cleanText(input.text), { seenIn: 'memory-note' });
     if (input.kind !== undefined && !['fact', 'preference', 'decision'].includes(input.kind)) throw error('Choose fact, preference or decision');
     const id = input.id === undefined ? digest([scopeId, packs[0], text].join('\n')).slice(0, 24) : noteId(input.id);
     const existing = await MemoryNote.findOne({ ...boundary, _id: id }).lean();
@@ -84,7 +85,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     const kind = input.kind || existing?.kind || 'fact';
     const changed = !existing || existing.status === 'forgotten' || existing.text !== text || existing.kind !== kind
       || String(existing.expiresAt || '') !== String(expiresAt || '');
-    if (!changed) return { ok: true, authority: 'agentx.core', id, text, created: false, changed: false, updatedAt: existing.updatedAt };
+    if (!changed) return { ok: true, authority: 'agentx.core', id, text, sealed, created: false, changed: false, updatedAt: existing.updatedAt };
     // An explicit correction keeps an existing classification. In particular it
     // cannot downgrade a highly-private note by using a different presentation.
     const labels = existing?.scope && existing?.sensitivity
@@ -107,11 +108,11 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     }
     const row = result.value;
     if (!row) throw error('The selected note no longer exists', 404);
-    return { ok: true, authority: 'agentx.core', ...project(row), created: Boolean(result.lastErrorObject?.upserted), changed: true };
+    return { ok: true, authority: 'agentx.core', ...project(row), sealed, created: Boolean(result.lastErrorObject?.upserted), changed: true };
   }
 
   async function record(input = {}) {
-    const text = cleanText(input.text);
+    const { text } = await sealText(cleanText(input.text), { seenIn: 'memory-note' });
     const values = { packId: packs[0], scopeId, ...classification, text,
       topic: typeof input.topic === 'string' ? input.topic.slice(0, 80) : 'general',
       type: input.type === 'summary' ? 'summary' : 'fact', source: input.source || 'explicit-ui',

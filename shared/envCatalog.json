@@ -1516,6 +1516,16 @@
       "secret": false,
       "description": "provider/model sent to OpenClaw for personal Nestor voice turns on the main agent. Unset: native OpenClaw model policy applies."
     },
+    "IDENTIFIER_VAULT_KEY": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "security",
+      "secret": true,
+      "description": "32-byte key in base64 that encrypts the owner's sensitive identifiers (NIQ, NAS, REEE, account and card numbers) moved out of notes and the mail journal. Keep it in the instance env on the host; losing it makes stored values unreadable. Unset: identifiers stay in the text as written."
+    },
     "IMAGE_ARCHIVE_DIR": {
       "services": [
         "core"

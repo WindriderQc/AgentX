@@ -182,6 +182,14 @@ date. The mail assistant and owner Nestor reach it with the OpenClaw
 `mail_journal` tool through `/api/consumers/nestor/v1/mail-journal`; a lasting
 fact drawn from mail is still saved as one note. There is no household reader.
 
+Sensitive identifiers (NIQ, NAS, REEE, account numbers named as such, and card
+numbers that pass the Luhn check) never stay in a note or journal text when
+`IDENTIFIER_VAULT_KEY` is set: `identifierVault` encrypts each value once
+(AES-256-GCM) in `identifier_vault` and the text keeps `[coffre: label …1234]`.
+Nestor's `personal_identifier` tool lists labels anywhere the owner talks to
+him and reveals a value only in the owner's Household session, which stays on
+the local network.
+
 ## Access and identity
 
 AgentX is a single-household application on a trusted LAN. It has no user
