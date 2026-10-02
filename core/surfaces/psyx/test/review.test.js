@@ -224,7 +224,7 @@ test('check-ins are recorded through the protected API only', async () => {
     assert.equal((await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"score":3}' })).status, 401);
     const response = await fetch(url, { method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' }, body: JSON.stringify({ score: 6, phase: 'start', conversationId: 'c1', extra: 'ignored' }) });
     assert.equal(response.status, 200);
-    assert.deepEqual(recorded, [['default', { score: 6, phase: 'start', conversationId: 'c1' }]]);
+    assert.deepEqual(recorded, [['default', { score: 6, phase: 'start' }]], 'no conversation id is kept with a rating');
   } finally {
     await new Promise(resolve => server.close(resolve));
   }

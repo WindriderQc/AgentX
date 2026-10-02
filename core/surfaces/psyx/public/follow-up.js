@@ -61,7 +61,7 @@ function maybeAskCheckIn() {
 
 async function recordCheckIn(score, phase) {
   const response = await api('/api/psyx/state/check-ins', {
-    method: 'POST', body: JSON.stringify({ score, phase, conversationId: state.conversationId || undefined })
+    method: 'POST', body: JSON.stringify({ score, phase })
   });
   state.psyxState = response.state;
   followUp.lastNote = `Noté : ${score}/10`;
@@ -95,12 +95,29 @@ function renderFollowUp() {
   renderCheckInTrend();
 }
 
+// Locking forgets what this browser noted during the session.
+function resetFollowUp() {
+  followUp.askedIn.clear();
+  followUp.lastNote = '';
+  followUp.openingDone = false;
+  $('checkInPrompt').hidden = true;
+}
+
 function wireFollowUp() {
+  let pending = false;
   document.addEventListener('click', async (event) => {
+    if (event.target.closest('[data-check-in-close]')) { $('checkInPrompt').hidden = true; return; }
     const outcome = event.target.closest('[data-experiment-outcome]');
-    if (outcome) return recordOutcome(outcome.dataset.experimentOutcome, outcome.dataset.outcome);
     const checkIn = event.target.closest('[data-check-in]');
-    if (checkIn) return recordCheckIn(Number(checkIn.dataset.checkIn), checkIn.dataset.phase);
-    if (event.target.closest('[data-check-in-close]')) $('checkInPrompt').hidden = true;
+    if ((!outcome && !checkIn) || pending) return;
+    pending = true; // one tap records once
+    try {
+      if (outcome) await recordOutcome(outcome.dataset.experimentOutcome, outcome.dataset.outcome);
+      else await recordCheckIn(Number(checkIn.dataset.checkIn), checkIn.dataset.phase);
+    } catch (error) {
+      if (error.code !== 'PSYX_LOCKED') stateSaveStatus.textContent = 'échec de l’enregistrement';
+    } finally {
+      pending = false;
+    }
   });
 }

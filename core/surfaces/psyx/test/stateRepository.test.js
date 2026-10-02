@@ -348,7 +348,7 @@ test('experiments come due for a check-in, record an outcome, and not done asks 
 
   const skipped = await harness.repository.updateExperiment('default', created.item.id, { outcome: 'not_done' });
   const reopened = skipped.state.experiments[0];
-  assert.deepEqual([reopened.status, reopened.outcome, isDue(reopened)], ['planned', 'not_done', false]);
+  assert.deepEqual([reopened.status, reopened.outcome, isDue(reopened)], ['active', 'not_done', false]);
 
   const done = await harness.repository.updateExperiment('default', created.item.id, { outcome: 'partly', result: 'Two evenings out of four' });
   assert.deepEqual([done.state.experiments[0].status, done.state.experiments[0].outcome, done.state.experiments[0].result], ['completed', 'partly', 'Two evenings out of four']);
@@ -386,4 +386,46 @@ test('check-ins are bounded 0-10 self-ratings that the prompt sees', async () =>
   assert.deepEqual(state.checkIns.map((item) => item.score), [8, 6, 5]);
   assert.deepEqual(stateForPrompt(state).recentCheckIns.map((item) => item.score), [8, 6, 5]);
   assert.deepEqual((await harness.repository.reset('default')).checkIns, []);
+});
+
+test('follow-up fixes: not done reopens, outcomes respect the user, same outcome after reopening, strict scores', async () => {
+  const { readReview } = require('../../../src/domains/psyx/review');
+  const harness = createHarness();
+  await harness.repository.ensureInfrastructure();
+  const { item } = await harness.repository.addExperiment('default', { hypothesis: 'H', action: 'A' });
+
+  const worked = await harness.repository.updateExperiment('default', item.id, { outcome: 'worked' });
+  assert.equal(worked.state.experiments[0].status, 'completed');
+  const reopened = await harness.repository.updateExperiment('default', item.id, { outcome: 'not_done' });
+  assert.equal(reopened.state.experiments[0].status, 'active', 'not done reopens');
+  await harness.repository.updateExperiment('default', item.id, { status: 'active' });
+  const again = await harness.repository.updateExperiment('default', item.id, { outcome: 'worked' });
+  assert.equal(again.updated, true);
+  await harness.repository.updateExperiment('default', item.id, { outcome: 'not_done' });
+  const againWorked = await harness.repository.updateExperiment('default', item.id, { outcome: 'worked' });
+  assert.deepEqual([againWorked.updated, againWorked.state.experiments[0].status], [true, 'completed'], 'the same outcome after reopening still applies');
+  await assert.rejects(harness.repository.updateExperiment('default', item.id, { outcome: 'worked', status: 'active' }), /either an outcome or a status/);
+
+  // A stale review proposal does not overrule what the user decided meanwhile.
+  const { item: open } = await harness.repository.addExperiment('default', { hypothesis: 'H2', action: 'A2' });
+  const recorded = await harness.repository.recordReview('default', { conversationId: 'c', ...readReview(JSON.stringify({ proposals: [
+    { kind: 'experimentResult', experimentId: open.id, outcome: 'worked', evidence: ['ça a marché'] }
+  ] }), { conversationId: 'c', openExperimentIds: [open.id] }) });
+  await harness.repository.updateExperiment('default', open.id, { status: 'abandoned' });
+  const accepted = await harness.repository.acceptProposal('default', recorded.state.proposals[0].id);
+  assert.deepEqual([accepted.state.experiments.find((entry) => entry.id === open.id).status, accepted.state.proposals.length], ['abandoned', 0]);
+
+  for (const score of [null, '', true, [], '7.5', 'x']) await assert.rejects(harness.repository.addCheckIn('default', { score }), /0 to 10/, String(score));
+  const { checkIn } = await harness.repository.addCheckIn('default', { score: '7', phase: 'start', conversationId: 'c' });
+  assert.deepEqual([checkIn.score, 'conversationId' in checkIn], [7, false]);
+});
+
+test('experiments from before follow-ups become due three days after creation', () => {
+  const { sanitizeExperiments } = require('../../../src/domains/psyx/stateRepository');
+  const [legacy, done] = sanitizeExperiments([
+    { id: 'a', hypothesis: 'H', action: 'A', status: 'active', createdAt: '2026-09-01T10:00:00Z' },
+    { id: 'b', hypothesis: 'H', action: 'B', status: 'completed', createdAt: '2026-09-01T10:00:00Z' }
+  ]);
+  assert.equal(legacy.checkInAt, '2026-09-04T10:00:00.000Z');
+  assert.equal(done.checkInAt, null);
 });

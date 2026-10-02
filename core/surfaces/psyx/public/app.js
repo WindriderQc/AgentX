@@ -133,7 +133,7 @@ function showGate(message = '') {
   stopReviewWatch();
   review.last = null;
   hideSafety();
-  $('checkInPrompt').hidden = true;
+  resetFollowUp();
   state.unlocked = false;
   state.ready = false;
   state.history = [];

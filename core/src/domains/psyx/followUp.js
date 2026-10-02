@@ -28,8 +28,8 @@ function isDue(experiment, now = Date.now()) {
     && Boolean(experiment.checkInAt) && new Date(experiment.checkInAt).getTime() <= now;
 }
 
-// What recording an outcome changes on the experiment. "Not done" keeps it
-// open and asks again in a few days; any other outcome completes it.
+// What recording an outcome changes on the experiment. "Not done" reopens it
+// and asks again in a few days; any other outcome completes it.
 function outcomeChanges(outcome, now = Date.now()) {
   if (!EXPERIMENT_OUTCOMES.includes(outcome)) {
     const error = new Error('Invalid experiment outcome');
@@ -37,13 +37,14 @@ function outcomeChanges(outcome, now = Date.now()) {
     throw error;
   }
   return outcome === 'not_done'
-    ? { outcome, checkInAt: checkInAtFrom(DEFAULT_CHECK_IN_DAYS, now) }
+    ? { outcome, status: 'active', checkInAt: checkInAtFrom(DEFAULT_CHECK_IN_DAYS, now) }
     : { outcome, status: 'completed' };
 }
 
 function normalizeCheckIn(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const score = Number(raw.score);
+  // Only a real number or digit string: Number(null), Number('') and Number(true) would pass as 0 or 1.
+  const score = typeof raw.score === 'number' || /^\d{1,2}$/.test(String(raw.score)) ? Number(raw.score) : NaN;
   const at = dateOrNull(raw.at);
   const id = clean(raw.id, 80);
   if (!id || !Number.isInteger(score) || score < 0 || score > 10 || !at) return null;
@@ -51,7 +52,6 @@ function normalizeCheckIn(raw) {
     id,
     score,
     phase: CHECK_IN_PHASES.includes(raw.phase) ? raw.phase : 'during',
-    conversationId: clean(raw.conversationId, 80) || null,
     at
   };
 }

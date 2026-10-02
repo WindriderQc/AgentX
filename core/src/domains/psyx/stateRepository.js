@@ -126,7 +126,9 @@ function sanitizeExperiments(value) {
       result: cleanText(item?.result, 1500),
       status: ['planned', 'active', 'completed', 'abandoned'].includes(item?.status) ? item.status : 'planned',
       outcome: followUp.EXPERIMENT_OUTCOMES.includes(item?.outcome) ? item.outcome : null,
-      checkInAt: followUp.dateOrNull(item?.checkInAt),
+      checkInAt: followUp.dateOrNull(item?.checkInAt)
+        || (['planned', 'active'].includes(item?.status) && normalizeDate(item?.createdAt)
+          ? followUp.checkInAtFrom(followUp.DEFAULT_CHECK_IN_DAYS, new Date(item.createdAt).getTime()) : null),
       fingerprint: experimentFingerprint(hypothesis, action),
       createdAt: normalizeDate(item?.createdAt, now),
       updatedAt: normalizeDate(item?.updatedAt, now)
@@ -423,7 +425,14 @@ function createStateRepository({ collection, logger }) {
       semanticChanges.push({ experiments: { $elemMatch: { id, expectedSignal: { $ne: expectedSignal } } } });
     }
     if ('outcome' in body) {
+      if ('status' in body) {
+        const error = new Error('Send either an outcome or a status, not both');
+        error.statusCode = 400;
+        throw error;
+      }
       const changes = followUp.outcomeChanges(body.outcome);
+      // Recording the same outcome again on a reopened experiment is still a change.
+      if (changes.status) semanticChanges.push({ experiments: { $elemMatch: { id, status: { $ne: changes.status } } } });
       for (const [field, value] of Object.entries(changes)) set[`experiments.$[experiment].${field}`] = value;
       semanticChanges.push({ experiments: { $elemMatch: { id, outcome: { $ne: changes.outcome } } } });
       if (changes.checkInAt) semanticChanges.push({ experiments: { $elemMatch: { id, checkInAt: { $ne: changes.checkInAt } } } });
@@ -523,7 +532,8 @@ function createStateRepository({ collection, logger }) {
       // Applies to the experiment it names; if that experiment is gone the proposal is only settled.
       const changes = followUp.outcomeChanges(proposal.outcome);
       const result = cleanText(edits.result, 1500) || proposal.result;
-      if (state.experiments.some((entry) => entry.id === proposal.experimentId)) {
+      // Only an experiment still open takes the outcome; one the user closed meanwhile keeps the user's decision.
+      if (state.experiments.some((entry) => entry.id === proposal.experimentId && ['planned', 'active'].includes(entry.status))) {
         update.$set = { ...update.$set, 'experiments.$[experiment].updatedAt': new Date().toISOString() };
         for (const [field, value] of Object.entries({ ...changes, ...(result ? { result } : {}) })) update.$set[`experiments.$[experiment].${field}`] = value;
         options = { arrayFilters: [{ 'experiment.id': proposal.experimentId }] };
@@ -567,10 +577,7 @@ function createStateRepository({ collection, logger }) {
 
   // A short self-rating of how heavy things feel, 0 (light) to 10 (heaviest).
   async function addCheckIn(userId, body = {}) {
-    const checkIn = followUp.normalizeCheckIn({
-      id: crypto.randomUUID(), score: Number(body.score), phase: body.phase,
-      conversationId: body.conversationId, at: new Date().toISOString()
-    });
+    const checkIn = followUp.normalizeCheckIn({ id: crypto.randomUUID(), score: body.score, phase: body.phase, at: new Date().toISOString() });
     if (!checkIn) {
       const error = new Error('score must be an integer from 0 to 10');
       error.statusCode = 400;
