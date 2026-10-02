@@ -9,6 +9,8 @@ const fs = require('fs/promises');
 const { createWriteStream } = require('fs');
 
 const EXPORT_DIR = path.join(__dirname, '../exports');
+const REPORT_TYPES = new Set(['full', 'summary', 'media', 'large', 'stats']);
+const REPORT_FORMATS = new Set(['json', 'csv']);
 
 /**
  * Stream a "full" report directly to a JSON file without loading all docs into memory.
@@ -120,24 +122,42 @@ async function generateOptimizedReport(db, reportType) {
   throw new Error(`Unknown report type: ${reportType}. Use: full, summary, media, large, stats`);
 }
 
+function csvCell(value) {
+  if (value == null) return '';
+  let text = Array.isArray(value) ? `${value.length} items`
+    : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  // Text must remain inert when opened in a spreadsheet. Numeric values,
+  // including negative numbers, keep their existing numeric representation.
+  if (typeof value === 'string' && (/^\s*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text))) {
+    text = `'${text}`;
+  }
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
 function convertToCSV(data) {
   const list = data.files || data.directories || data.extensionStats || [];
   if (!Array.isArray(list) || list.length === 0) return 'No data\n';
   const headers = Object.keys(list[0]);
-  const rows = list.map(item => headers.map(h => {
-    const v = item[h];
-    if (Array.isArray(v)) return `"${v.length} items"`;
-    if (typeof v === 'object' && v !== null) return `"${JSON.stringify(v).replace(/"/g, '""')}"`;
-    return typeof v === 'string' && v.includes(',') ? `"${v.replace(/"/g, '""')}"` : v;
-  }).join(','));
-  return [headers.join(','), ...rows].join('\n');
+  const rows = list.map(item => headers.map(h => csvCell(item[h])).join(','));
+  return [headers.map(csvCell).join(','), ...rows].join('\n');
 }
 
 exports.generateReport = async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const type = req.body.type || req.query.type || 'full';
-    const format = req.body.format || req.query.format || 'json';
+    const type = req.body?.type !== undefined ? req.body.type
+      : req.query.type !== undefined ? req.query.type : 'full';
+    const format = req.body?.format !== undefined ? req.body.format
+      : req.query.format !== undefined ? req.query.format : 'json';
+    if (!REPORT_TYPES.has(type)) {
+      return res.status(400).json({ status: 'error', message: 'Unknown report type. Use: full, summary, media, large, stats' });
+    }
+    if (!REPORT_FORMATS.has(format)) {
+      return res.status(400).json({ status: 'error', message: 'Unknown report format. Use: json, csv' });
+    }
+    if (type === 'full' && format === 'csv') {
+      return res.status(400).json({ status: 'error', message: 'Full reports support JSON only' });
+    }
 
     const now = new Date();
     const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}`;

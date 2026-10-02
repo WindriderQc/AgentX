@@ -64,6 +64,55 @@ describe('Export Routes', () => {
   beforeEach(() => jest.clearAllMocks());
 
   describe('POST /api/v1/exports/generate', () => {
+    test.each([
+      { type: 'media', format: '/../../review-probe.json' },
+      { type: 'media', format: 'xml' },
+      { type: 'media', format: '' },
+      { type: 'media', format: null },
+      { type: 'media', format: ['csv'] },
+      { type: 'media', format: {} },
+      { type: '../media', format: 'json' },
+      { type: '', format: 'json' },
+      { type: null, format: 'json' },
+      { type: {}, format: 'json' },
+      { type: 'full', format: 'csv' }
+    ])('rejects unsupported input %j before database or file operations', async (payload) => {
+      const app = buildApp();
+      await request(app).post('/api/v1/exports/generate').send(payload).expect(400);
+      expect(app.locals.db.collection).not.toHaveBeenCalled();
+      expect(require('../../utils/file-operations').ensureDir).not.toHaveBeenCalled();
+      expect(require('fs/promises').writeFile).not.toHaveBeenCalled();
+      expect(require('fs/promises').stat).not.toHaveBeenCalled();
+    });
+
+    test('rejects query parameter path traversal before file operations', async () => {
+      const app = buildApp();
+      await request(app).post('/api/v1/exports/generate')
+        .query({ type: 'media', format: '/../../review-probe.json' }).expect(400);
+      expect(app.locals.db.collection).not.toHaveBeenCalled();
+      expect(require('../../utils/file-operations').ensureDir).not.toHaveBeenCalled();
+    });
+
+    test('produces escaped CSV records and neutralizes spreadsheet formulas in text', async () => {
+      const app = buildApp({ docs: [
+        { path: '/safe/a', filename: 'a"b\nline,one.txt', ext: 'txt', size: -12 },
+        { path: '/safe/b', filename: '=1+1', ext: 'txt', size: 2 },
+        { path: '/safe/c', filename: '  @SUM(1)', ext: 'txt', size: 3 },
+        { path: '/safe/d', filename: '\tcommand', ext: 'txt', size: 4 }
+      ] });
+      await request(app).post('/api/v1/exports/generate')
+        .send({ type: 'media', format: 'csv' }).expect(200);
+      const [target, content] = require('fs/promises').writeFile.mock.calls[0];
+      expect(target).toMatch(/[/\\]exports[/\\]export_media_[^/\\]+\.csv$/);
+      expect(content).toBe([
+        'path,filename,ext,size,sizeFormatted',
+        '/safe/a,"a""b\nline,one.txt",txt,-12,\'-12 B',
+        "/safe/b,'=1+1,txt,2,2 B",
+        "/safe/c,'  @SUM(1),txt,3,3 B",
+        "/safe/d,'\tcommand,txt,4,4 B"
+      ].join('\n'));
+    });
+
     test('generates a summary report', async () => {
       const app = buildApp({ docs: [] });
       const res = await request(app)
