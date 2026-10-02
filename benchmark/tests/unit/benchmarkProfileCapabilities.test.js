@@ -1,15 +1,15 @@
 'use strict';
 
-const { shouldRecoverBenchmarkClaims } = require('../../src/helpers/benchmarkProfileCapabilities');
+const { shouldSyncRegisteredHosts } = require('../../src/helpers/benchmarkProfileCapabilities');
 
 describe('Benchmark profile capabilities', () => {
-  it('does not poll full-profile claim coordination from the demo product', () => {
-    expect(shouldRecoverBenchmarkClaims('demo')).toBe(false);
-    expect(shouldRecoverBenchmarkClaims(undefined)).toBe(false);
+  it('keeps registered-host sync out of the demo product', () => {
+    expect(shouldSyncRegisteredHosts('demo')).toBe(false);
+    expect(shouldSyncRegisteredHosts(undefined)).toBe(false);
   });
 
-  it('enables startup claim recovery in the explicit full profile', () => {
-    expect(shouldRecoverBenchmarkClaims('full')).toBe(true);
-    expect(shouldRecoverBenchmarkClaims(' FULL ')).toBe(true);
+  it('syncs registered hosts in the explicit full profile', () => {
+    expect(shouldSyncRegisteredHosts('full')).toBe(true);
+    expect(shouldSyncRegisteredHosts(' FULL ')).toBe(true);
   });
 });
