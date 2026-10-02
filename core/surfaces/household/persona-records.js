@@ -1,0 +1,182 @@
+'use strict';
+
+// Household persona session and audit records: their Mongo models, the public
+// projections returned to clients, and session history rebuilt from audits.
+
+const { agentIdFor } = require('./conversation-agent');
+const { ACTION_CATEGORIES } = require('./email-action');
+const llmx = require('./llmx-conversation');
+const replyChannels = require('./reply-channels');
+
+function cleanText(value, max = 4000) {
+  return String(value || '').trim().slice(0, max);
+}
+
+function createModels(mongoose) {
+  const { Schema } = mongoose;
+  const get = (name, schema, collection) => mongoose.models[name] || mongoose.model(name, schema, collection);
+
+  const MemoryCandidate = get('AgentXHouseholdVoiceMemoryCandidate', new Schema({
+    candidateId: { type: String, required: true, unique: true, index: true },
+    traceId: { type: String, required: true, index: true },
+    sessionId: { type: String, required: true, index: true },
+    turnId: { type: String, required: true, index: true },
+    scopeId: { type: String, required: true, index: true },
+    persona: { type: String, default: 'default_chat' },
+    type: { type: String, enum: ['preference', 'durable_fact', 'decision', 'correction', 'explicit_memory'], required: true },
+    statement: { type: String, required: true },
+    rationale: { type: String, default: '' },
+    confidence: { type: Number, default: 1 },
+    status: { type: String, enum: ['proposed', 'approved', 'rejected', 'applied'], default: 'proposed', index: true },
+    review: { type: Object, default: {} },
+    memoryId: { type: String, default: '' }
+  }, { timestamps: true }), 'household_voice_memory_candidates');
+
+  const EmailAction = get('AgentXHouseholdEmailAction', new Schema({
+    gmailThreadId: { type: String, required: true, unique: true, index: true },
+    gmailMessageId: { type: String, default: '' },
+    category: { type: String, enum: ACTION_CATEGORIES, required: true, index: true },
+    action: { type: String, required: true },
+    subject: { type: String, default: '' },
+    sender: { type: String, default: '' },
+    messageDate: { type: String, default: '' },
+    dueAt: { type: Date, default: null, index: true },
+    gmailUrl: { type: String, required: true },
+    leantimeProjectId: { type: Number, required: true },
+    leantimeTicketId: { type: Number, default: null, index: true },
+    state: { type: String, enum: ['pending', 'active', 'error'], default: 'pending', index: true },
+    lastError: { type: String, default: '' }
+  }, { timestamps: true }), 'emailactions');
+
+  const DeviceAcceptance = get('AgentXHouseholdDeviceAcceptance', new Schema({
+    phase: { type: String, required: true, index: true },
+    status: { type: String, enum: ['phase0_passed'], required: true, index: true },
+    runId: { type: String, required: true, unique: true, index: true },
+    deviceLabel: { type: String, required: true },
+    confirmedBy: { type: String, required: true },
+    startedAt: { type: Date, required: true },
+    completedAt: { type: Date, required: true, index: true },
+    origin: { type: String, required: true },
+    clientInfo: { type: Object, required: true },
+    checks: { type: Array, required: true },
+    fingerprint: { type: String, required: true, unique: true, index: true }
+  }, { timestamps: true, strict: true }), 'household_device_acceptances');
+
+  return { MemoryCandidate, EmailAction, DeviceAcceptance };
+}
+
+function publicSession(doc) {
+  const value = typeof doc?.toObject === 'function' ? doc.toObject() : doc;
+  return {
+    id: String(value?._id || ''),
+    sessionId: value?.sessionId,
+    packId: value?.packId,
+    modeId: value?.modeId,
+    persona: value?.persona ? { id: value.persona.id, version: value.persona.version, name: value.persona.name, voice: value.persona.voice, visual: value.persona.visual } : null,
+    inference: value?.inference || { open: value?.modeId === 'open' },
+    voice: value?.voice || {},
+    visual: value?.visual || null,
+    agentId: agentIdFor(value || {}),
+    backend: value?.backend || null,
+    agentSessionKey: value?.agentSessionKey || null,
+    ...(value?.llmx ? { llmx: { schemaVersion: 1, opening: llmx.publicOpening(value.llmx.opening) } } : {}),
+    scopeId: value?.scopeId,
+    label: value?.label || '',
+    status: value?.status,
+    turnCount: value?.turnCount || 0,
+    lastTurnAt: value?.lastTurnAt || null,
+    createdAt: value?.createdAt || null,
+    updatedAt: value?.updatedAt || null
+  };
+}
+
+function publicAudit(doc) {
+  const fullInput = doc?.inputText || doc?.inputPreview || '';
+  const fullReply = doc?.replyText || doc?.replyPreview || '';
+  return {
+    id: String(doc?._id || ''),
+    traceId: doc?.traceId,
+    sessionId: doc?.sessionId,
+    packId: doc?.packId,
+    modeId: doc?.modeId,
+    scopeId: doc?.scopeId,
+    channel: doc?.channel,
+    textRetention: doc?.textRetention || 'full',
+    clientTurnId: doc?.clientTurnId || '',
+    origin: doc?.origin || 'human',
+    outcome: doc?.outcome || 'not_recorded',
+    interruptionState: doc?.interruptionState || '',
+    applicationEvent: doc?.applicationEvent || null,
+    ...(doc?.sceneProposal ? { sceneProposal: doc.sceneProposal, sceneReceipt: doc.sceneReceipt || null } : doc?.sceneReceipt ? { sceneReceipt: doc.sceneReceipt } : {}), ...(doc?.display?.length ? { display: doc.display } : {}),
+    inputText: fullInput,
+    ...(doc?.attachments?.length ? { attachments: doc.attachments } : {}),
+    replyText: fullReply,
+    interrupted: doc?.interrupted === true,
+    // Legacy keys kept so any existing consumer keeps working; now derived
+    // from the stored text rather than being all that was kept.
+    inputPreview: fullInput.slice(0, 240),
+    replyPreview: fullReply.slice(0, 320),
+    safetyFlags: doc?.safetyFlags || [],
+    parentAttention: Boolean(doc?.parentAttention),
+    soundId: doc?.soundId || '',
+    model: doc?.model || '',
+    hostKey: doc?.hostKey || '',
+    routingSource: doc?.routingSource || '',
+    routeTier: doc?.routeTier || 'deterministic',
+    fallbackUsed: Boolean(doc?.fallbackUsed),
+    fallbackReason: doc?.fallbackReason || '',
+    knowledgeStatus: doc?.knowledgeStatus || 'not_recorded',
+    knowledgeSourceCount: Number(doc?.knowledgeSourceCount) || 0,
+    knowledgeCorpusFingerprint: doc?.knowledgeCorpusFingerprint || null,
+    personalContinuity: doc?.personalContinuity || null,
+    toolEvidence: doc?.toolEvidence || null,
+    durationMs: doc?.durationMs || 0,
+    source: doc?.source || 'household-persona',
+    sourceTurnId: doc?.sourceTurnId || '',
+    sequence: Number(doc?.sequence) || 0,
+    persona: doc?.persona || '',
+    memoryState: doc?.memoryState || 'not_applicable',
+    memoryExplicit: Boolean(doc?.memoryExplicit),
+    memoryAttempts: Math.max(0, Number(doc?.memoryAttempts) || 0),
+    memoryNextAttemptAt: doc?.memoryNextAttemptAt || null,
+    memoryProcessedAt: doc?.memoryProcessedAt || null,
+    memoryError: doc?.memoryError || '',
+    memoryIds: Array.isArray(doc?.memoryIds) ? doc.memoryIds.slice(0, 12) : [],
+    createdAt: doc?.createdAt || null
+  };
+}
+
+function sessionHistoryMessages(rows = [], pack = {}) {
+  const maximumMessages = Math.max(0, Number(pack.historyTurns) || 0);
+  const maximumCharacters = Math.max(1, Number(pack.historyMessageCharacters) || 1000);
+  if (maximumMessages === 0) return [];
+  return rows.slice(0, Math.ceil(maximumMessages / 2)).reverse().flatMap((row) => {
+    const audit = publicAudit(row);
+    const input = cleanText(audit.inputText, maximumCharacters);
+    const reply = cleanText(replyChannels.historyText(audit.replyText, audit.display), maximumCharacters)
+      + (audit.interrupted ? '\n[The user interrupted this reply during playback and may not have heard all of it.]' : '')
+      + (audit.origin === 'application_opening' && ['cancelled', 'failed'].includes(audit.outcome)
+        ? `\n[This application opening ${audit.outcome}; delivery to the visitor was not confirmed.]` : '');
+    return [
+      ...(input ? [{ role: 'user', content: input, ...(audit.attachments?.length ? { attachments: audit.attachments } : {}) }] : []),
+      ...(reply ? [{ role: 'assistant', content: reply }] : [])
+    ];
+  }).slice(-maximumMessages);
+}
+
+async function loadSessionAuditRows(conversations, session, pack) {
+  const rowLimit = Math.max(1, Math.ceil((Number(pack?.historyTurns) || 0) / 2));
+  return conversations.listTurns({
+    sessionId: session.sessionId,
+    packId: session.packId,
+    scopeId: session.scopeId
+  }, { sort: { createdAt: -1, _id: -1 }, limit: rowLimit });
+}
+
+module.exports = {
+  createModels,
+  publicSession,
+  publicAudit,
+  sessionHistoryMessages,
+  loadSessionAuditRows
+};
