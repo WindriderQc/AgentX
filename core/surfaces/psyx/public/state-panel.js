@@ -9,7 +9,7 @@ async function loadPsyXState() {
 }
 
 async function addStateItem(key, text, extra = {}) {
-  stateSaveStatus.textContent = 'saving…';
+  stateSaveStatus.textContent = 'enregistrement…';
   try {
     const result = await api(`/api/psyx/state/items/${encodeURIComponent(key)}`, {
       method: 'POST',
@@ -17,26 +17,30 @@ async function addStateItem(key, text, extra = {}) {
     });
     state.psyxState = result.state;
     renderPsyXState();
-    stateSaveStatus.textContent = `synced · r${state.psyxState.revision ?? 0}`;
+    stateSaveStatus.textContent = `synchronisé · r${state.psyxState.revision ?? 0}`;
   } catch (error) {
-    stateSaveStatus.textContent = 'save failed';
+    stateSaveStatus.textContent = 'échec de l’enregistrement';
     throw error;
   }
 }
 
 async function removeStateItem(key, id) {
-  stateSaveStatus.textContent = 'saving…';
+  stateSaveStatus.textContent = 'enregistrement…';
   const result = await api(`/api/psyx/state/items/${encodeURIComponent(key)}/${encodeURIComponent(id)}`, { method: 'DELETE' });
   state.psyxState = result.state;
   renderPsyXState();
-  stateSaveStatus.textContent = `synced · r${state.psyxState.revision ?? 0}`;
+  stateSaveStatus.textContent = `synchronisé · r${state.psyxState.revision ?? 0}`;
 }
+
+const SOURCE_LABELS = { user: 'toi', psyx: 'PsyX', legacy: 'ancien', import: 'import' };
+const ITEM_STATUS_LABELS = { working: 'en test', confirmed: 'confirmé', rejected: 'rejeté', resolved: 'résolu' };
+const EXPERIMENT_STATUS_LABELS = { planned: 'prévue', active: 'en cours', completed: 'terminée', abandoned: 'abandonnée' };
 
 function stateItemMeta(item) {
   const bits = [];
-  if (item.source) bits.push(item.source);
+  if (item.source) bits.push(SOURCE_LABELS[item.source] || item.source);
   if (Number.isFinite(item.confidence)) bits.push(`${Math.round(item.confidence * 100)}%`);
-  if (item.status && item.status !== 'active') bits.push(item.status);
+  if (item.status && item.status !== 'active') bits.push(ITEM_STATUS_LABELS[item.status] || item.status);
   return bits.join(' · ');
 }
 
@@ -44,13 +48,13 @@ function renderStateItems(containerId, key) {
   const container = $(containerId);
   const values = state.psyxState?.[key] || [];
   if (!values.length) {
-    container.innerHTML = '<div class="state-empty">Nothing captured yet.</div>';
+    container.innerHTML = '<div class="state-empty">Rien pour l’instant.</div>';
     return;
   }
   container.innerHTML = values.map((item) => `
     <div class="state-item">
       <div><span>${escapeHtml(item.text)}</span>${stateItemMeta(item) ? `<small>${escapeHtml(stateItemMeta(item))}</small>` : ''}</div>
-      <button type="button" data-state-remove="${escapeHtml(key)}" data-id="${escapeHtml(item.id)}" aria-label="Remove">×</button>
+      <button type="button" data-state-remove="${escapeHtml(key)}" data-id="${escapeHtml(item.id)}" aria-label="Retirer">×</button>
     </div>
   `).join('');
 }
@@ -59,22 +63,22 @@ function renderExperiments() {
   const container = $('experimentsList');
   const experiments = state.psyxState?.experiments || [];
   if (!experiments.length) {
-    container.innerHTML = '<div class="state-empty">No experiments yet. Create one when an insight is worth testing in real life.</div>';
+    container.innerHTML = '<div class="state-empty">Aucune expérience pour l’instant. Crées-en une quand une prise de conscience mérite d’être testée dans la vraie vie.</div>';
     return;
   }
   container.innerHTML = experiments.slice().reverse().map((item) => `
     <article class="experiment-card">
       <div class="experiment-top">
-        <span class="experiment-status ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span>
-        <select data-experiment-status="${escapeHtml(item.id)}" aria-label="Experiment status">
-          ${['planned', 'active', 'completed', 'abandoned'].map((status) => `<option value="${status}" ${status === item.status ? 'selected' : ''}>${status}</option>`).join('')}
+        <span class="experiment-status ${escapeHtml(item.status)}">${escapeHtml(EXPERIMENT_STATUS_LABELS[item.status] || item.status)}</span>
+        <select data-experiment-status="${escapeHtml(item.id)}" aria-label="Statut de l’expérience">
+          ${['planned', 'active', 'completed', 'abandoned'].map((status) => `<option value="${status}" ${status === item.status ? 'selected' : ''}>${EXPERIMENT_STATUS_LABELS[status]}</option>`).join('')}
         </select>
       </div>
-      <strong>${escapeHtml(item.hypothesis || 'Experiment')}</strong>
-      <p><b>Action:</b> ${escapeHtml(item.action || '—')}</p>
-      ${item.expectedSignal ? `<p><b>Signal:</b> ${escapeHtml(item.expectedSignal)}</p>` : ''}
-      <textarea data-experiment-result="${escapeHtml(item.id)}" rows="2" placeholder="What happened?">${escapeHtml(item.result || '')}</textarea>
-      <button type="button" class="experiment-save" data-experiment-save="${escapeHtml(item.id)}">Save result</button>
+      <strong>${escapeHtml(item.hypothesis || 'Expérience')}</strong>
+      <p><b>Action :</b> ${escapeHtml(item.action || '—')}</p>
+      ${item.expectedSignal ? `<p><b>Signal :</b> ${escapeHtml(item.expectedSignal)}</p>` : ''}
+      <textarea data-experiment-result="${escapeHtml(item.id)}" rows="2" placeholder="Qu’est-ce qui s’est passé?">${escapeHtml(item.result || '')}</textarea>
+      <button type="button" class="experiment-save" data-experiment-save="${escapeHtml(item.id)}">Enregistrer le résultat</button>
     </article>
   `).join('');
 }
@@ -89,7 +93,7 @@ function renderPsyXState() {
   renderProposals();
   updateControlExplanation();
   renderSessions();
-  stateSaveStatus.textContent = `synced · r${state.psyxState?.revision ?? 0}`;
+  stateSaveStatus.textContent = `synchronisé · r${state.psyxState?.revision ?? 0}`;
 }
 
 function activateStateTab(tab, { focus = false } = {}) {

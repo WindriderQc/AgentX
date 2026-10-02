@@ -140,8 +140,8 @@ function showGate(message = '') {
   messages.replaceChildren();
   for (const form of document.querySelectorAll('form')) form.reset();
   input.value = '';
-  sessionLabel.textContent = 'PsyX locked';
-  $('sessionDataTitle').textContent = 'PsyX conversation';
+  sessionLabel.textContent = 'PsyX verrouillé';
+  $('sessionDataTitle').textContent = 'Conversation PsyX';
   renderSessions();
   renderPsyXState();
   for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
@@ -177,21 +177,34 @@ function setReady(ready, label) {
   setBusy(false);
 }
 
-const AUTO_INFO = { title: 'Auto', short: 'PsyX decides.', description: 'After each reply PsyX reflects on the conversation and chooses how to answer next.' };
+const AUTO_INFO = { title: 'Auto', short: 'PsyX décide.', description: 'Après chaque réponse, PsyX réfléchit à la conversation et choisit comment répondre ensuite.' };
+// French labels for the interface; the server's English descriptions stay model-facing.
+const MODE_LABELS = {
+  talk: { title: 'Écoute', short: 'Rester avec le vécu.', description: 'Rester proche de l’expérience vécue, aider à nommer ce qui se passe, sans sauter trop vite à l’analyse ou aux solutions.' },
+  analyze: { title: 'Analyse', short: 'Comprendre le mécanisme.', description: 'Cartographier déclencheurs, croyances, dynamiques émotionnelles, contradictions, hypothèses concurrentes et boucles.' },
+  challenge: { title: 'Confrontation', short: 'Mettre l’histoire à l’épreuve.', description: 'Confronter les suppositions, l’évitement, la rationalisation et les certitudes que les faits ne soutiennent pas.' },
+  plan: { title: 'Plan', short: 'Passer à l’action.', description: 'Transformer la compréhension en une petite intervention observable : expérience, limite, conversation ou décision.' }
+};
+const DEPTH_LABELS = {
+  normal: { title: 'Normale', short: 'Raisonnement local solide.', description: 'Concis, conversationnel et utile.' },
+  deep: { title: 'Profonde', short: 'Raisonnement plus délibéré.', description: 'Formulation délibérée, hypothèses concurrentes, tendances dans le temps et effets de second ordre, sans verbosité.' }
+};
 
 function currentModeInfo(mode = state.mode) {
   if (mode === 'auto') return AUTO_INFO;
-  return state.modeConfig[mode] || { title: mode, short: '', description: '' };
+  return { title: mode, short: '', description: '', ...state.modeConfig[mode], ...MODE_LABELS[mode] };
 }
 
 function currentDepthInfo(depth = state.depth) {
   if (depth === 'auto') return AUTO_INFO;
-  return state.depthConfig[depth] || {
+  return {
     title: depth,
     short: '',
     description: '',
     taskType: depth === 'deep' ? 'deep_reasoning' : 'analysis',
-    think: depth === 'deep'
+    think: depth === 'deep',
+    ...state.depthConfig[depth],
+    ...DEPTH_LABELS[depth]
   };
 }
 
@@ -205,20 +218,20 @@ function upcomingControl() {
     mode: autoMode ? next?.stance || 'talk' : state.mode,
     depth: autoDepth ? next?.depth || 'normal' : state.depth,
     auto: { mode: autoMode, depth: autoDepth },
-    reason: (autoMode || autoDepth) ? next?.reason || '' : ''
+    reason: autoMode ? next?.reason || '' : ''
   };
 }
 
 function renderStance() {
   const control = state.busy && state.applied ? state.applied : upcomingControl();
   const stance = currentModeInfo(control.mode).title || control.mode;
-  const prefix = state.busy && state.applied ? 'Answering' : 'Next reply';
+  const prefix = state.busy && state.applied ? 'Réponse en cours' : 'Prochaine réponse';
   $('stanceDot').dataset.stance = control.mode;
-  $('stanceLabel').textContent = `${prefix}: ${stance}${control.auto.mode ? ' · auto' : ''}${control.depth === 'deep' ? ' · deep reflection' : ''}`;
+  $('stanceLabel').textContent = `${prefix} : ${stance}${control.auto.mode ? ' · auto' : ''}${control.depth === 'deep' ? ' · réflexion profonde' : ''}`;
   $('stanceReason').textContent = control.reason
-    || (control.auto.mode || control.auto.depth
-      ? 'PsyX chooses its stance after reflecting on the conversation.'
-      : 'Set by you. Choose Auto to let PsyX decide again.');
+    || (control.auto.mode
+      ? 'PsyX choisit sa posture après avoir réfléchi à la conversation.'
+      : 'Posture choisie par toi. Choisis Auto pour laisser PsyX décider.');
 }
 
 function updateControlExplanation() {
@@ -226,14 +239,16 @@ function updateControlExplanation() {
   const depth = currentDepthInfo();
   modeSummary.textContent = `${mode.title || state.mode} · ${mode.short || ''}`;
   depthSummary.textContent = `${depth.title || state.depth} · ${depth.short || ''}`;
-  controlExplainer.innerHTML = `<strong>${escapeHtml(mode.title || state.mode)}</strong>: ${escapeHtml(mode.description || '')}<br><strong>${escapeHtml(depth.title || state.depth)}</strong>: ${escapeHtml(depth.description || '')}`;
+  controlExplainer.innerHTML = state.mode === 'auto' && state.depth === 'auto'
+    ? `<strong>Auto</strong> ${escapeHtml(AUTO_INFO.description)}`
+    : `<strong>${escapeHtml(mode.title || state.mode)}</strong> ${escapeHtml(mode.description || '')}<br><strong>${escapeHtml(depth.title || state.depth)}</strong> ${escapeHtml(depth.description || '')}`;
   renderStance();
   updateBrainRouting();
 }
 
 function updateContextStatus() {
   const recentCount = state.history.filter((item) => item.role !== 'action').length;
-  $('contextStatus').textContent = `${recentCount} recent message${recentCount === 1 ? '' : 's'} shown (maximum ${MAX_CONTEXT_MESSAGES}). The trusted context is rebuilt from PsyX-owned storage.`;
+  $('contextStatus').textContent = `${recentCount} message${recentCount === 1 ? '' : 's'} récent${recentCount === 1 ? '' : 's'} affiché${recentCount === 1 ? '' : 's'} (maximum ${MAX_CONTEXT_MESSAGES}). Le contexte de confiance est reconstruit depuis le stockage de PsyX.`;
 }
 
 function stripLegacyControlPrefix(content) {
@@ -248,7 +263,7 @@ function actionMessage(type) {
   return {
     role: 'action',
     action: type,
-    content: type === 'deep_reflection' ? 'Deep reflection requested' : `PsyX action · ${type}`
+    content: type === 'deep_reflection' ? 'Réflexion profonde demandée' : `Action PsyX · ${type}`
   };
 }
 
@@ -313,7 +328,7 @@ async function reconcileCompletedTurn(conversationId, humanText, actionType, pre
       clearRenderedConversation();
       for (const item of state.history) addMessage(item.role, item.content);
       updateContextStatus();
-      sessionLabel.textContent = conversation.title || `Session ${String(conversationId).slice(-8)}`;
+      sessionLabel.textContent = conversation.title || `Séance ${String(conversationId).slice(-8)}`;
       await loadSessions();
       highlightActiveSession();
       return true;
@@ -338,10 +353,10 @@ async function api(url, options = {}) {
   const payload = await response.json().catch(() => ({}));
   assertCurrentAccess(accessEpoch);
   if (response.status === 401 && payload.code === 'PSYX_LOCKED') {
-    showGate('PsyX was locked or the private session expired.');
+    showGate('PsyX a été verrouillé ou la séance privée a expiré.');
   }
   if (!response.ok || payload.status === 'error' || payload.ok === false) {
-    const error = new Error(payload.message || `Request failed (${response.status})`);
+    const error = new Error(payload.message || `La requête a échoué (${response.status})`);
     error.code = payload.code;
     error.status = response.status;
     throw error;
@@ -351,7 +366,7 @@ async function api(url, options = {}) {
 
 function assertCurrentAccess(epoch) {
   if (epoch !== state.accessEpoch) {
-    throw Object.assign(new Error('PsyX was locked while this request was in progress.'), { name: 'AbortError', code: 'PSYX_LOCKED' });
+    throw Object.assign(new Error('PsyX a été verrouillé pendant cette requête.'), { name: 'AbortError', code: 'PSYX_LOCKED' });
   }
 }
 
@@ -359,7 +374,7 @@ async function restoreConversation(conversationId = state.conversationId) {
   if (!conversationId) return;
   try {
     const conversation = await api(`/api/psyx/sessions/${encodeURIComponent(conversationId)}`);
-    if (conversation.promptName && conversation.promptName !== 'psyx') throw new Error('Saved conversation is not a PsyX session');
+    if (conversation.promptName && conversation.promptName !== 'psyx') throw new Error('La conversation enregistrée n’est pas une séance PsyX');
     if (conversation.lifecycle?.status === 'archived') {
       startNewSession(false);
       return;
@@ -370,7 +385,7 @@ async function restoreConversation(conversationId = state.conversationId) {
     clearRenderedConversation();
     for (const item of state.history) addMessage(item.role, item.content);
     updateContextStatus();
-    sessionLabel.textContent = conversation.title || `Session ${state.conversationId.slice(-8)}`;
+    sessionLabel.textContent = conversation.title || `Séance ${state.conversationId.slice(-8)}`;
     highlightActiveSession();
     void resumeReviewStatus(state.conversationId);
   } catch (error) {
@@ -386,7 +401,7 @@ async function loadRouting() {
     updateBrainRouting();
   } catch (error) {
     console.warn('Routing config unavailable', error);
-    $('routingDetails').textContent = 'Inference routing details are unavailable.';
+    $('routingDetails').textContent = 'Les détails du routage sont indisponibles.';
   }
 }
 
@@ -401,7 +416,7 @@ function updateBrainRouting(lastResult = null, note = '') {
   const depth = lastResult?.control?.depth || upcomingControl().depth;
   const { entry } = getLaneConfig(depth);
   const routing = lastResult?.routing || {};
-  const model = routing.routedModel || lastResult?.model || entry?.model || 'model unresolved';
+  const model = routing.routedModel || lastResult?.model || entry?.model || 'modèle non résolu';
   const host = routing.routedHost || entry?.host || '';
   routeLabel.textContent = `${currentDepthInfo(depth).title || depth} · ${model}${host ? ` @ ${host}` : ''}${note ? ` · ${note}` : ''}`;
 }
@@ -410,9 +425,9 @@ function renderRoutingDetails() {
   const normal = getLaneConfig('normal');
   const deep = getLaneConfig('deep');
   $('routingDetails').innerHTML = `
-    <div class="route-row"><span>Normal</span><strong>${escapeHtml(normal.entry?.model || '—')}</strong><em>${escapeHtml(normal.entry?.host || '—')}</em><small>technical lane: analysis</small></div>
-    <div class="route-row"><span>Deep</span><strong>${escapeHtml(deep.entry?.model || '—')}</strong><em>${escapeHtml(deep.entry?.host || '—')}</em><small>technical lane: deep_reasoning</small></div>
-    <p class="state-help">Mode controls the psychological stance. These technical lanes only choose the inference substrate.</p>
+    <div class="route-row"><span>Normale</span><strong>${escapeHtml(normal.entry?.model || '—')}</strong><em>${escapeHtml(normal.entry?.host || '—')}</em><small>voie technique : analysis</small></div>
+    <div class="route-row"><span>Profonde</span><strong>${escapeHtml(deep.entry?.model || '—')}</strong><em>${escapeHtml(deep.entry?.host || '—')}</em><small>voie technique : deep_reasoning</small></div>
+    <p class="state-help">La posture règle l’approche psychologique; ces voies techniques choisissent seulement le modèle qui répond.</p>
   `;
 }
 
@@ -436,31 +451,31 @@ function relativeDate(value) {
   const diff = Date.now() - date.getTime();
   if (!Number.isFinite(diff)) return '';
   const minutes = Math.round(diff / 60000);
-  if (minutes < 2) return 'now';
+  if (minutes < 2) return 'maintenant';
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h`;
   const days = Math.round(hours / 24);
-  if (days < 7) return `${days}d`;
+  if (days < 7) return `${days} j`;
   return date.toLocaleDateString();
 }
 
 function renderSessions() {
   const list = $('sessionsList');
   if (!state.sessions.length) {
-    list.innerHTML = `<div class="panel-empty">No ${escapeHtml(state.sessionStatus)} PsyX sessions.</div>`;
+    list.innerHTML = `<div class="panel-empty">Aucune séance ${state.sessionStatus === 'archived' ? 'archivée' : 'active'}.</div>`;
     return;
   }
   list.innerHTML = state.sessions.map((item) => `
     <article class="session-card ${String(item.id) === state.conversationId ? 'active' : ''}" data-session-id="${escapeHtml(item.id)}">
       <button class="session-open" type="button" ${state.sessionStatus === 'archived' ? `data-session-options="${escapeHtml(item.id)}"` : `data-session-open="${escapeHtml(item.id)}"`}>
-        <strong>${escapeHtml(item.title || 'PsyX conversation')}</strong>
-        <span>${escapeHtml(sessionDigest(item.id)?.summary || item.preview || 'No preview')}</span>
-        <small>${state.sessionStatus === 'archived' ? 'Archived · ' : ''}${escapeHtml(relativeDate(item.updatedAt))}${item.model ? ` · ${escapeHtml(item.model)}` : ''}${item.promptVersion ? ` · prompt v${escapeHtml(item.promptVersion)}` : ''}</small>
+        <strong>${escapeHtml(item.title || 'Conversation PsyX')}</strong>
+        <span>${escapeHtml(sessionDigest(item.id)?.summary || item.preview || 'Pas d’aperçu')}</span>
+        <small>${state.sessionStatus === 'archived' ? 'Archivée · ' : ''}${escapeHtml(relativeDate(item.updatedAt))}${item.model ? ` · ${escapeHtml(item.model)}` : ''}${item.promptVersion ? ` · prompt v${escapeHtml(item.promptVersion)}` : ''}</small>
       </button>
       <div class="session-actions">
-        <button type="button" data-session-rename="${escapeHtml(item.id)}" aria-label="Rename session">✎</button>
-        <button type="button" data-session-options="${escapeHtml(item.id)}" aria-label="Session options">•••</button>
+        <button type="button" data-session-rename="${escapeHtml(item.id)}" aria-label="Renommer la séance">✎</button>
+        <button type="button" data-session-options="${escapeHtml(item.id)}" aria-label="Options de la séance">•••</button>
       </div>
     </article>
   `).join('');
@@ -472,27 +487,27 @@ function highlightActiveSession() {
 
 async function bootstrap() {
   const accessEpoch = state.accessEpoch;
-  setReady(false, 'Starting PsyX…');
+  setReady(false, 'Démarrage de PsyX…');
   try {
     const payload = await api('/api/psyx/bootstrap', { method: 'POST', body: '{}' });
-    if (payload?.persona?.active !== true) throw new Error('PsyX persona is not active');
+    if (payload?.persona?.active !== true) throw new Error('Le persona PsyX n’est pas actif');
     state.modeConfig = payload.modes || {};
     state.depthConfig = payload.depths || {};
     state.voice.enabled = payload.voice?.enabled === true;
     review.enabled = payload.review?.automatic === true;
     const lifecycle = payload.conversationLifecycle || {};
     $('lifecycleStatus').textContent = lifecycle.archive
-      ? 'PsyX-owned conversation archive and restore are available.'
-      : 'Conversation lifecycle storage is unavailable.';
+      ? 'L’archivage et la restauration des conversations sont disponibles.'
+      : 'Le stockage du cycle de vie des conversations est indisponible.';
     updateControlExplanation();
     await Promise.all([loadPsyXState(), loadRouting(), loadSessions(), loadVoiceStatus()]);
     await restoreConversation();
     assertCurrentAccess(accessEpoch);
-    setReady(true, 'PsyX ready');
+    setReady(true, 'PsyX prêt');
     input.focus();
   } catch (error) {
     if (error.code !== 'PSYX_LOCKED') {
-      setReady(false, 'PsyX unavailable');
+      setReady(false, 'PsyX indisponible');
       console.error('PsyX bootstrap failed', error);
     }
   }
@@ -520,8 +535,8 @@ async function streamChat(payload, onEvent, signal) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    if (response.status === 401 && body.code === 'PSYX_LOCKED') showGate('PsyX was locked or the private session expired.');
-    const error = new Error(body.message || `Chat failed (${response.status})`);
+    if (response.status === 401 && body.code === 'PSYX_LOCKED') showGate('PsyX a été verrouillé ou la séance privée a expiré.');
+    const error = new Error(body.message || `La conversation a échoué (${response.status})`);
     error.code = body.code;
     throw error;
   }
@@ -583,7 +598,7 @@ async function sendMessage(text, overrides = {}) {
       } else if (event === 'done') {
         finalResult = data;
       } else if (event === 'error') {
-        streamError = new Error(data.message || 'Streaming error');
+        streamError = new Error(data.message || 'Erreur de diffusion');
       }
     }, state.activeAbort.signal);
 
@@ -591,12 +606,12 @@ async function sendMessage(text, overrides = {}) {
 
     if (streamError) throw streamError;
     if (!finalResult) {
-      const interrupted = new Error('The connection ended before PsyX confirmed completion.');
+      const interrupted = new Error('La connexion s’est terminée avant que PsyX confirme la fin de la réponse.');
       interrupted.code = 'PSYX_STREAM_INCOMPLETE';
       throw interrupted;
     }
     const assistantContent = stream.text().trim() || String(finalResult?.response || finalResult?.message?.content || '').trim();
-    if (!assistantContent) throw new Error('The inference provider returned an empty response');
+    if (!assistantContent) throw new Error('Le modèle a renvoyé une réponse vide');
     if (!stream.text().trim()) stream.set(assistantContent);
 
     state.history.push(
@@ -611,7 +626,7 @@ async function sendMessage(text, overrides = {}) {
     if (finalResult?.conversationId) {
       state.conversationId = String(finalResult.conversationId);
       localStorage.setItem(STORAGE_KEY, state.conversationId);
-      sessionLabel.textContent = `Session ${state.conversationId.slice(-8)}`;
+      sessionLabel.textContent = `Séance ${state.conversationId.slice(-8)}`;
     }
     const deep = (finalResult.control?.depth || effectiveDepth) === 'deep';
     updateBrainRouting(finalResult, deep ? (state.thinkingObserved ? 'thinking observed' : 'thinking requested, not observed') : '');
@@ -621,13 +636,13 @@ async function sendMessage(text, overrides = {}) {
   } catch (error) {
     if (!state.unlocked || state.turnSequence !== turnSequence) return;
     if (error.name === 'AbortError') {
-      stream.set('Cancelled.');
+      stream.set('Annulé.');
     } else {
       stream.article.classList.add('error');
       const partial = stream.text().trim();
       stream.set(partial
-        ? `${partial}\n\n[Response interrupted. PsyX did not confirm completion to this browser; reload session history before retrying.]`
-        : `I couldn't complete that turn. ${error.message}`);
+        ? `${partial}\n\n[Réponse interrompue. PsyX n’a pas confirmé la fin à ce navigateur; recharge la séance avant de réessayer.]`
+        : `Je n’ai pas pu terminer cette réponse. ${error.message}`);
       await loadSessions().catch(() => {});
     }
     if (error.code !== 'PSYX_LOCKED' && state.conversationId) {
@@ -657,7 +672,7 @@ function startNewSession(focus = true) {
   stopReviewWatch();
   review.last = null;
   renderReviewIndicator();
-  sessionLabel.textContent = 'New conversation';
+  sessionLabel.textContent = 'Nouvelle conversation';
   clearRenderedConversation();
   updateContextStatus();
   updateBrainRouting();
@@ -734,11 +749,11 @@ function openSessionOptions(conversationId) {
   const session = state.sessions.find((item) => String(item.id) === String(conversationId));
   if (!session) return;
   state.managedSessionId = String(conversationId);
-  $('sessionDataTitle').textContent = session.title || 'PsyX conversation';
+  $('sessionDataTitle').textContent = session.title || 'Conversation PsyX';
   const archived = session.lifecycle?.status === 'archived';
   $('sessionLifecycleCopy').textContent = archived
-    ? 'Restore returns this conversation to active sessions. Permanent deletion cannot be undone.'
-    : 'Archive removes this conversation from active sessions without deleting it. It can be restored later.';
+    ? 'Restaurer ramène cette conversation dans les séances actives. La suppression définitive est irréversible.'
+    : 'Archiver retire cette conversation des séances actives sans la supprimer. Elle pourra être restaurée.';
   $('archiveSession').hidden = archived;
   $('restoreSession').hidden = !archived;
   $('sessionDeleteConfirmation').checked = false;
@@ -784,7 +799,7 @@ $('sessionsList').addEventListener('click', async (event) => {
   const rename = event.target.closest('[data-session-rename]');
   if (rename) {
     const session = state.sessions.find((item) => String(item.id) === rename.dataset.sessionRename);
-    const nextTitle = window.prompt('Rename PsyX session', session?.title || '');
+    const nextTitle = window.prompt('Renommer la séance', session?.title || '');
     if (!nextTitle?.trim()) return;
     await api(`/api/psyx/sessions/${encodeURIComponent(rename.dataset.sessionRename)}`, { method: 'PATCH', body: JSON.stringify({ title: nextTitle.trim() }) });
     await loadSessions();
@@ -804,8 +819,8 @@ document.querySelectorAll('[data-session-status]').forEach((button) => {
 
 async function lockPsyxNow() {
   if (state.accessMode === 'trusted-network') return;
-  setReady(false, 'PsyX locked');
-  showGate('PsyX locked.');
+  setReady(false, 'PsyX verrouillé');
+  showGate('PsyX est verrouillé.');
   try { await api('/api/psyx/auth/lock', { method: 'POST', body: '{}' }); } catch { /* lock locally regardless */ }
 }
 
@@ -816,13 +831,13 @@ $('settingsPsyx').addEventListener('click', () => {
 
 $('exportPsyx').addEventListener('click', async () => {
   const accessEpoch = state.accessEpoch;
-  $('dataStatus').textContent = 'Preparing export…';
+  $('dataStatus').textContent = 'Préparation de l’export…';
   try {
     const response = await fetch('/api/psyx/export', { credentials: 'same-origin' });
     const payload = await response.json().catch(() => ({}));
     assertCurrentAccess(accessEpoch);
-    if (response.status === 401 && payload.code === 'PSYX_LOCKED') showGate('PsyX was locked or the private session expired.');
-    if (!response.ok) throw new Error(payload.message || `Export failed (${response.status})`);
+    if (response.status === 401 && payload.code === 'PSYX_LOCKED') showGate('PsyX a été verrouillé ou la séance privée a expiré.');
+    if (!response.ok) throw new Error(payload.message || `L’export a échoué (${response.status})`);
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -832,7 +847,7 @@ $('exportPsyx').addEventListener('click', async () => {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-    $('dataStatus').textContent = `Export downloaded with ${payload.transcriptData?.conversationCount ?? 0} PsyX-owned conversation transcript(s).`;
+    $('dataStatus').textContent = `Export téléchargé avec ${payload.transcriptData?.conversationCount ?? 0} conversation(s) PsyX.`;
   } catch (error) {
     $('dataStatus').textContent = error.message;
   }
@@ -923,7 +938,7 @@ document.addEventListener('keydown', (event) => { if (event.key === 'Escape') cl
 
 $('unlockForm').addEventListener('submit', async (event) => {
   event.preventDefault();
-  $('unlockStatus').textContent = 'Unlocking…';
+  $('unlockStatus').textContent = 'Déverrouillage…';
   $('unlockButton').disabled = true;
   try {
     await api('/api/psyx/auth/unlock', { method: 'POST', body: JSON.stringify({ code: $('unlockCode').value }) });
@@ -958,14 +973,14 @@ async function start() {
     $('lockPsyx').hidden = trustedNetwork;
     $('lockPsyxSettings').hidden = trustedNetwork;
     $('privacySummary').textContent = trustedNetwork
-      ? 'PsyX is open to devices that can reach this trusted network. Protect the database, backups, and network boundary.'
-      : 'This browser stays unlocked for up to 8 hours. The access code is never stored in browser storage.';
+      ? 'PsyX est ouvert aux appareils de ce réseau de confiance. Protège la base de données, les sauvegardes et la frontière du réseau.'
+      : 'Ce navigateur reste déverrouillé jusqu’à 8 heures. Le code d’accès n’est jamais stocké dans le navigateur.';
     if (!auth.configured && !auth.loopback) {
-      showGate('PsyX privacy is fail-closed: configure PSYX_ACCESS_TOKEN on the host.');
+      showGate('PsyX reste fermé par sécurité : configure PSYX_ACCESS_TOKEN sur l’hôte.');
       return;
     }
     if (!auth.unlocked) {
-      showGate('Enter the PsyX access code.');
+      showGate('Entre le code d’accès PsyX.');
       return;
     }
     hideGate();

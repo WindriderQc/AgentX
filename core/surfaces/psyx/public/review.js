@@ -6,7 +6,7 @@
 // helpers these functions use at call time.
 
 const PROPOSAL_LABELS = {
-  activeThreads: 'Thread', notes: 'Note', patterns: 'Pattern', hypotheses: 'Hypothesis', openLoops: 'Open loop', experiments: 'Experiment'
+  activeThreads: 'Sujet', notes: 'Note', patterns: 'Tendance', hypotheses: 'Hypothèse', openLoops: 'Question ouverte', experiments: 'Expérience'
 };
 const REVIEW_POLL_MS = 2500;
 const REVIEW_POLL_LIMIT_MS = 10 * 60 * 1000;
@@ -26,15 +26,15 @@ function renderReviewIndicator(status = review.last) {
   chip.classList.toggle('has-proposals', !running && pending > 0);
   chip.classList.toggle('failed', status?.status === 'failed');
   chip.textContent = running
-    ? 'PsyX is reflecting on this conversation…'
+    ? 'PsyX réfléchit à cette conversation…'
     : status?.status === 'failed'
-      ? 'Automatic reflection did not complete'
+      ? 'La réflexion automatique n’a pas abouti'
       : pending
-        ? `PsyX reflected · ${pending} proposal${pending === 1 ? '' : 's'} to review`
-        : 'PsyX reflected · nothing new to remember';
+        ? `PsyX a réfléchi · ${pending} proposition${pending === 1 ? '' : 's'} à valider`
+        : 'PsyX a réfléchi · rien de nouveau à retenir';
   chip.title = running
-    ? 'A background review rereads the conversation. It never writes to the transcript and nothing enters memory without you.'
-    : status?.model ? `Last review by ${status.model}` : '';
+    ? 'Une revue en arrière-plan relit la conversation. Elle n’écrit jamais dans la conversation et rien n’entre en mémoire sans toi.'
+    : status?.model ? `Dernière revue par ${status.model}` : '';
   const badge = pending ? String(pending) : '';
   for (const id of ['insightsToggle', 'tabMemory']) $(id).dataset.badge = badge;
 }
@@ -93,10 +93,10 @@ async function resumeReviewStatus(conversationId) {
 
 function proposalBody(item) {
   if (item.kind === 'experiments') {
-    return `<strong>${escapeHtml(item.hypothesis)}</strong><span><b>Action:</b> ${escapeHtml(item.action)}</span>${item.expectedSignal ? `<span><b>Signal:</b> ${escapeHtml(item.expectedSignal)}</span>` : ''}`;
+    return `<strong>${escapeHtml(item.hypothesis)}</strong><span><b>Action :</b> ${escapeHtml(item.action)}</span>${item.expectedSignal ? `<span><b>Signal :</b> ${escapeHtml(item.expectedSignal)}</span>` : ''}`;
   }
   if (review.editing === item.id) {
-    return `<textarea data-proposal-text="${escapeHtml(item.id)}" rows="3" maxlength="${item.kind === 'notes' ? 1000 : 500}" aria-label="Edit proposal">${escapeHtml(item.text)}</textarea>`;
+    return `<textarea data-proposal-text="${escapeHtml(item.id)}" rows="3" maxlength="${item.kind === 'notes' ? 1000 : 500}" aria-label="Modifier la proposition">${escapeHtml(item.text)}</textarea>`;
   }
   return `<strong>${escapeHtml(item.text)}</strong>`;
 }
@@ -112,9 +112,9 @@ function renderProposals() {
       ${item.evidence?.length ? `<blockquote>${escapeHtml(item.evidence[0])}</blockquote>` : ''}
       ${item.rationale ? `<p class="state-help">${escapeHtml(item.rationale)}</p>` : ''}
       <div class="proposal-actions">
-        <button type="button" class="proposal-keep" data-proposal-accept="${escapeHtml(item.id)}">${review.editing === item.id ? 'Save and keep' : 'Keep'}</button>
-        ${item.kind === 'experiments' || review.editing === item.id ? '' : `<button type="button" data-proposal-edit="${escapeHtml(item.id)}">Edit</button>`}
-        <button type="button" data-proposal-reject="${escapeHtml(item.id)}">Dismiss</button>
+        <button type="button" class="proposal-keep" data-proposal-accept="${escapeHtml(item.id)}">${review.editing === item.id ? 'Enregistrer et garder' : 'Garder'}</button>
+        ${item.kind === 'experiments' || review.editing === item.id ? '' : `<button type="button" data-proposal-edit="${escapeHtml(item.id)}">Modifier</button>`}
+        <button type="button" data-proposal-reject="${escapeHtml(item.id)}">Écarter</button>
       </div>
     </article>
   `).join('');
@@ -122,7 +122,7 @@ function renderProposals() {
 }
 
 async function settleProposal(id, action, body = {}) {
-  stateSaveStatus.textContent = 'saving…';
+  stateSaveStatus.textContent = 'enregistrement…';
   const result = await api(`/api/psyx/state/proposals/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify(body) });
   review.editing = null;
   state.psyxState = result.state;
