@@ -492,7 +492,7 @@ for (const [route, assetPath] of Object.entries(coreVendorAssets)) {
 
 registerLocalStyleVendorAssets(app, path.join(__dirname, '..', 'node_modules'));
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'))); require('../../shared/benchmarkCategories').mountBrowserCategories(app);
 
 // Browsers often request /favicon.ico implicitly. We serve a real icon to avoid noisy 404s.
 app.get('/favicon.ico', (_req, res) => {
@@ -695,7 +695,7 @@ app.get('/models', (req, res) => {
       '<script src="/js/models-management.js"></script>',
       '<script src="/js/models-comparison.js"></script>',
       '<script src="/js/models-execution-config.js"></script>',
-      '<script src="/js/models-recommendations.js"></script>',
+      '<script src="/js/benchmark-categories.global.js"></script><script src="/js/models-recommendations.js"></script>',
       '<script src="/js/models-experience.js"></script>'
     ].join('\n')
   });

@@ -636,8 +636,9 @@ describe('DECOMPOSED_QUESTIONS coverage', () => {
         }
     });
 
-    test('all 7 benchmark categories exist', () => {
+    test('every benchmark category exists', () => {
         expect(Object.keys(DECOMPOSED_QUESTIONS).sort()).toEqual([
+            'agent',
             'coding',
             'creative',
             'instruction',

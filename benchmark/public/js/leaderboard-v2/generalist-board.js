@@ -1,19 +1,13 @@
 // generalist-board.js — Legacy quality observations for the leaderboard section
 import { getReadinessMap, getBadgeHtml } from '../model-profiler/components/readiness-cache.js';
+import { CATEGORY_KEYS, BENCHMARK_CATEGORY_META } from '../benchmark-categories.js';
 
 function _shortHost(url) {
     return String(url || '').replace(/^https?:\/\//, '').replace(/:11434$/, '');
 }
 
-const CATEGORY_META = {
-  coding: { icon: '💻', label: 'Coding' },
-  reasoning: { icon: '🧠', label: 'Reasoning' },
-  math: { icon: '🔢', label: 'Math' },
-  knowledge: { icon: '📚', label: 'Knowledge' },
-  instruction: { icon: '📋', label: 'Instruction' },
-  creative: { icon: '🎨', label: 'Creative' },
-  translation: { icon: '🌐', label: 'Translation' }
-};
+const CATEGORY_META = Object.fromEntries(CATEGORY_KEYS.map(key =>
+  [key, { icon: BENCHMARK_CATEGORY_META[key].emoji, label: BENCHMARK_CATEGORY_META[key].label }]));
 const CATEGORY_ORDER = Object.keys(CATEGORY_META);
 
 function scoreClass(score) {
@@ -146,7 +140,7 @@ const SCORING_EXPLAINER = `<details class="gen-scoring-explainer">
     <p>Rows can come from different cohorts, judges, prompts, and dates. They are not a qualified comparison or promotion decision.</p>
     <p class="gen-explainer-formula"><strong>Formula:</strong> weighted_quality &minus; coverage_penalty &minus; hard_level_penalty</p>
     <ul class="gen-explainer-list">
-      <li><strong>Weighted Quality:</strong> Average quality score (0&ndash;10) across categories, weighted by category importance (e.g., coding 20%, reasoning 20%, math 10%&hellip;).</li>
+      <li><strong>Weighted Quality:</strong> Average quality score (0&ndash;10) across categories, weighted by category importance (see the scoring profile for the current weights).</li>
       <li><strong>Coverage Penalties:</strong> Models lose points for untested categories and for missing hard-level evidence. This prevents easy-only sweeps from ranking as full-scope leaders.</li>
     </ul>
     <p>The final score is divided by 10 to display on a 0&ndash;10 scale.</p>

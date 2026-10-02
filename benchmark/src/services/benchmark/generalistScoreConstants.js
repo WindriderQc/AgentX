@@ -51,7 +51,8 @@ const COVERAGE_PENALTY_MAX = 20;
 const DIFFICULTY_PENALTY_MAX = 20;
 const FULL_SCOPE_MIN_LEVEL = 4;
 const REQUIRED_PROMPT_LEVELS = [4, 5];
-const MIN_FULL_SCOPE_RESULTS = 28;
+// Four hard-level (L4/L5) results per weighted category.
+const MIN_FULL_SCOPE_RESULTS = Object.keys(require('../../../config/categories').GENERALIST_CATEGORY_WEIGHTS).length * 4;
 
 /**
  * Evidence confidence penalty
@@ -98,7 +99,8 @@ const CATEGORY_BIAS_CORRECTIONS = {
     knowledge: 0.22,     // n=9 (was 1.15)
     math: -1.00,         // n=9 — judge over-scores math via reference scoring's similarity check (re-derived after fixing No-Solution outlier 0bb4d41)
     reasoning: 0.28,     // n=8 (was 0.17 — minor regression)
-    translation: -0.62   // n=9 (was -0.80)
+    translation: -0.62,  // n=9 (was -0.80)
+    agent: 0             // not yet measured: no correction until calibration samples exist
 };
 
 /** Threshold: models with more than 50% empty responses are filtered from leaderboard */

@@ -16,6 +16,7 @@ import {
 } from './verdict.js';
 import { historyHtml, metricsHtml, provenanceHtml, scorePartsText, successText, SUCCESS_DEFINITION } from './cohort-history.js';
 import { buildCsvFromGroups, csvFilename, downloadCsv } from './leaderboard-csv.js';
+import { CATEGORY_KEYS, BENCHMARK_CATEGORY_META } from '../benchmark-categories.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -24,15 +25,8 @@ import { buildCsvFromGroups, csvFilename, downloadCsv } from './leaderboard-csv.
 const MEDAL = ['🥇', '🥈', '🥉'];
 const RANK_CLASS = ['r1', 'r2', 'r3'];
 
-const CATEGORY_META = {
-  coding:      { icon: '💻', label: 'Coding' },
-  reasoning:   { icon: '🧠', label: 'Reasoning' },
-  math:        { icon: '🔢', label: 'Math' },
-  knowledge:   { icon: '📚', label: 'Knowledge' },
-  instruction: { icon: '📋', label: 'Instruction' },
-  creative:    { icon: '🎨', label: 'Creative' },
-  translation: { icon: '🌐', label: 'Translation' }
-};
+const CATEGORY_META = Object.fromEntries(CATEGORY_KEYS.map(key =>
+  [key, { icon: BENCHMARK_CATEGORY_META[key].emoji, label: BENCHMARK_CATEGORY_META[key].label }]));
 const CATEGORY_ORDER = Object.keys(CATEGORY_META);
 
 // ---------------------------------------------------------------------------

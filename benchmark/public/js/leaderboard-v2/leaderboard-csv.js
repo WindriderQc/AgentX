@@ -2,8 +2,9 @@
 
 import { authorityReasons, describeHeadline, describeHistoryRow, isAuthoritative, verdictReasons } from './verdict.js';
 import { formatDate } from './cohort-history.js';
+import { CATEGORY_KEYS } from '../benchmark-categories.js';
 
-const CATS = ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'];
+const CATS = CATEGORY_KEYS;
 
 // `rank` is the rank the screen showed (generalist: the server rank; a
 // category: the position by that category), `rankScope` says which, and

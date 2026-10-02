@@ -34,7 +34,7 @@ function buildDefaultProfile() {
             difficultyPenaltyMax: 20,
             fullScopeMinLevel: 4,
             requiredPromptLevels: [4, 5],
-            minFullScopeResults: 28,
+            minFullScopeResults: Object.keys(GENERALIST_CATEGORY_WEIGHTS).length * 4,
             evidenceConfidenceTarget: 0.75,
             evidenceConfidencePenaltyMax: 8,
             emptyResponseFilterThreshold: 0.5,

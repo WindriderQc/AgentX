@@ -228,8 +228,9 @@ describe('Benchmark System - Integration Tests', () => {
                 'knowledge',
                 'math',
                 'reasoning',
-                'translation'
-            ]);
+                'translation',
+                'agent'
+            ].sort());
         });
 
         it('should return prompts grouped by level', async () => {

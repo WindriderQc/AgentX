@@ -1,19 +1,12 @@
 // category-map.js — Category heatmap table for Leaderboard v2
 import { heatCell } from '../components/heat-scale.js';
+import { CATEGORY_KEYS, CATEGORY_META } from '../benchmark-categories.js';
 
 function _shortHost(url) {
     return String(url || '').replace(/^https?:\/\//, '').replace(/:11434$/, '');
 }
 
-const CAT_ABBR = {
-  coding:      'COD',
-  reasoning:   'RSN',
-  math:        'MTH',
-  knowledge:   'KNW',
-  instruction: 'INS',
-  creative:    'CRE',
-  translation: 'MLT',
-};
+const CAT_ABBR = Object.fromEntries(CATEGORY_KEYS.map(key => [key, CATEGORY_META[key].abbr]));
 const CATS = Object.keys(CAT_ABBR);
 const ABBRS = Object.values(CAT_ABBR);
 

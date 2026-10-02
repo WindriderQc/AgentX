@@ -1,15 +1,9 @@
 // test-library.js — Test Library (Prompt Matrix) section for courthouse-v2
 // Renders a category × difficulty table showing prompt counts.
 
-const CATEGORIES = [
-    'coding',
-    'reasoning',
-    'math',
-    'knowledge',
-    'instruction',
-    'creative',
-    'translation',
-];
+import { CATEGORY_KEYS } from '../benchmark-categories.js';
+
+const CATEGORIES = CATEGORY_KEYS;
 
 const LEVELS = [1, 2, 3, 4, 5];
 

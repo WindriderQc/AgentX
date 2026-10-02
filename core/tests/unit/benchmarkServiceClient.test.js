@@ -7,6 +7,7 @@ const mockFetch = jest.fn();
 jest.mock('node-fetch', () => mockFetch);
 
 const { BenchmarkServiceClient } = require('../../src/services/benchmarkServiceClient');
+const { BENCHMARK_CATEGORY_KEYS } = require('../../../shared/benchmarkCategories');
 
 describe('BenchmarkServiceClient', () => {
   let client;
@@ -239,7 +240,7 @@ describe('BenchmarkServiceClient', () => {
   });
 
   describe('getAllCategoryRecommendations', () => {
-    it('should fetch all 7 categories', async () => {
+    it('should fetch every benchmark category', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({ status: 'success', data: { recommendations: [{ model: 'test' }] } })
@@ -247,7 +248,7 @@ describe('BenchmarkServiceClient', () => {
 
       const result = await client.getAllCategoryRecommendations();
 
-      expect(Object.keys(result)).toHaveLength(7);
+      expect(Object.keys(result)).toHaveLength(BENCHMARK_CATEGORY_KEYS.length);
       expect(result.coding.recommendations).toHaveLength(1);
       expect(result.reasoning.recommendations).toHaveLength(1);
       expect(result.translation.recommendations).toHaveLength(1);
@@ -258,7 +259,7 @@ describe('BenchmarkServiceClient', () => {
 
       const result = await client.getAllCategoryRecommendations();
 
-      expect(Object.keys(result)).toHaveLength(7);
+      expect(Object.keys(result)).toHaveLength(BENCHMARK_CATEGORY_KEYS.length);
       expect(result.coding).toMatchObject({ status: 'unreachable', recommendations: [] });
     });
   });

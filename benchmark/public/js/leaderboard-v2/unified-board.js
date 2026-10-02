@@ -2,20 +2,15 @@
 // Compact, informative cards showing all categories + performance at a glance.
 
 import { scoreColor } from '../components/score-color.js';
+import { CATEGORY_KEYS, BENCHMARK_CATEGORY_META } from '../benchmark-categories.js';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const CATEGORY_META = {
-  coding:      { label: 'Coding',      color: '#7c9fff', icon: 'fa-code' },
-  reasoning:   { label: 'Reasoning',   color: '#a78bfa', icon: 'fa-brain' },
-  math:        { label: 'Math',        color: '#fbbf24', icon: 'fa-calculator' },
-  knowledge:   { label: 'Knowledge',   color: '#34d399', icon: 'fa-book' },
-  instruction: { label: 'Instruction', color: '#06b6d4', icon: 'fa-list-check' },
-  creative:    { label: 'Creative',    color: '#f87171', icon: 'fa-paint-brush' },
-  translation: { label: 'Translation', color: '#f472b6', icon: 'fa-language' }
-};
+const CATEGORY_META = Object.fromEntries(CATEGORY_KEYS.map(key => [key, {
+  label: BENCHMARK_CATEGORY_META[key].label, color: BENCHMARK_CATEGORY_META[key].color, icon: BENCHMARK_CATEGORY_META[key].faIcon
+}]));
 
 const ALL_CATEGORIES = Object.keys(CATEGORY_META);
 
@@ -123,7 +118,7 @@ function buildDimMap(dims) {
   return map;
 }
 
-/** Render ALL 7 category rows with score-based coloring (matches generalist board) */
+/** Render every category row with score-based coloring (matches generalist board) */
 export function categoryRows(dims) {
   const dimMap = buildDimMap(dims);
 
@@ -201,7 +196,7 @@ function renderCard(entry, isLeader) {
   const scoreCls = scoreClass(scoreVal);
   const leaderCls = isLeader ? ' ub-leader' : '';
 
-  // --- All 7 category bars ---
+  // --- One bar per category ---
   const dims = entry.dimensions || [];
   const dimBars = dims.length > 0
     ? categoryRows(dims)

@@ -19,12 +19,15 @@
 // 2.17.0: coding prompts with reference tests are scored by executing the
 // candidate; correctness comes from the run and the judge keeps the
 // secondary dimensions. Not comparable with 2.16.x rows on those prompts.
-const SCORER_VERSION = '2.17.0';
+// 2.18.0: an eighth prompt category, agent (triage, review, diagnosis, watch,
+// tool use), with its own judge rubric, and generalist weights spread over
+// eight categories. Generalist ranks are not comparable with 2.17.x.
+const SCORER_VERSION = '2.18.0';
 
 const SCORER_COMPONENTS = Object.freeze({
     routing: 5,
-    generalist: 5,
-    judge_prompt: 6,
+    generalist: 6,
+    judge_prompt: 7,
     judge_parsing: 9,
     confidence: 6,
     judges: 4,

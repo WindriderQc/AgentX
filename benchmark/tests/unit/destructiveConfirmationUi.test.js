@@ -24,13 +24,15 @@ function loadApiModule(apiFetch) {
 function loadScoringReset(fetchMock) {
     const sourcePath = path.join(benchmarkRoot, 'public', 'js', 'benchmark', 'scoring-profile.js');
     let source = fs.readFileSync(sourcePath, 'utf8');
-    source = source.replace(/^import .*?;\r?\n/m, '');
+    source = source.replace(/^import .*?;\r?\n/gm, '');
     source = source.replace(/export\s+async\s+function\s+/g, 'async function ');
     source += '\nmodule.exports = { resetProfile };\n';
 
     const context = {
         module: { exports: {} },
         exports: {},
+        CATEGORY_KEYS: require('../../../shared/benchmarkCategories').BENCHMARK_CATEGORY_KEYS,
+        CATEGORY_META: require('../../../shared/benchmarkCategories').BENCHMARK_CATEGORIES,
         fetch: fetchMock,
         showToast: jest.fn(),
         document: {}
