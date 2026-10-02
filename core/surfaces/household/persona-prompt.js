@@ -68,19 +68,26 @@ function spokenReplyLanguage(replyText, userText) {
 // It is written in both languages because the packs answer in either one, and
 // it repeats the no-false-claim rule: the persona introduces a recording, it
 // does not produce the sound itself.
-function soundBlock(sound) {
+// Only the turn's language: a bilingual directive that began in English pulled French
+// replies into English after the sound tool.
+function soundBlock(sound, language = 'fr') {
   if (!sound) return '';
+  const english = language === 'en';
   if (sound.kind === 'effect' || sound.kind === 'imitation') {
     const en = sound.kind === 'effect' ? 'an imagined sound effect' : 'a recorded human imitation';
     const fr = sound.kind === 'effect' ? 'un bruitage imaginaire' : 'une imitation enregistrée';
-    return `\n\nSound: ${en} (${sound.label.en}) is offered right after your reply. Introduce it explicitly as ${en}, in one short cheerful statement in the child's language. Never describe it as the authentic voice of the animal or claim that you are making the sound yourself. It is already prepared: answer directly, without calling any tool or agent. / Son : ${fr} (${sound.label.fr}) est proposé juste après ta réponse. Présente-le explicitement comme ${fr}, en une courte affirmation joyeuse dans la langue de l'enfant. Ne le présente jamais comme le vrai cri de l'animal et ne prétends pas le produire toi-même. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
+    return english
+      ? `\n\nSound: ${en} (${sound.label.en}) is offered right after your reply. Introduce it explicitly as ${en}, in one short cheerful statement in English. Never describe it as the authentic voice of the animal or claim that you are making the sound yourself. It is already prepared: answer directly, without calling any tool or agent.`
+      : `\n\nSon : ${fr} (${sound.label.fr}) est proposé juste après ta réponse. Présente-le explicitement comme ${fr}, en une courte affirmation joyeuse en français québécois. Ne le présente jamais comme le vrai cri de l'animal et ne prétends pas le produire toi-même. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
   }
   // Naming the machinery here leaks it into the answer: a directive that
   // mentions the browser gets parroted back to the child as an invitation to
   // listen "in your browser". The honesty this wording protects is about not
   // claiming to make the sound, which does not require the word "browser" --
   // so the directive contains no technical term the model can repeat.
-  return `\n\nSound: a real recording of ${sound.label.en} is offered right after your reply. In the child's language, invite them to listen in one short, cheerful sentence -- a statement, not a question. Do not explain how it is played, and never claim that you are making the sound yourself. It is already prepared: answer directly, without calling any tool or agent. / Son : un vrai enregistrement (${sound.label.fr}) est proposé juste après ta réponse. Dans la langue de l'enfant, invite-le à écouter en une courte phrase joyeuse -- une affirmation, pas une question. N'explique pas comment il est joué, et ne prétends jamais que c'est toi qui fais le son. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
+  return english
+    ? `\n\nSound: a real recording of ${sound.label.en} is offered right after your reply. In English, invite the child to listen in one short, cheerful sentence -- a statement, not a question. Do not explain how it is played, and never claim that you are making the sound yourself. It is already prepared: answer directly, without calling any tool or agent.`
+    : `\n\nSon : un vrai enregistrement (${sound.label.fr}) est proposé juste après ta réponse. En français québécois, invite l'enfant à écouter en une courte phrase joyeuse -- une affirmation, pas une question. N'explique pas comment il est joué, et ne prétends jamais que c'est toi qui fais le son. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
 }
 
 // savedNow is set only after the write actually succeeded, so a failed save
@@ -98,7 +105,7 @@ function systemPromptFor(pack, context = {}) {
   const knowledge = cleanText(context.knowledgeContext, 12000);
   const knowledgeBlock = knowledge ? `\n\nApproved knowledge:\n${knowledge}` : '';
   const notes = memoryBlock(context.memories).replace('Saved notes:', context.personalContext ? 'Earlier Household notes (separate source):' : 'Saved notes:');
-  return `${context.contextOnly ? '' : base + modeBlock}${saved}${notes}${context.personalContext || ''}${knowledgeBlock}${soundBlock(context.sound)}${replyLanguageDirective(context.latestUserText)}`;
+  return `${context.contextOnly ? '' : base + modeBlock}${saved}${notes}${context.personalContext || ''}${knowledgeBlock}${soundBlock(context.sound, scoreSpeechLanguage(context.latestUserText).language)}${replyLanguageDirective(context.latestUserText)}`;
 }
 
 const SAFETY_RULES = Object.freeze([
