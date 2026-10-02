@@ -400,6 +400,9 @@ The private parent journal lists, under each child-safe turn, what reached the
 child's screen: each block with its title and a short preview, every picture
 with its source and a thumbnail, whether a math picture was drawn in 3D, and
 only the fact that a secret was shown.
+Opening Super Dad on any device offers to resume its latest conversation when
+the last exchange is less than 24 hours old; the conversation, its history and
+attachments come from Core, not from the browser. Famille does not offer it.
 Famille keeps the Nestor personality but replaces its adult temperament with a
 playful, curious tone for children (`FAMILY_TONE` in
 `core/surfaces/household/family-context.js`), sent with the family surface
