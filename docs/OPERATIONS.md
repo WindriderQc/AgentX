@@ -152,8 +152,10 @@ Do not add forceExit to hide open resources or use application MongoDB for tests
 The disposable MongoDB binary is prepared locally. Tests do not prove inference
 against real Ollama, Qdrant ingestion, browser rendering or device audio.
 
-`npm run test:surfaces --prefix core` runs the portable Household tests;
-CI includes them in the existing Core job. HTTP/Mongo surface integration tests
+`npm run test:surfaces --prefix core` runs the portable Household tests, then
+the root `test:integrations` and `test:shared` contract tests; CI includes them
+in the existing Core job, which runs for changes under `shared/`, `scripts/` and
+`skills/`. HTTP/Mongo surface integration tests
 run in the normal Core suite. The Compose smoke uses the full profile to verify
 the built-in Nestor page and family API inside the production image.
 

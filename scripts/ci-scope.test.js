@@ -24,9 +24,11 @@ test('integrations and skills are tested with core', () => {
 });
 
 test('shared or root changes run every service and compose', () => {
-  const result = scope(['shared/embeddingModels.js']);
-  assert.deepEqual(sorted(result.services), ['benchmark', 'core', 'data', 'rag']);
-  assert.equal(result.compose, true);
+  for (const file of ['shared/embeddingModels.js', 'scripts/runtime-lease.js']) {
+    const result = scope([file]);
+    assert.deepEqual(sorted(result.services), ['benchmark', 'core', 'data', 'rag'], file);
+    assert.equal(result.compose, true, file);
+  }
 });
 
 test('runtime packaging changes run compose', () => {
