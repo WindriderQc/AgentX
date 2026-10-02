@@ -136,6 +136,32 @@ describe('chatServiceStream', () => {
     expect(onError.mock.calls[0][0].message).toContain('invalid options: frequency_penalty');
   });
 
+  it('reports a failed history save as an error instead of a done receipt', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({ message: { content: 'Reply' }, done: false }) + '\n');
+        yield Buffer.from(JSON.stringify({ done: true, eval_count: 1, prompt_eval_count: 1 }) + '\n');
+      })()
+    });
+    mockPersistConversation.mockRejectedValueOnce(Object.assign(
+      new Error('The reply could not be saved to history.'),
+      { code: 'CONVERSATION_PERSIST_FAILED', statusCode: 503 }
+    ));
+    const onComplete = jest.fn();
+    const onError = jest.fn();
+
+    await handleChatRequestStream({
+      userId: 'user-1', model: 'qwen3:14b', message: 'hello', target: 'http://192.0.2.66:11434',
+      onToken: jest.fn(), onThinking: jest.fn(), onComplete, onError
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+      code: 'CONVERSATION_PERSIST_FAILED', statusCode: 503
+    }));
+  });
+
   it('classifies missing Ollama models in streaming mode', async () => {
     mockFetch.mockResolvedValue({
       ok: false,

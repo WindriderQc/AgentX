@@ -3,12 +3,23 @@
  * Save/update conversation history with messages, metadata, and costs
  */
 
+const mongoose = require('mongoose');
 const Conversation = require('../../../models/Conversation');
 const { calculateMessageCost, calculateConversationCost } = require('../costCalculator');
 const logger = require('../../../config/logger');
 
+// Typed failures reach the client as HTTP status (JSON) or an SSE `error`.
+function persistenceError(message, statusCode, code) {
+    return Object.assign(new Error(message), { statusCode, code });
+}
+
+function conversationNotFound() {
+    return persistenceError('Conversation not found or archived. Start a new conversation.', 404, 'CONVERSATION_NOT_FOUND');
+}
+
 async function findConversationForUpdate({ conversationId, userId }) {
     if (!conversationId || !userId) return null;
+    if (!mongoose.isObjectIdOrHexString(conversationId)) return null;
 
     return Conversation.findOne({
         _id: conversationId,
@@ -52,6 +63,8 @@ function buildRagSourceEntries(ragSources) {
  * @param {boolean} params.useRag - Whether RAG was requested
  * @param {Array} params.ragSources - RAG source entries
  * @returns {Promise<Object>} { conversation, assistantMessageId }
+ * @throws CONVERSATION_NOT_FOUND (404) when a supplied conversationId is unknown,
+ *   archived or invalid; CONVERSATION_PERSIST_FAILED (503) when the save fails.
  */
 async function persistConversation(params) {
     const {
@@ -66,9 +79,12 @@ async function persistConversation(params) {
 
     try {
         if (conversationId) {
+            // A supplied id is never silently replaced by a new conversation.
             conversation = await findConversationForUpdate({ conversationId, userId });
-        }
-        if (!conversation) {
+            if (!conversation) throw conversationNotFound();
+            // Archiving during inference must not be overwritten by this save.
+            conversation.$where = { 'lifecycle.status': { $ne: 'archived' } };
+        } else {
             conversation = new Conversation({
                 userId,
                 model,
@@ -172,7 +188,15 @@ async function persistConversation(params) {
 
         await conversation.save();
     } catch (err) {
-        logger.error('Failed to save conversation', { error: err.message });
+        if (err?.code === 'CONVERSATION_NOT_FOUND') throw err;
+        // The conditional save matched nothing: report a conversation archived
+        // or deleted meanwhile as not found, anything else as a failed save.
+        if (conversationId && ['DocumentNotFoundError', 'VersionError'].includes(err?.name)
+            && !(await findConversationForUpdate({ conversationId, userId }).catch(() => true))) {
+            throw conversationNotFound();
+        }
+        logger.error('Failed to save conversation', { conversationId, error: err.message });
+        throw persistenceError('The reply could not be saved to history.', 503, 'CONVERSATION_PERSIST_FAILED');
     }
 
     return { conversation, assistantMessageId };

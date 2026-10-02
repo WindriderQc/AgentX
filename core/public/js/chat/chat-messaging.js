@@ -835,6 +835,12 @@ export function chatFailureDetails(error) {
     guidance = 'Retry the turn. The interrupted attempt remains in history.';
     status = 'Response interrupted';
     tone = 'warning';
+  } else if (/conversation_not_found/.test(normalized)) {
+    guidance = 'This conversation is archived or no longer exists. Start a new chat to continue.';
+    status = 'Conversation unavailable';
+  } else if (/conversation_persist_failed/.test(normalized)) {
+    guidance = 'The reply was generated but not saved to history. Retry the turn.';
+    status = 'Reply not saved';
   } else if (/no readable stream|streaming not supported/.test(normalized)) {
     guidance = 'Turn streaming off and retry; this browser or proxy did not provide a readable stream.';
     status = 'Streaming unavailable';
@@ -1077,7 +1083,7 @@ export async function sendMessageStreamFetch(
     console.error('Fetch streaming error:', streamError);
     if (elements.chatWindow.contains(assistantMessageDiv)) elements.chatWindow.removeChild(assistantMessageDiv);
     const failure = chatFailureDetails(streamError);
-    const failedContent = `\u26a0\ufe0f ${failure.message}\n\n${failure.guidance}`;
+    const failedContent = `${fullContent ? `${fullContent}\n\n` : ''}\u26a0\ufe0f ${failure.message}\n\n${failure.guidance}`;
     helpers.appendMessage(
       {
         role: 'assistant',

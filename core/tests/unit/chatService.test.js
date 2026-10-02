@@ -261,7 +261,7 @@ describe('chatService', () => {
         it('should use existing conversation if conversationId is provided', async () => {
             // Mock an existing conversation instance
             const mockExistingConvInstance = {
-                _id: 'existing123',
+                _id: '64b7f0c2a1b2c3d4e5f60718',
                 userId: 'user123',
                 messages: [], // Real array
                 save: jest.fn().mockResolvedValue(true)
@@ -277,14 +277,14 @@ describe('chatService', () => {
                 userId: 'user123',
                 model: 'llama2',
                 message: 'Continue chat',
-                conversationId: 'existing123'
+                conversationId: '64b7f0c2a1b2c3d4e5f60718'
             };
 
             const result = await handleChatRequest(request);
 
-            expect(result.conversationId).toBe('existing123');
+            expect(result.conversationId).toBe('64b7f0c2a1b2c3d4e5f60718');
             expect(Conversation.findOne).toHaveBeenCalledWith({
-                _id: 'existing123',
+                _id: '64b7f0c2a1b2c3d4e5f60718',
                 userId: 'user123',
                 'lifecycle.status': { $ne: 'archived' }
             });
@@ -292,25 +292,24 @@ describe('chatService', () => {
             expect(mockExistingConvInstance.save).toHaveBeenCalled();
         });
 
-        it('should create a new conversation when the provided ID is outside the caller scope', async () => {
+        it('refuses a conversation ID outside the caller scope instead of forking', async () => {
             const request = {
                 userId: 'user123',
                 model: 'llama2',
                 message: 'Continue chat',
-                conversationId: 'foreign123'
+                conversationId: '64b7f0c2a1b2c3d4e5f60719'
             };
 
-            const result = await handleChatRequest(request);
-
-            expect(result.conversationId).toBe('conv123');
+            await expect(handleChatRequest(request)).rejects.toMatchObject({
+                code: 'CONVERSATION_NOT_FOUND',
+                statusCode: 404
+            });
             expect(Conversation.findOne).toHaveBeenCalledWith({
-                _id: 'foreign123',
+                _id: '64b7f0c2a1b2c3d4e5f60719',
                 userId: 'user123',
                 'lifecycle.status': { $ne: 'archived' }
             });
-            expect(Conversation).toHaveBeenCalledWith(expect.objectContaining({
-                userId: 'user123'
-            }));
+            expect(Conversation).not.toHaveBeenCalled();
         });
     });
 

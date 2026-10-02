@@ -57,6 +57,13 @@ describe('Playground failure recovery', () => {
     expect(result.message).not.toContain('super-secret');
   });
 
+  test('an unsaved reply or a vanished conversation is reported, never shown as saved', () => {
+    expect(chatFailureDetails({ code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found or archived.' }))
+      .toEqual(expect.objectContaining({ status: 'Conversation unavailable', guidance: expect.stringContaining('Start a new chat') }));
+    expect(chatFailureDetails({ code: 'CONVERSATION_PERSIST_FAILED', message: 'The reply could not be saved.' }))
+      .toEqual(expect.objectContaining({ status: 'Reply not saved', tone: 'error' }));
+  });
+
   test('persists stopped and failed outcomes instead of marking them ephemeral', () => {
     expect(outcomeSource).toContain("fetch('/api/history/turn-outcome'");
     expect(source).toContain("outcome: 'stopped'");
