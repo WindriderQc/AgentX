@@ -2,9 +2,10 @@
 
 const fs = require('fs');
 const path = require('path');
+const { readSource } = require('../../../shared/testing/readSource');
 
 const benchmarkRoot = path.resolve(__dirname, '../..');
-const read = (relative) => fs.readFileSync(path.join(benchmarkRoot, relative), 'utf8');
+const read = (relative) => readSource(path.join(benchmarkRoot, relative));
 
 describe('cloud benchmark UI contracts', () => {
   test('leaderboard defaults to cloud-visible and sends server-side includeCloud filtering', () => {

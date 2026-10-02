@@ -25,12 +25,12 @@ function fakeQdrant() {
       return ok({ next_page_offset: next, points: hits.slice(offset, offset + body.limit)
         .map(point => ({ id: point.id, ...(body.with_payload === false ? {} : { payload: point.payload }) })) });
     }
-    if (url.endsWith('/points/delete')) {
+    if (new URL(url).pathname.endsWith('/points/delete')) {
       if (state.failDelete?.(body.filter)) return fail();
       select(body.filter).forEach(point => state.points.delete(point.id));
       return ok();
     }
-    if (url.endsWith('/points') && options.method === 'PUT') {
+    if (new URL(url).pathname.endsWith('/points') && options.method === 'PUT') {
       state.upserts += 1;
       if (state.upserts === state.failUpsertBatch) return fail();
       body.points.forEach(point => state.points.set(point.id, point));
