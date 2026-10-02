@@ -82,10 +82,26 @@ describe('Health Check API', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toHaveProperty('ollama');
     expect(res.body.ollama).toHaveProperty('host');
+    expect(res.body.inference).toEqual({ configured: true });
     expect(res.body).toHaveProperty('hostHome', null);
     // The navigation projection Benchmark and RAG consume for parity. Product
     // ships no launcher of its own.
     expect(res.body.navigation).toEqual({ trustedRuntimeNavItems: [] });
+  });
+
+  it('returns navigation with inference unconfigured when OLLAMA_HOST is unset', async () => {
+    const previous = process.env.OLLAMA_HOST;
+    delete process.env.OLLAMA_HOST;
+    try {
+      const res = await request(app).get('/api/config');
+      expect(res.statusCode).toBe(200);
+      expect(res.body.ollama).toBeNull();
+      expect(res.body.inference).toEqual({ configured: false, reason: 'OLLAMA_HOST is not configured' });
+      expect(res.body.publicUrls).toEqual(app.locals.publicUrls);
+      expect(res.body.navigation).toEqual({ trustedRuntimeNavItems: [] });
+    } finally {
+      process.env.OLLAMA_HOST = previous;
+    }
   });
 
   it('projects validated trusted runtime launchers through /api/config', async () => {
