@@ -1041,10 +1041,6 @@ button:active {
 }
 
 .section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 0;
   cursor: pointer;
   user-select: none;
   border-top: 1px solid var(--panel-border);
@@ -1301,15 +1297,6 @@ button:active {
   align-items: center;
   justify-content: center;
   gap: 8px;
-}
-
-.donut-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 22px;
-  font-weight: 700;
 }
 
 /* RAG Citation Display (V6) */
@@ -1711,9 +1698,6 @@ button:active {
 }
 
 .metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
   margin-bottom: 24px;
 }
 
@@ -2058,7 +2042,6 @@ button:active {
 }
 
 .btn-sm {
-  padding: 10px 16px;
   border-radius: 8px;
   border: none;
   font-weight: 600;

@@ -277,13 +277,11 @@
 
 .mp-card-subhead {
   min-height: 1.1rem;
-  font-size: 0.64rem;
   color: #7e8aa7;
   margin-bottom: 0.45rem;
 }
 
 .mp-card-hostdots {
-  display: flex;
   gap: 0.35rem;
   align-items: center;
   margin-bottom: 0.45rem;
@@ -343,21 +341,10 @@
 }
 
 .mp-card-empty-state {
-  display: flex;
-  flex-direction: column;
-  gap: 0.18rem;
   margin-top: 0.35rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px dashed rgba(137, 146, 176, 0.18);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.015);
-  color: #7e8aa7;
-  font-size: 0.66rem;
-  line-height: 1.45;
 }
 
 .mp-card-empty-kicker {
-  font-size: 0.58rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #8c98b7;
@@ -1730,14 +1717,12 @@
   font-variant-numeric: tabular-nums;
 }
 .mp-hero-unit {
-  font-size: 0.66rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #4ecdc4;
 }
 .mp-hero-tag {
-  font-size: 0.58rem;
   color: #8892b0;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -1749,13 +1734,11 @@
   flex-shrink: 0;
 }
 .mp-hero-aux__val {
-  font-size: 0.92rem;
   font-weight: 700;
   color: #c9d1d9;
   font-variant-numeric: tabular-nums;
 }
 .mp-hero-aux__unit {
-  font-size: 0.55rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1829,9 +1812,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.32rem;
   margin-top: 0.1rem;
-  font-size: 0.56rem;
   color: #7a8499;
   letter-spacing: 0.02em;
 }
@@ -1842,7 +1823,6 @@
   border: 1px solid rgba(255,255,255,0.08);
   background: rgba(255,255,255,0.025);
   border-radius: 4px;
-  padding: 0.05rem 0.35rem;
   font-weight: 600;
 }
 .mp-foot-when {
@@ -1862,12 +1842,9 @@
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 0.32rem;
-  padding: 0.35rem 0.55rem;
   border-radius: 8px;
   background: rgba(255,255,255,0.025);
   border: 1px solid rgba(255,255,255,0.06);
-  font-size: 0.62rem;
   line-height: 1.3;
   color: #c9d1d9;
 }
@@ -1879,7 +1856,6 @@
 .mp-strip-unit {
   color: #7e8aa7;
   margin-left: 0.15rem;
-  font-size: 0.55rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -1890,7 +1866,6 @@
 .mp-strip-spill {
   margin-left: auto;
   font-weight: 600;
-  font-size: 0.58rem;
   white-space: nowrap;
 }
 .mp-strip-spill--ok    { color: #5fd083; }
@@ -1927,10 +1902,8 @@
 
 /* Compact context-insight chip (rides in footer) */
 .mp-insight-chip {
-  font-size: 0.55rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  padding: 0.08rem 0.4rem;
   border-radius: 999px;
   border: 1px solid;
   white-space: nowrap;
@@ -1959,7 +1932,6 @@
   border-radius: 9px;
   background: rgba(255,255,255,0.015);
   color: #6f7a96;
-  font-size: 0.66rem;
   line-height: 1.4;
   flex: 1;
 }
