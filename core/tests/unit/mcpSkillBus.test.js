@@ -86,6 +86,16 @@ describe('mcpSkillBus product tools', () => {
     expect(response.result.structuredContent.count).toBe(1);
   });
 
+  test('rag_search applies the memory score floor when minScore is omitted', async () => {
+    const ragClient = { searchSimilarChunks: jest.fn(async () => []) };
+    await handleMcpMessage({
+      jsonrpc: '2.0', id: 5, method: 'tools/call',
+      params: { name: 'rag_search', arguments: { query: 'unrelated question' } },
+    }, { ragClient });
+    expect(ragClient.searchSimilarChunks).toHaveBeenCalledWith('unrelated question',
+      expect.objectContaining({ minScore: require('../../src/services/memoryReadService').defaultMinScore() }));
+  });
+
   test('check_health uses the injected health provider', async () => {
     const healthProvider = jest.fn(async () => ({ ok: true, core: { mongodb: 'connected' } }));
     const response = await handleMcpMessage({

@@ -1737,6 +1737,17 @@
       "secret": false,
       "description": "Days a mail journal entry is kept, counted from the mail's date; Mongo removes it afterwards. Applies to entries recorded after a change. 0 keeps entries forever; an invalid value uses 365."
     },
+    "MEMORY_NOTE_RETENTION_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "fallback": "30",
+      "category": "memory",
+      "secret": false,
+      "description": "Days a forgotten or expired memory note is kept before Core deletes its text (daily sweep). 0 keeps hidden notes forever."
+    },
     "MEMORY_REVIEW_AUTOMATION_MODE": {
       "services": [
         "core"
