@@ -263,10 +263,8 @@ async function probeHost(host, model = null, executor = getWatchdogExecutor(), c
   let admission = null;
   try {
     const probeModel = model || '_';
-    const runtimeOptions = {
-      num_predict: 1,
-      ...(model && Number.isSafeInteger(contextLength) && contextLength > 0 && { num_ctx: contextLength })
-    };
+    // The resident's context and pinned CPU threads: a different value reloads it.
+    const runtimeOptions = await require('./pinThreadLookup').watchdogProbeOptions(host.url, model, contextLength);
     admission = await beginInferenceAdmission({
       host: host.url,
       model: probeModel,

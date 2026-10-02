@@ -143,6 +143,8 @@ async function restoreBenchmarkRuntime(hostUrl, snapshot, benchmarkClaim, { warm
     const warmOptions = {
       keepAlive: remainingKeepAlive,
       contextSize: target.contextLength || 0,
+      // The pin's CPU threads, so the next inference does not reload the runner.
+      numThread: await require('./pinThreadLookup').pinNumThread(hostUrl, target.model),
       signal: benchmarkClaim?.signal,
       assertAuthorityActive: benchmarkClaim?.assertAuthorityActive
     };

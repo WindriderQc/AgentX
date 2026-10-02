@@ -538,7 +538,7 @@ test('one model delta drains every ready clause with only one audio prefetch', a
   assert.equal(plays.length, 2, 'End still discards the prefetched clause');
 });
 
-test('streamed playback follows generated language, carrying it across ambiguous clauses', async () => {
+test('a franglais reply keeps one voice: the turn language holds for every clause', async () => {
   const spoken = [];
   const chunks = ['Salut Alex. Je vais bien, merci. Tout est prêt. ', 'service-host inference-host inference-secondary 11434 8192. ',
     'The hosts are ready and the models are loaded. ', 'OK.'];
@@ -547,7 +547,7 @@ test('streamed playback follows generated language, carrying it across ambiguous
     async synthesize(reply) { spoken.push(reply); return new ArrayBuffer(10); }
   });
   await h.conversation.start({language:'en'}); await h.say();
-  assert.deepEqual(spoken.map(reply=>reply.language), ['fr','fr','fr','en','en']);
+  assert.deepEqual(spoken.map(reply=>reply.language), ['fr','fr','fr','fr','fr']);
   assert.equal(spoken.map(reply=>reply.text).join(' '),chunks.join(''));
 });
 
@@ -1012,4 +1012,20 @@ test('with the wake word, the brain does not wake a sleeping Nestor', async () =
   assert.equal(await h.conversation.interject({ text: 'Au fait.' }), false);
   h.conversation.wake.extend();
   assert.equal(await h.conversation.interject({ text: 'Au fait.' }), true);
+});
+
+test('the language Whisper recognized decides the turn voice, and French is the default', async () => {
+  for (const [result, selection, expected] of [
+    [{ text: 'OK', detectedLanguage: 'en' }, 'fr-en', 'en'],
+    [{ text: 'OK' }, 'fr-en', 'fr'],
+    [{ text: 'OK' }, 'en', 'en'],
+    ['Can you check the hosts?', 'fr-en', 'en']
+  ]) {
+    const spoken = [];
+    const h = harness({ transcribe: async () => result, turn: async (_s, _t, _sig, delta) => { delta('Sure. '); return { text: 'Sure.' }; },
+      async synthesize(reply) { spoken.push(reply.language); return new ArrayBuffer(4); } });
+    await h.conversation.start({ language: selection }); await h.say();
+    assert.deepEqual(spoken, [expected]);
+    h.conversation.stop();
+  }
 });

@@ -127,7 +127,7 @@ function voiceContract({ timeoutMs = 10000, longTimeoutMs = 120000, soundStatus 
         status: 'configured',
         route: '/api/voix/synthesize',
         browserFallback: true,
-        languageMode: 'per-request-text-match',
+        languageMode: 'one-language-per-turn-quebec-french-default',
         supportedLanguages: ['en', 'fr'],
         profiles: {
           en: { locale: 'en-CA', nativeLanguage: 'en-us', nativeVoice: 'af_heart' },
