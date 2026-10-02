@@ -92,6 +92,9 @@ describe('POST /api/rag/search telemetry', () => {
     await request.post('/api/rag/search').send({ query: 'nothing here' });
     await flush();
     expect(SearchEvent.create.mock.calls[0][0]).toMatchObject({ status: 'empty', resultCount: 0 });
+    const buddyRagEvents = require('../../src/services/buddyRagEvents');
+    expect(buddyRagEvents.searchEmpty).toHaveBeenCalledTimes(1);
+    expect(buddyRagEvents.searchEmpty.mock.calls[0][0]).not.toContain('nothing here');
 
     getRagStore.mockReturnValue({ searchSimilarChunks: jest.fn().mockRejectedValue(new Error('qdrant unavailable')) });
     const res = await request.post('/api/rag/search').send({ query: 'boom' });

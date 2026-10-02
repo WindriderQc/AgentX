@@ -316,7 +316,7 @@ class RagStore {
       results = fused.slice(0, candidateTopK);
 
       logger.info('Hybrid search completed', {
-        query: query.substring(0, 50),
+        queryLength: query.length,
         vectorCount: vectorResults.length,
         keywordCount: keywordResults.length,
         fusedCount: results.length
@@ -355,7 +355,7 @@ class RagStore {
         .slice(0, candidateTopK);
 
       logger.info('Expanded search completed', {
-        original: query.substring(0, 50),
+        queryLength: query.length,
         queryCount: queriesToSearch.length,
         rawResults: allResults.length,
         dedupedResults: results.length

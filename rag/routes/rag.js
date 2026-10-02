@@ -460,7 +460,7 @@ router.post('/search', async (req, res) => {
     // Fire-and-forget Buddy surface event when a valid query yields nothing
     // (intent:suggesting, surfaceScope:rag) — guide the user to refine/ingest.
     if (resultList.length === 0) {
-      buddyRagEvents.searchEmpty(`RAG search returned no matches for "${query.slice(0, 60)}"`);
+      buddyRagEvents.searchEmpty(`RAG search returned no matches (query length ${query.length})`);
     }
 
     res.json({ ok: true, data: { results: resultList, count: resultList.length } });

@@ -75,7 +75,7 @@ Return ONLY the queries, one per line, without numbering or explanation.`;
       .slice(0, MAX_EXPANSIONS);
 
     logger.info('Query expanded', {
-      original: query.substring(0, 50),
+      queryLength: query.length,
       expansionCount: relatedQueries.length
     });
 
