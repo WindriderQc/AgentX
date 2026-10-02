@@ -31,4 +31,7 @@ and docs/OPERATIONS.md before changing architecture.
   appended to; dated receipts and evidence stay outside Git. Track open work as
   issues, not as prose in documents.
 - New source files stay under 700 lines (frontend 1,200). A file already over its
-  limit must not grow: split it, or extract what you add. Tests and fixtures are exempt.
+  limit must not grow: split it, or extract what you add. Split by responsibility,
+  not by line count: only a file over 1,000 lines (frontend 1,500) is split on its
+  own; below that, split it when you change it. Tests, fixtures and declarative
+  files (schemas, static data, configuration) are exempt.
