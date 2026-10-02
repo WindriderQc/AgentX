@@ -855,7 +855,8 @@ export async function sendMessageStreamFetch(
   msgInput,
   modelInput,
   currentUserMessageId = null,
-  turnAction = null
+  turnAction = null,
+  clientTurnId = null
 ) {
   const { elements, state, defaults, helpers } = ctx;
   const message = msgInput || elements.messageInput.value.trim();
@@ -868,7 +869,10 @@ export async function sendMessageStreamFetch(
     currentUserMessageId,
     turnAction
   );
-  const terminalAttemptId = outcomeAttemptId(currentUserMessageId);
+  // One id per turn: the server stores a repeated send once, and a failed
+  // turn's outcome record agrees with the chat request it belongs to.
+  const terminalAttemptId = clientTurnId || outcomeAttemptId(currentUserMessageId);
+  payload.clientTurnId = terminalAttemptId;
 
   const assistantMessageDiv = document.createElement('div');
   assistantMessageDiv.className = 'message assistant';
@@ -1211,7 +1215,7 @@ export async function sendMessage(ctx, turnAction = null) {
   elements.sendBtn.textContent = 'Sending\u2026';
 
   if (elements.streamToggle && elements.streamToggle.checked) {
-    await sendMessageStreamFetch(ctx, message, model, currentUserMessageId, requestTurnAction);
+    await sendMessageStreamFetch(ctx, message, model, currentUserMessageId, requestTurnAction, terminalAttemptId);
     return;
   }
 
@@ -1225,6 +1229,7 @@ export async function sendMessage(ctx, turnAction = null) {
         currentUserMessageId,
         requestTurnAction
       ),
+      clientTurnId: terminalAttemptId,
       stream: false
     };
     const res = await fetch('/api/chat', {

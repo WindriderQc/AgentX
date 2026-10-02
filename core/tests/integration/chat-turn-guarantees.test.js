@@ -154,3 +154,87 @@ test('GET /api/history/:id does not reopen an archived conversation', async () =
   expect(refused.body.code).toBe('CONVERSATION_NOT_FOUND');
   await harness.request.get(`/api/history/${active.id}`).expect(200);
 });
+
+describe('idempotent turns', () => {
+  const outcome = (overrides = {}) => ({
+    clientTurnId: 'terminal:u-1:fixture-turn',
+    userMessage: 'A fictional question.',
+    assistantContent: 'The request failed. Retry.',
+    outcome: 'failed',
+    ...overrides
+  });
+  const postOutcome = (body) => harness.request.post('/api/history/turn-outcome').send(body);
+  const turnCount = (messages, clientTurnId) => messages
+    .filter(message => message.metadata?.clientTurnId === clientTurnId).length;
+
+  test('five concurrent outcomes for a first turn create one conversation and one pair', async () => {
+    const responses = await Promise.all(Array.from({ length: 5 }, () => postOutcome(outcome())));
+    expect(responses.map(response => response.status)).toEqual([200, 200, 200, 200, 200]);
+    const rows = await Conversation.find({}).lean();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].messages).toHaveLength(2);
+    expect(new Set(responses.map(response => response.body.data.conversationId))).toEqual(new Set([String(rows[0]._id)]));
+    expect(responses.filter(response => response.body.data.idempotent === false)).toHaveLength(1);
+  });
+
+  test('five concurrent outcomes for an existing conversation append one pair', async () => {
+    const target = await playground();
+    const responses = await Promise.all(Array.from({ length: 5 }, () => postOutcome(outcome({ conversationId: target.id }))));
+    expect(responses.map(response => response.status)).toEqual([200, 200, 200, 200, 200]);
+    const stored = await Conversation.findById(target.id).lean();
+    expect(stored.messages).toHaveLength(4);
+    expect(new Set(responses.map(response => response.body.data.assistantMessageId)).size).toBe(1);
+    expect(await Conversation.countDocuments({})).toBe(1);
+  });
+
+  describe.each(['/chat', '/chat/stream'])('%s with a clientTurnId', (endpoint) => {
+    const receiptOf = (result) => (endpoint.endsWith('stream') ? result.terminal.data : result.body.data);
+
+    test('a repeated first turn creates one conversation, sequentially or concurrently', async () => {
+      const first = await send(endpoint, { clientTurnId: 'turn-new-1' });
+      const again = await send(endpoint, { clientTurnId: 'turn-new-1' });
+      expect(String(receiptOf(again).conversationId)).toBe(String(receiptOf(first).conversationId));
+      expect(String(receiptOf(again).messageId)).toBe(String(receiptOf(first).messageId));
+      const burst = await Promise.all(Array.from({ length: 5 }, () => send(endpoint, { clientTurnId: 'turn-new-2' })));
+      expect(new Set(burst.map(result => String(receiptOf(result).conversationId))).size).toBe(1);
+      const rows = await Conversation.find({}).lean();
+      expect(rows).toHaveLength(2);
+      rows.forEach(row => expect(row.messages).toHaveLength(2));
+    });
+
+    test('a repeated turn on an existing conversation is stored once', async () => {
+      const target = await playground();
+      const burst = await Promise.all(Array.from({ length: 5 }, () => send(endpoint, {
+        conversationId: target.id, clientTurnId: 'turn-existing-1'
+      })));
+      burst.forEach(result => expect(String(receiptOf(result).conversationId)).toBe(target.id));
+      await send(endpoint, { conversationId: target.id, clientTurnId: 'turn-existing-1' });
+      const stored = await Conversation.findById(target.id).lean();
+      expect(stored.messages).toHaveLength(4);
+      expect(turnCount(stored.messages, 'turn-existing-1')).toBe(2);
+      await send(endpoint, { conversationId: target.id, clientTurnId: 'turn-existing-2' });
+      expect((await Conversation.findById(target.id).lean()).messages).toHaveLength(6);
+    });
+
+    test('an outcome posted for a turn that was in fact stored returns that turn', async () => {
+      const completed = receiptOf(await send(endpoint, { clientTurnId: 'turn-lost-done' }));
+      const response = await postOutcome(outcome({
+        clientTurnId: 'turn-lost-done', conversationId: String(completed.conversationId)
+      })).expect(200);
+      expect(response.body.data).toEqual(expect.objectContaining({
+        conversationId: String(completed.conversationId),
+        assistantMessageId: String(completed.messageId),
+        outcome: 'completed',
+        idempotent: true
+      }));
+      expect((await Conversation.findById(completed.conversationId).lean()).messages).toHaveLength(2);
+    });
+
+    test('a malformed clientTurnId is rejected before dispatch', async () => {
+      const response = await harness.request.post(`/api${endpoint}`)
+        .send({ model: 'fixture-model', message: 'Hello', clientTurnId: 'has spaces' });
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('CHAT_REQUEST_INVALID');
+    });
+  });
+});

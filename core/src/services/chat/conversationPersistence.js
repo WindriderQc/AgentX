@@ -17,6 +17,16 @@ function conversationNotFound() {
     return persistenceError('Conversation not found or archived. Start a new conversation.', 404, 'CONVERSATION_NOT_FOUND');
 }
 
+// A repeated clientTurnId returns the turn already stored instead of a copy.
+function storedTurn(conversation, clientTurnId) {
+    if (!conversation || !clientTurnId) return null;
+    const turn = Array.from(conversation.messages || [])
+        .filter(message => message?.metadata?.clientTurnId === clientTurnId);
+    if (turn.length === 0) return null;
+    const reply = turn.find(message => message.role === 'assistant');
+    return { conversation, assistantMessageId: reply?._id || null, idempotent: true };
+}
+
 async function findConversationForUpdate({ conversationId, userId }) {
     if (!conversationId || !userId) return null;
     if (!mongoose.isObjectIdOrHexString(conversationId)) return null;
@@ -52,6 +62,7 @@ function buildRagSourceEntries(ragSources) {
  * @param {Object} params - Conversation data
  * @param {string} params.userId - User ID
  * @param {string} params.conversationId - Existing conversation ID (or null)
+ * @param {string} [params.clientTurnId] - Client turn id; a repeat is stored once
  * @param {string} params.model - Model used
  * @param {string} params.effectiveSystemPrompt - Full system prompt
  * @param {string} params.message - User message
@@ -68,7 +79,7 @@ function buildRagSourceEntries(ragSources) {
  */
 async function persistConversation(params) {
     const {
-        userId, conversationId, model,
+        userId, conversationId, clientTurnId = null, model,
         effectiveSystemPrompt, message, assistantContent,
         activePrompt, metadata = {}, stats,
         ragUsed, useRag, ragSources
@@ -82,19 +93,30 @@ async function persistConversation(params) {
             // A supplied id is never silently replaced by a new conversation.
             conversation = await findConversationForUpdate({ conversationId, userId });
             if (!conversation) throw conversationNotFound();
-            // Archiving during inference must not be overwritten by this save.
-            conversation.$where = { 'lifecycle.status': { $ne: 'archived' } };
+            const existing = storedTurn(conversation, clientTurnId);
+            if (existing) return existing;
+            // Archiving or a concurrent copy of this turn during inference must
+            // not be overwritten by this save.
+            conversation.$where = {
+                'lifecycle.status': { $ne: 'archived' },
+                ...(clientTurnId ? { 'messages.metadata.clientTurnId': { $ne: clientTurnId } } : {})
+            };
         } else {
             conversation = new Conversation({
                 userId,
                 model,
                 systemPrompt: effectiveSystemPrompt,
-                messages: []
+                messages: [],
+                ...(clientTurnId ? { clientTurnId } : {})
             });
         }
+        const turnMetadata = clientTurnId ? { clientTurnId } : {};
 
         if (message && message.trim()) {
-            conversation.messages.push({ role: 'user', content: message.trim() });
+            conversation.messages.push({
+                role: 'user', content: message.trim(),
+                ...(clientTurnId ? { metadata: turnMetadata } : {})
+            });
         }
 
         if (assistantContent && assistantContent.trim()) {
@@ -105,6 +127,7 @@ async function persistConversation(params) {
 
             assistantMsg.metadata = {
                 ...(metadata || {}),
+                ...turnMetadata,
                 model,
                 routingInfo: metadata.routingInfo || null
             };
@@ -189,11 +212,19 @@ async function persistConversation(params) {
         await conversation.save();
     } catch (err) {
         if (err?.code === 'CONVERSATION_NOT_FOUND') throw err;
-        // The conditional save matched nothing: report a conversation archived
-        // or deleted meanwhile as not found, anything else as a failed save.
-        if (conversationId && ['DocumentNotFoundError', 'VersionError'].includes(err?.name)
-            && !(await findConversationForUpdate({ conversationId, userId }).catch(() => true))) {
-            throw conversationNotFound();
+        // The conditional save matched nothing: the same turn was stored
+        // concurrently (return it), the conversation was archived or deleted
+        // meanwhile (not found), or anything else (failed save).
+        if (conversationId && ['DocumentNotFoundError', 'VersionError'].includes(err?.name)) {
+            const current = await findConversationForUpdate({ conversationId, userId }).catch(() => undefined);
+            if (current === null) throw conversationNotFound();
+            const existing = storedTurn(current, clientTurnId);
+            if (existing) return existing;
+        }
+        // A concurrent first turn already created the conversation.
+        if (!conversationId && clientTurnId && err?.code === 11000) {
+            const existing = storedTurn(await Conversation.findOne({ userId, clientTurnId }).catch(() => null), clientTurnId);
+            if (existing) return existing;
         }
         logger.error('Failed to save conversation', { conversationId, error: err.message });
         throw persistenceError('The reply could not be saved to history.', 503, 'CONVERSATION_PERSIST_FAILED');

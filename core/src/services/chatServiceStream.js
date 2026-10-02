@@ -61,6 +61,7 @@ const handleChatRequestStream = async ({
     persona,
     promptVersion,
     conversationId,
+    clientTurnId = null,
     persist = true,
     callerDetail = null,
     allowRag = true,
@@ -357,7 +358,7 @@ const handleChatRequestStream = async ({
         let assistantMessageId = null;
         if (persist !== false) {
             const saved = await persistConversation({
-                userId, conversationId, model: effectiveModel,
+                userId, conversationId, clientTurnId, model: effectiveModel,
                 effectiveSystemPrompt, message, assistantContent: fullContent,
                 activePrompt,
                 metadata: { thinking: thinkingContent || null, options, webSearchResults, routingInfo: routingPayload },
