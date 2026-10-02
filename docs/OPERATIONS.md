@@ -75,19 +75,13 @@ instance configuration before resuming an automated worker.
 ### Updating a running instance
 
 Deployment is manual and triggered by the operator after a merge to `main`. The
-host holds no GitHub credential, so a workstation with access ships `main` to it
-over SSH as a Git bundle:
+source repository is public, so the host fetches it over HTTPS and holds no
+GitHub credential. On the host, in the instance checkout (`origin` set to
+`https://github.com/WindriderQc/AgentX.git`), with the tree clean and no build
+running:
 
 ```bash
 git fetch origin
-git bundle create agentx-main.bundle refs/remotes/origin/main
-scp agentx-main.bundle <user>@<host>:/tmp/
-```
-
-On the host, in the instance checkout, with the tree clean and no build running:
-
-```bash
-git fetch /tmp/agentx-main.bundle '+refs/remotes/origin/main:refs/remotes/origin/main'
 git merge --ff-only origin/main
 AGENTX_ENV_FILE=<instance.env> AGENTX_PROJECT_NAME=<project> \
 AGENTX_COMPOSE_OVERRIDE=<instance.compose.json> ./agentx up --build --no-deps core
