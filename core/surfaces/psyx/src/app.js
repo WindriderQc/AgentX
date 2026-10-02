@@ -117,7 +117,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
   const auth = accessAuth || createAuth(config);
   const voiceClient = voice || createVoiceClient(config);
   const { stateRepository, conversationRepository } = database;
-  const review = reviewer || createReviewer({ config, provider, stateRepository, conversationRepository, logger });
+  const streaming = new Map();
+  const review = reviewer || createReviewer({ config, provider, stateRepository, conversationRepository, logger, isBusy: userId => (streaming.get(userId) || 0) > 0 });
 
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -223,7 +224,10 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.delete('/sessions/:id', asyncRoute(async (req, res) => {
     if (req.body?.confirmation !== 'PERMANENTLY DELETE') return res.status(400).json({ ok: false, status: 'error', code: 'PSYX_PERMANENT_DELETE_CONFIRMATION_REQUIRED', message: 'Permanent deletion requires explicit confirmation.' });
     const deleted = await conversationRepository.permanentlyDelete(res.locals.psyxUserId, req.params.id);
-    return deleted ? responseData(res, { id: req.params.id }) : res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
+    if (!deleted) return res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
+    review.forget?.(res.locals.psyxUserId, req.params.id);
+    await stateRepository.forgetConversation(res.locals.psyxUserId, cleanText(req.params.id, 80));
+    return responseData(res, { id: req.params.id });
   }));
 
   api.get('/voice/status', asyncRoute(async (_req, res) => responseData(res, await voiceClient.status())));
@@ -299,6 +303,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     res.on('close', () => { if (!res.writableEnded) abortController.abort(); });
     const heartbeat = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(': ping\n\n'); }, 15000);
     const handlers = providerHandlers(res);
+    streaming.set(userId, (streaming.get(userId) || 0) + 1);
     const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety) };
     handlers.send('control', applied);
     if (safety) handlers.send('safety', safety);
@@ -347,6 +352,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
       }
     } finally {
       clearInterval(heartbeat);
+      const remaining = (streaming.get(userId) || 1) - 1;
+      if (remaining > 0) streaming.set(userId, remaining); else streaming.delete(userId);
     }
   };
 

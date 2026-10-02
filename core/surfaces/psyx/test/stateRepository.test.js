@@ -292,3 +292,41 @@ test('a stored item without confidence stays unknown instead of reading as zero'
   assert.equal(normalizeStateItem({ text: 'note', confidence: null }, 'notes').confidence, null);
   assert.equal(normalizeStateItem({ text: 'note', confidence: 0 }, 'notes').confidence, 0);
 });
+
+test('deleting a conversation forgets its digest and proposals, and a reset discards reviews already in flight', async () => {
+  const { readReview } = require('../../../src/domains/psyx/review');
+  const harness = createHarness();
+  await harness.repository.ensureInfrastructure();
+  const review = (conversationId, summary) => readReview(JSON.stringify({
+    digest: { summary }, proposals: [{ kind: 'notes', text: `Note from ${conversationId}`, evidence: ['quote'] }]
+  }), { conversationId });
+  await harness.repository.recordReview('default', { conversationId: 'keep', ...review('keep', 'Kept.') });
+  await harness.repository.recordReview('default', { conversationId: 'gone', ...review('gone', 'Private.') });
+  const replaced = await harness.repository.recordReview('default', { conversationId: 'gone', ...review('gone', 'Private again.') });
+  assert.deepEqual(replaced.state.sessionDigests.map((item) => item.summary), ['Kept.', 'Private again.']);
+  assert.equal(harness.collection.documents[0].sessionDigests.length, 2, 'the older digest of a conversation is removed');
+
+  await harness.repository.forgetConversation('default', 'gone');
+  const after = await harness.repository.read('default');
+  assert.deepEqual(after.sessionDigests.map((item) => item.conversationId), ['keep']);
+  assert.deepEqual(after.proposals.map((item) => item.conversationId), ['keep']);
+
+  // A review that read the state before a reset must not write afterwards.
+  const before = await harness.repository.read('default');
+  await harness.repository.reset('default');
+  const late = await harness.repository.recordReview('default', { conversationId: 'keep', ...review('keep', 'Stale.'), resetAt: before.resetAt });
+  assert.equal(late.skipped, 'reset');
+  const reset = await harness.repository.read('default');
+  assert.deepEqual([reset.sessionDigests, reset.proposals], [[], []]);
+  assert.ok(reset.resetAt);
+});
+
+test('an interrupted digest replacement still reads as one digest per conversation', () => {
+  const { normalizeDigests } = require('../../../src/domains/psyx/proposals');
+  const digests = normalizeDigests([
+    { conversationId: 'a', summary: 'old', updatedAt: '2026-10-01T00:00:00Z' },
+    { conversationId: 'b', summary: 'other', updatedAt: '2026-10-01T00:00:00Z' },
+    { conversationId: 'a', summary: 'new', updatedAt: '2026-10-02T00:00:00Z' }
+  ]);
+  assert.deepEqual(digests.map((item) => `${item.conversationId}:${item.summary}`), ['b:other', 'a:new']);
+});

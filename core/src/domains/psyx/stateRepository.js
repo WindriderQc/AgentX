@@ -161,6 +161,7 @@ function normalizeState(doc, userId = 'default') {
     proposals: proposals.normalizeProposals(doc.proposals),
     settledProposals: proposals.normalizeSettled(doc.settledProposals),
     sessionDigests: proposals.normalizeDigests(doc.sessionDigests),
+    resetAt: normalizeDate(doc.resetAt),
     updatedAt: normalizeDate(doc.updatedAt)
   };
   for (const key of STATE_ITEM_KEYS) {
@@ -434,7 +435,8 @@ function createStateRepository({ collection, logger }) {
     await collection.updateOne(
       { userId },
       {
-        $set: { ...cleared, version: PSYX_STATE_VERSION, updatedAt: now },
+        // resetAt lets a review that started before the reset discard its result.
+        $set: { ...cleared, version: PSYX_STATE_VERSION, updatedAt: now, resetAt: now },
         $inc: { revision: 1 }
       }
     );
@@ -443,9 +445,10 @@ function createStateRepository({ collection, logger }) {
 
   // Background review output: a digest replaces the conversation's previous one;
   // proposals already known (memory, pending or settled by the user) are dropped.
-  async function recordReview(userId, { conversationId, digest = null, proposals: incoming = [] }) {
+  async function recordReview(userId, { conversationId, digest = null, proposals: incoming = [], resetAt = null }) {
     await ensureDocument(userId);
     const state = await read(userId);
+    if ((state.resetAt || null) !== (resetAt || null)) return { added: 0, digest: null, skipped: 'reset', state };
     const known = new Set([
       ...state.proposals.map((item) => item.fingerprint),
       ...state.settledProposals,
@@ -453,14 +456,25 @@ function createStateRepository({ collection, logger }) {
       ...state.experiments.map((item) => proposals.proposalFingerprint('experiments', item.hypothesis, item.action))
     ]);
     const fresh = incoming.filter((item) => !known.has(item.fingerprint));
-    if (digest) await collection.updateOne({ userId }, { $pull: { sessionDigests: { conversationId } } });
     const push = {};
     if (fresh.length) push.proposals = { $each: fresh, $slice: -proposals.PROPOSAL_LIMITS.pending };
     if (digest) push.sessionDigests = { $each: [digest], $slice: -proposals.PROPOSAL_LIMITS.digests };
     if (Object.keys(push).length) {
       await collection.updateOne({ userId }, { $push: push, $inc: { revision: 1 }, $set: { updatedAt: new Date(), version: PSYX_STATE_VERSION } });
     }
+    // Then drop the conversation's older digests; readers already prefer the latest.
+    if (digest) await collection.updateOne({ userId }, { $pull: { sessionDigests: { conversationId, id: { $ne: digest.id } } } });
     return { added: fresh.length, digest, state: await read(userId) };
+  }
+
+  // A permanently deleted conversation leaves nothing derived from it in PsyX memory.
+  async function forgetConversation(userId, conversationId) {
+    const result = await collection.updateOne({ userId }, {
+      $pull: { sessionDigests: { conversationId }, proposals: { conversationId } },
+      $inc: { revision: 1 },
+      $set: { updatedAt: new Date() }
+    });
+    return { removed: result.modifiedCount > 0 };
   }
 
   function proposalNotFound() {
@@ -527,6 +541,7 @@ function createStateRepository({ collection, logger }) {
     updateExperiment,
     reset,
     recordReview,
+    forgetConversation,
     acceptProposal,
     rejectProposal
   };

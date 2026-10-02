@@ -77,6 +77,7 @@ function normalizeDigest(raw, { conversationId = null, now = new Date().toISOStr
   const id = clean(raw.conversationId || conversationId, 80);
   if (!summary || !id) return null;
   return {
+    id: clean(raw.id, 80) || crypto.randomUUID(),
     conversationId: id,
     summary,
     themes: (Array.isArray(raw.themes) ? raw.themes : []).map(item => clean(item, 80)).filter(Boolean).slice(0, 5),
@@ -87,8 +88,14 @@ function normalizeDigest(raw, { conversationId = null, now = new Date().toISOStr
   };
 }
 
+// One digest per conversation: the latest wins if a replacement was interrupted.
 function normalizeDigests(value) {
-  return (Array.isArray(value) ? value : []).map(item => normalizeDigest(item)).filter(Boolean).slice(-PROPOSAL_LIMITS.digests);
+  const latest = new Map();
+  for (const digest of (Array.isArray(value) ? value : []).map(item => normalizeDigest(item)).filter(Boolean)) {
+    latest.delete(digest.conversationId);
+    latest.set(digest.conversationId, digest);
+  }
+  return [...latest.values()].slice(-PROPOSAL_LIMITS.digests);
 }
 
 function normalizeSettled(value) {

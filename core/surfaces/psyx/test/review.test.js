@@ -182,3 +182,28 @@ test('a crisis signal overrides the stance, adds the safety instruction and send
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test('a review waits while the user is being answered and drops results for a conversation deleted meanwhile', async () => {
+  let busy = true;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let exists = true;
+  const { calls, provider, stateRepository } = fakes({ complete: async () => { await gate; return { content: REVIEW }; } });
+  const conversationRepository = { context: async () => exists ? [{ role: 'user', content: 'hello' }] : null };
+  const reviewer = createReviewer({ config: { review: { delayMs: 5 } }, provider, stateRepository, conversationRepository, logger: {}, isBusy: () => busy });
+  reviewer.schedule('u', 'c');
+  await tick(30);
+  assert.equal(calls.complete.length, 0, 'no review while a reply streams');
+  busy = false;
+  await tick(30);
+  assert.equal(calls.complete.length, 1);
+  exists = false;
+  release();
+  await tick(20);
+  assert.equal(calls.recorded.length, 0, 'nothing recorded for a conversation that disappeared');
+
+  reviewer.schedule('u', 'd');
+  reviewer.forget('u', 'd');
+  await tick(30);
+  assert.equal(reviewer.status('u', 'd').status, 'idle');
+});
