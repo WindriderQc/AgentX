@@ -5,6 +5,7 @@
 // or reminder for the parent to review (#13). Nothing here checks in, approves
 // or completes a chore, and no personal task or code work is reachable.
 const defaultIdeaInbox = require('../../src/services/ideaInboxService');
+const { ageInYears, birthdayLabel, instanceToday } = require('../../src/domains/household/familyBirthDate');
 
 const IDEA_REQUEST = /(j'?\s?ai une (?:super |bonne |petite )?id[ée]e|(?:note|garde|ajoute|[ée]cris)[sz]?(?:-moi)?\s+(?:une|mon|cette|l')\s*id[ée]e|id[ée]e pour (?:papa|la maison|plus tard)|i have an idea|(?:save|keep|write down) (?:my|this|an) idea)/i;
 const REMINDER_REQUEST = /(rappelle[sz]?[- ]moi|fais[- ]moi penser|n'?oublie pas de me rappeler|(?:note|ajoute|garde)[sz]?(?:-moi)?\s+(?:un|ce)\s+rappel|remind me)/i;
@@ -54,14 +55,24 @@ async function choreSummary(familyTasks, { logger } = {}) {
 
 const AGE_LABELS = Object.freeze({ little: 'petite enfance', school: 'âge scolaire', teen: 'adolescence' });
 
+// With a birth date the parent set, the age is computed for today and the
+// birthday is given as day and month; otherwise the age band stands.
+function memberAge(profile, today) {
+  const age = ageInYears(profile.birthDate, today);
+  if (age === null) return AGE_LABELS[profile.ageBand] || AGE_LABELS.school;
+  return `${age} an${age > 1 ? 's' : ''}, anniversaire le ${birthdayLabel(profile.birthDate)}`;
+}
+
 // Who the children are comes from the parent's Family page, not from whatever
 // notes a search happens to select (#119): notes about one child must never
 // make Nestor forget another. A failure leaves the turn without the list.
-async function householdMembers(familyTasks, { logger } = {}) {
+// Super Dad only: Famille turns never call this.
+async function householdMembers(familyTasks, { logger, now = new Date() } = {}) {
   try {
-    const { profiles = [] } = await familyTasks.listProfiles();
+    const { profiles = [] } = await familyTasks.listProfileDetails();
+    const today = instanceToday(now);
     const names = profiles.filter(profile => profile.active !== false).slice(0, MAX_PROFILES)
-      .map(profile => `${String(profile.displayName || profile.id).slice(0, 80)} (${AGE_LABELS[profile.ageBand] || AGE_LABELS.school})`);
+      .map(profile => `${String(profile.displayName || profile.id).slice(0, 80)} (${memberAge(profile, today)})`);
     return names.length
       ? `Enfants de la maison (profils de la page Famille de papa; cette liste fait foi sur les notes) : ${names.join(', ')}.`
       : '';

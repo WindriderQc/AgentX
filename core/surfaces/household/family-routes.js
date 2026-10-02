@@ -32,6 +32,10 @@ function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, s
   }
   const endpoints = [
     ['get', '/profiles', 'listProfiles', 200],
+    // Adult only: parentalAccess opens exactly /profiles to the Family page,
+    // never these, so a child page cannot read or change a birth date.
+    ['get', '/profiles/details', 'listProfileDetails', 200],
+    ['post', '/profiles/birth-date', 'setProfileBirthDate', 200],
     ['post', '/profiles', 'addProfile', 201],
     ['post', '/launch', 'launch', 201],
     ['post', '/profiles/archive', 'archiveProfile', 200],

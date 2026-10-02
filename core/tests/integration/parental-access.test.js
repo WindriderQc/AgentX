@@ -46,6 +46,12 @@ describe('parental access at the single household gateway', () => {
     }
     // The idea inbox is the parent's review (#13); children capture only through Nestor.
     await edge(request(app).get('/api/family/ideas')).expect(401);
+    // Birth dates are the parent's: the Family page reads only the public profile projection.
+    for (const url of ['/api/family/profiles/details', '/API/family/profiles/details/']) {
+      expect((await edge(request(app).get(url)).expect(401)).body.code).toBe('ADULT_LOCKED');
+    }
+    expect((await edge(request(app).post('/api/family/profiles/birth-date')).send({ profileId: 'any', birthDate: '2016-03-14' })
+      .expect(401)).body.code).toBe('ADULT_LOCKED');
     for (const url of ['/api/family/chores/approve', '/api/family/launch', '/api/family/shopping/bought',
       '/api/family/ideas/any/promote', '/api/family/ideas/any/set-aside',
       '/api/voice-personas/private/notes', '/mcp']) {

@@ -41,7 +41,7 @@ test('the chore summary is read-only Kids Room rows and fails closed to nothing'
 });
 
 test('every active child profile is listed, so notes about one child never hide another (#119)', async () => {
-  const familyTasks = { listProfiles: async () => ({ profiles: [
+  const familyTasks = { listProfileDetails: async () => ({ profiles: [
     { id: 'kid-a', displayName: 'Alex', ageBand: 'school', active: true },
     { id: 'kid-b', displayName: 'Sam', ageBand: 'little', active: true },
     { id: 'old', displayName: 'Retired', ageBand: 'teen', active: false }
@@ -50,9 +50,28 @@ test('every active child profile is listed, so notes about one child never hide 
   assert.match(line, /^Enfants de la maison .*fait foi sur les notes/);
   assert.match(line, /Alex \(âge scolaire\), Sam \(petite enfance\)\.$/);
   assert.doesNotMatch(line, /Retired/);
-  assert.equal(await householdMembers({ listProfiles: async () => ({ profiles: [] }) }), '');
+  assert.equal(await householdMembers({ listProfileDetails: async () => ({ profiles: [] }) }), '');
   const warnings = [];
-  assert.equal(await householdMembers({ listProfiles: async () => { throw new Error('down'); } },
+  assert.equal(await householdMembers({ listProfileDetails: async () => { throw new Error('down'); } },
     { logger: { warn: (...args) => warnings.push(args) } }), '');
   assert.equal(warnings.length, 1);
+});
+
+test('a parent-set birth date gives Super Dad the current age and birthday, never the raw date', async () => {
+  const previous = process.env.PLANNING_TIME_ZONE;
+  process.env.PLANNING_TIME_ZONE = 'UTC';
+  try {
+    const familyTasks = { listProfileDetails: async () => ({ profiles: [
+      { id: 'kid-a', displayName: 'Alex', ageBand: 'school', birthDate: '2016-03-14' },
+      { id: 'kid-b', displayName: 'Sam', ageBand: 'little', birthDate: '2025-03-01' },
+      { id: 'kid-c', displayName: 'Robin', ageBand: 'teen' }
+    ] }) };
+    const before = await householdMembers(familyTasks, { now: new Date('2026-03-13T12:00:00Z') });
+    assert.match(before, /Alex \(9 ans, anniversaire le 14 mars\), Sam \(1 an, anniversaire le 1er mars\), Robin \(adolescence\)\.$/);
+    assert.doesNotMatch(before, /2016|2025/);
+    const on = await householdMembers(familyTasks, { now: new Date('2026-03-14T12:00:00Z') });
+    assert.match(on, /Alex \(10 ans, anniversaire le 14 mars\)/);
+  } finally {
+    if (previous === undefined) delete process.env.PLANNING_TIME_ZONE; else process.env.PLANNING_TIME_ZONE = previous;
+  }
 });
