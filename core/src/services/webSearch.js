@@ -76,7 +76,11 @@ async function searchWeb(query, options = {}) {
     const isTimeout = err.name === 'AbortError';
     const errorMsg = isTimeout ? `SearXNG timeout after ${SEARCH_TIMEOUT_MS}ms` : err.message;
 
-    logger.warn('Web search failed (graceful degradation)', { query, error: errorMsg });
+    logger.warn('Web search failed (graceful degradation)', {
+      queryLength: typeof query === 'string' ? query.length : 0,
+      timeout: isTimeout,
+      error: errorMsg
+    });
 
     return { results: [], formatted: '', error: errorMsg };
   }

@@ -206,7 +206,7 @@ async function searchConversations(options) {
     logger.error('Conversation search failed', {
       error: error.message,
       userId,
-      query
+      queryLength: typeof query === 'string' ? query.length : 0
     });
     throw error;
   }

@@ -5,6 +5,7 @@ jest.mock('../../config/logger', () => ({ info: jest.fn(), warn: jest.fn(), erro
 const mockFetch = jest.fn();
 jest.mock('node-fetch', () => (...args) => mockFetch(...args));
 
+const logger = require('../../config/logger');
 const { searchWeb } = require('../../src/services/webSearch');
 
 describe('searchWeb', () => {
@@ -46,5 +47,16 @@ describe('searchWeb', () => {
     const result = await searchWeb('anything');
     expect(result.error).toBe('SEARXNG_URL is not configured');
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('logs failures without the query text', async () => {
+    logger.warn.mockClear();
+    mockFetch.mockRejectedValue(new Error('connect ECONNREFUSED'));
+    const result = await searchWeb('secret family question');
+    expect(result.error).toBe('connect ECONNREFUSED');
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    const [, meta] = logger.warn.mock.calls[0];
+    expect(meta).toEqual({ queryLength: 22, timeout: false, error: 'connect ECONNREFUSED' });
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('secret family question');
   });
 });
