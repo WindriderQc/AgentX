@@ -10,13 +10,15 @@
  * event to the alert engine; the `network-new-device` rule decides delivery.
  * Devices without a MAC cannot be followed reliably and are ignored.
  *
- * Opt-in: NETWORK_DEVICE_WATCH_MS sets the poll interval (minimum 60000).
+ * Opt-in: NETWORK_DEVICE_WATCH_MS sets the poll interval (minimum 60000). The
+ * first check runs one minute after startup.
  */
 
 const logger = require('../../config/logger');
 
 const METRIC = 'network_new_device';
 const MIN_INTERVAL_MS = 60 * 1000;
+const FIRST_DELAY_MS = 60 * 1000;
 const MAC_PATTERN = /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/;
 
 function watchIntervalMs(env = process.env) {
@@ -130,16 +132,21 @@ function createNetworkDeviceWatch(deps = {}) {
     }
   }
 
-  function start(intervalMs = watchIntervalMs()) {
+  // The first check waits: Core and Data are often recreated together, and a
+  // check at Core startup would only meet a Data service still booting.
+  function start(intervalMs = watchIntervalMs(), { firstDelayMs = FIRST_DELAY_MS } = {}) {
     if (!intervalMs || timer) return false;
-    tick();
-    timer = setInterval(tick, intervalMs);
+    timer = setTimeout(() => {
+      tick();
+      timer = setInterval(tick, intervalMs);
+      if (typeof timer.unref === 'function') timer.unref();
+    }, Math.min(firstDelayMs, intervalMs));
     if (typeof timer.unref === 'function') timer.unref();
     return true;
   }
 
   function stop() {
-    if (timer) clearInterval(timer);
+    if (timer) { clearTimeout(timer); clearInterval(timer); }
     timer = null;
   }
 
