@@ -89,7 +89,8 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     waiters.delete(sessionId);
   }
 
-  // A new turn owns the inference host: the running review for this conversation stops.
+  // A new turn supersedes this conversation's review: it stops before inference; on a shared
+  // host its request is cancelled so the voice gets the host back; its result is never kept.
   function cancel(sessionId) {
     running.get(sessionId)?.abort();
     running.delete(sessionId);
@@ -100,14 +101,19 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     if (signal.aborted) return;
     const turns = (await loadTurns(session)).slice(-LIMITS.turns);
     if (signal.aborted || !turns.length) return;
+    // On its own host the review does not compete with the voice, so a newer turn only
+    // discards its result: cancelling an admitted request leaves the runtime state
+    // unknown and Core quarantines the host. Exclusive admission is opt-in because it
+    // waits for an idle host, blocks other callers and unloads co-resident models.
+    const dedicatedHost = Boolean(env.HOUSEHOLD_BRAIN_HOST_URL);
     const result = await inference.execute({
       mode: 'chat', taskType: env.HOUSEHOLD_BRAIN_TASK || 'master_brain',
       ...(env.HOUSEHOLD_BRAIN_MODEL ? { model: String(env.HOUSEHOLD_BRAIN_MODEL).replace(/^ollama\//, '') } : {}),
-      ...(env.HOUSEHOLD_BRAIN_HOST_URL ? { exclusiveHost: true } : {}),
+      ...(dedicatedHost && env.HOUSEHOLD_BRAIN_EXCLUSIVE === 'true' ? { exclusiveHost: true } : {}),
       messages: [{ role: 'system', content: reviewerPrompt({ family }) }, { role: 'user', content: transcript(turns) }],
       stream: false, think: false, temperature: 0.2, max_tokens: 700,
       callerDetail: `agentx-household/brain/${family ? 'family' : 'private'}`, timeoutMs: LIMITS.reviewMs
-    }, { signal, consumerContract, ...(env.HOUSEHOLD_BRAIN_HOST_URL ? { hostUrl: String(env.HOUSEHOLD_BRAIN_HOST_URL) } : {}) });
+    }, { ...(dedicatedHost ? { hostUrl: String(env.HOUSEHOLD_BRAIN_HOST_URL) } : { signal }), consumerContract });
     if (signal.aborted) return;
     if (!result?.ok) throw new Error('Reviewer inference failed');
     const parsed = readReview(result.body?.message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '');

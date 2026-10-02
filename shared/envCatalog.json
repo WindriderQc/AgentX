@@ -1414,6 +1414,16 @@
       "description": "Optional JSON mapping a Household persona id, or \"*\", to an instance voice \"provider|voice\" (kokoro, windows_sapi or voxcpm). A browser voice selection still wins. Unset: catalog voices.",
       "fallback": "catalog persona voices"
     },
+    "HOUSEHOLD_BRAIN_EXCLUSIVE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Ask for exclusive admission on HOUSEHOLD_BRAIN_HOST_URL for background reviews (waits for an idle host, blocks other callers, unloads co-resident models). Unset: shared admission."
+    },
     "HOUSEHOLD_BRAIN_HOST_URL": {
       "services": [
         "core"

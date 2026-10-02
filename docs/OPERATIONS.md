@@ -369,9 +369,14 @@ The background brain runs after each Super Dad and Famille turn when
 `HOUSEHOLD_BRAIN_ENABLED=true` (the Compose default; `HOUSEHOLD_BRAIN_FAMILY=false`
 leaves Famille out). It uses the router's `master_brain` lane unless
 `HOUSEHOLD_BRAIN_MODEL` names an Ollama model; `HOUSEHOLD_BRAIN_HOST_URL` pins it
-to one Ollama host so it never competes with the voice model's host. A new turn
-cancels a running review, and the browser speaks its remark only while
-listening with no turn in flight.
+to one Ollama host so it never competes with the voice model's host; a fast voice
+model and a larger reviewer on another host form a two-level conversation. A new
+turn supersedes a running review: without a pinned host its request is cancelled
+so the voice gets the host back; on a pinned host the request finishes and its
+result is discarded, because cancelling an admitted request quarantines the host.
+Reviews use shared admission unless `HOUSEHOLD_BRAIN_EXCLUSIVE=true`, which waits
+for an idle host, blocks other callers and unloads co-resident models. The
+browser speaks its remark only while listening with no turn in flight.
 The default family knowledge corpus is empty and disabled; an approved external
 configuration may be selected with `NESTOR_KNOWLEDGE_CONFIG_PATH`.
 
