@@ -65,32 +65,32 @@ Issues hold the current work and remaining acceptance:
 
 | Area | Tracking |
 |---|---|
-| Playground screen capture through canonical attachments | [#1](https://github.com/WindriderQc/AgentX/issues/1) |
-| Real-device acceptance for phone, microphone and voice | [#2](https://github.com/WindriderQc/AgentX/issues/2) |
-| DSH Studio bounded-session runtime claims | [#3](https://github.com/WindriderQc/AgentX/issues/3) |
-| Qualify benchmark judges against human references | [#5](https://github.com/WindriderQc/AgentX/issues/5) |
-| Evaluate dedicated collections for family and personal tasks | [#6](https://github.com/WindriderQc/AgentX/issues/6) |
-| Bounded maintenance actions through Core | [#7](https://github.com/WindriderQc/AgentX/issues/7) |
-| Measure spoken-turn latency by observed phase | [#8](https://github.com/WindriderQc/AgentX/issues/8) |
-| Build an adult-reviewed household RAG corpus | [#9](https://github.com/WindriderQc/AgentX/issues/9) |
-| Characterize CPU spill for models exceeding GPU memory | [#10](https://github.com/WindriderQc/AgentX/issues/10) |
-| Real-device acceptance for camera face unlock | [#11](https://github.com/WindriderQc/AgentX/issues/11) |
-| Per-person camera profiles | [#12](https://github.com/WindriderQc/AgentX/issues/12) |
-| Bounded capability milestones for an additional Nestor persona | [#13](https://github.com/WindriderQc/AgentX/issues/13) |
-| Complete finance capability and legacy retirement | [#14](https://github.com/WindriderQc/AgentX/issues/14) |
-| Qualify a reproducible thinking-mode benchmark campaign | [#15](https://github.com/WindriderQc/AgentX/issues/15) |
-| Identify and close the handle keeping Core alive after shutdown | [#16](https://github.com/WindriderQc/AgentX/issues/16) |
-| Optional visual math stage for Household | [#17](https://github.com/WindriderQc/AgentX/issues/17) |
-| Apply context proposals with co-resident model evidence | [#18](https://github.com/WindriderQc/AgentX/issues/18) |
-| Nestor reviewer context and measured voice impact | [#19](https://github.com/WindriderQc/AgentX/issues/19) |
-| Adult-reviewed household document promotion to RAG | [#20](https://github.com/WindriderQc/AgentX/issues/20) |
-| Verified local mail archive and safe provider cleanup | [#22](https://github.com/WindriderQc/AgentX/issues/22) |
-| Nestor private knowledge across sources | [#23](https://github.com/WindriderQc/AgentX/issues/23) |
-| Instance inventory and storage placement tooling | [#24](https://github.com/WindriderQc/AgentX/issues/24) |
-| Household photo metadata and staged visual retrieval | [#25](https://github.com/WindriderQc/AgentX/issues/25) |
-| Keep the configured language and voice consistent within a turn | [#26](https://github.com/WindriderQc/AgentX/issues/26) |
-| Qualify French Canadian speech recognition | [#27](https://github.com/WindriderQc/AgentX/issues/27) |
-| Local French Canadian voices and custom voice profiles | [#28](https://github.com/WindriderQc/AgentX/issues/28) |
+| Playground screen capture through canonical attachments | [#2](https://github.com/WindriderQc/AgentX/issues/2) |
+| Real-device acceptance for phone, microphone and voice | [#3](https://github.com/WindriderQc/AgentX/issues/3) |
+| DSH Studio bounded-session runtime claims | [#4](https://github.com/WindriderQc/AgentX/issues/4) |
+| Qualify benchmark judges against human references | [#6](https://github.com/WindriderQc/AgentX/issues/6) |
+| Evaluate dedicated collections for family and personal tasks | [#7](https://github.com/WindriderQc/AgentX/issues/7) |
+| Bounded maintenance actions through Core | [#8](https://github.com/WindriderQc/AgentX/issues/8) |
+| Measure spoken-turn latency by observed phase | [#9](https://github.com/WindriderQc/AgentX/issues/9) |
+| Build an adult-reviewed household RAG corpus | [#10](https://github.com/WindriderQc/AgentX/issues/10) |
+| Characterize CPU spill for models exceeding GPU memory | [#11](https://github.com/WindriderQc/AgentX/issues/11) |
+| Real-device acceptance for camera face unlock | [#12](https://github.com/WindriderQc/AgentX/issues/12) |
+| Per-person camera profiles | [#13](https://github.com/WindriderQc/AgentX/issues/13) |
+| Bounded capability milestones for an additional Nestor persona | [#14](https://github.com/WindriderQc/AgentX/issues/14) |
+| Complete finance capability and legacy retirement | [#15](https://github.com/WindriderQc/AgentX/issues/15) |
+| Qualify a reproducible thinking-mode benchmark campaign | [#16](https://github.com/WindriderQc/AgentX/issues/16) |
+| Identify and close the handle keeping Core alive after shutdown | [#17](https://github.com/WindriderQc/AgentX/issues/17) |
+| Optional visual math stage for Household | [#18](https://github.com/WindriderQc/AgentX/issues/18) |
+| Apply context proposals with co-resident model evidence | [#19](https://github.com/WindriderQc/AgentX/issues/19) |
+| Nestor reviewer context and measured voice impact | [#20](https://github.com/WindriderQc/AgentX/issues/20) |
+| Adult-reviewed household document promotion to RAG | [#21](https://github.com/WindriderQc/AgentX/issues/21) |
+| Verified local mail archive and safe provider cleanup | [#23](https://github.com/WindriderQc/AgentX/issues/23) |
+| Nestor private knowledge across sources | [#24](https://github.com/WindriderQc/AgentX/issues/24) |
+| Instance inventory and storage placement tooling | [#25](https://github.com/WindriderQc/AgentX/issues/25) |
+| Household photo metadata and staged visual retrieval | [#26](https://github.com/WindriderQc/AgentX/issues/26) |
+| Keep the configured language and voice consistent within a turn | [#27](https://github.com/WindriderQc/AgentX/issues/27) |
+| Qualify French Canadian speech recognition | [#28](https://github.com/WindriderQc/AgentX/issues/28) |
+| Local French Canadian voices and custom voice profiles | [#29](https://github.com/WindriderQc/AgentX/issues/29) |
 
 ## What a green result means
 
