@@ -338,6 +338,18 @@ browser's own voice selection still wins; invalid entries keep the catalog voice
 The chosen engine must be available: an unavailable VoxCPM2 worker leaves the
 reply unspoken rather than substituting another voice.
 
+Live voice transcribes through VoiX. `HOUSEHOLD_BROWSER_STT_FALLBACK` optionally
+lets Super Dad (`personal`) or both spaces (`true`) fall back to the browser's own
+speech recognition when VoiX is unreachable (transcription 502/503/504, a network
+error, or `/api/voix/health` down at start). The default `false` hides it: in
+Chrome and Edge that recognition sends the microphone audio to the browser
+vendor's cloud service, which breaks the local-only default. Even when allowed it
+never starts on its own: the page shows a French notice with that warning and a
+button, the choice is remembered per space in that browser and revocable under
+Réglages › Écoute, and a banner stays visible while it is in use. The recognizer
+only replaces transcription; wake word, Stop, echo and interruption handling are
+unchanged. Leave it `false` or `personal` when the family space must stay local.
+
 VoiX requires `VOIX_BASE_URL` for its player, speech recognition/synthesis and
 native-device APIs. `DATAAPI_BASE_URL` is optional. Email actions require
 `LEANTIME_BASE_URL`, `LEANTIME_API_KEY`, `LEANTIME_EMAIL_ACTION_PROJECT_ID` and
