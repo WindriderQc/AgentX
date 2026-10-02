@@ -38,3 +38,36 @@ describe('Qdrant collection metadata helpers', () => {
     expect(context.operationId).toBe('rag.qdrant.payload-index-create');
   });
 });
+
+describe('Qdrant payload indexes', () => {
+  let store;
+  const indexCalls = () => fetch.mock.calls.filter(([url]) => url.endsWith('/index'))
+    .map(([, options]) => JSON.parse(options.body));
+  beforeEach(() => {
+    fetch.mockReset();
+    store = new QdrantVectorStore({ qdrantUrl: 'http://qdrant:6333', collectionName: 'target' });
+  });
+
+  test('an existing collection gets only its missing indexes, and a failed one does not block it', async () => {
+    const present = Object.keys(QdrantVectorStore.PAYLOAD_INDEXES).filter(field => !['documentId', 'text'].includes(field));
+    fetch.mockImplementation(async (url, options = {}) => {
+      if (!options.method) return mockOk({ result: { payload_schema: Object.fromEntries(present.map(f => [f, {}])) } });
+      return JSON.parse(options.body).field_name === 'text' ? mockFail(500, 'boom') : mockOk({ result: {} });
+    });
+    await store._ensureCollection(768);
+    expect(indexCalls()).toEqual([
+      { field_name: 'documentId', field_schema: 'keyword' },
+      { field_name: 'text', field_schema: { type: 'text', tokenizer: 'word', min_token_len: 2, lowercase: true } }
+    ]);
+    expect(store._collectionVerified).toBe(true);
+    expect(store._textIndexReady).toBe(false);
+  });
+
+  test('a new collection is created with every payload index', async () => {
+    fetch.mockImplementation(async (url, options = {}) => (
+      options.method ? mockOk({ result: {} }) : mockFail(404, 'Not found: Collection `target` doesn\'t exist!')));
+    await store._ensureCollection(768);
+    expect(indexCalls().map(body => body.field_name)).toEqual(Object.keys(QdrantVectorStore.PAYLOAD_INDEXES));
+    expect(store._textIndexReady).toBe(true);
+  });
+});

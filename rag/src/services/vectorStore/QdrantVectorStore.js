@@ -24,6 +24,23 @@ const METADATA_PAGE_SIZE = 1000;
 // Facts every point of one stored revision shares. Points that disagree mean
 // an interrupted or legacy write left more than one version of the document.
 const REVISION_FIELDS = ['revision', 'hash', 'contentHash', 'chunkSize', 'chunkOverlap', 'chunkCount'];
+// Payload indexes for every field the store filters on. Without them each
+// filtered read scans the whole collection. `text` serves keyword search.
+const TEXT_INDEX_SCHEMA = Object.freeze({ type: 'text', tokenizer: 'word', min_token_len: 2, lowercase: true });
+const PAYLOAD_INDEXES = Object.freeze({
+  documentId: 'keyword',
+  revision: 'keyword',
+  chunkIndex: 'integer',
+  source: 'keyword',
+  tags: 'keyword',
+  scope: 'keyword',
+  sensitivity: 'keyword',
+  sourceIdentity: 'keyword',
+  contentHash: 'keyword',
+  noteName: 'keyword',
+  aliases: 'keyword',
+  text: TEXT_INDEX_SCHEMA
+});
 
 class QdrantVectorStore extends VectorStoreAdapter {
   constructor(config = {}) {
@@ -34,6 +51,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     this.collectionName = config.collectionName || process.env.QDRANT_COLLECTION || 'agentx_embeddings';
     this.vectorDimension = Number(config.vectorDimension || process.env.EMBEDDING_DIMENSION) || 0;
     this._collectionVerified = false;
+    this._textIndexReady = false;
   }
 
   _outboundContext(operationId) {
@@ -60,6 +78,8 @@ class QdrantVectorStore extends VectorStoreAdapter {
         this._outboundContext(SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_READ)
       );
       if (res.ok) {
+        const info = await res.json().catch(() => ({}));
+        await this._ensurePayloadIndexes(info?.result?.payload_schema || {});
         this._collectionVerified = true;
         return;
       }
@@ -86,8 +106,35 @@ class QdrantVectorStore extends VectorStoreAdapter {
       const text = await res.text();
       throw new Error(`Failed to create Qdrant collection: ${res.status} ${text}`);
     }
-    this._collectionVerified = true;
     logger.info(`Created Qdrant collection "${this.collectionName}" with vector size ${vectorSize}`);
+    await this._ensurePayloadIndexes({});
+    this._collectionVerified = true;
+  }
+
+  /**
+   * Create the payload indexes missing from `payloadSchema`. Qdrant builds
+   * them in the background; on a large existing collection this happens once
+   * and takes seconds. A failure is logged and never blocks ingest or search.
+   */
+  async _ensurePayloadIndexes(payloadSchema) {
+    for (const [field, schema] of Object.entries(PAYLOAD_INDEXES)) {
+      if (payloadSchema[field]) {
+        if (field === 'text') this._textIndexReady = true;
+        continue;
+      }
+      try {
+        await this.createPayloadIndex(field, schema);
+        if (field === 'text') this._textIndexReady = true;
+        logger.info('Created Qdrant payload index', { collection: this.collectionName, field });
+      } catch (err) {
+        logger.warn('Qdrant payload index creation failed', { collection: this.collectionName, field, error: err.message });
+      }
+    }
+  }
+
+  _forgetCollection() {
+    this._collectionVerified = false;
+    this._textIndexReady = false;
   }
 
   _generatePointId(documentId, revision, chunkIndex) {
@@ -358,7 +405,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         if (this._isMissingCollectionResponse(res.status, text)) {
-          this._collectionVerified = false;
+          this._forgetCollection();
           // A collection absent before traversal is empty. Losing it after a
           // page (or after successful stats metadata) is an unavailable read.
           if (missingCollectionIsEmpty && offset === null) return;
@@ -389,7 +436,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       if (this._isMissingCollectionResponse(res.status, text)) {
-        this._collectionVerified = false;
+        this._forgetCollection();
         return {
           documentCount: 0,
           chunkCount: 0,
@@ -525,5 +572,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     }
   }
 }
+
+QdrantVectorStore.PAYLOAD_INDEXES = PAYLOAD_INDEXES;
 
 module.exports = QdrantVectorStore;

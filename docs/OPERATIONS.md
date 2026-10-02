@@ -690,6 +690,17 @@ the host declares (fully in VRAM, or none of it on a CPU host) and a short-promp
 rollback. The response reports `rollback: verified` or `unverified`; an
 unverified rollback keeps the runtime lease quarantined.
 
+## Qdrant payload indexes
+
+RAG creates the payload indexes its filters use (`documentId`, `revision`,
+`chunkIndex`, `source`, `tags`, `scope`, `sensitivity`, `sourceIdentity`,
+`contentHash`, `noteName`, `aliases`) and a full-text index on `text` for
+keyword search. They are created with a new collection, and the missing ones
+are added the first time RAG verifies an existing collection. Qdrant builds
+them in the background: on a collection of about 100,000 chunks this is a
+one-time cost of a few seconds. A failed index creation is logged as a warning
+and does not stop ingestion or search.
+
 ## Switching the embedding model
 
 The embedding model and its dimension belong to one Qdrant collection. A new
