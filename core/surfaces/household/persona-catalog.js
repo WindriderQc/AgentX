@@ -11,7 +11,8 @@ function generatedPersonas() {
       systemPrompt: [entry.selfName ? `For this conversation, use the name ${entry.selfName}.` : '', entry.en,
         'Use the language of the conversation. This personality adds presentation to the agent; it does not change its tools, permissions, memory, model or fallback policy.'].filter(Boolean).join('\n\n'),
       uiConfig: { type: 'chat', route: '/index.html', capabilities: ['text'],
-        layoutConfig: { label: entry.label, voice: entry.voice, visual: entry.visual || null,
+        // agentId names the team member whose own default presentation this is.
+        layoutConfig: { label: entry.label, voice: entry.voice, visual: entry.visual || null, agentId: entry.agentId || null,
           kind: 'personality', sourceRef: 'adapters/household/personas.json' }
       }
     };
@@ -38,7 +39,7 @@ function snapshot(row) {
     name: layout.label || row.name, description: row.description || '', identity: row.systemPrompt,
     identitySha256: crypto.createHash('sha256').update(row.systemPrompt).digest('hex'),
     sourceRef: `PromptConfig/${row.name}@${row.version}`,
-    voice: instanceVoice(row.name, layout.voice || {}), visual: layout.visual || null };
+    voice: instanceVoice(row.name, layout.voice || {}), visual: layout.visual || null, agentId: layout.agentId || null };
 }
 
 const { speechFor } = require('./public/persona-presentation');
