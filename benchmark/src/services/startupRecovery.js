@@ -14,14 +14,20 @@ const logger = require('../../config/logger');
 const { shouldSyncRegisteredHosts } = require('../helpers/benchmarkProfileCapabilities');
 
 function startStartupRecovery(profile) {
+  const { interruptOrphanedBatches, currentProcessStartedAt } = require('./benchmark/orphanedBatchRecovery');
   const { recoverJudgeQueue } = require('./benchmark/judgeQueueRecovery');
-  recoverJudgeQueue().catch(err => logger.warn('Judge queue recovery error', { error: err.message }));
-
-  // Release leaked claims, mark ghost batches stopped, then re-acquire the
-  // claims of batches that are still genuinely active.
   const { recoverLeakedClaims, reacquireActiveBatchClaims } = require('./benchmark/claimRecovery');
-  recoverLeakedClaims()
-    .then(() => reacquireActiveBatchClaims())
+  const processStartedAt = currentProcessStartedAt();
+
+  // Settle batches a previous process left running before anything else
+  // writes to them. Then recover judge tasks, release leaked claims, and
+  // re-acquire claims only for batches this process owns.
+  interruptOrphanedBatches(processStartedAt)
+    .catch(err => logger.warn('Orphaned batch recovery error', { error: err.message }))
+    .then(() => {
+      recoverJudgeQueue().catch(err => logger.warn('Judge queue recovery error', { error: err.message }));
+      return recoverLeakedClaims().then(() => reacquireActiveBatchClaims({ processStartedAt }));
+    })
     .catch(err => logger.warn('Claim recovery error', { error: err.message }));
 
   require('./profiler/profilerProjectionRecovery').startProfilerProjectionRecovery();

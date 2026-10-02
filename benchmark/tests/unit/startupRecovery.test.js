@@ -4,6 +4,10 @@ const fs = require('fs');
 const path = require('path');
 
 jest.mock('../../config/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
+jest.mock('../../src/services/benchmark/orphanedBatchRecovery', () => ({
+  interruptOrphanedBatches: jest.fn(async () => 0),
+  currentProcessStartedAt: jest.fn(() => new Date(0))
+}));
 jest.mock('../../src/services/benchmark/judgeQueueRecovery', () => ({ recoverJudgeQueue: jest.fn(async () => {}) }));
 jest.mock('../../src/services/benchmark/claimRecovery', () => ({
   recoverLeakedClaims: jest.fn(async () => {}),
@@ -16,6 +20,8 @@ jest.mock('../../src/services/benchmark/benchmarkAuthorityReconciliation', () =>
 jest.mock('../../src/services/registeredHostSync', () => ({ startRegisteredHostSync: jest.fn() }));
 
 const claimRecovery = require('../../src/services/benchmark/claimRecovery');
+const { interruptOrphanedBatches } = require('../../src/services/benchmark/orphanedBatchRecovery');
+const { recoverJudgeQueue } = require('../../src/services/benchmark/judgeQueueRecovery');
 const { startProfilerProjectionRecovery } = require('../../src/services/profiler/profilerProjectionRecovery');
 const { startBenchmarkAuthorityReconciliation } = require('../../src/services/benchmark/benchmarkAuthorityReconciliation');
 const { startRegisteredHostSync } = require('../../src/services/registeredHostSync');
@@ -31,10 +37,25 @@ describe('startup recovery', () => {
   it.each(['demo', 'full'])('recovers claims, profiler projections and authority writes in %s', async profile => {
     startStartupRecovery(profile);
     await flush();
+    expect(interruptOrphanedBatches).toHaveBeenCalledWith(new Date(0));
+    expect(recoverJudgeQueue).toHaveBeenCalledTimes(1);
     expect(claimRecovery.recoverLeakedClaims).toHaveBeenCalledTimes(1);
-    expect(claimRecovery.reacquireActiveBatchClaims).toHaveBeenCalledTimes(1);
+    expect(claimRecovery.reacquireActiveBatchClaims).toHaveBeenCalledWith({ processStartedAt: new Date(0) });
     expect(startProfilerProjectionRecovery).toHaveBeenCalledTimes(1);
     expect(startBenchmarkAuthorityReconciliation).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles orphaned batches before judge and claim recovery', async () => {
+    let settle;
+    interruptOrphanedBatches.mockImplementationOnce(() => new Promise(resolve => { settle = resolve; }));
+    startStartupRecovery('demo');
+    await flush();
+    expect(recoverJudgeQueue).not.toHaveBeenCalled();
+    expect(claimRecovery.recoverLeakedClaims).not.toHaveBeenCalled();
+    settle(1);
+    await flush();
+    expect(recoverJudgeQueue).toHaveBeenCalledTimes(1);
+    expect(claimRecovery.recoverLeakedClaims).toHaveBeenCalledTimes(1);
   });
 
   it('syncs registered hosts only in the full profile', () => {
