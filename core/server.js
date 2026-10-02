@@ -109,7 +109,11 @@ const shutdown = createServerShutdown({
     await drainRuntimeOperations();
   },
   flush: () => require('./src/middleware/performanceTracker').stop(),
-  disconnect: () => require('mongoose').disconnect()
+  disconnect: () => {
+    // Registered work is drained; sockets still open belong to departed callers.
+    require('./src/helpers/httpAgent').destroyOutboundSockets();
+    return require('mongoose').disconnect();
+  }
 });
 process.on('SIGTERM', () => { shutdown.run('SIGTERM'); });
 process.on('SIGINT', () => { shutdown.run('SIGINT'); });

@@ -15,6 +15,18 @@ const mongoose = require('mongoose');
 const { BENCHMARK_CATEGORY_KEYS } = require('../../config/categories');
 
 const promptSnapshotFields = {
+    // The catalog prompt the result ran and the fingerprint of its identity
+    // and scoring content (shared/benchmarkTargetContract buildPromptFingerprint).
+    // Results compare on a prompt only when these fingerprints are equal;
+    // null on legacy rows whose cohort fingerprint pinned the whole catalog.
+    prompt_id: {
+        type: String,
+        default: null
+    },
+    prompt_fingerprint: {
+        type: String,
+        default: null
+    },
     prompt_name: {
         type: String,
         index: true

@@ -79,6 +79,18 @@ describe('one group per model and host', () => {
         expect(other.history.map(row => row.qualityCohortFingerprint)).toEqual(['sha256:cohort-1']);
     });
 
+    test('results on an edited prompt share the cohort but never become the headline', () => {
+        const stale = scored({
+            generalistScore: null, rankable: false, filterReason: 'prompt_content_changed', promptContentStale: true,
+            stalePrompts: ['Reasoning two'], totalTests: 2, latestTimestamp: '2026-09-30T00:00:00.000Z'
+        });
+        const { groups } = groupLeaderboard([stale, scored()], { selectedQualityCohortFingerprint: SELECTED });
+        expect(groups[0]).toMatchObject({ rank: 1, comparable: true, headlineReason: HEADLINE_REASON.COMPARABLE_COHORT });
+        expect(groups[0].headline.promptContentStale).toBeUndefined();
+        expect(groups[0].history).toHaveLength(1);
+        expect(groups[0].history[0].verdict).toMatchObject({ comparable: false, reasons: ['prompt_content_changed'] });
+    });
+
     test('keeps hosts apart and annotates the flat rows in place', () => {
         const rows = [scored(), scored({ host: 'http://gpu-b.example:11434', generalistScore: 70 })];
         const { groups } = groupLeaderboard(rows, { selectedQualityCohortFingerprint: SELECTED });
