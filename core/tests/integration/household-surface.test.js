@@ -278,6 +278,26 @@ describe('built-in Household surface on Core', () => {
     }
   });
 
+  test('native Family consumer requires its bearer and the exact Family contract', async () => {
+    const previous = process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN;
+    process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = 'synthetic-family-consumer';
+    const base = '/api/consumers/nestor/v1/household-family';
+    const contract = { packId: 'kidx_nestor', modeId: 'family', scopeId: 'family' };
+    try {
+      const workshop = await request(app).get(`${base}/workshop-contract`).expect(200);
+      expect(workshop.body.data).toMatchObject({ schemaVersion: 1, context: 'kidx-workshop', toolsScope: 'family-memory-only' });
+      await request(app).post(`${base}/sessions`).send(contract).expect(401);
+      const bearer = { Authorization: 'Bearer synthetic-family-consumer' };
+      const wrong = await request(app).post(`${base}/sessions`).set(bearer).send({ ...contract, scopeId: 'personal' }).expect(400);
+      expect(wrong.body.code).toBe('VOIX_FAMILY_CONTRACT_REQUIRED');
+      const created = await request(app).post(`${base}/sessions`).set(bearer).send(contract).expect(201);
+      expect(created.body.data.session.sessionId).toBeTruthy();
+    } finally {
+      if (previous === undefined) delete process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN;
+      else process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = previous;
+    }
+  });
+
   test('LLMx opening and rejected scene result resume from the same canonical messages', async () => {
     const base = '/api/consumers/nestor/v1/llmx';
     const created = await request(app).post(`${base}/sessions`).send({ backend: 'agentx' }).expect(201);
