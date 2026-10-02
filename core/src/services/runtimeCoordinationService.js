@@ -462,7 +462,7 @@ async function releaseInference({ id, generation, principal } = {}) {
     : { released: false, reason: 'inference proof is absent or quarantined' };
 }
 
-async function markInferenceUnknown({ id, generation, principal, reason = null } = {}) {
+async function markInferenceUnknown({ id, generation, principal, reason = null, origin = null } = {}) {
   id = clean(id);
   generation = clean(generation);
   principal = clean(principal);
@@ -476,7 +476,7 @@ async function markInferenceUnknown({ id, generation, principal, reason = null }
     { $set: {
       'inferences.$.state': 'UNKNOWN',
       'inferences.$.unknownAt': now,
-      'inferences.$.unknownReason': clean(reason, 500)
+      'inferences.$.unknownReason': clean(reason, 500), 'inferences.$.unknownOrigin': origin === 'caller-abort' ? origin : null
     } },
     { new: true }
   ).lean();
@@ -1505,7 +1505,7 @@ async function listActive() {
       quarantined: item.state === 'UNKNOWN',
       host: item.host,
       model: item.model,
-      kind: item.kind,
+      kind: item.kind, unknownOrigin: item.unknownOrigin || null,
       mode: item.mode || 'shared',
       acquiredAt: item.acquiredAt,
       heartbeatAt: item.heartbeatAt,

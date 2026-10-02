@@ -487,6 +487,16 @@
       "secret": false,
       "description": "Comma-separated providers counted as cloud in budget accounting. Unset: built-in providers."
     },
+    "CALLER_ABORT_RECOVERY_SETTLE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Wait before the watchdog releases a caller-aborted inference whose model is resident at its context, at least 15000. Unset: 60000."
+    },
     "CELESTRAK_GP_URL": {
       "services": [
         "data"

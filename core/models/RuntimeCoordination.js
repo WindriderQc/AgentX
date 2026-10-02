@@ -81,14 +81,17 @@ const InferenceAdmissionSchema = new mongoose.Schema({
   expiresAt: { type: Date, required: true },
   // An inference is itself able to change Ollama residency. If its owner
   // disappears, TTL expiry cannot prove the upstream request stopped. Keep a
-  // durable quarantine until an operator supplies a runtime-restart receipt.
+  // durable quarantine until an operator supplies a runtime-restart receipt,
+  // or, for a watchdog probe or a caller abort, until the watchdog observes the
+  // runtime settled (watchdogProbeRecovery).
   state: {
     type: String,
     enum: ['ACTIVE', 'UNKNOWN'],
     default: 'ACTIVE'
   },
   unknownAt: { type: Date, default: null },
-  unknownReason: { type: String, default: null }
+  unknownReason: { type: String, default: null },
+  unknownOrigin: { type: String, enum: ['caller-abort', null], default: null }
 }, { _id: false });
 
 const RuntimeCoordinationSchema = new mongoose.Schema({

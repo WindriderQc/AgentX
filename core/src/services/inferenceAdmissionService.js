@@ -20,10 +20,15 @@ function admissionError(message, code = 'RUNTIME_INFERENCE_ADMISSION_DENIED') {
   return error;
 }
 
+// A caller abort (client disconnect, busy reply, superseded turn) is Core's
+// own decision to close the upstream connection. It is remembered so the
+// quarantine can be released once the runtime is observed settled (#35).
 function createAbortBridge(externalSignal) {
   const controller = new AbortController();
+  let callerAborted = false;
   const onAbort = () => {
     if (!controller.signal.aborted) {
+      callerAborted = true;
       controller.abort(new Error('Inference caller disconnected'));
     }
   };
@@ -31,6 +36,7 @@ function createAbortBridge(externalSignal) {
   else externalSignal?.addEventListener?.('abort', onAbort, { once: true });
   return {
     controller,
+    get callerAborted() { return callerAborted; },
     cleanup() { externalSignal?.removeEventListener?.('abort', onAbort); }
   };
 }
@@ -77,7 +83,7 @@ async function acquireInferenceAdmission({
   let dispatched = false;
   let heartbeatRunning = false;
 
-  const quarantine = async (reason) => {
+  const quarantine = async (reason, origin = null) => {
     if (closed) return { quarantined: false, reason: 'admission already closed' };
     closed = true;
     clearInterval(timer);
@@ -86,7 +92,8 @@ async function acquireInferenceAdmission({
       id: acquired.admissionId,
       generation: acquired.generation,
       principal: acquired.principal,
-      reason: reason?.message || reason || 'upstream terminal state unknown'
+      reason: reason?.message || reason || 'upstream terminal state unknown',
+      origin
     }).finally(onSettled);
   };
 
@@ -167,7 +174,7 @@ async function acquireInferenceAdmission({
           principal: acquired.principal
         });
       }
-      return quarantine(reason);
+      return quarantine(reason, bridge.callerAborted && !fatalError ? 'caller-abort' : null);
     },
     _heartbeatOnce: heartbeatOnce
   };

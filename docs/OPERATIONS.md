@@ -820,6 +820,19 @@ sample can take minutes), and Core then restores the pinned models as after any
 profile; the profile ends as `cancelled`. Prefer it to restarting Ollama, which
 leaves the interrupted request UNKNOWN.
 
+An UNKNOWN inference (not a workload) is released by the watchdog without a
+runtime restart in two bounded cases. A watchdog probe is released after
+`WATCHDOG_PROBE_RECOVERY_SETTLE_MS` (default 10 minutes). A caller abort, where
+Core itself closed the upstream connection after a client disconnect, a busy
+reply or a superseded turn, is recorded with `unknownOrigin: caller-abort`:
+Ollama cancels a generation whose connection closed, so it is released after
+`CALLER_ABORT_RECOVERY_SETTLE_MS` (default 60 seconds) when its model is
+resident at the request's context, and after the full probe window otherwise
+(a model load may still be running). Both require nothing else Core admitted on
+the host and two identical `/api/ps` samples; the release receipt keeps the
+evidence. A lost heartbeat, a socket hang-up or a runtime bridge quarantine
+still needs the restart attestation below.
+
 For an UNKNOWN workload, use this operator sequence:
 
 1. Inspect the exact operation's journal, Core workload admission and benchmark
