@@ -387,18 +387,7 @@ function register(api) {
     try { return envelope(res, await conversations.deleteSession((req.params.space === 'family' ? familySessionScope : personalSessionScope)(req.params.sessionId))); }
     catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Effacement incomplet. Réessaie pour terminer.', error.code); }
   });
-  personas.post('/private/sessions/:sessionId/attachments', async (req, res) => {
-    try { return envelope(res, { attachment: await personalAttachments(req.params.sessionId).upload(req.body) }, 201); }
-    catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Pièce jointe indisponible.', error.code); }
-  });
-  personas.get('/private/sessions/:sessionId/attachments/:attachmentId', async (req, res) => {
-    try {
-      const attachment = await personalAttachments(req.params.sessionId).download(req.params.attachmentId);
-      res.set({ 'Content-Type': attachment.mimeType, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
-        'Content-Disposition': `${attachment.kind === 'image' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(attachment.name)}` });
-      return res.send(attachment.data);
-    } catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Pièce jointe indisponible.', error.code); }
-  });
+  require('./attachment-routes').registerAttachmentRoutes(personas, { express, personalAttachments, envelope, fail });
   const handlePersonaTurn = createPersonaTurnHandler({
     logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,

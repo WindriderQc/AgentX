@@ -171,6 +171,32 @@ describe('built-in Household surface on Core', () => {
       expect((await request(app).get('/api/secretary/mail?label=urgent').expect(503)).body.code).toBe('SECRETARY_MAIL_UNAVAILABLE');
     } finally { app.locals.aioOpsSecretaryMail = previous; }
   });
+  test('the original of a personal photo goes to the image archive, never through Famille', async () => {
+    const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+    const base = '/api/voice-personas/private/sessions';
+    const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0WQAAAAASUVORK5CYII=';
+    const attached = (await request(app).post(`${base}/${id}/attachments`).send({ name: 'photo.png', dataUrl: `data:image/png;base64,${png}` }).expect(201)).body.data.attachment;
+    const original = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), Buffer.alloc(3 * 1024 * 1024, 5)]);
+    const post = () => request(app).post(`${base}/${id}/attachments/${attached.id}/original`)
+      .set('Content-Type', 'image/jpeg').set('X-Original-Name', encodeURIComponent('IMG_0042.jpg')).send(original);
+    const previous = process.env.IMAGE_ARCHIVE_DIR;
+    delete process.env.IMAGE_ARCHIVE_DIR;
+    expect((await post().expect(404)).body.message).toMatch(/archive/);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'household-archive-'));
+    process.env.IMAGE_ARCHIVE_DIR = dir;
+    try {
+      const archived = (await post().expect(201)).body.data.attachment;
+      expect(archived).toMatchObject({ id: attached.id, original: { mimeType: 'image/jpeg', size: original.length } });
+      const [year] = fs.readdirSync(path.join(dir, 'uploaded'));
+      const [month] = fs.readdirSync(path.join(dir, 'uploaded', year));
+      expect(fs.readdirSync(path.join(dir, 'uploaded', year, month)).sort()).toEqual([`${archived.original.sha256}.jpg`, `${archived.original.sha256}.json`]);
+      await request(app).post(`/api/voice-personas/family/sessions/${id}/attachments/${attached.id}/original`).set('Content-Type', 'image/jpeg').send(original.subarray(0, 64)).expect(404);
+    } finally {
+      if (previous === undefined) delete process.env.IMAGE_ARCHIVE_DIR; else process.env.IMAGE_ARCHIVE_DIR = previous;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
   test('personal attachments survive HTTP resume and stay outside family and other conversations', async () => {
     const base = '/api/voice-personas/private/sessions';
     const create = async () => (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;

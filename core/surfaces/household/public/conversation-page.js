@@ -66,7 +66,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         <details><summary>Résultat des outils</summary><pre id="conversationToolsReceipt"></pre></details>
       </section>
       <form id="conversationText" class="conversation-text"><label class="sr-only" for="conversationMessage">Message</label><textarea id="conversationMessage" rows="2" placeholder="Ou écris un message… (Entrée pour envoyer)" required maxlength="4000"></textarea><button class="button" type="submit">Envoyer</button></form>
-      ${family ? '' : '<section class="conversation-attachments" aria-label="Pièces jointes"><label for="conversationFiles">Joindre une image ou un document</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">3 fichiers maximum · 2 Mo chacun · JPEG, PNG, texte ou PDF texte (20 pages, 24 000 caractères maximum). Ajoute un message pour les envoyer.</p><div id="conversationDraftFiles" aria-live="polite"></div></section>'}
+      ${family ? '' : '<section class="conversation-attachments" aria-label="Pièces jointes"><label for="conversationFiles">Joindre une image ou un document</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">3 fichiers maximum · photos JPEG ou PNG jusqu’à 50 Mo (Nestor reçoit une copie réduite, l’original est archivé) · texte ou PDF texte de 2 Mo (20 pages, 24 000 caractères maximum). Ajoute un message pour les envoyer.</p><div id="conversationDraftFiles" aria-live="polite"></div></section>'}
       <p id="conversationAgentContext" class="conversation-context muted"></p>
     </section></div></section>`;
   const el = id => document.getElementById(id);
@@ -136,14 +136,16 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   if (!family) el('conversationFiles').onchange = event => {
     const files = Array.from(event.target.files || []);
-    if (files.length + draftFiles.length > 3 || files.some(file => file.size > 2 * 1024 * 1024)) {
-      el('conversationStatus').textContent = 'Choisis au plus 3 fichiers de 2 Mo chacun.';
+    if (files.length + draftFiles.length > 3 || !files.every(NestorAttachmentImages.accepts)) {
+      el('conversationStatus').textContent = 'Choisis au plus 3 fichiers : photos de 50 Mo, documents de 2 Mo.';
     } else { draftFiles.push(...files); renderDraftFiles(); }
     event.target.value = '';
   };
   async function uploadDraftFiles(session, signal) {
     const refs = [];
-    for (const file of draftFiles) {
+    for (const original of draftFiles) {
+      const image = NestorAttachmentImages.isImage(original);
+      const file = image ? await NestorAttachmentImages.reduce(original) : original;
       const types = { txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json', pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
       const mimeType = types[file.name.split('.').at(-1).toLowerCase()] || file.type;
       const dataUrl = await new Promise((resolve, reject) => {
@@ -153,6 +155,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/attachments`, {
         method: 'POST', signal, body: JSON.stringify({ name: file.name, dataUrl }) });
       refs.push(data.attachment);
+      // The archive keeps the photo as taken; a missing archive never blocks the turn.
+      if (image) await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/attachments/${encodeURIComponent(data.attachment.id)}/original`, {
+        method: 'POST', signal, body: original,
+        headers: { 'Content-Type': original.type || 'application/octet-stream', 'X-Original-Name': encodeURIComponent(original.name) } })
+        .catch(error => { if (signal?.aborted) throw error; console.warn('Original photo not archived', error.message); });
     }
     return refs;
   }
