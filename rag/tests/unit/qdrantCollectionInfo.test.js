@@ -70,4 +70,28 @@ describe('Qdrant payload indexes', () => {
     expect(indexCalls().map(body => body.field_name)).toEqual(Object.keys(QdrantVectorStore.PAYLOAD_INDEXES));
     expect(store._textIndexReady).toBe(true);
   });
+
+  test('keyword candidates come from one bounded full-text scroll with the search filters', async () => {
+    store._textIndexReady = true;
+    fetch.mockResolvedValueOnce(mockOk({ result: { points: [
+      { id: 'p1', payload: { text: 'IA locale', chunkIndex: 2, documentId: 'doc-1', source: 'notes' } }
+    ], next_page_offset: null } }));
+    const candidates = await store.findKeywordCandidates(['ia', 'locale'], { filters: { scope: 'household' }, limit: 500 });
+    expect(candidates).toEqual([{ text: 'IA locale', chunkIndex: 2, metadata: { text: 'IA locale', chunkIndex: 2, documentId: 'doc-1', source: 'notes' } }]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(body.filter).toEqual({
+      should: [{ key: 'text', match: { text: 'ia' } }, { key: 'text', match: { text: 'locale' } }],
+      must: [{ key: 'scope', match: { value: 'household' } }]
+    });
+    expect(body.limit).toBe(500);
+    expect(body.with_payload.include).toEqual(expect.arrayContaining(['text', 'documentId']));
+  });
+
+  test('keyword candidates fail rather than fall back to unindexed substring matching', async () => {
+    fetch.mockImplementation(async (url, options = {}) => (
+      options.method === 'PUT' ? mockFail(400, 'bad index') : mockOk({ result: { payload_schema: {} } })));
+    await expect(store.findKeywordCandidates(['ia'])).rejects.toThrow(/full-text index/);
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/scroll'))).toBe(false);
+  });
 });

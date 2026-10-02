@@ -41,6 +41,7 @@ const PAYLOAD_INDEXES = Object.freeze({
   aliases: 'keyword',
   text: TEXT_INDEX_SCHEMA
 });
+const KEYWORD_RESULT_FIELDS = ['text', 'chunkIndex', 'documentId', 'source', 'scope', 'sensitivity', 'title'];
 
 class QdrantVectorStore extends VectorStoreAdapter {
   constructor(config = {}) {
@@ -359,6 +360,33 @@ class QdrantVectorStore extends VectorStoreAdapter {
       for (const pt of points) chunks.push({ text: pt.payload.text, chunkIndex: pt.payload.chunkIndex || 0 });
     }
     return chunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
+  }
+
+  /**
+   * Chunks whose text contains any of `terms` (lowercased words), read through
+   * the full-text payload index in one bounded scroll. Without that index
+   * Qdrant would match case-sensitive substrings, so the read fails instead.
+   */
+  async findKeywordCandidates(terms, { filters = {}, limit = 500 } = {}) {
+    if (!terms.length) return [];
+    if (!this._textIndexReady) {
+      const info = await this.getCollectionInfo();
+      if (!info) return [];
+      await this._ensurePayloadIndexes(info.payloadSchema);
+      if (!this._textIndexReady) throw new Error('Qdrant full-text index on "text" is unavailable');
+    }
+    const must = this._buildMustFilters(filters);
+    const filter = { should: terms.map(term => ({ key: 'text', match: { text: term } })) };
+    if (must.length) filter.must = must;
+    const candidates = [];
+    for await (const points of this._scrollPages({
+      filter, limit, withPayload: { include: KEYWORD_RESULT_FIELDS }, pageSize: limit
+    })) {
+      for (const { payload } of points) {
+        candidates.push({ text: payload.text, chunkIndex: payload.chunkIndex || 0, metadata: payload });
+      }
+    }
+    return candidates;
   }
 
   async deleteDocument(documentId) {

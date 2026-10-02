@@ -699,7 +699,9 @@ keyword search. They are created with a new collection, and the missing ones
 are added the first time RAG verifies an existing collection. Qdrant builds
 them in the background: on a collection of about 100,000 chunks this is a
 one-time cost of a few seconds. A failed index creation is logged as a warning
-and does not stop ingestion or search.
+and does not stop ingestion or search; without the `text` index the keyword
+half of a hybrid search fails and reports `applied.keywordSearchFailed`.
+Keyword search scores at most 500 candidate chunks that contain a query term.
 
 ## Switching the embedding model
 
