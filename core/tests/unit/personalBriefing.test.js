@@ -34,7 +34,7 @@ describe('personal task relevance', () => {
 });
 
 describe('the morning brief', () => {
-  test('separates late, to-confirm, past and undated tasks within six lines', () => {
+  test('gives one late task an explicit decision while keeping the brief bounded', () => {
     const result = brief([
       { id: '0751', title: 'Rapporter les contenants de collations', dueAt: '2026-09-21T12:00:00Z', createdAt: '2026-09-20T12:00:00Z' },
       { id: '0760', title: 'Lunch froid journée pédagogique', dueAt: '2026-06-05', relevantUntil: '2026-06-05' },
@@ -46,11 +46,12 @@ describe('the morning brief', () => {
     expect(result.lines).toEqual([
       "Bonjour Dad — voici l'essentiel.",
       'En retard : Rapporter les contenants de collations',
+      'Pour la tâche #0751 : faite, à reporter (avec une date) ou encore utile ?',
       'À confirmer : 1 vieille échéance (ex. « Réserver la séance »). Encore utile ?',
       'À préparer : Ramener le kimono (jeudi 24 septembre).',
-      'Activité passée : 1 tâche à fermer (ex. « Lunch froid journée pédagogique »).',
-      '2 tâches sans date, dont 1 nouvelle.'
+      'Activité passée : 1 tâche à fermer (ex. « Lunch froid journée pédagogique »).'
     ]);
+    expect(result.focus).toMatchObject({ id: '0751', lane: 'overdue' });
     expect(result.counts).toMatchObject({ overdue: 1, recheck: 1, expired: 1, unscheduled: 2, newUnscheduled: 1 });
   });
 
@@ -58,7 +59,7 @@ describe('the morning brief', () => {
     const rows = Array.from({ length: 5 }, (_, index) => ({ id: `09${index}`, title: `Tâche ${index}`, dueAt: '2026-09-22T12:00:00Z', createdAt: '2026-09-20T12:00:00Z' }));
     const result = brief([...rows, { id: '0999', title: 'Sans date' }]);
     expect(result.lines).toHaveLength(6);
-    expect(result.lines[4]).toBe("+2 autres en retard ou pour aujourd'hui.");
+    expect(result.lines[4]).toBe("+3 autres en retard ou pour aujourd'hui.");
     expect(result.lines[5]).toBe('1 tâche sans date.');
   });
 
@@ -73,11 +74,29 @@ describe('the morning brief', () => {
       'À confirmer : 1 vieille échéance (ex. « Vieux courriel »). Encore utile ?',
       'À préparer : Rendez-vous (jeudi 24 septembre).'
     ]);
-    expect(result.counts.hiddenUrgent).toBe(2);
+    expect(result.counts.hiddenUrgent).toBe(3);
+  });
+
+  test('surfaces a task due today ahead of an overdue backlog with its stable id', () => {
+    const overdue = Array.from({ length: 3 }, (_, index) => ({
+      id: `late-${index}`, title: `Late task ${index}`,
+      dueAt: '2026-09-22T12:00:00Z', createdAt: '2026-09-20T12:00:00Z'
+    }));
+    const result = brief([...overdue, {
+      id: 'today-1', title: 'Current deadline',
+      dueAt: '2026-09-23T12:00:00Z', createdAt: '2026-09-20T12:00:00Z'
+    }]);
+    expect(result.lines[1]).toBe("Aujourd'hui : Current deadline");
+    expect(result.focus).toEqual({
+      id: 'today-1', title: 'Current deadline', lane: 'today', dueAt: '2026-09-23T12:00:00.000Z'
+    });
+    expect(result.counts).toMatchObject({ dueToday: 1, overdue: 3, hiddenUrgent: 2 });
   });
 
   test('says when nothing is urgent', () => {
-    expect(brief([]).text).toBe("Bonjour Dad — voici l'essentiel.\nRien d'urgent aujourd'hui.");
+    const result = brief([]);
+    expect(result.text).toBe("Bonjour Dad — voici l'essentiel.\nRien d'urgent aujourd'hui.");
+    expect(result.focus).toBeNull();
   });
 
   test('cuts long titles on a word boundary', () => {
