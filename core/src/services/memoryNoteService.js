@@ -18,6 +18,8 @@ const cleanText = (value, max = 4000) => {
   }
   return value.trim();
 };
+// Provenance of a new note; a trusted caller may name its channel.
+const sourceOf = value => (typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test(value) ? value : 'explicit-ui');
 const limitOf = (value, fallback = 25) => Math.max(1, Math.min(100, Math.trunc(Number(value)) || fallback));
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const stopWords = new Set(['les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'avec', 'mon', 'mes', 'moi', 'est', 'this', 'that', 'the', 'and', 'you', 'what', 'remember', 'retiens',
@@ -90,7 +92,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     const kind = input.kind || existing?.kind || 'fact';
     const changed = !existing || existing.status === 'forgotten' || existing.text !== text || existing.kind !== kind
       || String(existing.expiresAt || '') !== String(expiresAt || '');
-    if (!changed) return { ok: true, authority: 'agentx.core', id, text, sealed, created: false, changed: false, updatedAt: existing.updatedAt };
+    if (!changed) return { ok: true, authority: 'agentx.core', id, text, kind, sealed, created: false, changed: false, updatedAt: existing.updatedAt };
     // An explicit correction keeps an existing classification. In particular it
     // cannot downgrade a highly-private note by using a different presentation.
     const labels = existing?.scope && existing?.sensitivity
@@ -99,7 +101,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     const update = { $set: {
       text, kind, ...labels, expiresAt, status: 'active', forgottenAt: null,
       contentHash: digest(text.toLowerCase())
-    }, $setOnInsert: { packId: packs[0], scopeId, topic: 'general', type: 'fact', source: 'explicit-ui' } };
+    }, $setOnInsert: { packId: packs[0], scopeId, topic: 'general', type: 'fact', source: sourceOf(input.source) } };
     let result;
     try {
       result = await MemoryNote.findOneAndUpdate(filter, update,
@@ -173,7 +175,8 @@ async function operatePersonal(input = {}) {
     result = { ...matched, notes: [...matched.notes, ...preferences.notes.filter(note => !matched.notes.some(hit => hit.id === note.id))]
       .slice(0, limitOf(input.limit, 4)) };
   }
-  else if (operation === 'remember') result = await notes.remember(input);
+  // Provenance is set by trusted server callers (MCP), never by a request body.
+  else if (operation === 'remember') result = await notes.remember({ ...input, source: undefined });
   else if (operation === 'forget') result = await notes.forget(input.id);
   else throw error('Choose list, search, remember or forget');
   return { ...result, operation };

@@ -66,6 +66,48 @@ python3 integrations/secretary/mailbox_backfill.py --root "$GMAIL_SECRETARY_ROOT
 python3 integrations/secretary/mailbox_backfill.py --root "$GMAIL_SECRETARY_ROOT" --status
 ```
 
+## Original messages and completeness
+
+`raw_messages.py sync` stores the original of every message in every archived
+thread, exactly as Gmail keeps it (`format=raw`), as a content-addressed
+`raw/<sha256>.eml` that any mail client opens. A copy is accepted only when its
+decoded size equals Gmail's `sizeEstimate` and its Message-ID equals the one
+already archived; the receipt in `raw-receipts/<message id>.json` records the
+hash, size, labels, dates and path. Mismatches are listed by id in
+`raw-errors.json` and retried on the next run. It reuses the backfill's paced,
+resumable runner with its own `raw-sync.lock`, so triage collection is not
+paused. `--rehash` also refetches an original whose SHA-256 no longer matches.
+
+`raw_messages.py completeness` reports, per discovery scope, the messages
+discovered, archived in a thread and with a verified original, and lists the
+missing ids in `completeness-report.json` (`--rehash` re-reads every original).
+It exits non-zero until everything is complete. Neither command contacts Gmail
+for anything but read-only `gmail.get`, and no output contains message content.
+
+```bash
+python3 integrations/secretary/raw_messages.py --root "$GMAIL_SECRETARY_ROOT" sync --max-messages 30
+python3 integrations/secretary/raw_messages.py --root "$GMAIL_SECRETARY_ROOT" completeness
+```
+
+## Outlook mailbox export
+
+`outlook_import.py import <file.pst>` brings an Outlook mailbox export into the
+same private archive. The PST is kept unchanged under `outlook/exports/<sha256>.pst`.
+Its items are extracted with `readpst` (Debian/Ubuntu `pst-utils`; override the
+binary with `SECRETARY_READPST`) into a private staging directory that is always
+removed afterwards: mail becomes `.eml`, contacts `.vcf` and calendar entries
+`.ics`, each stored once under `outlook/items/` by content hash, with the
+folders it appeared in, in `outlook/inventory.json`. Mail is linked to the
+archived Gmail message with the same Message-ID (`alsoInGmail`). Importing the
+same export again adds nothing. The extracted files are readpst's conversion of
+the PST, not bytes from Microsoft's servers; the PST stays the export's
+original. `status` prints counts; `import-<sha>.json` reports hold counts only.
+
+```bash
+python3 integrations/secretary/outlook_import.py --root "$GMAIL_SECRETARY_ROOT" import /path/to/export.pst
+python3 integrations/secretary/outlook_import.py --root "$GMAIL_SECRETARY_ROOT" status
+```
+
 ## Household document discovery
 
 `household_documents.py` searches the existing private attachment register and

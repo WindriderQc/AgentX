@@ -8,16 +8,14 @@
  */
 
 const logger = require('../../../config/logger');
-const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
-const BenchmarkTimelineEntry = require('../../../models/BenchmarkTimelineEntry');
 const { getConfiguredHosts } = require('../../helpers/ollamaHostConfig');
 
 // Import sub-modules
 const { DEFAULT_EXECUTION_CONFIG } = require('./config');
 const { seedPrompts, cleanupStaleBatches, getPrompts, getConfigPresets } = require('./init');
 const { residencyOf } = require('../probePlacement');
-const { runTest, startBatch, resumeBatch, executeBatch, stopBatch, getActiveBatchId, getActiveHeartbeatInterval } = require('./execution');
+const { runTest, startBatch, resumeBatch, executeBatch, stopBatch } = require('./execution');
 const { getResults, getSummary, getDashboard, compareModels, getQualityBreakdown, getModelTrends, compareBatches, getBatchQualityBreakdown } = require('./results');
 const {
     getBatches,
@@ -39,73 +37,13 @@ const { getLeaderboardPerformanceSummary, scorerVersionsByEntry } = require('./l
 const { groupLeaderboard } = require('./leaderboardGrouping');
 const { assessLeaderboardRows } = require('./judgeQualification');
 const { selectComparisonCohort } = require('./qualityCohort');
+const {
+    annotatePromptCoverage, annotateSharedWithLeader, currentPromptClause, promptScopeFor, promptSetsByEntry, stalePromptExpression
+} = require('./promptComparison');
 const { getTopCategoryFromAverages } = require('./modelMetadata');
 const { getCurrentHostModelSnapshot, isModelAvailableForRow, serializeHostModelSnapshot } = require('./modelAvailability');
-const { judgeResult, judgeBatch, stopJudging, getJudgingStatus, stopAllJudging } = require('./judging');
+const { judgeResult, judgeBatch, stopJudging, getJudgingStatus } = require('./judging');
 const { getEfficiencyMap } = require('./efficiencyMap');
-const { buildIdleCurrentTest } = require('./batchHelpers');
-
-// Graceful shutdown handler - mark batch as interrupted when the process restarts
-process.on('SIGTERM', async () => {
-    const SHUTDOWN_DEADLINE_MS = 5000;  // 5 second hard deadline
-    const deadline = Date.now() + SHUTDOWN_DEADLINE_MS;
-
-    const activeBatchId = getActiveBatchId();
-    const activeHeartbeatInterval = getActiveHeartbeatInterval();
-
-    const shutdown = async () => {
-        // Stop all active judging jobs
-        stopAllJudging();
-
-        if (activeBatchId) {
-            logger.warn('SIGTERM received - marking active batch as interrupted', { batchId: activeBatchId });
-            try {
-                if (activeHeartbeatInterval) {
-                    clearInterval(activeHeartbeatInterval);
-                }
-                await BenchmarkTimelineEntry.create({
-                    batchId: activeBatchId,
-                    timestamp: new Date(),
-                    event: 'sigterm_interrupted',
-                    success: false,
-                    error: 'Process received SIGTERM signal'
-                }).catch(() => {});
-
-                await BenchmarkBatch.updateOne(
-                    { _id: activeBatchId, status: 'running' },
-                    {
-                        $set: {
-                            status: 'interrupted',
-                            completed_at: new Date(),
-                            last_activity_at: new Date(),
-                            current_test: buildIdleCurrentTest(),
-                            active_slot: null
-                        }
-                    }
-                );
-                logger.info('Batch marked as interrupted', { batchId: activeBatchId });
-            } catch (err) {
-                logger.error('Failed to mark batch as interrupted on SIGTERM', {
-                    batchId: activeBatchId,
-                    error: err.message
-                });
-            }
-        }
-    };
-
-    // Race between shutdown logic and hard deadline
-    const sleepUntilDeadline = () => new Promise(resolve => {
-        const remaining = deadline - Date.now();
-        if (remaining > 0) setTimeout(resolve, remaining);
-        else resolve();
-    });
-
-    try {
-        await Promise.race([shutdown(), sleepUntilDeadline()]);
-    } finally {
-        process.exit(0);
-    }
-});
 
 /**
  * BenchmarkService class - facade preserving original API
@@ -247,6 +185,7 @@ class BenchmarkService {
         }
         let selectedQualityCohortFingerprint = null;
         let nonComparableRows = [];
+        let promptScope = { pinned: false };
         // Scope for the per-cohort performance and attempt summaries: every
         // filter above, before the match is narrowed to one quality cohort.
         const summaryScopeMatch = { ...leaderboardMatch };
@@ -257,6 +196,10 @@ class BenchmarkService {
             const cohortBaseMatch = { ...leaderboardMatch };
             selectedQualityCohortFingerprint = await selectComparisonCohort(cohortBaseMatch);
             leaderboardMatch.quality_cohort_fingerprint = selectedQualityCohortFingerprint || { $in: [] };
+            // Inside the cohort, compare only results on prompts as the
+            // catalog holds them today (see promptComparison).
+            promptScope = await promptScopeFor(selectedQualityCohortFingerprint);
+            if (promptScope.pinned) addMatchClause(currentPromptClause(promptScope));
             nonComparableRows = await BenchmarkResult.aggregate([
                 {
                     $match: selectedQualityCohortFingerprint
@@ -268,7 +211,8 @@ class BenchmarkService {
                                 $or: [
                                     { quality_cohort_fingerprint: { $ne: selectedQualityCohortFingerprint } },
                                     { quality_cohort_fingerprint: null },
-                                    { quality_cohort_fingerprint: { $exists: false } }
+                                    { quality_cohort_fingerprint: { $exists: false } },
+                                    ...(promptScope.pinned ? [{ prompt_fingerprint: { $nin: promptScope.fingerprints } }] : [])
                                 ]
                                 }
                             ]
@@ -278,7 +222,11 @@ class BenchmarkService {
                 { $sort: { timestamp: -1 } },
                 {
                     $group: {
-                        _id: { model: '$model', host: '$host', cohort: '$quality_cohort_fingerprint' },
+                        _id: {
+                            model: '$model', host: '$host', cohort: '$quality_cohort_fingerprint',
+                            stalePrompt: stalePromptExpression(selectedQualityCohortFingerprint, promptScope)
+                        },
+                        promptNames: { $addToSet: '$prompt_name' },
                         target: { $first: '$execution_target' },
                         latestTimestamp: { $first: '$timestamp' },
                         totalTests: { $sum: 1 },
@@ -305,6 +253,7 @@ class BenchmarkService {
         ]);
         const entryStats = await getLeaderboardEntryStats(leaderboardMatch);
         const leaderboard = [];
+        const rankedRows = [];
         for (const [key, data] of generalistScores) {
             const [model, host] = key.split('@@');
             const catScores = categoryMap.get(key) || {};
@@ -389,13 +338,19 @@ class BenchmarkService {
                 row.filterReason = row.filterReason || 'mixed_scorer_versions';
             }
 
+            rankedRows.push(row);
             if (includeUnavailableModels || row.host_available) {
                 leaderboard.push(row);
             }
         }
+        const promptSets = promptScope.pinned ? await promptSetsByEntry(leaderboardMatch) : null;
+        const promptSet = promptSets
+            ? { perPrompt: true, ...annotatePromptCoverage(rankedRows, promptSets, promptScope.catalog) }
+            : { perPrompt: false };
 
         for (const item of nonComparableRows) {
             const target = item.target || null;
+            const stalePrompt = item._id.stalePrompt === true;
             const row = {
                 model: item._id.model,
                 host: item._id.host || null,
@@ -412,9 +367,11 @@ class BenchmarkService {
                 rankable: false,
                 generalistScore: null,
                 totalTests: item.totalTests || 0,
-                evidenceStatus: 'non_comparable_cohort',
+                evidenceStatus: stalePrompt ? 'stale_prompt_content' : 'non_comparable_cohort',
                 evidenceCompatibility: 'non_comparable',
-                filterReason: 'quality_cohort_fingerprint_mismatch',
+                filterReason: stalePrompt ? 'prompt_content_changed' : 'quality_cohort_fingerprint_mismatch',
+                promptContentStale: stalePrompt,
+                stalePrompts: stalePrompt ? (item.promptNames || []).filter(Boolean).sort().slice(0, 25) : [],
                 latestTimestamp: item.latestTimestamp || null,
                 categoryAverages: {},
                 categoryEvidence: {},
@@ -423,7 +380,9 @@ class BenchmarkService {
                 fullScopeEligible: false,
                 filtered: false
             };
-            Object.assign(row, performanceSummary.lookup(row.model, row.host, row.qualityCohortFingerprint));
+            // Stale-prompt rows share the cohort of the ranked row, whose
+            // performance summary they would only repeat.
+            if (!stalePrompt) Object.assign(row, performanceSummary.lookup(row.model, row.host, row.qualityCohortFingerprint));
             row.scorerVersions = row.performance?.scorerVersions || {};
             if (includeUnavailableModels || row.host_available) leaderboard.push(row);
         }
@@ -452,6 +411,7 @@ class BenchmarkService {
         // headline, the other cohorts as history. The flat `leaderboard`
         // keeps every row.
         const grouped = groupLeaderboard(leaderboard, { selectedQualityCohortFingerprint });
+        if (promptSets) annotateSharedWithLeader(rankedRows, promptSets, grouped.groups.find(group => group.comparable)?.headline);
 
         return {
             leaderboard,
@@ -462,8 +422,9 @@ class BenchmarkService {
                 groupCount: grouped.groupCount,
                 scorerFamily: grouped.comparisonScorerFamily,
                 selectedQualityCohortFingerprint,
+                promptSet,
                 rule: selectedQualityCohortFingerprint
-                    ? 'quality cohort (judge, scorer version, contexts) covering the most models in scope, the most recent on a tie'
+                    ? 'quality cohort (judge, scorer version, contexts) covering the most models in scope, the most recent on a tie; results compared only on prompts as the catalog holds them today'
                     : 'every cohort pooled per model and host; one scorer generation per row'
             },
             categoryWeights,

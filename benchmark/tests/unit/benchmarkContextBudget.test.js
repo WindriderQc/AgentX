@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { batchConfigScript } = require('../helpers/batchConfigSource');
 
 const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/benchmark-v2/context-budget.js'), 'utf8')
     .replace(/^import[^\n]+\n/gm, '').replace(/export function/g, 'function');
@@ -9,8 +10,7 @@ vm.runInContext(source + '\nglobalThis.api = { summarizeContextBudget, renderCon
 const { summarizeContextBudget, renderContextBudget } = context.api;
 
 test('depth counts use the catalog, including empty levels and category sampling', () => {
-    const formSource = fs.readFileSync(path.resolve(__dirname, '../../public/js/benchmark-v2/batch-config.js'), 'utf8')
-        .replace(/^import[\s\S]*?from ['"][^'"]+['"];\r?\n/gm, '').replace(/export function/g, 'function');
+    const formSource = batchConfigScript();
     const form = vm.createContext({});
     vm.runInContext(formSource + `
         _promptCatalog = [{ level: 2, category: 'math' }, { level: 2, category: 'math' }, { level: 2, category: 'code' }];

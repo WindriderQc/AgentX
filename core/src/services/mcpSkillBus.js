@@ -10,6 +10,7 @@ const {
 const { getRagServiceClient } = require('./ragServiceClient');
 const { createTaskInMongo } = require('./pipelineTaskService');
 const { createVaultInbox } = require('./vaultInboxService');
+const { MEMORY_TOOLS, MEMORY_TOOL_HANDLERS } = require('./mcpMemoryTools');
 
 const PROTOCOL_VERSION = '2025-06-18';
 const SERVER_INFO = { name: 'agentx-core-skill-bus', title: 'AgentX Core Skill Bus', version: '0.1.0' };
@@ -108,6 +109,7 @@ const TOOLS = [
     }, ['title', 'body']),
     annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
   },
+  ...MEMORY_TOOLS,
 ];
 
 function jsonRpcResult(id, result) {
@@ -320,6 +322,7 @@ const TOOL_HANDLERS = {
   get_escalation_recommendation: getEscalationRecommendation,
   create_todo: createTodoTool,
   write_vault_note: writeVaultNoteTool,
+  ...MEMORY_TOOL_HANDLERS,
 };
 
 async function callTool(params, deps = {}) {
@@ -350,7 +353,7 @@ async function handleMcpMessage(message, deps = {}) {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER_INFO,
-      instructions: 'Agent X exposes a narrow product bus for health, RAG, routing recommendations, and local task creation, and vault inbox notes.',
+      instructions: 'Agent X exposes a narrow product bus for health, RAG, routing recommendations, local task creation, vault inbox notes, and owner memory notes.',
     });
   }
   if (method === 'tools/list') {

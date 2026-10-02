@@ -139,6 +139,7 @@ jest.mock('../../src/services/runtimeCoordinationService', () => ({
   heartbeat: jest.fn(),
   release: jest.fn(),
   markMaintenanceUnknown: jest.fn(),
+  listDeployBlockers: jest.fn(),
   assertWorkloadAdmission: jest.fn(() => Promise.resolve({
     admitted: true,
     admissionId: 'admission-core',
@@ -1654,6 +1655,26 @@ describe('Nerve Center API Routes', () => {
       expect(res.body.data.claims[0]).not.toHaveProperty('admissionGeneration');
       expect(res.body.data.claims[0]).not.toHaveProperty('preClaimRuntime');
       expect(res.body.data.claims[0]).not.toHaveProperty('finalizeToken');
+    });
+  });
+
+  describe('runtime deploy verdict (#47)', () => {
+    it('passes the requested service and returns Core blockers', async () => {
+      const blockers = [{ type: 'workload', kind: 'profiler', id: 'profile-1', summary: 'workload profiler profile-1' }];
+      runtimeCoordinationService.listDeployBlockers.mockResolvedValue({ service: 'benchmark', allowed: false, blockers });
+      const res = await http.request.get('/api/nerve-center/runtime-coordination/deploy-blockers?service=benchmark').expect(200);
+      expect(runtimeCoordinationService.listDeployBlockers).toHaveBeenCalledWith({ service: 'benchmark' });
+      expect(res.body.data).toEqual({ service: 'benchmark', allowed: false, blockers });
+    });
+
+    it('returns the blockers of a refused maintenance lease', async () => {
+      const blockers = [{ type: 'inference', summary: 'inference chat qwen3:8b' }];
+      runtimeCoordinationService.acquireMaintenance.mockResolvedValueOnce({ acquired: false, reason: 'busy', blockers });
+      const res = await http.request.post('/api/nerve-center/maintenance-leases')
+        .set('X-AgentX-Caller', 'operator')
+        .send({ requestId: 'deploy-1', scope: 'core-recreate' }).expect(409);
+      expect(runtimeCoordinationService.acquireMaintenance).toHaveBeenCalledWith(expect.objectContaining({ scope: 'core-recreate' }));
+      expect(res.body.data.blockers).toEqual(blockers);
     });
   });
 });

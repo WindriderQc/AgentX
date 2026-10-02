@@ -404,7 +404,8 @@ async function resolveContextBudget(input, deps = {}) {
     } else if (canUseDefaultResolver) {
       resolved = await getContextInfo(input.model, input.host, {
         workload: input.workload || 'interactive',
-        artifactIdentity: deps.artifactIdentity || null
+        artifactIdentity: deps.artifactIdentity || null,
+        signal: deps.signal || null
       });
     }
   } catch {

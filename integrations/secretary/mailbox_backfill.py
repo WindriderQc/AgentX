@@ -59,8 +59,8 @@ class Pacer:
 class Lock:
     """Single runner per archive; a crashed runner's lock is taken over."""
 
-    def __init__(self, root):
-        self.file = Path(root) / LOCK_NAME
+    def __init__(self, root, name=LOCK_NAME):
+        self.file = Path(root) / name
         self.owner = {"pid": os.getpid(), "host": socket.gethostname(), "startedAt": now()}
 
     def stale(self):

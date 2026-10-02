@@ -3,8 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { readChatMessagingSource } = require('../helpers/chatMessagingSource');
 
-const source = fs.readFileSync(path.join(__dirname, '../../public/js/chat/chat-messaging.js'), 'utf8');
+const source = readChatMessagingSource();
 const outcomeSource = fs.readFileSync(path.join(__dirname, '../../public/js/chat/chat-turn-outcome.js'), 'utf8');
 
 function loadFailureHelper() {

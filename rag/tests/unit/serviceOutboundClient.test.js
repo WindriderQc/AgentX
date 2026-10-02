@@ -136,6 +136,35 @@ describe('RAG service outbound operation registry', () => {
     expect(transportAdapter).not.toHaveBeenCalled();
   });
 
+  test('accepts only the exact wait query on Qdrant writes', async () => {
+    const fetchImpl = jest.fn(async (target) => rawResponse({ body: '{}', url: String(target) }));
+    const transportAdapter = jest.fn(attestedTransport());
+    const client = createServiceOutboundClient({
+      expectedOrigins: ['http://qdrant.test:6333'],
+      fetchImpl,
+      transportAdapter,
+    });
+    const base = 'http://qdrant.test:6333/collections/agentx_embeddings';
+    const writes = [
+      [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_UPSERT, `${base}/points`, 'PUT'],
+      [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_DELETE, `${base}/points/delete`, 'POST'],
+      [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_PAYLOAD, `${base}/points/payload`, 'POST'],
+      [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_PAYLOAD_INDEX_CREATE, `${base}/index`, 'PUT'],
+    ];
+    for (const [operationId, target, method] of writes) {
+      await client.requestBytes(operationId, `${target}?wait=true`, { method, body: '{}' });
+      for (const query of ['', '?wait=false', '?wait=true&ordering=strong', '?WAIT=true']) {
+        await expect(client.requestBytes(operationId, `${target}${query}`, { method, body: '{}' })).rejects.toThrow(
+          'Outbound service operation does not match its closed request specification.'
+        );
+      }
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(writes.length);
+    await expect(client.requestBytes(
+      SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_SEARCH, `${base}/points/search?wait=true`, { method: 'POST' }
+    )).rejects.toThrow('Outbound service operation does not match its closed request specification.');
+  });
+
   test('enforces request and declared response caps before returning a response', async () => {
     const transportAdapter = jest.fn(attestedTransport());
     const fetchImpl = jest.fn(async (target) => rawResponse({

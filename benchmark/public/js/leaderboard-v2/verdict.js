@@ -16,6 +16,7 @@ export function esc(value) {
 // adds. Each sentence starts with a short label, then a colon.
 export const REASON_TEXT = Object.freeze({
     quality_cohort_fingerprint_mismatch: 'Other cohort: these results were judged under a different judge, scorer version or context set than the cohort the board compares.',
+    prompt_content_changed: 'Edited prompt: these results ran a prompt whose content has changed in the catalog since, or that left the catalog, so they are not compared with results on the current prompt.',
     mixed_scorer_versions: 'Mixed scorer generations: its rows were scored by two scorer generations, which are different scales and cannot be averaged.',
     excessive_empty_responses: 'Too many empty responses: more than half of its answers were empty, so its score is withheld.',
     mixed_execution_lanes: 'Mixed execution lanes: some rows ran through a harness and others directly, so the evidence is not one lane.',

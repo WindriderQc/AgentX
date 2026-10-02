@@ -15,6 +15,7 @@ const {
 } = require('../../src/services/profiler/activeProfileState');
 const { acquireProfilerClaimLease } = require('../../src/services/profiler/profilerClaimLifecycle');
 const { runJournaledProfile } = require('../../src/services/profiler/profilerRunJournal');
+const { createProfileCancellation } = require('../../src/services/profiler/profileCancellation');
 const contextProposalService = require('../../src/services/profiler/contextProposalService');
 const logger = require('../../config/logger');
 
@@ -146,17 +147,19 @@ router.post('/profile', async (req, res) => {
       return res.status(err.statusCode || 503).json({ status: 'error', error: err.message, code: err.code || 'PROFILER_CLAIM_UNAVAILABLE' });
     }
     tracker.statusMessage = 'Starting…';
+    // A cancel aborts an abortable in-flight request and the run journal waits
+    // for Ollama's stop proof; otherwise it stops at the next checkpoint.
+    const cancellation = createProfileCancellation({ hostUrl: host.hostUrl, parentSignal: lease.signal });
+    tracker.cancellation = cancellation;
 
     // Fire-and-forget
     runJournaledProfile(lease, { hostId, hostUrl: host.hostUrl, modelName }, () => orchestrator.profile(modelName, hostId, host.hostUrl, chosenDepth, {
-      // A requested cancel stops at the next checkpoint, after the current
-      // runtime request has its terminal response, so nothing is left UNKNOWN.
       assertClaimActive: () => {
         lease.assertActive();
-        if (tracker.cancelRequested) throw Object.assign(new Error('Profile cancelled by the operator'), { code: 'PROFILE_CANCELLED' });
+        cancellation.assertNotCancelled();
       },
       claimIdentity: lease.identityFor(host.hostUrl),
-      signal: lease.signal,
+      signal: cancellation.signal,
       onProgress: (step, data) => {
         const idx = steps.indexOf(step);
         if (idx >= 0) tracker.stepsCompleted = idx;
@@ -167,7 +170,7 @@ router.post('/profile', async (req, res) => {
           Object.assign(tracker.metrics, rest);
         }
       }
-    })).then(result => {
+    }), { cancellation }).then(result => {
       lease.assertActive();
       tracker.statusMessage = 'Restoring pinned models…';
       tracker.result = result;
@@ -177,22 +180,35 @@ router.post('/profile', async (req, res) => {
           profileId, error: abandonError.message
         }));
       }
-      tracker.status = err.code === 'PROFILE_CANCELLED' ? 'cancelled' : 'failed';
       tracker.error = err.message;
-      if (tracker.status === 'cancelled') tracker.statusMessage = 'Cancelled; pinned models restored';
-      logger[tracker.status === 'cancelled' ? 'info' : 'error']('Profile job ended', { profileId, modelName, hostId, status: tracker.status, error: err.message });
+      // A cancelled profile reports `cancelled` once Core restored the pins.
+      if (err.code === 'PROFILE_CANCELLED') {
+        tracker.cancelEnded = true;
+        tracker.statusMessage = err.cancelStopUnproven
+          ? 'Cancelled, but Ollama did not confirm the aborted request stopped: the host stays quarantined (UNKNOWN)'
+          : 'Cancelled; restoring pinned models…';
+      } else tracker.status = 'failed';
+      logger[tracker.cancelEnded ? 'info' : 'error']('Profile job ended', { profileId, modelName, hostId, cancelled: tracker.cancelEnded === true, error: err.message });
     }).finally(async () => {
       // Core performs a fenced restore under this exact lease and releases
       // only after pinned residency verifies.
       try {
         await lease.finalize();
-        if (tracker.status === 'running') {
+        if (tracker.cancelEnded) {
+          tracker.status = 'cancelled';
+          tracker.statusMessage = 'Cancelled; pinned models restored';
+        } else if (tracker.status === 'running') {
           tracker.status = 'completed';
           tracker.statusMessage = 'Completed';
           tracker.stepsCompleted = steps.length;
           tracker.currentStep = null;
         }
       } catch (error) {
+        // An unproven cancel keeps its explanation: the host stays quarantined.
+        if (tracker.cancelEnded && cancellation.status().phase === 'stop_unproven') {
+          tracker.status = 'cancelled';
+          return;
+        }
         tracker.status = 'failed';
         tracker.error = error.message;
       }
@@ -202,16 +218,22 @@ router.post('/profile', async (req, res) => {
   } catch (err) { res.status(500).json({ status: 'error', error: err.message }); }
 });
 
-// Cancel a running profile. It stops at its next checkpoint (the current
-// request finishes first: a CPU context sample can take minutes), then Core
-// restores the pinned models as after any profile.
-router.post('/profile/:profileId/cancel', (req, res) => {
+// Cancel a running profile. A direct Ollama request in flight is aborted and
+// the profile ends once Ollama shows it stopped (bounded; otherwise UNKNOWN as
+// before); any other request finishes first. Core then restores the pins.
+router.post('/profile/:profileId/cancel', async (req, res) => {
   const tracker = activeProfiles.get(req.params.profileId);
   if (!tracker) return res.status(404).json({ status: 'error', error: 'Profile not found' });
   if (tracker.status !== 'running') return res.json({ status: 'success', data: { profileStatus: tracker.status, cancelRequested: false } });
+  if (!tracker.cancellation) return res.status(409).json({ status: 'error', error: 'This profile runs in a host queue: cancel the queue' });
   tracker.cancelRequested = true;
-  tracker.statusMessage = 'Cancelling after the current request…';
-  return res.json({ status: 'success', data: { profileStatus: 'running', cancelRequested: true } });
+  const cancel = await tracker.cancellation.cancel();
+  if (tracker.status === 'running' && !tracker.cancelEnded) {
+    tracker.statusMessage = cancel.phase === 'awaiting_stop_proof'
+      ? `Cancelling: request aborted, waiting up to ${Math.round(cancel.budgetMs / 1000)} s for Ollama to confirm it stopped…`
+      : 'Cancelling after the current request…';
+  }
+  return res.json({ status: 'success', data: { profileStatus: tracker.status, cancelRequested: true, cancel } });
 });
 
 // List active profiles (for detecting externally-started profiles)
@@ -237,6 +259,7 @@ router.get('/profile/:profileId/progress', async (req, res) => {
   res.json({ status: 'success', data: {
     profileStatus: tracker.status,
     cancelRequested: tracker.cancelRequested === true,
+    cancel: tracker.cancelRequested ? tracker.cancellation?.status() ?? null : null,
     modelName: tracker.modelName,
     hostId: tracker.hostId,
     hostUrl: tracker.hostUrl || null,

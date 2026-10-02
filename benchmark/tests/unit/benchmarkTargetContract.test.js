@@ -2,6 +2,7 @@
 
 const {
   buildOllamaTarget,
+  buildPromptFingerprint,
   buildQualityCohortFingerprint,
   normalizeBatchTargets,
   normalizeBenchmarkTarget,
@@ -85,17 +86,26 @@ describe('BenchmarkTarget v1', () => {
     });
   });
 
-  test('quality cohort changes with judge identity but not target ordering', () => {
+  test('quality cohort changes with judge identity, not with prompts', () => {
     const common = {
-      prompts: [{ _id: '2', name: 'B', level: 2, category: 'reasoning' }, { _id: '1', name: 'A', level: 1, category: 'coding' }],
       scorerVersion: 'scorer-v1',
       executionConfig: { response_max_tokens: 1024, temperature: 0, top_p: 1, seed: 7, think: false },
     };
     const first = buildQualityCohortFingerprint({ ...common, judgeTarget: harnessTarget() });
-    const reordered = buildQualityCohortFingerprint({ ...common, prompts: [...common.prompts].reverse(), judgeTarget: harnessTarget() });
+    const withPrompts = buildQualityCohortFingerprint({ ...common, prompts: [{ _id: '1', name: 'A' }], judgeTarget: harnessTarget() });
     const changed = buildQualityCohortFingerprint({ ...common, judgeTarget: buildOllamaTarget('http://ollama:11434', 'judge') });
-    expect(reordered).toBe(first);
+    expect(withPrompts).toBe(first);
     expect(changed).not.toBe(first);
+  });
+
+  test('prompt fingerprint pins identity and scoring content', () => {
+    const prompt = { _id: '1', name: 'A', level: 1, category: 'coding', prompt: 'Write a sort.', expected_answer: 'sorted' };
+    const base = buildPromptFingerprint(prompt);
+    expect(buildPromptFingerprint({ ...prompt })).toBe(base);
+    expect(buildPromptFingerprint({ ...prompt, prompt: 'Write a stable sort.' })).not.toBe(base);
+    expect(buildPromptFingerprint({ ...prompt, expected_answer: 'other' })).not.toBe(base);
+    expect(buildPromptFingerprint({ ...prompt, _id: '2' })).not.toBe(base);
+    expect(buildPromptFingerprint({ ...prompt, expected_tokens: 400 })).toBe(base);
   });
 });
 

@@ -24,3 +24,7 @@ private reporting before posting exploit details in a public issue.
 Use a reviewed revision of the active main branch. There is no promised support
 window for older releases. Dependency audit results and passing CI are useful
 checks; they do not establish production or real-device acceptance.
+
+Content AgentX reads (mail, documents, web results, retrieved knowledge) is
+data, never instructions, and outbound actions need a human confirmation
+enforced in code: see [ADR 0003](docs/adr/0003-ingested-content.md).

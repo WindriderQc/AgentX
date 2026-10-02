@@ -75,3 +75,16 @@ test('a parent-set birth date gives Super Dad the current age and birthday, neve
     if (previous === undefined) delete process.env.PLANNING_TIME_ZONE; else process.env.PLANNING_TIME_ZONE = previous;
   }
 });
+
+test('Famille sounds playful with children on both conversation backends (#121)', () => {
+  const { FAMILY_TONE } = require('../family-context');
+  const { packById } = require('../packs');
+  const { FAMILY_SURFACE_CONTRACT } = require('../persona-turn');
+  assert.match(FAMILY_TONE, /playful, curious and encouraging/);
+  assert.match(FAMILY_TONE, /replaces the selected personality's adult temperament/);
+  assert.match(FAMILY_TONE, /Fun never overrides accuracy or the safety rules/);
+  // AgentX backend: the family pack prompt; OpenClaw backend: the family surface contract sent each turn.
+  assert.ok(packById('kidx_nestor').systemPrompt.endsWith(FAMILY_TONE));
+  assert.ok(FAMILY_SURFACE_CONTRACT.endsWith(FAMILY_TONE));
+  assert.doesNotMatch(packById('personal_operator').systemPrompt || '', /Tone with children/);
+});
