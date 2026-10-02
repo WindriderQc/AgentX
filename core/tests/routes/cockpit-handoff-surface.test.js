@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { readPipelineSource, loadPipelineParts } = require('../helpers/pipelineScripts');
 
 const root = path.resolve(__dirname, '../..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -17,7 +18,7 @@ describe('cockpit contextual handoffs', () => {
   });
 
   test('Pipeline hydrates only an Agent Ops context and keeps global counts', () => {
-    const source = read('public/js/pipeline.js');
+    const source = readPipelineSource();
     const view = read('views/pages/pipeline.ejs');
     expect(view).toContain('id="pipelineHandoffContext"');
     expect(source).toContain("params.get('from') !== 'agent-ops'");

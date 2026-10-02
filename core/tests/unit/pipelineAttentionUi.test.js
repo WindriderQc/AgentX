@@ -3,8 +3,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const attention = require('../../public/js/pipeline-attention');
+const { readPipelineSource, loadPipelineParts } = require('../helpers/pipelineScripts');
 
-const script = fs.readFileSync(path.resolve(__dirname, '../../public/js/pipeline.js'), 'utf8');
+const script = readPipelineSource();
 const view = fs.readFileSync(path.resolve(__dirname, '../../views/pages/pipeline.ejs'), 'utf8');
 
 function payload({ total = 25, offset = 0, complete = true, keys } = {}) {
