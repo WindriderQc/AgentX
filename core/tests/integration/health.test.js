@@ -39,6 +39,9 @@ describe('Health Check API', () => {
       ts: expect.any(String),
     }));
     expect(new Date(res.body.ts).toISOString()).toBe(res.body.ts);
+    // Clients read the browser-reachable URL, never the in-container port.
+    expect(res.body.publicUrl).toMatch(/^https?:\/\//);
+    expect(res.body).not.toHaveProperty('port');
     // Legacy fields retained for backward compatibility.
     expect(res.body).toEqual(expect.objectContaining({
       status: 'ok',

@@ -501,9 +501,9 @@ app.get('/favicon.ico', (_req, res) => {
 
 // Health Check - Basic
 // Canonical platform envelope {ok, service, version, ts} is
-// returned additively; the legacy {status, port, details} fields are preserved
-// so existing consumers (Nerve Center, the Ops MCP health sweep, portal status)
-// keep working until they migrate.
+// returned additively; the legacy {status, details} fields are preserved. It
+// reports the browser-reachable publicUrl, never the in-container port, so
+// clients do not mistake the container port for an address to call.
 app.get('/health', async (_req, res) => {
   const ollamaHealth = await refreshOllamaHealth(systemHealth);
   const isHealthy = systemHealth.mongodb.status === 'connected';
@@ -513,7 +513,7 @@ app.get('/health', async (_req, res) => {
     ...createServiceIdentity({ service: 'agentx-core', version: SERVICE_VERSION }),
     // Legacy fields: retained for backward compatibility.
     status: isHealthy ? 'ok' : 'degraded',
-    port: process.env.PORT || 3080,
+    publicUrl: app.locals.publicUrls.core,
     details: {
       mongodb: systemHealth.mongodb.status,
       ollama: ollamaHealth.status
