@@ -272,8 +272,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
 
   const chatHandler = async (req, res) => {
     const userId = res.locals.psyxUserId;
-    const control = domain.normalizeControl(req.body?.psyx || {});
-    const action = control.action ? domain.ACTION_CONFIG[control.action] : null;
+    const requested = domain.normalizeControl(req.body?.psyx || {});
+    const action = requested.action ? domain.ACTION_CONFIG[requested.action] : null;
     const input = action?.persistedMessage || cleanText(req.body?.message, 12000);
     if (!input) return res.status(400).json({ ok: false, status: 'error', message: 'message is required' });
 
@@ -281,6 +281,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const context = conversationId ? await conversationRepository.context(userId, conversationId, 40) : [];
     if (conversationId && !context) return res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
     const longitudinal = await stateRepository.read(userId);
+    const recommendation = conversationId ? longitudinal.sessionDigests?.find(item => item.conversationId === conversationId)?.next : null;
+    const control = domain.resolveControl(requested, recommendation);
     const system = domain.composeSystemContext(longitudinal, control, { conversationId });
     const providerContext = domain.boundedContext(context || []);
 
@@ -293,6 +295,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
     res.on('close', () => { if (!res.writableEnded) abortController.abort(); });
     const heartbeat = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(': ping\n\n'); }, 15000);
     const handlers = providerHandlers(res);
+    const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason };
+    handlers.send('control', applied);
 
     try {
       const result = await provider.stream({
@@ -321,6 +325,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
       const reviewScheduled = review.schedule(userId, session.id);
       handlers.send('done', {
         review: { scheduled: reviewScheduled },
+        control: applied,
         response: assistant,
         conversationId: session.id,
         model: result.model,

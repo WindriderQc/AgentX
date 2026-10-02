@@ -31,6 +31,13 @@ edited) or rejects them; settled proposals are not proposed again. The interface
 always shows when a review runs and what it proposed. `PSYX_AUTO_REVIEW=false`
 disables it.
 
+The review also recommends the stance (talk, analyze, challenge, plan) and depth
+(normal, deep) of the conversation's next turn, with a one-sentence reason. A
+request whose stance or depth is `auto` (or absent) applies that recommendation,
+defaulting to talk and normal before the first review; an explicit choice always
+wins. The stream announces the applied stance, depth and reason in a `control`
+event before the first token.
+
 Normal and deep requests use Core's configured `analysis` and `deep_reasoning`
 routes. Review those routes against the accepted PsyX model/host before real
 private inference. There is no PsyX-owned provider: a routing failure does not

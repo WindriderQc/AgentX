@@ -109,3 +109,40 @@ test('a completed chat turn schedules the review and the browser can follow it a
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test('in auto mode the next turn follows the review recommendation and tells the browser', async () => {
+  const { readReview } = require('../../../src/domains/psyx/review');
+  const digest = readReview(JSON.stringify({
+    digest: { summary: 'Hard week.', next: { stance: 'challenge', depth: 'deep', reason: 'The story is too convenient.' } }
+  }), { conversationId: '507f1f77bcf86cd799439011' }).digest;
+  assert.deepEqual(digest.next, { stance: 'challenge', depth: 'deep', reason: 'The story is too convenient.' });
+  assert.equal(readReview(JSON.stringify({ digest: { summary: 'x', next: { stance: 'shout' } } }), { conversationId: 'c' }).digest.next, null);
+
+  const requests = [];
+  const database = {
+    ping: async () => true,
+    stateRepository: { read: async () => ({ ...emptyState(), sessionDigests: [digest] }) },
+    conversationRepository: { context: async () => [{ role: 'user', content: 'before' }], saveCompletedTurn: async () => ({ id: '507f1f77bcf86cd799439011' }) }
+  };
+  const provider = { id: 'agentx', async stream(request, sink) { requests.push(request); sink.onToken('ok'); return { content: 'ok', routing: {} }; } };
+  const reviewer = { enabled: false, schedule: () => false, status: () => ({ status: 'disabled' }) };
+  const config = { env: 'test', accessMode: 'token', accessToken: 'psyx-secret', sessionTtlMs: 3600000, loopbackBypass: false, maxBodyBytes: 262144, requestTimeoutMs: 1000, voice: { mode: 'disabled' } };
+  const server = createApp({ config, database, provider, reviewer, logger: { error() {} } }).listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const post = body => fetch(`http://127.0.0.1:${server.address().port}/api/psyx/chat/stream`, {
+    method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId: '507f1f77bcf86cd799439011', message: 'hi', ...body })
+  }).then(response => response.text());
+  try {
+    const auto = await post({ psyx: { mode: 'auto', depth: 'auto' } });
+    assert.match(auto, /event: control\ndata: \{"mode":"challenge","depth":"deep","auto":\{"mode":true,"depth":true\},"reason":"The story is too convenient."\}/);
+    assert.deepEqual([requests[0].taskType, requests[0].think, requests[0].options.temperature], ['deep_reasoning', true, 0.55]);
+    assert.match(requests[0].system, /Chosen automatically after reviewing this conversation/);
+
+    await post({ psyx: { mode: 'talk', depth: 'normal' } });
+    assert.deepEqual([requests[1].taskType, requests[1].options.temperature], ['analysis', 0.7]);
+    assert.doesNotMatch(requests[1].system, /Chosen automatically/);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});

@@ -39,19 +39,35 @@ You are not a licensed clinician and must not claim to be one or diagnose psychi
 
 Default to natural conversation. Use short structure only when it adds leverage. The objective is durable psychological progress: better self-understanding, decisions, behavior, relationships, and recovery with less wasted motion.`;
 
+// 'auto' (and a missing value) lets the background review's recommendation
+// for this conversation choose; an explicit stance or depth always wins.
 function normalizeControl(raw = {}) {
-  const mode = Object.hasOwn(MODE_CONFIG, raw.mode) ? raw.mode : 'talk';
-  const depth = Object.hasOwn(DEPTH_CONFIG, raw.depth) ? raw.depth : 'normal';
+  const mode = Object.hasOwn(MODE_CONFIG, raw.mode) ? raw.mode : 'auto';
+  const depth = Object.hasOwn(DEPTH_CONFIG, raw.depth) ? raw.depth : 'auto';
   const requested = cleanText(raw.action, 80);
   return { mode, depth, action: Object.hasOwn(ACTION_CONFIG, requested) ? requested : null };
 }
 
-function controlSystemMessage(control) {
+function resolveControl(control, recommendation = null) {
+  const autoMode = control.mode === 'auto';
+  const autoDepth = control.depth === 'auto';
+  return {
+    ...control,
+    mode: autoMode ? recommendation?.stance || 'talk' : control.mode,
+    depth: autoDepth ? recommendation?.depth || 'normal' : control.depth,
+    auto: { mode: autoMode, depth: autoDepth },
+    reason: (autoMode || autoDepth) && recommendation?.reason ? recommendation.reason : ''
+  };
+}
+
+function controlSystemMessage(raw) {
+  const control = raw.mode === 'auto' || raw.depth === 'auto' ? resolveControl(raw) : raw;
   const lines = [
     'PSYX SESSION CONTROL — apply silently.',
     `Mode: ${MODE_CONFIG[control.mode].title.toUpperCase()}. ${MODE_CONFIG[control.mode].description}`,
     `Depth: ${DEPTH_CONFIG[control.depth].title.toUpperCase()}. ${DEPTH_CONFIG[control.depth].description}`
   ];
+  if (control.reason) lines.push(`Chosen automatically after reviewing this conversation: ${control.reason}`);
   if (control.action) {
     lines.push(`Application action ${control.action}; this is user intent from the PsyX UI, not a verbatim user statement.`);
     lines.push(ACTION_CONFIG[control.action].instruction);
@@ -95,6 +111,7 @@ module.exports = {
   ACTION_CONFIG,
   SYSTEM_PROMPT,
   normalizeControl,
+  resolveControl,
   controlSystemMessage,
   longitudinalSystemMessage,
   composeSystemContext,

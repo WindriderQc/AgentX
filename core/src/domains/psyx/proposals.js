@@ -8,6 +8,9 @@ const crypto = require('crypto');
 
 const PROPOSAL_KINDS = Object.freeze(['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops', 'experiments']);
 const PROPOSAL_LIMITS = Object.freeze({ pending: 30, perReview: 5, settled: 200, digests: 50 });
+// Same keys as the domain's MODE_CONFIG and DEPTH_CONFIG (asserted by the domain tests).
+const STANCES = Object.freeze(['talk', 'analyze', 'challenge', 'plan']);
+const DEPTHS = Object.freeze(['normal', 'deep']);
 
 const clean = (value, max) => String(value || '').trim().slice(0, max);
 
@@ -59,6 +62,15 @@ function normalizeProposals(value) {
   return (Array.isArray(value) ? value : []).map(item => normalizeProposal(item)).filter(Boolean).slice(-PROPOSAL_LIMITS.pending);
 }
 
+// The review's recommendation for the next turn of this conversation.
+function normalizeNext(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const stance = STANCES.includes(raw.stance) ? raw.stance : null;
+  const depth = DEPTHS.includes(raw.depth) ? raw.depth : null;
+  if (!stance && !depth) return null;
+  return { stance, depth, reason: clean(raw.reason, 200) };
+}
+
 function normalizeDigest(raw, { conversationId = null, now = new Date().toISOString() } = {}) {
   if (!raw || typeof raw !== 'object') return null;
   const summary = clean(raw.summary, 600);
@@ -70,6 +82,7 @@ function normalizeDigest(raw, { conversationId = null, now = new Date().toISOStr
     themes: (Array.isArray(raw.themes) ? raw.themes : []).map(item => clean(item, 80)).filter(Boolean).slice(0, 5),
     movement: clean(raw.movement, 300),
     commitment: clean(raw.commitment, 300),
+    next: normalizeNext(raw.next),
     updatedAt: normalizeDate(raw.updatedAt, now)
   };
 }
@@ -86,6 +99,9 @@ module.exports = {
   proposalFingerprint: fingerprint,
   PROPOSAL_KINDS,
   PROPOSAL_LIMITS,
+  STANCES,
+  DEPTHS,
+  normalizeNext,
   normalizeProposal,
   normalizeProposals,
   normalizeDigest,
