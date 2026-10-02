@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const { readSource } = require('../../../shared/testing/readSource');
 
 const root = path.resolve(__dirname, '..', '..');
-const read = (...segments) => fs.readFileSync(path.join(root, ...segments), 'utf8');
+const read = (...segments) => readSource(path.join(root, ...segments));
 
 describe('Agent X Knowledge progressive-disclosure experience', () => {
   const workflow = read('views', 'partials', 'workflow-map.ejs');

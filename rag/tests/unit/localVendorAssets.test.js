@@ -5,6 +5,7 @@ const path = require('node:path');
 const request = require('supertest');
 const app = require('../../app');
 const packageJson = require('../../package.json');
+const { readSource } = require('../../../shared/testing/readSource');
 
 function scriptSources(html) {
   return Array.from(String(html).matchAll(/<script\b[^>]*\bsrc=(["'])(.*?)\1/gi), (match) => match[2]);
@@ -49,7 +50,7 @@ describe('RAG local browser vendors', () => {
   });
 
   test('has no remote CSS import and does not expose dependency metadata', async () => {
-    const styleSource = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+    const styleSource = readSource(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'));
     expect(styleSource).not.toMatch(/@import\s+(?:url\()?['"]?https?:\/\//i);
 
     await request(app).get('/vendor/express/package.json').expect(404);
