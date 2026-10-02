@@ -65,6 +65,27 @@ build revision. This checkout has no automatic production pull/deploy scheduler.
 Configure [parental access](PARENTAL_ACCESS.md) at the LAN HTTPS gateway before
 opening the full profile to family devices.
 
+### Bounded maintenance actions
+
+`./agentx action <name>` runs one action from a closed list on a running
+instance, never a free shell. It reads the instance from `AGENTX_ENV_FILE`,
+`AGENTX_PROJECT_NAME` and `AGENTX_COMPOSE_OVERRIDE` and refuses to guess them.
+A mutating action also needs `AGENTX_LEAD_FILE`, the instance's `LEAD.md`
+coordination file, and `--actor <who>`: it takes that lease, refuses while
+another operator holds it, releases it with a note, and prints a JSON receipt
+(`agentx.maintenance-action/v1`), also written to `AGENTX_ACTION_RECEIPTS_DIR`
+when set. Exit codes: 0 completed, 1 failed, 2 usage, 4 refused (held or busy).
+
+| Action | Effect |
+|---|---|
+| `status` | Read-only: checkout revision, revision served by Core, Benchmark and RAG, active coordination, lease holder, running deploys. |
+| `deploy --services core,benchmark[,...] [--revision origin/main] [--wait-minutes 10]` | Clean tree, no other deploy, revision on `origin/main` and a fast-forward of the checkout; waits for the instance to be idle, then `./agentx up --build --no-deps` (Core's runtime lease still applies) and checks the served revision. |
+| `recover-quarantine --host <ollama url>` | For an UNKNOWN inference on a local Ollama: refuses while an inference or a workload is active there, restarts the unit named for that host in `AGENTX_ACTION_OLLAMA_UNITS` (`{"<url>": {"unit": "...", "scope": "system"\|"user"}}`, `sudo -n` for system units), checks a new process answers, then attests each UNKNOWN admission with `recover-runtime-restart`. Workloads keep the profiler procedure below. |
+| `recalibrate-judges [--host <url> --model <name>]` | Runs Benchmark's quick judge calibration (the default judge when no target is given) and returns its report. |
+
+An instance can install a small wrapper that exports these variables, so an
+operator session or agent calls a single command.
+
 ### Moving an instance to a fresh source history
 
 When a source repository starts a new history, do not merge the previous Git
