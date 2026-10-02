@@ -421,6 +421,11 @@ only the fact that a secret was shown.
 Opening Super Dad on any device offers to resume its latest conversation when
 the last exchange is less than 24 hours old; the conversation, its history and
 attachments come from Core, not from the browser. Famille does not offer it.
+Famille keeps the Nestor personality but replaces its adult temperament with a
+playful, curious tone for children (`FAMILY_TONE` in
+`core/surfaces/household/family-context.js`), sent with the family surface
+contract on the OpenClaw backend and appended to the family pack prompt on the
+AgentX backend. Accuracy and the safety rules still come first.
 Every Super Dad turn also receives the active child profiles of the Family page
 (`/dad/family`) as approved knowledge, so the children's names and age bands
 do not depend on which notes a search selects. Famille turns do not.

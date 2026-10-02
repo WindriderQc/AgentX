@@ -11,7 +11,7 @@ const { agentInstructions, agentIdFor, personalVoice } = require('./conversation
 const { conversationBackend } = require('./conversation-executor');
 const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
-const { familyTurn, householdMembers } = require('./family-context');
+const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
 const { mathTurnFor } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels;
@@ -19,7 +19,7 @@ const { scoreSpeechLanguage } = require('./public/speech-language');
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
 
-const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools.';
+const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
 
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent,
@@ -389,4 +389,4 @@ function createPersonaTurnHandler({
   };
 }
 
-module.exports = { createPersonaTurnHandler };
+module.exports = { createPersonaTurnHandler, FAMILY_SURFACE_CONTRACT };

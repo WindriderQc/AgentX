@@ -7,11 +7,6 @@ jest.mock('../../../config/logger', () => ({
     debug: jest.fn()
 }));
 
-// No database here: the cohort catalog is the selected prompts.
-jest.mock('../../../src/services/benchmark/qualityCohort', () => ({
-    loadCohortCatalog: jest.fn(async (selected) => selected)
-}));
-
 jest.mock('../../../src/services/benchmark/benchmarkAuthorityReconciliation', () => ({
     enqueueAuthorityInvalidation: jest.fn(async () => ({ _id: 'reconciliation-test' })),
     waitForResultInvalidation: jest.fn(async () => ({ invalidated: true }))

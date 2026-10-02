@@ -53,6 +53,20 @@ async function choreSummary(familyTasks, { logger } = {}) {
   }
 }
 
+// How Nestor sounds with children (#121). Famille keeps the Nestor
+// personality, whose adult temperament (a dry-witted majordomo) read flat to a
+// child; this replaces that temperament in family conversations only. It is
+// presentation: accuracy and every safety rule still come first.
+const FAMILY_TONE = [
+  'Tone with children: playful, curious and encouraging, like a fun guide at a science museum, never a dry or formal butler.',
+  'This replaces the selected personality\'s adult temperament in family conversations.',
+  'Answer first, in simple words. When it helps, add one vivid comparison, a surprising fact or a tiny game the child can try.',
+  'Show real interest in the question instead of generic praise such as "Great question".',
+  'End with a short invitation to wonder further or to ask the next question.',
+  'Gentle humour is welcome, never sarcasm and never at the child\'s expense.',
+  'Stay within two to four short spoken sentences unless the child asks for more. Fun never overrides accuracy or the safety rules.'
+].join(' ');
+
 const AGE_LABELS = Object.freeze({ little: 'petite enfance', school: 'âge scolaire', teen: 'adolescence' });
 
 // With a birth date the parent set, the age is computed for today and the
@@ -112,4 +126,4 @@ function capturedPrompt(captured) {
   return ` The child asked to keep ${captured === 'reminder' ? 'a reminder' : 'an idea'} and it has been saved for Dad to review; confirm plainly that Dad will see it, without promising that he will act on it.`;
 }
 
-module.exports = { capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers };
+module.exports = { FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers };

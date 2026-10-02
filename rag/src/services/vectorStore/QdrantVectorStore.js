@@ -208,7 +208,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     try {
       for (let i = 0; i < points.length; i += batchSize) {
         const batch = points.slice(i, i + batchSize);
-        const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points`, {
+        const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points?wait=true`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ points: batch })
@@ -398,7 +398,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
   }
 
   async _deleteByFilter(filter) {
-    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points/delete`, {
+    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points/delete?wait=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filter })
@@ -523,7 +523,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
 
   /** Create one payload index; `fieldSchema` is a Qdrant type name or params object. */
   async createPayloadIndex(fieldName, fieldSchema) {
-    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/index`, {
+    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/index?wait=true`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ field_name: fieldName, field_schema: fieldSchema })
@@ -582,7 +582,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
       throw new Error(`cannot set originalText: no chunk-0 for ${documentId}`);
     }
     const res = await fetchWithTimeout(
-      `${this.qdrantUrl}/collections/${this.collectionName}/points/payload`,
+      `${this.qdrantUrl}/collections/${this.collectionName}/points/payload?wait=true`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
