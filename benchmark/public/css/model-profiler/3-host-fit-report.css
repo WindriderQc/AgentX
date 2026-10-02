@@ -1,0 +1,195 @@
+/* ── Host Fit Report (expandable panel on host cards) ───────────────────── */
+.mp-fit-slot { margin-top: 0.5rem; }
+.mp-fit-report {
+  border: 1px solid var(--r-border, #1a1a2e);
+  border-radius: 8px;
+  background: rgba(88, 166, 255, 0.03);
+  padding: 0.7rem 0.75rem;
+  font-size: 0.7rem;
+  color: var(--r-text-primary, #e0e0e0);
+}
+.mp-fit-head { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.45rem; }
+.mp-fit-chip {
+  font-size: 0.6rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(78, 205, 196, 0.2);
+  background: rgba(78, 205, 196, 0.06);
+  color: var(--r-text-muted, #c9d1d9);
+}
+.mp-fit-chip b { color: var(--r-text-primary, #e0e0e0); font-weight: 700; }
+.mp-fit-dim { color: var(--r-text-dim, #6e7681); font-weight: 400; }
+.mp-fit-cap {
+  font-size: 0.62rem;
+  color: var(--r-text-muted, #8b949e);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--r-border, #1a1a2e);
+}
+.mp-fit-cap b { color: var(--r-text-primary, #e0e0e0); }
+.mp-fit-warn { color: #f0883e; }
+
+.mp-fit-rec {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.6rem;
+  border-radius: 6px;
+  border: 1px solid rgba(46, 204, 113, 0.3);
+  background: rgba(46, 204, 113, 0.07);
+}
+.mp-fit-rec--none {
+  border-color: var(--r-border, #30363d);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--r-text-muted, #8b949e);
+  font-style: italic;
+}
+.mp-fit-rec__star { color: #2ecc71; font-size: 0.85rem; line-height: 1; }
+.mp-fit-rec__name { font-weight: 700; color: var(--r-text-primary, #e0e0e0); font-size: 0.74rem; }
+.mp-fit-rec__why { font-size: 0.6rem; color: var(--r-text-muted, #8b949e); margin-top: 1px; }
+
+.mp-fit-section-label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--r-text-dim, #6e7681);
+  font-weight: 700;
+  margin: 0.5rem 0 0.3rem;
+}
+
+.mp-fit-table { width: 100%; border-collapse: collapse; font-size: 0.64rem; }
+.mp-fit-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--r-text-dim, #6e7681);
+  padding: 0.2rem 0.4rem;
+  border-bottom: 1px solid var(--r-border, #1a1a2e);
+}
+.mp-fit-table td {
+  padding: 0.28rem 0.4rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--r-text-muted, #c9d1d9);
+  white-space: nowrap;
+}
+.mp-fit-table tr:last-child td { border-bottom: none; }
+.mp-fit-table--est { margin-top: 0.1rem; opacity: 0.92; }
+.mp-fit-name { color: var(--r-text-primary, #e0e0e0); font-weight: 600; white-space: normal; word-break: break-word; }
+.mp-fit-sub { font-size: 0.55rem; color: var(--r-text-dim, #6e7681); margin-left: 2px; }
+.mp-fit-dot { color: #2ecc71; font-size: 0.55rem; }
+
+.mp-fit-badge {
+  display: inline-block;
+  font-size: 0.56rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+}
+.mp-fit-badge--ok   { color: #2ecc71; background: rgba(46, 204, 113, 0.1); }
+.mp-fit-badge--warn { color: #f0883e; background: rgba(240, 136, 62, 0.1); }
+.mp-fit-badge--crit { color: #ef5350; background: rgba(239, 83, 80, 0.1); }
+.mp-fit-badge--muted{ color: #8b949e; background: rgba(139, 148, 158, 0.1); }
+
+.mp-fit-foot {
+  margin-top: 0.5rem;
+  font-size: 0.55rem;
+  color: var(--r-text-dim, #6e7681);
+  border-top: 1px solid var(--r-border, #1a1a2e);
+  padding-top: 0.35rem;
+}
+.mp-fit-empty, .mp-fit-loading {
+  font-size: 0.64rem;
+  color: var(--r-text-muted, #8b949e);
+  padding: 0.5rem 0.2rem;
+  font-style: italic;
+}
+.mp-fit-empty--err { color: #ef5350; font-style: normal; }
+
+/* VRAM budget bar (inside measured table) */
+.mp-fit-vramcell { min-width: 70px; }
+.mp-fit-bar {
+  display: inline-block;
+  width: 46px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+.mp-fit-bar__fill { height: 100%; border-radius: 3px; }
+.mp-fit-bar__fill--ok   { background: #2ecc71; }
+.mp-fit-bar__fill--warn { background: #f0883e; }
+.mp-fit-bar__fill--crit { background: #ef5350; }
+.mp-fit-bar__label { font-size: 0.58rem; color: var(--r-text-muted, #8b949e); }
+
+/* Benchmark score chip on a model name */
+.mp-fit-score {
+  display: inline-block;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #d2a8ff;
+  background: rgba(210, 168, 255, 0.12);
+  border: 1px solid rgba(210, 168, 255, 0.25);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-left: 4px;
+}
+
+/* Second (benchmark-based) recommendation line */
+.mp-fit-rec__alt {
+  font-size: 0.6rem;
+  color: var(--r-text-muted, #8b949e);
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+.mp-fit-rec__alt b { color: var(--r-text-primary, #e0e0e0); }
+.mp-fit-rec__alt-star { color: #d2a8ff; }
+.mp-fit-rec__alt-star--uc { color: #2ecc71; }
+
+/* Use-case toolbar + selector */
+.mp-fit-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.45rem; }
+.mp-fit-toolbar .mp-fit-head { margin-bottom: 0; flex: 1; }
+.mp-fit-uc { display: flex; align-items: center; gap: 0.3rem; font-size: 0.58rem; color: var(--r-text-dim, #6e7681); white-space: nowrap; }
+.mp-fit-uc select {
+  font-size: 0.62rem;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--r-border, #30363d);
+  background: var(--r-bg-inset, #21262d);
+  color: var(--r-text, #e6edf3);
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+/* Composite score chip (use-case-weighted) */
+.mp-fit-comp {
+  display: inline-block;
+  font-size: 0.55rem;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-right: 5px;
+  min-width: 22px;
+  text-align: center;
+}
+.mp-fit-comp--hi  { color: #2ecc71; background: rgba(46, 204, 113, 0.14); border: 1px solid rgba(46, 204, 113, 0.3); }
+.mp-fit-comp--mid { color: #f0c674; background: rgba(240, 198, 116, 0.12); border: 1px solid rgba(240, 198, 116, 0.28); }
+.mp-fit-comp--lo  { color: #8b949e; background: rgba(139, 148, 158, 0.1); border: 1px solid rgba(139, 148, 158, 0.25); }
+
+/* MoE badge */
+.mp-fit-moe {
+  display: inline-block;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #79c0ff;
+  background: rgba(121, 192, 255, 0.12);
+  border: 1px solid rgba(121, 192, 255, 0.3);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
