@@ -8,7 +8,7 @@ const { createVoiceClient } = require('./voice');
 const { createReviewer } = require('./reviewer');
 const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRepository');
 const domain = require('../../../src/domains/psyx/domain');
-const { detectCrisis } = require('../../../src/domains/psyx/safety');
+const { detectRecentCrisis } = require('../../../src/domains/psyx/safety');
 
 const VERSION = '2.5.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
@@ -288,7 +288,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const longitudinal = await stateRepository.read(userId);
     const recommendation = conversationId ? longitudinal.sessionDigests?.find(item => item.conversationId === conversationId)?.next : null;
     // A crisis signal overrides any stance: stay with the person, answer promptly.
-    const safety = action ? null : detectCrisis(input);
+    const safety = action ? null : detectRecentCrisis(input, context || []);
     const resolved = domain.resolveControl(requested, recommendation);
     const control = safety ? { ...resolved, mode: 'talk', depth: 'normal', reason: '' } : resolved;
     const system = domain.composeSystemContext(longitudinal, control, { conversationId, safety });

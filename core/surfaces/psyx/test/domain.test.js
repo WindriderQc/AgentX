@@ -64,3 +64,20 @@ test('the review prompt example parses into a digest with its next-turn recommen
   const review = readReview(example, { conversationId: 'c1' });
   assert.deepEqual([review.digest.conversationId, review.digest.next.stance, review.digest.next.depth], ['c1', 'plan', 'deep']);
 });
+
+test('crisis phrasing found by the adversarial review is detected, and the safety stance carries over', () => {
+  const { detectCrisis, detectRecentCrisis } = require('../../../src/domains/psyx/safety');
+  for (const text of ['J’ai envie de mourir', 'je veux en finir avec ma vie', 'je ne veux plus vivre', 'je n’en peux plus de vivre',
+    'je voudrais être mort', 'I don’t want to live anymore', 'I want to disappear', 'I have a plan to end it',
+    'je me suis coupé hier', 'je me suis fait du mal', 'je veux pas me réveiller demain']) {
+    assert.ok(detectCrisis(text), text);
+  }
+  assert.equal(detectCrisis('il devait le tuer, ce boss'), null, 'whole words only');
+  assert.equal(detectCrisis('je vais crever de faim'), null);
+
+  const context = [{ role: 'user', content: 'Je veux mourir.' }, { role: 'assistant', content: 'Es-tu en sécurité?' }];
+  const carried = detectRecentCrisis('pas vraiment', context);
+  assert.deepEqual([carried.kinds, carried.carriedOver], [['suicide'], true]);
+  const later = [...context, { role: 'user', content: 'ok' }, { role: 'assistant', content: '…' }, { role: 'user', content: 'merci' }];
+  assert.equal(detectRecentCrisis('on parle d’autre chose', later), null, 'two calmer messages end it');
+});

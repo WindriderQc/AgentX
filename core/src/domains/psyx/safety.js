@@ -6,12 +6,12 @@
 // figures of speech ("ça me tue de rire") do not trigger.
 
 const SIGNALS = Object.freeze([
-  { kind: 'suicide', pattern: /\b(suicid\w*|me (tuer|suicider|pendre|jeter (sous|du haut))|(envie d'|veux |vais )en finir(?! avec)|en finir avec (la vie|tout|moi)|mettre fin a (mes jours|ma vie)|(plus|pas) (envie|le gout) de vivre|veux (mourir|disparaitre)|voudrais (mourir|disparaitre)|mieux (sans moi|si j'?etais mort)|kill myself|end (it all|my life)|want to die|better off dead|no reason to live)\b/ },
+  { kind: 'suicide', pattern: /\b(suicid\w*|me (tuer|suicider|pendre|jeter (sous|du haut))|(envie d'|veux |vais )en finir(?! avec)|en finir avec (la vie|ma vie|tout|moi)|(envie de|veux|voudrais) (mourir|crever(?! de))|(veux|voulais|voudrais) (plus|pas) vivre|n'?en peux plus de vivre|(voudrais|aimerais) etre mort|mettre fin a (mes jours|ma vie)|(plus|pas) (envie|le gout) de vivre|veux (mourir|disparaitre)|voudrais (mourir|disparaitre)|mieux (sans moi|si j'?etais mort)|kill myself|end (it all|my life)|want to die|better off dead|no reason to live|(don'?t|do not) want to live|want to disappear|plan to end (it|my life))\b/ },
   // Passive ideation: wishing not to exist, without a stated plan. Errs toward
   // asking; the safety instruction covers what is clearly something else.
-  { kind: 'passive_ideation', pattern: /\b(si je (n'?etais|ne serais|n'?existais) plus (la|ici)|si je disparaissais|(serait|serais|seraient) (mieux|plus simple|plus facile) sans moi|j'?aimerais (ne )?(pas|plus) me reveiller|wish i (were|was) (dead|gone)|not wake up)\b/ },
-  { kind: 'self_harm', pattern: /\b(me (faire du mal|blesser|blesse|couper|coupe|scarifier|scarifie|bruler|brule)|automutil\w*|scarification|self[- ]?harm\w*|cut(ting)? myself|hurt(ing)? myself)\b/ },
-  { kind: 'harm_to_others', pattern: /\b(envie|peur) de (le|la|les|lui) (tuer|frapper|faire du mal)|vais (le|la|les|lui) (tuer|faire du mal)|(want|going) to (kill|hurt) (him|her|them)\b/ },
+  { kind: 'passive_ideation', pattern: /\b(si je (n'?etais|ne serais|n'?existais) plus (la|ici)|si je disparaissais|(serait|serais|seraient) (mieux|plus simple|plus facile) sans moi|(aimerais|voudrais|veux) (ne )?(pas|plus) me reveiller|wish i (were|was) (dead|gone)|not wake up)\b/ },
+  { kind: 'self_harm', pattern: /\b(me (faire du mal|blesser|blesse|couper|coupe|scarifier|scarifie|bruler|brule)|me suis (fait du mal|blesse|coupe|scarifie|brule)e?|automutil\w*|scarification|self[- ]?harm\w*|cut(ting)? myself|hurt(ing)? myself)\b/ },
+  { kind: 'harm_to_others', pattern: /\b((envie|peur) de (le|la|les|lui) (tuer|frapper|faire du mal)|vais (le|la|les|lui) (tuer|faire du mal)|(want|going) to (kill|hurt) (him|her|them))\b/ },
   { kind: 'immediate_danger', pattern: /\b(j'?ai (pris|avale) (des|trop de|tous mes) (pilules|medicaments|comprimes)|overdos\w*|surdos\w*|i took (all|too many) (pills|meds))\b/ }
 ]);
 
@@ -30,10 +30,21 @@ function normalize(text) {
     .toLowerCase().replace(/[’`]/g, "'").replace(/\s+/g, ' ');
 }
 
+// A crisis does not end with the message that named it: the next replies keep
+// the safety stance while one of the user's last two messages carried a signal.
+function detectRecentCrisis(message, context = []) {
+  const recentUserTurns = context.filter((turn) => turn.role === 'user').slice(-2).map((turn) => turn.content);
+  for (const text of [message, ...recentUserTurns.reverse()]) {
+    const found = detectCrisis(text);
+    if (found) return { ...found, carriedOver: text !== message };
+  }
+  return null;
+}
+
 function detectCrisis(text) {
   const value = normalize(text);
   const kinds = SIGNALS.filter(signal => signal.pattern.test(value)).map(signal => signal.kind);
   return kinds.length ? { kinds, resources: RESOURCES } : null;
 }
 
-module.exports = { RESOURCES, SAFETY_INSTRUCTION, detectCrisis };
+module.exports = { RESOURCES, SAFETY_INSTRUCTION, detectCrisis, detectRecentCrisis };

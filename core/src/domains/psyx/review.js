@@ -21,6 +21,7 @@ Rules:
 - Every proposal needs evidence from the conversation. Distinguish what the user said from your inference; patterns and hypotheses are fallible working observations, never diagnoses.
 - Do not repeat or rephrase anything already in the longitudinal state or in the pending proposals.
 - Prefer an experiment when the user is ready to test something; prefer an open loop for an unresolved question the user will want to return to.
+- If the conversation contains any sign of suicidal thoughts, self-harm or harm to others, "next" is talk with normal depth.
 - "next" sets how PsyX should answer the user's next message. talk: stay with lived experience, especially while emotion is high or the user is still telling the story. analyze: map triggers, beliefs and loops once the situation is on the table. challenge: pressure-test a convenient narrative, avoidance or certainty the evidence does not support, when the user can hear it. plan: turn an insight the user accepts into one small observable step. depth deep only when the next answer needs deliberate reasoning: high emotional load, an important decision, contradictions or competing explanations; otherwise normal.
 - Write in the language of the conversation.`;
 
