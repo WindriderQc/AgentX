@@ -655,26 +655,26 @@
         <div class="field">
           <label for="userAbout">About You (Memory)</label>
           <div class="hint" id="userAboutHint">Facts the agent should remember about you (e.g., job, interests, background).</div>
-          <textarea id="userAbout" rows="5" aria-describedby="userAboutHint" placeholder="I am a software engineer interested in AI..."></textarea>
+          <textarea id="userAbout" rows="5" aria-describedby="userAboutHint" maxlength="8000" placeholder="I am a software engineer interested in AI..."></textarea>
         </div>
         <div class="field">
           <label for="memoryLanguage">Preferred Language</label>
-          <input type="text" id="memoryLanguage" placeholder="English">
+          <input type="text" id="memoryLanguage" maxlength="100" placeholder="English">
         </div>
         <div class="field">
           <label for="memoryRole">Role / Context</label>
-          <input type="text" id="memoryRole" placeholder="e.g. Product manager focusing on UX">
+          <input type="text" id="memoryRole" maxlength="300" placeholder="e.g. Product manager focusing on UX">
         </div>
         <div class="field">
           <label for="memoryStyle">Response Style</label>
-          <textarea id="memoryStyle" rows="2" placeholder="Concise, decisive, include next steps."></textarea>
+          <textarea id="memoryStyle" rows="2" maxlength="1000" placeholder="Concise, decisive, include next steps."></textarea>
         </div>
         <div class="field">
           <label for="userInstructions">Custom Instructions</label>
           <div class="hint" id="userInstructionsHint">How the agent should behave (e.g., always be concise).</div>
-          <textarea id="userInstructions" rows="3" aria-describedby="userInstructionsHint" placeholder="Be brief and professional."></textarea>
+          <textarea id="userInstructions" rows="3" aria-describedby="userInstructionsHint" maxlength="4000" placeholder="Be brief and professional."></textarea>
         </div>
-        <div class="hint" id="profilePersistenceNote">All profile data is saved to your AgentX database and persisted across conversations.</div>
+        <div class="hint" id="profilePersistenceNote">About, custom instructions, language, role and response style are saved in the AgentX database and added to the Playground chat system prompt.</div>
         <div class="action-row">
           <button class="ghost" id="resetProfileBtn" type="button">Reset</button>
           <button class="primary" id="saveProfileBtn" type="button">Save Profile</button>
