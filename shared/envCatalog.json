@@ -1403,6 +1403,17 @@
       "secret": false,
       "description": "Allow the background review on the Famille surface. Unset: enabled in Compose."
     },
+    "HOUSEHOLD_PERSONA_VOICES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional JSON mapping a Household persona id, or \"*\", to an instance voice \"provider|voice\" (kokoro, windows_sapi or voxcpm). A browser voice selection still wins. Unset: catalog voices.",
+      "fallback": "catalog persona voices"
+    },
     "HOUSEHOLD_BRAIN_HOST_URL": {
       "services": [
         "core"
