@@ -201,21 +201,6 @@ a:hover {
   box-shadow: var(--shadow);
 }
 
-.sidecar-label {
-  margin-bottom: 6px;
-  color: var(--text-dim);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.sidecar-value {
-  color: var(--text);
-  font-size: 1rem;
-  font-weight: 600;
-}
-
 .rag-ops-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -447,10 +432,6 @@ a:hover {
   min-height: 100%;
 }
 
-.dependency-copy {
-  margin-bottom: 12px;
-}
-
 .stats-card {
   margin-top: 2px;
 }
@@ -571,10 +552,6 @@ a:hover {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-}
-
-.stats-copy {
-  margin-top: 16px;
 }
 
 /* ── Mono values ────────────────────────────────────────── */
@@ -955,26 +932,10 @@ a:hover {
   flex: 1;
 }
 
-.score-bar-bg {
-  flex: 1;
-  height: 8px;
-  background: rgba(7, 20, 24, 0.72);
-  border-radius: 4px;
-  overflow: hidden;
-  max-width: 300px;
-}
-
 .score-bar {
   height: 100%;
   border-radius: 4px;
   transition: width 0.3s ease;
-}
-
-.score-value {
-  font-size: 0.9rem;
-  color: var(--text);
-  min-width: 50px;
-  text-align: right;
 }
 
 .result-text {
@@ -1112,38 +1073,8 @@ a:hover {
   margin-bottom: 20px;
 }
 
-.collapsible-toggle {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  cursor: pointer;
-  padding: 4px 0;
-}
-
-.collapsible-toggle::before {
-  content: '\25b6';
-  display: inline-block;
-  margin-right: 6px;
-  transition: transform 0.15s;
-  font-size: 0.7rem;
-}
-
 .collapsible-toggle.open::before {
   transform: rotate(90deg);
-}
-
-.collapsible-body {
-  padding-top: 12px;
-}
-
-/* ── Ingest Actions ───────────────────────────────────── */
-
-.ingest-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
 }
 
 /* ── Spinner ──────────────────────────────────────────── */
