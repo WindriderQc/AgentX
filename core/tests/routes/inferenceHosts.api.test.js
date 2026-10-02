@@ -49,6 +49,8 @@ describe('inference host registry API', () => {
     expect(rows[rows.length - 1]).toEqual(['frank-cpu', 'cpu', 'registry']);
     expect(hostConfig.validateHostUrl('http://192.168.50.99:11435').valid).toBe(true);
     expect(HOSTS['frank-cpu']).toBe('http://192.168.50.99:11435');
+    expect(await HostPreference.findOne({ hostUrl: 'http://192.168.50.99:11435' }).lean())
+      .toMatchObject({ hostKey: 'frank-cpu', displayName: 'Frank CPU', status: 'idle' });
   });
 
   it('still registers an unreachable host and says so', async () => {
@@ -90,10 +92,10 @@ describe('inference host registry API', () => {
     const url = '/api/nerve-center/inference-hosts/frank-cpu';
     expect((await http.request.delete(url)).body.code).toBe('CONFIRMATION_REQUIRED');
 
-    await HostPreference.create({ hostUrl: 'http://192.168.50.99:11435', hostKey: 'frank-cpu',
-      pinnedModels: [{ model: 'gemma4:26b-a4b-it-qat', numThread: 6 }] });
+    await HostPreference.updateOne({ hostUrl: 'http://192.168.50.99:11435' },
+      { $set: { pinnedModels: [{ model: 'gemma4:26b-a4b-it-qat', numThread: 6 }] } });
     expect((await http.request.delete(url).set('X-AgentX-Confirm', 'REMOVE HOST frank-cpu')).body.code).toBe('HOST_HAS_PINS');
-    await HostPreference.deleteMany({});
+    await HostPreference.updateOne({ hostUrl: 'http://192.168.50.99:11435' }, { $set: { pinnedModels: [] } });
 
     await RouterTaskConfig.create({ taskType: 'janitor_ai', model: 'gemma4:26b-a4b-it-qat', host: 'frank-cpu' });
     expect((await http.request.delete(url).set('X-AgentX-Confirm', 'REMOVE HOST frank-cpu')).body.code).toBe('HOST_IN_ROUTING');
@@ -102,6 +104,7 @@ describe('inference host registry API', () => {
     const removed = await http.request.delete(url).set('X-AgentX-Confirm', 'REMOVE HOST frank-cpu');
     expect(removed.status).toBe(200);
     expect(hostConfig.validateHostUrl('http://192.168.50.99:11435').valid).toBe(false);
+    expect(await HostPreference.countDocuments({ hostUrl: 'http://192.168.50.99:11435' })).toBe(0);
     expect(HOSTS['frank-cpu']).toBeUndefined();
   });
 });
