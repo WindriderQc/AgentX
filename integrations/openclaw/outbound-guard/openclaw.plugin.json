@@ -1,0 +1,24 @@
+{
+  "id": "outbound-guard",
+  "name": "AgentX Outbound Guard",
+  "version": "1.0.0",
+  "description": "Owner approval, enforced in code, before an agent messages anyone outside the owner's own conversations (ADR 0003).",
+  "activation": {
+    "onStartup": true,
+    "onAgentHarnesses": [
+      "openclaw"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "ownerTargets": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "additionalProperties": false
+  }
+}
