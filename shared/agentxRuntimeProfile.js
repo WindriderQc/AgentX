@@ -102,8 +102,11 @@ function isProductCoordination(path, method) {
 }
 
 function demoSurfaceDisabled(pathname, method = 'GET') {
-  const path = String(pathname || '/').split('?')[0];
-  if (isProductCoordination(path, String(method).toUpperCase())) return false;
+  // Express routes are case-insensitive by default. Normalize only this
+  // comparison; leave the original URL and opaque handler parameters intact.
+  const path = String(pathname || '/').split('?')[0].toLowerCase();
+  const verb = String(method).toUpperCase();
+  if (isProductCoordination(path, verb === 'HEAD' ? 'GET' : verb)) return false;
   return DEMO_DISABLED_PREFIXES.some((prefix) => matchesPrefix(path, prefix));
 }
 
@@ -113,7 +116,8 @@ function createAgentXProfileGuard(profile = currentAgentXProfile()) {
     res.setHeader('X-AgentX-Profile', normalized);
     if (normalized !== DEMO_PROFILE || !demoSurfaceDisabled(req.path || req.url, req.method)) return next();
 
-    if (String(req.path || '').startsWith('/api/') || String(req.path || '') === '/mcp') {
+    const path = String(req.path || req.url || '').split('?')[0].toLowerCase();
+    if (path.startsWith('/api/') || path === '/mcp') {
       return res.status(404).json({
         ok: false,
         error: 'This integration is not available in the Agent X demo profile.',
