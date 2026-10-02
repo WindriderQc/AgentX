@@ -8,7 +8,7 @@
 //
 //   node core/surfaces/psyx/eval/run.js [--only id,id] [--repeat 2] [--out file.json]
 //     [--compare previous.json] [--judge-task deep_reasoning] [--judge-model name]
-//     [--base https://agentx.example] [--code-file ~/.agentx/access/parental-code]
+//     --base <Core URL, or AGENTX_BASE_URL> [--code-file ~/.agentx/access/parental-code]
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -42,7 +42,8 @@ function args(argv) {
     else continue;
     index += 1;
   }
-  options.base = (options.base || process.env.AGENTX_BASE_URL || 'https://agentx.specialblend.icu').replace(/\/$/, '');
+  options.base = String(options.base || process.env.AGENTX_BASE_URL || '').replace(/\/$/, '');
+  if (!options.base) throw new Error('Set --base or AGENTX_BASE_URL to the Core URL of your instance.');
   options.codeFile = options.codeFile || process.env.AGENTX_ACCESS_CODE_FILE || path.join(os.homedir(), '.agentx', 'access', 'parental-code');
   return options;
 }
@@ -92,7 +93,8 @@ function judgeRequest(options, scenario, reply) {
 
 function readJudgement(raw, scenario) {
   const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-  const parsed = start >= 0 && end > start ? JSON.parse(raw.slice(start, end + 1)) : {};
+  let parsed = {};
+  try { parsed = start >= 0 && end > start ? JSON.parse(raw.slice(start, end + 1)) : {}; } catch { /* an unreadable judgement scores zero */ }
   const ids = [...scenario.criteria, ...GENERIC_CRITERIA].map(item => item.id);
   const scores = Object.fromEntries(ids.map(id => {
     const found = (parsed.criteria || []).find(item => item.id === id);

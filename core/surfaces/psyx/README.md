@@ -70,8 +70,8 @@ safety check), asks Core's router for it and scores it with deterministic checks
 and a judge model grading each criterion. Run it against the LAN gateway before
 and after a prompt or model change and compare:
 
-    node core/surfaces/psyx/eval/run.js --repeat 2 --out before.json
-    node core/surfaces/psyx/eval/run.js --repeat 2 --compare before.json
+    AGENTX_BASE_URL=https://<core> node core/surfaces/psyx/eval/run.js --repeat 2 --out before.json
+    AGENTX_BASE_URL=https://<core> node core/surfaces/psyx/eval/run.js --repeat 2 --compare before.json
 
 Reports stay outside Git. The default judge is the router's `deep_reasoning`
 model; when it is also the reply model, `--judge-model` gives a second opinion.

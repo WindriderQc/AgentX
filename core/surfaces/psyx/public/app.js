@@ -138,7 +138,9 @@ function showGate(message = '') {
   state.history = [];
   state.sessions = [];
   state.psyxState = null;
-  messages.replaceChildren();
+  // The static intro stays; the conversation and the recap of past sessions go.
+  clearRenderedConversation();
+  if ($('openingRecap')) { $('openingRecap').replaceChildren(); $('openingRecap').hidden = true; }
   for (const form of document.querySelectorAll('form')) form.reset();
   input.value = '';
   sessionLabel.textContent = 'PsyX verrouillé';
@@ -383,6 +385,7 @@ async function restoreConversation(conversationId = state.conversationId) {
     state.conversationId = String(conversationId);
     localStorage.setItem(STORAGE_KEY, state.conversationId);
     state.history = normalizeConversationMessages(conversation.messages);
+    hideSafety();
     clearRenderedConversation();
     for (const item of state.history) addMessage(item.role, item.content);
     updateContextStatus();

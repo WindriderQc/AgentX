@@ -21,7 +21,6 @@ function hideSafety() {
 // Only a new conversation shows the recap; PsyX itself decides whether to bring it up.
 function renderOpening() {
   const recap = $('openingRecap');
-  if (!recap) return; // locking clears the whole transcript, intro included
   const last = (state.psyxState?.sessionDigests || []).at(-1);
   const experiments = (state.psyxState?.experiments || []).filter((item) => ['planned', 'active'].includes(item.status)).slice(-2);
   if (state.conversationId || (!last && !experiments.length)) {

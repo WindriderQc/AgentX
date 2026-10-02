@@ -66,6 +66,8 @@ async function pollReview(conversationId, accessEpoch, startedAt) {
     if (error.code === 'PSYX_LOCKED') return stopReviewWatch();
   }
   if (Date.now() - startedAt > REVIEW_POLL_LIMIT_MS) return stopReviewWatch();
+  // Another session may have been opened while this poll was in flight.
+  if (review.watch?.conversationId !== conversationId) return;
   review.watch.timer = setTimeout(() => void pollReview(conversationId, accessEpoch, startedAt), REVIEW_POLL_MS);
 }
 
@@ -123,7 +125,16 @@ function renderProposals() {
 
 async function settleProposal(id, action, body = {}) {
   stateSaveStatus.textContent = 'enregistrement…';
-  const result = await api(`/api/psyx/state/proposals/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify(body) });
+  let result;
+  try {
+    result = await api(`/api/psyx/state/proposals/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify(body) });
+  } catch (error) {
+    if (error.code === 'PSYX_LOCKED') return;
+    // Already settled elsewhere (a double click, another tab): show the current state.
+    stateSaveStatus.textContent = error.status === 404 ? 'déjà traitée' : 'échec de l’enregistrement';
+    await loadPsyXState().catch(() => {});
+    return;
+  }
   review.editing = null;
   state.psyxState = result.state;
   // Once every proposal is settled the indicator has nothing left to say.
