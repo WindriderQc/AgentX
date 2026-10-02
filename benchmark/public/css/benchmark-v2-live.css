@@ -17,12 +17,6 @@
   flex-shrink: 0;
 }
 
-.lb1 { background: var(--r-l1-bg); color: var(--r-l1-text); }
-.lb2 { background: var(--r-l2-bg); color: var(--r-l2-text); }
-.lb3 { background: var(--r-l3-bg); color: var(--r-l3-text); }
-.lb4 { background: var(--r-l4-bg); color: var(--r-l4-text); }
-.lb5 { background: var(--r-l5-bg); color: var(--r-l5-text); }
-
 /* ══════════════════════════════════════════════════════════════════════════════
    STACK — top-level container
    ══════════════════════════════════════════════════════════════════════════════ */
@@ -201,49 +195,6 @@
   padding-left: 0.75rem;
   border-left: 1px solid rgba(255,255,255,0.04);
   flex-shrink: 0;
-}
-
-.ld-sg {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 90px;
-}
-
-.ld-sg-head {
-  font-size: 0.6rem;
-  font-weight: 700;
-  color: #555;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding-bottom: 0.15rem;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-  margin-bottom: 0.1rem;
-}
-
-.ld-sg-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.25rem;
-  padding: 0.05rem 0;
-}
-
-.ld-sg-val {
-  font-size: 0.82rem;
-  font-weight: 800;
-  color: #bbb;
-  font-variant-numeric: tabular-nums;
-}
-
-.ld-sg-val.ld-sg-bad { color: var(--r-error); }
-
-.ld-sg-lbl {
-  font-size: 0.55rem;
-  color: #555;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -601,7 +552,6 @@
   flex-shrink: 0;
   vertical-align: middle;
 }
-.ld-sg-row.ld-sg-spark { gap: 0.3rem; }
 
 .ld-led {
   display: inline-block;
@@ -619,8 +569,6 @@
   50%      { opacity: 0.45; }
 }
 
-.ld-sg-time { min-width: 110px; }
-.ld-sg-row-big { padding: 0.1rem 0; }
 .ld-sg-val-big {
   font-size: 1rem !important;
   color: #e0e0e0 !important;
@@ -1239,9 +1187,6 @@
   margin-left: auto;
 }
 
-.ld-pill-warmup { background: rgba(255, 167, 38, 0.10); color: var(--r-anomaly); }
-.ld-pill-active { background: rgba(79, 195, 247, 0.10);  color: var(--r-active); }
-.ld-pill-gen    { background: rgba(79, 195, 247, 0.15);  color: var(--r-active); animation: ld-pulse 1.5s infinite; }
 .ld-pill-done   { background: rgba(102, 187, 106, 0.10); color: var(--r-good); }
 .ld-pill-judge  { background: rgba(167, 139, 250, 0.12); color: var(--r-judge); display: inline-flex; align-items: center; gap: 0.2rem; }
 .ld-pill-wait   { background: rgba(255, 255, 255, 0.04); color: var(--r-text-dim); }
@@ -1269,23 +1214,8 @@
 .ld-qt-pending { color: var(--r-anomaly); background: rgba(255, 167, 38, 0.06); }
 .ld-qt-lag { color: var(--r-text-muted); }
 .ld-qt-fail { color: var(--r-error); background: rgba(239, 83, 80, 0.06); }
-.ld-ct-bad { color: var(--r-error); }
 
 /* ── Progress bar ── */
-.ld-progress-bar {
-  width: 100%;
-  height: 5px;
-  background: rgba(255,255,255,0.04);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.ld-progress-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.5s ease;
-  background: var(--r-active);
-}
 
 .ld-progress-judge { background: var(--r-judge); }
 

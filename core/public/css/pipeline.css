@@ -584,11 +584,6 @@
 
 .pipeline-delivery-links a:hover { text-decoration: underline; }
 
-.pipeline-delivery-sha {
-  color: #94a3b8;
-  font-size: 0.72rem;
-}
-
 .pipeline-delivery-note {
   margin: 0;
   padding: 0 18px 14px;

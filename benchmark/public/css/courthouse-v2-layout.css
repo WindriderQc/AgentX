@@ -188,17 +188,6 @@
   border-left-color: var(--r-anomaly);
 }
 
-/* Level badge (reuses r-level-badge from components) */
-.rq-badge {
-  font-size: 0.7rem;
-  padding: 0.1rem 0.25rem;
-  border-radius: 4px;
-  font-weight: 800;
-  color: #fff;
-  flex-shrink: 0;
-  text-align: center;
-}
-
 /* Flag type chips */
 .rq-flag {
   font-size: 0.72rem;
@@ -1073,21 +1062,6 @@
   scrollbar-color: var(--r-border) transparent;
 }
 
-.dp-response-box {
-  font-size: 0.95rem;
-  color: var(--r-text-muted);
-  line-height: 1.5;
-  padding: 0.35rem 0.5rem;
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 6px;
-  max-height: 180px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--r-border) transparent;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 /* ── Execution settings bar ── */
 
 .dp-exec-bar {
@@ -1181,8 +1155,6 @@
   color: var(--r-text-muted);
   font-size: 0.9rem;
 }
-
-.tb-error { color: var(--r-error); }
 
 .ch-recoverable {
   display: flex;

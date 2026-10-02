@@ -663,10 +663,6 @@
   padding: 18px 10px;
 }
 
-.planning-error {
-  color: #fecaca;
-}
-
 .planning-drawer-backdrop {
   position: fixed;
   inset: 0;
