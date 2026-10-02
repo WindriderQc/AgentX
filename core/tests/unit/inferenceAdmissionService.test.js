@@ -53,6 +53,38 @@ describe('distributed inference admission lifecycle', () => {
     expect(runtime.releaseInference).not.toHaveBeenCalled();
   });
 
+  test('an abort without a caller signal is quarantined with no origin', async () => {
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
+    lifecycle.markDispatched();
+    await lifecycle.abandon(new Error('socket hang up'));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: null }));
+  });
+
+  test('a caller abort after dispatch is quarantined as a caller abort', async () => {
+    const caller = new AbortController();
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a', signal: caller.signal });
+    lifecycle.markDispatched();
+    caller.abort(new Error('client disconnected'));
+    expect(lifecycle.signal.aborted).toBe(true);
+    await lifecycle.abandon(new Error('The user aborted a request.'));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'inference-a', origin: 'caller-abort', reason: 'The user aborted a request.'
+    }));
+    expect(runtime.releaseInference).not.toHaveBeenCalled();
+  });
+
+  test('a lost heartbeat is never a caller abort, even when the caller also left', async () => {
+    runtime.heartbeatInference.mockResolvedValueOnce({ heartbeat: false, reason: 'lost' });
+    const caller = new AbortController();
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a', signal: caller.signal });
+    lifecycle.markDispatched();
+    await lifecycle._heartbeatOnce();
+    caller.abort();
+    await lifecycle.abandon(new Error('lost'));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledTimes(1);
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: null }));
+  });
+
   test('heartbeat loss aborts the request and quarantines the admission', async () => {
     runtime.heartbeatInference.mockResolvedValueOnce({ heartbeat: false, reason: 'lost' });
     const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
