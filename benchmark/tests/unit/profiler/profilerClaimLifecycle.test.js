@@ -184,7 +184,8 @@ describe('profiler claim lease cancellation', () => {
       'UNKNOWN',
       expect.objectContaining({ receipt: expect.objectContaining({ contract: 'agentx.workload-recovery/v1' }) })
     );
-    expect(coreApiClient.heartbeatWorkloadAdmission).toHaveBeenCalledTimes(1);
+    // The initial heartbeat and the one renewal before release (#47); none after the handoff.
+    expect(coreApiClient.heartbeatWorkloadAdmission).toHaveBeenCalledTimes(2);
   });
 
   test('returns the retained recovery receipt after a fenced projection commit rejects', async () => {
@@ -208,5 +209,44 @@ describe('profiler claim lease cancellation', () => {
     expect(coreApiClient.releaseBenchmarkClaim).toHaveBeenCalledTimes(1);
     expect(coreApiClient.releaseWorkloadAdmission).not.toHaveBeenCalled();
     expect(lease.signal.aborted).toBe(true);
+  });
+
+  describe('through a Core restart (#47)', () => {
+    const { OUTBOUND_ERROR_CODES, OutboundHttpError } = require('../../../../shared/outboundHttpExecutor');
+    const refused = () => new OutboundHttpError(OUTBOUND_ERROR_CODES.REQUEST_FAILED);
+    const confirmed = () => ({ heartbeat: true, expiresAt: new Date(Date.now() + 5 * 60_000).toISOString() });
+
+    test('a dispatch waits until Core answers again instead of losing the profile', async () => {
+      coreApiClient.heartbeatBenchmarkClaim.mockReset().mockResolvedValue({ heartbeat: true });
+      coreApiClient.heartbeatWorkloadAdmission.mockReset()
+        .mockResolvedValueOnce(confirmed())
+        .mockRejectedValueOnce(refused())
+        .mockRejectedValueOnce(refused())
+        .mockResolvedValue(confirmed());
+      const lease = await acquireProfilerClaimLease(['http://cpu:11434'], 'profile-restart', 300_000,
+        { heartbeatIntervalMs: 60_000, coreOutageRetryMs: 1 });
+      await expect(lease.assertDispatchActive()).resolves.toBeUndefined();
+      expect(lease.signal.aborted).toBe(false);
+      await expect(lease.finalize()).resolves.toMatchObject({ failed: 0 });
+      expect(coreApiClient.transitionWorkloadRecovery).not.toHaveBeenCalledWith('profile-restart', 'UNKNOWN', expect.anything());
+    });
+
+    test('a profile ending while Core restarts releases once Core is back, not as UNKNOWN', async () => {
+      let coreDown = false;
+      coreApiClient.heartbeatBenchmarkClaim.mockReset().mockResolvedValue({ heartbeat: true });
+      coreApiClient.heartbeatWorkloadAdmission.mockReset()
+        .mockImplementationOnce(async () => { coreDown = true; return confirmed(); })
+        .mockImplementationOnce(async () => { throw refused(); })
+        .mockImplementation(async () => { coreDown = false; return confirmed(); });
+      coreApiClient.releaseBenchmarkClaim.mockImplementation(async () => {
+        if (coreDown) throw refused();
+        return { released: true, runtimeRestore: { verified: true } };
+      });
+      const lease = await acquireProfilerClaimLease(['http://cpu:11434'], 'profile-ends', 300_000,
+        { heartbeatIntervalMs: 60_000, coreOutageRetryMs: 1 });
+      await expect(lease.finalize()).resolves.toMatchObject({ failed: 0 });
+      expect(coreApiClient.releaseWorkloadAdmission).toHaveBeenCalledWith('profile-ends');
+      expect(coreApiClient.transitionWorkloadRecovery).not.toHaveBeenCalledWith('profile-ends', 'UNKNOWN', expect.anything());
+    });
   });
 });
