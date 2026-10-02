@@ -33,6 +33,8 @@ const { promisify } = require('node:util');
 const { pathToFileURL } = require('node:url');
 const path = require('node:path');
 const { listenLoopback } = require('../../../shared/testing/listenLoopback');
+// Super Dad says what the records hold and what they do not (#119 follow-up).
+const KNOWN_UNKNOWN = 'dis simplement ce que tu ne sais pas; ne devine jamais un âge exact';
 
 describe('built-in Household surface on Core', () => {
   test('the panel stays ready when optional OpenClaw evidence is absent', async () => {
@@ -95,6 +97,7 @@ describe('built-in Household surface on Core', () => {
         .send({ text: channel === 'voice' ? 'Rappelle-moi observatory' : 'observatory', channel }).expect(200);
       const native = agentForTest.mock.calls.at(-1)[0];
       expect(native.session.sessionId).toBe(id);
+      expect(native.instructions).toContain(KNOWN_UNKNOWN);
       if (channel === 'voice') {
         expect(native.turnContext).toContain(note);
         expect(native.instructions).not.toContain(note);
@@ -425,8 +428,10 @@ describe('built-in Household surface on Core', () => {
       const personal = executeForTest.mock.calls.at(-1)[0].messages[0].content;
       expect(personal).toContain('Synthetic Alex (âge scolaire)');
       expect(personal).toContain('Synthetic Sam (petite enfance)');
+      expect(personal).toContain(KNOWN_UNKNOWN);
       await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'Comment s’appellent les enfants?' }).expect(200);
       expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Enfants de la maison');
+      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain(KNOWN_UNKNOWN);
     } finally { await HouseholdProfile.deleteMany({ profileId: { $in: ['synthetic-a', 'synthetic-b'] } }); }
     await request(app).post('/api/voix/memory/' + id + '/forget').send({}).expect(200);
     expect((await request(app).post(`${base}/private/notes`).send({ operation: 'list' })).body.data.notes.some(note => note.id === id)).toBe(false);
