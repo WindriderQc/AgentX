@@ -123,6 +123,28 @@ describe('Export Routes', () => {
       expect(res.body.data.filename).toMatch(/export_summary/);
     });
 
+    test('gives same-type exports distinct names and creates files exclusively', async () => {
+      const app = buildApp({ docs: [] });
+      const first = await request(app).post('/api/v1/exports/generate')
+        .send({ type: 'summary', format: 'json' }).expect(200);
+      const second = await request(app).post('/api/v1/exports/generate')
+        .send({ type: 'summary', format: 'json' }).expect(200);
+      expect(first.body.data.filename).toMatch(/^export_summary_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_[0-9a-f]{6}\.json$/);
+      expect(second.body.data.filename).not.toBe(first.body.data.filename);
+      for (const [, , options] of require('fs/promises').writeFile.mock.calls) {
+        expect(options).toEqual({ flag: 'wx' });
+      }
+    });
+
+    test('returns 409 instead of overwriting an existing export', async () => {
+      const fsp = require('fs/promises');
+      fsp.writeFile.mockRejectedValueOnce(Object.assign(new Error('exists'), { code: 'EEXIST' }));
+      const res = await request(buildApp({ docs: [] })).post('/api/v1/exports/generate')
+        .send({ type: 'summary', format: 'json' });
+      expect(res.status).toBe(409);
+      expect(fsp.stat).not.toHaveBeenCalled();
+    });
+
     test('returns 400 for unknown report type', async () => {
       const res = await request(buildApp())
         .post('/api/v1/exports/generate')
