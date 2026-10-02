@@ -124,4 +124,12 @@ describe('Core selected-note ownership with real Mongo', () => {
       await expect(owner.remember(input)).rejects.toMatchObject({ statusCode: 400 });
     }
   });
+
+  test('an agent-written note keeps where it came from, never the owner-dictated label (#207)', async () => {
+    const fromMail = await operatePersonal({ operation: 'remember', text: 'Synthetic fact read in a mail review', provenance: 'mail-review', source: 'explicit-ui' });
+    const fromChat = await operatePersonal({ operation: 'remember', text: 'Synthetic fact said in conversation', provenance: 'invented-origin' });
+    const listed = (await operatePersonal({ operation: 'list' })).notes;
+    expect(listed.find(note => note.id === fromMail.id).source).toBe('nestor-mail-review');
+    expect(listed.find(note => note.id === fromChat.id).source).toBe('nestor-conversation');
+  });
 });

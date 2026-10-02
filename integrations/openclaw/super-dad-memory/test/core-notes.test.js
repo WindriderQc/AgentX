@@ -22,6 +22,8 @@ test('native personal_memory forwards only note inputs and validates the Core re
   assert.deepEqual(JSON.parse(captured.options.body), { action: 'remember', text: ' Synthetic note ' });
   assert.equal(captured.options.redirect, 'error');
   assert.equal(calls, 1);
+  await client({ action: 'remember', text: 'Synthetic note', provenance: 'mail-review' });
+  assert.equal(JSON.parse(captured.options.body).provenance, 'mail-review');
   // Core may seal an identifier; any other text change is still refused.
   const answer = data => createCoreNotesClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async () => ({ ok: true,
     json: async () => ({ status: 'success', data: { ok: true, authority: 'agentx.core', operation: 'remember', id, ...data } }) }) });

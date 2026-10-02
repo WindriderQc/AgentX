@@ -282,7 +282,8 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
   // an operation, never a collection, audience or storage path.
   router.post('/memory/notes', asyncRoute(async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const result = await require('../src/services/memoryNoteService').operatePersonal(req.body || {});
+    // Notes written through this agent contract are never labelled as dictated by the owner (#207).
+    const result = await require('../src/services/memoryNoteService').operatePersonal({ provenance: 'conversation', ...(req.body || {}) });
     envelope.success(res, result);
   }));
 

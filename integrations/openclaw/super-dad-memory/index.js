@@ -52,7 +52,9 @@ export default definePluginEntry({
           additionalProperties: false,
         },
         async execute(_callId, params) {
-          return receipt(await readNotes(params));
+          // The session, not the model, says where a remembered fact came from.
+          const provenance = secretaryContext(context) ? "mail-review" : morningContext(context) ? "scheduled" : "conversation";
+          return receipt(await readNotes(params.action === "remember" ? { ...params, provenance } : params));
         },
       };
     }, { name: "personal_memory", optional: true });
