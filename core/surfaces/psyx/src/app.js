@@ -10,7 +10,7 @@ const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRe
 const domain = require('../../../src/domains/psyx/domain');
 const { detectRecentCrisis } = require('../../../src/domains/psyx/safety');
 
-const VERSION = '2.5.1';
+const VERSION = '2.6.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -261,10 +261,16 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.post('/voice/transcribe', express.raw({ type: 'audio/*', limit: config.voice?.maxAudioBytes || 25 * 1024 * 1024 }), asyncRoute(async (req, res) => {
     const contentType = String(req.headers['content-type'] || '').split(';')[0].toLowerCase();
     if (!contentType.startsWith('audio/')) return res.status(415).json({ ok: false, status: 'error', code: 'PSYX_VOICE_AUDIO_TYPE_REQUIRED', message: 'An audio content type is required.' });
-    return responseData(res, await voiceClient.transcribe(req.body, {
-      contentType,
-      language: req.headers['x-psyx-language']
-    }));
+    const abort = new AbortController();
+    const close = () => { if (!res.writableFinished) abort.abort(); };
+    res.once('close', close);
+    try {
+      const result = await voiceClient.transcribe(req.body, { contentType,
+        language: req.headers['x-psyx-language'], signal: abort.signal });
+      if (!abort.signal.aborted) return responseData(res, result);
+    } catch (error) {
+      if (!abort.signal.aborted) throw error;
+    } finally { res.off('close', close); }
   }));
   api.post('/voice/synthesize', asyncRoute(async (req, res) => {
     // Request-scoped: { text, ttsProvider?, language?, voice? }. Nothing here changes VoiX defaults.
@@ -299,7 +305,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const safety = detectRecentCrisis(action ? '' : input, context || []);
     const resolved = domain.resolveControl(requested, recommendation);
     const control = safety ? { ...resolved, mode: 'talk', depth: 'normal', reason: '' } : resolved;
-    const system = domain.composeSystemContext(longitudinal, control, { conversationId, safety });
+    const system = domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice' });
     const providerContext = domain.boundedContext(context || []);
 
     res.setHeader('Content-Type', 'text/event-stream');

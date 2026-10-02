@@ -47,6 +47,22 @@ describe('PsyX built into Core with private scope', () => {
     expect(String(dad.headers['content-security-policy'] || '')).not.toContain("frame-ancestors 'none'");
   });
 
+  test('voice assets are shared and spoken turns use PsyX admission without changing typed instructions', async () => {
+    const page = await request(app).get('/psyx').expect(200);
+    expect(page.text).toContain('voiceSessionDialog');
+    const asset = await request(app).get('/js/voice/browser-conversation.js').expect(200);
+    expect(asset.text).toContain('root.AgentXVoice = api');
+    const compatible = await request(app).get('/assets/household/browser-conversation.js').expect(200);
+    expect(compatible.text).toBe(asset.text);
+    await request(app).get('/assets/household/voice-capture-worklet.js').expect(200);
+    await auth(request(app).post('/api/psyx/chat/stream')).send({ message: 'Synthetic voice input', psyx: { source: 'voice' } }).expect(200);
+    const voice = executeForTest.mock.calls.at(-1);
+    expect(voice[1].consumerContract).toBe('psyx');
+    expect(JSON.stringify(voice[0].messages)).toContain('This is a spoken turn');
+    await auth(request(app).post('/api/psyx/chat/stream')).send({ message: 'Synthetic typed input' }).expect(200);
+    expect(JSON.stringify(executeForTest.mock.calls.at(-1)[0].messages)).not.toContain('This is a spoken turn');
+  });
+
   test('resumes one canonical transcript, preserves application actions and separates lifecycle from ordinary history', async () => {
     const first = done(await auth(request(app).post('/api/psyx/chat/stream')).send({ message: 'Synthetic private input' }).expect(200));
     const record = await Conversation.findById(first.conversationId).lean();

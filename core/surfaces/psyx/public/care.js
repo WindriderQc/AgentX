@@ -12,10 +12,12 @@ function showSafety(resources = []) {
     <li><a href="tel:${escapeHtml(TEL[item.contact] || item.contact.replace(/[^0-9]/g, ''))}">${escapeHtml(item.contact)}</a><span>${escapeHtml(item.label)}</span></li>
   `).join('');
   banner.hidden = false;
+  if (typeof syncVoiceSessionSafety === 'function') syncVoiceSessionSafety();
 }
 
 function hideSafety() {
   $('safetyBanner').hidden = true;
+  if (typeof syncVoiceSessionSafety === 'function') syncVoiceSessionSafety();
 }
 
 // Only a new conversation shows the recap; PsyX itself decides whether to bring it up.

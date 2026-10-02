@@ -80,9 +80,9 @@ test('summaries describe the effective request without exposing service internal
   const status = { config: { ttsLanguageProfiles: [{ language: 'fr', locale: 'fr-fr', voice: 'ff_siwis' }, { language: 'en', locale: 'en-us', voice: 'af_heart' }] } };
   assert.equal(prefs.defaultVoiceFor({ language: 'en' }, status), 'af_heart');
   assert.equal(prefs.defaultVoiceFor({ language: 'en' }, null), '');
-  assert.equal(prefs.describePreferences({ language: 'en', ttsProvider: 'kokoro' }, status), 'Kokoro · English · af_heart');
-  assert.equal(prefs.describePreferences({ language: 'fr', ttsProvider: 'kokoro', ttsVoice: 'af_heart:0.6+ff_siwis:0.4' }, status), 'Kokoro · French · af_heart:0.6+ff_siwis:0.4');
-  assert.equal(prefs.describePreferences({ language: 'fr', ttsProvider: 'windows_sapi', ttsVoice: 'af_heart' }, status), 'Windows SAPI · French · language default');
+  assert.equal(prefs.describePreferences({ language: 'en', ttsProvider: 'kokoro' }, status), 'Kokoro · Anglais · af_heart');
+  assert.equal(prefs.describePreferences({ language: 'fr', ttsProvider: 'kokoro', ttsVoice: 'af_heart:0.6+ff_siwis:0.4' }, status), 'Kokoro · Français · af_heart:0.6+ff_siwis:0.4');
+  assert.equal(prefs.describePreferences({ language: 'fr', ttsProvider: 'windows_sapi', ttsVoice: 'af_heart' }, status), 'Windows SAPI · Français · language default');
   assert.match(prefs.testSentence({ language: 'fr' }), /PsyX/);
   assert.match(prefs.testSentence({ language: 'en' }), /PsyX local voice/);
 });

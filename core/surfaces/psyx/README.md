@@ -1,6 +1,6 @@
 # PsyX in AgentX
 
-The full profile serves the PsyX 2.5.1 conversation UI at `/psyx`. Psychological
+The full profile serves the PsyX 2.6.0 conversation UI at `/psyx`. Psychological
 domain rules and longitudinal state live in `core/src/domains/psyx`; generic
 conversation persistence/lifecycle and admitted inference are Core capabilities.
 No separate PsyX server, database client or inference router starts here.
@@ -55,7 +55,17 @@ trigger a PsyX-owned fallback.
 
 Voice remains optional: `PSYX_VOICE_MODE=voix` and an explicit `VOIX_BASE_URL`.
 Recordings and synthesized audio stay transient. Browser voice preferences are
-request-scoped and never change shared VoiX configuration. Actual microphone,
+request-scoped and never change shared VoiX configuration. The dedicated voice
+session uses Core's shared browser transport (`core/public/js/voice`) for local
+capture, endpoint detection and playback. It sends completed utterances through
+the same private PsyX chat path, requests short spoken replies and resumes
+listening after playback. The first browser setup prefers an available female
+Canadian French voice from the local catalog, then a female French voice; an
+explicit saved choice wins. Pause, closing, locking, navigation and a hidden page
+stop capture and cancel browser requests. During PsyX playback the microphone
+stays quiet; the visible stop control cancels the session. Crisis call links
+remain visible in the voice view. Audio buffers are transient, while completed
+text turns remain in the canonical PsyX transcript. Actual microphone,
 speech, model and live-device acceptance are separate from the portable tests.
 
 Archive/restore, rename, export, explicit permanent transcript deletion, state

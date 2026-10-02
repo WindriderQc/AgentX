@@ -91,3 +91,13 @@ test('crisis detection after the second review: past intent caught, everyday cut
     assert.equal(detectCrisis(text), null, text);
   }
 });
+
+test('spoken turns request short unformatted replies without overriding crisis safety or typed behavior', () => {
+  const base = { activeThreads: [], notes: [], patterns: [], hypotheses: [], openLoops: [], experiments: [] };
+  const control = normalizeControl({ mode: 'talk', depth: 'normal' });
+  assert.doesNotMatch(composeSystemContext(base, control), /This is a spoken turn/);
+  const spoken = composeSystemContext(base, control, { voice: true, safety: {} });
+  assert.match(spoken, /30 to 90 words/); assert.match(spoken, /without headings, Markdown/);
+  assert.match(spoken, /Preserve all necessary crisis resources/);
+  assert.match(spoken, /SAFETY|immediate safety/i);
+});

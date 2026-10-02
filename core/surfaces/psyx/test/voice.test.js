@@ -154,3 +154,19 @@ test('two independently configured clients share VoiX without touching each othe
   ]);
   assert.equal(requests.some((item) => item.path === '/config' && item.method !== 'GET'), false);
 });
+
+test('hands-free WAV capture keeps its format and cancellation through the local transcription adapter', async () => {
+  const abort = new AbortController(); let upstream;
+  const client = createVoiceClient(VOICE_CONFIG, async (url, options) => {
+    upstream = options;
+    assert.ok(url.endsWith('/v1/audio/transcriptions'));
+    assert.equal(options.body.get('file').name, 'recording.wav');
+    assert.equal(options.body.get('file').type, 'audio/wav');
+    assert.equal(options.body.get('language'), 'fr');
+    return new Response(JSON.stringify({ text: 'Bonjour', language: 'fr' }));
+  });
+  const transcript = await client.transcribe(Buffer.from('synthetic PCM'), { contentType: 'audio/wav', language: 'fr', signal: abort.signal });
+  assert.equal(transcript.text, 'Bonjour');
+  assert.equal(upstream.signal.aborted, false);
+  abort.abort(); assert.equal(upstream.signal.aborted, true);
+});
