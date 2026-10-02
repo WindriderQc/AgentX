@@ -33,10 +33,12 @@ function rejectedBeforeWork(error) {
   return Number.isInteger(status) && status >= 400 && status < 500;
 }
 
-async function observeJsonMutation(operation) {
+// `request` describes a direct Ollama JSON request ({ model, numCtx }), which an
+// operator cancel may abort and then prove stopped (see profileCancellation).
+async function observeJsonMutation(operation, request = null) {
   const journal = context.getStore();
   if (!journal) return operation();
-  const ticket = await journal.beforeMutation();
+  const ticket = await journal.beforeMutation(request && { ...request, abortable: true });
   try {
     const dispatchedAt = Date.now();
     const result = await operation();

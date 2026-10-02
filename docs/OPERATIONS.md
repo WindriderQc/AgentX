@@ -882,11 +882,23 @@ is separate from a successful runtime restoration. A verified journal left
 after an acknowledged Core release resolves from its durable release receipt.
 
 A running single-model profile can be cancelled from its Profiler panel or with
-`POST /api/profiler/pipeline/profile/:profileId/cancel`. It stops at its next
-checkpoint, once the current runtime request has returned (a CPU context
-sample can take minutes), and Core then restores the pinned models as after any
-profile; the profile ends as `cancelled`. Prefer it to restarting Ollama, which
-leaves the interrupted request UNKNOWN.
+`POST /api/profiler/pipeline/profile/:profileId/cancel`. When the request in
+flight is a direct Ollama request whose model was resident at the request's
+context, the cancel samples `/api/ps` and aborts it. `/api/ps` lists no
+requests, but Ollama sets a runner's `expires_at` only when its last request
+ends. The aborted request is terminal once, after `PROFILE_CANCEL_SETTLE_MS`
+(default 15 seconds), two `/api/ps` samples are identical and the model shows
+a different `expires_at` than before the abort, or is no longer loaded. The run
+journal keeps the receipt (`reconciliation.cancelAbort`), and Core restores the
+pinned models as after any profile. Without that proof within
+`PROFILE_CANCEL_PROOF_BUDGET_MS` (default 60 seconds) the request stays UNKNOWN
+with reason `PROFILE_CANCEL_STOP_UNPROVEN` and needs the restart attestation
+below. Any other request (a model still loading, a streamed or Core-routed
+request) is not aborted: the cancel lands at the next checkpoint, once it has
+returned. The panel shows which case applies and the remaining proof time. The
+profile ends as `cancelled`. Prefer it to restarting Ollama, which leaves the
+interrupted request UNKNOWN. A profile inside a host queue has no cancel of its
+own (`409`); the queue is cancelled instead.
 
 An UNKNOWN inference (not a workload) is released by the watchdog without a
 runtime restart in two bounded cases. A watchdog probe is released after
