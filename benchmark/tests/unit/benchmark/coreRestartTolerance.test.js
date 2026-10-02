@@ -46,6 +46,7 @@ describe('Core restart tolerance', () => {
     });
 
     test('the heartbeat loop keeps a workload through a Core restart and renews it afterwards', async () => {
+        jest.useFakeTimers();
         const onFatal = jest.fn();
         coreApiClient.heartbeatWorkloadAdmission
             .mockResolvedValueOnce({ heartbeat: true, expiresAt: inMinutes(5) })
@@ -53,25 +54,35 @@ describe('Core restart tolerance', () => {
             .mockRejectedValueOnce(refused())
             .mockResolvedValue({ heartbeat: true, expiresAt: inMinutes(5) });
         const stop = startBenchmarkClaimHeartbeat(['http://a:11434'], 'profile-1', 300_000, { onFatal, intervalMs: 5 });
-        await stop.ready;
-        await new Promise(resolve => setTimeout(resolve, 40));
-        expect(coreApiClient.heartbeatWorkloadAdmission.mock.calls.length).toBeGreaterThanOrEqual(4);
-        expect(() => stop.assertActive()).not.toThrow();
-        expect(onFatal).not.toHaveBeenCalled();
-        stop();
+        try {
+            await stop.ready;
+            await jest.advanceTimersByTimeAsync(15);
+            expect(coreApiClient.heartbeatWorkloadAdmission).toHaveBeenCalledTimes(4);
+            expect(coreApiClient.heartbeatBenchmarkClaim).toHaveBeenCalledTimes(2);
+            expect(() => stop.assertActive()).not.toThrow();
+            expect(onFatal).not.toHaveBeenCalled();
+        } finally {
+            await stop.drain();
+            jest.useRealTimers();
+        }
     });
 
     test('a Core outage is fatal once the confirmed admission no longer covers it', async () => {
+        jest.useFakeTimers();
         const onFatal = jest.fn();
         coreApiClient.heartbeatWorkloadAdmission
             .mockResolvedValueOnce({ heartbeat: true, expiresAt: inMinutes(0.4) })
             .mockRejectedValue(refused());
         const stop = startBenchmarkClaimHeartbeat([], 'profile-2', 30_000, { onFatal, intervalMs: 5 });
-        await stop.ready;
-        await new Promise(resolve => setTimeout(resolve, 20));
-        expect(() => stop.assertActive()).toThrow(expect.objectContaining({ code: 'BENCHMARK_CLAIM_LOST' }));
-        expect(onFatal).toHaveBeenCalledTimes(1);
-        stop();
+        try {
+            await stop.ready;
+            await jest.advanceTimersByTimeAsync(5);
+            expect(() => stop.assertActive()).toThrow(expect.objectContaining({ code: 'BENCHMARK_CLAIM_LOST' }));
+            expect(onFatal).toHaveBeenCalledTimes(1);
+        } finally {
+            await stop.drain();
+            jest.useRealTimers();
+        }
     });
 
     test('a dispatch heartbeat waits for Core to come back, then returns its answer', async () => {
