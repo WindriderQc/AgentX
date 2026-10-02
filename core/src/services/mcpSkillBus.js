@@ -52,7 +52,7 @@ const TOOLS = [
     inputSchema: objectSchema({
       query: { type: 'string', minLength: 1, maxLength: 10000 },
       topK: { type: 'integer', minimum: 1, maximum: 20, default: 5 },
-      minScore: { type: 'number', minimum: 0, maximum: 1, default: 0 },
+      minScore: { type: 'number', minimum: 0, maximum: 1, description: 'Defaults to the memory search floor (MEMORY_SEARCH_MIN_SCORE); ignored for hybrid search.' },
       filters: { type: 'object', additionalProperties: true },
       expand: { type: 'boolean', default: false },
       hybrid: { type: 'boolean', default: false },
@@ -163,9 +163,12 @@ async function ragSearch(args, deps) {
   const filters = input.filters === undefined ? undefined : ensurePlainObject(input.filters, 'filters');
   const ragClient = deps.ragClient || getRagServiceClient();
   const memory = deps.memory || require('./memoryReadService').forAudience('owner', { ragClient });
+  // Without an explicit minScore the reader applies the configured memory
+  // floor, so an unrelated question returns nothing instead of nearest noise.
+  const minScore = input.minScore === undefined ? {} : { minScore: clampNumber(input.minScore, { min: 0, max: 1, fallback: 0 }) };
   const results = await memory.search(query, {
     topK: clampInteger(input.topK, { min: 1, max: 20, fallback: 5 }),
-    minScore: clampNumber(input.minScore, { min: 0, max: 1, fallback: 0 }),
+    ...minScore,
     filters,
     expand: input.expand === true,
     hybrid: input.hybrid === true,

@@ -475,7 +475,7 @@ invalid value keeps the default):
 
 | Variable | Default | Applies to |
 |---|---|---|
-| `MEMORY_SEARCH_MIN_SCORE` | 0.6 | Memory reads that do not choose a floor, so an unrelated question returns nothing instead of the nearest noise. Hybrid searches and callers with an explicit `minScore` keep theirs. |
+| `MEMORY_SEARCH_MIN_SCORE` | 0.6 | Memory reads that do not choose a floor, so an unrelated question returns nothing instead of the nearest noise. This includes Core `POST /api/rag/search` and the MCP `rag_search` tool. Hybrid searches and callers with an explicit `minScore` keep theirs. |
 | `CHAT_RAG_MIN_SCORE` | 0.3 | Chat RAG context (semantic search; hybrid RRF ranks keep 0.15). |
 | `MEMORY_REVIEW_RAG_MIN_SCORE` | 0.55 | Memory review searches for existing memory. |
 | `MEMORY_REVIEW_DUPLICATE_SCORE` | 0.8 | Memory review score above which a candidate is flagged as a duplicate. |
