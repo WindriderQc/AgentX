@@ -31,13 +31,14 @@ function createVoixMemoryAuditWorker({
     const memoryIds = [];
     try {
       if (forget) {
-        const matches = await personalNotes.list({ query: forget, limit: 20 });
-        const ids = matches.notes.map(row => row.id);
-        if (ids.length) {
-          for (const id of ids) await personalNotes.forget(id);
-          memoryIds.push(...ids.map((id) => `forgotten:${String(id)}`));
+        // A spoken phrase is a substring query: forget only an unambiguous
+        // match. Several matches stay for the owner to pick in the memory view.
+        const matches = await personalNotes.list({ query: forget, limit: 2 });
+        if (matches.total === 1) {
+          await personalNotes.forget(matches.notes[0].id);
+          memoryIds.push(`forgotten:${String(matches.notes[0].id)}`);
         } else {
-          memoryIds.push('forgotten:no-match');
+          memoryIds.push(matches.total ? `forget:ambiguous:${matches.total}` : 'forgotten:no-match');
         }
       } else if (explicit) {
         const memory = await personalNotes.record({ text: explicit, type: 'fact',
