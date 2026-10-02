@@ -97,5 +97,5 @@ purchases as income.
   restore the inbox, request a scan, release `LEAD.md` with a note. Never
   chain host commands after a failed lock check.
 - Data changes (statements, rules, decisions, plan) need no deploy.
-- Tests: `npx jest tests/services/financeLedger.test.js` (synthetic fixtures
+- Tests from the repository root: `npm test --prefix core -- --runTestsByPath tests/services/financeLedger.test.js` (synthetic fixtures
   only) and `npm test --prefix integrations/openclaw/finance-ledger`.

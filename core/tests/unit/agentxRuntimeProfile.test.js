@@ -4,8 +4,54 @@ const {
   createAgentXProfileGuard,
   DEMO_DISABLED_PREFIXES
 } = require('../../../shared/agentxRuntimeProfile');
+const express = require('express');
+const request = require('supertest');
 
 describe('Agent X runtime profile', () => {
+  describe('Express routing boundary', () => {
+    function appFor(profile, handler) {
+      const app = express();
+      app.use(createAgentXProfileGuard(profile));
+      app.get('/api/finance/transactions', handler);
+      app.get('/api/nerve-center/host-preferences', handler);
+      app.post('/api/nerve-center/host-preferences/:host/benchmark-claim', (req, res) => {
+        res.json({ host: req.params.host });
+      });
+      return app;
+    }
+
+    test.each([
+      '/api/finance/transactions',
+      '/API/FINANCE/transactions',
+      '/api/Finance/transactions?source=review'
+    ])('demo blocks GET and HEAD for %s before the handler', async (path) => {
+      const handler = jest.fn((req, res) => res.json({ reached: true }));
+      const app = appFor('demo', handler);
+      const get = await request(app).get(path).expect(404);
+      expect(get.body.code).toBe('AGENTX_DEMO_SURFACE_DISABLED');
+      await request(app).head(path).expect(404);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    test('full keeps mixed-case routes available', async () => {
+      const handler = jest.fn((req, res) => res.json({ reached: true }));
+      await request(appFor('full', handler)).get('/API/FINANCE/transactions').expect(200);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    test('demo preserves case-insensitive coordination, HEAD and opaque host IDs', async () => {
+      const handler = (req, res) => res.json({ available: true });
+      const app = appFor('demo', handler);
+      await request(app).get('/API/NERVE-CENTER/HOST-PREFERENCES').expect(200);
+      await request(app).head('/api/nerve-center/host-preferences').expect(200);
+      const host = 'http://ExampleHost:11434';
+      const reply = await request(app)
+        .post(`/API/NERVE-CENTER/HOST-PREFERENCES/${encodeURIComponent(host)}/BENCHMARK-CLAIM`)
+        .expect(200);
+      expect(reply.body.host).toBe(host);
+    });
+  });
+
   test('defaults safely to demo and requires an explicit full profile', () => {
     expect(normalizeAgentXProfile('demo')).toBe('demo');
     expect(normalizeAgentXProfile('DEMO')).toBe('demo');

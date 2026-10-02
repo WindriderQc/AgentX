@@ -225,7 +225,7 @@ and the inference endpoint you select determine which other systems receive data
 | Material | Default storage | What to keep private |
 |---|---|---|
 | Conversations, memory, tasks, family profiles and conversation attachments | MongoDB, in `${project}_canonical_mongo_data` | The database, exports and dumps; attachments include their file bytes |
-| Document retrieval | MongoDB document/chunk records and `${project}_canonical_qdrant_data` vectors | Both stores; an embedding index is instance data too |
+| Document retrieval | Qdrant document/chunk payloads, original text and vectors in `${project}_canonical_qdrant_data`; MongoDB manifests and ingestion/search telemetry | Both stores and approved sources; Qdrant contains document content, not only an embedding index |
 | Docker Ollama models | `${project}_canonical_ollama_data` | The local model store; native/LAN Ollama has its own independent storage |
 | Recovery archives | `${project}_canonical_recovery_data`, mounted at `/backups` in Core | Backups, including copies of deleted application content |
 | Logs, benchmark settings and execution files | The project's `core_logs`, `benchmark_logs`, `rag_logs`, `benchmark_config` and `benchmark_jobs` named volumes | Logs, instance host settings and generated execution material |
