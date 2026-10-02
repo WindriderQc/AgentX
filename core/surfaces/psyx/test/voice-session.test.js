@@ -37,8 +37,8 @@ function browser(extras = {}) {
 
 test('private voice uses only PsyX routes, a scoped female voice and the canonical text turn', async () => {
   const h = browser(); h.context.wireVoiceSession();
-  h.$('voiceSessionOpen').listeners.click();
-  await h.$('voiceSessionStart').listeners.click();
+  await h.$('voiceSessionOpen').listeners.click();
+  assert.equal(h.$('voiceSessionDialog').dataset.phase, 'listening');
   await h.say();
   const requests = h.calls.filter(call => call.url);
   assert.deepEqual(requests.map(call => call.url), ['/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream']);
@@ -91,13 +91,13 @@ test('female voice selection requires availability and Canadian locale evidence 
   assert.equal(h.state.voice.prefs.ttsVoice, 'ff_siwis');
 });
 
-test('a pending dictation permission request cannot open a competing hands-free microphone', () => {
+test('a pending dictation permission request cannot open a competing hands-free microphone', async () => {
   const h = browser(); h.context.wireVoiceSession();
   h.state.voice.recordingPending = true;
-  h.$('voiceSessionOpen').listeners.click();
+  await h.$('voiceSessionOpen').listeners.click();
   assert.equal(h.$('voiceSessionDialog').open, false);
   h.state.voice.recordingPending = false;
-  h.$('voiceSessionOpen').listeners.click();
+  await h.$('voiceSessionOpen').listeners.click();
   assert.equal(h.$('voiceSessionDialog').open, true);
   h.context.stopVoiceSession();
 });

@@ -103,8 +103,14 @@ function createPsyXVoiceSession() {
   });
 }
 
+async function startPsyXVoiceSession() {
+  if (!state.unlocked || !state.ready || state.busy || !state.voice.reachable) return;
+  psyxVoiceSession ||= createPsyXVoiceSession();
+  await psyxVoiceSession.start({ language: state.voice.prefs.language, wakeWord: false, interruption: false });
+}
+
 function wireVoiceSession() {
-  $('voiceSessionOpen').addEventListener('click', () => {
+  $('voiceSessionOpen').addEventListener('click', async () => {
     if (!state.unlocked || !state.ready || state.busy || (state.voice.recordingPending || state.voice.recorder?.state === 'recording')) return;
     state.voice.speech?.cancel();
     const chosen = state.voice.catalog?.voices?.find(voice => voice.provider === state.voice.prefs.ttsProvider && voice.id === state.voice.prefs.ttsVoice);
@@ -112,12 +118,13 @@ function wireVoiceSession() {
     $('voiceSessionDialog').showModal();
     syncVoiceSessionSafety();
     $('voiceSessionStart').disabled = !state.voice.enabled || !state.voice.reachable;
+    if (!state.voice.enabled || !state.voice.reachable) {
+      $('voiceSessionPhase').textContent = 'La voix locale est indisponible. Vérifie les réglages de voix.';
+      return;
+    }
+    await startPsyXVoiceSession();
   });
-  $('voiceSessionStart').addEventListener('click', async () => {
-    if (!state.unlocked || !state.ready || state.busy || !state.voice.reachable) return;
-    psyxVoiceSession ||= createPsyXVoiceSession();
-    await psyxVoiceSession.start({ language: state.voice.prefs.language, wakeWord: false, interruption: false });
-  });
+  $('voiceSessionStart').addEventListener('click', startPsyXVoiceSession);
   $('voiceSessionPause').addEventListener('click', () => stopVoiceSession({ close: false }));
   $('voiceSessionEnd').addEventListener('click', () => stopVoiceSession());
   $('voiceSessionDialog').addEventListener('cancel', () => stopVoiceSession());
