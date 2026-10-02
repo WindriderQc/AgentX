@@ -85,17 +85,19 @@ function soundBlock(sound, language = 'fr') {
     const en = sound.kind === 'effect' ? 'an imagined sound effect' : 'a recorded human imitation';
     const fr = sound.kind === 'effect' ? 'un bruitage imaginaire' : 'une imitation enregistrée';
     return english
-      ? `\n\nSound: ${en} (${sound.label.en}) is offered right after your reply. Introduce it explicitly as ${en}, in one short cheerful statement in English. Never describe it as the authentic voice of the animal or claim that you are making the sound yourself. It is already prepared: answer directly, without calling any tool or agent.`
-      : `\n\nSon : ${fr} (${sound.label.fr}) est proposé juste après ta réponse. Présente-le explicitement comme ${fr}, en une courte affirmation joyeuse en français québécois. Ne le présente jamais comme le vrai cri de l'animal et ne prétends pas le produire toi-même. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
+      ? `\n\nSound: the child hears ${en} (${sound.label.en}) as soon as you finish. Introduce it explicitly as ${en}, in one short cheerful statement in English. Never describe it as the authentic voice of the animal or claim that you are making the sound yourself. It is already prepared: answer directly, without calling any tool or agent.`
+      : `\n\nSon : l'enfant entend ${fr} (${sound.label.fr}) dès que tu as fini. Présente-le explicitement comme ${fr}, en une courte affirmation joyeuse en français québécois. Ne le présente jamais comme le vrai cri de l'animal et ne prétends pas le produire toi-même. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
   }
   // Naming the machinery here leaks it into the answer: a directive that
   // mentions the browser gets parroted back to the child as an invitation to
   // listen "in your browser". The honesty this wording protects is about not
   // claiming to make the sound, which does not require the word "browser" --
-  // so the directive contains no technical term the model can repeat.
+  // so the directive contains no technical term the model can repeat. Timing
+  // words ("offered right after your reply") were parroted the same way, so the
+  // child heard an internal note instead of Nestor reacting to the animal.
   return english
-    ? `\n\nSound: a real recording of ${sound.label.en} is offered right after your reply. In English, invite the child to listen in one short, cheerful sentence -- a statement, not a question. Do not explain how it is played, and never claim that you are making the sound yourself. It is already prepared: answer directly, without calling any tool or agent.`
-    : `\n\nSon : un vrai enregistrement (${sound.label.fr}) est proposé juste après ta réponse. En français québécois, invite l'enfant à écouter en une courte phrase joyeuse -- une affirmation, pas une question. N'explique pas comment il est joué, et ne prétends jamais que c'est toi qui fais le son. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
+    ? `\n\nSound: the child hears a real recording of ${sound.label.en} as soon as you finish. In English, react to the animal in one short, cheerful sentence that invites the child to listen -- a statement, not a question. Never mention a recording, a reply, a button or when it plays, and never claim that you are making the sound yourself. It is already prepared: answer directly, without calling any tool or agent.`
+    : `\n\nSon : l'enfant entend un vrai enregistrement (${sound.label.fr}) dès que tu as fini. En français québécois, réagis à l'animal en une courte phrase joyeuse qui invite l'enfant à écouter -- une affirmation, pas une question. Ne parle jamais d'enregistrement, de réponse, de bouton ni du moment où il joue, et ne prétends jamais que c'est toi qui fais le son. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
 }
 
 // savedNow is set only after the write actually succeeded, so a failed save
