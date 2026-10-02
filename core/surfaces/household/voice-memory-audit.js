@@ -32,8 +32,10 @@ function createVoixMemoryAuditWorker({
     try {
       if (forget) {
         // A spoken phrase is a substring query: forget only an unambiguous
-        // match. Several matches stay for the owner to pick in the memory view.
-        const matches = await personalNotes.list({ query: forget, limit: 2 });
+        // match of a real phrase ("oublie ça" names nothing). Several matches
+        // stay active; the owner forgets them from the memory view.
+        const matches = forget.replace(/\s/g, '').length < 4
+          ? { notes: [], total: 0 } : await personalNotes.list({ query: forget, limit: 2 });
         if (matches.total === 1) {
           await personalNotes.forget(matches.notes[0].id);
           memoryIds.push(`forgotten:${String(matches.notes[0].id)}`);

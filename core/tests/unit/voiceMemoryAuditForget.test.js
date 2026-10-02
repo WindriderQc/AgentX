@@ -53,4 +53,13 @@ describe('voice "forget" requests', () => {
     expect(personalNotes.forget).not.toHaveBeenCalled();
     expect(result.memoryIds).toEqual(['forgotten:no-match']);
   });
+
+  test('ignore a phrase too short to name a note', async () => {
+    const { turn, personalNotes, worker } = harness([{ id: 'd'.repeat(24), text: 'Synthetic ça marche' }]);
+    turn.inputText = 'Oublie ça';
+    const result = await worker.processVoixMemoryAudit('trace-1');
+    expect(personalNotes.list).not.toHaveBeenCalled();
+    expect(personalNotes.forget).not.toHaveBeenCalled();
+    expect(result.memoryIds).toEqual(['forgotten:no-match']);
+  });
 });
