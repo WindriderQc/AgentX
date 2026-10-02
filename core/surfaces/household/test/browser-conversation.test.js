@@ -1138,3 +1138,29 @@ test('typing is refused before voice starts and while a turn is in flight', asyn
   assert.equal(h.conversation.canType(), true);
   h.conversation.stop();
 });
+
+test('the holding phrase heard back is echo: it neither interrupts nor replaces the pending reply', async () => {
+  const slow = deferred(), spoken = []; let transcriptions = 0, turns = 0;
+  const h = harness({ holdingDelayMs: 5,
+    transcribe: async () => ++transcriptions === 1 ? 'Bonjour Nestor' : spoken[0].text,
+    turn: () => { turns++; return slow.promise; },
+    async synthesize(reply) { spoken.push(reply); return new ArrayBuffer(4); },
+    interrupt: () => assert.fail('the holding phrase must not cancel the turn') });
+  h.audio.canInterrupt = true;
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await nextTimer(); await nextTimer();
+  assert.equal(spoken.length, 1);
+  assert.equal(h.conversation.state, 'thinking', 'the page shows Nestor thinking again once the phrase ends');
+  h.beginSpeech(); await h.say();
+  assert.equal(h.conversation.state, 'thinking');
+  assert.equal(turns, 1);
+  slow.resolve({ text: 'Voici la réponse.' }); await exchange;
+  assert.deepEqual(spoken.map(row => row.text).slice(1), ['Voici la réponse.']);
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('the holding phrase waits a few seconds by default', () => {
+  const { HOLDING_DELAY_MS } = require('../public/browser-conversation');
+  assert.ok(HOLDING_DELAY_MS >= 2000 && HOLDING_DELAY_MS <= 5000);
+});
