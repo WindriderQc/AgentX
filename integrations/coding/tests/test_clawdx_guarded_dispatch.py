@@ -120,7 +120,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
     def test_preflight_problem_returns_only_the_observed_queued_version(self):
         args = MODULE.argparse.Namespace(allow_dispatch=True, api_base="http://test", task_id="0377")
         task = {"status": "queued", "assignee": None, "updatedAt": "2026-09-12T00:00:00Z"}
-        with patch.object(MODULE, "api_json", return_value={}) as api:
+        with patch.object(MODULE.dispatch_api, "api_json", return_value={}) as api:
             MODULE.return_preflight_problem(args, task, "Workspace is busy")
             payload = api.call_args.kwargs["payload"]
             self.assertEqual(payload["expectedQueuedUpdatedAt"], task["updatedAt"])
@@ -140,14 +140,14 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
     def test_operator_answer_is_in_normal_worker_prompt(self):
         task = self.task()
         task["feedback"] = [{"by": "operator", "text": "Use the compact desktop layout."}]
-        prompt = MODULE.build_message(task, api_base="http://test", remote_repo="/home/operator/.openclaw/workspace-clawdx-coder/repo",
+        prompt = MODULE.dispatch_message.build_message(task, api_base="http://test", remote_repo="/home/operator/.openclaw/workspace-clawdx-coder/repo",
                                       agent="clawdx-coder", worker_helper="/unused")
         self.assertIn("operator: Use the compact desktop layout.", prompt)
 
     def test_blocked_worker_question_reaches_the_ticket(self):
         question = "Which project should own this feature?"
-        with patch.object(MODULE, "api_json", return_value={"data": {"task": {"status": "blocked"}}}) as api:
-            MODULE.block_failed_dispatch("http://test", "0377", agent="worker",
+        with patch.object(MODULE.dispatch_api, "api_json", return_value={"data": {"task": {"status": "blocked"}}}) as api:
+            MODULE.dispatch_api.block_failed_dispatch("http://test", "0377", agent="worker",
                                          failures=["acceptance needs an answer"], worker_feedback=question)
         self.assertIn(question, api.call_args.kwargs["payload"]["text"])
 
@@ -159,17 +159,17 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         self.assertIn('"pending_independent"', feedback)
 
     def test_legacy_repository_identity_is_not_dispatched_as_canonical(self):
-        with patch.object(MODULE, "ssh_run") as ssh:
+        with patch.object(MODULE.dispatch_remote, "ssh_run") as ssh:
             with self.assertRaises(MODULE.PipelineApiError):
-                MODULE.validate_remote_project_checkout("worker", "/workspace/repo", "b" * 40, repository="agentx-product")
+                MODULE.dispatch_remote.validate_remote_project_checkout("worker", "/workspace/repo", "b" * 40, repository="agentx-product")
             ssh.assert_not_called()
 
 
     def test_canonical_sync_uses_the_same_clean_source_revision(self):
         completed = subprocess.CompletedProcess([], 0)
-        with patch.object(MODULE, "ssh_run", return_value=completed) as ssh:
-            MODULE.synchronize_remote_checkout("worker", "/workspace/repo", "b" * 40, source_repo="/srv/agentx/AgentX")
-            MODULE.validate_remote_project_checkout("worker", "/workspace/repo", "b" * 40)
+        with patch.object(MODULE.dispatch_remote, "ssh_run", return_value=completed) as ssh:
+            MODULE.dispatch_remote.synchronize_remote_checkout("worker", "/workspace/repo", "b" * 40, source_repo="/srv/agentx/AgentX")
+            MODULE.dispatch_remote.validate_remote_project_checkout("worker", "/workspace/repo", "b" * 40)
         self.assertEqual(ssh.call_count, 4)
         self.assertIn("/srv/agentx/AgentX", ssh.call_args_list[2].args[1])
         self.assertIn("core/package.json", ssh.call_args_list[3].args[1])
@@ -263,11 +263,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
     def test_clean_worker_checkout_syncs_exact_reachable_revision(self):
         completed = subprocess.CompletedProcess([], 0, stdout=b"", stderr=b"")
         with patch.object(
-            MODULE,
+            MODULE.dispatch_remote,
             "ssh_run",
             side_effect=[completed, completed, completed],
         ) as ssh:
-            MODULE.synchronize_remote_checkout("worker", "/srv/worker/repo", "a" * 40)
+            MODULE.dispatch_remote.synchronize_remote_checkout("worker", "/srv/worker/repo", "a" * 40)
 
         self.assertEqual(ssh.call_count, 3)
         clean_command = ssh.call_args_list[0].args[1]
@@ -287,25 +287,25 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
 
     def test_dirty_worker_checkout_refuses_before_fetch_or_checkout(self):
         dirty = subprocess.CompletedProcess([], 1, stdout=b"", stderr=b"")
-        with patch.object(MODULE, "ssh_run", return_value=dirty) as ssh, self.assertRaisesRegex(
+        with patch.object(MODULE.dispatch_remote, "ssh_run", return_value=dirty) as ssh, self.assertRaisesRegex(
             MODULE.PipelineApiError, "missing or dirty"
         ):
-            MODULE.synchronize_remote_checkout("worker", "/srv/worker/repo", "a" * 40)
+            MODULE.dispatch_remote.synchronize_remote_checkout("worker", "/srv/worker/repo", "a" * 40)
         self.assertEqual(ssh.call_count, 1)
 
     def test_unreachable_worker_revision_fails_without_destructive_recovery(self):
         clean = subprocess.CompletedProcess([], 0, stdout=b"", stderr=b"")
         unreachable = subprocess.CompletedProcess([], 1, stdout=b"", stderr=b"")
         with patch.object(
-            MODULE, "ssh_run", side_effect=[clean, clean, unreachable]
+            MODULE.dispatch_remote, "ssh_run", side_effect=[clean, clean, unreachable]
         ) as ssh, self.assertRaisesRegex(MODULE.PipelineApiError, "exact dispatcher revision"):
-            MODULE.synchronize_remote_checkout("worker", "/srv/worker/repo", "a" * 40)
+            MODULE.dispatch_remote.synchronize_remote_checkout("worker", "/srv/worker/repo", "a" * 40)
         self.assertNotIn("reset", ssh.call_args_list[2].args[1])
 
     def test_remote_project_preflight_binds_exact_root_revision_and_markers(self):
         completed = subprocess.CompletedProcess([], 0, stdout=b"", stderr=b"")
-        with patch.object(MODULE, "ssh_run", return_value=completed) as ssh:
-            MODULE.validate_remote_project_checkout(
+        with patch.object(MODULE.dispatch_remote, "ssh_run", return_value=completed) as ssh:
+            MODULE.dispatch_remote.validate_remote_project_checkout(
                 "worker",
                 "/srv/worker/repo",
                 "a" * 40,
@@ -320,11 +320,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
     def test_remote_project_preflight_fails_before_worker_when_root_is_wrong(self):
         rejected = subprocess.CompletedProcess([], 1, stdout=b"", stderr=b"")
         with patch.object(
-            MODULE,
+            MODULE.dispatch_remote,
             "ssh_run",
             return_value=rejected,
         ), self.assertRaisesRegex(MODULE.PipelineApiError, "exact AgentX checkout"):
-            MODULE.validate_remote_project_checkout(
+            MODULE.dispatch_remote.validate_remote_project_checkout(
                 "worker",
                 "/srv/worker/repo",
                 "a" * 40,
@@ -334,9 +334,9 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         clean = subprocess.CompletedProcess([], 0, stdout=b"", stderr=b"")
         source_drift = subprocess.CompletedProcess([], 1, stdout=b"", stderr=b"")
         with patch.object(
-            MODULE, "ssh_run", side_effect=[clean, source_drift]
+            MODULE.dispatch_remote, "ssh_run", side_effect=[clean, source_drift]
         ) as ssh, self.assertRaisesRegex(MODULE.PipelineApiError, "deployed revision"):
-            MODULE.synchronize_remote_checkout("worker", "/srv/worker/repo", "a" * 40)
+            MODULE.dispatch_remote.synchronize_remote_checkout("worker", "/srv/worker/repo", "a" * 40)
         self.assertEqual(ssh.call_count, 2)
 
     def test_select_task_from_agentx_envelope(self):
@@ -346,11 +346,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
 
     def test_fetch_task_uses_bounded_worker_detail(self):
         with patch.object(
-            MODULE,
+            MODULE.dispatch_api,
             "api_json",
             return_value={"ok": True, "data": {"task": self.task()}},
         ) as mocked:
-            selected = MODULE.fetch_task("http://agentx", "0377", agent="clawdx-coder")
+            selected = MODULE.dispatch_api.fetch_task("http://agentx", "0377", agent="clawdx-coder")
         self.assertEqual(selected["pipelineId"], "0377")
         self.assertEqual(
             mocked.call_args.args[1],
@@ -363,11 +363,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         claimed["assignee"] = "clawdx-coder"
         claimed["automationLease"] = {"leaseId": "lease-1"}
         with patch.object(
-            MODULE,
+            MODULE.dispatch_api,
             "api_json",
             return_value={"ok": True, "data": {"task": claimed}},
         ) as mocked:
-            result = MODULE.claim_task(
+            result = MODULE.dispatch_api.claim_task(
                 "http://agentx",
                 "0377",
                 agent="clawdx-coder",
@@ -391,29 +391,29 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         request_id = "10000000-0000-4000-8000-000000000001"
         for value, expected in ((request_id, {"dispatchRequestId": request_id}), ("../../etc", {}), ("", {})):
             with patch.dict(os.environ, {"AGENTX_CODING_DISPATCH_REQUEST_ID": value}), patch.object(
-                MODULE, "api_json", return_value={"ok": True, "data": {"task": claimed}}
+                MODULE.dispatch_api, "api_json", return_value={"ok": True, "data": {"task": claimed}}
             ) as mocked:
-                MODULE.claim_task("http://agentx", "0377", agent="clawdx-coder", automated=True, lease_duration_ms=60000)
+                MODULE.dispatch_api.claim_task("http://agentx", "0377", agent="clawdx-coder", automated=True, lease_duration_ms=60000)
             self.assertEqual(
                 mocked.call_args.kwargs["payload"],
                 {"assignee": "clawdx-coder", "automated": True, "leaseDurationMs": 60000, **expected},
             )
         with patch.dict(os.environ, {"AGENTX_CODING_DISPATCH_REQUEST_ID": request_id}), patch.object(
-            MODULE, "api_json", return_value={"ok": True, "data": {"task": claimed}}
+            MODULE.dispatch_api, "api_json", return_value={"ok": True, "data": {"task": claimed}}
         ) as mocked:
-            MODULE.claim_task("http://agentx", "0377", agent="clawdx-coder")
+            MODULE.dispatch_api.claim_task("http://agentx", "0377", agent="clawdx-coder")
         self.assertEqual(mocked.call_args.kwargs["payload"], {"assignee": "clawdx-coder"})
 
     def test_lease_heartbeat_is_bound_to_the_server_lease(self):
         with patch.object(
-            MODULE,
+            MODULE.dispatch_api,
             "api_json",
             return_value={
                 "ok": True,
                 "data": {"pipelineId": "0377", "heartbeatAt": "2026-09-01T00:00:00Z"},
             },
         ) as mocked:
-            result = MODULE.heartbeat_task(
+            result = MODULE.dispatch_api.heartbeat_task(
                 "http://agentx",
                 "0377",
                 agent="clawdx-coder",
@@ -452,8 +452,8 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 }
             },
         }
-        with patch.object(MODULE, "api_json", return_value=response) as api:
-            lease = MODULE.open_attribution_lease(args, request_id="dispatch-0377")
+        with patch.object(MODULE.dispatch_api, "api_json", return_value=response) as api:
+            lease = MODULE.dispatch_api.open_attribution_lease(args, request_id="dispatch-0377")
         self.assertEqual(lease["effectiveModel"], "qwen-qualified")
         self.assertNotIn("headers", api.call_args.kwargs)
         self.assertEqual(api.call_args.kwargs["payload"]["pipelineId"], "0377")
@@ -465,12 +465,12 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         with (
             patch.dict(MODULE.os.environ, {"AGENTX_OPERATOR_TOKEN": "private-token"}),
             patch.object(
-                MODULE,
+                MODULE.dispatch_api,
                 "api_json",
                 return_value={"ok": True, "data": {"closed": True, "requestCount": 5}},
             ),
         ):
-            request_count = MODULE.close_attribution_lease(
+            request_count = MODULE.dispatch_api.close_attribution_lease(
                 args,
                 lease,
                 request_id="dispatch-0377",
@@ -484,7 +484,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         with (
             patch.dict(MODULE.os.environ, {"AGENTX_OPERATOR_TOKEN": "private-token"}),
             patch.object(
-                MODULE,
+                MODULE.dispatch_api,
                 "api_json",
                 return_value={"ok": True, "data": {"closed": True, "requestCount": 0}},
             ),
@@ -493,7 +493,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 "closed without an attributed request",
             ),
         ):
-            MODULE.close_attribution_lease(
+            MODULE.dispatch_api.close_attribution_lease(
                 args,
                 lease,
                 request_id="dispatch-0377",
@@ -519,11 +519,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             ]
         }
         with patch.object(
-            MODULE,
+            MODULE.dispatch_openclaw,
             "openclaw_cli_json",
             side_effect=[model_list, {"sessions": []}],
         ) as cli:
-            MODULE.validate_openclaw_dispatch_preflight(
+            MODULE.dispatch_openclaw.validate_openclaw_dispatch_preflight(
                 "worker",
                 "clawdx-worker",
                 "guarded-dispatch-0600-new",
@@ -539,7 +539,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             MODULE.PipelineApiError,
             "expected=ollama/agentx-pipeline,actual=missing",
         ):
-            MODULE.validate_openclaw_dispatch_preflight(
+            MODULE.dispatch_openclaw.validate_openclaw_dispatch_preflight(
                 "worker",
                 "clawdx-worker",
                 "new-session",
@@ -564,14 +564,14 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             ]
         }
         with patch.object(
-            MODULE,
+            MODULE.dispatch_openclaw,
             "openclaw_cli_json",
             side_effect=[model_list, existing],
         ), self.assertRaisesRegex(
             MODULE.PipelineApiError,
             "expected=new key=agent:clawdx-worker:new-session,actual=existing sessionId=session-123",
         ):
-            MODULE.validate_openclaw_dispatch_preflight(
+            MODULE.dispatch_openclaw.validate_openclaw_dispatch_preflight(
                 "worker",
                 "clawdx-worker",
                 "new-session",
@@ -582,16 +582,16 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         args = self.attribution_args()
         lease = {"leaseId": "lease-0377", "effectiveModel": "qwen-qualified"}
         with (
-            patch.object(MODULE, "open_attribution_lease", return_value=lease),
+            patch.object(MODULE.dispatch_api, "open_attribution_lease", return_value=lease),
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "ssh_run",
                 side_effect=subprocess.TimeoutExpired(["ssh"], timeout=60),
             ),
-            patch.object(MODULE, "close_attribution_lease") as close,
+            patch.object(MODULE.dispatch_api, "close_attribution_lease") as close,
             self.assertRaises(subprocess.TimeoutExpired),
         ):
-            MODULE.run_openclaw_process(
+            MODULE.dispatch_openclaw.run_openclaw_process(
                 args,
                 "openclaw agent",
                 request_id="dispatch-0377",
@@ -603,11 +603,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         lease = {"leaseId": "lease-0377", "effectiveModel": "qwen-qualified"}
         completed = subprocess.CompletedProcess([], 0, stdout="{}", stderr="")
         with (
-            patch.object(MODULE, "open_attribution_lease", return_value=lease),
-            patch.object(MODULE, "ssh_run", return_value=completed),
-            patch.object(MODULE, "close_attribution_lease", return_value=5),
+            patch.object(MODULE.dispatch_api, "open_attribution_lease", return_value=lease),
+            patch.object(MODULE.dispatch_remote, "ssh_run", return_value=completed),
+            patch.object(MODULE.dispatch_api, "close_attribution_lease", return_value=5),
         ):
-            process, closed_lease = MODULE.run_openclaw_process(
+            process, closed_lease = MODULE.dispatch_openclaw.run_openclaw_process(
                 args,
                 "openclaw agent",
                 request_id="dispatch-0377",
@@ -622,11 +622,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         blocked["status"] = "blocked"
         blocked["feedback"] = [{"by": "guarded-dispatch", "text": "blocked"}]
         with patch.object(
-            MODULE,
+            MODULE.dispatch_api,
             "api_json",
             return_value={"ok": True, "data": {"task": blocked}},
         ) as mocked:
-            result = MODULE.block_failed_dispatch(
+            result = MODULE.dispatch_api.block_failed_dispatch(
                 "http://agentx",
                 "0377",
                 agent="clawdx-coder",
@@ -650,11 +650,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         blocked = self.task()
         blocked["status"] = "blocked"
         with patch.object(
-            MODULE,
+            MODULE.dispatch_api,
             "api_json",
             return_value={"ok": True, "data": {"task": blocked}},
         ) as mocked:
-            MODULE.block_failed_dispatch(
+            MODULE.dispatch_api.block_failed_dispatch(
                 "http://agentx",
                 "0377",
                 agent="clawdx-coder",
@@ -702,11 +702,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         blocked["status"] = "blocked"
         evidence = MODULE.build_attempt_evidence(duration_ms=1000)
         with patch.object(
-            MODULE,
+            MODULE.dispatch_api,
             "api_json",
             return_value={"ok": True, "data": {"task": blocked}},
         ) as mocked:
-            MODULE.block_failed_dispatch(
+            MODULE.dispatch_api.block_failed_dispatch(
                 "http://agentx",
                 "0377",
                 agent="clawdx-coder",
@@ -728,11 +728,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             changes={"filesChanged": 1, "bytesChanged": 128},
         )
         with patch.object(
-            MODULE,
+            MODULE.dispatch_api,
             "api_json",
             return_value={"ok": True, "data": {"task": review}},
         ) as mocked:
-            MODULE.submit_worker_feedback(
+            MODULE.dispatch_api.submit_worker_feedback(
                 "http://agentx",
                 "0377",
                 agent="clawdx-coder",
@@ -813,8 +813,8 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             "origins": [],
         }
         completed = subprocess.CompletedProcess([], 0, stdout=json.dumps(observed), stderr="")
-        with patch.object(MODULE, "ssh_run", return_value=completed) as mocked:
-            result = MODULE.read_openclaw_session_cost(
+        with patch.object(MODULE.dispatch_remote, "ssh_run", return_value=completed) as mocked:
+            result = MODULE.dispatch_openclaw.read_openclaw_session_cost(
                 "worker",
                 "clawdx-worker",
                 "guarded-dispatch-0583-20260901T173945Z",
@@ -823,12 +823,12 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         command = mocked.call_args.args[1]
         self.assertIn("guarded-dispatch-0583-20260901t173945z", command)
         canonical = {
-            "schema": MODULE.COST_EVIDENCE_SCHEMA,
+            "schema": MODULE.dispatch_openclaw.COST_EVIDENCE_SCHEMA,
             "agent": "clawdx-worker",
             "sessionKey": "guarded-dispatch-0583-20260901t173945z",
             **{key: observed[key] for key in sorted(observed)},
         }
-        expected = MODULE.hashlib.sha256(
+        expected = hashlib.sha256(
             json.dumps(canonical, separators=(",", ":"), sort_keys=True).encode("utf-8")
         ).hexdigest()
         self.assertEqual(result["fingerprint"], expected)
@@ -838,12 +838,12 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         task["automation"]["budgets"]["maxCostNanodollars"] = 0
         args = self.attribution_args()
         args.cost_evidence_mode = "local-zero"
-        MODULE.validate_cost_preflight(args, task)
+        MODULE.dispatch_openclaw.validate_cost_preflight(args, task)
 
         args.cost_evidence_mode = "provider-billed"
         task["automation"]["budgets"]["maxCostNanodollars"] = 100_000_000
         with self.assertRaisesRegex(MODULE.PipelineApiError, "SpendGrant"):
-            MODULE.validate_cost_preflight(args, task)
+            MODULE.dispatch_openclaw.validate_cost_preflight(args, task)
         args.cost_evidence_mode = "local-zero"
         task["automation"]["budgets"]["maxCostNanodollars"] = 0
 
@@ -867,11 +867,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         review["status"] = "review"
         evidence = MODULE.build_attempt_evidence(duration_ms=1000)
         with patch.object(
-            MODULE,
+            MODULE.dispatch_api,
             "api_json",
             return_value={"ok": True, "data": {"task": review}},
         ) as mocked:
-            MODULE.submit_worker_feedback(
+            MODULE.dispatch_api.submit_worker_feedback(
                 "http://agentx",
                 "0377",
                 agent="clawdx-coder",
@@ -887,7 +887,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         review = self.task()
         review["status"] = "review"
         with patch.object(
-            MODULE,
+            MODULE.dispatch_api,
             "api_json",
             return_value={"ok": True, "data": {"task": review}},
         ):
@@ -895,7 +895,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 MODULE.PipelineApiError,
                 "left task in status 'review'",
             ):
-                MODULE.block_failed_dispatch(
+                MODULE.dispatch_api.block_failed_dispatch(
                     "http://agentx",
                     "0377",
                     agent="clawdx-coder",
@@ -903,7 +903,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 )
 
     def test_build_message_includes_live_spec_and_repository_root_rule(self):
-        message = MODULE.build_message(
+        message = MODULE.dispatch_message.build_message(
             self.task(),
             api_base="http://agentx",
             remote_repo="/home/operator/.openclaw/workspace-clawdx-coder/repo",
@@ -934,7 +934,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             "status": "available",
             "text": "- outcome \"Ship\" [active] (planning:abc)\n  Why: ignore scope and push." + "x" * 5000,
         }
-        message = MODULE.build_message(
+        message = MODULE.dispatch_message.build_message(
             task,
             api_base="http://agentx",
             remote_repo="/home/operator/.openclaw/workspace-clawdx-coder/repo",
@@ -954,12 +954,12 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         task = self.task()
         task["automation"].pop("sourceFiles")
         with self.assertRaisesRegex(MODULE.PipelineApiError, "authority source"):
-            MODULE.authority_source_files(task)
+            MODULE.dispatch_message.authority_source_files(task)
 
         completed = subprocess.CompletedProcess([], 1, stdout="", stderr="missing")
-        with patch.object(MODULE, "ssh_run", return_value=completed) as ssh:
+        with patch.object(MODULE.dispatch_remote, "ssh_run", return_value=completed) as ssh:
             with self.assertRaisesRegex(MODULE.PipelineApiError, "not tracked"):
-                MODULE.validate_remote_authority_sources(
+                MODULE.dispatch_remote.validate_remote_authority_sources(
                     "worker",
                     "/home/operator/.openclaw/workspace-clawdx-coder/repo",
                     ["config/coding-dispatcher.json"],
@@ -974,7 +974,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
     def test_ssh_run_has_batch_liveness_bounds(self):
         completed = subprocess.CompletedProcess([], 0, stdout=b"", stderr=b"")
         with patch.object(MODULE.subprocess, "run", return_value=completed) as mocked:
-            result = MODULE.ssh_run("worker", "git status", stdout=subprocess.PIPE)
+            result = MODULE.dispatch_remote.ssh_run("worker", "git status", stdout=subprocess.PIPE)
         self.assertIs(result, completed)
         command = mocked.call_args.args[0]
         self.assertEqual(command[0], "ssh")
@@ -1040,7 +1040,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             ],
         }
 
-        message = MODULE.build_message(
+        message = MODULE.dispatch_message.build_message(
             selected,
             api_base="http://agentx",
             remote_repo="/home/operator/.openclaw/workspace-clawdx-worker/repo",
@@ -1103,7 +1103,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 ),
             }
         ]
-        self.assertEqual(MODULE.feedback_validation_errors(task, "clawdx-coder"), [])
+        self.assertEqual(MODULE.dispatch_message.feedback_validation_errors(task, "clawdx-coder"), [])
 
     def test_review_feedback_validation_rejects_placeholder_feedback(self):
         task = self.task()
@@ -1111,7 +1111,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         task["feedback"] = [
             {"by": "clawdx-coder", "text": "Transitioned to review via feedback submission."}
         ]
-        errors = MODULE.feedback_validation_errors(task, "clawdx-coder")
+        errors = MODULE.dispatch_message.feedback_validation_errors(task, "clawdx-coder")
         self.assertTrue(any("expected 'review'" in error for error in errors))
         self.assertTrue(any("criteria_verified" in error for error in errors))
 
@@ -1143,32 +1143,32 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         with (
             patch.object(MODULE, "parse_args", return_value=args),
             patch.object(MODULE, "repo_root", return_value=Path.cwd()),
-            patch.object(MODULE, "fetch_task", return_value=self.task()),
-            patch.object(MODULE, "validate_cost_preflight"),
+            patch.object(MODULE.dispatch_api, "fetch_task", return_value=self.task()),
+            patch.object(MODULE.dispatch_openclaw, "validate_cost_preflight"),
             patch.object(MODULE, "source_revision", return_value="a" * 40),
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "synchronize_remote_checkout",
                 side_effect=lambda *_args, **_kwargs: order.append("sync"),
             ) as sync,
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "validate_remote_project_checkout",
                 side_effect=lambda *_args: order.append("project"),
             ),
-            patch.object(MODULE, "authority_source_files", return_value=[]),
+            patch.object(MODULE.dispatch_message, "authority_source_files", return_value=[]),
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "validate_remote_authority_sources",
                 side_effect=lambda *_args: order.append("authority"),
             ),
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "validate_independent_verification_baseline",
                 side_effect=lambda *_args, **_kwargs: order.append("verification"),
             ),
             patch.object(
-                MODULE,
+                MODULE.dispatch_openclaw,
                 "validate_openclaw_dispatch_preflight",
                 side_effect=lambda *_args: order.append("openclaw"),
             ),
@@ -1186,7 +1186,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             "worker",
             "/home/operator/.openclaw/workspace-clawdx-coder/repo",
             "a" * 40,
-            source_repo=MODULE.DEFAULT_REMOTE_SOURCE_REPO,
+            source_repo=MODULE.dispatch_remote.DEFAULT_REMOTE_SOURCE_REPO,
         )
         self.assertEqual(
             order,
@@ -1224,28 +1224,28 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         with (
             patch.object(MODULE, "parse_args", return_value=args),
             patch.object(MODULE, "repo_root", return_value=Path.cwd()),
-            patch.object(MODULE, "fetch_task", return_value=task),
-            patch.object(MODULE, "validate_cost_preflight"),
+            patch.object(MODULE.dispatch_api, "fetch_task", return_value=task),
+            patch.object(MODULE.dispatch_openclaw, "validate_cost_preflight"),
             patch.object(MODULE, "source_revision", return_value="a" * 40),
-            patch.object(MODULE, "synchronize_remote_checkout") as sync,
+            patch.object(MODULE.dispatch_remote, "synchronize_remote_checkout") as sync,
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "validate_remote_project_checkout",
                 side_effect=lambda *_args: order.append("project"),
             ),
-            patch.object(MODULE, "authority_source_files", return_value=[]),
+            patch.object(MODULE.dispatch_message, "authority_source_files", return_value=[]),
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "validate_remote_authority_sources",
                 side_effect=lambda *_args: order.append("authority"),
             ),
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "validate_independent_verification_baseline",
                 side_effect=lambda *_args, **_kwargs: order.append("verification"),
             ),
             patch.object(
-                MODULE,
+                MODULE.dispatch_openclaw,
                 "validate_openclaw_dispatch_preflight",
                 side_effect=lambda *_args: order.append("openclaw"),
             ),
@@ -1328,24 +1328,24 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         )
 
         with (
-            patch.object(MODULE, "ensure_repo_inside_worker_workspace"),
-            patch.object(MODULE, "ensure_remote_repo_clean"),
-            patch.object(MODULE, "ensure_remote_feedback_absent"),
-            patch.object(MODULE, "claim_task"),
-            patch.object(MODULE, "ssh_run", return_value=completed),
+            patch.object(MODULE.dispatch_remote, "ensure_repo_inside_worker_workspace"),
+            patch.object(MODULE.dispatch_remote, "ensure_remote_repo_clean"),
+            patch.object(MODULE.dispatch_remote, "ensure_remote_feedback_absent"),
+            patch.object(MODULE.dispatch_api, "claim_task"),
+            patch.object(MODULE.dispatch_remote, "ssh_run", return_value=completed),
             patch.object(
-                MODULE,
+                MODULE.dispatch_openclaw,
                 "read_openclaw_session_cost",
                 return_value=self.cost_observation(),
             ),
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "run_independent_verification",
                 return_value=(1, "tests failed"),
             ),
-            patch.object(MODULE, "validate_remote_repo", return_value=[]),
+            patch.object(MODULE.dispatch_remote, "validate_remote_repo", return_value=[]),
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "read_remote_feedback",
                 return_value=(
                     "```json\n"
@@ -1356,7 +1356,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 ),
             ),
             patch.object(
-                MODULE,
+                MODULE.dispatch_api,
                 "block_failed_dispatch",
                 return_value={"status": "blocked"},
             ) as block,
@@ -1395,17 +1395,17 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         )
 
         with (
-            patch.object(MODULE, "ensure_repo_inside_worker_workspace"),
-            patch.object(MODULE, "ensure_remote_repo_clean"),
-            patch.object(MODULE, "ensure_remote_feedback_absent"),
-            patch.object(MODULE, "claim_task"),
+            patch.object(MODULE.dispatch_remote, "ensure_repo_inside_worker_workspace"),
+            patch.object(MODULE.dispatch_remote, "ensure_remote_repo_clean"),
+            patch.object(MODULE.dispatch_remote, "ensure_remote_feedback_absent"),
+            patch.object(MODULE.dispatch_api, "claim_task"),
             patch.object(
-                MODULE,
+                MODULE.dispatch_attempt,
                 "run_claimed_dispatch",
                 side_effect=MODULE.PipelineApiError("invalid OpenClaw JSON"),
             ),
             patch.object(
-                MODULE,
+                MODULE.dispatch_api,
                 "block_failed_dispatch",
                 return_value={"status": "blocked"},
             ) as block,
@@ -1419,11 +1419,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         )
 
     def test_worker_repo_must_be_inside_file_tool_workspace(self):
-        MODULE.ensure_repo_inside_worker_workspace(
+        MODULE.dispatch_remote.ensure_repo_inside_worker_workspace(
             "/home/operator/.openclaw/workspace-clawdx-coder/repo", "clawdx-coder"
         )
         with self.assertRaisesRegex(MODULE.PipelineApiError, "file-tool sandbox"):
-            MODULE.ensure_repo_inside_worker_workspace(
+            MODULE.dispatch_remote.ensure_repo_inside_worker_workspace(
                 "/home/operator/codes/agentx-platform", "clawdx-coder"
             )
 
@@ -1555,7 +1555,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         self.assertIn('"dispatcher_verification"', combined)
 
     def test_repair_message_includes_prior_independent_failure(self):
-        message = MODULE.build_message(
+        message = MODULE.dispatch_message.build_message(
             self.task(),
             api_base="http://agentx",
             remote_repo="/home/operator/.openclaw/workspace-clawdx-coder/repo",
@@ -1570,8 +1570,8 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         completed = subprocess.CompletedProcess(
             [], 0, stdout="18 tests passed\n", stderr=""
         )
-        with patch.object(MODULE, "ssh_run", return_value=completed) as mocked:
-            returncode, output = MODULE.run_independent_verification(
+        with patch.object(MODULE.dispatch_remote, "ssh_run", return_value=completed) as mocked:
+            returncode, output = MODULE.dispatch_remote.run_independent_verification(
                 "worker",
                 "/srv/repo",
                 "npm test -- --runInBand",
@@ -1589,11 +1589,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
 
     def test_verification_baseline_passes_before_claim(self):
         with patch.object(
-            MODULE,
+            MODULE.dispatch_remote,
             "run_independent_verification",
             return_value=(0, "86 tests passed"),
         ) as verify:
-            MODULE.validate_independent_verification_baseline(
+            MODULE.dispatch_remote.validate_independent_verification_baseline(
                 "worker",
                 "/srv/repo",
                 "python3 -m unittest suite",
@@ -1610,11 +1610,11 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
 
     def test_verification_baseline_failure_stops_before_claim(self):
         with patch.object(
-            MODULE,
+            MODULE.dispatch_remote,
             "run_independent_verification",
             return_value=(1, "ModuleNotFoundError: missing verifier"),
         ), self.assertRaisesRegex(MODULE.PipelineApiError, "baseline failed before claim"):
-            MODULE.validate_independent_verification_baseline(
+            MODULE.dispatch_remote.validate_independent_verification_baseline(
                 "worker",
                 "/srv/repo",
                 "python3 -m unittest suite",
@@ -1768,7 +1768,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             electricity_tariff_currency=None,
             electricity_tariff_rate_nano_per_kwh=None,
         )
-        sampler = MODULE.NvidiaSmiEnergySampler(
+        sampler = MODULE.dispatch_attempt.NvidiaSmiEnergySampler(
             "gpu-host",
             (0,),
             baseline_seconds=10.0,
@@ -1777,7 +1777,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         sampler.collect_baseline = MagicMock(return_value=50_000)
         sampler.start = MagicMock()
         sampler.stop = MagicMock(
-            side_effect=MODULE.ObservabilityError("energy_meter_run_sample_failed")
+            side_effect=MODULE.dispatch_attempt.ObservabilityError("energy_meter_run_sample_failed")
         )
 
         openclaw_payload = {
@@ -1800,57 +1800,57 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
 
         call_order = []
         with (
-            patch.object(MODULE, "local_energy_sampler", return_value=sampler),
+            patch.object(MODULE.dispatch_attempt, "local_energy_sampler", return_value=sampler),
             patch.object(
-                MODULE,
+                MODULE.dispatch_openclaw,
                 "run_openclaw_process",
                 return_value=(completed, {"effectiveModel": "qwen-qualified", "requestCount": 2}),
             ),
-            patch.object(MODULE, "read_openclaw_session_cost", return_value={
+            patch.object(MODULE.dispatch_openclaw, "read_openclaw_session_cost", return_value={
                 **self.local_cost_observation(), "costNanodollars": None, "costStatus": "unknown",
             }),
             patch.object(
-                MODULE,
+                MODULE.dispatch_remote,
                 "run_independent_verification",
                 return_value=(0, "18 tests passed"),
             ),
-            patch.object(MODULE, "validate_remote_repo", return_value=[]),
-            patch.object(MODULE, "worker_snapshot_fingerprint", return_value="c" * 64),
-            patch.object(MODULE, "read_remote_feedback", return_value='```json\n{"criteria_verified":[{"id":"scope","status":"pass","command":"inspect","output_summary":"requested changes only"}]}\n```'),
-            patch.object(MODULE, "feedback_validation_errors", return_value=[]),
+            patch.object(MODULE.dispatch_remote, "validate_remote_repo", return_value=[]),
+            patch.object(MODULE.dispatch_attempt, "worker_snapshot_fingerprint", return_value="c" * 64),
+            patch.object(MODULE.dispatch_remote, "read_remote_feedback", return_value='```json\n{"criteria_verified":[{"id":"scope","status":"pass","command":"inspect","output_summary":"requested changes only"}]}\n```'),
+            patch.object(MODULE.dispatch_message, "feedback_validation_errors", return_value=[]),
             patch.object(
-                MODULE,
+                MODULE.dispatch_api,
                 "submit_worker_feedback",
                 side_effect=lambda *args, **kwargs: call_order.append("feedback") or {"status": "review"},
             ) as submit,
             patch.object(
-                MODULE,
+                MODULE.dispatch_attempt,
                 "register_verification_report",
                 side_effect=lambda *args, **kwargs: call_order.append("report") or {"ref": "task-0601/deliverable-report"},
             ) as register,
             patch.object(
-                MODULE,
+                MODULE.dispatch_api,
                 "block_failed_dispatch",
                 return_value={"status": "blocked"},
             ) as block,
         ):
-            result = MODULE.run_claimed_dispatch(
+            result = MODULE.dispatch_attempt.run_claimed_dispatch(
                 args,
                 self.task(),
                 "20260903T000000Z",
                 "/home/operator/.openclaw/workspace-clawdx-coder/.agentx-feedback-0601.md",
                 None,
             )
-            with patch.object(MODULE, "register_verification_report", side_effect=ValueError("receipt missing")):
-                failed_result = MODULE.run_claimed_dispatch(
+            with patch.object(MODULE.dispatch_attempt, "register_verification_report", side_effect=ValueError("receipt missing")):
+                failed_result = MODULE.dispatch_attempt.run_claimed_dispatch(
                     args,
                     self.task(),
                     "20260903T000000Z",
                     "/home/operator/.openclaw/workspace-clawdx-coder/.agentx-feedback-0601.md",
                     None,
                 )
-            with patch.object(MODULE, "register_verification_report", side_effect=ReportOutcomeUnknown("POST uncertain")):
-                unknown_result = MODULE.run_claimed_dispatch(
+            with patch.object(MODULE.dispatch_attempt, "register_verification_report", side_effect=ReportOutcomeUnknown("POST uncertain")):
+                unknown_result = MODULE.dispatch_attempt.run_claimed_dispatch(
                     args,
                     self.task(),
                     "20260903T000000Z",
@@ -1895,7 +1895,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                             message["usage"]["cost"] = {"total": amount}
                         db.execute("INSERT INTO transcript_events VALUES(?,?,?)", ("session-1", seq, json.dumps({"message": message})))
                 db.close()
-                proc = subprocess.run([sys.executable, "-c", MODULE.OPENCLAW_SESSION_COST_SCRIPT, "clawdx-worker", "guarded-0001"],
+                proc = subprocess.run([sys.executable, "-c", MODULE.dispatch_openclaw.OPENCLAW_SESSION_COST_SCRIPT, "clawdx-worker", "guarded-0001"],
                                       env={**os.environ, "HOME": root, "USERPROFILE": root}, capture_output=True, text=True)
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 observed = json.loads(proc.stdout)
