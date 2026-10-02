@@ -57,7 +57,7 @@ Instance configuration, data and deployment receipts remain outside Git.
   rows show their host's residency.
 - **Finance.** A personal ledger in Core accepts only statements that reconcile
   to the cent. The Wallet Beefer page (`/finance`), deterministic alerts and
-  the `comptable` persona tools read it. See [finance](FINANCE.md).
+  the `comptable` agent's tools read it. See [finance](FINANCE.md).
 - **Data.** A native GPU collector samples `nvidia-smi` into Data; the Nerve
   Center and the Profiler label stale or missing samples as such.
 - **Alerts.** A native operations relay posts selected Core alerts to a
