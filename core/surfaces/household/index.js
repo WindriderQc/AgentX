@@ -34,9 +34,10 @@ const {
 const deviceAcceptance = require('./device-acceptance');
 const nestorKnowledge = require('./nestor-knowledge');
 const soundLibrary = require('./sound-library');
-const { openClawCrew, openClawPanelStatus, panelCrewReady } = require('./panel-status');
+const { openClawCrew } = require('./panel-status');
 const {
-  fetchWithTimeout, upstreamJson, publicVoixConfig, publicVoixConversation, publicVoixEvent, publicVoixMediaClip, publicVoixMediaVault, publicVoixMetrics, publicVoixSession
+  fetchWithTimeout, publicVoixConfig, publicVoixConversation, publicVoixEvent, publicVoixMediaClip,
+  publicVoixMediaVault, publicVoixMetrics, publicVoixSession
 } = require('./voix-client');
 const { registerVoixRoutes } = require('./voix-routes');
 const { registerNativeConsumers } = require('./native-consumers');
@@ -63,8 +64,9 @@ const {
   createModels, publicSession, publicAudit, sessionHistoryMessages, loadSessionAuditRows
 } = require('./persona-records');
 const {
-  serviceHealth, projectedJson, cachedProjectedJson, hermesCrew, fleetSummary
+  cachedProjectedJson, hermesCrew, fleetSummary
 } = require('./panel-sources');
+const { registerPanelRoutes } = require('./panel-routes');
 
 const CORE_SELF_URL = () => String(process.env.CORE_INTERNAL_URL || 'http://127.0.0.1:3080').replace(/\/+$/, '');
 const VOIX_FAMILY_PACK_ID = 'kidx_nestor';
@@ -907,82 +909,9 @@ function register(api) {
   });
   app.use('/api/household/device-acceptance', device);
 
-  const panel = express.Router();
-  panel.use(standardJsonParser);
-  panel.get('/status', async (_req, res) => {
-    const [services, voixStatus, openclaw, fleet] = await Promise.all([
-      Promise.all([
-        serviceHealth('Core', `${CORE_SELF_URL()}/health`),
-        serviceHealth('Benchmark', String(process.env.BENCHMARK_SERVICE_URL || 'http://benchmark:3081').replace(/\/+$/, '') + '/health'),
-        serviceHealth('RAG', String(process.env.RAG_SERVICE_URL || 'http://rag:3082').replace(/\/+$/, '') + '/health'),
-        ...(process.env.DATAAPI_BASE_URL ? [serviceHealth('Data', String(process.env.DATAAPI_BASE_URL).replace(/\/+$/, '') + '/health')] : [])
-      ]),
-      upstreamJson('/health')
-        .then((health) => ({ status: health?.status === 'ok' ? 'ok' : 'down', health }))
-        .catch((error) => ({ status: 'down', error: error.message })),
-      openClawPanelStatus(app.locals?.aioOpsRuntimeEvidence),
-      projectedJson(
-        `${CORE_SELF_URL()}/api/nerve-center/ecosystem`,
-        fleetSummary,
-        fleetSummary({})
-      )
-    ]);
-    const serviceCount = services.filter((service) => service.status === 'ok').length;
-    const agentx = {
-      id: 'agentx',
-      name: 'AgentX',
-      role: 'Router · RAG · shared memory authority',
-      status: serviceCount === services.length ? 'ok' : 'down',
-      detail: `${serviceCount}/${services.length} platform services ready`,
-      href: '/agent-ops'
-    };
-    const nestor = {
-      id: 'nestor',
-      name: 'Nestor',
-      role: 'Family front door',
-      status: agentx.status === 'ok' && fleet.status === 'ok' ? 'ok' : 'down',
-      detail: knowledgeState.status.enabled
-        ? `${knowledgeState.status.documentCount} approved knowledge document(s)`
-        : 'child-safe lane · approved knowledge waiting',
-      href: '#family-nestor'
-    };
-    const voix = {
-      id: 'voix',
-      name: 'VoiX',
-      role: 'Private ears & voice',
-      status: voixStatus.status,
-      detail: voixStatus.status === 'ok'
-        ? cleanText(voixStatus.health?.version || voixStatus.health?.serviceVersion || 'local speech ready', 120)
-        : 'local speech unavailable',
-      href: '/voice'
-    };
-    const crew = [nestor, openclaw, agentx, voix];
-    const ready = panelCrewReady(crew, fleet);
-    return envelope(res, {
-      generatedAt: new Date().toISOString(),
-      status: ready && !fleet.attention.length ? 'ok' : 'degraded',
-      services,
-      voix: voixStatus,
-      crew,
-      fleet,
-      memory: {
-        sharedAuthority: 'AgentX Memory Review',
-        sharedHref: '/memory-review',
-        familyNotebook: 'scoped household notebook',
-        retiredHermesCorpus: 'Retained read-only for explicit Memory Review compatibility; no live Hermès service.'
-      },
-      knowledge: knowledgeState.status,
-      reader: { status: 'ok', packId: 'kidx_reader' },
-      secretary: { status: 'ok', store: 'pipelinetasks' },
-      home: { status: 'not_configured', entities: [] }
-    });
+  registerPanelRoutes(app, {
+    express, standardJsonParser, CORE_SELF_URL, knowledgeState, cleanText, envelope
   });
-  panel.post('/heartbeat', (req, res) => envelope(res, {
-    accepted: true,
-    deviceId: cleanText(req.body?.deviceId || 'house-panel', 120),
-    at: new Date().toISOString()
-  }, 202));
-  app.use('/api/panel', panel);
 
   app.get('/api/household/status', (_req, res) => envelope(res, {
     extension: 'agentx-household',
