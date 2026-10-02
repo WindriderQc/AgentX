@@ -571,8 +571,11 @@
       catch (error) { if (!speech.signal.aborted && this.state === 'reviewing') this.show('reviewing', error.message); }
     }
     forgetReview() { this.reviewSpeech?.abort(); this.audio?.clearReview(); }
-    stop(paused = false, detail = '') {
-      if (!paused || this.turnPending || !['paused', 'listening', 'hearing', 'speaking', 'preparing'].includes(this.state)) this.session = null;
+    // Pausing, a hidden page or a failure keeps the session, so resuming continues the
+    // conversation the page still shows. Only an explicit end (or a new/other conversation)
+    // forgets it; a forgotten session made the next start silently open an empty one.
+    stop(paused = false, detail = '', { forget = !paused } = {}) {
+      if (forget) this.session = null;
       this.turnPending = false;
       this.cancelWakeAck();
       this.wake.arm();
@@ -583,7 +586,7 @@
     }
     fail(error, epoch) {
       if (!this.current(epoch)) return;
-      this.stop();
+      this.stop(false, '', { forget: false });
       this.show('error', error.message || 'Voice connection failed. Start again when ready.');
     }
   }
