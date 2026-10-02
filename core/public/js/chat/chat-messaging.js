@@ -3,7 +3,7 @@
  */
 import {
   describePendingRuntimeChange, getHostChatState, getRagOptions, isAutoRoutingMode, isRouterMode,
-  readProfileInputs, selectedHostPreference, sessionTaskType, targetHost
+  readOptions, readProfileInputs, selectedHostPreference, sessionTaskType, targetHost
 } from './chat-config.js';
 import { buildRoutingInfo } from './chat-routing-info.js';
 import {
@@ -546,8 +546,10 @@ export async function sendMessage(ctx, turnAction = null) {
     return;
   }
 
+  // Declared outside try so the failure path can still report the requested model.
+  let payload = null;
   try {
-    const payload = {
+    payload = {
       ...buildPayload(
         elements,
         state,
@@ -633,7 +635,7 @@ export async function sendMessage(ctx, turnAction = null) {
       sourceUserMessageId: requestTurnAction?.kind === 'retry' ? requestTurnAction.sourceUserMessageId : null,
       userMessage: message,
       assistantContent: failedContent,
-      model: payload.model
+      model: payload?.model
     });
   } finally {
     state.sending = false;

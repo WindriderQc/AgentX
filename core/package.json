@@ -48,6 +48,8 @@
     "winston": "^3.19.0"
   },
   "devDependencies": {
+    "@babel/parser": "^7.29.8",
+    "@babel/traverse": "^7.29.8",
     "@types/jest": "^30.0.0",
     "jest": "^30.4.2",
     "mongodb-memory-server": "^10.2.1",
