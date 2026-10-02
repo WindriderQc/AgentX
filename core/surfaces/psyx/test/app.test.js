@@ -171,9 +171,14 @@ test('voice stays protected, permits this origin, and relays audio without persi
   await withServer(createApp({ config: { ...config(), voice: { mode: 'voix', maxAudioBytes: 1024 * 1024 } }, database: repositories(), provider: { id: 'ollama', probe: async () => ({}), routing: async () => ({}), stream: async () => ({}) }, voice, logger: { error() {} } }), async (base) => {
     const page = await fetch(`${base}/psyx`);
     assert.match(page.headers.get('permissions-policy'), /microphone=\(self\)/);
-    assert.match(await page.text(), /voice-preferences\.js/);
+    const html = await page.text();
+    assert.match(html, /voice-preferences\.js/);
+    // app.js calls functions declared by the voice and panel scripts, so they load first.
+    assert.match(html, /psyx-voice\.js[^]*psyx-panels\.js[^]*assets\/app\.js/);
     assert.equal((await fetch(`${base}/api/psyx/voice/status`)).status, 401);
-    assert.equal((await fetch(`${base}/psyx/assets/voice-preferences.js`)).status, 200);
+    for (const asset of ['voice-preferences.js', 'psyx-voice.js', 'psyx-panels.js']) {
+      assert.equal((await fetch(`${base}/psyx/assets/${asset}`)).status, 200);
+    }
 
     const headers = { Authorization: 'Bearer psyx-secret' };
     const capabilities = await (await fetch(`${base}/api/psyx/status`, { headers })).json();
