@@ -51,7 +51,7 @@ function voiceSecureContextAvailable() {
 function updateVoiceButton() {
   const recording = state.voice.recorder?.state === 'recording';
   const available = state.voice.enabled && state.voice.reachable && voiceSecureContextAvailable();
-  voiceRecord.disabled = !recording && (!available || !state.ready || state.busy);
+  voiceRecord.disabled = !recording && (!available || !state.ready || state.busy || state.voice.recordingPending);
   voiceRecord.textContent = recording ? 'Stop' : 'Micro';
   voiceRecord.classList.toggle('recording', recording);
   voiceRecord.setAttribute('aria-label', recording ? 'Arrêter l’enregistrement' : 'Enregistrer un message vocal');
@@ -196,6 +196,9 @@ function showVoiceError(error) {
 }
 
 async function toggleVoiceRecording() {
+  if (state.voice.recordingPending) return;
+  state.voice.recordingPending = true;
+  updateVoiceButton();
   try {
     if (state.voice.recorder?.state === 'recording') await stopVoiceRecording();
     else await startVoiceRecording();
@@ -204,6 +207,9 @@ async function toggleVoiceRecording() {
     state.voice.recorder = null;
     state.voice.mediaStream = null;
     showVoiceError(error);
+  } finally {
+    state.voice.recordingPending = false;
+    updateVoiceButton();
   }
 }
 

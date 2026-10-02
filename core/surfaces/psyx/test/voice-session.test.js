@@ -90,3 +90,14 @@ test('female voice selection requires availability and Canadian locale evidence 
   h.state.voice.prefs.ttsVoice = 'ff_siwis'; h.context.chooseInitialVoice({ voices });
   assert.equal(h.state.voice.prefs.ttsVoice, 'ff_siwis');
 });
+
+test('a pending dictation permission request cannot open a competing hands-free microphone', () => {
+  const h = browser(); h.context.wireVoiceSession();
+  h.state.voice.recordingPending = true;
+  h.$('voiceSessionOpen').listeners.click();
+  assert.equal(h.$('voiceSessionDialog').open, false);
+  h.state.voice.recordingPending = false;
+  h.$('voiceSessionOpen').listeners.click();
+  assert.equal(h.$('voiceSessionDialog').open, true);
+  h.context.stopVoiceSession();
+});

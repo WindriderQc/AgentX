@@ -93,7 +93,7 @@ function createPsyXVoiceSession() {
     },
     message: () => {},
   }, (phase, detail) => {
-    $('voiceSessionPhase').textContent = detail || labels[phase] || 'Un instant…';
+    $('voiceSessionPhase').textContent = phase === 'error' ? 'La voix a été arrêtée. Vérifie l’accès au micro et la connexion locale, puis reprends.' : detail || labels[phase] || 'Un instant…';
     $('voiceSessionDialog').dataset.phase = phase;
     const resting = ['idle', 'paused', 'error'].includes(phase);
     $('voiceSessionStart').disabled = !resting || state.busy || !state.ready;
@@ -105,7 +105,7 @@ function createPsyXVoiceSession() {
 
 function wireVoiceSession() {
   $('voiceSessionOpen').addEventListener('click', () => {
-    if (!state.unlocked || !state.ready || state.busy || state.voice.recorder?.state === 'recording') return;
+    if (!state.unlocked || !state.ready || state.busy || (state.voice.recordingPending || state.voice.recorder?.state === 'recording')) return;
     state.voice.speech?.cancel();
     const chosen = state.voice.catalog?.voices?.find(voice => voice.provider === state.voice.prefs.ttsProvider && voice.id === state.voice.prefs.ttsVoice);
     $('voiceSessionVoice').textContent = voicePreferences.describePreferences(state.voice.prefs, state.voice.status) + (chosen?.locale ? ` · ${chosen.locale}` : '');
