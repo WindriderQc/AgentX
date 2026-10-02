@@ -12,6 +12,7 @@
   "contracts": {
     "tools": [
       "personal_memory",
+      "mail_journal",
       "vault_note",
       "nestor_context",
       "nestor_briefing",
@@ -20,6 +21,9 @@
   },
   "toolMetadata": {
     "personal_memory": {
+      "optional": true
+    },
+    "mail_journal": {
       "optional": true
     },
     "vault_note": {
