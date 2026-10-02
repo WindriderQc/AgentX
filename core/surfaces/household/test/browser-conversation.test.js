@@ -428,7 +428,7 @@ for (const phase of ['transcribe', 'turn', 'synthesize']) {
   });
 }
 
-test('pause while listening preserves context; pause during inference starts a fresh context', async () => {
+test('pausing keeps the conversation, even during inference; only an explicit end forgets it', async () => {
   const pending = deferred(); const h = harness({ turn: () => pending.promise });
   await h.conversation.start({}); h.conversation.stop(true);
   assert.equal(h.conversation.session.sessionId, 'private-1');
@@ -437,9 +437,11 @@ test('pause while listening preserves context; pause during inference starts a f
   assert.equal(h.conversation.session.sessionId, 'private-1');
   await h.conversation.start({}); const exchange = h.say(); await tick();
   h.conversation.stop(true);
-  assert.equal(h.conversation.session, null);
+  assert.equal(h.conversation.session.sessionId, 'private-1', 'a screen lock mid-turn must not open an empty conversation');
   pending.resolve({ text: 'late' }); await exchange;
   assert.equal(h.conversation.state, 'paused');
+  h.conversation.stop();
+  assert.equal(h.conversation.session, null, 'an explicit end forgets the session');
 });
 
 test('transcription failure ends capture without a silent retry loop', async () => {
@@ -451,7 +453,7 @@ test('transcription failure ends capture without a silent retry loop', async () 
 });
 
 
-test('streamed speech starts before inference ends and a paused partial turn cannot resume unseen context', async () => {
+test('streamed speech starts before inference ends and a paused partial turn is never spoken later', async () => {
   const pending = deferred(); let onDelta;
   const h = harness({ turn: async (_session, _text, _signal, delta) => { onDelta = delta; await pending.promise; return { text: 'Complete reply.' }; } });
   await h.conversation.start({ language: 'en' });
@@ -461,7 +463,7 @@ test('streamed speech starts before inference ends and a paused partial turn can
   assert.ok(h.calls.includes('play'));
   assert.equal(h.conversation.turnPending, true);
   h.conversation.stop(true);
-  assert.equal(h.conversation.session, null);
+  assert.equal(h.conversation.session.sessionId, 'private-1');
   const plays = h.calls.filter(c => c === 'play').length;
   onDelta('A late sentence must never be spoken.'); pending.resolve(); await exchanging;
   assert.equal(h.calls.filter(c => c === 'play').length, plays);
@@ -1050,4 +1052,11 @@ test('different words during playback still interrupt the reply', async () => {
   h.beginSpeech(); await h.say(); await first;
   assert.equal(interrupts, 1);
   h.conversation.stop();
+});
+
+test('a failure keeps the conversation so starting again continues it', async () => {
+  const h = harness({ transcribe: async () => { throw new Error('STT offline'); } });
+  await h.conversation.start({}); await h.say();
+  assert.equal(h.conversation.state, 'error');
+  assert.equal(h.conversation.session.sessionId, 'private-1');
 });

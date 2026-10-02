@@ -224,6 +224,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     row.scrollIntoView({ block: 'nearest' });
   };
   async function createSession(prefs, signal) {
+    // A new session has no history: never leave an older transcript on screen beside it.
+    if (transcript.querySelector('.conversation-message')) {
+      transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; partial = null; board.clear(); brain.reset();
+    }
     const data = await api(sessionBase, { method: 'POST', signal,
       body: JSON.stringify({ ...prefs, packId: family ? 'kidx_nestor' : 'personal_operator', scopeId: family ? 'family' : 'personal', ...(family ? { modeId: 'family' } : {}), label: selected().name }) });
     preferences.lastVoice = prefs.voice.presentation; savePreferences();
