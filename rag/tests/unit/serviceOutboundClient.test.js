@@ -136,6 +136,40 @@ describe('RAG service outbound operation registry', () => {
     expect(transportAdapter).not.toHaveBeenCalled();
   });
 
+  test('lets Qdrant writes wait for completion and accepts no other query', async () => {
+    const transportAdapter = jest.fn(attestedTransport());
+    const client = createServiceOutboundClient({
+      expectedOrigins: ['http://qdrant.test:6333'],
+      fetchImpl: jest.fn(),
+      transportAdapter,
+    });
+    const base = 'http://qdrant.test:6333/collections/agentx_embeddings';
+    for (const [operationId, target, method] of [
+      [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_UPSERT, `${base}/points?wait=false`, 'PUT'],
+      [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_UPSERT, `${base}/points?wait=true&ordering=strong`, 'PUT'],
+      [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_DELETE, `${base}/points/delete?wait=1`, 'POST'],
+      [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_SEARCH, `${base}/points/search?wait=true`, 'POST'],
+    ]) {
+      await expect(client.requestBytes(operationId, target, { method })).rejects.toThrow(
+        'Outbound service operation does not match its closed request specification.'
+      );
+    }
+    expect(transportAdapter).not.toHaveBeenCalled();
+
+    const fetchImpl = jest.fn(async (target) => rawResponse({ body: '{}', url: target }));
+    const waiting = createServiceOutboundClient({
+      expectedOrigins: ['http://qdrant.test:6333'],
+      fetchImpl,
+      transportAdapter: attestedTransport(),
+    });
+    await expect(waiting.requestBytes(SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_UPSERT,
+      `${base}/points?wait=true`, { method: 'PUT', body: '{}' })).resolves.toMatchObject({ status: 200 });
+    await expect(waiting.requestBytes(SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_DELETE,
+      `${base}/points/delete?wait=true`, { method: 'POST', body: '{}' })).resolves.toMatchObject({ status: 200 });
+    expect(SERVICE_OUTBOUND_REQUEST_SPECS[SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_UPSERT].exactSearch).toBe('?wait=true');
+    expect(SERVICE_OUTBOUND_REQUEST_SPECS[SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_DELETE].exactSearch).toBe('?wait=true');
+  });
+
   test('enforces request and declared response caps before returning a response', async () => {
     const transportAdapter = jest.fn(attestedTransport());
     const fetchImpl = jest.fn(async (target) => rawResponse({

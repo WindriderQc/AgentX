@@ -163,11 +163,11 @@ const SERVICE_OUTBOUND_REQUEST_SPECS = Object.freeze({
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTION_READ]: Object.freeze({ allowSearch: false, method: 'GET', pathPattern: `^/collections/${COLLECTION_SEGMENT}$` }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_COLLECTIONS_HEALTH]: Object.freeze({ allowSearch: false, method: 'GET', pathPattern: '^/collections$' }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_PAYLOAD_INDEX_CREATE]: Object.freeze({ allowSearch: false, method: 'PUT', pathPattern: `^/collections/${COLLECTION_SEGMENT}/index$` }),
-  [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_DELETE]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: `^/collections/${COLLECTION_SEGMENT}/points/delete$` }),
+  [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_DELETE]: Object.freeze({ allowSearch: false, exactSearch: '?wait=true', method: 'POST', pathPattern: `^/collections/${COLLECTION_SEGMENT}/points/delete$` }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_PAYLOAD]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: `^/collections/${COLLECTION_SEGMENT}/points/payload$` }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_SCROLL]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: `^/collections/${COLLECTION_SEGMENT}/points/scroll$` }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_SEARCH]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: `^/collections/${COLLECTION_SEGMENT}/points/search$` }),
-  [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_UPSERT]: Object.freeze({ allowSearch: false, method: 'PUT', pathPattern: `^/collections/${COLLECTION_SEGMENT}/points$` }),
+  [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_POINTS_UPSERT]: Object.freeze({ allowSearch: false, exactSearch: '?wait=true', method: 'PUT', pathPattern: `^/collections/${COLLECTION_SEGMENT}/points$` }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_SNAPSHOT_CREATE]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: `^/collections/${COLLECTION_SEGMENT}/snapshots$` }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_SNAPSHOT_DELETE]: Object.freeze({ allowSearch: false, method: 'DELETE', pathPattern: `^/collections/${COLLECTION_SEGMENT}/snapshots/${SNAPSHOT_SEGMENT}$` }),
   [SERVICE_OUTBOUND_OPERATION_IDS.QDRANT_SNAPSHOT_DOWNLOAD]: Object.freeze({ allowSearch: false, method: 'GET', pathPattern: `^/collections/${COLLECTION_SEGMENT}/snapshots/${SNAPSHOT_SEGMENT}$` }),
@@ -204,12 +204,18 @@ function normalizeExpectedOrigins(values) {
   return new Set(candidates.map(configuredServiceOrigin));
 }
 
+// A write may carry exactly one fixed query (Qdrant's `?wait=true`); any other
+// search string is rejected like an unexpected path.
+function searchAllowed(spec, search) {
+  return spec.allowSearch || !search || (spec.exactSearch !== undefined && search === spec.exactSearch);
+}
+
 function matchesRequestSpec(spec, parsed, method) {
   return Boolean(spec)
     && method === spec.method
     && new RegExp(spec.pathPattern).test(parsed.pathname)
     && !parsed.hash
-    && (spec.allowSearch || !parsed.search);
+    && searchAllowed(spec, parsed.search);
 }
 
 function snapshotRequestOptions(requestOptions) {
@@ -246,7 +252,7 @@ function createConfiguredServiceAuthorityAdapter(expectedOrigins) {
       || !origins.has(parsed.origin)
       || !new RegExp(spec.pathPattern).test(parsed.pathname)
       || parsed.hash
-      || (!spec.allowSearch && parsed.search)) {
+      || !searchAllowed(spec, parsed.search)) {
       throw new Error('Outbound target does not match a configured service authority.');
     }
     return Object.freeze({ expectedOrigin: parsed.origin });

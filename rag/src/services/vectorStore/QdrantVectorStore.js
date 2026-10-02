@@ -208,7 +208,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     try {
       for (let i = 0; i < points.length; i += batchSize) {
         const batch = points.slice(i, i + batchSize);
-        const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points`, {
+        const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points?wait=true`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ points: batch })
@@ -398,7 +398,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
   }
 
   async _deleteByFilter(filter) {
-    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points/delete`, {
+    const res = await fetchWithTimeout(`${this.qdrantUrl}/collections/${this.collectionName}/points/delete?wait=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filter })
