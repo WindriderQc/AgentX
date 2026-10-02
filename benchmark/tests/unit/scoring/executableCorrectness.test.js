@@ -200,6 +200,6 @@ describe('a coding prompt with reference tests', () => {
     });
 
     test('the scorer version says these rows are a new family', () => {
-        expect(SCORER_VERSION).toBe('2.17.0');
+        expect(SCORER_VERSION).toBe('2.18.0');
     });
 });

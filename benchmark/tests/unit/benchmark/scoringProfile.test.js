@@ -47,7 +47,7 @@ describe('getDefaultScoringProfile', () => {
         expect(generalist.difficultyPenaltyMax).toBe(20);
         expect(generalist.fullScopeMinLevel).toBe(4);
         expect(generalist.requiredPromptLevels).toEqual([4, 5]);
-        expect(generalist.minFullScopeResults).toBe(28);
+        expect(generalist.minFullScopeResults).toBe(32);
         expect(generalist.evidenceConfidenceTarget).toBe(0.75);
         expect(generalist.evidenceConfidencePenaltyMax).toBe(8);
         expect(generalist).not.toHaveProperty('consistencyBonus');
@@ -71,13 +71,13 @@ describe('invalidateScoringProfileCache', () => {
 });
 
 describe('categoryWeights default values', () => {
-    it('coding weight is 0.20', () => {
+    it('coding weight is 0.18', () => {
         const { categoryWeights } = getDefaultScoringProfile();
-        expect(categoryWeights.coding).toBeCloseTo(0.20, 5);
+        expect(categoryWeights.coding).toBeCloseTo(0.18, 5);
     });
 
-    it('reasoning weight is 0.20', () => {
+    it('reasoning weight is 0.17', () => {
         const { categoryWeights } = getDefaultScoringProfile();
-        expect(categoryWeights.reasoning).toBeCloseTo(0.20, 5);
+        expect(categoryWeights.reasoning).toBeCloseTo(0.17, 5);
     });
 });

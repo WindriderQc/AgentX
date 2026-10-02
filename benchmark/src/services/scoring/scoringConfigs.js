@@ -100,6 +100,16 @@ const ENHANCED_SCORING_CONFIGS = {
             { name: 'grammar', weight: 0.20, desc: 'Grammatically correct?' },
             { name: 'cultural_fit', weight: 0.15, desc: 'Culturally appropriate?' }
         ]
+    },
+    agent: {
+        description: 'Background agent work: triage, review, diagnosis, watch reports and tool use',
+        primary_dimension: 'finding_accuracy',
+        core_dimensions: [
+            { name: 'finding_accuracy', weight: 0.40, desc: 'Finds what the task plants or asks for, correctly?' },
+            { name: 'actionability', weight: 0.25, desc: 'Concrete, safe next action?' },
+            { name: 'grounding', weight: 0.20, desc: 'Sticks to the given evidence, invents nothing?' },
+            { name: 'format_compliance', weight: 0.15, desc: 'Requested output format respected?' }
+        ]
     }
 };
 
@@ -110,7 +120,8 @@ const CATEGORY_COMPOSITE_PROFILES = {
     knowledge:   { weights: { quality: 0.70, latency: 0.20, speed: 0.10 }, latencyCap: 30000, ttftCap: 3000, description: 'Accuracy critical, speed matters' },
     instruction: { weights: { quality: 0.75, latency: 0.15, speed: 0.10 }, latencyCap: 30000, ttftCap: 3000, description: 'Instruction adherence critical' },
     creative:    { weights: { quality: 0.70, latency: 0.15, speed: 0.15 }, latencyCap: 90000, ttftCap: 7000, description: 'Quality critical, tolerates slower generation' },
-    translation: { weights: { quality: 0.70, latency: 0.20, speed: 0.10 }, latencyCap: 40000, ttftCap: 4000, description: 'Accuracy and fluency critical' }
+    translation: { weights: { quality: 0.70, latency: 0.20, speed: 0.10 }, latencyCap: 40000, ttftCap: 4000, description: 'Accuracy and fluency critical' },
+    agent:       { weights: { quality: 0.85, latency: 0.05, speed: 0.10 }, latencyCap: 300000, ttftCap: 30000, description: 'Background work: findings matter, latency barely does' }
 };
 
 const CATEGORY_STRATEGIES = {
@@ -120,7 +131,8 @@ const CATEGORY_STRATEGIES = {
     knowledge:   { primary: 'decomposed', reference_fallback: true, confidence_threshold: 0.75 },
     instruction: { primary: 'decomposed', reference_fallback: false, confidence_threshold: 0.8 },
     creative:    { primary: 'decomposed', reference_fallback: false, confidence_threshold: 0.6 },
-    translation: { primary: 'decomposed', reference_fallback: true, confidence_threshold: 0.75 }
+    translation: { primary: 'decomposed', reference_fallback: true, confidence_threshold: 0.75 },
+    agent:       { primary: 'decomposed', reference_fallback: true, confidence_threshold: 0.75 }
 };
 
 /**

@@ -197,6 +197,25 @@ const DECOMPOSED_QUESTIONS = {
             { q: 'If the text contains idioms or expressions, are they adapted appropriately?', weight: 0.50, conditional: true },
             { q: 'Is the tone suitable for the target audience?', weight: 0.50 }
         ]
+    },
+    agent: {
+        finding_accuracy: [
+            { q: 'Does the response reach the conclusion the expected answer gives?', weight: 0.35 },
+            { q: 'How many of the problems, errors or items the expected answer lists does the response miss? Count them.', weight: 0.40, graded: MISSING_COUNT },
+            { q: 'If the task asks for a classification or a priority order, is it the one the expected answer gives?', weight: 0.25, conditional: true }
+        ],
+        actionability: [
+            { q: 'Does the response give a next action someone could carry out as written?', weight: 0.50 },
+            { q: 'Is the recommended action safe, without a destructive step the evidence does not justify?', weight: 0.50 }
+        ],
+        grounding: [
+            { q: 'Is every finding supported by the text, data or logs the task provides?', weight: 0.60 },
+            { q: 'Does the response stay free of problems or facts that the task does not contain?', weight: 0.40 }
+        ],
+        format_compliance: [
+            { q: 'Does the output follow the format the task requests?', weight: 0.60 },
+            { q: 'If the task limits length or asks for a specific language, is that limit or language respected?', weight: 0.40, conditional: true }
+        ]
     }
 };
 
