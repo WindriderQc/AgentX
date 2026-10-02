@@ -3,6 +3,7 @@
 import { authorityReasons, describeHeadline, describeHistoryRow, isAuthoritative, verdictReasons } from './verdict.js';
 import { formatDate } from './cohort-history.js';
 import { CATEGORY_KEYS } from '../benchmark-categories.js';
+import { csvCell } from '../csv-cell.js';
 
 const CATS = CATEGORY_KEYS;
 
@@ -18,20 +19,6 @@ export const CSV_HEADERS = [
     'successes', 'attempts', 'infraErrors', 'successRate', 'providerCostUsd',
     ...CATS
 ];
-
-/**
- * One CSV field. Text a spreadsheet would run as a formula (a leading
- * = + - @ tab or CR) is prefixed with an apostrophe, the standard
- * neutralisation; numbers and booleans pass through untouched.
- */
-export function csvEscape(value) {
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-    let text = String(value);
-    const formulaLike = /^[=+\-@\t\r]/.test(text);
-    if (formulaLike) text = `'${text}`;
-    return formulaLike || /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
 
 function countsText(map) {
     return Object.entries(map || {}).map(([key, count]) => `${key}:${count}`).join(' ');
@@ -98,9 +85,9 @@ function rowValues(entry, group, kind) {
 export function buildCsvFromGroups(groups) {
     const lines = [CSV_HEADERS.join(',')];
     for (const group of groups || []) {
-        lines.push(rowValues(group.headline, group, 'headline').map(csvEscape).join(','));
+        lines.push(rowValues(group.headline, group, 'headline').map(value => csvCell(value)).join(','));
         for (const row of group.history || []) {
-            lines.push(rowValues(row, group, 'history').map(csvEscape).join(','));
+            lines.push(rowValues(row, group, 'history').map(value => csvCell(value)).join(','));
         }
     }
     return lines.join('\n');

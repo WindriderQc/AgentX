@@ -333,8 +333,6 @@ describe('csv export', () => {
         expect(cell(phi4, 'rank')).toBe('3');
         expect(cell(phi4, 'successRate')).toBe('');
         expect(cell(phi4, 'infraErrors')).toBe('3');
-        expect(text.csvEscape('a,b')).toBe('"a,b"');
-        expect(text.csvEscape('say "hi"')).toBe('"say ""hi"""');
         expect(text.csvFilename(new Date('2026-09-22T10:00:00Z'))).toBe('leaderboard-2026-09-22.csv');
     });
 
@@ -360,21 +358,13 @@ describe('csv export', () => {
     });
 
     test('neutralises spreadsheet formulas and keeps line breaks inside one quoted field', () => {
-        expect(text.csvEscape('=HYPERLINK("http://x","go")')).toBe('"\'=HYPERLINK(""http://x"",""go"")"');
-        expect(text.csvEscape('+1')).toBe('"\'+1"');
-        expect(text.csvEscape('-1')).toBe('"\'-1"');
-        expect(text.csvEscape('@cmd')).toBe('"\'@cmd"');
-        expect(text.csvEscape('\tx')).toBe('"\'\tx"');
-        expect(text.csvEscape('two\nlines')).toBe('"two\nlines"');
-        expect(text.csvEscape(-1.5)).toBe('-1.5');
-        expect(text.csvEscape(true)).toBe('true');
-        expect(text.csvEscape('plain')).toBe('plain');
-
         const groups = fixtureGroups().slice(0, 1);
         groups[0].headline.host = '=HYPERLINK("http://x","go")';
         groups[0].headline.judgeModel = 'judge\nwith break';
+        groups[0].headline.harness = { name: '@cmd', version: '-1' };
         const lines = text.buildCsvFromGroups(groups).split('\n');
         expect(lines[1]).toContain(',"\'=HYPERLINK(""http://x"",""go"")",');
+        expect(lines[1]).toContain(",'@cmd,-1,");
         expect(lines[1]).toContain(',"judge');
         expect(lines[2]).toBe('with break",2.16.0:42,65536:42,2026-09-18,2026-09-21,42,8.240,8.610,0.000,0.000,0.000,100,true,8.610,quality_score,38.4,46.1,1840,3320,410,355,42,44,1,98,,8.80,8.40,8.10,7.90,9.00,7.60,8.50,');
     });

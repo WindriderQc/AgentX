@@ -99,12 +99,8 @@ function exportCSV(data) {
             else if (header === 'backend') value = row.hardware_snapshot?.backend ?? '';
             else if (header === 'quantization') value = row.hardware_snapshot?.quantization ?? '';
             else value = row[header] ?? '';
-
-            // Escape commas and quotes
-            if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-                value = `"${value.replace(/"/g, '""')}"`;
-            }
-            return value;
+            // Shared spreadsheet-safe cell rule (/js/csv-cell.global.js).
+            return window.AgentXCsvCell(value);
         }).join(','))
     ].join('\n');
 

@@ -10,13 +10,15 @@ const path = require('path');
 const vm = require('vm');
 
 const PUBLIC_JS = path.join(__dirname, '../../public/js');
-// `/js/benchmark-categories.js` is generated from shared/; modules that
-// import it receive the same values here.
+// `/js/benchmark-categories.js` and `/js/csv-cell.js` are generated from
+// shared/; modules that import them receive the same values here.
 const { BENCHMARK_CATEGORIES, BENCHMARK_CATEGORY_KEYS } = require('../../../shared/benchmarkCategories');
-const CATEGORY_STUBS = {
+const { csvCell } = require('../../../shared/csvCell');
+const SHARED_STUBS = {
     CATEGORY_KEYS: BENCHMARK_CATEGORY_KEYS,
     CATEGORY_META: BENCHMARK_CATEGORIES,
-    BENCHMARK_CATEGORY_META: BENCHMARK_CATEGORIES
+    BENCHMARK_CATEGORY_META: BENCHMARK_CATEGORIES,
+    csvCell
 };
 
 function loadBrowserModule(relativeFile, exportNames, stubs = {}) {
@@ -33,7 +35,7 @@ function loadBrowserModule(relativeFile, exportNames, stubs = {}) {
         console,
         document: { addEventListener: () => {}, querySelector: () => null },
         localStorage: { getItem: () => null },
-        ...CATEGORY_STUBS,
+        ...SHARED_STUBS,
         ...stubs
     };
     context.global = context;
@@ -50,7 +52,7 @@ function loadLeaderboardTextModules() {
         'formatDate, formatDateRange, formatScorerVersions, formatContexts, successText, SUCCESS_DEFINITION, provenanceHtml, scorePartsText, metricsHtml, historyHtml',
         verdict);
     const csv = loadBrowserModule('leaderboard-v2/leaderboard-csv.js',
-        'CSV_HEADERS, csvEscape, buildCsvFromGroups, csvFilename',
+        'CSV_HEADERS, buildCsvFromGroups, csvFilename',
         { ...verdict, ...history });
     return { ...verdict, ...history, ...csv };
 }

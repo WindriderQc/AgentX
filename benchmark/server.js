@@ -116,6 +116,8 @@ app.get('/public/js/utils/polling-controller.js', (_req, res) => {
 
 // Benchmark prompt categories for pages, generated from shared/ (one list).
 require('../shared/benchmarkCategories').mountBrowserCategories(app);
+// The shared CSV cell rule for page exports, from shared/ as well.
+require('../shared/csvCell').mountBrowserCsvCell(app);
 
 // Static files — Benchmark plus an explicit allowlist of shared Core assets.
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -278,6 +280,7 @@ app.get('/results-explorer', (req, res) => {
     ].join('\n'),
     footerJs: [
       '<script src="/js/benchmark-categories.global.js"></script>',
+      '<script src="/js/csv-cell.global.js"></script>',
       '<script src="/js/results-explorer.js"></script>',
       '<script src="/js/results-explorer-charts.js"></script>',
       '<script src="/js/results-explorer-comparison.js"></script>',
