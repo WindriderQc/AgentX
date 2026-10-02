@@ -5,7 +5,10 @@ import json
 import os
 from pathlib import Path
 import tarfile
+import sys
 import tempfile
+import textwrap
+import threading
 import unittest
 
 
@@ -129,6 +132,32 @@ class ArchiveMirrorTests(unittest.TestCase):
         latest = (self.destination / module.RUN_NAME).read_text()
         self.assertNotIn("synthetic", latest)
         self.assertEqual(len(list((self.destination / "runs").glob("*.json"))), 1)
+
+    def test_real_stream_finishes_when_tar_pads_past_its_end_marker(self):
+        # A stand-in for ssh: reads the NUL list, sends a tar of those files,
+        # then the trailing padding real tar writes. It only exits once read.
+        fake = Path(self.temp.name) / "fake_ssh.py"
+        fake.write_text(textwrap.dedent(f"""
+            import io, sys, tarfile
+            root = {str(self.source)!r}
+            paths = [p for p in sys.stdin.buffer.read().decode().split(chr(0)) if p]
+            out = io.BytesIO()
+            with tarfile.open(fileobj=out, mode="w") as archive:
+                for path in paths:
+                    archive.add(root + "/" + path, arcname=path)
+            sys.stdout.buffer.write(out.getvalue() + bytes(1 << 20))
+        """))
+
+        class StreamingRemote(LocalRemote):
+            stream = module.Remote.stream
+        remote = StreamingRemote(self.source)
+        remote.ssh = [sys.executable, str(fake)]
+        result = {}
+        worker = threading.Thread(target=lambda: result.update(module.mirror(remote, self.destination)), daemon=True)
+        worker.start()
+        worker.join(60)
+        self.assertFalse(worker.is_alive(), "mirror hung on the remote stream")
+        self.assertEqual((result["status"], result["copied"]), ("verified", 2))
 
     def test_source_target_and_root_are_validated(self):
         with self.assertRaises(ValueError):

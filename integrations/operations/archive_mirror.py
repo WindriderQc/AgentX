@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
 import time
 
 
@@ -74,15 +75,15 @@ def private_directory(path):
 class Remote:
     """The source side: listing, hashing and streaming files over SSH."""
 
-    def __init__(self, host, root, ssh="ssh"):
+    def __init__(self, host, root, ssh=("ssh",)):
         if not SAFE_HOST.fullmatch(host) or host.startswith("-"):
             raise ValueError("Invalid source SSH target")
         if not root.startswith("/") or ".." in root or not SAFE_PATH.fullmatch(root.strip("/")):
             raise ValueError("Invalid source root")
-        self.host, self.root, self.ssh = host, root.rstrip("/"), ssh
+        self.host, self.root, self.ssh = host, root.rstrip("/"), list(ssh)
 
     def command(self, script):
-        return [self.ssh, "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", self.host, script]
+        return [*self.ssh, "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", self.host, script]
 
     def run(self, script, data=None):
         result = subprocess.run(self.command(script), input=data, capture_output=True, timeout=3600)
@@ -117,11 +118,24 @@ class Remote:
         return result
 
     def stream(self, root, paths):
-        """Popen streaming a tar of the given paths on stdout."""
+        """Popen streaming a tar of the given paths on stdout.
+
+        The path list is written from a thread: the remote tar starts sending
+        before it has read the whole list, so writing it all first can block
+        both sides once the pipes fill.
+        """
         process = subprocess.Popen(self.command(f"cd {shlex.quote(root)} && tar -cf - --null -T -"),
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        process.stdin.write(b"\0".join(p.encode() for p in paths))
-        process.stdin.close()
+        data = b"\0".join(p.encode() for p in paths)
+
+        def feed():
+            try:
+                process.stdin.write(data)
+            except OSError:
+                pass  # the transfer failed; wait() reports it
+            finally:
+                process.stdin.close()
+        threading.Thread(target=feed, daemon=True).start()
         return process
 
 
@@ -163,6 +177,10 @@ def mirror(remote, destination, excludes=DEFAULT_EXCLUDES, latest_snapshot=False
             for member in archive:
                 if member.isfile() and member.name in expected:
                     archive.extract(member, staging, filter="data")
+        # tarfile stops at the end-of-archive marker, but tar pads its last
+        # record and ssh only exits once the whole stream has been read.
+        while process.stdout.read(1 << 16):
+            pass
         if process.wait():
             raise RuntimeError(f"Remote tar failed (exit {process.returncode})")
         for path in chunk:
