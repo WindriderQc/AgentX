@@ -14,6 +14,11 @@ instance; its containers, network and volumes are isolated. Default volume names
 remain `agentx_canonical_*`. `down` preserves data. `reset` has a project-specific
 destructive confirmation.
 
+Container output goes to Docker's `json-file` driver (`agentx logs`, `docker compose
+logs`), bounded at three 10 MB files per service. Core, Benchmark and RAG also write
+`error.log` and `combined.log` to their `*_logs` volume (`/app/logs`), rotated at five
+5 MB files each. Core request logs record the path without its query string.
+
 Default application ports: Core 3180, Benchmark 3181, RAG 3182, bound to 127.0.0.1.
 MongoDB and Qdrant are internal. Browsers on a foreign site cannot read or mutate
 AgentX APIs: Core, Benchmark, RAG and Data answer CORS only for the origins of

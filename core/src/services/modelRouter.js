@@ -222,7 +222,7 @@ async function classifyQuery(message, timeout = 10000) {
         if (isClassifiableTask(classification)) {
             logger.debug('Query classified', {
                 classification,
-                message: message.substring(0, 50),
+                messageLength: typeof message === 'string' ? message.length : 0,
                 model: classificationModel,
                 modelSource: classificationModelSource
             });
