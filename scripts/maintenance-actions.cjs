@@ -9,7 +9,7 @@
 // Core contracts, releases the lease with a note and prints a JSON receipt.
 //
 //   ./agentx action status
-//   ./agentx action deploy --actor <who> --services core,benchmark [--revision origin/main]
+//   ./agentx action deploy --actor <who> --services core,benchmark [--revision origin/main] [--wait-minutes 10]
 //   ./agentx action recover-quarantine --actor <who> --host http://127.0.0.1:11434
 //   ./agentx action recalibrate-judges --actor <who> [--host <url> --model <name>]
 //
@@ -199,8 +199,34 @@ async function waitIdle(coreUrl, waitMs) {
   }
 }
 
+// The launcher refuses a recreate with exit 4 and this text when Core says the
+// recreate would cut running work (a refused lease or a busy Benchmark).
+const LEASE_REFUSED = /cancel that work through its route or wait for it to finish/;
+const RECREATE_RETRY_MS = 10_000;
+
+// Automated inferences and trusted-runtime streams start every few seconds, so
+// one refused lease says only that this moment was busy. The recreate is
+// retried, lease-checked each time, until a gap appears or the wait runs out;
+// any other launcher failure stops at once.
+async function recreateWhenIdle({ recreate, waitIdle, deadline, now = Date.now, pause = sleep, retryMs = RECREATE_RETRY_MS }) {
+  for (let attempts = 1; ; attempts += 1) {
+    await waitIdle(Math.max(0, deadline - now()));
+    const launched = recreate();
+    const refused = launched.status === 4 && LEASE_REFUSED.test(launched.output);
+    if (!refused || now() + retryMs >= deadline) return { attempts, launched };
+    await pause(retryMs);
+  }
+}
+
+function waitMinutes(value) {
+  const minutes = Number(value ?? 10);
+  if (!Number.isFinite(minutes) || minutes <= 0) throw new ActionError('--wait-minutes needs a positive number', { exitCode: 2 });
+  return minutes;
+}
+
 async function deploy(config, options) {
   const services = parseServices(options.services);
+  const waitMs = waitMinutes(options['wait-minutes']) * 60_000;
   const target = options.revision || 'origin/main';
   if (deployProcesses().length) throw refuse('Another deploy is running', { processes: deployProcesses() });
   if (run('git', ['status', '--porcelain']).output.trim()) throw refuse('The instance checkout has local changes');
@@ -214,13 +240,29 @@ async function deploy(config, options) {
   if (run('git', ['merge-base', '--is-ancestor', before, revision], { allowFailure: true }).status !== 0) {
     throw refuse(`${revision.slice(0, 9)} does not descend from the deployed checkout ${before.slice(0, 9)}`);
   }
-  const core = publishedUrl(config, 'core', 3080);
-  if (core) await waitIdle(core, Number(options['wait-minutes'] || 10) * 60_000);
   run('git', ['merge', '--ff-only', '--quiet', revision]);
-  const launched = run('./agentx', ['up', '--build', '--no-deps', ...services], { env: launcherEnv(config, revision), allowFailure: true });
+  // Building touches no running container, so it runs before the wait: the
+  // recreate that needs Core's lease then takes seconds, not a whole build.
+  const built = run('docker', [...composeArgs(config), 'build', ...services], { env: launcherEnv(config, revision), allowFailure: true });
+  if (built.status !== 0) {
+    throw new ActionError(`Building ${services.join(', ')} failed (exit ${built.status}); nothing was recreated`, { details: { revision, before, tail: built.output.slice(-2000) } });
+  }
+  const core = publishedUrl(config, 'core', 3080);
+  let recreated;
+  try {
+    recreated = await recreateWhenIdle({
+      recreate: () => run('./agentx', ['up', '--no-deps', ...services], { env: launcherEnv(config, revision), allowFailure: true }),
+      waitIdle: remaining => (core ? waitIdle(core, remaining) : undefined),
+      deadline: Date.now() + waitMs
+    });
+  } catch (error) {
+    if (error instanceof ActionError) Object.assign(error.details, { revision, before, built: true });
+    throw error;
+  }
+  const { attempts, launched } = recreated;
   if (launched.status !== 0) {
-    throw new ActionError(`The launcher did not recreate ${services.join(', ')} (exit ${launched.status})`,
-      { exitCode: launched.status === 4 ? 4 : 1, outcome: launched.status === 4 ? 'refused' : 'failed', details: { revision, before, tail: launched.output.slice(-2000) } });
+    throw new ActionError(`The launcher did not recreate ${services.join(', ')} (exit ${launched.status}, ${attempts} attempt${attempts === 1 ? '' : 's'})`,
+      { exitCode: launched.status === 4 ? 4 : 1, outcome: launched.status === 4 ? 'refused' : 'failed', details: { revision, before, built: true, attempts, tail: launched.output.slice(-2000) } });
   }
   const served = {};
   for (const service of services.filter(s => REVISION_PORTS[s])) {
@@ -230,7 +272,7 @@ async function deploy(config, options) {
   }
   const mismatched = Object.entries(served).filter(([, value]) => value !== revision).map(([service]) => service);
   if (mismatched.length) throw new ActionError(`Not serving ${revision.slice(0, 9)}: ${mismatched.join(', ')}`, { details: { served } });
-  return { revision, before, services, served };
+  return { revision, before, services, served, attempts };
 }
 
 function unitState(unit) {
@@ -331,4 +373,4 @@ async function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) main().then(code => { process.exitCode = code; });
 
-module.exports = { main, parseArgs, parseServices, readLead, acquireLead, releaseLead, instance, launcherEnv, ActionError, DEPLOYABLE };
+module.exports = { main, parseArgs, parseServices, waitMinutes, recreateWhenIdle, readLead, acquireLead, releaseLead, instance, launcherEnv, ActionError, DEPLOYABLE };

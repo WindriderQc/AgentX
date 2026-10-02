@@ -92,3 +92,66 @@ test('a mutating action without an actor is a usage error and takes no lease', a
     assert.equal(fs.readFileSync(file, 'utf8'), LEAD);
   } finally { process.env = env; }
 });
+
+// A clock that advances only when the retry pauses, like the real 10 s sleep.
+function clock() {
+  let time = 0;
+  return { now: () => time, pause: async ms => { time += ms; } };
+}
+const REFUSED = { status: 4, output: 'Core refused the runtime lease: this work would be cut:\n  - inference-automated\nNot recreating: cancel that work through its route or wait for it to finish (--force-runtime is for operator recovery only).\n' };
+
+test('a refused recreate is retried, lease-checked each time, until a gap appears', async () => {
+  const { now, pause } = clock();
+  const outcomes = [REFUSED, REFUSED, { status: 0, output: 'AgentX started' }];
+  let idleChecks = 0;
+  const { attempts, launched } = await actions.recreateWhenIdle({
+    recreate: () => outcomes.shift(), waitIdle: async () => { idleChecks += 1; }, deadline: 60_000, now, pause });
+  assert.equal(attempts, 3);
+  assert.equal(launched.status, 0);
+  assert.equal(idleChecks, 3);
+  assert.equal(now(), 20_000);
+});
+
+test('the retry stops at the wait deadline and reports the last refusal', async () => {
+  const { now, pause } = clock();
+  const { attempts, launched } = await actions.recreateWhenIdle({
+    recreate: () => REFUSED, waitIdle: async () => {}, deadline: 35_000, now, pause });
+  assert.equal(attempts, 4);
+  assert.equal(launched, REFUSED);
+  assert.ok(now() < 35_000);
+});
+
+test('any launcher failure other than a lease refusal stops at once', async () => {
+  const { now, pause } = clock();
+  for (const failure of [{ status: 1, output: 'Startup did not become healthy' },
+    { status: 4, output: 'Core exists but does not answer its health check; another deploy may be in progress.' }]) {
+    let calls = 0;
+    const { attempts, launched } = await actions.recreateWhenIdle({
+      recreate: () => { calls += 1; return failure; }, waitIdle: async () => {}, deadline: 600_000, now, pause });
+    assert.equal(attempts, 1);
+    assert.equal(calls, 1);
+    assert.equal(launched, failure);
+  }
+});
+
+test('the idle wait shares the remaining deadline and its refusal ends the retry', async () => {
+  const { now, pause } = clock();
+  const remaining = [];
+  const busy = new actions.ActionError('Work stayed active on the instance', { exitCode: 4, outcome: 'refused' });
+  await assert.rejects(actions.recreateWhenIdle({
+    recreate: () => REFUSED, deadline: 25_000, now, pause,
+    waitIdle: async ms => { remaining.push(ms); if (remaining.length === 2) throw busy; } }), busy);
+  assert.deepEqual(remaining, [25_000, 15_000]);
+});
+
+test('the refusal text the retry recognises is the one the launcher prints', () => {
+  const launcher = fs.readFileSync(path.join(__dirname, '..', 'agentx'), 'utf8');
+  const refusals = launcher.split('\n').filter(line => line.includes('cancel that work through its route or wait for it to finish'));
+  assert.equal(refusals.length, 2);
+});
+
+test('--wait-minutes must be a positive number, defaulting to ten', () => {
+  assert.equal(actions.waitMinutes(undefined), 10);
+  assert.equal(actions.waitMinutes('2.5'), 2.5);
+  for (const bad of ['0', '-1', 'soon']) assert.throws(() => actions.waitMinutes(bad), { exitCode: 2 });
+});
