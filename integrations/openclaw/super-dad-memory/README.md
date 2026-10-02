@@ -8,6 +8,8 @@ collection, shared with the Nestor browser UI and native voice.
 Configure `agentxUrl` explicitly for the intended AgentX instance. Optional
 `secretarySessionKeys` and `briefingSessionKeys` contain the existing native job
 session keys; there are no operator IDs, new schedules or delivery actions here.
+A key (`agent:<id>:...`) names the agent that owns the job, so a dedicated mail
+agent's triage job can record personal notes without any other agent gaining them.
 The existing owner Telegram/Household context checks remain in effect.
 
 `personal_memory` uses `/api/consumers/nestor/v1/memory/notes`. A failed or

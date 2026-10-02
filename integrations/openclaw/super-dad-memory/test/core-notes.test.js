@@ -38,6 +38,12 @@ test('only the existing owner contexts or explicitly configured native jobs rece
   assert.equal(privateOwnerContext({ agentId: 'main', sandboxed: true, sessionKey: 'agent:main:telegram:direct:12345' }, config), false);
   assert.equal(configuredJobContext({ agentId: 'main', sessionKey: 'agent:main:cron:synthetic:run' }), false);
   assert.equal(configuredJobContext({ agentId: 'main', sessionKey: 'agent:main:cron:synthetic:run' }, ['agent:main:cron:synthetic']), true);
+  const mailJob = ['agent:mail-agent:cron:synthetic'];
+  assert.equal(configuredJobContext({ agentId: 'mail-agent', sessionKey: 'agent:mail-agent:cron:synthetic:run' }, mailJob), true);
+  assert.equal(configuredJobContext({ agentId: 'mail-agent', sandboxed: true, sessionKey: 'agent:mail-agent:cron:synthetic' }, mailJob), false);
+  assert.equal(configuredJobContext({ agentId: 'main', sessionKey: 'agent:mail-agent:cron:synthetic' }, mailJob), false);
+  assert.equal(configuredJobContext({ agentId: 'family', sessionKey: 'agent:family:cron:synthetic' }, mailJob), false);
+  assert.equal(configuredJobContext({ sessionKey: 'agent:mail-agent:cron:synthetic' }, mailJob), false);
 });
 
 test('the harness keeps native receipts and transient context, while Core owns every selected note', async t => {
