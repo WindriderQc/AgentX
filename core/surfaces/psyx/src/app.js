@@ -261,10 +261,16 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.post('/voice/transcribe', express.raw({ type: 'audio/*', limit: config.voice?.maxAudioBytes || 25 * 1024 * 1024 }), asyncRoute(async (req, res) => {
     const contentType = String(req.headers['content-type'] || '').split(';')[0].toLowerCase();
     if (!contentType.startsWith('audio/')) return res.status(415).json({ ok: false, status: 'error', code: 'PSYX_VOICE_AUDIO_TYPE_REQUIRED', message: 'An audio content type is required.' });
-    return responseData(res, await voiceClient.transcribe(req.body, {
-      contentType,
-      language: req.headers['x-psyx-language']
-    }));
+    const abort = new AbortController();
+    const close = () => { if (!res.writableFinished) abort.abort(); };
+    res.once('close', close);
+    try {
+      const result = await voiceClient.transcribe(req.body, { contentType,
+        language: req.headers['x-psyx-language'], signal: abort.signal });
+      if (!abort.signal.aborted) return responseData(res, result);
+    } catch (error) {
+      if (!abort.signal.aborted) throw error;
+    } finally { res.off('close', close); }
   }));
   api.post('/voice/synthesize', asyncRoute(async (req, res) => {
     // Request-scoped: { text, ttsProvider?, language?, voice? }. Nothing here changes VoiX defaults.

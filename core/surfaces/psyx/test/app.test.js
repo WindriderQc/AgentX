@@ -212,8 +212,10 @@ test('voice stays protected, permits this origin, and relays audio without persi
     assert.equal(native.status, 200);
     assert.equal(native.headers.get('x-psyx-tts-provider'), null);
   });
+  assert.ok(calls[0].options.signal instanceof AbortSignal);
+  assert.equal(calls[0].options.signal.aborted, false);
   assert.deepEqual(calls, [
-    { kind: 'stt', size: 5, options: { contentType: 'audio/webm', language: 'fr' } },
+    { kind: 'stt', size: 5, options: { contentType: 'audio/webm', language: 'fr', signal: calls[0].options.signal } },
     { kind: 'tts', request: { text: 'salut', ttsProvider: 'kokoro', language: 'fr', voice: 'ff_siwis' } },
     { kind: 'tts', request: { text: 'salut', ttsProvider: undefined, language: undefined, voice: undefined } }
   ]);
@@ -315,5 +317,22 @@ test('memory corrections use authenticated ownership, stay protected, and serve 
     const html = await (await fetch(`${base}/psyx`)).text();
     assert.match(html, /Comment psyX te comprend/);
     assert.match(html, /Configuration de psyX/);
+  });
+});
+
+test('closing private speech recognition cancels VoiX before any late transcript is returned', async () => {
+  let signal;
+  const voice = { transcribe: async (_bytes, options) => {
+    signal = options.signal;
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('cancelled'), { name: 'AbortError' })), { once: true }));
+  } };
+  await withServer(createApp({ config: config(), database: repositories(), provider: {}, voice, logger: { error() {} } }), async base => {
+    const abort = new AbortController();
+    const pending = fetch(base + '/api/psyx/voice/transcribe', { method: 'POST', signal: abort.signal,
+      headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'audio/wav' }, body: 'synthetic WAV' });
+    while (!signal) await new Promise(resolve => setImmediate(resolve));
+    const aborted = new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    abort.abort(); await assert.rejects(pending, { name: 'AbortError' }); await aborted;
+    assert.equal(signal.aborted, true);
   });
 });

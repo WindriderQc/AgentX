@@ -136,17 +136,17 @@ function createVoiceClient(config, fetchImpl = globalThis.fetch) {
       return sanitizeConfig(await json('/config'));
     },
 
-    async transcribe(buffer, { contentType, language }) {
+    async transcribe(buffer, { contentType, language, signal }) {
       requireEnabled();
       if (!Buffer.isBuffer(buffer) || !buffer.length) throw voiceError('An audio recording is required.', 'PSYX_VOICE_AUDIO_REQUIRED', 400);
       const normalizedLanguage = choice(language);
       if (normalizedLanguage && !ALLOWED_LANGUAGES.has(normalizedLanguage)) throw voiceError('language must be en or fr', 'PSYX_VOICE_INVALID_CONFIG', 400);
       const form = new FormData();
-      const extension = contentType.includes('ogg') ? 'ogg' : contentType.includes('mp4') ? 'm4a' : 'webm';
+      const extension = contentType.includes('wav') ? 'wav' : contentType.includes('ogg') ? 'ogg' : contentType.includes('mp4') ? 'm4a' : 'webm';
       form.append('file', new Blob([buffer], { type: contentType }), `recording.${extension}`);
       if (normalizedLanguage) form.append('language', normalizedLanguage);
       form.append('response_format', 'json');
-      const result = await json('/v1/audio/transcriptions', { method: 'POST', body: form }, voice.longTimeoutMs);
+      const result = await json('/v1/audio/transcriptions', { method: 'POST', body: form, signal }, voice.longTimeoutMs);
       const text = String(result.text || '').trim();
       if (!text) throw voiceError('No speech was detected in the recording.', 'PSYX_VOICE_NO_SPEECH', 422);
       return { text, language: result.language || normalizedLanguage || 'auto' };
