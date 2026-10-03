@@ -14,6 +14,9 @@ const ownerOf = id => 'exchange:' + id;
 const closed = receipt => !receipt || ['erasing', 'erased'].includes(receipt.state);
 const scoped = (scope, action) => withOwnerWrite('exchange-scope:' + digest(scope), action);
 const conversationWriter = (id, action) => id ? withOwnerWrite(String(id), action) : action();
+const erasedTurn = (scope, clientTurnId) => receipts().findOne({ scope,
+  state: { $in: ['erasing', 'erased'] },
+  $or: [{ _id: digest(scope + '\n' + clientTurnId) }, { clientTurnId }] }, { projection: { _id: 1 } });
 
 async function accept(scope, request, key, conversationId) {
   if (!scope) throw failure('EXCHANGE_SCOPE_REQUIRED', 'A trusted conversation scope is required.');
@@ -23,10 +26,17 @@ async function accept(scope, request, key, conversationId) {
   const fingerprint = digest(serialize(request, { minInternalBufferSize: calculateObjectSize(request) + 1024 }));
   const id = key ? digest(scope + '\n' + key) : randomUUID();
   try {
-    return await scoped(scope, () => conversationWriter(conversationId, () => withOwnerWrite(ownerOf(id), async fence => {
+    return await scoped(scope, async () => {
+      if (typeof request.body?.clientTurnId === 'string' && /^[\x21-\x7e]{1,160}$/.test(request.body.clientTurnId)
+        && await erasedTurn(scope, request.body.clientTurnId)) {
+        throw failure('EXCHANGE_ERASED', 'This turn was explicitly erased and cannot be accepted again.', 410);
+      }
+      return conversationWriter(conversationId, () => withOwnerWrite(ownerOf(id), async fence => {
       let receipt = await receipts().findOne({ _id: id, scope });
       if (!receipt) {
         receipt = { _id: id, scope, fingerprint, state: 'preparing',
+          ...(typeof request.body?.clientTurnId === 'string' && /^[\x21-\x7e]{1,160}$/.test(request.body.clientTurnId)
+            ? { clientTurnId: request.body.clientTurnId } : {}),
           ...(conversationId ? { conversationId: String(conversationId) } : {}), createdAt: new Date() };
         await fence.mutate(() => receipts().insertOne(receipt, acknowledged));
       }
@@ -38,7 +48,8 @@ async function accept(scope, request, key, conversationId) {
         { $set: { requestRef, state: 'accepted' } }, acknowledged));
       if (!result.matchedCount) throw failure('EXCHANGE_CLOSED', 'The exchange was closed while accepting its request.');
       return { receipt: { ...receipt, requestRef, state: 'accepted' }, duplicate: false };
-    })));
+      }));
+    });
   } catch (cause) {
     if (cause.code === 'CONVERSATION_CONTENT_ERASED') {
       throw failure('EXCHANGE_ERASED', 'This exchange or conversation was explicitly erased and cannot be replayed.', 410);
@@ -66,6 +77,7 @@ async function append(receipt, sequence, bytes) {
 
 async function eraseRows(filter, scope, scopeFence) {
   const cursor = receipts().find({ ...filter, scope }, { projection: { _id: 1, scope: 1, conversationId: 1 } });
+  let erased = 0;
   for await (const row of cursor) {
     // The scope gate stops new accepts. Existing packet writers may finish,
     // but successful erasure waits for their exact durable owner fence.
@@ -79,7 +91,9 @@ async function eraseRows(filter, scope, scopeFence) {
       await fence.mutate(() => packets().deleteMany({ receiptId: row._id, scope }, acknowledged));
       await eraseTranscript(ownerOf(row._id), { fence });
     });
+    erased++;
   }
+  return erased;
 }
 
 async function finish(receipt, state, response) {
@@ -100,6 +114,65 @@ async function finish(receipt, state, response) {
       }
       throw cause;
     }
+  });
+}
+
+// Canonical publication is short and shares the eraser's scope gate; inference
+// itself never holds this gate. Bind the generated conversation before saving
+// so a crash cannot leave an accepted exchange outside that conversation's
+// deletion boundary.
+async function publish(receipt, conversationId, action) {
+  return scoped(receipt.scope, async scopeFence => {
+    try {
+      return await conversationWriter(conversationId, async rootFence => {
+        await withOwnerWrite(ownerOf(receipt._id), async fence => {
+          const result = await fence.mutate(() => receipts().updateOne({ _id: receipt._id,
+            scope: receipt.scope, state: 'accepted' }, { $set: { conversationId: String(conversationId) } }, acknowledged));
+          if (!result.matchedCount) throw failure('EXCHANGE_CLOSED', 'The exchange was erased before its conversation could be saved.', 410);
+        });
+        return rootFence.mutate(action);
+      });
+    } catch (cause) {
+      if (cause.code === 'CONVERSATION_CONTENT_ERASED') {
+        await eraseRows({ _id: receipt._id }, receipt.scope, scopeFence);
+        throw failure('EXCHANGE_CLOSED', 'The conversation was erased before its reply could be saved.', 410);
+      }
+      throw cause;
+    }
+  });
+}
+
+async function eraseCanonical(scope, conversationId, action, { clientTurnIds = [] } = {}) {
+  return scoped(scope, async scopeFence => {
+    // Older conversations may have no exchange receipt. Keep only their stable
+    // turn identities so a late browser outcome cannot recreate erased content.
+    for (const clientTurnId of clientTurnIds) {
+      await scopeFence.mutate(() => receipts().updateOne({ _id: digest(scope + '\n' + clientTurnId), scope },
+        { $set: { state: 'erasing', clientTurnId }, $setOnInsert: { scope } }, { ...acknowledged, upsert: true }));
+    }
+    const filter = { $or: [{ conversationId: String(conversationId) },
+      { erasureConversationId: String(conversationId) },
+      ...(clientTurnIds.length ? [{ clientTurnId: { $in: clientTurnIds } }] : [])] };
+    await scopeFence.mutate(() => receipts().updateMany({ ...filter, scope },
+      { $set: { state: 'erasing' } }, acknowledged));
+    const result = await eraseOwner(String(conversationId), async fence => {
+      const deleted = await fence.mutate(action);
+      await eraseTranscript(String(conversationId), { fence });
+      return deleted;
+    });
+    await eraseRows(filter, scope, scopeFence);
+    return result;
+  });
+}
+
+// A browser may post a stopped/failed outcome after the original HTTP request
+// closes. Its stable turn identity must not restore content explicitly erased
+// through either the conversation or receipt route.
+async function guardTurn(scope, clientTurnId, action) {
+  return scoped(scope, async fence => {
+    const erased = await erasedTurn(scope, clientTurnId);
+    if (erased) throw failure('EXCHANGE_ERASED', 'This turn was explicitly erased and cannot be saved again.', 410);
+    return action(fence);
   });
 }
 
@@ -133,6 +206,30 @@ async function read(scope, id) {
   }
 }
 
+async function listRecoverable(scope, { cursor } = {}) {
+  const filter = { scope, state: { $in: ['accepted', 'interrupted', 'completed'] },
+    $or: [{ state: { $ne: 'completed' } }, { conversationId: { $exists: false } },
+      { 'response.statusCode': { $gte: 400 } }] };
+  if (cursor) {
+    try {
+      if (typeof cursor !== 'string' || !/^[\w-]{1,200}$/.test(cursor)) throw new Error();
+      const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+      const at = new Date(value.createdAt);
+      if (typeof value.createdAt !== 'string' || !Number.isFinite(at.getTime())
+        || typeof value.id !== 'string' || !/^[\w-]{1,64}$/.test(value.id)) throw new Error();
+      filter.$and = [{ $or: [{ createdAt: { $lt: at } }, { createdAt: at, _id: { $lt: value.id } }] }];
+    } catch { throw failure('EXCHANGE_CURSOR_INVALID', 'Saved exchange cursor is invalid.', 400); }
+  }
+  const rows = await receipts().find(filter,
+  { projection: { _id: 1, state: 1, createdAt: 1, 'response.statusCode': 1 } })
+    .sort({ createdAt: -1, _id: -1 }).limit(51).toArray();
+  const last = rows[49];
+  const nextCursor = rows.length > 50 ? Buffer.from(JSON.stringify({ createdAt: last.createdAt, id: last._id }))
+    .toString('base64url') : null;
+  return { items: rows.slice(0, 50).map(row => ({ id: row._id, state: row.state, createdAt: row.createdAt,
+    statusCode: row.response?.statusCode || null })), nextCursor };
+}
+
 async function eraseMatching(filter) {
   const scopes = await receipts().distinct('scope', filter);
   for (const scope of scopes) await scoped(scope, fence => eraseRows(filter, scope, fence));
@@ -145,4 +242,5 @@ async function eraseConversation(conversationId) {
 }
 const resumeErasure = () => eraseMatching({ state: { $in: ['erasing', 'erased'] } });
 
-module.exports = { resumeErasure, accept, append, finish, read, eraseScope, eraseConversation, eraseOne };
+module.exports = { resumeErasure, accept, append, finish, read, eraseScope, eraseConversation, eraseOne,
+  publish, eraseCanonical, guardTurn, listRecoverable };

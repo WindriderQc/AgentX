@@ -883,3 +883,21 @@ body:has(.chat-page-content) .page {
   color: var(--text, #eee); padding: 2px 8px; max-width: 180px;
 }
 #headerDevToggle.active { opacity: 1; color: var(--accent, #7c3aed); }
+
+.exchange-recovery {
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  color: var(--muted, #aaa);
+  font-size: 0.8rem;
+  border-top: 1px solid var(--border, #2a2a3e);
+}
+.exchange-recovery summary { cursor: pointer; }
+.exchange-recovery p { margin: 8px 0; }
+.exchange-recovery ul {
+  max-height: 20vh;
+  overflow: auto;
+  padding: 0;
+  list-style: none;
+}
+.exchange-recovery li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.exchange-recovery li span { flex: 1 1 180px; }

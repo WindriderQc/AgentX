@@ -190,6 +190,9 @@ async function startServer() {
   // Check MongoDB
   try {
     await connectDB();
+    await require('./src/services/conversations/infrastructure').ensureInfrastructure();
+    try { await require('./src/services/conversations/exchangeReceipts').resumeErasure(); }
+    catch { logger.warn('Pending exchange erasure has not completed and remains fenced.'); }
     // Resume only previously requested erasures after an interrupted shutdown.
     try { await require('./src/services/surfaceConversationService').resumeDeletedSessionCleanup(); }
     catch { logger.warn('Pending attachment erasure remains hidden and will be retried at the next start.'); }
