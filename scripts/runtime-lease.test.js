@@ -82,6 +82,51 @@ test('a refused lease prints the blockers Core names, with their cancel route, a
   } finally { core.server.close(); }
 });
 
+// A Core held only by background inference, which stops once a drain is requested (#253).
+function drainingCore(blocker) {
+  const seen = [];
+  let draining = false;
+  const server = http.createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      seen.push(`${req.method} ${req.url}`);
+      const send = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+      if (req.url === '/api/nerve-center/runtime-coordination/drain') { draining = req.method === 'POST'; return send(200, { data: {} }); }
+      if (req.method === 'POST' && req.url === '/api/nerve-center/maintenance-leases') {
+        return draining ? send(200, { data: { acquired: true, leaseId: 'lease-1', generation: 'gen-1' } })
+          : send(409, { status: 'error', data: { acquired: false, blockers: [blocker] } });
+      }
+      return send(200, { data: { released: true, heartbeat: true } });
+    });
+  });
+  return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({ server, seen, url: `http://127.0.0.1:${server.address().port}` })));
+}
+
+test('held only by background inference, the launcher asks it to pause, takes the lease and withdraws the request', async () => {
+  const core = await drainingCore({ type: 'inference', kind: 'inference-automated', id: 'synthetic-model',
+    summary: 'inference inference-automated synthetic-model on http://host-a:11434 (owner core-inference, started unknown): Core serves it. Cancel: none' });
+  try {
+    const result = await run(`runtime_lease_acquire '${core.url}' core-recreate; echo "rc=$? id=$RUNTIME_LEASE_ID"; runtime_lease_release`,
+      { AGENTX_RUNTIME_LEASE_DRAIN_SECONDS: '6', AGENTX_RUNTIME_LEASE_DRAIN_POLL_SECONDS: '1' });
+    assert.match(result.stdout, /rc=0 id=lease-1/);
+    assert.match(result.stderr, /asking it to pause/);
+    const drain = core.seen.filter(call => call.endsWith('/runtime-coordination/drain'));
+    assert.deepEqual(drain.map(call => call.split(' ')[0]), ['POST', 'DELETE']);
+  } finally { core.server.close(); }
+});
+
+test('interactive or benchmark work is never asked to drain: the refusal is immediate', async () => {
+  const core = await drainingCore({ type: 'inference', kind: 'trusted-runtime-stream', id: 'synthetic-model',
+    summary: 'inference trusted-runtime-stream synthetic-model on http://host-a:11434 (owner core-trusted-runtime, started unknown): Core serves it. Cancel: none' });
+  try {
+    const result = await run(`runtime_lease_acquire '${core.url}' core-recreate; echo "rc=$? id=[$RUNTIME_LEASE_ID]"`,
+      { AGENTX_RUNTIME_LEASE_DRAIN_SECONDS: '6', AGENTX_RUNTIME_LEASE_DRAIN_POLL_SECONDS: '1' });
+    assert.match(result.stdout, /rc=10 id=\[\]/);
+    assert.match(result.stderr, /inference trusted-runtime-stream synthetic-model/);
+    assert.equal(core.seen.some(call => call.includes('/drain')), false);
+  } finally { core.server.close(); }
+});
+
 test('a refusal from a Core without blockers falls back to its workload list', async () => {
   const core = await fakeCore('legacy');
   try {

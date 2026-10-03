@@ -126,6 +126,8 @@ class CoreClient:
         data = body.get("data") or {}
         if data.get("maintenance"):
             return "maintenance"
+        if data.get("drain"):
+            return "deploy pending"  # a recreate is announced: yield before the next page (#253)
         kinds = sorted({w.get("kind") or "workload" for w in data.get("workloads") or []})
         return f"{', '.join(kinds)} running" if kinds else None
 
