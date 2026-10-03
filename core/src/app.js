@@ -323,10 +323,6 @@ app.use('/api/analytics', standardJsonParser, analyticsFederatedRoutes);
 const clusterScheduleRoutes = require('../routes/cluster-schedule');
 app.use('/api/cluster', clusterScheduleRoutes);
 
-// Custom Model Management routes
-const customModelsRoutes = require('../routes/custom-models');
-app.use('/api/custom-models', customModelsRoutes);
-
 // History routes
 const historyRoutes = require('../routes/history');
 app.use('/api/history', historyRoutes);
@@ -353,10 +349,6 @@ app.use('/api/models', modelsUnifiedRoutes);
 const ollamaHostsRoutes = require('../routes/ollama-hosts');
 app.use('/api/ollama-hosts', ollamaHostsRoutes);
 
-// Explicit Ollama VRAM configuration (no host probing)
-const ollamaVramRoutes = require('../routes/ollama-vram');
-app.use('/api/ollama-vram', ollamaVramRoutes);
-
 // Ollama Watchdog (inference jam detection + auto-recovery)
 const ollamaWatchdogRoutes = require('../routes/ollama-watchdog');
 app.use('/api/ollama-watchdog', ollamaWatchdogRoutes);
@@ -382,10 +374,6 @@ app.use('/api/performance', performanceRoutes);
 // Prompt management routes (A/B testing)
 const promptRoutes = require('../routes/prompts');
 app.use('/api/prompts', promptRoutes);
-
-// Prompt template routes (CRUD, render, duplicate)
-const promptTemplateRoutes = require('../routes/prompt-templates');
-app.use('/api/prompt-templates', promptTemplateRoutes);
 
 // Lightweight profile routes for chat UI compatibility
 const profileRoutes = require('../routes/profile');

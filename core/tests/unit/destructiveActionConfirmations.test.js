@@ -19,11 +19,6 @@ function routeBlock(code, declaration) {
 describe('Core destructive-action confirmation coverage', () => {
   const routeContracts = {
     'routes/alerts-ops.js': [["router.delete('/rules/:ruleId'", "requireTypedConfirmation(req, res, 'DELETE ALERT RULE'"]],
-    'routes/custom-models.js': [
-      ["router.delete('/:id'", "requireTypedConfirmation(req, res, 'ARCHIVE CUSTOM MODEL'"],
-      ["router.post('/:id/rollback'", "requireTypedConfirmation(req, res, 'ROLLBACK CUSTOM MODEL'"],
-      ["router.post('/:id/deprecate'", "requireTypedConfirmation(req, res, 'DEPRECATE CUSTOM MODEL'"]
-    ],
     'routes/history.js': [["router.delete('/:id/tags'", "requireTypedConfirmation(req, res, 'REMOVE CONVERSATION TAGS'"]],
     'routes/inference.js': [["router.post('/router/config/reset'", "requireTypedConfirmation(req, res, 'RESET ROUTER CONFIG'"]],
     'routes/model-registry.js': [
@@ -33,7 +28,6 @@ describe('Core destructive-action confirmation coverage', () => {
     ],
     'routes/models-unified.js': [["router.delete('/ollama/:name'", "requireTypedConfirmation(req, res, 'DELETE OLLAMA MODEL'"]],
     'routes/nerve-center-host-pins.js': [["router.delete('/host-preferences/:hostUrl(*)/pin'", "requireTypedConfirmation(req, res, 'CLEAR HOST PIN'"]],
-    'routes/ollama-vram.js': [["router.delete('/override/:hostIp'", "requireTypedConfirmation(req, res, 'CLEAR VRAM OVERRIDE'"]],
     'routes/performance-data.js': [["router.delete('/baselines/:id'", "requireTypedConfirmation(req, res, 'DELETE PERFORMANCE BASELINE'"]],
     'routes/planning.js': [
       ["router.delete('/items/:id'", "requireTypedConfirmation(req, res, 'ARCHIVE PLANNING ITEM'"],
@@ -41,7 +35,6 @@ describe('Core destructive-action confirmation coverage', () => {
       ["router.delete('/items/:id/schedules/:sourceId'", "requireTypedConfirmation(req, res, 'UNLINK PLANNING SCHEDULE'"],
       ["router.delete('/items/:id/evidence/:evidenceId'", "requireTypedConfirmation(req, res, 'DELETE PLANNING EVIDENCE'"]
     ],
-    'routes/prompt-templates.js': [["router.delete('/:id'", "requireTypedConfirmation(req, res, 'DELETE PROMPT TEMPLATE'"]],
     'routes/prompts.js': [["router.delete('/:id'", "requireTypedConfirmation(req, res, 'DELETE PROMPT'"]],
     'routes/rag.js': [["router.delete('/documents/:documentId'", "requireTypedConfirmation(req, res, 'DELETE RAG DOCUMENT'"]],
     'routes/roundtable.js': [["router.delete('/:id'", "requireTypedConfirmation(req, res, 'DELETE COUNCIL RECORD'"]]

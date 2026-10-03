@@ -27,7 +27,6 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/api/memory-review',
   '/api/nerve-center',
   '/api/nestor',
-  '/api/ollama-vram',
   '/api/ollama-watchdog',
   '/api/operations',
   '/api/openclaw',
