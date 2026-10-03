@@ -19,7 +19,7 @@ class WorkerTest(unittest.TestCase):
         self.nodes = self.root / 'nodes.json'
         self.nodes.write_text('{}')
         self.args = types.SimpleNamespace(root=str(self.root), state=str(self.root / 'state'),
-            object_info=str(self.nodes), child_port=8189, gpu=0)
+            object_info=str(self.nodes), child_port=8189, gpu=0, reserve_vram=1.2)
         self.worker = module.Worker(self.args)
         self.job_id = str(uuid.uuid4())
 
@@ -72,6 +72,13 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(self.worker.history(self.job_id), {})
         with self.assertRaises(ValueError):
             self.worker.history('../outside')
+
+    def test_large_latents_and_edit_references_get_activation_headroom(self):
+        graph = {'latent': {'inputs': {'width': 2048, 'height': 2048}}}
+        self.assertEqual(self.worker.reserve_for_graph(graph), 4.5)
+        graph['latent']['inputs']['height'] = 1152
+        self.assertEqual(self.worker.reserve_for_graph(graph), 1.2)
+        self.assertEqual(self.worker.reserve_for_graph({'text': {'inputs': {'resolution': 2016}}}), 4.5)
 
 
 if __name__ == '__main__':

@@ -30,6 +30,7 @@ class Worker:
         self.state.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.nodes = json.loads(pathlib.Path(args.object_info).read_text())
         self.child = None
+        self.current_reserve = None
         self.lock = threading.RLock()
         self.upstream = f'http://127.0.0.1:{args.child_port}'
         self.log = open(self.state / 'comfy.log', 'ab', buffering=0)
@@ -45,16 +46,17 @@ class Worker:
     def running(self):
         return self.child is not None and self.child.poll() is None
 
-    def start(self):
+    def start(self, reserve_vram=None):
         if self.running():
             return
         env = {**os.environ, 'CUDA_VISIBLE_DEVICES': str(self.args.gpu),
             'PYTHONDONTWRITEBYTECODE': '1'}
+        self.current_reserve = reserve_vram if reserve_vram is not None else self.args.reserve_vram
         self.child = subprocess.Popen([self.args.python, '-u', 'main.py',
             '--listen', '127.0.0.1', '--port', str(self.args.child_port),
             '--disable-auto-launch', '--disable-api-nodes', '--disable-metadata',
             '--disable-all-custom-nodes', '--disable-dynamic-vram', '--cache-none',
-            '--reserve-vram', str(self.args.reserve_vram)], cwd=self.root, env=env,
+            '--reserve-vram', str(self.current_reserve)], cwd=self.root, env=env,
             stdout=self.log, stderr=self.log, start_new_session=True)
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
@@ -106,11 +108,27 @@ class Worker:
                 f.flush()
                 os.fsync(f.fileno())
             self.sync_directory()
-            self.start()
+            reserve = self.reserve_for_graph(data['prompt'])
+            if self.running() and reserve != self.current_reserve:
+                self.free()
+            self.start(reserve)
             queue = self.call('/queue')
             if queue.get('queue_running') or queue.get('queue_pending'):
                 raise RuntimeError('CUDA worker is occupied')
             return self.call('/prompt', data, timeout=90)
+
+    def reserve_for_graph(self, graph):
+        pixels = 0
+        for node in graph.values():
+            inputs = node.get('inputs', {})
+            width, height, resolution = (inputs.get(k) for k in ['width', 'height', 'resolution'])
+            if isinstance(width, int) and isinstance(height, int):
+                pixels = max(pixels, width * height)
+            if isinstance(resolution, int):
+                pixels = max(pixels, resolution * resolution)
+        # Large INT8 activations need room beyond the model-loading estimate.
+        # Staging weights in RAM preserves precision and trades transfer time.
+        return max(self.args.reserve_vram, 4.5) if pixels > 2359296 else self.args.reserve_vram
 
     def sync_directory(self):
         descriptor = os.open(self.state, os.O_RDONLY | os.O_DIRECTORY)
