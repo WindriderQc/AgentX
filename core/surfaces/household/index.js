@@ -358,6 +358,8 @@ function register(api) {
       error.code || 'NESTOR_CONTINUITY_UNAVAILABLE'); }
   });
   const activePersonaTurns = new Map();
+  require('./session-persona').registerSessionPersonaRoutes(personas, { conversations, personas: runtimeServices.personas,
+    ensureCatalog, activePersonaTurns, envelope, fail });
   const openingPayload = (session, active = false) => {
     const opening = llmx.publicOpening(session?.llmx?.opening, active);
     const language = spokenReplyLanguage(opening?.replyText || '', session?.voice?.language === 'en' ? 'Hello' : 'Bonjour');
