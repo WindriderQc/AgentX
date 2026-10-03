@@ -30,7 +30,7 @@ function familyRequest(req, pathname) {
     '/api/voix/synthesize', '/api/voix/synthesize/stream'].includes(pathname)) return true;
   // These existing handlers bind a child/family pack on the server. Private
   // sessions, memory editors, native consumers and parent approval are excluded.
-  if (req.method === 'POST' && /^\/api\/voice-personas\/(?:family\/)?sessions(?:\/[^/]+\/(?:turns\/text|interrupt))?$/.test(pathname)) return true;
+  if (req.method === 'POST' && /^\/api\/voice-personas\/(?:family\/)?sessions(?:\/[^/]+\/(?:turns\/text|interrupt|voice-timings))?$/.test(pathname)) return true;
   return read(req) && /^\/api\/voice-personas\/(?:(?:family\/)?sessions\/(?:recent|[^/]+\/(?:history|brain))|family\/visuals\/(?:file|generated))$/.test(pathname);
 }
 // Browser destinations the unlock page may return to: Core's own paths, and

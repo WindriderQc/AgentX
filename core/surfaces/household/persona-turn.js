@@ -285,7 +285,9 @@ function createPersonaTurnHandler({
           parentAttention: safety.requiresParentAttention, soundId: sound?.id || '' };
         if (abort.signal.aborted) return;
         if (channels && !channels.received) channels.push(result.text);
-        if (channels) { ({ display } = channels.end()); await Promise.all(visualsWork); }
+        // `say_end`: every spoken word is sent, so a voice page says its last clause
+        // now instead of waiting for pictures, tool receipts and the record before `done`.
+        if (channels) { ({ display } = channels.end()); event('say_end'); await Promise.all(visualsWork); }
         const parsed = sceneEnabled ? llmx.sceneReply(result.text, req.llmx.sceneContext) : { text: channels ? channels.end().say : result.text, sceneProposal: null };
         replyText = plainReply(parsed.text, 5000);
         sceneProposal = parsed.sceneProposal;

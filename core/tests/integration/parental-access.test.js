@@ -30,7 +30,7 @@ describe('parental access at the single household gateway', () => {
     // The docked avatar is shared with the family page; unconfigured here, so past the gate it is a 404.
     expect((await edge(request(app).get('/api/household/avatar/llmx-face.js')).expect(404)).body.code).toBe('AVATAR_NOT_CONFIGURED');
     // The family conversation loads Core's shared voice loop and its capture worklet; other Core scripts stay closed.
-    for (const name of ['speech-language', 'playback-hold', 'browser-conversation', 'voice-capture-worklet']) {
+    for (const name of ['speech-language', 'playback-hold', 'voice-timeline', 'browser-conversation', 'speech-ladder', 'voice-capture-worklet']) {
       await edge(request(app).get(`/js/voice/${name}.js`)).expect(200).expect('Content-Type', /javascript/);
     }
     await edge(request(app).get('/js/home.js')).expect(302);
@@ -38,6 +38,9 @@ describe('parental access at the single household gateway', () => {
       expect(familyRequest({ method: 'GET' }, pathname)).toBe(false);
     }
     expect(familyRequest({ method: 'POST' }, '/js/voice/browser-conversation.js')).toBe(false);
+    // The family voice page may send a turn's timeline; the route validates it, and the private one stays locked.
+    expect((await edge(request(app).post('/api/voice-personas/family/sessions/any-session/voice-timings')).send({}).expect(400)).body.code).toBe('VOICE_TIMINGS_INVALID');
+    expect((await edge(request(app).post('/api/voice-personas/private/sessions/any-session/voice-timings')).send({}).expect(401)).body.code).toBe('ADULT_LOCKED');
     // The child's page may record the mask's math receipt; the route itself validates the family turn.
     expect((await edge(request(app).post('/api/family/math-receipts')).send({}).expect(400)).body.code).toBe('MATH_RECEIPT_INVALID');
     // Family pictures pass the gate; the route only serves sources allowed for Famille (#168).

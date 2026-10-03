@@ -55,13 +55,25 @@
     return `<details class="journal-shown"><summary>Shown on screen · ${count}</summary><ul>${items}</ul></details>`;
   }
 
+  /** A spoken turn's browser timeline, from the end of the child's speech: '' when none was kept. */
+  function voiceTimings(entry) {
+    const timings = entry?.voiceTimings;
+    if (!timings || typeof timings !== 'object') return '';
+    const seconds = value => (Number.isFinite(value) && value >= 0 ? (value / 1000).toFixed(1) + ' s' : '');
+    const parts = [['transcribed', timings.sttDone], ['first words', timings.firstDelta], ['first sound', timings.firstAudio]]
+      .filter(([, value]) => seconds(value)).map(([label, value]) => `${label} ${seconds(value)}`);
+    if (seconds(timings.holdingPhrase)) parts.push(`holding phrase ${seconds(timings.holdingPhrase)}`);
+    if (timings.interrupted === true) parts.push('interrupted');
+    return parts.length ? ` · voice: ${parts.join(', ')}` : '';
+  }
+
   function row(entry, { esc, sound = null }) {
     const flags = Array.isArray(entry.safetyFlags) ? entry.safetyFlags : [];
     const soundNote = entry.soundId ? ` · offered ${esc(sound ? `${sound.emoji} ${sound.label.fr}` : entry.soundId)}` : '';
     return `<div class="audit ${entry.parentAttention || flags.length ? 'danger-box' : ''}"><strong>${esc(entry.inputText || 'No retained preview')}</strong>`
       + `<div>${esc(entry.replyText)}</div>${shown(entry, esc)}`
-      + `<small>${esc(new Date(entry.createdAt).toLocaleString())} · ${esc(entry.packId || 'unknown lane')} · ${esc(entry.channel)} · ${esc(entry.model || 'deterministic')} · ${entry.durationMs}ms${soundNote}${flags.length ? ` · ${esc(flags.join(', '))}` : ''}</small></div>`;
+      + `<small>${esc(new Date(entry.createdAt).toLocaleString())} · ${esc(entry.packId || 'unknown lane')} · ${esc(entry.channel)} · ${esc(entry.model || 'deterministic')} · ${entry.durationMs}ms${esc(voiceTimings(entry))}${soundNote}${flags.length ? ` · ${esc(flags.join(', '))}` : ''}</small></div>`;
   }
 
-  root.JournalDisplay = Object.freeze({ row, shown });
+  root.JournalDisplay = Object.freeze({ row, shown, voiceTimings });
 }(typeof window !== 'undefined' ? window : globalThis));

@@ -112,6 +112,7 @@ function publicAudit(doc) {
     ...(doc?.attachments?.length ? { attachments: doc.attachments } : {}),
     replyText: fullReply,
     interrupted: doc?.interrupted === true,
+    ...(doc?.voiceTimings ? { voiceTimings: doc.voiceTimings } : {}),
     // Legacy keys kept so any existing consumer keeps working; now derived
     // from the stored text rather than being all that was kept.
     inputPreview: fullInput.slice(0, 240),
