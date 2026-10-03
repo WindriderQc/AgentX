@@ -2,9 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createVoixUpstream } = require('../voix-upstream');
-const { registerTranscriptionProxy } = require('../voix-transcription');
-const { createSynthesisHandler } = require('../voix-synthesis');
+const { createVoixUpstream } = require('../../../src/services/voice/voix-upstream');
+const { registerTranscriptionProxy } = require('../../../src/services/voice/voix-transcription');
+const { createSynthesisHandler } = require('../../../src/services/voice/voix-synthesis');
 const { createScriptRelay } = require('../asset-relay');
 const { BACKUP_NOTICE, upstreamNotice, composeNotice } = require('../public/voix-upstream-notice');
 

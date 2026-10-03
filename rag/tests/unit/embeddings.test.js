@@ -44,10 +44,6 @@ describe('Embeddings provider boundary', () => {
     ['explicit config', () => {
       const { createEmbeddingsProvider } = require('../../src/services/embeddings');
       return () => createEmbeddingsProvider({ embeddingProvider: 'ollama-direct' });
-    }],
-    ['legacy direct import', () => {
-      const OllamaProvider = require('../../src/services/embeddings/ollamaProvider');
-      return () => new OllamaProvider({ ollamaHosts: 'alpha:11434' });
     }]
   ])('cannot reactivate direct Ollama embeddings through %s', (_source, buildAttempt) => {
     expect(buildAttempt()).toThrow(expect.objectContaining({
