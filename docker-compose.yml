@@ -318,6 +318,7 @@ services:
       CORE_URL: http://core:3080
       CORE_PROXY_URL: http://core:3080
       DATA_BACKGROUND_JOBS_ENABLED: ${DATA_BACKGROUND_JOBS_ENABLED:-false}
+      JANITOR_AI_TIMEOUT_MS: ${JANITOR_AI_TIMEOUT_MS:-}
       # Container path of the optional alias file; the instance override mounts it.
       DATA_PATH_ROLE_ALIASES_FILE: ${DATA_PATH_ROLE_ALIASES_FILE:-}
       NETWORK_SCAN_CIDR: ${NETWORK_SCAN_CIDR:-}

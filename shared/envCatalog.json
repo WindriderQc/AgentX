@@ -1688,6 +1688,16 @@
       "secret": false,
       "description": "Maximum stored ISS positions. Unset: 8000."
     },
+    "JANITOR_AI_TIMEOUT_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "How long one janitor AI advisory request may take, from 10000 to 1200000. Raise it when janitor_ai is routed to a CPU-resident host; above 120000 a timed-out request is not retried. Unset: 60000 with one retry."
+    },
     "JANITOR_ALLOWED_ROOTS": {
       "services": [
         "data"
