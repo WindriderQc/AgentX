@@ -53,6 +53,23 @@ describe('Roundtable v2 API', () => {
     delete process.env.ROUNDTABLE_CHAIR_TOKEN;
   });
 
+  test('an unlocked owner session presides without a chair token; a chair agent still needs one otherwise', async () => {
+    roundtableService.startRoundtable.mockResolvedValue({ _id: 'rt-2', status: 'pending', question: 'Discuss?', rounds: 1 });
+    const body = { question: 'Discuss?', turnOrder: 'conversation',
+      panel: [{ agentId: 'secretary', role: 'Secretary', runtime: 'openclaw' }],
+      synthesizer: { runtime: 'openclaw', agentId: 'main' } };
+    const unlocked = express();
+    unlocked.use((_req, res, next) => { res.locals.adultUserId = 'owner'; next(); });
+    unlocked.use('/api/roundtable', router);
+    expect((await request(unlocked).post('/api/roundtable').send(body)).status).toBe(201);
+    expect(roundtableService.startRoundtable).toHaveBeenCalledWith(expect.objectContaining({
+      turnOrder: 'conversation', synthesizer: { runtime: 'openclaw', agentId: 'main' } }));
+    // Without a session, a model panel chaired by an agent is still a real runtime: the token gate applies.
+    const locked = await request(app).post('/api/roundtable')
+      .send({ question: 'Discuss?', panel: [{ agentId: 'critic', model: 'runtime/model-a' }], synthesizer: { runtime: 'openclaw', agentId: 'main' } });
+    expect(locked.status).toBe(503);
+  });
+
   test('passes runtime and governance configuration to the service', async () => {
     process.env.ROUNDTABLE_CHAIR_TOKEN = 'chair-secret';
     roundtableService.startRoundtable.mockResolvedValue({

@@ -98,6 +98,13 @@
                     </select>
                 </div>
                 <div>
+                    <label class="rt-label">First round</label>
+                    <select id="formTurnOrder" class="rt-input">
+                        <option value="blind" selected>Blind — independent answers</option>
+                        <option value="conversation">Conversation — each hears the previous speakers</option>
+                    </select>
+                </div>
+                <div>
                     <label class="rt-label">Post-run judge (extra inference)</label>
                     <select id="formScoring" class="rt-input">
                         <option value="false" selected>Off — synthesize only</option>
@@ -113,7 +120,7 @@
                 </div>
                 <div>
                     <label class="rt-label">Chair token</label>
-                    <input id="formChairToken" type="password" class="rt-input" autocomplete="off" placeholder="required for approval or real runtimes">
+                    <input id="formChairToken" type="password" class="rt-input" autocomplete="off" placeholder="only without an unlocked session">
                 </div>
             </div>
 

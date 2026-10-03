@@ -27,10 +27,11 @@ const {
   DEFAULT_SYNTHESIZER,
   REBUTTAL_PREAMBLE,
   DEFAULT_TIMEOUT_MS,
-  DEFAULT_TOTAL_TIMEOUT_MS, RUNTIME_SEAT_PROMPT,
+  DEFAULT_TOTAL_TIMEOUT_MS,
   withCouncilAdvisoryGuard
 } = require('./defaults');
 const { callRuntimeParticipant } = require('./runtimeParticipantAdapter');
+const { normalizePanel, normalizeSynthesizer, normalizeTurnOrder, spokenBefore } = require('./panelConfig');
 const {
   formatInterjectionContext,
   getPendingInterjections,
@@ -417,7 +418,7 @@ async function executeRound(roundtableDoc, roundNum, agents, buildMessages, time
 
   for (const agent of agents) {
     const routeKey = participantRouteKey(agent);
-    const messages = buildMessages(agent);
+    const messages = buildMessages(agent, results);
 
     let webSearchResults = [];
     if (agent.enableWebSearch) {
@@ -524,9 +525,10 @@ async function runRoundtable(roundtableId, emitter) {
     // Round 1 — blind
     const r1Interjections = await getPendingInterjections(roundtableId);
     if (emitter) emitter.emit('chunk', { type: 'round-start', round: 1, label: 'Initial Analysis' });
-    const r1Results = await executeRound(doc, 1, agents, (agent) => withInterjectionContext([
+    // In a conversation each speaker hears those before it; a blind round keeps answers independent.
+    const r1Results = await executeRound(doc, 1, agents, (agent, earlier) => withInterjectionContext([
       { role: 'system', content: withCouncilAdvisoryGuard(agent.systemPrompt) },
-      { role: 'user', content: doc.question }
+      { role: 'user', content: doc.question + (doc.turnOrder === 'conversation' ? spokenBefore(agents, earlier) : '') }
     ], r1Interjections), DEFAULT_TIMEOUT_MS, emitter);
     await recordAppliedInterjections(doc, r1Interjections, 1, emitter);
     if (emitter) emitter.emit('chunk', { type: 'round-done', round: 1 });
@@ -582,8 +584,10 @@ async function runRoundtable(roundtableId, emitter) {
 
     if (emitter) emitter.emit('chunk', { type: 'synthesis-start', model: synthesizer.model });
 
-    const synthResult = await callAgentStreaming(
-      { agentId: 'synthesizer', role: 'Synthesizer', model: synthesizer.model, systemPrompt: synthesizer.systemPrompt, _round: 0 },
+    // The verdict comes from the synthesizer model, or from the chair agent when one presides.
+    const synthResult = await callParticipant(
+      { agentId: synthesizer.agentId || 'synthesizer', role: synthesizer.agentId ? 'Chair' : 'Synthesizer',
+        runtime: synthesizer.runtime || 'model', model: synthesizer.model, systemPrompt: synthesizer.systemPrompt, _round: 0 },
       synthMessages, DEFAULT_TIMEOUT_MS, emitter, 'synthesis',
       { roundtableId: String(doc._id), round: 0, phase: 'synthesis' }
     );
@@ -643,75 +647,19 @@ async function createRoundtable(options) {
     synthesizer = DEFAULT_SYNTHESIZER,
     source = 'api',
     tags = [],
-    governance = {}
+    governance = {},
+    turnOrder
   } = options;
 
-  // Merge partial overrides (UI may ship model-only changes) onto defaults keyed by agentId.
-  const defaultByAgent = {};
-  for (const d of DEFAULT_PANEL) defaultByAgent[d.agentId] = d;
-
-  if (!Array.isArray(panel) || panel.length === 0) {
-    const err = new Error('panel must contain at least one participant');
-    err.status = 400;
-    throw err;
-  }
-  const seenAgentIds = new Set();
-  const mergedPanel = panel.map((a) => {
-    const dflt = defaultByAgent[a.agentId] || {};
-    const agentId = String(a.agentId || '').trim();
-    const runtime = String(a.runtime || dflt.runtime || 'model').toLowerCase();
-    if (!/^[A-Za-z0-9._:-]{1,120}$/.test(agentId)) {
-      const err = new Error('panel agentId is missing or invalid');
-      err.status = 400;
-      throw err;
-    }
-    if (seenAgentIds.has(agentId)) {
-      const err = new Error(`duplicate panel agentId: ${agentId}`);
-      err.status = 400;
-      throw err;
-    }
-    seenAgentIds.add(agentId);
-    if (!['model', 'codex', 'openclaw'].includes(runtime)) {
-      const err = new Error(`unsupported participant runtime: ${runtime}`);
-      err.status = 400;
-      throw err;
-    }
-    const model = String(a.model || dflt.model || (runtime === 'model' ? '' : 'runtime-managed')).trim();
-    if (runtime === 'model' && !model) {
-      const err = new Error(`model is required for participant ${agentId}`);
-      err.status = 400;
-      throw err;
-    }
-    return {
-      agentId,
-      role: a.role || dflt.role || agentId,
-      runtime,
-      model,
-      runtimeConfig: {
-        sessionKey: a.runtimeConfig?.sessionKey || null,
-        sessionId: a.runtimeConfig?.sessionId || null
-      },
-      systemPrompt: a.systemPrompt || dflt.systemPrompt || (runtime === 'model' ? '' : RUNTIME_SEAT_PROMPT),
-      enableWebSearch: a.enableWebSearch ?? dflt.enableWebSearch ?? false
-    };
-  });
-
-  const mergedSynthesizer = {
-    model: synthesizer.model || DEFAULT_SYNTHESIZER.model,
-    systemPrompt: synthesizer.systemPrompt || DEFAULT_SYNTHESIZER.systemPrompt
-  };
-  if (!String(mergedSynthesizer.model || '').trim()) {
-    const err = new Error('synthesizer model is required; select a configured or discovered model');
-    err.status = 400;
-    err.code = 'COUNCIL_MODEL_REQUIRED';
-    throw err;
-  }
+  const mergedPanel = normalizePanel(panel);
+  const mergedSynthesizer = normalizeSynthesizer(synthesizer, mergedPanel);
 
   return Roundtable.create({
     question,
     rounds: Math.min(Math.max(rounds, 1), 3),
     panelConfig: mergedPanel,
     synthesizerConfig: mergedSynthesizer,
+    turnOrder: normalizeTurnOrder(turnOrder),
     governance: {
       requireApproval: Boolean(governance.requireApproval),
       decisionStatus: 'deliberating'
