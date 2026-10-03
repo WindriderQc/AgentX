@@ -56,9 +56,10 @@ function collectFindings(snapshot) {
   }
   for (const alert of snapshot?.alerts || []) {
     if (!alert || alert.ruleId === RULE_ID) continue;
-    const host = alert.context?.additionalData?.host || alert.context?.host || '';
+    // The alert's own identity: one rule can hold several incidents at once.
+    const identity = alert.fingerprint || alert.context?.additionalData?.host || alert.context?.host || '';
     findings.push({
-      key: `alert:${alert.ruleId || alert.title}:${host}`,
+      key: `alert:${alert.ruleId || alert.title}:${identity}`,
       severity: alert.severity === 'critical' ? 'critical' : 'attention',
       text: text([alert.title, alert.message].filter(Boolean).join(' — '), 300)
     });
