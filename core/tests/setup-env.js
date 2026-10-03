@@ -6,6 +6,11 @@ const { destroyAgents } = require('../src/helpers/httpAgent');
 const { getMongoFiles } = require('./mongoMemoryFiles');
 const { suiteDatabase, withDatabase } = require('../../shared/testing/mongoIdentity');
 process.env.NODE_ENV = 'test';
+// Existing inference fixtures model a qualified local server. Policy tests
+// unmock this reader and exercise real version responses and wire payloads.
+jest.mock('../src/services/routing/ollamaRuntimeVersion', () => ({
+  readRuntimeVersion: async () => '0.30.10',
+}));
 process.env.AGENTX_PROFILE ||= 'full';
 process.env.OLLAMA_HOST ||= 'http://127.0.0.1:11434';
 if (!process.env.OLLAMA_HOST_SECONDARY && !process.env.OLLAMA_HOST_2) process.env.OLLAMA_HOST_SECONDARY = 'http://127.0.0.1:11435';

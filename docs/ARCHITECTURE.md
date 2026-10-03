@@ -154,6 +154,16 @@ to the `Conversation` model. Publication and erasure share the owner's scope
 gate: an erased exchange cannot publish a late first conversation, and a late
 browser stopped/failed outcome cannot restore its erased turn identity.
 
+Ordinary admitted Ollama calls preserve complete input with `truncate: false`;
+generation and chat also disable context shifting with `shift: false`. The
+shared buffered and streaming executors qualify the runtime before admission.
+An unavailable or unqualified stable version returns
+`INFERENCE_CONTEXT_POLICY_UNAVAILABLE` without dispatch. Benchmark/Profiler
+requests retain their exact probes only under a Core-owned workload identity
+validated by distributed admission. Internal session-hold warmups retain their
+own runtime preparation contract. Neither caller context values nor benchmarked
+Modelfiles are rewritten by this policy.
+
 Content writes and erasure share a durable Mongo owner fence, including across
 Core workers. Erasure closes admission before waiting for an existing writer,
 then deletes the owner's pages, payload chunks and exchange packets. It leaves

@@ -27,6 +27,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   sending the request again. Completed retries replay the saved response;
   unknown outcomes do not start another inference. Conversation erasure also
   removes associated recovery content and rejects late writes across workers.
+  Ordinary Ollama calls preserve complete input and disable context shifting;
+  an unqualified runtime refuses before inference. Benchmark/Profiler keep
+  their intentional probes under validated workload ownership.
 - **Memory.** Selected notes, an owner-only mail journal and an encrypted
   identifier vault live in Core. Nestor, the mail assistant and external agents
   on `/mcp` share the same owner notes; sensitive identifiers leave note and

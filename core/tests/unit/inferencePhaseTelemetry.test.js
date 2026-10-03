@@ -114,6 +114,15 @@ describe('Ollama phase timings', () => {
 });
 
 describe('prompt prefix on the trusted runtime', () => {
+  test('unqualified context policy retains its explicit refusal through the trusted consumer boundary', async () => {
+    const deps = inferenceDeps({ readRuntimeVersion: async () => '0.30.9' });
+    await expect(executeRoutedInference(deps, chat())).rejects.toMatchObject({
+      code: 'INFERENCE_CONTEXT_POLICY_UNAVAILABLE', statusCode: 503,
+    });
+    expect(deps.fetch).not.toHaveBeenCalled();
+    expect(deps.beginInferenceAdmission).not.toHaveBeenCalled();
+  });
+
   test('an opted-in chat call records its divergence without changing the Ollama request', async () => {
     const tracker = createPromptPrefixTracker();
     const deps = inferenceDeps({ observePromptPrefix: tracker.observe });
@@ -124,7 +133,7 @@ describe('prompt prefix on the trusted runtime', () => {
 
     expect(deps.fetch.mock.calls[0][1].body).toBe(plain.fetch.mock.calls[0][1].body);
     for (const [, init] of deps.fetch.mock.calls) {
-      expect(Object.keys(JSON.parse(init.body)).sort()).toEqual(['messages', 'model', 'stream', 'tools']);
+      expect(Object.keys(JSON.parse(init.body)).sort()).toEqual(['messages', 'model', 'shift', 'stream', 'tools', 'truncate']);
     }
     expect(deps.recordInference.mock.calls[0][0].promptPrefix.divergence).toEqual({ kind: 'first', index: null, heading: null });
     const second = deps.recordInference.mock.calls[1][0].promptPrefix;
