@@ -36,10 +36,10 @@ test('spoken lists omit enumeration markers while preserving numbers in their co
 });
 
 test('spoken tables retain help contacts and crisis resource URLs without reading Markdown separators', () => {
-  const text = '| Ressource | Contact |\n| :--- | ---: |\n| Prévention du suicide | 9-8-8 |\n| Info-Social | 811 |\n| Québec | 1 866 APPELLE (277-3553) |';
+  const text = '| Ressource | Contact |\n| :--- | ---: |\n| Prévention du suicide | 9-8-8 |\n| Info-Social | 811 et 8-1-1 |\n| Québec | 1 866 APPELLE (277-3553) |\n| Clé technique | private_value |\n| Urgence | 911 |';
   const spoken = speechText(text);
-  for (const contact of ['9-8-8', '811', '1 866 APPELLE (277-3553)']) assert.ok(spoken.includes(contact), contact);
-  assert.doesNotMatch(spoken, /\||---/);
+  for (const contact of ['9-8-8', '811', '8-1-1', '1 866 APPELLE (277-3553)', '911']) assert.ok(spoken.includes(contact), contact);
+  assert.doesNotMatch(spoken, /\||---|private_value|Clé technique/);
   assert.equal(speechText('Aide : https://suicide.ca/fr et https://988.ca/fr'), 'Aide : suicide.ca et 988.ca');
   assert.equal(speechText('Lien technique https://example.com/private/path'), 'Lien technique');
 });
