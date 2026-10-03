@@ -137,6 +137,7 @@ function showGate(message = '') {
   resetFollowUp();
   resetProfileDraft();
   stopDreamWatch();
+  resetToolbox();
   state.unlocked = false;
   state.ready = false;
   state.history = [];
@@ -518,6 +519,7 @@ async function bootstrap() {
       : 'Le stockage du cycle de vie des conversations est indisponible.';
     updateControlExplanation();
     await Promise.all([loadPsyXState(), loadRouting(), loadSessions(), loadVoiceStatus()]);
+    await loadToolbox().catch(() => {});
     await restoreConversation();
     assertCurrentAccess(accessEpoch);
     watchDream();
@@ -1006,6 +1008,7 @@ async function start() {
   wireFrontier();
   wireProfile();
   wireDream();
+  wireToolbox();
   wireFollowUp();
   wireSegmented('modeControl', 'mode');
   wireSegmented('depthControl', 'depth');

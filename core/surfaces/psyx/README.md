@@ -1,6 +1,6 @@
 # PsyX in AgentX
 
-The full profile serves the PsyX 2.9.0 conversation UI at `/psyx`. Psychological
+The full profile serves the PsyX 2.10.0 conversation UI at `/psyx`. Psychological
 domain rules and longitudinal state live in `core/src/domains/psyx`; generic
 conversation persistence/lifecycle and admitted inference are Core capabilities.
 No separate PsyX server, database client or inference router starts here.
@@ -135,6 +135,19 @@ the agenda and the gaps. The dream follows the user's frontier setting, so in
 conversations; in `local` nothing leaves the instance. Core has no calendar or
 custody schedule: that rhythm is known only where a note or the profile says it.
 `PSYX_DREAM=false` disables the dream.
+
+PsyX offers two standard questionnaires, PHQ-9 (low mood) and GAD-7 (anxiety),
+when one was never taken or is three weeks old. The server scores the answers;
+no model does. Results stay in PsyX state, are cleared by a memory reset, and
+reach replies and the dream as a score, its band and its trend, never as a
+diagnosis. Any answer above "never" to the PHQ-9 item on thoughts of death or
+self-harm shows the crisis resources at once and tells PsyX to check in. The
+dream also tracks how much of an intake it knows (situation, goals, family of
+origin, relationships, children, work, health, sleep, substances, supports, past
+help) and draws its questions from the least-known domains, a question at a
+time. `core/src/domains/psyx/techniques.js` holds the technique cards PsyX
+offers instead of improvising: a frontier reply receives their steps, a local
+one their names, and the interface shows them under Expériences.
 
 `eval/` holds a small set of synthetic scenarios, one per therapeutic skill, and a
 runner that builds each reply exactly as the chat does (prompt, stance, state,

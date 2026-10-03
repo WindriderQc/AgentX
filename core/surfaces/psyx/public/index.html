@@ -7,10 +7,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>PsyX</title>
-  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.9.0">
-  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.9.0">
-  <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.9.0">
-  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.9.0">
+  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.10.0">
+  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.10.0">
+  <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.10.0">
+  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.10.0">
 </head>
 <body class="psyx-locked">
   <!-- product-navigation -->
@@ -37,7 +37,7 @@
         <div class="eyebrow">PRIVÉ · LOCAL</div>
         <div class="brand-line">
           <h1>PsyX</h1>
-          <span class="version-pill">V2.9.0</span>
+          <span class="version-pill">V2.10.0</span>
         </div>
         <p class="subtitle">Partenaire de réflexion psychologique · changement durable</p>
       </div>
@@ -127,6 +127,7 @@
 
         <button id="reviewStatus" class="review-chip" type="button" aria-live="polite" hidden></button>
         <button id="dreamStatus" class="review-chip" type="button" aria-live="polite" hidden></button>
+        <button id="assessmentChip" class="review-chip" type="button" hidden></button>
 
         <aside id="safetyBanner" class="safety-banner" role="alert" hidden>
           <div class="safety-head"><strong>Tu n’as pas à traverser ça tout seul.</strong><button id="safetyClose" type="button" aria-label="Masquer les ressources">×</button></div>
@@ -176,6 +177,7 @@
         <div class="state-content">
           <section id="viewMemory" class="state-view active" role="tabpanel" aria-labelledby="tabMemory" data-view="memory">
             <div id="proposalsSection" class="state-section proposals-section" hidden><div class="state-section-title">Proposé par PsyX</div><p class="state-help">Issu de la réflexion automatique après tes conversations. Rien n’entre en mémoire sans ton accord; une proposition écartée ne revient pas.</p><div id="proposalsList" class="proposals-list"></div></div>
+            <div id="assessmentSection" class="state-section" hidden><div class="state-section-title">Bilans</div><p class="state-help">Les questionnaires standards d’humeur et d’anxiété, à refaire aux trois semaines. Le score est calculé par le code, pas par un modèle; c’est son évolution qui compte.</p><div id="assessmentList"></div><div id="assessmentNote" class="state-help" role="status" aria-live="polite"></div></div>
             <div id="checkInSection" class="state-section" hidden><div class="state-section-title">Suivi 0–10</div><p class="state-help">Tes propres mesures de ce qui te pèse, 0 léger à 10 très lourd.</p><div id="checkInTrend" class="check-in-trend"></div></div>
             <div class="state-section"><div class="state-section-title">Ton profil</div><p class="state-help">Écrit par toi, lu par PsyX à chaque réponse. Qui tu es, ta situation, ce qui compte.</p><form id="profileForm" class="profile-form"><label>Qui tu es<textarea id="profileAbout" rows="4" maxlength="3000" placeholder="Âge, famille, travail, ce que tu traverses en ce moment…"></textarea></label><label>Ce que tu attends de PsyX<textarea id="profileExpectations" rows="3" maxlength="1500" placeholder="Ce qui t’aide, ce que tu ne veux pas, comment tu veux être confronté…"></textarea></label><button class="full-ghost" type="submit">Enregistrer le profil</button><div id="profileStatus" class="state-help" role="status" aria-live="polite"></div></form></div>
             <div class="state-section"><div class="state-section-title">Objectifs</div><p class="state-help">Ce que tu veux changer ou atteindre. PsyX y relie les séances.</p><div id="goalsList" class="state-items"></div><form class="inline-add" data-state-add="goals"><input type="text" maxlength="500" placeholder="Un objectif, dans tes mots"><button type="submit">+</button></form></div>
@@ -189,7 +191,7 @@
             <div class="state-section"><div class="state-section-title">Hypothèses</div><p class="state-help">Des idées à tester, réviser ou rejeter, pas des faits.</p><div id="hypothesesList" class="state-items"></div><form class="inline-add" data-state-add="hypotheses"><input type="text" maxlength="500" placeholder="Hypothèse à tester"><button type="submit">+</button></form></div>
           </section>
 
-          <section id="viewExperiments" class="state-view" role="tabpanel" aria-labelledby="tabExperiments" data-view="experiments" hidden><div class="state-section"><div class="state-section-title">Expériences de changement</div><p class="state-help">Hypothèse → action → signal → résultat.</p><div id="experimentsList" class="experiments-list"></div><button id="newExperiment" class="full-ghost" type="button">+ Nouvelle expérience</button></div></section>
+          <section id="viewExperiments" class="state-view" role="tabpanel" aria-labelledby="tabExperiments" data-view="experiments" hidden><div class="state-section"><div class="state-section-title">Expériences de changement</div><p class="state-help">Hypothèse → action → signal → résultat.</p><div id="experimentsList" class="experiments-list"></div><button id="newExperiment" class="full-ghost" type="button">+ Nouvelle expérience</button></div><div class="state-section"><div class="state-section-title">Boîte à outils</div><p class="state-help">Les techniques que PsyX te propose, avec leurs étapes exactes.</p><div id="techniqueList"></div></div></section>
 
           <section id="viewUnderstanding" class="state-view" role="tabpanel" aria-labelledby="tabUnderstanding" data-view="understanding" hidden>
             <h3>Comment psyX te comprend</h3>
@@ -330,21 +332,22 @@
   </dialog>
 
   <script src="/psyx/assets/voice-audio.js?v=local-voice-0680" defer></script>
-  <script src="/js/voice/speech-language.js?v=2.9.0" defer></script>
-  <script src="/js/voice/playback-hold.js?v=2.9.0" defer></script>
-  <script src="/js/voice/browser-conversation.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/voice-session.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/voice-preferences.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/voice-controls.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/state-panel.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/review.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/care.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/follow-up.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/frontier.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/profile.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/dream.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/formulation.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/setup.js?v=2.9.0" defer></script>
-  <script src="/psyx/assets/app.js?v=2.9.0" defer></script>
+  <script src="/js/voice/speech-language.js?v=2.10.0" defer></script>
+  <script src="/js/voice/playback-hold.js?v=2.10.0" defer></script>
+  <script src="/js/voice/browser-conversation.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/voice-session.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/voice-preferences.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/voice-controls.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/state-panel.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/review.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/care.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/follow-up.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/frontier.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/profile.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/dream.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/toolbox.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/formulation.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/setup.js?v=2.10.0" defer></script>
+  <script src="/psyx/assets/app.js?v=2.10.0" defer></script>
 </body>
 </html>

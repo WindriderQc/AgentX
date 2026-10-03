@@ -58,7 +58,7 @@ function createDreamStore({ collection, read, ensureDocument, createStateItem, l
       }
       for (const key of new Set([...added, ...retired].map(item => item.kind))) set[key] = lists[key];
       set.portrait = normalizeStoredPortrait({ id, updatedAt: now, kind, model, location, sections: dream.sections, findings: dream.findings,
-        agenda: dream.agenda, questions: dream.questions, sources, covers });
+        agenda: dream.agenda, questions: dream.questions, intake: dream.intake, sources, covers });
       set.portraitPrevious = state.portrait;
       const entry = { id, at: now, kind, added, retired, findings: dream.findings.length, undone: false };
       set.dreamLog = [...state.dreamLog, entry].slice(-LIMITS.log);

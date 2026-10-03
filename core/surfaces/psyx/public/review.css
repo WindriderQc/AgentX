@@ -110,3 +110,11 @@
 .portrait-statement small { display: block; color: var(--muted); font-size: 10px; }
 .portrait-list { margin: 0; padding-left: 16px; font-size: 11px; display: grid; gap: 6px; }
 .portrait-list blockquote { margin: 3px 0 0; }
+
+/* Questionnaires and technique cards. */
+.assessment-form fieldset { border: 0; margin: 8px 0; padding: 0; display: grid; gap: 3px; font-size: 11px; }
+.assessment-form legend { padding: 0; margin-bottom: 3px; color: var(--text); font-weight: 600; }
+.assessment-form label { display: flex; gap: 6px; align-items: center; color: var(--muted); cursor: pointer; }
+.technique-card { border: 1px solid #2d3741; border-radius: 8px; padding: 6px 9px; margin-bottom: 6px; font-size: 11px; }
+.technique-card summary { cursor: pointer; color: var(--text); }
+.technique-card ol { margin: 6px 0 2px; padding-left: 18px; display: grid; gap: 4px; color: var(--muted); }

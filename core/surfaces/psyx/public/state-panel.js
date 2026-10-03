@@ -96,6 +96,7 @@ function renderPsyXState() {
   renderProposals();
   renderFormulation();
   renderPortrait();
+  renderToolbox();
   renderFollowUp();
   updateControlExplanation();
   renderSessions();

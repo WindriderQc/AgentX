@@ -9,9 +9,11 @@ const { createReviewer } = require('./reviewer');
 const { createDreamer } = require('./dreamer');
 const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRepository');
 const domain = require('../../../src/domains/psyx/domain');
-const { detectRecentCrisis } = require('../../../src/domains/psyx/safety');
+const { detectRecentCrisis, RESOURCES } = require('../../../src/domains/psyx/safety');
+const assessments = require('../../../src/domains/psyx/assessments');
+const { TECHNIQUES } = require('../../../src/domains/psyx/techniques');
 
-const VERSION = '2.9.0';
+const VERSION = '2.10.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -208,6 +210,15 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.post('/state/check-ins', asyncRoute(async (req, res) => responseData(res, await stateRepository.addCheckIn(res.locals.psyxUserId, {
     score: req.body?.score, phase: req.body?.phase
   }))));
+  // Questionnaire definitions, which ones are due, and the technique cards the interface shows.
+  api.get('/toolbox', asyncRoute(async (_req, res) => responseData(res, {
+    assessments: assessments.publicDefinitions(), due: assessments.dueAssessments(await stateRepository.read(res.locals.psyxUserId)), techniques: TECHNIQUES
+  })));
+  api.post('/state/assessments', asyncRoute(async (req, res) => {
+    const result = await stateRepository.addAssessment(res.locals.psyxUserId, { kind: req.body?.kind, answers: req.body?.answers });
+    // An answer above "never" to thoughts of death or self-harm shows the crisis resources at once.
+    return responseData(res, { ...result, due: assessments.dueAssessments(result.state), ...(result.assessment.safety ? { safety: { resources: RESOURCES } } : {}) });
+  }));
   api.post('/state/proposals/:id/accept', asyncRoute(async (req, res) => responseData(res, await stateRepository.acceptProposal(res.locals.psyxUserId, cleanText(req.params.id, 80), req.body || {}))));
   api.post('/state/proposals/:id/reject', asyncRoute(async (req, res) => responseData(res, await stateRepository.rejectProposal(res.locals.psyxUserId, cleanText(req.params.id, 80)))));
   api.get('/review/status', (req, res) => responseData(res, review.status(res.locals.psyxUserId, cleanText(req.query.conversationId, 80))));
