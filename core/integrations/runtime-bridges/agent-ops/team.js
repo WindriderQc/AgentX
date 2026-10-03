@@ -34,6 +34,8 @@ function presentation(persona) {
       instance: voice.source === 'instance'
     },
     visual: persona.visual || null,
+    // Changed on this instance through the Team page.
+    edited: persona.edited === true,
     promptHref: `/prompts?name=${encodeURIComponent(persona.id)}`
   };
 }

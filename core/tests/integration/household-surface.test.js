@@ -150,7 +150,7 @@ describe('built-in Household surface on Core', () => {
       const member = agentForTest.mock.calls.at(-1)[0];
       expect(member.session).toMatchObject({ agentId: 'secretary', agentSessionKey: `agent:secretary:household:direct:${id}` });
       expect(member.instructions).toContain('addressed you (Secretary) directly');
-      expect(direct.body.data.reply.speaker).toEqual({ agentId: 'secretary', name: 'Secretary', personaId: 'secretary', personaVersion: 0 });
+      expect(direct.body.data.reply.speaker).toEqual({ agentId: 'secretary', name: 'Secretary', personaId: 'secretary', personaVersion: 1 });
       expect(direct.body.data.reply.speech).toMatchObject({ provider: 'kokoro', voice: 'ff_siwis' });
       const back = (await turn('Merci, et toi Nestor?'), agentForTest.mock.calls.at(-1)[0]);
       expect(back.session).toMatchObject({ agentId: 'main', agentSessionKey: `agent:main:household:direct:${id}` });

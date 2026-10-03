@@ -29,7 +29,7 @@ test('the Team view joins each agent with its persona and keeps the personality 
   const main = view.agents.find((agent) => agent.id === 'main');
   assert.deepEqual(main.persona, { id: 'butler', label: 'Butler', version: 3, description: 'Synthetic host.',
     voice: { provider: 'kokoro', presentation: 'masculine', voices: { fr: 'synthetic_a', en: 'synthetic_b' }, instance: true },
-    visual: null, promptHref: '/prompts?name=butler' });
+    visual: null, edited: false, promptHref: '/prompts?name=butler' });
   assert.equal(JSON.stringify(view).includes('Private personality text.'), false);
   assert.equal(view.agents.find((agent) => agent.id === 'helper').persona, null);
   assert.deepEqual(view.team.counts, { team: 2, dormant: 1, tool: 1, role: 1 });
@@ -56,4 +56,18 @@ test('the roster is served without identities when the persona catalog is missin
   assert.deepEqual(failed.team.personas, { status: 'unavailable', issue: 'The persona catalog could not be read.' });
   const absent = await get({});
   assert.equal(absent.team.personas.status, 'unavailable');
+});
+
+test('the identity editor sends only the fields the owner changed', () => {
+  const window = { fetch: () => {} };
+  new Function('window', 'document', require('node:fs').readFileSync(require('node:path').join(__dirname, '../../../public/js/agent-ops-team-editor.js'), 'utf8'))(window, {});
+  const { changes } = window.AgentOpsTeamEditor.create({ esc: String, reload: async () => {} });
+  const row = { name: 'butler', systemPrompt: 'Synthetic personality.', uiConfig: { layoutConfig: { label: 'Butler',
+    voice: { provider: 'kokoro', voices: { fr: 'synthetic_a', en: 'synthetic_b' } }, visual: { style: 'orb', color: '#112233' } } } };
+  const same = { label: 'Butler', personality: 'Synthetic personality.', provider: 'kokoro', voiceFr: 'synthetic_a', voiceEn: 'synthetic_b', style: 'orb', color: '#112233' };
+  assert.deepEqual(changes(row, same), {});
+  assert.deepEqual(changes(row, { ...same, label: 'Host' }), { label: 'Host' });
+  assert.deepEqual(changes(row, { ...same, voiceFr: 'synthetic_c', voiceEn: '' }), { voice: { provider: 'kokoro', voices: { fr: 'synthetic_c' } } });
+  assert.deepEqual(changes(row, { ...same, color: '#AABBCC' }), { visual: { style: 'orb', color: '#AABBCC' } });
+  assert.deepEqual(changes(row, { ...same, style: '' }), { visual: null });
 });

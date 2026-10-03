@@ -179,7 +179,7 @@ function register(api) {
     // The Team view joins each agent with the persona that presents it.
     personaProvider: runtimeServices.personas
       ? async () => (await runtimeServices.personas.list()).filter(row => row.uiConfig?.layoutConfig?.kind === 'personality')
-        .map(require('../../surfaces/household/persona-catalog').snapshot)
+        .map(row => ({ ...require('../../surfaces/household/persona-catalog').snapshot(row), edited: row.uiConfig.layoutConfig.source?.edited === true }))
       : null }));
   app.use(
     '/api/runtime-bridges/pipeline-attribution',

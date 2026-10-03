@@ -17,12 +17,17 @@
   ];
 
   function create(context) {
-    const { esc, humanize, number, badge, empty, agentIcon, runtimeLink } = context;
+    const { esc, humanize, number, badge, empty, agentIcon, runtimeLink, editPersona } = context;
+
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-persona-edit]');
+      if (button) editPersona(button.dataset.personaEdit);
+    });
 
     function voiceLine(voice) {
       const names = [...new Set(Object.values(voice?.voices || {}).filter(Boolean))];
       if (!voice?.provider || !names.length) return '';
-      return `<span class="agent-ops-chip" title="${esc(names.join(' · '))}"><i class="fas fa-volume-high"></i>${esc(voice.provider)} · ${esc(names[0])}${voice.instance ? ' · instance' : ''}</span>`;
+      return `<span class="agent-ops-chip" title="${esc(names.join(' · '))}"><i class="fas fa-volume-high"></i>${esc(voice.provider)} · ${esc(names[0])}${voice.instance ? ' · instance-wide' : ''}</span>`;
     }
 
     function identity(agent) {
@@ -37,7 +42,8 @@
           <span>Identity · persona ${esc(persona.id)}${persona.version ? ` v${esc(persona.version)}` : ''}</span>
           <div class="agent-ops-meta-row">
             ${voiceLine(persona.voice)}
-            <a class="agent-ops-chip link" href="${esc(persona.promptHref)}"><i class="fas fa-pen-nib"></i>Personality</a>
+            ${persona.edited ? '<span class="agent-ops-chip"><i class="fas fa-user-pen"></i>edited here</span>' : ''}
+            <button type="button" class="agent-ops-chip link" data-persona-edit="${esc(persona.id)}"><i class="fas fa-pen-nib"></i>Edit identity</button>
           </div>
         </div>`;
     }
@@ -89,8 +95,8 @@
           <header><h3><i class="fas fa-masks-theater"></i>Styles <small>${rows.length}</small></h3>
             <p>Personalities a conversation may select. They change the presentation, never the agent's tools, memory or model.</p></header>
           <div class="agent-ops-style-list">
-            ${rows.map((style) => `<a class="agent-ops-style" href="${esc(style.promptHref)}" title="${esc(style.description)}">
-              <strong>${esc(style.label)}</strong><span>${esc(style.id)}${style.version ? ` v${esc(style.version)}` : ''}</span>${voiceLine(style.voice)}</a>`).join('')}
+            ${rows.map((style) => `<button type="button" class="agent-ops-style" data-persona-edit="${esc(style.id)}" title="${esc(style.description)}">
+              <strong>${esc(style.label)}</strong><span>${esc(style.id)}${style.version ? ` v${esc(style.version)}` : ''}${style.edited ? ' · edited here' : ''}</span>${voiceLine(style.voice)}</button>`).join('')}
           </div>
         </section>`;
     }
