@@ -5,7 +5,7 @@
 // handlers that Household's register() builds for its browser routes.
 
 const crypto = require('crypto');
-const { conversationBackend } = require('./conversation-executor');
+const { conversationBackend, familyConversationBackend } = require('./conversation-executor');
 const llmx = require('./llmx-conversation');
 
 function registerNativeConsumers(app, {
@@ -16,7 +16,7 @@ function registerNativeConsumers(app, {
 }) {
   const nativeFamilyConsumer = express.Router();
   nativeFamilyConsumer.use(standardJsonParser);
-  nativeFamilyConsumer.get('/workshop-contract', (_req, res) => envelope(res, { schemaVersion: 1, context: 'kidx-workshop', actions: 'client-receipts-only', toolsEnabled: conversationBackend(null, conversationEnv) === 'openclaw', toolsScope: 'family-memory-only' }));
+  nativeFamilyConsumer.get('/workshop-contract', (_req, res) => envelope(res, { schemaVersion: 1, context: 'kidx-workshop', actions: 'client-receipts-only', toolsEnabled: conversationBackend(familyConversationBackend(conversationEnv), conversationEnv) === 'openclaw', toolsScope: 'family-memory-only' }));
   nativeFamilyConsumer.post('/sessions', requireVoixMemoryConsumer, createNativeFamilySession);
   nativeFamilyConsumer.post('/sessions/:sessionId/turns/text', requireVoixMemoryConsumer, (req, res) => (
     handlePersonaTurn(req, res, 'child', {

@@ -94,7 +94,7 @@ describe('built-in Household surface on Core', () => {
       else process.env.VOIX_BASE_URL = previousVoixUrl;
     }
   });
-  test('personal native voice moves the same selected Core notes to turn context while text keeps its existing instructions', async () => {
+  test('personal native turns carry the selected Core notes as turn context, spoken or typed, never in the instructions', async () => {
     const note = 'Synthetic observatory voice context remains available.';
     await request(app).post('/api/voice-personas/private/notes').send({ operation: 'remember', text: note, kind: 'preference' }).expect(200);
     const staleSchedule = 'Synthetic archived son prochain quand schedule.';
@@ -124,14 +124,9 @@ describe('built-in Household surface on Core', () => {
       const native = agentForTest.mock.calls.at(-1)[0];
       expect(native.session.sessionId).toBe(id);
       expect(native.instructions).toContain(KNOWN_UNKNOWN);
-      if (channel === 'voice') {
-        expect(native.turnContext).toContain(note);
-        expect(native.instructions).not.toContain(note);
-      } else {
-        expect(native.turnContext).toBeUndefined();
-        expect(native.instructions).toContain(note);
-        expect(native.session.agentSessionKey).toContain(id);
-      }
+      expect(native.turnContext).toContain(note);
+      expect(native.instructions).not.toContain(note);
+      if (channel === 'text') expect(native.session.agentSessionKey).toContain(id);
     }
   });
   test('a turn that names a team member runs in its own session and voice, then the conversation agent hears about it (#41)', async () => {
@@ -159,11 +154,14 @@ describe('built-in Household surface on Core', () => {
       expect(direct.body.data.reply.speech).toMatchObject({ provider: 'kokoro', voice: 'ff_siwis' });
       const back = (await turn('Merci, et toi Nestor?'), agentForTest.mock.calls.at(-1)[0]);
       expect(back.session).toMatchObject({ agentId: 'main', agentSessionKey: `agent:main:household:direct:${id}` });
-      expect(back.instructions).toContain('just asked Secretary directly');
+      // The exchange is reference data beside that one request; the agent's instructions never change (#261).
+      expect(back.turnContext).toContain('just asked Secretary directly');
+      expect(back.instructions).not.toContain('just asked Secretary directly');
       await turn('Est-ce que la secrétaire a trié mes courriels hier?');
       const passing = agentForTest.mock.calls.at(-1)[0];
       expect(passing.session.agentId).toBe('main');
-      expect(passing.instructions).not.toContain('just asked Secretary directly');
+      expect(passing.turnContext || '').not.toContain('just asked Secretary directly');
+      expect(passing.instructions).toBe(back.instructions);
       const audit = (await request(app).get(`/api/voice-personas/audit/recent?sessionId=${id}`).expect(200)).body.data.audit;
       expect(audit.map(row => row.speakerAgentId).filter(Boolean)).toEqual(['secretary']);
     } finally {
@@ -533,23 +531,29 @@ describe('built-in Household surface on Core', () => {
     const voice = await request(app).get('/api/voix/memory/active').expect(200);
     expect(voice.body.data.memories).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
     const session = await request(app).post(`${base}/private/sessions`).send({ packId: 'personal_operator', backend: 'agentx' }).expect(201);
+    // Selected context travels in the final user message; the system message is the same on every turn (#261).
+    const sentMessages = () => executeForTest.mock.calls.at(-1)[0].messages;
+    const selected = () => sentMessages().at(-1).content, wholePrompt = () => sentMessages().map(message => message.content).join('\n');
     await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'observatory' }).expect(200);
-    expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('Synthetic observatory preference');
+    expect(selected()).toContain('Synthetic observatory preference');
+    const personalSystem = sentMessages()[0].content;
+    expect(personalSystem).not.toContain('Synthetic observatory preference');
     const family = await request(app).post(`${base}/sessions`).send({ packId: 'kidx_nestor', backend: 'agentx' }).expect(201);
     await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'observatory' }).expect(200);
-    expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Synthetic observatory preference');
+    expect(wholePrompt()).not.toContain('Synthetic observatory preference');
     const HouseholdProfile = require('../../models/HouseholdProfile');
     await HouseholdProfile.create([{ profileId: 'synthetic-a', displayName: 'Synthetic Alex', ageBand: 'school' },
       { profileId: 'synthetic-b', displayName: 'Synthetic Sam', ageBand: 'little' }]);
     try {
       await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Comment s’appellent mes enfants?' }).expect(200);
-      const personal = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      const personal = selected();
       expect(personal).toContain('Synthetic Alex (âge scolaire)');
       expect(personal).toContain('Synthetic Sam (petite enfance)');
-      expect(personal).toContain(KNOWN_UNKNOWN);
+      expect(sentMessages()[0].content).toContain(KNOWN_UNKNOWN);
+      expect(sentMessages()[0].content).toBe(personalSystem);
       await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'Comment s’appellent les enfants?' }).expect(200);
-      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Enfants de la maison');
-      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain(KNOWN_UNKNOWN);
+      expect(wholePrompt()).not.toContain('Enfants de la maison');
+      expect(wholePrompt()).not.toContain(KNOWN_UNKNOWN);
       // A parent-set birth date gives Super Dad the age and birthday; Famille and child projections keep the band only.
       const set = await request(app).post('/api/family/profiles/birth-date').send({ profileId: 'synthetic-a', birthDate: '2016-03-14' }).expect(200);
       expect(set.body.data.profile.birthDate).toBe('2016-03-14');
@@ -562,16 +566,17 @@ describe('built-in Household surface on Core', () => {
       expect(JSON.stringify((await request(app).get('/api/family/room?profileId=synthetic-a').expect(200)).body.data)).not.toMatch(/birthDate|2016/);
       const age = ageInYears('2016-03-14', instanceToday());
       await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
-      const aged = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      const aged = wholePrompt();
       expect(aged).toContain(`Synthetic Alex (${age} ans, anniversaire le 14 mars)`);
       expect(aged).not.toContain('2016');
       await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
-      const familyPrompt = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      const familyPrompt = wholePrompt();
       expect(familyPrompt).not.toContain('anniversaire le 14 mars');
       expect(familyPrompt).not.toContain('2016');
       await request(app).post('/api/family/profiles/birth-date').send({ profileId: 'synthetic-a', birthDate: null }).expect(200);
       await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
-      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('Synthetic Alex (âge scolaire)');
+      expect(selected()).toContain('Synthetic Alex (âge scolaire)');
+      expect(sentMessages()[0].content).toBe(personalSystem);
     } finally { await HouseholdProfile.deleteMany({ profileId: { $in: ['synthetic-a', 'synthetic-b'] } }); }
     await request(app).post('/api/voix/memory/' + id + '/forget').send({}).expect(200);
     expect((await request(app).post(`${base}/private/notes`).send({ operation: 'list' })).body.data.notes.some(note => note.id === id)).toBe(false);
@@ -684,10 +689,15 @@ describe('built-in Household surface on Core', () => {
     expect(prompt).toContain('Synthetic idea child : à faire : Synthetic feed the fish');
     expect(prompt).not.toContain('Synthetic adult-only errand');
     expect(prompt).not.toContain('has been saved for Dad');
+    // Routines and the capture receipt are this turn's reference data; the family system message never changes (#261).
+    const familySystem = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+    expect(familySystem).not.toContain('Synthetic feed the fish');
+    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain('Synthetic idea child : à faire : Synthetic feed the fish');
 
     const personalBefore = await PipelineTask.countDocuments({ service: 'personal' });
     await request(app).post(`${base}/${id}/turns/text`).send({ text: "J'ai une idée : une cabane dans l'arbre" }).expect(200);
-    expect(executeForTest.mock.calls.at(-1)[0].messages.map(message => message.content).join('\n')).toContain('an idea and it has been saved for Dad to review');
+    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain('an idea and it has been saved for Dad to review');
+    expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toBe(familySystem);
     const idea = await PlanningItem.findOne({ type: 'idea', tags: 'origin:family' }).lean();
     expect(idea).toMatchObject({ status: 'inbox', summary: "J'ai une idée : une cabane dans l'arbre" });
     expect(idea.tags).toEqual(expect.arrayContaining(['origin:family', 'kind:idea']));
@@ -754,6 +764,107 @@ describe('built-in Household surface on Core', () => {
     // The parent journal sees which picture was drawn on the child's screen (#168).
     const journal = (await request(app).get('/api/voice-personas/audit/recent?childSafe=true&limit=10').expect(200)).body.data.audit;
     expect(journal.find(row => row.traceId === traceId).sceneReceipt).toMatchObject({ kind: 'add', a: 8, b: 5, status: 'applied' });
+  });
+
+  test('the family lane runs new Family conversations on Core inference with their Core features; spoken turns use the voice task (#261)', async () => {
+    const names = ['HOUSEHOLD_FAMILY_CONVERSATION_BACKEND', 'HOUSEHOLD_VOICE_TASK', 'OPENCLAW_GATEWAY_URL', 'OPENCLAW_GATEWAY_TOKEN'];
+    const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+    for (const name of names) delete process.env[name];
+    Object.assign(process.env, { OPENCLAW_GATEWAY_URL: 'http://openclaw.example.test', OPENCLAW_GATEWAY_TOKEN: 'synthetic-token' });
+    const originalFetch = global.fetch;
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async (url, options) => {
+      if (!String(url).startsWith('http://openclaw.example.test/')) return originalFetch(url, options);
+      return new Response(JSON.stringify({ ok: true, authority: 'openclaw.nestor', operation: 'agents',
+        agents: [{ id: 'main', name: 'Main' }, { id: 'family', name: 'Family' }] }), { headers: { 'Content-Type': 'application/json' } });
+    });
+    const base = '/api/voice-personas/sessions', family = { packId: 'kidx_nestor', modeId: 'family', scopeId: 'family' };
+    const create = async (path, body) => (await request(app).post(path).send(body).expect(201)).body.data.session;
+    const ndjson = (res, done) => { let text = ''; res.setEncoding('utf8'); res.on('data', chunk => { text += chunk; }); res.on('end', () => done(null, text)); };
+    const lastInference = () => executeForTest.mock.calls.at(-1)[0];
+    try {
+      // Unset: the general engine, as before.
+      const native = await create(base, family);
+      expect(native.backend).toBe('openclaw');
+      process.env.HOUSEHOLD_FAMILY_CONVERSATION_BACKEND = 'agentx';
+      // New family conversations take the lane, whatever the page asked for; Super Dad does not.
+      const direct = await create(base, { ...family, backend: 'openclaw' });
+      expect(direct).toMatchObject({ backend: 'agentx', agentId: 'family' });
+      expect((await create(base, { packId: 'kidx_reader' })).backend).toBe('agentx');
+      expect((await create('/api/voice-personas/family/sessions', family)).backend).toBe('agentx');
+      expect((await create('/api/voice-personas/private/sessions', { packId: 'personal_operator', scopeId: 'personal' })).backend).toBe('openclaw');
+
+      // A conversation that already exists keeps its backend: no turn is replayed on the other one.
+      const nativeRuns = agentForTest.mock.calls.length;
+      let inferences = executeForTest.mock.calls.length;
+      await request(app).post(`${base}/${native.sessionId}/turns/text`).send({ text: 'Raconte une histoire', channel: 'voice' }).expect(200);
+      expect(agentForTest.mock.calls.length).toBe(nativeRuns + 1);
+      expect(executeForTest.mock.calls.length).toBe(inferences);
+
+      const turn = body => request(app).post(`${base}/${direct.sessionId}/turns/text`).send(body);
+      const spoken = await turn({ text: 'Pourquoi le ciel est bleu?', channel: 'voice', stream: true }).buffer(true).parse(ndjson).expect(200);
+      expect(lastInference()).toMatchObject({ taskType: 'voice_persona_chat', think: false, stream: true, callerDetail: 'agentx-household/kidx_nestor/family' });
+      expect(spoken.body.split('\n').filter(Boolean).map(line => JSON.parse(line)).at(-1).data)
+        .toMatchObject({ routing: { tier: 'router' }, tools: { status: 'not_supported' }, session: { backend: 'agentx' } });
+      await turn({ text: 'Pourquoi la mer est salée?' }).expect(200);
+      expect(lastInference()).toMatchObject({ taskType: 'nestor_answer_light', think: false, stream: false });
+      process.env.HOUSEHOLD_VOICE_TASK = 'quick_chat';
+      await turn({ text: 'Et la pluie?', channel: 'voice' }).expect(200);
+      expect(lastInference().taskType).toBe('quick_chat');
+      delete process.env.HOUSEHOLD_VOICE_TASK;
+
+      // Core owns the family features, so they work without the native agent: routines, idea and
+      // reminder capture, the math picture and animal sounds.
+      await request(app).post('/api/family/launch').send({ profile: { profileId: 'lane-child', displayName: 'Synthetic lane child' },
+        routines: [{ title: 'Synthetic water the plant', cadence: 'daily' }] }).expect(201);
+      await turn({ text: "Qu'est-ce que je dois faire aujourd'hui?", channel: 'voice' }).expect(200);
+      expect(lastInference().messages.at(-1).content).toContain('Synthetic lane child : à faire : Synthetic water the plant');
+      await turn({ text: "J'ai une idée : un potager sur le balcon", channel: 'voice' }).expect(200);
+      expect(lastInference().messages.at(-1).content).toContain('an idea and it has been saved for Dad to review');
+      expect((await PlanningItem.findOne({ type: 'idea', summary: "J'ai une idée : un potager sur le balcon" }).lean()).tags)
+        .toEqual(expect.arrayContaining(['origin:family', 'kind:idea']));
+      await turn({ text: 'Rappelle-moi de nourrir le poisson demain', channel: 'voice' }).expect(200);
+      expect(lastInference().messages.at(-1).content).toContain('a reminder and it has been saved for Dad to review');
+      expect((await PlanningItem.findOne({ type: 'idea', summary: 'Rappelle-moi de nourrir le poisson demain' }).lean()).tags)
+        .toEqual(expect.arrayContaining(['origin:family', 'kind:reminder']));
+      inferences = executeForTest.mock.calls.length;
+      const math = await turn({ text: 'Nestor, combien font 8 + 5 ?', channel: 'voice', stream: true }).buffer(true).parse(ndjson).expect(200);
+      expect(JSON.parse(math.body.split('\n')[0])).toEqual({ type: 'scene', scene: { schema: 'agentx.math-scene.v1', kind: 'add', a: 8, b: 5 } });
+      expect(executeForTest.mock.calls.length).toBe(inferences);
+      const cow = (await turn({ text: 'Quel bruit fait la vache?', channel: 'voice' }).expect(200)).body.data;
+      expect(cow.sound).toMatchObject({ id: 'cow', play: 'after-reply' });
+      expect(lastInference().messages.at(-1).content).toContain('Son : l\'enfant entend un vrai enregistrement (une vache)');
+      expect(lastInference().taskType).toBe('voice_persona_chat');
+      expect(agentForTest.mock.calls.length).toBe(nativeRuns + 1);
+    } finally {
+      fetchMock.mockRestore();
+      for (const name of names) { if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name]; }
+    }
+  });
+
+  test('Kids Room and Lecture conversations carry the Nestor personality, so his instance voice reads the reply (#261)', async () => {
+    const previous = process.env.HOUSEHOLD_PERSONA_VOICES;
+    process.env.HOUSEHOLD_PERSONA_VOICES = JSON.stringify({ nestor: 'voxcpm|synthetic_voice' });
+    const base = '/api/voice-personas/sessions';
+    try {
+      for (const packId of ['kidx_nestor', 'kidx_reader']) {
+        // The request both pages send.
+        const session = (await request(app).post(base).send({ packId, scopeId: 'family', modeId: '', personaId: 'nestor' }).expect(201)).body.data.session;
+        expect(session.persona).toMatchObject({ id: 'nestor', voice: { provider: 'voxcpm', source: 'instance',
+          voices: { fr: 'synthetic_voice', en: 'synthetic_voice' }, fallback: { provider: 'kokoro' } } });
+        const turn = (await request(app).post(`${base}/${session.sessionId}/turns/text`)
+          .send({ text: 'Que veut dire le mot curieux?', channel: 'voice' }).expect(200)).body.data;
+        expect(turn.reply.speech).toMatchObject({ provider: 'voxcpm', voice: 'synthetic_voice' });
+        expect(turn.session.persona.voice.source).toBe('instance');
+      }
+      // Without an instance voice the same request reads with Nestor's catalog voice.
+      delete process.env.HOUSEHOLD_PERSONA_VOICES;
+      const catalog = (await request(app).post(base).send({ packId: 'kidx_nestor', scopeId: 'family', modeId: '', personaId: 'nestor' }).expect(201)).body.data.session;
+      expect(catalog.persona.voice).toMatchObject({ provider: 'kokoro', presentation: 'masculine' });
+      // A family conversation accepts no other personality.
+      await request(app).post(base).send({ packId: 'kidx_nestor', personaId: 'secretary' }).expect(400);
+    } finally {
+      if (previous === undefined) delete process.env.HOUSEHOLD_PERSONA_VOICES; else process.env.HOUSEHOLD_PERSONA_VOICES = previous;
+    }
   });
 
   test('screen blocks stream as show events, never as speech, and secrets are not retained (#167)', async () => {
@@ -839,7 +950,10 @@ describe('built-in Household surface on Core', () => {
 
       process.env.HOUSEHOLD_BRAIN_ENABLED = 'false';
       await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Tu es sûr?' }).expect(200);
-      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('Possible corrections: Une araignée a huit pattes, pas six.');
+      // The reviewer's advice is reference data beside the request, never part of the system message (#261).
+      const corrected = executeForTest.mock.calls.at(-1)[0].messages;
+      expect(corrected.at(-1).content).toContain('Possible corrections: Une araignée a huit pattes, pas six.');
+      expect(corrected[0].content).not.toContain('Possible corrections');
     } finally {
       if (previous === undefined) delete process.env.HOUSEHOLD_BRAIN_ENABLED; else process.env.HOUSEHOLD_BRAIN_ENABLED = previous;
     }
