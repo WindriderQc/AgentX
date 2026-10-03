@@ -120,3 +120,24 @@ describe('a task keeps to hosts of its residency', () => {
     expect(defaults.STRICT_CONFIGURED_HOST_TASKS.has('ops_watch')).toBe(true);
   });
 });
+
+describe('latency alerts on a CPU host', () => {
+  test('a slow answer is an incident on a GPU host, not on a CPU host', () => {
+    const alertService = require('../../src/services/alertService');
+    const { evaluateResponseAlerts } = require('../../src/services/routing/inferenceAlerts');
+    const evaluate = jest.spyOn(alertService, 'evaluateEvent').mockResolvedValue({});
+    jest.spyOn(alertService, 'resolveRecoveredInferenceAlerts').mockResolvedValue(0);
+    const slow = target => evaluateResponseAlerts({
+      lane: { alert: true }, response: { ok: true }, startedAt: Date.now() - 60000, routedHostKey: 'fixture',
+      target, model: MODEL, body: {}, taskType: 'ops_watch', laneName: 'automated'
+    });
+    slow(CPU_URL);
+    expect(evaluate).not.toHaveBeenCalled();
+    slow(GPU_URL);
+    expect(evaluate).toHaveBeenCalledWith(expect.objectContaining({ metric: 'latency' }));
+    evaluateResponseAlerts({ lane: { alert: true }, response: { ok: false, status: 500 }, startedAt: Date.now(),
+      routedHostKey: 'fixture', target: CPU_URL, model: MODEL, body: {}, taskType: 'ops_watch', laneName: 'automated' });
+    expect(evaluate).toHaveBeenLastCalledWith(expect.objectContaining({ metric: 'error' }));
+    jest.restoreAllMocks();
+  });
+});
