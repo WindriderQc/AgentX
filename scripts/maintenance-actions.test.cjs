@@ -150,6 +150,88 @@ test('the refusal text the retry recognises is the one the launcher prints', () 
   assert.equal(refusals.length, 2);
 });
 
+const HELD = new actions.ActionError('LEAD.md is held by someone (abc) since 2026-10-02T15:00Z', { exitCode: 4, outcome: 'refused' });
+const SERVED = { core: '6a58ceb49abb9d33c0ea65c4b470f1217594b183' };
+
+// One deployTurn run: `blocked` and `served` answer per iteration, the last value repeating.
+async function turn({ blocked = [null], served = [null], acquire = () => 'agentx-action (tester)', queueMs = 0 }) {
+  const { now, pause } = clock();
+  const calls = { served: 0, acquire: 0 };
+  const next = values => (values.length > 1 ? values.shift() : values[0]);
+  const result = await actions.deployTurn({
+    blocker: () => next(blocked), served: async () => { calls.served += 1; return next(served); },
+    acquire: () => { calls.acquire += 1; return acquire(calls.acquire); }, deadline: queueMs, now, pause });
+  return { result, calls, waited: now() };
+}
+
+test('a deploy whose revision is already served leaves without the lease', async () => {
+  const { result, calls } = await turn({ served: [SERVED] });
+  assert.deepEqual(result, { served: SERVED });
+  assert.equal(calls.acquire, 0);
+});
+
+test('a deploy with something left to deploy takes the lease', async () => {
+  const { result, calls, waited } = await turn({});
+  assert.deepEqual(result, { holder: 'agentx-action (tester)' });
+  assert.deepEqual(calls, { served: 1, acquire: 1 });
+  assert.equal(waited, 0);
+});
+
+test('without queue time a held lease refuses at once, before anything is fetched', async () => {
+  await assert.rejects(turn({ blocked: [HELD] }), HELD);
+  const { now, pause } = clock();
+  let served = 0;
+  await assert.rejects(actions.deployTurn({ blocker: () => HELD, served: async () => { served += 1; return null; }, acquire: () => 'x', deadline: 0, now, pause }), HELD);
+  assert.equal(served, 0);
+});
+
+test('a queued deploy leaves as soon as the deploy ahead of it serves its revision', async () => {
+  const { result, calls, waited } = await turn({ blocked: [HELD], served: [null, null, SERVED], queueMs: 600_000 });
+  assert.deepEqual(result, { served: SERVED });
+  assert.equal(calls.acquire, 0);
+  assert.equal(waited, 20_000);
+});
+
+test('a queued deploy takes the lease once it is free and its revision is still not served', async () => {
+  const { result, calls, waited } = await turn({ blocked: [HELD, HELD, null], queueMs: 600_000 });
+  assert.deepEqual(result, { holder: 'agentx-action (tester)' });
+  assert.deepEqual(calls, { served: 3, acquire: 1 });
+  assert.equal(waited, 20_000);
+});
+
+test('a lease taken by another operator between the check and the claim is queued for again', async () => {
+  const { result, calls } = await turn({ acquire: attempt => { if (attempt === 1) throw HELD; return 'agentx-action (tester)'; }, queueMs: 600_000 });
+  assert.deepEqual(result, { holder: 'agentx-action (tester)' });
+  assert.equal(calls.acquire, 2);
+  await assert.rejects(turn({ acquire: () => { throw new Error('LEAD.md line 2 is not "held_by:"'); }, queueMs: 600_000 }), /line 2/);
+});
+
+test('the queue stops at its deadline with the refusal that blocked it', async () => {
+  const { now, pause } = clock();
+  await assert.rejects(actions.deployTurn({ blocker: () => HELD, served: async () => null, acquire: () => 'x', deadline: 35_000, now, pause }), HELD);
+  assert.ok(now() < 35_000);
+});
+
+test('an image is built from the paths its Dockerfile copies out of the repository', () => {
+  assert.deepEqual(actions.imageSources([
+    'FROM node:22 AS build', 'COPY --from=mongo-tools /usr/bin/mongodump /usr/local/bin/mongodump',
+    'COPY core/package*.json ./', 'RUN npm ci', 'COPY --chown=node:node core/ ./', 'COPY shared/ /shared/',
+    'COPY docker-compose.yml docker-compose.ollama.yml /app/product-config/'].join('\n')),
+  ['core/package*.json', 'core/', 'shared/', 'docker-compose.yml', 'docker-compose.ollama.yml']);
+  assert.equal(actions.imageSources('FROM node:22\nRUN npm ci'), null);
+  assert.equal(actions.imageSources('FROM node:22\nCOPY core/ \\\n  shared/ ./'), null);
+  for (const service of ['core', 'benchmark', 'rag', 'data']) {
+    const sources = actions.imageSources(fs.readFileSync(path.join(__dirname, '..', 'docker', `${service}.Dockerfile`), 'utf8'));
+    assert.ok(sources.includes(`${service}/`) && sources.includes('shared/'), service);
+  }
+});
+
+test('--queue-minutes is zero or more, defaulting to no queue', () => {
+  assert.equal(actions.queueMinutes(undefined), 0);
+  assert.equal(actions.queueMinutes('20'), 20);
+  for (const bad of ['-1', 'later']) assert.throws(() => actions.queueMinutes(bad), { exitCode: 2 });
+});
+
 test('--wait-minutes must be a positive number, defaulting to ten', () => {
   assert.equal(actions.waitMinutes(undefined), 10);
   assert.equal(actions.waitMinutes('2.5'), 2.5);
