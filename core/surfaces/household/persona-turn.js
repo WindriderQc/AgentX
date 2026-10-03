@@ -46,7 +46,10 @@ function createPersonaTurnHandler({
   return async (req, res, access, requiredSession = null) => {
     const isLlmX = Boolean(req.llmx), isOpening = req.llmx?.opening === true;
     const sceneEnabled = isLlmX && !isOpening && llmx.sceneCapable(req.llmx.sceneContext);
-    const userText = isOpening ? '' : cleanText(req.body?.text, 4000);
+    const userText = isOpening ? '' : String(req.body?.text || '').trim();
+    if (userText.length > 4000) {
+      return fail(res, 413, 'Le texte dépasse la limite de 4 000 caractères. Rien n’a été raccourci ni envoyé au modèle.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
+    }
     if (!userText && !isOpening) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
     if (activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
     const clientTurnId = (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice' && req.body?.stream === true))

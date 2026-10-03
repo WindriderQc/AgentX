@@ -41,7 +41,9 @@ function registerNativeConsumers(app, {
     llmxConsumer.post(`${prefix}/sessions/:sessionId/turns/text`, async (req, res) => {
       try {
         if (!llmx.validTurnId(req.body?.turnId)) return fail(res, 400, 'A valid turnId is required', 'LLMX_TURN_ID_INVALID');
-        if (!cleanText(req.body?.text, 4000)) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
+        const text = String(req.body?.text || '').trim();
+        if (!text) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
+        if (text.length > 4000) return fail(res, 413, 'Le texte dépasse la limite de 4 000 caractères. Rien n’a été raccourci ni envoyé au modèle.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
         req.llmx = { profile, sceneContext: llmx.sceneContext(req.body?.sceneContext) };
         const previous = activePersonaTurns.get(req.params.sessionId);
         if (previous) {
