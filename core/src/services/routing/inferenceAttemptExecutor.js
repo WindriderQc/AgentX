@@ -310,7 +310,10 @@ async function executeAdmittedOllamaAttempt(options, dependencies = {}) {
   } catch (error) {
     // A connection refused before response headers cannot have generated output.
     // Resets/timeouts after dispatch remain unknown and retain quarantine.
-    await (error.ollamaRequestNotSent ? scope.admission.complete() : scope.admission.abandon(error)).catch(quarantineError => {
+    const ownedDeadline = error.isOllamaTimeout === true && error.ollamaAbortSource === OLLAMA_ABORT_SOURCE.TIMEOUT;
+    const settlement = error.ollamaRequestNotSent ? scope.admission.complete()
+      : ownedDeadline ? scope.admission.abandon(error, { deadlineAborted: true }) : scope.admission.abandon(error);
+    await settlement.catch(quarantineError => {
       error.inferenceQuarantineError = quarantineError;
     });
     classifyAdmissionAbort(error, options.signal, scope.signal);

@@ -73,6 +73,31 @@ describe('distributed inference admission lifecycle', () => {
     expect(runtime.releaseInference).not.toHaveBeenCalled();
   });
 
+  test('an executor-owned deadline retains quarantine with explicit abort provenance', async () => {
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
+    lifecycle.markDispatched();
+    await lifecycle.abandon(new Error('owned deadline'), { deadlineAborted: true });
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: 'deadline-abort' }));
+    expect(runtime.releaseInference).not.toHaveBeenCalled();
+  });
+
+  test('timeout-looking error metadata alone cannot establish closed-connection provenance', async () => {
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
+    lifecycle.markDispatched();
+    await lifecycle.abandon(Object.assign(new Error('timeout'), { isOllamaTimeout: true, ollamaAbortSource: 'timeout' }));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: null }));
+  });
+
+  test('deadline proof never reclassifies a lost admission', async () => {
+    runtime.heartbeatInference.mockResolvedValueOnce({ heartbeat: false, reason: 'lost' });
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
+    lifecycle.markDispatched();
+    await lifecycle._heartbeatOnce();
+    await lifecycle.abandon(new Error('deadline after loss'), { deadlineAborted: true });
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledTimes(1);
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: null }));
+  });
+
   test('a lost heartbeat is never a caller abort, even when the caller also left', async () => {
     runtime.heartbeatInference.mockResolvedValueOnce({ heartbeat: false, reason: 'lost' });
     const caller = new AbortController();

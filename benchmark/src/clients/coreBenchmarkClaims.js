@@ -7,6 +7,7 @@ const logger = require('../../config/logger');
 const { coreRequest } = require('./coreHttp');
 const { CORE_OPERATIONS, PIN_RESTORE_TIMEOUT_MS } = require('./coreOperations');
 const { claimProofByOwner, workloadAdmissionById, claimOwnerKey } = require('./coreProofState');
+const { requestReleaseWithDrain } = require('./coreClaimDrainWait');
 const {
   isSha256Hex,
   canonicalRuntimeResident,
@@ -206,7 +207,7 @@ async function releaseBenchmarkClaim(hostUrl, batchId, options = {}) {
         ? { excludedModels }
         : {})
   };
-  const requestRelease = async () => {
+  const requestRelease = () => requestReleaseWithDrain(async () => {
     const data = await coreRequest(path, {
       method: 'DELETE',
       operationId: CORE_OPERATIONS.CLAIM_RELEASE,
@@ -214,11 +215,13 @@ async function releaseBenchmarkClaim(hostUrl, batchId, options = {}) {
       body: JSON.stringify(releaseBody)
     });
     return data?.data;
-  };
+  }, { hostUrl, batchId: String(batchId), claimGeneration: proof?.claimGeneration,
+    admissionId: admission.admissionId, admissionGeneration: admission.generation });
   let result;
   try {
     result = await requestRelease();
   } catch (releaseError) {
+    if (releaseError.retainAdmission === true) throw releaseError;
     // A transport failure or 5xx after Core's terminal CAS is ambiguous. Ask
     // the same authenticated authority for the durable exact receipt before
     // deciding whether to retry or retain the local fence for recovery.

@@ -31,6 +31,9 @@ const WorkloadAdmissionSchema = new mongoose.Schema({
   kind: { type: String, required: true },
   batchId: { type: String, default: null },
   hosts: { type: [String], default: [] },
+  // Claim release closes inference dispatch on these hosts until the workload
+  // is released. The native finalizer still owns exact runtime restoration.
+  drainingHosts: { type: [String], default: [] },
   acquiredAt: { type: Date, required: true },
   heartbeatAt: { type: Date, required: true },
   expiresAt: { type: Date, required: true },
@@ -91,7 +94,7 @@ const InferenceAdmissionSchema = new mongoose.Schema({
   },
   unknownAt: { type: Date, default: null },
   unknownReason: { type: String, default: null },
-  unknownOrigin: { type: String, enum: ['caller-abort', null], default: null }
+  unknownOrigin: { type: String, enum: ['caller-abort', 'deadline-abort', null], default: null }
 }, { _id: false });
 
 const RuntimeCoordinationSchema = new mongoose.Schema({

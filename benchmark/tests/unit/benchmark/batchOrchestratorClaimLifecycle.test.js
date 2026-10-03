@@ -1517,6 +1517,10 @@ describe('runBatchOrchestrator claim lifecycle', () => {
         expect(requestSignal.aborted).toBe(true);
         expect(mockPersistSuccessfulResult).not.toHaveBeenCalled();
         expect(mockPersistFailedResult).toHaveBeenCalledTimes(1);
+        expect(mockPersistFailedResult).toHaveBeenCalledWith(expect.objectContaining({
+            err: expect.objectContaining({ code: 'BENCHMARK_TEST_DEADLINE_EXCEEDED',
+                message: 'Benchmark test deadline exceeded after 25ms', infra: true })
+        }));
         expect(getActiveBatchRequestCount('batch-timeout-body')).toBe(0);
     });
 

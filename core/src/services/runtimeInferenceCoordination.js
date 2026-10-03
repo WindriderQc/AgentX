@@ -61,6 +61,9 @@ async function acquireInference({
     if (existing.state !== 'ACTIVE' || new Date(existing.expiresAt).getTime() <= Date.now()) {
       return { acquired: false, recoveryRequired: true, reason: 'inference requires operator runtime recovery' };
     }
+    if ((current.workloads || []).some(w => (w.drainingHosts || []).includes(host))) {
+      return { acquired: false, reason: 'workload is draining on this host' };
+    }
     return { acquired: true, ...existing, idempotent: true };
   }
 
@@ -103,7 +106,8 @@ async function acquireInference({
         incompatibleInference
       ]
     } } },
-    workloads: { $not: { $elemMatch: mode === 'exclusive' ? { hosts: host } : { hosts: host, yieldedAt: null } } }
+    workloads: { $not: { $elemMatch: mode === 'exclusive' ? { hosts: host }
+      : { hosts: host, $or: [{ yieldedAt: null }, { drainingHosts: host }] } } }
   };
   const workloadFilter = {
     _id: 'runtime',
@@ -119,6 +123,7 @@ async function acquireInference({
       generation: workloadGeneration,
       principal,
       hosts: host,
+      drainingHosts: { $ne: host },
       expiresAt: { $gt: now }, yieldedAt: null
     } }
   };
@@ -239,7 +244,8 @@ async function markInferenceUnknown({ id, generation, principal, reason = null, 
     { $set: {
       'inferences.$.state': 'UNKNOWN',
       'inferences.$.unknownAt': now,
-      'inferences.$.unknownReason': clean(reason, 500), 'inferences.$.unknownOrigin': origin === 'caller-abort' ? origin : null
+      'inferences.$.unknownReason': clean(reason, 500),
+      'inferences.$.unknownOrigin': ['caller-abort', 'deadline-abort'].includes(origin) ? origin : null
     } },
     { new: true }
   ).lean();

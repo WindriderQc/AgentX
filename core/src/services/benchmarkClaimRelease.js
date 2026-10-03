@@ -263,6 +263,9 @@ async function releaseBenchmarkClaim(hostUrl, batchId, opts = {}) {
   // inside Core so the reaper cannot clear the claim during a cold reload.
   // If restoration fails, keep the claim in place and fail closed; exposing
   // the host before its pins are verified would race chat/watchdog traffic.
+  const pendingDrain = await require('./benchmarkCallerAbortDrain')
+    .deferClaimReleaseForInferences(hostUrl, existing, opts);
+  if (pendingDrain) return pendingDrain;
   let pinRestore = null;
   let restoredSnapshot = null;
   let expiredModels = [];

@@ -15,7 +15,9 @@
  *     least the settle window (longer than Ollama's model load timeout, so a
  *     queued or loading request has ended);
  *   - nothing else Core admitted touches the host: no other inference entry,
- *     no workload covering it, no maintenance lease;
+ *     no maintenance lease or unrelated workload covering it. A Benchmark
+ *     workload may remain only after its exact owner closes new dispatch on
+ *     this host and all quarantines belong to that workload generation;
  *   - two /api/ps samples taken apart are identical, and the probed model, if
  *     resident, runs at the probe's context. The probe then left no pending
  *     side effect beyond an already visible residency.
@@ -27,16 +29,21 @@
  * closed, so the only lasting effect is a model load. When the requested model
  * is resident at the request's context in both samples, that load has ended
  * and the shorter caller-abort window suffices; otherwise the full settle
- * window applies, as for a probe.
+ * window applies, as for a probe. Core's own deadline abort has the same
+ * recovery evidence and a distinct origin. Under a draining Benchmark parent,
+ * both aborts always require the full settle window before exact restoration.
  */
 
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
+const { exactParentForHost, parentPredicate } = require('./benchmarkCallerAbortDrain');
 
 const PROBE_KIND = 'watchdog-probe';
 const PROBE_PRINCIPAL = 'core-watchdog';
 const RECEIPT_CONTRACT = 'agentx.watchdog-probe-recovery/v1';
 const CALLER_ABORT_ORIGIN = 'caller-abort';
 const CALLER_ABORT_CONTRACT = 'agentx.caller-abort-recovery/v1';
+const DEADLINE_ABORT_ORIGIN = 'deadline-abort';
+const DEADLINE_ABORT_CONTRACT = 'agentx.inference-deadline-recovery/v1';
 const DEFAULT_SETTLE_MS = 10 * 60_000;
 const DEFAULT_CALLER_ABORT_SETTLE_MS = 60_000;
 const DEFAULT_SAMPLE_GAP_MS = 5_000;
@@ -52,7 +59,7 @@ function callerAbortSettleMs() {
 }
 
 const isProbe = entry => entry.kind === PROBE_KIND && entry.principal === PROBE_PRINCIPAL;
-const isCallerAbort = entry => entry.unknownOrigin === CALLER_ABORT_ORIGIN;
+const isCallerAbort = entry => [CALLER_ABORT_ORIGIN, DEADLINE_ABORT_ORIGIN].includes(entry.unknownOrigin);
 
 function psSignature(models) {
   return JSON.stringify((Array.isArray(models) ? models : [])
@@ -94,11 +101,16 @@ async function recoverSettledWatchdogProbes(hostUrl, {
   if (probes.length === 0) return { recovered: false, reason: 'no quarantined watchdog probe or caller abort' };
   if (probes.length !== onHost.length) return { recovered: false, reason: 'other inference on host' };
   if (state.maintenance) return { recovered: false, reason: 'maintenance lease present' };
-  if ((state.workloads || []).some(w => (w.hosts || []).includes(hostUrl))) {
+  const hasWorkload = (state.workloads || []).some(w => (w.hosts || []).includes(hostUrl));
+  const parent = hasWorkload && probes.every(isCallerAbort)
+    ? exactParentForHost(state, hostUrl, probes, { draining: true }) : null;
+  if (hasWorkload && !parent) {
     return { recovered: false, reason: 'workload covers host' };
   }
   const quarantinedFor = p => (p.unknownAt ? now() - new Date(p.unknownAt).getTime() : -1);
-  const minimumWindow = p => (isProbe(p) ? settleMs : Math.min(settleMs, abortSettleMs));
+  // A batch can also issue direct runtime warmups. Its drained Core callers
+  // therefore always use the full loading/cancellation window, even resident.
+  const minimumWindow = p => (isProbe(p) || parent ? settleMs : Math.min(settleMs, abortSettleMs));
   if (probes.some(p => quarantinedFor(p) < minimumWindow(p))) {
     return { recovered: false, reason: 'settle window not elapsed' };
   }
@@ -123,23 +135,33 @@ async function recoverSettledWatchdogProbes(hostUrl, {
   const releasedAt = new Date(now());
   const evidence = { settleMs, sampleGapMs, psSignature: psSignature(second) };
   const receipts = probes.map(p => ({
-    contract: isProbe(p) ? RECEIPT_CONTRACT : CALLER_ABORT_CONTRACT, coordinationKind: 'inference', released: true,
-    ...(!isProbe(p) && { unknownOrigin: CALLER_ABORT_ORIGIN, quarantinedForMs: quarantinedFor(p), residentAtRequest: settledAbort(p) }),
+    contract: isProbe(p) ? RECEIPT_CONTRACT : p.unknownOrigin === DEADLINE_ABORT_ORIGIN
+      ? DEADLINE_ABORT_CONTRACT : CALLER_ABORT_CONTRACT, coordinationKind: 'inference', released: true,
+    ...(!isProbe(p) && { unknownOrigin: p.unknownOrigin, quarantinedForMs: quarantinedFor(p), residentAtRequest: settledAbort(p) }),
     admissionId: p.admissionId, generation: p.generation, principal: p.principal,
     host: p.host, model: p.model, kind: p.kind, mode: p.mode,
     residencyKey: p.residencyKey, residencySpec: p.residencySpec,
     acquiredAt: p.acquiredAt, unknownAt: p.unknownAt, unknownReason: p.unknownReason,
     evidence, releasedAt,
+    ...(parent && { parentWorkload: { admissionId: parent.admissionId,
+      generation: parent.generation, workloadId: parent.workloadId } }),
   }));
   const updated = await RuntimeCoordination.findOneAndUpdate(
     {
       _id: 'runtime',
       maintenance: null,
-      workloads: { $not: { $elemMatch: { hosts: hostUrl } } },
+      workloads: parent
+        ? { $elemMatch: { ...parentPredicate(parent, hostUrl), drainingHosts: hostUrl } }
+        : { $not: { $elemMatch: { hosts: hostUrl } } },
       $and: [
+        ...(parent ? [{ workloads: { $not: { $elemMatch: {
+          hosts: hostUrl, admissionId: { $ne: parent.admissionId }
+        } } } }] : []),
         ...probes.map(p => ({ inferences: { $elemMatch: {
           admissionId: p.admissionId, generation: p.generation, state: 'UNKNOWN',
-          ...(isProbe(p) ? { kind: PROBE_KIND, principal: PROBE_PRINCIPAL } : { unknownOrigin: CALLER_ABORT_ORIGIN }),
+          host: hostUrl, principal: p.principal,
+          ...(isProbe(p) ? { kind: PROBE_KIND } : { unknownOrigin: p.unknownOrigin }),
+          ...(parent && { workloadAdmissionId: parent.admissionId, workloadGeneration: parent.generation }),
         } } })),
         { inferences: { $not: { $elemMatch: { host: hostUrl, admissionId: { $nin: ids } } } } },
       ],
@@ -162,12 +184,12 @@ async function recoverSettledWatchdogProbes(hostUrl, {
 async function collectRecoveryRequired({ hosts, coordination, previous, target, recordEvent, readPs, now, sleep }) {
   for (const host of hosts) {
     let unknown = coordination.inferences.filter(item => item.quarantined && item.host === host.url);
-    if (unknown.length && unknown.every(item => item.kind === PROBE_KIND || item.unknownOrigin === CALLER_ABORT_ORIGIN)
+    if (unknown.length && unknown.every(item => item.kind === PROBE_KIND || isCallerAbort(item))
       && !coordination.maintenance) {
       const result = await recoverSettledWatchdogProbes(host.url, { readPs, ...(now && { now }), ...(sleep && { sleep }) })
         .catch(error => ({ recovered: false, reason: error.message }));
       if (result.recovered) {
-        const aborts = result.released.filter(r => r.contract === CALLER_ABORT_CONTRACT);
+        const aborts = result.released.filter(r => [CALLER_ABORT_CONTRACT, DEADLINE_ABORT_CONTRACT].includes(r.contract));
         recordEvent(aborts.length ? 'caller_abort_recovered' : 'probe_recovered', host,
           { models: result.released.map(r => r.model) });
         unknown = [];

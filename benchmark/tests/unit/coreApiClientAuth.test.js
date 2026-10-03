@@ -660,6 +660,41 @@ describe('Core API client scoped outbound execution', () => {
       .toBe(false);
   });
 
+  test.each([false, true])('keeps the exact claim during a pending drain (foreign proof=%s)', async foreign => {
+    const hostUrl = 'http://pending-drain:11434';
+    const batchId = `batch-pending-drain-${foreign}`;
+    const claimGeneration = '99999999-9999-4999-8999-999999999999';
+    const snapshot = runtimeSnapshot();
+    const workload = queueWorkloadAcquire(batchId, [hostUrl]);
+    fetch.mockImplementationOnce(async url => response(url, {
+      body: JSON.stringify(claimAcquireBody({ hostUrl, batchId, claimGeneration, snapshot }))
+    }));
+    await acquireWorkloadAdmission(batchId, { hosts: [hostUrl] });
+    await claimHostForBenchmark(hostUrl, batchId, null, { claimGeneration });
+    const identity = getBenchmarkClaimIdentity(hostUrl, batchId);
+    fetch.mockImplementationOnce(async url => response(url, {
+      body: JSON.stringify({ status: 'success', data: { released: false,
+        callerAbortRecoveryPending: true, contract: 'agentx.benchmark-caller-abort-drain/v1',
+        hostUrl, batchId, claimGeneration, admissionId: workload.admissionId,
+        admissionGeneration: foreign ? 'foreign' : workload.generation, retryAfterMs: 1 } })
+    }));
+    if (foreign) {
+      await expect(releaseBenchmarkClaim(hostUrl, batchId))
+        .rejects.toMatchObject({ code: 'BENCHMARK_DRAIN_RECEIPT_INVALID', retainAdmission: true });
+      expect(getBenchmarkClaimIdentity(hostUrl, batchId)).toEqual(identity);
+      expect(fetch).toHaveBeenCalledTimes(5);
+    } else {
+      fetch.mockImplementationOnce(async url => {
+        expect(getBenchmarkClaimIdentity(hostUrl, batchId)).toEqual(identity);
+        return response(url, { body: JSON.stringify({ status: 'success', data: { released: true,
+          releaseReceipt: exactReleaseReceipt({ hostUrl, batchId, claimGeneration, snapshot }) } }) });
+      });
+      await expect(releaseBenchmarkClaim(hostUrl, batchId)).resolves.toMatchObject({ released: true });
+      expect(getBenchmarkClaimIdentity(hostUrl, batchId)).toBeNull();
+      expect(fetch).toHaveBeenCalledTimes(6);
+    }
+  });
+
   test('recovers a durable exact receipt when the release response is lost', async () => {
     const hostUrl = 'http://ambiguous-release:11434';
     const batchId = 'batch-ambiguous-release';
