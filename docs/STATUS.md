@@ -69,8 +69,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   memory fitted to its lane's budget. A user may choose a frontier cloud agent
   for deep turns or for all turns when the instance names one: it is never a
   fallback, and Core keeps the conversation and its memory. Between sessions
-  PsyX rereads its conversations and three read-only owner sources and writes
-  a portrait of the user; each such run is logged and can be undone.
+  PsyX selects context from its conversations and three read-only owner sources
+  and writes a portrait of the user; each such run is logged and can be undone.
+  Messages remain whole, omitted reply context is counted, and portraits report
+  the text coverage of the actual inference lane. New portrait quotations are
+  checked against supplied source text; older quotations remain unverified.
 - **Routing.** Light tasks may carry an instance-configured fallback ladder;
   every other task stays on its model. The OpenClaw conversation provider can
   borrow that ladder when the instance opts in; it is off by default.
@@ -159,10 +162,8 @@ Issues hold the current work and remaining acceptance:
 | Keep date-only personal task deadlines on the intended household day | [#287](https://github.com/WindriderQc/AgentX/issues/287) |
 | Team page: one place to see and configure an agent's identity and runtime | [#291](https://github.com/WindriderQc/AgentX/issues/291) |
 | Classify personal due-today lanes in the household timezone | [#292](https://github.com/WindriderQc/AgentX/issues/292) |
-| PsyX rêverie: a background agent that deepens the user's portrait | [#301](https://github.com/WindriderQc/AgentX/issues/301) |
-| PsyX rêverie: read Nestor notes, calendar, family rhythm and the mail journal | [#302](https://github.com/WindriderQc/AgentX/issues/302) |
+| PsyX: trust, conversation and longitudinal quality improvements | [#343](https://github.com/WindriderQc/AgentX/issues/343) |
 | PsyX: supervisor critique of each reply | [#303](https://github.com/WindriderQc/AgentX/issues/303) |
-| PsyX: neutralise the OpenClaw preamble and evaluate with an independent judge | [#304](https://github.com/WindriderQc/AgentX/issues/304) |
 | PsyX: intake interview, standard questionnaires and technique cards | [#305](https://github.com/WindriderQc/AgentX/issues/305) |
 
 ## What a green result means

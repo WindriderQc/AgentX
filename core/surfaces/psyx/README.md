@@ -1,6 +1,6 @@
 # PsyX in AgentX
 
-The full profile serves the PsyX 2.10.0 conversation UI at `/psyx`. Psychological
+The full profile serves the PsyX 2.10.1 conversation UI at `/psyx`. Psychological
 domain rules and longitudinal state live in `core/src/domains/psyx`; generic
 conversation persistence/lifecycle and admitted inference are Core capabilities.
 No separate PsyX server, database client or inference router starts here.
@@ -71,8 +71,11 @@ speech, model and live-device acceptance are separate from the portable tests.
 Archive/restore, rename, export, explicit permanent transcript deletion, state
 reset and longitudinal experiments remain available. A source response is saved
 only after the admitted stream has a terminal result and settled host receipt.
-The transcript is never silently sliced; request
-context remains bounded to the latest 40 messages and the domain text budget.
+Incoming messages and completed replies are stored whole. Requests exceeding
+the HTTP body limit are refused before inference or transcript persistence.
+Reply context keeps whole history messages within the local budget (40 messages,
+35k characters) or frontier budget (120 messages, 160k characters); omitted
+messages are counted in the interface, including after a local fallback.
 
 Memory's Understanding tab projects the approved observations and pending review
 proposals with their evidence and source session. The user can correct or remove
@@ -106,7 +109,7 @@ Québec doors for it.
 PsyX can think on a frontier cloud model when the instance names an OpenClaw
 agent for it (`PSYX_FRONTIER_AGENT`, with `OPENCLAW_GATEWAY_URL` and its token).
 This is an explicit owner choice for PsyX only, never a fallback: each user picks
-`local`, `deep` (deep turns and the background review) or `all`, the instance
+`local`, `deep` (deep turns, background reviews and dreams) or `all`, the instance
 default being `PSYX_FRONTIER_MODE`. Core stays the owner of the conversation and
 its memory: every call sends the full PsyX context to the agent under a fresh
 session key and expects no memory or tools from it. The agent should have no
@@ -118,18 +121,29 @@ next reply is produced.
 
 Between sessions PsyX dreams: once a session has been quiet for thirty minutes,
 every night in the 03:00 hour of `PLANNING_TIME_ZONE` when a session moved since
-the last portrait (and at least weekly), and on request. A dream rereads every
-conversation that still exists, the whole memory, the user's profile and three
+the last portrait (and at least weekly), and on request. A dream selects whole
+messages from the newest available conversations, memory, the user's profile and three
 read-only owner sources (the notes his assistant keeps, his open tasks and
 reminders, the mail journal) and writes a portrait: statements in fixed sections,
-each with its evidence, plus cross-session findings, an agenda for the next
+each with exact quotations checked against material supplied to that inference,
+plus cross-session findings, an agenda for the next
 session and the gaps it would like to fill. Unlike the review it writes directly:
 it may add memory items (source `dream`) and mark as resolved items the user
-neither wrote nor corrected. Every dream is logged and can be undone; a statement
-the user rejects leaves the portrait and is never restated; a memory reset clears
+neither wrote nor corrected. References record the source kind, conversation and
+message index when applicable, and a hash of the source text. The interface can
+read the original message, and identifies older quotations as unverified.
+Quotation matching checks provenance, not the validity of an interpretation.
+The portrait reports included/available sessions and messages, partial sources
+and unavailable sources for the actual inference lane. A latest message that
+cannot fit is refused rather than sliced; a cloud failure cannot send its wider
+context to a local model.
+Every dream is logged and can be undone; a statement the user rejects leaves the
+portrait and exact restatements are filtered; semantic paraphrases still rely on
+the prompt. A memory reset clears
 portrait and log; permanently deleting a conversation discards the portrait and
 rebuilds it from what remains, while memory items a dream added stay until removed.
-A dream never adds to a full list, nor re-adds an item the user removed. Replies receive the portrait as hypotheses, with
+A dream never adds to a full list and filters exact repeats of removed items
+recorded in its bounded log. Replies receive the portrait as hypotheses, with
 the agenda and the gaps. The dream follows the user's frontier setting, so in
 `deep` or `all` the sources above are sent to the frontier agent with the
 conversations; in `local` nothing leaves the instance. Core has no calendar or

@@ -494,10 +494,12 @@ pages and APIs retain the parental gateway guard.
   rules. After each completed turn a background review (router task
   `PSYX_REVIEW_TASK`, default `deep_reasoning`) writes a conversation digest and
   memory proposals into PsyX state; proposals enter memory only when the user
-  accepts them. Between sessions a dream rereads everything, with the owner's
+  accepts them. Between sessions a dream reads selected context, with the owner's
   notes, open tasks and mail journal read in-process and read-only, and writes a
   portrait and memory changes directly into PsyX state, each one logged and
-  undoable. Browser access uses the shared [parental session](PARENTAL_ACCESS.md);
+  undoable. Coverage and verified quotation references describe the material
+  supplied to that inference; quotation matching does not validate hypotheses.
+  Browser access uses the shared [parental session](PARENTAL_ACCESS.md);
   native consumers keep a separate access token.
 - `core/surfaces/data-toolbox`: UI served by Core, consuming the optional
   Data process over HTTP. It is read-only except for naming a network device

@@ -7,10 +7,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>PsyX</title>
-  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.10.0">
-  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.10.0">
-  <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.10.0">
-  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.10.0">
+  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.10.1">
+  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.10.1">
+  <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.10.1">
+  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.10.1">
 </head>
 <body class="psyx-locked">
   <!-- product-navigation -->
@@ -34,10 +34,10 @@
   <main id="appShell" class="app-shell" aria-hidden="true">
     <header class="topbar">
       <div class="brand-wrap">
-        <div class="eyebrow">PRIVÉ · LOCAL</div>
+        <div class="eyebrow">PSYX · PERSONNEL</div>
         <div class="brand-line">
           <h1>PsyX</h1>
-          <span class="version-pill">V2.10.0</span>
+          <span class="version-pill">V2.10.1</span>
         </div>
         <p class="subtitle">Partenaire de réflexion psychologique · changement durable</p>
       </div>
@@ -119,7 +119,7 @@
             <div class="avatar">PX</div>
             <div class="bubble intro-bubble">
               <p><strong>Je suis PsyX.</strong> Amène-moi ce qui prend vraiment de la place dans ta tête.</p>
-              <p>Après chaque réponse, je réfléchis à notre conversation en arrière-plan : j’ajuste ma façon de répondre, je garde un court résumé de la séance et je propose ce qui vaut la peine d’être retenu. C’est toi qui décides de ce que je garde.</p>
+              <p>Après chaque réponse, je garde un résumé de la séance et je propose des observations à retenir : tu les acceptes ou les écartes. Entre les séances, je réécris aussi ton portrait et peux ajouter des observations en mémoire. Ces réflexions sont visibles et tu peux les annuler.</p>
               <div id="openingRecap" class="opening-recap" hidden></div>
             </div>
           </article>
@@ -176,7 +176,7 @@
 
         <div class="state-content">
           <section id="viewMemory" class="state-view active" role="tabpanel" aria-labelledby="tabMemory" data-view="memory">
-            <div id="proposalsSection" class="state-section proposals-section" hidden><div class="state-section-title">Proposé par PsyX</div><p class="state-help">Issu de la réflexion automatique après tes conversations. Rien n’entre en mémoire sans ton accord; une proposition écartée ne revient pas.</p><div id="proposalsList" class="proposals-list"></div></div>
+            <div id="proposalsSection" class="state-section proposals-section" hidden><div class="state-section-title">Proposé par PsyX</div><p class="state-help">Ces propositions attendent ton accord avant d’entrer en mémoire. Les réflexions entre les séances peuvent ajouter des observations directement; leurs changements sont visibles et annulables dans Compréhension.</p><div id="proposalsList" class="proposals-list"></div></div>
             <div id="assessmentSection" class="state-section" hidden><div class="state-section-title">Bilans</div><p class="state-help">Les questionnaires standards d’humeur et d’anxiété, à refaire aux trois semaines. Le score est calculé par le code, pas par un modèle; c’est son évolution qui compte.</p><div id="assessmentList"></div><div id="assessmentNote" class="state-help" role="status" aria-live="polite"></div></div>
             <div id="checkInSection" class="state-section" hidden><div class="state-section-title">Suivi 0–10</div><p class="state-help">Tes propres mesures de ce qui te pèse, 0 léger à 10 très lourd.</p><div id="checkInTrend" class="check-in-trend"></div></div>
             <div class="state-section"><div class="state-section-title">Ton profil</div><p class="state-help">Écrit par toi, lu par PsyX à chaque réponse. Qui tu es, ta situation, ce qui compte.</p><form id="profileForm" class="profile-form"><label>Qui tu es<textarea id="profileAbout" rows="4" maxlength="3000" placeholder="Âge, famille, travail, ce que tu traverses en ce moment…"></textarea></label><label>Ce que tu attends de PsyX<textarea id="profileExpectations" rows="3" maxlength="1500" placeholder="Ce qui t’aide, ce que tu ne veux pas, comment tu veux être confronté…"></textarea></label><button class="full-ghost" type="submit">Enregistrer le profil</button><div id="profileStatus" class="state-help" role="status" aria-live="polite"></div></form></div>
@@ -196,7 +196,7 @@
           <section id="viewUnderstanding" class="state-view" role="tabpanel" aria-labelledby="tabUnderstanding" data-view="understanding" hidden>
             <h3>Comment psyX te comprend</h3>
             <div class="state-section-title">Ton portrait</div>
-            <p class="state-help">Entre les séances et chaque nuit, PsyX relit tout ce qu’il sait de toi et réécrit ce portrait. Ce sont des hypothèses avec leurs preuves, pas des diagnostics : retire ce qui n’est pas toi, PsyX ne le redira plus.</p>
+            <p class="state-help">Entre les séances et chaque nuit, PsyX réécrit ce portrait à partir du contexte disponible. La couverture indique les séances et messages transmis. Les nouvelles citations sont recherchées dans les sources lues; cela ne valide pas l’interprétation. Tu peux retirer une hypothèse et annuler une réflexion.</p>
             <div id="portraitMeta" class="state-help" role="status" aria-live="polite"></div>
             <div id="portraitView"></div>
             <button id="dreamNow" class="full-ghost" type="button">Approfondir maintenant</button>
@@ -238,7 +238,7 @@
 
   <dialog id="voiceSessionDialog" class="voice-session" aria-labelledby="voiceSessionTitle">
     <div class="voice-session-card">
-      <div class="eyebrow">PSYX · LOCAL · PRIVÉ</div>
+      <div class="eyebrow">PSYX · PERSONNEL</div>
       <h2 id="voiceSessionTitle">On prend le temps.</h2>
       <div class="voice-orb" aria-hidden="true"></div>
       <p id="voiceSessionPhase" role="status" aria-live="polite">Prêt à t’écouter.</p>
@@ -290,11 +290,11 @@
       </section>
       <section class="data-section" id="frontierSection" hidden>
         <h3>Cerveau cloud</h3>
-        <p>Où PsyX réfléchit. Tes conversations et ta mémoire restent stockées ici; seul le texte nécessaire à la réponse est envoyé au modèle cloud.</p>
+        <p>En mode cloud, PsyX transmet le contexte sélectionné pour les réponses, les revues et les portraits : conversations, profil et mémoire, ainsi que les notes de Nestor, tâches et extraits du journal de courriel pour les portraits. AgentX conserve les données de référence ici. Le service cloud reçoit ce texte; OpenClaw conserve aussi des sessions et des journaux sur son hôte.</p>
         <div class="frontier-modes" role="radiogroup" aria-label="Utilisation du modèle cloud">
-          <label class="voice-toggle"><input type="radio" name="frontierMode" value="all"> <span><strong>Total</strong><small>Conversation et réflexion automatique par <span data-frontier-model></span>.</small></span></label>
-          <label class="voice-toggle"><input type="radio" name="frontierMode" value="deep"> <span><strong>Économe</strong><small>Seulement la réflexion profonde et la réflexion automatique.</small></span></label>
-          <label class="voice-toggle"><input type="radio" name="frontierMode" value="local"> <span><strong>Local</strong><small>Rien ne sort de la maison.</small></span></label>
+          <label class="voice-toggle"><input type="radio" name="frontierMode" value="all"> <span><strong>Total</strong><small>Conversations, revues et portraits par <span data-frontier-model></span>.</small></span></label>
+          <label class="voice-toggle"><input type="radio" name="frontierMode" value="deep"> <span><strong>Économe</strong><small>Réponses profondes, revues et portraits au cloud; réponses normales locales.</small></span></label>
+          <label class="voice-toggle"><input type="radio" name="frontierMode" value="local"> <span><strong>Local</strong><small>Réponses, revues et portraits sur les voies locales.</small></span></label>
         </div>
         <div id="frontierStatus" class="privacy-status" role="status" aria-live="polite"></div>
       </section>
@@ -332,22 +332,22 @@
   </dialog>
 
   <script src="/psyx/assets/voice-audio.js?v=local-voice-0680" defer></script>
-  <script src="/js/voice/speech-language.js?v=2.10.0" defer></script>
-  <script src="/js/voice/playback-hold.js?v=2.10.0" defer></script>
-  <script src="/js/voice/browser-conversation.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/voice-session.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/voice-preferences.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/voice-controls.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/state-panel.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/review.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/care.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/follow-up.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/frontier.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/profile.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/dream.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/toolbox.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/formulation.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/setup.js?v=2.10.0" defer></script>
-  <script src="/psyx/assets/app.js?v=2.10.0" defer></script>
+  <script src="/js/voice/speech-language.js?v=2.10.1" defer></script>
+  <script src="/js/voice/playback-hold.js?v=2.10.1" defer></script>
+  <script src="/js/voice/browser-conversation.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/voice-session.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/voice-preferences.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/voice-controls.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/state-panel.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/review.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/care.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/follow-up.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/frontier.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/profile.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/dream.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/toolbox.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/formulation.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/setup.js?v=2.10.1" defer></script>
+  <script src="/psyx/assets/app.js?v=2.10.1" defer></script>
 </body>
 </html>
