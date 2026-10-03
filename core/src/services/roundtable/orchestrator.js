@@ -27,7 +27,7 @@ const {
   DEFAULT_SYNTHESIZER,
   REBUTTAL_PREAMBLE,
   DEFAULT_TIMEOUT_MS,
-  DEFAULT_TOTAL_TIMEOUT_MS,
+  DEFAULT_TOTAL_TIMEOUT_MS, RUNTIME_SEAT_PROMPT,
   withCouncilAdvisoryGuard
 } = require('./defaults');
 const { callRuntimeParticipant } = require('./runtimeParticipantAdapter');
@@ -691,7 +691,7 @@ async function createRoundtable(options) {
         sessionKey: a.runtimeConfig?.sessionKey || null,
         sessionId: a.runtimeConfig?.sessionId || null
       },
-      systemPrompt: a.systemPrompt || dflt.systemPrompt || '',
+      systemPrompt: a.systemPrompt || dflt.systemPrompt || (runtime === 'model' ? '' : RUNTIME_SEAT_PROMPT),
       enableWebSearch: a.enableWebSearch ?? dflt.enableWebSearch ?? false
     };
   });

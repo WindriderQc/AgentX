@@ -205,7 +205,12 @@ const COUNCIL_OPTIONS = [
   }
 ];
 
+// A runtime participant (Codex, an OpenClaw agent) speaks as itself; this is its
+// seat when the chair gives it no role prompt.
+const RUNTIME_SEAT_PROMPT = 'Take part as yourself: answer from your own role, knowledge and experience, and say plainly where you disagree.';
+
 module.exports = {
+  RUNTIME_SEAT_PROMPT,
   COUNCIL_MODEL_ENV_KEYS,
   DEFAULT_PANEL,
   DEFAULT_SYNTHESIZER,
