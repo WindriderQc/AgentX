@@ -481,7 +481,7 @@ const NerveCenter = (() => {
             value: parts.join('/') || '—',
             state: Number.isFinite(down) && down > 0
                 ? 'critical'
-                : (serviceStatus !== 'ok' || consistencyStatus !== 'ok' ? 'attention' : 'nominal'),
+                : (serviceStatus !== 'ok' || !['ok', 'mixed'].includes(consistencyStatus) ? 'attention' : 'nominal'),
             title: titleParts.join(' · ') || 'Service/build consistency evidence is incomplete.'
         };
     }

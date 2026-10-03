@@ -184,6 +184,33 @@ describe('ecosystemSnapshotService', () => {
     expect(issue.message).toBe('Product service health is degraded');
   });
 
+  it('names the identity mismatch behind a degraded service health', async () => {
+    const snapshot = await buildEcosystemSnapshot({
+      buildIntelligence: async () => intelligence,
+      buildRoutingConfig: async () => routingConfig,
+      buildServiceStatus: async () => ({
+        ...serviceStatus,
+        summary: { ...serviceStatus.summary, status: 'degraded', degraded: 0 },
+        consistency: { ...serviceStatus.consistency, status: 'degraded', issues: ['Mixed product versions: 0.2.0, 0.1.0'] }
+      })
+    });
+    const issue = snapshot.operationalAttention.issues.find(item => item.code === 'services_degraded');
+    expect(issue.message).toBe('Product services do not match: Mixed product versions: 0.2.0, 0.1.0');
+  });
+
+  it('raises no service finding when builds only differ by revision', async () => {
+    const snapshot = await buildEcosystemSnapshot({
+      buildIntelligence: async () => intelligence,
+      buildRoutingConfig: async () => routingConfig,
+      buildServiceStatus: async () => ({
+        ...serviceStatus,
+        consistency: { ...serviceStatus.consistency, status: 'mixed', revisions: ['abc123', 'def456'], issues: ['Mixed build revisions: abc123, def456'] }
+      })
+    });
+    expect(snapshot.operationalAttention.issues.find(item => item.code === 'services_degraded')).toBeUndefined();
+    expect(snapshot.identityConsistency.status).toBe('mixed');
+  });
+
   it('rejects malformed collector output instead of manufacturing defaults', async () => {
     await expect(buildEcosystemSnapshot({
       buildIntelligence: async () => ({ cluster: [] }),

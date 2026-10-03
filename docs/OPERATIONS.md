@@ -186,6 +186,13 @@ operators of the instance. A new setting (for example
 deployment never changes instance configuration. The service `/health`
 responses report the deployed `revision`.
 
+Services rebuilt at different revisions of one product version read as mixed
+builds on the home page, the Playground cockpit and the Nerve Center
+Services / Build widget, which lists the revisions. That state is expected
+after a partial deployment and raises no operational finding. Different product
+versions or profiles, or a service that reports no identity, are a deployment
+mismatch: service health is degraded and the finding names the cause.
+
 ### Code runner
 
 Benchmark scores a coding prompt that carries `reference_tests` by running the
