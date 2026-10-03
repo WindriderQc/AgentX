@@ -48,6 +48,14 @@
         </div>`;
     }
 
+    // The styles declared for this member: other ways it may present, same agent.
+    function ownStyles(agent) {
+      const rows = Array.isArray(agent.styles) ? agent.styles : [];
+      if (!rows.length) return '';
+      return `<div class="agent-ops-meta-row" aria-label="Styles">${rows.map((style) =>
+        `<button type="button" class="agent-ops-chip link" data-persona-edit="${esc(style.id)}" title="${esc(style.description)}"><i class="fas fa-masks-theater"></i>${esc(style.label)}</button>`).join('')}</div>`;
+    }
+
     function card(agent) {
       const title = agent.persona?.label || agent.name;
       return `
@@ -63,6 +71,7 @@
         <div class="agent-ops-agent-body">
           <p>${esc(agent.responsibility)}</p>
           ${identity(agent)}
+          ${ownStyles(agent)}
           <div class="agent-ops-meta-row">
             <span class="agent-ops-chip"><i class="fas fa-tag"></i>${esc(humanize(agent.type))}</span>
             ${agent.runtime ? `<span class="agent-ops-chip"><i class="fas fa-microchip"></i>${esc(agent.runtime)}</span>` : ''}

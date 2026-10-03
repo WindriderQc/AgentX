@@ -13,6 +13,8 @@ function generatedPersonas() {
       uiConfig: { type: 'chat', route: '/index.html', capabilities: ['text'],
         // agentId names the team member whose own default presentation this is.
         layoutConfig: { label: entry.label, voice: entry.voice, visual: entry.visual || null, agentId: entry.agentId || null,
+          // styleOf names the member a style belongs to; a personality with neither suits any agent.
+          ...(entry.styleOf ? { styleOf: entry.styleOf } : {}),
           kind: 'personality', sourceRef: 'adapters/household/personas.json' }
       }
     };
@@ -41,7 +43,8 @@ function snapshot(row) {
     name: layout.label || row.name, description: row.description || '', identity: row.systemPrompt,
     identitySha256: crypto.createHash('sha256').update(row.systemPrompt).digest('hex'),
     sourceRef: `PromptConfig/${row.name}@${row.version}`,
-    voice: instanceVoice(row.name, layout.voice || {}), visual: layout.visual || null, agentId: layout.agentId || null };
+    voice: instanceVoice(row.name, layout.voice || {}), visual: layout.visual || null, agentId: layout.agentId || null,
+    ...(layout.styleOf ? { styleOf: layout.styleOf } : {}) };
 }
 
 const { speechFor: presentationSpeechFor } = require('./public/persona-presentation');

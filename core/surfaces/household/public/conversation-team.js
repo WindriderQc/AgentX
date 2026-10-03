@@ -21,6 +21,12 @@
     });
   }
 
+  // The personalities a conversation with this agent may use: the member's own, the styles
+  // declared for it, and the personalities that belong to no member.
+  function stylesFor(personas = [], agentId) {
+    return personas.filter((persona) => persona.agentId === agentId || persona.styleOf === agentId || (!persona.agentId && !persona.styleOf));
+  }
+
   function memberName(list, agents, agentId) {
     return list.find((member) => member.agentId === agentId)?.name
       || agents.find((agent) => agent.id === agentId)?.name || agentId || 'Nestor';
@@ -41,5 +47,5 @@
     }).join('');
   }
 
-  return Object.freeze({ members, memberName, lockNotice, render });
+  return Object.freeze({ members, stylesFor, memberName, lockNotice, render });
 }));
