@@ -18,6 +18,8 @@ MAILBOX_BACKLOG_QUERY = 'in:anywhere -in:spam -in:trash -in:drafts -in:sent -lab
 # recurring job that reaches it. Both Secretary jobs died silently that way on
 # 2026-09-16/17 during an inference outage; see revive/yield below.
 OPENCLAW_AUTO_DISABLE_LIMIT = 10
+# Written to the same audit log by the action-provenance hook after each tool call.
+ACTION_RECEIPT_SCHEMA = "agentx.tool-action-receipt/v1"
 
 class GmailSecretaryProbeError(RuntimeError):
     """Raised when the bounded Gmail authorization probe fails."""
@@ -139,7 +141,9 @@ def read_audit_records(audit_log: Path) -> list[dict[str, Any]]:
             value = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(value, dict):
+        # An action receipt says a tool call was observed, not how it ended:
+        # only the tool's own record carries its outcome.
+        if isinstance(value, dict) and value.get("schema") != ACTION_RECEIPT_SCHEMA:
             records.append(value)
     return records
 
