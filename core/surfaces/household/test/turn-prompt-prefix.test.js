@@ -143,6 +143,28 @@ for (const { packId, backend } of CASES) {
   }
 }
 
+test('a long Core inference conversation re-sends an identical prefix except when a history block leaves', async () => {
+  const { state, sent, turn, pack } = harness({ packId: 'personal_operator', backend: 'agentx' });
+  for (let index = 0; index < 12; index += 1) {
+    state.notes = [{ text: `Synthetic note ${index}.` }];
+    await turn(`Parle-moi du sujet ${index} avec les détails.`, 'voice');
+  }
+  const starts = sent.map(prompt => prompt.messages[1].role === 'user' && prompt.messages.length > 2 ? prompt.messages[1].content : null);
+  let moved = 0;
+  for (let index = 1; index < sent.length; index += 1) {
+    const before = sent[index - 1].messages.slice(0, -1), now = sent[index].messages;
+    assert.ok(now.length - 2 <= pack.historyTurns, 'history never exceeds the pack maximum');
+    assert.equal(now[0].content, sent[0].messages[0].content);
+    if (starts[index] === starts[index - 1] || starts[index - 1] === null) assert.deepEqual(now.slice(0, before.length), before);
+    else moved += 1;
+  }
+  // Twelve turns, a window of four turns moving by blocks of two: turns 5, 7, 9 and 11 drop a block.
+  assert.equal(moved, 4);
+  assert.deepEqual(starts.filter((start, index) => start !== starts[index - 1]).slice(1),
+    ['Parle-moi du sujet 0 avec les détails.', 'Parle-moi du sujet 2 avec les détails.', 'Parle-moi du sujet 4 avec les détails.',
+      'Parle-moi du sujet 6 avec les détails.', 'Parle-moi du sujet 8 avec les détails.']);
+});
+
 test('Core inference adds the reference block only when the turn selected context', async () => {
   const sent = [];
   const execute = createConversationExecutor({ inference: { execute: async body => { sent.push(body.messages);

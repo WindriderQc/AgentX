@@ -166,7 +166,8 @@ function createPersonaTurnHandler({
         if (backend === 'openclaw') await requireNativeAgent(agentIdFor(turnSession));
         let history = [];
         if (backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore) {
-          try { history = sessionHistoryMessages(await loadSessionAuditRows(conversations, session, pack), pack); }
+          // Core inference reads a block window, so its history start (and the cached prefix) moves rarely.
+          try { history = sessionHistoryMessages(await loadSessionAuditRows(conversations, session, pack), pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {}); }
           catch { return fail(res, 503, 'Conversation history is unavailable; no out-of-context answer was generated.', 'VOICE_PERSONA_HISTORY_UNAVAILABLE'); }
         }
         if (!session.backend) {

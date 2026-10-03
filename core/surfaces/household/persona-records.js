@@ -150,11 +150,31 @@ function publicAudit(doc) {
   };
 }
 
-function sessionHistoryMessages(rows = [], pack = {}) {
+// Which earlier turns Core inference sees. A window that slides by one turn
+// changes its first message on every turn, so the model's prompt cache keeps
+// nothing after the system message. This window instead grows to the pack's
+// maximum and then drops a whole block at once: its start moves once every
+// `block` turns (half the window), and only to a multiple of `block`. It is a
+// pure function of how many turns the conversation already holds.
+function historyWindow(pack = {}, turnCount = 0) {
+  const maximumMessages = Math.max(0, Math.trunc(Number(pack.historyTurns)) || 0);
+  if (maximumMessages === 0) return { turns: 0, block: 1, start: 0, visible: 0 };
+  const turns = Math.max(1, Math.floor(maximumMessages / 2));
+  const block = Math.max(1, Math.ceil(maximumMessages / 4));
+  const recorded = Math.max(0, Math.trunc(Number(turnCount)) || 0);
+  const start = recorded <= turns ? 0 : Math.ceil((recorded - turns) / block) * block;
+  return { turns, block, start, visible: recorded - start };
+}
+
+// rows are the newest turns first. With turnCount (the conversation's recorded
+// turns) the block window above applies; without it, the newest turns that fit.
+function sessionHistoryMessages(rows = [], pack = {}, { turnCount } = {}) {
   const maximumMessages = Math.max(0, Number(pack.historyTurns) || 0);
   const maximumCharacters = Math.max(1, Number(pack.historyMessageCharacters) || 1000);
   if (maximumMessages === 0) return [];
-  return rows.slice(0, Math.ceil(maximumMessages / 2)).reverse().flatMap((row) => {
+  const visibleTurns = Number.isInteger(turnCount)
+    ? historyWindow(pack, Math.max(turnCount, rows.length)).visible : Math.ceil(maximumMessages / 2);
+  return rows.slice(0, visibleTurns).reverse().flatMap((row) => {
     const audit = publicAudit(row);
     const input = cleanText(audit.inputText, maximumCharacters);
     // A team member's direct answer is labelled, so the conversation agent never takes it for its own.
@@ -183,6 +203,7 @@ module.exports = {
   createModels,
   publicSession,
   publicAudit,
+  historyWindow,
   sessionHistoryMessages,
   loadSessionAuditRows
 };
