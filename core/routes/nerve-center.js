@@ -680,6 +680,7 @@ router.use('/', require('./nerve-center-config')); // read-only configuration st
 router.use('/', require('./nerve-center-host-preferences'));
 router.use('/', require('./nerve-center-interactive-priority'));
 router.use('/', require('./nerve-center-inference-hosts')); // host registry
+router.get('/ops-watch', (_req, res) => res.json({ status: 'success', data: require('../src/services/opsWatchService').getOpsWatch().latest() }));
 
 module.exports = router;
 module.exports.buildIntelligenceSummary = buildIntelligenceSummary;

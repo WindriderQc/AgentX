@@ -101,3 +101,22 @@ describe('routing to a registered host', () => {
     expect(defaults.HOSTS['cpu-fixture']).toBeUndefined();
   });
 });
+
+describe('a task keeps to hosts of its residency', () => {
+  test('a CPU-routed task never follows its model to a GPU host, and the reverse', () => {
+    const defaults = require('../../src/services/modelRouterDefaults');
+    defaults.refreshHosts();
+    const keys = Object.keys(defaults.HOSTS).filter(key => defaults.HOSTS[key]);
+    expect(keys).toEqual(expect.arrayContaining(['primary', 'cpu-fixture']));
+    expect(keys.filter(defaults.sameResidencyAs('cpu-fixture'))).toEqual(['cpu-fixture']);
+    expect(keys.filter(defaults.sameResidencyAs('primary'))).not.toContain('cpu-fixture');
+    hostConfig.setRegisteredHosts([]);
+    defaults.refreshHosts();
+  });
+
+  test('the operations watch task stays on its configured host', () => {
+    const defaults = require('../../src/services/modelRouterDefaults');
+    expect(defaults.DEFAULT_TASK_MODELS.ops_watch).toEqual(expect.objectContaining({ model: expect.any(String) }));
+    expect(defaults.STRICT_CONFIGURED_HOST_TASKS.has('ops_watch')).toBe(true);
+  });
+});

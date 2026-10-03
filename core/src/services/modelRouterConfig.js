@@ -55,7 +55,7 @@ const {
     DEFAULT_TASK_MODELS,
     CLASSIFICATION_MODEL,
     CLASSIFICATION_HOST,
-    STRICT_CONFIGURED_HOST_TASKS
+    STRICT_CONFIGURED_HOST_TASKS, sameResidencyAs
 } = require('./modelRouterDefaults');
 
 // ── Pin cache: model → hostUrl — loaded async from HostPreference ────────
@@ -549,7 +549,7 @@ async function resolvePreferredTaskEntry(taskType, options = {}) {
     }
 
     pushCandidate(configured.model, configured.host, 'configured');
-    Object.keys(HOSTS).forEach((hostKey) => {
+    Object.keys(HOSTS).filter(sameResidencyAs(configured.host)).forEach((hostKey) => {
         pushCandidate(configured.model, hostKey, hostKey === configured.host ? 'configured' : 'same_model_other_host');
     });
 

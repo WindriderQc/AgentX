@@ -18,6 +18,7 @@ const TASK_TYPE_METADATA = Object.freeze({
   voice_persona_chat: { title: 'Voice Persona Chat', description: 'Interactive Core-hosted voice assistant turns routed from file-backed persona packs.' },
   voice_persona_reader: { title: 'Voice Persona Reader', description: 'Low-latency kid reading-aid turns from the KidX Lecteur persona pack.' },
   janitor_ai: { title: 'Janitor AI', description: 'Disk janitor advisory reasoning for storage cleanup workflows.' },
+  ops_watch: { title: 'Operations Watch', description: 'Background reports on findings that monitoring rules detected; suited to a slow CPU host.' },
   embeddings: { title: 'Embeddings', description: 'Vectorization requests for retrieval and similarity workflows.' },
   daily_operator: { title: 'Daily Operator', description: 'Direct-only external automation lane; hidden from user auto-routing.' },
   nestor_answer_light: { title: 'Nestor Answer Light', description: 'Low-latency local Nestor answers on the dedicated pinned model and host.' }

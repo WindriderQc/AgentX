@@ -171,5 +171,19 @@
         ]},
         "channels": ["local_log", "telegram"],
         "description": "Raised once per MAC that joins the LAN without an alias, after the baseline inventory. Requires NETWORK_DEVICE_WATCH_MS and the Data network collector."
+    },
+    {
+        "id": "ops-watch-report",
+        "name": "Operations watch report",
+        "enabled": true,
+        "severity": "warning",
+        "title": "Operations watch — {{findingCount}} finding(s)",
+        "message": "{{summary}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "ops_watch_report" }
+        ]},
+        "channels": ["local_log", "telegram"],
+        "renotifyMs": 21600000,
+        "description": "One short report, written by the ops_watch task model, of what monitoring rules currently flag. One incident per distinct set of findings; it resolves when they are gone. Requires OPS_WATCH_MS."
     }
 ]
