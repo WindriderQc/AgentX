@@ -42,22 +42,30 @@ function normalizeVoixMemoryTurn(body = {}) {
     error.code = 'VOIX_MEMORY_SCHEMA_UNSUPPORTED';
     throw error;
   }
-  const sessionId = cleanText(body.sessionId, 120);
-  const turnId = cleanText(body.turnId, 120);
-  const eventId = cleanText(body.eventId, 260);
+  const sessionId = body.sessionId;
+  const turnId = body.turnId;
+  const eventId = body.eventId;
   const expectedEventId = stableVoixTraceId(sessionId, turnId);
-  const userText = cleanText(body.userText, 4000);
-  const assistantText = cleanText(body.assistantText, 5000);
+  const userText = body.userText;
+  const assistantText = body.assistantText;
   const sequence = Number(body.sequence);
-  if (!/^[a-zA-Z0-9_-]{1,120}$/.test(sessionId)
-      || !/^[a-zA-Z0-9_-]{1,120}$/.test(turnId)
+  if (typeof sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,120}$/.test(sessionId)
+      || typeof turnId !== 'string' || !/^[a-zA-Z0-9_-]{1,120}$/.test(turnId)
       || eventId !== expectedEventId
       || !Number.isInteger(sequence) || sequence < 1
-      || !userText || !assistantText) {
+      || typeof userText !== 'string' || !userText.trim()
+      || typeof assistantText !== 'string' || !assistantText.trim()) {
     const error = new Error('valid eventId, sessionId, turnId, sequence, userText and assistantText are required');
     error.statusCode = 400;
     error.code = 'VOIX_MEMORY_TURN_INVALID';
     throw error;
+  }
+  // Completed native turns are canonical content, not prompt/display previews.
+  // Preserve their bytes within Core's existing per-turn bound; refuse excess
+  // explicitly so the transport can retain and repair the original payload.
+  if (userText.length > 16000 || assistantText.length > 16000) {
+    throw Object.assign(new Error('Native voice text exceeds the 16000-character Core turn limit; no content was shortened or captured.'),
+      { statusCode: 413, code: 'VOIX_MEMORY_TEXT_TOO_LARGE' });
   }
   const completedAt = new Date(body.completedAt);
   if (Number.isNaN(completedAt.getTime())) {
@@ -81,6 +89,14 @@ function normalizeVoixMemoryTurn(body = {}) {
     metrics: body.metrics && typeof body.metrics === 'object' && !Array.isArray(body.metrics)
       ? body.metrics : {}
   };
+}
+
+function matchesVoixMemoryTurn(audit, turn) {
+  return Boolean(audit && audit.source === 'voix-native' && audit.scopeId === VOIX_MEMORY_SCOPE_ID
+    && audit.sessionId === turn.sessionId && audit.sourceTurnId === turn.turnId
+    && audit.sequence === turn.sequence && audit.inputText === turn.userText
+    && audit.replyText === turn.assistantText
+    && new Date(audit.sourceCompletedAt).getTime() === turn.completedAt.getTime());
 }
 
 function inferredMemoryCandidate(text) {
@@ -129,6 +145,7 @@ module.exports = {
   explicitMemoryStatement,
   forgetMemoryStatement,
   normalizeVoixMemoryTurn,
+  matchesVoixMemoryTurn,
   inferredMemoryCandidate,
   voiceMemoryCandidateId,
   normalizeVoixTranscriptionMultipart
