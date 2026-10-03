@@ -70,7 +70,9 @@ async function infer(options, body, lane = 'local') {
   if (lane === 'frontier') {
     const [system, ...messages] = body.messages;
     const started = Date.now();
-    const result = await options.frontier.run({ agentId: options.agent, instructions: system.content, messages, timeoutMs: 180000 });
+    // One transient gateway failure must not cost a whole run.
+    const ask = () => options.frontier.run({ agentId: options.agent, instructions: system.content, messages, timeoutMs: 180000 });
+    const result = await ask().catch(() => new Promise(resolve => setTimeout(resolve, 30000)).then(ask));
     return { content: result.content.trim(), model: `openclaw/${options.agent}`, ms: Date.now() - started };
   }
   const code = fs.readFileSync(options.codeFile, 'utf8').trim();
