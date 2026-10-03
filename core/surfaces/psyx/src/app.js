@@ -6,11 +6,12 @@ const cookieParser = require('cookie-parser');
 const { createAuth } = require('./auth');
 const { createVoiceClient } = require('./voice');
 const { createReviewer } = require('./reviewer');
+const { createDreamer } = require('./dreamer');
 const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRepository');
 const domain = require('../../../src/domains/psyx/domain');
 const { detectRecentCrisis } = require('../../../src/domains/psyx/safety');
 
-const VERSION = '2.8.0';
+const VERSION = '2.9.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -83,6 +84,7 @@ function serviceStatus(config, accessConfigured = false, frontierSupported = fal
       transcriptExport: true,
       sessionDigest: config.review?.enabled !== false
     },
+    dream: { automatic: config.dream?.enabled !== false, statusEndpoint: '/api/psyx/dream/status' },
     review: {
       automatic: config.review?.enabled !== false,
       taskType: config.review?.taskType || 'deep_reasoning',
@@ -114,7 +116,7 @@ function exportDocument({ state, metadata, conversations }) {
   };
 }
 
-function createApp({ config, database, provider, voice = null, logger = console, accessAuth = null, reviewer = null }) {
+function createApp({ config, database, provider, voice = null, logger = console, accessAuth = null, reviewer = null, dreamer = null, sources = null }) {
   if (!config || !database || !provider) throw new Error('config, database, and provider are required');
   const app = express();
   const auth = accessAuth || createAuth(config);
@@ -127,6 +129,10 @@ function createApp({ config, database, provider, voice = null, logger = console,
   const review = reviewer || createReviewer({ config, provider, stateRepository, conversationRepository, logger,
     isBusy: userId => (streaming.get(userId) || 0) > 0,
     locationFor: state => frontierMode(state) === 'local' ? 'local' : 'frontier' });
+  const dream = dreamer || createDreamer({ config, provider, stateRepository, conversationRepository, sources, logger,
+    isBusy: userId => (streaming.get(userId) || 0) > 0,
+    locationFor: state => frontierMode(state) === 'local' ? 'local' : 'frontier' });
+  app.locals.dreamer = dream;
 
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -205,6 +211,10 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.post('/state/proposals/:id/accept', asyncRoute(async (req, res) => responseData(res, await stateRepository.acceptProposal(res.locals.psyxUserId, cleanText(req.params.id, 80), req.body || {}))));
   api.post('/state/proposals/:id/reject', asyncRoute(async (req, res) => responseData(res, await stateRepository.rejectProposal(res.locals.psyxUserId, cleanText(req.params.id, 80)))));
   api.get('/review/status', (req, res) => responseData(res, review.status(res.locals.psyxUserId, cleanText(req.query.conversationId, 80))));
+  api.get('/dream/status', (_req, res) => responseData(res, dream.status(res.locals.psyxUserId)));
+  api.post('/dream/run', (_req, res) => responseData(res, { scheduled: dream.request(res.locals.psyxUserId) }, 202));
+  api.post('/dream/:id/undo', asyncRoute(async (req, res) => responseData(res, { state: (await stateRepository.undoDream(res.locals.psyxUserId, cleanText(req.params.id, 80))).state })));
+  api.delete('/portrait/statements/:id', asyncRoute(async (req, res) => responseData(res, { state: (await stateRepository.rejectPortraitStatement(res.locals.psyxUserId, cleanText(req.params.id, 80))).state })));
   api.post('/state/reset', asyncRoute(async (req, res) => {
     if (req.body?.confirmation !== 'RESET PSYX MEMORY') return res.status(400).json({ ok: false, status: 'error', code: 'PSYX_RESET_CONFIRMATION_REQUIRED', message: 'Type RESET PSYX MEMORY to confirm.' });
     return responseData(res, await stateRepository.reset(res.locals.psyxUserId));
@@ -245,6 +255,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
     // The conversation is gone either way; a failed memory cleanup is logged, not reported as a failed delete.
     await stateRepository.forgetConversation(res.locals.psyxUserId, cleanText(req.params.id, 80))
       .catch(error => logger.error?.('PsyX could not forget a deleted conversation', { message: error.message }));
+    // The portrait was built from every conversation: rebuild it from what remains.
+    await dream.invalidate(res.locals.psyxUserId).catch(error => logger.error?.('PsyX could not rebuild the portrait', { message: error.message }));
     return responseData(res, { id: req.params.id });
   }));
 
@@ -372,6 +384,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
         routing: result.routing
       });
       const reviewScheduled = review.schedule(userId, session.id);
+      dream.touch(userId);
       handlers.send('done', {
         review: { scheduled: reviewScheduled },
         control: applied,

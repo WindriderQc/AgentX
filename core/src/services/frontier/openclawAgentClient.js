@@ -49,12 +49,13 @@ function createOpenClawAgentClient({ env = process.env, fetchImpl = fetch } = {}
   const available = agentId => Boolean(base && token && AGENT_ID.test(String(agentId || '')));
 
   // run({ agentId, instructions, messages, signal, timeoutMs, onToken }) -> { content, usage }
-  async function run({ agentId, instructions, messages, signal, timeoutMs = MAX_TURN_MS, firstFrameMs = FIRST_FRAME_MS, onToken }) {
+  // maxTurnMs raises the cap for background work that reads and writes a lot.
+  async function run({ agentId, instructions, messages, signal, timeoutMs = MAX_TURN_MS, maxTurnMs = MAX_TURN_MS, firstFrameMs = FIRST_FRAME_MS, onToken }) {
     if (!available(agentId)) throw frontierError('The frontier agent is not configured.', 'FRONTIER_NOT_CONFIGURED', 503);
     const silence = new AbortController();
     let silenceTimer = setTimeout(() => silence.abort(), firstFrameMs);
     const heard = () => { clearTimeout(silenceTimer); silenceTimer = null; };
-    const timeout = AbortSignal.timeout(Math.min(timeoutMs, MAX_TURN_MS));
+    const timeout = AbortSignal.timeout(Math.min(timeoutMs, maxTurnMs));
     const abort = AbortSignal.any([silence.signal, timeout, ...(signal ? [signal] : [])]);
     try {
       return await exchange({ agentId, instructions, messages, abort, heard, onToken });
