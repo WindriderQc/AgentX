@@ -27,6 +27,9 @@ const MIN_INTERVAL_MS = 5 * 60 * 1000;
 const FIRST_DELAY_MS = 2 * 60 * 1000;
 const MODEL_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_FINDINGS = 12;
+// The snapshot carries only the few latest alerts, this job's own reports
+// among them; the watch reads the active ones itself, most severe first.
+const ALERT_LIMIT = 30;
 const MAX_SUMMARY_CHARS = 1500;
 // The alert count restates the alerts listed one by one below.
 const SKIPPED_ISSUE_CODES = new Set(['active_alerts']);
@@ -80,6 +83,8 @@ function plainList(findings) {
 function createOpsWatch(deps = {}) {
   const buildSnapshot = deps.buildSnapshot
     || (() => require('../../routes/nerve-center').buildEcosystemSnapshot());
+  const listAlerts = deps.listAlerts || (deps.buildSnapshot ? null : async () => (await require('./alertService')
+    .getAlertSnapshot({ limit: ALERT_LIMIT, filters: { status: 'active' }, sort: 'severity' })).alerts);
   const execute = deps.execute || ((request, options) => require('./inferenceService').executeInference(request, options));
   const evaluateEvent = deps.evaluateEvent || (event => require('./alertService').evaluateEvent(event));
   const now = deps.now || (() => new Date());
@@ -106,7 +111,8 @@ function createOpsWatch(deps = {}) {
   }
 
   async function check() {
-    const findings = collectFindings(await buildSnapshot());
+    const snapshot = await buildSnapshot();
+    const findings = collectFindings(listAlerts ? { ...snapshot, alerts: await listAlerts() } : snapshot);
     const at = now().toISOString();
     if (findings.length === 0) {
       latest = { at, fingerprint: null, findingCount: 0, findings: [], summary: null, source: 'rules', model: null };

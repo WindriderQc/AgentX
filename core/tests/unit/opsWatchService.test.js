@@ -46,6 +46,17 @@ describe('operations watch', () => {
       'alert:pipeline-task-escalation:aaa', 'alert:pipeline-task-escalation:bbb']);
   });
 
+  it('reads the active alerts itself instead of the few the snapshot carries', async () => {
+    const execute = jest.fn(async () => ({ ok: true, body: { response: 'Two things.' }, headers: {} }));
+    const watch = createOpsWatch({
+      buildSnapshot: async () => snapshot({ issues: [offline], alerts: [{ ruleId: RULE_ID, severity: 'warning', title: 'own report' }] }),
+      listAlerts: async () => [spill], execute, evaluateEvent: jest.fn()
+    });
+    await watch.check();
+    expect(watch.latest().findings.map(finding => finding.key)).toEqual([
+      'issue:host_preference_offline:host-b', 'alert:pin-vram-spill:http://host-b:11434']);
+  });
+
   it('stays silent and calls no model when rules flag nothing', async () => {
     const { watch, execute, evaluateEvent } = harness([snapshot()]);
     await expect(watch.check()).resolves.toEqual({ findingCount: 0, summarized: false, emitted: false });
