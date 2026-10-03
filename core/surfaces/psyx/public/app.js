@@ -173,6 +173,7 @@ function setBusy(busy) {
   send.hidden = busy;
   cancelGeneration.hidden = !busy;
   updateVoiceButton();
+  syncVoiceSessionControls();
 }
 
 function setReady(ready, label) {

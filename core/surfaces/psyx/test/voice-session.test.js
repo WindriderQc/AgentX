@@ -121,6 +121,31 @@ test('a qualified spoken Stop is consumed by the shared loop without a private m
   h.context.stopVoiceSession();
 });
 
+test('noise without speech goes back to listening instead of stalling the session', async () => {
+  let turns = 0;
+  const h = browser({
+    fetch: async () => new Response(JSON.stringify({ ok: false, code: 'PSYX_VOICE_NO_SPEECH', message: 'No speech was detected in the recording.' }), { status: 422 }),
+    sendMessage: async () => { turns++; }
+  });
+  h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click();
+  await h.say();
+  assert.equal(h.$('voiceSessionDialog').dataset.phase, 'listening');
+  assert.equal(turns, 0);
+  assert.equal(h.$('voiceSessionPause').disabled, false);
+  h.context.stopVoiceSession();
+});
+
+test('Start comes back once a reply paused mid-turn has finished', async () => {
+  const h = browser(); h.context.wireVoiceSession();
+  await h.$('voiceSessionStart').listeners.click();
+  h.state.busy = true;
+  h.context.stopVoiceSession({ close: false });
+  assert.equal(h.$('voiceSessionDialog').dataset.phase, 'paused');
+  assert.equal(h.$('voiceSessionStart').disabled, true, 'still answering');
+  h.state.busy = false; h.context.syncVoiceSessionControls();
+  assert.equal(h.$('voiceSessionStart').disabled, false);
+});
+
 test('PsyX keeps its silence while it thinks: the shared holding phrase stays off', async () => {
   const h = wiring(); h.context.wireVoiceSession();
   await h.$('voiceSessionStart').listeners.click();
@@ -190,4 +215,17 @@ test('PsyX speaks a whole turn in the language chosen in its voice settings', as
     assert.ok(spoken(h).every(request => request.voice === 'Microsoft Caroline'));
     h.context.stopVoiceSession();
   }
+});
+
+test('a failed transcription rests in a state the user can leave: Commencer resumes, Pause releases the microphone', async () => {
+  const h = browser({ fetch: async () => new Response(JSON.stringify({ ok: false, message: 'Speech service unavailable' }), { status: 503 }) });
+  h.audio.reviewStatus = () => ({ id: 1 }); h.audio.clearReview = () => {}; h.audio.recordTranscription = () => {};
+  h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click();
+  await h.say();
+  assert.equal(h.$('voiceSessionDialog').dataset.phase, 'reviewing');
+  assert.match(h.$('voiceSessionPhase').textContent, /Commencer pour reprendre/);
+  assert.deepEqual([h.$('voiceSessionStart').disabled, h.$('voiceSessionPause').disabled], [false, false]);
+  await h.$('voiceSessionStart').listeners.click();
+  assert.equal(h.$('voiceSessionDialog').dataset.phase, 'listening');
+  h.context.stopVoiceSession();
 });
