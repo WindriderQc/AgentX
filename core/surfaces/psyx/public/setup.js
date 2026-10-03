@@ -36,7 +36,8 @@ function renderSetup() {
       : state.voice.reachable ? 'VoiX joignable' : 'Configurée, VoiX indisponible'],
     ['Microphone de ce navigateur', !window.isSecureContext ? 'HTTPS ou localhost requis'
       : !navigator.mediaDevices?.getUserMedia ? 'Capture non prise en charge' : microphoneLabels[setupMicrophone]],
-    ['Contenu hors LAN', 'Désactivé : les réponses et revues restent sur les voies locales']
+    ['Contenu hors LAN', typeof frontierSetupLabel === 'function' ? frontierSetupLabel()
+      : 'Désactivé : les réponses et revues restent sur les voies locales']
   ];
   container.innerHTML = rows.map(([label, value]) => `<div class="state-item"><div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(value)}</small></div></div>`).join('');
   $('testSetupMicrophone').disabled = !window.isSecureContext || !navigator.mediaDevices?.getUserMedia;

@@ -239,6 +239,7 @@ function renderStance() {
     || (control.auto.mode
       ? 'PsyX choisit sa posture après avoir réfléchi à la conversation.'
       : 'Posture choisie par toi. Choisis Auto pour laisser PsyX décider.');
+  renderFrontier(control);
 }
 
 function updateControlExplanation() {
@@ -424,7 +425,8 @@ function getLaneConfig(depth = upcomingControl().depth) {
 // The footer keeps the technical route discreet; the Brain tab has the details.
 function updateBrainRouting(lastResult = null, note = '') {
   const depth = lastResult?.control?.depth || upcomingControl().depth;
-  const { entry } = getLaneConfig(depth);
+  // A frontier reply names its own model; the local lanes come from the router.
+  const entry = !lastResult && frontierLocationFor(depth) === 'frontier' ? { model: frontierUi.model, host: '' } : getLaneConfig(depth).entry;
   const routing = lastResult?.routing || {};
   const model = routing.routedModel || lastResult?.model || entry?.model || 'modèle non résolu';
   const host = routing.routedHost || entry?.host || '';
@@ -506,6 +508,7 @@ async function bootstrap() {
     state.depthConfig = payload.depths || {};
     state.voice.enabled = payload.voice?.enabled === true;
     review.enabled = payload.review?.automatic === true;
+    setFrontierCapabilities(payload.frontier);
     const lifecycle = payload.conversationLifecycle || {};
     $('lifecycleStatus').textContent = lifecycle.archive
       ? 'L’archivage et la restauration des conversations sont disponibles.'
@@ -649,6 +652,7 @@ async function sendMessage(text, overrides = {}) {
     const deep = (finalResult.control?.depth || effectiveDepth) === 'deep';
     updateBrainRouting(finalResult, deep ? (state.thinkingObserved ? 'thinking observed' : 'thinking requested, not observed') : '');
     await loadSessions();
+    noteFrontierResult(finalResult);
     if (finalResult?.review?.scheduled) watchReview(state.conversationId);
     maybeAskCheckIn();
     if (state.voice.prefs.spokenReplies && !overrides.voiceSession) void speakText(assistantContent);
@@ -989,6 +993,7 @@ async function start() {
   wireSetup();
   wireReview();
   wireCare();
+  wireFrontier();
   wireFollowUp();
   wireSegmented('modeControl', 'mode');
   wireSegmented('depthControl', 'depth');

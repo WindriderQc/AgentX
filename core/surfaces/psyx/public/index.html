@@ -7,10 +7,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>PsyX</title>
-  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.6.0">
-  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.6.0">
-  <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.6.0">
-  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.6.0">
+  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.7.0">
+  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.7.0">
+  <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.7.0">
+  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.7.0">
 </head>
 <body class="psyx-locked">
   <div id="privacyGate" class="privacy-gate" role="dialog" aria-modal="true" aria-labelledby="privacyTitle">
@@ -35,7 +35,7 @@
         <div class="eyebrow">PRIVÉ · LOCAL</div>
         <div class="brand-line">
           <h1>PsyX</h1>
-          <span class="version-pill">V2.6.0</span>
+          <span class="version-pill">V2.7.0</span>
         </div>
         <p class="subtitle">Partenaire de réflexion psychologique · changement durable</p>
       </div>
@@ -57,6 +57,7 @@
       <div class="stance-now" role="status" aria-live="polite">
         <span id="stanceDot" class="stance-dot" data-stance="talk"></span>
         <div><strong id="stanceLabel">Prochaine réponse : Écoute · auto</strong><small id="stanceReason">PsyX choisit sa posture après avoir réfléchi à la conversation.</small></div>
+        <span id="locationBadge" class="location-badge" data-location="local" hidden>Local</span>
       </div>
       <button id="stanceToggle" class="icon-btn" type="button" aria-expanded="false" aria-controls="stancePanel">Ajuster</button>
       <div id="stancePanel" class="stance-panel" hidden>
@@ -272,6 +273,16 @@
         <p id="privacySummary">Ce navigateur reste déverrouillé jusqu’à 8 heures. Le code d’accès n’est jamais stocké dans le navigateur.</p>
         <button id="lockPsyxSettings" class="ghost-button" type="button">Verrouiller PsyX maintenant</button>
       </section>
+      <section class="data-section" id="frontierSection" hidden>
+        <h3>Cerveau cloud</h3>
+        <p>Où PsyX réfléchit. Tes conversations et ta mémoire restent stockées ici; seul le texte nécessaire à la réponse est envoyé au modèle cloud.</p>
+        <div class="frontier-modes" role="radiogroup" aria-label="Utilisation du modèle cloud">
+          <label class="voice-toggle"><input type="radio" name="frontierMode" value="all"> <span><strong>Total</strong><small>Conversation et réflexion automatique par <span data-frontier-model></span>.</small></span></label>
+          <label class="voice-toggle"><input type="radio" name="frontierMode" value="deep"> <span><strong>Économe</strong><small>Seulement la réflexion profonde et la réflexion automatique.</small></span></label>
+          <label class="voice-toggle"><input type="radio" name="frontierMode" value="local"> <span><strong>Local</strong><small>Rien ne sort de la maison.</small></span></label>
+        </div>
+        <div id="frontierStatus" class="privacy-status" role="status" aria-live="polite"></div>
+      </section>
       <section class="data-section">
         <h3>Mémoire</h3>
         <p>Ce dont PsyX se souvient est visible dans Mémoire. L’historique des conversations et la mémoire PsyX sont séparés.</p>
@@ -306,18 +317,19 @@
   </dialog>
 
   <script src="/psyx/assets/voice-audio.js?v=local-voice-0680" defer></script>
-  <script src="/js/voice/speech-language.js?v=2.6.0" defer></script>
-  <script src="/js/voice/playback-hold.js?v=2.6.0" defer></script>
-  <script src="/js/voice/browser-conversation.js?v=2.6.0" defer></script>
-  <script src="/psyx/assets/voice-session.js?v=2.6.1" defer></script>
-  <script src="/psyx/assets/voice-preferences.js?v=2.6.0" defer></script>
-  <script src="/psyx/assets/voice-controls.js?v=2.6.1" defer></script>
-  <script src="/psyx/assets/state-panel.js?v=2.6.0" defer></script>
-  <script src="/psyx/assets/review.js?v=2.6.0" defer></script>
-  <script src="/psyx/assets/care.js?v=2.6.0" defer></script>
-  <script src="/psyx/assets/follow-up.js?v=2.6.0" defer></script>
-  <script src="/psyx/assets/formulation.js?v=2.6.0" defer></script>
-  <script src="/psyx/assets/setup.js?v=2.6.0" defer></script>
-  <script src="/psyx/assets/app.js?v=2.6.1" defer></script>
+  <script src="/js/voice/speech-language.js?v=2.7.0" defer></script>
+  <script src="/js/voice/playback-hold.js?v=2.7.0" defer></script>
+  <script src="/js/voice/browser-conversation.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/voice-session.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/voice-preferences.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/voice-controls.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/state-panel.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/review.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/care.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/follow-up.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/frontier.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/formulation.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/setup.js?v=2.7.0" defer></script>
+  <script src="/psyx/assets/app.js?v=2.7.0" defer></script>
 </body>
 </html>

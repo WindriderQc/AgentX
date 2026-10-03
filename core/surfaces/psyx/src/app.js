@@ -10,7 +10,7 @@ const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRe
 const domain = require('../../../src/domains/psyx/domain');
 const { detectRecentCrisis } = require('../../../src/domains/psyx/safety');
 
-const VERSION = '2.6.0';
+const VERSION = '2.7.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
