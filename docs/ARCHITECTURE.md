@@ -32,6 +32,17 @@ inference/routing, memory/RAG access, tools/tasks, files/images, events/jobs and
 observable execution. OpenClaw, Telegram and other external harnesses use those
 capabilities and can be replaced without moving canonical data or business rules.
 
+A capability (ledger, mail triage rules, tasks) lives in Core. An agent is an
+isolation boundary in the harness: its own tools and permissions, memory,
+session history, channels and scheduled jobs. A team member such as the
+Secretary (`secretary`, Gmail) or the accountant (`comptable`, finance) is an
+agent because one of those differs from the personal assistant's. A
+personality is presentation only (name, tone, voice) laid over an agent;
+several personalities can share one agent and none widens its permissions. A
+personality may declare the agent it belongs to (`agentId` in the Household
+catalog), which gives Super Dad its team cards and a member's voice. A
+scheduled job runs on the agent that owns its capability, in isolated sessions.
+
 Chat and consumer routing are not yet fully converged on one path. Family and
 child memory and tools stay scoped even where the mechanism is shared.
 

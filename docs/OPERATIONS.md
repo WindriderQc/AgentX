@@ -360,7 +360,7 @@ on `GET /api/finance/alerts`: statement to review, no statement for
 recurring charge, and a category up 50 % and `FINANCE_ALERT_CATEGORY_SPIKE_CENTS`
 (100 $) a month. Each fact is raised once; `POST /api/finance/alerts/report`
 returns the pending alerts and marks them reported for a delivery job.
-The OpenClaw finance persona reads it through the `finance_ledger` tool of the
+The OpenClaw finance agent (`comptable`) reads it through the `finance_ledger` tool of the
 `integrations/openclaw/finance-ledger` plugin (loopback Core URL, visible only
 to the configured finance agent); amounts arrive as cents plus a formatted
 string so the model never converts or sums them. Its only write,

@@ -1,7 +1,7 @@
 # Personal finance (Wallet Beefer)
 
 Core owns the owner's finances: a ledger reconciled to the cent, a financial
-plan, simulations, alerts and the Finances page. The OpenClaw finance persona
+plan, simulations, alerts and the Finances page. The OpenClaw finance agent
 (`comptable`) only calls Core tools; it never stores figures of its own. This
 file is the handover for any agent taking over: read it with `OPERATIONS.md`.
 Personal values never enter Git; the instance keeps a private
@@ -15,12 +15,12 @@ guard answers `/api/finance/*` and `/finance` with 404
 
 - **Arithmetic decides, the model reads.** A statement is accepted only when
   every account satisfies opening + Σ rows = closing and every printed running
-  balance matches, to the cent. Totals are computed by Core; the persona quotes
+  balance matches, to the cent. Totals are computed by Core; the agent quotes
   `*Display` strings and never adds amounts.
 - **Nothing is written without reconciliation.** A statement that does not
   reconcile after the guided retries goes to review and writes no row.
 - **The owner decides categories.** Rules and per-transaction decisions come
-  from the owner (page or persona conversation); model suggestions are only
+  from the owner (page or a conversation with the agent); model suggestions are only
   proposals.
 - **Separate books.** Personal and corporate ledgers never mix.
 - **Money never moves.** The system reads, explains, alerts and drafts; the
@@ -58,7 +58,7 @@ purchases as income.
 ## Interfaces
 
 - `/api/finance/*` (adult session through the gateway; loopback for the
-  persona): statements, balances, transactions, monthly, yearly, categories,
+  agent): statements, balances, transactions, monthly, yearly, categories,
   merchants, category-months, coverage, tags, insights, alerts, rules,
   uncategorized, suggestions, transaction decisions, plan (whole, per section,
   operations), situation, debt and cash-flow simulations, balance history,
@@ -69,7 +69,7 @@ purchases as income.
   (read), `finance_categorize` (owner-confirmed rules and single-row
   decisions), `finance_alerts` (list or report once), `finance_plan` (read,
   owner-stated operations). Visible only to the configured finance agent.
-- Scheduled persona jobs (instance configuration): daily alert check (silent
+- Scheduled agent jobs (instance configuration): daily alert check (silent
   with `NO_REPLY` when nothing is new) and a weekly review.
 
 ## Known traps (each found on real statements)
