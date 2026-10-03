@@ -348,12 +348,16 @@ function createApp({ config, database, provider, voice = null, logger = console,
     // The frontier lane reads a wide context; the local routes keep their bounded one.
     const budget = location === 'frontier' ? 'frontier' : 'local';
     const lastSessionAt = longitudinal.sessionDigests?.filter(item => item.conversationId !== conversationId).at(-1)?.updatedAt || null;
-    const compose = lane => ({
-      system: domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane,
-        time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } }),
-      messages: domain.boundedContext(context || [], domain.CONTEXT_BUDGETS[lane])
-    });
-    const { system, messages: providerContext } = compose(budget);
+    const compose = lane => {
+      const selected = domain.selectConversationContext(context || [], domain.CONTEXT_BUDGETS[lane]);
+      return {
+        system: domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane,
+          time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } }),
+        messages: selected.messages, contextCoverage: selected.coverage
+      };
+    };
+    const prepared = compose(budget);
+    const { system, messages: providerContext } = prepared;
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-store');
@@ -365,7 +369,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const heartbeat = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(': ping\n\n'); }, 15000);
     const handlers = providerHandlers(res);
     streaming.set(userId, (streaming.get(userId) || 0) + 1);
-    const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety), location };
+    const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety), location,
+      contextCoverage: prepared.contextCoverage };
     handlers.send('control', applied);
     if (safety) handlers.send('safety', safety);
 
@@ -373,6 +378,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
       const result = await provider.stream({
         system,
         messages: providerContext,
+        contextCoverage: prepared.contextCoverage,
         message: input,
         location,
         // If the frontier lane fails, the local route answers with its own bounded context.

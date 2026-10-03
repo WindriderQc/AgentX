@@ -260,6 +260,8 @@ function updateControlExplanation() {
 function updateContextStatus() {
   const recentCount = state.history.filter((item) => item.role !== 'action').length;
   $('contextStatus').textContent = `${recentCount} message${recentCount === 1 ? '' : 's'} récent${recentCount === 1 ? '' : 's'} affiché${recentCount === 1 ? '' : 's'} (maximum ${MAX_CONTEXT_MESSAGES}). Le contexte de confiance est reconstruit depuis le stockage de PsyX.`;
+  const coverage = state.applied?.contextCoverage;
+  if (coverage) $('contextStatus').textContent += ` Pour cette réponse : ${coverage.includedMessages}/${coverage.availableMessages} messages précédents transmis${coverage.complete ? '.' : ' · contexte partiel.'}`;
 }
 
 function stripLegacyControlPrefix(content) {
@@ -618,10 +620,12 @@ async function sendMessage(text, overrides = {}) {
       else if (event === 'control') {
         state.applied = data;
         renderStance();
+        updateContextStatus();
       } else if (event === 'route' && data.location && state.applied) {
         // The frontier model was asked but the local route answers: say so while it answers.
-        state.applied = { ...state.applied, location: data.location };
+        state.applied = { ...state.applied, location: data.location, contextCoverage: data.contextCoverage || state.applied.contextCoverage };
         renderStance();
+        updateContextStatus();
       } else if (event === 'safety') {
         showSafety(data.resources);
       } else if (event === 'thinking') {

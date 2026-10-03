@@ -34,6 +34,17 @@ test('auto stance and depth follow the review recommendation, explicit choices w
   assert.doesNotMatch(controlSystemMessage(normalizeControl({})), /Chosen automatically/);
 });
 
+test('conversation context keeps long messages whole and reports whole-message omissions', () => {
+  const { selectConversationContext } = require('../../../src/domains/psyx/domain');
+  const long = `${'x'.repeat(12000)} IMPORTANT_TAIL`;
+  const selected = selectConversationContext([{ role: 'user', content: 'Earlier' }, { role: 'user', content: long }]);
+  assert.equal(selected.messages.at(-1).content, long);
+  assert.equal(selected.coverage.complete, true);
+  const omitted = selectConversationContext([{ role: 'user', content: 'Earlier' }, { role: 'user', content: long }], { maxTotalCharacters: 100 });
+  assert.deepEqual(omitted.messages, []);
+  assert.deepEqual(omitted.coverage, { availableMessages: 2, includedMessages: 0, omittedMessages: 2, complete: false });
+});
+
 test('crisis detection favours explicit phrasing over figures of speech', () => {
   const { detectCrisis } = require('../../../src/domains/psyx/safety');
   for (const text of ['Je pense à me suicider', 'J’ai envie d’en finir.', 'je n’ai plus envie de vivre', 'tout le monde serait mieux sans moi',

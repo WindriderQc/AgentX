@@ -131,6 +131,7 @@ test('chat ignores browser transcript authority and persists only provider compl
     assert.match(text, /event: done/);
   });
   assert.deepEqual(providerRequest.messages, [{ role: 'user', content: 'trusted prior' }]);
+  assert.deepEqual(providerRequest.contextCoverage, { availableMessages: 1, includedMessages: 1, omittedMessages: 0, complete: true });
   assert.doesNotMatch(providerRequest.system, /browser override/);
   assert.deepEqual(providerRequest.options, { temperature: 0.7 });
   assert.equal(saved.assistantMessage, 'safe answer');
