@@ -38,6 +38,14 @@ describe('operations watch', () => {
     ]);
   });
 
+  it('keeps every incident of one rule as its own finding', () => {
+    const task = (id, fingerprint) => ({ ruleId: 'pipeline-task-escalation', severity: 'warning', fingerprint,
+      title: `Pipeline task ${id} needs inspection`, message: 'heartbeat_stale' });
+    const findings = collectFindings(snapshot({ alerts: [task('0001', 'aaa'), task('0002', 'bbb'), task('0001', 'aaa')] }));
+    expect(findings.map(finding => finding.key)).toEqual([
+      'alert:pipeline-task-escalation:aaa', 'alert:pipeline-task-escalation:bbb']);
+  });
+
   it('stays silent and calls no model when rules flag nothing', async () => {
     const { watch, execute, evaluateEvent } = harness([snapshot()]);
     await expect(watch.check()).resolves.toEqual({ findingCount: 0, summarized: false, emitted: false });
