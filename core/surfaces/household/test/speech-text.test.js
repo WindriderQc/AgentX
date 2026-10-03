@@ -35,6 +35,15 @@ test('spoken lists omit enumeration markers while preserving numbers in their co
   assert.equal(speechText('1.5 dollars restent. 2026. Le projet continue.'), '1.5 dollars restent. 2026. Le projet continue.');
 });
 
+test('spoken tables retain help contacts and crisis resource URLs without reading Markdown separators', () => {
+  const text = '| Ressource | Contact |\n| :--- | ---: |\n| Prévention du suicide | 9-8-8 |\n| Info-Social | 811 |\n| Québec | 1 866 APPELLE (277-3553) |';
+  const spoken = speechText(text);
+  for (const contact of ['9-8-8', '811', '1 866 APPELLE (277-3553)']) assert.ok(spoken.includes(contact), contact);
+  assert.doesNotMatch(spoken, /\||---/);
+  assert.equal(speechText('Aide : https://suicide.ca/fr et https://988.ca/fr'), 'Aide : suicide.ca et 988.ca');
+  assert.equal(speechText('Lien technique https://example.com/private/path'), 'Lien technique');
+});
+
 test('the advertised automatic French/English mode requests bounded bilingual recognition', () => {
   assert.equal(transcriptionLanguage('auto'), 'fr-en');
   assert.equal(transcriptionLanguage(''), 'fr-en');

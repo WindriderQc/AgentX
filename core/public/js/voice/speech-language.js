@@ -112,9 +112,16 @@
       .replace(/(```|~~~)[\s\S]*?(?:\1|$)/g, '')
       .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
       .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-      .replace(/https?:\/\/\S+/g, '')
+      .replace(/https?:\/\/\S+/g, url => {
+        // A help resource must remain audible even when supplied as a URL.
+        const host = url.match(/^https?:\/\/(?:www\.)?(suicide\.ca|988\.ca)(?=[/:?#\s]|$)/i)?.[1];
+        return host || '';
+      })
       .replace(/<\/?[a-z][^>]*>/gi, '')
-      .replace(/^[ \t]*\|.*\|[ \t]*$/gm, '')
+      .replace(/^[ \t]*\|(.+)\|[ \t]*$/gm, (_row, body) => {
+        const cells = body.split('|').map(cell => cell.trim()).filter(Boolean);
+        return cells.every(cell => /^:?-+:?$/.test(cell)) ? '' : cells.join('. ');
+      })
       .replace(/[0-9#*]\uFE0F?\u20E3/gu, '')
       .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\u200D\uFE0E\uFE0F\u{E0020}-\u{E007F}]/gu, '')
       .replace(/\\([_*`])/g, '$1')
