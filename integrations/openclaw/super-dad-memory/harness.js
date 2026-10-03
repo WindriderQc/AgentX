@@ -61,6 +61,10 @@ export async function recordTool(workspace, event, context, { config, pluginConf
   const soundId = !failed && soundTool && data?.status === 'available'
     && /^[a-z][a-z0-9-]{0,63}$/.test(data?.sound?.id || '') ? data.sound.id : null;
   const localImage = tool === 'local_image' && data?.ok === true && data?.operation?.id;
+  const imageOperation = !failed && localImage && event.params?.action === 'create'
+    && data.acceptedAction?.operationId === data.operation.id
+    && /^[a-f0-9-]{36}$/.test(data.operation.id) && /^[a-f0-9]{64}$/.test(data.acceptedAction.actionKey || '')
+    ? { id: data.operation.id, actionKey: data.acceptedAction.actionKey } : null;
   const proved = localImage ? data.operation.state === 'completed' && data.operation.runtimeRestored === true && Boolean(data.operation.artifact?.sha256)
     : tool === "personal_memory" ? data?.ok === true
     : soundTool ? Boolean(soundId)
@@ -78,6 +82,7 @@ export async function recordTool(workspace, event, context, { config, pluginConf
       observed: event.result !== undefined,
       provenance: nativeActionProvenance(context, config, pluginConfig),
       ...(soundId ? { soundId } : {}),
+      ...(imageOperation ? { imageOperation } : {}),
       deliveryState: "unknown", at: nowIso() }].slice(-40) }));
 }
 

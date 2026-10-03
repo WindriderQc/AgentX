@@ -150,6 +150,13 @@ async function get(id) {
   if (!op) throw fail('Opération image inconnue.', 404);
   return publicOperation(op);
 }
+// The native conversation adapter observes only the already accepted action.
+// Reading this receipt does not initialize/recover a worker or dispatch work.
+async function getForAction(id, actionKey) {
+  const op = await ImageOperation.findOne({ _id: id, actionKey }).lean();
+  if (!op) throw fail('Opération image inconnue pour cette demande.', 404);
+  return publicOperation(op);
+}
 async function list() {
   await initialize();
   return (await ImageOperation.find().sort({ createdAt: -1 }).limit(30).lean()).map(publicOperation);
@@ -198,4 +205,4 @@ function status() {
   return { configured: Boolean(config && defaultArchive().enabled), defaultProfile: config?.defaultProfile || null,
     profiles: Object.entries(config?.profiles || {}).map(([id, p]) => ({ id, label: p.label || id, maxPixels: p.maxPixels, license: p.license || null })) };
 }
-module.exports = { accept, get, list, cancel, image, retryArchive, recover, status, validate, publicOperation };
+module.exports = { accept, get, getForAction, list, cancel, image, retryArchive, recover, status, validate, publicOperation };

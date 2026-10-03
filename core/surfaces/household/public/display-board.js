@@ -27,6 +27,7 @@
   }
 
   function safeUrl(value) {
+    if (/^\/images\?operation=[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(String(value || ''))) return value;
     try {
       const url = new URL(/^www\./i.test(value) ? 'https://' + value : value);
       return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
