@@ -178,6 +178,26 @@ class CatchupTests(unittest.TestCase):
             self.assertEqual(self.archive.native_next()["outcome"], "ready")
 
 
+class StoreTests(unittest.TestCase):
+    def test_concurrent_writers_never_share_a_temporary_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            target = Path(temp) / "native-status.json"
+            names = []
+            original = Path.replace
+
+            def recording(self, destination):
+                names.append(self.name)
+                return original(self, destination)
+            with mock.patch.object(Path, "replace", recording), mock.patch.object(catchup.os, "getpid", side_effect=[101, 202]):
+                import evidence_store
+                with mock.patch.object(evidence_store.os, "getpid", side_effect=[101, 202]):
+                    evidence_store.save(target, {"writer": 1})
+                    evidence_store.save(target, {"writer": 2})
+            self.assertEqual(names, ["native-status.json.101.tmp", "native-status.json.202.tmp"])
+            self.assertEqual(catchup.load(target), {"writer": 2})
+            self.assertEqual(list(Path(temp).glob("*.tmp")), [])
+
+
 class CoreClientTests(unittest.TestCase):
     def opener(self, *responses):
         calls = []
