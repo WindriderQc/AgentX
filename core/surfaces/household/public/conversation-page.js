@@ -258,7 +258,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     }
     return data.session;
   }
-  async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice } = {}) {
+  async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice, onSayEnd } = {}) {
     personalNotes.show(null);
     activeBrowserTurn = turnId; activity('turn'); brain.cancel(); turnSpeaker = null;
     const response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
@@ -304,6 +304,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         if (!partial) { partial = document.createElement('div'); partial.className = 'conversation-message assistant'; if (turnSpeaker) partial.dataset.speaker = turnSpeaker.name; transcript.append(partial); }
         partial.textContent = answer; onDelta(event.delta); activity('delta', { size: event.delta.length });
       }
+      // Core has sent every spoken word; pictures, tools and the record follow before `done`.
+      if (event.type === 'say_end' && !interruptedTurns.has(turnId)) onSayEnd?.();
       if (event.type === 'done') { result = event.data; activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); void brain.follow(session.sessionId, event.data?.traceId); }
     };
     try {

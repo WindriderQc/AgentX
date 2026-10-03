@@ -553,7 +553,11 @@
           if (speak(pending.slice(0, length))) firstChunk = false;
           pending = pending.slice(length);
         }
-      }, { turnId: turn.id, onNotice: speak, ...(attachments.length && { attachmentIds: attachments.map(item => item.id) }) });
+      }, { turnId: turn.id, onNotice: speak,
+        // The surface reports that every spoken word was sent: say the last clause
+        // now rather than when the turn completes (its closing work can be slow).
+        onSayEnd: () => { if (this.owns(turn) && streamed) { speak(pending); pending = ''; } },
+        ...(attachments.length && { attachmentIds: attachments.map(item => item.id) }) });
       const holdingDelay = this.io.holdingDelayMs === undefined ? HOLDING_DELAY_MS : this.io.holdingDelayMs;
       const holding = holdingDelay === null ? null : setTimeout(() => {
         if (streamed || !this.owns(turn) || turn.interrupted) return;

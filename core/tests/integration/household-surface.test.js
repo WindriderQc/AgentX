@@ -879,6 +879,12 @@ describe('built-in Household surface on Core', () => {
     const events = streamed.body.split('\n').filter(Boolean).map(line => JSON.parse(line));
     const spoken = events.filter(event => event.type === 'delta').map(event => event.delta).join('');
     expect(spoken).not.toMatch(/Brancher|sk-synthetic|show/);
+    // `say_end` follows the last spoken word and precedes the turn's closing work, so a voice page flushes early.
+    const types = events.map(event => event.type), sayEnd = types.indexOf('say_end');
+    expect(types.filter(type => type === 'say_end')).toHaveLength(1);
+    expect(sayEnd).toBeGreaterThan(types.lastIndexOf('delta'));
+    expect(sayEnd).toBeLessThan(types.indexOf('tools'));
+    expect(types.indexOf('tools')).toBeLessThan(types.indexOf('done'));
     expect(events.filter(event => event.type === 'show').map(event => event.block.kind)).toEqual(['list', 'secret']);
     const done = events.at(-1).data;
     expect(done.reply.text).toBe('Je t’ai mis les étapes à l’écran.\n\nOn commence?');

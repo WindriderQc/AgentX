@@ -233,6 +233,12 @@ then their words, then French. The loop hands that language to the surface
 adapter with every clause, notice and holding phrase, and adapters do not
 re-score a clause.
 
+A clause is spoken when text follows its end, so a reply's last clause waits
+for a signal that nothing follows. A surface that streams its reply gives that
+signal as soon as the spoken text is complete (`onSayEnd`), ahead of the turn's
+closing work; the completed turn remains the fallback. PsyX speaks a reply only
+once its turn is confirmed, so it has nothing to flush early.
+
 The shared speech boundary removes code fences, images, links, table markup,
 HTML and presentation symbols from spoken text while preserving prose and
 emergency phone numbers. The browser, synthesis proxies and native voice reply
@@ -370,7 +376,10 @@ finance (`/api/finance`, `/finance`) are in the demo exclusion list of
   spoken text is streamed as `delta`, stored as `replyText` and sent to browser
   TTS or native VoiX; blocks stream as `show` events to the page's "À l'écran"
   zone (`display-board.js`) and are kept on the turn as `display`. Secrets are
-  private-only, shown masked, and stored redacted.
+  private-only, shown masked, and stored redacted. A `say_end` event follows
+  the last spoken `delta`, before pictures are resolved and the turn is
+  recorded, so the voice page says the reply's last clause without waiting for
+  `done`; a consumer that ignores it still gets everything from `done`.
   An image block names a source and search words, never an address;
   `visuals.js` resolves it (SearXNG images, or the Data file index under a
   configured, mounted photo/media root), streams it to the page's Images zone and

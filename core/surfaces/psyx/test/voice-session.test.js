@@ -130,6 +130,17 @@ test('PsyX keeps its silence while it thinks: the shared holding phrase stays of
   h.context.stopVoiceSession();
 });
 
+test('PsyX speaks only a confirmed reply: its turn sends no text early, so nothing is flushed before it', async () => {
+  let confirm;
+  const h = browser({ sendMessage: () => new Promise(resolve => { confirm = resolve; }) });
+  h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click();
+  const exchange = h.say(); await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(spoken(h), [], 'no speech while the private turn is unconfirmed');
+  confirm({ text: 'Je suis là.', language: 'fr' }); await exchange;
+  assert.deepEqual(spoken(h).map(request => request.text), ['Je suis là.']);
+  h.context.stopVoiceSession();
+});
+
 test('PsyX speaks a whole turn in the language chosen in its voice settings', async () => {
   for (const chosen of ['fr', 'en']) {
     const other = chosen === 'fr' ? 'en' : 'fr';

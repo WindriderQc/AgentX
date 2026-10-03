@@ -1246,6 +1246,40 @@ test('a holding phrase already playing finishes while the first clause is prepar
   h.conversation.stop();
 });
 
+test('the end of the spoken text says the last clause before the turn completes, once', async () => {
+  const closing = deferred(), spoken = [];
+  const h = harness({
+    async turn(_session, _text, _signal, delta, options) {
+      delta('Voici la réponse.'); await tick();
+      assert.deepEqual(spoken, [], 'a final period is not a clause boundary while text may follow');
+      options.onSayEnd();
+      await closing.promise; // pictures, tool receipts and the record still to come
+      return { text: 'Voici la réponse.', language: 'fr' };
+    },
+    async synthesize(reply) { spoken.push(reply.text); return new ArrayBuffer(4); } });
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await tick(); await tick(); await tick();
+  assert.deepEqual(spoken, ['Voici la réponse.']);
+  assert.ok(h.calls.includes('play'), 'it plays while the turn is still closing');
+  assert.equal(h.conversation.turnPending, true);
+  closing.resolve(); await exchange;
+  assert.deepEqual(spoken, ['Voici la réponse.'], 'completion does not repeat it');
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('an end-of-text signal with nothing streamed, or after a pause, speaks nothing early', async () => {
+  const closing = deferred(), spoken = [];
+  let end;
+  const h = harness({
+    async turn(_session, _text, _signal, delta, options) { end = () => { delta('Trop tard.'); options.onSayEnd(); }; options.onSayEnd(); await closing.promise; return { text: 'Réponse complète.' }; },
+    async synthesize(reply) { spoken.push(reply.text); return new ArrayBuffer(4); } });
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say(); await tick(); await tick();
+  assert.deepEqual(spoken, [], 'an unstreamed reply is spoken from the completed turn');
+  h.conversation.stop(true); end(); closing.resolve(); await exchange;
+  assert.deepEqual(spoken, [], 'a paused turn is never spoken later');
+});
+
 test('a holding phrase whose voice fails never fails the answer', async () => {
   const slow = deferred(), played = [];
   const h = harness({ holdingDelayMs: 5, turn: () => slow.promise,
