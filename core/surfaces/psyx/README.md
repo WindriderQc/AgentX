@@ -138,12 +138,18 @@ custody schedule: that rhythm is known only where a note or the profile says it.
 
 `eval/` holds a small set of synthetic scenarios, one per therapeutic skill, and a
 runner that builds each reply exactly as the chat does (prompt, stance, state,
-safety check), asks Core's router for it and scores it with deterministic checks
-and a judge model grading each criterion. Run it against the LAN gateway before
-and after a prompt or model change and compare:
+portrait, safety check), asks for it on the chosen lane and scores it with
+deterministic checks and a judge model grading each criterion. A scenario with
+`turns` is a whole conversation: PsyX answers each scripted user turn in sequence
+and the judge grades how it was led. Run it against the LAN gateway before and
+after a prompt or model change and compare:
 
     AGENTX_BASE_URL=https://<core> node core/surfaces/psyx/eval/run.js --repeat 2 --out before.json
     AGENTX_BASE_URL=https://<core> node core/surfaces/psyx/eval/run.js --repeat 2 --compare before.json
 
 Reports stay outside Git. The default judge is the router's `deep_reasoning`
 model; when it is also the reply model, `--judge-model` gives a second opinion.
+`--lane frontier` asks the OpenClaw agent PsyX uses for the replies and
+`--judge frontier` for the grades (`OPENCLAW_GATEWAY_URL`, `OPENCLAW_GATEWAY_TOKEN`,
+`PSYX_FRONTIER_AGENT`), so local replies can be graded by a model that did not
+write them. `--preface` puts a text before the PsyX prompt to test a wording.
