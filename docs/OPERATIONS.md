@@ -17,7 +17,18 @@ responses. Erasing a recovery copy leaves an already saved conversation intact;
 erasing that conversation purges its associated copies and rejects late writes.
 Household, PsyX and external consumer routes keep their existing contracts.
 
-The transcript-page primitives are not attached to the `Conversation` model.
+`Conversation` keeps an atomic reference to immutable transcript pages and
+complete payload chunks. Existing embedded histories remain readable and move
+on their next content write; no bulk migration is required. Content and search
+metadata have integrity checks. A missing page, chunk or search index projection
+returns `CONVERSATION_TRANSCRIPT_UNAVAILABLE`, never a partial history or export.
+A whitespace-delimited search token larger than the safe index row (8 MiB)
+also refuses search explicitly; its full content remains readable and exportable.
+Queries requiring an oversized field's bounded index projection refuse with
+`CONVERSATION_QUERY_REQUIRES_FULL_CONTENT`. Partial message selections cannot
+replace a full transcript. Query upserts, update pipelines and raw/unordered
+bulk inserts have no transcript implementation and refuse explicitly.
+
 There is no automatic fence takeover or recovery endpoint. Never clear a writer
 token merely because it is old, or report erasure complete after an uncertain
 database command. Recovery requires independent proof that the exact writer and

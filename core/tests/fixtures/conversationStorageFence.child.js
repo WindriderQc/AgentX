@@ -27,7 +27,15 @@ const resume = () => new Promise(resolve => process.once('message', resolve));
     };
   }
   let result;
-  if (input.action === 'append') result = await exchanges.append(input.receipt, 0, Buffer.from('Late synthetic response'));
+  if (input.action === 'modelAppend') {
+    const Conversation = require('../../models/Conversation');
+    const row = await Conversation.findOneAndUpdate({ _id: input.owner, userId: input.userId,
+      ...(input.trace ? { 'messages.metadata.clientTurnId': { $ne: input.trace } } : {}) },
+    { $push: { messages: { role: 'assistant', content: 'Synthetic model response', metadata: { clientTurnId: input.trace } } },
+      $inc: { 'usage.totalTokens': 1 } }, { new: true });
+    result = row ? { id: String(row._id) } : null;
+  }
+  else if (input.action === 'append') result = await exchanges.append(input.receipt, 0, Buffer.from('Late synthetic response'));
   else if (input.action === 'accept') result = await exchanges.accept(input.scope, { body: { message: 'Synthetic input' } }, input.key);
   else if (input.action === 'transcript') result = await transcripts.writeTranscript(input.owner,
     [{ role: 'assistant', content: 'Synthetic transcript' }]);
