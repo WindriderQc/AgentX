@@ -7,7 +7,7 @@
  */
 
 const { getOrCreateProfile } = require('../helpers/userHelpers');
-const { buildOllamaPayload, buildOllamaStats } = require('../helpers/ollamaResponseHandler');
+const { buildOllamaPayload, buildOllamaStats, ollamaPhaseTimings } = require('../helpers/ollamaResponseHandler');
 const { sanitizeOptions, resolveTarget } = require('../helpers/ollamaUtils');
 const { recordInference } = require('./modelRouter');
 const { prepareInferenceRuntime } = require('./inferenceRuntimePolicy');
@@ -348,6 +348,7 @@ const handleChatRequestStream = async ({
             num_ctx_source: streamNumCtxSource,
             tokensIn: stats?.usage?.promptTokens || 0,
             tokensOut: stats?.usage?.completionTokens || 0,
+            ...ollamaPhaseTimings(completion),
             durationMs: successDurationMs,
             status: 'success'
         });

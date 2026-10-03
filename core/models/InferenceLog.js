@@ -65,6 +65,13 @@ const InferenceLogSchema = new mongoose.Schema({
   tokensIn: { type: Number, default: 0 },
   tokensOut: { type: Number, default: 0 },
   durationMs: { type: Number, default: 0 },
+  // Ollama phase timings in ms (load_duration, prompt_eval_duration,
+  // eval_duration) and, for streamed calls, Core's dispatch-to-first-output
+  // latency. No defaults: a phase the upstream did not report stays absent.
+  loadMs: { type: Number, min: 0 },
+  promptEvalMs: { type: Number, min: 0 },
+  evalMs: { type: Number, min: 0 },
+  firstTokenMs: { type: Number, min: 0 },
 
   // Status
   status: {

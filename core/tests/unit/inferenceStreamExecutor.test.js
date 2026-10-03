@@ -126,3 +126,47 @@ test('embeddings remain buffered on their native endpoint even with a stream pre
   expect(admission.complete).toHaveBeenCalledTimes(1);
   expect(release).toHaveBeenCalledTimes(1);
 });
+
+test('the settlement snapshot times the first output frame from dispatch and keeps terminal phases', async () => {
+  let now = 1000;
+  const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+  const flushed = () => new Promise(resolve => setImmediate(resolve));
+  try {
+    const { source, deps } = fixture();
+    const attempt = await executeAdmittedOllamaStream(request, deps);
+    const reading = read(attempt.stream);
+    const frames = [
+      [1100, { message: { role: 'assistant', content: '' }, done: false }],
+      [1250, { message: { role: 'assistant', content: '', thinking: 'plan' }, done: false }],
+      [1400, { message: { role: 'assistant', content: 'answer' }, done: false }],
+    ];
+    for (const [at, frame] of frames) {
+      now = at;
+      source.write(`${JSON.stringify(frame)}\n`);
+      await flushed();
+    }
+    now = 1500;
+    source.end(`${JSON.stringify({ done: true, prompt_eval_count: 9, eval_count: 2,
+      load_duration: 3_000_000, prompt_eval_duration: 40_000_000, eval_duration: 60_000_000 })}\n`);
+    await reading;
+    expect(await attempt.completion).toMatchObject({
+      completed: true, firstTokenMs: 250, load_duration: 3_000_000,
+      prompt_eval_duration: 40_000_000, eval_duration: 60_000_000,
+    });
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+test('a stream with no output frame and no reported phases leaves those fields out', async () => {
+  const { source, deps } = fixture();
+  const attempt = await executeAdmittedOllamaStream(request, deps);
+  const reading = read(attempt.stream);
+  source.end('{"message":{"role":"assistant","content":""},"done":true,"eval_count":0}\n');
+  await reading;
+  const snapshot = await attempt.completion;
+  expect(snapshot).toMatchObject({ completed: true });
+  for (const field of ['firstTokenMs', 'load_duration', 'prompt_eval_duration', 'eval_duration']) {
+    expect(snapshot).not.toHaveProperty(field);
+  }
+});

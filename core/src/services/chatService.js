@@ -1,6 +1,6 @@
 const Conversation = require('../../models/Conversation');
 const { getOrCreateProfile } = require('../helpers/userHelpers');
-const { extractResponse, buildOllamaPayload } = require('../helpers/ollamaResponseHandler');
+const { extractResponse, buildOllamaPayload, ollamaPhaseTimings } = require('../helpers/ollamaResponseHandler');
 const { summarizeOllamaOutcome } = require('./laneObservabilityService');
 const { sanitizeOptions, resolveTarget } = require('../helpers/ollamaUtils');
 const { recordInference } = require('./modelRouter');
@@ -158,6 +158,7 @@ const handleChatRequest = async ({
     let assistantMessageContent, thinking, warning, stats;
     let inferenceContract = null;
     let observabilityOutcome = null;
+    let phaseTimings = {};
     let sanitized = {};
     let numCtxSource = null;
     let inferenceDispatched = false;
@@ -208,6 +209,7 @@ const handleChatRequest = async ({
                 throw buildOllamaStatusError({ url, response, detail: errDetail, model: effectiveModel });
             }
             observabilityOutcome = summarizeOllamaOutcome(data);
+            phaseTimings = ollamaPhaseTimings(data);
 
             const extracted = extractResponse(data, effectiveModel, {
                 thinkingSupported: hasQualifiedThinkingCapability(inferenceContract)
@@ -308,6 +310,7 @@ const handleChatRequest = async ({
         num_ctx_source: numCtxSource,
         tokensIn: stats?.usage?.promptTokens || 0,
         tokensOut: stats?.usage?.completionTokens || 0,
+        ...phaseTimings,
         durationMs: successDurationMs,
         status: 'success'
     });

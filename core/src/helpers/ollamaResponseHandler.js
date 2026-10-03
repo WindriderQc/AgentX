@@ -145,6 +145,33 @@ function buildOllamaStats(data, assistantContent) {
   };
 }
 
+const OLLAMA_PHASE_FIELDS = Object.freeze([
+  ['load_duration', 'loadMs'],
+  ['prompt_eval_duration', 'promptEvalMs'],
+  ['eval_duration', 'evalMs']
+]);
+
+function nonNegativeReported(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+/**
+ * Inference-log phase timings from an Ollama final response or stream record.
+ *
+ * Ollama reports nanoseconds; telemetry stores rounded milliseconds. A phase
+ * Ollama did not report stays absent instead of becoming 0, so a missing
+ * measurement never reads as a free one. A streamed telemetry snapshot also
+ * carries Core's own `firstTokenMs`, which passes through when present.
+ */
+function ollamaPhaseTimings(data) {
+  const timings = {};
+  for (const [field, key] of OLLAMA_PHASE_FIELDS) {
+    if (nonNegativeReported(data?.[field])) timings[key] = Math.round(data[field] / 1e6);
+  }
+  if (nonNegativeReported(data?.firstTokenMs)) timings.firstTokenMs = Math.round(data.firstTokenMs);
+  return timings;
+}
+
 /**
  * Extract assistant response from Ollama API response
  * Handles various response formats and thinking model outputs
@@ -398,6 +425,7 @@ module.exports = {
   normalizeOllamaResponse,
   buildOllamaPayload,
   buildOllamaStats,
+  ollamaPhaseTimings,
   cleanContent, // Export for testing
   extractThinkingBlocks // Export for benchmark thinking extraction
 };
