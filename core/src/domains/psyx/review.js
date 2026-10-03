@@ -7,7 +7,7 @@
 const { stateForPrompt } = require('./stateRepository');
 const { PROPOSAL_LIMITS, normalizeProposal, normalizeDigest } = require('./proposals');
 
-const REVIEW_PROMPT_VERSION = 1;
+const REVIEW_PROMPT_VERSION = 2;
 
 const REVIEW_SYSTEM_PROMPT = `You are the background reviewer of PsyX, a private psychological thinking partner for one adult user. You never speak to the user. Reread the conversation with the current longitudinal state and return only one JSON object:
 
@@ -25,7 +25,8 @@ Rules:
 - Prefer an experiment when the user is ready to test something; prefer an open loop for an unresolved question the user will want to return to.
 - If the conversation contains any sign of suicidal thoughts, self-harm or harm to others, "next" is talk with normal depth.
 - "next" sets how PsyX should answer the user's next message. talk: stay with lived experience, especially while emotion is high or the user is still telling the story. analyze: map triggers, beliefs and loops once the situation is on the table. challenge: pressure-test a convenient narrative, avoidance or certainty the evidence does not support, when the user can hear it. plan: turn an insight the user accepts into one small observable step. depth deep only when the next answer needs deliberate reasoning: high emotional load, an important decision, contradictions or competing explanations; otherwise normal.
-- Write in the language of the conversation.`;
+- Write in the language of the conversation. The user reads the digest, the reason and the proposals: address the user directly (in French, "tu": "Tu as testé...", never "l'utilisateur").
+- Leave "movement" and "commitment" as empty strings when there is none; never write that there is none.`;
 
 function transcript(turns) {
   return turns.map(turn => `${turn.role === 'assistant' ? 'PsyX' : 'User'}: ${turn.content}`).join('\n\n');
