@@ -119,10 +119,35 @@ function finalOpenClawText(body) {
     .map((part) => String(part.text || '')).join('').trim();
 }
 
+// Every seated agent thinks with its own brain. A conversation provider answers
+// with a lighter model when the host is busy, which would handicap one speaker
+// against another; ROUNDTABLE_OPENCLAW_STRICT_PROVIDERS (for example
+// {"agentx-conversation":"ollama"}) names, per provider, the strict one that
+// waits for the host instead. The model itself is never changed.
+function strictModel(model, env) {
+  let map;
+  try { map = JSON.parse(env.ROUNDTABLE_OPENCLAW_STRICT_PROVIDERS || '{}'); } catch { return null; }
+  const text = String(model || ''), slash = text.indexOf('/');
+  const strict = slash > 0 ? map?.[text.slice(0, slash)] : null;
+  return typeof strict === 'string' && /^[a-z0-9_-]{1,40}$/.test(strict) ? strict + text.slice(slash) : null;
+}
+
+const catalogCache = { at: 0, key: '', models: new Map() };
+async function agentModel(agentId, deps) {
+  if (!deps.env.ROUNDTABLE_OPENCLAW_STRICT_PROVIDERS) return null;
+  const key = String(deps.env.OPENCLAW_GATEWAY_URL), now = Date.now();
+  if (catalogCache.key !== key || now - catalogCache.at > 5 * 60 * 1000) {
+    const agents = await listOpenClawAgents(deps.env, deps.fetchImpl);
+    if (agents.length) Object.assign(catalogCache, { at: now, key, models: new Map(agents.map((agent) => [agent.id, agent.model])) });
+  }
+  return catalogCache.models.get(agentId) || null;
+}
+
 async function callOpenClaw(agent, prompt, context, deps) {
   const agentId = String(agent.agentId || '');
   if (!OPENCLAW_AGENT.test(agentId)) throw new Error('An OpenClaw participant must use its OpenClaw agent id');
   const base = gatewayUrl(deps.env);
+  const strict = strictModel(await agentModel(agentId, deps), deps.env);
   // One native session per Council session and agent: the debate never enters the agent's own conversations.
   const sessionKey = `agent:${agentId}:roundtable:${String(context.roundtableId || 'adhoc').replace(/[^A-Za-z0-9-]/g, '')}`;
   const controller = new AbortController();
@@ -131,7 +156,8 @@ async function callOpenClaw(agent, prompt, context, deps) {
     const response = await deps.fetchImpl(new URL('/v1/responses', base).toString(), {
       method: 'POST', redirect: 'error', signal: controller.signal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.env.OPENCLAW_GATEWAY_TOKEN}`,
-        'x-openclaw-session-key': sessionKey, 'x-openclaw-message-channel': 'webchat' },
+        'x-openclaw-session-key': sessionKey, 'x-openclaw-message-channel': 'webchat',
+        ...(strict ? { 'x-openclaw-model': strict } : {}) },
       body: JSON.stringify({ model: `openclaw/${agentId}`, stream: false,
         instructions: 'AgentX Roundtable turn: advisory only. Use read-only tools if they help; never send, write, modify or execute anything.',
         input: [{ type: 'message', role: 'user', content: prompt }] })
@@ -157,7 +183,7 @@ async function listOpenClawAgents(env = process.env, fetchImpl = fetch) {
     const body = await response.json();
     if (!response.ok || body?.authority !== 'openclaw.nestor' || !Array.isArray(body.agents)) return [];
     return body.agents.filter((agent) => OPENCLAW_AGENT.test(String(agent?.id || '')) && agent.id !== 'family')
-      .map((agent) => ({ id: agent.id, name: String(agent.name || agent.id).slice(0, 80) }));
+      .map((agent) => ({ id: agent.id, name: String(agent.name || agent.id).slice(0, 80), model: String(agent.model || '').slice(0, 160) }));
   } catch {
     return [];
   }
@@ -209,5 +235,6 @@ module.exports = {
   callRuntimeParticipant,
   finalOpenClawText,
   listOpenClawAgents,
+  strictModel,
   validateRuntimeConfiguration
 };
