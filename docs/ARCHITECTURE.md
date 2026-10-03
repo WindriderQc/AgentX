@@ -22,7 +22,9 @@ Qdrant stay internal.
 
 Distribution uses optional profiles and capabilities from this one repository.
 Concrete host settings, credentials, personal data and backups are external
-runtime material. There is no separate private operations repository.
+runtime material. No other repository holds product or operations code; an
+instance may keep a private instance repository for its own configuration,
+runbooks and assets ([ADR 0001](adr/0001-one-repository.md)).
 
 ## Ownership
 
