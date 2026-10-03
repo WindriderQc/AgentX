@@ -9,12 +9,14 @@ import { createCoreNotesClient, configuredJobContext } from "./core-notes.js";
 import { createCoreVaultClient } from "./core-vault.js";
 import { createCoreJournalClient } from "./core-journal.js";
 import { createCoreIdentifiersClient, householdOwnerSession } from "./core-identifiers.js";
+import { registerLocalImages } from "./local-images.js";
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
   name: "Nestor Personal Harness",
   description: "Private notes, requested context, observed action receipts and the existing personal briefing.",
   register(api) {
+    registerLocalImages(api);
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });

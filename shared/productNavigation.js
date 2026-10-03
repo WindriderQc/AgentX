@@ -50,6 +50,8 @@ function buildProductNavigation({
         { label: 'Household home', href: coreBase + '/',        icon: 'fa-house',           id: 'household-home', fullProfile: true },
         { label: 'Super Dad',      href: coreBase + '/dad',     icon: 'fa-user-tie',        id: 'super-dad',
           description: 'Private space with the personal assistant: conversation, day, memories and family follow-up.' },
+        { label: 'Images',         href: coreBase + '/images',  icon: 'fa-image',           id: 'images', fullProfile: true,
+          description: 'Create and edit images locally; results join the configured image archive.' },
         { label: 'Family',         href: coreBase + '/panel',   icon: 'fa-people-roof',     id: 'family',
           description: 'Shared family space. Opening it locks the adult space on this browser.' },
         { label: 'PsyX',           href: coreBase + '/psyx',    icon: 'fa-comment-medical', id: 'psyx' },

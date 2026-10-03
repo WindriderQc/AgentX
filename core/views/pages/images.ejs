@@ -1,0 +1,30 @@
+<main class="image-studio">
+  <header><p class="image-eyebrow">ATELIER LOCAL</p><h1>Une idée, une image.</h1>
+    <p>Crée une image ou transforme une photo. Les résultats sont conservés dans les photos de la maison.</p></header>
+  <div class="image-layout">
+    <section class="image-compose" aria-label="Créer une image">
+      <form id="image-form">
+        <label for="image-prompt">Qu’est-ce que tu imagines ?</label>
+        <textarea id="image-prompt" maxlength="8000" required rows="7" placeholder="Un chalet québécois au bord d’un lac, à l’aube, brume légère, lumière dorée…"></textarea>
+        <div class="image-controls">
+          <label>Rendu<select id="image-profile"></select></label>
+          <label>Format<select id="image-size"><option value="1024,1024">Carré · 1 MP</option><option value="1280,768">Paysage · 1 MP</option><option value="768,1280">Portrait · 1 MP</option><option value="2048,2048">Carré · 2K</option><option value="2048,1152">Paysage · 2K</option></select></label>
+        </div>
+        <label for="image-references">Photos à retoucher ou références <span>(facultatif, deux maximum)</span></label>
+        <input id="image-references" type="file" accept="image/png,image/jpeg" multiple>
+        <p class="image-help">Pour une retouche, indique ce qui change et ce qui doit rester. Les références deviennent image 1 et image 2 dans cet ordre.</p>
+        <div id="image-reference-previews"></div>
+        <button type="submit" id="image-create">Créer l’image <span aria-hidden="true">↗</span></button>
+      </form>
+      <p id="image-status" role="status" aria-live="polite">Connexion au service…</p>
+      <button id="image-cancel" type="button" hidden>Annuler cette génération</button>
+      <button id="image-recover" type="button" hidden>Vérifier et récupérer</button>
+    </section>
+    <section class="image-result" aria-label="Résultat">
+      <div id="image-placeholder"><span aria-hidden="true">✦</span><p>Ton prochain paysage commence ici.</p></div>
+      <img id="image-output" alt="Image générée localement" hidden>
+      <a id="image-download" hidden download>Télécharger l’original</a>
+    </section>
+  </div>
+  <section class="image-history"><h2>Les dernières créations</h2><div id="image-gallery"></div></section>
+</main>

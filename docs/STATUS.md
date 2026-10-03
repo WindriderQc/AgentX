@@ -34,6 +34,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   voice replies use the same speech boundary; physical device adapters retain
   their own capture and playback. Voice choices are request-scoped, and Stop or
   disconnect cancels upstream work without starting a backup request.
+- **Local images.** An optional full-profile studio creates and edits images
+  through a local ComfyUI worker. Core retains operation identities, GPU recovery
+  fences and verified archived output. The private native tool returns a
+  pending operation and studio link. Profiles and physical GPU placement require
+  instance qualification; see [local images](LOCAL_IMAGES.md).
 - **Pipeline.** List, dossier and Planning references share Core's read-only
   next-action projection. **Needs attention** pages the engineering and
   private-lane queues separately, with an exact total or an explicit lower

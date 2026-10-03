@@ -17,7 +17,8 @@
       "vault_note",
       "nestor_context",
       "nestor_briefing",
-      "nestor_network"
+      "nestor_network",
+      "local_image"
     ]
   },
   "toolMetadata": {
@@ -40,6 +41,9 @@
       "optional": true
     },
     "nestor_network": {
+      "optional": true
+    },
+    "local_image": {
       "optional": true
     }
   },

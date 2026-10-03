@@ -60,13 +60,16 @@ export async function recordTool(workspace, event, context, { config, pluginConf
   const soundTool = ['agentx__get_sound', 'get_sound'].includes(tool);
   const soundId = !failed && soundTool && data?.status === 'available'
     && /^[a-z][a-z0-9-]{0,63}$/.test(data?.sound?.id || '') ? data.sound.id : null;
-  const proved = tool === "personal_memory" ? data?.ok === true
+  const localImage = tool === 'local_image' && data?.ok === true && data?.operation?.id;
+  const proved = localImage ? data.operation.state === 'completed' && data.operation.runtimeRestored === true && Boolean(data.operation.artifact?.sha256)
+    : tool === "personal_memory" ? data?.ok === true
     : soundTool ? Boolean(soundId)
     : healthTool ? healthResult
     : /agentx__(add|update|complete)_personal_task/.test(tool) ? Boolean(task?.id && task?.status)
       : tool === "agentx__list_personal_tasks" ? Array.isArray(data?.tasks)
       : tool === "agentx__shopping_list" ? Array.isArray(data?.items) : false;
-  const resultRef = tool === "personal_memory" && data?.id ? `personal-note:${data.id}`
+  const resultRef = localImage ? `local-image:${data.operation.id}`
+    : tool === "personal_memory" && data?.id ? `personal-note:${data.id}`
     : /agentx__(add|update|complete)_personal_task/.test(tool) && task?.id ? `personal-task:${task.id}` : null;
   const id = digest(`${context.runId || event.runId || ""}:${context.toolCallId || event.toolCallId || digest(JSON.stringify(event.params || {}))}:${tool}`).slice(0, 24);
   return updateState(workspace, state => ({ ...state, receipts: [...state.receipts.filter(r => r.id !== id),
