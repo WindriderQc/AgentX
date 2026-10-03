@@ -71,7 +71,9 @@
   </section>
   <% } %>
   <div class="home-secondary">
-    <% if (locals.hostHome) { %><a class="home-host-link" id="host-home-link" href="<%= hostHome.url %>"><%= hostHome.label || 'Back to host' %> ↗</a><% } %>
+    <% const hostHomePath = locals.hostHome
+      ? (new URL(hostHome.url, 'http://agentx.invalid').pathname.replace(/\/+$/, '').toLowerCase() || '/') : null; %>
+    <% if (locals.hostHome && !['/', '/portal', '/ecosystem'].includes(hostHomePath)) { %><a class="home-host-link" id="host-home-link" href="<%= hostHome.url %>"><%= hostHome.label || 'Back to host' %> ↗</a><% } %>
     <details class="home-tools" id="homeTools">
       <summary><span><%= demo ? 'All tools' : 'Tous les outils' %></span><i class="fas fa-plus" aria-hidden="true"></i></summary>
       <div class="home-tool-grid">
