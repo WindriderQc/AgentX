@@ -41,7 +41,6 @@ describe('Core destructive-action confirmation coverage', () => {
       ["router.delete('/items/:id/schedules/:sourceId'", "requireTypedConfirmation(req, res, 'UNLINK PLANNING SCHEDULE'"],
       ["router.delete('/items/:id/evidence/:evidenceId'", "requireTypedConfirmation(req, res, 'DELETE PLANNING EVIDENCE'"]
     ],
-    'routes/prompt-templates.js': [["router.delete('/:id'", "requireTypedConfirmation(req, res, 'DELETE PROMPT TEMPLATE'"]],
     'routes/prompts.js': [["router.delete('/:id'", "requireTypedConfirmation(req, res, 'DELETE PROMPT'"]],
     'routes/rag.js': [["router.delete('/documents/:documentId'", "requireTypedConfirmation(req, res, 'DELETE RAG DOCUMENT'"]],
     'routes/roundtable.js': [["router.delete('/:id'", "requireTypedConfirmation(req, res, 'DELETE COUNCIL RECORD'"]]

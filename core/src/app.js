@@ -384,10 +384,6 @@ app.use('/api/performance', performanceRoutes);
 const promptRoutes = require('../routes/prompts');
 app.use('/api/prompts', promptRoutes);
 
-// Prompt template routes (CRUD, render, duplicate)
-const promptTemplateRoutes = require('../routes/prompt-templates');
-app.use('/api/prompt-templates', promptTemplateRoutes);
-
 // Lightweight profile routes for chat UI compatibility
 const profileRoutes = require('../routes/profile');
 app.use('/api/profile', profileRoutes);
