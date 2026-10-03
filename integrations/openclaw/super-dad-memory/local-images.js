@@ -53,7 +53,7 @@ export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
           for (const name of params.referencePaths || []) {
             const root = await realpath(mediaRoot(process.env, api.pluginConfig?.mediaRoot));
             const file = await realpath(path.resolve(root, name));
-            if (!file.startsWith(root + path.sep) || (await stat(file)).size > 2 * 1024 * 1024) throw new Error('Reference outside media root or too large');
+            if (!file.startsWith(root + path.sep) || (await stat(file)).size > 2.25 * 1024 * 1024) throw new Error('Reference outside media root or too large');
             references.push((await readFile(file)).toString('base64'));
           }
           result = await call('/operations', { actionKey: imageActionKey({ ...context, ...nativeCalls.get(callKey(context, id)) }, id), prompt: params.prompt,
@@ -64,7 +64,10 @@ export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
           result = await call(`/operations/${params.operationId}${params.action === 'cancel' ? '/cancel' : ''}`,
             params.action === 'cancel' ? {} : undefined);
         }
-        if (result.operation) result.studioPath = `/images?operation=${result.operation.id}`;
+        if (result.operation) {
+          result.studioPath = result.operation.studioPath || `/images?operation=${result.operation.id}`;
+          if (result.operation.studioUrl) result.studioUrl = result.operation.studioUrl;
+        }
         const content = [];
         if (params.action === 'status' && result.operation?.artifact) {
           const r = await fetchImpl(new URL(result.operation.artifact.url, base), { redirect: 'error', signal: AbortSignal.timeout(30000) });

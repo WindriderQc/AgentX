@@ -27,7 +27,14 @@ async function initialize() {
   return initialized;
 }
 function publicOperation(op) {
+  const studioPath = `/images?operation=${op._id}`;
+  let studioUrl;
+  try {
+    const url = new URL(process.env.CORE_PUBLIC_URL);
+    if (['http:', 'https:'].includes(url.protocol)) studioUrl = url.origin + studioPath;
+  } catch { /* A local deployment may only have relative browser routes. */ }
   return { id: op._id, state: op.state, profile: op.profile.id, label: op.profile.label,
+    studioPath, ...(studioUrl && { studioUrl }),
     createdAt: op.createdAt, updatedAt: op.updatedAt, runtimeRestored: op.runtimeRestored,
     cancelRequested: op.cancelRequested, error: op.error || null, timings: op.timings || null,
     ...(op.artifact && { artifact: { sha256: op.artifact.sha256, mimeType: op.artifact.mimeType,
