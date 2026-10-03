@@ -108,3 +108,31 @@ test('memory written to the user is marked as such for the chat model', () => {
   assert.match(system, /"tu"\/"you" in them means the user, never you/);
   assert.match(system, /a note written to the user, whose "tu"\/"you" is the user\): Tu es prêt/);
 });
+
+test('profile, goals, time and the wide frontier budget reach the prompt within each lane limit', () => {
+  const { timeSystemMessage, CONTEXT_BUDGETS, SYSTEM_PROMPT } = require('../../../src/domains/psyx/domain');
+  const item = text => ({ text, source: 'user', evidence: [], status: 'active' });
+  const state = {
+    activeThreads: [], patterns: [], hypotheses: [], openLoops: [], experiments: [],
+    notes: Array.from({ length: 100 }, (_, index) => item(`note ${index} ${'x'.repeat(400)}`)),
+    goals: [item('Crier moins le soir avec les enfants')],
+    sessionDigests: Array.from({ length: 12 }, (_, index) => ({ conversationId: `c${index}`, summary: `session ${index}`, updatedAt: '2026-10-01T10:00:00Z' })),
+    profile: { about: 'Père seul de deux enfants. '.repeat(120), expectations: 'Être confronté quand je me raconte des histoires.' }
+  };
+  const control = { mode: 'talk', depth: 'normal', action: null, reason: '' };
+  const time = { now: new Date('2026-10-03T23:30:00Z'), lastTurnAt: '2026-10-03T23:10:00Z', lastSessionAt: '2026-10-01T10:00:00Z' };
+
+  const local = composeSystemContext(state, control, { conversationId: 'now', time, voice: true, safety: { kinds: ['suicide'] } });
+  assert.ok(local.length < 16000, `local system context is ${local.length}`);
+  assert.match(local, /USER PROFILE — written by the user about himself/);
+  assert.match(local, /"goals":\[\{"text":"Crier moins le soir/);
+  assert.match(local, /TIME — now: [A-Za-z]+, October 3, 2026[^\n]*Previous message of this conversation: 20 minutes ago\. Previous session: 3 days ago\./);
+  assert.equal((local.match(/"summary":"session/g) || []).length, 3);
+
+  const wide = composeSystemContext(state, control, { conversationId: 'now', time, budget: 'frontier' });
+  assert.ok(wide.length > local.length * 2 && wide.length < SYSTEM_PROMPT.length + 46000);
+  assert.equal((wide.match(/"summary":"session/g) || []).length, 10);
+  assert.ok(CONTEXT_BUDGETS.frontier.maxTotalCharacters > CONTEXT_BUDGETS.local.maxTotalCharacters);
+  assert.equal(timeSystemMessage({ now: new Date('2026-10-03T12:00:00Z') }).includes('Previous'), false);
+  assert.match(SYSTEM_PROMPT, /Guichet d'accès à la première ligne \(811, option 3\)/);
+});

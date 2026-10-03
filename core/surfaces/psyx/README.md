@@ -93,6 +93,16 @@ The user can also record 0-10 ratings of how heavy things feel, at the start of 
 session or once during a long one; the latest five reach the prompt and Memory
 shows their trend.
 
+Every reply also receives the user's own profile (who he is and what he wants
+from PsyX, edited in Memory and kept through a memory reset), his goals (a memory
+list the review may propose additions to), and the time: the local hour in
+`PLANNING_TIME_ZONE`, and how long ago the previous message and the previous
+session were. Memory is fitted to the lane's budget by priority (goals, open
+experiments and recent sessions before old notes) and always stays valid JSON; a
+frontier reply gets a wide budget, a local one stays inside the 16k-character
+message contract. The prompt names when to suggest professional help and the
+Québec doors for it.
+
 PsyX can think on a frontier cloud model when the instance names an OpenClaw
 agent for it (`PSYX_FRONTIER_AGENT`, with `OPENCLAW_GATEWAY_URL` and its token).
 This is an explicit owner choice for PsyX only, never a fallback: each user picks

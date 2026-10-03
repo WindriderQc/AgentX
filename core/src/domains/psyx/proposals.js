@@ -7,7 +7,7 @@
 const crypto = require('crypto');
 const { EXPERIMENT_OUTCOMES } = require('./followUp');
 
-const PROPOSAL_KINDS = Object.freeze(['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops', 'experiments', 'experimentResult']);
+const PROPOSAL_KINDS = Object.freeze(['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops', 'goals', 'experiments', 'experimentResult']);
 const PROPOSAL_LIMITS = Object.freeze({ pending: 30, perReview: 5, settled: 200, digests: 50 });
 // Same keys as the domain's MODE_CONFIG and DEPTH_CONFIG (asserted by the domain tests).
 const STANCES = Object.freeze(['talk', 'analyze', 'challenge', 'plan']);

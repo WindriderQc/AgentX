@@ -8,7 +8,9 @@ const FRONTIER_MODES = ['local', 'deep', 'all'];
 const { createItemCorrection } = require('./stateItemCorrection');
 
 const PSYX_STATE_VERSION = 2;
-const STATE_ITEM_KEYS = ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops'];
+const STATE_ITEM_KEYS = ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops', 'goals'];
+// What the user wrote about himself; like settings, a memory reset keeps it.
+const PROFILE_LIMITS = Object.freeze({ about: 3000, expectations: 1500 });
 const STATE_ITEM_KEY_SET = new Set(STATE_ITEM_KEYS);
 const STATE_LIMITS = Object.freeze({
   activeThreads: 50,
@@ -16,6 +18,7 @@ const STATE_LIMITS = Object.freeze({
   patterns: 50,
   hypotheses: 50,
   openLoops: 50,
+  goals: 20,
   experiments: 50
 });
 
@@ -158,6 +161,8 @@ function emptyState(userId = 'default') {
     sessionDigests: [],
     checkIns: [],
     settings: { frontierMode: null },
+    profile: { about: '', expectations: '' },
+    goals: [],
     updatedAt: null
   };
 }
@@ -176,6 +181,7 @@ function normalizeState(doc, userId = 'default') {
     sessionDigests: proposals.normalizeDigests(doc.sessionDigests),
     checkIns: followUp.normalizeCheckIns(doc.checkIns),
     resetAt: normalizeDate(doc.resetAt),
+    profile: { about: cleanText(doc.profile?.about, PROFILE_LIMITS.about), expectations: cleanText(doc.profile?.expectations, PROFILE_LIMITS.expectations) },
     // Preferences, not memory: a reset keeps them.
     settings: { frontierMode: FRONTIER_MODES.includes(doc.settings?.frontierMode) ? doc.settings.frontierMode : null },
     updatedAt: normalizeDate(doc.updatedAt)
@@ -191,10 +197,12 @@ function normalizeState(doc, userId = 'default') {
   return result;
 }
 
-function stateForPrompt(state, { conversationId = null } = {}) {
+// A frontier model reads far more context than the local 16k-character message contract allows.
+function stateForPrompt(state, { conversationId = null, budget = 'local' } = {}) {
+  const wide = budget === 'frontier';
   const compact = {};
   for (const key of STATE_ITEM_KEYS) {
-    compact[key] = (state[key] || []).slice(-30).map((item) => ({
+    compact[key] = (state[key] || []).slice(wide ? -60 : -30).map((item) => ({
       text: item.text,
       source: item.source,
       correctedBy: item.correctedBy || null,
@@ -211,7 +219,7 @@ function stateForPrompt(state, { conversationId = null } = {}) {
   // Digests of other recent conversations give continuity across sessions.
   compact.recentSessions = (state.sessionDigests || [])
     .filter((item) => item.conversationId !== conversationId)
-    .slice(-3)
+    .slice(wide ? -10 : -3)
     .map(({ summary, movement, commitment, updatedAt }) => ({ summary, movement, commitment, updatedAt }));
   return compact;
 }
@@ -615,7 +623,15 @@ function createStateRepository({ collection, logger }) {
     return { state: await read(userId) };
   }
 
+  async function updateProfile(userId, body = {}) {
+    await ensureDocument(userId);
+    const profile = { about: cleanText(body.about, PROFILE_LIMITS.about), expectations: cleanText(body.expectations, PROFILE_LIMITS.expectations) };
+    await collection.updateOne({ userId }, { $set: { profile, updatedAt: new Date() }, $inc: { revision: 1 } });
+    return { state: await read(userId) };
+  }
+
   return {
+    updateProfile,
     updateSettings,
     updateItem: createItemCorrection({ collection, read, keys: STATE_ITEM_KEYS, cleanText, fingerprint: stateItemFingerprint }),
     addCheckIn,
