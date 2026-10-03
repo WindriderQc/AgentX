@@ -211,8 +211,7 @@ app.use('/api/roundtable', routeDefaultJsonParser);
 app.use('/api/operations/backup/config', routeDefaultJsonParser);
 
 // Every remaining JSON route uses the bounded product default.
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+require('./middleware/productRequestParsers')(app, express);
 
 const { createRequestSanitizer } = require('./middleware/requestSanitizer');
 app.use(createRequestSanitizer({ logger }));
