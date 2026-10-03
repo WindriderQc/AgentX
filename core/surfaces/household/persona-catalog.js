@@ -42,7 +42,16 @@ function snapshot(row) {
     voice: instanceVoice(row.name, layout.voice || {}), visual: layout.visual || null, agentId: layout.agentId || null };
 }
 
-const { speechFor } = require('./public/persona-presentation');
+const { speechFor: presentationSpeechFor } = require('./public/persona-presentation');
+
+// A session freezes identity and catalog presentation, not instance settings.
+// Old instance snapshots carry their original catalog voice in fallback; start
+// there so removing or invalidating an override restores the catalog default.
+function speechFor(persona, language, preferences = {}, env = process.env) {
+  if (!persona?.id) return presentationSpeechFor(persona, language, preferences);
+  const voice = persona.voice?.source === 'instance' ? persona.voice.fallback || {} : persona.voice || {};
+  return presentationSpeechFor({ ...persona, voice: instanceVoice(persona.id, voice, env) }, language, preferences);
+}
 
 async function readReplyStream(stream, onDelta, signal) {
   const decoder = new TextDecoder();

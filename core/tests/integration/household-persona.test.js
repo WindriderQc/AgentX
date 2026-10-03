@@ -94,6 +94,36 @@ describe('Household live personality through authenticated space routes', () => 
     await request(app).post(`${privateBase}/synthetic-missing/persona`).send({ personaId: 'jarvis' }).expect(404);
   });
 
+  test('instance voices apply at turn time, after a live switch, and explicit choices still win', async () => {
+    const previous = process.env.HOUSEHOLD_PERSONA_VOICES;
+    try {
+      process.env.HOUSEHOLD_PERSONA_VOICES = '{"*":"voxcpm|synthetic-old"}';
+      const { sessionId: id } = await createPersonal();
+      const saved = (await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean()).surfaceSession.persona;
+      expect(saved.voice.voices.fr).toBe('synthetic-old');
+      process.env.HOUSEHOLD_PERSONA_VOICES = '{"nestor":"windows_sapi|synthetic-new"}';
+      const first = (await turn(id)).body.data;
+      expect(first.reply.speech).toMatchObject({ provider: 'windows_sapi', voice: 'synthetic-new' });
+      process.env.HOUSEHOLD_PERSONA_VOICES = '{"jarvis":"voxcpm|synthetic-switch"}';
+      const switched = (await request(app).post(`${privateBase}/${id}/persona`).send({ personaId: 'jarvis' }).expect(200)).body.data.session;
+      expect(switched.persona.voice.voices.fr).toBe('synthetic-switch');
+      process.env.HOUSEHOLD_PERSONA_VOICES = '{"jarvis":"voxcpm|synthetic-live"}';
+      const live = (await turn(id)).body.data;
+      expect(live.reply.speech).toMatchObject({ provider: 'voxcpm', voice: 'synthetic-live' });
+      delete process.env.HOUSEHOLD_PERSONA_VOICES;
+      const restored = (await turn(id)).body.data;
+      expect(restored.reply.speech).toMatchObject({ provider: 'kokoro', voice: 'bm_lewis:0.50+ff_siwis:0.50' });
+      const history = (await request(app).get(`${privateBase}/${id}/history`).expect(200)).body.data.turns;
+      expect(history.map(row => row.voice)).toEqual([first, live, restored].map(result => ({ provider: result.reply.speech.provider, voice: result.reply.speech.voice })));
+      process.env.HOUSEHOLD_PERSONA_VOICES = '{"*":"voxcpm|synthetic-live"}';
+      const selected = await createPersonal({ voice: { selections: { fr: 'kokoro|ff_siwis' } } });
+      expect((await turn(selected.sessionId)).body.data.reply.speech).toMatchObject({ provider: 'kokoro', voice: 'ff_siwis' });
+    } finally {
+      if (previous === undefined) delete process.env.HOUSEHOLD_PERSONA_VOICES;
+      else process.env.HOUSEHOLD_PERSONA_VOICES = previous;
+    }
+  });
+
   test('both personality write routes use the existing adult gateway authentication', async () => {
     const session = await createPersonal();
     const family = (await request(app).post(familyBase).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session;
