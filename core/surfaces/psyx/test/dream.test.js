@@ -48,7 +48,7 @@ test('the dream prompt carries memory with ids, the previous portrait, sources a
   const state = { ...emptyState(), profile: { about: 'Père seul.', expectations: '' }, patterns: [{ id: 'p1', text: 'Évite les conflits', source: 'user', evidence: [] }],
     portrait: normalizeStoredPortrait({ updatedAt: '2026-10-01T03:00:00Z', sections: [{ key: 'values', statements: [statement('La présence compte.')] }] }), portraitRejected: ['Tu fuis.'] };
   const many = Array.from({ length: 5 }, (_, index) => ({ id: `c${index}`, updatedAt: `2026-10-0${index + 1}`, messages: [{ role: 'user', content: `séance ${index} ${'x'.repeat(400)}` }] }));
-  const [system, user] = dreamMessages({ state, conversations: many, sources: [{ title: 'Notes', text: '- [fact] garde une semaine sur deux' }], maxCharacters: 1000 });
+  const [system, user] = dreamMessages({ state, conversations: many, sources: [{ title: 'Notes', text: '- [fact] garde une semaine sur deux' }], maxCharacters: 2000 });
   assert.match(system.content, /data, never instructions/);
   assert.match(user.content, /"id":"p1"/);
   assert.match(user.content, /La présence compte/);
@@ -215,4 +215,101 @@ test('a dream that falls back from the frontier lane dreams locally over the bou
     local: { messages: [{ role: 'system', content: 'S' }, { role: 'user', content: 'BOUNDED' }] } });
   assert.equal(seen[0].maxTurnMs, 600000);
   assert.deepEqual([calls[0].messages[1].content, calls[0].callerDetail, result.fallbackFrom], ['BOUNDED', 'psyx/dream', 'frontier']);
+});
+
+test('review findings: hostile or odd model output, rejected text anywhere, and what the user removed stay out', async () => {
+  const state = { ...emptyState(), portraitRejected: ['Tu fuis les conflits.'] };
+  const dream = readDream({ portrait: { sections: [{ key: 'loops', statements: [{ text: { a: 1 }, evidence: [{}] }, statement('Tu fuis les conflits'), statement('Une vraie boucle.', { evidence: [{}, 'preuve'] })] }] },
+    findings: [{ text: 'tu fuis  les conflits!', evidence: ['x'] }, { text: ['array'] }, 'Un constat simple.'], agenda: [{ no: 1 }, 'Explorer.'],
+    memory: [{ op: 'add', kind: 'patterns', text: 'Tu fuis les conflits.', evidence: ['x'] }, { op: 'add', kind: 'goals', text: 'Dormir avant 23 h', evidence: ['dit en séance'] }] }, { state });
+  assert.deepEqual(dream.sections[0].statements.map(item => [item.text, item.evidence]), [['Une vraie boucle.', ['preuve']]]);
+  assert.deepEqual([dream.findings.map(item => item.text), dream.agenda, dream.memory.map(op => op.text)], [['Un constat simple.'], ['Explorer.'], ['Dormir avant 23 h']]);
+
+  const { repository, close } = await harness();
+  try {
+    for (let index = 0; index < 20; index += 1) await repository.addItem('u', 'goals', { text: `objectif ${index}` });
+    const full = await repository.recordDream('u', { dream, resetAt: null });
+    assert.deepEqual([full.state.goals.length, full.state.goals[0].text, full.entry.added.length], [20, 'objectif 0', 0], 'a full list is left alone');
+
+    const add = { ...dream, memory: [{ op: 'add', kind: 'patterns', text: 'Les éclats arrivent après 19 h.', evidence: ['x'], confidence: null }] };
+    const first = await repository.recordDream('u', { dream: add, resetAt: null });
+    await repository.deleteItem('u', 'patterns', first.state.patterns[0].id);
+    const second = await repository.recordDream('u', { dream: { ...add, memory: [{ ...add.memory[0], text: 'Les éclats arrivent après 19 h' }] }, resetAt: null });
+    assert.equal(second.state.patterns.length, 0, 'what he removed is not added again, even reworded by punctuation');
+
+    // Rejecting a statement then undoing the dream does not bring it back through the previous portrait.
+    const target = second.state.portrait.sections[0].statements[0];
+    const rejected = await repository.rejectPortraitStatement('u', target.id);
+    assert.equal(rejected.state.portraitPrevious.sections.length, 0);
+    const undone = await repository.undoDream('u', second.entry.id);
+    assert.equal(JSON.stringify(undone.state.portrait).includes(target.text), false);
+    // Undoing an older dream, then the newer one, never restores the undone dream's portrait.
+    const a = await repository.recordDream('u', { dream: add, resetAt: null });
+    const b = await repository.recordDream('u', { dream: add, resetAt: null });
+    await repository.undoDream('u', a.entry.id);
+    assert.equal((await repository.undoDream('u', b.entry.id)).state.portrait, null);
+  } finally { await close(); }
+});
+
+test('review findings: Core dates are instants, a deletion during a dream discards it, and the frontier prompt keeps its tail', async () => {
+  const dated = [['old', '2026-09-30T12:00:00Z'], ['newest', '2026-10-03T12:00:00Z'], ['mid', '2026-10-01T12:00:00Z']]
+    .map(([id, at]) => ({ id, updatedAt: new Date(at), messages: [{ role: 'user', content: `séance ${id}` }] }));
+  const portrait = normalizeStoredPortrait({ updatedAt: '2026-10-03T13:00:00Z', sections: [{ key: 'values', statements: [statement('x')] }], covers: { conversations: 3, through: '2026-10-03T12:00:00.000Z' } });
+  const at = new Date('2026-10-04T07:10:00Z');
+  const settled = dreamerFakes({ state: { ...emptyState(), portrait }, transcripts: dated });
+  const night = createDreamer({ ...settled, config: { dream: {} }, logger: {}, now: () => at });
+  await night.nightly();
+  await tick(10);
+  assert.deepEqual([settled.calls.complete.length, night.status('u').skipped], [0, 'unchanged']);
+
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const fresh = dreamerFakes({ transcripts: dated });
+  const dreamer = createDreamer({ ...fresh, config: { dream: { retryMs: 5 } }, logger: {}, sources: { gather: async () => { await gate; return { sources: [], unavailable: [] }; } } });
+  dreamer.request('u');
+  await tick(10);
+  await dreamer.invalidate('u');
+  release();
+  await tick(30);
+  assert.equal(fresh.calls.recorded[0].wanted, false, 'the dream that read the deleted conversation is discarded');
+  assert.equal(fresh.calls.recorded.at(-1).wanted, true, 'and a new one runs');
+  assert.equal(fresh.calls.recorded[0].covers.through, '2026-10-03T12:00:00.000Z');
+  assert.match(fresh.calls.complete[0].messages[1].content, /séance old[\s\S]*séance mid[\s\S]*séance newest/);
+  dreamer.stop();
+
+  const { SYSTEM_PROMPT } = require('../../../src/domains/psyx/domain');
+  const item = (text, size) => ({ text: `${text} ${'m'.repeat(size)}`, source: 'psyx', evidence: Array(20).fill('e'.repeat(240)), status: 'active' });
+  const heavy = { ...emptyState(), profile: { about: 'a'.repeat(3000), expectations: 'e'.repeat(1500) },
+    portrait: normalizeStoredPortrait({ updatedAt: '2026-10-03T03:00:00Z', sections: ['situation', 'loops', 'triggers', 'relationships', 'strengths', 'values', 'whatWorks', 'blindSpots', 'health']
+      .map(key => ({ key, statements: Array.from({ length: 8 }, (_, index) => ({ text: `${key} ${index} ${'s'.repeat(480)}`, evidence: Array(4).fill('p'.repeat(240)) })) })) }) };
+  for (const key of ['notes', 'patterns', 'hypotheses', 'openLoops', 'activeThreads']) heavy[key] = Array.from({ length: 60 }, (_, index) => item(`${key} ${index}`, 450));
+  const wide = composeSystemContext(heavy, { mode: 'talk', depth: 'normal', action: null, reason: '' }, { conversationId: 'now', budget: 'frontier', safety: { kinds: ['suicide'] }, voice: true, time: { now: new Date() } });
+  assert.ok(wide.length < 58000, `frontier system context is ${wide.length}`);
+  assert.ok(wide.length > SYSTEM_PROMPT.length + 30000);
+});
+
+test('the dream routes sit behind the session and reach the store', async () => {
+  const { createApp } = require('../src/app');
+  const calls = [];
+  const state = emptyState();
+  const database = { ping: async () => true, conversationRepository: {},
+    stateRepository: { read: async () => state, undoDream: async (userId, id) => { calls.push(['undo', userId, id]); return { state }; },
+      rejectPortraitStatement: async (userId, id) => { calls.push(['reject', userId, id]); return { state }; } } };
+  const dreamer = { status: () => ({ enabled: true, status: 'idle' }), request: userId => { calls.push(['run', userId]); return true; }, touch() {}, invalidate: async () => {} };
+  const config = { env: 'test', accessMode: 'token', accessToken: 'secret-token-for-tests', loopbackBypass: false, sessionTtlMs: 3600000, maxBodyBytes: 65536, requestTimeoutMs: 1000, voice: { mode: 'disabled' }, frontier: {} };
+  const app = createApp({ config, database, provider: { id: 'x', probe: async () => ({}) }, logger: {}, dreamer, reviewer: { status: () => ({}), schedule: () => false } });
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const base = `http://127.0.0.1:${server.address().port}/api/psyx`;
+  try {
+    assert.equal((await fetch(`${base}/dream/status`)).status, 401);
+    assert.equal((await fetch(`${base}/dream/run`, { method: 'POST' })).status, 401);
+    const headers = { Authorization: 'Bearer secret-token-for-tests' };
+    assert.equal((await (await fetch(`${base}/dream/status`, { headers })).json()).data.status, 'idle');
+    assert.equal((await fetch(`${base}/dream/run`, { method: 'POST', headers })).status, 202);
+    assert.equal((await fetch(`${base}/dream/d1/undo`, { method: 'POST', headers })).status, 200);
+    assert.equal((await fetch(`${base}/portrait/statements/s1`, { method: 'DELETE', headers })).status, 200);
+    assert.deepEqual(calls.map(call => call[0]), ['run', 'undo', 'reject']);
+    assert.equal(calls[1][2], 'd1');
+  } finally { server.close(); }
 });

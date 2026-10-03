@@ -180,7 +180,8 @@ function composeSystemContext(state, control, { conversationId = null, safety = 
   const profile = profileSystemMessage(state, wide ? 4800 : 1200);
   // The portrait is PsyX's distilled understanding; on a local reply it takes its room from raw memory.
   const portrait = portraitSystemMessage(state, { maxCharacters: wide ? 14000 : 1800, evidence: wide });
-  const memory = longitudinalSystemMessage(state, { conversationId, budget, maxCharacters: wide ? 40000 : 6000 - profile.length - portrait.length });
+  // The frontier agent cuts its instructions at 60,000 characters: the whole context stays well under, so control and safety at the end always arrive.
+  const memory = longitudinalSystemMessage(state, { conversationId, budget, maxCharacters: (wide ? 40000 : 6000 - profile.length) - portrait.length });
   const opening = !conversationId && (state.sessionDigests?.length || state.experiments?.some(item => ['planned', 'active'].includes(item.status)))
     ? SESSION_OPENING : '';
   return [SYSTEM_PROMPT, profile, portrait, memory, controlSystemMessage(control), time ? timeSystemMessage(time) : '', opening,

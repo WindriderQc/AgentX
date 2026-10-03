@@ -8,8 +8,8 @@ const { familyTimeZone } = require('../../../src/domains/household/family');
 // an admitted inference is never cancelled; a result that is no longer wanted
 // (memory reset, conversation deleted meanwhile) is discarded instead.
 const BUDGETS = Object.freeze({
-  local: { maxCharacters: 60000, sourceCharacters: 6000 },
-  frontier: { maxCharacters: 300000, sourceCharacters: 30000 }
+  local: { maxCharacters: 60000, sourceCharacters: 6000, wide: false },
+  frontier: { maxCharacters: 300000, sourceCharacters: 30000, wide: true }
 });
 const REFRESH_MS = 7 * 86400000;
 
@@ -21,18 +21,21 @@ function createDreamer({ config, provider, stateRepository, conversationReposito
   const jobs = new Map();
   const job = userId => jobs.get(userId) || jobs.set(userId, { status: 'idle', epoch: 0, timer: null, pending: null }).get(userId);
 
-  async function run(userId, kind, state) {
+  const time = value => { const at = new Date(value || 0).getTime(); return Number.isFinite(at) ? at : 0; };
+
+  async function run(userId, kind, state, epoch) {
+    // Core returns dates as Date objects: order and compare them as instants, hand them on as ISO text.
     const conversations = (await conversationRepository.listTranscripts(userId)).filter(item => item.messages?.some(message => message.role === 'user'))
-      .sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')));
+      .map(item => ({ ...item, at: time(item.updatedAt || item.createdAt) })).sort((a, b) => a.at - b.at)
+      .map(({ at, ...item }) => ({ ...item, updatedAt: at ? new Date(at).toISOString() : null }));
     if (!conversations.length) return { skipped: 'nothing' };
-    const through = conversations.at(-1).updatedAt || null;
+    const through = conversations.at(-1).updatedAt;
     const portrait = state.portrait;
     // The night has nothing to add when no session moved since the last portrait, until it is a week old.
-    if (kind === 'night' && portrait && String(through) <= String(portrait.covers.through || '')
-      && now().getTime() - new Date(portrait.updatedAt).getTime() < REFRESH_MS) return { skipped: 'unchanged' };
+    if (kind === 'night' && portrait && time(through) <= time(portrait.covers.through)
+      && now().getTime() - time(portrait.updatedAt) < REFRESH_MS) return { skipped: 'unchanged' };
     const location = locationFor(state);
     const gathered = sources ? await sources.gather({ now: now() }) : { sources: [], unavailable: [] };
-    const epoch = job(userId).epoch;
     const messages = lane => dreamMessages({ state, conversations, sources: gathered.sources, kind, now: now(), ...BUDGETS[lane] });
     const result = await provider.complete({
       messages: messages(location === 'frontier' ? 'frontier' : 'local'),
@@ -58,7 +61,9 @@ function createDreamer({ config, provider, stateRepository, conversationReposito
     if (isBusy(userId)) return arm(userId, kind, retryMs);
     Object.assign(current, { status: 'running', kind, startedAt: now().toISOString(), error: null });
     try {
-      const outcome = await run(userId, kind, await stateRepository.read(userId));
+      // Taken before anything is read: a conversation deleted from here on discards this dream.
+      const epoch = current.epoch;
+      const outcome = await run(userId, kind, await stateRepository.read(userId), epoch);
       Object.assign(current, { status: outcome.skipped ? 'idle' : 'done', skipped: outcome.skipped || null, model: outcome.model || null,
         lastEntry: outcome.entry || current.lastEntry || null, completedAt: now().toISOString() });
     } catch (error) {
@@ -81,7 +86,7 @@ function createDreamer({ config, provider, stateRepository, conversationReposito
   function touch(userId) {
     if (!enabled) return false;
     const current = job(userId);
-    if (current.status === 'running') current.pending = 'session';
+    if (current.status === 'running') current.pending = current.pending || 'session';
     else arm(userId, 'session', idleMs);
     return true;
   }
@@ -97,7 +102,9 @@ function createDreamer({ config, provider, stateRepository, conversationReposito
     if (!enabled) return;
     job(userId).epoch += 1;
     const { cleared } = await stateRepository.clearPortrait(userId);
-    if (cleared) arm(userId, 'manual', retryMs);
+    // A dream in flight is discarded by the new epoch, so it is run again too.
+    if (job(userId).status === 'running') job(userId).pending = 'manual';
+    else if (cleared) arm(userId, 'manual', retryMs);
   }
 
   function status(userId) {
@@ -112,8 +119,9 @@ function createDreamer({ config, provider, stateRepository, conversationReposito
     const local = new Intl.DateTimeFormat('en-CA', { timeZone: familyTimeZone(), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).format(now());
     const [date, hour] = local.split(', ');
     if (Number(hour) % 24 !== (settings.nightHour ?? 3) || nightKey === date) return;
+    const userIds = await stateRepository.dreamUserIds();
     nightKey = date;
-    for (const userId of await stateRepository.dreamUserIds()) arm(userId, 'night', 0);
+    for (const userId of userIds) arm(userId, 'night', 0);
   }
   let clock = null;
   function start() {

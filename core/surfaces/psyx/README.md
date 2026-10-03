@@ -128,7 +128,8 @@ it may add memory items (source `dream`) and mark as resolved items the user
 neither wrote nor corrected. Every dream is logged and can be undone; a statement
 the user rejects leaves the portrait and is never restated; a memory reset clears
 portrait and log; permanently deleting a conversation discards the portrait and
-rebuilds it from what remains. Replies receive the portrait as hypotheses, with
+rebuilds it from what remains, while memory items a dream added stay until removed.
+A dream never adds to a full list, nor re-adds an item the user removed. Replies receive the portrait as hypotheses, with
 the agenda and the gaps. The dream follows the user's frontier setting, so in
 `deep` or `all` the sources above are sent to the frontier agent with the
 conversations; in `local` nothing leaves the instance. Core has no calendar or

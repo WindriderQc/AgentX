@@ -16,10 +16,11 @@ const LIMITS = Object.freeze({ statements: 8, findings: 8, agenda: 4, questions:
 const SECTION_TITLES = Object.freeze({ situation: 'His situation', loops: 'Recurring loops', triggers: 'Triggers', relationships: 'Relationships', strengths: 'Strengths',
   values: 'Values', whatWorks: 'What works for him', blindSpots: 'Possible blind spots', health: 'Health' });
 
-const clean = (value, max) => String(value || '').trim().slice(0, max);
+// A model may answer with an object where a sentence is expected; only text is text.
+const clean = (value, max) => (typeof value === 'string' || typeof value === 'number' ? String(value) : '').trim().slice(0, max);
 const list = (value, max, map) => (Array.isArray(value) ? value : []).map(map).filter(Boolean).slice(0, max);
 const evidence = value => list(value, 4, item => clean(item, 240));
-const statementKey = text => clean(text, 500).toLocaleLowerCase('en-US').replace(/\s+/g, ' ');
+const statementKey = text => clean(text, 500).toLocaleLowerCase('en-US').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const statementId = (key, text) => crypto.createHash('sha256').update(`${key}:${statementKey(text)}`).digest('hex').slice(0, 16);
 const confidence = value => {
   const number = value == null || value === '' ? NaN : Number(value);
@@ -62,16 +63,16 @@ function transcript(conversations, maxCharacters) {
 }
 
 // Everything PsyX holds about him, with the ids a retirement must name.
-function dreamMemory(state) {
+function dreamMemory(state, { wide = true } = {}) {
   const memory = {};
   for (const key of MEMORY_KINDS) {
-    memory[key] = (state[key] || []).map(({ id, text, source, correctedBy, confidence: sure, evidence: proof, status, updatedAt }) => (
-      { id, text, source, correctedBy: correctedBy || null, confidence: sure, evidence: (proof || []).slice(0, 3), status, updatedAt }));
+    memory[key] = (state[key] || []).slice(wide ? -100 : -25).map(({ id, text, source, correctedBy, confidence: sure, evidence: proof, status, updatedAt }) => (
+      { id, text, source, correctedBy: correctedBy || null, confidence: sure, evidence: (proof || []).slice(0, wide ? 3 : 1), status, updatedAt }));
   }
-  memory.experiments = (state.experiments || []).map(({ hypothesis, action, expectedSignal, result, status, outcome, checkInAt, createdAt }) => (
+  memory.experiments = (state.experiments || []).slice(wide ? -50 : -15).map(({ hypothesis, action, expectedSignal, result, status, outcome, checkInAt, createdAt }) => (
     { hypothesis, action, expectedSignal, result, status, outcome, checkInAt, createdAt }));
   memory.checkIns = (state.checkIns || []).slice(-60).map(({ score, phase, at }) => ({ score, phase, at }));
-  memory.sessions = (state.sessionDigests || []).map(({ summary, themes, movement, commitment, updatedAt }) => ({ summary, themes, movement, commitment, updatedAt }));
+  memory.sessions = (state.sessionDigests || []).slice(wide ? -60 : -15).map(({ summary, themes, movement, commitment, updatedAt }) => ({ summary, themes, movement, commitment, updatedAt }));
   return memory;
 }
 
@@ -80,21 +81,23 @@ function protectedIds(state) {
   return new Set(MEMORY_KINDS.flatMap(key => (state[key] || []).filter(item => item.source === 'user' || item.correctedBy === 'user').map(item => item.id)));
 }
 
-function dreamMessages({ state, conversations, sources = [], kind = 'night', maxCharacters = 120000, sourceCharacters = 12000, fresh = false, now = new Date() }) {
-  const memory = dreamMemory(state);
+function dreamMessages({ state, conversations, sources = [], kind = 'night', maxCharacters = 120000, sourceCharacters = 12000, wide = true, fresh = false, now = new Date() }) {
+  const memory = dreamMemory(state, { wide });
   const portrait = !fresh && state.portrait?.sections?.length ? { sections: state.portrait.sections, updatedAt: state.portrait.updatedAt } : null;
   const sourceText = sources.filter(source => source?.text).map(source => `### ${source.title}\n${clean(source.text, sourceCharacters)}`).join('\n\n');
+  const head = [
+    `Now: ${now.toISOString()}. Kind of reflection: ${kind}.`,
+    `His own profile:\n${JSON.stringify(state.profile || {})}`,
+    `Previous portrait:\n${portrait ? JSON.stringify(portrait) : 'none yet'}`,
+    state.portraitRejected?.length ? `Statements he rejected:\n${JSON.stringify(state.portraitRejected)}` : '',
+    `Memory, experiments, check-ins and session digests:\n${JSON.stringify(memory)}`,
+    sourceText ? `Other sources:\n${sourceText}` : ''
+  ].filter(Boolean).join('\n\n');
+  // The conversations take what the rest leaves, and never less than a quarter of the budget.
+  const room = Math.max(Math.floor(maxCharacters / 4), maxCharacters - head.length);
   return [
     { role: 'system', content: DREAM_SYSTEM_PROMPT },
-    { role: 'user', content: [
-      `Now: ${now.toISOString()}. Kind of reflection: ${kind}.`,
-      `His own profile:\n${JSON.stringify(state.profile || {})}`,
-      `Previous portrait:\n${portrait ? JSON.stringify(portrait) : 'none yet'}`,
-      state.portraitRejected?.length ? `Statements he rejected:\n${JSON.stringify(state.portraitRejected)}` : '',
-      `Memory, experiments, check-ins and session digests:\n${JSON.stringify(memory)}`,
-      sourceText ? `Other sources:\n${sourceText}` : '',
-      `Conversations:\n${transcript(conversations, maxCharacters) || 'none'}`
-    ].filter(Boolean).join('\n\n') }
+    { role: 'user', content: `${head}\n\nConversations:\n${transcript(conversations, room) || 'none'}` }
   ];
 }
 
@@ -134,13 +137,13 @@ function readDream(raw, { state = {} } = {}) {
     }
     const text = clean(op.text, op.kind === 'notes' ? 1000 : 500);
     const proof = evidence(op.evidence);
-    return op.op === 'add' && text && proof.length ? { op: 'add', kind: op.kind, text, evidence: proof, confidence: confidence(op.confidence) } : null;
+    return op.op === 'add' && text && proof.length && !rejected.has(statementKey(text)) ? { op: 'add', kind: op.kind, text, evidence: proof, confidence: confidence(op.confidence) } : null;
   });
   return {
     sections,
     findings: list(value.findings, LIMITS.findings, item => {
       const text = clean(item?.text ?? item, 500);
-      return text ? { text, evidence: evidence(item?.evidence) } : null;
+      return text && !rejected.has(statementKey(text)) ? { text, evidence: evidence(item?.evidence) } : null;
     }),
     agenda: list(value.agenda, LIMITS.agenda, item => clean(item, 400)),
     questions: list(value.questions, LIMITS.questions, item => clean(item, 300)),
@@ -178,13 +181,15 @@ function portraitSystemMessage(state, { maxCharacters = 1800, evidence: withEvid
   groups.push(['Seen across sessions', portrait.findings.map(item => item.text)],
     ['Worth exploring when it fits what he brings', portrait.agenda],
     ['Gaps in your understanding; ask at most one, only when the moment is right', portrait.questions]);
-  // Whole statements only, shared in turn so a long section never crowds out the others.
+  // Whole statements only, shared in turn so a long section never crowds out the
+  // others; what to explore and what to ask are served first, they drive the session.
+  const order = [groups.length - 2, groups.length - 1, ...groups.keys()].filter((index, at, all) => all.indexOf(index) === at);
   const kept = groups.map(() => []);
   let remaining = maxCharacters - 260 - groups.reduce((sum, [title]) => sum + title.length + 3, 0);
   for (let round = 0, added = true; added; round += 1) {
     added = false;
-    groups.forEach(([, items], index) => {
-      const item = items[round];
+    order.forEach(index => {
+      const item = groups[index][1][round];
       if (item === undefined || item.length + 1 > remaining) return;
       kept[index].push(item);
       remaining -= item.length + 1;
@@ -211,5 +216,5 @@ function normalizeDreamLog(value) {
 
 module.exports = {
   DREAM_PROMPT_VERSION, DREAM_KINDS, PORTRAIT_SECTIONS, MEMORY_KINDS, DREAM_SYSTEM_PROMPT, LIMITS,
-  dreamMessages, dreamMemory, readDream, normalizeStoredPortrait, normalizeDreamLog, normalizeRejected, portraitSystemMessage
+  dreamMessages, dreamMemory, readDream, statementKey, normalizeStoredPortrait, normalizeDreamLog, normalizeRejected, portraitSystemMessage
 };

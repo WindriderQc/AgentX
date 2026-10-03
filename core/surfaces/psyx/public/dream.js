@@ -58,7 +58,7 @@ function renderPortrait() {
     $('portraitView').innerHTML = `<p class="state-empty">${running ? 'PsyX écrit ton portrait…' : 'Pas encore de portrait. PsyX l’écrit après tes séances et chaque nuit, à partir de tout ce qu’il sait de toi.'}</p>`;
   } else {
     const sources = (portrait.sources || []).map(key => DREAM_SOURCE_LABELS[key] || key);
-    $('portraitMeta').textContent = [`Écrit le ${new Date(portrait.updatedAt).toLocaleString('fr-CA', { dateStyle: 'long', timeStyle: 'short' })}`,
+    $('portraitMeta').textContent = [dream.status?.status === 'failed' ? 'La dernière réflexion n’a pas abouti' : null, `Écrit le ${new Date(portrait.updatedAt).toLocaleString('fr-CA', { dateStyle: 'long', timeStyle: 'short' })}`,
       `${portrait.covers?.conversations || 0} séance${portrait.covers?.conversations === 1 ? '' : 's'} relue${portrait.covers?.conversations === 1 ? '' : 's'}`,
       sources.length ? `avec ${sources.join(', ')}` : null,
       portrait.location === 'frontier' ? 'réflexion infonuagique' : 'réflexion locale'].filter(Boolean).join(' · ');
@@ -83,8 +83,9 @@ function renderPortrait() {
   renderDreamChip();
 }
 
-async function pollDream(accessEpoch) {
-  if (accessEpoch !== state.accessEpoch || !state.unlocked) return;
+async function pollDream(accessEpoch, epoch = dream.epoch) {
+  // A newer watch replaces this one, so a click never leaves two polling chains.
+  if (accessEpoch !== state.accessEpoch || !state.unlocked || epoch !== dream.epoch) return;
   try {
     const previous = dream.status;
     dream.status = await api('/api/psyx/dream/status', { cache: 'no-store' });
@@ -94,17 +95,19 @@ async function pollDream(accessEpoch) {
   } catch (error) {
     if (error.code === 'PSYX_LOCKED') return;
   }
-  if (accessEpoch !== state.accessEpoch) return;
-  dream.timer = setTimeout(() => void pollDream(accessEpoch), dream.status?.status === 'running' ? 5000 : DREAM_POLL_MS);
+  if (accessEpoch !== state.accessEpoch || epoch !== dream.epoch) return;
+  dream.timer = setTimeout(() => void pollDream(accessEpoch, epoch), dream.status?.status === 'running' ? 5000 : DREAM_POLL_MS);
 }
 
 function watchDream() {
-  stopDreamWatch();
+  clearTimeout(dream.timer);
+  dream.epoch = (dream.epoch || 0) + 1;
   void pollDream(state.accessEpoch);
 }
 
 function stopDreamWatch() {
   clearTimeout(dream.timer);
+  dream.epoch = (dream.epoch || 0) + 1;
   dream.timer = null;
   dream.status = null;
 }
@@ -118,7 +121,7 @@ async function dreamAction(button, request) {
     if (error.code === 'PSYX_LOCKED') return;
     $('portraitMeta').textContent = error.status === 404 ? 'Déjà fait.' : error.message;
     await loadPsyXState().catch(() => {});
-  } finally { button.disabled = false; }
+  } finally { button.disabled = false; renderPortrait(); }
 }
 
 function wireDream() {
