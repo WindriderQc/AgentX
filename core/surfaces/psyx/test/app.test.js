@@ -178,7 +178,7 @@ test('voice stays protected, permits this origin, and relays audio without persi
     // setBusy in app.js re-syncs the voice session controls, so both scripts carry the same asset version.
     assert.equal(html.match(/voice-session\.js\?v=([\d.]+)/)[1], html.match(/assets\/app\.js\?v=([\d.]+)/)[1]);
     assert.equal((await fetch(`${base}/api/psyx/voice/status`)).status, 401);
-    for (const asset of ['voice-preferences.js', 'voice-controls.js', 'state-panel.js', 'review.js', 'care.js', 'follow-up.js', 'frontier.js']) {
+    for (const asset of ['voice-preferences.js', 'voice-controls.js', 'state-panel.js', 'review.js', 'care.js', 'follow-up.js', 'frontier.js', 'profile.js']) {
       assert.equal((await fetch(`${base}/psyx/assets/${asset}`)).status, 200);
     }
 

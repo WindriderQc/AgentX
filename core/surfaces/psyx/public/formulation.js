@@ -4,7 +4,7 @@
 const formulationDrafts = new Map();
 
 const FORMULATION_SECTIONS = {
-  activeThreads: 'Ce qui t’occupe', patterns: 'Les tendances observées',
+  goals: 'Tes objectifs', activeThreads: 'Ce qui t’occupe', patterns: 'Les tendances observées',
   hypotheses: 'Les hypothèses à vérifier', openLoops: 'Les questions ouvertes', notes: 'Ce que tu veux retenir'
 };
 

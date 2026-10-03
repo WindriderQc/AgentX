@@ -135,6 +135,7 @@ function showGate(message = '') {
   review.last = null;
   hideSafety();
   resetFollowUp();
+  resetProfileDraft();
   state.unlocked = false;
   state.ready = false;
   state.history = [];
@@ -1001,6 +1002,7 @@ async function start() {
   wireReview();
   wireCare();
   wireFrontier();
+  wireProfile();
   wireFollowUp();
   wireSegmented('modeControl', 'mode');
   wireSegmented('depthControl', 'depth');

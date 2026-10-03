@@ -21,7 +21,9 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
     return reason;
   };
 
-  async function localStream(request, handlers, extra = {}) {
+  // A frontier request carries a wide context; answered locally, it uses the bounded one prepared beside it.
+  async function localStream(wide, handlers, extra = {}) {
+    const request = wide.local ? { ...wide, ...wide.local } : wide;
     const result = await runtimeServices.inference.execute({
       mode: 'chat', stream: true, taskType: request.taskType, think: request.think, timeoutMs: request.timeoutMs,
       messages: [{ role: 'system', content: request.system }, ...request.messages, { role: 'user', content: request.message }],

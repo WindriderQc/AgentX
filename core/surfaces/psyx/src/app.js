@@ -10,7 +10,7 @@ const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRe
 const domain = require('../../../src/domains/psyx/domain');
 const { detectRecentCrisis } = require('../../../src/domains/psyx/safety');
 
-const VERSION = '2.7.0';
+const VERSION = '2.8.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -188,6 +188,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
 
   api.get('/status', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)), frontierSupported())));
   api.post('/bootstrap', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)), frontierSupported())));
+  api.put('/state/profile', asyncRoute(async (req, res) => responseData(res, await stateRepository.updateProfile(res.locals.psyxUserId, {
+    about: req.body?.about, expectations: req.body?.expectations
+  }))));
   api.post('/state/settings', asyncRoute(async (req, res) => responseData(res, await stateRepository.updateSettings(res.locals.psyxUserId, { frontierMode: req.body?.frontierMode }))));
   api.get('/state', asyncRoute(async (_req, res) => responseData(res, await stateRepository.read(res.locals.psyxUserId))));
   api.get('/state/prompt-context', asyncRoute(async (_req, res) => responseData(res, stateForPrompt(await stateRepository.read(res.locals.psyxUserId)))));
@@ -306,7 +309,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     if (!input) return res.status(400).json({ ok: false, status: 'error', message: 'message is required' });
 
     const conversationId = cleanText(req.body?.conversationId, 80) || null;
-    const context = conversationId ? await conversationRepository.context(userId, conversationId, 40) : [];
+    const context = conversationId ? await conversationRepository.context(userId, conversationId, domain.CONTEXT_BUDGETS.frontier.maxMessages, { timestamps: true }) : [];
     if (conversationId && !context) return res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
     const longitudinal = await stateRepository.read(userId);
     const recommendation = conversationId ? longitudinal.sessionDigests?.find(item => item.conversationId === conversationId)?.next : null;
@@ -315,8 +318,17 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const safety = detectRecentCrisis(action ? '' : input, context || []);
     const resolved = domain.resolveControl(requested, recommendation);
     const control = safety ? { ...resolved, mode: 'talk', depth: 'normal', reason: '' } : resolved;
-    const system = domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice' });
-    const providerContext = domain.boundedContext(context || []);
+
+    const location = domain.frontierLocation(frontierMode(longitudinal), control.depth);
+    // The frontier lane reads a wide context; the local routes keep their bounded one.
+    const budget = location === 'frontier' ? 'frontier' : 'local';
+    const lastSessionAt = longitudinal.sessionDigests?.filter(item => item.conversationId !== conversationId).at(-1)?.updatedAt || null;
+    const compose = lane => ({
+      system: domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane,
+        time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } }),
+      messages: domain.boundedContext(context || [], domain.CONTEXT_BUDGETS[lane])
+    });
+    const { system, messages: providerContext } = compose(budget);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-store');
@@ -328,7 +340,6 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const heartbeat = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(': ping\n\n'); }, 15000);
     const handlers = providerHandlers(res);
     streaming.set(userId, (streaming.get(userId) || 0) + 1);
-    const location = domain.frontierLocation(frontierMode(longitudinal), control.depth);
     const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety), location };
     handlers.send('control', applied);
     if (safety) handlers.send('safety', safety);
@@ -339,6 +350,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
         messages: providerContext,
         message: input,
         location,
+        // If the frontier lane fails, the local route answers with its own bounded context.
+        local: budget === 'frontier' ? compose('local') : null,
         taskType: control.depth === 'deep' ? 'deep_reasoning' : 'analysis',
         think: control.depth === 'deep',
         options: { temperature: safety ? 0.4 : control.mode === 'challenge' ? 0.55 : 0.7 },

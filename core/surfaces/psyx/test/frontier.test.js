@@ -181,3 +181,12 @@ test('a frontier fallback is logged with a readable reason and never with conten
   assert.deepEqual(warnings.map(([, detail]) => detail.work), ['turn', 'review']);
   assert.doesNotMatch(JSON.stringify(warnings), /PRIVATE/);
 });
+
+test('a frontier turn that falls back answers with the bounded local context, not the wide one', async () => {
+  const calls = [];
+  const down = { available: () => true, run: async () => { throw Object.assign(new Error('silent'), { code: 'FRONTIER_SILENT' }); } };
+  const provider = createCoreProvider(localRuntime(calls), { frontier: down, config: frontierConfig, logger: {} });
+  await provider.stream({ location: 'frontier', system: 'WIDE', messages: [{ role: 'user', content: 'old' }, { role: 'assistant', content: 'older' }], message: 'm', taskType: 'analysis',
+    local: { system: 'BOUNDED', messages: [{ role: 'assistant', content: 'older' }] } }, sink());
+  assert.deepEqual(calls[0].messages.map(message => message.content), ['BOUNDED', 'older', 'm']);
+});
