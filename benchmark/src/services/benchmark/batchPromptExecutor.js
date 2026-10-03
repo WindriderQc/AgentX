@@ -112,11 +112,13 @@ function createPromptExecutor(context) {
             const useChat = modelExecConfig.api_mode !== 'generate';
             const sendThink = modelExecConfig.send_think !== false;
             const url = `${CORE_URL}/api/inference/generate`;
+            const testTimeoutMs = modelExecConfig.per_test_timeout_ms || 600000;
             const requestBody = {
                 model,
                 host: hostUrl,
                 stream: false,
                 responseMode: 'normalized',
+                timeoutMs: testTimeoutMs,
                 callerDetail: `benchmark-batch-${batchId}`,
                 ...(claimIdentityFor(hostUrl) || {}),
                 options: ollamaOptions,
@@ -148,7 +150,7 @@ function createPromptExecutor(context) {
 
             let response;
             let data;
-            const testTimeoutId = setTimeout(() => testController.abort(), modelExecConfig.per_test_timeout_ms || 600000);
+            const testTimeoutId = setTimeout(() => testController.abort(), testTimeoutMs);
             const unregisterController = registerActiveBatchController(batchId, testController);
             try {
                 response = await fetch(url, fetchOptions);

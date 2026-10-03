@@ -21,6 +21,7 @@ const { createGenerateRouteDecisionBuilder, observeRouteDecision, createAttemptR
 const { evaluateResponseAlerts, evaluateTransportFailureAlert } = require('./routing/inferenceAlerts');
 const { createGenerateRoutingTrace } = require('./routing/generateRoutingTrace');
 const { buildClaimAdmissionRejection } = require('./routing/claimAdmissionRejection');
+const { resolveInferenceTimeout } = require('./routing/inferenceTimeoutPolicy');
 
 const LADDER_RETRY = Symbol('taskFallbackLadderRetry');
 
@@ -109,6 +110,13 @@ async function executeInferenceOnce(body = {}, {
         });
     }
     const routeManaged = lane.route === true && !hostOverride;
+    const timeout = resolveInferenceTimeout({
+        requestedTimeoutMs: body.timeoutMs, benchmarkAuthorized: benchmarkClaimAuthorized, defaultTimeoutMs: timeoutMs, stream,
+    });
+    if (timeout.error) return result(timeout.error.status, {
+        status: 'error', code: timeout.error.code, message: timeout.error.message,
+    });
+    timeoutMs = timeout.timeoutMs;
 
     let model = requestedModel;
     let target = null;

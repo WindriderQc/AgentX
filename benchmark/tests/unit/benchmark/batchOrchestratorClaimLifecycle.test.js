@@ -859,7 +859,7 @@ describe('runBatchOrchestrator claim lifecycle', () => {
         expect(mockPersistSuccessfulResult).toHaveBeenCalledWith(expect.objectContaining({ performanceBaseline: null }));
     });
 
-    it('omits all thinking controls when the frozen campaign mode is native', async () => {
+    it.each([60_000, 1_200_000, undefined])('preserves native thinking controls and forwards the per-test timeout (%s)', async timeoutMs => {
         mockDrain.mockResolvedValue({ completed: 1, failed: 0, timedOut: false });
         mockGetFrozenModelExecutionConfig.mockImplementation((_, __, ___, baseConfig) => ({
             ...baseConfig,
@@ -887,7 +887,7 @@ describe('runBatchOrchestrator claim lifecycle', () => {
             judgeConfig: { model: 'judge-1', concurrency: 2, think: false },
             executionConfig: {
                 response_mode: 'native',
-                per_test_timeout_ms: 60_000,
+                per_test_timeout_ms: timeoutMs,
                 judge_drain_timeout_ms: 120_000,
                 judge_stall_timeout_ms: 30_000
             },
@@ -899,6 +899,7 @@ describe('runBatchOrchestrator claim lifecycle', () => {
         });
 
         const requestBody = JSON.parse(mockBenchmarkFetch.mock.calls[0][1].body);
+        expect(requestBody.timeoutMs).toBe(timeoutMs || 600_000);
         expect(requestBody).not.toHaveProperty('think');
         expect(requestBody).not.toHaveProperty('includeThinking');
         expect(requestBody).not.toHaveProperty('suppressThinking');
@@ -1510,6 +1511,7 @@ describe('runBatchOrchestrator claim lifecycle', () => {
 
         await bodyStarted.promise;
         expect(getActiveBatchRequestCount('batch-timeout-body')).toBe(2);
+        expect(JSON.parse(mockBenchmarkFetch.mock.calls[0][1].body).timeoutMs).toBe(25);
         await expect(runPromise).resolves.toEqual({ stopped: false, cancelled: false });
 
         expect(requestSignal.aborted).toBe(true);

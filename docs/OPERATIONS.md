@@ -740,6 +740,16 @@ Leaderboard rows carry their host's residency (`local · CPU`), and
 rank CPU and GPU runs with `axis=quality`, since the composite axis penalises
 latency.
 
+Benchmark batches send their configured `per_test_timeout_ms` to Core as
+`timeoutMs`, so Core's non-streamed Ollama attempt uses the same budget instead
+of the default `INFERENCE_FETCH_TIMEOUT_MS` (10 minutes). Core accepts this
+override only from the Benchmark direct lane with workload admission proof,
+as a positive integer up to one hour. Benchmark's own timer covers its HTTP
+request through response-body consumption, including time spent before Core
+dispatches to Ollama. A disconnect still cancels the upstream request.
+Other callers retain Core's configured default. A timeout alone does not prove
+runtime terminality or authorize release of an uncertain claim.
+
 Point `OLLAMA_MODELS` at the machine's existing store to reuse downloaded
 models. On CPU, generation speed follows memory bandwidth divided by active
 weights: prefer mixture-of-experts models with few active parameters. One CPU
