@@ -25,7 +25,7 @@ test('auto stance and depth follow the review recommendation, explicit choices w
   const next = { stance: 'challenge', depth: 'deep', reason: 'A convenient story is forming.' };
   const auto = resolveControl(normalizeControl({}), next);
   assert.deepEqual([auto.mode, auto.depth, auto.auto, auto.reason], ['challenge', 'deep', { mode: true, depth: true }, next.reason]);
-  assert.match(controlSystemMessage(auto), /Mode: CHALLENGE[\s\S]*Chosen automatically after reviewing this conversation: A convenient story/);
+  assert.match(controlSystemMessage(auto), /Mode: CHALLENGE[\s\S]*Chosen automatically after reviewing this conversation [^:]*: A convenient story/);
 
   const manual = resolveControl(normalizeControl({ mode: 'talk', depth: 'auto' }), next);
   assert.deepEqual([manual.mode, manual.depth, manual.auto, manual.reason], ['talk', 'deep', { mode: false, depth: true }, '']);
@@ -100,4 +100,11 @@ test('spoken turns request short unformatted replies without overriding crisis s
   assert.match(spoken, /30 to 90 words/); assert.match(spoken, /without headings, Markdown/);
   assert.match(spoken, /Preserve all necessary crisis resources/);
   assert.match(spoken, /SAFETY|immediate safety/i);
+});
+
+test('memory written to the user is marked as such for the chat model', () => {
+  const state = { activeThreads: [], notes: [], patterns: [{ text: 'Tu évites le conflit quand tu te sens jugé.' }], hypotheses: [], openLoops: [], experiments: [], sessionDigests: [] };
+  const system = composeSystemContext(state, { mode: 'plan', depth: 'normal', action: null, reason: 'Tu es prêt à passer à l’action.' }, { conversationId: 'c' });
+  assert.match(system, /"tu"\/"you" in them means the user, never you/);
+  assert.match(system, /a note written to the user, whose "tu"\/"you" is the user\): Tu es prêt/);
 });
