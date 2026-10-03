@@ -38,6 +38,26 @@ const { ageInYears, instanceToday } = require('../../src/domains/household/famil
 const KNOWN_UNKNOWN = 'dis simplement ce que tu ne sais pas; ne devine jamais un âge exact';
 
 describe('built-in Household surface on Core', () => {
+  test('Household refuses excess input before inference or audit and keeps a complete boundary-sized request', async () => {
+    const base = '/api/voice-personas/private/sessions';
+    const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const calls = executeForTest.mock.calls.length;
+    const rejected = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'é'.repeat(3999) + '🦉' }).expect(413);
+    expect(rejected.body.code).toBe('VOICE_PERSONA_TEXT_TOO_LARGE');
+    const scene = await request(app).post(`/api/consumers/nestor/v1/llmx/sessions/${id}/turns/text`)
+      .send({ text: 'é'.repeat(3999) + '🦉', turnId: '11111111-1111-4111-8111-111111111111' }).expect(413);
+    expect(scene.body.code).toBe('VOICE_PERSONA_TEXT_TOO_LARGE');
+    expect(executeForTest.mock.calls.length).toBe(calls);
+    const untouched = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
+    expect(untouched.messages).toEqual([]);
+    expect(untouched.surfaceSession.turnCount).toBe(0);
+    const text = 'é'.repeat(3998) + '🦉';
+    await request(app).post(`${base}/${id}/turns/text`).send({ text }).expect(200);
+    const saved = await Conversation.findById(untouched._id).lean();
+    expect(saved.messages[0].content).toBe(text);
+    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain(text);
+    expect(saved.surfaceSession.turnCount).toBe(1);
+  });
   test('the server selects a bound personality’s agent and refuses conflicting choices without creating a session', async () => {
     const base = '/api/voice-personas/private/sessions';
     const create = body => request(app).post(base).send({ packId: 'personal_operator', backend: 'agentx', ...body });
