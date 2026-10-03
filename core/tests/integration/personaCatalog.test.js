@@ -49,4 +49,38 @@ describe('shared versioned persona catalog', () => {
     await expect(catalog.resolve('agent_catalog_test')).rejects.toMatchObject({ statusCode: 404 });
     await expect(catalog.resolve(definition.name, { $gt: 0 })).rejects.toMatchObject({ statusCode: 400 });
   });
+
+  test('the instance edits a generated persona, the source stops regenerating it, and a reset returns to the default', async () => {
+    await catalog.publish('test-source', [definition]);
+    const edited = await request(app).put(`/api/prompts/catalog/${definition.name}`).send({ label: 'Renamed', personality: 'A rewritten character.',
+      voice: { provider: 'kokoro', voices: { fr: 'ff_siwis' } }, visual: { style: 'orb', color: '#AA33CC' } });
+    expect(edited.status).toBe(200);
+    expect(edited.body.data).toMatchObject({ version: 2, systemPrompt: 'A rewritten character.', isActive: true });
+    const layout = (await catalog.resolve(definition.name)).uiConfig.layoutConfig;
+    expect(layout).toMatchObject({ label: 'Renamed', visual: { actorId: 'example', style: 'orb', color: '#aa33cc' },
+      voice: { provider: 'kokoro', presentation: 'masculine', voices: { fr: 'ff_siwis' }, source: 'team' }, source: { id: 'test-source', edited: true } });
+    // The source publishes again, even with a changed definition: the instance version stays.
+    await catalog.publish('test-source', [{ ...definition, systemPrompt: 'A newer default.' }]);
+    expect((await catalog.resolve(definition.name)).systemPrompt).toBe('A rewritten character.');
+    expect((await catalog.resolve(definition.name, 1)).systemPrompt).toBe('An original character.');
+
+    const reset = await request(app).delete(`/api/prompts/catalog/${definition.name}/edit`);
+    expect(reset.status).toBe(200);
+    expect(reset.body.data).toMatchObject({ version: 3, systemPrompt: 'An original character.' });
+    expect(reset.body.data.uiConfig.layoutConfig.source.edited).toBeUndefined();
+    await catalog.publish('test-source', [{ ...definition, systemPrompt: 'A newer default.' }]);
+    expect((await catalog.resolve(definition.name)).systemPrompt).toBe('A newer default.');
+  });
+
+  test('a persona edit is validated and only reaches generated personas', async () => {
+    await catalog.publish('test-source', [definition]);
+    for (const body of [{ label: '' }, { label: 'two\nlines' }, { voice: { provider: 'unknown', voices: { fr: 'x' } } },
+      { voice: { provider: 'kokoro', voices: {} } }, { visual: { style: 'orb', color: 'red' } }, { personality: 'x'.repeat(12001) }]) {
+      expect((await request(app).put(`/api/prompts/catalog/${definition.name}`).send(body)).status).toBe(400);
+    }
+    expect(await PromptConfig.countDocuments({ name: definition.name })).toBe(1);
+    await PromptConfig.create({ name: 'agent_catalog_test', systemPrompt: 'Workflow', isActive: true });
+    expect((await request(app).put('/api/prompts/catalog/agent_catalog_test').send({ label: 'Nope' })).status).toBe(409);
+    expect((await request(app).put('/api/prompts/catalog/catalog_test_missing').send({ label: 'Nope' })).status).toBe(404);
+  });
 });

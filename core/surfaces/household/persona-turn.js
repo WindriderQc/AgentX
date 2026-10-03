@@ -21,8 +21,13 @@ const { voiceRecallOptions } = require('./voice-note-recall');
 const teamAddress = require('./team-address');
 const { turnDirective } = require('./persona-prompt');
 
-// A team member's own personality, from the shared catalog definitions.
-function teamPersona(agentId) {
+// A team member's own personality: the active catalog persona naming that agent, so an
+// edit made on the Team page applies; the shared definition when the catalog is unreadable.
+async function teamPersona(agentId, personas) {
+  try {
+    const active = (await personas?.list?.() || []).find((entry) => entry.uiConfig?.layoutConfig?.agentId === agentId);
+    if (active) return personaCatalog.snapshot(active);
+  } catch { /* the shared definition below */ }
   const row = personaCatalog.generatedPersonas().find((entry) => entry.uiConfig.layoutConfig.agentId === agentId);
   return row ? personaCatalog.snapshot({ ...row, version: 0, _id: 'catalog' }) : null;
 }
@@ -158,7 +163,7 @@ function createPersonaTurnHandler({
         // #41: a turn that names another team member runs in that member's own session.
         member = backend === 'openclaw' && !pack.childSafe && !isLlmX
           ? teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session)) : null;
-        memberPersona = member ? teamPersona(member.agentId) : null;
+        memberPersona = member ? await teamPersona(member.agentId, runtimeServices.personas) : null;
         const turnSession = member ? teamAddress.memberSession(session, member, memberPersona) : session;
         if (member) {
           speaker = { agentId: member.agentId, name: memberPersona?.name || member.agentId, personaId: memberPersona?.id || null };

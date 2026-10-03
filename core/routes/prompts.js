@@ -156,6 +156,16 @@ router.get('/catalog/:name', async (req, res) => {
     catch (err) { res.status(err.statusCode || 500).json({ status: 'error', message: err.message }); }
 });
 
+// A generated persona is edited here, by the Team page, not through the generic prompt form.
+router.put('/catalog/:name', async (req, res) => {
+    try { res.json({ status: 'success', data: await personaCatalog.edit(req.params.name, req.body || {}) }); }
+    catch (err) { res.status(err.statusCode || 500).json({ status: 'error', message: err.message }); }
+});
+router.delete('/catalog/:name/edit', async (req, res) => {
+    try { res.json({ status: 'success', data: await personaCatalog.reset(req.params.name) }); }
+    catch (err) { res.status(err.statusCode || 500).json({ status: 'error', message: err.message }); }
+});
+
 router.get('/:name', async (req, res) => {
     try {
         const name = req.params.name;

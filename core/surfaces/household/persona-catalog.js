@@ -24,6 +24,8 @@ function generatedPersonas() {
 // persona id, or "*" for every persona, to "provider|voice". A browser's own
 // selection still wins. Invalid entries keep the catalog voice.
 function instanceVoice(personaId, voice = {}, env = process.env) {
+  // A voice chosen for this persona on the Team page outranks the instance-wide map.
+  if (voice.source === 'team') return voice;
   let map;
   try { map = JSON.parse(env.HOUSEHOLD_PERSONA_VOICES || '{}'); } catch { return voice; }
   const choice = map?.[personaId] ?? map?.['*'];

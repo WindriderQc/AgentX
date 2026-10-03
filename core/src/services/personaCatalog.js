@@ -44,7 +44,8 @@ async function publish(sourceId, definitions) {
       const latest = await PromptConfig.findOne({ name }).sort({ version: -1 }).lean();
       if (latest && latest.uiConfig?.layoutConfig?.source?.id !== sourceId) throw error(`Persona ${name} has another author`, 409);
       let row = latest;
-      if (!row || row.uiConfig.layoutConfig.source.hash !== hash) {
+      // A persona the instance edited is the instance's: the source no longer regenerates it.
+      if (!row || (!row.uiConfig.layoutConfig.source.edited && row.uiConfig.layoutConfig.source.hash !== hash)) {
         try {
           row = await PromptConfig.create({ name, systemPrompt, description,
             version: (latest?.version || 0) + 1, isActive: false,
@@ -63,4 +64,78 @@ async function publish(sourceId, definitions) {
   return published;
 }
 
-module.exports = { list, resolve, publish };
+const VOICE_PROVIDERS = ['kokoro', 'windows_sapi', 'voxcpm'];
+const text = (value, max, label, multiline = false) => {
+  if (typeof value !== 'string' || !value.trim() || value.length > max || (!multiline && /[\r\n]/.test(value))) throw error(`Invalid ${label}`);
+  return value.trim();
+};
+
+// The presentation fields an instance may change on a generated persona.
+function editedLayout(layout, changes) {
+  const next = { ...layout };
+  if (changes.label !== undefined) next.label = text(changes.label, 80, 'label');
+  if (changes.voice !== undefined) {
+    const { provider, presentation, voices = {} } = changes.voice || {};
+    if (!VOICE_PROVIDERS.includes(provider)) throw error('Invalid voice provider');
+    if (presentation !== undefined && !['masculine', 'feminine'].includes(presentation)) throw error('Invalid voice presentation');
+    const named = Object.fromEntries(['fr', 'en'].filter((language) => voices[language] !== undefined)
+      .map((language) => [language, text(voices[language], 120, `${language} voice`)]));
+    if (!Object.keys(named).length) throw error('A voice is required');
+    // source "team" marks a voice chosen on the Team page; it outranks an instance-wide override.
+    next.voice = { provider, presentation: presentation || layout.voice?.presentation, voices: named, source: 'team' };
+  }
+  if (changes.visual !== undefined) {
+    if (changes.visual === null) next.visual = null;
+    else {
+      const { style, color } = changes.visual;
+      if (!['initials', 'orb'].includes(style) || !/^#[a-f0-9]{6}$/i.test(color || '')) throw error('Invalid visual');
+      next.visual = { ...(layout.visual || {}), style, color: color.toLowerCase() };
+    }
+  }
+  return next;
+}
+
+async function generated(name) {
+  const latest = await PromptConfig.findOne({ name: String(name || '').trim() }).sort({ version: -1 }).lean();
+  if (!latest) throw error('Persona is unavailable', 404);
+  if (!latest.uiConfig?.layoutConfig?.source?.id) throw error('This prompt is edited in the prompt library', 409);
+  return latest;
+}
+
+async function nextVersion(latest, fields) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const top = attempt ? await PromptConfig.findOne({ name: latest.name }).sort({ version: -1 }).lean() : latest;
+    try {
+      const row = await PromptConfig.create({ name: latest.name, isActive: false, version: top.version + 1, ...fields });
+      await PromptConfig.activate(row._id);
+      return project({ ...row.toObject(), isActive: true });
+    } catch (err) {
+      if (err.code !== 11000 || attempt === 2) throw err;
+    }
+  }
+  throw error('Persona version conflict', 409);
+}
+
+// An instance edit of a generated persona: a new active version the source
+// stops regenerating. Earlier versions stay resolvable by number.
+async function edit(name, changes = {}) {
+  const latest = await generated(name);
+  const layout = latest.uiConfig.layoutConfig;
+  return nextVersion(latest, {
+    systemPrompt: changes.personality !== undefined ? text(changes.personality, 12000, 'personality', true) : latest.systemPrompt,
+    description: changes.description !== undefined ? text(changes.description, 300, 'description') : latest.description,
+    uiConfig: { ...latest.uiConfig, layoutConfig: { ...editedLayout(layout, changes),
+      source: { ...layout.source, edited: true, editedAt: new Date().toISOString() } } }
+  });
+}
+
+// Back to what the source last published; the source regenerates it again from then on.
+async function reset(name) {
+  const latest = await generated(name);
+  if (!latest.uiConfig.layoutConfig.source.edited) return project(latest);
+  const seed = await PromptConfig.findOne({ name: latest.name, 'uiConfig.layoutConfig.source.edited': { $ne: true } }).sort({ version: -1 }).lean();
+  if (!seed) throw error('No published default to return to', 409);
+  return nextVersion(latest, { systemPrompt: seed.systemPrompt, description: seed.description, uiConfig: seed.uiConfig });
+}
+
+module.exports = { list, resolve, publish, edit, reset };
