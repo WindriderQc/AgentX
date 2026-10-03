@@ -167,6 +167,31 @@ test('accepted long messages retain their tail for safety, inference and storage
   assert.equal(saved.assistantMessage, answer);
 });
 
+test('reply coverage includes older canonical messages outside the fetched context window', async () => {
+  const { createConversationAdapter } = require('../src/conversations');
+  const id = '507f1f77bcf86cd799439011';
+  const messages = Array.from({ length: 250 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', content: `message ${index}` }));
+  const adapter = createConversationAdapter({ conversationLifecycle: {
+    getConversation: async () => ({ id, lifecycle: { status: 'active' }, messages }),
+    recordCompletedTurn: async () => ({ id })
+  } });
+  const database = repositories({ conversationRepository: adapter });
+  let received;
+  const provider = { async stream(request, sink) { received = request; sink.onToken('ok'); return { content: 'ok' }; } };
+  await withServer(createApp({ config: config(), database, provider, logger: {} }), async base => {
+    const response = await fetch(`${base}/api/psyx/chat/stream`, {
+      method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: id, message: 'suite' })
+    });
+    assert.equal(response.status, 200);
+    const control = JSON.parse((await response.text()).match(/event: control\ndata: ([^\n]+)/)[1]);
+    assert.deepEqual(control.contextCoverage, { availableMessages: 250, includedMessages: 40, omittedMessages: 210, complete: false });
+  });
+  assert.deepEqual(received.messages, messages.slice(-40));
+  assert.deepEqual(received.contextCoverage, { availableMessages: 250, includedMessages: 40, omittedMessages: 210, complete: false });
+  assert.equal((await adapter.context('default', id, 40)).length, 40, 'the review retains its array contract');
+});
+
 test('a request exceeding the configured body limit is refused before inference or storage', async () => {
   let calls = 0;
   const database = repositories();

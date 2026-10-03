@@ -13,7 +13,7 @@ const { detectRecentCrisis, RESOURCES } = require('../../../src/domains/psyx/saf
 const assessments = require('../../../src/domains/psyx/assessments');
 const { TECHNIQUES } = require('../../../src/domains/psyx/techniques');
 
-const VERSION = '2.10.0';
+const VERSION = '2.10.1';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -334,7 +334,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
     if (!input) return res.status(400).json({ ok: false, status: 'error', message: 'message is required' });
 
     const conversationId = cleanText(req.body?.conversationId, 80) || null;
-    const context = conversationId ? await conversationRepository.context(userId, conversationId, domain.CONTEXT_BUDGETS.frontier.maxMessages, { timestamps: true }) : [];
+    const history = conversationId ? await conversationRepository.context(userId, conversationId, domain.CONTEXT_BUDGETS.frontier.maxMessages, { timestamps: true, withCoverage: true }) : [];
+    const context = Array.isArray(history) ? history : history?.messages;
+    const availableMessages = Array.isArray(history) ? history.length : history?.availableMessages;
     if (conversationId && !context) return res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
     const longitudinal = await stateRepository.read(userId);
     const recommendation = conversationId ? longitudinal.sessionDigests?.find(item => item.conversationId === conversationId)?.next : null;
@@ -349,7 +351,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const budget = location === 'frontier' ? 'frontier' : 'local';
     const lastSessionAt = longitudinal.sessionDigests?.filter(item => item.conversationId !== conversationId).at(-1)?.updatedAt || null;
     const compose = lane => {
-      const selected = domain.selectConversationContext(context || [], domain.CONTEXT_BUDGETS[lane]);
+      const selected = domain.selectConversationContext(context || [], { ...domain.CONTEXT_BUDGETS[lane], availableMessages });
       return {
         system: domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane,
           time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } }),

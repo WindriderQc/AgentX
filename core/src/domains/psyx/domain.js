@@ -198,7 +198,7 @@ const CONTEXT_BUDGETS = Object.freeze({
   frontier: { maxMessages: 120, maxTotalCharacters: 160000 }
 });
 
-function selectConversationContext(messages, { maxMessages = 40, maxTotalCharacters = 35000 } = {}) {
+function selectConversationContext(messages, { maxMessages = 40, maxTotalCharacters = 35000, availableMessages = messages.length } = {}) {
   const selected = [];
   let characters = 0;
   for (const message of [...messages].reverse()) {
@@ -209,8 +209,9 @@ function selectConversationContext(messages, { maxMessages = 40, maxTotalCharact
     selected.unshift({ role: message.role === 'assistant' ? 'assistant' : 'user', content });
     characters += content.length;
   }
-  return { messages: selected, coverage: { availableMessages: messages.length, includedMessages: selected.length,
-    omittedMessages: messages.length - selected.length, complete: selected.length === messages.length } };
+  const available = Number.isSafeInteger(availableMessages) ? Math.max(messages.length, availableMessages) : messages.length;
+  return { messages: selected, coverage: { availableMessages: available, includedMessages: selected.length,
+    omittedMessages: available - selected.length, complete: selected.length === available } };
 }
 
 function boundedContext(messages, options) { return selectConversationContext(messages, options).messages; }
