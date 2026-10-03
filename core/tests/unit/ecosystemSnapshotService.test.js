@@ -184,6 +184,19 @@ describe('ecosystemSnapshotService', () => {
     expect(issue.message).toBe('Product service health is degraded');
   });
 
+  it('says that services run different revisions when only their identity differs', async () => {
+    const snapshot = await buildEcosystemSnapshot({
+      buildIntelligence: async () => intelligence,
+      buildRoutingConfig: async () => routingConfig,
+      buildServiceStatus: async () => ({
+        ...serviceStatus,
+        summary: { ...serviceStatus.summary, status: 'degraded', degraded: 0, identityStatus: 'degraded' }
+      })
+    });
+    const issue = snapshot.operationalAttention.issues.find(item => item.code === 'services_degraded');
+    expect(issue.message).toBe('Product services run different versions or revisions');
+  });
+
   it('rejects malformed collector output instead of manufacturing defaults', async () => {
     await expect(buildEcosystemSnapshot({
       buildIntelligence: async () => ({ cluster: [] }),
