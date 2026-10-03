@@ -17,7 +17,9 @@ const { getAllModelsHealth } = require('../src/services/modelRouter');
 const {
   HOSTS,
   TASK_MODELS,
-  buildRouterConfigPayload
+  buildRouterConfigPayload,
+  resetTaskModelOverride,
+  saveTaskModelOverride
 } = require('../src/services/modelRouterConfig');
 const hostPrefService = require('../src/services/hostPreferenceService');
 const { modelsMatch } = require('../src/helpers/modelNameNormalization');
