@@ -372,15 +372,38 @@ explicit `OPENCLAW_GATEWAY_URL` and `OPENCLAW_GATEWAY_TOKEN` in the instance;
 `HOUSEHOLD_CONVERSATION_BACKEND` accepts auto, agentx or openclaw. Auto selects
 OpenClaw only when both values exist. Do not copy runtime credentials into Git.
 
+`HOUSEHOLD_FAMILY_CONVERSATION_BACKEND` optionally gives Family its own engine:
+`agentx` (Core inference) or `openclaw`. When set, every new child-safe
+conversation (Famille, Kids Room, Lecture and native Family voice) uses it,
+whatever the page requested; unset, or any other value, leaves
+`HOUSEHOLD_CONVERSATION_BACKEND` in charge. It is read when a conversation is
+created: an existing conversation keeps its engine, so changing the setting
+never replays a turn on the other one. Super Dad and LLMx scene conversations
+are unaffected. On `agentx` a family turn has no native agent tools; routines,
+idea and reminder capture, the math picture and animal sounds come from Core
+and work on both engines.
+
+`HOUSEHOLD_VOICE_TASK` names the router task of a spoken turn on Core inference
+(the `agentx` engine), in any pack; the default is `voice_persona_chat`. Typed
+turns and LLMx scenes keep their pack's task (`general_chat`,
+`nestor_answer_light`, `voice_persona_reader`). Assign that task's model and
+host in the router like any other task; the reply still streams and thinking
+stays off.
+
 `HOUSEHOLD_VOICE_MODEL` optionally selects a native `provider/model` per run for
 personal Nestor voice on the main agent. The agent, session history, selected
 notes and tools stay the same. Blank preserves native model policy. Explicit
 Open selection, text conversation, specialist agents and family conversations
 retain their existing model choice. Set this only after qualifying the selected
 model's conversation continuity and tools; it is not a reasoning-quality guarantee.
-Personal spoken turns carry their current selected context as labelled reference
-data beside the request, keeping native identity, permissions and tool guidance
-stable. Core's canonical transcript still contains the submitted user text.
+
+Every turn, on both engines, carries what was selected for it (notes, household
+members, approved knowledge, routines, save receipts, the sound note, the reply
+language, a team member's last exchange and the reviewer's advice) as labelled
+reference data beside the request. The system message and the native
+instructions therefore stay identical from turn to turn, which lets the model
+server reuse its prompt cache. Core's canonical transcript still contains the
+submitted user text only.
 
 `HOUSEHOLD_PERSONA_VOICES` optionally gives personas an instance voice without
 editing the shared catalog: a JSON object maps a persona id, or `"*"` for every
@@ -388,6 +411,9 @@ persona, to `provider|voice` (`kokoro`, `windows_sapi` or `voxcpm`), for example
 a VoxCPM2 voice cloned on the voice host. Persona catalog snapshots carry it, so
 browser conversations and server replies speak with it in both languages. A
 browser's own voice selection still wins; invalid entries keep the catalog voice.
+Kids Room and Lecture create their conversation with the Nestor personality and
+read replies through the same voice ladder, so Nestor's instance voice applies
+there too; the reading voice chosen on that browser ("Voix des lectures") wins.
 The chosen engine must be available: an unavailable VoxCPM2 worker leaves the
 reply unspoken rather than substituting another voice.
 

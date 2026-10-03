@@ -164,7 +164,35 @@ ordinary chat.
 The Household conversation executor selects Core inference or the configured
 OpenClaw native agent loop per session and never replays an uncertain turn on
 the other backend. Core inference reports that agent tools are unavailable;
-configured OpenClaw supplies native tool receipts.
+configured OpenClaw supplies native tool receipts. The backend is fixed when
+the conversation is created; an instance may give new Family conversations
+their own choice (`HOUSEHOLD_FAMILY_CONVERSATION_BACKEND`). On Core inference a
+spoken turn uses the instance's voice router task and a typed turn the pack's.
+
+A Household prompt is laid out for the model server's prompt cache, which
+reuses only the longest prefix identical to the previous request:
+
+- the system message (Core inference) or the instructions (native agent) hold
+  what is the same for the whole conversation: the pack, memory and mode
+  contracts, the personality, the surface contract and the reply-channel
+  contract;
+- the history follows. On Core inference it is a block window
+  (`historyWindow` in `persona-records.js`): it grows to the pack's maximum of
+  `historyTurns` messages, then drops a whole block of turns at once. A block
+  is half the turn window (`ceil(historyTurns / 4)` turns, at least one), so the
+  first history message moves once every block, to a multiple of the block,
+  computed from the conversation's recorded turn count. The native agent keeps
+  its own session history;
+- the final user message carries everything selected for this turn (notes,
+  household members, approved knowledge, routines, save receipts, the sound
+  note, the reply language, a team member's last exchange, the reviewer's
+  advice) in one delimited reference block, then the request.
+
+Core inference history is rebuilt from the recorded turns, so it contains what
+was said and never an earlier reference block; a native session keeps the
+blocks it received as historical reference data. LLMx scene and KidX workshop
+prompts are part of the instructions and change with the scene or screen they
+describe.
 
 A household turn outranks evaluation work on a shared inference host. When a
 Benchmark workload reserves the host, the turn asks that workload to yield,
@@ -339,10 +367,14 @@ finance (`/api/finance`, `/finance`) are in the demo exclusion list of
   After each recorded turn a slower local model reviews the conversation in
   the background (`brain.js`, the router's `master_brain` lane): it proposes
   follow-up questions (the page's "Pistes"), revisions of shown content,
-  corrections that the next turn's instructions carry as advisory notes, and
+  corrections that the next turn carries as advisory notes beside its request, and
   at most one short remark the browser speaks only at a natural pause, unless
   the person chose quiet. It has no tools, saves nothing, keeps its latest
   review in memory per conversation, and a new turn cancels it.
+  Kids Room and Lecture conversations carry the Nestor personality like
+  Famille, and read replies through the same voice ladder
+  (`persona-presentation.js`): the reading voice chosen on that browser, then
+  Nestor's voice with its instance override, then his catalog voice.
 - `core/surfaces/psyx`: uses the Core conversation lifecycle and admitted
   inference. `core/src/domains/psyx` owns longitudinal state and reflection
   rules. After each completed turn a background review (router task

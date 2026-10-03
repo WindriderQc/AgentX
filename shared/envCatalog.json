@@ -1527,6 +1527,17 @@
       "secret": false,
       "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
     },
+    "HOUSEHOLD_FAMILY_CONVERSATION_BACKEND": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Conversation engine of new Family conversations (Famille, Kids Room, Lecture, native Family voice): agentx or openclaw. It wins over the page's request; existing conversations keep their engine and LLMx scenes are unaffected. Unset or any other value: HOUSEHOLD_CONVERSATION_BACKEND applies.",
+      "fallback": "HOUSEHOLD_CONVERSATION_BACKEND"
+    },
     "HOUSEHOLD_IMAGE_FAMILY_SOURCES": {
       "services": [
         "core"
@@ -1566,6 +1577,16 @@
       "category": "household",
       "secret": false,
       "description": "provider/model sent to OpenClaw for personal Nestor voice turns on the main agent. Unset: native OpenClaw model policy applies."
+    },
+    "HOUSEHOLD_VOICE_TASK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "voice_persona_chat",
+      "category": "household",
+      "secret": false,
+      "description": "Router task of a spoken Household turn on Core inference (agentx engine), in any pack; typed turns and LLMx scenes keep their pack task. Unset or invalid: voice_persona_chat."
     },
     "IDENTIFIER_VAULT_KEY": {
       "services": [
