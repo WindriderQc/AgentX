@@ -350,10 +350,6 @@ app.use('/api/models', modelsUnifiedRoutes);
 const ollamaHostsRoutes = require('../routes/ollama-hosts');
 app.use('/api/ollama-hosts', ollamaHostsRoutes);
 
-// Explicit Ollama VRAM configuration (no host probing)
-const ollamaVramRoutes = require('../routes/ollama-vram');
-app.use('/api/ollama-vram', ollamaVramRoutes);
-
 // Ollama Watchdog (inference jam detection + auto-recovery)
 const ollamaWatchdogRoutes = require('../routes/ollama-watchdog');
 app.use('/api/ollama-watchdog', ollamaWatchdogRoutes);

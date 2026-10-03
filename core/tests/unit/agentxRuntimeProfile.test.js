@@ -71,7 +71,6 @@ describe('Agent X runtime profile', () => {
     '/api/printer-vision/status/example',
     '/api/data-toolbox/status',
     '/data-toolbox',
-    '/api/ollama-vram/status',
     '/api/ollama-watchdog/status',
     '/api/analytics/federated',
     '/api/analytics/codex-usage',

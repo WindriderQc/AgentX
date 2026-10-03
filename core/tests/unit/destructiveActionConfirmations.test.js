@@ -28,7 +28,6 @@ describe('Core destructive-action confirmation coverage', () => {
     ],
     'routes/models-unified.js': [["router.delete('/ollama/:name'", "requireTypedConfirmation(req, res, 'DELETE OLLAMA MODEL'"]],
     'routes/nerve-center-host-pins.js': [["router.delete('/host-preferences/:hostUrl(*)/pin'", "requireTypedConfirmation(req, res, 'CLEAR HOST PIN'"]],
-    'routes/ollama-vram.js': [["router.delete('/override/:hostIp'", "requireTypedConfirmation(req, res, 'CLEAR VRAM OVERRIDE'"]],
     'routes/performance-data.js': [["router.delete('/baselines/:id'", "requireTypedConfirmation(req, res, 'DELETE PERFORMANCE BASELINE'"]],
     'routes/planning.js': [
       ["router.delete('/items/:id'", "requireTypedConfirmation(req, res, 'ARCHIVE PLANNING ITEM'"],
