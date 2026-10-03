@@ -7,7 +7,7 @@ const request = require('supertest');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const { app } = require('../../src/app');
-const { registerParentalAccess } = require('../../src/middleware/parentalAccess');
+const { registerParentalAccess, familyRequest } = require('../../src/middleware/parentalAccess');
 const edge = pending => pending.set('X-AgentX-Entry', 'household');
 
 describe('parental access at the single household gateway', () => {
@@ -29,6 +29,15 @@ describe('parental access at the single household gateway', () => {
     await edge(request(app).get('/api/family/profiles')).expect(200);
     // The docked avatar is shared with the family page; unconfigured here, so past the gate it is a 404.
     expect((await edge(request(app).get('/api/household/avatar/llmx-face.js')).expect(404)).body.code).toBe('AVATAR_NOT_CONFIGURED');
+    // The family conversation loads Core's shared voice loop and its capture worklet; other Core scripts stay closed.
+    for (const name of ['speech-language', 'playback-hold', 'browser-conversation', 'voice-capture-worklet']) {
+      await edge(request(app).get(`/js/voice/${name}.js`)).expect(200).expect('Content-Type', /javascript/);
+    }
+    await edge(request(app).get('/js/home.js')).expect(302);
+    for (const pathname of ['/js/voice/../home.js', '/js/voice/x/../../home.js', '/js/voice/%2e%2e/home.js', '/js/voice/', '/js/voice/browser-conversation.js/x']) {
+      expect(familyRequest({ method: 'GET' }, pathname)).toBe(false);
+    }
+    expect(familyRequest({ method: 'POST' }, '/js/voice/browser-conversation.js')).toBe(false);
     // The child's page may record the mask's math receipt; the route itself validates the family turn.
     expect((await edge(request(app).post('/api/family/math-receipts')).send({}).expect(400)).body.code).toBe('MATH_RECEIPT_INVALID');
     // Family pictures pass the gate; the route only serves sources allowed for Famille (#168).

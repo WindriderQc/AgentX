@@ -61,6 +61,8 @@ to `/panel`. Expiry, explicit lock, visibility changes and back/forward navigati
 also check the session. The server independently rejects protected APIs, including
 direct private-history, memory, settings and parent-approval requests. Family
 conversation handlers retain their existing server-bound child/family scopes.
+The family conversation loads Core's shared voice scripts (`/js/voice/<name>.js`)
+by exact name; every other Core page script stays behind the adult session.
 Erasing a Family conversation is a parent control: the family follow-up page
 (`/dad/family`) lists them, and the family delete route requires the adult session.
 Returning to Family does not cancel an already admitted server operation.

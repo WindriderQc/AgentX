@@ -19,6 +19,9 @@ function canonicalPath(req) {
 function familyRequest(req, pathname) {
   if (read(req) && familyPages.has(pathname)) return true;
   if (read(req) && /^\/(?:assets\/household|psyx\/assets|access-assets)\//.test(pathname)) return true;
+  // The family conversation runs Core's shared voice loop: its scripts and capture
+  // worklet, by exact name, so no other Core page script opens through this path.
+  if (read(req) && /^\/js\/voice\/[a-z0-9-]+\.js$/.test(pathname)) return true;
   if (read(req) && ['/favicon.ico', '/health', '/api/voice-personas/catalog', '/api/voice-personas/packs',
     '/api/voice-personas/sounds', '/api/family/profiles', '/api/family/room', '/api/family/chores', '/api/family/shopping',
     '/api/voix/player.js', '/api/voix/catalog', '/api/household/avatar/llmx-face.js'].includes(pathname)) return true;
