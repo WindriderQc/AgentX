@@ -101,6 +101,17 @@ describe('caller runtime compatibility', () => {
     expect(result.numCtxSource).toBe('caller');
   });
 
+  test.each(['generate', 'chat', 'extension', 'embed'])('%s runs a CPU pin at its pinned threads, so the runner is not reloaded', async policy => {
+    const deps = makeDeps();
+    deps.hostPreferenceService.getByHost = jest.fn(async () => ({
+      pinnedModels: [{ model: 'example:latest', contextSize: 8192, keepAlive: -1, numThread: 6 }]
+    }));
+    const pinned = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435', options: {} }, policy, deps);
+    expect(pinned.options).toEqual(expect.objectContaining({ num_ctx: 8192, num_thread: 6 }));
+    const caller = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435', options: { num_thread: 2 } }, policy, deps);
+    expect(caller.options.num_thread).toBe(2);
+  });
+
   test.each(['chat', 'extension', 'direct'])('%s passes native tool schemas to context accounting', async policy => {
     const deps = makeDeps();
     const tools = [{ type: 'function', function: { name: 'read', description: 'Full schema' } }];

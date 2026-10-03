@@ -523,17 +523,18 @@ async function startServer() {
     }
   }
 
-  // Opt-in: a short model-written report of what monitoring rules currently flag.
-  const opsWatchMs = require('./src/services/opsWatchService').watchIntervalMs();
-  if (opsWatchMs) {
-    try {
-      const opsWatch = require('./src/services/opsWatchService').getOpsWatch();
-      await startCoreSingletonDaemon({ name: 'ops-watch', label: 'Operations Watch',
-        start: async () => { opsWatch.start(opsWatchMs); console.log(`   ✓ Operations Watch: Active (${opsWatchMs}ms)`); },
-        stop: async () => opsWatch.stop() });
-    } catch (err) {
-      console.log(`   ⚠ Operations Watch: ${err.message}`);
-    }
+  // A short model-written report of what monitoring rules currently flag.
+  // Set in the Nerve Center; OPS_WATCH_MS only bootstraps it.
+  try {
+    const opsWatch = require('./src/services/opsWatchService').getOpsWatch();
+    await startCoreSingletonDaemon({ name: 'ops-watch', label: 'Operations Watch',
+      start: async () => {
+        const settings = await require('./src/services/opsWatchSettings').effective();
+        console.log(`   ✓ Operations Watch: ${opsWatch.activate(settings) ? `Active (${settings.intervalMs}ms)` : 'Off'}`);
+      },
+      stop: async () => opsWatch.deactivate() });
+  } catch (err) {
+    console.log(`   ⚠ Operations Watch: ${err.message}`);
   }
 
   // Forgotten and expired notes are hidden at once; remove their text after retention.
