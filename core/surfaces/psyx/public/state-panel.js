@@ -85,6 +85,8 @@ function renderExperiments() {
 }
 
 function renderPsyXState() {
+  renderStateItems('goalsList', 'goals');
+  renderProfile();
   renderStateItems('threadsList', 'activeThreads');
   renderStateItems('notesList', 'notes');
   renderStateItems('loopsList', 'openLoops');

@@ -6,7 +6,7 @@
 // helpers these functions use at call time.
 
 const PROPOSAL_LABELS = {
-  activeThreads: 'Sujet', notes: 'Note', patterns: 'Tendance', hypotheses: 'Hypothèse', openLoops: 'Question ouverte', experiments: 'Expérience', experimentResult: 'Résultat d’expérience'
+  activeThreads: 'Sujet', notes: 'Note', patterns: 'Tendance', hypotheses: 'Hypothèse', openLoops: 'Question ouverte', goals: 'Objectif', experiments: 'Expérience', experimentResult: 'Résultat d’expérience'
 };
 const REVIEW_POLL_MS = 2500;
 const REVIEW_POLL_LIMIT_MS = 10 * 60 * 1000;

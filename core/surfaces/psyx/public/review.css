@@ -100,3 +100,8 @@
 .location-badge[data-location="frontier"] { color: #cfe3f7; border-color: #4a6f96; background: rgba(143,179,217,.1); }
 .frontier-modes { display: grid; gap: 6px; margin-top: 8px; }
 .frontier-modes .voice-toggle span span { display: inline; }
+
+/* The user's own profile. */
+.profile-form { display: grid; gap: 8px; }
+.profile-form label { display: grid; gap: 4px; font-size: 10px; color: var(--muted); }
+.profile-form textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 11px; color: var(--text); background: #0d1217; border: 1px solid #2d3741; border-radius: 8px; padding: 7px; resize: vertical; }
