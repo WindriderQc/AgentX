@@ -135,17 +135,27 @@ const DIRECT_INVOKE_TASKS = {
     voice_persona_chat: { model: LIGHTWEIGHT_MODEL, host: LIGHTWEIGHT_HOST },
     voice_persona_reader: { model: VOICE_PERSONA_READER_MODEL, host: VOICE_PERSONA_READER_HOST },
     janitor_ai: { model: UTILITY_MODEL, host: UTILITY_HOST },
+    ops_watch: { model: envModel('AGENTX_OPS_WATCH_MODEL', UTILITY_MODEL), host: envHost('AGENTX_OPS_WATCH_HOST', UTILITY_HOST) },
     embeddings: { model: EMBEDDING_TASK_MODEL, host: EMBEDDING_TASK_HOST }
 };
 
 const DEFAULT_TASK_MODELS = { ...CLASSIFIABLE_TASKS, ...DIRECT_INVOKE_TASKS };
 const CLASSIFICATION_MODEL = envModel('AGENTX_CLASSIFIER_MODEL', LIGHTWEIGHT_MODEL);
 const CLASSIFICATION_HOST = envHost('AGENTX_CLASSIFIER_HOST', LIGHTWEIGHT_HOST);
-const STRICT_CONFIGURED_HOST_TASKS = new Set(['quick_chat', 'buddy_reaction', 'nestor_answer_light']);
+const STRICT_CONFIGURED_HOST_TASKS = new Set(['quick_chat', 'buddy_reaction', 'nestor_answer_light', 'ops_watch']);
+
+// A task may follow its model to another host only when that host has the
+// same residency: a CPU-routed task never moves to a GPU host (the model would
+// spill), and a GPU-routed task never lands on a slow CPU instance.
+function sameResidencyAs(hostKey) {
+    const residencyOf = (key) => (typeof hostConfig.getHostResidency === 'function' ? hostConfig.getHostResidency(HOSTS[key]) : 'gpu');
+    return (otherKey) => otherKey === hostKey || residencyOf(otherKey) === residencyOf(hostKey);
+}
 
 module.exports = {
     HOSTS,
     refreshHosts,
+    sameResidencyAs,
     PRODUCT_DEFAULT_MODEL: DEFAULT_CHAT_MODEL,
     PRODUCT_MASTER_BRAIN_MODEL: MASTER_BRAIN_MODEL,
     CLASSIFIABLE_TASKS,

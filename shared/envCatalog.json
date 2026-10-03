@@ -2052,6 +2052,26 @@
       "secret": false,
       "description": "Timeout of Nestor memory RAG calls, 1000 to 30000. Unset: 5000."
     },
+    "OPS_WATCH_LANGUAGE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Language the operations watch report is written in, for example French. Unset: English."
+    },
+    "OPS_WATCH_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Interval at which Core turns the current operational findings and active alerts into one short model-written report (task ops_watch), minimum 300000. Unset: no report."
+    },
     "NETWORK_DEVICE_WATCH_MS": {
       "services": [
         "core"

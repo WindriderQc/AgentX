@@ -68,7 +68,9 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **Alerts.** A native operations relay posts selected Core alerts to a
   Telegram forum topic and records the delivery in Core. Its configured quiet
   hours defer noncritical alerts; resolution notices report when a delivered
-  alert clears.
+  alert clears. An opt-in operations watch turns what the rules currently
+  flag into one short model-written report, as background work for a
+  CPU-resident host.
 - The former aiOPs, AgentX-Ecosystem and standalone component repositories are
   archived, read-only references.
 
