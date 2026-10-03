@@ -88,6 +88,26 @@ describe('inferenceAttemptExecutor cancellation', () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
+  test('a dispatched owned deadline passes closed-transport proof to its admission', async () => {
+    const lifecycle = {
+      signal: new AbortController().signal,
+      markDispatched: jest.fn(), assertActive: jest.fn(),
+      complete: jest.fn(), abandon: jest.fn().mockResolvedValue({ quarantined: true })
+    };
+    beginInferenceAdmission.mockResolvedValueOnce(lifecycle);
+    let started;
+    const dispatched = new Promise(resolve => { started = resolve; });
+    fetch.mockImplementation((_url, options) => { started(); return rejectWhenAborted(options.signal); });
+    const attempt = executeAdmittedOllamaAttempt({ hostUrl: 'http://ollama.test:11434',
+      model: 'model-a', payload: { model: 'model-a', prompt: 'hello' }, useChat: false, timeoutMs: 250
+    }).catch(error => error);
+    await dispatched;
+    jest.advanceTimersByTime(250);
+    expect(await attempt).toMatchObject({ isOllamaTimeout: true });
+    expect(lifecycle.abandon).toHaveBeenCalledWith(expect.any(Error), { deadlineAborted: true });
+    expect(lifecycle.complete).not.toHaveBeenCalled();
+  });
+
   test('caller cancellation aborts transport and removes its listener and timeout', async () => {
     const caller = new AbortController();
     const addListener = jest.spyOn(caller.signal, 'addEventListener');

@@ -162,7 +162,7 @@ async function acquireInferenceAdmission({
       }
       return released;
     },
-    async abandon(reason) {
+    async abandon(reason, { deadlineAborted = false } = {}) {
       if (!dispatched) {
         if (closed) return { released: false, reason: 'admission already closed' };
         closed = true;
@@ -174,7 +174,11 @@ async function acquireInferenceAdmission({
           principal: acquired.principal
         });
       }
-      return quarantine(reason, bridge.callerAborted && !fatalError ? 'caller-abort' : null);
+      // Only the attempt executor supplies this proof after its own timer
+      // closes the transport. Error text/flags alone never establish it.
+      const origin = fatalError ? null : bridge.callerAborted ? 'caller-abort'
+        : deadlineAborted === true && !bridge.controller.signal.aborted ? 'deadline-abort' : null;
+      return quarantine(reason, origin);
     },
     _heartbeatOnce: heartbeatOnce
   };

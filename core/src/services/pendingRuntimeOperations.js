@@ -18,8 +18,8 @@ async function trackRuntimeOperation(acquire, options) {
         settled();
         return result;
       },
-      async abandon(reason) {
-        try { return await operation.abandon(reason); }
+      async abandon(...args) {
+        try { return await operation.abandon(...args); }
         finally { settled(); }
       }
     };

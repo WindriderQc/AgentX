@@ -1174,7 +1174,8 @@ model still loading at the deadline, a streamed or Core-routed request) keeps
 the client deadline and stays UNKNOWN when it expires.
 
 An UNKNOWN inference (not a workload) is released by the watchdog without a
-runtime restart in two bounded cases. A watchdog probe is released after
+runtime restart for a watchdog probe or a connection Core closed itself.
+A watchdog probe is released after
 `WATCHDOG_PROBE_RECOVERY_SETTLE_MS` (default 10 minutes). A caller abort, where
 Core itself closed the upstream connection after a client disconnect, a busy
 reply or a superseded turn, is recorded with `unknownOrigin: caller-abort`:
@@ -1183,7 +1184,24 @@ Ollama cancels a generation whose connection closed, so it is released after
 resident at the request's context, and after the full probe window otherwise
 (a model load may still be running). Both require nothing else Core admitted on
 the host and two identical `/api/ps` samples; the release receipt keeps the
-evidence. A lost heartbeat, a socket hang-up or a runtime bridge quarantine
+evidence. An abort triggered by Core's own inference deadline is recorded as
+`unknownOrigin: deadline-abort` and follows the same proof, with a distinct
+`agentx.inference-deadline-recovery/v1` receipt.
+
+When a Benchmark test reaches its deadline or is stopped, the exact host claim
+release can close new Core dispatch on that host (`drainingHosts`). The workload
+remains held: its inferences must all carry the same parent admission and
+generation, and only Core caller/deadline aborts qualify for automatic recovery.
+The watchdog always waits the full probe settle window under this parent,
+then checks stable residency and the exact coordination proof atomically.
+Benchmark polls explicit, matching pending-drain receipts for at most 12
+minutes while retaining its workload heartbeat. Core renews the exact host
+claim during this wait. Only after the child quarantine is released does the
+normal finalizer restore and verify the pre-claim snapshot, before releasing
+the parent workload. An invalid receipt or elapsed wait retains ownership for
+recovery. Profiler workloads and unrelated inferences do not qualify.
+
+A lost heartbeat, a socket hang-up or a runtime bridge quarantine
 still needs the restart attestation below.
 
 For an UNKNOWN workload, use this operator sequence:

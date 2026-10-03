@@ -60,6 +60,7 @@ function createPromptExecutor(context) {
         const start = Date.now();
         const modelExecConfig = promptExecConfig(modelConfig, prompt), think = modelExecConfig.think === true;
         let testController = null;
+        let expiredTestTimeoutMs = null;
         let frozenPromptText = prompt.prompt;
 
         try {
@@ -150,7 +151,10 @@ function createPromptExecutor(context) {
 
             let response;
             let data;
-            const testTimeoutId = setTimeout(() => testController.abort(), testTimeoutMs);
+            const testTimeoutId = setTimeout(() => {
+                expiredTestTimeoutMs = testTimeoutMs;
+                testController.abort();
+            }, testTimeoutMs);
             const unregisterController = registerActiveBatchController(batchId, testController);
             try {
                 response = await fetch(url, fetchOptions);
@@ -390,6 +394,11 @@ function createPromptExecutor(context) {
                 return { infraError: false, stopped: true, cancelled: true };
             }
 
+            if (expiredTestTimeoutMs !== null) {
+                err.message = `Benchmark test deadline exceeded after ${expiredTestTimeoutMs}ms`;
+                err.code = 'BENCHMARK_TEST_DEADLINE_EXCEEDED';
+                err.infra = true;
+            }
             const classified = classifyBenchmarkError(err);
             await persistFailedResult({
                 batchId,
