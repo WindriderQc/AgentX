@@ -19,11 +19,6 @@ function routeBlock(code, declaration) {
 describe('Core destructive-action confirmation coverage', () => {
   const routeContracts = {
     'routes/alerts-ops.js': [["router.delete('/rules/:ruleId'", "requireTypedConfirmation(req, res, 'DELETE ALERT RULE'"]],
-    'routes/custom-models.js': [
-      ["router.delete('/:id'", "requireTypedConfirmation(req, res, 'ARCHIVE CUSTOM MODEL'"],
-      ["router.post('/:id/rollback'", "requireTypedConfirmation(req, res, 'ROLLBACK CUSTOM MODEL'"],
-      ["router.post('/:id/deprecate'", "requireTypedConfirmation(req, res, 'DEPRECATE CUSTOM MODEL'"]
-    ],
     'routes/history.js': [["router.delete('/:id/tags'", "requireTypedConfirmation(req, res, 'REMOVE CONVERSATION TAGS'"]],
     'routes/inference.js': [["router.post('/router/config/reset'", "requireTypedConfirmation(req, res, 'RESET ROUTER CONFIG'"]],
     'routes/model-registry.js': [

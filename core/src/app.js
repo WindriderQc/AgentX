@@ -324,10 +324,6 @@ app.use('/api/analytics', standardJsonParser, analyticsFederatedRoutes);
 const clusterScheduleRoutes = require('../routes/cluster-schedule');
 app.use('/api/cluster', clusterScheduleRoutes);
 
-// Custom Model Management routes
-const customModelsRoutes = require('../routes/custom-models');
-app.use('/api/custom-models', customModelsRoutes);
-
 // History routes
 const historyRoutes = require('../routes/history');
 app.use('/api/history', historyRoutes);
