@@ -33,6 +33,7 @@
     const ecosystemIssues = Array.isArray(ecosystem.issues) ? ecosystem.issues : [];
     consistencyDetail.textContent = [
       consistency.status === 'degraded' ? 'Deployment mismatch' :
+        consistency.status === 'mixed' ? 'Services run different builds' :
         consistency.status === 'ok' ? 'Deployment identity matches' : 'Build identity unverified',
       ...issues,
       ecosystem.status ? 'Ecosystem: ' + ecosystem.status : '',
@@ -74,7 +75,7 @@
         present('attention', 'Chat route not observed', 'Open Chat to inspect or choose an installed model.', 'fa-circle-question');
       } else if (!routeReady) {
         present('attention', 'Chat route needs attention', 'Open Chat, then Take the controls to choose an installed model.', 'fa-triangle-exclamation');
-      } else if (payload.consistency?.status !== 'ok') {
+      } else if (!['ok', 'mixed'].includes(payload.consistency?.status)) {
         present('attention', 'Deployment needs attention', 'Open System details to inspect the service versions.', 'fa-triangle-exclamation');
       } else if (payload.summary?.status !== 'ok') {
         present('attention', 'Chat route is available', 'Some tools need attention; open System details.', 'fa-triangle-exclamation');
