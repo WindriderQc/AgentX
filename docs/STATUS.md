@@ -17,6 +17,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   memory reads have one owner each, in Core. Surfaces and native harnesses
   (OpenClaw, VoiX, Data collectors, usage and memory-review tasks) call those
   capabilities.
+- **Conversation recovery.** Playground retains accepted requests and response
+  bytes in Core. Owners can download refused or interrupted exchanges without
+  sending the request again. Completed retries replay the saved response;
+  unknown outcomes do not start another inference. Conversation erasure also
+  removes associated recovery content and rejects late writes across workers.
 - **Voice.** Household and PsyX share Core's browser conversation engine, VoiX
   transport, synthesis validation, stream relay and spoken-text cleanup. Native
   voice replies use the same speech boundary; physical device adapters retain
@@ -81,6 +86,7 @@ Issues hold the current work and remaining acceptance:
 | Area | Tracking |
 |---|---|
 | Playground screen capture through canonical attachments | [#2](https://github.com/WindriderQc/AgentX/issues/2) |
+| Review transcript storage and verified context overflow refusal | [#234](https://github.com/WindriderQc/AgentX/issues/234) |
 | Real-device acceptance for phone, microphone and voice | [#3](https://github.com/WindriderQc/AgentX/issues/3) |
 | DSH Studio bounded-session runtime claims | [#4](https://github.com/WindriderQc/AgentX/issues/4) |
 | Qualify benchmark judges against human references | [#6](https://github.com/WindriderQc/AgentX/issues/6) |

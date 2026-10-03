@@ -237,6 +237,14 @@
           </section>
         </div>
         <p class="chat-announcements" id="chatAnnouncements" role="status" aria-live="polite" aria-atomic="true"></p>
+        <details id="exchangeRecovery" class="exchange-recovery">
+          <summary>Recover a refused or interrupted exchange</summary>
+          <p>The accepted request and received response stay in Agent X. Erasing a copy keeps the saved conversation; erasing a conversation also erases its copies.</p>
+          <button id="exchangeRecoveryRefresh" type="button" class="ghost">Refresh</button>
+          <p id="exchangeRecoveryStatus" role="status" aria-live="polite"></p>
+          <ul id="exchangeRecoveryList"></ul>
+          <button id="exchangeRecoveryOlder" type="button" class="ghost" hidden>Older exchanges</button>
+        </details>
 
         <section class="chat-route-recovery" id="chatRouteRecovery" aria-labelledby="chatRouteRecoveryTitle" hidden>
           <span class="chat-route-recovery__icon" aria-hidden="true"><i class="fas fa-route"></i></span>
@@ -697,3 +705,4 @@
       if (tutorialBtn) tutorialBtn.style.display = 'none';
     });
   </script>
+  <script type="module" src="/js/chat/chat-exchange-recovery.js"></script>

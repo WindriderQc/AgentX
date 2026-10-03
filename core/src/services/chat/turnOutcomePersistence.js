@@ -142,7 +142,7 @@ function receiptOf(conversationId, { userMessage, assistantMessage }, outcome) {
 
 // Appends to an existing conversation with one conditional update, so
 // concurrent copies of the same clientTurnId store the pair once.
-async function appendToConversation(owner, input) {
+async function appendToConversation(owner, input, fence) {
   const scope = { ...playgroundScope(owner), _id: input.conversationId };
   const conversation = await Conversation.findOne(scope);
   if (!conversation) {
@@ -161,11 +161,11 @@ async function appendToConversation(owner, input) {
     }
   }
   const turn = buildTurnMessages(input, sourceUserMessage);
-  const updated = await Conversation.findOneAndUpdate(
+  const updated = await fence.mutate(() => Conversation.findOneAndUpdate(
     { ...scope, 'messages.metadata.clientTurnId': { $ne: input.clientTurnId } },
     { $push: { messages: { $each: turn.messages } }, $set: { updatedAt: new Date() } },
-    { new: true, runValidators: true }
-  );
+    { new: true, runValidators: true, writeConcern: { w: 'majority', j: true } }
+  ));
   if (updated) return receiptOf(updated._id, turn, input.outcome);
 
   const stored = storedTurnReceipt(await Conversation.findOne(scope), input.clientTurnId);
@@ -176,7 +176,7 @@ async function appendToConversation(owner, input) {
 // A first turn creates its conversation; the unique (userId, clientTurnId)
 // index turns a concurrent copy into a duplicate key, answered with the
 // receipt of the conversation that won.
-async function createConversation(owner, input) {
+async function createConversation(owner, input, fence) {
   const existing = storedTurnReceipt(await Conversation.findOne({
     ...playgroundScope(owner),
     'messages.metadata.clientTurnId': input.clientTurnId
@@ -193,7 +193,7 @@ async function createConversation(owner, input) {
     messages: turn.messages
   });
   try {
-    await conversation.save();
+    await fence.mutate(() => conversation.save({ writeConcern: { w: 'majority', j: true } }));
   } catch (err) {
     if (err?.code !== 11000) throw err;
     const stored = storedTurnReceipt(await Conversation.findOne({
@@ -213,9 +213,13 @@ async function persistTurnOutcome(userId, rawInput = {}) {
     throw new TurnOutcomeError('Conversation not found', 404, 'CONVERSATION_NOT_FOUND');
   }
   const input = normalizeTurnOutcome(rawInput);
-  return input.conversationId
-    ? appendToConversation(owner, input)
-    : createConversation(owner, input);
+  try {
+    return await require('../conversations/exchangeReceipts').guardTurn(`playground:${owner}`, input.clientTurnId,
+      fence => input.conversationId ? appendToConversation(owner, input, fence) : createConversation(owner, input, fence));
+  } catch (error) {
+    if (error.code === 'EXCHANGE_ERASED') throw new TurnOutcomeError(error.message, 410, error.code);
+    throw error;
+  }
 }
 
 module.exports = {

@@ -16,6 +16,9 @@ const {
   conversationNotFound
 } = require('../src/services/chat/conversationPersistence');
 const ragStore = getRagServiceClient();
+const { durableConversationExchange } = require('../src/middleware/durableConversationExchange');
+router.use(durableConversationExchange({ scope: (_req, res) => `playground:${getUserId(res)}`,
+  matches: req => ['/chat', '/chat/stream'].includes(req.path) && ['POST', 'GET'].includes(req.method) }));
 
 function resolveAllowlistedTarget(target) {
   const validation = validateHostUrl(target);
@@ -159,6 +162,7 @@ router.post('/chat', async (req, res) => {
       ...input, userId, ragStore, abortSignal: abortController.signal
     });
 
+    res.locals.exchangeConversationId = result.conversationId;
     const responseData = turnAction ? { ...result, turnAction } : result;
 
     res.json({
@@ -321,6 +325,7 @@ const handleChatStreamRequest = async (req, res, payload) => {
         sendEvent('thinking', { content: thinking });
       },
       onComplete: (result) => {
+        res.locals.exchangeConversationId = result.conversationId;
         const completionReceipt = turnAction ? { ...result, turnAction } : result;
         if (finishStream('done', completionReceipt)) {
           emitBuddyEvent('message_received', 'chat', 'Streamed response completed', 'normal');

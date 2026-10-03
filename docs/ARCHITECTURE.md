@@ -139,12 +139,20 @@ in, approve or reach personal tasks.
 
 ### Conversations
 
-Core's internal conversation storage primitives (`services/conversations/`)
-support immutable BSON transcript pages and owner-scoped exchange receipts.
-Receipts preserve accepted input and ordered response packets, check content
-hashes before recovery, and distinguish completed from uncertain or interrupted
-outcomes. These primitives are not attached to the public chat routes or the
-`Conversation` model; existing conversation persistence keeps its current shape.
+Core's owner-scoped exchange store (`services/conversations/`) preserves the
+accepted request and ordered response bytes for Playground chat and streaming.
+Authenticated server middleware selects the owner; public receipt fields cannot
+select another exchange. Recovery checks content hashes and packet counts before
+returning complete content. An identical completed retry replays its stored
+HTTP response without another inference; an uncertain or interrupted outcome
+never authorizes reexecution. A concurrent local retry can wait up to five
+seconds for its original delivery to settle.
+
+Canonical conversations keep their embedded messages and existing client-turn
+deduplication. The immutable BSON transcript-page primitives are not attached
+to the `Conversation` model. Publication and erasure share the owner's scope
+gate: an erased exchange cannot publish a late first conversation, and a late
+browser stopped/failed outcome cannot restore its erased turn identity.
 
 Content writes and erasure share a durable Mongo owner fence, including across
 Core workers. Erasure closes admission before waiting for an existing writer,
