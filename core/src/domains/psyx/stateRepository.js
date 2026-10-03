@@ -7,6 +7,7 @@ const followUp = require('./followUp');
 const FRONTIER_MODES = ['local', 'deep', 'all'];
 const { createItemCorrection } = require('./stateItemCorrection');
 const dream = require('./dream');
+const assessments = require('./assessments');
 const { createDreamStore } = require('./dreamStore');
 
 const PSYX_STATE_VERSION = 2;
@@ -164,7 +165,7 @@ function emptyState(userId = 'default') {
     checkIns: [],
     settings: { frontierMode: null },
     profile: { about: '', expectations: '' },
-    portrait: null, portraitPrevious: null, portraitRejected: [], dreamLog: [],
+    portrait: null, portraitPrevious: null, portraitRejected: [], dreamLog: [], assessments: [],
     goals: [],
     updatedAt: null
   };
@@ -184,6 +185,7 @@ function normalizeState(doc, userId = 'default') {
     sessionDigests: proposals.normalizeDigests(doc.sessionDigests),
     checkIns: followUp.normalizeCheckIns(doc.checkIns),
     resetAt: normalizeDate(doc.resetAt),
+    assessments: assessments.normalizeAssessments(doc.assessments),
     portrait: dream.normalizeStoredPortrait(doc.portrait), portraitPrevious: dream.normalizeStoredPortrait(doc.portraitPrevious),
     portraitRejected: dream.normalizeRejected(doc.portraitRejected), dreamLog: dream.normalizeDreamLog(doc.dreamLog),
     profile: { about: cleanText(doc.profile?.about, PROFILE_LIMITS.about), expectations: cleanText(doc.profile?.expectations, PROFILE_LIMITS.expectations) },
@@ -485,7 +487,7 @@ function createStateRepository({ collection, logger }) {
   async function reset(userId) {
     await ensureDocument(userId);
     const now = new Date();
-    const cleared = Object.fromEntries([...STATE_ITEM_KEYS, 'experiments', 'proposals', 'settledProposals', 'sessionDigests', 'checkIns'].map((key) => [key, []]));
+    const cleared = Object.fromEntries([...STATE_ITEM_KEYS, 'experiments', 'proposals', 'settledProposals', 'sessionDigests', 'checkIns', 'assessments'].map((key) => [key, []]));
     await collection.updateOne(
       { userId },
       {
@@ -618,6 +620,14 @@ function createStateRepository({ collection, logger }) {
     return { checkIn, state: await read(userId) };
   }
 
+  // A completed questionnaire, scored here from the answers.
+  async function addAssessment(userId, body = {}) {
+    const assessment = assessments.createAssessment(body.kind, body.answers);
+    await ensureDocument(userId);
+    await collection.updateOne({ userId }, { $push: { assessments: { $each: [assessment], $slice: -assessments.ASSESSMENT_LIMIT } }, $inc: { revision: 1 }, $set: { updatedAt: new Date() } });
+    return { assessment, state: await read(userId) };
+  }
+
   async function updateSettings(userId, body = {}) {
     if (!FRONTIER_MODES.includes(body.frontierMode)) {
       const error = new Error('frontierMode must be local, deep or all');
@@ -641,6 +651,7 @@ function createStateRepository({ collection, logger }) {
   return {
     ...createDreamStore({ collection, read, ensureDocument, createStateItem, limits: STATE_LIMITS }),
     updateProfile,
+    addAssessment,
     updateSettings,
     updateItem: createItemCorrection({ collection, read, keys: STATE_ITEM_KEYS, cleanText, fingerprint: stateItemFingerprint }),
     addCheckIn,

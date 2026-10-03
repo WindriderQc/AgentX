@@ -3,6 +3,8 @@
 const { cleanText, stateForPrompt } = require('./stateRepository');
 const { SAFETY_INSTRUCTION } = require('./safety');
 const { portraitSystemMessage } = require('./dream');
+const { assessmentSystemMessage } = require('./assessments');
+const { techniquesSystemMessage } = require('./techniques');
 const { familyTimeZone } = require('../household/family');
 const { SPOKEN_REPLY_INSTRUCTION } = require('../../services/voice/presentation');
 
@@ -181,10 +183,12 @@ function composeSystemContext(state, control, { conversationId = null, safety = 
   // The portrait is PsyX's distilled understanding; on a local reply it takes its room from raw memory.
   const portrait = portraitSystemMessage(state, { maxCharacters: wide ? 14000 : 1800, evidence: wide });
   // The frontier agent cuts its instructions at 60,000 characters: the whole context stays well under, so control and safety at the end always arrive.
-  const memory = longitudinalSystemMessage(state, { conversationId, budget, maxCharacters: (wide ? 40000 : 6000 - profile.length) - portrait.length });
+  const measures = assessmentSystemMessage(state, time?.now);
+  const techniques = techniquesSystemMessage({ full: wide });
+  const memory = longitudinalSystemMessage(state, { conversationId, budget, maxCharacters: (wide ? 40000 : 6000 - profile.length - measures.length) - portrait.length });
   const opening = !conversationId && (state.sessionDigests?.length || state.experiments?.some(item => ['planned', 'active'].includes(item.status)))
     ? SESSION_OPENING : '';
-  return [SYSTEM_PROMPT, profile, portrait, memory, controlSystemMessage(control), time ? timeSystemMessage(time) : '', opening,
+  return [SYSTEM_PROMPT, profile, portrait, measures, memory, techniques, controlSystemMessage(control), time ? timeSystemMessage(time) : '', opening,
     voice ? `${SPOKEN_REPLY_INSTRUCTION} This is a spoken turn. Answer naturally in two to five short sentences, usually 30 to 90 words, without lists. Ask at most one question.` : '',
     safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
 }

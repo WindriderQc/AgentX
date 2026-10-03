@@ -11,6 +11,8 @@ const PORTRAIT_TITLES = {
 };
 const DREAM_KIND_LABELS = { night: 'cette nuit', session: 'après ta séance', manual: 'à ta demande' };
 const DREAM_SOURCE_LABELS = { notes: 'notes de Nestor', tasks: 'tâches et rappels', mail: 'journal de courriel' };
+const INTAKE_LABELS = { currentSituation: 'ta situation actuelle', reasonsAndGoals: 'ce que tu cherches', familyOfOrigin: 'ta famille d’origine', relationships: 'tes relations',
+  children: 'tes enfants', work: 'ton travail', physicalHealth: 'ta santé physique', sleep: 'ton sommeil', substances: 'alcool et substances', supports: 'tes appuis', pastHelp: 'l’aide déjà reçue' };
 const DREAM_SEEN_KEY = 'psyx.dream.seen';
 const DREAM_POLL_MS = 60000;
 
@@ -47,6 +49,15 @@ function portraitList(title, items) {
     (item.evidence || []).map(text => `<blockquote>${escapeHtml(text)}</blockquote>`).join('')}</li>`).join('')}</ul></section>` : '';
 }
 
+// How much of an intake PsyX has covered so far; the rest is asked over time, never all at once.
+function intakeSummary(intake = {}) {
+  const domains = Object.keys(INTAKE_LABELS);
+  const known = domains.filter(key => intake[key] === 'known').length;
+  const missing = domains.filter(key => !intake[key] || intake[key] === 'unknown').map(key => INTAKE_LABELS[key]);
+  return `<section class="state-section"><h4>Ce que PsyX connaît de ta vie</h4><p class="state-help">${known} domaine${known === 1 ? '' : 's'} sur ${domains.length} bien connu${known === 1 ? '' : 's'}.${
+    missing.length ? ` Encore à découvrir, une question à la fois : ${escapeHtml(missing.join(', '))}.` : ''}</p></section>`;
+}
+
 function renderPortrait() {
   const portrait = state.psyxState?.portrait;
   const log = (state.psyxState?.dreamLog || []).filter(entry => !entry.undone && (entry.added.length || entry.retired.length || entry.id === portrait?.id)).slice(-5).reverse();
@@ -68,6 +79,7 @@ function renderPortrait() {
         ${item.evidence.map(text => `<blockquote>${escapeHtml(text)}</blockquote>`).join('')}
         <div class="proposal-actions"><button type="button" data-portrait-reject="${escapeHtml(item.id)}">Ce n’est pas moi</button></div>
       </article>`).join('')}</section>`).join('')
+      + intakeSummary(portrait.intake)
       + portraitList('Ce que PsyX voit d’une séance à l’autre', portrait.findings)
       + portraitList('À explorer à la prochaine séance', portrait.agenda)
       + portraitList('Ce que PsyX aimerait mieux comprendre', portrait.questions);
