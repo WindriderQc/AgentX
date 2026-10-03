@@ -17,7 +17,8 @@
   function show(op) {
     operation = op;
     const busy = ['accepted', 'reserving', 'generating', 'archiving', 'restoring'].includes(op.state);
-    $('image-create').disabled = busy;
+    $('image-create').disabled = busy || op.state === 'unknown' || !config?.configured;
+    for (const button of $('image-gallery').querySelectorAll('button')) button.disabled = busy || op.state === 'unknown';
     $('image-cancel').hidden = !busy;
     $('image-recover').hidden = !['unknown', 'archive_failed'].includes(op.state);
     $('image-status').textContent = `${statuses[op.state] || op.state}${op.error ? ' ' + op.error : ''}${op.timings?.totalMs ? ` (${Math.round(op.timings.totalMs / 1000)} s)` : ''}`;
@@ -103,7 +104,7 @@
       $('image-create').disabled = !config.configured;
       $('image-status').textContent = config.configured ? 'Prêt. Une seule création à la fois.' : 'Le service d’images locales n’est pas encore configuré.';
       const ops = await loadHistory();
-      const current = ops.find(x => ['accepted', 'reserving', 'generating', 'archiving', 'restoring'].includes(x.state));
+      const current = ops.find(x => ['accepted', 'reserving', 'generating', 'archiving', 'restoring', 'unknown'].includes(x.state));
       const lastId = new URLSearchParams(location.search).get('operation') || localStorage.getItem('agentx-image-operation');
       if (current) show(current);
       else if (lastId) show((await api(`/operations/${encodeURIComponent(lastId)}`)).operation);
