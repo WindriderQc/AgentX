@@ -26,6 +26,16 @@ by Core; do not publish the ComfyUI UI or submit prompts manually while Core
 owns the worker. On hosts sharing RAM with other services, qualify the cache
 and offload policy with those services present.
 
+`integrations/local-images/worker.py` is a CPU supervisor for that installation.
+Run it with the ComfyUI root, its virtual-environment Python, an external state
+directory and the `/object_info` schema captured from the pinned installation.
+The supervisor listens privately; its CUDA child listens only on loopback.
+It starts that child for computation and `/free` waits for its process exit,
+releasing the CUDA context as well as model allocations. This matters when a
+small remaining CUDA reservation changes Ollama's full-GPU placement decision.
+Terminal execution receipts survive child recreation; the adapter never replays
+a submitted identity. Core still owns operation state, recovery and archiving.
+
 Set `LOCAL_IMAGES_CONFIG` to the manifest path **inside Core**, and mount that
 file read-only through the instance Compose override. Set `IMAGE_ARCHIVE_DIR`
 to writable external storage. A minimal manifest is:

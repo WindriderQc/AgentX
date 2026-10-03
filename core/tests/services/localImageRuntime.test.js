@@ -64,6 +64,13 @@ describe('image GPU handoff and original-job recovery', () => {
     expect(warmDefaultModel).not.toHaveBeenCalled();
     expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(1);
   });
+  test('unload acknowledgement waits for observable runner disappearance', async () => {
+    fetchRunningModelInfosStrict.mockResolvedValueOnce(running).mockResolvedValueOnce([]);
+    const { reservation } = await heldOperation('image-unload-settlement');
+    expect(fetchRunningModelInfosStrict).toHaveBeenCalledTimes(2);
+    await reservation.verified({ jobTerminal: true });
+    await reservation.restore();
+  });
   test('a spilled restored resident never counts as successful restoration', async () => {
     const { reservation } = await heldOperation('image-spill');
     warmDefaultModel.mockImplementation(async (_host, name) => {

@@ -83,8 +83,18 @@ async function reserve(config, operation, save, isCancelled) {
         const r = await unloadModel(host, resident.model);
         if (r.status !== 'ok') throw new Error('Unable to unload a GPU resident');
       }
-      await assertOwned();
-      if ((await fetchRunningModelInfosStrict(host)).length) throw new Error('GPU residents were not unloaded');
+      // Ollama acknowledges scheduling unload before /api/ps loses the runner.
+      // Observe settlement under the same fence; an acknowledgement is not enough.
+      const deadline = Date.now() + 15000;
+      while (true) {
+        await assertOwned();
+        const running = await fetchRunningModelInfosStrict(host);
+        if (!running.length) break;
+        if (Date.now() >= deadline || running.some(x => !snap.residents.some(r => r.model === (x.name || x.model)))) {
+          throw new Error('GPU residents were not unloaded');
+        }
+        await sleep(250);
+      }
     }
   } catch (error) {
     clearInterval(timer);

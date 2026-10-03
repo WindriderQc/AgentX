@@ -4,8 +4,8 @@ const { decode } = require('./codec');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function createComfyClient(base, fetchImpl = fetch) {
-  async function json(route, body, method = body === undefined ? 'GET' : 'POST') {
-    const r = await fetchImpl(`${base}${route}`, { method, timeout: 15000, redirect: 'error',
+  async function json(route, body, method = body === undefined ? 'GET' : 'POST', timeout = 15000) {
+    const r = await fetchImpl(`${base}${route}`, { method, timeout, redirect: 'error',
       ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
     if (!r.ok) throw Object.assign(new Error(`Image worker HTTP ${r.status}`), { status: r.status });
     const text = await r.text();
@@ -35,7 +35,7 @@ function createComfyClient(base, fetchImpl = fetch) {
   async function submit(id, prompt) {
     // No retry: ComfyUI does not deduplicate a client-supplied prompt_id.
     let r;
-    try { r = await json('/prompt', { prompt_id: id, client_id: id, prompt }); }
+    try { r = await json('/prompt', { prompt_id: id, client_id: id, prompt }, 'POST', 120000); }
     catch (error) { if (error.status === 400) error.notSubmitted = true; throw error; }
     if (r.prompt_id !== id) throw new Error('Image worker did not retain the operation identity');
     return r;
