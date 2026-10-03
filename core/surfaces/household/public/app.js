@@ -483,16 +483,15 @@
     });
   }
 
-  function benchmarkHref(pathname) {
-    return `http://${location.hostname}:3081${pathname}`;
-  }
-
-  function ecosystemTemplate() {
+  // Benchmark and RAG answer on their own origin: use the browser URLs Core publishes.
+  function ecosystemTemplate(publicUrls = {}) {
+    const serviceHref = (service, port, pathname) => `${publicUrls[service] || `${location.protocol}//${location.hostname}:${port}`}${pathname}`;
     const household = [
       { href: '/dad/day', glyph: 'J', title: 'Ma journée', description: 'Les tâches et le courrier.', liveKey: 'household' },
       { href: '/dad', glyph: 'D', title: 'Super Dad', description: 'Ton agent, tes outils et tes souvenirs privés.', liveKey: 'voix' },
       { href: '/panel', glyph: 'F', title: 'Famille', description: 'Nestor, les enfants et la lecture.', liveKey: 'household' },
-      { href: '/dad/memories', glyph: 'N', title: 'Souvenirs', description: 'Relire les échanges et gérer ce qui est retenu.', liveKey: 'nestor' }
+      { href: '/dad/memories', glyph: 'N', title: 'Souvenirs', description: 'Relire les échanges et gérer ce qui est retenu.', liveKey: 'nestor' },
+      { href: '/finance', glyph: '$', title: 'Finances', description: 'Wallet Beefer : situation, relevés réconciliés et plan.', note: 'grand livre privé' }
     ];
     const work = [
       { href: '/api/openclaw/control-launch/chat', glyph: 'O', title: 'OpenClaw', description: 'Le bureau agentique protégé (Control UI officiel), vérifié avant le lancement.', liveKey: 'openclaw', preflight: 'chat' },
@@ -502,18 +501,19 @@
     ];
     const dataAndMind = [
       { href: '/data-toolbox', glyph: 'D', title: 'Data', description: 'Stockage, réseau, bases, flux et Janitor en lecture bornée.', liveKey: 'data' },
+      { href: serviceHref('rag', 3082, '/'), glyph: 'K', title: 'Connaissances', description: 'Ajouter, chercher et parcourir les documents du RAG.', liveKey: 'rag' },
       { href: '/psyx', glyph: 'P', title: 'PsyX', description: 'Espace privé longitudinal et conversationnel.', liveKey: 'psyx' }
     ];
     const proofAndSystem = [
       { href: '/portal/', glyph: 'X', title: 'AgentX Portal', description: 'Le workspace Produit complet : Core, Benchmark et RAG.', note: 'Produit complet' },
-      { href: benchmarkHref('/leaderboard'), glyph: 'B', title: 'Benchmarks', description: 'Résultats, profils et comparaison de modèles.', liveKey: 'benchmark' },
+      { href: serviceHref('benchmark', 3081, '/leaderboard'), glyph: 'B', title: 'Benchmarks', description: 'Résultats, profils et comparaison de modèles.', liveKey: 'benchmark' },
       { href: '/nerve-center', glyph: 'S', title: 'Santé système', description: 'Hôtes, modèles, routage, alertes et posture RAG.', liveKey: 'system' },
       { href: '/models', glyph: 'M', title: 'Modèles', description: 'Inventaire et preuves attachées aux artefacts actifs.', note: 'autorité Produit' }
     ];
     const links = (items) => items.map(ecosystemWorkspace).join('');
     return `<section class="home-heading"><p class="eyebrow">Bienvenue chez vous</p><h1>Qu’aimeriez-vous faire ?</h1><p class="lede">Parler, organiser votre journée ou retrouver la famille.</p></section>
       <section class="ecosystem-primary household-spaces" aria-label="Nos espaces"><a class="ecosystem-primary-link dad" href="/dad"><span class="ecosystem-primary-index">01</span><span><small>Privé</small><strong>Super Dad</strong><span>Ton agent, tes outils et tes souvenirs.</span></span></a><a class="ecosystem-primary-link nestor" href="/panel"><span class="ecosystem-primary-index">02</span><span><small>Partagé</small><strong>Famille</strong><span>Parler à Nestor, apprendre et vivre la maison.</span></span>${ecosystemLiveBadge('voix')}</a></section>
-      <section id="ecosystemWorkspaces" class="ecosystem-directory" aria-labelledby="ecosystemDirectoryTitle"><div class="ecosystem-directory-heading"><div><h2 id="ecosystemDirectoryTitle">Applications & outils</h2><p class="muted">Pour aller plus loin, ouvrez l’espace dont vous avez besoin.</p></div><a class="button compact" href="/portal/" target="_blank" rel="noopener">Ouvrir AgentX Portal ↗</a></div><div class="ecosystem-groups"><details class="ecosystem-group"><summary><span><small>Au quotidien</small><strong>Maison & notes</strong></span><span>4 espaces</span></summary><div class="ecosystem-workspace-list">${links(household)}</div></details><details class="ecosystem-group"><summary><span><small>Travailler</small><strong>Agents & Coding Team</strong></span><span>4 espaces</span></summary><div class="ecosystem-workspace-list">${links(work)}</div></details><details class="ecosystem-group"><summary><span><small>Explorer</small><strong>Data & PsyX</strong></span><span>2 espaces</span></summary><div class="ecosystem-workspace-list">${links(dataAndMind)}</div></details><details class="ecosystem-group"><summary><span><small>Configurer</small><strong>AgentX & système</strong></span><span>4 espaces</span></summary><p class="ecosystem-help">Portal donne accès aux fonctions avancées d’AgentX.</p><div class="ecosystem-workspace-list">${links(proofAndSystem)}</div></details></div>
+      <section id="ecosystemWorkspaces" class="ecosystem-directory" aria-labelledby="ecosystemDirectoryTitle"><div class="ecosystem-directory-heading"><div><h2 id="ecosystemDirectoryTitle">Applications & outils</h2><p class="muted">Pour aller plus loin, ouvrez l’espace dont vous avez besoin.</p></div><a class="button compact" href="/portal/" target="_blank" rel="noopener">Ouvrir AgentX Portal ↗</a></div><div class="ecosystem-groups"><details class="ecosystem-group"><summary><span><small>Au quotidien</small><strong>Maison & notes</strong></span><span>${household.length} espaces</span></summary><div class="ecosystem-workspace-list">${links(household)}</div></details><details class="ecosystem-group"><summary><span><small>Travailler</small><strong>Agents & Coding Team</strong></span><span>${work.length} espaces</span></summary><div class="ecosystem-workspace-list">${links(work)}</div></details><details class="ecosystem-group"><summary><span><small>Explorer</small><strong>Data, connaissances & PsyX</strong></span><span>${dataAndMind.length} espaces</span></summary><div class="ecosystem-workspace-list">${links(dataAndMind)}</div></details><details class="ecosystem-group"><summary><span><small>Configurer</small><strong>AgentX & système</strong></span><span>${proofAndSystem.length} espaces</span></summary><p class="ecosystem-help">Portal donne accès aux fonctions avancées d’AgentX.</p><div class="ecosystem-workspace-list">${links(proofAndSystem)}</div></details></div>
       <details class="home-service-status"><summary>État des services <span id="ecosystemPulse" class="pill waiting">lecture en cours</span></summary><p><strong id="ecosystemPulseTitle">Vérification des services…</strong></p><p id="ecosystemPulseDetail" class="muted"></p><small id="ecosystemUpdated" class="muted"></small></details></section>`;
 
   }
@@ -525,7 +525,8 @@
   }
 
   async function loadEcosystem() {
-    app.innerHTML = ecosystemTemplate();
+    const config = await api('/api/config').catch(() => null);
+    app.innerHTML = ecosystemTemplate(config?.publicUrls);
     document.title = 'Accueil · AgentX';
     setRuntime('waiting', 'checking ecosystem');
     attachLaunchPreflights(app);
@@ -558,6 +559,8 @@
         crewStatus('voix', 'down') !== 'ok' ? 'VoiX indisponible' : gazzDown ? `VoiX prêt · voix de Nestor (Gazz) indisponible depuis ${gazzSince}` : 'VoiX prêt');
       const benchmark = services.get('benchmark');
       setEcosystemStatus('benchmark', benchmark?.status || 'down', benchmark?.status === 'ok' ? 'Benchmark prêt' : 'Benchmark indisponible');
+      const rag = services.get('rag');
+      setEcosystemStatus('rag', rag?.status || 'down', rag?.status === 'ok' ? 'RAG prêt' : 'RAG indisponible');
       const attention = [
         ...(panel.crew || []).filter((member) => member.status !== 'ok').map((member) => `${member.name} à vérifier`),
         ...(panel.fleet?.attention || [])
@@ -574,7 +577,7 @@
       document.getElementById('ecosystemUpdated').textContent = `Projection live · ${new Date(panel.generatedAt || Date.now()).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`;
       setRuntime(panel.status === 'ok' ? true : 'waiting', panel.status === 'ok' ? 'ecosystem ready' : 'attention');
     } else {
-      for (const key of ['household', 'nestor', 'openclaw', 'voix', 'benchmark', 'system']) setEcosystemStatus(key, 'down', 'live state unavailable');
+      for (const key of ['household', 'nestor', 'openclaw', 'voix', 'benchmark', 'rag', 'system']) setEcosystemStatus(key, 'down', 'live state unavailable');
       document.getElementById('ecosystemPulse').textContent = 'indisponible';
       document.getElementById('ecosystemPulse').className = 'pill down';
       document.getElementById('ecosystemPulseTitle').textContent = 'La projection live ne répond pas.';
