@@ -76,8 +76,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   memory fitted to its lane's budget. A user may choose a frontier cloud agent
   for deep turns or for all turns when the instance names one: it is never a
   fallback, and Core keeps the conversation and its memory. Between sessions
-  PsyX rereads its conversations and three read-only owner sources and writes
-  a portrait of the user; each such run is logged and can be undone.
+  PsyX selects context from its conversations and three read-only owner sources
+  and writes a portrait of the user; each such run is logged and can be undone.
+  Messages remain whole, omitted reply context is counted, and portraits report
+  the text coverage of the actual inference lane. New portrait quotations are
+  checked against supplied source text; older quotations remain unverified.
 - **Routing.** Light tasks may carry an instance-configured fallback ladder;
   every other task stays on its model. The OpenClaw conversation provider can
   borrow that ladder when the instance opts in; it is off by default.

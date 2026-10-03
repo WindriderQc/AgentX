@@ -9,6 +9,7 @@ const { createItemCorrection } = require('./stateItemCorrection');
 const dream = require('./dream');
 const assessments = require('./assessments');
 const { createDreamStore } = require('./dreamStore');
+const { normalizeEvidenceRefs } = require('./dreamEvidence');
 
 const PSYX_STATE_VERSION = 2;
 const STATE_ITEM_KEYS = ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops', 'goals'];
@@ -77,6 +78,7 @@ function normalizeStateItem(raw, key) {
     text,
     source: ['user', 'psyx', 'dream', 'legacy', 'import'].includes(raw.source) ? raw.source : 'user',
     sourceConversationId: cleanText(raw.sourceConversationId, 80) || null,
+    evidenceRefs: normalizeEvidenceRefs(raw.evidenceRefs),
     correctedBy: raw.correctedBy === 'user' ? 'user' : null,
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
     evidence: Array.isArray(raw.evidence)
@@ -104,6 +106,7 @@ function createStateItem(key, body = {}, source = 'user') {
     text,
     source: ['user', 'psyx', 'dream', 'import'].includes(source) ? source : 'user',
     sourceConversationId: source === 'psyx' ? cleanText(body.sourceConversationId, 80) || null : null,
+    evidenceRefs: source === 'dream' ? normalizeEvidenceRefs(body.evidenceRefs) : [],
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
     evidence: Array.isArray(body.evidence)
       ? body.evidence.map((item) => cleanText(item, 240)).filter(Boolean).slice(0, 20)

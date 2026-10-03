@@ -13,7 +13,7 @@ const { detectRecentCrisis, RESOURCES } = require('../../../src/domains/psyx/saf
 const assessments = require('../../../src/domains/psyx/assessments');
 const { TECHNIQUES } = require('../../../src/domains/psyx/techniques');
 
-const VERSION = '2.10.0';
+const VERSION = '2.10.1';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -266,7 +266,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     // The conversation is gone either way; a failed memory cleanup is logged, not reported as a failed delete.
     await stateRepository.forgetConversation(res.locals.psyxUserId, cleanText(req.params.id, 80))
       .catch(error => logger.error?.('PsyX could not forget a deleted conversation', { message: error.message }));
-    // The portrait was built from every conversation: rebuild it from what remains.
+    // This conversation could have contributed to the portrait: rebuild from what remains.
     await dream.invalidate(res.locals.psyxUserId).catch(error => logger.error?.('PsyX could not rebuild the portrait', { message: error.message }));
     return responseData(res, { id: req.params.id });
   }));
@@ -328,11 +328,15 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const userId = res.locals.psyxUserId;
     const requested = domain.normalizeControl(req.body?.psyx || {});
     const action = requested.action ? domain.ACTION_CONFIG[requested.action] : null;
-    const input = action?.persistedMessage || cleanText(req.body?.message, 12000);
+    // The JSON body limit and Core admission bound the request. Never cut the
+    // user's words before safety detection, inference or canonical storage.
+    const input = action?.persistedMessage || String(req.body?.message || '').trim();
     if (!input) return res.status(400).json({ ok: false, status: 'error', message: 'message is required' });
 
     const conversationId = cleanText(req.body?.conversationId, 80) || null;
-    const context = conversationId ? await conversationRepository.context(userId, conversationId, domain.CONTEXT_BUDGETS.frontier.maxMessages, { timestamps: true }) : [];
+    const history = conversationId ? await conversationRepository.context(userId, conversationId, domain.CONTEXT_BUDGETS.frontier.maxMessages, { timestamps: true, withCoverage: true }) : [];
+    const context = Array.isArray(history) ? history : history?.messages;
+    const availableMessages = Array.isArray(history) ? history.length : history?.availableMessages;
     if (conversationId && !context) return res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
     const longitudinal = await stateRepository.read(userId);
     const recommendation = conversationId ? longitudinal.sessionDigests?.find(item => item.conversationId === conversationId)?.next : null;
@@ -346,12 +350,16 @@ function createApp({ config, database, provider, voice = null, logger = console,
     // The frontier lane reads a wide context; the local routes keep their bounded one.
     const budget = location === 'frontier' ? 'frontier' : 'local';
     const lastSessionAt = longitudinal.sessionDigests?.filter(item => item.conversationId !== conversationId).at(-1)?.updatedAt || null;
-    const compose = lane => ({
-      system: domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane,
-        time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } }),
-      messages: domain.boundedContext(context || [], domain.CONTEXT_BUDGETS[lane])
-    });
-    const { system, messages: providerContext } = compose(budget);
+    const compose = lane => {
+      const selected = domain.selectConversationContext(context || [], { ...domain.CONTEXT_BUDGETS[lane], availableMessages });
+      return {
+        system: domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane,
+          time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } }),
+        messages: selected.messages, contextCoverage: selected.coverage
+      };
+    };
+    const prepared = compose(budget);
+    const { system, messages: providerContext } = prepared;
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-store');
@@ -363,7 +371,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const heartbeat = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(': ping\n\n'); }, 15000);
     const handlers = providerHandlers(res);
     streaming.set(userId, (streaming.get(userId) || 0) + 1);
-    const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety), location };
+    const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety), location,
+      contextCoverage: prepared.contextCoverage };
     handlers.send('control', applied);
     if (safety) handlers.send('safety', safety);
 
@@ -371,6 +380,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
       const result = await provider.stream({
         system,
         messages: providerContext,
+        contextCoverage: prepared.contextCoverage,
         message: input,
         location,
         // If the frontier lane fails, the local route answers with its own bounded context.
@@ -382,7 +392,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
         signal: abortController.signal
       }, handlers);
       if (abortController.signal.aborted) return;
-      const assistant = cleanText(result.content || handlers.content(), 50000);
+      const assistant = String(result.content || handlers.content() || '').trim();
       if (!assistant) throw new Error('Inference provider returned an empty response');
       const session = await conversationRepository.saveCompletedTurn({
         userId,
@@ -398,7 +408,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
       dream.touch(userId);
       handlers.send('done', {
         review: { scheduled: reviewScheduled },
-        control: applied,
+        control: { ...applied,
+          ...(result.routing?.location ? { location: result.routing.location } : {}),
+          ...(result.routing?.contextCoverage ? { contextCoverage: result.routing.contextCoverage } : {}) },
         response: assistant,
         conversationId: session.id,
         model: result.model,

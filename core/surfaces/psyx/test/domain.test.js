@@ -34,6 +34,17 @@ test('auto stance and depth follow the review recommendation, explicit choices w
   assert.doesNotMatch(controlSystemMessage(normalizeControl({})), /Chosen automatically/);
 });
 
+test('conversation context keeps long messages whole and reports whole-message omissions', () => {
+  const { selectConversationContext } = require('../../../src/domains/psyx/domain');
+  const long = `${'x'.repeat(12000)} IMPORTANT_TAIL`;
+  const selected = selectConversationContext([{ role: 'user', content: 'Earlier' }, { role: 'user', content: long }]);
+  assert.equal(selected.messages.at(-1).content, long);
+  assert.equal(selected.coverage.complete, true);
+  const omitted = selectConversationContext([{ role: 'user', content: 'Earlier' }, { role: 'user', content: long }], { maxTotalCharacters: 100 });
+  assert.deepEqual(omitted.messages, []);
+  assert.deepEqual(omitted.coverage, { availableMessages: 2, includedMessages: 0, omittedMessages: 2, complete: false });
+});
+
 test('crisis detection favours explicit phrasing over figures of speech', () => {
   const { detectCrisis } = require('../../../src/domains/psyx/safety');
   for (const text of ['Je pense à me suicider', 'J’ai envie d’en finir.', 'je n’ai plus envie de vivre', 'tout le monde serait mieux sans moi',
@@ -88,6 +99,25 @@ test('crisis detection after the second review: past intent caught, everyday cut
   assert.ok(detectCrisis('je me coupe, je sais pas pourquoi'));
   assert.ok(detectCrisis('je me suis coupée hier soir'));
   for (const text of ['je me coupe les cheveux demain', 'je me suis blessé au genou', 'je me suis coupé avec un couteau en cuisinant']) {
+    assert.equal(detectCrisis(text), null, text);
+  }
+});
+
+test('explicit danger with intent, wrist injury and feminine medication quantities reaches the safety path', () => {
+  const { detectCrisis } = require('../../../src/domains/psyx/safety');
+  for (const [text, kind] of [
+    ['Je me suis coupé les poignets.', 'self_harm'],
+    ['Je me suis coupée les veines.', 'self_harm'],
+    ['I cut my wrists.', 'self_harm'],
+    ['J’ai avalé toutes mes pilules.', 'immediate_danger'],
+    ['J’ai pris tous les comprimés.', 'immediate_danger'],
+    ['I swallowed all my tablets.', 'immediate_danger'],
+    ['J’ai décidé d’en finir ce soir.', 'suicide'],
+    ['Je compte en finir demain.', 'suicide'],
+    ['I decided to end my life.', 'suicide']
+  ]) assert.ok(detectCrisis(text)?.kinds.includes(kind), text);
+  for (const text of ['J’ai décidé d’en finir avec ce projet.', 'Je me suis coupé les cheveux.',
+    'J’ai avalé ma pilule habituelle.', 'I took my medication.', 'Je me suis coupé avec un couteau en cuisinant.']) {
     assert.equal(detectCrisis(text), null, text);
   }
 });

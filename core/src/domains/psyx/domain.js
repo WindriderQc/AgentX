@@ -194,23 +194,27 @@ function composeSystemContext(state, control, { conversationId = null, safety = 
 }
 
 const CONTEXT_BUDGETS = Object.freeze({
-  local: { maxMessages: 40, maxMessageCharacters: 12000, maxTotalCharacters: 35000 },
-  frontier: { maxMessages: 120, maxMessageCharacters: 12000, maxTotalCharacters: 160000 }
+  local: { maxMessages: 40, maxTotalCharacters: 35000 },
+  frontier: { maxMessages: 120, maxTotalCharacters: 160000 }
 });
 
-function boundedContext(messages, { maxMessages = 40, maxMessageCharacters = 12000, maxTotalCharacters = 35000 } = {}) {
+function selectConversationContext(messages, { maxMessages = 40, maxTotalCharacters = 35000, availableMessages = messages.length } = {}) {
   const selected = [];
   let characters = 0;
   for (const message of [...messages].reverse()) {
     if (selected.length >= maxMessages) break;
-    const content = cleanText(message?.content, maxMessageCharacters);
+    const content = String(message?.content || '').trim();
     if (!content) continue;
     if (characters + content.length > maxTotalCharacters) break;
     selected.unshift({ role: message.role === 'assistant' ? 'assistant' : 'user', content });
     characters += content.length;
   }
-  return selected;
+  const available = Number.isSafeInteger(availableMessages) ? Math.max(messages.length, availableMessages) : messages.length;
+  return { messages: selected, coverage: { availableMessages: available, includedMessages: selected.length,
+    omittedMessages: available - selected.length, complete: selected.length === available } };
 }
+
+function boundedContext(messages, options) { return selectConversationContext(messages, options).messages; }
 
 module.exports = {
   PROMPT_VERSION,
@@ -228,5 +232,6 @@ module.exports = {
   controlSystemMessage,
   longitudinalSystemMessage,
   composeSystemContext,
+  selectConversationContext,
   boundedContext
 };

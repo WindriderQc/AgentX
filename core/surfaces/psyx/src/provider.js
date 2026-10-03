@@ -13,7 +13,8 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
     return { ...snapshot, provider: 'agentx', taskConfigState: Object.fromEntries(
       Object.entries(snapshot.tasks || {}).map(([key, route]) => [key, { effective: { model: route.model, host: route.hostKey } }])) };
   };
-  const frontierRouting = () => ({ location: 'frontier', routedModel: frontierConfig.model, routedHost: `openclaw/${frontierConfig.agent}` });
+  const frontierRouting = request => ({ location: 'frontier', routedModel: frontierConfig.model, routedHost: `openclaw/${frontierConfig.agent}`,
+    ...(request?.contextCoverage ? { contextCoverage: request.contextCoverage } : {}) });
   // Says why the local route answered; never logs content.
   const fallbackReason = (error, work) => {
     const reason = typeof error.code === 'string' ? error.code : error.name || 'FRONTIER_FAILED';
@@ -29,7 +30,8 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
       messages: [{ role: 'system', content: request.system }, ...request.messages, { role: 'user', content: request.message }],
       options: request.options, callerDetail: 'psyx'
     }, { signal: request.signal, consumerContract: 'psyx' });
-    const metadata = { ...result.metadata, location: 'local', ...extra };
+    const metadata = { ...result.metadata, location: 'local', ...extra,
+      ...(request.contextCoverage ? { contextCoverage: request.contextCoverage } : {}) };
     handlers.onRoute(metadata);
     return { ...await readAdmittedInferenceStream(result, {
       signal: request.signal, onToken: handlers.onToken, onThinking: handlers.onThinking
@@ -37,6 +39,7 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
   }
 
   async function localComplete(request, extra = {}) {
+    if (request.local?.error) throw Object.assign(new Error(request.local.error.message), { code: request.local.error.code });
     const work = request.work || 'review';
     const result = await runtimeServices.inference.execute({
       mode: 'chat', stream: false, taskType: request.taskType, think: false, format: 'json', timeoutMs: request.timeoutMs,
@@ -56,14 +59,14 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
       }
       let started = false;
       try {
-        handlers.onRoute(frontierRouting());
+        handlers.onRoute(frontierRouting(request));
         const result = await frontier.run({
           agentId: frontierConfig.agent, instructions: request.system, signal: request.signal, timeoutMs: request.timeoutMs,
           messages: [...request.messages, { role: 'user', content: request.message }],
           onToken: delta => { started = true; handlers.onToken(delta); }
         });
         if (!result.streamed) handlers.onToken(result.content);
-        return { content: result.content, model: frontierConfig.model, routing: frontierRouting(), stats: result.usage, thinkingObserved: false };
+        return { content: result.content, model: frontierConfig.model, routing: frontierRouting(request), stats: result.usage, thinkingObserved: false };
       } catch (error) {
         // Once text reached the user the turn cannot be replayed elsewhere; before that, answer locally and say so.
         if (started || request.signal?.aborted) throw error;

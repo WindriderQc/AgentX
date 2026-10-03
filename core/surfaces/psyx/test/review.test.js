@@ -138,7 +138,10 @@ test('in auto mode the next turn follows the review recommendation and tells the
   }).then(response => response.text());
   try {
     const auto = await post({ psyx: { mode: 'auto', depth: 'auto' } });
-    assert.match(auto, /event: control\ndata: \{"mode":"challenge","depth":"deep","auto":\{"mode":true,"depth":true\},"reason":"The story is too convenient.","safety":false,"location":"local"\}/);
+    const control = JSON.parse(auto.match(/event: control\ndata: ([^\n]+)/)[1]);
+    assert.deepEqual(control, { mode: 'challenge', depth: 'deep', auto: { mode: true, depth: true },
+      reason: 'The story is too convenient.', safety: false, location: 'local',
+      contextCoverage: { availableMessages: 1, includedMessages: 1, omittedMessages: 0, complete: true } });
     assert.deepEqual([requests[0].taskType, requests[0].think, requests[0].options.temperature], ['deep_reasoning', true, 0.55]);
     assert.match(requests[0].system, /Chosen automatically after reviewing this conversation/);
 
@@ -169,7 +172,8 @@ test('a crisis signal overrides the stance, adds the safety instruction and send
   }).then(response => response.text());
   try {
     const crisis = await post('Je n’ai plus envie de vivre.');
-    assert.match(crisis, /event: control\ndata: \{"mode":"talk","depth":"normal",[^\n]*"safety":true,"location":"local"\}/);
+    const control = JSON.parse(crisis.match(/event: control\ndata: ([^\n]+)/)[1]);
+    assert.deepEqual([control.mode, control.depth, control.safety, control.location], ['talk', 'normal', true, 'local']);
     assert.match(crisis, /event: safety\ndata: \{"kinds":\["suicide"\],"resources":\[\{"label":"Danger immédiat","contact":"911"\}/);
     assert.deepEqual([requests[0].taskType, requests[0].options.temperature], ['analysis', 0.4]);
     assert.match(requests[0].system, /SAFETY STANCE/);

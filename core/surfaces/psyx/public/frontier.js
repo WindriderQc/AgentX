@@ -26,10 +26,10 @@ function frontierLocationFor(depth) {
 
 // The setup checklist row about content leaving the house.
 function frontierSetupLabel() {
-  if (!frontierUi.supported) return 'Désactivé : les réponses et revues restent sur les voies locales';
-  return { all: `Tout passe par ${frontierUi.model}; conversations et mémoire restent stockées ici`,
-    deep: `Réflexion profonde et revue automatique par ${frontierUi.model}; le reste est local`,
-    local: `Disponible (${frontierUi.model}) mais désactivé : tout reste local` }[frontierMode()];
+  if (!frontierUi.supported) return 'Réponses, revues et portraits sur les voies locales';
+  return { all: `Conversations, revues et portraits par ${frontierUi.model}; le contexte sélectionné est transmis au cloud`,
+    deep: `Réponses profondes, revues et portraits par ${frontierUi.model}; les réponses normales sont locales`,
+    local: `Réponses, revues et portraits locaux; ${frontierUi.model} est désactivé` }[frontierMode()];
 }
 
 function renderFrontier(control = null) {
@@ -43,7 +43,7 @@ function renderFrontier(control = null) {
   badge.dataset.location = cloud ? 'frontier' : 'local';
   badge.textContent = note || (cloud ? `☁ ${frontierUi.model}` : 'Local');
   badge.title = cloud
-    ? 'Cette réponse est produite par le modèle cloud. Tes conversations et ta mémoire restent stockées ici.'
+    ? 'Cette réponse transmet le contexte sélectionné au modèle cloud. AgentX conserve les données de référence; le service distant peut aussi conserver des traces.'
     : 'Cette réponse est produite sur tes machines.';
   $('frontierSection').hidden = !frontierUi.supported;
   for (const input of document.querySelectorAll('input[name="frontierMode"]')) input.checked = input.value === frontierMode();

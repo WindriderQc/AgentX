@@ -6,13 +6,15 @@
 // figures of speech ("ça me tue de rire") do not trigger.
 
 const SIGNALS = Object.freeze([
+  { kind: 'suicide', pattern: /\b(decide|prevu|l'intention|compte|prevois) (d'|de )?en finir(?! avec)\b|\b(decided|intend|intending) to end (it all|my life)\b/ },
   { kind: 'suicide', pattern: /\b(suicid\w*|me (tuer|suicider|pendre|jeter (sous|du haut))|(envie d'|veux |vais |pense a |pense d'?)en finir(?! avec)|en finir avec (la vie|ma vie|tout|moi)|(envie de|veux|voudrais) (mourir|crever(?! de))|(veux|voulais|voudrais) (plus|pas) vivre|n'?en peux plus de vivre|(voudrais|aimerais) etre mort|mettre fin a (mes jours|ma vie)|(plus|pas) (envie|le gout) de vivre|veux (mourir|disparaitre)|voudrais (mourir|disparaitre)|mieux (sans moi|si j'?etais mort)|kill myself|end (it all|my life)|want to die|better off dead|no reason to live|(don'?t|do not) want to live|want to disappear|plan to end (it|my life))\b/ },
   // Passive ideation: wishing not to exist, without a stated plan. Errs toward
   // asking; the safety instruction covers what is clearly something else.
   { kind: 'passive_ideation', pattern: /\b(si je (n'?etais|ne serais|n'?existais) plus (la|ici)|si je disparaissais|(serait|serais|seraient) (mieux|plus simple|plus facile) sans moi|(aimerais|voudrais|veux) (ne )?(pas|plus) me reveiller|wish i (were|was) (dead|gone)|not wake up)\b/ },
   { kind: 'self_harm', pattern: /\b(me (faire du mal|blesser|blesse|couper|coupe|scarifier|scarifie|bruler|brule)(?! (les|la|le|l'|au|a|du|des|en|un|une|avec|sur) )|me suis (fait du mal|blesse|coupe|scarifie|brule)e?(?! (les|la|le|l'|au|a|du|des|en|un|une|avec|sur) )|automutil\w*|scarification|self[- ]?harm\w*|cut(ting)? myself|hurt(ing)? myself)\b/ },
   { kind: 'harm_to_others', pattern: /\b((envie|peur) de (le|la|les|lui) (tuer|frapper|faire du mal)|vais (le|la|les|lui) (tuer|faire du mal)|(want|going) to (kill|hurt) (him|her|them))\b/ },
-  { kind: 'immediate_danger', pattern: /\b(j'?ai (pris|avale) (des|trop de|tous mes) (pilules|medicaments|comprimes)|overdos\w*|surdos\w*|i took (all|too many) (pills|meds))\b/ }
+  { kind: 'self_harm', pattern: /\b(me (couper|coupe|taillader|taillade)|me suis (coupe|taillade)e?) (les? )?(poignets?|veines?)\b|\bcut(ting)? my wrists?\b/ },
+  { kind: 'immediate_danger', pattern: /\b(j'?ai (pris|avale) (des|trop de|tous mes|toutes mes|tous les|toutes les) (pilules|medicaments|comprimes)|overdos\w*|surdos\w*|i (took|swallowed) (all( my| the)?|too many) (pills|meds|tablets))\b/ }
 ]);
 
 const RESOURCES = Object.freeze([
@@ -43,7 +45,7 @@ function detectRecentCrisis(message, context = []) {
 
 function detectCrisis(text) {
   const value = normalize(text);
-  const kinds = SIGNALS.filter(signal => signal.pattern.test(value)).map(signal => signal.kind);
+  const kinds = [...new Set(SIGNALS.filter(signal => signal.pattern.test(value)).map(signal => signal.kind))];
   return kinds.length ? { kinds, resources: RESOURCES } : null;
 }
 

@@ -43,7 +43,8 @@ function createDreamStore({ collection, read, ensureDocument, createStateItem, l
       const removed = new Set(state.dreamLog.flatMap(entry => entry.added).filter(item => !present.has(item.id)).map(item => statementKey(item.text)));
       for (const op of dream.memory) {
         if (op.op === 'add') {
-          const item = createStateItem(op.kind, { text: op.text, evidence: op.evidence, confidence: op.confidence, status: op.kind === 'hypotheses' ? 'working' : 'active' }, 'dream');
+          const item = createStateItem(op.kind, { text: op.text, evidence: op.evidence, evidenceRefs: op.evidenceRefs,
+            confidence: op.confidence, status: op.kind === 'hypotheses' ? 'working' : 'active' }, 'dream');
           // A full list is left alone: adding would push out its oldest item, possibly one he wrote.
           if (removed.has(statementKey(item.text)) || lists[op.kind].length >= limits[op.kind] || lists[op.kind].some(entry => entry.fingerprint === item.fingerprint)) continue;
           lists[op.kind] = [...lists[op.kind], item];
@@ -98,7 +99,7 @@ function createDreamStore({ collection, read, ensureDocument, createStateItem, l
     });
   }
 
-  // The portrait is built from every conversation, so a permanent deletion
+  // Conversations can contribute to the portrait, so a permanent deletion
   // discards it and it is rebuilt from what remains. Memory items a dream added
   // stay, like accepted proposals, until he removes them or undoes that dream.
   async function clearPortrait(userId) {
