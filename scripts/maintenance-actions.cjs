@@ -9,6 +9,7 @@
 // Core contracts, releases the lease with a note and prints a JSON receipt.
 //
 //   ./agentx action status
+//   ./agentx action lease --actor <who> --claim <purpose> | --release <summary>
 //   ./agentx action deploy --actor <who> --services core,benchmark [--revision origin/main] [--wait-minutes 10] [--queue-minutes 0]
 //   ./agentx action recover-quarantine --actor <who> --host http://127.0.0.1:11434
 //   ./agentx action recalibrate-judges --actor <who> [--host <url> --model <name>]
@@ -27,7 +28,7 @@ const ROOT = path.resolve(process.env.AGENTX_CHECKOUT || path.join(__dirname, '.
 const CONTRACT = 'agentx.maintenance-action/v1';
 const DEPLOYABLE = Object.freeze(['core', 'benchmark', 'benchmark-runner', 'rag', 'data']);
 const REVISION_PORTS = Object.freeze({ core: 3080, benchmark: 3081, rag: 3082, data: 3083 });
-const ACTIONS = Object.freeze(['status', 'deploy', 'recover-quarantine', 'recalibrate-judges']);
+const ACTIONS = Object.freeze(['status', 'lease', 'deploy', 'recover-quarantine', 'recalibrate-judges']);
 const RESTART_CONFIRMATION = 'OLLAMA_RUNTIME_RESTARTED_AND_PRIOR_REQUESTS_TERMINATED';
 
 class ActionError extends Error {
@@ -79,7 +80,7 @@ function writeLead(file, lead, { heldBy, since, note }) {
   lines[2] = `since: ${since}`;
   lines[3] = `notes: ${note}${lead.notes ? ` || ${lead.notes}` : ''}`;
   const temporary = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(temporary, lines.join('\n'));
+  fs.writeFileSync(temporary, lines.join('\n'), { mode: fs.statSync(file).mode & 0o777 });
   fs.renameSync(temporary, file);
 }
 
@@ -88,19 +89,57 @@ const minute = (now = new Date()) => now.toISOString().slice(0, 16) + 'Z';
 const leadRefusal = lead => (lead.heldBy === 'none' ? null : refuse(`LEAD.md is held by ${lead.heldBy} since ${lead.since}`, { heldBy: lead.heldBy }));
 
 function acquireLead(file, actor, purpose, now = new Date()) {
-  const lead = readLead(file);
-  const held = leadRefusal(lead);
-  if (held) throw held;
-  const holder = `agentx-action (${actor})`;
-  writeLead(file, lead, { heldBy: holder, since: minute(now), note: `${minute(now)} ${holder}: ${purpose}` });
-  return holder;
+  return withLeadWriter(file, () => {
+    const lead = readLead(file);
+    const held = leadRefusal(lead);
+    if (held) throw held;
+    const holder = `agentx-action (${actor})`;
+    writeLead(file, lead, { heldBy: holder, since: minute(now), note: `${minute(now)} ${holder}: ${purpose}` });
+    return holder;
+  });
 }
 
 function releaseLead(file, holder, summary, now = new Date()) {
-  const lead = readLead(file);
-  if (lead.heldBy !== holder) return false;
-  writeLead(file, lead, { heldBy: 'none', since: '', note: `${minute(now)} ${holder}: ${summary} Released.` });
-  return true;
+  return withLeadWriter(file, () => {
+    const lead = readLead(file);
+    if (lead.heldBy !== holder) return false;
+    writeLead(file, lead, { heldBy: 'none', since: '', note: `${minute(now)} ${holder}: ${summary} Released.` });
+    return true;
+  });
+}
+
+// Serialize the read/rename pair between independent action processes. A dead
+// writer's sidecar remains visible; age never authorizes removing it.
+function withLeadWriter(file, action) {
+  const lock = `${file}.writer-lock`;
+  let fd;
+  try { fd = fs.openSync(lock, 'wx', 0o600); }
+  catch (error) {
+    if (error.code === 'EEXIST') throw refuse('The LEAD.md writer is busy or requires operator recovery.');
+    throw error;
+  }
+  try {
+    fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }) + '\n');
+    return action();
+  }
+  finally { fs.closeSync(fd); fs.unlinkSync(lock); }
+}
+
+function lease(config, options) {
+  const usage = message => new ActionError(message, { exitCode: 2 });
+  if (Object.keys(options).some(key => !['actor', 'claim', 'release'].includes(key))) throw usage('lease accepts only --actor and exactly one of --claim or --release');
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:@/-]{0,99}$/.test(options.actor || '')) throw usage('--actor needs a stable identifier of 1 to 100 characters');
+  if (Object.hasOwn(options, 'claim') === Object.hasOwn(options, 'release')) throw usage('Choose exactly one of --claim or --release');
+  const note = options.claim ?? options.release;
+  if (!note?.trim() || note.length > 2000 || /[\u0000-\u001f\u007f]/.test(note)) throw usage('The lease note needs one nonempty line of at most 2000 characters');
+  let holder = `agentx-action (${options.actor})`;
+  if (options.claim != null) holder = acquireLead(config.leadFile, options.actor, note.trim());
+  else if (!releaseLead(config.leadFile, holder, note.trim())) {
+    const lead = readLead(config.leadFile);
+    throw refuse('Only the current LEAD.md holder can release this lease.', { heldBy: lead.heldBy });
+  }
+  return { operation: options.claim != null ? 'claim' : 'release', holder,
+    lease: (({ heldBy, since }) => ({ heldBy, since }))(readLead(config.leadFile)) };
 }
 
 // --- Instance, processes and HTTP -----------------------------------------------------
@@ -459,8 +498,8 @@ async function main(argv = process.argv.slice(2)) {
     if (mutating && !parsed.options.actor) throw new ActionError('--actor names who requested the action', { exitCode: 2 });
     const takeLead = () => (holder = acquireLead(config.leadFile, parsed.options.actor, `${action} ${JSON.stringify(parsed.options)}`));
     // A deploy takes the lease itself, once its turn comes and something is left to deploy.
-    if (mutating && action !== 'deploy') takeLead();
-    const handler = { status, deploy, 'recover-quarantine': recoverQuarantine, 'recalibrate-judges': recalibrateJudges }[action];
+    if (mutating && !['deploy', 'lease'].includes(action)) takeLead();
+    const handler = { status, lease, deploy, 'recover-quarantine': recoverQuarantine, 'recalibrate-judges': recalibrateJudges }[action];
     const result = await handler(config, parsed.options, takeLead);
     receipt = { contract: CONTRACT, action, actor: parsed.options.actor || null, outcome: 'completed', startedAt, finishedAt: new Date().toISOString(), result };
   } catch (error) {

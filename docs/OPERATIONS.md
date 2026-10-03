@@ -117,14 +117,21 @@ when set. Exit codes: 0 completed, 1 failed, 2 usage, 4 refused (held or busy).
 | Action | Effect |
 |---|---|
 | `status` | Read-only: checkout revision, revision served by Core, Benchmark, RAG and Data, active coordination, lease holder, running deploys. |
+| `lease --actor <who> --claim <purpose>` | Takes the configured `AGENTX_LEAD_FILE` only when free and keeps it held after the command. The actor is a stable session identifier. |
+| `lease --actor <same-who> --release <summary>` | Releases only that actor's current lease, records its summary and preserves every earlier note. Another holder or a free lease refuses. |
 | `deploy --services core,benchmark[,...] [--revision origin/main] [--wait-minutes 10] [--queue-minutes 0]` | Deploys take turns, and one deploy carries every commit merged before it fetched. A held `LEAD.md` or a running deploy refuses at once, or is waited for up to `--queue-minutes`, checked every 10 s. Before taking the lease the action looks at what is served. A service is up to date when it reports the revision, a descendant, or a commit with the same build (nothing its Dockerfile copies, the Dockerfile, the compose file or `.dockerignore` differs), from a container created after the instance env file and override last changed; a service that reports no revision (`benchmark-runner`) never is. When every requested service is up to date and the checkout holds the revision, the action completes with `alreadyServed: true`, without the lease, a build or a recreate; a queued action leaves that way as soon as the deploy ahead of it serves its revision. Otherwise the action takes the lease and needs a clean tree, a revision on `origin/main` and a fast-forward of the checkout; fast-forwards to `origin/main` as fetched at that moment and, when a merge of docs, integrations or another service left every requested image unchanged, completes there with `alreadyServed: true`; otherwise it builds the images first (building touches no running container), then waits for the instance to be idle and recreates with `./agentx up --no-deps`, without rebuilding, through Core's runtime lease. Automated inferences start again within seconds, so a lease refusal is retried every 10 s until a gap appears; `--wait-minutes` bounds the idle wait and the retries together, after which the action stops refused (exit 4) with the images built and the checkout already on the new revision. Any other launcher failure stops at once. Nothing running is cut; it then checks the served revision. |
 | `recover-quarantine --host <ollama url>` | For an UNKNOWN inference on a local Ollama: refuses while an inference or a workload is active there, restarts the unit named for that host in `AGENTX_ACTION_OLLAMA_UNITS` (`{"<url>": {"unit": "...", "scope": "system"\|"user"}}`, `sudo -n` for system units), checks a new process answers, then attests each UNKNOWN admission with `recover-runtime-restart`. Workloads keep the profiler procedure below. |
 | `recalibrate-judges [--host <url> --model <name>]` | Runs Benchmark's quick judge calibration (the default judge when no target is given) and returns its report. |
 
 An instance can install a small wrapper that exports these variables, so an
 operator session or agent calls a single command.
-The OpenClaw plugin `integrations/openclaw/agentx-maintenance` exposes the
-same actions to configured operator agents as one tool,
+Lease changes serialize their read/write pair through a `LEAD.md.writer-lock`
+sidecar. A leftover sidecar refuses further changes; verify that the exact
+writer and its filesystem operation have stopped before operator recovery.
+Age alone never authorizes takeover. Both lease commands return the normal
+JSON action receipt and use the same configured path as deployment.
+The OpenClaw plugin `integrations/openclaw/agentx-maintenance` exposes status,
+deployment, quarantine recovery and judge calibration to configured operator agents as one tool,
 `agentx_maintenance_action`: no shell, validated arguments, and the actor is
 always `openclaw:<agent>`. See its README for the configuration.
 
