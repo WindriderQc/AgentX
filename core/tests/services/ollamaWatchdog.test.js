@@ -422,7 +422,7 @@ describe('probeCycle (integration)', () => {
     getConfiguredHosts.mockReturnValue([host]);
     const bodies = [];
     watchdog._setFetch(makeMockFetch({
-      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'embedding-model', context_length: 8192 }] }) }),
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'refusing-model', context_length: 8192 }] }) }),
       '/api/generate': (_url, opts) => {
         bodies.push(JSON.parse(opts.body));
         return { ok: false, status, json: async () => ({ error: 'model cannot generate' }) };
@@ -435,6 +435,46 @@ describe('probeCycle (integration)', () => {
     expect(runRuntimeMutation).not.toHaveBeenCalled();
     expect(bodies).toHaveLength(2);
     expect(bodies.every(body => body.keep_alive === -1 && body.prompt === 'ok')).toBe(true);
+  });
+
+  it('probes the conversation model resident beside an embedding model listed first', async () => {
+    const host = { ...MOCK_HOST, url: 'http://192.0.2.102:11434' };
+    getConfiguredHosts.mockReturnValue([host]);
+    const bodies = [];
+    watchdog._setFetch(makeMockFetch({
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [
+        { name: 'qllama/bge-m3:f16', context_length: 4096 },
+        { name: 'gemma4:12b-it-qat', context_length: 114688 }
+      ] }) }),
+      '/api/generate': (_url, opts) => {
+        bodies.push(JSON.parse(opts.body));
+        return { ok: true, status: 200, json: async () => ({ done: true }) };
+      }
+    }));
+    const before = watchdog.getStats();
+    await watchdog.runNow();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({ model: 'gemma4:12b-it-qat', options: { num_ctx: 114688 } });
+    expect(watchdog.getStats().probesOk).toBe(before.probesOk + 1);
+    expect(watchdog.getStats().probesFailed).toBe(before.probesFailed);
+  });
+
+  it('checks only the control plane when the sole resident is an embedding model', async () => {
+    const host = { ...MOCK_HOST, url: 'http://192.0.2.103:11434' };
+    getConfiguredHosts.mockReturnValue([host]);
+    const bodies = [];
+    watchdog._setFetch(makeMockFetch({
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'qllama/bge-m3:f16', context_length: 4096 }] }) }),
+      '/api/generate': (_url, opts) => {
+        bodies.push(JSON.parse(opts.body));
+        return { ok: false, status: 404, json: async () => ({ error: 'model not found' }) };
+      }
+    }));
+    const before = watchdog.getStats();
+    await watchdog.runNow();
+    expect(bodies.map(body => body.model)).toEqual(['_']);
+    expect(watchdog.getStats().probesOk).toBe(before.probesOk + 1);
+    expect(watchdog.getStats().probesFailed).toBe(before.probesFailed);
   });
 });
 

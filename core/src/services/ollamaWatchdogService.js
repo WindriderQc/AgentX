@@ -33,7 +33,7 @@ const { runRuntimeMutation } = require('./runtimeMutationLeaseService');
 const { beginInferenceAdmission } = require('./inferenceAdmissionService');
 const runtimeCoordination = require('./runtimeCoordinationService');
 const { collectRecoveryRequired } = require('./watchdogProbeRecovery'), { isSpillOnlyRestore } = require('./hostPinPrimitives');
-const { probePayload, restorePayload } = require('./watchdogRuntimePayload');
+const { probePayload, probeTarget, restorePayload } = require('./watchdogRuntimePayload');
 
 let _fetch = nodeFetch;
 let _outboundExecutor = null;
@@ -569,8 +569,8 @@ async function probeCycle(isStopped = () => false) {
         continue;
       }
 
-      const probeModel = meta.models[0] || null;
-      const contextLength = meta.residentModels[0]?.contextLength;
+      const target = probeTarget(meta.residentModels);
+      const probeModel = target?.model || null, contextLength = target?.contextLength;
       // Omitting num_ctx can reload a resident worker at the model default,
       // overriding a profiled context and turning this probe into a cold load.
       // Metadata alone cannot prove worker health when residency is incomplete.
