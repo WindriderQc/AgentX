@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { Readable } = require('node:stream');
-const { conversationBackend, createConversationExecutor } = require('../conversation-executor');
+const { conversationBackend, familyConversationBackend, voiceTask, createConversationExecutor } = require('../conversation-executor');
 
 const configured = { OPENCLAW_GATEWAY_URL: 'http://test.invalid', OPENCLAW_GATEWAY_TOKEN: 'fixture' };
 const request = () => ({ backend: 'agentx', session: { sessionId: 'conversation', modeId: 'family' },
@@ -42,6 +42,40 @@ test('AgentX preserves server history, persona context, routing and explicit Ope
   assert.equal(reply.text, 'Les roues!');
   assert.equal(reply.tools.status, 'not_supported');
   assert.equal(reply.metadata.model, 'local-model');
+});
+
+test('the family lane names the backend of new family conversations only when the instance sets it (#261)', () => {
+  assert.equal(familyConversationBackend({}), null);
+  assert.equal(familyConversationBackend({ HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: '' }), null);
+  assert.equal(familyConversationBackend({ HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: 'agentx' }), 'agentx');
+  assert.equal(familyConversationBackend({ HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: ' OpenClaw ' }), 'openclaw');
+  for (const value of ['auto', 'unknown', 'true']) assert.equal(familyConversationBackend({ HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: value }), null);
+  // Unset, the general choice stands; set, it wins over that choice and over what a page requested.
+  const choose = (requested, env) => conversationBackend(familyConversationBackend(env) || requested, env);
+  assert.equal(choose(null, configured), 'openclaw');
+  assert.equal(choose('openclaw', { ...configured, HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: 'agentx' }), 'agentx');
+  assert.equal(choose('agentx', { HOUSEHOLD_CONVERSATION_BACKEND: 'agentx', HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: 'openclaw' }), 'openclaw');
+});
+
+test('a spoken turn on Core inference uses the voice task in any pack; typed turns keep the pack task (#261)', async () => {
+  assert.equal(voiceTask({}), 'voice_persona_chat');
+  assert.equal(voiceTask({ HOUSEHOLD_VOICE_TASK: ' quick_chat ' }), 'quick_chat');
+  assert.equal(voiceTask({ HOUSEHOLD_VOICE_TASK: 'Not a task!' }), 'voice_persona_chat');
+  const submitted = [];
+  const executor = env => createConversationExecutor({ env, agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async body => { submitted.push(body); return { ok: true, body: { response: 'ok' }, metadata: {} }; } } });
+  const personal = { id: 'personal_operator', taskType: 'general_chat', temperature: 0.35, maxTokens: 800 };
+  await executor({})({ ...request(), channel: 'voice', streaming: true });
+  await executor({})({ ...request(), channel: 'text' });
+  await executor({})({ ...request(), pack: personal, channel: 'voice' });
+  await executor({ HOUSEHOLD_VOICE_TASK: 'quick_chat' })({ ...request(), channel: 'voice' });
+  await executor({})({ ...request(), channel: 'voice', session: { ...request().session, llmx: { schemaVersion: 1 } } });
+  assert.deepEqual(submitted.map(body => body.taskType),
+    ['voice_persona_chat', 'nestor_answer_light', 'voice_persona_chat', 'quick_chat', 'nestor_answer_light']);
+  assert.deepEqual(submitted.map(body => body.think), [false, false, false, false, false]);
+  assert.equal(submitted[0].stream, true);
+  assert.equal(submitted[0].max_tokens, 800);
+  assert.equal(submitted[0].callerDetail, 'agentx-household/kidx_nestor/family');
 });
 
 test('native errors never replay an action through AgentX', async () => {

@@ -5,7 +5,7 @@ const personaCatalog = require('./persona-catalog');
 const { agentForPersona } = require('./persona-selection');
 const { createNestorClient } = require('./personal-continuity');
 const { createAgentClient } = require('./conversation-agent');
-const { browserSpeechFallback, configuredOpenClaw, conversationBackend, createConversationExecutor } = require('./conversation-executor');
+const { browserSpeechFallback, configuredOpenClaw, conversationBackend, familyConversationBackend, createConversationExecutor } = require('./conversation-executor');
 const llmx = require('./llmx-conversation');
 const { visual: normalizeVisual, selections: voiceSelections } = require('./public/persona-presentation');
 const path = require('path');
@@ -167,7 +167,7 @@ function register(api) {
   const nestorClient = app.locals?.agentxNestorContinuity || createNestorClient();
   const conversationEnv = app.locals?.agentxConversationEnv || process.env;
   const agentClient = app.locals?.agentxNestorAgent || createAgentClient({ env: conversationEnv, continuity: nestorClient });
-  const executeConversation = createConversationExecutor({ agentClient, inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT });
+  const executeConversation = createConversationExecutor({ agentClient, inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, env: conversationEnv });
   const requireNativeAgent = async id => {
     if (id === 'main') return;
     const { agents } = await nestorClient({ operation: 'agents' });
@@ -296,7 +296,8 @@ function register(api) {
         return fail(res, 400, 'Child-safe persona sessions use the public child route', 'VOICE_PERSONA_CHILD_ROUTE_REQUIRED');
       }
       const requestedMode = pack.modes.find((entry) => entry.id === req.body?.modeId) || pack.modes[0];
-      const backend = conversationBackend(req.body?.backend, conversationEnv);
+      // The instance's family lane, when set, decides every new child-safe conversation; LLMx scenes keep the general choice.
+      const backend = conversationBackend((pack.childSafe && consumer !== 'llmx' && familyConversationBackend(conversationEnv)) || req.body?.backend, conversationEnv);
 
       const open = access === 'private' && (req.body?.inference?.open === true || requestedMode.id === 'open');
       const mode = requestedMode;

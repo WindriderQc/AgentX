@@ -766,6 +766,81 @@ describe('built-in Household surface on Core', () => {
     expect(journal.find(row => row.traceId === traceId).sceneReceipt).toMatchObject({ kind: 'add', a: 8, b: 5, status: 'applied' });
   });
 
+  test('the family lane runs new Family conversations on Core inference with their Core features; spoken turns use the voice task (#261)', async () => {
+    const names = ['HOUSEHOLD_FAMILY_CONVERSATION_BACKEND', 'HOUSEHOLD_VOICE_TASK', 'OPENCLAW_GATEWAY_URL', 'OPENCLAW_GATEWAY_TOKEN'];
+    const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+    for (const name of names) delete process.env[name];
+    Object.assign(process.env, { OPENCLAW_GATEWAY_URL: 'http://openclaw.example.test', OPENCLAW_GATEWAY_TOKEN: 'synthetic-token' });
+    const originalFetch = global.fetch;
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async (url, options) => {
+      if (!String(url).startsWith('http://openclaw.example.test/')) return originalFetch(url, options);
+      return new Response(JSON.stringify({ ok: true, authority: 'openclaw.nestor', operation: 'agents',
+        agents: [{ id: 'main', name: 'Main' }, { id: 'family', name: 'Family' }] }), { headers: { 'Content-Type': 'application/json' } });
+    });
+    const base = '/api/voice-personas/sessions', family = { packId: 'kidx_nestor', modeId: 'family', scopeId: 'family' };
+    const create = async (path, body) => (await request(app).post(path).send(body).expect(201)).body.data.session;
+    const ndjson = (res, done) => { let text = ''; res.setEncoding('utf8'); res.on('data', chunk => { text += chunk; }); res.on('end', () => done(null, text)); };
+    const lastInference = () => executeForTest.mock.calls.at(-1)[0];
+    try {
+      // Unset: the general engine, as before.
+      const native = await create(base, family);
+      expect(native.backend).toBe('openclaw');
+      process.env.HOUSEHOLD_FAMILY_CONVERSATION_BACKEND = 'agentx';
+      // New family conversations take the lane, whatever the page asked for; Super Dad does not.
+      const direct = await create(base, { ...family, backend: 'openclaw' });
+      expect(direct).toMatchObject({ backend: 'agentx', agentId: 'family' });
+      expect((await create(base, { packId: 'kidx_reader' })).backend).toBe('agentx');
+      expect((await create('/api/voice-personas/family/sessions', family)).backend).toBe('agentx');
+      expect((await create('/api/voice-personas/private/sessions', { packId: 'personal_operator', scopeId: 'personal' })).backend).toBe('openclaw');
+
+      // A conversation that already exists keeps its backend: no turn is replayed on the other one.
+      const nativeRuns = agentForTest.mock.calls.length;
+      let inferences = executeForTest.mock.calls.length;
+      await request(app).post(`${base}/${native.sessionId}/turns/text`).send({ text: 'Raconte une histoire', channel: 'voice' }).expect(200);
+      expect(agentForTest.mock.calls.length).toBe(nativeRuns + 1);
+      expect(executeForTest.mock.calls.length).toBe(inferences);
+
+      const turn = body => request(app).post(`${base}/${direct.sessionId}/turns/text`).send(body);
+      const spoken = await turn({ text: 'Pourquoi le ciel est bleu?', channel: 'voice', stream: true }).buffer(true).parse(ndjson).expect(200);
+      expect(lastInference()).toMatchObject({ taskType: 'voice_persona_chat', think: false, stream: true, callerDetail: 'agentx-household/kidx_nestor/family' });
+      expect(spoken.body.split('\n').filter(Boolean).map(line => JSON.parse(line)).at(-1).data)
+        .toMatchObject({ routing: { tier: 'router' }, tools: { status: 'not_supported' }, session: { backend: 'agentx' } });
+      await turn({ text: 'Pourquoi la mer est salée?' }).expect(200);
+      expect(lastInference()).toMatchObject({ taskType: 'nestor_answer_light', think: false, stream: false });
+      process.env.HOUSEHOLD_VOICE_TASK = 'quick_chat';
+      await turn({ text: 'Et la pluie?', channel: 'voice' }).expect(200);
+      expect(lastInference().taskType).toBe('quick_chat');
+      delete process.env.HOUSEHOLD_VOICE_TASK;
+
+      // Core owns the family features, so they work without the native agent: routines, idea and
+      // reminder capture, the math picture and animal sounds.
+      await request(app).post('/api/family/launch').send({ profile: { profileId: 'lane-child', displayName: 'Synthetic lane child' },
+        routines: [{ title: 'Synthetic water the plant', cadence: 'daily' }] }).expect(201);
+      await turn({ text: "Qu'est-ce que je dois faire aujourd'hui?", channel: 'voice' }).expect(200);
+      expect(lastInference().messages.at(-1).content).toContain('Synthetic lane child : à faire : Synthetic water the plant');
+      await turn({ text: "J'ai une idée : un potager sur le balcon", channel: 'voice' }).expect(200);
+      expect(lastInference().messages.at(-1).content).toContain('an idea and it has been saved for Dad to review');
+      expect((await PlanningItem.findOne({ type: 'idea', summary: "J'ai une idée : un potager sur le balcon" }).lean()).tags)
+        .toEqual(expect.arrayContaining(['origin:family', 'kind:idea']));
+      await turn({ text: 'Rappelle-moi de nourrir le poisson demain', channel: 'voice' }).expect(200);
+      expect(lastInference().messages.at(-1).content).toContain('a reminder and it has been saved for Dad to review');
+      expect((await PlanningItem.findOne({ type: 'idea', summary: 'Rappelle-moi de nourrir le poisson demain' }).lean()).tags)
+        .toEqual(expect.arrayContaining(['origin:family', 'kind:reminder']));
+      inferences = executeForTest.mock.calls.length;
+      const math = await turn({ text: 'Nestor, combien font 8 + 5 ?', channel: 'voice', stream: true }).buffer(true).parse(ndjson).expect(200);
+      expect(JSON.parse(math.body.split('\n')[0])).toEqual({ type: 'scene', scene: { schema: 'agentx.math-scene.v1', kind: 'add', a: 8, b: 5 } });
+      expect(executeForTest.mock.calls.length).toBe(inferences);
+      const cow = (await turn({ text: 'Quel bruit fait la vache?', channel: 'voice' }).expect(200)).body.data;
+      expect(cow.sound).toMatchObject({ id: 'cow', play: 'after-reply' });
+      expect(lastInference().messages.at(-1).content).toContain('Son : l\'enfant entend un vrai enregistrement (une vache)');
+      expect(lastInference().taskType).toBe('voice_persona_chat');
+      expect(agentForTest.mock.calls.length).toBe(nativeRuns + 1);
+    } finally {
+      fetchMock.mockRestore();
+      for (const name of names) { if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name]; }
+    }
+  });
+
   test('screen blocks stream as show events, never as speech, and secrets are not retained (#167)', async () => {
     const base = '/api/voice-personas/private/sessions';
     const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;

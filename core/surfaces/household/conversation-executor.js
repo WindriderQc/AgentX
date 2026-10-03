@@ -26,11 +26,25 @@ function conversationBackend(requested, env = process.env) {
   return backend === 'auto' ? configuredOpenClaw(env) ? 'openclaw' : 'agentx' : backend;
 }
 
+// Instance lane for new family (child-safe) conversations. Unset, or any other
+// value, leaves the general choice above. It is read when a conversation is
+// created: an existing conversation keeps the backend it was created with.
+function familyConversationBackend(env = process.env) {
+  const value = String(env.HOUSEHOLD_FAMILY_CONVERSATION_BACKEND || '').trim().toLowerCase();
+  return ['agentx', 'openclaw'].includes(value) ? value : null;
+}
+
+// Router task of a spoken turn on Core inference; typed turns keep the pack's task.
+function voiceTask(env = process.env) {
+  const value = String(env.HOUSEHOLD_VOICE_TASK || '').trim();
+  return /^[a-z][a-z0-9_]{0,63}$/.test(value) ? value : 'voice_persona_chat';
+}
+
 // These are transports, not two agent loops. OpenClaw runs its native agent;
 // AgentX runs the existing routed inference contract. A started turn is never
 // replayed through the other transport, including after an ambiguous failure.
-function createConversationExecutor({ agentClient, inference, consumerContract }) {
-  const run = runTurn({ agentClient, inference, consumerContract });
+function createConversationExecutor({ agentClient, inference, consumerContract, env = process.env }) {
+  const run = runTurn({ agentClient, inference, consumerContract, env });
   // A household turn outranks evaluation work (#62). If the host stayed
   // reserved past the bounded wait, say so plainly instead of a generic error.
   return async request => {
@@ -51,7 +65,7 @@ function createConversationExecutor({ agentClient, inference, consumerContract }
   };
 }
 
-function runTurn({ agentClient, inference, consumerContract }) {
+function runTurn({ agentClient, inference, consumerContract, env }) {
   return async request => {
     const { backend, session, pack, history, instructions, agentxInstructions, signal, onDelta } = request;
     // Core inference receives the turn's selected context in the final user
@@ -71,8 +85,11 @@ function runTurn({ agentClient, inference, consumerContract }) {
         ...earlier, ...(Array.isArray(current.content) ? current.content : [{ type: 'input_text', text: current.content }])] : current.content;
       return { ...await agentClient({ ...request, instructions, history: prepared.slice(0, -1), currentContent }), backend };
     }
+    // A spoken turn takes the instance's voice lane, in any pack. LLMx scene
+    // conversations keep their pack's task: they need its structured replies.
+    const taskType = request.channel === 'voice' && !session.llmx ? voiceTask(env) : pack.taskType;
     const result = await inference.execute({
-      mode: 'chat', taskType: pack.taskType,
+      mode: 'chat', taskType,
       ...(request.model ? { model: request.model.replace(/^ollama\//, '') } : {}),
       ...(request.openTarget ? { exclusiveHost: true, options: { num_ctx: request.openTarget.numCtx } } : {}),
       messages: [{ role: 'system', content: agentxInstructions }, ...prepared.map(({ attachments, ...message }) => message)],
@@ -99,4 +116,4 @@ function runTurn({ agentClient, inference, consumerContract }) {
   };
 }
 
-module.exports = { browserSpeechFallback, configuredOpenClaw, conversationBackend, createConversationExecutor };
+module.exports = { browserSpeechFallback, configuredOpenClaw, conversationBackend, familyConversationBackend, voiceTask, createConversationExecutor };
