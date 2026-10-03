@@ -9,6 +9,7 @@ const assessments = require('../../../src/domains/psyx/assessments');
 const { TECHNIQUES, techniquesSystemMessage } = require('../../../src/domains/psyx/techniques');
 const { composeSystemContext } = require('../../../src/domains/psyx/domain');
 const { readDream, dreamMessages, normalizeStoredPortrait, INTAKE_DOMAINS } = require('../../../src/domains/psyx/dream');
+
 const { createApp } = require('../src/app');
 
 test('questionnaires are scored by code: totals, bands, the safety item, and nothing malformed', () => {
@@ -25,7 +26,7 @@ test('questionnaires are scored by code: totals, bands, the safety item, and not
   for (const answers of [[1, 2], Array(9).fill(4), Array(9).fill(-1), Array(9).fill(1.5), Array(9).fill('1'), 'x', null]) {
     assert.throws(() => assessments.scoreAssessment('phq9', answers), { statusCode: 400 });
   }
-  assert.throws(() => assessments.scoreAssessment('isi', []), { statusCode: 400 });
+  for (const kind of ['isi', 'constructor', '__proto__', 'toString', ['phq9'], null]) assert.throws(() => assessments.scoreAssessment(kind, Array(9).fill(0)), { statusCode: 400 });
   // A stored score is recomputed from its answers; a tampered or broken entry is dropped.
   const stored = assessments.normalizeAssessments([{ id: 'a', kind: 'gad7', answers: [1, 1, 1, 1, 1, 1, 1], score: 99, band: 'x', at: '2026-10-01T00:00:00Z' }, { id: 'b', kind: 'gad7', answers: [9], at: '2026-10-01' }, { kind: 'gad7' }]);
   assert.deepEqual(stored.map(item => [item.id, item.score, item.band]), [['a', 7, 'léger']]);
@@ -42,7 +43,13 @@ test('a questionnaire is due when never taken or three weeks old, and its result
 
   const message = assessments.assessmentSystemMessage(state, now);
   assert.match(message, /never a diagnosis/);
-  assert.match(message, /low mood 7\/27, léger, 3 days ago, was 12 before \(-5\)\. He answered above "never" to thoughts of death or self-harm/);
+  assert.match(message, /a severe one is a reason to suggest it now/);
+  assert.match(message, /low mood 7\/27, léger, 3 days ago, was 12 before \(-5\)\. In the last three weeks he answered above "never" to thoughts of death or self-harm[^\n]*suggest professional help now/);
+  // Retaking the questionnaire does not erase the flag; three weeks later it is gone.
+  const retaken = { ...state, assessments: [...state.assessments, result('phq9', Array(9).fill(0), '2026-10-02T12:00:00.000Z')] };
+  assert.match(assessments.assessmentSystemMessage(retaken, now), /low mood 0\/27, minimal, 1 day ago, was 7 before \(-7\)\. In the last three weeks he answered above "never"/);
+  assert.doesNotMatch(assessments.assessmentSystemMessage(state, new Date('2026-11-15T12:00:00Z')), /thoughts of death/);
+  assert.match(assessments.assessmentSystemMessage(state, 'not a date'), /low mood 7\/27/);
   assert.doesNotMatch(message, /anxiety/);
   assert.equal(assessments.assessmentSystemMessage(emptyState()), '');
 
@@ -58,13 +65,17 @@ test('a questionnaire is due when never taken or three weeks old, and its result
   // Worst local case still fits the message contract.
   const heavy = { ...state, profile: { about: 'a'.repeat(3000), expectations: 'e'.repeat(1500) },
     assessments: [...state.assessments, result('gad7', [3, 3, 3, 3, 3, 3, 3], '2026-09-01T12:00:00.000Z'), result('gad7', [2, 2, 2, 2, 2, 2, 2], '2026-09-30T12:00:00.000Z')],
-    portrait: normalizeStoredPortrait({ updatedAt: '2026-10-03T03:00:00Z', sections: INTAKE_DOMAINS.slice(0, 1).concat(['loops', 'triggers', 'relationships', 'strengths', 'values', 'whatWorks', 'blindSpots', 'health']).slice(1)
-      .map(key => ({ key, statements: Array.from({ length: 8 }, (_, index) => ({ text: `${key} ${index} ${'s'.repeat(200)}`, evidence: ['p'] })) })), agenda: ['x'.repeat(380)], questions: ['q'.repeat(280)] }),
+    portrait: normalizeStoredPortrait({ updatedAt: '2026-10-03T03:00:00Z', sections: ['situation', 'loops', 'triggers', 'relationships', 'strengths', 'values', 'whatWorks', 'blindSpots', 'health']
+      .map(key => ({ key, statements: Array.from({ length: 8 }, (_, index) => ({ text: `${key} ${index} ${'s'.repeat(40 + index * 60)}`, evidence: ['p'] })) })),
+      findings: Array.from({ length: 8 }, (_, index) => ({ text: 'f'.repeat(30 + index * 50), evidence: [] })), agenda: ['x'.repeat(60), 'x'.repeat(380)], questions: ['q'.repeat(40), 'q'.repeat(280)] }),
     notes: Array.from({ length: 100 }, (_, index) => ({ text: `note ${index} ${'n'.repeat(400)}`, source: 'user', evidence: [], status: 'active' })),
-    experiments: [{ id: 'e', hypothesis: 'h'.repeat(900), action: 'a'.repeat(900), status: 'active' }], sessionDigests: [{ conversationId: 'old', summary: 's'.repeat(400) }] };
+    goals: Array.from({ length: 20 }, (_, index) => ({ text: `goal ${index} ${'g'.repeat(60 + index * 20)}`, source: 'user', evidence: ['e'.repeat(240)], status: 'active' })),
+    experiments: Array.from({ length: 10 }, (_, index) => ({ id: `e${index}`, hypothesis: 'h'.repeat(30 + index * 30), action: 'a'.repeat(30 + index * 30), expectedSignal: 's'.repeat(index * 30), status: 'active' })),
+    sessionDigests: Array.from({ length: 5 }, (_, index) => ({ conversationId: `old${index}`, summary: 's'.repeat(100 + index * 100), movement: 'm'.repeat(80), commitment: 'c'.repeat(80), updatedAt: '2026-10-01T11:00:00Z' })),
+    checkIns: Array.from({ length: 5 }, (_, index) => ({ id: `k${index}`, score: 5, phase: 'start', at: '2026-10-01T11:00:00Z' })) };
   const worst = composeSystemContext(heavy, { mode: 'plan', depth: 'deep', action: 'deep_reflection', reason: 'r'.repeat(300), auto: { mode: true } },
     { voice: true, safety: { kinds: ['suicide'] }, time: { now, lastTurnAt: '2026-10-03T11:00:00Z', lastSessionAt: '2026-10-01T11:00:00Z' } });
-  assert.ok(worst.length < 16000, `worst local system context is ${worst.length}`);
+  assert.ok(worst.length < 15800, `worst local system context is ${worst.length}`);
 });
 
 test('the dream reports intake coverage, defaulting every unknown domain', () => {

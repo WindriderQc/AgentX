@@ -181,7 +181,7 @@ function composeSystemContext(state, control, { conversationId = null, safety = 
   const wide = budget === 'frontier';
   const profile = profileSystemMessage(state, wide ? 4800 : 1200);
   // The portrait is PsyX's distilled understanding; on a local reply it takes its room from raw memory.
-  const portrait = portraitSystemMessage(state, { maxCharacters: wide ? 14000 : 1800, evidence: wide });
+  const portrait = portraitSystemMessage(state, { maxCharacters: wide ? 14000 : 1600, evidence: wide });
   // The frontier agent cuts its instructions at 60,000 characters: the whole context stays well under, so control and safety at the end always arrive.
   const measures = assessmentSystemMessage(state, time?.now);
   const techniques = techniquesSystemMessage({ full: wide });

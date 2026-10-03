@@ -28,7 +28,7 @@ const TECHNIQUES = Object.freeze([
   {
     id: 'worry-time', name: 'Rendez-vous avec les inquiétudes', minutes: 15,
     when: 'Worries come back all day or at bedtime and cannot be solved right now.',
-    steps: ['Fixe 15 minutes par jour, même heure, même endroit, pas au lit.', 'Dans la journée, note l’inquiétude en une ligne et reporte-la au rendez-vous.', 'Au rendez-vous, relis la liste : ce qui a une action, décide du premier geste; le reste, laisse-le sur le papier.', 'Quand les 15 minutes finissent, ferme le carnet et passe à autre chose.']
+    steps: ['Fixe 15 minutes par jour, même heure, même endroit, pas au lit ni dans l’heure avant le coucher.', 'Dans la journée, note l’inquiétude en une ligne et reporte-la au rendez-vous.', 'Au rendez-vous, relis la liste : ce qui a une action, décide du premier geste; le reste, laisse-le sur le papier.', 'Quand les 15 minutes finissent, ferme le carnet et passe à autre chose.']
   },
   {
     id: 'repair-with-child', name: 'Réparer avec un enfant', minutes: 5,
@@ -42,7 +42,7 @@ const HEADER = 'TECHNIQUES — established methods to draw from when one fits; n
 // A frontier reply gets the full cards; a local one, with little room, gets
 // their names and points to the steps the interface shows.
 function techniquesSystemMessage({ full = false } = {}) {
-  if (!full) return `${HEADER}; its exact steps are in his toolbox, under Expériences in the PsyX memory panel: ${TECHNIQUES.map(card => card.name).join('; ')}.`;
+  if (!full) return `${HEADER}. Do not recite steps from memory: name the technique and point him to its exact steps in his toolbox, under Expériences in the PsyX memory panel: ${TECHNIQUES.map(card => card.name).join('; ')}.`;
   return [`${HEADER}, and give the steps as written, in your own words.`,
     ...TECHNIQUES.map(card => `- ${card.name} (${card.minutes} min). When: ${card.when} Steps: ${card.steps.join(' ')}`)].join('\n');
 }

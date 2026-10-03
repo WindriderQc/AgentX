@@ -53,8 +53,11 @@ function portraitList(title, items) {
 function intakeSummary(intake = {}) {
   const domains = Object.keys(INTAKE_LABELS);
   const known = domains.filter(key => intake[key] === 'known').length;
+  const partial = domains.filter(key => intake[key] === 'partial').length;
   const missing = domains.filter(key => !intake[key] || intake[key] === 'unknown').map(key => INTAKE_LABELS[key]);
-  return `<section class="state-section"><h4>Ce que PsyX connaît de ta vie</h4><p class="state-help">${known} domaine${known === 1 ? '' : 's'} sur ${domains.length} bien connu${known === 1 ? '' : 's'}.${
+  // A portrait written before the intake existed says nothing about it.
+  if (!known && !partial) return '';
+  return `<section class="state-section"><h4>Ce que PsyX connaît de ta vie</h4><p class="state-help">${known} domaine${known > 1 ? 's' : ''} sur ${domains.length} bien connu${known > 1 ? 's' : ''}${partial ? `, ${partial} en partie` : ''}.${
     missing.length ? ` Encore à découvrir, une question à la fois : ${escapeHtml(missing.join(', '))}.` : ''}</p></section>`;
 }
 

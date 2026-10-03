@@ -35,7 +35,8 @@ function assessmentForm(kind, definition) {
 function renderToolbox() {
   const kinds = Object.keys(toolbox.definitions);
   $('assessmentSection').hidden = !kinds.length;
-  $('assessmentList').innerHTML = kinds.map(kind => {
+  // A review or a dream finishing in the background re-renders the panel: never rebuild a form he is filling.
+  if (!(toolbox.open && $('assessmentList').querySelector('[data-assessment-form]'))) $('assessmentList').innerHTML = kinds.map(kind => {
     const definition = toolbox.definitions[kind];
     const results = assessmentResults(kind);
     const last = results.at(-1);
@@ -49,7 +50,7 @@ function renderToolbox() {
         : `<div class="proposal-actions"><button type="button" data-assessment-open="${escapeHtml(kind)}">${due ? 'Répondre (2 minutes)' : 'Refaire maintenant'}</button></div>`}
     </article>`;
   }).join('');
-  $('assessmentNote').textContent = toolbox.note;
+  if (toolbox.note) $('assessmentNote').textContent = toolbox.note;
   $('techniqueList').innerHTML = toolbox.techniques.map(card => `<details class="technique-card"><summary>${escapeHtml(card.name)} · ${card.minutes} min</summary><ol>${card.steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol></details>`).join('');
   const chip = $('assessmentChip');
   chip.hidden = !toolbox.due.length || assessmentSnoozed() || toolbox.open !== null;
@@ -59,14 +60,23 @@ function renderToolbox() {
 
 async function submitAssessment(form) {
   const kind = form.dataset.assessmentForm;
-  const answers = toolbox.definitions[kind].items.map((_, index) => Number(new FormData(form).get(`q${index}`)));
+  const picked = toolbox.definitions[kind].items.map((_, index) => new FormData(form).get(`q${index}`));
+  // A question left blank is never counted as "never".
+  if (picked.some(value => value === null)) throw new Error('Réponds à toutes les questions avant d’enregistrer.');
+  const answers = picked.map(Number);
   const result = await api('/api/psyx/state/assessments', { method: 'POST', body: JSON.stringify({ kind, answers }) });
   state.psyxState = result.state;
   toolbox.due = result.due || [];
   toolbox.open = null;
   const definition = toolbox.definitions[kind];
   toolbox.note = `Noté : ${result.assessment.score}/${definition.max} (${result.assessment.band}). C’est une mesure des deux dernières semaines, pas un diagnostic.`;
-  if (result.safety) showSafety(result.safety.resources);
+  form.remove();
+  if (result.safety) {
+    // The resources must be seen now: say it here, and bring the banner in front of the memory panel.
+    toolbox.note += ' Tu as indiqué des pensées de mort ou de te faire du mal : tu n’as pas à traverser ça seul. 9-8-8 (appel ou texto, 24/7), ou le 911 en cas de danger immédiat.';
+    showSafety(result.safety.resources);
+    if (drawerMode()) closeDrawers();
+  }
   renderPsyXState();
 }
 
@@ -89,6 +99,8 @@ function wireToolbox() {
     else if (event.target.closest('[data-assessment-cancel]')) toolbox.open = null;
     else return;
     toolbox.note = '';
+    $('assessmentNote').textContent = '';
+    $('assessmentList').querySelector('[data-assessment-form]')?.remove();
     renderToolbox();
   });
   $('assessmentList').addEventListener('submit', async event => {

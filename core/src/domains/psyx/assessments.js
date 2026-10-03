@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const DAY = 86400000;
 const ASSESSMENT_LIMIT = 60;
 const DUE_AFTER_DAYS = 21;
-const FREQUENCY = Object.freeze(['Jamais', 'Plusieurs jours', 'Plus de la moitié du temps', 'Presque tous les jours']);
+const FREQUENCY = Object.freeze(['Jamais', 'Plusieurs jours', 'Plus de la moitié des jours', 'Presque tous les jours']);
 const INTRO = 'Au cours des deux dernières semaines, à quelle fréquence as-tu été dérangé par les problèmes suivants?';
 
 const ASSESSMENTS = Object.freeze({
@@ -24,7 +24,7 @@ const ASSESSMENTS = Object.freeze({
       'Avoir peu d’appétit ou manger trop',
       'Avoir une mauvaise opinion de soi-même, ou avoir le sentiment d’être nul, ou d’avoir déçu sa famille ou s’être déçu soi-même',
       'Avoir du mal à se concentrer, par exemple pour lire le journal ou regarder la télévision',
-      'Bouger ou parler si lentement que les autres auraient pu le remarquer; ou au contraire, être si agité que tu as eu du mal à tenir en place',
+      'Bouger ou parler si lentement que les autres auraient pu le remarquer; ou au contraire, être si agité que tu as eu du mal à tenir en place, plus que d’habitude',
       'Penser qu’il vaudrait mieux mourir, ou envisager de te faire du mal d’une manière ou d’une autre'
     ],
     bands: [[0, 'minimal'], [5, 'léger'], [10, 'modéré'], [15, 'modérément sévère'], [20, 'sévère']],
@@ -53,8 +53,8 @@ function invalid(message) {
 
 // -> { kind, answers, score, band, safety } or throws 400.
 function scoreAssessment(kind, answers) {
+  if (typeof kind !== 'string' || !Object.hasOwn(ASSESSMENTS, kind)) throw invalid('Unknown questionnaire');
   const definition = ASSESSMENTS[kind];
-  if (!definition) throw invalid('Unknown questionnaire');
   if (!Array.isArray(answers) || answers.length !== definition.items.length
     || answers.some(value => !Number.isInteger(value) || value < 0 || value >= definition.choices.length)) {
     throw invalid(`Answer the ${definition.items.length} questions, each from 0 to ${definition.choices.length - 1}`);
@@ -85,8 +85,12 @@ function dueAssessments(state, now = new Date()) {
   });
 }
 
-// What PsyX sees: the latest score of each questionnaire, its trend, and a safety flag.
-function assessmentSystemMessage(state, now = new Date()) {
+// What PsyX sees: the latest score of each questionnaire, its trend, and a
+// safety flag. The flag holds for three weeks from any answer that raised it:
+// retaking the questionnaire does not erase it, and it does not last forever.
+function assessmentSystemMessage(state, at = null) {
+  const now = at instanceof Date ? at : new Date();
+  const recent = item => now.getTime() - new Date(item.at).getTime() < DUE_AFTER_DAYS * DAY;
   const lines = KINDS.map(kind => {
     const results = (state.assessments || []).filter(item => item.kind === kind);
     const last = results.at(-1);
@@ -95,11 +99,12 @@ function assessmentSystemMessage(state, now = new Date()) {
     const days = Math.max(0, Math.round((now.getTime() - new Date(last.at).getTime()) / DAY));
     const previous = results.at(-2);
     const trend = previous ? `, was ${previous.score} before (${last.score - previous.score >= 0 ? '+' : ''}${last.score - previous.score})` : '';
-    const safety = last.safety ? ' He answered above "never" to thoughts of death or self-harm: check in on it gently and directly.' : '';
-    return `${ASSESSMENTS[kind].measures} ${last.score}/${max}, ${last.band}, ${days} days ago${trend}.${safety}`;
+    const safety = results.some(item => item.safety && recent(item))
+      ? ' In the last three weeks he answered above "never" to thoughts of death or self-harm: check in on it gently and directly, and suggest professional help now.' : '';
+    return `${ASSESSMENTS[kind].measures} ${last.score}/${max}, ${last.band}, ${days === 1 ? '1 day' : `${days} days`} ago${trend}.${safety}`;
   }).filter(Boolean);
   if (!lines.length) return '';
-  return `QUESTIONNAIRES — his own answers to standard questionnaires, scored by code. A measure of symptoms over two weeks, never a diagnosis; a moderate or higher score that lasts is a reason to suggest professional help.\n${lines.join('\n')}`;
+  return `QUESTIONNAIRES — his own answers to standard questionnaires, scored by code. A measure of symptoms over two weeks, never a diagnosis. A moderate or higher score that lasts is a reason to suggest professional help; a severe one is a reason to suggest it now.\n${lines.join('\n')}`;
 }
 
 function publicDefinitions() {
