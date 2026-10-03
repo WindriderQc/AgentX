@@ -32,13 +32,23 @@ function delegateTool() {
   };
 }
 
-// Kept short: it sits in the stable system prefix of every spoken turn.
+// One line at the top of the prompt, so the rule is read before the long pack text.
+function fastLaneHeader() {
+  return `Routing rule, above everything else: in this lane you only talk. Whatever needs a tool, live or personal data, or an action goes to the full agent through the ${DELEGATE_TOOL} tool. The full rule is at the end.`;
+}
+
+// The routing rule closes the stable system prefix, nearest to the request. A
+// light model follows it only when it is explicit: what the agent can do, the
+// phrases that betray a missed hand-over, and a few examples of each side.
 function fastLaneInstructions() {
   return [
-    'Fast voice lane. Answer ordinary conversation yourself: greetings, small talk, opinions, explanations, stories, jokes, and follow-ups grounded in this conversation or in the supplied context.',
-    `Call the ${DELEGATE_TOOL} tool instead of answering when the answer needs personal or live data that is not supplied (tasks, calendar, mail, finances, home, network, files, web search, current events), when the request is an action or a change (send, create, schedule, buy, remember, forget or correct a note, generate an image), or when you are unsure whether a fact about the owner's life is true.`,
-    'Never claim to have checked or done something, and never answer a factual personal question from memory when the answer is not in the supplied context. When you delegate, call the tool only, without spoken text.'
-  ].join(' ');
+    `FAST VOICE LANE: ROUTING RULE. You can only talk. Your single tool, ${DELEGATE_TOOL}, hands the request to the full agent, which can: search the web and current events; check live system, service and pipeline status and diagnose problems; read tasks, calendar, mail, finances, home, network and files; play sounds; generate images and build scenes; run commands; send, create, schedule or buy; remember, forget or correct a note.`,
+    `Call ${DELEGATE_TOOL} (the tool call alone, no spoken text) whenever the request needs any of that, or a personal or live fact that is neither in the supplied context nor in this conversation, or when it continues or confirms something the agent was doing.`,
+    `Answer yourself only when none of it is needed: greetings, small talk, opinions, general knowledge, explanations, stories, jokes, and follow-ups you can ground in this conversation.`,
+    `Never say that you will check, look, verify or start something, never say that you cannot do or cannot reach something the agent can, and never report a status, a result or an action that is not in the supplied context: each of those is a request to hand over, so call ${DELEGATE_TOOL} instead.`,
+    `Hand over: "Génère une image d'un phare la nuit" (action); "Fais jouer un son de hibou" (action); "Est-ce que tout roule côté services?" (live_data); "Quel temps fera-t-il demain?" (web); "Regarde mes derniers courriels" (live_data); "Trouve pourquoi ça ne fonctionne pas" (live_data); "Souviens-toi que le rendez-vous est mardi" (memory_change); "Oui, vas-y" after the agent offered to do something (action).`,
+    `Answer yourself: "Salut, ça va?"; "Explique-moi les marées"; "Raconte une blague"; "Qu'en penses-tu?".`
+  ].join(" ");
 }
 
 // The catalog personality the personal assistant speaks with by default.
@@ -46,11 +56,11 @@ function nestorIdentity() {
   return personaCatalog.generatedPersonas().find(row => row.name === 'nestor')?.systemPrompt || '';
 }
 
-// Stable across turns: the personal pack prompt without notes, knowledge,
-// receipts or the per-turn language directive, then the personality, then the
-// lane instructions. Volatile context belongs after this prefix.
+// Stable across turns: the routing rule in one line, the personal pack prompt
+// without notes, knowledge, receipts or the per-turn language directive, the
+// personality, then the full routing rule. Volatile context belongs after it.
 function fastLaneSystemPrompt({ modeId, identity } = {}) {
-  return [systemPromptFor(packById(LANE_PACK_ID), { modeId, latestUserText: '' }),
+  return [fastLaneHeader(), systemPromptFor(packById(LANE_PACK_ID), { modeId, latestUserText: '' }),
     String(identity || '').trim() || nestorIdentity(), fastLaneInstructions()].filter(Boolean).join('\n\n');
 }
 
@@ -90,5 +100,5 @@ function laneDecision(body) {
 
 module.exports = {
   LANE_PACK_ID, DELEGATE_TOOL, DELEGATE_REASONS,
-  delegateTool, fastLaneInstructions, nestorIdentity, fastLaneSystemPrompt, laneDecision
+  delegateTool, fastLaneHeader, fastLaneInstructions, nestorIdentity, fastLaneSystemPrompt, laneDecision
 };

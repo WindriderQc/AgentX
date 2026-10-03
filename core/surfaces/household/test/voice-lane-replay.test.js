@@ -116,6 +116,26 @@ test('turns are paired with their request, labelled by recorded tools and kept n
   assert.deepEqual(skipped, { interrupted: 1 });
 });
 
+test('a turn carries the exchanges recorded before it in its conversation, clipped and bounded', async () => {
+  const long = 'x'.repeat(700);
+  const rows = [session(60, [exchange('a', 'synthetic first', { minutes: 1 }), exchange('b', long, { minutes: 2, channel: 'text' }),
+    exchange('c', 'synthetic third', { minutes: 3 }), exchange('d', 'synthetic fourth', { minutes: 4 }),
+    exchange('e', 'synthetic fifth', { minutes: 5 }), exchange('f', 'oui, vas-y', { minutes: 6 })])];
+  const { turns } = await collectTurns(newestFirst(rows), 10);
+  const last = turns.find(entry => entry.text === 'oui, vas-y'), first = turns.find(entry => entry.text === 'synthetic first');
+  assert.deepEqual(first.history, []);
+  // The four exchanges before it, typed ones included, oldest first.
+  assert.equal(last.history.length, 8);
+  assert.deepEqual(last.history.slice(0, 2), [{ role: 'user', content: 'x'.repeat(600) }, { role: 'assistant', content: 'synthetic recorded reply' }]);
+  assert.deepEqual(last.history.at(-2), { role: 'user', content: 'synthetic fifth' });
+
+  const sent = [];
+  await replay({ turns: [last], infer: async messages => { sent.push(messages); return delegates('action'); } });
+  assert.equal(sent[0].length, 10);
+  assert.equal(sent[0][0].role, 'system');
+  assert.deepEqual(sent[0].at(-1), { role: 'user', content: 'oui, vas-y' });
+});
+
 test('reading stops once older conversations cannot enter the sample', async () => {
   const rows = [
     session(50, [exchange('a', 'synthetic newest', { minutes: 50 }), exchange('b', 'synthetic older', { minutes: 20 })]),
@@ -129,7 +149,7 @@ test('reading stops once older conversations cannot enter the sample', async () 
   assert.equal(seen.length, 3);
 });
 
-test('each request is sent alone under the stable system prompt', async () => {
+test('a request without recorded history is sent alone under the stable system prompt', async () => {
   const sent = [];
   const { rows, stop } = await replay({ turns: [turn('synthetic request one', ['rag_search'], { modeId: 'plan', identity: 'A synthetic personality.' }),
     turn('synthetic request two')], infer: async messages => { sent.push(messages); return sent.length === 1 ? delegates() : answers(); } });
