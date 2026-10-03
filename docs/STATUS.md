@@ -20,8 +20,24 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **Voice.** Household and PsyX share Core's browser conversation engine, VoiX
   transport, synthesis validation, stream relay and spoken-text cleanup. Native
   voice replies use the same speech boundary; physical device adapters retain
-  their own capture and playback. Voice choices are request-scoped, and Stop or
-  disconnect cancels upstream work without starting a backup request.
+  their own capture and playback. The loop keeps one language per turn, prepares
+  clauses ahead and permits one bounded retry after a speech stream failure.
+  Household flushes its final clause before turn completion and persists browser
+  voice timings; PsyX keeps its protected speech route without a timing store.
+  Voice choices are request-scoped; Stop or disconnect cancels upstream work
+  without starting a backup request. See [agents and voice](AGENTS_AND_VOICE.md).
+- **Personalities.** Household versions personalities separately from modes and
+  binds them to agents on the server. An adult-authorized session can switch its
+  personality between turns while keeping its agent and permissions. Turns
+  distinguish the presenting speaker, observed performing agents and requested
+  voice; a requested voice does not establish what the device heard.
+- **Conversation paths.** Household keeps stable contracts in system/native
+  instructions and variable context beside the current request. Canonical user
+  text stays unchanged. New family sessions can opt into direct Core inference;
+  existing sessions keep their backend. Direct inference composes Core's family
+  features but has no native tool loop. The personal fast lane's delegation
+  definition and conversation replay are available for offline qualification;
+  the production lane remains gated.
 - **Pipeline.** List, dossier and Planning references share Core's read-only
   next-action projection. **Needs attention** pages the engineering and
   private-lane queues separately, with an exact total or an explicit lower
@@ -38,7 +54,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   private item content stays out, while omitted links appear by reference only.
 - **Routing.** Light tasks may carry an instance-configured fallback ladder;
   every other task stays on its model. The OpenClaw conversation provider can
-  borrow that ladder when the instance opts in; it is off by default.
+  borrow that ladder when the instance opts in; it is off by default. A bounded
+  snapshot cache shares routing refreshes while live admission and claims remain
+  authoritative. Inference logs expose reported native phases and instrumented
+  agent prefix divergence, without treating missing data as zero or a stable
+  prefix as proof of a cache hit.
 - **Nerve Center.** Inference hosts are registered from the Nerve Center
   without a count limit; the configuration file only bootstraps the first.
   Each host is GPU- or CPU-resident, so one machine can run a GPU brain and a
@@ -102,6 +122,15 @@ Issues hold the current work and remaining acceptance:
 | Household photo metadata and staged visual retrieval | [#26](https://github.com/WindriderQc/AgentX/issues/26) |
 | Qualify French Canadian speech recognition | [#28](https://github.com/WindriderQc/AgentX/issues/28) |
 | Local French Canadian voices and custom voice profiles | [#29](https://github.com/WindriderQc/AgentX/issues/29) |
+| Specialist handoff and multi-speaker reply continuity | [#41](https://github.com/WindriderQc/AgentX/issues/41) |
+| Qualify backup speech readiness on CPU | [#117](https://github.com/WindriderQc/AgentX/issues/117) |
+| Mail catch-up and steady-state lifecycle | [#130](https://github.com/WindriderQc/AgentX/issues/130) |
+| Agent/personality migration and shared resolution | [#131](https://github.com/WindriderQc/AgentX/issues/131) |
+| Durable conversation exchange and erasure coordination | [#234](https://github.com/WindriderQc/AgentX/issues/234) |
+| Offline delegation replay and owner-reviewed qualification | [#262](https://github.com/WindriderQc/AgentX/issues/262) |
+| Production personal voice lane with delegation | [#263](https://github.com/WindriderQc/AgentX/issues/263) |
+| Shared voice microphone, resource cleanup and selection follow-ups | [#280](https://github.com/WindriderQc/AgentX/issues/280) |
+| Explain direct voice load and prompt prefix reuse | [#282](https://github.com/WindriderQc/AgentX/issues/282) |
 
 ## What a green result means
 

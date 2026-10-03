@@ -1,0 +1,172 @@
+# Agents, personalities and voice
+
+This reference explains the current boundaries and the evidence needed to
+qualify voice changes. [Architecture](ARCHITECTURE.md) describes implementation;
+[operations](OPERATIONS.md) describes configuration and replay commands;
+[status](STATUS.md#open) links the outstanding work. Instance measurements,
+replay disagreements, transcripts and deployment receipts stay outside Git.
+
+## Separate choices
+
+| Concept | Responsibility | What a change means |
+|---|---|---|
+| Core capability | Conversations, inference, memory/RAG, tools/tasks, attachments and events | Shared application behavior |
+| Surface and space | Interface, domain contract and access boundary | Personal or family interaction under its existing permissions |
+| Agent | Its own native session, tools, memory scope and model policy | A different worker, with its own execution evidence |
+| Personality (persona) | Versioned name, tone and preferred voice over an agent | A different presentation, without widening permissions |
+| Mode | Instructions for the current kind of work | A different working style on the selected agent |
+| Voice | Requested synthesis provider and voice, with surface-specific fallback | How the reply is spoken |
+
+Nestor is the personal assistant; Household is the family surface. Personalities
+remain first-class choices, separate from modes. Specialists can share compute
+while keeping independent sessions and tool permissions. External harnesses
+provide execution adapters; Core owns the business records and memory APIs.
+
+## Personality selection and attribution
+
+Household's catalog is versioned. A personality with an `agentId` binds a new
+session to that agent; a tone-only personality overlays the selected agent.
+Conflicting agent/personality selections fail with `VOICE_PERSONA_AGENT_MISMATCH`.
+Family keeps its `family` agent and the Nestor personality or no personality.
+
+An adult-authorized session request can change its personality with
+`POST /api/voice-personas/{private|family}/sessions/:sessionId/persona` and
+`{personaId, personaVersion?}`. Omitting the version selects the latest active
+one; inactive exact versions are refused. `personaId: null` clears it. The
+change preserves the agent and access boundary, rejects an in-flight turn with
+409, and applies to subsequent turns. Historical turn snapshots stay intact.
+
+Each Household turn distinguishes:
+
+- `speaker {agentId, personaId, personaVersion, name}`: who presents the reply;
+- `performedBy [{agentId, runId}]`: workers supported by observed run evidence;
+- `voice {provider, voice}`: the requested speech choice;
+- `deliveredBy`: delivery evidence where available.
+
+Without native execution evidence, `performedBy` retains the session agent with
+a null run id; this does not establish a native execution.
+
+A requested voice does not prove that this voice was heard. A presenting
+personality does not prove that its agent executed every part of the work.
+Turn attribution does not establish multiple speakers or a continuing specialist
+handoff within one reply. Native clients retain their adapters; a shared speech
+boundary does not establish a single catalog or selection interface everywhere.
+
+## Conversation paths
+
+Household sessions keep the backend chosen at creation. Core's `agentx` path
+uses admitted inference; `openclaw` uses the native agent conversation bridge.
+An optional `HOUSEHOLD_FAMILY_CONVERSATION_BACKEND` chooses the backend for new
+child-safe sessions without moving existing history between engines.
+
+Direct Core inference has no native agent tool loop. Core's deterministic family
+routines, captures, math picture and sounds still compose with it. Spoken Core
+turns use the configurable `HOUSEHOLD_VOICE_TASK` (default
+`voice_persona_chat`), except LLMx scenes. Typed turns keep their pack's task.
+
+The fast personal voice lane with a single `delegate` tool is an **offline
+qualification definition**, not an enabled production conversation route. Its
+rule delegates actions, live checks and memory changes instead of promising to
+check, reporting unverified status or refusing work the full agent can do.
+The replay supplies up to four previous exchanges, clipped to 600 characters
+per side, so a confirmation can be interpreted in context.
+
+## Prompt reuse and routing
+
+Household puts stable pack, memory, mode, personality, surface and reply-channel
+contracts in system/native instructions. Variable selected notes, approved
+knowledge, routines, receipts, language and reviewer/team context accompany the
+current request as labelled reference data. Core stores the submitted user text,
+not those injected reference blocks, as the canonical transcript.
+
+Direct history uses bounded turn blocks. Personal history advances less often;
+family and reader windows still slide each turn. Native agent history can retain
+reference blocks and consume more context. Personality/mode changes and LLMx
+scene instructions can change the prefix.
+
+Stable instructions support reuse; they do not establish a cache hit. History
+reconstruction can differ from the previous wire request, another caller can
+occupy the same model, and runner/options changes can cause preparation work.
+Measure native prompt evaluation and first-token time before claiming a gain.
+Streaming improves when speech can start, but does not remove prompt preparation.
+
+The router's snapshot cache shares refreshes and defaults to 5 seconds fresh
+and a maximum 300 seconds stale retention. Configuration and pin/preference
+changes invalidate it. Exact-artifact routing does not use stale views. Live
+admission, workload claims and runtime coordination remain authoritative; a
+cached routing snapshot is not permission to dispatch.
+
+## Shared speech behavior
+
+Core owns the common browser capture/conversation/playback loop and server-side
+VoiX transport, synthesis validation, deadlines and stream forwarding. Household
+and PsyX compose these with their session adapters. Native devices retain their
+own capture and playback qualification.
+
+The loop speaks clauses and prepares at most one ahead. Household can play a
+holding phrase while waiting for reply text; available text drops a phrase that
+has not started. `say_end` flushes the last clause before a Household turn's
+remaining completion work. PsyX waits for its confirmed reply and keeps holding
+phrases off. One selected language applies throughout a turn, including notices
+and holding phrases; an explicit French or English preference wins.
+
+Household's ladder tries the explicit browser choice, the personality's instance
+voice, its catalog voice, then the device voice. Duplicate choices are skipped.
+An upstream error before the audio stream is accepted lets the ladder advance.
+A later synthesis/playback failure permits one clause retry, at most once per
+turn, starting below the failed voice. Interruption cancels upstream work and
+does not initiate fallback. PsyX retries its chosen voice on its protected route
+and has no device voice fallback. Exhausting a ladder can leave text unspoken.
+
+The shared speech cleanup removes display markup while preserving prose and
+emergency phone numbers; stored text stays unchanged. This contract needs
+resource-line qualification: removing links or table-shaped lines can omit
+information needed in the spoken reply.
+
+## Measure the path that the person experiences
+
+| Evidence | Measures | Limitation |
+|---|---|---|
+| `InferenceLog.durationMs` | Core wall clock, including routing and queueing | Not acoustic response time |
+| `loadMs`, `promptEvalMs`, `evalMs` | Native Ollama phases converted to milliseconds | Absent when the provider/path does not report them |
+| `firstTokenMs` | Dispatch to the first streamed content, thinking or tool-call frame | Not necessarily visible reply text or audible speech |
+| `promptPrefix.divergence` | First structural change between observed agent calls on the same host/model | Hashes/counts, not token-level cache evidence; unobserved callers can interfere |
+| Household `voiceTimings` | Browser endpoint decision to transcription, request, reply text, holding and first reply playback | Starts after trailing silence; does not measure physical speech end or acoustic output |
+| Device acceptance | Actual capture, interruption, reconnect and audible reply | Must be checked on the intended device |
+
+Unreported phases stay absent rather than becoming zero. Prefix observations
+apply to instrumented OpenClaw/Hermes calls; they are not universal direct-lane
+traces. Household persists timing by the browser's turn id within its session;
+PsyX has no timing store/adapter and does not collect that timeline.
+
+For a performance comparison, keep model, routed task, context/options, voice,
+device and admission conditions comparable. Separate consecutive warm turns
+from cold starts, pauses and competing callers. Report sample counts, missing
+phase coverage, interruptions/failures and medians plus a tail percentile.
+Measure first **reply** audio separately from holding audio, and do not add
+unmeasured STT or playback assumptions to a server duration as a measured total.
+
+Offline delegation qualification goes through Core admission and a pinned model,
+waits for busy admission and never repeats an uncertain dispatched request.
+Reports require a new private directory outside every Git checkout. The gate is
+at most 5% missed delegations and 15% unnecessary delegations. Recorded tool use
+is a weak label: review disagreement examples against what the request actually
+required before authorizing the production lane.
+
+Code/tests, containers, deployment and real-device acceptance remain separate.
+A passing unit suite does not qualify microphones, mobile permissions, LAN
+access, backup speech readiness or French Canadian speech quality.
+
+## Implementation entry points
+
+- [Household personality catalog](../core/surfaces/household/personas.json)
+- [Browser personality/voice presentation](../core/surfaces/household/public/persona-presentation.js)
+- [Offline delegation definition](../core/surfaces/household/voice-lane.js)
+- [Offline replay](../core/scripts/voice-lane-replay.js)
+- [Shared browser voice](../core/public/js/voice/)
+- [Shared voice services](../core/src/services/voice/)
+- [Routing snapshot cache](../core/src/services/routing/routingSnapshotCache.js)
+
+Open implementation and acceptance work is tracked in [status](STATUS.md#open)
+and the linked issues. Private measurements and review priorities belong in the
+owner's review record, rather than this distributable reference.
