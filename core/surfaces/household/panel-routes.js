@@ -6,14 +6,16 @@
 const { serviceHealth, projectedJson, fleetSummary } = require('./panel-sources');
 const { upstreamJson } = require('./voix-client');
 const { openClawPanelStatus, panelCrewReady } = require('./panel-status');
+const { createVoiceStatus, voiceLine } = require('./voice-status');
 
 function registerPanelRoutes(app, {
   express, standardJsonParser, CORE_SELF_URL, knowledgeState, cleanText, envelope
 }) {
   const panel = express.Router();
   panel.use(standardJsonParser);
+  const voiceStatus = createVoiceStatus({ readCatalog: () => upstreamJson('/api/voices') });
   panel.get('/status', async (_req, res) => {
-    const [services, voixStatus, openclaw, fleet] = await Promise.all([
+    const [services, voixStatus, openclaw, fleet, voices] = await Promise.all([
       Promise.all([
         serviceHealth('Core', `${CORE_SELF_URL()}/health`),
         serviceHealth('Benchmark', String(process.env.BENCHMARK_SERVICE_URL || 'http://benchmark:3081').replace(/\/+$/, '') + '/health'),
@@ -28,7 +30,8 @@ function registerPanelRoutes(app, {
         `${CORE_SELF_URL()}/api/nerve-center/ecosystem`,
         fleetSummary,
         fleetSummary({})
-      )
+      ),
+      voiceStatus()
     ]);
     const serviceCount = services.filter((service) => service.status === 'ok').length;
     const agentx = {
@@ -55,7 +58,7 @@ function registerPanelRoutes(app, {
       role: 'Private ears & voice',
       status: voixStatus.status,
       detail: voixStatus.status === 'ok'
-        ? cleanText(voixStatus.health?.version || voixStatus.health?.serviceVersion || 'local speech ready', 120)
+        ? [cleanText(voixStatus.health?.version || voixStatus.health?.serviceVersion || 'local speech ready', 120), voiceLine(voices)].filter(Boolean).join(' · ')
         : 'local speech unavailable',
       href: '/voice'
     };
@@ -65,7 +68,7 @@ function registerPanelRoutes(app, {
       generatedAt: new Date().toISOString(),
       status: ready && !fleet.attention.length ? 'ok' : 'degraded',
       services,
-      voix: voixStatus,
+      voix: { ...voixStatus, engines: voices },
       crew,
       fleet,
       memory: {

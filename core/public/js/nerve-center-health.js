@@ -3,6 +3,26 @@
 
     const shared = window.NerveCenterShared;
 
+    // Speech engines: Nestor's cloned voice (VoxCPM2 worker) and the Kokoro catalog voices.
+    function renderVoices(voix) {
+        if (!voix) return '';
+        const engines = voix.engines || {};
+        const line = (label, engine) => {
+            if (!engine || engine.configured === false) return '';
+            const ready = engine.ready === true;
+            const color = engine.ready === null ? 'var(--muted)' : ready ? '#4ade80' : '#f59e0b';
+            const state = engine.ready === null ? 'unknown' : ready ? 'ready' : 'unavailable';
+            const since = engine.since ? ` since ${shared.timeAgo(engine.since)}` : '';
+            const reason = !ready && engine.reason ? ` · ${shared.escapeHtml(engine.reason)}` : '';
+            return `<div><span style="color:${color};font-weight:600">${shared.escapeHtml(label)}: ${state}</span><span class="nc-muted">${since}${reason}</span></div>`;
+        };
+        const down = voix.status !== 'ok' || engines.voxcpm?.ready === false;
+        return `<div class="nc-host-card" role="status" style="margin-bottom:10px;padding:10px;border-left:3px solid ${down ? '#f59e0b' : '#4ade80'}">
+            <strong>Voices</strong> <span class="nc-muted">VoiX ${voix.status === 'ok' ? 'up' : 'down'}</span>
+            ${line("Nestor's voice (VoxCPM2 · Gazz)", engines.voxcpm)}${line('Catalog voices (Kokoro)', engines.kokoro)}
+        </div>`;
+    }
+
     async function loadHealth() {
         const body = document.getElementById('sectionHealthBody');
         if (!body) return;
@@ -10,7 +30,11 @@
         shared.renderSectionLoading(body, 'Loading health data...');
 
         try {
-            const json = await shared.fetchJson('/api/nerve-center/health/feed?limit=30');
+            const [json, panel] = await Promise.all([
+                shared.fetchJson('/api/nerve-center/health/feed?limit=30'),
+                // Household's panel names the speech engines; absent outside the full profile.
+                shared.fetchJson('/api/panel/status').catch(() => null)
+            ]);
             const events = json.data || [];
             const feedMeta = json.meta || {};
 
@@ -54,9 +78,10 @@
                 <strong style="color:${activeAlertCount > 0 ? '#f59e0b' : '#4ade80'}">${activeAlertCount} ACTIVE ${activeAlertCount === 1 ? 'ALERT' : 'ALERTS'}</strong>
                 <span class="nc-muted" style="margin-left:8px">The feed below includes labelled history${groupedRows > 0 ? ` · ${groupedRows} repeated persisted rows grouped` : ''}.</span>
             </div>`;
+            const voiceCard = renderVoices(panel?.data?.voix);
             const feedHtml = feedRows.length > 0
-                ? `${feedContext}<div class="nc-event-list" style="max-height:400px;overflow-y:auto;">${feedRows.join('')}</div>`
-                : `${feedContext}<div class="nc-section-placeholder" style="padding:20px;text-align:center;color:var(--muted);">No health events</div>`;
+                ? `${voiceCard}${feedContext}<div class="nc-event-list" style="max-height:400px;overflow-y:auto;">${feedRows.join('')}</div>`
+                : `${voiceCard}${feedContext}<div class="nc-section-placeholder" style="padding:20px;text-align:center;color:var(--muted);">No health events</div>`;
 
             const column = (accent, title, icon, items) => `
                 <div style="background:rgba(255,255,255,0.02);border:1px solid var(--panel-border);border-radius:8px;padding:14px;border-top:3px solid ${accent};">
