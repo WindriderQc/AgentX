@@ -144,6 +144,34 @@ test('the idle wait shares the remaining deadline and its refusal ends the retry
   assert.deepEqual(remaining, [25_000, 15_000]);
 });
 
+test('a Core-only recreate reaches the launcher drain while background work keeps reporting active', async () => {
+  const { now, pause } = clock();
+  let attempts = 0;
+  const waitIdle = async () => { throw new Error('The resumable writer cannot yield before a launcher drain request'); };
+  const { launched } = await actions.recreateWhenIdle({ services: ['core'], deadline: 60_000, now, pause, waitIdle,
+    recreate: () => ++attempts === 1 ? REFUSED : { status: 0, output: 'Lease acquired after the in-flight unit ended' } });
+  assert.equal(attempts, 2);
+  assert.equal(launched.status, 0);
+});
+
+test('Core-only retains the launcher refusal when the bounded retry expires', async () => {
+  const { now, pause } = clock();
+  const result = await actions.recreateWhenIdle({ services: ['core'], deadline: 35_000, now, pause,
+    waitIdle: async () => { throw new Error('unexpected idle gate'); }, recreate: () => REFUSED });
+  assert.equal(result.launched, REFUSED);
+  assert.ok(now() < 35_000);
+});
+
+for (const services of [['core', 'rag'], ['benchmark'], ['rag']]) {
+  test(`${services.join(',')} still waits for idle before a recreate`, async () => {
+    let called = false;
+    const busy = new Error('A service writer is still active');
+    await assert.rejects(actions.recreateWhenIdle({ services, deadline: 10_000,
+      waitIdle: async () => { throw busy; }, recreate: () => { called = true; } }), busy);
+    assert.equal(called, false);
+  });
+}
+
 test('the refusal text the retry recognises is the one the launcher prints', () => {
   const launcher = fs.readFileSync(path.join(__dirname, '..', 'agentx'), 'utf8');
   const refusals = launcher.split('\n').filter(line => line.includes('cancel that work through its route or wait for it to finish'));

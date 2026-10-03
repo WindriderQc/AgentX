@@ -184,6 +184,9 @@ mail catch-up, pauses on it, so the launcher waits for at most the unit in
 flight. The request is advisory, lives in the Core process and is withdrawn
 when the wait ends. Interactive, benchmark and maintenance blockers refuse
 immediately, as before.
+The bounded action wrapper delegates a Core-only recreate to this launcher
+gate, so back-to-back background calls cannot prevent the drain request from
+being sent. Other or mixed service selections retain the full idle wait.
 
 Images are built first (`up --build` included), so the lease, which keeps new
 work out, covers only the recreate: it is heartbeated and released once health
