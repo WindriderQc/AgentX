@@ -61,7 +61,7 @@ test('the stored dream coverage follows the actual fallback lane and retains una
   const dreamer = createDreamer({ config: { dream: {} }, logger: {}, locationFor: () => 'frontier',
     sources: { gather: async () => ({ sources: [], unavailable: ['mail'] }) },
     provider: { async complete(input) { request = input; return { location: 'local', content: JSON.stringify({
-      portrait: { sections: [{ key: 'situation', statements: [{ text: 'Hypothèse synthétique.', evidence: ['Preuve synthétique.'] }] }] }
+      portrait: { sections: [{ key: 'situation', statements: [{ text: 'Hypothèse synthétique.', evidence: [input.local.evidenceSources[0].text.slice(0, 240)] }] }] }
     }) }; } },
     stateRepository: { read: async () => state, recordDream: async (_user, input) => { recorded = input; return { entry: { id: 'd' } }; } },
     conversationRepository: { listTranscripts: async () => conversations }

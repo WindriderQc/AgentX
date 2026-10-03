@@ -1,4 +1,5 @@
 'use strict';
+const { evidenceSource } = require('./dreamEvidence');
 
 // Coverage describes the text actually supplied to this reflection, separately
 // from the transcripts fetched from Core. Whole messages are kept or omitted.
@@ -10,16 +11,22 @@ const tooLarge = () => Object.assign(new Error('PsyX cannot fit a complete recen
 function selectDreamTranscript(conversations, maxCharacters) {
   const sessions = conversations.map(conversation => ({
     header: `### Session ${text(conversation.updatedAt || conversation.createdAt).slice(0, 30)} (${text(conversation.id).slice(0, 40)})\n`,
-    lines: (conversation.messages || []).filter(message => ['user', 'assistant'].includes(message.role) && text(message.content))
-      .map(message => `${message.role === 'assistant' ? 'PsyX' : 'User'}: ${text(message.content)}`)
-  })).filter(session => session.lines.length);
+    entries: (conversation.messages || []).map((message, messageIndex) => ({ ...message, messageIndex }))
+      .filter(message => ['user', 'assistant'].includes(message.role) && text(message.content)),
+    id: conversation.id
+  })).map(session => ({ ...session, lines: session.entries.map(message => `${message.role === 'assistant' ? 'PsyX' : 'User'}: ${text(message.content)}`) }))
+    .filter(session => session.lines.length);
   const blocks = [];
+  const evidenceSources = [];
+  const rememberSources = (session, entries) => evidenceSources.push(...entries.filter(message => message.role === 'user')
+    .map(message => evidenceSource('conversation', text(message.content), { conversationId: session.id, messageIndex: message.messageIndex })));
   let remaining = maxCharacters, messages = 0, partialConversations = 0;
   for (const session of [...sessions].reverse()) {
     const block = session.header + session.lines.join('\n\n');
     if (block.length <= remaining) {
       blocks.unshift(block);
       messages += session.lines.length;
+      rememberSources(session, session.entries);
       remaining -= block.length + 2;
       continue;
     }
@@ -34,12 +41,13 @@ function selectDreamTranscript(conversations, maxCharacters) {
       if (!kept.length) throw tooLarge();
       blocks.unshift(session.header + kept.join('\n\n'));
       messages += kept.length;
+      rememberSources(session, session.entries.slice(-kept.length));
       partialConversations = 1;
     }
     break;
   }
   const availableMessages = sessions.reduce((sum, session) => sum + session.lines.length, 0);
-  return { text: blocks.join('\n\n'), coverage: {
+  return { text: blocks.join('\n\n'), evidenceSources, coverage: {
     conversations: blocks.length, availableConversations: sessions.length, partialConversations,
     messages, availableMessages, complete: messages === availableMessages
   } };

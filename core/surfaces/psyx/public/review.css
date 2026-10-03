@@ -110,6 +110,7 @@
 .portrait-statement small { display: block; color: var(--muted); font-size: 10px; }
 .portrait-list { margin: 0; padding-left: 16px; font-size: 11px; display: grid; gap: 6px; }
 .portrait-list blockquote { margin: 3px 0 0; }
+.portrait-source { white-space: pre-wrap; font-style: normal; overflow-wrap: anywhere; }
 
 /* Questionnaires and technique cards. */
 .assessment-form fieldset { border: 0; margin: 8px 0; padding: 0; display: grid; gap: 3px; font-size: 11px; }

@@ -26,6 +26,16 @@ const DREAM = {
 };
 const conversations = [{ id: 'c1', updatedAt: '2026-10-02T22:00:00.000Z', messages: [{ role: 'user', content: 'J’ai encore crié ce soir.' }, { role: 'assistant', content: 'Raconte.' }] }];
 
+function groundedFixture(request) {
+  const value = structuredClone(DREAM);
+  const quote = request.evidenceSources[0].text.slice(0, 240);
+  for (const section of value.portrait.sections) {
+    for (const item of section.statements) if (item.evidence?.length) item.evidence = [quote];
+  }
+  for (const item of [...value.findings, ...value.memory]) item.evidence = [quote];
+  return value;
+}
+
 async function harness() {
   const mongo = await MongoMemoryServer.create();
   const client = await MongoClient.connect(mongo.getUri());
@@ -120,7 +130,7 @@ test('the portrait reaches the reply inside each lane budget, agenda and questio
 function dreamerFakes({ complete, state = emptyState(), transcripts = conversations } = {}) {
   const calls = { complete: [], recorded: [], cleared: 0 };
   return { calls,
-    provider: { id: 'agentx', async complete(request) { calls.complete.push(request); return complete ? complete(request) : { content: JSON.stringify(DREAM), model: 'sol', location: 'frontier' }; } },
+    provider: { id: 'agentx', async complete(request) { calls.complete.push(request); return complete ? complete(request) : { content: JSON.stringify(groundedFixture(request)), model: 'sol', location: 'frontier' }; } },
     stateRepository: { read: async () => state, dreamUserIds: async () => ['u'],
       async recordDream(userId, input) { calls.recorded.push({ userId, ...input, wanted: await input.stillWanted() }); return { entry: { id: 'd1' } }; },
       async clearPortrait() { calls.cleared += 1; return { cleared: true }; } },
@@ -131,7 +141,7 @@ test('a quiet session triggers one dream; turns meanwhile queue a single follow-
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   let busy = true;
-  const { calls, ...deps } = dreamerFakes({ complete: async () => { await gate; return { content: JSON.stringify(DREAM), model: 'sol', location: 'frontier' }; } });
+  const { calls, ...deps } = dreamerFakes({ complete: async request => { await gate; return { content: JSON.stringify(groundedFixture(request)), model: 'sol', location: 'frontier' }; } });
   const sources = { gather: async () => ({ sources: [{ key: 'notes', title: 'Notes', text: '- fait', count: 1 }], unavailable: ['mail'] }) };
   const dreamer = createDreamer({ ...deps, sources, config: { dream: { sessionIdleMs: 5, retryMs: 5 } }, logger: {}, isBusy: () => busy, locationFor: () => 'frontier' });
   assert.equal(dreamer.touch('u'), true);

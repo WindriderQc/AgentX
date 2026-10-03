@@ -45,15 +45,16 @@ function createDreamer({ config, provider, stateRepository, conversationReposito
     }
     const result = await provider.complete({
       messages: primary.messages,
+      evidenceSources: primary.evidenceSources,
       // If the frontier lane fails, the local route dreams over its own bounded material.
       local,
       taskType: settings.taskType || 'deep_reasoning', timeoutMs: settings.timeoutMs || 600000, maxTurnMs: settings.timeoutMs || 600000,
       location, work: 'dream'
     });
-    const dream = readDream(result.content, { state });
-    if (!dream || !dream.sections.length) throw Object.assign(new Error('The dream returned no usable portrait'), { code: 'PSYX_DREAM_UNUSABLE' });
     const used = result.location === 'local' && local ? local : primary;
     if (used.error) throw Object.assign(new Error(used.error.message), { code: used.error.code });
+    const dream = readDream(result.content, { state, evidenceSources: used.evidenceSources });
+    if (!dream || !dream.sections.length) throw Object.assign(new Error('The dream returned no usable portrait with verified evidence'), { code: 'PSYX_DREAM_UNUSABLE' });
     const recorded = await stateRepository.recordDream(userId, {
       dream, kind, model: result.model || null, location: result.location === 'frontier' ? 'frontier' : 'local',
       sources: used.coverage.sourceCoverage.filter(source => source.includedCharacters > 0).map(source => source.key),

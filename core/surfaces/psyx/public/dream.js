@@ -46,7 +46,18 @@ function renderDreamChip() {
 
 function portraitList(title, items) {
   return items?.length ? `<section class="state-section"><h4>${escapeHtml(title)}</h4><ul class="portrait-list">${items.map(item => `<li>${escapeHtml(item.text || item)}${
-    (item.evidence || []).map(text => `<blockquote>${escapeHtml(text)}</blockquote>`).join('')}</li>`).join('')}</ul></section>` : '';
+    portraitEvidence(item)}</li>`).join('')}</ul></section>` : '';
+}
+
+function portraitEvidence(item) {
+  const labels = { conversation: 'tes mots en séance', profile: 'ton profil', memory: 'ta mémoire', ...DREAM_SOURCE_LABELS };
+  return (item.evidence || []).map(quote => {
+    const ref = (item.evidenceRefs || []).find(candidate => candidate.quote === quote);
+    const source = ref ? `Citation retrouvée dans ${labels[ref.kind] || 'la source'}` : 'Ancienne citation : source non vérifiée';
+    const open = ref?.kind === 'conversation' && /^[a-f0-9]{24}$/i.test(ref.conversationId || '') && Number.isSafeInteger(ref.messageIndex)
+      ? `<button type="button" data-evidence-session="${escapeHtml(ref.conversationId)}" data-evidence-index="${ref.messageIndex}" data-evidence-quote="${escapeHtml(quote)}">Lire le message source</button><p class="portrait-source" hidden></p>` : '';
+    return `<blockquote>${escapeHtml(quote)}<small>${escapeHtml(source)}</small>${open}</blockquote>`;
+  }).join('');
 }
 
 // How much of an intake PsyX has covered so far; the rest is asked over time, never all at once.
@@ -69,7 +80,7 @@ function renderPortrait() {
   $('dreamNow').textContent = running ? 'PsyX réfléchit…' : 'Approfondir maintenant';
   if (!portrait?.sections?.length) {
     $('portraitMeta').textContent = dream.status?.status === 'failed' ? 'La dernière réflexion n’a pas abouti. Elle sera reprise la nuit prochaine.' : '';
-    $('portraitView').innerHTML = `<p class="state-empty">${running ? 'PsyX écrit ton portrait…' : 'Pas encore de portrait. PsyX l’écrit après tes séances et chaque nuit, à partir de tout ce qu’il sait de toi.'}</p>`;
+    $('portraitView').innerHTML = `<p class="state-empty">${running ? 'PsyX écrit ton portrait…' : 'Pas encore de portrait. PsyX l’écrit après tes séances et chaque nuit, à partir du contexte disponible.'}</p>`;
   } else {
     const sources = (portrait.sources || []).map(key => DREAM_SOURCE_LABELS[key] || key);
     $('portraitMeta').textContent = [dream.status?.status === 'failed' ? 'La dernière réflexion n’a pas abouti' : null, `Écrit le ${new Date(portrait.updatedAt).toLocaleString('fr-CA', { dateStyle: 'long', timeStyle: 'short' })}`,
@@ -79,7 +90,7 @@ function renderPortrait() {
     $('portraitView').innerHTML = portrait.sections.map(section => `<section class="state-section"><h4>${escapeHtml(PORTRAIT_TITLES[section.key] || section.key)}</h4>${section.statements.map(item => `
       <article class="proposal-card portrait-statement">
         <strong>${escapeHtml(item.text)}</strong>${Number.isFinite(item.confidence) ? `<small>confiance ${Math.round(item.confidence * 100)} %</small>` : ''}
-        ${item.evidence.map(text => `<blockquote>${escapeHtml(text)}</blockquote>`).join('')}
+        ${portraitEvidence(item)}
         <div class="proposal-actions"><button type="button" data-portrait-reject="${escapeHtml(item.id)}">Ce n’est pas moi</button></div>
       </article>`).join('')}</section>`).join('')
       + intakeSummary(portrait.intake)
@@ -159,7 +170,23 @@ function wireDream() {
     renderPortrait();
     watchDream();
   }));
-  $('portraitView').addEventListener('click', event => {
+  $('portraitView').addEventListener('click', async event => {
+    const open = event.target.closest('[data-evidence-session]');
+    if (open) {
+      const preview = open.nextElementSibling;
+      if (preview.textContent) { preview.hidden = !preview.hidden; return; }
+      open.disabled = true;
+      try {
+        const session = await api(`/api/psyx/sessions/${encodeURIComponent(open.dataset.evidenceSession)}`);
+        const message = session.messages?.[Number(open.dataset.evidenceIndex)];
+        if (message?.role !== 'user' || typeof message.content !== 'string'
+            || !message.content.normalize('NFC').includes(open.dataset.evidenceQuote)) throw new Error('Source unavailable');
+        preview.textContent = message.content;
+      } catch (error) {
+        if (error.code !== 'PSYX_LOCKED') preview.textContent = 'Le message source n’est plus disponible ou a changé.';
+      } finally { open.disabled = false; preview.hidden = false; }
+      return;
+    }
     const button = event.target.closest('[data-portrait-reject]');
     if (button) void dreamAction(button, () => api(`/api/psyx/portrait/statements/${encodeURIComponent(button.dataset.portraitReject)}`, { method: 'DELETE' }));
   });
