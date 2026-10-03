@@ -266,7 +266,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     // The conversation is gone either way; a failed memory cleanup is logged, not reported as a failed delete.
     await stateRepository.forgetConversation(res.locals.psyxUserId, cleanText(req.params.id, 80))
       .catch(error => logger.error?.('PsyX could not forget a deleted conversation', { message: error.message }));
-    // The portrait was built from every conversation: rebuild it from what remains.
+    // This conversation could have contributed to the portrait: rebuild from what remains.
     await dream.invalidate(res.locals.psyxUserId).catch(error => logger.error?.('PsyX could not rebuild the portrait', { message: error.message }));
     return responseData(res, { id: req.params.id });
   }));
@@ -408,7 +408,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
       dream.touch(userId);
       handlers.send('done', {
         review: { scheduled: reviewScheduled },
-        control: applied,
+        control: { ...applied,
+          ...(result.routing?.location ? { location: result.routing.location } : {}),
+          ...(result.routing?.contextCoverage ? { contextCoverage: result.routing.contextCoverage } : {}) },
         response: assistant,
         conversationId: session.id,
         model: result.model,

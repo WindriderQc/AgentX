@@ -1,6 +1,6 @@
 'use strict';
 
-// The dream is PsyX thinking between sessions. It rereads whole conversations
+// The dream is PsyX thinking between sessions. It reads selected whole messages
 // with the memory and other owner sources, and writes a portrait of the user:
 // what PsyX understands, with the evidence for it. Unlike the per-turn review,
 // it writes directly; every change is logged so the user can read and undo it.

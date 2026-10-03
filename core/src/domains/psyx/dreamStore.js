@@ -99,7 +99,7 @@ function createDreamStore({ collection, read, ensureDocument, createStateItem, l
     });
   }
 
-  // The portrait is built from every conversation, so a permanent deletion
+  // Conversations can contribute to the portrait, so a permanent deletion
   // discards it and it is rebuilt from what remains. Memory items a dream added
   // stay, like accepted proposals, until he removes them or undoes that dream.
   async function clearPortrait(userId) {

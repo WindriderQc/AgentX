@@ -186,7 +186,41 @@ test('a frontier turn that falls back answers with the bounded local context, no
   const calls = [];
   const down = { available: () => true, run: async () => { throw Object.assign(new Error('silent'), { code: 'FRONTIER_SILENT' }); } };
   const provider = createCoreProvider(localRuntime(calls), { frontier: down, config: frontierConfig, logger: {} });
-  await provider.stream({ location: 'frontier', system: 'WIDE', messages: [{ role: 'user', content: 'old' }, { role: 'assistant', content: 'older' }], message: 'm', taskType: 'analysis',
-    local: { system: 'BOUNDED', messages: [{ role: 'assistant', content: 'older' }] } }, sink());
+  const localCoverage = { availableMessages: 2, includedMessages: 1, omittedMessages: 1, complete: false };
+  const handlers = sink();
+  const result = await provider.stream({ location: 'frontier', system: 'WIDE', messages: [{ role: 'user', content: 'old' }, { role: 'assistant', content: 'older' }], message: 'm', taskType: 'analysis',
+    contextCoverage: { availableMessages: 2, includedMessages: 2, omittedMessages: 0, complete: true },
+    local: { system: 'BOUNDED', messages: [{ role: 'assistant', content: 'older' }], contextCoverage: localCoverage } }, handlers);
   assert.deepEqual(calls[0].messages.map(message => message.content), ['BOUNDED', 'older', 'm']);
+  assert.deepEqual(result.routing.contextCoverage, localCoverage);
+  assert.deepEqual(handlers.seen.routes.at(-1).contextCoverage, localCoverage);
+});
+
+test('a completed HTTP turn reports actual local context coverage after frontier fallback', async () => {
+  const calls = [];
+  const config = loadConfig({ NODE_ENV: 'test', PSYX_ACCESS_TOKEN: 'psyx-secret', PSYX_FRONTIER_AGENT: 'psyx', PSYX_FRONTIER_MODE: 'all' });
+  const provider = createCoreProvider(localRuntime(calls), { config, logger: {},
+    frontier: { available: () => true, run: async () => { throw new Error('synthetic failure'); } } });
+  const messages = Array.from({ length: 80 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', content: `message ${index}` }));
+  const database = { stateRepository: { read: async () => emptyState() },
+    conversationRepository: { context: async () => ({ messages, availableMessages: 200 }),
+      saveCompletedTurn: async () => ({ id: '507f1f77bcf86cd799439011' }) } };
+  const reviewer = { enabled: false, schedule: () => false, status: () => ({ status: 'disabled' }) };
+  const server = createApp({ config, database, provider, reviewer, logger: {} }).listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/psyx/chat/stream`, {
+      method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: '507f1f77bcf86cd799439011', message: 'suite' })
+    });
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    const initial = JSON.parse(text.match(/event: control\ndata: ([^\n]+)/)[1]);
+    const done = JSON.parse(text.match(/event: done\ndata: ([^\n]+)/)[1]);
+    assert.equal(initial.contextCoverage.includedMessages, 80);
+    assert.equal(done.control.location, 'local');
+    assert.deepEqual(done.control.contextCoverage, { availableMessages: 200, includedMessages: 40, omittedMessages: 160, complete: false });
+    assert.deepEqual(done.routing.contextCoverage, done.control.contextCoverage);
+    assert.equal(calls[0].messages.length, 42, 'system, forty whole history messages, current user message');
+  } finally { await new Promise(resolve => server.close(resolve)); }
 });
