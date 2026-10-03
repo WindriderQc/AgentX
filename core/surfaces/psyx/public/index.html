@@ -7,10 +7,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>PsyX</title>
-  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.8.0">
-  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.8.0">
-  <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.8.0">
-  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.8.0">
+  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.9.0">
+  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.9.0">
+  <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.9.0">
+  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.9.0">
 </head>
 <body class="psyx-locked">
   <div id="privacyGate" class="privacy-gate" role="dialog" aria-modal="true" aria-labelledby="privacyTitle">
@@ -35,7 +35,7 @@
         <div class="eyebrow">PRIVÉ · LOCAL</div>
         <div class="brand-line">
           <h1>PsyX</h1>
-          <span class="version-pill">V2.8.0</span>
+          <span class="version-pill">V2.9.0</span>
         </div>
         <p class="subtitle">Partenaire de réflexion psychologique · changement durable</p>
       </div>
@@ -123,6 +123,7 @@
         </section>
 
         <button id="reviewStatus" class="review-chip" type="button" aria-live="polite" hidden></button>
+        <button id="dreamStatus" class="review-chip" type="button" aria-live="polite" hidden></button>
 
         <aside id="safetyBanner" class="safety-banner" role="alert" hidden>
           <div class="safety-head"><strong>Tu n’as pas à traverser ça tout seul.</strong><button id="safetyClose" type="button" aria-label="Masquer les ressources">×</button></div>
@@ -189,6 +190,13 @@
 
           <section id="viewUnderstanding" class="state-view" role="tabpanel" aria-labelledby="tabUnderstanding" data-view="understanding" hidden>
             <h3>Comment psyX te comprend</h3>
+            <div class="state-section-title">Ton portrait</div>
+            <p class="state-help">Entre les séances et chaque nuit, PsyX relit tout ce qu’il sait de toi et réécrit ce portrait. Ce sont des hypothèses avec leurs preuves, pas des diagnostics : retire ce qui n’est pas toi, PsyX ne le redira plus.</p>
+            <div id="portraitMeta" class="state-help" role="status" aria-live="polite"></div>
+            <div id="portraitView"></div>
+            <button id="dreamNow" class="full-ghost" type="button">Approfondir maintenant</button>
+            <div id="dreamLog"></div>
+            <div class="state-section-title">Ta mémoire</div>
             <p class="state-help">Des observations révisables, pas des diagnostics. Les revues proposent; tu décides ce qui reste. Tu peux corriger ou retirer chaque affirmation. Une correction garde sa source et prend effet à la prochaine réponse.</p>
             <div id="formulationList"></div>
             <div id="formulationStatus" role="status" aria-live="polite"></div>
@@ -319,20 +327,21 @@
   </dialog>
 
   <script src="/psyx/assets/voice-audio.js?v=local-voice-0680" defer></script>
-  <script src="/js/voice/speech-language.js?v=2.8.0" defer></script>
-  <script src="/js/voice/playback-hold.js?v=2.8.0" defer></script>
-  <script src="/js/voice/browser-conversation.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/voice-session.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/voice-preferences.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/voice-controls.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/state-panel.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/review.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/care.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/follow-up.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/frontier.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/profile.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/formulation.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/setup.js?v=2.8.0" defer></script>
-  <script src="/psyx/assets/app.js?v=2.8.0" defer></script>
+  <script src="/js/voice/speech-language.js?v=2.9.0" defer></script>
+  <script src="/js/voice/playback-hold.js?v=2.9.0" defer></script>
+  <script src="/js/voice/browser-conversation.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/voice-session.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/voice-preferences.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/voice-controls.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/state-panel.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/review.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/care.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/follow-up.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/frontier.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/profile.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/dream.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/formulation.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/setup.js?v=2.9.0" defer></script>
+  <script src="/psyx/assets/app.js?v=2.9.0" defer></script>
 </body>
 </html>

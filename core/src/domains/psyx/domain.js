@@ -2,6 +2,7 @@
 
 const { cleanText, stateForPrompt } = require('./stateRepository');
 const { SAFETY_INSTRUCTION } = require('./safety');
+const { portraitSystemMessage } = require('./dream');
 const { familyTimeZone } = require('../household/family');
 const { SPOKEN_REPLY_INSTRUCTION } = require('../../services/voice/presentation');
 
@@ -177,10 +178,12 @@ function composeSystemContext(state, control, { conversationId = null, safety = 
   // longitudinal memory in what remains. A frontier model takes a wide budget.
   const wide = budget === 'frontier';
   const profile = profileSystemMessage(state, wide ? 4800 : 1200);
-  const memory = longitudinalSystemMessage(state, { conversationId, budget, maxCharacters: wide ? 40000 : 6000 - profile.length });
+  // The portrait is PsyX's distilled understanding; on a local reply it takes its room from raw memory.
+  const portrait = portraitSystemMessage(state, { maxCharacters: wide ? 14000 : 1800, evidence: wide });
+  const memory = longitudinalSystemMessage(state, { conversationId, budget, maxCharacters: wide ? 40000 : 6000 - profile.length - portrait.length });
   const opening = !conversationId && (state.sessionDigests?.length || state.experiments?.some(item => ['planned', 'active'].includes(item.status)))
     ? SESSION_OPENING : '';
-  return [SYSTEM_PROMPT, profile, memory, controlSystemMessage(control), time ? timeSystemMessage(time) : '', opening,
+  return [SYSTEM_PROMPT, profile, portrait, memory, controlSystemMessage(control), time ? timeSystemMessage(time) : '', opening,
     voice ? `${SPOKEN_REPLY_INSTRUCTION} This is a spoken turn. Answer naturally in two to five short sentences, usually 30 to 90 words, without lists. Ask at most one question.` : '',
     safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
 }

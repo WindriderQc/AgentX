@@ -6,6 +6,8 @@ const followUp = require('./followUp');
 
 const FRONTIER_MODES = ['local', 'deep', 'all'];
 const { createItemCorrection } = require('./stateItemCorrection');
+const dream = require('./dream');
+const { createDreamStore } = require('./dreamStore');
 
 const PSYX_STATE_VERSION = 2;
 const STATE_ITEM_KEYS = ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops', 'goals'];
@@ -72,7 +74,7 @@ function normalizeStateItem(raw, key) {
   return {
     id: cleanText(raw.id || crypto.randomUUID(), 80),
     text,
-    source: ['user', 'psyx', 'legacy', 'import'].includes(raw.source) ? raw.source : 'user',
+    source: ['user', 'psyx', 'dream', 'legacy', 'import'].includes(raw.source) ? raw.source : 'user',
     sourceConversationId: cleanText(raw.sourceConversationId, 80) || null,
     correctedBy: raw.correctedBy === 'user' ? 'user' : null,
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
@@ -99,7 +101,7 @@ function createStateItem(key, body = {}, source = 'user') {
   return {
     id: crypto.randomUUID(),
     text,
-    source: ['user', 'psyx', 'import'].includes(source) ? source : 'user',
+    source: ['user', 'psyx', 'dream', 'import'].includes(source) ? source : 'user',
     sourceConversationId: source === 'psyx' ? cleanText(body.sourceConversationId, 80) || null : null,
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
     evidence: Array.isArray(body.evidence)
@@ -162,6 +164,7 @@ function emptyState(userId = 'default') {
     checkIns: [],
     settings: { frontierMode: null },
     profile: { about: '', expectations: '' },
+    portrait: null, portraitPrevious: null, portraitRejected: [], dreamLog: [],
     goals: [],
     updatedAt: null
   };
@@ -181,6 +184,8 @@ function normalizeState(doc, userId = 'default') {
     sessionDigests: proposals.normalizeDigests(doc.sessionDigests),
     checkIns: followUp.normalizeCheckIns(doc.checkIns),
     resetAt: normalizeDate(doc.resetAt),
+    portrait: dream.normalizeStoredPortrait(doc.portrait), portraitPrevious: dream.normalizeStoredPortrait(doc.portraitPrevious),
+    portraitRejected: dream.normalizeRejected(doc.portraitRejected), dreamLog: dream.normalizeDreamLog(doc.dreamLog),
     profile: { about: cleanText(doc.profile?.about, PROFILE_LIMITS.about), expectations: cleanText(doc.profile?.expectations, PROFILE_LIMITS.expectations) },
     // Preferences, not memory: a reset keeps them.
     settings: { frontierMode: FRONTIER_MODES.includes(doc.settings?.frontierMode) ? doc.settings.frontierMode : null },
@@ -485,7 +490,7 @@ function createStateRepository({ collection, logger }) {
       { userId },
       {
         // resetAt lets a review that started before the reset discard its result.
-        $set: { ...cleared, version: PSYX_STATE_VERSION, updatedAt: now, resetAt: now },
+        $set: { ...cleared, portrait: null, portraitPrevious: null, portraitRejected: [], dreamLog: [], version: PSYX_STATE_VERSION, updatedAt: now, resetAt: now },
         $inc: { revision: 1 }
       }
     );
@@ -634,6 +639,7 @@ function createStateRepository({ collection, logger }) {
   }
 
   return {
+    ...createDreamStore({ collection, read, ensureDocument, createStateItem, limits: STATE_LIMITS }),
     updateProfile,
     updateSettings,
     updateItem: createItemCorrection({ collection, read, keys: STATE_ITEM_KEYS, cleanText, fingerprint: stateItemFingerprint }),

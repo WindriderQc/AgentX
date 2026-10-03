@@ -6,6 +6,7 @@ const { createConversationAdapter } = require('./src/conversations');
 const { createCoreProvider } = require('./src/provider');
 const { createOpenClawAgentClient } = require('../../src/services/frontier/openclawAgentClient');
 const { createAuth } = require('./src/auth');
+const { createSources } = require('./src/sources');
 
 function register({ app, mongoose, runtimeServices, conversationLifecycle, logger, parentalAccess }) {
   const collection = mongoose.connection.collection('psyxstates');
@@ -16,7 +17,8 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
   // Never run the legacy duplicate-merge/delete helper during application startup.
   // Imported conflicts must be reviewed before a unique owner index can be built.
   const stateRepository = Object.fromEntries(['read', 'addItem', 'updateItem', 'deleteItem', 'addExperiment', 'updateExperiment', 'reset',
-    'recordReview', 'forgetConversation', 'acceptProposal', 'rejectProposal', 'addCheckIn', 'updateSettings', 'updateProfile']
+    'recordReview', 'forgetConversation', 'acceptProposal', 'rejectProposal', 'addCheckIn', 'updateSettings', 'updateProfile',
+    'recordDream', 'undoDream', 'rejectPortraitStatement', 'clearPortrait', 'dreamUserIds']
     .map(name => [name, async (...args) => { await ensureStateIndex(); return domain[name](...args); }]));
   const database = {
     stateRepository,
@@ -45,7 +47,10 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
       }
     };
   }
-  const psyx = createApp({ config, database, provider: createCoreProvider(runtimeServices, { frontier: createOpenClawAgentClient(), config, logger }), logger, accessAuth });
+  // The dream reads the owner's other information in-process and read-only (ADR 0002).
+  const sources = createSources({ runtimeServices, mailJournal: require('../../src/services/mailJournalService'), logger });
+  const psyx = createApp({ config, database, provider: createCoreProvider(runtimeServices, { frontier: createOpenClawAgentClient(), config, logger }), logger, accessAuth, sources });
+  psyx.locals.dreamer.start();
   app.use((req, res, next) => /^\/(?:psyx(?:\/|$)|api\/psyx(?:\/|$))/i.test(req.path)
     ? psyx(req, res, next) : next());
 }

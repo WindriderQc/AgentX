@@ -1,6 +1,6 @@
 # PsyX in AgentX
 
-The full profile serves the PsyX 2.6.0 conversation UI at `/psyx`. Psychological
+The full profile serves the PsyX 2.9.0 conversation UI at `/psyx`. Psychological
 domain rules and longitudinal state live in `core/src/domains/psyx`; generic
 conversation persistence/lifecycle and admitted inference are Core capabilities.
 No separate PsyX server, database client or inference router starts here.
@@ -115,6 +115,25 @@ OpenClaw still keeps its own session record and logs replies on its host. When t
 agent is unavailable the turn is answered on the local route and the interface
 says so; no other cloud provider is tried. The stance bar always shows where the
 next reply is produced.
+
+Between sessions PsyX dreams: once a session has been quiet for thirty minutes,
+every night in the 03:00 hour of `PLANNING_TIME_ZONE` when a session moved since
+the last portrait (and at least weekly), and on request. A dream rereads every
+conversation that still exists, the whole memory, the user's profile and three
+read-only owner sources (the notes his assistant keeps, his open tasks and
+reminders, the mail journal) and writes a portrait: statements in fixed sections,
+each with its evidence, plus cross-session findings, an agenda for the next
+session and the gaps it would like to fill. Unlike the review it writes directly:
+it may add memory items (source `dream`) and mark as resolved items the user
+neither wrote nor corrected. Every dream is logged and can be undone; a statement
+the user rejects leaves the portrait and is never restated; a memory reset clears
+portrait and log; permanently deleting a conversation discards the portrait and
+rebuilds it from what remains. Replies receive the portrait as hypotheses, with
+the agenda and the gaps. The dream follows the user's frontier setting, so in
+`deep` or `all` the sources above are sent to the frontier agent with the
+conversations; in `local` nothing leaves the instance. Core has no calendar or
+custody schedule: that rhythm is known only where a note or the profile says it.
+`PSYX_DREAM=false` disables the dream.
 
 `eval/` holds a small set of synthetic scenarios, one per therapeutic skill, and a
 runner that builds each reply exactly as the chat does (prompt, stance, state,
