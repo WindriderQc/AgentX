@@ -507,6 +507,7 @@
     // The cards, grouped as team, roles and tools, are drawn by agent-ops-team.js.
     editor ||= window.AgentOpsTeamEditor.create({ esc, reload: load });
     team ||= window.AgentOpsTeam.create({ esc, humanize, number, badge, empty, agentIcon, editPersona: editor.open,
+      newPersona: (owner, name) => editor.openNew(owner, owner.agentId ? { name: owner.agentId.replace(/-/g, '_'), label: name } : {}),
       runtimeLink: (agent) => agentRuntimeLink(agent) ? `<a ${nativeControlAttributes(nativeAgentPath(agent))} title="Open OpenClaw already focused on ${esc(agent.id)}"><i class="fas fa-arrow-up-right"></i>Open native agent UI</a>` : '' });
     byId('agentOpsAgents').innerHTML = team.render(agents, data.team);
   }

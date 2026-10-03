@@ -138,4 +138,40 @@ async function reset(name) {
   return nextVersion(latest, { systemPrompt: seed.systemPrompt, description: seed.description, uiConfig: seed.uiConfig });
 }
 
-module.exports = { list, resolve, publish, edit, reset };
+// A persona authored on this instance, from the Team page: the identity of an
+// agent that had none (agentId), or one more style for a member (styleOf).
+const TEAM_SOURCE = 'agentx-team';
+const memberId = (value, label) => {
+  if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value)) throw error(`Invalid ${label}`);
+  return value;
+};
+
+async function create(definition = {}) {
+  const name = String(definition.name || '').trim();
+  if (!/^[a-z][a-z0-9_-]{0,119}$/.test(name)) throw error('Invalid persona identifier');
+  if ((definition.agentId === undefined) === (definition.styleOf === undefined)) throw error('A persona names its agent or the member it is a style of');
+  const owner = definition.agentId !== undefined ? { agentId: memberId(definition.agentId, 'agent') } : { styleOf: memberId(definition.styleOf, 'member') };
+  if (await PromptConfig.exists({ name })) throw error(`Persona ${name} already exists`, 409);
+  if (owner.agentId && (await list()).some((row) => row.uiConfig?.layoutConfig?.agentId === owner.agentId)) {
+    throw error(`Agent ${owner.agentId} already has an identity`, 409);
+  }
+  const layout = editedLayout({ kind: 'personality', ...owner }, { label: definition.label ?? '',
+    ...(definition.voice !== undefined ? { voice: definition.voice } : {}), ...(definition.visual ? { visual: definition.visual } : {}) });
+  const row = await PromptConfig.create({ name, version: 1, isActive: false,
+    systemPrompt: text(definition.personality, 12000, 'personality', true),
+    description: definition.description !== undefined ? text(definition.description, 300, 'description') : `${layout.label} persona`,
+    uiConfig: { type: 'chat', route: '/index.html', capabilities: ['text'],
+      layoutConfig: { ...layout, source: { id: TEAM_SOURCE, edited: true, editedAt: new Date().toISOString() } } } });
+  await PromptConfig.activate(row._id);
+  return project({ ...row.toObject(), isActive: true });
+}
+
+// Only a persona created on this instance can be removed; its versions stay in the library, inactive.
+async function retire(name) {
+  const latest = await generated(name);
+  if (latest.uiConfig.layoutConfig.source.id !== TEAM_SOURCE) throw error('Only a persona created on this instance can be removed', 409);
+  await PromptConfig.updateMany({ name: latest.name }, { $set: { isActive: false } });
+  return { name: latest.name, removed: true };
+}
+
+module.exports = { list, resolve, publish, edit, reset, create, retire, TEAM_SOURCE };
