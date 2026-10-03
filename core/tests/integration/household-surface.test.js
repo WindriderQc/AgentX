@@ -388,7 +388,7 @@ describe('built-in Household surface on Core', () => {
     process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = 'synthetic-voice-consumer';
     const sessionId = 's'.repeat(120), turnId = 't'.repeat(120);
     const payload = { schemaVersion: 1, sessionId, turnId, eventId: `voix:${sessionId}:${turnId}`, sequence: 1,
-      userText: 'Synthetic native voice input', assistantText: 'Synthetic native voice reply', completedAt: new Date().toISOString() };
+      userText: ' Synthetic native voice input é 🦉 '.repeat(250), assistantText: ' Synthetic native voice reply 🦉 '.repeat(300), completedAt: new Date().toISOString() };
     try {
       await request(app).post('/api/voix/memory/turns').send(payload).expect(401);
       const send = () => request(app).post('/api/voix/memory/turns').set('Authorization', 'Bearer synthetic-voice-consumer').send(payload);
@@ -400,6 +400,23 @@ describe('built-in Household surface on Core', () => {
       const row = await Conversation.findOne({ 'surfaceSession.sessionId': sessionId }).lean();
       expect(row.surfaceSession.turnCount).toBe(1);
       expect(row.messages.map(message => message.content)).toEqual([payload.userText, payload.assistantText]);
+      for (const change of [{ userText: payload.userText + 'changed' }, { assistantText: payload.assistantText + 'changed' },
+        { sequence: 2 }, { completedAt: '2026-01-01T00:00:00.000Z' }]) {
+        const conflict = await request(app).post('/api/voix/memory/turns')
+          .set('Authorization', 'Bearer synthetic-voice-consumer').send({ ...payload, ...change }).expect(409);
+        expect(conflict.body.code).toBe('VOIX_MEMORY_TURN_CONFLICT');
+      }
+      const unchanged = await Conversation.findById(row._id).lean();
+      expect(unchanged.messages.map(message => message.content)).toEqual([payload.userText, payload.assistantText]);
+      expect(unchanged.surfaceSession.turnCount).toBe(1);
+      const beforeRefusal = await Conversation.countDocuments({});
+      for (const change of [{ userText: 'x'.repeat(16001) }, { assistantText: 'x'.repeat(16001) },
+        { sessionId: sessionId + 's' }, { turnId: turnId + 't' }]) {
+        const refused = await request(app).post('/api/voix/memory/turns')
+          .set('Authorization', 'Bearer synthetic-voice-consumer').send({ ...payload, ...change });
+        expect(refused.status).toBe(change.userText || change.assistantText ? 413 : 400);
+      }
+      expect(await Conversation.countDocuments({})).toBe(beforeRefusal);
       // Wait for the real asynchronous capture worker before the suite closes Mongo.
       const service = require('../../src/services/surfaceConversationService').forSurface('household');
       for (let attempt = 0; attempt < 30; attempt += 1) {

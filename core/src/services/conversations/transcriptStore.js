@@ -16,6 +16,32 @@ const failure = message => Object.assign(new Error(message), {
 });
 const plain = value => typeof value?.toObject === 'function' ? value.toObject() : value;
 
+// Search windows end between whitespace-delimited groups, never inside a
+// word. Phrase matching reads the complete payload, so overlap is unnecessary.
+// An exceptionally long group is kept whole while it fits a safe BSON row;
+// otherwise searching that payload refuses explicitly instead of indexing
+// artificial word fragments. Reading and exporting it remain complete.
+function searchWindows(content) {
+  const texts = [], separators = /\s+/gu;
+  let start = 0, end = 0, overflow = false;
+  while (start < content.length) {
+    const limit = start + PAGE_BYTES;
+    separators.lastIndex = end;
+    let separator;
+    while ((separator = separators.exec(content))) {
+      if (separator.index >= limit) break;
+      end = separator.index + separator[0].length;
+    }
+    if (content.length <= limit) end = content.length;
+    else if (end <= start) end = separator ? separator.index + separator[0].length : content.length;
+    const text = content.slice(start, end);
+    if (Buffer.byteLength(text) < 8 * PAGE_BYTES) texts.push(text);
+    else overflow = true;
+    start = end;
+  }
+  return { texts, overflow };
+}
+
 // Immutable content is written before the Conversation's atomic reference update.
 // A failed reference update leaves unreferenced pages, never a partial transcript.
 async function putPayloadRaw(owner, value, fence) {
@@ -30,14 +56,15 @@ async function putPayloadRaw(owner, value, fence) {
     ids.push(id);
   }
   const searchIds = [];
-  if (typeof value?.content === 'string') for (let offset = 0; offset < value.content.length; offset += PAGE_BYTES) {
-    const searchText = value.content.slice(Math.max(0, offset - 256), offset + PAGE_BYTES);
+  const search = typeof value?.content === 'string' ? searchWindows(value.content) : { texts: [] };
+  for (const searchText of search.texts) {
     const id = digest(owner, Buffer.from(`search:${searchText}`));
     await fence.mutate(() => collections().chunks.updateOne({ _id: id, owner: String(owner) },
       { $setOnInsert: { searchText, createdAt: new Date() } }, { upsert: true, writeConcern: { w: 'majority', j: true } }));
     searchIds.push(id);
   }
-  return { ids, bytes: bytes.length, sha256: digest(owner, bytes), ...(searchIds.length ? { searchIds } : {}) };
+  return { ids, bytes: bytes.length, sha256: digest(owner, bytes), ...(searchIds.length ? { searchIds } : {}),
+    ...(search.overflow ? { searchUnavailable: true } : {}) };
 }
 
 const putPayload = (owner, value, options) => withOwnerWrite(owner,
@@ -56,6 +83,18 @@ async function readPayload(owner, ref) {
     throw failure('Conversation payload integrity check failed.');
   }
   return deserialize(bytes).value;
+}
+
+async function readSearchTexts(owner, ids) {
+  const expected = [...new Set(ids)];
+  if (!expected.length) return [];
+  const rows = await collections().chunks.find({ _id: { $in: expected }, owner: String(owner) },
+    { projection: { _id: 1, searchText: 1 } }).toArray();
+  if (rows.length !== expected.length || rows.some(row => typeof row.searchText !== 'string'
+    || digest(owner, Buffer.from(`search:${row.searchText}`)) !== row._id)) {
+    throw failure('Conversation search content is missing or corrupt.');
+  }
+  return rows;
 }
 
 function searchableStub(message, payload) {
@@ -87,8 +126,9 @@ async function writeTranscriptRaw(owner, messages, fence) {
     items = deserialize(serialize({ items })).items;
     const encoded = serialize({ items });
     const id = digest(owner, encoded);
+    const searchContent = items.filter(item => !item._payload).map(item => item.content || '');
     await fence.mutate(() => collections().pages.updateOne({ _id: id, owner: String(owner) },
-      { $setOnInsert: { items, sha256: id, createdAt: new Date() } },
+      { $setOnInsert: { items, sha256: id, createdAt: new Date() }, $set: { searchContent } },
       { upsert: true, writeConcern: { w: 'majority', j: true } }));
     ids.push(id); items = []; bytes = 0;
   };
@@ -181,7 +221,8 @@ function transcriptStages() {
 const eraseTranscript = (owner, options) => eraseOwner(owner, async fence => {
   await fence.mutate(() => collections().pages.deleteMany({ owner: String(owner) }, { writeConcern: { w: 'majority', j: true } }));
   await fence.mutate(() => collections().chunks.deleteMany({ owner: String(owner) }, { writeConcern: { w: 'majority', j: true } }));
+  await fence.mutate(() => collections().identities.deleteMany({ owner: String(owner) }, { writeConcern: { w: 'majority', j: true } }));
 }, options);
 
 module.exports = { putPayload, readPayload, writeTranscript, publishTranscript, readTranscript, expandMessages,
-  transcriptStages, readPageItems, eraseTranscript, reserveTurnIdentities, PAGE_BYTES };
+  transcriptStages, readPageItems, readSearchTexts, eraseTranscript, reserveTurnIdentities, PAGE_BYTES };

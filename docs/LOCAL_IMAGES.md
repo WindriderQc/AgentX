@@ -119,6 +119,14 @@ same agent loop waiting for its own GPU or silently use a cloud provider.
 This asynchronous tool does not promise automatic completed-image delivery
 to Telegram.
 
+Household retains the accepted create's exact Core action identity in its
+native run evidence. Once the native turn settles, the private owner receives
+the operation's current Core state and its studio link through the existing
+spoken/display channels, including after a conversation fallback or terminal
+model failure. The native attempt remains in the audit; its text cannot cancel
+an accepted image. This receipt observation neither generates another image nor
+grants tools to a fallback model. A later status reads the same verified artifact.
+
 ## Qualification
 
 Measure cold and repeated generation, editing, multiple references, actual

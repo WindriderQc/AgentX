@@ -27,6 +27,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   sending the request again. Completed retries replay the saved response;
   unknown outcomes do not start another inference. Conversation erasure also
   removes associated recovery content and rejects late writes across workers.
+  Canonical transcript pages and complete payload chunks keep histories beyond
+  one BSON document readable and exportable. Current-content search preserves
+  owner filters, phrases and conversation-wide exclusions. Atomic root writes
+  retain session counters, message identities and conditional review predicates;
+  stale writers and missing content refuse explicitly.
   Ordinary Ollama calls preserve complete input and disable context shifting;
   an unqualified runtime refuses before inference. Benchmark/Profiler keep
   their intentional probes under validated workload ownership.
@@ -43,7 +48,9 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **Local images.** An optional full-profile studio creates and edits images
   through a local ComfyUI worker. Core retains operation identities, GPU recovery
   fences and verified archived output. The private native tool returns a
-  pending operation and studio link. Profiles and physical GPU placement require
+  pending operation and studio link. Household delivers this Core receipt even
+  when the conversation model refuses or switches to a fallback. Operation
+  observation never creates another image. Profiles and physical GPU placement require
   instance qualification; see [local images](LOCAL_IMAGES.md).
 - **Pipeline.** List, dossier and Planning references share Core's read-only
   next-action projection. **Needs attention** pages the engineering and
@@ -153,8 +160,6 @@ Issues hold the current work and remaining acceptance:
 | Agents, personas and capabilities: one model and a migration path | [#131](https://github.com/WindriderQc/AgentX/issues/131) |
 | Technical debt from the October audit | [#133](https://github.com/WindriderQc/AgentX/issues/133) |
 | Action-ready personal morning brief with a stable task focus | [#176](https://github.com/WindriderQc/AgentX/issues/176) |
-| Review transcript storage and verified context overflow refusal | [#234](https://github.com/WindriderQc/AgentX/issues/234) |
-| Deploy guard: let resumable background inference yield | [#253](https://github.com/WindriderQc/AgentX/issues/253) |
 | Offline replay to qualify fast-lane delegation decisions | [#262](https://github.com/WindriderQc/AgentX/issues/262) |
 | Fast streaming voice lane with delegation to the native agent | [#263](https://github.com/WindriderQc/AgentX/issues/263) |
 | Shared voice loop follow-ups for Nestor and PsyX | [#280](https://github.com/WindriderQc/AgentX/issues/280) |
@@ -162,9 +167,11 @@ Issues hold the current work and remaining acceptance:
 | Keep date-only personal task deadlines on the intended household day | [#287](https://github.com/WindriderQc/AgentX/issues/287) |
 | Team page: one place to see and configure an agent's identity and runtime | [#291](https://github.com/WindriderQc/AgentX/issues/291) |
 | Classify personal due-today lanes in the household timezone | [#292](https://github.com/WindriderQc/AgentX/issues/292) |
-| PsyX: trust, conversation and longitudinal quality improvements | [#343](https://github.com/WindriderQc/AgentX/issues/343) |
 | PsyX: supervisor critique of each reply | [#303](https://github.com/WindriderQc/AgentX/issues/303) |
 | PsyX: intake interview, standard questionnaires and technique cards | [#305](https://github.com/WindriderQc/AgentX/issues/305) |
+| Decide opt-in deployment after complete main CI | [#334](https://github.com/WindriderQc/AgentX/issues/334) |
+| Coordinate speech and images on shared physical GPUs | [#342](https://github.com/WindriderQc/AgentX/issues/342) |
+| Complete PsyX trust and longitudinal quality improvements | [#343](https://github.com/WindriderQc/AgentX/issues/343) |
 
 ## What a green result means
 

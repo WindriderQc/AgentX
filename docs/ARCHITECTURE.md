@@ -150,11 +150,17 @@ HTTP response without another inference; an uncertain or interrupted outcome
 never authorizes reexecution. A concurrent local retry can wait up to five
 seconds for its original delivery to settle.
 
-Canonical conversations keep their embedded messages and existing client-turn
-deduplication. The immutable BSON transcript-page primitives are not attached
-to the `Conversation` model. Their explicit `publishTranscript` operation holds
-one admitted owner fence across page writes and canonical reference publication;
-Playground publishers receive their existing fence for safe nested use.
+Canonical conversations store immutable BSON pages and complete binary payloads
+behind an atomic reference in `Conversation`. Model reads hydrate the complete
+messages; embedded legacy histories move to pages on their next content write.
+Message IDs, feedback, attachments and audit evidence retain their contracts.
+One durable owner fence spans content writes and canonical publication, including
+session counters and conditional review updates in the same root command.
+Final writes retain the caller's scope and version predicates; stale saves refuse.
+Playground publishers reuse their admitted fence through an owner-bound context.
+Search indexes complete current content rather than preview fragments or old
+pages, and applies exclusions across the conversation. Full exports hydrate
+before writing any output. Missing or corrupt content refuses explicitly.
 Publication and erasure share the owner's scope
 gate: an erased exchange cannot publish a late first conversation, and a late
 browser stopped/failed outcome cannot restore its erased turn identity.

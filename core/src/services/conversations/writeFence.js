@@ -2,9 +2,11 @@
 
 const mongoose = require('mongoose');
 const { randomUUID } = require('node:crypto');
+const { AsyncLocalStorage } = require('node:async_hooks');
 
 const acknowledged = { writeConcern: { w: 'majority', j: true } };
 const contexts = new WeakSet();
+const owners = new AsyncLocalStorage();
 const collection = () => mongoose.connection.collection('conversation_write_fences');
 const error = (code, message, statusCode = 503) => Object.assign(new Error(message), { code, statusCode });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -15,8 +17,10 @@ function uncertainMutation(cause) {
     .some(Type => cause instanceof Type)) return false;
   // A server rejection acknowledges the end of that command. A transport or
   // write-concern failure does not prove that the command stopped in MongoDB.
-  return !(cause?.name === 'MongoServerError' && cause.code !== 64
-    && !cause.writeConcernError && !cause.errInfo?.writeConcern);
+  const serverRejection = cause?.name === 'MongoServerError'
+    || cause?.name === 'MongoBulkWriteError' && cause.code === 11000;
+  return !(serverRejection && cause.code !== 64 && !cause.writeConcernError
+    && !cause.result?.getWriteConcernError?.() && !cause.errInfo?.writeConcern);
 }
 
 async function ensure(owner) {
@@ -33,8 +37,14 @@ function owns(fence, owner) {
   return contexts.has(fence) && fence.owner === String(owner);
 }
 
+function currentFence(owner) {
+  const fence = owners.getStore()?.get(String(owner));
+  return owns(fence, owner) ? fence : undefined;
+}
+
 async function run(owner, erase, action, { fence, waitMs = 2_000 } = {}) {
   owner = String(owner);
+  fence ||= currentFence(owner);
   if (owns(fence, owner)) {
     if (erase && !fence.erasing) throw error('CONVERSATION_FENCE_INVALID', 'Erasure requires its own barrier.');
     return action(fence);
@@ -71,7 +81,9 @@ async function run(owner, erase, action, { fence, waitMs = 2_000 } = {}) {
       if (!acceptingMutations || !contexts.has(context)) {
         return Promise.reject(error('CONVERSATION_FENCE_INVALID', 'This content writer has already settled.'));
       }
-      const mutation = Promise.resolve().then(operation).catch(cause => {
+      const active = new Map(owners.getStore());
+      active.set(owner, context);
+      const mutation = Promise.resolve().then(() => owners.run(active, operation)).catch(cause => {
         if (uncertainMutation(cause)) { unknown = true; mutationFailure ||= cause; }
         throw cause;
       });
@@ -83,7 +95,9 @@ async function run(owner, erase, action, { fence, waitMs = 2_000 } = {}) {
   });
   contexts.add(context);
   let outcome, failure;
-  try { outcome = await action(context); }
+  const active = new Map(owners.getStore());
+  active.set(owner, context);
+  try { outcome = await owners.run(active, () => action(context)); }
   catch (cause) { failure = cause; }
   acceptingMutations = false;
   await Promise.allSettled([...pending]);
@@ -107,4 +121,4 @@ async function run(owner, erase, action, { fence, waitMs = 2_000 } = {}) {
 const withOwnerWrite = (owner, action, options) => run(owner, false, action, options);
 const eraseOwner = (owner, action, options) => run(owner, true, action, options);
 
-module.exports = { withOwnerWrite, eraseOwner, owns, acknowledged };
+module.exports = { withOwnerWrite, eraseOwner, owns, currentFence, acknowledged };

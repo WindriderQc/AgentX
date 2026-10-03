@@ -3,6 +3,7 @@
 const { fork } = require('node:child_process');
 const path = require('node:path');
 const mongoose = require('mongoose');
+const Conversation = require('../../models/Conversation');
 const exchanges = require('../../src/services/conversations/exchangeReceipts');
 const transcripts = require('../../src/services/conversations/transcriptStore');
 const { withOwnerWrite, eraseOwner } = require('../../src/services/conversations/writeFence');
@@ -47,9 +48,78 @@ function writer(input) {
 
 beforeEach(async () => {
   for (const name of ['conversation_write_fences', 'conversation_exchange_receipts',
-    'conversation_exchange_packets', 'conversation_payload_chunks', 'conversation_transcript_pages']) {
+    'conversation_exchange_packets', 'conversation_payload_chunks', 'conversation_transcript_pages',
+    'conversation_turn_identities', 'conversations']) {
     await collection(name).deleteMany({});
   }
+});
+
+test('model root publication and erasure remain fenced across independent Core workers', async () => {
+  const row = await Conversation.create({ userId: 'model-erasure', messages: [{ role: 'user', content: 'Original' }] });
+  const peer = writer({ action: 'modelAppend', owner: String(row._id), userId: row.userId, trace: 'late-turn',
+    pauseCollection: 'conversations', pauseMethod: 'findOneAndUpdate' });
+  expect((await peer.next()).event).toBe('paused');
+  let completed = false;
+  const erasure = Conversation.deleteOne({ _id: row._id, userId: row.userId }).then(() => { completed = true; });
+  for (let i = 0; i < 100 && !await fences().findOne({ _id: String(row._id), eraseRequested: true }); i++) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  expect(await fences().findOne({ _id: String(row._id), eraseRequested: true })).toBeTruthy();
+  expect(completed).toBe(false);
+  peer.resume();
+  expect((await peer.next()).event).toBe('result');
+  expect(await peer.exited).toBe(0);
+  await erasure;
+  expect(await Conversation.collection.countDocuments({ _id: row._id })).toBe(0);
+  for (const name of ['conversation_transcript_pages', 'conversation_payload_chunks']) {
+    expect(await collection(name).countDocuments({ owner: String(row._id) })).toBe(0);
+  }
+  await expect(new Conversation({ _id: row._id, messages: [{ role: 'user', content: 'Resurrection' }] }).save())
+    .rejects.toMatchObject({ code: 'CONVERSATION_CONTENT_ERASED' });
+});
+
+test.each([true, false])('separate model workers preserve exact-once counters and distinct turns (same identity: %s)', async same => {
+  const row = await Conversation.create({ userId: 'model-race', messages: [{ role: 'user', content: 'Original' }] });
+  const first = writer({ action: 'modelAppend', owner: String(row._id), userId: row.userId, trace: 'first',
+    pauseCollection: 'conversations', pauseMethod: 'findOneAndUpdate' });
+  expect((await first.next()).event).toBe('paused');
+  const second = writer({ action: 'modelAppend', owner: String(row._id), userId: row.userId, trace: same ? 'first' : 'second' });
+  first.resume();
+  expect((await first.next()).event).toBe('result');
+  expect((await second.next()).event).toBe('result');
+  expect(await first.exited).toBe(0);
+  expect(await second.exited).toBe(0);
+  const saved = await Conversation.findById(row._id).lean();
+  expect(saved.messages).toHaveLength(same ? 2 : 3);
+  expect(saved.usage.totalTokens).toBe(same ? 1 : 2);
+});
+
+test('final model publication retains owner predicates even if a raw writer changes scope without incrementing version', async () => {
+  const row = await Conversation.create({ userId: 'original-owner', messages: [{ role: 'user', content: 'Original' }] });
+  const peer = writer({ action: 'modelAppend', owner: String(row._id), userId: row.userId, trace: 'scope-race',
+    pauseCollection: 'conversations', pauseMethod: 'findOneAndUpdate' });
+  expect((await peer.next()).event).toBe('paused');
+  await Conversation.collection.updateOne({ _id: row._id }, { $set: { userId: 'new-owner' } });
+  peer.resume();
+  expect(await peer.next()).toMatchObject({ event: 'failure', code: 'CONVERSATION_WRITE_CONFLICT' });
+  expect(await peer.exited).toBe(1);
+  const raw = await Conversation.collection.findOne({ _id: row._id });
+  expect(raw.transcript).toEqual(row.transcript);
+  expect(raw.usage.totalTokens).toBe(0);
+  expect(await fences().findOne({ _id: String(row._id), token: null, state: 'OPEN' })).toBeTruthy();
+});
+
+test('a killed model publisher keeps its writer and erasure pending rather than guessing whether publication settled', async () => {
+  const row = await Conversation.create({ userId: 'model-crash', messages: [{ role: 'user', content: 'Original' }] });
+  const peer = writer({ action: 'modelAppend', owner: String(row._id), userId: row.userId, trace: 'crashed',
+    pauseCollection: 'conversations', pauseMethod: 'findOneAndUpdate' });
+  expect((await peer.next()).event).toBe('paused');
+  peer.child.kill('SIGKILL'); await peer.exited;
+  await expect(Conversation.deleteOne({ _id: row._id })).rejects.toMatchObject({ code: 'CONVERSATION_ERASURE_PENDING' });
+  expect(await fences().findOne({ _id: String(row._id), token: { $ne: null }, eraseRequested: true })).toBeTruthy();
+  const raw = await Conversation.collection.findOne({ _id: row._id });
+  expect(raw.transcript).toEqual(row.transcript);
+  expect((await transcripts.readTranscript(row._id, raw.transcript)).map(message => message.content)).toEqual(['Original']);
 });
 afterEach(async () => {
   await Promise.all([...children].map(child => new Promise(resolve => {
