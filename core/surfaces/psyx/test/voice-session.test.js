@@ -111,3 +111,28 @@ test('a qualified spoken Stop is consumed by the shared loop without a private m
   assert.equal(h.$('voiceSessionDialog').dataset.phase, 'listening');
   h.context.stopVoiceSession();
 });
+
+test('noise without speech goes back to listening instead of stalling the session', async () => {
+  let turns = 0;
+  const h = browser({
+    fetch: async () => new Response(JSON.stringify({ ok: false, code: 'PSYX_VOICE_NO_SPEECH', message: 'No speech was detected in the recording.' }), { status: 422 }),
+    sendMessage: async () => { turns++; }
+  });
+  h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click();
+  await h.say();
+  assert.equal(h.$('voiceSessionDialog').dataset.phase, 'listening');
+  assert.equal(turns, 0);
+  assert.equal(h.$('voiceSessionPause').disabled, false);
+  h.context.stopVoiceSession();
+});
+
+test('Start comes back once a reply paused mid-turn has finished', async () => {
+  const h = browser(); h.context.wireVoiceSession();
+  await h.$('voiceSessionStart').listeners.click();
+  h.state.busy = true;
+  h.context.stopVoiceSession({ close: false });
+  assert.equal(h.$('voiceSessionDialog').dataset.phase, 'paused');
+  assert.equal(h.$('voiceSessionStart').disabled, true, 'still answering');
+  h.state.busy = false; h.context.syncVoiceSessionControls();
+  assert.equal(h.$('voiceSessionStart').disabled, false);
+});

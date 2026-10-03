@@ -3,6 +3,7 @@
 // One private surface adapter around Core's capture, endpoint and playback loop.
 // No Nestor session or personal memory route is used by PsyX.
 let psyxVoiceSession = null;
+let psyxVoicePhase = 'idle';
 
 function spokenVoiceText(text) {
   return window.NestorSpeech.speechText(text);
@@ -36,7 +37,7 @@ async function voiceSessionFetch(path, options, signal) {
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     if (response.status === 401 && payload.code === 'PSYX_LOCKED') showGate('La séance privée a expiré.');
-    throw new Error(payload.message || `La voix a échoué (${response.status}).`);
+    throw Object.assign(new Error(payload.message || `La voix a échoué (${response.status}).`), { code: payload.code, status: response.status });
   }
   return response;
 }
@@ -54,10 +55,19 @@ function syncVoiceSessionSafety() {
   target.append(copy);
 }
 
+// Start is available whenever the loop rests; a turn still being answered only
+// delays it, so the button follows both the phase and the busy state.
+function syncVoiceSessionControls() {
+  const resting = ['idle', 'paused', 'error', 'reviewing'].includes(psyxVoicePhase);
+  $('voiceSessionStart').disabled = !resting || state.busy || !state.ready;
+  $('voiceSessionPause').disabled = resting;
+}
+
 function createPsyXVoiceSession() {
   const labels = { idle: 'Prêt à t’écouter.', starting: 'Ouverture du micro…', listening: 'Je t’écoute.',
-    hearing: 'Tu as la parole.', transcribing: 'Je t’ai entendu…', thinking: 'Je réfléchis.',
-    preparing: 'Préparation de la voix…', speaking: 'PsyX te répond.', paused: 'Micro et voix arrêtés.', error: 'La voix a été arrêtée.' };
+    hearing: 'Tu as la parole.', transcribing: 'Je t’ai entendu…', thinking: 'Je réfléchis.', waiting: 'Un instant…',
+    preparing: 'Préparation de la voix…', speaking: 'PsyX te répond.', paused: 'Micro et voix arrêtés.', error: 'La voix a été arrêtée.',
+    reviewing: 'Je n’ai pas réussi à transcrire. Appuie sur Démarrer pour reprendre.', resuming: 'Je reprends l’écoute…' };
   return new window.AgentXVoice.Conversation({
     holdingDelayMs: null,
     speechText: spokenVoiceText,
@@ -67,8 +77,15 @@ function createPsyXVoiceSession() {
     // PsyX conversation on the first completed turn, just as for typed messages.
     createSession: async () => ({ surface: 'psyx' }),
     transcribe: async (blob, language, signal) => {
-      const response = await voiceSessionFetch('transcribe', { method: 'POST',
-        headers: { 'Content-Type': blob.type || 'audio/wav', 'X-PsyX-Language': language || 'fr' }, body: blob }, signal);
+      let response;
+      try {
+        response = await voiceSessionFetch('transcribe', { method: 'POST',
+          headers: { 'Content-Type': blob.type || 'audio/wav', 'X-PsyX-Language': language || 'fr' }, body: blob }, signal);
+      } catch (error) {
+        // A cough or a door is not a failure: an empty text lets the loop listen again.
+        if (error.code === 'PSYX_VOICE_NO_SPEECH') return { text: '', language };
+        throw error;
+      }
       const payload = await response.json();
       const transcript = payload.data || payload;
       return { text: transcript.text || '', language: transcript.language || language,
@@ -89,11 +106,12 @@ function createPsyXVoiceSession() {
     },
     message: () => {},
   }, (phase, detail) => {
-    $('voiceSessionPhase').textContent = phase === 'error' ? 'La voix a été arrêtée. Vérifie l’accès au micro et la connexion locale, puis reprends.' : detail || labels[phase] || 'Un instant…';
+    // The shared loop's own detail for a failed transcription is in English; PsyX shows its label.
+    $('voiceSessionPhase').textContent = phase === 'error' ? 'La voix a été arrêtée. Vérifie l’accès au micro et la connexion locale, puis reprends.'
+      : phase === 'reviewing' ? labels.reviewing : detail || labels[phase] || 'Un instant…';
     $('voiceSessionDialog').dataset.phase = phase;
-    const resting = ['idle', 'paused', 'error'].includes(phase);
-    $('voiceSessionStart').disabled = !resting || state.busy || !state.ready;
-    $('voiceSessionPause').disabled = resting;
+    psyxVoicePhase = phase;
+    syncVoiceSessionControls();
     // The calm full-screen session must never obscure crisis resources.
     syncVoiceSessionSafety();
   });

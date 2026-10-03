@@ -139,7 +139,8 @@ async function transcribeRecording(blob) {
   input.value = input.value.trim() ? `${input.value.trim()} ${transcript}` : transcript;
   resizeInput();
   $('voiceActionStatus').textContent = 'Transcrit localement. Aucun audio n’a été conservé.';
-  if (state.voice.prefs.autoSend) await sendMessage(input.value, { source: 'voice' });
+  // Only a reply that will be spoken is asked for in spoken form; dictation read on screen stays a normal reply.
+  if (state.voice.prefs.autoSend) await sendMessage(input.value, state.voice.prefs.spokenReplies ? { source: 'voice' } : {});
   else input.focus();
 }
 
