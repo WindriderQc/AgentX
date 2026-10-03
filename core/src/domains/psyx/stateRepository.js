@@ -610,7 +610,8 @@ function createStateRepository({ collection, logger }) {
       throw error;
     }
     await ensureDocument(userId);
-    await collection.updateOne({ userId }, { $set: { settings: { frontierMode: body.frontierMode }, updatedAt: new Date() }, $inc: { revision: 1 } });
+    const current = (await collection.findOne({ userId }))?.settings || {};
+    await collection.updateOne({ userId }, { $set: { settings: { ...current, frontierMode: body.frontierMode }, updatedAt: new Date() }, $inc: { revision: 1 } });
     return { state: await read(userId) };
   }
 

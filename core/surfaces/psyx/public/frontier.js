@@ -69,6 +69,7 @@ function wireFrontier() {
         if (error.code !== 'PSYX_LOCKED') $('frontierStatus').textContent = 'Le réglage n’a pas été enregistré.';
       }
       renderPsyXState();
+      renderSetup();
     });
   }
 }

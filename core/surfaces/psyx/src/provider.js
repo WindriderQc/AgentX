@@ -5,7 +5,7 @@ const { readAdmittedInferenceStream } = require('../../../src/services/readAdmit
 // setting asks for it. The frontier lane is an OpenClaw agent used as transport
 // to a cloud model; when it is unavailable the same request is answered locally
 // and the routing says so, so the interface can show where the reply came from.
-function createCoreProvider(runtimeServices, { frontier = null, config = {} } = {}) {
+function createCoreProvider(runtimeServices, { frontier = null, config = {}, logger = console } = {}) {
   const frontierConfig = config.frontier || {};
   const frontierReady = () => Boolean(frontier?.available(frontierConfig.agent));
   const routing = async () => {
@@ -14,6 +14,12 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {} } = 
       Object.entries(snapshot.tasks || {}).map(([key, route]) => [key, { effective: { model: route.model, host: route.hostKey } }])) };
   };
   const frontierRouting = () => ({ location: 'frontier', routedModel: frontierConfig.model, routedHost: `openclaw/${frontierConfig.agent}` });
+  // Says why the local route answered; never logs content.
+  const fallbackReason = (error, work) => {
+    const reason = typeof error.code === 'string' ? error.code : error.name || 'FRONTIER_FAILED';
+    logger.warn?.('PsyX frontier unavailable, answering locally', { work, reason, message: error.message });
+    return reason;
+  };
 
   async function localStream(request, handlers, extra = {}) {
     const result = await runtimeServices.inference.execute({
@@ -58,7 +64,7 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {} } = 
       } catch (error) {
         // Once text reached the user the turn cannot be replayed elsewhere; before that, answer locally and say so.
         if (started || request.signal?.aborted) throw error;
-        return localStream(request, handlers, { fallbackFrom: 'frontier', fallbackReason: error.code || 'FRONTIER_FAILED' });
+        return localStream(request, handlers, { fallbackFrom: 'frontier', fallbackReason: fallbackReason(error, 'turn') });
       }
     },
     // Background work (the review): one JSON answer, no stream, no thinking, no
@@ -70,7 +76,7 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {} } = 
         const result = await frontier.run({ agentId: frontierConfig.agent, instructions: system.content, messages: rest, timeoutMs: request.timeoutMs });
         return { content: result.content, model: frontierConfig.model, location: 'frontier' };
       } catch (error) {
-        return localComplete(request, { fallbackFrom: 'frontier', fallbackReason: error.code || 'FRONTIER_FAILED' });
+        return localComplete(request, { fallbackFrom: 'frontier', fallbackReason: fallbackReason(error, 'review') });
       }
     }
   };

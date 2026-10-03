@@ -143,3 +143,41 @@ test('the chat applies the user frontier setting, tells the browser where the re
     assert.equal(requests.at(-1).location, 'local');
   } finally { await new Promise(resolve => offline.close(resolve)); }
 });
+
+test('the frontier client survives the gateway shapes found in review: ws URL, unnamed frames, cut streams, silence', async () => {
+  const urls = [];
+  const untyped = new Response(new ReadableStream({ start(controller) {
+    const frame = data => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`));
+    frame({ type: 'response.output_text.delta', delta: 'Sans ' }); frame({ type: 'response.output_text.delta', delta: 'nom.' });
+    frame({ type: 'response.completed', response: { status: 'completed' } }); controller.close();
+  } }));
+  const ws = createOpenClawAgentClient({ env: { OPENCLAW_GATEWAY_URL: 'ws://gateway.test:18789', OPENCLAW_GATEWAY_TOKEN: 't' },
+    fetchImpl: async (url, options) => { urls.push([url, options.redirect]); return untyped; } });
+  assert.equal((await ws.run({ agentId: 'psyx', messages: [] })).content, 'Sans nom.');
+  assert.deepEqual(urls[0], ['http://gateway.test:18789/v1/responses', 'error']);
+
+  const cut = createOpenClawAgentClient({ env: gatewayEnv, fetchImpl: async () => sse(['response.output_text.delta', { delta: 'Début de ré' }]) });
+  await assert.rejects(cut.run({ agentId: 'psyx', messages: [] }), { code: 'FRONTIER_INCOMPLETE' });
+  const incomplete = createOpenClawAgentClient({ env: gatewayEnv, fetchImpl: async () => sse(['response.output_text.delta', { delta: 'x' }], ['response.incomplete', {}]) });
+  await assert.rejects(incomplete.run({ agentId: 'psyx', messages: [] }), { code: 'FRONTIER_INCOMPLETE' });
+
+  // A gateway that accepts the request and then says nothing is abandoned after the first-frame delay.
+  const silent = createOpenClawAgentClient({ env: gatewayEnv, fetchImpl: (_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+  }) });
+  const started = Date.now();
+  await assert.rejects(silent.run({ agentId: 'psyx', messages: [], firstFrameMs: 40 }), { code: 'FRONTIER_SILENT' });
+  assert.ok(Date.now() - started < 2000);
+});
+
+test('a frontier fallback is logged with a readable reason and never with content', async () => {
+  const warnings = [];
+  const calls = [];
+  const down = { available: () => true, run: async () => { throw Object.assign(new Error('The frontier agent did not answer in time.'), { code: 'FRONTIER_SILENT' }); } };
+  const provider = createCoreProvider(localRuntime(calls), { frontier: down, config: frontierConfig, logger: { warn: (...args) => warnings.push(args) } });
+  const turn = await provider.stream({ location: 'frontier', system: 'PRIVATE SYSTEM', messages: [], message: 'PRIVATE MESSAGE', taskType: 'analysis' }, sink());
+  const review = await provider.complete({ location: 'frontier', messages: [{ role: 'system', content: 'R' }, { role: 'user', content: 'PRIVATE TRANSCRIPT' }] });
+  assert.deepEqual([turn.routing.fallbackReason, review.fallbackReason, review.location], ['FRONTIER_SILENT', 'FRONTIER_SILENT', 'local']);
+  assert.deepEqual(warnings.map(([, detail]) => detail.work), ['turn', 'review']);
+  assert.doesNotMatch(JSON.stringify(warnings), /PRIVATE/);
+});

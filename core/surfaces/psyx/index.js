@@ -45,7 +45,7 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
       }
     };
   }
-  const psyx = createApp({ config, database, provider: createCoreProvider(runtimeServices, { frontier: createOpenClawAgentClient(), config }), logger, accessAuth });
+  const psyx = createApp({ config, database, provider: createCoreProvider(runtimeServices, { frontier: createOpenClawAgentClient(), config, logger }), logger, accessAuth });
   app.use((req, res, next) => /^\/(?:psyx(?:\/|$)|api\/psyx(?:\/|$))/i.test(req.path)
     ? psyx(req, res, next) : next());
 }

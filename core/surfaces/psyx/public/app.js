@@ -392,6 +392,7 @@ async function restoreConversation(conversationId = state.conversationId) {
     localStorage.setItem(STORAGE_KEY, state.conversationId);
     state.history = normalizeConversationMessages(conversation.messages);
     hideSafety();
+    frontierUi.fallbackNote = '';
     clearRenderedConversation();
     for (const item of state.history) addMessage(item.role, item.content);
     updateContextStatus();
@@ -612,6 +613,10 @@ async function sendMessage(text, overrides = {}) {
       else if (event === 'control') {
         state.applied = data;
         renderStance();
+      } else if (event === 'route' && data.location && state.applied) {
+        // The frontier model was asked but the local route answers: say so while it answers.
+        state.applied = { ...state.applied, location: data.location };
+        renderStance();
       } else if (event === 'safety') {
         showSafety(data.resources);
       } else if (event === 'thinking') {
@@ -649,7 +654,8 @@ async function sendMessage(text, overrides = {}) {
       localStorage.setItem(STORAGE_KEY, state.conversationId);
       sessionLabel.textContent = `Séance ${state.conversationId.slice(-8)}`;
     }
-    const deep = (finalResult.control?.depth || effectiveDepth) === 'deep';
+    // Thinking is a local-route notion; the frontier model reasons on its own.
+    const deep = (finalResult.control?.depth || effectiveDepth) === 'deep' && finalResult.routing?.location !== 'frontier';
     updateBrainRouting(finalResult, deep ? (state.thinkingObserved ? 'thinking observed' : 'thinking requested, not observed') : '');
     await loadSessions();
     noteFrontierResult(finalResult);
@@ -703,6 +709,7 @@ function startNewSession(focus = true) {
   hideSafety();
   $('checkInPrompt').hidden = true;
   followUp.openingDone = false;
+  frontierUi.fallbackNote = '';
   renderOpening();
   clearRenderedConversation();
   updateContextStatus();
