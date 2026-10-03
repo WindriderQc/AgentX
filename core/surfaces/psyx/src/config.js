@@ -17,8 +17,14 @@ function loadConfig(env = process.env) {
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid VOIX_BASE_URL');
     baseUrl = url.toString().replace(/\/$/, '');
   }
+  // The frontier lane is off until an OpenClaw agent is named for it.
+  const frontierAgent = env.PSYX_FRONTIER_AGENT || '';
+  if (frontierAgent && !/^[a-z0-9_-]{1,64}$/.test(frontierAgent)) throw new Error('Invalid PSYX_FRONTIER_AGENT');
+  const frontierMode = env.PSYX_FRONTIER_MODE || 'local';
+  if (!['local', 'deep', 'all'].includes(frontierMode)) throw new Error('Invalid PSYX_FRONTIER_MODE');
   return {
     env: env.NODE_ENV || 'development', provider: 'agentx', accessMode,
+    frontier: { agent: frontierAgent, model: env.PSYX_FRONTIER_MODEL || 'frontier', defaultMode: frontierMode },
     accessToken: env.PSYX_ACCESS_TOKEN || '',
     // Core may sit behind a loopback proxy. Socket loopback alone is not consent.
     loopbackBypass: env.PSYX_LOOPBACK_BYPASS === 'true',

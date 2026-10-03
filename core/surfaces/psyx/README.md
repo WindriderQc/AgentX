@@ -83,7 +83,7 @@ no source session was recorded. Pending proposals stay outside response context.
 The Configuration tab checks protected access, local response routes, automatic
 review, VoiX reachability and this browser's microphone permission. Only the
 explicit microphone test requests capture, then immediately stops every track;
-it records and uploads no audio. Frontier remains unsupported and disabled.
+it records and uploads no audio. The frontier row reports whether a frontier agent is configured and the user's mode.
 
 Experiments carry a check-in date (three days by default) and an outcome: worked,
 partly, did not work, or not done, which reopens it for three more days. Due
@@ -92,6 +92,19 @@ propose an outcome the user reported in conversation, applied only once accepted
 The user can also record 0-10 ratings of how heavy things feel, at the start of a
 session or once during a long one; the latest five reach the prompt and Memory
 shows their trend.
+
+PsyX can think on a frontier cloud model when the instance names an OpenClaw
+agent for it (`PSYX_FRONTIER_AGENT`, with `OPENCLAW_GATEWAY_URL` and its token).
+This is an explicit owner choice for PsyX only, never a fallback: each user picks
+`local`, `deep` (deep turns and the background review) or `all`, the instance
+default being `PSYX_FRONTIER_MODE`. Core stays the owner of the conversation and
+its memory: every call sends the full PsyX context to the agent under a fresh
+session key and expects no memory or tools from it. The agent should have no
+tools, no memory search, no injected workspace context and no fallback model.
+OpenClaw still keeps its own session record and logs replies on its host. When the
+agent is unavailable the turn is answered on the local route and the interface
+says so; no other cloud provider is tried. The stance bar always shows where the
+next reply is produced.
 
 `eval/` holds a small set of synthetic scenarios, one per therapeutic skill, and a
 runner that builds each reply exactly as the chat does (prompt, stance, state,

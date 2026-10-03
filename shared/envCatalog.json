@@ -2620,6 +2620,36 @@
       "secret": false,
       "description": "PsyX background review after each completed turn (digest and memory proposals the user approves). false disables it. Unset: true."
     },
+    "PSYX_FRONTIER_AGENT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "OpenClaw agent PsyX uses as its frontier lane (a cloud model reached through OPENCLAW_GATEWAY_URL). Unset: PsyX stays on local routes and the setting is hidden."
+    },
+    "PSYX_FRONTIER_MODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "local",
+      "category": "household",
+      "secret": false,
+      "description": "Default frontier use for a PsyX user who has not chosen: local, deep (deep turns and the background review) or all. Another value fails startup. Unset: local."
+    },
+    "PSYX_FRONTIER_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "frontier",
+      "category": "household",
+      "secret": false,
+      "description": "Label of the model behind the PsyX frontier agent, shown in the interface and saved with turns. Unset: frontier."
+    },
     "PSYX_LOOPBACK_BYPASS": {
       "services": [
         "core"

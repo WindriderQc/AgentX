@@ -3,6 +3,8 @@
 const crypto = require('crypto');
 const proposals = require('./proposals');
 const followUp = require('./followUp');
+
+const FRONTIER_MODES = ['local', 'deep', 'all'];
 const { createItemCorrection } = require('./stateItemCorrection');
 
 const PSYX_STATE_VERSION = 2;
@@ -155,6 +157,7 @@ function emptyState(userId = 'default') {
     settledProposals: [],
     sessionDigests: [],
     checkIns: [],
+    settings: { frontierMode: null },
     updatedAt: null
   };
 }
@@ -173,6 +176,8 @@ function normalizeState(doc, userId = 'default') {
     sessionDigests: proposals.normalizeDigests(doc.sessionDigests),
     checkIns: followUp.normalizeCheckIns(doc.checkIns),
     resetAt: normalizeDate(doc.resetAt),
+    // Preferences, not memory: a reset keeps them.
+    settings: { frontierMode: FRONTIER_MODES.includes(doc.settings?.frontierMode) ? doc.settings.frontierMode : null },
     updatedAt: normalizeDate(doc.updatedAt)
   };
   for (const key of STATE_ITEM_KEYS) {
@@ -598,7 +603,19 @@ function createStateRepository({ collection, logger }) {
     return { checkIn, state: await read(userId) };
   }
 
+  async function updateSettings(userId, body = {}) {
+    if (!FRONTIER_MODES.includes(body.frontierMode)) {
+      const error = new Error('frontierMode must be local, deep or all');
+      error.statusCode = 400;
+      throw error;
+    }
+    await ensureDocument(userId);
+    await collection.updateOne({ userId }, { $set: { settings: { frontierMode: body.frontierMode }, updatedAt: new Date() }, $inc: { revision: 1 } });
+    return { state: await read(userId) };
+  }
+
   return {
+    updateSettings,
     updateItem: createItemCorrection({ collection, read, keys: STATE_ITEM_KEYS, cleanText, fingerprint: stateItemFingerprint }),
     addCheckIn,
     ensureInfrastructure,

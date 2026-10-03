@@ -6,7 +6,7 @@ const { reviewMessages, readReview } = require('../../../src/domains/psyx/review
 // conversation; turns that complete meanwhile coalesce into a single follow-up.
 // An admitted inference is never cancelled: aborting leaves the host runtime
 // state unknown and Core quarantines it, so a stale result is simply superseded.
-function createReviewer({ config, provider, stateRepository, conversationRepository, logger = console, isBusy = () => false }) {
+function createReviewer({ config, provider, stateRepository, conversationRepository, logger = console, isBusy = () => false, locationFor = () => 'local' }) {
   const enabled = config.review?.enabled !== false && typeof provider.complete === 'function';
   const delayMs = config.review?.delayMs ?? 4000;
   const keepMs = 15 * 60 * 1000;
@@ -21,7 +21,8 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
     const result = await provider.complete({
       messages: reviewMessages({ state, turns }),
       taskType: config.review?.taskType || 'deep_reasoning',
-      timeoutMs: config.requestTimeoutMs
+      timeoutMs: config.requestTimeoutMs,
+      location: locationFor(state)
     });
     const openExperimentIds = state.experiments.filter(item => ['planned', 'active'].includes(item.status)).map(item => item.id);
     const review = readReview(result.content, { conversationId, settled: state.settledProposals, openExperimentIds });

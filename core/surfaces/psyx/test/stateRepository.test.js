@@ -500,3 +500,13 @@ test('a user rejecting a proposal during a review wins over the stale review sna
   assert.equal(result.added, 0);
   assert.equal(result.state.sessionDigests.length, 1);
 });
+
+test('the frontier mode is a preference that survives a memory reset', async () => {
+  const harness = createHarness();
+  await harness.repository.ensureInfrastructure();
+  assert.equal((await harness.repository.read('default')).settings.frontierMode, null);
+  await assert.rejects(harness.repository.updateSettings('default', { frontierMode: 'cloud' }), /local, deep or all/);
+  const saved = await harness.repository.updateSettings('default', { frontierMode: 'all' });
+  assert.equal(saved.state.settings.frontierMode, 'all');
+  assert.equal((await harness.repository.reset('default')).settings.frontierMode, 'all');
+});

@@ -47,7 +47,7 @@ function providerHandlers(res) {
   };
 }
 
-function serviceStatus(config, accessConfigured = false) {
+function serviceStatus(config, accessConfigured = false, frontierSupported = false) {
   return {
     extension: 'psyx',
     extensionVersion: VERSION,
@@ -64,7 +64,9 @@ function serviceStatus(config, accessConfigured = false) {
       deepTaskType: domain.DEPTH_CONFIG.deep.taskType,
       configEndpoint: '/api/psyx/routing'
     },
-    frontier: { supported: false, enabled: false, location: 'local' },
+    frontier: frontierSupported
+      ? { supported: true, enabled: true, location: 'frontier', model: config.frontier.model, defaultMode: config.frontier.defaultMode, modes: domain.FRONTIER_MODES }
+      : { supported: false, enabled: false, location: 'local' },
     stateVersion: 2,
     privacy: {
       protected: config.accessMode !== 'trusted-network',
@@ -119,7 +121,12 @@ function createApp({ config, database, provider, voice = null, logger = console,
   const voiceClient = voice || createVoiceClient(config);
   const { stateRepository, conversationRepository } = database;
   const streaming = new Map();
-  const review = reviewer || createReviewer({ config, provider, stateRepository, conversationRepository, logger, isBusy: userId => (streaming.get(userId) || 0) > 0 });
+  const frontierSupported = () => Boolean(provider.frontierReady?.());
+  // The user's choice, else the instance default; always local when no frontier agent is configured.
+  const frontierMode = state => frontierSupported() ? state.settings?.frontierMode || config.frontier?.defaultMode || 'local' : 'local';
+  const review = reviewer || createReviewer({ config, provider, stateRepository, conversationRepository, logger,
+    isBusy: userId => (streaming.get(userId) || 0) > 0,
+    locationFor: state => frontierMode(state) === 'local' ? 'local' : 'frontier' });
 
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -179,8 +186,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
   });
   api.use(auth.requireSession);
 
-  api.get('/status', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)))));
-  api.post('/bootstrap', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)))));
+  api.get('/status', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)), frontierSupported())));
+  api.post('/bootstrap', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)), frontierSupported())));
+  api.post('/state/settings', asyncRoute(async (req, res) => responseData(res, await stateRepository.updateSettings(res.locals.psyxUserId, { frontierMode: req.body?.frontierMode }))));
   api.get('/state', asyncRoute(async (_req, res) => responseData(res, await stateRepository.read(res.locals.psyxUserId))));
   api.get('/state/prompt-context', asyncRoute(async (_req, res) => responseData(res, stateForPrompt(await stateRepository.read(res.locals.psyxUserId)))));
   api.post('/state/items/:key', asyncRoute(async (req, res) => responseData(res, await stateRepository.addItem(res.locals.psyxUserId, req.params.key, req.body || {}))));
@@ -320,7 +328,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const heartbeat = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(': ping\n\n'); }, 15000);
     const handlers = providerHandlers(res);
     streaming.set(userId, (streaming.get(userId) || 0) + 1);
-    const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety) };
+    const location = domain.frontierLocation(frontierMode(longitudinal), control.depth);
+    const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety), location };
     handlers.send('control', applied);
     if (safety) handlers.send('safety', safety);
 
@@ -329,6 +338,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
         system,
         messages: providerContext,
         message: input,
+        location,
         taskType: control.depth === 'deep' ? 'deep_reasoning' : 'analysis',
         think: control.depth === 'deep',
         options: { temperature: safety ? 0.4 : control.mode === 'challenge' ? 0.55 : 0.7 },
