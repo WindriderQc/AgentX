@@ -75,6 +75,28 @@ describe('shared navigation public URL contract', () => {
     }
   });
 
+  test('full navigation links the surfaces composed on Core; demo offers none of them', async () => {
+    const core = await renderNav('core');
+    expect(hrefFor(core, 'Household home')).toBe('/');
+    expect(hrefFor(core, 'Super Dad')).toBe('/dad');
+    expect(hrefFor(core, 'Family')).toBe('/panel');
+    expect(hrefFor(core, 'PsyX')).toBe('/psyx');
+    expect(hrefFor(core, 'Wallet Beefer')).toBe('/finance');
+    expect(hrefFor(core, 'Data Toolbox')).toBe('/data-toolbox');
+    expect(hrefFor(await renderNav('benchmark'), 'Household home')).toBe('https://core.example/');
+    expect(hrefFor(await renderNav('rag'), 'Wallet Beefer')).toBe('https://core.example/finance');
+    expect(await renderNav('core', 'full', 'finance')).toMatch(/id="nav-trigger-personal-group"[^>]*>/);
+    expect(await renderNav('core', 'full', 'finance')).toMatch(/href="\/finance"\s+class="dropdown-item active"\s+aria-current="page"/);
+
+    for (const service of ['core', 'benchmark', 'rag']) {
+      const demo = await renderNav(service, 'demo', 'playground');
+      expect(demo).not.toContain('nav-trigger-personal-group');
+      for (const label of ['Household home', 'Super Dad', 'Family', 'PsyX', 'Wallet Beefer', 'Data Toolbox']) {
+        expect(hrefFor(demo, label)).toBeUndefined();
+      }
+    }
+  });
+
   const runtimeLaunchers = normalizeTrustedRuntimeNavItems([
     { id: 'openclaw-runtime', label: 'OpenClaw', href: '/api/openclaw/control-launch/overview', icon: 'fa-paw', owner: 'AIOps', description: 'Protected agent desk.' },
     { id: 'dsh-studio', label: 'DSH Studio', href: '/api/dsh/control-launch', icon: 'fa-terminal', owner: 'AIOps' },
