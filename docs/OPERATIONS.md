@@ -258,15 +258,17 @@ the `ops_watch` task's model with the vendor, hostname and address; it is a
 hint, never applied by itself, and a missing answer never delays the alert
 beyond three minutes.
 
-Set `OPS_WATCH_MS` (for example `900000`) to get an operations watch report.
-Core takes what its rules already flag (the ecosystem snapshot's operational
+Switch the operations watch on in the Nerve Center, section "Operations
+watch", which also shows the latest report, checks on demand and sets the
+interval and the report language. Core stores these settings; `OPS_WATCH_MS`
+and `OPS_WATCH_LANGUAGE` apply only until they are saved there. Core takes what its rules already flag (the ecosystem snapshot's operational
 issues and the active alerts) and asks the `ops_watch` task's model for one
 short report: findings by severity, impact, next action. The model runs only
 when the set of findings changes, never decides what is wrong, and cannot hide
 a finding: when it is unavailable the report carries the plain list. Each
 distinct set of findings is one `ops-watch-report` incident (`telegram`), which
 resolves once the findings are gone; `GET /api/nerve-center/ops-watch` returns
-the latest report. `OPS_WATCH_LANGUAGE` sets its language. The input is small
+the latest report and the settings. The input is small
 and nothing waits on the answer, so route `ops_watch` to a CPU-resident host in
 the Nerve Center routing table: the task stays on its configured host, and no
 task follows its model to a host of the other residency.

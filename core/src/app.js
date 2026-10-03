@@ -603,7 +603,7 @@ app.get('/nerve-center', (req, res) => {
       '<script src="/js/nerve-center-mode.js"></script>',
       '<script src="/js/nerve-center.js"></script>',
       '<script src="/js/nerve-center-routing.js"></script>',
-      '<script src="/js/nerve-center-gpu-health.js"></script><script src="/js/nerve-center-cluster.js"></script><script src="/js/nerve-center-hosts.js"></script>',
+      '<script src="/js/nerve-center-gpu-health.js"></script><script src="/js/nerve-center-cluster.js"></script><script src="/js/nerve-center-hosts.js"></script><script src="/js/nerve-center-ops-watch.js"></script>',
       '<script src="/js/nerve-center-health.js"></script>',
       '<script src="/js/nerve-center-performance.js"></script>',
       '<script src="/js/nerve-center-inference.js"></script>',

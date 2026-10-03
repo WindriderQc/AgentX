@@ -14,7 +14,8 @@
  * one incident per distinct finding set; it goes stale and resolves on its own
  * once the findings are gone.
  *
- * Opt-in: OPS_WATCH_MS sets the check interval (minimum 300000).
+ * Opt-in: switched on, with its interval and language, from the Nerve Center
+ * (opsWatchSettings); OPS_WATCH_MS and OPS_WATCH_LANGUAGE only bootstrap it.
  */
 
 const crypto = require('crypto');
@@ -81,7 +82,7 @@ function createOpsWatch(deps = {}) {
   const execute = deps.execute || ((request, options) => require('./inferenceService').executeInference(request, options));
   const evaluateEvent = deps.evaluateEvent || (event => require('./alertService').evaluateEvent(event));
   const now = deps.now || (() => new Date());
-  const language = deps.language || process.env.OPS_WATCH_LANGUAGE || 'English';
+  let language = deps.language || process.env.OPS_WATCH_LANGUAGE || 'English';
 
   let latest = null;
 
@@ -166,7 +167,23 @@ function createOpsWatch(deps = {}) {
     timer = null;
   }
 
-  return { check, tick, start, stop, latest: () => latest };
+  // Settings saved in the Nerve Center apply at once, in the process that
+  // runs the watch (activate marks it; another process only stores them).
+  let active = false;
+  let intervalMs = 0;
+  function apply(settings = {}) {
+    if (settings.language) language = settings.language;
+    intervalMs = settings.enabled === false ? 0 : Number(settings.intervalMs) || 0;
+    stop();
+    return intervalMs > 0 ? start(intervalMs) : false;
+  }
+  function activate(settings) { active = true; return apply(settings); }
+  function configure(settings) { return active ? apply(settings) : false; }
+  function deactivate() { active = false; stop(); }
+  function setLanguage(value) { if (value) language = value; }
+  const state = () => ({ active, scheduled: Boolean(timer), checking: running, intervalMs, language });
+
+  return { check, tick, start, stop, activate, configure, deactivate, setLanguage, state, latest: () => latest };
 }
 
 let shared = null;
