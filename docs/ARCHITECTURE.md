@@ -227,6 +227,12 @@ short holding phrase when no reply text has arrived after a few seconds
 answer: it is dropped when reply text arrives before it plays, and a phrase
 already playing ends while the first clause is prepared to follow it.
 
+A turn is spoken in one language. A French or English preference the person
+chose wins; in automatic mode the language recognized in their speech decides,
+then their words, then French. The loop hands that language to the surface
+adapter with every clause, notice and holding phrase, and adapters do not
+re-score a clause.
+
 The shared speech boundary removes code fences, images, links, table markup,
 HTML and presentation symbols from spoken text while preserving prose and
 emergency phone numbers. The browser, synthesis proxies and native voice reply

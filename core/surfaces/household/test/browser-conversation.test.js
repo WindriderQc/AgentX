@@ -478,7 +478,7 @@ test('a short opening starts playback while inference is still pending, without 
     turn(_session, _text, _signal, onDelta) { delta = onDelta; return generated.promise; },
     async synthesize(reply) { spoken.push(reply); return new ArrayBuffer(4); }
   });
-  await h.conversation.start({ language: 'en' });
+  await h.conversation.start({ language: 'fr-en' });
   const exchange = h.say(); await tick();
   delta('Salut ! '); await tick();
   assert.deepEqual(spoken, [{ text: 'Salut !', language: 'fr' }]);
@@ -549,9 +549,47 @@ test('a franglais reply keeps one voice: the turn language holds for every claus
     async turn(_session, _text, _signal, delta) { for (const chunk of chunks) { delta(chunk); await tick(); } return {text:chunks.join(''),language:'fr'}; },
     async synthesize(reply) { spoken.push(reply); return new ArrayBuffer(10); }
   });
-  await h.conversation.start({language:'en'}); await h.say();
+  await h.conversation.start({language:'fr-en'}); await h.say();
   assert.deepEqual(spoken.map(reply=>reply.language), ['fr','fr','fr','fr','fr']);
   assert.equal(spoken.map(reply=>reply.text).join(' '),chunks.join(''));
+});
+
+test('a chosen language is the voice of the whole turn, whatever was recognized or answered', async () => {
+  const english = ['Sure, the hosts are ready. ', 'The models are loaded and they answer. ', 'OK.'];
+  const french = 'Salut ! Tout est prêt pour toi.';
+  for (const [selection, heard, turn, expected] of [
+    // French chosen: an English-sounding request and an English streamed reply stay in the French voice.
+    ['fr', { text: 'Can you check the hosts?', detectedLanguage: 'en' },
+      async (_session, _text, _signal, delta) => { for (const chunk of english) { delta(chunk); await tick(); } return { text: english.join(''), language: 'en' }; }, 'fr'],
+    // English chosen: an unstreamed French reply that names its own language does not switch the voice.
+    ['en', 'Bonjour Nestor', async () => ({ text: french, language: 'fr' }), 'en'],
+    // Automatic: the unstreamed reply still names the voice.
+    ['fr-en', 'Bonjour Nestor', async () => ({ text: 'Sure.', language: 'en' }), 'en']
+  ]) {
+    const spoken = [];
+    const h = harness({ transcribe: async () => heard, turn, async synthesize(reply) { spoken.push(reply.language); return new ArrayBuffer(4); } });
+    await h.conversation.start({ language: selection }); await h.say();
+    assert.ok(spoken.length >= 1);
+    assert.deepEqual([...new Set(spoken)], [expected], `${selection}: ${spoken}`);
+    h.conversation.stop();
+  }
+});
+
+test('a remark from the brain is spoken in the chosen language, else in its own words’ language', async () => {
+  for (const [selection, remark, expected] of [
+    ['en', { text: 'Petite correction : une araignée a huit pattes.' }, 'en'],
+    ['fr-en', { text: 'Petite correction : une araignée a huit pattes.' }, 'fr'],
+    ['fr-en', { text: 'The answer is that they have eight legs.' }, 'en'],
+    ['fr-en', { text: 'OK', language: 'en' }, 'en'],
+    ['fr', { text: 'The answer is that they have eight legs.', language: 'en' }, 'fr']
+  ]) {
+    const spoken = [];
+    const h = harness({ async synthesize(reply) { spoken.push(reply); return new ArrayBuffer(4); } });
+    await h.conversation.start({ wakeWord: false, language: selection });
+    assert.equal(await h.conversation.interject(remark), true);
+    assert.deepEqual(spoken, [{ ...remark, language: expected }]);
+    h.conversation.stop();
+  }
 });
 
 for (const streaming of [false, true]) {
@@ -1022,7 +1060,9 @@ test('the language Whisper recognized decides the turn voice, and French is the 
     [{ text: 'OK', detectedLanguage: 'en' }, 'fr-en', 'en'],
     [{ text: 'OK' }, 'fr-en', 'fr'],
     [{ text: 'OK' }, 'en', 'en'],
-    ['Can you check the hosts?', 'fr-en', 'en']
+    [{ text: 'OK', detectedLanguage: 'en' }, 'fr', 'fr'],
+    ['Can you check the hosts?', 'fr-en', 'en'],
+    ['Can you check the hosts?', 'auto', 'en']
   ]) {
     const spoken = [];
     const h = harness({ transcribe: async () => result, turn: async (_s, _t, _sig, delta) => { delta('Sure. '); return { text: 'Sure.' }; },

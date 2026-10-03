@@ -129,3 +129,20 @@ test('PsyX keeps its silence while it thinks: the shared holding phrase stays of
   assert.deepEqual(spoken(h).map(request => request.text), ['Je t’écoute. Une piste'], 'only the confirmed reply is spoken');
   h.context.stopVoiceSession();
 });
+
+test('PsyX speaks a whole turn in the language chosen in its voice settings', async () => {
+  for (const chosen of ['fr', 'en']) {
+    const other = chosen === 'fr' ? 'en' : 'fr';
+    const h = browser({
+      fetch: async (url, options) => { h.calls.push({ url, options });
+        return url.endsWith('transcribe') ? new Response(JSON.stringify({ data: { text: 'Can you help me with that today?', language: other } })) : new Response('pcm'); },
+      // A reply in the other language, which names it, does not switch the chosen voice.
+      sendMessage: async () => ({ text: 'Bien sûr. Je suis là avec toi. The next step is yours.', language: other }) });
+    h.state.voice.prefs.language = chosen;
+    h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click(); await h.say();
+    assert.ok(spoken(h).length >= 1);
+    assert.deepEqual([...new Set(spoken(h).map(request => request.language))], [chosen]);
+    assert.ok(spoken(h).every(request => request.voice === 'Microsoft Caroline'));
+    h.context.stopVoiceSession();
+  }
+});

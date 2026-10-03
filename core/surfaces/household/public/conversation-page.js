@@ -111,7 +111,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     onAsk: question => { el('conversationMessage').value = question; el('conversationText').requestSubmit(); },
     onRevision: block => board.add(block),
     onInterject: async remark => {
-      const spoken = await conversation.interject({ text: remark.text, language: NestorSpeech.replySpeechLanguage(remark.text, language.value) });
+      const spoken = await conversation.interject({ text: remark.text });
       transcript.querySelector('.empty')?.remove();
       const row = document.createElement('div'); row.className = 'conversation-message assistant interjection';
       const label = document.createElement('small'); label.className = 'interjection-label';
@@ -409,7 +409,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
     async synthesize(reply, signal) {
-      const lang = NestorSpeech.replySpeechLanguage(reply.text, reply.language);
+      // The voice loop chose one language for the whole turn; a clause is never re-scored.
+      const lang = NestorSpeech.normalizeSpeechLanguage(reply.language) || 'fr';
       // A member who answers directly speaks with its own personality's voice, not the session's choices.
       const member = turnSpeaker && personas.find(p => p.id === turnSpeaker.personaId);
       const persona = member || conversation.session?.persona || selected();

@@ -64,3 +64,21 @@ test('Québécois French is the default: English needs more English than French 
   assert.equal(scoreSpeechLanguage('Le build a passé, le deploy est OK.').language, 'fr');
   assert.equal(scoreSpeechLanguage('Can you check the hosts?').language, 'en');
 });
+
+test('one language per turn: a chosen language wins, automatic modes follow the speech', () => {
+  const { explicitSpeechLanguage, turnSpeechLanguage } = require('../public/speech-language');
+  for (const [value, expected] of [['fr', 'fr'], ['en', 'en'], ['fr-CA', 'fr'], ['en_US', 'en'], ['auto', ''], ['fr-en', ''], ['', ''], [undefined, '']]) {
+    assert.equal(explicitSpeechLanguage(value), expected, String(value));
+  }
+  assert.equal(turnSpeechLanguage('Can you check the hosts?', 'en', 'fr'), 'fr');
+  assert.equal(turnSpeechLanguage('Bonjour, comment ça va ?', 'fr', 'en'), 'en');
+  assert.equal(turnSpeechLanguage('OK', 'en', 'auto'), 'en');
+  assert.equal(turnSpeechLanguage('Can you check the hosts?', '', 'fr-en'), 'en');
+  assert.equal(turnSpeechLanguage('OK', '', 'auto'), 'fr');
+});
+
+test('the Household page speaks each clause in the language the voice loop chose', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../public/conversation-page.js'), 'utf8');
+  assert.match(source, /const lang = NestorSpeech\.normalizeSpeechLanguage\(reply\.language\) \|\| 'fr';/);
+  assert.doesNotMatch(source, /replySpeechLanguage/);
+});

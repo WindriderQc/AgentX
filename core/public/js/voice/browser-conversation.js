@@ -366,7 +366,9 @@
         && (!this.selection?.wakeWord || this.wake.active());
       if (!reply?.text || !this.audio || !idle()) return false;
       try {
-        const bytes = await this.io.synthesize(reply, this.abort.signal);
+        // The remark is one utterance: the chosen language, else its own words.
+        const language = speechLanguage.turnSpeechLanguage(reply.text, reply.language, this.selection?.language);
+        const bytes = await this.io.synthesize({ ...reply, language }, this.abort.signal);
         if (!idle()) return false;
         this.audio.quiet(); this.show('speaking');
         await this.audio.play(bytes, this.abort.signal);
@@ -583,7 +585,8 @@
       if (!this.owns(turn)) return;
       this.turnPending = false;
       this.io.message('assistant', reply.text, false, reply.sound);
-      if (!streamed && reply.language) spokenLanguage = reply.language;
+      // An unstreamed reply names its own language; a chosen preference still wins.
+      if (!streamed && reply.language && !speechLanguage.explicitSpeechLanguage(this.selection.language)) spokenLanguage = reply.language;
       dropHolding();
       speak(streamed ? pending : reply.text);
       await playback;
