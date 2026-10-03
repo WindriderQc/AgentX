@@ -19,17 +19,18 @@ test('the lane offers one delegate tool with a task and a closed list of reasons
   assert.equal(lane.delegateTool().function.parameters.properties.reason.enum.length, 5);
 });
 
-test('the lane instructions stay short and name what to answer and what to delegate', () => {
+test('the lane instructions stay bounded and name what to answer, what to hand over and what never to say', () => {
   const text = lane.fastLaneInstructions();
-  assert.ok(text.length < 1000, `instructions grew to ${text.length} characters`);
-  for (const expected of ['small talk', 'delegate tool', 'calendar', 'web search', 'remember, forget or correct a note',
-    'generate an image', 'Never claim to have checked or done something']) {
+  assert.ok(text.length < 2000, `instructions grew to ${text.length} characters`);
+  for (const expected of ['small talk', 'delegate', 'calendar', 'search the web', 'remember, forget or correct a note',
+    'generate images', 'Never say that you will check', 'never say that you cannot do', 'Hand over:', 'Answer yourself:']) {
     assert.ok(text.includes(expected), expected);
   }
 });
 
-test('the stable system prompt is the personal pack, the personality, then the lane instructions', () => {
+test('the stable system prompt is the routing line, the personal pack, the personality, then the full rule', () => {
   const prompt = lane.fastLaneSystemPrompt();
+  assert.ok(prompt.startsWith(lane.fastLaneHeader()));
   const pack = prompt.indexOf(PERSONAL_OPERATOR_SURFACE_CONTRACT);
   const identity = prompt.indexOf('use the name Nestor');
   const instructions = prompt.indexOf(lane.fastLaneInstructions());
