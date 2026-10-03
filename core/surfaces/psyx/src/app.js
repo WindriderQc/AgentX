@@ -116,7 +116,7 @@ function exportDocument({ state, metadata, conversations }) {
   };
 }
 
-function createApp({ config, database, provider, voice = null, logger = console, accessAuth = null, reviewer = null, dreamer = null, sources = null }) {
+function createApp({ config, database, provider, voice = null, logger = console, accessAuth = null, reviewer = null, dreamer = null, sources = null, productApp = null }) {
   if (!config || !database || !provider) throw new Error('config, database, and provider are required');
   const app = express();
   const auth = accessAuth || createAuth(config);
@@ -170,7 +170,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
   }));
   app.use('/psyx/assets', express.static(PUBLIC_ROOT, { index: false, fallthrough: false, maxAge: config.env === 'production' ? '1h' : 0 }));
   // Serve relative to the public root so a dot-segment in the checkout path is never treated as a dotfile.
-  app.get('/psyx', (_req, res) => res.sendFile('index.html', { root: PUBLIC_ROOT }));
+  app.get('/psyx', require('../../../src/ui/productShell').surfacePage(productApp || app, path.join(PUBLIC_ROOT, 'index.html'), { activePage: 'psyx' }));
 
   const api = express.Router();
   api.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });

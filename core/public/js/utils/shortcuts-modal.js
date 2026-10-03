@@ -231,125 +231,6 @@ window.ShortcutsHelpModal = window.ShortcutsHelpModal || (() => {
     return el;
   }
 
-  // ── Styles (injected once) ──────────────────────────────────
-
-  function injectStyles() {
-    if (document.getElementById('sc-modal-styles')) return;
-
-    const style = document.createElement('style');
-    style.id = 'sc-modal-styles';
-    style.textContent = `
-      .sc-modal-overlay {
-        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.7);
-        display: flex; align-items: center; justify-content: center;
-        z-index: 10001;
-        animation: scFadeIn 0.2s ease-out;
-        backdrop-filter: blur(4px);
-      }
-      .sc-modal {
-        background: var(--bg, #1a1a1a);
-        color: var(--text, #fff);
-        border-radius: 12px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-        width: 90%; max-width: 520px; max-height: 80vh;
-        display: flex; flex-direction: column;
-        animation: scSlideUp 0.3s ease-out;
-      }
-      .sc-modal-header {
-        display: flex; justify-content: space-between; align-items: center;
-        padding: 20px 24px 14px;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
-      }
-      .sc-modal-header h2 {
-        margin: 0; font-size: 20px; font-weight: 600;
-        display: flex; align-items: center; gap: 10px;
-      }
-      .sc-modal-header h2 i { color: var(--accent, #ee80ff); }
-      .sc-modal-close {
-        background: none; border: none; color: var(--muted, #999);
-        font-size: 20px; cursor: pointer; padding: 6px;
-        display: flex; align-items: center; justify-content: center;
-        border-radius: 6px; transition: all 0.2s;
-      }
-      .sc-modal-close:hover {
-        background: rgba(255,255,255,0.1); color: var(--text, #fff);
-      }
-      .sc-modal-close:focus-visible {
-        outline: 3px solid var(--accent, #ee80ff); outline-offset: 2px;
-      }
-      .sc-modal-body {
-        padding: 20px 24px; overflow-y: auto; flex: 1;
-      }
-      .sc-category { margin-bottom: 24px; }
-      .sc-category:last-child { margin-bottom: 0; }
-      .sc-category h3 {
-        margin: 0 0 12px; font-size: 13px; font-weight: 600;
-        color: var(--accent, #ee80ff);
-        text-transform: uppercase; letter-spacing: 0.5px;
-      }
-      .sc-list { display: flex; flex-direction: column; gap: 8px; }
-      .sc-item {
-        display: flex; justify-content: space-between; align-items: center;
-        padding: 10px 12px;
-        background: rgba(255,255,255,0.03); border-radius: 8px;
-        transition: background 0.2s;
-      }
-      .sc-item:hover { background: rgba(255,255,255,0.06); }
-      .sc-keys {
-        display: flex; align-items: center; gap: 4px;
-        font-family: 'Courier New', monospace; min-width: 160px;
-      }
-      .sc-keys kbd {
-        display: inline-block; padding: 3px 8px;
-        font-size: 12px; font-weight: 600; line-height: 1.4;
-        color: var(--text, #fff);
-        background: linear-gradient(to bottom, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
-        border: 1px solid rgba(255,255,255,0.2);
-        border-radius: 5px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2), 0 0 0 2px rgba(255,255,255,0.05) inset;
-      }
-      .sc-key-sep { color: var(--muted, #999); font-weight: bold; padding: 0 2px; }
-      .sc-desc { flex: 1; color: var(--muted, #ccc); font-size: 13px; }
-      .sc-modal-footer {
-        padding: 14px 24px;
-        border-top: 1px solid rgba(255,255,255,0.1);
-        background: rgba(255,255,255,0.02);
-        border-radius: 0 0 12px 12px;
-      }
-      .sc-modal-footer p {
-        margin: 0; font-size: 12px; color: var(--muted, #999);
-        display: flex; align-items: center; gap: 6px;
-      }
-      .sc-modal-footer p kbd {
-        display: inline-block; padding: 2px 6px;
-        font-size: 11px; font-weight: 600;
-        color: var(--text, #fff);
-        background: linear-gradient(to bottom, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
-        border: 1px solid rgba(255,255,255,0.2);
-        border-radius: 4px;
-      }
-      .sc-modal-footer i { color: var(--accent, #ee80ff); }
-
-      @keyframes scFadeIn { from { opacity: 0; } to { opacity: 1; } }
-      @keyframes scSlideUp {
-        from { opacity: 0; transform: translateY(20px); }
-        to   { opacity: 1; transform: translateY(0); }
-      }
-      @keyframes scFadeOut { from { opacity: 1; } to { opacity: 0; } }
-
-      @media (max-width: 768px) {
-        .sc-modal { width: 95%; max-height: 90vh; }
-        .sc-item { flex-direction: column; align-items: flex-start; gap: 6px; }
-        .sc-keys { min-width: auto; }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .sc-modal-overlay, .sc-modal { animation: none !important; }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
   // ── Show / Hide ─────────────────────────────────────────────
 
   function show() {
@@ -364,7 +245,6 @@ window.ShortcutsHelpModal = window.ShortcutsHelpModal || (() => {
       _trigger.setAttribute('aria-controls', dialogId);
       _trigger.setAttribute('aria-expanded', 'true');
     }
-    injectStyles();
     _overlay = createModal();
     document.body.appendChild(_overlay);
     _isOpen = true;
@@ -388,7 +268,7 @@ window.ShortcutsHelpModal = window.ShortcutsHelpModal || (() => {
     if (_trigger) _trigger.setAttribute('aria-expanded', 'false');
     _trigger = null;
     window.AgentXModalAccessibility.deactivate(ref);
-    ref.style.animation = 'scFadeOut 0.2s ease-out';
+    ref.classList.add('is-closing');
     setTimeout(() => {
       if (ref && ref.parentNode) ref.parentNode.removeChild(ref);
       _isClosing = false;

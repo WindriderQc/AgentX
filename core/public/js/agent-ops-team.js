@@ -17,11 +17,12 @@
   ];
 
   function create(context) {
-    const { esc, humanize, number, badge, empty, agentIcon, runtimeLink, editPersona, newPersona } = context;
+    const { esc, humanize, number, badge, empty, agentIcon, runtimeLink, editPersona, newPersona, newAgent } = context;
 
     document.addEventListener('click', (event) => {
       const button = event.target.closest('[data-persona-edit]');
       if (button) return editPersona(button.dataset.personaEdit);
+      if (event.target.closest('[data-agent-guide]')) return newAgent();
       const fresh = event.target.closest('[data-persona-new]');
       if (fresh) newPersona(fresh.dataset.personaNew === 'style' ? { styleOf: fresh.dataset.agent } : { agentId: fresh.dataset.agent }, fresh.dataset.name);
     });
@@ -130,7 +131,8 @@
         .filter((group) => group.agents.length);
       return notices(team) + groups.map((group) => `
         <section class="agent-ops-team-group" data-agent-group="${group.id}">
-          <header><h3><i class="fas ${group.icon}"></i>${esc(group.title)} <small>${group.agents.length}</small></h3><p>${esc(group.note)}</p></header>
+          <header><h3><i class="fas ${group.icon}"></i>${esc(group.title)} <small>${group.agents.length}</small></h3><p>${esc(group.note)}</p>
+            ${group.id === 'team' ? '<button type="button" class="agent-ops-chip link" data-agent-guide><i class="fas fa-user-plus"></i>New member</button>' : ''}</header>
           <div class="agent-ops-agent-grid">${group.agents.map(card).join('')}</div>
         </section>
         ${group.id === 'team' ? styles(team) : ''}`).join('');

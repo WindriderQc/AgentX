@@ -105,8 +105,8 @@ when set. Exit codes: 0 completed, 1 failed, 2 usage, 4 refused (held or busy).
 
 | Action | Effect |
 |---|---|
-| `status` | Read-only: checkout revision, revision served by Core, Benchmark and RAG, active coordination, lease holder, running deploys. |
-| `deploy --services core,benchmark[,...] [--revision origin/main] [--wait-minutes 10]` | Clean tree, no other deploy, revision on `origin/main` and a fast-forward of the checkout; fast-forwards, then builds the images first (building touches no running container), then waits for the instance to be idle and recreates with `./agentx up --no-deps`, without rebuilding, through Core's runtime lease. Automated inferences start again within seconds, so a lease refusal is retried every 10 s until a gap appears; `--wait-minutes` bounds the idle wait and the retries together, after which the action stops refused (exit 4) with the images built and the checkout already on the new revision. Any other launcher failure stops at once. Nothing running is cut; it then checks the served revision. |
+| `status` | Read-only: checkout revision, revision served by Core, Benchmark, RAG and Data, active coordination, lease holder, running deploys. |
+| `deploy --services core,benchmark[,...] [--revision origin/main] [--wait-minutes 10] [--queue-minutes 0]` | Deploys take turns, and one deploy carries every commit merged before it fetched. A held `LEAD.md` or a running deploy refuses at once, or is waited for up to `--queue-minutes`, checked every 10 s. Before taking the lease the action looks at what is served. A service is up to date when it reports the revision, a descendant, or a commit with the same build (nothing its Dockerfile copies, the Dockerfile, the compose file or `.dockerignore` differs), from a container created after the instance env file and override last changed; a service that reports no revision (`benchmark-runner`) never is. When every requested service is up to date and the checkout holds the revision, the action completes with `alreadyServed: true`, without the lease, a build or a recreate; a queued action leaves that way as soon as the deploy ahead of it serves its revision. Otherwise the action takes the lease and needs a clean tree, a revision on `origin/main` and a fast-forward of the checkout; fast-forwards to `origin/main` as fetched at that moment and, when a merge of docs, integrations or another service left every requested image unchanged, completes there with `alreadyServed: true`; otherwise it builds the images first (building touches no running container), then waits for the instance to be idle and recreates with `./agentx up --no-deps`, without rebuilding, through Core's runtime lease. Automated inferences start again within seconds, so a lease refusal is retried every 10 s until a gap appears; `--wait-minutes` bounds the idle wait and the retries together, after which the action stops refused (exit 4) with the images built and the checkout already on the new revision. Any other launcher failure stops at once. Nothing running is cut; it then checks the served revision. |
 | `recover-quarantine --host <ollama url>` | For an UNKNOWN inference on a local Ollama: refuses while an inference or a workload is active there, restarts the unit named for that host in `AGENTX_ACTION_OLLAMA_UNITS` (`{"<url>": {"unit": "...", "scope": "system"\|"user"}}`, `sudo -n` for system units), checks a new process answers, then attests each UNKNOWN admission with `recover-runtime-restart`. Workloads keep the profiler procedure below. |
 | `recalibrate-judges [--host <url> --model <name>]` | Runs Benchmark's quick judge calibration (the default judge when no target is given) and returns its report. |
 
@@ -173,6 +173,18 @@ the Profiler panel or `POST /api/profiler/pipeline/profile/:profileId/cancel`,
 `POST /api/profiler/hosts/test/run-fleet/:queueId/cancel` or
 `POST /api/benchmark/batch/:id/stop` on Benchmark. Core serves the same verdict
 at `/api/nerve-center/runtime-coordination/deploy-blockers?service=core|benchmark|all`.
+
+When the only blockers are background inference (`inference-automated`, or
+Core's own `watchdog-probe`), the launcher does not refuse at once. It posts a
+drain request (`POST /api/nerve-center/runtime-coordination/drain`), which
+`/runtime-coordination/active` reports as `drain`, and retries the lease for up
+to `AGENTX_RUNTIME_LEASE_DRAIN_SECONDS` (120 by default, 0 disables the wait).
+A resumable job that reads coordination before each unit, such as the Secretary
+mail catch-up, pauses on it, so the launcher waits for at most the unit in
+flight. The request is advisory, lives in the Core process and is withdrawn
+when the wait ends. Interactive, benchmark and maintenance blockers refuse
+immediately, as before.
+
 Images are built first (`up --build` included), so the lease, which keeps new
 work out, covers only the recreate: it is heartbeated and released once health
 is green. Recreating mid-batch would otherwise cut the workload and quarantine

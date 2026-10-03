@@ -94,6 +94,14 @@ describe('shared Core assets', () => {
     expect(copied.sort()).toEqual([...SHARED_CORE_ASSETS].sort());
   });
 
+  it.each(['/css/product-shell.css', '/css/shortcuts-modal.css', '/js/product-navigation.js'])(
+    'serves shared navigation resource %s', async (asset) => {
+      const response = await api.get(asset).expect(200);
+      expect(response.headers['content-type']).toMatch(asset.endsWith('.css') ? /css/ : /javascript/);
+      expect(response.text.length).toBeGreaterThan(100);
+    }
+  );
+
   it('serves the typed-confirmation control required by the shared footer', async () => {
     const response = await api.get('/js/utils/typed-confirmation.js');
     expect(response.status).toBe(200);
@@ -109,9 +117,11 @@ describe('shared Core assets', () => {
   it('renders product-only navigation in the demo profile', async () => {
     const response = await api.get('/leaderboard').expect(200);
     expect(response.text).toContain('data-agentx-profile="demo"');
-    expect(response.text).toContain('Operate');
-    expect(response.text).toContain('Knowledge');
-    expect(response.text).toContain('Evaluation');
+    expect(response.text).toContain('Atelier');
+    expect(response.text).toContain('Ask your knowledge');
+    expect(response.text).toContain('Compare models');
+    expect(response.text).not.toContain('Personnel');
+    expect(response.text).not.toContain('Famille');
     expect(response.text).not.toContain('Nerve Center');
     expect(response.text).not.toContain('OpenClaw');
   });

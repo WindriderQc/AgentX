@@ -12,9 +12,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   Reader (`/lecture`), animal sounds (`/kids/sounds`), PsyX (`/psyx`) and the
   Data Toolbox (`/data-toolbox`), read-only except naming or acknowledging a
   network device. The `demo` profile keeps chat,
-  model discovery, RAG and Benchmark. Every served page is reachable from the
-  Product navigation or the Household shell; a shared test fails when a page
-  has no link or a menu entry has no page.
+  model discovery, RAG and Benchmark. Core owns one common home at `/`,
+  `/portal` and `/ecosystem`; full-profile navigation groups Personnel, Famille
+  and Atelier, with Système as the secondary menu. Household, PsyX and Data
+  use the same navigation catalogue as Core, Benchmark and RAG. Every served
+  page is reachable from navigation or a contextual link; a shared test fails
+  when a page has no link or a menu entry has no page.
 - **Core ownership.** Conversations, selected notes, tasks, attachments and
   memory reads have one owner each, in Core. Surfaces and native harnesses
   (OpenClaw, VoiX, Data collectors, usage and memory-review tasks) call those

@@ -69,6 +69,14 @@ describe('durable local image operations', () => {
     expect((await service.retryArchive(first.id)).state).toBe('completed');
     expect(client.submit).toHaveBeenCalledTimes(1);
   });
+  test('changing the worker cannot retrieve a different worker’s output', async () => {
+    client.read.mockRejectedValueOnce(new Error('output temporarily unavailable'));
+    const first = await service.accept({ actionKey: 'action-worker-change', prompt: 'A lake' });
+    await waitFor(first.id, 'archive_failed');
+    loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:9999', profiles: { quality: profile }, defaultProfile: 'quality' });
+    await expect(service.retryArchive(first.id)).rejects.toMatchObject({ statusCode: 409 });
+    expect(client.submit).toHaveBeenCalledTimes(1);
+  });
   test('corrupt archived bytes are refused even when their size matches', async () => {
     const first = await service.accept({ actionKey: 'action-corrupt', prompt: 'A lake' });
     await waitFor(first.id, 'completed');
