@@ -170,3 +170,15 @@ test('hands-free WAV capture keeps its format and cancellation through the local
   assert.equal(upstream.signal.aborted, false);
   abort.abort(); assert.equal(upstream.signal.aborted, true);
 });
+
+test('the instance-qualified spoken Stop endpoint is shared with PsyX without creating speech text', async t => {
+  const previous = process.env.VOIX_SPOKEN_CONTROLS_ENABLED;
+  process.env.VOIX_SPOKEN_CONTROLS_ENABLED = 'true';
+  t.after(() => { if (previous === undefined) delete process.env.VOIX_SPOKEN_CONTROLS_ENABLED; else process.env.VOIX_SPOKEN_CONTROLS_ENABLED = previous; });
+  const client = createVoiceClient(VOICE_CONFIG, async (url, options) => {
+    assert.ok(url.endsWith('/v1/audio/transcriptions/controls'));
+    assert.equal(options.body.get('file').name, 'recording.wav');
+    return new Response(JSON.stringify({ text: '', control: 'stop' }));
+  });
+  assert.deepEqual(await client.transcribe(Buffer.from('RIFF'), { contentType: 'audio/wav', language: 'fr' }), { text: '', control: 'stop', language: 'fr' });
+});

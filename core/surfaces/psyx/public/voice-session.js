@@ -5,13 +5,7 @@
 let psyxVoiceSession = null;
 
 function spokenVoiceText(text) {
-  return window.NestorSpeech.speechText(String(text || '')
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/https?:\/\/\S+/g, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/^.*\|.*$/gm, ''));
+  return window.NestorSpeech.speechText(text);
 }
 
 function chooseInitialVoice(catalog) {
@@ -76,7 +70,9 @@ function createPsyXVoiceSession() {
       const response = await voiceSessionFetch('transcribe', { method: 'POST',
         headers: { 'Content-Type': blob.type || 'audio/wav', 'X-PsyX-Language': language || 'fr' }, body: blob }, signal);
       const payload = await response.json();
-      return { text: payload.data?.text || payload.text || '', language };
+      const transcript = payload.data || payload;
+      return { text: transcript.text || '', language: transcript.language || language,
+        ...(transcript.control === 'stop' ? { control: 'stop' } : {}) };
     },
     turn: async (_session, text, signal) => {
       const reply = await sendMessage(text, { source: 'voice', voiceSession: true, signal });

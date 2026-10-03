@@ -18,15 +18,7 @@ function cleanText(value, max = 4000) {
   return String(value || '').trim().slice(0, max);
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
+const { fetchWithTimeout } = require('../../src/services/voice/transport');
 
 function voixUrl(pathname) {
   const base = String(process.env.VOIX_BASE_URL || '').replace(/\/+$/, '');

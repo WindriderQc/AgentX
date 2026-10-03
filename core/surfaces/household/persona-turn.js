@@ -15,7 +15,7 @@ const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context'
 const { mathTurnFor } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels;
-const { scoreSpeechLanguage } = require('./public/speech-language');
+const { scoreSpeechLanguage, speechText } = require('../../public/js/voice/speech-language');
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
 const teamAddress = require('./team-address');
@@ -347,7 +347,7 @@ function createPersonaTurnHandler({
         mode: modeSummary(pack.modes.find((entry) => entry.id === session.modeId) || pack.modes[0]),
         // The surface reads this aloud, so it is told which voice to use rather
         // than re-deriving it from the question and disagreeing with the text.
-        reply: { text: replyText, language: spokenReplyLanguage(replyText, userText), speaker,
+        reply: { text: req.body?.channel === 'voice' ? speechText(replyText) : replyText, language: spokenReplyLanguage(replyText, userText), speaker,
           speech: speaker ? personaCatalog.speechFor(memberPersona || session.persona, spokenReplyLanguage(replyText, userText), {})
             : personaCatalog.speechFor(session.persona, spokenReplyLanguage(replyText, userText), session.voice) },
         // Present only when a clip was selected; the browser may offer playback

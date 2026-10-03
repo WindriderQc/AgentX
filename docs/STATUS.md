@@ -17,6 +17,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   memory reads have one owner each, in Core. Surfaces and native harnesses
   (OpenClaw, VoiX, Data collectors, usage and memory-review tasks) call those
   capabilities.
+- **Voice.** Household and PsyX share Core's browser conversation engine, VoiX
+  transport, synthesis validation, stream relay and spoken-text cleanup. Native
+  voice replies use the same speech boundary; physical device adapters retain
+  their own capture and playback. Voice choices are request-scoped, and Stop or
+  disconnect cancels upstream work without starting a backup request.
 - **Pipeline.** List, dossier and Planning references share Core's read-only
   next-action projection. **Needs attention** pages the engineering and
   private-lane queues separately, with an exact total or an explicit lower

@@ -2,6 +2,7 @@
 
 const { cleanText, stateForPrompt } = require('./stateRepository');
 const { SAFETY_INSTRUCTION } = require('./safety');
+const { SPOKEN_REPLY_INSTRUCTION } = require('../../services/voice/presentation');
 
 const PROMPT_VERSION = 3;
 const MODE_CONFIG = Object.freeze({
@@ -104,7 +105,9 @@ function composeSystemContext(state, control, { conversationId = null, safety = 
   const memory = cleanText(longitudinalSystemMessage(state, { conversationId }), 9000);
   const opening = !conversationId && (state.sessionDigests?.length || state.experiments?.some(item => ['planned', 'active'].includes(item.status)))
     ? SESSION_OPENING : '';
-  return [SYSTEM_PROMPT, memory, controlSystemMessage(control), opening, voice ? 'This is a spoken turn. Answer naturally in two to five short sentences, usually 30 to 90 words, without headings, Markdown, tables or lists. Ask at most one question. Preserve all necessary crisis resources and safety instructions even when this needs a longer answer.' : '', safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
+  return [SYSTEM_PROMPT, memory, controlSystemMessage(control), opening,
+    voice ? `${SPOKEN_REPLY_INSTRUCTION} This is a spoken turn. Answer naturally in two to five short sentences, usually 30 to 90 words, without lists. Ask at most one question.` : '',
+    safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
 }
 
 function boundedContext(messages, { maxMessages = 40, maxMessageCharacters = 12000, maxTotalCharacters = 35000 } = {}) {

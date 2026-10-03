@@ -167,14 +167,31 @@ from OpenClaw's conversational provider (the one that asks for the busy reply,
 used by Telegram) gets the same priority and keeps the host through its agent
 loop; its wait stops at 45 s, under the gateway's provider timeout.
 
-### Browser voice
+### Voice
 
 Core's `core/public/js/voice` owns browser microphone capture, speech endpoint
 detection, echo rejection and cancellable playback. Household and PsyX compose
-its conversation loop with their own session, transcription and turn adapters.
-PsyX uses only its protected routes; choosing a voice is request-scoped and never
-changes VoiX's shared settings. The browser buffers audio transiently and stops
-capture when the session closes or the page is hidden.
+its conversation loop with their protected session and turn adapters.
+`core/src/services/voice` owns the VoiX transport, primary/backup selection,
+request-scoped synthesis validation, deadlines through body consumption and
+stream forwarding. Both surfaces use these capabilities. Engine error events
+are rejected before audio headers are committed, and a disconnected caller
+cancels its upstream request without starting a backup request.
+
+The shared speech boundary removes code fences, images, links, table markup,
+HTML and presentation symbols from spoken text while preserving prose and
+emergency phone numbers. The browser, synthesis proxies and native voice reply
+projection use it; stored conversation text stays unchanged. Spoken prompt
+guidance is shared, with domain limits composed by each persona.
+
+Browser and native VoiX microphones are hardware adapters. Native sessions,
+devices, configuration and the media vault remain on their owning VoiX primary;
+stateless transcription and synthesis may use the configured backup. PsyX uses
+only its protected routes; choosing a voice never changes shared VoiX settings.
+Its initial female Canadian voice preference preserves explicit browser choices.
+The browser buffers audio transiently and stops capture when the session closes
+or the page is hidden. Native device capture and playback still require their
+own device acceptance.
 
 ### Attachments
 

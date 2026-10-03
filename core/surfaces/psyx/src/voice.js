@@ -1,18 +1,15 @@
 'use strict';
 
 const ALLOWED_LANGUAGES = new Set(['en', 'fr']);
-const ALLOWED_TTS_PROVIDERS = new Set(['kokoro', 'windows_sapi', 'voxcpm']);
-const MAX_TTS_TEXT_LENGTH = 50000;
 const MAX_TTS_VOICE_LENGTH = 120;
-// One Kokoro voice id (ff_siwis) or a weighted blend (af_heart:0.6+ff_siwis:0.4).
-const TTS_VOICE_PATTERN = /^[a-z0-9_]+(?::\d+(?:\.\d+)?)?(?:\+[a-z0-9_]+(?::\d+(?:\.\d+)?)?)*$/i;
-
 function voiceError(message, code, statusCode = 502) {
   return Object.assign(new Error(message), { code, statusCode });
 }
-
-function choice(value) {
-  return String(value ?? '').trim().toLowerCase();
+function choice(value) { return String(value ?? '').trim().toLowerCase(); }
+const { normalizeSynthesisRequest: coreSynthesisRequest } = require('../../../src/services/voice/request');
+const { createVoiceTransport } = require('../../../src/services/voice/transport');
+function normalizeSynthesisRequest(request) {
+  return coreSynthesisRequest(request, { errorPrefix: 'PSYX_VOICE' });
 }
 
 function sanitizeConfig(payload = {}) {
@@ -46,40 +43,14 @@ function sanitizeDevices(payload = {}) {
   })).filter((item) => Number.isInteger(item.index) && (item.input || item.output));
 }
 
-// Builds the request-scoped VoiX /api/tts payload. The selected engine, language and
-// voice travel with this one request only; PsyX never writes VoiX /config.
-function normalizeSynthesisRequest(request = {}) {
-  const source = typeof request === 'string' ? { text: request } : (request || {});
-  const text = String(source.text || '').trim();
-  if (!text) throw voiceError('text is required', 'PSYX_VOICE_TEXT_REQUIRED', 400);
-  if (text.length > MAX_TTS_TEXT_LENGTH) throw voiceError('text is too long', 'PSYX_VOICE_TEXT_TOO_LARGE', 413);
-
-  const payload = { text, save: false, response_format: 'wav' };
-  const ttsProvider = choice(source.ttsProvider);
-  if (ttsProvider) {
-    if (!ALLOWED_TTS_PROVIDERS.has(ttsProvider)) throw voiceError('ttsProvider must be kokoro, windows_sapi or voxcpm', 'PSYX_VOICE_INVALID_CONFIG', 400);
-    payload.tts_provider = ttsProvider;
-  }
-  const language = choice(source.language);
-  if (language && !ALLOWED_LANGUAGES.has(language)) throw voiceError('language must be en or fr', 'PSYX_VOICE_INVALID_CONFIG', 400);
-  const voice = String(source.voice || '').trim();
-  const validVoice = ttsProvider === 'windows_sapi' ? /^[\p{L}\p{N} _().-]+$/u.test(voice)
-    : ttsProvider === 'voxcpm' ? /^[a-z0-9_-]+$/i.test(voice) : TTS_VOICE_PATTERN.test(voice);
-  if (voice && (voice.length > MAX_TTS_VOICE_LENGTH || !validVoice)) {
-    throw voiceError('Select an installed voice or a valid Kokoro blend', 'PSYX_VOICE_INVALID_CONFIG', 400);
-  }
-  // Every explicit provider receives its own request preferences. An omitted
-  // provider retains the legacy service-default request shape.
-  if (ttsProvider) {
-    if (language) payload.language = language;
-    if (voice) payload.voice = voice;
-  }
-  return payload;
-}
-
-function createVoiceClient(config, fetchImpl = globalThis.fetch) {
+// Protected surface projections and errors compose the shared Core transport.
+// Voice selections are request-scoped; PsyX never writes VoiX /config.
+function createVoiceClient(config, fetchImpl) {
   const voice = config.voice || { mode: 'disabled' };
   const enabled = voice.mode === 'voix';
+  // A dedicated voice target never inherits another target's backup.
+  const fallbackUrl = String(voice.baseUrl || '').replace(/\/+$/, '') === String(process.env.VOIX_BASE_URL || '').replace(/\/+$/, '') ? process.env.VOIX_FALLBACK_URL : '';
+  const transport = createVoiceTransport({ baseUrl: voice.baseUrl, fallbackUrl, timeoutMs: voice.timeoutMs, fetchImpl });
 
   function requireEnabled() {
     if (!enabled) throw voiceError('Local voice is not configured for this PsyX deployment.', 'PSYX_VOICE_DISABLED', 503);
@@ -89,9 +60,9 @@ function createVoiceClient(config, fetchImpl = globalThis.fetch) {
     requireEnabled();
     let response;
     try {
-      response = await fetchImpl(`${voice.baseUrl}${path}`, { ...options,
-        signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
-    } catch {
+      response = await transport.request(path, options, timeoutMs);
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
       throw voiceError('The local voice service is unavailable.', 'PSYX_VOICE_UNAVAILABLE', 503);
     }
     if (!response.ok) {
@@ -146,17 +117,20 @@ function createVoiceClient(config, fetchImpl = globalThis.fetch) {
       form.append('file', new Blob([buffer], { type: contentType }), `recording.${extension}`);
       if (normalizedLanguage) form.append('language', normalizedLanguage);
       form.append('response_format', 'json');
-      const result = await json('/v1/audio/transcriptions', { method: 'POST', body: form, signal }, voice.longTimeoutMs);
+      const endpoint = process.env.VOIX_SPOKEN_CONTROLS_ENABLED === 'true'
+        ? '/v1/audio/transcriptions/controls' : '/v1/audio/transcriptions';
+      const result = await json(endpoint, { method: 'POST', body: form, signal }, voice.longTimeoutMs);
+      if (result.control === 'stop') return { text: '', control: 'stop', language: normalizedLanguage || 'auto' };
       const text = String(result.text || '').trim();
       if (!text) throw voiceError('No speech was detected in the recording.', 'PSYX_VOICE_NO_SPEECH', 422);
       return { text, language: result.language || normalizedLanguage || 'auto' };
     },
 
-    async synthesize(request) {
+    async synthesize(request, signal) {
       requireEnabled();
       const payload = normalizeSynthesisRequest(request);
       const response = await upstream('/api/tts', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       }, voice.longTimeoutMs);
       return {
         buffer: Buffer.from(await response.arrayBuffer()),

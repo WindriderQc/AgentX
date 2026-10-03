@@ -8,8 +8,8 @@ const crypto = require('crypto');
 const personaCatalog = require('./persona-catalog');
 const { voiceContract } = require('./voice-contract');
 const { createScriptRelay } = require('./asset-relay');
-const { createVoixUpstream } = require('./voix-upstream');
-const { createSynthesisHandler } = require('./voix-synthesis');
+const { getVoiceUpstream } = require('../../src/services/voice/transport');
+const { createSynthesisHandler } = require('../../src/services/voice/voix-synthesis');
 const {
   VOIX_TIMEOUT_MS, VOIX_MEDIA_VAULT_CATEGORIES, VOIX_MEDIA_VAULT_SUBJECTS, fetchWithTimeout, voixUrl, upstreamJson, readUpstreamJson, finiteNumber,
   publicVoixConfig, publicVoixConversation, publicVoixEvent, publicVoixMediaClip, publicVoixMediaVault, publicVoixSession
@@ -24,7 +24,7 @@ function registerVoixRoutes(app, {
   express, logger, models, conversations, personalNotes, runtimeServices, sounds, standardJsonParser, ensureCatalog, drainVoixMemoryAudits,
   envelope, fail, cleanText, assessSafety, detectMemoryRequest, normalizeVoixMemoryTurn, normalizeVoixTranscriptionMultipart, requireVoixMemoryConsumer,
   MEMORY_BLOCK_MAX_CHARS, MEMORY_RECALL_LIMIT, VOIX_MEMORY_SCHEMA_VERSION, VOIX_MEMORY_SCOPE_ID,
-  voixUpstream = createVoixUpstream()
+  voixUpstream = getVoiceUpstream()
 }) {
   const voix = express.Router();
   voix.get('/contract', (_req, res) => envelope(res, voiceContract({
@@ -106,7 +106,7 @@ function registerVoixRoutes(app, {
       return fail(res, error.status || 503, error.message, error.code || 'VOIX_UNAVAILABLE');
     }
   });
-  require('./voix-transcription').registerTranscriptionProxy(voix, {
+  require('../../src/services/voice/voix-transcription').registerTranscriptionProxy(voix, {
     express, normalizeMultipart: normalizeVoixTranscriptionMultipart, upstream: voixUpstream,
     fetchWithTimeout, timeoutMs: VOIX_LONG_TIMEOUT_MS, fail
   });

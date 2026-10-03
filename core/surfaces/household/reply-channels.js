@@ -1,5 +1,7 @@
 'use strict';
 
+const { SPOKEN_REPLY_INSTRUCTION } = require('../../src/services/voice/presentation');
+
 // A conversation reply has two audiences: the ear and the eye (#166, #167).
 // The model marks what belongs on screen with <show kind="…" title="…">…</show>;
 // everything outside those blocks is the spoken reply. A deterministic net then
@@ -244,7 +246,7 @@ function historyText(replyText, display = []) {
 function contract({ family = false, imageSources = [] } = {}) {
   return [
     'Your reply reaches two places: everything outside a show block is spoken aloud; show blocks are displayed on the user\'s screen and never spoken.',
-    'Keep the spoken part conversational and short, in plain text without Markdown. When details are on screen, say so naturally, for example "je te l\'ai mis à l\'écran".',
+    `${SPOKEN_REPLY_INSTRUCTION} When details are on screen, say so naturally, for example "je te l'ai mis à l'écran".`,
     `Put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: lists longer than three items, steps, tables, code, commands, links, identifiers and long details. Markdown is allowed inside show blocks only.`,
     family
       ? 'Never show passwords, keys, account details or private information.'

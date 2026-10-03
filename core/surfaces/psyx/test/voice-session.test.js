@@ -101,3 +101,13 @@ test('a pending dictation permission request cannot open a competing hands-free 
   assert.equal(h.$('voiceSessionDialog').open, true);
   h.context.stopVoiceSession();
 });
+
+test('a qualified spoken Stop is consumed by the shared loop without a private model turn', async () => {
+  let turns = 0;
+  const h = browser({ fetch: async () => new Response(JSON.stringify({ data: { control: 'stop', text: '', language: 'fr' } })),
+    sendMessage: async () => { turns++; } });
+  h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click(); await h.say();
+  assert.equal(turns, 0);
+  assert.equal(h.$('voiceSessionDialog').dataset.phase, 'listening');
+  h.context.stopVoiceSession();
+});
