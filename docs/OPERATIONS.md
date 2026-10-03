@@ -709,6 +709,16 @@ answer tries `secondary` next.
   `task_fallback_<reason>` code, and the lane observability projection
   (`taskFallbacks`) counts ladder use since the last start.
 
+A strict task never changes model, and never changes host unless the other
+host has its model installed: the scheduler's placement away from the
+configured host is verified first. While a benchmark claim holds the only host
+with the model, `/api/inference/generate` answers 503
+`NO_UNCLAIMED_OLLAMA_HOST` without dispatching. A claim, session hold or
+runtime admission refusal met at dispatch answers with its own code
+(`BENCHMARK_CLAIM_ACTIVE`, `HOST_SESSION_HOLD_BUSY`,
+`RUNTIME_INFERENCE_ADMISSION_DENIED`, `RUNTIME_INFERENCE_RECOVERY_REQUIRED`).
+The caller retries after the campaign or the hold.
+
 The ladder is chosen before dispatch. `DEGRADED_FALLBACK=true` is separate:
 one retry after a failed dispatch, normally of the same model on another host,
 for three interactive lanes.
