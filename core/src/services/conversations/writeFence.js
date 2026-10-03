@@ -10,9 +10,6 @@ const error = (code, message, statusCode = 503) => Object.assign(new Error(messa
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function uncertainMutation(cause) {
-  if ([mongoose.Error.ValidationError, mongoose.Error.CastError,
-    mongoose.Error.VersionError, mongoose.Error.DocumentNotFoundError]
-    .some(Type => cause instanceof Type)) return false;
   // A server rejection acknowledges the end of that command. A transport or
   // write-concern failure does not prove that the command stopped in MongoDB.
   return !(cause?.name === 'MongoServerError' && cause.code !== 64
@@ -72,7 +69,8 @@ async function run(owner, erase, action, { fence, waitMs = 2_000 } = {}) {
         return Promise.reject(error('CONVERSATION_FENCE_INVALID', 'This content writer has already settled.'));
       }
       const mutation = Promise.resolve().then(operation).catch(cause => {
-        if (uncertainMutation(cause)) { unknown = true; mutationFailure ||= cause; }
+        unknown ||= uncertainMutation(cause);
+        mutationFailure ||= cause;
         throw cause;
       });
       pending.add(mutation);

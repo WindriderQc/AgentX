@@ -7,7 +7,6 @@ const mongoose = require('mongoose');
 const Conversation = require('../../../models/Conversation');
 const { calculateMessageCost, calculateConversationCost } = require('../costCalculator');
 const logger = require('../../../config/logger');
-const { publishConversation } = require('../conversations/exchangeContext');
 
 // Typed failures reach the client as HTTP status (JSON) or an SSE `error`.
 function persistenceError(message, statusCode, code) {
@@ -210,9 +209,9 @@ async function persistConversation(params) {
             logger.error('Token usage update failed', { error: err.message });
         }
 
-        await publishConversation(conversation._id, () => conversation.save({ writeConcern: { w: 'majority', j: true } }));
+        await conversation.save();
     } catch (err) {
-        if (['CONVERSATION_NOT_FOUND', 'EXCHANGE_CLOSED'].includes(err?.code)) throw err;
+        if (err?.code === 'CONVERSATION_NOT_FOUND') throw err;
         // The conditional save matched nothing: the same turn was stored
         // concurrently (return it), the conversation was archived or deleted
         // meanwhile (not found), or anything else (failed save).

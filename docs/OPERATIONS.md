@@ -1,6 +1,6 @@
 # Operations
 
-The conversation storage primitives retain a durable writer token
+The internal conversation storage primitives retain a durable writer token
 when a worker dies or a Mongo mutation has an unknown outcome. An erasure call
 then reports `CONVERSATION_ERASURE_PENDING` or
 `CONVERSATION_WRITE_RECOVERY_REQUIRED`; it has not completed. The erasure barrier
@@ -8,16 +8,7 @@ continues to reject new content writes. A successful erasure means the prior
 writer settled and all of that owner's content was deleted with acknowledged
 Mongo writes. Other owners remain independent.
 
-Playground chat records accepted requests and response bytes before delivering
-them. Its recovery disclosure lists refused, interrupted or unassociated
-exchanges from Core in pages of 50, including older copies. Downloading a saved exchange never sends its
-request again. `GET /api/history/receipts/:receiptId` and the corresponding
-`DELETE` stay in the server-resolved Playground owner scope and use no-store
-responses. Erasing a recovery copy leaves an already saved conversation intact;
-erasing that conversation purges its associated copies and rejects late writes.
-Household, PsyX and external consumer routes keep their existing contracts.
-
-The transcript-page primitives are not attached to the `Conversation` model.
+These primitives are not activated on chat routes or the `Conversation` model.
 There is no automatic fence takeover or recovery endpoint. Never clear a writer
 token merely because it is old, or report erasure complete after an uncertain
 database command. Recovery requires independent proof that the exact writer and

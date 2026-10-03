@@ -200,20 +200,3 @@ test('an admitted mutation remains fenced even when its caller forgets to await 
     collection('conversation_exchange_packets').deleteMany({ owner: 'unawaited-writer' })));
   expect(await collection('conversation_exchange_packets').countDocuments({ _id: 'unawaited-packet' })).toBe(0);
 });
-
-test('a handled acknowledged rejection can return a verified existing write without retaining the fence', async () => {
-  const result = await withOwnerWrite('verified-duplicate', async fence => {
-    try { await fence.mutate(async () => { throw new MongoServerError({ message: 'Synthetic duplicate', code: 11000 }); }); }
-    catch (error) { expect(error.code).toBe(11000); return 'verified-existing-row'; }
-  });
-  expect(result).toBe('verified-existing-row');
-  expect(await fences().findOne({ _id: 'verified-duplicate', token: null, state: 'OPEN' })).toBeTruthy();
-});
-
-test('a caught or unawaited unknown mutation still invalidates successful settlement', async () => {
-  await expect(withOwnerWrite('ignored-unknown', fence => {
-    fence.mutate(async () => { throw new MongoNetworkError('Synthetic ambiguous write'); });
-    return 'not-proof';
-  })).rejects.toBeInstanceOf(MongoNetworkError);
-  expect(await fences().findOne({ _id: 'ignored-unknown', state: 'UNKNOWN', token: { $ne: null } })).toBeTruthy();
-});

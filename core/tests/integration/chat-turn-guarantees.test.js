@@ -63,10 +63,6 @@ afterAll(async () => { await harness?.close(); });
 beforeEach(async () => {
   jest.restoreAllMocks();
   await Conversation.deleteMany({});
-  for (const name of ['conversation_exchange_receipts', 'conversation_exchange_packets',
-    'conversation_payload_chunks', 'conversation_write_fences']) {
-    await mongoose.connection.collection(name).deleteMany({});
-  }
 });
 
 function sseEvents(text) {

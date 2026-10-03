@@ -7,7 +7,6 @@ const conversationSearchService = require('../src/services/conversationSearchSer
 const { withPlaygroundHistoryFilter } = require('../src/services/conversationSurfacePolicy');
 const logger = require('../config/logger');
 const { requireTypedConfirmation } = require('../src/helpers/typedConfirmation');
-const exchanges = require('../src/services/conversations/exchangeReceipts');
 const {
     TurnOutcomeError,
     persistTurnOutcome
@@ -124,37 +123,6 @@ router.post('/turn-outcome', async (req, res) => {
 });
 
 // HISTORY: Get list (workspace-aware)
-router.get('/receipts', async (req, res) => {
-    res.set('Cache-Control', 'private, no-store');
-    try {
-        const page = await exchanges.listRecoverable(`playground:${getUserId(res)}`, { cursor: req.query.cursor });
-        return res.json({ status: 'success', data: page.items, nextCursor: page.nextCursor });
-    } catch (error) {
-        return res.status(error.statusCode || 503).json({ status: 'error', code: error.code,
-            message: 'Saved exchanges could not be listed.' });
-    }
-});
-router.get('/receipts/:receiptId', async (req, res) => {
-    res.set('Cache-Control', 'private, no-store');
-    try {
-        const data = await exchanges.read(`playground:${getUserId(res)}`, req.params.receiptId);
-        return data ? res.json({ status: 'success', data })
-            : res.status(404).json({ status: 'error', code: 'EXCHANGE_NOT_FOUND', message: 'Exchange not found.' });
-    } catch (error) {
-        return res.status(error.statusCode || 503).json({ status: 'error', code: error.code,
-            message: 'The complete exchange could not be recovered.' });
-    }
-});
-router.delete('/receipts/:receiptId', async (req, res) => {
-    try {
-        const erased = await exchanges.eraseOne(`playground:${getUserId(res)}`, req.params.receiptId);
-        if (!erased) return res.status(404).json({ status: 'error', code: 'EXCHANGE_NOT_FOUND', message: 'Exchange not found.' });
-        return res.json({ status: 'success', data: { erased: true } });
-    } catch (error) {
-        return res.status(error.statusCode || 503).json({ status: 'error', code: error.code,
-            message: 'Exchange erasure has not completed. Retry after its pending writer settles.' });
-    }
-});
 router.get('/', async (req, res) => {
     try {
         const userId = getUserId(res);
@@ -441,24 +409,18 @@ router.delete('/:id', async (req, res) => {
         return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
     }
     try {
-        const filter = withPlaygroundHistoryFilter({
+        const conversation = await Conversation.findOneAndDelete(withPlaygroundHistoryFilter({
             _id: new mongoose.Types.ObjectId(req.params.id),
             userId: getUserId(res),
             'lifecycle.status': { $ne: 'archived' }
-        });
-        const owned = await Conversation.findOne(filter).select('_id clientTurnId messages.metadata.clientTurnId');
-        if (!owned) {
+        })).select('_id');
+        if (!conversation) {
             return res.status(404).json({ status: 'error', message: 'Conversation not found' });
         }
-        const conversation = await exchanges.eraseCanonical(`playground:${getUserId(res)}`, owned._id,
-            () => Conversation.findOneAndDelete(filter, { writeConcern: { w: 'majority', j: true } }).select('_id'),
-            { clientTurnIds: [...new Set([owned.clientTurnId, ...(owned.messages || []).map(message => message.metadata?.clientTurnId)].filter(Boolean))] });
-        if (!conversation) return res.status(404).json({ status: 'error', message: 'Conversation not found' });
         res.json({ status: 'success', data: { conversationId: publicId(conversation._id), deleted: true } });
     } catch (err) {
         logger.error('Failed to delete conversation:', err);
-        res.status(err.statusCode || 500).json({ status: 'error', code: err.code,
-            message: 'Conversation erasure has not completed.' });
+        res.status(500).json({ status: 'error', message: 'Could not delete conversation' });
     }
 });
 
