@@ -665,6 +665,49 @@ tools or thinking, its system prompt names the brain in use, its reply starts
 with a one-line notice (`🪶 Cerveau léger (…)`), and it carries the
 `X-AgentX-Degraded*` headers. When no rung answers, the busy reply remains.
 
+## Routing snapshot cache
+
+The runtime bridges (OpenClaw model discovery, inspection and every model call;
+Hermes model discovery and chat completions), the runtime configuration export,
+PsyX and `GET /api/consumers/v1/routing` read one effective routing snapshot:
+configured task routes, host preferences and per-task context and contract
+evidence. Building it reads each routed host's `/api/tags`, its Benchmark host
+profile and the registry entry, so Core shares one snapshot per option set.
+
+```bash
+AGENTX_ROUTING_SNAPSHOT_CACHE_MS=5000
+AGENTX_ROUTING_SNAPSHOT_STALE_MS=300000
+```
+
+- Fresh window (`AGENTX_ROUTING_SNAPSHOT_CACHE_MS`, default 5000): callers
+  share the snapshot. `0` rebuilds it on every call and turns the stale window
+  off.
+- Stale window (`AGENTX_ROUTING_SNAPSHOT_STALE_MS`, default 300000, counted
+  from the build): past the fresh window, a caller gets the held snapshot at
+  once while one background refresh replaces it for the next caller, so a model
+  call does not wait for the build. A failed refresh keeps the held snapshot
+  until it leaves the stale window; past it, callers wait for a build and
+  receive its error. `0` makes every caller past the fresh window wait.
+- The exact-artifact view (OpenClaw model discovery and inspection, the
+  Pipeline model alias gate, the runtime configuration export) is never served
+  stale: its qualification verdict is rebuilt once the fresh window is over.
+- Concurrent callers share one build. A caller that disconnects leaves alone;
+  a build callers wait for stops opening host reads once every one of them has
+  left, and a failed or abandoned build is never kept.
+- A router task override, an inference host registry change, a host preference
+  update or delete, and a pin add, change, removal or clear discard the
+  snapshot at once, fresh or stale: the next caller waits for a build and sees
+  the write.
+- Within the fresh window the exact artifact identity of a model on a host
+  (catalog digest, host profile, registry entry) is resolved once, whatever the
+  number of tasks routed to it.
+- Fields that change without one of those writes can lag by up to the stale
+  window on the views served stale: host status, loaded models (OpenClaw
+  resident model discovery), the benchmark claim flag and context evidence.
+  Admission, benchmark claims, session holds, busy checks and runtime
+  coordination are read live on every inference and never come from the
+  snapshot.
+
 ## Inference hosts
 
 Every Ollama endpoint Core may use is a host. `OLLAMA_HOST` (and the optional

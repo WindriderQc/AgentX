@@ -225,6 +225,26 @@
       "secret": false,
       "description": "true allows restore rehearsal in Core backups and RAG Qdrant snapshots. Any other value or unset: restore rehearsal is refused."
     },
+    "AGENTX_ROUTING_SNAPSHOT_CACHE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "5000",
+      "category": "routing",
+      "secret": false,
+      "description": "Fresh window: how long runtime bridges and trusted consumers share one effective routing snapshot and its artifact identity reads; router configuration and host preference or pin writes discard it at once. 0 rebuilds the snapshot on every call and disables the stale window. Invalid or unset: 5000 ms."
+    },
+    "AGENTX_ROUTING_SNAPSHOT_STALE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "300000",
+      "category": "routing",
+      "secret": false,
+      "description": "Stale window, counted from the build: past the fresh window and younger than this, a routing snapshot is returned at once while one background refresh replaces it; the exact-artifact view is never served stale. 0 makes every caller past the fresh window wait for a build. Invalid or unset: 300000 ms."
+    },
     "AGENTX_RUNTIME_BRIDGES_ENABLED": {
       "services": [
         "core"

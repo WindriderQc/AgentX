@@ -659,7 +659,7 @@ function createTrustedRuntimeServices(overrides = {}) {
       }
     }),
     routing: Object.freeze({
-      getEffectiveSnapshot: options => buildEffectiveRoutingSnapshot(deps, options),
+      getEffectiveSnapshot: require('../services/routing/routingSnapshotCache').effectiveSnapshotReader(deps),
       // #143: an exact-model conversation borrows a light task's fallback ladder.
       planFallback: request => require('../services/routing/taskFallbackLadder').planExactModelFallback(request)
     }),
