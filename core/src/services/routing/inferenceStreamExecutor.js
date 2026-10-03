@@ -3,6 +3,7 @@
 const fetch = require('node-fetch');
 const { StringDecoder } = require('string_decoder');
 const { Transform, Readable } = require('stream');
+const { protectContext } = require('./contextIntegrityPolicy');
 const {
   beginAdmittedOllamaAttempt, createAttemptAbortBridge,
   createOllamaStreamTerminalValidator, readOllamaResponse,
@@ -216,6 +217,7 @@ async function executeAdmittedOllamaStream(options, dependencies = {}) {
   let relaying = false;
   let receivedResponse = false;
   try {
+    options = { ...options, payload: await protectContext({ ...options, signal: abortBridge.signal }, dependencies) };
     scope = await beginAdmittedOllamaAttempt({ ...options, stream: true, signal: abortBridge.signal }, dependencies);
     const endpoint = options.mode === 'embed' ? 'embed' : options.useChat ? 'chat' : 'generate';
     const dispatchedAt = Date.now();

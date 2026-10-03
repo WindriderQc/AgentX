@@ -816,6 +816,18 @@ AGENTX_ROUTING_SNAPSHOT_STALE_MS=300000
 
 ## Inference hosts
 
+Ordinary Core inference requires a stable Ollama version of at least 0.30.10.
+Before dispatch, Core reads `/api/version` with a five-second bound; missing,
+malformed, prerelease or older evidence returns
+`INFERENCE_CONTEXT_POLICY_UNAVAILABLE` (503). Chat and generation send
+`truncate: false` and `shift: false`; embeddings send `truncate: false`. Input
+and history are preserved for the runtime to accept or explicitly reject.
+Configured `num_ctx`, output limits, model artifacts and pin preferences stay
+under their existing authority. Disabling context shifting can reload an
+already resident runner, so qualify startup latency on the instance. A direct
+lane does not opt out. Benchmark/Profiler probes require an exact Core workload
+reservation to retain their boundary-testing behavior.
+
 Every Ollama endpoint Core may use is a host. `OLLAMA_HOST` (and the optional
 `OLLAMA_HOST_2`, `OLLAMA_HOST_3`) bootstrap the first hosts under the keys
 `primary`, `secondary` and `tertiary`. Every further endpoint is registered from

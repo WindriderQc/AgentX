@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const logger = require('../../../config/logger');
 const hostGate = require('../hostGate');
 const { beginInferenceAdmission } = require('../inferenceAdmissionService');
+const { protectContext } = require('./contextIntegrityPolicy');
 
 const OLLAMA_ABORT_SOURCE = Object.freeze({
   CALLER: 'caller',
@@ -236,6 +237,9 @@ function settleAdmissionFailure(error, { cancelled = false, onCancelled = () => 
     logger.warn('[InferenceProxy] inference admission lost; caller still connected', { host, model, lane, code: error.code });
     return { cancelled: false, response: { status: 503, body: { status: 'error', code: error.code, message: error.message } } };
   }
+  if (error?.code === 'INFERENCE_CONTEXT_POLICY_UNAVAILABLE') {
+    return { cancelled: false, response: { status: 503, body: { status: 'error', code: error.code, message: error.message } } };
+  }
   return { cancelled: false, response: null };
 }
 
@@ -301,6 +305,7 @@ async function beginAdmittedOllamaAttempt(options, dependencies = {}) {
 }
 
 async function executeAdmittedOllamaAttempt(options, dependencies = {}) {
+  options = { ...options, payload: await protectContext(options, dependencies) };
   const scope = await beginAdmittedOllamaAttempt(options, dependencies);
   try {
     const result = await executeOllamaAttempt({ ...options, signal: scope.signal }, dependencies);
