@@ -653,6 +653,28 @@ describe('Nerve Center API Routes', () => {
     });
   });
 
+  describe('PUT /inference/routing-config/:taskType', () => {
+    it('saves one task override and resets it', async () => {
+      const saved = await http.request
+        .put('/api/nerve-center/inference/routing-config/quick_chat')
+        .send({ model: 'patched:1b', host: 'tertiary' })
+        .expect(200);
+
+      expect(saved.body.status).toBe('success');
+      expect(saved.body.data.taskType).toBe('quick_chat');
+      expect(saved.body.data.effective).toEqual({ model: 'patched:1b', host: 'tertiary' });
+      expect(saved.body.data.isOverride).toBe(true);
+
+      const reset = await http.request
+        .put('/api/nerve-center/inference/routing-config/quick_chat')
+        .send({ resetToDefault: true })
+        .expect(200);
+
+      expect(reset.body.data.isOverride).toBe(false);
+      expect(reset.body.data.effective).toEqual(ORIGINAL_TASK_MODELS.quick_chat);
+    });
+  });
+
   // ════════════════════════════════════════════════════════════════════════
   // 4. GET /api/nerve-center/routing/log
   // ════════════════════════════════════════════════════════════════════════
