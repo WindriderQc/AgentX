@@ -97,6 +97,22 @@ describe('parental access at the single household gateway', () => {
     expect(home.text).toContain('id="householdTools"');
   });
 
+  test('parent controls and their legacy reading URLs stay adult-only without revoking the parent session', async () => {
+    const urls = ['/dad/family', '/lecture/parents', '/lecture/parents.html'];
+    for (const url of urls) {
+      await edge(request(app).get(url)).expect(302).expect('Location', '/unlock?next=' + encodeURIComponent(url));
+    }
+    const unlock = await edge(request(app).post('/api/access/unlock')).send({ code: '739251', next: '/dad/family' }).expect(200);
+    const cookie = unlock.headers['set-cookie'][0].split(';')[0];
+    for (const url of urls) {
+      const page = await edge(request(app).get(url)).set('Cookie', cookie).expect(200);
+      expect(page.text).toMatch(/id="nav-trigger-family-group"[^>]*aria-expanded="false"/);
+      expect(page.text).toMatch(/href="\/dad\/family" class="dropdown-item active"\s+aria-current="page"\s+data-access="adult"/);
+      expect(page.text).not.toContain('Suivi des lectures');
+      await edge(request(app).get('/api/access/authorize')).set('Cookie', cookie).expect(204);
+    }
+  });
+
   test('one parental cookie opens both personal surfaces; family navigation revokes it for all tabs', async () => {
     const unlock = await edge(request(app).post('/api/access/unlock')).send({ code: '739251', next: '//elsewhere.invalid' }).expect(200);
     expect(unlock.body.data.next).toBe('/dad');

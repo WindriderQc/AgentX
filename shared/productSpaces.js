@@ -10,7 +10,6 @@ function productSpaces(link) {
         item('dad', 'Nestor', '/dad', 'fa-comment'),
         item('dad-day', 'Ma journée', '/dad/day', 'fa-calendar-day'),
         item('dad-memories', 'Souvenirs', '/dad/memories', 'fa-bookmark'),
-        item('dad-family', 'Suivi familial', '/dad/family', 'fa-house'),
         item('finance', 'Finance', '/finance', 'fa-wallet'),
         item('psyx', 'PsyX', '/psyx', 'fa-brain')
       ] },
@@ -20,8 +19,7 @@ function productSpaces(link) {
         item('kids', 'Enfants', '/kids', 'fa-shapes'),
         item('lecture', 'Lecture', '/lecture', 'fa-book-open'),
         item('kids-sounds', 'Sons et jeux', '/kids/sounds', 'fa-music'),
-        { section: 'Parents' },
-        item('lecture-parents', 'Suivi des lectures', '/lecture/parents', 'fa-book', 'core', { adult: true })
+        item('dad-family', 'Espace parents', '/dad/family', 'fa-user-shield', 'core', { adult: true })
       ] },
     { id: 'workshop-group', label: 'Atelier', icon: 'fa-bolt', entry: '/pipeline',
       description: 'Créer, chercher et faire avancer tes projets.', children: [
