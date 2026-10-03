@@ -19,6 +19,7 @@ const { scoreSpeechLanguage, speechText } = require('../../public/js/voice/speec
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
 const teamAddress = require('./team-address');
+const { turnDirective } = require('./persona-prompt');
 
 // A team member's own personality, from the shared catalog definitions.
 function teamPersona(agentId) {
@@ -193,7 +194,10 @@ function createPersonaTurnHandler({
           }
         }
         const browserSoundPlayback = (!requiredSession || requiredSession.browser === true) && req.body?.soundPlayback === true;
-        sound = pack.childSafe && (!requiredSession || requiredSession.browser === true) ? sounds.select(userText) : null;
+        // The clip an explicit request names is chosen here, in both spaces, so playing it never
+        // depends on a model calling a tool: the voice model announced the sound and called nothing.
+        sound = (pack.childSafe ? !requiredSession || requiredSession.browser === true : browserSoundPlayback) ? sounds.select(userText) : null;
+        const preselected = Boolean(sound);
         const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores].filter(Boolean).join('\n\n'),
           modeId: session.modeId, sound, latestUserText: userText };
         let lastProposal = null, previousBrowserOutput = null;
@@ -225,7 +229,7 @@ function createPersonaTurnHandler({
           isLlmX ? '' : brain.contextFor(session.sessionId)].join('').trim();
         const nativeInstructions = agentInstructions(turnSession, turnSession.persona,
           pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode,
-          { soundPlayback: !pack.childSafe && browserSoundPlayback, channel: req.body?.channel })
+          { soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected, channel: req.body?.channel })
           + (member ? teamAddress.memberInstruction(speaker.name) : '') + workshopPrompt(workshop)
           + sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : '') + (isLlmX ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }));
         const agentxInstructions = [systemPromptFor(pack, { modeId: session.modeId }), session.persona?.identity,
@@ -243,6 +247,7 @@ function createPersonaTurnHandler({
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
           instructions: nativeInstructions, agentxInstructions, ...(turnContext ? { turnContext } : {}),
+          ...(turnDirective(context) ? { turnDirective: turnDirective(context) } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
           signal: abort.signal, onWaiting: () => event('status', { phase: 'waiting_host' }), onActivity: activity => event('status', { phase: 'activity', activity }),
@@ -272,7 +277,7 @@ function createPersonaTurnHandler({
           : { status: 'ready', source: 'session-audit', messageCount: history.length };
         if (!pack.childSafe) continuity.personal = { status: 'ready', authority: 'agentx.core', notes: memories };
         toolEvidence = result.tools;
-        if (!pack.childSafe && browserSoundPlayback) {
+        if (!pack.childSafe && browserSoundPlayback && !preselected) {
           const receipt = toolEvidence?.status === 'observed' && toolEvidence.runId ? toolEvidence.receipts?.filter(row =>
             ['agentx__get_sound', 'get_sound'].includes(row.tool) && row.runId === toolEvidence.runId).at(-1) : null;
           sound = receipt?.status === 'verified' ? sounds.get(receipt.soundId) : null;
