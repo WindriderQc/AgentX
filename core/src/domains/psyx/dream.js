@@ -6,6 +6,7 @@
 // it writes directly; every change is logged so the user can read and undo it.
 
 const crypto = require('crypto');
+const { selectDreamTranscript, normalizeDreamCoverage, tooLarge } = require('./dreamContext');
 
 const DREAM_PROMPT_VERSION = 2;
 const DREAM_KINDS = Object.freeze(['night', 'session', 'manual']);
@@ -53,21 +54,6 @@ Rules:
 - Empty sections are fine. Do not pad.
 - Write in the language of the conversations.`;
 
-function transcript(conversations, maxCharacters) {
-  const blocks = [];
-  let remaining = maxCharacters;
-  // Newest conversations first when the budget is short; printed oldest first.
-  for (const conversation of [...conversations].reverse()) {
-    const lines = (conversation.messages || []).filter(message => ['user', 'assistant'].includes(message.role))
-      .map(message => `${message.role === 'assistant' ? 'PsyX' : 'User'}: ${clean(message.content, 6000)}`);
-    const block = `### Session ${clean(conversation.updatedAt || conversation.createdAt, 30)} (${clean(conversation.id, 40)})\n${lines.join('\n\n')}`;
-    if (block.length > remaining) { if (!blocks.length) blocks.unshift(block.slice(-remaining)); break; }
-    blocks.unshift(block);
-    remaining -= block.length;
-  }
-  return blocks.join('\n\n');
-}
-
 // Everything PsyX holds about him, with the ids a retirement must name.
 function dreamMemory(state, { wide = true } = {}) {
   const memory = {};
@@ -88,10 +74,13 @@ function protectedIds(state) {
   return new Set(MEMORY_KINDS.flatMap(key => (state[key] || []).filter(item => item.source === 'user' || item.correctedBy === 'user').map(item => item.id)));
 }
 
-function dreamMessages({ state, conversations, sources = [], kind = 'night', maxCharacters = 120000, sourceCharacters = 12000, wide = true, fresh = false, now = new Date() }) {
+function prepareDreamRequest({ state, conversations, sources = [], kind = 'night', maxCharacters = 120000, sourceCharacters = 12000, wide = true, fresh = false, now = new Date() }) {
   const memory = dreamMemory(state, { wide });
   const portrait = !fresh && state.portrait?.sections?.length ? { sections: state.portrait.sections, updatedAt: state.portrait.updatedAt } : null;
-  const sourceText = sources.filter(source => source?.text).map(source => `### ${source.title}\n${clean(source.text, sourceCharacters)}`).join('\n\n');
+  const selectedSources = sources.filter(source => source?.text).map(source => ({ ...source, selected: clean(source.text, sourceCharacters) }));
+  const sourceCoverage = selectedSources.map(source => ({ key: source.key || '', includedCharacters: source.selected.length,
+    availableCharacters: String(source.text).trim().length, complete: source.selected.length === String(source.text).trim().length }));
+  const sourceText = selectedSources.map(source => `### ${source.title}\n${source.selected}`).join('\n\n');
   const head = [
     `Now: ${now.toISOString()}. Kind of reflection: ${kind}.`,
     `His own profile:\n${JSON.stringify(state.profile || {})}`,
@@ -100,13 +89,17 @@ function dreamMessages({ state, conversations, sources = [], kind = 'night', max
     `Memory, experiments, check-ins and session digests:\n${JSON.stringify(memory)}`,
     sourceText ? `Other sources:\n${sourceText}` : ''
   ].filter(Boolean).join('\n\n');
-  // The conversations take what the rest leaves, and never less than a quarter of the budget.
-  const room = Math.max(Math.floor(maxCharacters / 4), maxCharacters - head.length);
-  return [
+  const separator = '\n\nConversations (selected material only; omitted text is unknown to you):\n';
+  const room = maxCharacters - head.length - separator.length;
+  if (room < 0) throw tooLarge();
+  const selected = selectDreamTranscript(conversations, room);
+  return { coverage: { ...selected.coverage, sourceCoverage }, messages: [
     { role: 'system', content: DREAM_SYSTEM_PROMPT },
-    { role: 'user', content: `${head}\n\nConversations:\n${transcript(conversations, room) || 'none'}` }
-  ];
+    { role: 'user', content: `${head}${separator}${selected.text || 'none'}` }
+  ] };
 }
+
+function dreamMessages(options) { return prepareDreamRequest(options).messages; }
 
 function normalizeIntake(value) {
   return Object.fromEntries(INTAKE_DOMAINS.map(domain => [domain, INTAKE_LEVELS.includes(value?.[domain]) ? value[domain] : 'unknown']));
@@ -181,7 +174,7 @@ function normalizeStoredPortrait(raw) {
     questions: list(raw.questions, LIMITS.questions, item => clean(item, 300)),
     intake: normalizeIntake(raw.intake),
     sources: list(raw.sources, 8, item => clean(item, 80)),
-    covers: { conversations: Number(raw.covers?.conversations) || 0, through: date(raw.covers?.through) }
+    covers: normalizeDreamCoverage(raw.covers)
   };
 }
 
@@ -229,5 +222,5 @@ function normalizeDreamLog(value) {
 
 module.exports = {
   DREAM_PROMPT_VERSION, DREAM_KINDS, PORTRAIT_SECTIONS, INTAKE_DOMAINS, MEMORY_KINDS, DREAM_SYSTEM_PROMPT, LIMITS,
-  dreamMessages, dreamMemory, readDream, statementKey, normalizeStoredPortrait, normalizeDreamLog, normalizeRejected, portraitSystemMessage
+  dreamMessages, prepareDreamRequest, dreamMemory, readDream, statementKey, normalizeStoredPortrait, normalizeDreamLog, normalizeRejected, portraitSystemMessage
 };

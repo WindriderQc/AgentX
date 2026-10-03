@@ -40,7 +40,7 @@ function renderDreamChip() {
   chip.textContent = running
     ? 'PsyX approfondit ton portrait…'
     : `PsyX a approfondi ton portrait ${DREAM_KIND_LABELS[portrait?.kind] || ''}${findings ? ` · ${findings} constat${findings === 1 ? '' : 's'}` : ''}`;
-  chip.title = 'Entre les séances, PsyX relit tout et réécrit ce qu’il comprend de toi. Tu peux tout lire, retirer et annuler.';
+  chip.title = 'Entre les séances, PsyX approfondit ce qu’il comprend de toi. Le portrait indique la couverture du texte analysé. Tu peux lire, retirer et annuler.';
   $('tabUnderstanding').dataset.badge = fresh && !running ? '•' : '';
 }
 
@@ -73,7 +73,7 @@ function renderPortrait() {
   } else {
     const sources = (portrait.sources || []).map(key => DREAM_SOURCE_LABELS[key] || key);
     $('portraitMeta').textContent = [dream.status?.status === 'failed' ? 'La dernière réflexion n’a pas abouti' : null, `Écrit le ${new Date(portrait.updatedAt).toLocaleString('fr-CA', { dateStyle: 'long', timeStyle: 'short' })}`,
-      `${portrait.covers?.conversations || 0} séance${portrait.covers?.conversations === 1 ? '' : 's'} relue${portrait.covers?.conversations === 1 ? '' : 's'}`,
+      dreamCoverageLabel(portrait.covers),
       sources.length ? `avec ${sources.join(', ')}` : null,
       portrait.location === 'frontier' ? 'réflexion infonuagique' : 'réflexion locale'].filter(Boolean).join(' · ');
     $('portraitView').innerHTML = portrait.sections.map(section => `<section class="state-section"><h4>${escapeHtml(PORTRAIT_TITLES[section.key] || section.key)}</h4>${section.statements.map(item => `
@@ -96,6 +96,13 @@ function renderPortrait() {
       <div class="proposal-actions"><button type="button" data-dream-undo="${escapeHtml(entry.id)}">Annuler cette réflexion</button></div>
     </article>`).join('')}</section>` : '';
   renderDreamChip();
+}
+
+function dreamCoverageLabel(covers = {}) {
+  if (covers.availableConversations == null) return 'Couverture du texte non mesurée pour ce portrait';
+  const partial = !covers.complete || covers.sourceCoverage?.some(source => !source.complete);
+  const missing = (covers.unavailableSources || []).map(key => DREAM_SOURCE_LABELS[key] || key);
+  return `${covers.conversations}/${covers.availableConversations} séances consultées · ${covers.messages}/${covers.availableMessages} messages · ${partial ? 'couverture partielle' : 'texte des séances complet'}${missing.length ? ` · sources indisponibles : ${missing.join(', ')}` : ''}`;
 }
 
 async function pollDream(accessEpoch, epoch = dream.epoch) {

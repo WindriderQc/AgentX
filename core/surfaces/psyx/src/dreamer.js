@@ -1,6 +1,6 @@
 'use strict';
 
-const { dreamMessages, readDream } = require('../../../src/domains/psyx/dream');
+const { prepareDreamRequest, readDream } = require('../../../src/domains/psyx/dream');
 const { familyTimeZone } = require('../../../src/domains/household/family');
 
 // Runs the dream: once a session has gone quiet, every night when there is
@@ -36,19 +36,28 @@ function createDreamer({ config, provider, stateRepository, conversationReposito
       && now().getTime() - time(portrait.updatedAt) < REFRESH_MS) return { skipped: 'unchanged' };
     const location = locationFor(state);
     const gathered = sources ? await sources.gather({ now: now() }) : { sources: [], unavailable: [] };
-    const messages = lane => dreamMessages({ state, conversations, sources: gathered.sources, kind, now: now(), ...BUDGETS[lane] });
+    const prepare = lane => prepareDreamRequest({ state, conversations, sources: gathered.sources, kind, now: now(), ...BUDGETS[lane] });
+    const primary = prepare(location === 'frontier' ? 'frontier' : 'local');
+    let local = null;
+    if (location === 'frontier') {
+      try { local = prepare('local'); }
+      catch (error) { local = { error: { code: error.code, message: error.message } }; }
+    }
     const result = await provider.complete({
-      messages: messages(location === 'frontier' ? 'frontier' : 'local'),
+      messages: primary.messages,
       // If the frontier lane fails, the local route dreams over its own bounded material.
-      local: location === 'frontier' ? { messages: messages('local') } : null,
+      local,
       taskType: settings.taskType || 'deep_reasoning', timeoutMs: settings.timeoutMs || 600000, maxTurnMs: settings.timeoutMs || 600000,
       location, work: 'dream'
     });
     const dream = readDream(result.content, { state });
     if (!dream || !dream.sections.length) throw Object.assign(new Error('The dream returned no usable portrait'), { code: 'PSYX_DREAM_UNUSABLE' });
+    const used = result.location === 'local' && local ? local : primary;
+    if (used.error) throw Object.assign(new Error(used.error.message), { code: used.error.code });
     const recorded = await stateRepository.recordDream(userId, {
       dream, kind, model: result.model || null, location: result.location === 'frontier' ? 'frontier' : 'local',
-      sources: gathered.sources.map(source => source.key), covers: { conversations: conversations.length, through },
+      sources: used.coverage.sourceCoverage.filter(source => source.includedCharacters > 0).map(source => source.key),
+      covers: { ...used.coverage, through, unavailableSources: gathered.unavailable || [] },
       resetAt: state.resetAt, stillWanted: () => job(userId).epoch === epoch
     });
     return recorded.skipped ? { skipped: recorded.skipped } : { entry: recorded.entry, model: result.model || null };

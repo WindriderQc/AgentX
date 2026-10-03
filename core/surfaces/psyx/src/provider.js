@@ -37,6 +37,7 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
   }
 
   async function localComplete(request, extra = {}) {
+    if (request.local?.error) throw Object.assign(new Error(request.local.error.message), { code: request.local.error.code });
     const work = request.work || 'review';
     const result = await runtimeServices.inference.execute({
       mode: 'chat', stream: false, taskType: request.taskType, think: false, format: 'json', timeoutMs: request.timeoutMs,
