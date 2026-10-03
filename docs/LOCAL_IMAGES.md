@@ -64,9 +64,11 @@ The `qwen21` family uses Qwen-Image-2.1 ConvRot INT8 diffusion and encoder
 files, its own VAE, Euler/simple sampling and lossless CPU prefix caching.
 Its license is research/evaluation: label that profile explicitly. Enable
 only the resolution and step budget qualified on the actual host. References
-are decoded and their editing pixel budget is explicit; a large source photo
+are decoded, bounded to an 8:1 aspect ratio, and their editing pixel budget is explicit; a large source photo
 does not silently create a 12 MP render. The browser prepares smaller JPEG
-reference copies for computation. It preserves the generated output at full
+reference copies; Qwen editing follows the first reference's framing at the
+selected pixel budget, with a margin for its 32-pixel rounding.
+It preserves the generated output at full
 quality; upload originals remain the conversation attachment capability's job.
 
 ## Request and recovery contract

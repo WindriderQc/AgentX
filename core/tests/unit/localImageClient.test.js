@@ -40,7 +40,7 @@ test('full decode refuses truncated output and pixel bombs before allocating pix
 test('graphs keep reference order and cap editing pixels independently of uploaded dimensions', () => {
   const profile = { family: 'qwen21', diffusion: 'a.safetensors', encoder: 'b.safetensors', vae: 'c.safetensors', steps: 25 };
   const graph = workflow(profile, { prompt: 'Edit image 1', width: 1024, height: 1024, seed: 1 }, ['first.png', 'second.png'], 'operation');
-  expect(graph.text.inputs).toMatchObject({ image_1: ['ref0', 0], image_2: ['ref1', 0], resolution: 1024 });
+  expect(graph.text.inputs).toMatchObject({ 'images.image_1': ['ref0', 0], 'images.image_2': ['ref1', 0], resolution: 992 });
   expect(graph.sample.inputs.latent_image).toEqual(['text', 2]);
   expect(graph.cache.inputs).toMatchObject({ device: 'cpu', dtype: 'default' });
 });

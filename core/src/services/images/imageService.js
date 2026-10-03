@@ -51,7 +51,10 @@ function validate(body, config) {
   const originals = (body.references || []).map(item => {
     if (typeof item !== 'string' || item.length > 3 * 1024 * 1024 || !/^[A-Za-z0-9+/]+={0,2}$/.test(item)) throw fail('Référence image invalide ou trop volumineuse.');
     const bytes = Buffer.from(item, 'base64');
-    try { reference(bytes); } catch { throw fail('La référence doit être une image PNG/JPEG complète de 4 MP maximum.'); }
+    try {
+      const image = decode(bytes, 4194304);
+      if (Math.max(image.width, image.height) / Math.min(image.width, image.height) > 8) throw new Error('Extreme aspect ratio');
+    } catch { throw fail('La référence doit être une image PNG/JPEG complète de 4 MP maximum, avec un ratio maximal de 8:1.'); }
     return bytes;
   });
   const request = { prompt: body.prompt.trim(), width, height, seed };
