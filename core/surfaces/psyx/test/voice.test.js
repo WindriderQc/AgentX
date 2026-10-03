@@ -182,3 +182,26 @@ test('the instance-qualified spoken Stop endpoint is shared with PsyX without cr
   });
   assert.deepEqual(await client.transcribe(Buffer.from('RIFF'), { contentType: 'audio/wav', language: 'fr' }), { text: '', control: 'stop', language: 'fr' });
 });
+
+test('browser voice remains ready on the shared backup without reading or borrowing native device state', async t => {
+  const before = { base: process.env.VOIX_BASE_URL, fallback: process.env.VOIX_FALLBACK_URL };
+  process.env.VOIX_BASE_URL = VOICE_CONFIG.voice.baseUrl;
+  process.env.VOIX_FALLBACK_URL = 'http://backup.test';
+  t.after(() => {
+    for (const [key, value] of [['VOIX_BASE_URL', before.base], ['VOIX_FALLBACK_URL', before.fallback]]) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+  const calls = [];
+  const client = createVoiceClient(VOICE_CONFIG, async url => {
+    calls.push(url);
+    if (url.startsWith(VOICE_CONFIG.voice.baseUrl)) return new Response('{}', { status: 503 });
+    return new Response(JSON.stringify({ status: 'ok', version: 'synthetic-backup', running: true }));
+  });
+  const status = await client.status();
+  assert.equal(status.reachable, true);
+  assert.equal(status.activeUpstream, 'fallback');
+  assert.equal(status.nativeAvailable, false); assert.equal(status.nativeSessionRunning, false);
+  assert.deepEqual(status.devices, []);
+  assert.deepEqual(calls, [VOICE_CONFIG.voice.baseUrl + '/health', 'http://backup.test/health']);
+});

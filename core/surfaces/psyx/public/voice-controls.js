@@ -67,7 +67,7 @@ function renderVoiceStatus(status = null, error = null) {
   $('voiceStatusDot').classList.toggle('offline', !status?.reachable);
   $('voiceStatusText').textContent = !state.voice.enabled
     ? 'La voix n’est pas activée sur cette installation'
-    : status?.reachable ? 'VoiX local est prêt' : 'VoiX local est indisponible';
+    : status?.reachable ? (status.activeUpstream === 'fallback' ? 'Voix locale de secours active' : 'VoiX local est prêt') : 'VoiX local est indisponible';
   $('voiceStatusDetail').textContent = status?.reachable
     ? `Reconnaissance ${status.config?.whisperModel || 'Whisper'} · synthèse par défaut ${status.config?.ttsProvider || 'locale'} · VoiX ${status.serviceVersion || ''}`
     : (error?.message || 'L’audio reste désactivé tant que le service de voix privé est injoignable.');

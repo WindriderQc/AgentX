@@ -45,7 +45,10 @@ function createVoiceTransport({ baseUrl, fallbackUrl = '', timeoutMs = 10000, fe
     // Sessions, configuration and native device state always belong to primary.
     return fetchWithTimeout(`${String(baseUrl).replace(/\/+$/, '')}${path}`, options, deadlineMs, fetchImpl);
   }
-  return { request, upstream };
+  async function health() {
+    return upstream.send('/health', url => fetchWithTimeout(url, {}, timeoutMs, fetchImpl));
+  }
+  return { request, health, upstream };
 }
 
 module.exports = { fetchWithTimeout, getVoiceUpstream, createVoiceTransport };

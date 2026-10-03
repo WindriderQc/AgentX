@@ -89,16 +89,27 @@ function createVoiceClient(config, fetchImpl) {
 
     async status() {
       requireEnabled();
-      const [health, settings, devicePayload] = await Promise.all([
-        json('/health'), json('/config'), json('/devices')
-      ]);
+      let observed;
+      try { observed = await transport.health(); }
+      catch { throw voiceError('The local voice service is unavailable.', 'PSYX_VOICE_UNAVAILABLE', 503); }
+      if (!observed.response.ok) throw voiceError('The local voice service is unavailable.', 'PSYX_VOICE_UNAVAILABLE', 503);
+      let health;
+      try { health = await observed.response.json(); }
+      catch { throw voiceError('The local voice service returned an invalid response.', 'PSYX_VOICE_INVALID_RESPONSE'); }
+      // Backup availability enables browser speech; native state still belongs
+      // to primary. Never wait for or borrow a powered-off primary's devices.
+      const [settings, devicePayload] = observed.upstream === 'primary' ? await Promise.all([
+        json('/config').catch(() => null), json('/devices').catch(() => null)
+      ]) : [null, null];
       return {
         enabled: true,
         reachable: health.status === 'ok',
         serviceVersion: String(health.version || ''),
-        nativeSessionRunning: Boolean(health.running),
-        config: sanitizeConfig(settings),
-        devices: sanitizeDevices(devicePayload)
+        activeUpstream: observed.upstream,
+        nativeAvailable: Boolean(settings && devicePayload),
+        nativeSessionRunning: observed.upstream === 'primary' && Boolean(health.running),
+        config: sanitizeConfig(settings || {}),
+        devices: sanitizeDevices(devicePayload || {})
       };
     },
 
