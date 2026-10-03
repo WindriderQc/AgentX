@@ -3,7 +3,7 @@
 (function exposeSpeechLanguage(root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
-  if (root) root.NestorSpeech = api;
+  if (root) { root.AgentXSpeech = api; root.NestorSpeech = api; }
 }(typeof globalThis !== 'undefined' ? globalThis : this, () => {
   const PROFILES = Object.freeze({
     en: Object.freeze({
@@ -100,6 +100,12 @@
   // reply, translate technical identifiers, or remove ordinary words (e.g. chouette).
   function speechText(text) {
     return withoutMediaReferences(text)
+      .replace(/(```|~~~)[\s\S]*?(?:\1|$)/g, '')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/<\/?[a-z][^>]*>/gi, '')
+      .replace(/^[ \t]*\|.*\|[ \t]*$/gm, '')
       .replace(/[0-9#*]\uFE0F?\u20E3/gu, '')
       .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\u200D\uFE0E\uFE0F\u{E0020}-\u{E007F}]/gu, '')
       .replace(/\\([_*`])/g, '$1')

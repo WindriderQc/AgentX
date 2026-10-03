@@ -349,6 +349,17 @@ describe('built-in Household surface on Core', () => {
     // An unreadable cursor is ignored rather than hiding every conversation.
     expect((await request(app).get(`${familyBase}/recent?limit=5&before=not-a-date`).expect(200)).body.data.sessions).toHaveLength(5);
   });
+  test('native voice replies use Core speech cleanup while canonical history keeps the original prose', async () => {
+    const original = 'Bonjour 🦉. **Tout va bien.** 911 et 811 restent disponibles.';
+    executeForTest.mockImplementationOnce(async () => ({ ok: true, body: { response: original }, metadata: { model: 'synthetic' } }));
+    const base = '/api/voice-personas/private/sessions';
+    const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const response = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Comment ça va?', channel: 'voice' }).expect(200);
+    expect(response.body.data.reply.text).toBe('Bonjour . Tout va bien. 911 et 811 restent disponibles.');
+    const record = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
+    expect(record.messages.at(-1).content).toContain('🦉');
+    expect(record.messages.at(-1).content).toContain('911 et 811');
+  });
   test('native voice delivery retries preserve one canonical transcript and one turn count', async () => {
     const previous = process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN;
     process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = 'synthetic-voice-consumer';

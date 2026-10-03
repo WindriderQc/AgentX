@@ -55,7 +55,7 @@ test('composed emoji are silent while natural words, numbers, math and identifie
   assert.equal(speechText(literal), literal);
   assert.equal(speechText('Hello 🦉 Alex, **all clear**.'), 'Hello Alex, all clear.');
   assert.equal(speechText('## Bilan\n- **Disponible** : `MongoDB`\n> _À vérifier_ : __Ollama__'), 'Bilan\nDisponible : MongoDB\nÀ vérifier : Ollama');
-  assert.equal(speechText('```sh\ncheck_health --timeout=7\n```'), 'check_health --timeout=7');
+  assert.equal(speechText('```sh\ncheck_health --timeout=7\n```'), '');
   assert.equal(speechText(speechText('🦉 **C’est prêt.**')), 'C’est prêt.');
 });
 

@@ -241,18 +241,13 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.get('/voice/config', asyncRoute(async (_req, res) => responseData(res, await voiceClient.config())));
   api.get('/voice/catalog', asyncRoute(async (_req, res) => responseData(res, await voiceClient.catalog())));
   api.post('/voice/synthesize/stream', asyncRoute(async (req, res) => {
-    const { Readable } = require('node:stream');
-    const { pipeline } = require('node:stream/promises');
+    const { relaySynthesisStream } = require('../../../src/services/voice/stream');
     const abort = new AbortController();
     const close = () => { if (!res.writableFinished) abort.abort(); };
     res.once('close', close);
     try {
       const response = await voiceClient.stream(req.body, abort.signal);
-      res.type('application/x-ndjson').set('X-Accel-Buffering', 'no');
-      for (const name of ['x-voix-provider', 'x-voix-voice', 'x-voix-language']) {
-        if (response.headers.has(name)) res.set(name, response.headers.get(name));
-      }
-      await pipeline(Readable.fromWeb(response.body), res);
+      await relaySynthesisStream(response, res);
     } catch (error) {
       if (res.headersSent || abort.signal.aborted) res.destroy();
       else throw error;
@@ -275,14 +270,21 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.post('/voice/synthesize', asyncRoute(async (req, res) => {
     // Request-scoped: { text, ttsProvider?, language?, voice? }. Nothing here changes VoiX defaults.
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const audio = await voiceClient.synthesize({ text: body.text, ttsProvider: body.ttsProvider, language: body.language, voice: body.voice });
-    res.setHeader('Content-Type', audio.contentType);
-    res.setHeader('Content-Length', audio.buffer.length);
-    const applied = audio.applied || {};
-    if (applied.ttsProvider) res.setHeader('X-PsyX-TTS-Provider', applied.ttsProvider);
-    if (applied.language) res.setHeader('X-PsyX-TTS-Language', applied.language);
-    if (applied.voice) res.setHeader('X-PsyX-TTS-Voice', applied.voice);
-    return res.send(audio.buffer);
+    const abort = new AbortController();
+    const close = () => { if (!res.writableFinished) abort.abort(); };
+    res.once('close', close);
+    try {
+      const audio = await voiceClient.synthesize({ text: body.text, ttsProvider: body.ttsProvider, language: body.language, voice: body.voice }, abort.signal);
+      if (abort.signal.aborted) return;
+      res.setHeader('Content-Type', audio.contentType);
+      res.setHeader('Content-Length', audio.buffer.length);
+      const applied = audio.applied || {};
+      if (applied.ttsProvider) res.setHeader('X-PsyX-TTS-Provider', applied.ttsProvider);
+      if (applied.language) res.setHeader('X-PsyX-TTS-Language', applied.language);
+      if (applied.voice) res.setHeader('X-PsyX-TTS-Voice', applied.voice);
+      return res.send(audio.buffer);
+    } catch (error) { if (!abort.signal.aborted) throw error; }
+    finally { res.off('close', close); }
   }));
 
   const routingHandler = async (_req, res) => responseData(res, await provider.routing());

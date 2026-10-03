@@ -336,3 +336,31 @@ test('closing private speech recognition cancels VoiX before any late transcript
     assert.equal(signal.aborted, true);
   });
 });
+
+test('a failed speech engine is reported before private stream audio headers', async () => {
+  const voice = { stream: async () => new Response('{"type":"error","message":"private engine details"}\n', { headers: { 'Content-Type': 'application/x-ndjson' } }) };
+  await withServer(createApp({ config: config(), database: repositories(), provider: {}, voice, logger: { error() {} } }), async base => {
+    const response = await fetch(base + '/api/psyx/voice/synthesize/stream', { method: 'POST',
+      headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Bonjour' }) });
+    assert.equal(response.status, 503);
+    assert.match(response.headers.get('content-type'), /application\/json/);
+    assert.doesNotMatch(await response.text(), /private engine details/);
+  });
+});
+
+test('closing buffered private synthesis cancels VoiX as well', async () => {
+  let signal;
+  const voice = { synthesize: async (_request, requestSignal) => {
+    signal = requestSignal;
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  } };
+  await withServer(createApp({ config: config(), database: repositories(), provider: {}, voice, logger: { error() {} } }), async base => {
+    const abort = new AbortController();
+    const pending = fetch(base + '/api/psyx/voice/synthesize', { method: 'POST', signal: abort.signal,
+      headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Bonjour' }) }).catch(error => error);
+    while (!signal) await new Promise(resolve => setImmediate(resolve));
+    const stopped = new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    abort.abort(); await stopped; await pending;
+    assert.equal(signal.aborted, true);
+  });
+});
