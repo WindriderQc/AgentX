@@ -133,7 +133,9 @@
     const data = await api(`/api/voice-personas/${privateLane ? 'private/' : ''}sessions`, {
       method: 'POST',
       signal,
-      body: JSON.stringify({ packId, scopeId, modeId })
+      // Kids Room and Lecture are Nestor too: the conversation carries his personality, so its
+      // voice (including the instance's voice for him) is the one these pages read with.
+      body: JSON.stringify({ packId, scopeId, modeId, personaId: 'nestor' })
     });
     signal?.throwIfAborted();
     state.session = data.session;
@@ -293,6 +295,10 @@
       || window.NestorSpeech.detectSpeechLanguage(result?.reply || '');
   }
 
+  // Kids Room and Lecture speak through the voice ladder the conversations use
+  // (PersonaPresentation.speechChoices): the reading voice chosen on this
+  // browser, then the conversation's personality voice (Nestor, with the
+  // instance's voice for him), then that personality's catalog voice.
   async function speak(text, languageHint = '', override = null) {
     text = window.NestorSpeech.speechText(text);
     if (!text || state.outputMuted) return;
@@ -301,15 +307,18 @@
     try {
       if (!window.VoixAudio) throw new Error('Local speech player unavailable');
       state.speech ||= new window.VoixAudio.Speech();
-      const choice = override || window.VoixAudio.splitVoice(readingVoices[profile.language]) || { provider: 'kokoro', voice: profile.nativeVoice };
+      const choices = override ? [override]
+        : window.PersonaPresentation.speechChoices(state.session?.persona, profile.language, { selections: readingVoices });
       await state.speech.speak(async signal => {
-        const response = await fetch('/api/voix/synthesize/stream', {
-          method: 'POST', signal, credentials: 'include', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, language: profile.language, tts_provider: choice.provider,
-            voice: choice.voice || '', native_defaults: choice.native_defaults === true }),
-        });
-        if (!response.ok) throw new Error('Local speech is unavailable. Select another local voice or use the explicit browser preview.');
-        return response;
+        for (const choice of choices) {
+          const response = await fetch('/api/voix/synthesize/stream', {
+            method: 'POST', signal, credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, language: profile.language, tts_provider: choice.provider,
+              voice: choice.voice || '', native_defaults: choice.native_defaults === true }),
+          });
+          if (response.ok) return response;
+        }
+        throw new Error('Local speech is unavailable. Select another local voice or use the explicit browser preview.');
       });
     } catch (error) { if (error.name !== 'AbortError') toast(error.message); }
   }

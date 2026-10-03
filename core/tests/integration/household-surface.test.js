@@ -841,6 +841,32 @@ describe('built-in Household surface on Core', () => {
     }
   });
 
+  test('Kids Room and Lecture conversations carry the Nestor personality, so his instance voice reads the reply (#261)', async () => {
+    const previous = process.env.HOUSEHOLD_PERSONA_VOICES;
+    process.env.HOUSEHOLD_PERSONA_VOICES = JSON.stringify({ nestor: 'voxcpm|synthetic_voice' });
+    const base = '/api/voice-personas/sessions';
+    try {
+      for (const packId of ['kidx_nestor', 'kidx_reader']) {
+        // The request both pages send.
+        const session = (await request(app).post(base).send({ packId, scopeId: 'family', modeId: '', personaId: 'nestor' }).expect(201)).body.data.session;
+        expect(session.persona).toMatchObject({ id: 'nestor', voice: { provider: 'voxcpm', source: 'instance',
+          voices: { fr: 'synthetic_voice', en: 'synthetic_voice' }, fallback: { provider: 'kokoro' } } });
+        const turn = (await request(app).post(`${base}/${session.sessionId}/turns/text`)
+          .send({ text: 'Que veut dire le mot curieux?', channel: 'voice' }).expect(200)).body.data;
+        expect(turn.reply.speech).toMatchObject({ provider: 'voxcpm', voice: 'synthetic_voice' });
+        expect(turn.session.persona.voice.source).toBe('instance');
+      }
+      // Without an instance voice the same request reads with Nestor's catalog voice.
+      delete process.env.HOUSEHOLD_PERSONA_VOICES;
+      const catalog = (await request(app).post(base).send({ packId: 'kidx_nestor', scopeId: 'family', modeId: '', personaId: 'nestor' }).expect(201)).body.data.session;
+      expect(catalog.persona.voice).toMatchObject({ provider: 'kokoro', presentation: 'masculine' });
+      // A family conversation accepts no other personality.
+      await request(app).post(base).send({ packId: 'kidx_nestor', personaId: 'secretary' }).expect(400);
+    } finally {
+      if (previous === undefined) delete process.env.HOUSEHOLD_PERSONA_VOICES; else process.env.HOUSEHOLD_PERSONA_VOICES = previous;
+    }
+  });
+
   test('screen blocks stream as show events, never as speech, and secrets are not retained (#167)', async () => {
     const base = '/api/voice-personas/private/sessions';
     const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
