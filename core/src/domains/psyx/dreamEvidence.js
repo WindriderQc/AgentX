@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const KINDS = new Set(['conversation', 'profile', 'memory', 'notes', 'tasks', 'mail']);
+const KINDS = new Set(['conversation', 'profile', 'memory', 'experiment', 'checkIn', 'assessment', 'notes', 'tasks', 'mail']);
 const plain = value => typeof value === 'string' ? value.trim().normalize('NFC') : '';
 
 function evidenceSource(kind, text, { conversationId = null, messageIndex = null, key = '' } = {}) {

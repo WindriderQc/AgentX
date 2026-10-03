@@ -50,7 +50,8 @@ function portraitList(title, items) {
 }
 
 function portraitEvidence(item) {
-  const labels = { conversation: 'tes mots en séance', profile: 'ton profil', memory: 'ta mémoire', ...DREAM_SOURCE_LABELS };
+  const labels = { conversation: 'tes mots en séance', profile: 'ton profil', memory: 'ta mémoire',
+    experiment: 'ton expérience enregistrée', checkIn: 'ton check-in', assessment: 'ton questionnaire calculé', ...DREAM_SOURCE_LABELS };
   return (item.evidence || []).map(quote => {
     const ref = (item.evidenceRefs || []).find(candidate => candidate.quote === quote);
     const source = ref ? `Citation retrouvée dans ${labels[ref.kind] || 'la source'}` : 'Ancienne citation : source non vérifiée';

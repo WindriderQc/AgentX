@@ -132,6 +132,8 @@ it may add memory items (source `dream`) and mark as resolved items the user
 neither wrote nor corrected. References record the source kind, conversation and
 message index when applicable, and a hash of the source text. The interface can
 read the original message, and identifies older quotations as unverified.
+Recorded experiment actions/results, check-ins and code-scored questionnaire
+records are eligible sources; an experiment's earlier hypothesis is not.
 Quotation matching checks provenance, not the validity of an interpretation.
 The portrait reports included/available sessions and messages, partial sources
 and unavailable sources for the actual inference lane. A latest message that

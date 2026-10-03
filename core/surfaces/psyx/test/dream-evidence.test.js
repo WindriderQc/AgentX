@@ -78,6 +78,21 @@ test('old portraits retain their quotations without acquiring verified provenanc
   assert.deepEqual(portrait.sections[0].statements[0].evidence, ['ancienne preuve']);
 });
 
+test('recorded outcomes and scored measures can support trends without recycling experiment hypotheses', () => {
+  const state = { ...emptyState(), experiments: [{ hypothesis: 'Tu aurais peur du rejet.', action: 'Prendre une pause avant de répondre.',
+    result: 'J’ai répondu plus calmement.', outcome: 'worked', createdAt: '2026-10-01' }],
+  checkIns: [{ score: 7, phase: 'opening', at: '2026-10-01' }],
+  assessments: [{ kind: 'phq9', score: 12, band: 'moderate', at: '2026-10-01' }] };
+  const request = prepareDreamRequest({ state, conversations: [session] });
+  for (const [quote, kind] of [['J’ai répondu plus calmement.', 'experiment'], ['"score":7', 'checkIn'], ['"score":12', 'assessment']]) {
+    const dream = readDream(answer(quote), request);
+    assert.equal(dream.sections[0].statements[0].evidenceRefs[0].kind, kind);
+  }
+  for (const quote of ['Tu aurais peur du rejet.', '"score":20', 'J’ai retrouvé un sommeil parfait.']) {
+    assert.deepEqual(readDream(answer(quote), request).sections, []);
+  }
+});
+
 test('verified references survive Mongo persistence for portraits, findings and dream memory', async () => {
   const mongo = await MongoMemoryServer.create();
   const client = await MongoClient.connect(mongo.getUri());
