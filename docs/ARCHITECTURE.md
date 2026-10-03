@@ -250,6 +250,20 @@ Household's ladder is the chosen voice, the personality's voice, its catalog
 voice, then the device's own voice. PsyX has one chosen voice and no device
 voice: its retry is the same request on its protected route.
 
+For a surface that keeps it, the loop measures each voice turn
+(`voice-timeline.js`): milliseconds from the moment the end of the person's
+speech is decided (after the endpoint's trailing silence) to the transcript,
+the turn request, the first reply text, the holding phrase if one played, and
+the start of the reply's first clause, with whether the turn was interrupted by
+then. This is browser timing, not an acoustic measurement. The loop sends it
+once per turn, when that first clause starts or the turn ends without one; a
+surface that answers `pending` receives it once more when the turn's request
+has ended. `core/src/services/voice/timeline.js` keeps only the known marks as
+bounded whole numbers. Household stores them as `voiceTimings` on the recorded
+turn (`POST …/sessions/:sessionId/voice-timings`, by the browser's turn id,
+within the session's own space) and the parent journal shows the main delays.
+PsyX provides no store, so nothing is measured or sent there.
+
 The shared speech boundary removes code fences, images, links, table markup,
 HTML and presentation symbols from spoken text while preserving prose and
 emergency phone numbers. The browser, synthesis proxies and native voice reply

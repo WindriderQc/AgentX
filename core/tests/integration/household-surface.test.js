@@ -903,6 +903,28 @@ describe('built-in Household surface on Core', () => {
     expect(prompt.messages[0].content).toContain('kind="secret"');
   });
 
+  test('a family voice turn keeps the browser’s timeline on its record, and the parent journal reads it (#9)', async () => {
+    const base = '/api/voice-personas/family/sessions';
+    const ndjson = (res, done) => { let text = ''; res.setEncoding('utf8'); res.on('data', chunk => { text += chunk; }); res.on('end', () => done(null, text)); };
+    const id = (await request(app).post(base).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const turnId = '9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f', other = '9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e60';
+    executeForTest.mockResolvedValueOnce({ ok: true, metadata: { model: 'synthetic' }, body: { response: 'Une girafe mange des feuilles.' } });
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Que mange une girafe ?', channel: 'voice', stream: true, turnId })
+      .buffer(true).parse(ndjson).expect(200);
+    const timings = { sttDone: 640, requestSent: 655.4, firstDelta: 4200, firstAudio: 5100, interrupted: false, note: 'never stored' };
+    const stored = (await request(app).post(`${base}/${id}/voice-timings`).send({ turnId, timings }).expect(200)).body.data;
+    expect(stored.voiceTimings).toEqual({ sttDone: 640, requestSent: 655, firstDelta: 4200, firstAudio: 5100, interrupted: false });
+    // Another space, another turn and unbounded values never reach the record.
+    expect((await request(app).post(`/api/voice-personas/private/sessions/${id}/voice-timings`).send({ turnId, timings }).expect(404)).body.code).toBe('VOICE_TIMINGS_TURN_NOT_RECORDED');
+    expect((await request(app).post(`${base}/${id}/voice-timings`).send({ turnId: other, timings }).expect(404)).body.code).toBe('VOICE_TIMINGS_TURN_NOT_RECORDED');
+    expect((await request(app).post(`${base}/${id}/voice-timings`).send({ turnId, timings: { firstAudio: 1e12 } }).expect(400)).body.code).toBe('VOICE_TIMINGS_INVALID');
+    const journal = (await request(app).get('/api/voice-personas/audit/recent?childSafe=true&limit=10').expect(200)).body.data.audit;
+    expect(journal.find(row => row.clientTurnId === turnId).voiceTimings).toEqual(stored.voiceTimings);
+    const resumed = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+    expect(resumed.turns[0].voiceTimings).toEqual(stored.voiceTimings);
+    expect((await Conversation.findOne({ 'messages.turn.clientTurnId': turnId }).lean()).messages.at(-1).turn.voiceTimings).toEqual(stored.voiceTimings);
+  });
+
   test('an image block is resolved by Core, streamed to the visual zone and kept with the turn (#168)', async () => {
     const base = '/api/voice-personas/family/sessions';
     const previous = process.env.SEARXNG_URL, originalFetch = global.fetch, searches = [];

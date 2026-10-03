@@ -3,6 +3,7 @@
   'use strict';
   const speechLanguage = typeof module !== 'undefined' && module.exports ? require('./speech-language') : root.NestorSpeech;
   const PlaybackHold = (typeof module !== 'undefined' && module.exports ? require('./playback-hold') : root.NestorPlaybackHold)?.PlaybackHold;
+  const VoiceTimeline = (typeof module !== 'undefined' && module.exports ? require('./voice-timeline') : root.AgentXVoiceTimeline)?.VoiceTimeline;
   // Capture while this script is evaluating; currentScript is null once the user opens the microphone.
   const scriptUrl = root.document?.currentScript?.src;
   const captureWorkletUrl = scriptUrl
@@ -442,6 +443,9 @@
       this.audio.quiet();
       this.show('transcribing');
       const turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(), interrupted: false };
+      // The end of the person's speech has just been decided: a surface that keeps
+      // voice timings gets this turn's timeline from that moment.
+      if (this.io.timings && VoiceTimeline) turn.timeline = new VoiceTimeline(this.io.now);
       const lifetimeSignal = this.abort.signal;
       const excerptId = this.audio.reviewStatus?.().id;
       this.audio.recordTranscription?.(excerptId, 'pending', '', { turnId: turn.id, bytes: blob.size });
@@ -455,7 +459,7 @@
         let text = typeof result === 'string' ? result : String(result?.text || '');
         const stopControl = result?.control === 'stop';
         if (!this.current(epoch)) return;
-        transcribed = true;
+        transcribed = true; turn.timeline?.mark('sttDone');
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text, typeof result === 'object' && result ? result : {});
         if (isTranscriptHallucination(text)) text = '';
         if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) text = '';
@@ -505,7 +509,13 @@
         // Playback can already be queued while a stream is being cancelled.
         if (turn.interrupted) { turn.speech.abort(); await turn.interruption?.catch(() => {}); }
         lifetimeSignal.removeEventListener('abort', cancel);
+        this.reportTimeline(turn); // a turn that ended before any reply audio
       }
+    }
+    // A surface that keeps voice timings receives each voice turn's timeline once:
+    // when the reply's first clause starts playing, else when the turn ends.
+    reportTimeline(turn) {
+      void turn.timeline?.report(values => this.io.timings(turn.session, turn.id, values), () => turn.interrupted, turn.requestEnded);
     }
     // One model turn, spoken or typed: stream the reply, speak it clause by
     // clause, play a structured recording, then listen again.
@@ -516,7 +526,9 @@
       let pending = '', streamed = false, firstChunk = true, speechError = null, playback = Promise.resolve();
       let synthesis = Promise.resolve(), prefetchSlot = Promise.resolve();
       let spokenLanguage = speechLanguage.turnSpeechLanguage(text, detectedLanguage, this.selection.language);
-      const speak = text => {
+      // `notice` marks words that are not the reply (a waiting notice): the
+      // timeline's first audio is the reply's own first clause.
+      const speak = (text, notice = false) => {
         text = (this.io.speechText || speechLanguage.speechText)(text);
         if (!text.trim() || !this.owns(turn)) return false;
         turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
@@ -551,6 +563,7 @@
           }
           this.monitor(turn);
           this.show('speaking');
+          if (!notice) { turn.timeline?.mark('firstAudio'); this.reportTimeline(turn); }
           try { await this.audio.play(bytes, turn.speech.signal); }
           catch (error) {
             // An accepted stream can still fail while it plays (its engine stopped).
@@ -575,15 +588,16 @@
       // before it plays, and it does not hold the synthesis of the first clause.
       let holdingSpeech = null;
       const dropHolding = () => { if (holdingSpeech && !holdingSpeech.playing) holdingSpeech.abort.abort(); };
+      turn.session = this.session; turn.timeline?.mark('requestSent');
       const response = this.io.turn(this.session, text, turn.request.signal, delta => {
         if (!this.owns(turn)) return;
-        streamed = true; pending += delta; dropHolding();
+        streamed = true; pending += delta; dropHolding(); turn.timeline?.mark('firstDelta');
         let length;
         while ((length = nextSpeechChunkLength(pending, firstChunk))) {
           if (speak(pending.slice(0, length))) firstChunk = false;
           pending = pending.slice(length);
         }
-      }, { turnId: turn.id, onNotice: speak,
+      }, { turnId: turn.id, onNotice: text => speak(text, true),
         // The surface reports that every spoken word was sent: say the last clause
         // now rather than when the turn completes (its closing work can be slow).
         onSayEnd: () => { if (this.owns(turn) && streamed) { speak(pending); pending = ''; } },
@@ -601,7 +615,7 @@
           const bytes = await prepared;
           await this.awaitCandidate(turn);
           if (hold.abort.signal.aborted || !this.owns(turn) || speechError) return;
-          hold.playing = true;
+          hold.playing = true; turn.timeline?.mark('holdingPhrase');
           this.monitor(turn); this.show('speaking');
           turn.spoken = ((turn.spoken || '') + ' ' + phrase).slice(-800); // only a phrase that plays can be heard back
           await this.audio.play(bytes, hold.abort.signal);
@@ -610,11 +624,12 @@
         }).catch(() => {}).finally(() => turn.speech.signal.removeEventListener('abort', cancel));
       }, holdingDelay);
       holding?.unref?.();
-      response.finally(() => clearTimeout(holding)).catch(() => {});
+      turn.requestEnded = response.then(() => {}, () => {}).finally(() => clearTimeout(holding));
       // Listen during inference, but confirm speech before cancelling it.
       // Playback still stops immediately when the user speaks over Nestor.
       this.monitor(turn);
       const reply = await response;
+      turn.timeline?.mark('firstDelta'); // an unstreamed reply: its text arrives with the completed turn
       await this.awaitCandidate(turn);
       if (!this.owns(turn)) return;
       this.turnPending = false;

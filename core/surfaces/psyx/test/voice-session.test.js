@@ -130,6 +130,21 @@ test('PsyX keeps its silence while it thinks: the shared holding phrase stays of
   h.context.stopVoiceSession();
 });
 
+test('PsyX keeps no voice timeline: the shared loop measures only for a surface that stores it', async () => {
+  const h = wiring(); h.context.wireVoiceSession();
+  await h.$('voiceSessionStart').listeners.click(); await h.say();
+  assert.equal(h.captured.io.timings, undefined);
+  assert.deepEqual(h.calls.filter(call => call.url).map(call => call.url), ['/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream'],
+    'nothing about the private turn leaves through another route');
+  // The same loop reports as soon as a surface provides somewhere to keep it.
+  const sent = [];
+  h.captured.io.timings = async (_session, turnId, timings) => { sent.push({ turnId, timings }); return {}; };
+  await h.say();
+  assert.equal(sent.length, 1);
+  assert.deepEqual(Object.keys(sent[0].timings).sort(), ['firstAudio', 'firstDelta', 'interrupted', 'requestSent', 'sttDone']);
+  h.context.stopVoiceSession();
+});
+
 test('PsyX speaks only a confirmed reply: its turn sends no text early, so nothing is flushed before it', async () => {
   let confirm;
   const h = browser({ sendMessage: () => new Promise(resolve => { confirm = resolve; }) });

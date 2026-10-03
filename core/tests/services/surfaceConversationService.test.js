@@ -81,6 +81,16 @@ describe('surface conversations in the canonical Core store', () => {
     expect(row.messages[1].content).toBe('Synthetic rejected');
   });
 
+  test('a voice turn keeps its browser timeline, attached by the client turn that produced it', async () => {
+    const recorded = await conversations.recordTurn(turn(session, { channel: 'voice', clientTurnId: 'synthetic-client-turn-1' }));
+    expect(recorded.voiceTimings).toBeUndefined();
+    const voiceTimings = { sttDone: 640, requestSent: 655, firstDelta: 4200, firstAudio: 5100, interrupted: false };
+    const updated = await conversations.updateTurn({ sessionId: session.sessionId, clientTurnId: 'synthetic-client-turn-1', channel: 'voice' }, { $set: { voiceTimings } });
+    expect(updated).toMatchObject({ _id: recorded._id, replyText: 'Synthetic reply', voiceTimings });
+    expect(await conversations.updateTurn({ sessionId: session.sessionId, clientTurnId: 'another-client-turn', channel: 'voice' }, { $set: { voiceTimings } })).toBeNull();
+    expect((await conversations.getTurn({ traceId: recorded.traceId })).voiceTimings).toEqual(voiceTimings);
+  });
+
   test('native memory workers claim only one exact pending turn and recover stale claims', async () => {
     const recorded = await conversations.recordTurn(turn(session, { source: 'voix-native', memoryState: 'captured' }));
     const query = { traceId: recorded.traceId, source: 'voix-native', memoryState: 'captured',
