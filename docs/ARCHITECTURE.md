@@ -211,6 +211,9 @@ loop; its wait stops at 45 s, under the gateway's provider timeout.
 
 ### Voice
 
+See [agents, personalities and voice](AGENTS_AND_VOICE.md) for the selection
+boundaries and the evidence required to qualify conversation and speech paths.
+
 Core's `core/public/js/voice` owns browser microphone capture, speech endpoint
 detection, echo rejection and cancellable playback. Household and PsyX compose
 its conversation loop with their protected session and turn adapters.
