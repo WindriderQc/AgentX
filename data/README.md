@@ -17,6 +17,12 @@ defaults to loopback. Background feeds and existing janitor schedules start only
 with `DATA_BACKGROUND_JOBS_ENABLED=true`; manual APIs remain available. Network
 scan defaults require `NETWORK_SCAN_CIDR` or an explicit request target.
 
+Janitor AI advice (triage, duplicate resolution, path analysis) asks Core's
+`janitor_ai` task and waits 60 seconds, with one retry. When that task is
+routed to a slow CPU-resident host, raise `JANITOR_AI_TIMEOUT_MS` (up to
+1200000); above two minutes a timed-out request is not retried, so a second
+long request never queues behind the first.
+
 Native collectors live in `integrations/data-collectors`. Set `DATA_URL`,
 `SCAN_CIDR` (network) and `STORAGE_SOURCES_JSON` (storage) in external instance
 configuration. Storage sources map explicit host roots to stable canonical paths,

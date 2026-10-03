@@ -83,3 +83,22 @@ describe('parseAIResponse', () => {
     expect(result).toEqual({ text: raw });
   });
 });
+
+describe('requestLimits', () => {
+  const { requestLimits } = require('../../services/janitorAI');
+
+  it('keeps the GPU default: one minute and one retry', () => {
+    expect(requestLimits({})).toEqual({ timeout: 60000, retries: 1 });
+    expect(requestLimits({ JANITOR_AI_TIMEOUT_MS: 'abc' })).toEqual({ timeout: 60000, retries: 1 });
+  });
+
+  it('lets a slow CPU host answer, without queueing a retry behind a long request', () => {
+    expect(requestLimits({ JANITOR_AI_TIMEOUT_MS: '600000' })).toEqual({ timeout: 600000, retries: 0 });
+    expect(requestLimits({ JANITOR_AI_TIMEOUT_MS: '120000' })).toEqual({ timeout: 120000, retries: 1 });
+  });
+
+  it('bounds the configured value', () => {
+    expect(requestLimits({ JANITOR_AI_TIMEOUT_MS: '5' }).timeout).toBe(10000);
+    expect(requestLimits({ JANITOR_AI_TIMEOUT_MS: '99999999' }).timeout).toBe(1200000);
+  });
+});
