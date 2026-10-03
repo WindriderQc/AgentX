@@ -22,6 +22,7 @@
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { readCoordination } = require('./maintenance-coordination.cjs');
 
 // The checkout the actions operate on; it defaults to the one holding this script.
 const ROOT = path.resolve(process.env.AGENTX_CHECKOUT || path.join(__dirname, '..'));
@@ -199,10 +200,7 @@ async function http(url, { method = 'GET', body, timeoutMs = 10_000 } = {}) {
 }
 
 async function activeWork(coreUrl) {
-  const { ok, json } = await http(`${coreUrl}/api/nerve-center/runtime-coordination/active`);
-  if (!ok) throw new ActionError('Core runtime coordination is unavailable');
-  const data = json?.data || {};
-  return { maintenance: data.maintenance || null, workloads: data.workloads || [], inferences: data.inferences || [] };
+  return readCoordination({ coreUrl, read: http });
 }
 
 function deployProcesses() {

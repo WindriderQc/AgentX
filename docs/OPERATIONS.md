@@ -130,6 +130,10 @@ sidecar. A leftover sidecar refuses further changes; verify that the exact
 writer and its filesystem operation have stopped before operator recovery.
 Age alone never authorizes takeover. Both lease commands return the normal
 JSON action receipt and use the same configured path as deployment.
+Coordination GETs may retry one dropped transport within their original
+ten-second probe budget. They require a complete successful Core snapshot;
+an unavailable or incomplete response never establishes idle state. This read
+retry does not repeat a maintenance mutation.
 The OpenClaw plugin `integrations/openclaw/agentx-maintenance` exposes status,
 deployment, quarantine recovery and judge calibration to configured operator agents as one tool,
 `agentx_maintenance_action`: no shell, validated arguments, and the actor is
