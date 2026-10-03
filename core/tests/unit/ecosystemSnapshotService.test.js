@@ -171,6 +171,19 @@ describe('ecosystemSnapshotService', () => {
     expect(snapshot.serviceHealth).toEqual(expect.objectContaining({ status: 'degraded' }));
   });
 
+  it('names the service health state instead of counting zero degraded services', async () => {
+    const snapshot = await buildEcosystemSnapshot({
+      buildIntelligence: async () => intelligence,
+      buildRoutingConfig: async () => routingConfig,
+      buildServiceStatus: async () => ({
+        ...serviceStatus,
+        summary: { ...serviceStatus.summary, status: 'degraded', degraded: 0 }
+      })
+    });
+    const issue = snapshot.operationalAttention.issues.find(item => item.code === 'services_degraded');
+    expect(issue.message).toBe('Product service health is degraded');
+  });
+
   it('rejects malformed collector output instead of manufacturing defaults', async () => {
     await expect(buildEcosystemSnapshot({
       buildIntelligence: async () => ({ cluster: [] }),
