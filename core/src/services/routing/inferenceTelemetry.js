@@ -21,6 +21,19 @@ const {
     normalizeSelectionSource,
     projectRouteDecision,
 } = require('./routeDecision');
+const { sanitizePromptPrefix } = require('./promptPrefixFingerprint');
+
+const PHASE_TIMING_FIELDS = ['loadMs', 'promptEvalMs', 'evalMs', 'firstTokenMs'];
+
+// Only reported phases are persisted: an absent timing stays absent, never 0.
+function phaseTimingFields(data) {
+    const fields = {};
+    for (const field of PHASE_TIMING_FIELDS) {
+        const value = data?.[field];
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0) fields[field] = Math.round(value);
+    }
+    return fields;
+}
 
 /**
  * Last line of defence before a decision is persisted for 30 days.
@@ -372,6 +385,11 @@ function decisionForTelemetry(data = {}) {
  * @param {number}  [data.estimatedInputTokensAtDispatch] - Pre-dispatch input estimate; survives upstream failures
  * @param {number}  [data.tokensIn]
  * @param {number}  [data.tokensOut]
+ * @param {number}  [data.loadMs]        - Ollama load_duration, ms; absent when unreported
+ * @param {number}  [data.promptEvalMs]  - Ollama prompt_eval_duration, ms
+ * @param {number}  [data.evalMs]        - Ollama eval_duration, ms
+ * @param {number}  [data.firstTokenMs]  - Streamed: dispatch to first output frame, ms
+ * @param {Object}  [data.promptPrefix]  - Payload-free prompt structure (promptPrefixFingerprint)
  * @param {number}  [data.durationMs]
  * @param {'success'|'error'|'timeout'} [data.status]
  * @param {string}  [data.error]
@@ -387,6 +405,7 @@ async function recordInference(data) {
         const { resolveHostKey } = require('../modelRouter');
         const host = data.host || data.routedHostUrl || 'unknown';
         const routedHost = data.routedHost || resolveHostKey(data.routedHostUrl || data.host);
+        const promptPrefix = sanitizePromptPrefix(data.promptPrefix);
         const row = await InferenceLog.create({
             host,
             hostKey: resolveHostKey(host),
@@ -417,6 +436,8 @@ async function recordInference(data) {
                 : null,
             tokensIn: data.tokensIn || 0,
             tokensOut: data.tokensOut || 0,
+            ...phaseTimingFields(data),
+            ...(promptPrefix && { promptPrefix }),
             durationMs: data.durationMs || 0,
             status: data.status || 'success',
             error: data.error || null,

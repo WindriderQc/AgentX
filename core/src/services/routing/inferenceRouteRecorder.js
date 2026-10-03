@@ -13,6 +13,7 @@ const { recordInference, resolveHostKey } = require('../modelRouter');
 const { buildRouteDecision, ROUTE_OUTCOME_CODES, ROUTE_OUTCOME_STAGES } = require('./routeDecision');
 const { summarizeOllamaOutcome } = require('../laneObservabilityService');
 const { fallbackReasonCode } = require('./taskFallbackLadder');
+const { ollamaPhaseTimings } = require('../../helpers/ollamaResponseHandler');
 
 function safeRoutingConfigVersion() {
     return typeof getRoutingConfigVersion === 'function'
@@ -195,6 +196,7 @@ function createAttemptRecorder({
                 ?? null,
             tokensIn: attemptData?.prompt_eval_count || 0,
             tokensOut: attemptData?.eval_count || 0,
+            ...ollamaPhaseTimings(attemptData),
             fallbackUsed,
             fallbackReason,
             durationMs,

@@ -757,6 +757,31 @@ weights: prefer mixture-of-experts models with few active parameters. One CPU
 instance serves one request at a time; a second parallel request adds no
 throughput.
 
+### Inference log timings and prompt cache
+
+Each `inferencelogs` row keeps Core's wall clock in `durationMs` (routing and
+queueing included) next to the phases Ollama reports for the call, in
+milliseconds: `loadMs` (model load), `promptEvalMs` (prompt evaluation) and
+`evalMs` (generation). A streamed call also records `firstTokenMs`, from
+dispatch to the first frame carrying content, thinking or a tool call. A phase
+that is not reported is absent, never 0; paths that do not see Ollama's final
+record (council turns, embeddings, a streamed `/api/inference/generate`) carry
+none. Ollama reuses its prompt cache only for the longest prefix identical to
+the previous request on the same loaded model, so a cache miss reads as a
+`promptEvalMs` that is high for the row's `tokensIn`, where a reused prefix
+costs a fraction of it. OpenClaw and Hermes chat turns add `promptPrefix`: the
+count of system sections (split at `## ` headings) and of non-system messages,
+an 8-hex hash of the tools array, and `divergence`, the first position that
+differs from the previous admitted agent call to the same host and model. Its
+`kind` is `system` (with the section `index` and its `heading`, truncated to 40
+characters), `tools`, `message` (an earlier message changed at `index`),
+`append` (the previous messages are intact and new ones start at `index`, the
+cache-friendly shape), `none`, or `first` when Core has nothing to compare
+since it started. Beyond that heading the row holds only counts, positions and
+a hash, never prompt content. A miss whose divergence is `append` or `none`
+points elsewhere: another caller used the model in between, or the model was
+reloaded (`loadMs` is high).
+
 ## Resident model pins
 
 The Nerve Center host cards show parallel requests **per model** separately from

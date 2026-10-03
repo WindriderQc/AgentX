@@ -42,6 +42,7 @@ jest.mock('../../src/helpers/ollamaResponseHandler', () => ({
       }
     };
   }),
+  ollamaPhaseTimings: jest.requireActual('../../src/helpers/ollamaResponseHandler').ollamaPhaseTimings,
   isThinkingModel: jest.fn(() => false),
   extractResponse: jest.fn()
 }));
@@ -329,6 +330,50 @@ describe('chatServiceStream', () => {
         contract: expect.objectContaining({ version: 'agentx.inference-contract.v1' }),
         outcome: expect.objectContaining({ visibleFinal: true, completed: true })
       })
+    }));
+  });
+
+  it('records the Ollama phase timings and time to first output of a streamed chat', async () => {
+    routeRequest.mockResolvedValue({
+      routed: true,
+      model: 'qwen3-2507-30b-long-48k',
+      target: 'http://192.0.2.66:11434',
+      host: 'primary',
+      taskType: 'analysis'
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({ message: { content: 'Hello' }, done: false }) + '\n');
+        yield Buffer.from(JSON.stringify({
+          done: true,
+          prompt_eval_count: 12,
+          eval_count: 2,
+          load_duration: 4_000_000,
+          prompt_eval_duration: 250_400_000,
+          eval_duration: 90_600_000
+        }) + '\n');
+      })()
+    });
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'auto',
+      message: 'Analyze this',
+      autoRoute: true,
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete: jest.fn(),
+      onError: jest.fn()
+    });
+
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'success',
+      tokensIn: 12,
+      loadMs: 4,
+      promptEvalMs: 250,
+      evalMs: 91,
+      firstTokenMs: expect.any(Number)
     }));
   });
 

@@ -2,6 +2,7 @@
 
 // The InferenceLog row a trusted runtime inference records. Payload-free.
 const { fallbackReasonCode } = require('./taskFallbackLadder');
+const { ollamaPhaseTimings } = require('../../helpers/ollamaResponseHandler');
 
 function telemetryEntry(
   request,
@@ -37,6 +38,7 @@ function telemetryEntry(
     num_ctx_source: metadata.numCtxSource || null,
     tokensIn: data?.prompt_eval_count || data?.usage?.prompt_tokens || 0,
     tokensOut: data?.eval_count || data?.usage?.completion_tokens || 0,
+    ...ollamaPhaseTimings(data),
     durationMs: Date.now() - startedAt,
     status,
     error
