@@ -951,6 +951,38 @@ docker exec agentx-core-1 node scripts/seal-identifiers.js --apply --backup /tmp
 Back the key up with the instance secrets: without it, stored values cannot be
 read.
 
+## Fast voice lane replay
+
+Before the fast voice lane answers real conversations, an offline replay
+measures how a light model decides between answering and handing a request
+to the native agent. The model receives the stable personal prompt, the
+Nestor personality and a single `delegate` tool
+(`core/surfaces/household/voice-lane.js`). The script reads the most recent
+personal voice requests, sends each one alone through Core's admitted
+inference (never to a model host directly) and compares the decision with
+whether the recorded turn used agent tools.
+
+```bash
+docker exec agentx-core-1 node scripts/voice-lane-replay.js --out /tmp/voice-lane-replay --dry-run
+docker exec agentx-core-1 node scripts/voice-lane-replay.js --out /tmp/voice-lane-replay-1 --limit 200
+```
+
+- `--out` is required, must be a new directory outside the application tree
+  and any Git checkout, and receives `summary.json`, `summary.md` and
+  `disagreements.jsonl`. These files hold private request text: copy them out
+  of the container to a private location and never commit them. Stdout prints
+  counts only.
+- The model comes from `--model` and `--host-url`, or from the router task
+  `--task` (default `voice_persona_chat`); it must be pinned on that host so
+  the replay never displaces a resident model.
+- A busy host is waited for (`--retries`, `--busy-wait-ms`); a request that
+  may have reached the model is never sent twice. `--dry-run` only counts the
+  sample.
+- Gate: at most 5 % missed delegations (tools were recorded, the model
+  answered itself) and at most 15 % unnecessary delegations. Recorded tool use
+  is a weak label and each request is replayed without its conversation, so
+  the owner judges the disagreement sample.
+
 ## Qdrant payload indexes
 
 RAG creates the payload indexes its filters use (`documentId`, `revision`,
