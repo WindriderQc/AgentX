@@ -92,6 +92,25 @@ test('crisis detection after the second review: past intent caught, everyday cut
   }
 });
 
+test('explicit danger with intent, wrist injury and feminine medication quantities reaches the safety path', () => {
+  const { detectCrisis } = require('../../../src/domains/psyx/safety');
+  for (const [text, kind] of [
+    ['Je me suis coupé les poignets.', 'self_harm'],
+    ['Je me suis coupée les veines.', 'self_harm'],
+    ['I cut my wrists.', 'self_harm'],
+    ['J’ai avalé toutes mes pilules.', 'immediate_danger'],
+    ['J’ai pris tous les comprimés.', 'immediate_danger'],
+    ['I swallowed all my tablets.', 'immediate_danger'],
+    ['J’ai décidé d’en finir ce soir.', 'suicide'],
+    ['Je compte en finir demain.', 'suicide'],
+    ['I decided to end my life.', 'suicide']
+  ]) assert.ok(detectCrisis(text)?.kinds.includes(kind), text);
+  for (const text of ['J’ai décidé d’en finir avec ce projet.', 'Je me suis coupé les cheveux.',
+    'J’ai avalé ma pilule habituelle.', 'I took my medication.', 'Je me suis coupé avec un couteau en cuisinant.']) {
+    assert.equal(detectCrisis(text), null, text);
+  }
+});
+
 test('spoken turns request short unformatted replies without overriding crisis safety or typed behavior', () => {
   const base = { activeThreads: [], notes: [], patterns: [], hypotheses: [], openLoops: [], experiments: [] };
   const control = normalizeControl({ mode: 'talk', depth: 'normal' });
