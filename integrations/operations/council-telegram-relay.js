@@ -55,7 +55,9 @@ function validateConfig(config) {
     all: config.all === true,
     lookbackHours: Math.max(1, Number(config.lookbackHours) || 24),
     maxPerRun: Math.max(1, Math.min(30, Number(config.maxPerRun) || 12)),
-    stateFile: config.stateFile || DEFAULT_STATE_FILE
+    stateFile: config.stateFile || DEFAULT_STATE_FILE,
+    // Display names of the agents that may chair a table, e.g. {"main": "Nestor"}; the agent id otherwise.
+    agentNames: config.agentNames && typeof config.agentNames === 'object' && !Array.isArray(config.agentNames) ? config.agentNames : {}
   };
 }
 
@@ -67,7 +69,7 @@ const clip = (text) => {
 const seatsAgents = (session) => (session.panelConfig || []).some((agent) => agent.runtime === 'openclaw');
 
 /** The messages a session still owes the topic, in order, with the state key each one settles. */
-function pendingMessages(session, seen = {}, { councilUrl = null } = {}) {
+function pendingMessages(session, seen = {}, { councilUrl = null, agentNames = {} } = {}) {
   const out = [];
   if (!seen.header) {
     const link = councilUrl ? `\n${councilUrl}/council?id=${encodeURIComponent(session._id)}` : '';
@@ -83,7 +85,10 @@ function pendingMessages(session, seen = {}, { councilUrl = null } = {}) {
   }
   const synthesis = session.synthesis || {};
   if (!seen.synthesis && (String(synthesis.response || '').trim() || synthesis.error)) {
-    out.push({ key: 'synthesis', text: synthesis.error ? clip(`⚠️ Synthèse : ${synthesis.error}`) : clip(`🧾 Synthèse\n${synthesis.response}`) });
+    // When a team member chairs the table, the verdict is signed with its name.
+    const chairId = session.synthesizerConfig?.runtime === 'openclaw' ? session.synthesizerConfig.agentId : null;
+    const title = chairId ? `Synthèse · ${String(agentNames[chairId] || chairId).slice(0, 60)} (président)` : 'Synthèse';
+    out.push({ key: 'synthesis', text: synthesis.error ? clip(`⚠️ ${title} : ${synthesis.error}`) : clip(`🧾 ${title}\n${synthesis.response}`) });
   }
   return out;
 }
