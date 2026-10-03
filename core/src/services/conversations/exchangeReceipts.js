@@ -130,7 +130,7 @@ async function publish(receipt, conversationId, action) {
             scope: receipt.scope, state: 'accepted' }, { $set: { conversationId: String(conversationId) } }, acknowledged));
           if (!result.matchedCount) throw failure('EXCHANGE_CLOSED', 'The exchange was erased before its conversation could be saved.', 410);
         });
-        return rootFence.mutate(action);
+        return rootFence.mutate(() => action(rootFence));
       });
     } catch (cause) {
       if (cause.code === 'CONVERSATION_CONTENT_ERASED') {
