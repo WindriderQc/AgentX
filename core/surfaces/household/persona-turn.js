@@ -215,15 +215,21 @@ function createPersonaTurnHandler({
           holdState = await openHold.waitForResident(holdState, { signal: abort.signal,
             onStatus: state => event('status', { phase: state.phase }) });
         }
+        // Instructions hold only what stays the same for the whole conversation, so the
+        // model's prompt cache keeps them. Everything selected for this turn (notes,
+        // members, knowledge, chores, saves, the sound note, the reply language, a team
+        // member's last exchange and the reviewer's advice) goes last, beside the request.
+        const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }),
+          member ? '' : teamAddress.exchangeContext(session.teamExchange),
+          isLlmX ? '' : brain.contextFor(session.sessionId)].join('').trim();
         const nativeInstructions = agentInstructions(turnSession, turnSession.persona,
           pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode,
           { soundPlayback: !pack.childSafe && browserSoundPlayback, channel: req.body?.channel })
-          + (member ? teamAddress.memberInstruction(speaker.name) : teamAddress.exchangeContext(session.teamExchange))
-          + (personalVoice(turnSession, req.body?.channel) ? '' : systemPromptFor(pack, { ...context, contextOnly: true })) + workshopPrompt(workshop)
-          + sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : '') + (isLlmX ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }) + brain.contextFor(session.sessionId));
-        const agentxInstructions = [systemPromptFor(pack, context), session.persona?.identity,
+          + (member ? teamAddress.memberInstruction(speaker.name) : '') + workshopPrompt(workshop)
+          + sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : '') + (isLlmX ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }));
+        const agentxInstructions = [systemPromptFor(pack, { modeId: session.modeId }), session.persona?.identity,
           'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
-          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }) + brain.contextFor(session.sessionId)].filter(Boolean).join('\n\n');
+          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) })].filter(Boolean).join('\n\n');
         abort.signal.throwIfAborted();
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
@@ -235,7 +241,7 @@ function createPersonaTurnHandler({
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history, streaming, channel: req.body?.channel,
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
-          instructions: nativeInstructions, agentxInstructions, ...(personalVoice(turnSession, req.body?.channel) ? { turnContext: systemPromptFor(pack, { ...context, contextOnly: true }) } : {}),
+          instructions: nativeInstructions, agentxInstructions, ...(turnContext ? { turnContext } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
           signal: abort.signal, onWaiting: () => event('status', { phase: 'waiting_host' }), onActivity: activity => event('status', { phase: 'activity', activity }),

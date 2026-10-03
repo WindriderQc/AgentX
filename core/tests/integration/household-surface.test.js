@@ -94,7 +94,7 @@ describe('built-in Household surface on Core', () => {
       else process.env.VOIX_BASE_URL = previousVoixUrl;
     }
   });
-  test('personal native voice moves the same selected Core notes to turn context while text keeps its existing instructions', async () => {
+  test('personal native turns carry the selected Core notes as turn context, spoken or typed, never in the instructions', async () => {
     const note = 'Synthetic observatory voice context remains available.';
     await request(app).post('/api/voice-personas/private/notes').send({ operation: 'remember', text: note, kind: 'preference' }).expect(200);
     const staleSchedule = 'Synthetic archived son prochain quand schedule.';
@@ -124,14 +124,9 @@ describe('built-in Household surface on Core', () => {
       const native = agentForTest.mock.calls.at(-1)[0];
       expect(native.session.sessionId).toBe(id);
       expect(native.instructions).toContain(KNOWN_UNKNOWN);
-      if (channel === 'voice') {
-        expect(native.turnContext).toContain(note);
-        expect(native.instructions).not.toContain(note);
-      } else {
-        expect(native.turnContext).toBeUndefined();
-        expect(native.instructions).toContain(note);
-        expect(native.session.agentSessionKey).toContain(id);
-      }
+      expect(native.turnContext).toContain(note);
+      expect(native.instructions).not.toContain(note);
+      if (channel === 'text') expect(native.session.agentSessionKey).toContain(id);
     }
   });
   test('a turn that names a team member runs in its own session and voice, then the conversation agent hears about it (#41)', async () => {
@@ -159,11 +154,14 @@ describe('built-in Household surface on Core', () => {
       expect(direct.body.data.reply.speech).toMatchObject({ provider: 'kokoro', voice: 'ff_siwis' });
       const back = (await turn('Merci, et toi Nestor?'), agentForTest.mock.calls.at(-1)[0]);
       expect(back.session).toMatchObject({ agentId: 'main', agentSessionKey: `agent:main:household:direct:${id}` });
-      expect(back.instructions).toContain('just asked Secretary directly');
+      // The exchange is reference data beside that one request; the agent's instructions never change (#261).
+      expect(back.turnContext).toContain('just asked Secretary directly');
+      expect(back.instructions).not.toContain('just asked Secretary directly');
       await turn('Est-ce que la secrétaire a trié mes courriels hier?');
       const passing = agentForTest.mock.calls.at(-1)[0];
       expect(passing.session.agentId).toBe('main');
-      expect(passing.instructions).not.toContain('just asked Secretary directly');
+      expect(passing.turnContext || '').not.toContain('just asked Secretary directly');
+      expect(passing.instructions).toBe(back.instructions);
       const audit = (await request(app).get(`/api/voice-personas/audit/recent?sessionId=${id}`).expect(200)).body.data.audit;
       expect(audit.map(row => row.speakerAgentId).filter(Boolean)).toEqual(['secretary']);
     } finally {
@@ -533,23 +531,29 @@ describe('built-in Household surface on Core', () => {
     const voice = await request(app).get('/api/voix/memory/active').expect(200);
     expect(voice.body.data.memories).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
     const session = await request(app).post(`${base}/private/sessions`).send({ packId: 'personal_operator', backend: 'agentx' }).expect(201);
+    // Selected context travels in the final user message; the system message is the same on every turn (#261).
+    const sentMessages = () => executeForTest.mock.calls.at(-1)[0].messages;
+    const selected = () => sentMessages().at(-1).content, wholePrompt = () => sentMessages().map(message => message.content).join('\n');
     await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'observatory' }).expect(200);
-    expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('Synthetic observatory preference');
+    expect(selected()).toContain('Synthetic observatory preference');
+    const personalSystem = sentMessages()[0].content;
+    expect(personalSystem).not.toContain('Synthetic observatory preference');
     const family = await request(app).post(`${base}/sessions`).send({ packId: 'kidx_nestor', backend: 'agentx' }).expect(201);
     await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'observatory' }).expect(200);
-    expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Synthetic observatory preference');
+    expect(wholePrompt()).not.toContain('Synthetic observatory preference');
     const HouseholdProfile = require('../../models/HouseholdProfile');
     await HouseholdProfile.create([{ profileId: 'synthetic-a', displayName: 'Synthetic Alex', ageBand: 'school' },
       { profileId: 'synthetic-b', displayName: 'Synthetic Sam', ageBand: 'little' }]);
     try {
       await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Comment s’appellent mes enfants?' }).expect(200);
-      const personal = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      const personal = selected();
       expect(personal).toContain('Synthetic Alex (âge scolaire)');
       expect(personal).toContain('Synthetic Sam (petite enfance)');
-      expect(personal).toContain(KNOWN_UNKNOWN);
+      expect(sentMessages()[0].content).toContain(KNOWN_UNKNOWN);
+      expect(sentMessages()[0].content).toBe(personalSystem);
       await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'Comment s’appellent les enfants?' }).expect(200);
-      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain('Enfants de la maison');
-      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).not.toContain(KNOWN_UNKNOWN);
+      expect(wholePrompt()).not.toContain('Enfants de la maison');
+      expect(wholePrompt()).not.toContain(KNOWN_UNKNOWN);
       // A parent-set birth date gives Super Dad the age and birthday; Famille and child projections keep the band only.
       const set = await request(app).post('/api/family/profiles/birth-date').send({ profileId: 'synthetic-a', birthDate: '2016-03-14' }).expect(200);
       expect(set.body.data.profile.birthDate).toBe('2016-03-14');
@@ -562,16 +566,17 @@ describe('built-in Household surface on Core', () => {
       expect(JSON.stringify((await request(app).get('/api/family/room?profileId=synthetic-a').expect(200)).body.data)).not.toMatch(/birthDate|2016/);
       const age = ageInYears('2016-03-14', instanceToday());
       await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
-      const aged = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      const aged = wholePrompt();
       expect(aged).toContain(`Synthetic Alex (${age} ans, anniversaire le 14 mars)`);
       expect(aged).not.toContain('2016');
       await request(app).post(`${base}/sessions/${family.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
-      const familyPrompt = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+      const familyPrompt = wholePrompt();
       expect(familyPrompt).not.toContain('anniversaire le 14 mars');
       expect(familyPrompt).not.toContain('2016');
       await request(app).post('/api/family/profiles/birth-date').send({ profileId: 'synthetic-a', birthDate: null }).expect(200);
       await request(app).post(`${base}/private/sessions/${session.body.data.session.sessionId}/turns/text`).send({ text: 'Quel âge a Synthetic Alex?' }).expect(200);
-      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('Synthetic Alex (âge scolaire)');
+      expect(selected()).toContain('Synthetic Alex (âge scolaire)');
+      expect(sentMessages()[0].content).toBe(personalSystem);
     } finally { await HouseholdProfile.deleteMany({ profileId: { $in: ['synthetic-a', 'synthetic-b'] } }); }
     await request(app).post('/api/voix/memory/' + id + '/forget').send({}).expect(200);
     expect((await request(app).post(`${base}/private/notes`).send({ operation: 'list' })).body.data.notes.some(note => note.id === id)).toBe(false);
@@ -684,10 +689,15 @@ describe('built-in Household surface on Core', () => {
     expect(prompt).toContain('Synthetic idea child : à faire : Synthetic feed the fish');
     expect(prompt).not.toContain('Synthetic adult-only errand');
     expect(prompt).not.toContain('has been saved for Dad');
+    // Routines and the capture receipt are this turn's reference data; the family system message never changes (#261).
+    const familySystem = executeForTest.mock.calls.at(-1)[0].messages[0].content;
+    expect(familySystem).not.toContain('Synthetic feed the fish');
+    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain('Synthetic idea child : à faire : Synthetic feed the fish');
 
     const personalBefore = await PipelineTask.countDocuments({ service: 'personal' });
     await request(app).post(`${base}/${id}/turns/text`).send({ text: "J'ai une idée : une cabane dans l'arbre" }).expect(200);
-    expect(executeForTest.mock.calls.at(-1)[0].messages.map(message => message.content).join('\n')).toContain('an idea and it has been saved for Dad to review');
+    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain('an idea and it has been saved for Dad to review');
+    expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toBe(familySystem);
     const idea = await PlanningItem.findOne({ type: 'idea', tags: 'origin:family' }).lean();
     expect(idea).toMatchObject({ status: 'inbox', summary: "J'ai une idée : une cabane dans l'arbre" });
     expect(idea.tags).toEqual(expect.arrayContaining(['origin:family', 'kind:idea']));
@@ -839,7 +849,10 @@ describe('built-in Household surface on Core', () => {
 
       process.env.HOUSEHOLD_BRAIN_ENABLED = 'false';
       await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Tu es sûr?' }).expect(200);
-      expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('Possible corrections: Une araignée a huit pattes, pas six.');
+      // The reviewer's advice is reference data beside the request, never part of the system message (#261).
+      const corrected = executeForTest.mock.calls.at(-1)[0].messages;
+      expect(corrected.at(-1).content).toContain('Possible corrections: Une araignée a huit pattes, pas six.');
+      expect(corrected[0].content).not.toContain('Possible corrections');
     } finally {
       if (previous === undefined) delete process.env.HOUSEHOLD_BRAIN_ENABLED; else process.env.HOUSEHOLD_BRAIN_ENABLED = previous;
     }

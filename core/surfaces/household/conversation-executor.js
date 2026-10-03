@@ -2,6 +2,7 @@
 
 const { readReplyStream } = require('./persona-catalog');
 const { conversationInput } = require('./llmx-conversation');
+const { selectedContextBlock, CURRENT_REQUEST_LABEL } = require('./conversation-agent');
 const interactivePriority = require('../../src/services/interactivePriorityService');
 
 const HOST_BUSY_CODES = new Set(['BENCHMARK_CLAIM_ACTIVE', 'RUNTIME_INFERENCE_ADMISSION_DENIED']);
@@ -53,7 +54,13 @@ function createConversationExecutor({ agentClient, inference, consumerContract }
 function runTurn({ agentClient, inference, consumerContract }) {
   return async request => {
     const { backend, session, pack, history, instructions, agentxInstructions, signal, onDelta } = request;
-    const messages = [...history, { role: 'user', content: conversationInput(request), attachments: request.attachments || [] }];
+    // Core inference receives the turn's selected context in the final user
+    // message, so the system message and the history stay a reusable prefix.
+    // The native agent client adds the same block to its own request.
+    const input = conversationInput(request);
+    const content = backend === 'agentx' && request.turnContext
+      ? `${selectedContextBlock(request.turnContext)}\n\n${CURRENT_REQUEST_LABEL}\n${input}` : input;
+    const messages = [...history, { role: 'user', content, attachments: request.attachments || [] }];
     const prepared = request.attachmentStore ? await request.attachmentStore.prepare(messages, backend) : messages;
     if (backend === 'openclaw') {
       const current = prepared.at(-1);
