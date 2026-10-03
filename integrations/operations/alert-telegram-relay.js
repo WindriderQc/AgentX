@@ -412,5 +412,6 @@ module.exports = {
   redact,
   run,
   selectDue,
+  telegramCall,
   validateConfig,
 };
