@@ -19,6 +19,7 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../config/logger');
 const roundtableService = require('../src/services/roundtable');
+const { listOpenClawAgents } = require('../src/services/roundtable/runtimeParticipantAdapter');
 const Roundtable = require('../models/Roundtable');
 const { requireTypedConfirmation } = require('../src/helpers/typedConfirmation');
 
@@ -111,11 +112,13 @@ router.get('/', async (req, res) => {
 
 router.get('/defaults', async (_req, res) => {
   try {
-    const defaults = await roundtableService.getCouncilDefaults();
+    const [defaults, openclawAgents] = await Promise.all([roundtableService.getCouncilDefaults(), listOpenClawAgents()]);
     res.json({
       status: 'ok',
       data: {
         ...defaults,
+        // The OpenClaw agents a Council may seat; empty when runtime participants are off.
+        openclawAgents,
         options: roundtableService.COUNCIL_OPTIONS,
         policy: {
           canonicalSurface: '/council',
