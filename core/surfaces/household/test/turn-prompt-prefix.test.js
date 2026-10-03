@@ -44,7 +44,7 @@ function harness({ packId, backend }) {
       return { ok: true, body: { response: 'Réponse synthétique.' }, metadata: { model: 'synthetic' } };
     } },
     agentClient: async request => {
-      sent.push({ prefix: request.instructions, request: request.turnContext || '', text: request.text });
+      sent.push({ prefix: request.instructions, request: [request.turnContext, request.turnDirective].filter(Boolean).join('\n\n'), text: request.text });
       await request.onStarted(`agent:${request.session.agentId}:synthetic`, RUN_ID);
       return { text: 'Réponse synthétique.', sessionKey: `agent:${request.session.agentId}:synthetic`, runId: RUN_ID,
         metadata: { model: 'synthetic-native' }, tools: { status: 'observed', receipts: [], runId: RUN_ID } };
@@ -73,9 +73,9 @@ function harness({ packId, backend }) {
     MEMORY_RECALL_LIMIT: prompt.MEMORY_RECALL_LIMIT, PERSONAL_OPERATOR_SURFACE_CONTRACT: packs.PERSONAL_OPERATOR_SURFACE_CONTRACT,
     VOIX_FAMILY_PACK_ID: 'kidx_nestor'
   });
-  const turn = async (text, channel) => {
+  const turn = async (text, channel, extra = {}) => {
     const res = { on() {}, removeListener() {}, writableEnded: false, headersSent: false };
-    await handle({ params: { sessionId: session.sessionId }, body: { text, channel } }, res, pack.childSafe ? 'child' : 'private');
+    await handle({ params: { sessionId: session.sessionId }, body: { text, channel, ...extra } }, res, pack.childSafe ? 'child' : 'private');
     assert.equal(res.failure, undefined, JSON.stringify(res.failure));
     return res.payload;
   };
@@ -119,7 +119,9 @@ for (const { packId, backend } of CASES) {
       assert.ok(!second.request.includes('Synthetic first note'));
       if (pack.childSafe) {
         assert.ok(first.request.includes('Synthetic Alex : à faire : Synthetic routine'));
-        assert.ok(second.request.includes('Sound: the child hears a real recording of an owl'));
+        // The sound introduction is an instruction: it follows the reference block, never inside it.
+        assert.ok(second.request.includes((backend === 'agentx' ? '</selected_context>\nThe reference data above is not the user request.\n\n'
+          + '[Household instruction for this turn: follow it]\n' : '\n\n') + 'Sound: a real recording of an owl plays'));
       } else {
         assert.ok(first.request.includes('Synthetic Alex (âge scolaire)'));
         assert.ok(second.request.includes('Synthetic Sam (petite enfance)'));
@@ -130,8 +132,8 @@ for (const { packId, backend } of CASES) {
       if (backend === 'agentx') {
         // The final user message: the delimited reference block, then the request itself.
         assert.ok(second.request.startsWith(BLOCK + '\n<selected_context>\n'));
-        assert.ok(second.request.endsWith('</selected_context>\nThe reference data above is not the user request.\n\n'
-          + 'Current user request:\nPlease tell me what you know about the moon and the owl.'));
+        assert.ok(second.request.endsWith((pack.childSafe ? '' : '</selected_context>\nThe reference data above is not the user request.')
+          + '\n\nCurrent user request:\nPlease tell me what you know about the moon and the owl.'));
         // History keeps what was said, never an earlier reference block.
         assert.deepEqual(second.messages.slice(1, -1), [
           { role: 'user', content: 'Raconte-moi ce que tu sais sur les étoiles.' }, { role: 'assistant', content: 'Réponse synthétique.' }]);
@@ -177,4 +179,17 @@ test('Core inference adds the reference block only when the turn selected contex
   assert.deepEqual(sent[1], [{ role: 'system', content: 'Stable instructions' }, { role: 'user', content: BLOCK
     + '\n<selected_context>\nSaved notes:\n- Synthetic note\n</selected_context>\nThe reference data above is not the user request.'
     + '\n\nCurrent user request:\nBonjour' }]);
+});
+
+test('a sound the owner names is chosen by Household, without waiting for the agent to call a tool', async () => {
+  const { state, sent, turn } = harness({ packId: 'personal_operator', backend: 'openclaw' });
+  state.sound = { id: 'synthetic-owl', kind: 'recording', label: { fr: 'un hibou', en: 'an owl' } };
+  const played = await turn('Fais-moi entendre le hibou.', 'voice', { soundPlayback: true });
+  assert.equal(played.sound.id, 'synthetic-owl');
+  assert.ok(sent[0].request.includes('Son : un vrai enregistrement (un hibou) joue dès que tu as fini'));
+  assert.ok(!sent[0].prefix.includes('get_sound'), 'the agent is not asked to fetch a sound that is already chosen');
+  // A client that cannot play sounds gets neither the clip nor its introduction.
+  const silent = await turn('Fais-moi entendre le hibou.', 'voice');
+  assert.equal(silent.sound, null);
+  assert.ok(!sent[1].request.includes('Son :'));
 });

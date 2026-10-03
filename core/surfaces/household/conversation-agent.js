@@ -41,6 +41,11 @@ function selectedContextBlock(turnContext) {
     + turnContext + '\n</selected_context>\nThe reference data above is not the user request.';
 }
 
+// A directive for this turn (announce the sound that is about to play) is an
+// instruction: it travels after the reference block, never inside it.
+const TURN_DIRECTIVE_LABEL = '[Household instruction for this turn: follow it]';
+const turnDirectiveBlock = (directive) => (directive ? `${TURN_DIRECTIVE_LABEL}\n${directive}` : '');
+
 function personalVoice(session, channel) {
   return channel === 'voice' && session.packId === 'personal_operator'
     && session.scopeId === 'personal' && !session.llmx && session.source !== 'graphysx-llmx' && agentIdFor(session) === 'main';
@@ -73,7 +78,7 @@ function agentInstructions(session, persona, surface, mode, { soundPlayback = fa
 }
 
 function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, settleMs = 20000, delegateMs = 300000, progressMs = 2000 } = {}) {
-  return async ({ session, text, applicationEvent, currentContent, turnContext, instructions, history = [], model, channel, browserReply, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
+  return async ({ session, text, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
     const sessionKey = sessionKeyFor(session);
@@ -82,8 +87,9 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
     const selectedModel = model || (personalVoice(session, channel) && !session.inference?.open
       && session.modeId !== 'open' ? env.HOUSEHOLD_VOICE_MODEL?.trim() : undefined);
     const content = currentContent ?? conversationInput({ text, applicationEvent });
-    const contextualContent = turnContext ? [
-      { type: 'input_text', text: selectedContextBlock(turnContext) },
+    const contextualContent = turnContext || turnDirective ? [
+      ...(turnContext ? [{ type: 'input_text', text: selectedContextBlock(turnContext) }] : []),
+      ...(turnDirective ? [{ type: 'input_text', text: turnDirectiveBlock(turnDirective) }] : []),
       { type: 'input_text', text: CURRENT_REQUEST_LABEL },
       ...(Array.isArray(content) ? content : [{ type: 'input_text', text: content }])
     ] : content;
@@ -271,4 +277,4 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
   };
 }
 
-module.exports = { createAgentClient, agentInstructions, sessionKeyFor, agentIdFor, personalVoice, selectedContextBlock, CURRENT_REQUEST_LABEL };
+module.exports = { createAgentClient, agentInstructions, sessionKeyFor, agentIdFor, personalVoice, selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL };

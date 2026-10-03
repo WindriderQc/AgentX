@@ -2,7 +2,7 @@
 
 const { readReplyStream } = require('./persona-catalog');
 const { conversationInput } = require('./llmx-conversation');
-const { selectedContextBlock, CURRENT_REQUEST_LABEL } = require('./conversation-agent');
+const { selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL } = require('./conversation-agent');
 const interactivePriority = require('../../src/services/interactivePriorityService');
 
 const HOST_BUSY_CODES = new Set(['BENCHMARK_CLAIM_ACTIVE', 'RUNTIME_INFERENCE_ADMISSION_DENIED']);
@@ -72,8 +72,10 @@ function runTurn({ agentClient, inference, consumerContract, env }) {
     // message, so the system message and the history stay a reusable prefix.
     // The native agent client adds the same block to its own request.
     const input = conversationInput(request);
-    const content = backend === 'agentx' && request.turnContext
-      ? `${selectedContextBlock(request.turnContext)}\n\n${CURRENT_REQUEST_LABEL}\n${input}` : input;
+    // Reference data first, then what the model must do on this turn, then the request.
+    const framed = [request.turnContext ? selectedContextBlock(request.turnContext) : '', turnDirectiveBlock(request.turnDirective)].filter(Boolean);
+    const content = backend === 'agentx' && framed.length
+      ? `${framed.join('\n\n')}\n\n${CURRENT_REQUEST_LABEL}\n${input}` : input;
     const messages = [...history, { role: 'user', content, attachments: request.attachments || [] }];
     const prepared = request.attachmentStore ? await request.attachmentStore.prepare(messages, backend) : messages;
     if (backend === 'openclaw') {
