@@ -391,7 +391,14 @@ distributable chat/model/RAG/benchmark experience. Personal capabilities such as
 finance (`/api/finance`, `/finance`) are in the demo exclusion list of
 `shared/agentxRuntimeProfile.js`, and their daemons start in `full` only.
 
-- `core/surfaces/household`: the French home, Nestor, Family, Reader and
+Core owns the common home (`/`, `/portal`, `/ecosystem`).
+`shared/productSpaces.js` defines the browser destination catalogue;
+`shared/productNavigation.js` applies profile filtering and configured service
+authorities. `core/src/ui/productShell.js` renders the same EJS navigation in
+static surfaces. The landing exposes no private application content; adult
+pages and APIs retain the parental gateway guard.
+
+- `core/surfaces/household`: Nestor, Family, Reader and
   animal-sound UI. Its HTTP and MCP handlers call Core capabilities and declare
   no session, audit, task or profile models of their own. The server derives a
   new session's agent from a personality's declared agent binding; a tone-only

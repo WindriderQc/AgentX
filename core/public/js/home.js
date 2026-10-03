@@ -44,7 +44,7 @@
   }
 
   async function loadReadiness() {
-    if (loading) return;
+    if (loading || document.documentElement?.dataset.agentxAccess === 'locked') return;
     loading = true;
     refresh.disabled = true;
     const controller = new AbortController();
@@ -58,6 +58,7 @@
       if (!response.ok) throw new Error('Status unavailable');
       const payload = await response.json();
       const routingPayload = routingResponse?.ok ? await routingResponse.json() : null;
+      if (document.documentElement?.dataset.agentxAccess === 'locked') return;
       const routing = routingPayload?.data || routingPayload;
       const services = Array.isArray(payload.services) ? payload.services : [];
       const core = services.find(service => service.id === 'core');
@@ -100,6 +101,8 @@
     });
   });
   refresh.addEventListener('click', loadReadiness);
-  loadReadiness();
-  setInterval(loadReadiness, 20000);
+  const healthPanel = document.getElementById('homeHealth');
+  healthPanel?.addEventListener('toggle', () => { if (healthPanel.open) loadReadiness(); });
+  if (healthPanel?.open) loadReadiness();
+  setInterval(() => { if (healthPanel?.open && document.documentElement?.dataset.agentxAccess !== 'locked') loadReadiness(); }, 20000);
 }());

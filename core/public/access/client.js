@@ -2,29 +2,32 @@
   'use strict';
   const nativeFetch = window.fetch.bind(window);
   const family = ['/panel', '/kids', '/kids/sounds', '/lecture'].includes(location.pathname.replace(/\/+$/, ''));
+  const landing = ['/', '/portal', '/ecosystem'].includes(location.pathname.replace(/\/+$/, '') || '/');
+  const publicPage = family || landing;
   let enforced = false, closed = false, timer;
   let channel;
   try { channel = new BroadcastChannel('agentx-adult-access'); } catch { /* refresh/expiry still enforce the server session */ }
-  // A family page stays open while locked. Mark the document so the surface can
-  // show which destinations need the code, and send "/" through the unlock page:
-  // the server answers a locked "/" with a redirect straight back to /panel.
+  // The common landing and family pages contain no private application data.
+  // Their destinations still pass through the existing server access guard.
   function markLocked() {
     document.documentElement.dataset.agentxAccess = 'locked';
-    for (const link of document.querySelectorAll('a[href]')) {
-      if (link.origin === location.origin && link.pathname === '/' && !link.search && !link.hash) link.href = '/unlock?next=%2F';
+    if (landing) {
+      document.getElementById('homeServiceDetails')?.replaceChildren();
+      const consistency = document.getElementById('homeConsistency');
+      if (consistency) consistency.textContent = '';
     }
   }
   function close(broadcast = false) {
     if (!enforced || closed) return;
     closed = true; clearTimeout(timer);
     if (broadcast) channel?.postMessage('locked');
-    if (family) { markLocked(); return; }
+    if (publicPage) { markLocked(); return; }
     document.documentElement.classList.add('agentx-access-checking');
     document.body.replaceChildren();
     location.replace('/unlock?next=' + encodeURIComponent(location.pathname + location.search));
   }
   window.AgentXAccess = {
-    assertCurrent() { if (closed && !family) throw new DOMException('Adult access closed', 'AbortError'); }
+    assertCurrent() { if (closed && !publicPage) throw new DOMException('Adult access closed', 'AbortError'); }
   };
   channel?.addEventListener('message', event => { if (event.data === 'locked') close(); });
   window.fetch = async (input, options) => {
@@ -46,6 +49,7 @@
       const { data } = await response.json();
       enforced = data.enforced;
       if (!enforced) return;
+      if (data.unlocked) { closed = false; document.documentElement.dataset.agentxAccess = 'unlocked'; }
       if (!data.unlocked) { close(family); return; }
       clearTimeout(timer);
       timer = setTimeout(() => close(true), Math.max(0, data.expiresAt - Date.now()));
@@ -63,10 +67,10 @@
         };
         (document.querySelector('.nav-tools-panel') || document.body).append(button);
       }
-    } catch { if (enforced && !family) close(); }
-    finally { if (!closed || family) document.documentElement.classList.remove('agentx-access-checking'); }
+    } catch { if (enforced && !publicPage) close(); }
+    finally { if (!closed || publicPage) document.documentElement.classList.remove('agentx-access-checking'); }
   }
-  addEventListener('pagehide', () => { if (enforced && !family) document.documentElement.classList.add('agentx-access-checking'); });
+  addEventListener('pagehide', () => { if (enforced && !publicPage) document.documentElement.classList.add('agentx-access-checking'); });
   addEventListener('pageshow', check);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
   check();

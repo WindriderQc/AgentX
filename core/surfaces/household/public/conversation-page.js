@@ -11,10 +11,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const agents = agentCatalog?.agents?.length ? agentCatalog.agents : [{ id: 'main', name: 'Main', personalNotes: true }];
   if (!personas?.length) throw new Error('No personalities are available. Open Prompts to choose one.');
   app.innerHTML = `<section class="conversation-shell">
-    <header class="conversation-heading"><p class="eyebrow">${family ? "Famille · partagé" : "Super Dad · privé"}</p><h1>${family ? "Nestor, en famille." : "Ton agent, avec toi."}</h1><p id="conversationListeningHint">${family ? "Dis « Hey Nestor » ou « Eille Nestor », puis parle naturellement." : "Conversation ouverte : parle librement tant que le micro est actif."}</p></header>
+    <header class="conversation-heading"><h1>Avec Nestor.</h1><p id="conversationListeningHint">${family ? "Dis « Hey Nestor » ou « Eille Nestor », puis parle naturellement." : "Conversation ouverte : parle librement tant que le micro est actif."}</p></header>
     <nav class="conversation-toolbar" aria-label="Conversation actions">
-      <button id="conversationNew" class="button" type="button">Nouvelle conversation</button>
-      <button id="conversationHistoryToggle" class="button" type="button" aria-expanded="false" aria-controls="conversationHistory">Conversations récentes</button>
+      <button id="conversationNew" class="button" type="button">Nouvel échange</button>
+      <button id="conversationHistoryToggle" class="button" type="button" aria-expanded="false" aria-controls="conversationHistory">Récents</button>
     </nav>
     ${family ? '' : '<nav id="conversationTeam" class="conversation-team" aria-label="Équipe" hidden></nav>'}
     <section id="conversationHistory" class="conversation-history" aria-label="Conversations récentes" hidden>
@@ -43,12 +43,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <details id="conversationNotes" hidden></details>
       <details><summary>Écoute</summary><label class="conversation-toggle"><input id="conversationInterruption" type="checkbox" checked> Interrompre Nestor en parlant</label><p id="conversationInterruptionStatus" class="muted">Utilise l’annulation d’écho du navigateur. Un casque peut aider dans une pièce bruyante.</p>
       <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Exiger « Hey Nestor »</label><p class="muted">Avec réveil vocal, Nestor revient en veille après 30 secondes sans intervention ou dès « Merci Nestor ». En conversation ouverte, il répond aux paroles tant que le micro est actif. Les phrases sont transcrites sur le réseau local avant la détection du nom ; seules les phrases adressées à Nestor entrent dans la conversation.</p><div id="conversationBrowserSttSettings" hidden></div>${family ? '' : '<a href="/voice/native" class="conversation-native">Appareils et diagnostic audio</a>'}</details>
-    </details><section class="conversation-stage" aria-label="Conversation">
-      <div id="conversationPresence" class="conversation-presence" data-state="idle" aria-hidden="true"><span id="conversationInitial">N</span></div>
-      <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Préparation de Nestor…</p><p id="conversationDevice" class="muted">Microphone et haut-parleurs de cet appareil</p><p id="conversationVoiceNotice" class="muted" role="status" hidden></p>
-      <p id="conversationBrowserSttIndicator" class="conversation-browser-stt" hidden></p><section id="conversationBrowserSttNotice" class="conversation-audio" aria-label="Reconnaissance du navigateur" role="alert" hidden></section>
-      <div class="conversation-actions"><button id="conversationStart" type="button" class="button primary" hidden disabled>Activer Nestor</button><button id="conversationPause" type="button" class="button" disabled>Pause</button><button id="conversationEnd" type="button" class="button danger" disabled>Arrêter</button></div>
       <details id="conversationAudio" class="conversation-audio"><summary>Audio & transcription</summary>
+        <p id="conversationDevice" class="muted">Microphone et haut-parleurs de cet appareil</p>
         <p class="muted">Replay up to 20 seconds from this microphone. One excerpt stays in this tab for at most 2 minutes. Pause, End or leaving the page erases it.</p>
         <div class="conversation-audio-actions"><button id="conversationInspectMic" class="button" type="button" disabled>Review recent microphone audio</button><button id="conversationInspectPhrase" class="button" type="button" disabled>Review last submitted phrase</button></div>
         <p id="conversationAudioStatus" class="muted">Start a conversation to capture audio.</p>
@@ -56,6 +52,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
           <div class="conversation-audio-actions"><button id="conversationReplay" class="button" type="button">Play excerpt</button><button id="conversationReplayStop" class="button" type="button">Stop playback</button><button id="conversationAudioErase" class="button" type="button">Erase excerpt</button></div>
         </div>
       </details>
+    </details><section class="conversation-stage" aria-label="Conversation">
+      <div class="conversation-live"><div id="conversationPresence" class="conversation-presence" data-state="idle" aria-hidden="true"><span id="conversationInitial">N</span></div>
+      <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Préparation de Nestor…</p><p id="conversationVoiceNotice" class="muted" role="status" hidden></p>
+      <p id="conversationBrowserSttIndicator" class="conversation-browser-stt" hidden></p><section id="conversationBrowserSttNotice" class="conversation-audio" aria-label="Reconnaissance du navigateur" role="alert" hidden></section>
+      <div class="conversation-actions"><button id="conversationStart" type="button" class="button primary" hidden disabled>Activer Nestor</button><button id="conversationPause" type="button" class="button" disabled>Pause</button><button id="conversationEnd" type="button" class="button danger" disabled>Arrêter</button></div></div>
       <section id="conversationVisual" class="conversation-board conversation-visual" aria-label="Images" hidden></section>
       <div id="conversationResume" class="conversation-resume" role="region" aria-label="Reprendre" hidden></div>
       <div id="conversationTranscript" class="conversation-transcript" role="log" aria-label="Transcript" aria-live="polite"><p class="empty">Nos échanges apparaîtront ici.</p></div>
@@ -66,8 +67,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         <p id="conversationToolsStatus" role="status"></p>
         <details><summary>Résultat des outils</summary><pre id="conversationToolsReceipt"></pre></details>
       </section>
-      <form id="conversationText" class="conversation-text"><label class="sr-only" for="conversationMessage">Message</label><textarea id="conversationMessage" rows="2" placeholder="Ou écris un message… (Entrée pour envoyer)" required maxlength="4000"></textarea><button class="button" type="submit">Envoyer</button></form>
-      ${family ? '' : '<section class="conversation-attachments" aria-label="Pièces jointes"><label for="conversationFiles">Joindre une image ou un document</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">3 fichiers maximum · photos JPEG ou PNG jusqu’à 50 Mo (Nestor reçoit une copie réduite, l’original est archivé) · texte ou PDF texte de 2 Mo (20 pages, 24 000 caractères maximum). Ajoute un message pour les envoyer.</p><div id="conversationDraftFiles" aria-live="polite"></div></section>'}
+      <form id="conversationText" class="conversation-text"><label class="sr-only" for="conversationMessage">Message</label><textarea id="conversationMessage" rows="2" placeholder="Écris un message…" required maxlength="4000"></textarea><button class="button" type="submit">Envoyer</button></form>
+      ${family ? '' : '<details class="conversation-attachments"><summary>Joindre une image ou un document</summary><label class="sr-only" for="conversationFiles">Pièces jointes</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">3 fichiers maximum · photos JPEG ou PNG jusqu’à 50 Mo (Nestor reçoit une copie réduite, l’original est archivé) · texte ou PDF texte de 2 Mo (20 pages, 24 000 caractères maximum). Ajoute un message pour les envoyer.</p><div id="conversationDraftFiles" aria-live="polite"></div></details>'}
       <p id="conversationAgentContext" class="conversation-context muted"></p>
     </section></div></section>`;
   const el = id => document.getElementById(id);

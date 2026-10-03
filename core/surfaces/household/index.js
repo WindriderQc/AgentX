@@ -222,9 +222,9 @@ function register(api) {
   app.use('/assets/household', express.static(publicRoot, { fallthrough: false, maxAge: '5m' }));
   app.get('/dad/nestor', (_req, res) => res.redirect(302, '/voice'));
   app.get([
-    '/', '/ecosystem', '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/family', '/voice-personas/debug', '/kids', '/kids/sounds', '/lecture', '/lecture/parents', '/lecture/parents.html',
+    '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/family', '/voice-personas/debug', '/kids', '/kids/sounds', '/lecture', '/lecture/parents', '/lecture/parents.html',
     '/voice', '/voice/native', '/voice.html', '/voix', '/voice-personas', '/voice-personas.html', '/device-check'
-  ], (_req, res) => res.sendFile(path.join(publicRoot, 'index.html')));
+  ], require('../../src/ui/productShell').householdPage(app, path.join(publicRoot, 'index.html')));
   app.get('/api/household/avatar/llmx-face.js', createScriptRelay({ resolveUrl: avatarModuleUrl, fetchWithTimeout,
     unavailable: (res, error) => fail(res, error.status || 503, error.message, error.code || 'AVATAR_UNAVAILABLE') }));
 

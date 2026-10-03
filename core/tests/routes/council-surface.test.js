@@ -22,7 +22,7 @@ describe('AgentX Council surface', () => {
 
   it('links Council from AgentX surfaces and declares the advisory boundary', () => {
     const linkedSources = [
-      read('shared/productNavigation.js'),
+      read('shared/productSpaces.js'),
       read('core/public/js/chat/chat-main.js'),
     ];
 

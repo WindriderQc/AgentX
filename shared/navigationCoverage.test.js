@@ -25,7 +25,7 @@ const HOUSEHOLD_PUBLIC = 'core/surfaces/household/public';
 // A second address for a page that has its own entry: old bookmarks keep working.
 const ALIASES = {
   core: {
-    '/ecosystem': '/',
+    '/ecosystem': '/', '/portal': '/',
     '/dad/nestor': '/dad', '/voice': '/dad', '/voix': '/dad', '/voice.html': '/dad',
     '/voice-personas': '/dad/memories', '/voice-personas.html': '/dad/memories',
     '/lecture/parents': '/dad/family', '/lecture/parents.html': '/dad/family'
@@ -34,6 +34,7 @@ const ALIASES = {
 // Pages entered from another page rather than a menu: [file holding the link, the link].
 const CONTEXTUAL = {
   core: {
+    '/unlock': ['core/views/partials/nav.ejs', 'href="/unlock?next=%2F"'],
     '/access/code': ['core/public/access/unlock.html', 'href="/access/code"'],
     '/access/face': ['core/public/access/unlock.html', 'href="/access/face"']
   },

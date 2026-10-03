@@ -1,0 +1,58 @@
+/* Conversation content takes priority; runtime and device controls stay disclosed. */
+.household-product { background: var(--ax-ink, #091219); }
+.household-product #app { max-width: 1240px; padding-inline: 24px; }
+.household-product .conversation-shell { padding: 30px 0; }
+.household-product .conversation-heading { max-width: 960px; margin: 0 auto 16px; }
+.household-product .conversation-heading .eyebrow { color: var(--ax-ember, #e18c5c); font-size: 11px; letter-spacing: 1.3px; }
+.household-product .conversation-heading h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 500; margin: 8px 0; }
+.household-product .conversation-heading > p:last-child { font-size: 13px; color: var(--ax-muted, #a4b5c0); }
+.household-product .conversation-toolbar { max-width: 960px; margin: 0 auto 16px; gap: 8px; }
+.household-product .conversation-toolbar button { font-size: 12px; min-height: 44px; padding: 8px 14px; }
+.household-product .conversation-stage { padding: 22px; border-color: #36515d; background: linear-gradient(145deg, #112631, #0d1a23 70%); border-radius: 20px; }
+.household-product .conversation-live { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #29404d; }
+.household-product .conversation-presence { width: 40px; height: 40px; margin: 0; font-size: 20px; box-shadow: 0 0 0 5px #15323855; }
+.household-product .conversation-status { text-align: left; margin: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.household-product .conversation-actions { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.household-product .conversation-actions .button { min-height: 44px; padding: 8px 14px; font-size: 12px; }
+.household-product .conversation-transcript { min-height: 144px; max-height: 38vh; padding: 16px 0; }
+.household-product .conversation-transcript .empty { padding: 10px 0; margin: 0; border: 0; background: transparent; text-align: left; font-size: 13px; color: var(--ax-muted, #a4b5c0); }
+.household-product .conversation-text { padding-top: 14px; }
+.household-product .conversation-text textarea { min-height: 58px; padding: 14px; background: #0a1821; border: 1px solid #395b69; border-radius: 12px; font-size: 14px; }
+.household-product .conversation-text > button { min-height: 58px; background: #63e1e6; color: #10212b; border: 1px solid #63e1e6; border-radius: 12px; font-weight: 650; }
+.household-product .conversation-attachments { margin: 14px 0 0; font-size: 12px; color: var(--ax-muted, #a4b5c0); }
+.household-product .conversation-attachments > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--ax-ember, #e18c5c); }
+.household-product .conversation-attachments > p { font-size: 12px; }
+.household-product .conversation-context:empty { display: none; }
+.household-product .conversation-settings > summary { color: var(--ax-muted, #a4b5c0); font-size: 13px; min-height: 44px; display: flex; align-items: center; }
+.household-product :is(button, a, textarea, summary):focus-visible { outline: 2px solid #63e1e6; outline-offset: 3px; }
+@media (max-width: 760px) {
+  .household-product #app { padding-inline: 16px; }
+  .household-product .conversation-shell { padding-top: 18px; }
+  .household-product .conversation-heading { margin-bottom: 12px; }
+  .household-product .conversation-heading > p:last-child { line-height: 1.45; margin-bottom: 8px; }
+  .household-product .conversation-toolbar { margin-bottom: 12px; }
+  .household-product .conversation-toolbar button { flex: 0 1 auto; }
+  .household-product .conversation-stage { padding: 16px; border-radius: 16px; }
+  .household-product .conversation-live { grid-template-columns: 36px 1fr; gap: 10px; padding-bottom: 12px; }
+  .household-product .conversation-presence { width: 34px; height: 34px; font-size: 18px; }
+  .household-product .conversation-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .household-product .conversation-transcript { min-height: 54px; max-height: 28vh; }
+  .household-product .conversation-text { gap: 6px; }
+  .household-product .conversation-text textarea { padding: 10px; font-size: 13px; }
+  .household-product .conversation-text > button { padding: 10px; font-size: 12px; }
+}
+
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 860px) {
+  .household-product .conversation-heading { margin-bottom: 8px; }
+  .household-product .conversation-heading > p:last-child { display: none; }
+  .household-product .conversation-shell { padding-top: 8px; }
+  .household-product .conversation-heading h1 { font-size: 24px; }
+  .household-product .conversation-toolbar { margin-bottom: 8px; }
+  .household-product .conversation-stage { padding: 12px; }
+  .household-product .conversation-live { grid-template-columns: 34px 1fr auto; }
+  .household-product .conversation-actions { grid-column: auto; }
+  .household-product .conversation-transcript:has(> .empty:only-child) { min-height: 0; padding: 4px 0; }
+  .household-product .conversation-transcript > .empty:only-child { display: none; }
+}
+
+.household-product .conversation-live > :is(#conversationVoiceNotice, #conversationBrowserSttIndicator, #conversationBrowserSttNotice) { grid-column: 1 / -1; }

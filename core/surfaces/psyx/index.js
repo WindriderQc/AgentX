@@ -49,7 +49,7 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
   }
   // The dream reads the owner's other information in-process and read-only (ADR 0002).
   const sources = createSources({ runtimeServices, mailJournal: require('../../src/services/mailJournalService'), logger });
-  const psyx = createApp({ config, database, provider: createCoreProvider(runtimeServices, { frontier: createOpenClawAgentClient(), config, logger }), logger, accessAuth, sources });
+  const psyx = createApp({ config, database, provider: createCoreProvider(runtimeServices, { frontier: createOpenClawAgentClient(), config, logger }), logger, accessAuth, sources, productApp: app });
   psyx.locals.dreamer.start();
   app.use((req, res, next) => /^\/(?:psyx(?:\/|$)|api\/psyx(?:\/|$))/i.test(req.path)
     ? psyx(req, res, next) : next());

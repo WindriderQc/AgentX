@@ -11,13 +11,20 @@ const { createParentalCode } = require('../services/parentalCodeService');
 // unmarked service traffic retains the existing trusted-network contract.
 const isEntry = req => req.get('x-agentx-entry') === 'household';
 const familyPages = new Set(['/panel', '/kids', '/kids/sounds', '/lecture']);
+const landingPages = new Set(['/', '/portal', '/ecosystem']);
+const shellAssets = new Set(['/css/local-fonts.css', '/css/product-shell.css', '/css/home.css',
+  '/css/platform-chrome.css', '/css/shortcuts-modal.css', '/dist/shared-tokens.css', '/dist/shared-utils.js',
+  '/js/product-navigation.js', '/js/home.js', '/js/utils/shared.js', '/js/utils/typed-confirmation.js',
+  '/js/utils/polling-controller-global.js', '/js/utils/polling-controller.js', '/js/utils/shortcut-hints.js',
+  '/js/utils/shortcuts-modal.js', '/js/utils/toast.js']);
 const read = req => req.method === 'GET' || req.method === 'HEAD';
 function canonicalPath(req) {
   try { return decodeURIComponent(req.path).replace(/\/+$/, '').toLowerCase() || '/'; }
   catch { return ''; }
 }
 function familyRequest(req, pathname) {
-  if (read(req) && familyPages.has(pathname)) return true;
+  if (read(req) && (familyPages.has(pathname) || landingPages.has(pathname) || shellAssets.has(pathname))) return true;
+  if (read(req) && /^\/(?:vendor\/(?:fonts\/|fontawesome\/6\.4\.0\/))/.test(pathname)) return true;
   if (read(req) && /^\/(?:assets\/household|psyx\/assets|access-assets)\//.test(pathname)) return true;
   // The family conversation runs Core's shared voice loop: its scripts and capture
   // worklet, by exact name, so no other Core page script opens through this path.
@@ -125,7 +132,6 @@ function registerParentalAccess({ app, express, env = process.env, now, faceReco
     if (familyRequest(req, pathname) || /^\/api\/psyx\/auth\/(?:status|unlock|lock)$/.test(pathname)) return next();
     const session = auth.current(req);
     if (session) { res.locals.adultUserId = session.userId; return next(); }
-    if (read(req) && pathname === '/') return res.redirect(302, '/panel');
     if (read(req) && !pathname.startsWith('/api/') && pathname !== '/mcp') {
       return res.redirect(302, '/unlock?next=' + encodeURIComponent(safeNext(req.originalUrl)));
     }
