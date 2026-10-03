@@ -38,6 +38,31 @@ const { ageInYears, instanceToday } = require('../../src/domains/household/famil
 const KNOWN_UNKNOWN = 'dis simplement ce que tu ne sais pas; ne devine jamais un âge exact';
 
 describe('built-in Household surface on Core', () => {
+  test('the server selects a bound personality’s agent and refuses conflicting choices without creating a session', async () => {
+    const base = '/api/voice-personas/private/sessions';
+    const create = body => request(app).post(base).send({ packId: 'personal_operator', backend: 'agentx', ...body });
+    const secretary = (await create({ personaId: 'secretary' }).expect(201)).body.data.session;
+    expect(secretary).toMatchObject({ agentId: 'secretary', persona: { id: 'secretary' }, scopeId: 'personal' });
+    const overlay = (await create({ personaId: 'jarvis', agentId: 'secretary' }).expect(201)).body.data.session;
+    expect(overlay).toMatchObject({ agentId: 'secretary', persona: { id: 'jarvis' } });
+    expect((await Conversation.findOne({ 'surfaceSession.sessionId': secretary.sessionId }).lean()).surfaceSession.persona.agentId).toBe('secretary');
+    const before = await Conversation.countDocuments({});
+    expect((await create({ personaId: 'secretary', agentId: 'main' }).expect(400)).body.code).toBe('VOICE_PERSONA_AGENT_MISMATCH');
+    expect(await Conversation.countDocuments({})).toBe(before);
+    await request(app).post(`${base}/${secretary.sessionId}/turns/text`).send({ text: 'Bonjour.' }).expect(200);
+    expect(executeForTest.mock.calls.at(-1)[0].messages.map(message => message.content).join(' ')).toContain('No native agent tools');
+    await request(app).post(`/api/voice-personas/family/sessions/${secretary.sessionId}/turns/text`).send({ text: 'Bonjour.' }).expect(403);
+  });
+
+  test('Family creation keeps its family isolation boundary even when Nestor declares main', async () => {
+    const base = '/api/voice-personas/family/sessions';
+    const create = body => request(app).post(base).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx', agentId: 'secretary', ...body });
+    expect((await create({ personaId: 'nestor' }).expect(201)).body.data.session).toMatchObject({ agentId: 'family', persona: { id: 'nestor' } });
+    expect((await create({}).expect(201)).body.data.session).toMatchObject({ agentId: 'family', persona: null });
+    for (const personaId of ['secretary', 'jarvis']) {
+      expect((await create({ personaId }).expect(400)).body.code).toBe('VOICE_PERSONA_FAMILY_PERSONA_REQUIRED');
+    }
+  });
   test('the panel stays ready when optional OpenClaw evidence is absent', async () => {
     const previousEvidence = app.locals.aioOpsRuntimeEvidence;
     const previousVoixUrl = process.env.VOIX_BASE_URL;
