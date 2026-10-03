@@ -170,6 +170,18 @@ the Profiler panel or `POST /api/profiler/pipeline/profile/:profileId/cancel`,
 `POST /api/profiler/hosts/test/run-fleet/:queueId/cancel` or
 `POST /api/benchmark/batch/:id/stop` on Benchmark. Core serves the same verdict
 at `/api/nerve-center/runtime-coordination/deploy-blockers?service=core|benchmark|all`.
+
+When the only blockers are background inference (`inference-automated`, or
+Core's own `watchdog-probe`), the launcher does not refuse at once. It posts a
+drain request (`POST /api/nerve-center/runtime-coordination/drain`), which
+`/runtime-coordination/active` reports as `drain`, and retries the lease for up
+to `AGENTX_RUNTIME_LEASE_DRAIN_SECONDS` (120 by default, 0 disables the wait).
+A resumable job that reads coordination before each unit, such as the Secretary
+mail catch-up, pauses on it, so the launcher waits for at most the unit in
+flight. The request is advisory, lives in the Core process and is withdrawn
+when the wait ends. Interactive, benchmark and maintenance blockers refuse
+immediately, as before.
+
 Images are built first (`up --build` included), so the lease, which keeps new
 work out, covers only the recreate: it is heartbeated and released once health
 is green. Recreating mid-batch would otherwise cut the workload and quarantine
