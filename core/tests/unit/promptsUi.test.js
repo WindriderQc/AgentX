@@ -131,6 +131,22 @@ describe('Prompts page UI', () => {
     expect(html).not.toContain('promptVersion=3');
   });
 
+  test('a generated persona is labelled and sent to the Team page instead of the prompt form', () => {
+    const groups = promptsUi.normalizePromptPayload({
+      status: 'success',
+      data: {
+        butler: [{ ...prompt({ name: 'butler', version: 2, isActive: true }), uiConfig: { layoutConfig: { source: { id: 'synthetic-source' } } } }],
+        'plain prompt': [prompt({ name: 'plain prompt', version: 1, isActive: true })]
+      }
+    });
+    const [persona, plain] = promptsUi.renderPromptCards(groups).split('</article>');
+    expect(persona).toContain('>Persona</span>');
+    expect(persona).toContain('href="/agent-ops#agents"');
+    expect(persona).not.toContain('data-action="new-version"');
+    expect(plain).toContain('data-action="new-version"');
+    expect(plain).not.toContain('>Persona</span>');
+  });
+
   test('filters by actual active state and places prompts without feedback last', () => {
     const groups = promptsUi.normalizePromptPayload({
       status: 'success',
