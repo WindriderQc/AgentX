@@ -153,7 +153,7 @@ function register(api) {
   }
   const { app, express, mongoose, standardJsonParser, runtimeServices, extensionRoot, logger } = api;
   const models = createModels(mongoose);
-  const conversations = runtimeServices.conversations.forSurface('household');
+  const conversations = require('./turn-attribution').attributedConversations(runtimeServices.conversations.forSurface('household'));
   const personalTasks = runtimeServices.tasks.personal;
   const familyTasks = runtimeServices.tasks.family;
   const ownerMemory = runtimeServices.memory.forAudience('owner');

@@ -130,7 +130,7 @@ describe('built-in Household surface on Core', () => {
       const member = agentForTest.mock.calls.at(-1)[0];
       expect(member.session).toMatchObject({ agentId: 'secretary', agentSessionKey: `agent:secretary:household:direct:${id}` });
       expect(member.instructions).toContain('addressed you (Secretary) directly');
-      expect(direct.body.data.reply.speaker).toEqual({ agentId: 'secretary', name: 'Secretary', personaId: 'secretary' });
+      expect(direct.body.data.reply.speaker).toEqual({ agentId: 'secretary', name: 'Secretary', personaId: 'secretary', personaVersion: 0 });
       expect(direct.body.data.reply.speech).toMatchObject({ provider: 'kokoro', voice: 'ff_siwis' });
       const back = (await turn('Merci, et toi Nestor?'), agentForTest.mock.calls.at(-1)[0]);
       expect(back.session).toMatchObject({ agentId: 'main', agentSessionKey: `agent:main:household:direct:${id}` });
@@ -615,13 +615,20 @@ describe('built-in Household surface on Core', () => {
     const id = created.body.data.session.sessionId;
     const turn = await request(app).post(`${base}/private/sessions/${id}/turns/text`).send({ text: 'Synthetic private input' }).expect(200);
     expect(turn.body.data.reply.text).toBe('Synthetic response');
+    expect(turn.body.data.speaker).toMatchObject({ agentId: 'main', personaId: 'nestor', personaVersion: 1, name: 'Nestor · Majordome' });
+    expect(turn.body.data.reply.speaker).toEqual(turn.body.data.speaker);
     expect(turn.body.data.tools.status).toBe('not_supported');
     const canonical = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
     expect(canonical.messages.map(message => message.content)).toEqual(['Synthetic private input', 'Synthetic response']);
     expect(canonical.surfaceSession.turnCount).toBe(1);
+    expect(canonical.messages[1].turn.speaker).toEqual(turn.body.data.speaker);
+    expect(canonical.messages[1].turn.performedBy).toEqual([{ agentId: 'main', runId: null }]);
+    expect(canonical.messages[1].turn.voice).toEqual({ provider: turn.body.data.reply.speech.provider, voice: turn.body.data.reply.speech.voice });
     await request(app).get(`/api/history/${canonical._id}`).expect(404);
     const history = await request(app).get(`${base}/private/sessions/${id}/history`).expect(200);
     expect(history.body.data.policy.historyAuthority).toBe('agentx.core.conversations');
+    expect(history.body.data.turns[0]).toMatchObject({ speaker: turn.body.data.speaker,
+      performedBy: [{ agentId: 'main', runId: null }], voice: canonical.messages[1].turn.voice });
     expect(history.body.data.history).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'user', content: 'Synthetic private input' }),
       expect.objectContaining({ role: 'assistant', content: 'Synthetic response' })
