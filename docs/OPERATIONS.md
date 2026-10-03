@@ -245,6 +245,11 @@ inference. If that host is off, unset the variable to fall back to GitHub.
 Run the relevant tests locally before pushing: every push to a pull request
 starts a run.
 
+A pull request run tests only the services its files touch, and a merge starts
+no run. `main` is therefore validated as a whole only by a manual run, in which
+every job runs: `gh workflow run agentx-ci --ref main`. Start one after a batch
+of merges and wait for its result before deploying.
+
 ## Optional surface integrations
 
 Data is available through Compose profile `data`. Set `COMPOSE_PROFILES=data`
