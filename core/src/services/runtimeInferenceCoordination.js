@@ -1,6 +1,7 @@
 'use strict';
 
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
+const { resourceTopology, resourcesFor, topologyGuard, topologyMatches, resourceFailure, overlaps } = require('./runtimePhysicalResources');
 const { inferenceConflict } = require('./runtimeInferenceConflict');
 const { WORKLOAD_INFERENCE_MAINTENANCE_FILTER } = require('./runtimeDeployGate');
 const { clean, ttlMs, secret, canonicalHost, reapExpired } = require('./runtimeCoordinationState');
@@ -48,8 +49,12 @@ async function acquireInference({
   const keepAliveSupplied = keepAlive !== undefined;
   const residencySpec = buildInferenceResidencySpec({ model, runtimeOptions, keepAlive, keepAliveSupplied });
   const residencyKey = buildInferenceResidencyKey({ model, runtimeOptions, keepAlive, keepAliveSupplied });
+  let topology;
+  try { topology = resourceTopology(); } catch (error) { return resourceFailure(error.code); }
+  const resourceIds = resourcesFor(topology, [host]);
   await reapExpired();
   const current = await RuntimeCoordination.findById('runtime').lean();
+  if (!topologyMatches(current, topology)) return resourceFailure('runtime_resource_configuration_changed');
   const existing = (current?.inferences || []).find(item =>
     item.requestId === requestId && item.principal === principal);
   if (existing) {
@@ -78,6 +83,7 @@ async function acquireInference({
     model,
     residencyKey,
     residencySpec,
+    resourceIds,
     kind,
     mode,
     workloadAdmissionId,
@@ -90,15 +96,21 @@ async function acquireInference({
   };
 
   const incompatibleInference = {
-    host,
-    $or: [
-      { state: 'UNKNOWN' },
-      { mode: 'exclusive' },
-      ...(mode === 'exclusive' ? [{}] : [{ residencyKey: { $ne: residencyKey } }])
+    $and: [
+      { $or: [{ host }, ...(resourceIds.length ? [{ resourceIds: { $in: resourceIds } }] : [])] },
+      { $or: [
+        { host: { $ne: host } },
+        { state: 'UNKNOWN' },
+        { mode: 'exclusive' },
+        ...(mode === 'exclusive' ? [{}] : [{ residencyKey: { $ne: residencyKey } }])
+      ] }
     ]
   };
+  const resourceWorkload = resourceIds.length ? [{ resourceIds: { $in: resourceIds },
+    ...(mode === 'shared' && { $or: [{ hosts: { $ne: host } }, { yieldedAt: null }, { drainingHosts: host }] }) }] : [];
   const ordinaryFilter = {
     _id: 'runtime',
+    ...topologyGuard(topology),
     maintenance: null,
     inferences: { $not: { $elemMatch: {
       $or: [
@@ -106,11 +118,15 @@ async function acquireInference({
         incompatibleInference
       ]
     } } },
-    workloads: { $not: { $elemMatch: mode === 'exclusive' ? { hosts: host }
-      : { hosts: host, $or: [{ yieldedAt: null }, { drainingHosts: host }] } } }
+    workloads: { $not: { $elemMatch: { $or: [
+      mode === 'exclusive' ? { hosts: host }
+        : { hosts: host, $or: [{ yieldedAt: null }, { drainingHosts: host }] },
+      ...resourceWorkload
+    ] } } }
   };
   const workloadFilter = {
     _id: 'runtime',
+    ...topologyGuard(topology),
     ...WORKLOAD_INFERENCE_MAINTENANCE_FILTER,
     inferences: { $not: { $elemMatch: {
       $or: [
@@ -129,17 +145,18 @@ async function acquireInference({
   };
   const updated = await RuntimeCoordination.findOneAndUpdate(
     workloadAdmissionId ? workloadFilter : ordinaryFilter,
-    { $push: { inferences: admission } },
+    { $push: { inferences: admission }, $set: { resourceTopologyHash: topology.hash } },
     { new: true }
   ).lean();
   if (updated) return { acquired: true, ...admission };
   const blocked = await RuntimeCoordination.findById('runtime').lean();
+  if (!topologyMatches(blocked, topology)) return resourceFailure('runtime_resource_configuration_changed');
   const recoveryRequired = blocked?.maintenance?.state === 'UNKNOWN'
-    || (blocked?.inferences || []).some(item => canonicalHost(item.host) === host && item.state === 'UNKNOWN');
+    || (blocked?.inferences || []).some(item => overlaps(item, host, resourceIds) && item.state === 'UNKNOWN');
   return {
     acquired: false,
     recoveryRequired,
-    failure: inferenceConflict(blocked, { host, mode, residencyKey, principal, workloadAdmissionId, workloadGeneration }, now),
+    failure: inferenceConflict(blocked, { host, resourceIds, mode, residencyKey, principal, workloadAdmissionId, workloadGeneration }, now),
     reason: workloadAdmissionId
       ? 'exact workload proof is absent/expired, or a conflicting inference residency blocks this host'
       : 'maintenance, workload, UNKNOWN inference, or incompatible residency blocks inference on this host'
@@ -341,10 +358,16 @@ async function recoverInferenceAfterRuntimeRestart({ id, generation, principal, 
 async function hostHasActiveInferences(host) {
   host = canonicalHost(host);
   if (!host) return false;
+  let topology;
+  try { topology = resourceTopology(); } catch { return true; }
+  const resourceIds = resourcesFor(topology, [host]);
   await reapExpired();
+  const current = await RuntimeCoordination.findById('runtime').lean();
+  if (!topologyMatches(current, topology)) return true;
   return Boolean(await RuntimeCoordination.exists({
     _id: 'runtime',
-    inferences: { $elemMatch: { host } }
+    inferences: { $elemMatch: { $or: [{ host },
+      ...(resourceIds.length ? [{ resourceIds: { $in: resourceIds } }] : [])] } }
   }));
 }
 

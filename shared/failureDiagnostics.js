@@ -68,6 +68,7 @@ function register(type, codes) {
 }
 
 register('configuration', ['INFERENCE_HOST_INVALID', 'RUNTIME_INFERENCE_HOST_INVALID', 'INVALID_AUTOMATION_INTENT',
+  'runtime_resource_configuration_invalid', 'runtime_resource_configuration_changed',
   'automation_invalid', 'automation_missing', 'automation_manual', 'attribution_requested_model_invalid']);
 register('admission', ['BENCHMARK_CLAIM_ACTIVE', 'HOST_SESSION_HOLD_BUSY',
   'workload_reserved', 'workload_yielded',

@@ -58,6 +58,39 @@ describe('image GPU handoff and original-job recovery', () => {
     expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(0);
     expect(await coordination.acquireInference({ principal: 'chat', requestId: 'after', host, model: 'gemma:12b' })).toMatchObject({ acquired: true });
   });
+  test('the bound image executor reserves its physical aliases before Ollama unload', async () => {
+    const original = process.env.AGENTX_RUNTIME_RESOURCES_JSON;
+    const workerUrl = 'http://image-worker:8188', alias = 'http://image-gpu:11435';
+    process.env.AGENTX_RUNTIME_RESOURCES_JSON = JSON.stringify([
+      { id: 'image-device', endpoints: [workerUrl, alias] }
+    ]);
+    let reservation;
+    try {
+      const op = { _id: 'bound-executor', workerUrl };
+      const persist = jest.fn(async changes => Object.assign(op, changes));
+      reservation = await reserve({ workerUrl, ollamaHosts: [host], drainMs: 1 }, op, persist, async () => false);
+      expect(op.admission).toMatchObject({ hosts: [workerUrl, 'http://localhost:11434'], resourceIds: ['image-device'] });
+      expect(captureBenchmarkRuntime).toHaveBeenCalledTimes(1);
+      expect(captureBenchmarkRuntime).toHaveBeenCalledWith(host);
+      expect(await coordination.acquireInference({ principal: 'chat', requestId: 'physical-alias',
+        host: alias, model: 'gemma:12b' })).toMatchObject({ acquired: false });
+      await reservation.verified({ jobTerminal: true });
+      await reservation.restore();
+      reservation = null;
+    } finally {
+      if (reservation) await reservation.quarantine('Test fixture stopped');
+      if (original === undefined) delete process.env.AGENTX_RUNTIME_RESOURCES_JSON;
+      else process.env.AGENTX_RUNTIME_RESOURCES_JSON = original;
+    }
+  });
+  test('a changed executor refuses before reservation or resident mutation', async () => {
+    await expect(reserve({ workerUrl: 'http://replacement:8188', ollamaHosts: [host] },
+      { _id: 'wrong-executor', workerUrl: 'http://original:8188' }, jest.fn(), async () => false))
+      .rejects.toThrow('original worker');
+    expect(captureBenchmarkRuntime).not.toHaveBeenCalled();
+    expect(unloadModel).not.toHaveBeenCalled();
+    expect(await RuntimeCoordination.countDocuments()).toBe(0);
+  });
   test('loss of an unload acknowledgement keeps the runtime fenced', async () => {
     unloadModel.mockRejectedValue(new Error('lost unload response'));
     await expect(heldOperation('image-unload')).rejects.toMatchObject({ runtimeUnknown: true });
