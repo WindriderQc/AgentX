@@ -242,7 +242,9 @@ ConversationSchema.index({ 'usage.totalTokens': -1 });
 
 // Update timestamp on save
 ConversationSchema.pre('save', function() {
-  this.updatedAt = Date.now();
+  if (!this.$locals.transcriptBulkInsert) this.updatedAt = Date.now();
 });
+
+ConversationSchema.plugin(require('../src/services/conversations/transcriptPlugin'));
 
 module.exports = mongoose.model('Conversation', ConversationSchema);

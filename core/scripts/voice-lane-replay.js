@@ -311,7 +311,7 @@ async function openCore(options) {
   for (const transport of require('../config/logger').transports) if (transport.name === 'console') transport.silent = true;
   const mongoose = require('mongoose');
   await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/agentx');
-  const conversations = mongoose.connection.db.collection('conversations');
+  const conversations = require('../models/Conversation');
   let target = null, inference = null;
   async function resolveTarget() {
     if (target) return target;
@@ -343,7 +343,7 @@ async function openCore(options) {
       const filter = { surface: 'household', 'surfaceSession.deletedAt': { $exists: false },
         'surfaceSession.packId': lane.LANE_PACK_ID, 'surfaceSession.scopeId': SCOPE_ID,
         messages: { $elemMatch: { 'turn.channel': 'voice' } } };
-      const index = await conversations.find(filter, { projection: { 'surfaceSession.lastTurnAt': 1 } }).toArray();
+      const index = await conversations.find(filter).select({ 'surfaceSession.lastTurnAt': 1 }).lean();
       index.sort((left, right) => timeOf(right.surfaceSession?.lastTurnAt) - timeOf(left.surfaceSession?.lastTurnAt));
       const fields = ['channel', 'packId', 'scopeId', 'modeId', 'interrupted', 'routeTier', 'model', 'createdAt',
         'speakerAgentId', 'toolEvidence.status', 'toolEvidence.receipts.tool'];
@@ -351,7 +351,7 @@ async function openCore(options) {
         'messages.role': 1, 'messages.content': 1, 'messages.turnId': 1,
         ...Object.fromEntries(fields.map(field => [`messages.turn.${field}`, 1])) };
       // One conversation at a time: the caller stops reading once its sample is full.
-      for (const { _id } of index) yield await conversations.findOne({ _id }, { projection });
+      for (const { _id } of index) yield await conversations.findOne({ ...filter, _id }).select(projection).lean();
     },
     target: resolveTarget,
     async infer(messages) {

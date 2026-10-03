@@ -27,6 +27,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   sending the request again. Completed retries replay the saved response;
   unknown outcomes do not start another inference. Conversation erasure also
   removes associated recovery content and rejects late writes across workers.
+  Canonical transcript pages and complete payload chunks keep histories beyond
+  one BSON document readable and exportable. Current-content search preserves
+  owner filters, phrases and conversation-wide exclusions. Atomic root writes
+  retain session counters, message identities and conditional review predicates;
+  stale writers and missing content refuse explicitly.
   Ordinary Ollama calls preserve complete input and disable context shifting;
   an unqualified runtime refuses before inference. Benchmark/Profiler keep
   their intentional probes under validated workload ownership.
