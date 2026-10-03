@@ -135,6 +135,21 @@ in, approve or reach personal tasks.
 
 ### Conversations
 
+Core's internal conversation storage primitives (`services/conversations/`)
+support immutable BSON transcript pages and owner-scoped exchange receipts.
+Receipts preserve accepted input and ordered response packets, check content
+hashes before recovery, and distinguish completed from uncertain or interrupted
+outcomes. These primitives are not attached to the public chat routes or the
+`Conversation` model; existing conversation persistence keeps its current shape.
+
+Content writes and erasure share a durable Mongo owner fence, including across
+Core workers. Erasure closes admission before waiting for an existing writer,
+then deletes the owner's pages, payload chunks and exchange packets. It leaves
+only the identity and erasure tombstones needed to reject a replay. A dead writer
+or unknown Mongo mutation outcome retains its exact fence: elapsed time does
+not prove that a database command stopped, so no TTL steals this ownership.
+These primitives work with standalone Mongo and require no transactions.
+
 Surface sessions and turns use Core's `Conversation` collection through
 `surfaceConversationService`. Session settings are embedded in the conversation;
 text lives in its normal messages, and the turn's tool, safety, voice and scene
