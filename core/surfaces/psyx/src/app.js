@@ -328,7 +328,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const userId = res.locals.psyxUserId;
     const requested = domain.normalizeControl(req.body?.psyx || {});
     const action = requested.action ? domain.ACTION_CONFIG[requested.action] : null;
-    const input = action?.persistedMessage || cleanText(req.body?.message, 12000);
+    // The JSON body limit and Core admission bound the request. Never cut the
+    // user's words before safety detection, inference or canonical storage.
+    const input = action?.persistedMessage || String(req.body?.message || '').trim();
     if (!input) return res.status(400).json({ ok: false, status: 'error', message: 'message is required' });
 
     const conversationId = cleanText(req.body?.conversationId, 80) || null;
@@ -382,7 +384,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
         signal: abortController.signal
       }, handlers);
       if (abortController.signal.aborted) return;
-      const assistant = cleanText(result.content || handlers.content(), 50000);
+      const assistant = String(result.content || handlers.content() || '').trim();
       if (!assistant) throw new Error('Inference provider returned an empty response');
       const session = await conversationRepository.saveCompletedTurn({
         userId,

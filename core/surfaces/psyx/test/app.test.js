@@ -136,6 +136,51 @@ test('chat ignores browser transcript authority and persists only provider compl
   assert.equal(saved.assistantMessage, 'safe answer');
 });
 
+test('accepted long messages retain their tail for safety, inference and storage; replies stay whole', async () => {
+  const message = `${'x'.repeat(12000)} Je veux mourir.`;
+  const answer = `${'a'.repeat(50000)} Fin de la réponse.`;
+  let received, saved;
+  const database = repositories();
+  database.conversationRepository.saveCompletedTurn = async input => {
+    saved = input;
+    return { id: '507f1f77bcf86cd799439011' };
+  };
+  const provider = { id: 'synthetic', async stream(input, sink) {
+    received = input;
+    sink.onToken(answer);
+    return { content: answer, model: 'synthetic' };
+  } };
+  await withServer(createApp({ config: config(), database, provider, logger: {} }), async base => {
+    const response = await fetch(`${base}/api/psyx/chat/stream`, {
+      method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, psyx: { mode: 'challenge', depth: 'deep' } })
+    });
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.match(text, /event: safety/);
+    assert.equal(JSON.parse(text.match(/event: done\ndata: ([^\n]+)/)[1]).response, answer);
+  });
+  assert.equal(received.message, message);
+  assert.match(received.system, /SAFETY STANCE/);
+  assert.equal(saved.userMessage, message);
+  assert.equal(saved.assistantMessage, answer);
+});
+
+test('a request exceeding the configured body limit is refused before inference or storage', async () => {
+  let calls = 0;
+  const database = repositories();
+  database.conversationRepository.saveCompletedTurn = async () => { calls += 1; };
+  const provider = { async stream() { calls += 1; } };
+  await withServer(createApp({ config: { ...config(), maxBodyBytes: 1024 }, database, provider, logger: {} }), async base => {
+    const response = await fetch(`${base}/api/psyx/chat/stream`, {
+      method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'x'.repeat(2048) })
+    });
+    assert.equal(response.status, 413);
+    assert.equal(calls, 0);
+  });
+});
+
 test('failed or incomplete inference never persists a turn', async () => {
   let saves = 0;
   const database = repositories();
