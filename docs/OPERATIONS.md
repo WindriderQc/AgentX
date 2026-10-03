@@ -1,20 +1,5 @@
 # Operations
 
-The internal conversation storage primitives retain a durable writer token
-when a worker dies or a Mongo mutation has an unknown outcome. An erasure call
-then reports `CONVERSATION_ERASURE_PENDING` or
-`CONVERSATION_WRITE_RECOVERY_REQUIRED`; it has not completed. The erasure barrier
-continues to reject new content writes. A successful erasure means the prior
-writer settled and all of that owner's content was deleted with acknowledged
-Mongo writes. Other owners remain independent.
-
-These primitives are not activated on chat routes or the `Conversation` model.
-There is no automatic fence takeover or recovery endpoint. Never clear a writer
-token merely because it is old, or report erasure complete after an uncertain
-database command. Recovery requires independent proof that the exact writer and
-its database operations have settled, followed by a retry of the requested
-erasure. Receipts and runtime evidence belong outside Git.
-
 For the screen labels, inspection steps and evidence disclosures used by Pipeline,
 Nerve Center and Profiler, see [operational screens](OPERATOR_UI.md).
 
