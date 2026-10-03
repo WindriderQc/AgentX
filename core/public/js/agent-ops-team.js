@@ -17,11 +17,13 @@
   ];
 
   function create(context) {
-    const { esc, humanize, number, badge, empty, agentIcon, runtimeLink, editPersona } = context;
+    const { esc, humanize, number, badge, empty, agentIcon, runtimeLink, editPersona, newPersona } = context;
 
     document.addEventListener('click', (event) => {
       const button = event.target.closest('[data-persona-edit]');
-      if (button) editPersona(button.dataset.personaEdit);
+      if (button) return editPersona(button.dataset.personaEdit);
+      const fresh = event.target.closest('[data-persona-new]');
+      if (fresh) newPersona(fresh.dataset.personaNew === 'style' ? { styleOf: fresh.dataset.agent } : { agentId: fresh.dataset.agent }, fresh.dataset.name);
     });
 
     function voiceLine(voice) {
@@ -34,7 +36,8 @@
       const persona = agent.persona;
       if (!persona) {
         return agent.group === 'team'
-          ? '<div class="agent-ops-identity none"><span>Identity</span><em>No persona: this member has no declared voice or personality.</em></div>'
+          ? `<div class="agent-ops-identity none"><span>Identity</span><em>No persona: this member has no declared voice or personality.</em>
+            <div class="agent-ops-meta-row"><button type="button" class="agent-ops-chip link" data-persona-new="identity" data-agent="${esc(agent.id)}" data-name="${esc(agent.name)}"><i class="fas fa-plus"></i>Create identity</button></div></div>`
           : '';
       }
       return `
@@ -51,9 +54,10 @@
     // The styles declared for this member: other ways it may present, same agent.
     function ownStyles(agent) {
       const rows = Array.isArray(agent.styles) ? agent.styles : [];
-      if (!rows.length) return '';
+      if (!agent.persona) return '';
       return `<div class="agent-ops-meta-row" aria-label="Styles">${rows.map((style) =>
-        `<button type="button" class="agent-ops-chip link" data-persona-edit="${esc(style.id)}" title="${esc(style.description)}"><i class="fas fa-masks-theater"></i>${esc(style.label)}</button>`).join('')}</div>`;
+        `<button type="button" class="agent-ops-chip link" data-persona-edit="${esc(style.id)}" title="${esc(style.description)}"><i class="fas fa-masks-theater"></i>${esc(style.label)}</button>`).join('')}
+        <button type="button" class="agent-ops-chip link" data-persona-new="style" data-agent="${esc(agent.id)}"><i class="fas fa-plus"></i>Style</button></div>`;
     }
 
     function card(agent) {

@@ -11,8 +11,8 @@ describe('shared versioned persona catalog', () => {
   const definition = { name: 'catalog_test_persona', systemPrompt: 'An original character.',
     description: 'A conversational persona', uiConfig: { type: 'chat', route: '/index.html',
       layoutConfig: { label: 'Example', voice: { provider: 'kokoro', presentation: 'masculine', voices: { en: 'am_michael' } }, visual: { actorId: 'example' } } } };
-  beforeEach(async () => { await PromptConfig.deleteMany({ name: { $in: ['catalog_test_persona', 'agent_catalog_test', 'catalog_test_app', 'catalog_test_inactive'] } }); });
-  afterAll(async () => { await PromptConfig.deleteMany({ name: { $in: ['catalog_test_persona', 'agent_catalog_test', 'catalog_test_app', 'catalog_test_inactive'] } }); });
+  beforeEach(async () => { await PromptConfig.deleteMany({ name: { $in: ['catalog_test_persona', 'agent_catalog_test', 'catalog_test_app', 'catalog_test_inactive', 'catalog_test_identity', 'catalog_test_style'] } }); });
+  afterAll(async () => { await PromptConfig.deleteMany({ name: { $in: ['catalog_test_persona', 'agent_catalog_test', 'catalog_test_app', 'catalog_test_inactive', 'catalog_test_identity', 'catalog_test_style'] } }); });
 
   test('publishes idempotently, versions changes, and resolves the old persona exactly', async () => {
     await catalog.publish('test-source', [definition]);
@@ -82,5 +82,36 @@ describe('shared versioned persona catalog', () => {
     await PromptConfig.create({ name: 'agent_catalog_test', systemPrompt: 'Workflow', isActive: true });
     expect((await request(app).put('/api/prompts/catalog/agent_catalog_test').send({ label: 'Nope' })).status).toBe(409);
     expect((await request(app).put('/api/prompts/catalog/catalog_test_missing').send({ label: 'Nope' })).status).toBe(404);
+  });
+
+  test('the instance creates an identity for an agent and a style for a member, then removes what it created', async () => {
+    const identity = { name: 'catalog_test_identity', agentId: 'catalog-test-agent', label: 'Scout', personality: 'A careful scout.',
+      voice: { provider: 'kokoro', voices: { fr: 'ff_siwis' } } };
+    const created = await request(app).post('/api/prompts/catalog').send(identity);
+    expect(created.status).toBe(201);
+    expect(created.body.data).toMatchObject({ name: identity.name, version: 1, isActive: true, systemPrompt: 'A careful scout.' });
+    expect(created.body.data.uiConfig.layoutConfig).toMatchObject({ kind: 'personality', label: 'Scout', agentId: 'catalog-test-agent',
+      voice: { provider: 'kokoro', voices: { fr: 'ff_siwis' }, source: 'team' }, source: { id: 'agentx-team', edited: true } });
+    expect((await catalog.list()).some(p => p.name === identity.name)).toBe(true);
+    // One identity per agent, one persona per identifier.
+    expect((await request(app).post('/api/prompts/catalog').send({ ...identity, name: 'catalog_test_style' })).status).toBe(409);
+    expect((await request(app).post('/api/prompts/catalog').send(identity)).status).toBe(409);
+
+    const style = await request(app).post('/api/prompts/catalog').send({ name: 'catalog_test_style', styleOf: 'catalog-test-agent', label: 'Scout · Brief', personality: 'Short answers.' });
+    expect(style.status).toBe(201);
+    expect(style.body.data.uiConfig.layoutConfig).toMatchObject({ styleOf: 'catalog-test-agent', label: 'Scout · Brief' });
+    expect(style.body.data.uiConfig.layoutConfig.agentId).toBeUndefined();
+
+    for (const body of [{ ...identity, name: 'Bad Name' }, { name: 'catalog_test_style2', label: 'x', personality: 'y' },
+      { name: 'catalog_test_style2', agentId: 'a', styleOf: 'b', label: 'x', personality: 'y' }, { name: 'catalog_test_style2', styleOf: 'a', personality: 'y' }]) {
+      expect((await request(app).post('/api/prompts/catalog').send(body)).status).toBe(400);
+    }
+
+    // A persona the instance created can be edited like any other, and removed; a generated one cannot be removed.
+    expect((await request(app).put(`/api/prompts/catalog/${identity.name}`).send({ label: 'Scout · Lead' })).status).toBe(200);
+    expect((await request(app).delete(`/api/prompts/catalog/${identity.name}`)).body.data).toEqual({ name: identity.name, removed: true });
+    expect((await catalog.list()).some(p => p.name === identity.name)).toBe(false);
+    await catalog.publish('test-source', [definition]);
+    expect((await request(app).delete(`/api/prompts/catalog/${definition.name}`)).status).toBe(409);
   });
 });
