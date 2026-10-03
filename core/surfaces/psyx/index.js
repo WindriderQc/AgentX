@@ -4,6 +4,7 @@ const { loadConfig } = require('./src/config');
 const { createStateRepository } = require('../../src/domains/psyx/stateRepository');
 const { createConversationAdapter } = require('./src/conversations');
 const { createCoreProvider } = require('./src/provider');
+const { createOpenClawAgentClient } = require('../../src/services/frontier/openclawAgentClient');
 const { createAuth } = require('./src/auth');
 
 function register({ app, mongoose, runtimeServices, conversationLifecycle, logger, parentalAccess }) {
@@ -15,7 +16,7 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
   // Never run the legacy duplicate-merge/delete helper during application startup.
   // Imported conflicts must be reviewed before a unique owner index can be built.
   const stateRepository = Object.fromEntries(['read', 'addItem', 'updateItem', 'deleteItem', 'addExperiment', 'updateExperiment', 'reset',
-    'recordReview', 'forgetConversation', 'acceptProposal', 'rejectProposal', 'addCheckIn']
+    'recordReview', 'forgetConversation', 'acceptProposal', 'rejectProposal', 'addCheckIn', 'updateSettings']
     .map(name => [name, async (...args) => { await ensureStateIndex(); return domain[name](...args); }]));
   const database = {
     stateRepository,
@@ -44,7 +45,7 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
       }
     };
   }
-  const psyx = createApp({ config, database, provider: createCoreProvider(runtimeServices), logger, accessAuth });
+  const psyx = createApp({ config, database, provider: createCoreProvider(runtimeServices, { frontier: createOpenClawAgentClient(), config, logger }), logger, accessAuth });
   app.use((req, res, next) => /^\/(?:psyx(?:\/|$)|api\/psyx(?:\/|$))/i.test(req.path)
     ? psyx(req, res, next) : next());
 }

@@ -23,6 +23,14 @@ const ACTION_CONFIG = Object.freeze({
   })
 });
 
+// Where PsyX may think: only on local routes, on the frontier lane for deep
+// turns and the background review, or on the frontier lane for everything.
+const FRONTIER_MODES = Object.freeze(['local', 'deep', 'all']);
+
+function frontierLocation(mode, depth) {
+  return mode === 'all' || (mode === 'deep' && depth === 'deep') ? 'frontier' : 'local';
+}
+
 const SYSTEM_PROMPT = `You are PsyX, a private psychological thinking partner and behavior-change companion for one adult user.
 
 Always answer in the language of the user's latest message, French unless the user writes in another language, even though these instructions are in English. In French, use a natural Québec register and tutoie the user.
@@ -131,6 +139,8 @@ module.exports = {
   DEPTH_CONFIG,
   ACTION_CONFIG,
   SYSTEM_PROMPT,
+  FRONTIER_MODES,
+  frontierLocation,
   normalizeControl,
   resolveControl,
   controlSystemMessage,

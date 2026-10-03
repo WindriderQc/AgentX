@@ -173,12 +173,12 @@ test('voice stays protected, permits this origin, and relays audio without persi
     assert.match(page.headers.get('permissions-policy'), /microphone=\(self\)/);
     const html = await page.text();
     assert.match(html, /voice-preferences\.js/);
-    // app.js calls functions declared by the voice, state, review, care and follow-up scripts, so they load first.
-    assert.match(html, /voice-session\.js[^]*voice-controls\.js[^]*state-panel\.js[^]*review\.js[^]*care\.js[^]*follow-up\.js[^]*assets\/app\.js/);
+    // app.js calls functions declared by the voice, state, review, care, follow-up and frontier scripts, so they load first.
+    assert.match(html, /voice-session\.js[^]*voice-controls\.js[^]*state-panel\.js[^]*review\.js[^]*care\.js[^]*follow-up\.js[^]*frontier\.js[^]*assets\/app\.js/);
     // setBusy in app.js re-syncs the voice session controls, so both scripts carry the same asset version.
     assert.equal(html.match(/voice-session\.js\?v=([\d.]+)/)[1], html.match(/assets\/app\.js\?v=([\d.]+)/)[1]);
     assert.equal((await fetch(`${base}/api/psyx/voice/status`)).status, 401);
-    for (const asset of ['voice-preferences.js', 'voice-controls.js', 'state-panel.js', 'review.js', 'care.js', 'follow-up.js']) {
+    for (const asset of ['voice-preferences.js', 'voice-controls.js', 'state-panel.js', 'review.js', 'care.js', 'follow-up.js', 'frontier.js']) {
       assert.equal((await fetch(`${base}/psyx/assets/${asset}`)).status, 200);
     }
 

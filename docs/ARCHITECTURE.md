@@ -57,6 +57,10 @@ is strict and never changes model
 ### Fallback matrix
 
 Four mechanisms may retry or substitute a model call. None escalates to cloud.
+A cloud model is only ever reached by an explicit lane a surface owner chose:
+PsyX's frontier lane sends a turn to an OpenClaw agent
+(`core/src/services/frontier/openclawAgentClient.js`) when its user setting asks
+for it, and falls back to the local route, visibly, when that agent fails.
 
 | Mechanism | Applies to | Trigger | Requested vs used | Replay of an executed request | Control |
 | --- | --- | --- | --- | --- | --- |

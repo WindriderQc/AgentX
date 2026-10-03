@@ -239,6 +239,7 @@ function renderStance() {
     || (control.auto.mode
       ? 'PsyX choisit sa posture après avoir réfléchi à la conversation.'
       : 'Posture choisie par toi. Choisis Auto pour laisser PsyX décider.');
+  renderFrontier(control);
 }
 
 function updateControlExplanation() {
@@ -391,6 +392,7 @@ async function restoreConversation(conversationId = state.conversationId) {
     localStorage.setItem(STORAGE_KEY, state.conversationId);
     state.history = normalizeConversationMessages(conversation.messages);
     hideSafety();
+    frontierUi.fallbackNote = '';
     clearRenderedConversation();
     for (const item of state.history) addMessage(item.role, item.content);
     updateContextStatus();
@@ -424,7 +426,8 @@ function getLaneConfig(depth = upcomingControl().depth) {
 // The footer keeps the technical route discreet; the Brain tab has the details.
 function updateBrainRouting(lastResult = null, note = '') {
   const depth = lastResult?.control?.depth || upcomingControl().depth;
-  const { entry } = getLaneConfig(depth);
+  // A frontier reply names its own model; the local lanes come from the router.
+  const entry = !lastResult && frontierLocationFor(depth) === 'frontier' ? { model: frontierUi.model, host: '' } : getLaneConfig(depth).entry;
   const routing = lastResult?.routing || {};
   const model = routing.routedModel || lastResult?.model || entry?.model || 'modèle non résolu';
   const host = routing.routedHost || entry?.host || '';
@@ -506,6 +509,7 @@ async function bootstrap() {
     state.depthConfig = payload.depths || {};
     state.voice.enabled = payload.voice?.enabled === true;
     review.enabled = payload.review?.automatic === true;
+    setFrontierCapabilities(payload.frontier);
     const lifecycle = payload.conversationLifecycle || {};
     $('lifecycleStatus').textContent = lifecycle.archive
       ? 'L’archivage et la restauration des conversations sont disponibles.'
@@ -609,6 +613,10 @@ async function sendMessage(text, overrides = {}) {
       else if (event === 'control') {
         state.applied = data;
         renderStance();
+      } else if (event === 'route' && data.location && state.applied) {
+        // The frontier model was asked but the local route answers: say so while it answers.
+        state.applied = { ...state.applied, location: data.location };
+        renderStance();
       } else if (event === 'safety') {
         showSafety(data.resources);
       } else if (event === 'thinking') {
@@ -646,9 +654,11 @@ async function sendMessage(text, overrides = {}) {
       localStorage.setItem(STORAGE_KEY, state.conversationId);
       sessionLabel.textContent = `Séance ${state.conversationId.slice(-8)}`;
     }
-    const deep = (finalResult.control?.depth || effectiveDepth) === 'deep';
+    // Thinking is a local-route notion; the frontier model reasons on its own.
+    const deep = (finalResult.control?.depth || effectiveDepth) === 'deep' && finalResult.routing?.location !== 'frontier';
     updateBrainRouting(finalResult, deep ? (state.thinkingObserved ? 'thinking observed' : 'thinking requested, not observed') : '');
     await loadSessions();
+    noteFrontierResult(finalResult);
     if (finalResult?.review?.scheduled) watchReview(state.conversationId);
     maybeAskCheckIn();
     if (state.voice.prefs.spokenReplies && !overrides.voiceSession) void speakText(assistantContent);
@@ -699,6 +709,7 @@ function startNewSession(focus = true) {
   hideSafety();
   $('checkInPrompt').hidden = true;
   followUp.openingDone = false;
+  frontierUi.fallbackNote = '';
   renderOpening();
   clearRenderedConversation();
   updateContextStatus();
@@ -989,6 +1000,7 @@ async function start() {
   wireSetup();
   wireReview();
   wireCare();
+  wireFrontier();
   wireFollowUp();
   wireSegmented('modeControl', 'mode');
   wireSegmented('depthControl', 'depth');
