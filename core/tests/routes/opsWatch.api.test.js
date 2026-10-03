@@ -125,15 +125,20 @@ describe('operations watch scheduling', () => {
     expect(watch.state()).toMatchObject({ active: false, scheduled: false });
   });
 
-  it('writes the next report in the newly saved language', async () => {
+  it('rewrites an unchanged report when the language changes', async () => {
     const execute = jest.fn(async () => ({ ok: true, body: { response: 'Reinicie el host B.' }, headers: {} }));
     const watch = createOpsWatch({
       buildSnapshot: async () => ({ operationalAttention: { issues: [{ code: 'host_offline', severity: 'critical', message: 'Host B is offline' }] } }),
       execute, evaluateEvent: jest.fn(), language: 'English'
     });
+    await watch.check();
+    await watch.check();
+    expect(execute).toHaveBeenCalledTimes(1);
     watch.setLanguage('Spanish');
     await watch.check();
-    expect(execute.mock.calls[0][0].system).toContain('Write in Spanish.');
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute.mock.calls[1][0].system).toContain('Write in Spanish.');
+    expect(watch.latest().language).toBe('Spanish');
     watch.stop();
   });
 });

@@ -527,9 +527,11 @@ async function startServer() {
   // Set in the Nerve Center; OPS_WATCH_MS only bootstraps it.
   try {
     const opsWatch = require('./src/services/opsWatchService').getOpsWatch();
-    const opsWatchSettings = await require('./src/services/opsWatchSettings').effective();
     await startCoreSingletonDaemon({ name: 'ops-watch', label: 'Operations Watch',
-      start: async () => { console.log(`   ✓ Operations Watch: ${opsWatch.activate(opsWatchSettings) ? `Active (${opsWatchSettings.intervalMs}ms)` : 'Off'}`); },
+      start: async () => {
+        const settings = await require('./src/services/opsWatchSettings').effective();
+        console.log(`   ✓ Operations Watch: ${opsWatch.activate(settings) ? `Active (${settings.intervalMs}ms)` : 'Off'}`);
+      },
       stop: async () => opsWatch.deactivate() });
   } catch (err) {
     console.log(`   ⚠ Operations Watch: ${err.message}`);

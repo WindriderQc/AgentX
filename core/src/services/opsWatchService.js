@@ -113,11 +113,11 @@ function createOpsWatch(deps = {}) {
     }
     const fingerprint = fingerprintOf(findings);
     let summarized = false;
-    if (!latest || latest.fingerprint !== fingerprint || latest.source !== 'model') {
+    if (!latest || latest.fingerprint !== fingerprint || latest.source !== 'model' || latest.language !== language) {
       const written = await summarize(findings);
       summarized = Boolean(written.summary);
       latest = {
-        at, fingerprint, findingCount: findings.length, findings,
+        at, fingerprint, findingCount: findings.length, findings, language,
         summary: written.summary || plainList(findings),
         source: written.summary ? 'model' : 'rules',
         model: written.model, modelUnavailable: written.summary ? null : written.reason

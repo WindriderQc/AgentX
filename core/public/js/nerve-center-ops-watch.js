@@ -41,26 +41,35 @@
         </form>`;
     }
 
-    function render(body, data) {
-        body.innerHTML = `<p class="nc-muted">Monitoring rules find what needs attention; the <code>ops_watch</code> task's model writes one short report with a next action. It runs only when the findings change.</p>
-            ${reportHtml(data.report)}
+    // The report part alone is redrawn while a check runs, so polling never
+    // erases what is being typed in the settings form.
+    function renderReport(holder, data) {
+        holder.innerHTML = `${reportHtml(data.report)}
             <button class="nc-btn nc-ops-watch-check" type="button"${data.checking ? ' disabled' : ''}>
-                <i class="fas ${data.checking ? 'fa-spinner fa-spin' : 'fa-sync'}" aria-hidden="true"></i> ${data.checking ? 'Checking…' : 'Check now'}</button>
+                <i class="fas ${data.checking ? 'fa-spinner fa-spin' : 'fa-sync'}" aria-hidden="true"></i> ${data.checking ? 'Checking…' : 'Check now'}</button>`;
+        holder.querySelector('.nc-ops-watch-check').addEventListener('click', event => checkNow(event.currentTarget));
+        clearTimeout(pollTimer);
+        if (data.checking) pollTimer = setTimeout(() => loadOpsWatch({ reportOnly: true }), POLL_MS);
+    }
+
+    function render(body, data, reportOnly) {
+        const holder = reportOnly && body.querySelector('.nc-ops-watch-report');
+        if (holder) return renderReport(holder, data);
+        body.innerHTML = `<p class="nc-muted">Monitoring rules find what needs attention; the <code>ops_watch</code> task's model writes one short report with a next action. It runs only when the findings change.</p>
+            <div class="nc-ops-watch-report"></div>
             ${settingsHtml(data.settings, data.scheduled)}`;
-        body.querySelector('.nc-ops-watch-check').addEventListener('click', event => checkNow(event.currentTarget));
         body.querySelector('.nc-ops-watch-settings').addEventListener('submit', event => {
             event.preventDefault();
             save(event.currentTarget);
         });
-        clearTimeout(pollTimer);
-        if (data.checking) pollTimer = setTimeout(loadOpsWatch, POLL_MS);
+        return renderReport(body.querySelector('.nc-ops-watch-report'), data);
     }
 
     async function checkNow(button) {
         button.disabled = true;
         try {
             await shared.fetchJson(`${API}/check`, { method: 'POST' });
-            await loadOpsWatch();
+            await loadOpsWatch({ reportOnly: true });
         } catch (err) {
             button.disabled = false;
             button.title = err.message;
@@ -86,12 +95,12 @@
         }
     }
 
-    async function loadOpsWatch() {
+    async function loadOpsWatch({ reportOnly = false } = {}) {
         const body = document.getElementById('sectionOpsWatchBody');
         if (!body) return;
         try {
             const json = await shared.fetchJson(API);
-            render(body, json.data);
+            render(body, json.data, reportOnly);
         } catch (err) {
             shared.renderSectionError(body, `Failed to load the operations watch: ${err.message}`);
         } finally {
@@ -100,6 +109,6 @@
     }
 
     window.NerveCenterOpsWatch = { loadOpsWatch };
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadOpsWatch);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => loadOpsWatch());
     else loadOpsWatch();
 })();
