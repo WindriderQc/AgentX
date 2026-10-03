@@ -220,6 +220,50 @@ stream forwarding. Both surfaces use these capabilities. Engine error events
 are rejected before audio headers are committed, and a disconnected caller
 cancels its upstream request without starting a backup request.
 
+The shared loop speaks a reply clause by clause while it is generated and
+prepares at most one clause ahead of the sound. A surface may have it say one
+short holding phrase when no reply text has arrived after a few seconds
+(Household does; PsyX keeps it off). The phrase never delays an available
+answer: it is dropped when reply text arrives before it plays, and a phrase
+already playing ends while the first clause is prepared to follow it.
+
+A turn is spoken in one language. A French or English preference the person
+chose wins; in automatic mode the language recognized in their speech decides,
+then their words, then French. The loop hands that language to the surface
+adapter with every clause, notice and holding phrase, and adapters do not
+re-score a clause.
+
+A clause is spoken when text follows its end, so a reply's last clause waits
+for a signal that nothing follows. A surface that streams its reply gives that
+signal as soon as the spoken text is complete (`onSayEnd`), ahead of the turn's
+closing work; the completed turn remains the fallback. PsyX speaks a reply only
+once its turn is confirmed, so it has nothing to flush early.
+
+A voice can fail at two moments. Before its stream starts, the synthesis proxy
+refuses it and the surface's ladder (`speech-ladder.js`) steps to its next
+voice. After an accepted stream has started, the failure reaches playback: the
+loop then asks the surface for that one clause again, naming the speech that
+failed, at most once per turn and never after an interruption. The ladder
+restarts below the voice that failed and that voice is left for the rest of the
+turn; a clause prepared ahead with it is prepared again before it is heard.
+Household's ladder is the chosen voice, the personality's voice, its catalog
+voice, then the device's own voice. PsyX has one chosen voice and no device
+voice: its retry is the same request on its protected route.
+
+For a surface that keeps it, the loop measures each voice turn
+(`voice-timeline.js`): milliseconds from the moment the end of the person's
+speech is decided (after the endpoint's trailing silence) to the transcript,
+the turn request, the first reply text, the holding phrase if one played, and
+the start of the reply's first clause, with whether the turn was interrupted by
+then. This is browser timing, not an acoustic measurement. The loop sends it
+once per turn, when that first clause starts or the turn ends without one; a
+surface that answers `pending` receives it once more when the turn's request
+has ended. `core/src/services/voice/timeline.js` keeps only the known marks as
+bounded whole numbers. Household stores them as `voiceTimings` on the recorded
+turn (`POST …/sessions/:sessionId/voice-timings`, by the browser's turn id,
+within the session's own space) and the parent journal shows the main delays.
+PsyX provides no store, so nothing is measured or sent there.
+
 The shared speech boundary removes code fences, images, links, table markup,
 HTML and presentation symbols from spoken text while preserving prose and
 emergency phone numbers. The browser, synthesis proxies and native voice reply
@@ -357,7 +401,10 @@ finance (`/api/finance`, `/finance`) are in the demo exclusion list of
   spoken text is streamed as `delta`, stored as `replyText` and sent to browser
   TTS or native VoiX; blocks stream as `show` events to the page's "À l'écran"
   zone (`display-board.js`) and are kept on the turn as `display`. Secrets are
-  private-only, shown masked, and stored redacted.
+  private-only, shown masked, and stored redacted. A `say_end` event follows
+  the last spoken `delta`, before pictures are resolved and the turn is
+  recorded, so the voice page says the reply's last clause without waiting for
+  `done`; a consumer that ignores it still gets everything from `done`.
   An image block names a source and search words, never an address;
   `visuals.js` resolves it (SearXNG images, or the Data file index under a
   configured, mounted photo/media root), streams it to the page's Images zone and

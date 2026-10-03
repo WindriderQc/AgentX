@@ -8,7 +8,7 @@ const shared = require('../../../public/js/voice/browser-conversation');
 const speech = require('../../../public/js/voice/speech-language');
 const prefs = require('../public/voice-preferences');
 
-function browser(extras = {}) {
+function browser({ voice = {}, ...extras } = {}) {
   const elements = new Map(), listeners = {}, calls = [];
   const $ = id => {
     if (!elements.has(id)) elements.set(id, { hidden: true, disabled: false, open: false, dataset: {}, listeners: {},
@@ -24,7 +24,7 @@ function browser(extras = {}) {
   const context = { state, $, voicePreferences: prefs, AbortController, console,
     localStorage: { getItem: () => null }, saveVoicePreferences() {},
     assertCurrentAccess: epoch => { if (epoch !== state.accessEpoch) throw Object.assign(new Error('locked'), { name: 'AbortError' }); },
-    window: { NestorSpeech: speech, AgentXVoice: { ...shared, openAudio: async () => audio }, addEventListener(type, fn) { listeners[type] = fn; } },
+    window: { NestorSpeech: speech, AgentXVoice: { ...shared, openAudio: async () => audio, ...voice }, addEventListener(type, fn) { listeners[type] = fn; } },
     document: { hidden: false, addEventListener(type, fn) { listeners[type] = fn; } },
     async fetch(url, options) { calls.push({ url, options });
       return url.endsWith('transcribe') ? new Response(JSON.stringify({ data: { text: 'Je suis débordé.' } })) : new Response('pcm'); },
@@ -32,8 +32,17 @@ function browser(extras = {}) {
     showGate() { state.unlocked = false; }, ...extras };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/voice-session.js'), 'utf8'), context);
-  return { context, state, $, calls, listeners, say: () => utterance(new Blob(['voice'], { type: 'audio/wav' })) };
+  return { context, state, $, calls, listeners, audio, say: () => utterance(new Blob(['voice'], { type: 'audio/wav' })) };
 }
+// The options PsyX hands to Core's shared conversation loop.
+function wiring(extras = {}) {
+  const captured = {};
+  const h = browser({ ...extras, voice: { Conversation: class extends shared.Conversation {
+    constructor(io, changed) { super(io, changed); captured.io = io; }
+  } } });
+  return { ...h, captured };
+}
+const spoken = h => h.calls.filter(call => call.url?.endsWith('synthesize/stream')).map(call => JSON.parse(call.options.body));
 
 test('private voice uses only PsyX routes, a scoped female voice and the canonical text turn', async () => {
   const h = browser(); h.context.wireVoiceSession();
@@ -135,4 +144,75 @@ test('Start comes back once a reply paused mid-turn has finished', async () => {
   assert.equal(h.$('voiceSessionStart').disabled, true, 'still answering');
   h.state.busy = false; h.context.syncVoiceSessionControls();
   assert.equal(h.$('voiceSessionStart').disabled, false);
+});
+
+test('PsyX keeps its silence while it thinks: the shared holding phrase stays off', async () => {
+  const h = wiring(); h.context.wireVoiceSession();
+  await h.$('voiceSessionStart').listeners.click();
+  assert.equal(h.captured.io.holdingDelayMs, null);
+  await h.say();
+  assert.deepEqual(spoken(h).map(request => request.text), ['Je t’écoute. Une piste'], 'only the confirmed reply is spoken');
+  h.context.stopVoiceSession();
+});
+
+test('PsyX keeps no voice timeline: the shared loop measures only for a surface that stores it', async () => {
+  const h = wiring(); h.context.wireVoiceSession();
+  await h.$('voiceSessionStart').listeners.click(); await h.say();
+  assert.equal(h.captured.io.timings, undefined);
+  assert.deepEqual(h.calls.filter(call => call.url).map(call => call.url), ['/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream'],
+    'nothing about the private turn leaves through another route');
+  // The same loop reports as soon as a surface provides somewhere to keep it.
+  const sent = [];
+  h.captured.io.timings = async (_session, turnId, timings) => { sent.push({ turnId, timings }); return {}; };
+  await h.say();
+  assert.equal(sent.length, 1);
+  assert.deepEqual(Object.keys(sent[0].timings).sort(), ['firstAudio', 'firstDelta', 'interrupted', 'requestSent', 'sttDone']);
+  h.context.stopVoiceSession();
+});
+
+test('PsyX speaks only a confirmed reply: its turn sends no text early, so nothing is flushed before it', async () => {
+  let confirm;
+  const h = browser({ sendMessage: () => new Promise(resolve => { confirm = resolve; }) });
+  h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click();
+  const exchange = h.say(); await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(spoken(h), [], 'no speech while the private turn is unconfirmed');
+  confirm({ text: 'Je suis là.', language: 'fr' }); await exchange;
+  assert.deepEqual(spoken(h).map(request => request.text), ['Je suis là.']);
+  h.context.stopVoiceSession();
+});
+
+test('a PsyX voice stream that breaks while it plays is requested once more on the protected route, never elsewhere', async () => {
+  // PsyX has one chosen voice and no device voice: the retry is the same private request.
+  for (const [breaks, phase] of [[1, 'listening'], [2, 'error']]) {
+    let plays = 0;
+    const h = browser({ sendMessage: async () => ({ text: 'Je suis là avec toi.', language: 'fr' }) });
+    h.audio.play = async speech => {
+      assert.ok(speech instanceof Response, 'only a stream from the protected route is ever played');
+      if (++plays <= breaks) throw new Error('Voice stream failed');
+    };
+    h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click(); await h.say();
+    assert.deepEqual(h.calls.filter(call => call.url).map(call => call.url),
+      ['/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream', '/api/psyx/voice/synthesize/stream']);
+    assert.deepEqual(spoken(h).map(request => [request.text, request.voice]), Array(2).fill(['Je suis là avec toi.', 'Microsoft Caroline']));
+    assert.equal(plays, 2);
+    assert.equal(h.$('voiceSessionDialog').dataset.phase, phase);
+    h.context.stopVoiceSession();
+  }
+});
+
+test('PsyX speaks a whole turn in the language chosen in its voice settings', async () => {
+  for (const chosen of ['fr', 'en']) {
+    const other = chosen === 'fr' ? 'en' : 'fr';
+    const h = browser({
+      fetch: async (url, options) => { h.calls.push({ url, options });
+        return url.endsWith('transcribe') ? new Response(JSON.stringify({ data: { text: 'Can you help me with that today?', language: other } })) : new Response('pcm'); },
+      // A reply in the other language, which names it, does not switch the chosen voice.
+      sendMessage: async () => ({ text: 'Bien sûr. Je suis là avec toi. The next step is yours.', language: other }) });
+    h.state.voice.prefs.language = chosen;
+    h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click(); await h.say();
+    assert.ok(spoken(h).length >= 1);
+    assert.deepEqual([...new Set(spoken(h).map(request => request.language))], [chosen]);
+    assert.ok(spoken(h).every(request => request.voice === 'Microsoft Caroline'));
+    h.context.stopVoiceSession();
+  }
 });

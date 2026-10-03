@@ -3,6 +3,7 @@
   'use strict';
   const speechLanguage = typeof module !== 'undefined' && module.exports ? require('./speech-language') : root.NestorSpeech;
   const PlaybackHold = (typeof module !== 'undefined' && module.exports ? require('./playback-hold') : root.NestorPlaybackHold)?.PlaybackHold;
+  const VoiceTimeline = (typeof module !== 'undefined' && module.exports ? require('./voice-timeline') : root.AgentXVoiceTimeline)?.VoiceTimeline;
   // Capture while this script is evaluating; currentScript is null once the user opens the microphone.
   const scriptUrl = root.document?.currentScript?.src;
   const captureWorkletUrl = scriptUrl
@@ -95,6 +96,11 @@
   function holdingPhrase(language, index = 0) {
     const phrases = HOLDING[language === 'en' ? 'en' : 'fr'];
     return phrases[index % phrases.length];
+  }
+
+  // An accepted speech stream that will not be played is closed, not left open.
+  function discardSpeech(speech) {
+    try { speech?.body?.cancel?.().catch(() => {}); } catch { /* already consumed */ }
   }
 
   function isSpokenEcho(text, spoken) {
@@ -366,7 +372,9 @@
         && (!this.selection?.wakeWord || this.wake.active());
       if (!reply?.text || !this.audio || !idle()) return false;
       try {
-        const bytes = await this.io.synthesize(reply, this.abort.signal);
+        // The remark is one utterance: the chosen language, else its own words.
+        const language = speechLanguage.turnSpeechLanguage(reply.text, reply.language, this.selection?.language);
+        const bytes = await this.io.synthesize({ ...reply, language }, this.abort.signal);
         if (!idle()) return false;
         this.audio.quiet(); this.show('speaking');
         await this.audio.play(bytes, this.abort.signal);
@@ -435,6 +443,9 @@
       this.audio.quiet();
       this.show('transcribing');
       const turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(), interrupted: false };
+      // The end of the person's speech has just been decided: a surface that keeps
+      // voice timings gets this turn's timeline from that moment.
+      if (this.io.timings && VoiceTimeline) turn.timeline = new VoiceTimeline(this.io.now);
       const lifetimeSignal = this.abort.signal;
       const excerptId = this.audio.reviewStatus?.().id;
       this.audio.recordTranscription?.(excerptId, 'pending', '', { turnId: turn.id, bytes: blob.size });
@@ -448,7 +459,7 @@
         let text = typeof result === 'string' ? result : String(result?.text || '');
         const stopControl = result?.control === 'stop';
         if (!this.current(epoch)) return;
-        transcribed = true;
+        transcribed = true; turn.timeline?.mark('sttDone');
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text, typeof result === 'object' && result ? result : {});
         if (isTranscriptHallucination(text)) text = '';
         if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) text = '';
@@ -498,7 +509,13 @@
         // Playback can already be queued while a stream is being cancelled.
         if (turn.interrupted) { turn.speech.abort(); await turn.interruption?.catch(() => {}); }
         lifetimeSignal.removeEventListener('abort', cancel);
+        this.reportTimeline(turn); // a turn that ended before any reply audio
       }
+    }
+    // A surface that keeps voice timings receives each voice turn's timeline once:
+    // when the reply's first clause starts playing, else when the turn ends.
+    reportTimeline(turn) {
+      void turn.timeline?.report(values => this.io.timings(turn.session, turn.id, values), () => turn.interrupted, turn.requestEnded);
     }
     // One model turn, spoken or typed: stream the reply, speak it clause by
     // clause, play a structured recording, then listen again.
@@ -509,63 +526,117 @@
       let pending = '', streamed = false, firstChunk = true, speechError = null, playback = Promise.resolve();
       let synthesis = Promise.resolve(), prefetchSlot = Promise.resolve();
       let spokenLanguage = speechLanguage.turnSpeechLanguage(text, detectedLanguage, this.selection.language);
-      const speak = text => {
+      // `notice` marks words that are not the reply (a waiting notice): the
+      // timeline's first audio is the reply's own first clause.
+      const speak = (text, notice = false) => {
         text = (this.io.speechText || speechLanguage.speechText)(text);
         if (!text.trim() || !this.owns(turn)) return false;
         turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
         const language = spokenLanguage;
         const previousPlayback = playback, availableSlot = prefetchSlot;
+        // A voice whose accepted stream failed while it played is left for the
+        // rest of the turn: `after` asks the surface for the one that follows it.
+        let preparedAfter = null;
+        const synthesize = () => {
+          preparedAfter = turn.voiceFailure || null;
+          return this.io.synthesize({ text, language, ...(preparedAfter && { after: preparedAfter.speech }) }, turn.speech.signal);
+        };
         // Serialize synthesis, at most one clause ahead of the current sound.
         // A third clause waits for the first playback to finish, bounding audio.
         const prepared = synthesis.then(() => availableSlot).then(() => {
           if (!this.owns(turn) || speechError) return;
-          return this.io.synthesize({ text, language }, turn.speech.signal);
+          return synthesize();
         }).catch(error => { if (!turn.interrupted) speechError = error; });
         synthesis = prepared;
         playback = previousPlayback.then(async () => {
           await this.awaitCandidate(turn);
           if (!this.owns(turn) || speechError) return;
           this.show('preparing');
-          const bytes = await prepared;
+          let bytes = await prepared;
           await this.awaitCandidate(turn);
           if (!this.owns(turn) || speechError) return;
+          // Prepared with the voice that has since failed: prepare it again, unheard.
+          if (turn.voiceFailure && preparedAfter !== turn.voiceFailure) {
+            discardSpeech(bytes); bytes = await synthesize();
+            await this.awaitCandidate(turn);
+            if (!this.owns(turn)) return;
+          }
           this.monitor(turn);
           this.show('speaking');
-          await this.audio.play(bytes, turn.speech.signal);
+          if (!notice) { turn.timeline?.mark('firstAudio'); this.reportTimeline(turn); }
+          try { await this.audio.play(bytes, turn.speech.signal); }
+          catch (error) {
+            // An accepted stream can still fail while it plays (its engine stopped).
+            // Say that one clause again with the next voice; never twice in a turn.
+            if (turn.voiceFailure || turn.speech.signal.aborted || !this.owns(turn)) throw error;
+            turn.voiceFailure = { speech: bytes };
+            this.show('preparing');
+            bytes = await synthesize();
+            await this.awaitCandidate(turn);
+            if (!this.owns(turn)) return;
+            this.show('speaking');
+            await this.audio.play(bytes, turn.speech.signal);
+          }
         }).catch(error => { if (!turn.interrupted) speechError = error; });
         prefetchSlot = previousPlayback;
         return true;
       };
+      // A long silent wait made people speak again and cancel the turn; say once that
+      // Nestor is working when no reply text has arrived after a few seconds.
+      // Its words join turn.spoken, so hearing them back is echo, not an interruption.
+      // The phrase never delays the answer: it is dropped when reply text arrives
+      // before it plays, and it does not hold the synthesis of the first clause.
+      let holdingSpeech = null;
+      const dropHolding = () => { if (holdingSpeech && !holdingSpeech.playing) holdingSpeech.abort.abort(); };
+      turn.session = this.session; turn.timeline?.mark('requestSent');
       const response = this.io.turn(this.session, text, turn.request.signal, delta => {
         if (!this.owns(turn)) return;
-        streamed = true; pending += delta;
+        streamed = true; pending += delta; dropHolding(); turn.timeline?.mark('firstDelta');
         let length;
         while ((length = nextSpeechChunkLength(pending, firstChunk))) {
           if (speak(pending.slice(0, length))) firstChunk = false;
           pending = pending.slice(length);
         }
-      }, { turnId: turn.id, onNotice: speak, ...(attachments.length && { attachmentIds: attachments.map(item => item.id) }) });
-      // A long silent wait made people speak again and cancel the turn; say once that
-      // Nestor is working when no reply text has arrived after a few seconds.
-      // Its words join turn.spoken, so hearing them back is echo, not an interruption.
+      }, { turnId: turn.id, onNotice: text => speak(text, true),
+        // The surface reports that every spoken word was sent: say the last clause
+        // now rather than when the turn completes (its closing work can be slow).
+        onSayEnd: () => { if (this.owns(turn) && streamed) { speak(pending); pending = ''; } },
+        ...(attachments.length && { attachmentIds: attachments.map(item => item.id) }) });
       const holdingDelay = this.io.holdingDelayMs === undefined ? HOLDING_DELAY_MS : this.io.holdingDelayMs;
       const holding = holdingDelay === null ? null : setTimeout(() => {
         if (streamed || !this.owns(turn) || turn.interrupted) return;
-        if (!speak(holdingPhrase(spokenLanguage, this.holdingIndex = (this.holdingIndex || 0) + 1))) return;
-        // Nestor is still thinking once the phrase ends; do not show it as speaking.
-        playback.then(() => { if (!streamed && this.owns(turn) && this.turnPending && this.state === 'speaking') this.show('thinking'); });
+        const phrase = (this.io.speechText || speechLanguage.speechText)(holdingPhrase(spokenLanguage, this.holdingIndex = (this.holdingIndex || 0) + 1));
+        const hold = holdingSpeech = { abort: new AbortController(), playing: false };
+        const cancel = () => hold.abort.abort();
+        turn.speech.signal.addEventListener('abort', cancel, { once: true });
+        const prepared = Promise.resolve().then(() => this.io.synthesize({ text: phrase, language: spokenLanguage }, hold.abort.signal));
+        prepared.catch(() => {});
+        playback = playback.then(async () => {
+          const bytes = await prepared;
+          await this.awaitCandidate(turn);
+          if (hold.abort.signal.aborted || !this.owns(turn) || speechError) return;
+          hold.playing = true; turn.timeline?.mark('holdingPhrase');
+          this.monitor(turn); this.show('speaking');
+          turn.spoken = ((turn.spoken || '') + ' ' + phrase).slice(-800); // only a phrase that plays can be heard back
+          await this.audio.play(bytes, hold.abort.signal);
+          // Nestor is still thinking once the phrase ends; do not show it as speaking.
+          if (!streamed && this.owns(turn) && this.turnPending && this.state === 'speaking') this.show('thinking');
+        }).catch(() => {}).finally(() => turn.speech.signal.removeEventListener('abort', cancel));
       }, holdingDelay);
       holding?.unref?.();
-      response.finally(() => clearTimeout(holding)).catch(() => {});
+      turn.requestEnded = response.then(() => {}, () => {}).finally(() => clearTimeout(holding));
       // Listen during inference, but confirm speech before cancelling it.
       // Playback still stops immediately when the user speaks over Nestor.
       this.monitor(turn);
       const reply = await response;
+      turn.timeline?.mark('firstDelta'); // an unstreamed reply: its text arrives with the completed turn
       await this.awaitCandidate(turn);
       if (!this.owns(turn)) return;
       this.turnPending = false;
       this.io.message('assistant', reply.text, false, reply.sound);
-      if (!streamed && reply.language) spokenLanguage = reply.language;
+      // An unstreamed reply names its own language; a chosen preference still wins.
+      if (!streamed && reply.language && !speechLanguage.explicitSpeechLanguage(this.selection.language)) spokenLanguage = reply.language;
+      dropHolding();
       speak(streamed ? pending : reply.text);
       await playback;
       if (speechError) throw speechError;

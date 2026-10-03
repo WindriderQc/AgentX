@@ -84,12 +84,21 @@
     return score.decided ? score.language : normalizeSpeechLanguage(fallback) || score.language;
   }
 
+  // A language the person chose, as opposed to an automatic mode (auto, fr-en).
+  function explicitSpeechLanguage(value) {
+    const language = String(value || '').trim().toLowerCase().replace('_', '-');
+    return ['fr-en', 'en-fr'].includes(language) ? '' : normalizeSpeechLanguage(language);
+  }
+
   // One voice per turn: a franglais reply must not switch speakers between
-  // clauses. The language recognized in the user's speech wins, then the words
-  // they used, then the chosen preference, then French.
+  // clauses. A chosen French or English preference wins. In automatic mode the
+  // language recognized in the user's speech decides, then the words they
+  // used, then French.
   function turnSpeechLanguage(text, recognized = '', preferred = '') {
+    const chosen = explicitSpeechLanguage(preferred);
+    if (chosen) return chosen;
     const score = scoreSpeechLanguage(text);
-    return normalizeSpeechLanguage(recognized) || (score.decided ? score.language : normalizeSpeechLanguage(preferred) || 'fr');
+    return normalizeSpeechLanguage(recognized) || (score.decided ? score.language : 'fr');
   }
 
   function withoutMediaReferences(text) {
@@ -145,6 +154,7 @@
     normalizeSpeechLanguage,
     scoreSpeechLanguage,
     replySpeechLanguage,
+    explicitSpeechLanguage,
     turnSpeechLanguage,
     speechText,
     synthesisText,

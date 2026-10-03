@@ -23,6 +23,8 @@ module.exports = new Schema({
     display: { type: [Object], default: undefined },
     interrupted: { type: Boolean, default: false },
     interruptionState: { type: String, enum: ['', 'confirmed', 'failed'], default: '' },
+    // A spoken turn's browser timeline: ms from the end of the person's speech.
+    voiceTimings: { type: Object, default: undefined },
     inputPreview: String,
     replyPreview: String,
     inputSha256: String,

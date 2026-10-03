@@ -478,7 +478,7 @@ test('a short opening starts playback while inference is still pending, without 
     turn(_session, _text, _signal, onDelta) { delta = onDelta; return generated.promise; },
     async synthesize(reply) { spoken.push(reply); return new ArrayBuffer(4); }
   });
-  await h.conversation.start({ language: 'en' });
+  await h.conversation.start({ language: 'fr-en' });
   const exchange = h.say(); await tick();
   delta('Salut ! '); await tick();
   assert.deepEqual(spoken, [{ text: 'Salut !', language: 'fr' }]);
@@ -549,9 +549,47 @@ test('a franglais reply keeps one voice: the turn language holds for every claus
     async turn(_session, _text, _signal, delta) { for (const chunk of chunks) { delta(chunk); await tick(); } return {text:chunks.join(''),language:'fr'}; },
     async synthesize(reply) { spoken.push(reply); return new ArrayBuffer(10); }
   });
-  await h.conversation.start({language:'en'}); await h.say();
+  await h.conversation.start({language:'fr-en'}); await h.say();
   assert.deepEqual(spoken.map(reply=>reply.language), ['fr','fr','fr','fr','fr']);
   assert.equal(spoken.map(reply=>reply.text).join(' '),chunks.join(''));
+});
+
+test('a chosen language is the voice of the whole turn, whatever was recognized or answered', async () => {
+  const english = ['Sure, the hosts are ready. ', 'The models are loaded and they answer. ', 'OK.'];
+  const french = 'Salut ! Tout est prêt pour toi.';
+  for (const [selection, heard, turn, expected] of [
+    // French chosen: an English-sounding request and an English streamed reply stay in the French voice.
+    ['fr', { text: 'Can you check the hosts?', detectedLanguage: 'en' },
+      async (_session, _text, _signal, delta) => { for (const chunk of english) { delta(chunk); await tick(); } return { text: english.join(''), language: 'en' }; }, 'fr'],
+    // English chosen: an unstreamed French reply that names its own language does not switch the voice.
+    ['en', 'Bonjour Nestor', async () => ({ text: french, language: 'fr' }), 'en'],
+    // Automatic: the unstreamed reply still names the voice.
+    ['fr-en', 'Bonjour Nestor', async () => ({ text: 'Sure.', language: 'en' }), 'en']
+  ]) {
+    const spoken = [];
+    const h = harness({ transcribe: async () => heard, turn, async synthesize(reply) { spoken.push(reply.language); return new ArrayBuffer(4); } });
+    await h.conversation.start({ language: selection }); await h.say();
+    assert.ok(spoken.length >= 1);
+    assert.deepEqual([...new Set(spoken)], [expected], `${selection}: ${spoken}`);
+    h.conversation.stop();
+  }
+});
+
+test('a remark from the brain is spoken in the chosen language, else in its own words’ language', async () => {
+  for (const [selection, remark, expected] of [
+    ['en', { text: 'Petite correction : une araignée a huit pattes.' }, 'en'],
+    ['fr-en', { text: 'Petite correction : une araignée a huit pattes.' }, 'fr'],
+    ['fr-en', { text: 'The answer is that they have eight legs.' }, 'en'],
+    ['fr-en', { text: 'OK', language: 'en' }, 'en'],
+    ['fr', { text: 'The answer is that they have eight legs.', language: 'en' }, 'fr']
+  ]) {
+    const spoken = [];
+    const h = harness({ async synthesize(reply) { spoken.push(reply); return new ArrayBuffer(4); } });
+    await h.conversation.start({ wakeWord: false, language: selection });
+    assert.equal(await h.conversation.interject(remark), true);
+    assert.deepEqual(spoken, [{ ...remark, language: expected }]);
+    h.conversation.stop();
+  }
 });
 
 for (const streaming of [false, true]) {
@@ -1022,7 +1060,9 @@ test('the language Whisper recognized decides the turn voice, and French is the 
     [{ text: 'OK', detectedLanguage: 'en' }, 'fr-en', 'en'],
     [{ text: 'OK' }, 'fr-en', 'fr'],
     [{ text: 'OK' }, 'en', 'en'],
-    ['Can you check the hosts?', 'fr-en', 'en']
+    [{ text: 'OK', detectedLanguage: 'en' }, 'fr', 'fr'],
+    ['Can you check the hosts?', 'fr-en', 'en'],
+    ['Can you check the hosts?', 'auto', 'en']
   ]) {
     const spoken = [];
     const h = harness({ transcribe: async () => result, turn: async (_s, _t, _sig, delta) => { delta('Sure. '); return { text: 'Sure.' }; },
@@ -1163,4 +1203,156 @@ test('the holding phrase heard back is echo: it neither interrupts nor replaces 
 test('the holding phrase waits a few seconds by default', () => {
   const { HOLDING_DELAY_MS } = require('../public/browser-conversation');
   assert.ok(HOLDING_DELAY_MS >= 2000 && HOLDING_DELAY_MS <= 5000);
+});
+
+test('reply text that arrives before the holding phrase plays drops it, so the answer is not delayed', async () => {
+  const slow = deferred(), requests = [], played = [];
+  const h = harness({ holdingDelayMs: 5, turn: () => slow.promise,
+    synthesize(reply, signal) {
+      requests.push({ text: reply.text, signal });
+      // The holding phrase's voice is slow; the answer's is immediate.
+      if (requests.length === 1) return new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+      return Promise.resolve(reply.text);
+    } });
+  h.audio.play = async bytes => { played.push(bytes); };
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await nextTimer(); await nextTimer();
+  assert.equal(requests.length, 1, 'the holding phrase was being prepared');
+  assert.equal(h.conversation.activeTurn.spoken, undefined, 'a phrase that has not played cannot be heard back as echo');
+  slow.resolve({ text: 'Voici la réponse.' }); await exchange;
+  assert.equal(requests[0].signal.aborted, true, 'its synthesis is cancelled');
+  assert.deepEqual(played, ['Voici la réponse.']);
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('a holding phrase already playing finishes while the first clause is prepared to follow it', async () => {
+  const slow = deferred(), holdingPlayback = deferred(), synthesized = [], played = [];
+  let delta;
+  const h = harness({ holdingDelayMs: 5,
+    turn(_session, _text, _signal, onDelta) { delta = onDelta; return slow.promise; },
+    async synthesize(reply) { synthesized.push(reply.text); return reply.text; } });
+  h.audio.play = bytes => { played.push(bytes); return played.length === 1 ? holdingPlayback.promise : Promise.resolve(); };
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await nextTimer(); await nextTimer();
+  assert.equal(played.length, 1, 'the holding phrase is playing');
+  delta('Voici la réponse. '); await tick();
+  assert.deepEqual(synthesized.slice(1), ['Voici la réponse.'], 'the first clause is synthesized during the phrase');
+  assert.equal(played.length, 1, 'the phrase is not cut');
+  holdingPlayback.resolve(); await tick(); await tick();
+  assert.deepEqual(played.slice(1), ['Voici la réponse.']);
+  slow.resolve({ text: 'Voici la réponse.' }); await exchange;
+  assert.equal(played.length, 2);
+  h.conversation.stop();
+});
+
+test('the end of the spoken text says the last clause before the turn completes, once', async () => {
+  const closing = deferred(), spoken = [];
+  const h = harness({
+    async turn(_session, _text, _signal, delta, options) {
+      delta('Voici la réponse.'); await tick();
+      assert.deepEqual(spoken, [], 'a final period is not a clause boundary while text may follow');
+      options.onSayEnd();
+      await closing.promise; // pictures, tool receipts and the record still to come
+      return { text: 'Voici la réponse.', language: 'fr' };
+    },
+    async synthesize(reply) { spoken.push(reply.text); return new ArrayBuffer(4); } });
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await tick(); await tick(); await tick();
+  assert.deepEqual(spoken, ['Voici la réponse.']);
+  assert.ok(h.calls.includes('play'), 'it plays while the turn is still closing');
+  assert.equal(h.conversation.turnPending, true);
+  closing.resolve(); await exchange;
+  assert.deepEqual(spoken, ['Voici la réponse.'], 'completion does not repeat it');
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('an end-of-text signal with nothing streamed, or after a pause, speaks nothing early', async () => {
+  const closing = deferred(), spoken = [];
+  let end;
+  const h = harness({
+    async turn(_session, _text, _signal, delta, options) { end = () => { delta('Trop tard.'); options.onSayEnd(); }; options.onSayEnd(); await closing.promise; return { text: 'Réponse complète.' }; },
+    async synthesize(reply) { spoken.push(reply.text); return new ArrayBuffer(4); } });
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say(); await tick(); await tick();
+  assert.deepEqual(spoken, [], 'an unstreamed reply is spoken from the completed turn');
+  h.conversation.stop(true); end(); closing.resolve(); await exchange;
+  assert.deepEqual(spoken, [], 'a paused turn is never spoken later');
+});
+
+test('an accepted voice stream that fails while it plays is retried once, for that clause, with the next voice', async () => {
+  const requests = [], played = [];
+  const h = harness({
+    async turn(_session, _text, _signal, delta) {
+      delta('Voici la première phrase de la réponse. '); await tick(); await tick(); await tick();
+      delta('Voici la deuxième phrase de la réponse. ');
+      return { text: 'Réponse complète.' };
+    },
+    async synthesize(reply) { const speech = { text: reply.text, after: reply.after }; requests.push(speech); return speech; } });
+  h.audio.play = async speech => { if (speech === requests[0]) throw new Error('Voice stream failed'); played.push(speech.text); };
+  await h.conversation.start({ language: 'fr' }); await h.say();
+  assert.deepEqual(requests.map(row => row.text), ['Voici la première phrase de la réponse.', 'Voici la première phrase de la réponse.', 'Voici la deuxième phrase de la réponse.']);
+  assert.equal(requests[0].after, undefined);
+  assert.equal(requests[1].after, requests[0], 'the retry names the speech that failed');
+  assert.equal(requests[2].after, requests[0], 'later clauses of the turn skip the failed voice too');
+  assert.deepEqual(played, ['Voici la première phrase de la réponse.', 'Voici la deuxième phrase de la réponse.']);
+  assert.equal(h.conversation.state, 'listening');
+  // The next turn starts from the chosen voice again.
+  await h.say();
+  assert.equal(requests.at(-1).after, undefined);
+  h.conversation.stop();
+});
+
+test('a clause prepared ahead with the voice that then failed is prepared again before it is heard', async () => {
+  const requests = [], played = [], first = 'Voici la première phrase de la réponse.', second = 'Voici la deuxième phrase de la réponse.';
+  let breakStream;
+  const h = harness({
+    async turn(_session, _text, _signal, delta) { delta(first + ' '); delta(second + ' '); return { text: 'Réponse.' }; },
+    async synthesize(reply) { const speech = { text: reply.text, after: reply.after }; requests.push(speech); return speech; } });
+  h.audio.play = speech => speech === requests[0] ? new Promise((_, reject) => { breakStream = reject; }) : (played.push(speech), Promise.resolve());
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say(); await tick(); await tick();
+  assert.deepEqual(requests.map(row => row.text), [first, second], 'the second clause is ready behind the first');
+  breakStream(new Error('Voice stream failed')); await exchange;
+  assert.deepEqual(requests.map(row => [row.text, row.after === requests[0]]), [[first, false], [second, false], [first, true], [second, true]]);
+  assert.deepEqual(played, [requests[2], requests[3]], 'speech from the failed voice is never played');
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('a second voice failure in the same turn stops the voice: one clause is repeated, never a loop', async () => {
+  let syntheses = 0, plays = 0;
+  const h = harness({
+    async turn(_session, _text, _signal, delta) { delta('Voici la première phrase de la réponse. '); delta('Voici la deuxième phrase de la réponse. '); return { text: 'Réponse.' }; },
+    async synthesize() { syntheses++; return new ArrayBuffer(4); } });
+  h.audio.play = async () => { plays++; throw new Error('Voice stream failed'); };
+  await h.conversation.start({ language: 'fr' }); await h.say();
+  assert.equal(plays, 2, 'the first clause is tried twice, then nothing more is played');
+  assert.equal(syntheses, 3, 'first clause, its one retry, and the clause prepared ahead');
+  assert.equal(h.conversation.state, 'error');
+});
+
+test('a clause stopped by an interruption or a pause is not retried', async () => {
+  const requests = [];
+  const h = harness({
+    async turn(_session, _text, _signal, delta) { delta('Voici la première phrase de la réponse. '); return new Promise(() => {}); },
+    async synthesize(reply) { requests.push(reply); return new ArrayBuffer(4); } });
+  h.audio.play = (_bytes, signal) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }));
+  await h.conversation.start({ language: 'fr' }); void h.say(); await tick(); await tick();
+  assert.equal(requests.length, 1);
+  h.conversation.stop(true); await tick(); await tick();
+  assert.equal(requests.length, 1, 'cancelled playback is not a voice failure');
+  assert.equal(h.conversation.state, 'paused');
+});
+
+test('a holding phrase whose voice fails never fails the answer', async () => {
+  const slow = deferred(), played = [];
+  const h = harness({ holdingDelayMs: 5, turn: () => slow.promise,
+    async synthesize(reply) { if (played.length === 0 && reply.text !== 'Voici la réponse.') throw new Error('TTS unavailable'); return reply.text; } });
+  h.audio.play = async bytes => { played.push(bytes); };
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await nextTimer(); await nextTimer();
+  slow.resolve({ text: 'Voici la réponse.' }); await exchange;
+  assert.deepEqual(played, ['Voici la réponse.']);
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
 });

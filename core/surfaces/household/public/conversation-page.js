@@ -111,7 +111,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     onAsk: question => { el('conversationMessage').value = question; el('conversationText').requestSubmit(); },
     onRevision: block => board.add(block),
     onInterject: async remark => {
-      const spoken = await conversation.interject({ text: remark.text, language: NestorSpeech.replySpeechLanguage(remark.text, language.value) });
+      const spoken = await conversation.interject({ text: remark.text });
       transcript.querySelector('.empty')?.remove();
       const row = document.createElement('div'); row.className = 'conversation-message assistant interjection';
       const label = document.createElement('small'); label.className = 'interjection-label';
@@ -258,7 +258,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     }
     return data.session;
   }
-  async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice } = {}) {
+  async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice, onSayEnd } = {}) {
     personalNotes.show(null);
     activeBrowserTurn = turnId; activity('turn'); brain.cancel(); turnSpeaker = null;
     const response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
@@ -304,6 +304,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         if (!partial) { partial = document.createElement('div'); partial.className = 'conversation-message assistant'; if (turnSpeaker) partial.dataset.speaker = turnSpeaker.name; transcript.append(partial); }
         partial.textContent = answer; onDelta(event.delta); activity('delta', { size: event.delta.length });
       }
+      // Core has sent every spoken word; pictures, tools and the record follow before `done`.
+      if (event.type === 'say_end' && !interruptedTurns.has(turnId)) onSayEnd?.();
       if (event.type === 'done') { result = event.data; activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); void brain.follow(session.sessionId, event.data?.traceId); }
     };
     try {
@@ -329,30 +331,29 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const noteUpstream = state => { const active = typeof state === 'string' ? state : state?.active; if (active) { voixUpstream = active; renderVoiceNotice(); } };
   const refreshUpstream = () => api('/api/voix/upstream').then(noteUpstream, () => {});
   refreshUpstream();
-  async function synthesize(text, lang, persona, voicePrefs, signal, source = 'Conversation') {
-    // Fallback ladder: chosen voice, persona voice, catalog voice, then the browser's own voice.
-    let response, speech;
-    for (const [index, choice] of P.speechChoices(persona, lang, voicePrefs).entries()) {
-      try {
-        response = await fetch('/api/voix/synthesize/stream', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, language: lang, voice: choice.voice, tts_provider: choice.provider }) });
-      } catch (error) { if (signal.aborted) throw error; response = null; break; }
+  // Fallback ladder: chosen voice, persona voice, catalog voice, then the browser's own voice.
+  const voiceLadder = AgentXSpeechLadder.createSpeechLadder({
+    async request({ text, language: lang, choice }, signal) {
+      const response = await fetch('/api/voix/synthesize/stream', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, language: lang, voice: choice.voice, tts_provider: choice.provider }) });
       noteUpstream(response.headers.get('X-Voix-Upstream'));
-      if (response.ok) { speech = choice; voiceNotice(index ? 'Voix choisie indisponible : voix de secours.' : ''); break; }
-    }
-    if (!response?.ok) {
-      if (!signal.aborted && 'speechSynthesis' in window) {
-        voiceNotice('Voix du serveur indisponible : voix de ce navigateur.');
-        return { browserSpeech: { text, language: lang } };
-      }
-      throw new Error('La voix est indisponible pour le moment. Ta conversation continue par écrit.');
-    }
+      return response;
+    },
+    deviceVoice: () => 'speechSynthesis' in window,
+    unavailable: 'La voix est indisponible pour le moment. Ta conversation continue par écrit.' });
+  // `after` is speech that failed while it played: the clause restarts on the voice below it.
+  async function synthesize(text, lang, persona, voicePrefs, signal, source = 'Conversation', after = null) {
+    const choices = P.speechChoices(persona, lang, voicePrefs);
+    const response = await voiceLadder.speak({ text, language: lang, choices, after }, signal);
+    const rung = voiceLadder.rungOf(response);
+    voiceNotice(response.browserSpeech ? 'Voix du serveur indisponible : voix de ce navigateur.' : rung ? 'Voix choisie indisponible : voix de secours.' : '');
+    if (response.browserSpeech) return response;
     if (!signal.aborted) {
       const acknowledged = decodeURIComponent(response.headers.get('X-Voix-Voice') || '');
       const actualLanguage = response.headers.get('X-Nestor-Speech-Language');
       const receipt = el('conversationSpeechReceipt'); receipt.hidden = false;
       receipt.textContent = source + ' synthesis · ' + persona.name + ' · '
-        + (actualLanguage || lang) + ' · ' + (acknowledged || speech.voice)
+        + (actualLanguage || lang) + ' · ' + (acknowledged || choices[rung].voice)
         + (acknowledged ? ' (voice acknowledged by the speech proxy)' : ' (requested voice; no proxy receipt)');
     }
     return response;
@@ -408,12 +409,16 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       partial = null;
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
+    // The voice loop's timeline of a spoken turn, kept by Core on that recorded turn.
+    timings: (session, turnId, timings) => api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/voice-timings`,
+      { method: 'POST', keepalive: true, body: JSON.stringify({ turnId, timings }) }),
     async synthesize(reply, signal) {
-      const lang = NestorSpeech.replySpeechLanguage(reply.text, reply.language);
+      // The voice loop chose one language for the whole turn; a clause is never re-scored.
+      const lang = NestorSpeech.normalizeSpeechLanguage(reply.language) || 'fr';
       // A member who answers directly speaks with its own personality's voice, not the session's choices.
       const member = turnSpeaker && personas.find(p => p.id === turnSpeaker.personaId);
       const persona = member || conversation.session?.persona || selected();
-      return synthesize(reply.text, lang, persona, member ? {} : conversation.session?.voice || {}, signal);
+      return synthesize(reply.text, lang, persona, member ? {} : conversation.session?.voice || {}, signal, 'Conversation', reply.after);
     },
     // The household speaks French unless English was chosen; the browser's own
     // locale greeted a French family in English. The line

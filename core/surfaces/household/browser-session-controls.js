@@ -9,6 +9,7 @@ const personaCatalog = require('./persona-catalog');
 const { packById } = require('./packs');
 const { publicSession, loadSessionAuditRows, publicAudit, sessionHistoryMessages } = require('./persona-records');
 const { spokenReplyLanguage } = require('./persona-prompt');
+const { normalizeVoiceTimings } = require('../../src/services/voice/timeline');
 
 function createBrowserSessionControls({
   personas, conversations, envelope, cleanText, fail, activePersonaTurns,
@@ -153,6 +154,29 @@ function createBrowserSessionControls({
       } catch (error) {
         return fail(res, 503, error.message || 'Unable to stop the previous turn', 'VOICE_INTERRUPTION_FAILED');
       } finally { clearTimeout(timer); }
+    });
+
+    // The browser's timeline of one spoken turn (#9), kept on that recorded turn.
+    // The turn is recorded just before its `done`: until then the page is told
+    // to send the timeline again once the turn's request has ended.
+    if (consumer !== 'llmx') router.post(`${prefix}/sessions/:sessionId/voice-timings`, async (req, res) => {
+      const clientTurnId = req.body?.turnId, sessionId = cleanText(req.params.sessionId, 64);
+      const voiceTimings = normalizeVoiceTimings(req.body?.timings);
+      if (!validClientTurnId(clientTurnId) || !voiceTimings) {
+        return fail(res, 400, 'A valid turnId and bounded timings are required', 'VOICE_TIMINGS_INVALID');
+      }
+      try {
+        const audit = await conversations.updateTurn({ sessionId, clientTurnId, packId, ...(scopeId ? { scopeId } : {}), channel: 'voice' },
+          { $set: { voiceTimings } });
+        if (audit) return envelope(res, { turnId: clientTurnId, voiceTimings: audit.voiceTimings });
+        const active = activePersonaTurns.get(sessionId);
+        if (active?.clientTurnId === clientTurnId && active.snapshot?.packId === packId && (!scopeId || active.snapshot.scopeId === scopeId)) {
+          return envelope(res, { pending: true, turnId: clientTurnId }, 202);
+        }
+        return fail(res, 404, 'This voice turn is not recorded', 'VOICE_TIMINGS_TURN_NOT_RECORDED');
+      } catch (error) {
+        return fail(res, 503, error.message || 'Voice timings are unavailable', 'VOICE_TIMINGS_FAILED');
+      }
     });
   }
   return registerBrowserSessionControls;

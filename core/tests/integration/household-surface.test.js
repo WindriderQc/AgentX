@@ -879,6 +879,12 @@ describe('built-in Household surface on Core', () => {
     const events = streamed.body.split('\n').filter(Boolean).map(line => JSON.parse(line));
     const spoken = events.filter(event => event.type === 'delta').map(event => event.delta).join('');
     expect(spoken).not.toMatch(/Brancher|sk-synthetic|show/);
+    // `say_end` follows the last spoken word and precedes the turn's closing work, so a voice page flushes early.
+    const types = events.map(event => event.type), sayEnd = types.indexOf('say_end');
+    expect(types.filter(type => type === 'say_end')).toHaveLength(1);
+    expect(sayEnd).toBeGreaterThan(types.lastIndexOf('delta'));
+    expect(sayEnd).toBeLessThan(types.indexOf('tools'));
+    expect(types.indexOf('tools')).toBeLessThan(types.indexOf('done'));
     expect(events.filter(event => event.type === 'show').map(event => event.block.kind)).toEqual(['list', 'secret']);
     const done = events.at(-1).data;
     expect(done.reply.text).toBe('Je t’ai mis les étapes à l’écran.\n\nOn commence?');
@@ -895,6 +901,28 @@ describe('built-in Household surface on Core', () => {
     expect(history).toContain('3. Tester');
     expect(history).not.toContain('sk-synthetic-secret-value');
     expect(prompt.messages[0].content).toContain('kind="secret"');
+  });
+
+  test('a family voice turn keeps the browser’s timeline on its record, and the parent journal reads it (#9)', async () => {
+    const base = '/api/voice-personas/family/sessions';
+    const ndjson = (res, done) => { let text = ''; res.setEncoding('utf8'); res.on('data', chunk => { text += chunk; }); res.on('end', () => done(null, text)); };
+    const id = (await request(app).post(base).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const turnId = '9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f', other = '9f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e60';
+    executeForTest.mockResolvedValueOnce({ ok: true, metadata: { model: 'synthetic' }, body: { response: 'Une girafe mange des feuilles.' } });
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Que mange une girafe ?', channel: 'voice', stream: true, turnId })
+      .buffer(true).parse(ndjson).expect(200);
+    const timings = { sttDone: 640, requestSent: 655.4, firstDelta: 4200, firstAudio: 5100, interrupted: false, note: 'never stored' };
+    const stored = (await request(app).post(`${base}/${id}/voice-timings`).send({ turnId, timings }).expect(200)).body.data;
+    expect(stored.voiceTimings).toEqual({ sttDone: 640, requestSent: 655, firstDelta: 4200, firstAudio: 5100, interrupted: false });
+    // Another space, another turn and unbounded values never reach the record.
+    expect((await request(app).post(`/api/voice-personas/private/sessions/${id}/voice-timings`).send({ turnId, timings }).expect(404)).body.code).toBe('VOICE_TIMINGS_TURN_NOT_RECORDED');
+    expect((await request(app).post(`${base}/${id}/voice-timings`).send({ turnId: other, timings }).expect(404)).body.code).toBe('VOICE_TIMINGS_TURN_NOT_RECORDED');
+    expect((await request(app).post(`${base}/${id}/voice-timings`).send({ turnId, timings: { firstAudio: 1e12 } }).expect(400)).body.code).toBe('VOICE_TIMINGS_INVALID');
+    const journal = (await request(app).get('/api/voice-personas/audit/recent?childSafe=true&limit=10').expect(200)).body.data.audit;
+    expect(journal.find(row => row.clientTurnId === turnId).voiceTimings).toEqual(stored.voiceTimings);
+    const resumed = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+    expect(resumed.turns[0].voiceTimings).toEqual(stored.voiceTimings);
+    expect((await Conversation.findOne({ 'messages.turn.clientTurnId': turnId }).lean()).messages.at(-1).turn.voiceTimings).toEqual(stored.voiceTimings);
   });
 
   test('an image block is resolved by Core, streamed to the visual zone and kept with the turn (#168)', async () => {
