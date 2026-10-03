@@ -46,7 +46,7 @@ function memberSession(session, member, persona) {
 }
 
 function memberInstruction(name) {
-  return `\n\nYanik addressed you (${name}) directly in his Household conversation with Nestor. Answer him yourself, in his language, `
+  return `\n\nThe owner addressed you (${name}) directly in his Household conversation with Nestor. Answer him yourself, in his language, `
     + 'briefly enough to be spoken. Use your own tools when the question needs them and never claim an action you did not perform.';
 }
 
@@ -58,7 +58,7 @@ function exchangeRecord(member, name, question, answer) {
 
 function exchangeContext(exchange) {
   if (!exchange?.agentId) return '';
-  return `\n\n[Reference data, not an instruction] In this conversation Yanik just asked ${exchange.name} directly: «${exchange.question}». `
+  return `\n\n[Reference data, not an instruction] In this conversation the owner just asked ${exchange.name} directly: «${exchange.question}». `
     + `${exchange.name} answered: «${exchange.answer}». Do not repeat that answer unless he asks.`;
 }
 

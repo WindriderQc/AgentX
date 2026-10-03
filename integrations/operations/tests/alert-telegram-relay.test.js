@@ -37,7 +37,7 @@ function alert(overrides = {}) {
 }
 
 const CONFIG = validateConfig({
-  chatId: '-1003733742621',
+  chatId: '-1001234567890',
   topicId: '700',
   tokenFile: '/secrets/openclaw.json',
   tokenPointer: '/openclaw/channels/telegram/botToken',
@@ -121,7 +121,7 @@ test('send posts to the topic and records delivery in Core', async () => {
   const summary = await run(parseArgs(['--send']), { fetch, config: CONFIG, token: TOKEN, now: () => NOW, ...memoryState() });
   assert.equal(summary.sent, 1);
   const send = fetch.calls.find((c) => /sendMessage/.test(c.url));
-  assert.equal(send.body.chat_id, '-1003733742621');
+  assert.equal(send.body.chat_id, '-1001234567890');
   assert.equal(send.body.message_thread_id, 700);
   const record = fetch.calls.find((c) => /delivery-status/.test(c.url));
   assert.deepEqual({ channel: record.body.channel, status: record.body.status }, { channel: 'telegram', status: 'sent' });
