@@ -44,8 +44,8 @@ describe('Results Explorer trust surface', () => {
         expect(view).toContain('Historical: more than 90 days.');
         expect(view).toContain('“Legacy scoring” appears only when that exact formula is stored');
         expect(`${view}\n${main}\n${inspector}`).not.toMatch(/demo[-_ ]?(?:data|result|evidence|badge)/i);
-        expect(sharedLayout).toContain("locals.agentxProfile === 'demo'");
-        expect(sharedLayout).not.toMatch(/<a class="demo-profile-home"[\s\S]*?<% if \(locals\.agentxProfile === 'demo'/);
+        expect(sharedLayout).toContain('data-agentx-profile=');
+        expect(sharedLayout).not.toContain('class="demo-profile-home"');
     });
 
     test('renders age and explicit legacy scoring independently', () => {
