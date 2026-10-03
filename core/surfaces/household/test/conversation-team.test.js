@@ -51,3 +51,17 @@ test('the saved agent survives a reload and a personality carries its agent to t
   const row = { name: 'secretary', version: 3, _id: 'x', systemPrompt: 'p', uiConfig: { layoutConfig: { label: 'Secretary', agentId: 'secretary' } } };
   assert.equal(catalog.snapshot(row).agentId, 'secretary');
 });
+
+test('a member offers its own personality, its declared styles and the personalities that belong to nobody', () => {
+  const offered = [...personas, { id: 'nestor_concise', name: 'Nestor · Bref', agentId: null, styleOf: 'main' },
+    { id: 'native_personality', name: 'Agent personality', agentId: null }];
+  assert.deepEqual(Team.stylesFor(offered, 'main').map((p) => p.id), ['nestor', 'nestor_strategist', 'nestor_concise', 'native_personality']);
+  assert.deepEqual(Team.stylesFor(offered, 'secretary').map((p) => p.id), ['nestor_strategist', 'secretary', 'native_personality']);
+  // In the shared catalog every Nestor style names its member, so another member never borrows Nestor's voice.
+  const shared = catalog.generatedPersonas().map((row) => catalog.snapshot({ ...row, version: 1, _id: 'catalog' }));
+  assert.deepEqual(Team.stylesFor(shared, 'secretary').map((p) => p.id), ['native_personality', 'secretary']);
+  assert.ok(Team.stylesFor(shared, 'main').length >= 6);
+  // A voice chosen on the Team page is spoken as chosen, whatever presentation the browser last used.
+  assert.deepEqual(presentation.speechFor({ voice: { provider: 'voxcpm', voices: { fr: 'synthetic' }, source: 'team' } }, 'fr', { presentation: 'feminine' }),
+    { provider: 'voxcpm', language: 'fr', voice: 'synthetic', presentation: 'feminine' });
+});

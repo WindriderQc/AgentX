@@ -24,8 +24,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     </section>
     <div class="conversation-layout"><details class="conversation-settings" id="conversationSettings"><summary>Réglages de l’espace</summary>
       <p id="conversationLocked" class="conversation-locked" role="status" hidden></p>
-      <label for="conversationPersona">Personnalité</label><select id="conversationPersona">${personas.map(p => `<option value="${esc(p.id)}" ${p.id === 'nestor' ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
-      <p id="personaDescription" class="muted"></p><p class="muted">La personnalité donne le ton. L’agent apporte ses outils et ses souvenirs.</p>
+      <label for="conversationPersona">Style</label><select id="conversationPersona">${personas.map(p => `<option value="${esc(p.id)}" ${p.id === 'nestor' ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+      <p id="personaDescription" class="muted"></p><p class="muted">Le style donne le ton. Le membre apporte ses outils et ses souvenirs.</p>
       <details id="conversationAgentSettings"><summary id="conversationAgentHeading">Agent & model</summary>
         <label for="conversationBackend">Moteur de conversation</label><select id="conversationBackend"><option value="openclaw" ${runtime?.openclawConfigured === false ? 'disabled' : ''}>OpenClaw</option><option value="agentx">AgentX / Ollama</option></select><p class="muted">Tes souvenirs restent dans AgentX avec les deux moteurs. OpenClaw ajoute ses outils et ses actions.</p>
         <div id="conversationNativeAgent"><label for="conversationAgent">OpenClaw agent</label><select id="conversationAgent">${agents.map(agent => `<option value="${esc(agent.id)}" ${agent.id === 'main' ? 'selected' : ''}>${esc(agent.name)} · ${esc(agent.id)}</option>`).join('')}</select>
@@ -34,14 +34,12 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       </details>
       <label class="conversation-toggle"><input id="conversationOpen" type="checkbox"> Modèle alternatif (Open) <span class="muted">Changer le modèle de cette conversation</span></label><p id="conversationOpenStatus" class="muted" role="status" hidden></p>
       <details id="conversationOpenDetails" hidden><summary>Open model details</summary><p id="conversationOpenContext" class="muted"></p></details>
-      <details><summary>Voix et apparence</summary><label for="conversationLanguage">Langue</label><select id="conversationLanguage"><option value="auto">Automatique · français / English</option><option value="fr">Français</option><option value="en">English</option></select>
-      <label for="conversationVoice">Voix française</label><select id="conversationVoice"><option value="">Choix de la personnalité</option><option value="masculine">Voix masculine</option><option value="feminine">Voix féminine</option></select>
-      <label for="conversationVoiceEnglish">Voix anglaise</label><select id="conversationVoiceEnglish"><option value="">Choix de la personnalité</option></select><p id="voiceDescription" class="muted"></p>
+      <details><summary>Voix et langue</summary><label for="conversationLanguage">Langue</label><select id="conversationLanguage"><option value="auto">Automatique · français / English</option><option value="fr">Français</option><option value="en">English</option></select>
+      <p id="voiceDescription" class="muted"></p>
       <button id="conversationPreview" class="button" type="button">Écouter la voix</button><p id="conversationPreviewStatus" class="muted" role="status"></p>
       <p id="conversationSpeechReceipt" class="muted" hidden></p>
-      <label for="conversationAppearance">Apparence</label><select id="conversationAppearance"><option value="">Choix de la personnalité</option><option value="initials">Initiales</option><option value="orb">Orbe de présence</option></select>
-      <label for="conversationColor">Couleur</label><input id="conversationColor" type="color" value="#52cfc5">
-      <p id="conversationPreferencesStatus" class="muted">Ces préférences de personnalité sont conservées sur ce navigateur.</p><button id="conversationReset" type="button" class="button">Rétablir la personnalité</button></details>
+      ${family ? '' : '<p class="muted">La voix, l’apparence et la personnalité d’un membre se règlent sur sa fiche : <a href="/agent-ops#agents">Équipe</a>.</p>'}
+      <p id="conversationPreferencesStatus" class="muted"></p></details>
       <details id="conversationNotes" hidden></details>
       <details><summary>Écoute</summary><label class="conversation-toggle"><input id="conversationInterruption" type="checkbox" checked> Interrompre Nestor en parlant</label><p id="conversationInterruptionStatus" class="muted">Utilise l’annulation d’écho du navigateur. Un casque peut aider dans une pièce bruyante.</p>
       <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Exiger « Hey Nestor »</label><p class="muted">Avec réveil vocal, Nestor revient en veille après 30 secondes sans intervention ou dès « Merci Nestor ». En conversation ouverte, il répond aux paroles tant que le micro est actif. Les phrases sont transcrites sur le réseau local avant la détection du nom ; seules les phrases adressées à Nestor entrent dans la conversation.</p><div id="conversationBrowserSttSettings" hidden></div>${family ? '' : '<a href="/voice/native" class="conversation-native">Appareils et diagnostic audio</a>'}</details>
@@ -87,23 +85,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   if (family) { agentPicker.value = 'family'; el('conversationAgentSettings').hidden = true; app.querySelector('label[for=conversationPersona]').hidden = true; el('conversationPersona').hidden = true; el('conversationOpen').closest('label').hidden = true; }
   const selectedAgent = () => agents.find(agent => agent.id === agentPicker.value) || agents[0];
   const team = family ? [] : ConversationTeam.members(personas, agents);
-  const picker = el('conversationPersona'), open = el('conversationOpen'), voice = el('conversationVoice'), language = el('conversationLanguage');
-  const voiceEnglish = el('conversationVoiceEnglish');
-  let voiceCatalog = null;
-  try {
-    voiceCatalog = await api('/api/voix/catalog');
-    for (const [select, lang] of [[voice, 'fr'], [voiceEnglish, 'en']]) {
-      for (const provider of voiceCatalog.providers || []) {
-        const group = document.createElement('optgroup'); group.label = provider.name;
-        for (const item of VoixAudio.choices(voiceCatalog, lang, provider.id)) {
-          const option = document.createElement('option'); option.value = VoixAudio.voiceKey(item);
-          option.textContent = `${item.name} · ${item.locale}${item.available ? '' : ' · unavailable'}`;
-          option.disabled = !item.available; option.title = item.reason || ''; group.append(option);
-        }
-        if (group.children.length) select.append(group);
-      }
-    }
-  } catch { el('conversationPreviewStatus').textContent = 'The local voice catalog is unavailable.'; }
+  const picker = el('conversationPersona'), open = el('conversationOpen'), language = el('conversationLanguage');
   const transcript = el('conversationTranscript');
   // The background brain (#169): tapping a suggestion asks it; a remark is spoken at a pause
   // when the voice conversation is listening, otherwise shown in the transcript.
@@ -121,7 +103,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const personalNotes = mountPersonalNotes({ host: el('conversationNotes'), evidence: el('conversationPersonalContext'), api, esc });
   const selected = () => personas.find(p => p.id === picker.value) || personas[0];
   const blockedOpenMessage = 'Open is unavailable. inference-host needs recovery before this conversation can continue.';
-  const appearance = el('conversationAppearance'), color = el('conversationColor'), interruption = el('conversationInterruption');
+  const interruption = el('conversationInterruption');
   let enteringSpace = autoStart;
   let textBusy = false, partial = null, previewAbort = null, activeBrowserTurn = null, degradedReply = false;
   let draftFiles = [];
@@ -194,25 +176,24 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     agentPicker.value = known(preferences.agentId) || known(personas.find(p => p.id === picker.value)?.agentId) || agentPicker.value;
   }
   interruption.checked = preferences.interruption;
-  const visualSelection = () => P.visual({ style: appearance.value, color: color.value });
-  const chosenVoice = () => P.chosenVoice(selected(), voice.value, preferences.lastVoice);
+  // Voice and appearance come from the member's persona (Agent Ops, Team); this page only picks who and in which style.
+  const chosenVoice = () => P.chosenVoice(selected(), '', preferences.lastVoice);
   const stopPreview = () => { previewAbort?.abort(); previewAbort = null; };
   const savePreferences = () => {
     if (!family) { preferences.personaId = picker.value; preferences.agentId = agentPicker.value; }
     preferences.interruption = interruption.checked;
-    preferences.profiles[picker.value] = P.profile({ language: language.value, voice: voice.value,
-      selections: { fr: voice.value, en: voiceEnglish.value }, visual: visualSelection() });
+    preferences.profiles[picker.value] = P.profile({ language: language.value });
     const saved = P.save(storage, preferences);
     el('conversationPreferencesStatus').textContent = saved
-      ? 'Ces préférences de personnalité sont conservées sur ce navigateur.'
+      ? 'Le membre, le style et la langue sont conservés sur ce navigateur.'
       : 'Préférences actives pour cette visite ; ce navigateur ne permet pas de les conserver.';
   };
   async function releaseOpen() {
     return openHold.release();
   }
   const selection = () => ({ wakeWord: el('conversationWake').checked, backend: backendPicker.value, agentId: family ? 'family' : selectedAgent().id, personaId: selected().id, personaVersion: selected().version,
-    inference: { open: !family && open.checked }, voice: { presentation: chosenVoice(), selections: P.selections({ fr: voice.value, en: voiceEnglish.value }) }, language: language.value,
-    visual: visualSelection(), interruption: interruption.checked });
+    inference: { open: !family && open.checked }, voice: { presentation: chosenVoice(), selections: {} }, language: language.value,
+    visual: null, interruption: interruption.checked });
   // The team member answering this turn when it addressed one directly (#41); null for the conversation's agent.
   let turnSpeaker = null;
   const message = (role, text, interrupted = false, sound = null, attachments = [], speakerName = role === 'assistant' ? turnSpeaker?.name : '') => {
@@ -449,7 +430,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationPause').disabled = !active && !reviewing;
     el('conversationEnd').disabled = !active && !conversation.session;
     const lockReason = renderTeam(active || textBusy);
-    [backendPicker, agentPicker, picker, open, voice, voiceEnglish, language, appearance, color, interruption, el('conversationReset')].forEach(node => {
+    [backendPicker, agentPicker, picker, open, language, interruption].forEach(node => {
       node.disabled = active || !!conversation.session || textBusy || (node === agentPicker && (family || !agentCatalog || backendPicker.value !== 'openclaw'));
       node.title = node.disabled && lockReason ? lockReason : '';
     });
@@ -467,7 +448,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (reviewing) el('conversationAudio').open = true;
     renderAudioReview();
     window.dispatchEvent(new CustomEvent('persona-presence', { detail: { personaId: conversation.session?.persona?.id || selected().id,
-      personaVersion: conversation.session?.persona?.version || selected().version, state, visual: conversation.session?.visual || conversation.session?.persona?.visual || visualSelection() || selected().visual || null,
+      personaVersion: conversation.session?.persona?.version || selected().version, state, visual: conversation.session?.visual || conversation.session?.persona?.visual || selected().visual || null,
       sample: { speech: () => conversation.audio?.readSpeechSample?.(), input: () => conversation.audio?.readInputLevel?.(),
         // Waiting for "Hey Nestor": the face dozes until the word wakes him.
         asleep: () => !!conversation.selection?.wakeWord && ['listening', 'hearing'].includes(conversation.state) && !conversation.wake.active() } } }));
@@ -542,8 +523,18 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     picker.value = card.dataset.persona;
     picker.onchange();
   };
+  // The style picker offers what suits the chosen member; a resumed conversation keeps its own.
+  function syncStyles() {
+    if (family || conversation.session) return;
+    const offered = ConversationTeam.stylesFor(personas, agentPicker.value);
+    if (!offered.length) return;
+    const current = offered.some(p => p.id === picker.value) ? picker.value : (offered.find(p => p.agentId === agentPicker.value) || offered[0]).id;
+    picker.replaceChildren(...offered.map(p => new Option(p.name, p.id)));
+    picker.value = current;
+    picker.hidden = app.querySelector('label[for=conversationPersona]').hidden = offered.length < 2;
+  }
   function describe() {
-    renderTeam();
+    syncStyles(); renderTeam();
     const agent = agents.find(agent => agent.id === (conversation.session?.agentId || agentPicker.value)) || selectedAgent();
     const native = (conversation.session?.backend || backendPicker.value) === 'openclaw';
     agentPicker.disabled = family || !native || !agentCatalog || !!conversation.session;
@@ -557,42 +548,23 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (family) { el('conversationAgentSettings').hidden = true; picker.hidden = true; open.checked = false; }
     if (family) { el('conversationNotes').open = false; personalNotes.show(null); }
     const p = conversation.session?.persona || selected();
-    const visual = conversation.session?.visual || visualSelection() || p.visual;
+    const visual = conversation.session?.visual || p.visual;
     el('conversationInitial').textContent = p.name.charAt(0);
     el('conversationInitial').hidden = visual?.style === 'orb';
     el('conversationPresence').dataset.style = visual?.style || 'initials';
     el('conversationPresence').style.setProperty('--presence-color', P.visual(visual)?.color || '#52cfc5');
     el('personaDescription').textContent = p.description || p.name;
-    const presentation = P.chosenVoice(p, voice.value, preferences.lastVoice);
-    voice.options[0].textContent = p.voice?.presentation ? 'Choix de la personnalité' : 'Last voice choice';
     const speech = P.speechFor(p, language.value === 'en' ? 'en' : 'fr', selection().voice);
-    el('voiceDescription').textContent = `Preview: ${speech.provider} · ${speech.voice}. French and English choices are saved separately for this personality.`;
+    el('voiceDescription').textContent = `Voix de ${p.name.split(' ·')[0]} : ${speech.provider} · ${speech.voice}.`;
   }
   const restoreProfile = () => {
     const profile = P.profile(preferences.profiles[picker.value]);
-    for (const [select, saved] of [[voice, profile.selections?.fr], [voiceEnglish, profile.selections?.en]]) {
-      if (saved && ![...select.options].some(option => option.value === saved)) {
-        const option = new Option(`Saved voice unavailable: ${saved.split('|')[1]}`, saved);
-        option.disabled = true; select.append(option);
-      }
-    }
-    language.value = profile.language; voice.value = profile.selections?.fr || profile.voice;
-    voiceEnglish.value = profile.selections?.en || '';
-    appearance.value = profile.visual?.style || ''; color.value = profile.visual?.color || '#52cfc5';
+    language.value = profile.language;
   };
   backendPicker.onchange = () => { stopPreview(); describe(); };
   agentPicker.onchange = () => { stopPreview(); savePreferences(); describe(); };
   picker.onchange = () => { stopPreview(); restoreProfile(); savePreferences(); describe(); };
-  for (const field of [voice, voiceEnglish, language, appearance, color, interruption]) field.onchange = () => {
-    stopPreview();
-    if (field === voice && ['masculine', 'feminine'].includes(voice.value)) preferences.lastVoice = voice.value;
-    if (field === color && !appearance.value) appearance.value = 'initials';
-    savePreferences(); describe();
-  };
-  el('conversationReset').onclick = () => {
-    stopPreview(); preferences.profiles[picker.value] = P.profile();
-    restoreProfile(); savePreferences(); describe();
-  };
+  for (const field of [language, interruption]) field.onchange = () => { stopPreview(); savePreferences(); describe(); };
   el('conversationPreview').onclick = async () => {
     if (previewAbort) { stopPreview(); return; }
     const abort = new AbortController(); previewAbort = abort;
@@ -713,9 +685,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
       agentPicker.value = saved.agentId || 'main';
       backendPicker.value = saved.backend || runtime?.defaultBackend || 'openclaw';
-      picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open; voice.value = saved.voice?.presentation || '';
+      picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open;
       language.value = data.session.voice?.language || 'auto';
-      appearance.value = data.session.visual?.style || ''; color.value = data.session.visual?.color || '#52cfc5';
       transcript.replaceChildren(); partial = null; board.clear(); brain.reset();
       (data.turns || []).forEach(turn => {
         if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);

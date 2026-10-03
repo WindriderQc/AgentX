@@ -46,12 +46,14 @@ function teamView(projection, personas, { issue = null } = {}) {
   for (const persona of Array.isArray(personas) ? personas : []) {
     if (!persona?.id) continue;
     if (persona.agentId) linked.set(agentKey(persona.agentId), persona);
-    else styles.push(presentation(persona));
+    else styles.push({ ...presentation(persona), styleOf: persona.styleOf ? agentKey(persona.styleOf) : null });
   }
   const agents = (projection.agents || []).map((agent) => {
     const persona = linked.get(agent.id);
     linked.delete(agent.id);
-    return { ...agent, group: groupOf(agent), persona: persona ? presentation(persona) : null };
+    // Its own styles sit on the member's card; the rest stay in the shared list below.
+    return { ...agent, group: groupOf(agent), persona: persona ? presentation(persona) : null,
+      styles: styles.filter((style) => style.styleOf === agent.id) };
   });
   const counts = Object.fromEntries(GROUPS.map((group) => [group, agents.filter((agent) => agent.group === group).length]));
   return {
@@ -60,7 +62,7 @@ function teamView(projection, personas, { issue = null } = {}) {
     team: {
       counts,
       // Personalities any conversation may select; they belong to no single member.
-      styles,
+      styles: styles.filter((style) => !agents.some((agent) => agent.id === style.styleOf)),
       // A persona naming an agent the roster does not hold.
       orphans: [...linked.values()].map((persona) => ({ ...presentation(persona), agentId: persona.agentId })),
       personas: { status: issue ? 'unavailable' : 'ok', issue }

@@ -16,6 +16,7 @@ const personas = [
   { id: 'butler', version: 3, name: 'Butler', description: 'Synthetic host.', agentId: 'main', identity: 'Private personality text.',
     voice: { provider: 'kokoro', presentation: 'masculine', voices: { fr: 'synthetic_a', en: 'synthetic_b' }, source: 'instance' } },
   { id: 'butler_brief', version: 1, name: 'Butler · Brief', agentId: null, voice: { provider: 'kokoro', voices: { fr: 'synthetic_a' } } },
+  { id: 'butler_bold', version: 1, name: 'Butler · Bold', agentId: null, styleOf: 'main', voice: {} },
   { id: 'ghost', version: 1, name: 'Ghost', agentId: 'departed', voice: {} }
 ];
 
@@ -34,6 +35,8 @@ test('the Team view joins each agent with its persona and keeps the personality 
   assert.equal(view.agents.find((agent) => agent.id === 'helper').persona, null);
   assert.deepEqual(view.team.counts, { team: 2, dormant: 1, tool: 1, role: 1 });
   assert.deepEqual(view.team.styles.map((style) => style.id), ['butler_brief']);
+  assert.deepEqual(main.styles.map((style) => style.id), ['butler_bold'], 'a style declared for a member sits on its card');
+  assert.deepEqual(view.agents.find((agent) => agent.id === 'helper').styles, []);
   assert.deepEqual(view.team.orphans.map((orphan) => [orphan.id, orphan.agentId]), [['ghost', 'departed']]);
   assert.deepEqual(view.team.personas, { status: 'ok', issue: null });
 });
