@@ -308,6 +308,7 @@ footer span:last-child { text-align: right; overflow-wrap: anywhere; }
 .modal-card { width: min(540px, calc(100vw - 24px)); border: 1px solid #303b45; background: #11171d; border-radius: 16px; padding: 14px; box-shadow: 0 25px 80px rgba(0,0,0,.5); }
 .modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .icon-btn { padding: 6px 9px; font-size: 11px; }
+a.icon-btn { text-decoration: none; }
 .modal-card label { display: grid; gap: 5px; margin-top: 9px; color: #9aa6b0; font-size: 10px; font-weight: 700; }
 .modal-card textarea { border: 1px solid #2b3640; background: #0c1116; border-radius: 9px; padding: 9px; font-weight: 400; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; flex-wrap: wrap; }
