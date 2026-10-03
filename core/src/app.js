@@ -634,6 +634,7 @@ app.get('/agent-ops', (_req, res) => {
       '<script src="/js/agent-ops-advanced.js"></script>',
       '<script src="/js/agent-ops-team.js"></script>',
       '<script src="/js/agent-ops-team-editor.js"></script>',
+      '<script src="/js/agent-ops-team-guide.js"></script>',
       '<script src="/js/cockpit-help.js"></script>',
       '<script src="/js/agent-ops.js"></script>'
     ].join('\n')
