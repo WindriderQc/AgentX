@@ -21,6 +21,7 @@ const {
     normalizeSelectionSource,
     projectRouteDecision,
 } = require('./routeDecision');
+const { sanitizePromptPrefix } = require('./promptPrefixFingerprint');
 
 const PHASE_TIMING_FIELDS = ['loadMs', 'promptEvalMs', 'evalMs', 'firstTokenMs'];
 
@@ -388,6 +389,7 @@ function decisionForTelemetry(data = {}) {
  * @param {number}  [data.promptEvalMs]  - Ollama prompt_eval_duration, ms
  * @param {number}  [data.evalMs]        - Ollama eval_duration, ms
  * @param {number}  [data.firstTokenMs]  - Streamed: dispatch to first output frame, ms
+ * @param {Object}  [data.promptPrefix]  - Payload-free prompt structure (promptPrefixFingerprint)
  * @param {number}  [data.durationMs]
  * @param {'success'|'error'|'timeout'} [data.status]
  * @param {string}  [data.error]
@@ -403,6 +405,7 @@ async function recordInference(data) {
         const { resolveHostKey } = require('../modelRouter');
         const host = data.host || data.routedHostUrl || 'unknown';
         const routedHost = data.routedHost || resolveHostKey(data.routedHostUrl || data.host);
+        const promptPrefix = sanitizePromptPrefix(data.promptPrefix);
         const row = await InferenceLog.create({
             host,
             hostKey: resolveHostKey(host),
@@ -434,6 +437,7 @@ async function recordInference(data) {
             tokensIn: data.tokensIn || 0,
             tokensOut: data.tokensOut || 0,
             ...phaseTimingFields(data),
+            ...(promptPrefix && { promptPrefix }),
             durationMs: data.durationMs || 0,
             status: data.status || 'success',
             error: data.error || null,

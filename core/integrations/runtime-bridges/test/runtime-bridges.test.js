@@ -800,6 +800,31 @@ test('request abort helper does not cancel completed responses', () => {
   abort.cleanup();
 });
 
+test('agent chat turns ask Core for prompt-prefix telemetry outside the model request', async () => {
+  const calls = [];
+  const services = runtimeServices(async (request, options) => {
+    calls.push({ request, options });
+    return { ok: true, status: 200, body: { model: 'model-a', message: { role: 'assistant', content: 'ok' }, done: true },
+      metadata: { model: 'model-a', upstreamProtocol: 'ollama' } };
+  });
+  const openclaw = registerOpenClawProtocol({ express: fakeExpress(), runtimeServices: services, logger: {} });
+  const hermes = registerHermesProtocol({ express: fakeExpress(), runtimeServices: services, logger: {} });
+  const messages = [{ role: 'system', content: '## Tooling\nsynthetic' }, { role: 'user', content: 'hello' }];
+  await route(openclaw, 'post', '/api/chat').handlers[0](
+    new Request({ body: { model: 'model-a', stream: false, messages, options: { temperature: 0.2 } } }), new Response());
+  await route(openclaw, 'post', '/api/generate').handlers[0](
+    new Request({ body: { model: 'model-a', stream: false, prompt: 'hello' } }), new Response());
+  await route(hermes, 'post', '/v1/chat/completions').handlers[0](
+    new Request({ body: { model: 'model-a', messages } }), new Response());
+  assert.deepEqual(calls.map(call => call.options.observePromptPrefix), [true, undefined, true]);
+  for (const { request } of calls) {
+    assert.equal(request.observePromptPrefix, undefined);
+    assert.equal(request.promptPrefix, undefined);
+    assert.equal(request.options?.observePromptPrefix, undefined);
+  }
+  assert.deepEqual(calls[0].request.messages, messages);
+});
+
 test('Hermes maps non-streaming content, tools, usage, and routing metadata', async () => {
   let inferenceRequest;
   let inferenceOptions;

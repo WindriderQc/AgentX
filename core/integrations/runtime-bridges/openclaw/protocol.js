@@ -181,6 +181,9 @@ function registerOpenClawProtocol({ express, runtimeServices, pipelineAttributio
       const primaryRun = () => runtimeServices.inference.execute(request, {
         signal: abort.signal,
         consumerContract: pipeline?.consumerContract || OPENCLAW_CONSUMER_CONTRACT,
+        // Core logs where this prompt diverges from the last one (cache reuse);
+        // the structure stays in telemetry and never reaches Ollama.
+        ...(mode === 'chat' && { observePromptPrefix: true }),
         ...(conversationTarget && { hostUrl: conversationTarget.hostUrl }),
         ...(benchmarkClaims && { benchmarkClaims }),
         // A conversational provider (e.g. Telegram) outranks evaluation work,

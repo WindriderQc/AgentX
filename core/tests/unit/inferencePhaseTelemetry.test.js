@@ -10,6 +10,7 @@ const { ollamaPhaseTimings } = require('../../src/helpers/ollamaResponseHandler'
 const { executeRoutedInference } = require('../../src/extensions/trustedRuntimeServices');
 const { recordInference } = require('../../src/services/routing/inferenceTelemetry');
 const { projectInferenceLog } = require('../../src/services/routing/inferenceLogReadProjection');
+const { createPromptPrefixTracker } = require('../../src/services/routing/promptPrefixFingerprint');
 
 const PRIVATE_TEXT = 'synthetic-private-turn-7781';
 const DURATIONS = { load_duration: 1_500_000, prompt_eval_duration: 2_345_678_901, eval_duration: 987_654_321 };
@@ -112,6 +113,52 @@ describe('Ollama phase timings', () => {
   });
 });
 
+describe('prompt prefix on the trusted runtime', () => {
+  test('an opted-in chat call records its divergence without changing the Ollama request', async () => {
+    const tracker = createPromptPrefixTracker();
+    const deps = inferenceDeps({ observePromptPrefix: tracker.observe });
+    const plain = inferenceDeps();
+    await executeRoutedInference(plain, chat());
+    await executeRoutedInference(deps, chat(), { observePromptPrefix: true });
+    await executeRoutedInference(deps, chat('second synthetic turn'), { observePromptPrefix: true });
+
+    expect(deps.fetch.mock.calls[0][1].body).toBe(plain.fetch.mock.calls[0][1].body);
+    for (const [, init] of deps.fetch.mock.calls) {
+      expect(Object.keys(JSON.parse(init.body)).sort()).toEqual(['messages', 'model', 'stream', 'tools']);
+    }
+    expect(deps.recordInference.mock.calls[0][0].promptPrefix.divergence).toEqual({ kind: 'first', index: null, heading: null });
+    const second = deps.recordInference.mock.calls[1][0].promptPrefix;
+    expect(second).toEqual({ systemSections: 2, messages: 1, toolsHash: expect.stringMatching(/^[0-9a-f]{8}$/),
+      divergence: { kind: 'message', index: 0, heading: null } });
+    expect(JSON.stringify(deps.recordInference.mock.calls)).not.toContain(PRIVATE_TEXT);
+    expect(plain.recordInference.mock.calls[0][0]).not.toHaveProperty('promptPrefix');
+  });
+
+  test('a call refused before admission neither records nor replaces the compared prompt', async () => {
+    const tracker = createPromptPrefixTracker();
+    const deps = inferenceDeps({ observePromptPrefix: tracker.observe });
+    await executeRoutedInference(deps, chat(), { observePromptPrefix: true });
+    deps.beginInferenceAdmission.mockRejectedValueOnce(Object.assign(new Error('busy'), {
+      code: 'RUNTIME_INFERENCE_ADMISSION_DENIED'
+    }));
+    await expect(executeRoutedInference(deps, chat('refused synthetic turn'), { observePromptPrefix: true }))
+      .rejects.toMatchObject({ code: 'RUNTIME_INFERENCE_ADMISSION_DENIED' });
+    await executeRoutedInference(deps, chat(), { observePromptPrefix: true });
+    const rows = deps.recordInference.mock.calls.map(([entry]) => entry);
+    expect(rows[1]).toMatchObject({ status: 'error' });
+    expect(rows[1]).not.toHaveProperty('promptPrefix');
+    expect(rows[2].promptPrefix.divergence.kind).toBe('none');
+  });
+
+  test('only chat calls are fingerprinted', async () => {
+    const observePromptPrefix = jest.fn();
+    const deps = inferenceDeps({ observePromptPrefix });
+    await executeRoutedInference(deps, { mode: 'generate', model: 'model-a', prompt: 'hello' }, { observePromptPrefix: true });
+    expect(observePromptPrefix).not.toHaveBeenCalled();
+    expect(deps.recordInference.mock.calls[0][0]).not.toHaveProperty('promptPrefix');
+  });
+});
+
 describe('InferenceLog persistence and read projection', () => {
   const originalEnv = process.env.NODE_ENV;
   beforeEach(async () => {
@@ -120,21 +167,30 @@ describe('InferenceLog persistence and read projection', () => {
   });
   afterEach(() => { process.env.NODE_ENV = originalEnv; });
 
-  test('reported timings are stored and projected', async () => {
+  test('reported timings and a sanitized prompt prefix are stored and projected', async () => {
     await recordInference({
       host: 'http://ollama.test:11434', model: 'model-a', caller: 'proxy', tokensIn: 17000, tokensOut: 46,
-      loadMs: 2, promptEvalMs: 2346, evalMs: 988, firstTokenMs: 2410.4, durationMs: 3500
+      loadMs: 2, promptEvalMs: 2346, evalMs: 988, firstTokenMs: 2410.4, durationMs: 3500,
+      promptPrefix: {
+        systemSections: 9, messages: 14, toolsHash: 'abcdef12', content: PRIVATE_TEXT,
+        divergence: { kind: 'system', index: 7, heading: 'Runtime', text: PRIVATE_TEXT }
+      }
     });
     const row = await InferenceLog.findOne({ model: 'model-a' }).lean();
     expect(row).toMatchObject({ loadMs: 2, promptEvalMs: 2346, evalMs: 988, firstTokenMs: 2410 });
-    expect(projectInferenceLog(row)).toMatchObject({ loadMs: 2, promptEvalMs: 2346, evalMs: 988, firstTokenMs: 2410 });
+    expect(row.promptPrefix).toEqual({ systemSections: 9, messages: 14, toolsHash: 'abcdef12',
+      divergence: { kind: 'system', index: 7, heading: 'Runtime' } });
+    expect(JSON.stringify(row)).not.toContain(PRIVATE_TEXT);
+    expect(projectInferenceLog(row)).toMatchObject({
+      loadMs: 2, promptEvalMs: 2346, evalMs: 988, firstTokenMs: 2410, promptPrefix: row.promptPrefix
+    });
   });
 
   test('unreported timings stay absent rather than zero', async () => {
     await recordInference({ host: 'http://ollama.test:11434', model: 'model-b', caller: 'proxy', loadMs: -1, evalMs: NaN });
     const row = await InferenceLog.findOne({ model: 'model-b' }).lean();
     const projected = projectInferenceLog(row);
-    for (const field of ['loadMs', 'promptEvalMs', 'evalMs', 'firstTokenMs']) {
+    for (const field of ['loadMs', 'promptEvalMs', 'evalMs', 'firstTokenMs', 'promptPrefix']) {
       expect(row).not.toHaveProperty(field);
       expect(projected).not.toHaveProperty(field);
     }

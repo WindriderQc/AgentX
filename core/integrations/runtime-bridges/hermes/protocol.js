@@ -201,7 +201,8 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
         timeoutMs: Number(process.env.HERMES_OPENAI_TIMEOUT_MS || 0) || undefined
       }, {
         signal: abort.signal,
-        consumerContract: HERMES_CONSUMER_CONTRACT
+        consumerContract: HERMES_CONSUMER_CONTRACT,
+        observePromptPrefix: true
       });
       applyRoutingHeaders(res, result.metadata);
       const resolvedModel = String(result.metadata?.model || '').trim();

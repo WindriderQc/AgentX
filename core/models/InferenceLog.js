@@ -72,6 +72,10 @@ const InferenceLogSchema = new mongoose.Schema({
   promptEvalMs: { type: Number, min: 0 },
   evalMs: { type: Number, min: 0 },
   firstTokenMs: { type: Number, min: 0 },
+  // Prompt structure for prompt (KV) cache diagnosis: counts, a tools hash and
+  // the first position that differs from the previous call to the same host
+  // and model. Never prompt text — see routing/promptPrefixFingerprint.js.
+  promptPrefix: { type: Schema.Types.Mixed },
 
   // Status
   status: {

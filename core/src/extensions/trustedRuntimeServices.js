@@ -8,6 +8,7 @@ const {
 const { executeAdmittedOllamaStream } = require('../services/routing/inferenceStreamExecutor');
 const { withInferenceRetry } = require('../services/routing/inferenceRetry');
 const { telemetryEntry } = require('../services/routing/trustedRuntimeTelemetry');
+const { observePromptPrefix } = require('../services/routing/promptPrefixFingerprint');
 const { publicDegradedMarker } = require('../services/routing/taskFallbackLadder');
 const { buildEffectiveRoutingSnapshot } = require('../services/routing/effectiveRoutingSnapshot');
 const { frozenCopy } = require('../helpers/frozenCopy');
@@ -398,6 +399,11 @@ async function executeRoutedInference(deps, request, options = {}) {
     inferenceContract,
     ...(taskFallback && { routing: taskFallback })
   });
+  // Opt-in, telemetry-only prompt structure: it never enters the Ollama payload.
+  const observePrefix = options.observePromptPrefix === true && request.mode === 'chat'
+    && (deps.observePromptPrefix || observePromptPrefix);
+  let promptPrefix = null;
+  const record = entry => deps.recordInference(promptPrefix ? { ...entry, promptPrefix } : entry);
   const timeoutMs = boundedTimeout(request.timeoutMs);
   const abortBridge = createAbortBridge(options.signal, timeoutMs);
 
@@ -424,6 +430,8 @@ async function executeRoutedInference(deps, request, options = {}) {
         // direct Benchmark inference does. No discovery or reacquisition here.
         if (benchmarkClaim) await assertClaim();
         options.signal?.throwIfAborted();
+        // Compared once, in admission order: the order Ollama receives prompts.
+        if (observePrefix) promptPrefix ??= observePrefix({ hostUrl, model, messages: request.messages, tools: request.tools });
       },
       verifyRejection: true, exclusive: request.exclusiveHost === true,
       ...(request.exclusiveHost === true && {
@@ -449,7 +457,7 @@ async function executeRoutedInference(deps, request, options = {}) {
       void attempt.completion.then(data => {
         abortBridge.cleanup();
         const completed = data?.completed === true && data?.terminalComplete === true;
-        void deps.recordInference(telemetryEntry(request, { ...metadata, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
+        void record(telemetryEntry(request, { ...metadata, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
           completed && !abortBridge.signal.aborted && !options.signal?.aborted ? 'success' : 'error', data,
           options.signal?.aborted ? 'cancelled' : abortBridge.signal.aborted ? 'timeout'
             : (completed ? null : (data?.admissionError || 'terminal_record_unverified')),
@@ -473,7 +481,7 @@ async function executeRoutedInference(deps, request, options = {}) {
         stream: attempt.stream, completion, metadata, retry: attempt.retry });
     }
     abortBridge.cleanup();
-    void deps.recordInference(telemetryEntry(request, { ...metadata, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
+    void record(telemetryEntry(request, { ...metadata, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
       attempt.ok ? 'success' : 'error', attempt.data,
       attempt.ok ? null : `upstream_http_${attempt.status}`, attribution));
     return Object.freeze({ ok: attempt.ok, status: attempt.status, headers: attempt.response.headers,
@@ -486,7 +494,7 @@ async function executeRoutedInference(deps, request, options = {}) {
     const ladderRetry = !cancelled && !timedOut && !options.ladderRetry && !options.hostUrl && !requestedModel && taskType
       && deps.refusedBeforeDispatch?.(error) && await deps.fallbackAfterRefusal?.(taskType,
         { model, host: hostKey, url: hostUrl, degraded: taskFallback });
-    void deps.recordInference(telemetryEntry(
+    void record(telemetryEntry(
       request, { ...metadata, retry: error.retry }, startedAt, timedOut ? 'timeout' : 'error', null,
       cancelled ? 'cancelled' : (timedOut ? `timeout_${timeoutMs}ms`
         : (Object.hasOwn(INFERENCE_REFUSALS, error.code) ? error.code : error.message)),
