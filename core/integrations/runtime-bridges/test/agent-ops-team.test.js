@@ -64,7 +64,7 @@ test('the roster is served without identities when the persona catalog is missin
 test('the identity editor sends only the fields the owner changed', () => {
   const window = { fetch: () => {} };
   new Function('window', 'document', require('node:fs').readFileSync(require('node:path').join(__dirname, '../../../public/js/agent-ops-team-editor.js'), 'utf8'))(window, {});
-  const { changes } = window.AgentOpsTeamEditor.create({ esc: String, reload: async () => {} });
+  const { changes, creation } = window.AgentOpsTeamEditor.create({ esc: String, reload: async () => {} });
   const row = { name: 'butler', systemPrompt: 'Synthetic personality.', uiConfig: { layoutConfig: { label: 'Butler',
     voice: { provider: 'kokoro', voices: { fr: 'synthetic_a', en: 'synthetic_b' } }, visual: { style: 'orb', color: '#112233' } } } };
   const same = { label: 'Butler', personality: 'Synthetic personality.', provider: 'kokoro', voiceFr: 'synthetic_a', voiceEn: 'synthetic_b', style: 'orb', color: '#112233' };
@@ -73,4 +73,9 @@ test('the identity editor sends only the fields the owner changed', () => {
   assert.deepEqual(changes(row, { ...same, voiceFr: 'synthetic_c', voiceEn: '' }), { voice: { provider: 'kokoro', voices: { fr: 'synthetic_c' } } });
   assert.deepEqual(changes(row, { ...same, color: '#AABBCC' }), { visual: { style: 'orb', color: '#AABBCC' } });
   assert.deepEqual(changes(row, { ...same, style: '' }), { visual: null });
+  // A new persona names its owner; a voice or an avatar is sent only when one was chosen.
+  assert.deepEqual(creation({ agentId: 'scout' }, { name: 'scout', label: 'Scout', personality: 'Careful.', provider: 'kokoro', voiceFr: '', voiceEn: '', style: '', color: '#52cfc5' }),
+    { agentId: 'scout', name: 'scout', label: 'Scout', personality: 'Careful.' });
+  assert.deepEqual(creation({ styleOf: 'main' }, { name: 'butler_bold', label: 'Butler · Bold', personality: 'Bold.', provider: 'voxcpm', voiceFr: 'synthetic', voiceEn: '', style: 'orb', color: '#112233' }),
+    { styleOf: 'main', name: 'butler_bold', label: 'Butler · Bold', personality: 'Bold.', voice: { provider: 'voxcpm', voices: { fr: 'synthetic' } }, visual: { style: 'orb', color: '#112233' } });
 });

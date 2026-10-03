@@ -43,6 +43,19 @@ function buildProductNavigation({
   const fullNavItems = [
     { label: 'Chat', href: coreBase + '/playground', icon: 'fa-comments', id: 'playground', primary: true },
     { label: 'Compare models', href: benchBase + '/', icon: 'fa-trophy', id: 'benchmark' },
+    /* The surfaces composed on Core. They exist in the full profile only. */
+    {
+      label: 'Personal', icon: 'fa-house-user', id: 'personal-group',
+      children: [
+        { label: 'Household home', href: coreBase + '/',        icon: 'fa-house',           id: 'household-home', fullProfile: true },
+        { label: 'Super Dad',      href: coreBase + '/dad',     icon: 'fa-user-tie',        id: 'super-dad',
+          description: 'Private space with the personal assistant: conversation, day, memories and family follow-up.' },
+        { label: 'Family',         href: coreBase + '/panel',   icon: 'fa-people-roof',     id: 'family',
+          description: 'Shared family space. Opening it locks the adult space on this browser.' },
+        { label: 'PsyX',           href: coreBase + '/psyx',    icon: 'fa-comment-medical', id: 'psyx' },
+        { label: 'Wallet Beefer',  href: coreBase + '/finance', icon: 'fa-wallet',          id: 'finance' }
+      ]
+    },
     {
       label: 'Work', icon: 'fa-list-check', id: 'work-group',
       children: [
@@ -57,6 +70,7 @@ function buildProductNavigation({
         { label: 'Schedule',     href: coreBase + '/cluster-schedule', icon: 'fa-calendar-alt',   id: 'cluster-schedule' },
         { label: 'Models',       href: coreBase + '/models',           icon: 'fa-cubes',          id: 'models' },
         { label: 'Activity',     href: coreBase + '/analytics',        icon: 'fa-chart-line',     id: 'analytics' },
+        { label: 'Data Toolbox', href: coreBase + '/data-toolbox',     icon: 'fa-database',       id: 'data-toolbox' },
         { section: 'Administration' },
         { label: 'Performance',  href: coreBase + '/performance',      icon: 'fa-tachometer-alt', id: 'performance' },
         { label: 'Backup',       href: coreBase + '/backup',           icon: 'fa-box-archive',    id: 'backup' },
@@ -123,7 +137,7 @@ function buildProductNavigation({
   }
 
   const demoProfile = agentxProfile === 'demo';
-  const available = item => !demoProfile || (!item.external && (
+  const available = item => !demoProfile || (!item.external && !item.fullProfile && (
     !item.href || !item.href.startsWith(coreBase + '/') ||
     !demoSurfaceDisabled(item.href.slice(coreBase.length))
   ));

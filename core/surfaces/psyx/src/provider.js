@@ -37,11 +37,12 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
   }
 
   async function localComplete(request, extra = {}) {
+    const work = request.work || 'review';
     const result = await runtimeServices.inference.execute({
       mode: 'chat', stream: false, taskType: request.taskType, think: false, format: 'json', timeoutMs: request.timeoutMs,
-      messages: request.messages, options: { temperature: 0.2 }, callerDetail: 'psyx/review'
+      messages: request.local?.messages || request.messages, options: { temperature: 0.2 }, callerDetail: `psyx/${work}`
     }, { consumerContract: 'psyx' });
-    if (!result?.ok) throw Object.assign(new Error(result?.body?.message || 'PsyX review inference failed'), { code: 'PSYX_REVIEW_INFERENCE_FAILED' });
+    if (!result?.ok) throw Object.assign(new Error(result?.body?.message || `PsyX ${work} inference failed`), { code: 'PSYX_REVIEW_INFERENCE_FAILED' });
     const body = result.body || {};
     return { content: body.message?.content || body.response || body.choices?.[0]?.message?.content || '',
       model: body.model || result.metadata?.model || null, location: 'local', ...extra };
@@ -69,16 +70,17 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
         return localStream(request, handlers, { fallbackFrom: 'frontier', fallbackReason: fallbackReason(error, 'turn') });
       }
     },
-    // Background work (the review): one JSON answer, no stream, no thinking, no
-    // cancellation once admitted.
+    // Background work (the review, the dream): one JSON answer, no stream, no
+    // thinking, no cancellation once admitted.
     async complete(request) {
       if (request.location !== 'frontier' || !frontierReady()) return localComplete(request);
       try {
         const [system, ...rest] = request.messages;
-        const result = await frontier.run({ agentId: frontierConfig.agent, instructions: system.content, messages: rest, timeoutMs: request.timeoutMs });
+        const result = await frontier.run({ agentId: frontierConfig.agent, instructions: system.content, messages: rest, timeoutMs: request.timeoutMs,
+          ...(request.maxTurnMs ? { maxTurnMs: request.maxTurnMs } : {}) });
         return { content: result.content, model: frontierConfig.model, location: 'frontier' };
       } catch (error) {
-        return localComplete(request, { fallbackFrom: 'frontier', fallbackReason: fallbackReason(error, 'review') });
+        return localComplete(request, { fallbackFrom: 'frontier', fallbackReason: fallbackReason(error, request.work || 'review') });
       }
     }
   };

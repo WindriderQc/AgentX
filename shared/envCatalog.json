@@ -2650,6 +2650,16 @@
       "secret": false,
       "description": "PsyX background review after each completed turn (digest and memory proposals the user approves). false disables it. Unset: true."
     },
+    "PSYX_DREAM": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "true",
+      "category": "household",
+      "secret": false,
+      "description": "PsyX dream between sessions: rereads conversations, memory and the owner's notes, tasks and mail journal, then writes the portrait and memory changes the user can undo. false disables it. Unset: true."
+    },
     "PSYX_FRONTIER_AGENT": {
       "services": [
         "core"

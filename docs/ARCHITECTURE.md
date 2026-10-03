@@ -350,7 +350,8 @@ private evidence. Recording the same thread again replaces its entry, and Mongo
 removes entries `MAIL_JOURNAL_RETENTION_DAYS` (default 365) after the mail's
 date. The mail assistant and owner Nestor reach it with the OpenClaw
 `mail_journal` tool through `/api/consumers/nestor/v1/mail-journal`; a lasting
-fact drawn from mail is still saved as one note. There is no household reader.
+fact drawn from mail is still saved as one note. There is no household reader;
+PsyX's dream reads recent entries in-process as context about the owner's life.
 
 Sensitive identifiers (NIQ, NAS, REEE, account numbers named as such, and card
 numbers that pass the Luhn check) never stay in a note or journal text when
@@ -454,7 +455,10 @@ finance (`/api/finance`, `/finance`) are in the demo exclusion list of
   rules. After each completed turn a background review (router task
   `PSYX_REVIEW_TASK`, default `deep_reasoning`) writes a conversation digest and
   memory proposals into PsyX state; proposals enter memory only when the user
-  accepts them. Browser access uses the shared [parental session](PARENTAL_ACCESS.md);
+  accepts them. Between sessions a dream rereads everything, with the owner's
+  notes, open tasks and mail journal read in-process and read-only, and writes a
+  portrait and memory changes directly into PsyX state, each one logged and
+  undoable. Browser access uses the shared [parental session](PARENTAL_ACCESS.md);
   native consumers keep a separate access token.
 - `core/surfaces/data-toolbox`: UI served by Core, consuming the optional
   Data process over HTTP. It is read-only except for naming a network device

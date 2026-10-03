@@ -5,6 +5,9 @@ Nestor can consult all of the owner's information, including PsyX information.
 Family and child surfaces retain their information restrictions. PsyX may keep
 its conversation/domain structure without becoming inaccessible to the owner.
 Persona presentation does not grant access to another information scope.
+The reverse holds for PsyX's dream: it may read the owner's notes, open tasks and
+mail journal, read-only, to understand his life; what it derives stays in PsyX
+state and is never written back to those stores.
 
 Reuse the implemented Memory Policy V2 vocabulary (`scope`, `sensitivity`) and
 Household's existing personal/family session boundaries. Do not create another

@@ -15,6 +15,7 @@ describe('guided persona demo', () => {
   test('presents personas as a first-class, secret-free product primitive', async () => {
     const html = await ejs.renderFile(demoViewPath, {
       buildProductNavigation,
+      agentxProfile: 'demo',
       publicUrls: {
         rag: 'http://rag.example',
         benchmark: 'http://benchmark.example'

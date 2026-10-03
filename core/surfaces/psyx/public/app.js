@@ -136,6 +136,7 @@ function showGate(message = '') {
   hideSafety();
   resetFollowUp();
   resetProfileDraft();
+  stopDreamWatch();
   state.unlocked = false;
   state.ready = false;
   state.history = [];
@@ -519,6 +520,7 @@ async function bootstrap() {
     await Promise.all([loadPsyXState(), loadRouting(), loadSessions(), loadVoiceStatus()]);
     await restoreConversation();
     assertCurrentAccess(accessEpoch);
+    watchDream();
     renderSetup();
     setReady(true, 'PsyX prêt');
     input.focus();
@@ -1003,6 +1005,7 @@ async function start() {
   wireCare();
   wireFrontier();
   wireProfile();
+  wireDream();
   wireFollowUp();
   wireSegmented('modeControl', 'mode');
   wireSegmented('depthControl', 'depth');

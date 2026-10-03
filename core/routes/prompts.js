@@ -161,6 +161,14 @@ router.put('/catalog/:name', async (req, res) => {
     try { res.json({ status: 'success', data: await personaCatalog.edit(req.params.name, req.body || {}) }); }
     catch (err) { res.status(err.statusCode || 500).json({ status: 'error', message: err.message }); }
 });
+router.post('/catalog', async (req, res) => {
+    try { res.status(201).json({ status: 'success', data: await personaCatalog.create(req.body || {}) }); }
+    catch (err) { res.status(err.statusCode || 500).json({ status: 'error', message: err.message }); }
+});
+router.delete('/catalog/:name', async (req, res) => {
+    try { res.json({ status: 'success', data: await personaCatalog.retire(req.params.name) }); }
+    catch (err) { res.status(err.statusCode || 500).json({ status: 'error', message: err.message }); }
+});
 router.delete('/catalog/:name/edit', async (req, res) => {
     try { res.json({ status: 'success', data: await personaCatalog.reset(req.params.name) }); }
     catch (err) { res.status(err.statusCode || 500).json({ status: 'error', message: err.message }); }
