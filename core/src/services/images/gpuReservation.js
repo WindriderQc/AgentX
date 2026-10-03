@@ -16,6 +16,17 @@ async function restoreSnapshots(snapshots, assertOwned) {
     if (runningBefore.some(x => !residents.some(r => r.model === (x.name || x.model)))) throw new Error('Unexpected GPU resident prevents restoration');
     for (const resident of residents) {
       await assertOwned();
+      const existing = runningBefore.find(x => (x.name || x.model) === resident.model);
+      if (existing && (existing.context_length !== resident.contextLength || !placementRestored(resident, existing))) {
+        const reset = await unloadModel(host, resident.model);
+        if (reset.status !== 'ok') throw new Error('Resident reset is unverified');
+        const deadline = Date.now() + 15000;
+        while ((await fetchRunningModelInfosStrict(host)).some(x => (x.name || x.model) === resident.model)) {
+          await assertOwned();
+          if (Date.now() >= deadline) throw new Error('Resident reset did not settle');
+          await sleep(250);
+        }
+      }
       const remaining = () => resident.keepAlive === -1 ? -1 : Math.max(1, Math.ceil((new Date(resident.expiresAt) - Date.now()) / 1000));
       const options = { keepAlive: remaining(), contextSize: resident.contextLength,
         numThread: await require('../pinThreadLookup').pinNumThread(host, resident.model) };

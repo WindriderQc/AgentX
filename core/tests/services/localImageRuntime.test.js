@@ -110,4 +110,12 @@ describe('image GPU handoff and original-job recovery', () => {
     await expect(restoreSnapshots({ [host]: snap }, async () => {})).rejects.toThrow('Unexpected');
     expect(warmDefaultModel).not.toHaveBeenCalled();
   });
+  test('partial restoration resets a wrong context or placement before warming', async () => {
+    running[0].size_vram = 500;
+    running[1].context_length = 4096;
+    await restoreSnapshots({ [host]: snap }, async () => {});
+    expect(unloadModel.mock.calls.map(c => c[1])).toEqual(['gemma:12b', 'qllama/bge-m3:f16']);
+    expect(running.every(r => r.size_vram === r.size)).toBe(true);
+    expect(running.find(r => r.name === 'gemma:12b').context_length).toBe(114688);
+  });
 });
