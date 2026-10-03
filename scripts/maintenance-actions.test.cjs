@@ -212,6 +212,20 @@ test('the queue stops at its deadline with the refusal that blocked it', async (
   assert.ok(now() < 35_000);
 });
 
+test('an image is built from the paths its Dockerfile copies out of the repository', () => {
+  assert.deepEqual(actions.imageSources([
+    'FROM node:22 AS build', 'COPY --from=mongo-tools /usr/bin/mongodump /usr/local/bin/mongodump',
+    'COPY core/package*.json ./', 'RUN npm ci', 'COPY --chown=node:node core/ ./', 'COPY shared/ /shared/',
+    'COPY docker-compose.yml docker-compose.ollama.yml /app/product-config/'].join('\n')),
+  ['core/package*.json', 'core/', 'shared/', 'docker-compose.yml', 'docker-compose.ollama.yml']);
+  assert.equal(actions.imageSources('FROM node:22\nRUN npm ci'), null);
+  assert.equal(actions.imageSources('FROM node:22\nCOPY core/ \\\n  shared/ ./'), null);
+  for (const service of ['core', 'benchmark', 'rag', 'data']) {
+    const sources = actions.imageSources(fs.readFileSync(path.join(__dirname, '..', 'docker', `${service}.Dockerfile`), 'utf8'));
+    assert.ok(sources.includes(`${service}/`) && sources.includes('shared/'), service);
+  }
+});
+
 test('--queue-minutes is zero or more, defaulting to no queue', () => {
   assert.equal(actions.queueMinutes(undefined), 0);
   assert.equal(actions.queueMinutes('20'), 20);

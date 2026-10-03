@@ -250,17 +250,37 @@ function containerCreatedAt(config, service) {
   return status === 0 ? Date.parse(output.trim()) : NaN;
 }
 
+// The repository paths a Dockerfile copies into its image, or null when they
+// cannot be told (no COPY, or one continued on the next line).
+function imageSources(dockerfile) {
+  const copies = String(dockerfile).split('\n').map(line => line.trim()).filter(line => /^(COPY|ADD)\s/.test(line) && !line.includes('--from='));
+  if (!copies.length || copies.some(line => line.endsWith('\\'))) return null;
+  return copies.flatMap(line => line.split(/\s+/).slice(1, -1).filter(token => !token.startsWith('--')));
+}
+
+const descends = (commit, ancestor) => run('git', ['merge-base', '--is-ancestor', ancestor, commit], { allowFailure: true }).status === 0;
+
+// A merge of docs, integrations or another service moves main without changing
+// this service's image: the revision it reports still serves the same build.
+function sameBuild(service, revision, wanted) {
+  const dockerfile = `docker/${service}.Dockerfile`;
+  let sources = null;
+  try { sources = imageSources(fs.readFileSync(path.join(ROOT, dockerfile), 'utf8')); } catch { return false; }
+  return Boolean(sources) && run('git', ['diff', '--quiet', revision, wanted, '--', ...sources, dockerfile, 'docker-compose.yml', '.dockerignore'], { allowFailure: true }).status === 0;
+}
+
 // Nothing is left to deploy when every requested service reports the wanted
-// commit, or a descendant, from a container created after the instance
-// configuration last changed: a deploy is also how an edited env file reaches a
-// container. A service that reports no revision is never assumed up to date.
+// commit, a descendant or a commit with the same build, from a container
+// created after the instance configuration last changed: a deploy is also how
+// an edited env file reaches a container. A service that reports no revision
+// is never assumed up to date.
 async function alreadyServed(config, services, wanted) {
   if (services.some(service => !REVISION_PORTS[service])) return null;
   const served = await servedRevisions(config, services);
   const configuredAt = Math.max(...[config.envFile, config.override].filter(Boolean).map(file => fs.statSync(path.resolve(ROOT, file)).mtimeMs));
   for (const service of services) {
     const revision = served[service];
-    if (!revision || run('git', ['merge-base', '--is-ancestor', wanted, revision], { allowFailure: true }).status !== 0) return null;
+    if (!revision || !(descends(revision, wanted) || sameBuild(service, revision, wanted))) return null;
     if (!(containerCreatedAt(config, service) > configuredAt)) return null;
   }
   return served;
@@ -305,7 +325,11 @@ async function deploy(config, options, takeLead) {
       const processes = deployProcesses();
       return processes.length ? refuse('Another deploy is running', { processes }) : null;
     },
-    served: () => alreadyServed(config, services, wanted ??= resolveTarget()),
+    // Leaving without the lease also needs the checkout on the wanted commit: native jobs run from it.
+    served: async () => {
+      wanted ??= resolveTarget();
+      return descends(run('git', ['rev-parse', 'HEAD']).output.trim(), wanted) ? alreadyServed(config, services, wanted) : null;
+    },
     acquire: takeLead,
     deadline: Date.now() + queueMs
   });
@@ -314,14 +338,13 @@ async function deploy(config, options, takeLead) {
   // Fetched again: this deploy carries what was merged while it queued.
   const revision = resolveTarget();
   // Only a revision already on the public main branch, reachable by fast-forward.
-  if (run('git', ['merge-base', '--is-ancestor', revision, 'origin/main'], { allowFailure: true }).status !== 0) {
-    throw refuse(`${target} is not on origin/main`);
-  }
+  if (!descends('origin/main', revision)) throw refuse(`${target} is not on origin/main`);
   const before = run('git', ['rev-parse', 'HEAD']).output.trim();
-  if (run('git', ['merge-base', '--is-ancestor', before, revision], { allowFailure: true }).status !== 0) {
-    throw refuse(`${revision.slice(0, 9)} does not descend from the deployed checkout ${before.slice(0, 9)}`);
-  }
+  if (!descends(revision, before)) throw refuse(`${revision.slice(0, 9)} does not descend from the deployed checkout ${before.slice(0, 9)}`);
   run('git', ['merge', '--ff-only', '--quiet', revision]);
+  // The fast-forward can be all there was to do: the images did not change.
+  const unchanged = await alreadyServed(config, services, revision);
+  if (unchanged) return { revision, before, services, served: unchanged, alreadyServed: true };
   // Building touches no running container, so it runs before the wait: the
   // recreate that needs Core's lease then takes seconds, not a whole build.
   const built = run('docker', [...composeArgs(config), 'build', ...services], { env: launcherEnv(config, revision), allowFailure: true });
@@ -452,4 +475,4 @@ async function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) main().then(code => { process.exitCode = code; });
 
-module.exports = { main, parseArgs, parseServices, waitMinutes, queueMinutes, recreateWhenIdle, deployTurn, alreadyServed, readLead, acquireLead, releaseLead, instance, launcherEnv, ActionError, DEPLOYABLE };
+module.exports = { main, parseArgs, parseServices, waitMinutes, queueMinutes, recreateWhenIdle, deployTurn, alreadyServed, imageSources, readLead, acquireLead, releaseLead, instance, launcherEnv, ActionError, DEPLOYABLE };
