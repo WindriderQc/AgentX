@@ -54,9 +54,11 @@ test('the saved agent survives a reload and a personality carries its agent to t
 
 test('a member offers its own personality, its declared styles and the personalities that belong to nobody', () => {
   const offered = [...personas, { id: 'nestor_concise', name: 'Nestor · Bref', agentId: null, styleOf: 'main' },
-    { id: 'native_personality', name: 'Agent personality', agentId: null }];
-  assert.deepEqual(Team.stylesFor(offered, 'main').map((p) => p.id), ['nestor', 'nestor_strategist', 'nestor_concise', 'native_personality']);
-  assert.deepEqual(Team.stylesFor(offered, 'secretary').map((p) => p.id), ['nestor_strategist', 'secretary', 'native_personality']);
+    { id: 'native_personality', name: 'Agent personality', agentId: null, kind: 'personality' },
+    { id: 'default_chat', name: 'default_chat', agentId: null }];
+  // nestor_strategist carries no owner and no kind in this fixture: like a general library prompt, it is not offered.
+  assert.deepEqual(Team.stylesFor(offered, 'main').map((p) => p.id), ['nestor', 'nestor_concise', 'native_personality']);
+  assert.deepEqual(Team.stylesFor(offered, 'secretary').map((p) => p.id), ['secretary', 'native_personality']);
   // In the shared catalog every Nestor style names its member, so another member never borrows Nestor's voice.
   const shared = catalog.generatedPersonas().map((row) => catalog.snapshot({ ...row, version: 1, _id: 'catalog' }));
   assert.deepEqual(Team.stylesFor(shared, 'secretary').map((p) => p.id), ['native_personality', 'secretary']);
