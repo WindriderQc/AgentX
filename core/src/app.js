@@ -632,6 +632,7 @@ app.get('/agent-ops', (_req, res) => {
     footerJs: [
       '<script src="/js/agent-ops-availability.js"></script>',
       '<script src="/js/agent-ops-advanced.js"></script>',
+      '<script src="/js/agent-ops-team.js"></script>',
       '<script src="/js/cockpit-help.js"></script>',
       '<script src="/js/agent-ops.js"></script>'
     ].join('\n')
