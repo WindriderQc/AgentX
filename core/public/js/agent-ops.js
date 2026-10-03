@@ -15,6 +15,7 @@
   let availability = null;
   let team = null;
   let editor = null;
+  let guide = null;
 
   const ragBase = String(root.dataset.ragBase || '').replace(/\/+$/, '');
   const dataBase = String(root.dataset.dataBase || '').replace(/\/+$/, '');
@@ -506,7 +507,8 @@
     updatePresetControl();
     // The cards, grouped as team, roles and tools, are drawn by agent-ops-team.js.
     editor ||= window.AgentOpsTeamEditor.create({ esc, reload: load });
-    team ||= window.AgentOpsTeam.create({ esc, humanize, number, badge, empty, agentIcon, editPersona: editor.open,
+    guide ||= window.AgentOpsTeamGuide.create({ esc });
+    team ||= window.AgentOpsTeam.create({ esc, humanize, number, badge, empty, agentIcon, editPersona: editor.open, newAgent: () => guide.open(asArray(state.data?.agents).filter((agent) => agent.group === 'team').map((agent) => agent.model?.primary)),
       newPersona: (owner, name) => editor.openNew(owner, owner.agentId ? { name: owner.agentId.replace(/-/g, '_'), label: name } : {}),
       runtimeLink: (agent) => agentRuntimeLink(agent) ? `<a ${nativeControlAttributes(nativeAgentPath(agent))} title="Open OpenClaw already focused on ${esc(agent.id)}"><i class="fas fa-arrow-up-right"></i>Open native agent UI</a>` : '' });
     byId('agentOpsAgents').innerHTML = team.render(agents, data.team);

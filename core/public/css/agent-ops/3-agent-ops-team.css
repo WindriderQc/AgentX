@@ -248,3 +248,27 @@ button.agent-ops-chip.link:focus-visible {
   color: #fecaca;
   font-size: 0.8rem;
 }
+
+/* New member guide. */
+.agent-ops-guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+  color: #b3bfd0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.agent-ops-guide-steps pre {
+  max-height: 220px;
+  margin: 8px 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  color: #dbe4f0;
+  font-size: 0.76rem;
+}

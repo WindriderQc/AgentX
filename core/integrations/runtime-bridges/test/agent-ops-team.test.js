@@ -79,3 +79,11 @@ test('the identity editor sends only the fields the owner changed', () => {
   assert.deepEqual(creation({ styleOf: 'main' }, { name: 'butler_bold', label: 'Butler · Bold', personality: 'Bold.', provider: 'voxcpm', voiceFr: 'synthetic', voiceEn: '', style: 'orb', color: '#112233' }),
     { styleOf: 'main', name: 'butler_bold', label: 'Butler · Bold', personality: 'Bold.', voice: { provider: 'voxcpm', voices: { fr: 'synthetic' } }, visual: { style: 'orb', color: '#112233' } });
 });
+
+test('the new member guide prepares a runtime entry with the minimal tool profile', () => {
+  const window = {};
+  new Function('window', 'document', require('node:fs').readFileSync(require('node:path').join(__dirname, '../../../public/js/agent-ops-team-guide.js'), 'utf8'))(window, {});
+  assert.deepEqual(window.AgentOpsTeamGuide.entry({ id: 'scout', name: 'Scout', model: 'provider/synthetic:27b' }), { scout: {
+    name: 'Scout', workspace: '~/.openclaw/workspace-scout', agentDir: '~/.openclaw/agents/scout/agent',
+    model: { primary: 'provider/synthetic:27b', fallbacks: [] }, identity: { name: 'Scout' }, tools: { profile: 'minimal' } } });
+});
