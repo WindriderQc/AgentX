@@ -136,3 +136,26 @@ test('profile, goals, time and the wide frontier budget reach the prompt within 
   assert.equal(timeSystemMessage({ now: new Date('2026-10-03T12:00:00Z') }).includes('Previous'), false);
   assert.match(SYSTEM_PROMPT, /Guichet d'accès à la première ligne \(811, option 3\)/);
 });
+
+test('a local prompt keeps what he expects, the open experiments and recent sessions whatever the rest weighs', () => {
+  const { profileSystemMessage, timeSystemMessage } = require('../../../src/domains/psyx/domain');
+  const item = text => ({ text, source: 'psyx', evidence: ['a quote '.repeat(20), 'autre-preuve'], status: 'active' });
+  const experiment = (id, size) => ({ id, hypothesis: 'h'.repeat(size), action: 'a'.repeat(size), expectedSignal: 's'.repeat(size), result: '', status: 'active', checkInAt: null });
+  const state = {
+    activeThreads: [], patterns: [], hypotheses: [], openLoops: [], notes: [],
+    goals: Array.from({ length: 20 }, (_, index) => item(`objectif ${index} ${'g'.repeat(120)}`)),
+    // The newest experiment is the longest one; the older ones must survive it.
+    experiments: [experiment('e1', 40), experiment('e2', 40), experiment('e3', 1000)],
+    sessionDigests: [{ conversationId: 'c1', summary: 'session passée', updatedAt: '2026-10-01T10:00:00Z' }],
+    profile: { about: 'Père seul. '.repeat(250), expectations: 'CONFRONTE-MOI' }
+  };
+  const local = composeSystemContext(state, { mode: 'talk', depth: 'normal', action: null, reason: '' }, { conversationId: 'now' });
+  assert.ok(local.length < 16000);
+  assert.match(local, /What he wants from PsyX: CONFRONTE-MOI/);
+  assert.ok(profileSystemMessage(state, 1200).length <= 1200);
+  for (const id of ['e1', 'e2', 'e3']) assert.match(local, new RegExp(`"id":"${id}"`));
+  assert.match(local, /"summary":"session passée"/);
+  assert.match(local, /"goals":\[/);
+  assert.doesNotMatch(local, /autre-preuve/, 'a local item carries one short quote');
+  assert.match(timeSystemMessage({ now: new Date('2026-10-03T12:00:30Z'), lastTurnAt: '2026-10-03T12:00:00Z' }), /a minute ago/);
+});

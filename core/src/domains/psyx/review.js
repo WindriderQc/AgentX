@@ -80,7 +80,7 @@ function readReview(raw, { conversationId, settled = [], openExperimentIds = [] 
   }
   // The prompt asks for "next" beside "digest"; a nested one is accepted too.
   const digest = value.digest && typeof value.digest === 'object'
-    ? normalizeDigest({ ...value.digest, id: undefined, conversationId: undefined, next: value.next ?? value.digest.next }, { conversationId, now })
+    ? normalizeDigest({ ...value.digest, id: undefined, conversationId: undefined, updatedAt: undefined, next: value.next ?? value.digest.next }, { conversationId, now })
     : null;
   return { digest, proposals };
 }

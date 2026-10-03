@@ -319,6 +319,17 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const resolved = domain.resolveControl(requested, recommendation);
     const control = safety ? { ...resolved, mode: 'talk', depth: 'normal', reason: '' } : resolved;
 
+    const location = domain.frontierLocation(frontierMode(longitudinal), control.depth);
+    // The frontier lane reads a wide context; the local routes keep their bounded one.
+    const budget = location === 'frontier' ? 'frontier' : 'local';
+    const lastSessionAt = longitudinal.sessionDigests?.filter(item => item.conversationId !== conversationId).at(-1)?.updatedAt || null;
+    const compose = lane => ({
+      system: domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane,
+        time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } }),
+      messages: domain.boundedContext(context || [], domain.CONTEXT_BUDGETS[lane])
+    });
+    const { system, messages: providerContext } = compose(budget);
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-store');
     res.setHeader('Connection', 'keep-alive');
@@ -329,13 +340,6 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const heartbeat = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(': ping\n\n'); }, 15000);
     const handlers = providerHandlers(res);
     streaming.set(userId, (streaming.get(userId) || 0) + 1);
-    const location = domain.frontierLocation(frontierMode(longitudinal), control.depth);
-    // The frontier lane reads a wide context; the local routes keep their bounded one.
-    const budget = location === 'frontier' ? 'frontier' : 'local';
-    const lastSessionAt = longitudinal.sessionDigests?.filter(item => item.conversationId !== conversationId).at(-1)?.updatedAt || null;
-    const system = domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget,
-      time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } });
-    const providerContext = domain.boundedContext(context || [], domain.CONTEXT_BUDGETS[budget]);
     const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety), location };
     handlers.send('control', applied);
     if (safety) handlers.send('safety', safety);
@@ -346,6 +350,8 @@ function createApp({ config, database, provider, voice = null, logger = console,
         messages: providerContext,
         message: input,
         location,
+        // If the frontier lane fails, the local route answers with its own bounded context.
+        local: budget === 'frontier' ? compose('local') : null,
         taskType: control.depth === 'deep' ? 'deep_reasoning' : 'analysis',
         think: control.depth === 'deep',
         options: { temperature: safety ? 0.4 : control.mode === 'challenge' ? 0.55 : 0.7 },

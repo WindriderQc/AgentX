@@ -207,14 +207,16 @@ function stateForPrompt(state, { conversationId = null, budget = 'local' } = {})
       source: item.source,
       correctedBy: item.correctedBy || null,
       confidence: item.confidence,
-      evidence: item.evidence,
+      // A local reply has little room: one short quote is enough to anchor an item.
+      evidence: wide ? item.evidence : (item.evidence || []).slice(0, 1).map((quote) => cleanText(quote, 120)),
       status: item.status
     }));
   }
   compact.experiments = (state.experiments || [])
     .filter((item) => item.status === 'planned' || item.status === 'active')
     .slice(-10)
-    .map(({ id, hypothesis, action, expectedSignal, result, status, checkInAt }) => ({ id, hypothesis, action, expectedSignal, result, status, checkInAt, due: followUp.isDue({ status, checkInAt }) }));
+    .map(({ id, hypothesis, action, expectedSignal, result, status, checkInAt }) => ({ id, ...Object.fromEntries(Object.entries({ hypothesis, action, expectedSignal, result })
+      .map(([field, value]) => [field, wide ? value : cleanText(value, 300)])), status, checkInAt, due: followUp.isDue({ status, checkInAt }) }));
   compact.recentCheckIns = (state.checkIns || []).slice(-5).map(({ score, phase, at }) => ({ score, phase, at }));
   // Digests of other recent conversations give continuity across sessions.
   compact.recentSessions = (state.sessionDigests || [])
@@ -624,6 +626,7 @@ function createStateRepository({ collection, logger }) {
   }
 
   async function updateProfile(userId, body = {}) {
+    if ([body.about, body.expectations].some((value) => value != null && typeof value !== 'string')) throw Object.assign(new Error('about and expectations must be text'), { statusCode: 400 });
     await ensureDocument(userId);
     const profile = { about: cleanText(body.about, PROFILE_LIMITS.about), expectations: cleanText(body.expectations, PROFILE_LIMITS.expectations) };
     await collection.updateOne({ userId }, { $set: { profile, updatedAt: new Date() }, $inc: { revision: 1 } });
