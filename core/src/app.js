@@ -211,8 +211,7 @@ app.use('/api/roundtable', routeDefaultJsonParser);
 app.use('/api/operations/backup/config', routeDefaultJsonParser);
 
 // Every remaining JSON route uses the bounded product default.
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+require('./middleware/productRequestParsers')(app, express);
 
 const { createRequestSanitizer } = require('./middleware/requestSanitizer');
 app.use(createRequestSanitizer({ logger }));
@@ -421,8 +420,7 @@ app.use('/api/pipeline', standardJsonParser, pipelineRoutes);
 
 // AgentX-native planning (workstreams, outcomes, ideas, decisions, runtime
 // schedule linkage) and the personal finance ledger (adult-only via gateway).
-app.use('/api/planning', standardJsonParser, require('../routes/planning'));
-require('../routes/finance').mount(app, standardJsonParser);
+require('../routes/product-capabilities').mount(app, standardJsonParser);
 
 // AgentX MCP skill bus (Streamable HTTP JSON-RPC endpoint)
 const mcpRoutes = require('../routes/mcp');

@@ -48,4 +48,19 @@ describe('image archive', () => {
     await expect(archive.store({ bytes: Buffer.from('text'), origin: 'uploaded' })).rejects.toMatchObject({ statusCode: 400 });
     await expect(archive.store({ bytes: jpeg, origin: 'elsewhere' })).rejects.toMatchObject({ statusCode: 400 });
   });
+
+  test('repairs a same-size corrupt blob and a missing or broken sidecar', async () => {
+    const archive = createImageArchive({ dir });
+    const first = await archive.store({ bytes: png, origin: 'generated' });
+    const file = path.join(dir, first.path);
+    const sidecar = file.replace(/\.png$/, '.json');
+    fs.writeFileSync(file, Buffer.alloc(png.length));
+    fs.unlinkSync(sidecar);
+    expect(await archive.store({ bytes: png, origin: 'generated' })).toMatchObject({ duplicate: false });
+    expect(fs.readFileSync(file)).toEqual(png);
+    expect(JSON.parse(fs.readFileSync(sidecar, 'utf8')).sha256).toBe(first.sha256);
+    fs.writeFileSync(sidecar, '{broken');
+    expect(await archive.store({ bytes: png, origin: 'generated' })).toMatchObject({ duplicate: true });
+    expect(JSON.parse(fs.readFileSync(sidecar, 'utf8')).size).toBe(png.length);
+  });
 });

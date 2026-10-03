@@ -29,6 +29,9 @@ Nerve Center and Profiler, see [operational screens](OPERATOR_UI.md).
 
 For a first installation and local Ollama setup, follow [installation](INSTALLATION.md).
 
+The optional [local image service](LOCAL_IMAGES.md) documents worker isolation,
+external profiles, GPU restoration and explicit recovery.
+
 ## Local foundation
 
 `agentx.ps1` (Windows) and `agentx` (Linux) manage the same Compose definition.

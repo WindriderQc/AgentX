@@ -1808,6 +1808,16 @@
       "secret": false,
       "description": "Leantime URL for household email actions and agent-ops links. Unset: email actions answer 503."
     },
+    "LOCAL_IMAGES_CONFIG": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Path to an external local image worker manifest (profiles and GPU consumers). Unset: local generation is disabled."
+    },
     "MAIL_JOURNAL_RETENTION_DAYS": {
       "services": [
         "core"

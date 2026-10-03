@@ -317,6 +317,23 @@ support. OpenClaw receives native image blocks, with bounded earlier attachment
 material rehydrated on later turns. Extracted document text is not indexed as
 memory. See [attachment behavior and limits](api/NESTOR_ATTACHMENTS.md).
 
+### Local images
+
+Core's optional image capability owns `ImageOperation`, idempotent action
+identities, execution state, GPU admission and verified archive references.
+The full-profile `/images` page and private native `local_image` tool compose
+that capability. ComfyUI only executes bounded server-owned graphs; callers
+cannot submit arbitrary workflows. Generation remains adult-only even when
+the instance archive is visible in household photos.
+
+The worker reserves every configured GPU consumer endpoint through the existing
+runtime coordinator. Its durable journal precedes resident unloading and prompt
+submission. Completion requires terminal job evidence, archive validation and
+verified resident restoration. Lost responses and restarts preserve an unknown
+outcome instead of submitting another prompt. Archive retry is independent of
+GPU execution. Native tools return asynchronously so the caller's agent loop
+can release a shared GPU before image preparation. See [local images](LOCAL_IMAGES.md).
+
 ### Memory
 
 `memoryReadService.forAudience` binds owner or household access in trusted

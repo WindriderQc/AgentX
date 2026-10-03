@@ -28,6 +28,7 @@ function productSpaces(link) {
         { section: 'Travailler' },
         item('pipeline', 'Pipeline', '/pipeline', 'fa-list-check'),
         item('playground', 'Chat', '/playground', 'fa-comments'),
+        item('images', 'Images', '/images', 'fa-image'),
         item('models', 'Models', '/models', 'fa-cubes'),
         { section: 'Connaissances' },
         item('rag-upload', 'Add knowledge', '/upload', 'fa-upload', 'rag'),

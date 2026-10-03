@@ -39,6 +39,7 @@ services:
     ports:
       - "127.0.0.1:${CORE_PORT:-3180}:3080"
     environment:
+      LOCAL_IMAGES_CONFIG: ${LOCAL_IMAGES_CONFIG:-}
       NODE_ENV: production
       PORT: 3080
       HOST: 0.0.0.0
