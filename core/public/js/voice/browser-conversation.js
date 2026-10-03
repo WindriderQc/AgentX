@@ -536,24 +536,42 @@
         prefetchSlot = previousPlayback;
         return true;
       };
+      // A long silent wait made people speak again and cancel the turn; say once that
+      // Nestor is working when no reply text has arrived after a few seconds.
+      // Its words join turn.spoken, so hearing them back is echo, not an interruption.
+      // The phrase never delays the answer: it is dropped when reply text arrives
+      // before it plays, and it does not hold the synthesis of the first clause.
+      let holdingSpeech = null;
+      const dropHolding = () => { if (holdingSpeech && !holdingSpeech.playing) holdingSpeech.abort.abort(); };
       const response = this.io.turn(this.session, text, turn.request.signal, delta => {
         if (!this.owns(turn)) return;
-        streamed = true; pending += delta;
+        streamed = true; pending += delta; dropHolding();
         let length;
         while ((length = nextSpeechChunkLength(pending, firstChunk))) {
           if (speak(pending.slice(0, length))) firstChunk = false;
           pending = pending.slice(length);
         }
       }, { turnId: turn.id, onNotice: speak, ...(attachments.length && { attachmentIds: attachments.map(item => item.id) }) });
-      // A long silent wait made people speak again and cancel the turn; say once that
-      // Nestor is working when no reply text has arrived after a few seconds.
-      // Its words join turn.spoken, so hearing them back is echo, not an interruption.
       const holdingDelay = this.io.holdingDelayMs === undefined ? HOLDING_DELAY_MS : this.io.holdingDelayMs;
       const holding = holdingDelay === null ? null : setTimeout(() => {
         if (streamed || !this.owns(turn) || turn.interrupted) return;
-        if (!speak(holdingPhrase(spokenLanguage, this.holdingIndex = (this.holdingIndex || 0) + 1))) return;
-        // Nestor is still thinking once the phrase ends; do not show it as speaking.
-        playback.then(() => { if (!streamed && this.owns(turn) && this.turnPending && this.state === 'speaking') this.show('thinking'); });
+        const phrase = (this.io.speechText || speechLanguage.speechText)(holdingPhrase(spokenLanguage, this.holdingIndex = (this.holdingIndex || 0) + 1));
+        const hold = holdingSpeech = { abort: new AbortController(), playing: false };
+        const cancel = () => hold.abort.abort();
+        turn.speech.signal.addEventListener('abort', cancel, { once: true });
+        const prepared = Promise.resolve().then(() => this.io.synthesize({ text: phrase, language: spokenLanguage }, hold.abort.signal));
+        prepared.catch(() => {});
+        playback = playback.then(async () => {
+          const bytes = await prepared;
+          await this.awaitCandidate(turn);
+          if (hold.abort.signal.aborted || !this.owns(turn) || speechError) return;
+          hold.playing = true;
+          this.monitor(turn); this.show('speaking');
+          turn.spoken = ((turn.spoken || '') + ' ' + phrase).slice(-800); // only a phrase that plays can be heard back
+          await this.audio.play(bytes, hold.abort.signal);
+          // Nestor is still thinking once the phrase ends; do not show it as speaking.
+          if (!streamed && this.owns(turn) && this.turnPending && this.state === 'speaking') this.show('thinking');
+        }).catch(() => {}).finally(() => turn.speech.signal.removeEventListener('abort', cancel));
       }, holdingDelay);
       holding?.unref?.();
       response.finally(() => clearTimeout(holding)).catch(() => {});
@@ -566,6 +584,7 @@
       this.turnPending = false;
       this.io.message('assistant', reply.text, false, reply.sound);
       if (!streamed && reply.language) spokenLanguage = reply.language;
+      dropHolding();
       speak(streamed ? pending : reply.text);
       await playback;
       if (speechError) throw speechError;

@@ -1164,3 +1164,57 @@ test('the holding phrase waits a few seconds by default', () => {
   const { HOLDING_DELAY_MS } = require('../public/browser-conversation');
   assert.ok(HOLDING_DELAY_MS >= 2000 && HOLDING_DELAY_MS <= 5000);
 });
+
+test('reply text that arrives before the holding phrase plays drops it, so the answer is not delayed', async () => {
+  const slow = deferred(), requests = [], played = [];
+  const h = harness({ holdingDelayMs: 5, turn: () => slow.promise,
+    synthesize(reply, signal) {
+      requests.push({ text: reply.text, signal });
+      // The holding phrase's voice is slow; the answer's is immediate.
+      if (requests.length === 1) return new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+      return Promise.resolve(reply.text);
+    } });
+  h.audio.play = async bytes => { played.push(bytes); };
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await nextTimer(); await nextTimer();
+  assert.equal(requests.length, 1, 'the holding phrase was being prepared');
+  assert.equal(h.conversation.activeTurn.spoken, undefined, 'a phrase that has not played cannot be heard back as echo');
+  slow.resolve({ text: 'Voici la réponse.' }); await exchange;
+  assert.equal(requests[0].signal.aborted, true, 'its synthesis is cancelled');
+  assert.deepEqual(played, ['Voici la réponse.']);
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('a holding phrase already playing finishes while the first clause is prepared to follow it', async () => {
+  const slow = deferred(), holdingPlayback = deferred(), synthesized = [], played = [];
+  let delta;
+  const h = harness({ holdingDelayMs: 5,
+    turn(_session, _text, _signal, onDelta) { delta = onDelta; return slow.promise; },
+    async synthesize(reply) { synthesized.push(reply.text); return reply.text; } });
+  h.audio.play = bytes => { played.push(bytes); return played.length === 1 ? holdingPlayback.promise : Promise.resolve(); };
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await nextTimer(); await nextTimer();
+  assert.equal(played.length, 1, 'the holding phrase is playing');
+  delta('Voici la réponse. '); await tick();
+  assert.deepEqual(synthesized.slice(1), ['Voici la réponse.'], 'the first clause is synthesized during the phrase');
+  assert.equal(played.length, 1, 'the phrase is not cut');
+  holdingPlayback.resolve(); await tick(); await tick();
+  assert.deepEqual(played.slice(1), ['Voici la réponse.']);
+  slow.resolve({ text: 'Voici la réponse.' }); await exchange;
+  assert.equal(played.length, 2);
+  h.conversation.stop();
+});
+
+test('a holding phrase whose voice fails never fails the answer', async () => {
+  const slow = deferred(), played = [];
+  const h = harness({ holdingDelayMs: 5, turn: () => slow.promise,
+    async synthesize(reply) { if (played.length === 0 && reply.text !== 'Voici la réponse.') throw new Error('TTS unavailable'); return reply.text; } });
+  h.audio.play = async bytes => { played.push(bytes); };
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await nextTimer(); await nextTimer();
+  slow.resolve({ text: 'Voici la réponse.' }); await exchange;
+  assert.deepEqual(played, ['Voici la réponse.']);
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});

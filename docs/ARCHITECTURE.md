@@ -220,6 +220,13 @@ stream forwarding. Both surfaces use these capabilities. Engine error events
 are rejected before audio headers are committed, and a disconnected caller
 cancels its upstream request without starting a backup request.
 
+The shared loop speaks a reply clause by clause while it is generated and
+prepares at most one clause ahead of the sound. A surface may have it say one
+short holding phrase when no reply text has arrived after a few seconds
+(Household does; PsyX keeps it off). The phrase never delays an available
+answer: it is dropped when reply text arrives before it plays, and a phrase
+already playing ends while the first clause is prepared to follow it.
+
 The shared speech boundary removes code fences, images, links, table markup,
 HTML and presentation symbols from spoken text while preserving prose and
 emergency phone numbers. The browser, synthesis proxies and native voice reply

@@ -8,7 +8,7 @@ const shared = require('../../../public/js/voice/browser-conversation');
 const speech = require('../../../public/js/voice/speech-language');
 const prefs = require('../public/voice-preferences');
 
-function browser(extras = {}) {
+function browser({ voice = {}, ...extras } = {}) {
   const elements = new Map(), listeners = {}, calls = [];
   const $ = id => {
     if (!elements.has(id)) elements.set(id, { hidden: true, disabled: false, open: false, dataset: {}, listeners: {},
@@ -24,7 +24,7 @@ function browser(extras = {}) {
   const context = { state, $, voicePreferences: prefs, AbortController, console,
     localStorage: { getItem: () => null }, saveVoicePreferences() {},
     assertCurrentAccess: epoch => { if (epoch !== state.accessEpoch) throw Object.assign(new Error('locked'), { name: 'AbortError' }); },
-    window: { NestorSpeech: speech, AgentXVoice: { ...shared, openAudio: async () => audio }, addEventListener(type, fn) { listeners[type] = fn; } },
+    window: { NestorSpeech: speech, AgentXVoice: { ...shared, openAudio: async () => audio, ...voice }, addEventListener(type, fn) { listeners[type] = fn; } },
     document: { hidden: false, addEventListener(type, fn) { listeners[type] = fn; } },
     async fetch(url, options) { calls.push({ url, options });
       return url.endsWith('transcribe') ? new Response(JSON.stringify({ data: { text: 'Je suis débordé.' } })) : new Response('pcm'); },
@@ -32,8 +32,17 @@ function browser(extras = {}) {
     showGate() { state.unlocked = false; }, ...extras };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/voice-session.js'), 'utf8'), context);
-  return { context, state, $, calls, listeners, say: () => utterance(new Blob(['voice'], { type: 'audio/wav' })) };
+  return { context, state, $, calls, listeners, audio, say: () => utterance(new Blob(['voice'], { type: 'audio/wav' })) };
 }
+// The options PsyX hands to Core's shared conversation loop.
+function wiring(extras = {}) {
+  const captured = {};
+  const h = browser({ ...extras, voice: { Conversation: class extends shared.Conversation {
+    constructor(io, changed) { super(io, changed); captured.io = io; }
+  } } });
+  return { ...h, captured };
+}
+const spoken = h => h.calls.filter(call => call.url?.endsWith('synthesize/stream')).map(call => JSON.parse(call.options.body));
 
 test('private voice uses only PsyX routes, a scoped female voice and the canonical text turn', async () => {
   const h = browser(); h.context.wireVoiceSession();
@@ -109,5 +118,14 @@ test('a qualified spoken Stop is consumed by the shared loop without a private m
   h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click(); await h.say();
   assert.equal(turns, 0);
   assert.equal(h.$('voiceSessionDialog').dataset.phase, 'listening');
+  h.context.stopVoiceSession();
+});
+
+test('PsyX keeps its silence while it thinks: the shared holding phrase stays off', async () => {
+  const h = wiring(); h.context.wireVoiceSession();
+  await h.$('voiceSessionStart').listeners.click();
+  assert.equal(h.captured.io.holdingDelayMs, null);
+  await h.say();
+  assert.deepEqual(spoken(h).map(request => request.text), ['Je t’écoute. Une piste'], 'only the confirmed reply is spoken');
   h.context.stopVoiceSession();
 });
