@@ -152,7 +152,10 @@ seconds for its original delivery to settle.
 
 Canonical conversations keep their embedded messages and existing client-turn
 deduplication. The immutable BSON transcript-page primitives are not attached
-to the `Conversation` model. Publication and erasure share the owner's scope
+to the `Conversation` model. Their explicit `publishTranscript` operation holds
+one admitted owner fence across page writes and canonical reference publication;
+Playground publishers receive their existing fence for safe nested use.
+Publication and erasure share the owner's scope
 gate: an erased exchange cannot publish a late first conversation, and a late
 browser stopped/failed outcome cannot restore its erased turn identity.
 

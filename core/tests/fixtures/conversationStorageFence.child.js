@@ -31,6 +31,10 @@ const resume = () => new Promise(resolve => process.once('message', resolve));
   else if (input.action === 'accept') result = await exchanges.accept(input.scope, { body: { message: 'Synthetic input' } }, input.key);
   else if (input.action === 'transcript') result = await transcripts.writeTranscript(input.owner,
     [{ role: 'assistant', content: 'Synthetic transcript' }]);
+  else if (input.action === 'publishTranscript') result = await transcripts.publishTranscript(input.owner,
+    [{ role: 'assistant', content: input.largeContent ? 'été '.repeat(250000) : 'Synthetic published transcript' }], reference =>
+      mongoose.connection.collection('conversations').updateOne({ _id: input.owner },
+        { $set: { transcript: reference } }, { writeConcern: { w: 'majority', j: true } }));
   else if (input.action === 'hold') result = await withOwnerWrite(input.owner, async () => {
     await send({ event: 'paused' });
     await new Promise(() => {});

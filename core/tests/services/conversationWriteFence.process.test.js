@@ -129,6 +129,74 @@ test('transcript erasure fences a page writer in a separate process', async () =
   await expect(transcripts.writeTranscript(owner, [{ role: 'user', content: 'Late' }])).rejects.toMatchObject({ code: 'CONVERSATION_CONTENT_ERASED' });
 });
 
+test('transcript publication stays fenced between durable pages and the canonical root write', async () => {
+  const owner = 'synthetic-publication-race';
+  await collection('conversations').insertOne({ _id: owner, messages: [] });
+  const peer = writer({ action: 'publishTranscript', owner,
+    largeContent: true, pauseCollection: 'conversations', pauseMethod: 'updateOne' });
+  expect(await peer.next()).toEqual({ event: 'paused' });
+  expect(await collection('conversation_transcript_pages').countDocuments({ owner })).toBeGreaterThan(0);
+  expect((await collection('conversations').findOne({ _id: owner })).transcript).toBeUndefined();
+  let completed = false;
+  const erasure = eraseOwner(owner, async fence => {
+    await fence.mutate(() => collection('conversations').deleteOne({ _id: owner }));
+    await transcripts.eraseTranscript(owner, { fence });
+  }).then(() => { completed = true; });
+  for (let i = 0; i < 100 && !await fences().findOne({ _id: owner, eraseRequested: true }); i++) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  expect(await fences().findOne({ _id: owner, eraseRequested: true })).toBeTruthy();
+  expect(completed).toBe(false);
+  const latePublish = jest.fn();
+  await expect(transcripts.publishTranscript(owner, [], latePublish))
+    .rejects.toMatchObject({ code: 'CONVERSATION_CONTENT_ERASED' });
+  expect(latePublish).not.toHaveBeenCalled();
+  peer.resume();
+  expect((await peer.next()).event).toBe('result');
+  expect(await peer.exited).toBe(0);
+  await erasure;
+  expect(await collection('conversations').findOne({ _id: owner })).toBeNull();
+  for (const name of ['conversation_transcript_pages', 'conversation_payload_chunks']) {
+    expect(await collection(name).countDocuments({ owner })).toBe(0);
+  }
+});
+
+test('a process killed before canonical publication retains its exact writer and leaves erasure pending', async () => {
+  const owner = 'synthetic-dead-publication';
+  await collection('conversations').insertOne({ _id: owner, messages: [] });
+  const peer = writer({ action: 'publishTranscript', owner,
+    pauseCollection: 'conversations', pauseMethod: 'updateOne' });
+  expect((await peer.next()).event).toBe('paused');
+  const admitted = await fences().findOne({ _id: owner });
+  peer.child.kill('SIGKILL');
+  await peer.exited;
+  const purge = jest.fn();
+  await expect(eraseOwner(owner, purge, { waitMs: 25 }))
+    .rejects.toMatchObject({ code: 'CONVERSATION_ERASURE_PENDING' });
+  expect(purge).not.toHaveBeenCalled();
+  expect((await fences().findOne({ _id: owner })).token).toBe(admitted.token);
+  expect((await collection('conversations').findOne({ _id: owner })).transcript).toBeUndefined();
+  expect(await collection('conversation_transcript_pages').countDocuments({ owner })).toBe(1);
+});
+
+test('an ambiguous canonical publication cannot authorize erasure even when its root write reached Mongo', async () => {
+  const owner = 'synthetic-ambiguous-publication';
+  await collection('conversations').insertOne({ _id: owner, messages: [] });
+  const messages = [{ role: 'assistant', content: 'Full synthetic transcript' }];
+  await expect(transcripts.publishTranscript(owner, messages, async reference => {
+    await collection('conversations').updateOne({ _id: owner }, { $set: { transcript: reference } });
+    throw new MongoNetworkError('Synthetic acknowledgement lost after canonical dispatch');
+  })).rejects.toBeInstanceOf(MongoNetworkError);
+  const root = await collection('conversations').findOne({ _id: owner });
+  expect(await transcripts.readTranscript(owner, root.transcript)).toEqual(messages);
+  const prior = await fences().findOne({ _id: owner });
+  expect(prior.state).toBe('UNKNOWN');
+  const purge = jest.fn();
+  await expect(eraseOwner(owner, purge)).rejects.toMatchObject({ code: 'CONVERSATION_WRITE_RECOVERY_REQUIRED' });
+  expect(purge).not.toHaveBeenCalled();
+  expect((await fences().findOne({ _id: owner })).token).toBe(prior.token);
+});
+
 test('a dead writer is never replaced by a TTL or mistaken for completed erasure', async () => {
   const peer = writer({ action: 'hold', owner: 'dead-writer' });
   expect((await peer.next()).event).toBe('paused');

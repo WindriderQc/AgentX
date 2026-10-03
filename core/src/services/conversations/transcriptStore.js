@@ -110,6 +110,18 @@ async function writeTranscriptRaw(owner, messages, fence) {
 const writeTranscript = (owner, messages, options) => withOwnerWrite(owner,
   fence => writeTranscriptRaw(owner, messages, fence), options);
 
+// Keep the admitted writer until both immutable content and its canonical
+// reference have settled. A caller already publishing under an owner fence
+// must pass that exact context, rather than acquiring a second writer.
+async function publishTranscript(owner, messages, publish, options) {
+  if (typeof publish !== 'function') throw new TypeError('A canonical transcript publisher is required.');
+  return withOwnerWrite(owner, async fence => {
+    if (fence.erasing) throw failure('An erasure barrier cannot publish conversation content.');
+    const reference = await writeTranscriptRaw(owner, messages, fence);
+    return fence.mutate(() => publish(reference, fence));
+  }, options);
+}
+
 async function expandMessages(owner, messages) {
   return Promise.all(messages.map(message => message?._payload
     ? readPayload(owner, message._payload) : message));
@@ -171,5 +183,5 @@ const eraseTranscript = (owner, options) => eraseOwner(owner, async fence => {
   await fence.mutate(() => collections().chunks.deleteMany({ owner: String(owner) }, { writeConcern: { w: 'majority', j: true } }));
 }, options);
 
-module.exports = { putPayload, readPayload, writeTranscript, readTranscript, expandMessages,
+module.exports = { putPayload, readPayload, writeTranscript, publishTranscript, readTranscript, expandMessages,
   transcriptStages, readPageItems, eraseTranscript, reserveTurnIdentities, PAGE_BYTES };
