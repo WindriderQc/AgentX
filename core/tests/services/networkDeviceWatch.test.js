@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const alertService = require('../../src/services/alertService');
 const Alert = require('../../models/Alert');
 const NetworkDeviceWatch = require('../../models/NetworkDeviceWatch');
-const { createNetworkDeviceWatch, watchIntervalMs, normalizeMac } = require('../../src/services/networkDeviceWatch');
+const { createNetworkDeviceWatch, watchIntervalMs, normalizeMac, guessSentence, NO_GUESS } = require('../../src/services/networkDeviceWatch');
 
 const rule = require('../../config/default-alert-rules.json').find(item => item.id === 'network-new-device');
 
@@ -13,6 +13,7 @@ function device(mac, extra = {}) {
 describe('network device watch', () => {
   let inventory;
   let watch;
+  let guess;
 
   beforeAll(async () => {
     if (mongoose.connection.readyState === 0) {
@@ -31,7 +32,8 @@ describe('network device watch', () => {
     await Promise.all([Alert.deleteMany({}), NetworkDeviceWatch.deleteMany({})]);
     alertService.loadRules([rule]);
     inventory = [device('AA:AA:AA:00:00:01'), device('AA:AA:AA:00:00:02', { alias: 'Printer' })];
-    watch = createNetworkDeviceWatch({ loadDevices: async () => inventory });
+    guess = '';
+    watch = createNetworkDeviceWatch({ loadDevices: async () => inventory, guessFor: async () => guess });
   });
 
   test('ships a Telegram-delivered default rule', () => {
@@ -53,7 +55,7 @@ describe('network device watch', () => {
 
     const alerts = await Alert.find({ ruleId: 'network-new-device' }).lean();
     expect(alerts).toHaveLength(1);
-    expect(alerts[0].message).toContain('AA:AA:AA:00:00:03 at 192.0.2.30 (no hostname)');
+    expect(alerts[0].message).toContain('AA:AA:AA:00:00:03 at 192.0.2.30 (no hostname). No guess of what it is. Name it');
     expect(alerts[0].title).toContain('Example Vendor');
     expect(alerts[0].channels).toContain('telegram');
 
@@ -61,6 +63,29 @@ describe('network device watch', () => {
     await Alert.updateMany({}, { $set: { status: 'resolved' } });
     await watch.check();
     await expect(Alert.countDocuments({ ruleId: 'network-new-device' })).resolves.toBe(1);
+  });
+
+  test('the alert carries the model guess of what the device is', async () => {
+    await watch.check();
+    inventory.push(device('AA:AA:AA:00:00:07', { hostname: 'tv-box' }));
+    guess = 'Sure: {"kind": "smart TV", "name": "living-room-tv"}';
+    await watch.check();
+    const alert = await Alert.findOne({ ruleId: 'network-new-device' }).lean();
+    expect(alert.message).toContain('(tv-box). Probably smart TV; suggested name: living-room-tv. Name it or mark it known');
+  });
+
+  test('an unusable, unknown or failed guess leaves the plain alert', async () => {
+    expect(guessSentence('{"kind": "unknown", "name": "x"}')).toBe(NO_GUESS);
+    expect(guessSentence('not json')).toBe(NO_GUESS);
+    expect(guessSentence('{"kind": "printer"}')).toBe('Probably printer.');
+    await watch.check();
+    inventory.push(device('AA:AA:AA:00:00:08'));
+    const failing = createNetworkDeviceWatch({ loadDevices: async () => inventory,
+      guessFor: async () => { throw new Error('host busy'); } });
+    await expect(failing.check()).resolves.toMatchObject({ alerted: 1 });
+    const alert = await Alert.findOne({ ruleId: 'network-new-device' }).lean();
+    expect(alert.message).toContain('No guess of what it is.');
+    expect(alert.message).not.toContain('[missing:');
   });
 
   test('aliased, known and MAC-less devices never alert', async () => {
@@ -81,6 +106,7 @@ describe('network device watch', () => {
     let fail = true;
     const flaky = createNetworkDeviceWatch({
       loadDevices: async () => inventory,
+      guessFor: async () => '',
       evaluateEvent: async (event) => {
         if (fail) { fail = false; throw new Error('engine down'); }
         return alertService.evaluateEvent(event);

@@ -165,7 +165,8 @@
         "enabled": true,
         "severity": "warning",
         "title": "New device on the network — {{vendor}}",
-        "message": "{{mac}} at {{ip}} ({{hostname}}). Name it or mark it known in the Data Toolbox.",
+        "message": "{{mac}} at {{ip}} ({{hostname}}). {{guess}} Name it or mark it known in the Data Toolbox.",
+        "previousMessages": ["{{mac}} at {{ip}} ({{hostname}}). Name it or mark it known in the Data Toolbox."],
         "conditions": { "all": [
             { "fact": "metric", "operator": "equal", "value": "network_new_device" }
         ]},
