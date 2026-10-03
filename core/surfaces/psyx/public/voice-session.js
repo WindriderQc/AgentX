@@ -59,15 +59,16 @@ function syncVoiceSessionSafety() {
 // delays it, so the button follows both the phase and the busy state.
 function syncVoiceSessionControls() {
   const resting = ['idle', 'paused', 'error', 'reviewing'].includes(psyxVoicePhase);
-  $('voiceSessionStart').disabled = !resting || state.busy || !state.ready;
-  $('voiceSessionPause').disabled = resting;
+  $('voiceSessionStart').disabled = !resting || state.busy || !state.ready || !state.voice.enabled || !state.voice.reachable;
+  // While reviewing, the microphone is quiet but still open: Pause must stay able to release it.
+  $('voiceSessionPause').disabled = resting && psyxVoicePhase !== 'reviewing';
 }
 
 function createPsyXVoiceSession() {
   const labels = { idle: 'Prêt à t’écouter.', starting: 'Ouverture du micro…', listening: 'Je t’écoute.',
     hearing: 'Tu as la parole.', transcribing: 'Je t’ai entendu…', thinking: 'Je réfléchis.', waiting: 'Un instant…',
     preparing: 'Préparation de la voix…', speaking: 'PsyX te répond.', paused: 'Micro et voix arrêtés.', error: 'La voix a été arrêtée.',
-    reviewing: 'Je n’ai pas réussi à transcrire. Appuie sur Démarrer pour reprendre.', resuming: 'Je reprends l’écoute…' };
+    reviewing: 'Je n’ai pas réussi à transcrire. Appuie sur Commencer pour reprendre.', resuming: 'Je reprends l’écoute…' };
   return new window.AgentXVoice.Conversation({
     holdingDelayMs: null,
     speechText: spokenVoiceText,
@@ -131,7 +132,7 @@ function wireVoiceSession() {
     $('voiceSessionVoice').textContent = voicePreferences.describePreferences(state.voice.prefs, state.voice.status) + (chosen?.locale ? ` · ${chosen.locale}` : '');
     $('voiceSessionDialog').showModal();
     syncVoiceSessionSafety();
-    $('voiceSessionStart').disabled = !state.voice.enabled || !state.voice.reachable;
+    syncVoiceSessionControls();
     if (!state.voice.enabled || !state.voice.reachable) {
       $('voiceSessionPhase').textContent = 'La voix locale est indisponible. Vérifie les réglages de voix.';
       return;

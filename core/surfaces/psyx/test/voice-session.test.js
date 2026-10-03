@@ -216,3 +216,16 @@ test('PsyX speaks a whole turn in the language chosen in its voice settings', as
     h.context.stopVoiceSession();
   }
 });
+
+test('a failed transcription rests in a state the user can leave: Commencer resumes, Pause releases the microphone', async () => {
+  const h = browser({ fetch: async () => new Response(JSON.stringify({ ok: false, message: 'Speech service unavailable' }), { status: 503 }) });
+  h.audio.reviewStatus = () => ({ id: 1 }); h.audio.clearReview = () => {}; h.audio.recordTranscription = () => {};
+  h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click();
+  await h.say();
+  assert.equal(h.$('voiceSessionDialog').dataset.phase, 'reviewing');
+  assert.match(h.$('voiceSessionPhase').textContent, /Commencer pour reprendre/);
+  assert.deepEqual([h.$('voiceSessionStart').disabled, h.$('voiceSessionPause').disabled], [false, false]);
+  await h.$('voiceSessionStart').listeners.click();
+  assert.equal(h.$('voiceSessionDialog').dataset.phase, 'listening');
+  h.context.stopVoiceSession();
+});
