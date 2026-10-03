@@ -22,9 +22,11 @@
   }
 
   // The personalities a conversation with this agent may use: the member's own, the styles
-  // declared for it, and the personalities that belong to no member.
+  // declared for it, and the personalities that belong to no member. A general prompt of
+  // the library (no kind) is not a personality and is not offered.
   function stylesFor(personas = [], agentId) {
-    return personas.filter((persona) => persona.agentId === agentId || persona.styleOf === agentId || (!persona.agentId && !persona.styleOf));
+    return personas.filter((persona) => persona.agentId === agentId || persona.styleOf === agentId
+      || (!persona.agentId && !persona.styleOf && persona.kind === 'personality'));
   }
 
   function memberName(list, agents, agentId) {

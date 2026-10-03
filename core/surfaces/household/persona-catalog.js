@@ -44,7 +44,7 @@ function snapshot(row) {
     identitySha256: crypto.createHash('sha256').update(row.systemPrompt).digest('hex'),
     sourceRef: `PromptConfig/${row.name}@${row.version}`,
     voice: instanceVoice(row.name, layout.voice || {}), visual: layout.visual || null, agentId: layout.agentId || null,
-    ...(layout.styleOf ? { styleOf: layout.styleOf } : {}) };
+    ...(layout.styleOf ? { styleOf: layout.styleOf } : {}), ...(layout.kind ? { kind: layout.kind } : {}) };
 }
 
 const { speechFor: presentationSpeechFor } = require('./public/persona-presentation');
