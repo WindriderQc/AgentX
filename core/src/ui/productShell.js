@@ -41,7 +41,7 @@ function surfacePage(app, file, { activePage, householdControls = false } = {}) 
 
 function householdPage(app, file) {
   const names = { '/voice/native': 'voice-native', '/voice-personas/debug': 'voice-personas-debug',
-    '/device-check': 'device-check', '/lecture/parents.html': 'lecture-parents',
+    '/device-check': 'device-check', '/lecture/parents': 'dad-family', '/lecture/parents.html': 'dad-family',
     '/voice': 'dad', '/voice.html': 'dad', '/voix': 'dad',
     '/voice-personas': 'dad-memories', '/voice-personas.html': 'dad-memories' };
   return (req, res, next) => {
