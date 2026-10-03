@@ -2791,6 +2791,16 @@
       "secret": false,
       "description": "Timeout of the roundtable quality judge. Unset: 120000 ms."
     },
+    "ROUNDTABLE_OPENCLAW_STRICT_PROVIDERS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Optional JSON mapping an OpenClaw conversation provider to its strict provider. A seated Council agent then waits for its own model instead of answering with a busy-host fallback. Unset: the agent's configured provider."
+    },
     "ROUNDTABLE_RUNTIME_PARTICIPANTS_ENABLED": {
       "services": [
         "core"
