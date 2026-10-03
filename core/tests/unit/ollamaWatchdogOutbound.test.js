@@ -243,6 +243,8 @@ describe('ollamaWatchdogService governed outbound operations', () => {
       quarantined: false
     });
     await expect(reloadModel(HOST, 'restore-model', executor)).resolves.toEqual({ ok: true });
+    const restore = fetchImpl.mock.calls.find(([, init]) => JSON.parse(init.body || '{}').model === 'restore-model');
+    expect(JSON.parse(restore[1].body)).toMatchObject({ truncate: false, shift: false });
     await expect(unjamHost(HOST, ['missing-terminal'], executor)).resolves.toMatchObject({
       success: false,
       quarantined: true

@@ -1,4 +1,5 @@
 'use strict';
+const { withContextRefusal } = require('./routing/contextIntegrityPolicy');
 
 /**
  * Operator-confirmed change of one resident pin's context allocation.
@@ -102,7 +103,7 @@ async function measureShortPromptSpeed(hostUrl, entry, {
       const response = await fetchImpl(`${hostUrl}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(withContextRefusal({
           model: entry.model,
           prompt: SPEED_PROMPT,
           stream: false,
@@ -112,7 +113,7 @@ async function measureShortPromptSpeed(hostUrl, entry, {
             temperature: 0,
             ...(entry.contextSize > 0 ? { num_ctx: entry.contextSize } : {})
           }
-        }),
+        })),
         signal: requestSignal
       });
       if (!response.ok) return { ok: false, error: `Ollama returned HTTP ${response.status}` };

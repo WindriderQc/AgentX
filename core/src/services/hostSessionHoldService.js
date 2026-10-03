@@ -1,4 +1,5 @@
 'use strict';
+const { withContextRefusal } = require('./routing/contextIntegrityPolicy');
 
 /**
  * Host session hold
@@ -203,13 +204,13 @@ async function warmSessionHoldModel(hostUrl, hold, deps = {}) {
   const hostPreferenceService = deps.hostPreferenceService || require('./hostPreferenceService');
   const executeAdmittedOllamaAttempt = deps.executeAdmittedOllamaAttempt
     || require('./routing/inferenceAttemptExecutor').executeAdmittedOllamaAttempt;
-  const payload = {
+  const payload = withContextRefusal({
     model: hold.model,
     prompt: 'warmup',
     stream: false,
     keep_alive: -1,
     options: { num_predict: 1, ...(hold.numCtx ? { num_ctx: hold.numCtx } : {}) }
-  };
+  });
   const attempt = await executeAdmittedOllamaAttempt({
     hostUrl,
     model: hold.model,

@@ -1,4 +1,5 @@
 'use strict';
+const { withContextRefusal } = require('./routing/contextIntegrityPolicy');
 
 const crypto = require('crypto');
 const fetch = require('node-fetch');
@@ -106,7 +107,7 @@ async function startModel(host, name, keepAlive = '10m', options = {}) {
   const timeoutMs = positiveTimeout(process.env.OLLAMA_MODEL_START_TIMEOUT_MS, DEFAULT_RUNTIME_TIMEOUT_MS);
   return runRuntimeMutation({ host, name, action: 'start', principal: options.principal, signal: options.signal, timeoutMs }, async signal => {
     await requestOllama(host, '/api/generate', {
-      body: { model: name, prompt: '', stream: false, keep_alive: keepAlive },
+      body: withContextRefusal({ model: name, prompt: '', stream: false, keep_alive: keepAlive }),
       timeoutMs,
       signal,
       terminal: 'generate'

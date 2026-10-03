@@ -122,6 +122,8 @@ describe('probeHost', () => {
     expect(requestBody).toMatchObject({
       model: 'gemma4:26b',
       think: false,
+      truncate: false,
+      shift: false,
       keep_alive: -1,
       options: { num_predict: 1 }
     });
