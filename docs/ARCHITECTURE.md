@@ -348,9 +348,13 @@ cannot submit arbitrary workflows. Generation remains adult-only even when
 the instance archive is visible in household photos.
 
 The worker reserves every configured GPU consumer endpoint through the existing
-runtime coordinator. Its durable journal precedes resident unloading and prompt
-submission. Completion requires terminal job evidence, archive validation and
-verified resident restoration. Lost responses and restarts preserve an unknown
+runtime coordinator. An optional private physical-resource map also excludes
+Core admissions through other endpoints on the same GPU. Stored resource IDs
+and an atomic topology fingerprint retain that fence across processes and
+configuration changes. CPU-only endpoints remain distinct. This map does not
+control unmanaged speech or other CUDA consumers. The image worker's durable
+journal precedes resident unloading and prompt submission. Completion requires
+terminal job evidence, archive validation and verified resident restoration. Lost responses and restarts preserve an unknown
 outcome instead of submitting another prompt. Archive retry is independent of
 GPU execution. Native tools return asynchronously so the caller's agent loop
 can release a shared GPU before image preparation. See [local images](LOCAL_IMAGES.md).

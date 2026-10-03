@@ -255,6 +255,16 @@
       "secret": false,
       "description": "true registers the OpenClaw, Hermes, DSH and coding runtime bridges in Core (full profile). Any other value or unset: the bridges are not loaded."
     },
+    "AGENTX_RUNTIME_RESOURCES_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "inference",
+      "secret": true,
+      "description": "Private physical GPU IDs with their consumer endpoint URLs. Unset: endpoint-only coordination. Invalid or changed mappings refuse new admissions while existing work remains fenced."
+    },
     "AGENTX_TASK_FALLBACK_WAIT_MS": {
       "services": [
         "core"

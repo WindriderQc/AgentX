@@ -837,6 +837,45 @@ AGENTX_ROUTING_SNAPSHOT_STALE_MS=300000
 
 ## Inference hosts
 
+### Physical GPU admission
+
+`AGENTX_RUNTIME_RESOURCES_JSON` optionally maps private physical GPU identities
+to consumer endpoint URLs. Keep the actual inventory in the external instance
+env file; the Configuration view hides its value. A generic example is:
+
+```json
+[{"id":"gpu-a","endpoints":["http://gpu-a:11434","http://gpu-alias:11435"]}]
+```
+
+Each identity describes one physical device, independently of an IP address or
+port. Include every managed endpoint that uses that GPU; an endpoint using
+several GPUs appears in each device's list. Leave CPU-only endpoints unmapped.
+Endpoints are HTTP(S) origins without credentials, paths or query strings.
+Unset or an empty array retains endpoint-only coordination. Invalid entries
+refuse inference and workload admission as a whole.
+
+Core stores the derived resource IDs on each admission. Distinct endpoints
+sharing a device cannot acquire concurrent inference, even for the same model.
+A workload reserves both its endpoints and their physical devices; its own
+inference still requires its exact endpoint-bound proof. A yielded workload
+admits ordinary inference only on its listed endpoints. Unrelated GPUs and
+unmapped CPU endpoints keep their existing admission rules.
+
+Configure or change this map only after all inference and workload admissions
+have settled. A fingerprint in the same Mongo admission command prevents a
+new mapping from bypassing held legacy or UNKNOWN admissions. Until those
+owners release or reconcile, new dispatch refuses with
+`runtime_resource_configuration_changed`; exact heartbeat, release and recovery
+remain available. Do not remove admission records to activate a new map.
+`GET /api/nerve-center/runtime-coordination/active` reports configuration validity,
+whether a change is blocked, and the stored resource IDs on held admissions.
+
+This mapping coordinates participating Core consumers. Listing a speech peer,
+game or other application does not make it participate or prove that its CUDA
+allocations were freed. Speech compute drain, backup readiness and physical
+GPU release require their own adapter and qualification under
+[#342](https://github.com/WindriderQc/AgentX/issues/342).
+
 Ordinary Core inference requires a stable Ollama version of at least 0.30.10.
 Before dispatch, Core reads `/api/version` with a five-second bound; missing,
 malformed, prerelease or older evidence returns

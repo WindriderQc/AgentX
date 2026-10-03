@@ -49,12 +49,16 @@ async function restoreSnapshots(snapshots, assertOwned) {
 }
 
 async function reserve(config, operation, save, isCancelled) {
+  if (operation.workerUrl && operation.workerUrl !== config.workerUrl) {
+    throw new Error('Image operation is bound to its original worker');
+  }
   const end = Date.now() + config.drainMs;
   let lease;
   do {
     if (await isCancelled()) throw Object.assign(new Error('Image request cancelled'), { cancelled: true });
     lease = await coordination.acquireWorkload({ principal: PRINCIPAL, requestId: operation._id,
-      workloadId: operation._id, kind: 'images', hosts: config.ollamaHosts, ttl: 120000 });
+      workloadId: operation._id, kind: 'images',
+      hosts: [config.workerUrl, ...config.ollamaHosts].filter(Boolean), ttl: 120000 });
     if (lease.acquired) break;
     if (Date.now() >= end) throw new Error('GPU occupé. Fais une nouvelle demande quand il sera disponible.');
     await sleep(1000);

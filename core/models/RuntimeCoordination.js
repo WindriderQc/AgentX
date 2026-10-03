@@ -31,6 +31,7 @@ const WorkloadAdmissionSchema = new mongoose.Schema({
   kind: { type: String, required: true },
   batchId: { type: String, default: null },
   hosts: { type: [String], default: [] },
+  resourceIds: { type: [String], default: [] },
   // Claim release closes inference dispatch on these hosts until the workload
   // is released. The native finalizer still owns exact runtime restoration.
   drainingHosts: { type: [String], default: [] },
@@ -70,6 +71,7 @@ const InferenceAdmissionSchema = new mongoose.Schema({
   requestId: { type: String, required: true },
   host: { type: String, required: true },
   model: { type: String, required: true },
+  resourceIds: { type: [String], default: [] },
   // Core derives this key from the canonical host-independent residency
   // intent. Callers never choose it. Shared admissions may coexist only when
   // the exact runner/residency key matches.
@@ -99,6 +101,7 @@ const InferenceAdmissionSchema = new mongoose.Schema({
 
 const RuntimeCoordinationSchema = new mongoose.Schema({
   _id: { type: String, default: 'runtime' },
+  resourceTopologyHash: { type: String, default: null },
   maintenance: { type: MaintenanceLeaseSchema, default: null },
   workloads: { type: [WorkloadAdmissionSchema], default: [] },
   inferences: { type: [InferenceAdmissionSchema], default: [] },

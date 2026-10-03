@@ -90,7 +90,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   CPU brain side by side, and pin checks and alerts follow that residency.
   Resident pin sets are edited with verified add, update and rollback, with an
   optional CPU thread count per pin. Hosts show observed request concurrency,
-  and Ollama reachability stays separate from GPU residency. A Configuration
+  and Ollama reachability stays separate from GPU residency. An optional private
+  physical GPU map excludes conflicting Core admissions through different
+  endpoints on the same device, preserving CPU endpoint
+  separation and durable recovery fences across mapping changes. A Configuration
   section shows each setting's state per service, and the operations watch
   card shows the latest report and edits the watch's switch, interval and
   language.

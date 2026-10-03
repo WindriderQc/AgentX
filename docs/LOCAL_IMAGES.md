@@ -67,8 +67,10 @@ Container loopback is the container itself. Select a bridge or LAN address
 when the worker is native on another host. Endpoints accept explicit private
 IP addresses or localhost; public URLs and URL credentials are refused.
 `ollamaHosts` must name **every managed endpoint consuming the image GPU**,
-using the same endpoint identities as Core inference. It does not discover
-physical GPU aliases or stop games, voice workers or other unmanaged consumers.
+using the same endpoint identities as Core inference. The optional
+[`AGENTX_RUNTIME_RESOURCES_JSON` map](OPERATIONS.md#physical-gpu-admission)
+also fences Core consumers on configured physical GPU aliases. It does not
+discover devices or stop games, voice workers or other unmanaged consumers.
 
 The `qwen21` family uses Qwen-Image-2.1 ConvRot INT8 diffusion and encoder
 files, its own VAE, Euler/simple sampling and lossless CPU prefix caching.
@@ -91,7 +93,7 @@ and input returns its existing operation; changed input returns 409.
 
 Accepted requests return 202 immediately. `GET /api/images/operations/:id`
 reports progress; `.../:id/image` serves the verified archive. Core reserves
-the configured endpoints, records the exact resident snapshot before mutation,
+the bound worker endpoint and configured Ollama consumers, records the exact resident snapshot before mutation,
 unloads them, computes, releases worker memory, and restores the original
 digests, contexts, lifetime policy and GPU placement before marking completion.
 It does not edit benchmarked Modelfiles or context settings.
