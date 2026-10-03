@@ -211,9 +211,13 @@ const RECREATE_RETRY_MS = 10_000;
 // one refused lease says only that this moment was busy. The recreate is
 // retried, lease-checked each time, until a gap appears or the wait runs out;
 // any other launcher failure stops at once.
-async function recreateWhenIdle({ recreate, waitIdle, deadline, now = Date.now, pause = sleep, retryMs = RECREATE_RETRY_MS }) {
+async function recreateWhenIdle({ recreate, waitIdle, services = [], deadline, now = Date.now, pause = sleep, retryMs = RECREATE_RETRY_MS }) {
   for (let attempts = 1; ; attempts += 1) {
-    await waitIdle(Math.max(0, deadline - now()));
+    // Core's launcher owns its lease and asks resumable work to drain. Waiting
+    // for total idle here prevents that request from ever reaching the writer.
+    if (services.length !== 1 || services[0] !== 'core') {
+      await waitIdle(Math.max(0, deadline - now()));
+    }
     const launched = recreate();
     const refused = launched.status === 4 && LEASE_REFUSED.test(launched.output);
     if (!refused || now() + retryMs >= deadline) return { attempts, launched };
@@ -355,6 +359,7 @@ async function deploy(config, options, takeLead) {
   let recreated;
   try {
     recreated = await recreateWhenIdle({
+      services,
       recreate: () => run('./agentx', ['up', '--no-deps', ...services], { env: launcherEnv(config, revision), allowFailure: true }),
       waitIdle: remaining => (core ? waitIdle(core, remaining) : undefined),
       deadline: Date.now() + waitMs
