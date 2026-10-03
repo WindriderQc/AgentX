@@ -61,17 +61,31 @@ async function run(owner, erase, action, { fence, waitMs = 2_000 } = {}) {
     await sleep(Math.min(25, Math.max(1, until - Date.now())));
   } while (true);
 
-  let unknown = false;
+  let unknown = false, acceptingMutations = true, mutationFailure;
+  const pending = new Set();
   const context = Object.freeze({ owner, erasing: erase,
-    async mutate(operation) {
-      try { return await operation(); }
-      catch (cause) { unknown ||= uncertainMutation(cause); throw cause; }
+    mutate(operation) {
+      if (!acceptingMutations || !contexts.has(context)) {
+        return Promise.reject(error('CONVERSATION_FENCE_INVALID', 'This content writer has already settled.'));
+      }
+      const mutation = Promise.resolve().then(operation).catch(cause => {
+        unknown ||= uncertainMutation(cause);
+        mutationFailure ||= cause;
+        throw cause;
+      });
+      pending.add(mutation);
+      // Retain ownership even if a caller neglects to await its admitted write.
+      mutation.then(() => pending.delete(mutation), () => pending.delete(mutation));
+      return mutation;
     }
   });
   contexts.add(context);
   let outcome, failure;
   try { outcome = await action(context); }
   catch (cause) { failure = cause; }
+  acceptingMutations = false;
+  await Promise.allSettled([...pending]);
+  failure ||= mutationFailure;
   try {
     const settled = await collection().updateOne({ _id: owner, token }, { $set: unknown
       ? { state: 'UNKNOWN', unknownAt: new Date() }

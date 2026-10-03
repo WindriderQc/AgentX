@@ -172,3 +172,31 @@ test('late conversation association erases the exchange instead of restoring del
   expect(await collection('conversation_exchange_packets').countDocuments({ receiptId: receipt._id })).toBe(0);
   expect(await collection('conversation_payload_chunks').countDocuments({ owner: `exchange:${receipt._id}` })).toBe(0);
 });
+
+test('a retained callback cannot mutate content after its exact fence settled', async () => {
+  let captured;
+  await withOwnerWrite('settled-writer', async fence => { captured = fence; });
+  const write = jest.fn();
+  await expect(captured.mutate(write)).rejects.toMatchObject({ code: 'CONVERSATION_FENCE_INVALID' });
+  expect(write).not.toHaveBeenCalled();
+});
+
+test('an admitted mutation remains fenced even when its caller forgets to await it', async () => {
+  let release, entered;
+  const blocked = new Promise(resolve => { release = resolve; });
+  const boundary = new Promise(resolve => { entered = resolve; });
+  const writerDone = withOwnerWrite('unawaited-writer', fence => {
+    fence.mutate(async () => {
+      entered();
+      await blocked;
+      await collection('conversation_exchange_packets').insertOne({ _id: 'unawaited-packet', owner: 'unawaited-writer' });
+    });
+  });
+  await boundary;
+  await expect(eraseOwner('unawaited-writer', jest.fn(), { waitMs: 25 })).rejects.toMatchObject({ code: 'CONVERSATION_ERASURE_PENDING' });
+  release();
+  await writerDone;
+  await eraseOwner('unawaited-writer', fence => fence.mutate(() =>
+    collection('conversation_exchange_packets').deleteMany({ owner: 'unawaited-writer' })));
+  expect(await collection('conversation_exchange_packets').countDocuments({ _id: 'unawaited-packet' })).toBe(0);
+});
