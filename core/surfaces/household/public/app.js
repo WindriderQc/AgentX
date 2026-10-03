@@ -541,7 +541,12 @@
       setEcosystemStatus('household', householdReady ? 'ok' : 'degraded', householdReady ? 'Household prêt' : 'Household à vérifier');
       setEcosystemStatus('nestor', crewStatus('nestor', 'down'), crewStatus('nestor', 'down') === 'ok' ? 'Nestor prêt' : 'Nestor indisponible');
       setEcosystemStatus('openclaw', crewStatus('openclaw', 'down'), crewStatus('openclaw', 'down') === 'ok' ? 'OpenClaw prêt' : 'OpenClaw à vérifier');
-      setEcosystemStatus('voix', crewStatus('voix', 'down'), crewStatus('voix', 'down') === 'ok' ? 'VoiX prêt' : 'VoiX indisponible');
+      // Nestor's cloned voice (VoxCPM2) can be down while VoiX itself answers: say so, with since when.
+      const gazz = panel.voix?.engines?.voxcpm;
+      const gazzDown = gazz?.configured && gazz.ready === false;
+      const gazzSince = gazzDown ? new Date(gazz.since).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' }) : '';
+      setEcosystemStatus('voix', crewStatus('voix', 'down') === 'ok' && gazzDown ? 'degraded' : crewStatus('voix', 'down'),
+        crewStatus('voix', 'down') !== 'ok' ? 'VoiX indisponible' : gazzDown ? `VoiX prêt · voix de Nestor (Gazz) indisponible depuis ${gazzSince}` : 'VoiX prêt');
       const benchmark = services.get('benchmark');
       setEcosystemStatus('benchmark', benchmark?.status || 'down', benchmark?.status === 'ok' ? 'Benchmark prêt' : 'Benchmark indisponible');
       const attention = [
