@@ -124,7 +124,9 @@ function summarizeOperationalAttention({ clusterHealth, serviceHealth, routing, 
       'services_degraded',
       'attention',
       servicesDegraded > 0 ? `${servicesDegraded} product service${servicesDegraded === 1 ? '' : 's'} degraded`
-        : `Product service health is ${String(serviceHealth?.status || 'unknown').toLowerCase()}`,
+        : String(serviceHealth?.identityStatus || 'ok').toLowerCase() !== 'ok'
+          ? 'Product services run different versions or revisions'
+          : `Product service health is ${String(serviceHealth?.status || 'unknown').toLowerCase()}`,
       { count: Number.isFinite(servicesDegraded) ? servicesDegraded : null }
     );
   }
