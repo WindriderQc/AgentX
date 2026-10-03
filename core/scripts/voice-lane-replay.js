@@ -23,6 +23,8 @@ const { forgetMemoryStatement } = require('../surfaces/household/voice-memory-tu
 const SCOPE_ID = 'personal';
 const CALLER = 'voice-lane-replay';
 const GATE = Object.freeze({ missedDelegation: 0.05, unnecessaryDelegation: 0.15 });
+// The conversation before a request: the last exchanges, each side clipped.
+const HISTORY_EXCHANGES = 4, HISTORY_CHARS = 600;
 const VALUE_OPTIONS = Object.freeze({ '--out': 'out', '--limit': 'limit', '--model': 'model', '--host-url': 'hostUrl',
   '--task': 'task', '--pause-ms': 'pauseMs', '--retries': 'retries', '--busy-wait-ms': 'busyWaitMs' });
 const NUMBER_OPTIONS = Object.freeze({ limit: [1, 1000], pauseMs: [0, 60000], retries: [0, 20], busyWaitMs: [1000, 300000] });
@@ -85,15 +87,28 @@ function skipReason(turn, text) {
   return text ? '' : 'empty_request';
 }
 
+// Each voice turn with the exchanges recorded before it in its conversation,
+// as the lane would receive them: a follow-up such as "yes, go ahead" can only
+// be judged with what came before.
 function sessionTurns(row) {
   const requests = new Map();
   for (const message of row.messages || []) {
     if (message.role === 'user' && message.turnId) requests.set(message.turnId, message.content);
   }
-  return (row.messages || [])
-    .filter(message => message.turn?.channel === 'voice' && message.turn.packId === lane.LANE_PACK_ID && message.turn.scopeId === SCOPE_ID)
-    .map(message => ({ turn: message.turn, text: String(requests.get(message.turnId) || '').trim(),
-      identity: row.surfaceSession?.persona?.identity || '' }));
+  const clip = value => String(value || '').trim().slice(0, HISTORY_CHARS);
+  const turns = [], exchanges = [];
+  for (const message of row.messages || []) {
+    if (!message.turn) continue;
+    const text = String(requests.get(message.turnId) || '').trim();
+    if (message.turn.channel === 'voice' && message.turn.packId === lane.LANE_PACK_ID && message.turn.scopeId === SCOPE_ID) {
+      turns.push({ turn: message.turn, text, identity: row.surfaceSession?.persona?.identity || '',
+        history: exchanges.slice(-HISTORY_EXCHANGES).flat() });
+    }
+    if (text && clip(message.content)) {
+      exchanges.push([{ role: 'user', content: clip(text) }, { role: 'assistant', content: clip(message.content) }]);
+    }
+  }
+  return turns;
 }
 
 // `sessions` yields conversations newest first. Returns the most recent usable turns.
@@ -105,12 +120,12 @@ async function collectTurns(sessions, limit) {
     if (!row) continue;
     // Once the sample is full, a conversation that ended before its oldest turn adds nothing.
     if (kept.length >= limit && timeOf(row.surfaceSession?.lastTurnAt) < kept[limit - 1].at) break;
-    for (const { turn, text, identity } of sessionTurns(row)) {
+    for (const { turn, text, identity, history } of sessionTurns(row)) {
       scanned += 1;
       const reason = skipReason(turn, text);
       if (reason) { skipped[reason] = (skipped[reason] || 0) + 1; continue; }
       const tools = [...new Set((turn.toolEvidence.receipts || []).map(receipt => receipt?.tool).filter(Boolean))];
-      kept.push({ at: timeOf(turn.createdAt), text, modeId: turn.modeId || '', identity, tools,
+      kept.push({ at: timeOf(turn.createdAt), text, modeId: turn.modeId || '', identity, tools, history,
         memoryCommand: detectMemoryRequest(text) || Boolean(forgetMemoryStatement(text)) });
     }
     kept.sort((left, right) => right.at - left.at);
@@ -129,6 +144,7 @@ async function replay({ turns, infer, pauseMs = 0, retries = 0, busyWaitMs = 0, 
     if (index && pauseMs) await wait(pauseMs);
     const messages = [
       { role: 'system', content: lane.fastLaneSystemPrompt({ modeId: turn.modeId, identity: turn.identity }) },
+      ...(turn.history || []),
       { role: 'user', content: turn.text }
     ];
     let body = null, failure = null;
@@ -234,7 +250,7 @@ function renderMarkdown(summary) {
     `- Recorded tools of missed delegations: ${counts(summary.missedByTool)}`,
     '', '## Reading this report', '',
     '- Recorded tool use is a weak label: the agent may have used a tool it did not need, or answered without one it should have used. The owner judges the sample in `disagreements.jsonl`.',
-    '- Each request is replayed alone, without the conversation before it, notes or knowledge. A follow-up that was clear in context can look like a wrong decision here.',
+    '- Each request is replayed after the last exchanges of its conversation (clipped), without notes or knowledge, so a request that leaned on those can look like a wrong decision here.',
     '- A malformed answer (empty, another tool, a tool call written as text) counts as a delegation: the lane hands an unusable answer to the agent.',
     '- These files hold private request text. Keep them outside Git.', ''
   ].join('\n');

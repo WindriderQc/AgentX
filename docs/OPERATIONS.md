@@ -958,8 +958,8 @@ measures how a light model decides between answering and handing a request
 to the native agent. The model receives the stable personal prompt, the
 Nestor personality and a single `delegate` tool
 (`core/surfaces/household/voice-lane.js`). The script reads the most recent
-personal voice requests, sends each one alone through Core's admitted
-inference (never to a model host directly) and compares the decision with
+personal voice requests, sends each one after the last exchanges of its
+conversation through Core's admitted inference (never to a model host directly) and compares the decision with
 whether the recorded turn used agent tools.
 
 ```bash
@@ -980,8 +980,9 @@ docker exec agentx-core-1 node scripts/voice-lane-replay.js --out /tmp/voice-lan
   sample.
 - Gate: at most 5 % missed delegations (tools were recorded, the model
   answered itself) and at most 15 % unnecessary delegations. Recorded tool use
-  is a weak label and each request is replayed without its conversation, so
-  the owner judges the disagreement sample.
+  is a weak label (the agent may have answered without a tool it should have
+  used) and notes are not replayed, so the owner judges the disagreement
+  sample.
 
 ## Qdrant payload indexes
 
