@@ -79,6 +79,9 @@ const GovernanceSchema = new mongoose.Schema({
 }, { _id: false });
 
 const SynthesizerConfigSchema = new mongoose.Schema({
+  // A model gives the verdict, or an OpenClaw agent presiding as chair (agentId).
+  runtime: { type: String, enum: ['model', 'openclaw'], default: 'model' },
+  agentId: { type: String, default: null },
   model: { type: String, required: true },
   systemPrompt: { type: String, required: true },
   resolvedTarget: { type: String, default: null },
@@ -95,6 +98,8 @@ const RoundtableSchema = new mongoose.Schema({
   },
   rounds: { type: Number, default: 2, min: 1, max: 3 },
   panelConfig: [PanelAgentConfigSchema],
+  // blind: independent first answers; conversation: each speaker hears those before it.
+  turnOrder: { type: String, enum: ['blind', 'conversation'], default: 'blind' },
   synthesizerConfig: SynthesizerConfigSchema,
   turns: [AgentTurnSchema],
   interjections: { type: [InterjectionSchema], default: [] },

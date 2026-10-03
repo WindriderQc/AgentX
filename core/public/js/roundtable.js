@@ -41,12 +41,22 @@
   let currentSynth = { model: '', systemPrompt: '' };
   let currentModelReadiness = null;
   let openclawAgents = [];
-  // The household team seated at the table: Nestor first, then each OpenClaw agent as itself.
+  // The household team at the table: each OpenClaw agent as itself. Nestor (main)
+  // supervises the team, so he presides and gives the verdict instead of debating.
+  const CHAIR_PREFIX = 'openclaw/';
+  const chairAgent = () => openclawAgents.find((agent) => agent.id === 'main') || null;
   function teamPanel() {
-    return openclawAgents.map((agent) => ({
-      agentId: agent.id, role: agent.id === 'main' ? 'Nestor' : agent.name, runtime: 'openclaw', model: 'runtime-managed',
+    return openclawAgents.filter((agent) => agent.id !== chairAgent()?.id).map((agent) => ({
+      agentId: agent.id, role: agent.name, runtime: 'openclaw', model: 'runtime-managed',
       systemPrompt: '', enableWebSearch: false
     }));
+  }
+  // "openclaw/<agent id>" in the synthesizer field means that agent presides.
+  function synthesizerFromForm() {
+    const model = $('formSynthModel').value.trim(), systemPrompt = $('formSynthPrompt').value.trim();
+    return model.startsWith(CHAIR_PREFIX)
+      ? { runtime: 'openclaw', agentId: model.slice(CHAIR_PREFIX.length), systemPrompt }
+      : { model, systemPrompt };
   }
 
   function renderAgentCard(agent, index) {
@@ -207,14 +217,14 @@
     if (!liveDoc?._id) return;
     const text = $('liveInterjection').value.trim();
     if (!text) { showToast('Enter chair guidance first', 'error'); return; }
+    // An unlocked owner session is the chair; the token is only for callers without one.
     const token = $('liveChairToken').value;
-    if (!token) { showToast('Chair token is required for interjections', 'error'); return; }
     try {
       await jsonFetch(`/api/roundtable/${liveDoc._id}/interjections`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-roundtable-chair-token': token
+          ...(token ? { 'x-roundtable-chair-token': token } : {})
         },
         body: JSON.stringify({ text, author: 'Example User', source: 'web-ui' })
       });
@@ -229,13 +239,12 @@
   async function submitDecision(decision) {
     if (!liveDoc?._id) return;
     const token = $('liveChairToken').value;
-    if (!token) { showToast('Chair token is required for web decisions', 'error'); return; }
     try {
       await jsonFetch(`/api/roundtable/${liveDoc._id}/decision`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-roundtable-chair-token': token
+          ...(token ? { 'x-roundtable-chair-token': token } : {})
         },
         body: JSON.stringify({
           decision,
@@ -587,10 +596,8 @@
       question,
       rounds: Number($('formRounds').value),
       panel,
-      synthesizer: {
-        model: $('formSynthModel').value.trim(),
-        systemPrompt: $('formSynthPrompt').value.trim()
-      },
+      synthesizer: synthesizerFromForm(),
+      turnOrder: $('formTurnOrder').value,
       enableScoring: $('formScoring').value === 'true',
       governance: { requireApproval: $('formApproval').value === 'true' },
       // A question handed off from the Playground is recorded as such; the
@@ -677,8 +684,10 @@
     $('formResetBtn').addEventListener('click', () => loadDefaults(true));
     $('formTeamPanel').addEventListener('click', () => {
       currentPanel = teamPanel();
+      if (chairAgent()) currentSynth = { ...currentSynth, model: CHAIR_PREFIX + chairAgent().id };
+      $('formTurnOrder').value = 'conversation';
       renderPanel();
-      showToast('Team seated: each agent answers as itself; a chair token is required to convene.', 'info');
+      showToast(chairAgent() ? 'Team seated: Nestor presides and gives the verdict; the others debate.' : 'Team seated: each agent answers as itself.', 'info');
     });
     $('formAddAgent').addEventListener('click', () => {
       currentPanel = readPanelFromDOM();
