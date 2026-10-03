@@ -237,7 +237,11 @@ Set `NETWORK_DEVICE_WATCH_MS` (for example `300000`) to let Core check the
 network inventory and raise the `network-new-device` alert once per unknown
 device. The first check accepts the current inventory as the baseline; name a
 device or mark it known in the Data Toolbox to acknowledge it. The rule
-targets `telegram`, so the operations relay delivers it when configured.
+targets `telegram`, so the operations relay delivers it when configured. The
+alert carries a guess of what the device is and a suggested name, asked from
+the `ops_watch` task's model with the vendor, hostname and address; it is a
+hint, never applied by itself, and a missing answer never delays the alert
+beyond three minutes.
 
 Set `OPS_WATCH_MS` (for example `900000`) to get an operations watch report.
 Core takes what its rules already flag (the ecosystem snapshot's operational

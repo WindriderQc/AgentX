@@ -10,6 +10,10 @@
  * event to the alert engine; the `network-new-device` rule decides delivery.
  * Devices without a MAC cannot be followed reliably and are ignored.
  *
+ * The alert carries a guess of what the device is, written by the `ops_watch`
+ * task's model from the vendor, hostname and address. It is a hint for naming
+ * the device, never applied by itself; without an answer the alert says so.
+ *
  * Opt-in: NETWORK_DEVICE_WATCH_MS sets the poll interval (minimum 60000). The
  * first check runs one minute after startup.
  */
@@ -20,6 +24,9 @@ const METRIC = 'network_new_device';
 const MIN_INTERVAL_MS = 60 * 1000;
 const FIRST_DELAY_MS = 60 * 1000;
 const MAC_PATTERN = /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/;
+const GUESS_TIMEOUT_MS = 3 * 60 * 1000;
+const NO_GUESS = 'No guess of what it is.';
+const GUESS_SYSTEM = 'You help name devices on a home network. From the vendor, hostname and address, say what kind of device this most likely is and suggest a short name. Reply with JSON only: {"kind": "<a few words>", "name": "<short-name>"}. If the clues are too weak, use "unknown" for kind.';
 
 function watchIntervalMs(env = process.env) {
   const value = Number(env.NETWORK_DEVICE_WATCH_MS);
@@ -40,7 +47,21 @@ function text(value, max = 120) {
   return String(value || '').trim().slice(0, max);
 }
 
-function buildEvent(device, mac) {
+/** One sentence for the alert from the model's JSON answer, or the no-guess sentence. */
+function guessSentence(answer) {
+  try {
+    const match = String(answer || '').match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : '');
+    const kind = text(parsed.kind, 60);
+    const name = text(parsed.name, 40);
+    if (!kind || /^unknown$/i.test(kind)) return NO_GUESS;
+    return name ? `Probably ${kind}; suggested name: ${name}.` : `Probably ${kind}.`;
+  } catch {
+    return NO_GUESS;
+  }
+}
+
+function buildEvent(device, mac, guess = NO_GUESS) {
   return {
     component: 'network',
     metric: METRIC,
@@ -54,6 +75,7 @@ function buildEvent(device, mac) {
       ip: text(device.ip, 64),
       hostname: text(device.hostname) || 'no hostname',
       vendor: text(device.vendor) || 'unknown vendor',
+      guess,
       firstSeen: device.firstSeen ? new Date(device.firstSeen).toISOString() : null,
     },
   };
@@ -70,6 +92,16 @@ function createNetworkDeviceWatch(deps = {}) {
   const evaluateEvent = deps.evaluateEvent
     || ((event) => require('./alertService').evaluateEvent(event));
   const now = deps.now || (() => new Date());
+  // The guess is optional: any failure or a busy host leaves the plain alert.
+  const guessFor = deps.guessFor || (async (device) => {
+    const result = await require('./inferenceService').executeInference({
+      callerDetail: 'network-device-guess', taskType: 'ops_watch', stream: false, think: false,
+      system: GUESS_SYSTEM,
+      prompt: JSON.stringify({ vendor: text(device.vendor), hostname: text(device.hostname), ip: text(device.ip, 64) }),
+      options: { temperature: 0, num_predict: 80 }
+    }, { timeoutMs: GUESS_TIMEOUT_MS });
+    return result?.ok ? (result.body?.response || result.body?.message?.content || '') : '';
+  });
 
   async function check() {
     const byMac = new Map();
@@ -104,7 +136,8 @@ function createNetworkDeviceWatch(deps = {}) {
         { mac, settledAt: null }, { $set: { settledAt: now(), alerted: !known } }, { new: true });
       if (!claimed || known) continue;
       try {
-        await evaluateEvent(buildEvent(device, mac));
+        const guess = guessSentence(await guessFor(device).catch(() => ''));
+        await evaluateEvent(buildEvent(device, mac, guess));
       } catch (err) {
         // Release the claim so the next run raises it instead of losing it.
         await Watch.updateOne({ mac }, { $set: { settledAt: null, alerted: false } });
@@ -153,4 +186,4 @@ function createNetworkDeviceWatch(deps = {}) {
   return { check, tick, start, stop };
 }
 
-module.exports = { METRIC, createNetworkDeviceWatch, watchIntervalMs, normalizeMac, isKnown, buildEvent };
+module.exports = { METRIC, NO_GUESS, createNetworkDeviceWatch, watchIntervalMs, normalizeMac, isKnown, buildEvent, guessSentence };
