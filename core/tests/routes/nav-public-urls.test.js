@@ -236,6 +236,16 @@ describe('shared navigation public URL contract', () => {
     expect(html).not.toContain('host-home-link');
   });
 
+  test.each(['/', '/portal/', '/ecosystem', '/ECOSYSTEM/', '/ecosystem?from=portal#top', '/old/../portal'])(
+    'home omits a configured host return link to its own destination %s', async (url) => {
+      const html = await ejs.renderFile(portalPath, {
+        buildProductNavigation, publicUrls, hostHome: { url, label: 'Mon écosystème' }
+      });
+      expect(html).not.toContain('id="host-home-link"');
+      expect(html).toContain('aria-label="Choisir un espace"');
+    }
+  );
+
   test('home preserves optional host-home and normalized runtime launchers', async () => {
     const html = await ejs.renderFile(portalPath, {
       buildProductNavigation, publicUrls,
