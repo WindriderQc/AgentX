@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const personaCatalog = require('./persona-catalog');
+const { agentForPersona } = require('./persona-selection');
 const { createNestorClient } = require('./personal-continuity');
 const { createAgentClient } = require('./conversation-agent');
 const { browserSpeechFallback, configuredOpenClaw, conversationBackend, createConversationExecutor } = require('./conversation-executor');
@@ -153,7 +154,7 @@ function register(api) {
   }
   const { app, express, mongoose, standardJsonParser, runtimeServices, extensionRoot, logger } = api;
   const models = createModels(mongoose);
-  const conversations = runtimeServices.conversations.forSurface('household');
+  const conversations = require('./turn-attribution').attributedConversations(runtimeServices.conversations.forSurface('household'));
   const personalTasks = runtimeServices.tasks.personal;
   const familyTasks = runtimeServices.tasks.family;
   const ownerMemory = runtimeServices.memory.forAudience('owner');
@@ -296,16 +297,17 @@ function register(api) {
       }
       const requestedMode = pack.modes.find((entry) => entry.id === req.body?.modeId) || pack.modes[0];
       const backend = conversationBackend(req.body?.backend, conversationEnv);
-      const agentId = pack.childSafe ? 'family' : backend === 'openclaw' ? req.body?.agentId || 'main' : 'main';
-      if (backend === 'openclaw') await requireNativeAgent(agentId);
+
       const open = access === 'private' && (req.body?.inference?.open === true || requestedMode.id === 'open');
       const mode = requestedMode;
       let persona = null;
       if (runtimeServices.personas && (access === 'private' || req.body?.personaId)) {
         await ensureCatalog();
-        if (pack.childSafe && req.body?.personaId !== 'nestor') throw Object.assign(new Error('Family uses the Nestor personality'), { statusCode: 400 });
+        if (pack.childSafe) agentForPersona({ id: req.body?.personaId }, { family: true });
         persona = personaCatalog.snapshot(await runtimeServices.personas.resolve(pack.childSafe ? 'nestor' : req.body?.personaId || 'nestor', req.body?.personaVersion));
       } else if (req.body?.personaId) throw Object.assign(new Error('Shared persona catalog unavailable'), { statusCode: 503 });
+      const agentId = agentForPersona(persona, { agentId: req.body?.agentId, family: pack.childSafe });
+      if (backend === 'openclaw') await requireNativeAgent(agentId);
       const presentation = req.body?.voice?.presentation;
       if (presentation && !['masculine', 'feminine'].includes(presentation)) throw Object.assign(new Error('Invalid voice presentation'), { statusCode: 400 });
       const language = req.body?.language || 'auto';
@@ -323,7 +325,7 @@ function register(api) {
       return envelope(res, { session: publicSession(session), pack: packSummary(pack), mode: modeSummary(mode) }, 201);
     } catch (error) {
       logger?.error?.('Household session creation failed', { error: error.message });
-      return fail(res, error.statusCode || 500, error.message || 'Unable to create voice session', 'VOICE_PERSONA_SESSION_CREATE_FAILED');
+      return fail(res, error.statusCode || 500, error.message || 'Unable to create voice session', error.code || 'VOICE_PERSONA_SESSION_CREATE_FAILED');
     }
   };
   const createNativeFamilySession = async (req, res) => {
@@ -356,6 +358,8 @@ function register(api) {
       error.code || 'NESTOR_CONTINUITY_UNAVAILABLE'); }
   });
   const activePersonaTurns = new Map();
+  require('./session-persona').registerSessionPersonaRoutes(personas, { conversations, personas: runtimeServices.personas,
+    ensureCatalog, activePersonaTurns, envelope, fail });
   const openingPayload = (session, active = false) => {
     const opening = llmx.publicOpening(session?.llmx?.opening, active);
     const language = spokenReplyLanguage(opening?.replyText || '', session?.voice?.language === 'en' ? 'Hello' : 'Bonjour');

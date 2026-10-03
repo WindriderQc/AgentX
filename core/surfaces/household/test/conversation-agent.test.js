@@ -361,13 +361,16 @@ test('a gateway refusal to stream a rewritten answer still delivers the run\'s v
 test('a turn delegated to a sub-agent reports its tools, waits for the settled answer and names the agent', async () => {
   const deltas = [], activity = [];
   let reads = 0;
+  const deliveredBy = `announce:requester-settle:main:${sessionKeyFor(session)}:child:synthetic-yield`;
   const progress = [{ id: 'call-1', tool: 'agents_list' }, { id: 'call-2', tool: 'sessions_spawn', agentId: 'comptable' }];
   const client = createAgentClient({ env, settleMs: 0, delegateMs: 10000,
     continuity: async () => ({ run: { model: 'native' }, progress,
-      answer: ++reads < 3 ? { status: 'yielded', runId } : answer('Le comptable a répondu.') }),
+      answer: ++reads < 3 ? { status: 'yielded', runId } : { ...answer('Le comptable a répondu.'), deliveredBy } }),
     fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
   const result = await client({ session, text: 'Combien coûte le karaté ?', onDelta: text => deltas.push(text), onActivity: item => activity.push(item) });
   assert.equal(result.text, 'Le comptable a répondu.');
+  assert.equal(result.tools.deliveredBy, deliveredBy);
+  assert.deepEqual(result.tools.performedBy, [{ agentId: 'main', runId }, { agentId: 'main', runId: deliveredBy }]);
   assert.deepEqual(deltas, [result.text]);
   assert.deepEqual(activity, [{ kind: 'tool', tool: 'agents_list' }, { kind: 'tool', tool: 'sessions_spawn', agentId: 'comptable' },
     { kind: 'waiting_agent', agentId: 'comptable' }]);

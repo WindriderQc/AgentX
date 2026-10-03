@@ -325,6 +325,7 @@ function createPersonaTurnHandler({
         knowledgeCorpusFingerprint: knowledge.corpusFingerprint,
         personalContinuity: continuity.personal || null, toolEvidence,
         speakerAgentId: speaker?.agentId || '',
+        ...(speaker ? { speaker: { ...speaker, personaVersion: memberPersona?.version ?? null } } : {}),
         durationMs: Date.now() - startedAt
       }, { sessionPatch: isOpening ? {
         'llmx.opening.status': 'completed', 'llmx.opening.completedAt': new Date(),
@@ -339,7 +340,7 @@ function createPersonaTurnHandler({
       else if (session.teamExchange) await conversations.updateSession({ sessionId: session.sessionId }, { $unset: { teamExchange: '' } });
       const updated = await conversations.getSession({ sessionId: session.sessionId });
       const resultPayload = {
-        traceId,
+        traceId, speaker: audit.speaker,
         ...(isLlmX ? { origin: isOpening ? 'application_opening' : 'human', turnId: clientTurnId } : {}),
         ...(sceneProposal ? { sceneProposal } : {}), ...(display.length ? { display } : {}),
         session: publicSession(updated || session),
@@ -347,9 +348,8 @@ function createPersonaTurnHandler({
         mode: modeSummary(pack.modes.find((entry) => entry.id === session.modeId) || pack.modes[0]),
         // The surface reads this aloud, so it is told which voice to use rather
         // than re-deriving it from the question and disagreeing with the text.
-        reply: { text: req.body?.channel === 'voice' ? speechText(replyText) : replyText, language: spokenReplyLanguage(replyText, userText), speaker,
-          speech: speaker ? personaCatalog.speechFor(memberPersona || session.persona, spokenReplyLanguage(replyText, userText), {})
-            : personaCatalog.speechFor(session.persona, spokenReplyLanguage(replyText, userText), session.voice) },
+        reply: { text: req.body?.channel === 'voice' ? speechText(replyText) : replyText, language: spokenReplyLanguage(replyText, userText), speaker: audit.speaker,
+          speech: audit.replySpeech },
         // Present only when a clip was selected; the browser may offer playback
         // once speech finishes, but this response is not a playback receipt.
         sound: sound ? { ...sound, play: 'after-reply' } : null,

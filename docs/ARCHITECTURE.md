@@ -143,6 +143,20 @@ and application opening are written in one atomic document update, so native
 delivery retries cannot append the same event twice. A scene receipt updates the
 original assistant message.
 
+Each Household turn captures `speaker {agentId, personaId, personaVersion, name}`,
+`performedBy [{agentId, runId}]` and the requested synthesis `voice {provider,
+voice}`. Speaker identifies the personality presenting the reply; performedBy
+retains native execution and delivery run identities from continuity evidence,
+including `deliveredBy` for a requester-settle or background completion. A
+consulted agent name alone does not establish its run. Without native execution
+evidence, the turn records its session agent with a null run ID. Completed,
+deterministic and interrupted turns use the same Household write boundary before
+Core persists them. Public audits expose this captured attribution; the `done`
+payload exposes speaker both as `data.speaker` and `data.reply.speaker`.
+The recorded voice describes the server's requested synthesis, not a playback
+receipt. Earlier audits retain their captured identity and voice when session
+presentation or instance settings change.
+
 Surface records use a distinct internal user namespace and are not exposed by
 the default Playground history API. PsyX transcripts are namespaced away from
 ordinary chat.
@@ -279,7 +293,27 @@ finance (`/api/finance`, `/finance`) are in the demo exclusion list of
 
 - `core/surfaces/household`: the French home, Nestor, Family, Reader and
   animal-sound UI. Its HTTP and MCP handlers call Core capabilities and declare
-  no session, audit, task or profile models of their own. Its Super Dad and
+  no session, audit, task or profile models of their own. The server derives a
+  new session's agent from a personality's declared agent binding; a tone-only
+  personality overlays the selected agent. A conflicting explicit agent or a
+  later personality bound to another agent returns 400 with
+  `VOICE_PERSONA_AGENT_MISMATCH`. Presentation never widens tools, memory access
+  or permissions. Family keeps agent `family` with personality `nestor` or none,
+  including when Nestor's catalog binding names `main`.
+  `POST /api/voice-personas/private/sessions/:sessionId/persona` and the matching
+  `/api/voice-personas/family/sessions/:sessionId/persona` route accept
+  `{personaId, personaVersion?}` through the existing adult gateway access.
+  Omitted versions select the latest active personality; inactive exact versions
+  return 400 with `VOICE_PERSONA_INACTIVE`, and `personaId: null` clears the
+  overlay. A turn in progress returns 409 with `VOICE_TURN_IN_PROGRESS`.
+  Switches and turns share synchronous admission in the Core writer, so a turn
+  cannot start during resolution or snapshot replacement. The write updates
+  only the personality snapshot; later turns apply and record that snapshot.
+  `HOUSEHOLD_PERSONA_VOICES` applies when the snapshot is selected and is resolved
+  again for each server reply. Changing or removing an instance override affects
+  later speech; the frozen catalog voice supplies the default, and explicit
+  session voice choices take precedence.
+  Its Super Dad and
   Famille conversations dock Nestor's GraphysX voxel face (`avatar-dock.js`),
   driven only by observable conversation state: phase, microphone and speech
   level, token rate, tool calls and a busy inference host. A child's counting

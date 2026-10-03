@@ -38,6 +38,31 @@ const { ageInYears, instanceToday } = require('../../src/domains/household/famil
 const KNOWN_UNKNOWN = 'dis simplement ce que tu ne sais pas; ne devine jamais un âge exact';
 
 describe('built-in Household surface on Core', () => {
+  test('the server selects a bound personality’s agent and refuses conflicting choices without creating a session', async () => {
+    const base = '/api/voice-personas/private/sessions';
+    const create = body => request(app).post(base).send({ packId: 'personal_operator', backend: 'agentx', ...body });
+    const secretary = (await create({ personaId: 'secretary' }).expect(201)).body.data.session;
+    expect(secretary).toMatchObject({ agentId: 'secretary', persona: { id: 'secretary' }, scopeId: 'personal' });
+    const overlay = (await create({ personaId: 'jarvis', agentId: 'secretary' }).expect(201)).body.data.session;
+    expect(overlay).toMatchObject({ agentId: 'secretary', persona: { id: 'jarvis' } });
+    expect((await Conversation.findOne({ 'surfaceSession.sessionId': secretary.sessionId }).lean()).surfaceSession.persona.agentId).toBe('secretary');
+    const before = await Conversation.countDocuments({});
+    expect((await create({ personaId: 'secretary', agentId: 'main' }).expect(400)).body.code).toBe('VOICE_PERSONA_AGENT_MISMATCH');
+    expect(await Conversation.countDocuments({})).toBe(before);
+    await request(app).post(`${base}/${secretary.sessionId}/turns/text`).send({ text: 'Bonjour.' }).expect(200);
+    expect(executeForTest.mock.calls.at(-1)[0].messages.map(message => message.content).join(' ')).toContain('No native agent tools');
+    await request(app).post(`/api/voice-personas/family/sessions/${secretary.sessionId}/turns/text`).send({ text: 'Bonjour.' }).expect(403);
+  });
+
+  test('Family creation keeps its family isolation boundary even when Nestor declares main', async () => {
+    const base = '/api/voice-personas/family/sessions';
+    const create = body => request(app).post(base).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx', agentId: 'secretary', ...body });
+    expect((await create({ personaId: 'nestor' }).expect(201)).body.data.session).toMatchObject({ agentId: 'family', persona: { id: 'nestor' } });
+    expect((await create({}).expect(201)).body.data.session).toMatchObject({ agentId: 'family', persona: null });
+    for (const personaId of ['secretary', 'jarvis']) {
+      expect((await create({ personaId }).expect(400)).body.code).toBe('VOICE_PERSONA_FAMILY_PERSONA_REQUIRED');
+    }
+  });
   test('the panel stays ready when optional OpenClaw evidence is absent', async () => {
     const previousEvidence = app.locals.aioOpsRuntimeEvidence;
     const previousVoixUrl = process.env.VOIX_BASE_URL;
@@ -130,7 +155,7 @@ describe('built-in Household surface on Core', () => {
       const member = agentForTest.mock.calls.at(-1)[0];
       expect(member.session).toMatchObject({ agentId: 'secretary', agentSessionKey: `agent:secretary:household:direct:${id}` });
       expect(member.instructions).toContain('addressed you (Secretary) directly');
-      expect(direct.body.data.reply.speaker).toEqual({ agentId: 'secretary', name: 'Secretary', personaId: 'secretary' });
+      expect(direct.body.data.reply.speaker).toEqual({ agentId: 'secretary', name: 'Secretary', personaId: 'secretary', personaVersion: 0 });
       expect(direct.body.data.reply.speech).toMatchObject({ provider: 'kokoro', voice: 'ff_siwis' });
       const back = (await turn('Merci, et toi Nestor?'), agentForTest.mock.calls.at(-1)[0]);
       expect(back.session).toMatchObject({ agentId: 'main', agentSessionKey: `agent:main:household:direct:${id}` });
@@ -615,13 +640,20 @@ describe('built-in Household surface on Core', () => {
     const id = created.body.data.session.sessionId;
     const turn = await request(app).post(`${base}/private/sessions/${id}/turns/text`).send({ text: 'Synthetic private input' }).expect(200);
     expect(turn.body.data.reply.text).toBe('Synthetic response');
+    expect(turn.body.data.speaker).toMatchObject({ agentId: 'main', personaId: 'nestor', personaVersion: 1, name: 'Nestor · Majordome' });
+    expect(turn.body.data.reply.speaker).toEqual(turn.body.data.speaker);
     expect(turn.body.data.tools.status).toBe('not_supported');
     const canonical = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
     expect(canonical.messages.map(message => message.content)).toEqual(['Synthetic private input', 'Synthetic response']);
     expect(canonical.surfaceSession.turnCount).toBe(1);
+    expect(canonical.messages[1].turn.speaker).toEqual(turn.body.data.speaker);
+    expect(canonical.messages[1].turn.performedBy).toEqual([{ agentId: 'main', runId: null }]);
+    expect(canonical.messages[1].turn.voice).toEqual({ provider: turn.body.data.reply.speech.provider, voice: turn.body.data.reply.speech.voice });
     await request(app).get(`/api/history/${canonical._id}`).expect(404);
     const history = await request(app).get(`${base}/private/sessions/${id}/history`).expect(200);
     expect(history.body.data.policy.historyAuthority).toBe('agentx.core.conversations');
+    expect(history.body.data.turns[0]).toMatchObject({ speaker: turn.body.data.speaker,
+      performedBy: [{ agentId: 'main', runId: null }], voice: canonical.messages[1].turn.voice });
     expect(history.body.data.history).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'user', content: 'Synthetic private input' }),
       expect.objectContaining({ role: 'assistant', content: 'Synthetic response' })

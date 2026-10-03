@@ -1,5 +1,6 @@
 'use strict';
 const { conversationInput, browserReplyTool, sceneReply } = require('./llmx-conversation');
+const { nativePerformedBy } = require('./native-attribution');
 
 const agentIdFor = session => ['kidx_nestor', 'kidx_reader'].includes(session.packId) ? 'family' : session.agentId || 'main';
 const sessionKeyFor = session => `agent:${agentIdFor(session)}:household:direct:${session.sessionId}`;
@@ -226,7 +227,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
       onDelta(answer);
       return { text: answer, sessionKey, runId,
         tools: { status: evidence?.run ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId,
-          receipts: evidence?.receipts || [], run: evidence?.run || null, ...(browserCall ? { browserReply: browserCall } : {}) },
+          receipts: evidence?.receipts || [], run: evidence?.run || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId),
+          ...(evidence?.answer?.deliveredBy ? { deliveredBy: evidence.answer.deliveredBy } : {}), ...(browserCall ? { browserReply: browserCall } : {}) },
         metadata: { model: evidence?.run?.model || '', provider: evidence?.run?.provider || '',
           routingSource: `openclaw/${agentIdFor(session)}`, runId } };
     } finally {
@@ -248,7 +250,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
           if (!settled && !generating && signal?.aborted) settled = true;
           if (!settled) throw new Error('L’arrêt de Nestor n’est pas encore confirmé. La conversation est en pause.');
           if (signal?.aborted) return { text: answer, sessionKey, runId, interrupted: true,
-            tools: { status: evidence?.run ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId, receipts: evidence?.receipts || [], run: evidence?.run || null },
+            tools: { status: evidence?.run ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId, receipts: evidence?.receipts || [], run: evidence?.run || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId) },
             metadata: { model: evidence?.run?.model || '', provider: evidence?.run?.provider || '', routingSource: `openclaw/${agentIdFor(session)}`, runId } };
         }
       } finally {
