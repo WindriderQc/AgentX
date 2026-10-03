@@ -35,6 +35,7 @@ const pinReconciler = require('./pinReconciler');
 const hostPreferenceIdentity = require('./hostPreferenceIdentity');
 const { normalizePinUpdate, getPinStatus, setPinnedModel, clearPinnedModel,
   addPinnedModel, updatePinnedModel, removePinnedModel } = require('./hostPinService');
+const { invalidateRoutingSnapshots } = require('./routing/routingSnapshotCache');
 const { runHostModelOperation } = require('./inferenceAdmissionService');
 const {
   pinRestoreVerifyTimeoutMs,
@@ -89,15 +90,20 @@ async function getByHost(hostUrl) {
 async function updatePreference(hostUrl, updates) {
   const current = await getByHost(hostUrl);
   const normalizedUpdates = hostPreferenceIdentity.normalizeHostPreferenceUpdates(hostUrl, normalizePinUpdate(current, updates));
-  return HostPreference.findOneAndUpdate(
+  const updated = await HostPreference.findOneAndUpdate(
     { hostUrl },
     { $set: { hostUrl, ...normalizedUpdates } },
     { new: true, upsert: true, runValidators: true }
   ).lean();
+  // The effective routing snapshot carries host preferences and pins (#258).
+  invalidateRoutingSnapshots();
+  return updated;
 }
 
 async function deletePreference(hostUrl) {
-  return HostPreference.deleteOne({ hostUrl });
+  const deleted = await HostPreference.deleteOne({ hostUrl });
+  invalidateRoutingSnapshots();
+  return deleted;
 }
 
 // ── Pin / loaded-model helpers ─────────────────────────────

@@ -77,6 +77,12 @@ async function readRegistry(model, deps = {}) {
 async function resolveArtifactIdentity(model, host, deps = {}) {
   const exactModel = normalizeModelTag(model);
   const hostUrl = normalizeHostUrl(host);
+  // A caller-owned memo (the routing snapshot cache, #258) answers its repeated
+  // reads of one exact model on one host from a single resolution.
+  if (typeof deps.identityMemo === 'function') {
+    const { identityMemo, ...rest } = deps;
+    return identityMemo(`${hostUrl}::${exactModel}`, () => resolveArtifactIdentity(model, host, rest));
+  }
   const [digest, hostProfile, registry] = await Promise.all([
     readLiveDigest(exactModel, hostUrl, deps),
     readHostProfile(hostUrl, deps),

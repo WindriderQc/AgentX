@@ -55,15 +55,22 @@ function throwIfAborted(signal) {
 }
 
 async function resolveTaskEvidence(deps, resolved, options) {
-  const { signal } = options;
+  const { signal, identityMemo } = options;
   const contractInput = { model: resolved.model, host: resolved.hostUrl };
   const contractOptions = {
     ...(options.includeArtifactIdentity === true && { includeArtifactIdentity: true }),
-    ...(signal && { signal })
+    ...(signal && { signal }),
+    ...(identityMemo && { identityMemo })
+  };
+  // The snapshot cache's memo resolves one exact artifact identity per model
+  // and host for every task and for both reads below (#258).
+  const contextOptions = {
+    ...(signal && { signal }),
+    ...(identityMemo && { deps: { identityMemo } })
   };
   const [contextInfo, inferenceContract] = await Promise.all([
-    signal
-      ? deps.getContextInfo(resolved.model, resolved.hostUrl, { signal })
+    Object.keys(contextOptions).length
+      ? deps.getContextInfo(resolved.model, resolved.hostUrl, contextOptions)
       : deps.getContextInfo(resolved.model, resolved.hostUrl),
     Object.keys(contractOptions).length
       ? deps.resolveInferenceContract(contractInput, contractOptions)
