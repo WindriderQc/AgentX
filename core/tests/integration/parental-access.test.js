@@ -30,7 +30,7 @@ describe('parental access at the single household gateway', () => {
     // The docked avatar is shared with the family page; unconfigured here, so past the gate it is a 404.
     expect((await edge(request(app).get('/api/household/avatar/llmx-face.js')).expect(404)).body.code).toBe('AVATAR_NOT_CONFIGURED');
     // The family conversation loads Core's shared voice loop and its capture worklet; other Core scripts stay closed.
-    for (const name of ['speech-language', 'playback-hold', 'browser-conversation', 'voice-capture-worklet']) {
+    for (const name of ['speech-language', 'playback-hold', 'browser-conversation', 'speech-ladder', 'voice-capture-worklet']) {
       await edge(request(app).get(`/js/voice/${name}.js`)).expect(200).expect('Content-Type', /javascript/);
     }
     await edge(request(app).get('/js/home.js')).expect(302);

@@ -239,6 +239,17 @@ signal as soon as the spoken text is complete (`onSayEnd`), ahead of the turn's
 closing work; the completed turn remains the fallback. PsyX speaks a reply only
 once its turn is confirmed, so it has nothing to flush early.
 
+A voice can fail at two moments. Before its stream starts, the synthesis proxy
+refuses it and the surface's ladder (`speech-ladder.js`) steps to its next
+voice. After an accepted stream has started, the failure reaches playback: the
+loop then asks the surface for that one clause again, naming the speech that
+failed, at most once per turn and never after an interruption. The ladder
+restarts below the voice that failed and that voice is left for the rest of the
+turn; a clause prepared ahead with it is prepared again before it is heard.
+Household's ladder is the chosen voice, the personality's voice, its catalog
+voice, then the device's own voice. PsyX has one chosen voice and no device
+voice: its retry is the same request on its protected route.
+
 The shared speech boundary removes code fences, images, links, table markup,
 HTML and presentation symbols from spoken text while preserving prose and
 emergency phone numbers. The browser, synthesis proxies and native voice reply

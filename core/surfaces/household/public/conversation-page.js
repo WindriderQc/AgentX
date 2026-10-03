@@ -331,30 +331,29 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const noteUpstream = state => { const active = typeof state === 'string' ? state : state?.active; if (active) { voixUpstream = active; renderVoiceNotice(); } };
   const refreshUpstream = () => api('/api/voix/upstream').then(noteUpstream, () => {});
   refreshUpstream();
-  async function synthesize(text, lang, persona, voicePrefs, signal, source = 'Conversation') {
-    // Fallback ladder: chosen voice, persona voice, catalog voice, then the browser's own voice.
-    let response, speech;
-    for (const [index, choice] of P.speechChoices(persona, lang, voicePrefs).entries()) {
-      try {
-        response = await fetch('/api/voix/synthesize/stream', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, language: lang, voice: choice.voice, tts_provider: choice.provider }) });
-      } catch (error) { if (signal.aborted) throw error; response = null; break; }
+  // Fallback ladder: chosen voice, persona voice, catalog voice, then the browser's own voice.
+  const voiceLadder = AgentXSpeechLadder.createSpeechLadder({
+    async request({ text, language: lang, choice }, signal) {
+      const response = await fetch('/api/voix/synthesize/stream', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, language: lang, voice: choice.voice, tts_provider: choice.provider }) });
       noteUpstream(response.headers.get('X-Voix-Upstream'));
-      if (response.ok) { speech = choice; voiceNotice(index ? 'Voix choisie indisponible : voix de secours.' : ''); break; }
-    }
-    if (!response?.ok) {
-      if (!signal.aborted && 'speechSynthesis' in window) {
-        voiceNotice('Voix du serveur indisponible : voix de ce navigateur.');
-        return { browserSpeech: { text, language: lang } };
-      }
-      throw new Error('La voix est indisponible pour le moment. Ta conversation continue par écrit.');
-    }
+      return response;
+    },
+    deviceVoice: () => 'speechSynthesis' in window,
+    unavailable: 'La voix est indisponible pour le moment. Ta conversation continue par écrit.' });
+  // `after` is speech that failed while it played: the clause restarts on the voice below it.
+  async function synthesize(text, lang, persona, voicePrefs, signal, source = 'Conversation', after = null) {
+    const choices = P.speechChoices(persona, lang, voicePrefs);
+    const response = await voiceLadder.speak({ text, language: lang, choices, after }, signal);
+    const rung = voiceLadder.rungOf(response);
+    voiceNotice(response.browserSpeech ? 'Voix du serveur indisponible : voix de ce navigateur.' : rung ? 'Voix choisie indisponible : voix de secours.' : '');
+    if (response.browserSpeech) return response;
     if (!signal.aborted) {
       const acknowledged = decodeURIComponent(response.headers.get('X-Voix-Voice') || '');
       const actualLanguage = response.headers.get('X-Nestor-Speech-Language');
       const receipt = el('conversationSpeechReceipt'); receipt.hidden = false;
       receipt.textContent = source + ' synthesis · ' + persona.name + ' · '
-        + (actualLanguage || lang) + ' · ' + (acknowledged || speech.voice)
+        + (actualLanguage || lang) + ' · ' + (acknowledged || choices[rung].voice)
         + (acknowledged ? ' (voice acknowledged by the speech proxy)' : ' (requested voice; no proxy receipt)');
     }
     return response;
@@ -416,7 +415,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       // A member who answers directly speaks with its own personality's voice, not the session's choices.
       const member = turnSpeaker && personas.find(p => p.id === turnSpeaker.personaId);
       const persona = member || conversation.session?.persona || selected();
-      return synthesize(reply.text, lang, persona, member ? {} : conversation.session?.voice || {}, signal);
+      return synthesize(reply.text, lang, persona, member ? {} : conversation.session?.voice || {}, signal, 'Conversation', reply.after);
     },
     // The household speaks French unless English was chosen; the browser's own
     // locale greeted a French family in English. The line

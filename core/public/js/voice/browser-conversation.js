@@ -97,6 +97,11 @@
     return phrases[index % phrases.length];
   }
 
+  // An accepted speech stream that will not be played is closed, not left open.
+  function discardSpeech(speech) {
+    try { speech?.body?.cancel?.().catch(() => {}); } catch { /* already consumed */ }
+  }
+
   function isSpokenEcho(text, spoken) {
     const words = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
       .match(/[a-z0-9]+/g) || [];
@@ -517,23 +522,48 @@
         turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
         const language = spokenLanguage;
         const previousPlayback = playback, availableSlot = prefetchSlot;
+        // A voice whose accepted stream failed while it played is left for the
+        // rest of the turn: `after` asks the surface for the one that follows it.
+        let preparedAfter = null;
+        const synthesize = () => {
+          preparedAfter = turn.voiceFailure || null;
+          return this.io.synthesize({ text, language, ...(preparedAfter && { after: preparedAfter.speech }) }, turn.speech.signal);
+        };
         // Serialize synthesis, at most one clause ahead of the current sound.
         // A third clause waits for the first playback to finish, bounding audio.
         const prepared = synthesis.then(() => availableSlot).then(() => {
           if (!this.owns(turn) || speechError) return;
-          return this.io.synthesize({ text, language }, turn.speech.signal);
+          return synthesize();
         }).catch(error => { if (!turn.interrupted) speechError = error; });
         synthesis = prepared;
         playback = previousPlayback.then(async () => {
           await this.awaitCandidate(turn);
           if (!this.owns(turn) || speechError) return;
           this.show('preparing');
-          const bytes = await prepared;
+          let bytes = await prepared;
           await this.awaitCandidate(turn);
           if (!this.owns(turn) || speechError) return;
+          // Prepared with the voice that has since failed: prepare it again, unheard.
+          if (turn.voiceFailure && preparedAfter !== turn.voiceFailure) {
+            discardSpeech(bytes); bytes = await synthesize();
+            await this.awaitCandidate(turn);
+            if (!this.owns(turn)) return;
+          }
           this.monitor(turn);
           this.show('speaking');
-          await this.audio.play(bytes, turn.speech.signal);
+          try { await this.audio.play(bytes, turn.speech.signal); }
+          catch (error) {
+            // An accepted stream can still fail while it plays (its engine stopped).
+            // Say that one clause again with the next voice; never twice in a turn.
+            if (turn.voiceFailure || turn.speech.signal.aborted || !this.owns(turn)) throw error;
+            turn.voiceFailure = { speech: bytes };
+            this.show('preparing');
+            bytes = await synthesize();
+            await this.awaitCandidate(turn);
+            if (!this.owns(turn)) return;
+            this.show('speaking');
+            await this.audio.play(bytes, turn.speech.signal);
+          }
         }).catch(error => { if (!turn.interrupted) speechError = error; });
         prefetchSlot = previousPlayback;
         return true;
