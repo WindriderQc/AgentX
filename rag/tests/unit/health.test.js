@@ -84,6 +84,14 @@ describe('GET /public/js/utils/polling-controller.js', () => {
     expect(res.text).toContain('class PollingController');
   });
 
+  it.each(['/css/product-shell.css', '/css/shortcuts-modal.css', '/js/product-navigation.js'])(
+    'serves shared navigation resource %s', async (asset) => {
+      const response = await api.get(asset).expect(200);
+      expect(response.headers['content-type']).toMatch(asset.endsWith('.css') ? /css/ : /javascript/);
+      expect(response.text.length).toBeGreaterThan(100);
+    }
+  );
+
   it('does not expose unrelated Core public pages', async () => {
     await api.get('/portal/index.html').expect(404);
     await api.get('/host-agent/agent.js').expect(404);
@@ -110,10 +118,12 @@ describe('demo navigation', () => {
     const res = await api.get('/');
     expect(res.status).toBe(200);
     expect(res.text).toContain('data-agentx-profile="demo"');
-    expect(res.text).toContain('Operate');
-    expect(res.text).toContain('Knowledge');
-    expect(res.text).toContain('Evaluation');
-    expect(res.text).toContain('http://localhost:3080/portal/');
+    expect(res.text).toContain('Atelier');
+    expect(res.text).toContain('Ask your knowledge');
+    expect(res.text).toContain('Compare models');
+    expect(res.text).toContain('href="http://localhost:3080/" class="nav-brand"');
+    expect(res.text).not.toContain('Personnel');
+    expect(res.text).not.toContain('Famille');
     expect(res.text).not.toContain('Nerve Center');
     expect(res.text).not.toContain('OpenClaw');
   });

@@ -251,6 +251,7 @@ app.use(responseEnvelopeCompatibility);
 // the origin guard, body parsers, sanitizer and profile guard but before built-in
 // routes so an extension can protect Core-owned paths without bypassing them.
 const runtimeServices = createTrustedRuntimeServices();
+require('./ui/productShell').registerProductHome(app);
 if (!isDemoProfile(agentxProfile)) {
   require('../surfaces/household').register({
     contractVersion: 2,
@@ -540,20 +541,6 @@ app.get('/api/portal/health', async (_req, res) => {
 // ============================================
 // EJS PAGE ROUTES
 // ============================================
-// One Product home. Trusted extensions may own the deployment's root page.
-function renderProductHome(_req, res) {
-  res.render('layouts/main', {
-    pageView: '../pages/home',
-    title: 'Agent X · Home',
-    service: 'core',
-    activePage: 'portal',
-    showNav: false,
-    headCss: '<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/home.css">',
-    footerJs: '<script src="/js/home.js" defer></script>'
-  });
-}
-app.get('/', renderProductHome);
-app.get('/portal', renderProductHome);
 app.get('/playground', (req, res) => {
   const demo = isDemoProfile(agentxProfile);
   res.render('layouts/main', {

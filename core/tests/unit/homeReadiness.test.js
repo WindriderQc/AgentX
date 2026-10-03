@@ -2,10 +2,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/home.js'), 'utf8');
-async function renderStatus(health, routing, offline = false) {
+async function renderStatus(health, routing, offline = false, lockDuringRead = false) {
  const nodes = {};
- function element() { return {dataset:{},textContent:'',children:[],className:'',addEventListener(){},querySelector(){return element()},replaceChildren(){this.children=[]},appendChild(n){this.children.push(n)},get childElementCount(){return this.children.length}}; }
- const context = {document:{getElementById(id){return nodes[id] ||= element()},querySelectorAll(){return []},createElement:element},AbortController,Date,setTimeout,clearTimeout,setInterval(){},fetch:async url=>{if(offline)throw Error('offline');return {ok:true,json:async()=>url.includes('routing')?routing:health}}};
+ const pageState = { dataset: {} };
+ function element() { return {open:true,dataset:{},textContent:'',children:[],className:'',addEventListener(){},querySelector(){return element()},replaceChildren(){this.children=[]},appendChild(n){this.children.push(n)},get childElementCount(){return this.children.length}}; }
+ const context = {document:{documentElement:pageState,getElementById(id){return nodes[id] ||= element()},querySelectorAll(){return []},createElement:element},AbortController,Date,setTimeout,clearTimeout,setInterval(){},fetch:async url=>{if(offline)throw Error('offline');return {ok:true,json:async()=>{if(lockDuringRead)pageState.dataset.agentxAccess='locked';return url.includes('routing')?routing:health}}}};
  vm.runInNewContext(source,context);
  for(let i=0;i<12;i++)await Promise.resolve();
  return nodes;
@@ -23,4 +24,11 @@ test('home exposes mismatch and connection failures without disabling navigation
  const offline=await renderStatus(healthy,routing,true);
  expect(offline.homeReadinessLabel.textContent).toBe('Status not observed');
  expect(offline.homeStatusRefresh.disabled).toBe(false);
+});
+
+test('a health response arriving after parental lock cannot repopulate the landing', async () => {
+ const locked = await renderStatus({...healthy,consistency:{status:'degraded',issues:['Private deployment detail']}}, routing, false, true);
+ expect(locked.homeServiceDetails.children).toHaveLength(0);
+ expect(locked.homeConsistency.textContent).toBe('');
+ expect(locked.homeReadinessLabel.textContent).not.toBe('Ready to chat');
 });
