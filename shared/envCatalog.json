@@ -2724,11 +2724,11 @@
       "services": [
         "core"
       ],
-      "forwarded": false,
+      "forwarded": true,
       "default": null,
       "category": "security",
       "secret": true,
-      "description": "Token required for roundtable chair actions."
+      "description": "Token required for roundtable chair actions and to convene runtime participants (Codex or OpenClaw agents). Keep it in the instance secrets."
     },
     "ROUNDTABLE_JUDGE_MODEL": {
       "services": [
@@ -2754,11 +2754,11 @@
       "services": [
         "core"
       ],
-      "forwarded": false,
+      "forwarded": true,
       "default": null,
       "category": "bridges",
       "secret": false,
-      "description": "Enables external runtime participants in the roundtable. Unset: off."
+      "description": "Enables runtime participants in the roundtable: the Codex bridge and OpenClaw agents seated through the gateway (OPENCLAW_GATEWAY_URL/TOKEN). Unset: off."
     },
     "ROUTE_RESOLVER_SHADOW": {
       "services": [

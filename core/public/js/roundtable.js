@@ -40,10 +40,18 @@
   let currentPanel = [];
   let currentSynth = { model: '', systemPrompt: '' };
   let currentModelReadiness = null;
+  let openclawAgents = [];
+  // The household team seated at the table: Nestor first, then each OpenClaw agent as itself.
+  function teamPanel() {
+    return openclawAgents.map((agent) => ({
+      agentId: agent.id, role: agent.id === 'main' ? 'Nestor' : agent.name, runtime: 'openclaw', model: 'runtime-managed',
+      systemPrompt: '', enableWebSearch: false
+    }));
+  }
 
   function renderAgentCard(agent, index) {
     const runtime = agent.runtime || 'model';
-    const runtimeOptions = ['model', 'codex']
+    const runtimeOptions = ['model', 'codex', 'openclaw']
       .map((value) => `<option value="${value}" ${runtime === value ? 'selected' : ''}>${value}</option>`)
       .join('');
     return `
@@ -55,7 +63,7 @@
         </div>
         <div class="rt-agent-edit-row">
           <div><label class="rt-label">Runtime</label><select class="rt-input" data-field="runtime">${runtimeOptions}</select></div>
-          <div><label class="rt-label">Model</label><input type="text" class="rt-input" data-field="model" list="councilModelOptions" autocomplete="off" value="${escape(agent.model || '')}" placeholder="required for model runtime"></div>
+          <div><label class="rt-label">Model</label><input type="text" class="rt-input" data-field="model" list="councilModelOptions" autocomplete="off" value="${escape(agent.model || '')}" placeholder="required for model runtime; openclaw: the agent's own"></div>
         </div>
         <div class="rt-agent-edit-row">
           <div><label class="rt-label">Session key / ID</label><input type="text" class="rt-input" data-runtime-field="sessionKey" value="${escape(agent.runtimeConfig?.sessionKey || agent.runtimeConfig?.sessionId || '')}" placeholder="optional dedicated runtime session"></div>
@@ -137,6 +145,8 @@
     try {
       const { data } = await jsonFetch('/api/roundtable/defaults');
       currentModelReadiness = data.readiness || { canStart: false };
+      openclawAgents = Array.isArray(data.openclawAgents) ? data.openclawAgents : [];
+      $('formTeamPanel').hidden = !openclawAgents.length;
       $('councilModelOptions').innerHTML = (data.models || [])
         .map((model) => `<option value="${escape(model)}"></option>`)
         .join('');
@@ -665,6 +675,11 @@
     $('formAgents').addEventListener('input', updateStartReadiness);
     $('formSynthModel').addEventListener('input', updateStartReadiness);
     $('formResetBtn').addEventListener('click', () => loadDefaults(true));
+    $('formTeamPanel').addEventListener('click', () => {
+      currentPanel = teamPanel();
+      renderPanel();
+      showToast('Team seated: each agent answers as itself; a chair token is required to convene.', 'info');
+    });
     $('formAddAgent').addEventListener('click', () => {
       currentPanel = readPanelFromDOM();
       currentPanel.push({
