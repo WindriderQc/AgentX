@@ -827,6 +827,9 @@ under their existing authority. Disabling context shifting can reload an
 already resident runner, so qualify startup latency on the instance. A direct
 lane does not opt out. Benchmark/Profiler probes require an exact Core workload
 reservation to retain their boundary-testing behavior.
+Resident pin warmups, session warmups, model starts, pin speed checks and
+watchdog probes/restores carry the same refusal flags. This keeps periodic
+maintenance from reloading the runner merely to re-enable context shifting.
 
 Every Ollama endpoint Core may use is a host. `OLLAMA_HOST` (and the optional
 `OLLAMA_HOST_2`, `OLLAMA_HOST_3`) bootstrap the first hosts under the keys

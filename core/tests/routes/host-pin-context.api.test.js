@@ -79,6 +79,9 @@ describe('POST pin/context applies an operator-confirmed context proposal', () =
     // Baseline at the current pin, then the new allocation; never a reload size.
     const sentContexts = global.fetch.mock.calls.map(([, init]) => JSON.parse(init.body).options.num_ctx);
     expect(sentContexts).toEqual([65536, 65536, 98304, 98304]);
+    for (const [, init] of global.fetch.mock.calls) {
+      expect(JSON.parse(init.body)).toMatchObject({ truncate: false, shift: false });
+    }
     expect(service.updatePreference).not.toHaveBeenCalled();
     expect(coordination.release).toHaveBeenCalledTimes(1);
   });

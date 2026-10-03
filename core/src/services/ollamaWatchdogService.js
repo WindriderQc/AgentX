@@ -33,6 +33,7 @@ const { runRuntimeMutation } = require('./runtimeMutationLeaseService');
 const { beginInferenceAdmission } = require('./inferenceAdmissionService');
 const runtimeCoordination = require('./runtimeCoordinationService');
 const { collectRecoveryRequired } = require('./watchdogProbeRecovery'), { isSpillOnlyRestore } = require('./hostPinPrimitives');
+const { probePayload, restorePayload } = require('./watchdogRuntimePayload');
 
 let _fetch = nodeFetch;
 let _outboundExecutor = null;
@@ -283,14 +284,7 @@ async function probeHost(host, model = null, executor = getWatchdogExecutor(), c
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: probeModel,
-          prompt: 'ok',
-          stream: false,
-          think: false,
-          keep_alive: -1,
-          options: runtimeOptions
-        }),
+        body: JSON.stringify(probePayload(probeModel, runtimeOptions)),
         signal: admission.signal
       },
       executor
@@ -456,12 +450,7 @@ async function reloadModel(host, model, executor = getWatchdogExecutor()) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model,
-            prompt: 'warmup',
-            stream: false,
-            options: { num_predict: 1 }
-          }),
+          body: JSON.stringify(restorePayload(model)),
           signal
         },
         executor

@@ -26,6 +26,10 @@ function isControlledProbe(options) {
     && Boolean(options.workloadAdmissionId && options.workloadGeneration);
 }
 
+function withContextRefusal(payload, mode) {
+  return mode === 'embed' ? { ...payload, truncate: false } : { ...payload, truncate: false, shift: false };
+}
+
 async function protectContext(options, dependencies = {}) {
   const { hostUrl, payload, mode, signal, principal, admissionKind } = options;
   if (isControlledProbe(options)
@@ -39,7 +43,7 @@ async function protectContext(options, dependencies = {}) {
       code: 'INFERENCE_CONTEXT_POLICY_UNAVAILABLE', statusCode: 503,
     });
   }
-  return mode === 'embed' ? { ...payload, truncate: false } : { ...payload, truncate: false, shift: false };
+  return withContextRefusal(payload, mode);
 }
 
-module.exports = { protectContext, supportsRefusal };
+module.exports = { protectContext, supportsRefusal, withContextRefusal };
