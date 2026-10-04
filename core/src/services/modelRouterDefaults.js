@@ -136,13 +136,14 @@ const DIRECT_INVOKE_TASKS = {
     voice_persona_reader: { model: VOICE_PERSONA_READER_MODEL, host: VOICE_PERSONA_READER_HOST },
     janitor_ai: { model: UTILITY_MODEL, host: UTILITY_HOST },
     ops_watch: { model: envModel('AGENTX_OPS_WATCH_MODEL', UTILITY_MODEL), host: envHost('AGENTX_OPS_WATCH_HOST', UTILITY_HOST) },
+    mail_review: { model: ANALYSIS_MODEL, host: ANALYSIS_HOST },
     embeddings: { model: EMBEDDING_TASK_MODEL, host: EMBEDDING_TASK_HOST }
 };
 
 const DEFAULT_TASK_MODELS = { ...CLASSIFIABLE_TASKS, ...DIRECT_INVOKE_TASKS };
 const CLASSIFICATION_MODEL = envModel('AGENTX_CLASSIFIER_MODEL', LIGHTWEIGHT_MODEL);
 const CLASSIFICATION_HOST = envHost('AGENTX_CLASSIFIER_HOST', LIGHTWEIGHT_HOST);
-const STRICT_CONFIGURED_HOST_TASKS = new Set(['quick_chat', 'buddy_reaction', 'nestor_answer_light', 'ops_watch']);
+const STRICT_CONFIGURED_HOST_TASKS = new Set(['quick_chat', 'buddy_reaction', 'nestor_answer_light', 'ops_watch', 'mail_review']);
 
 // A task may follow its model to another host only when that host has the
 // same residency: a CPU-routed task never moves to a GPU host (the model would

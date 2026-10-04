@@ -119,6 +119,13 @@ describe('a task keeps to hosts of its residency', () => {
     expect(defaults.DEFAULT_TASK_MODELS.ops_watch).toEqual(expect.objectContaining({ model: expect.any(String) }));
     expect(defaults.STRICT_CONFIGURED_HOST_TASKS.has('ops_watch')).toBe(true);
   });
+
+  test('the mail review task starts on the analysis model and stays on its configured host', () => {
+    const defaults = require('../../src/services/modelRouterDefaults');
+    expect(defaults.DEFAULT_TASK_MODELS.mail_review).toEqual(defaults.DEFAULT_TASK_MODELS.analysis);
+    expect(defaults.STRICT_CONFIGURED_HOST_TASKS.has('mail_review')).toBe(true);
+    expect(require('../../src/services/modelRouterTaskMetadata').TASK_TYPE_METADATA.mail_review.title).toBe('Mail Review');
+  });
 });
 
 describe('latency alerts on a CPU host', () => {
