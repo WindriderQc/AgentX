@@ -25,7 +25,7 @@ describe('Nerve Center individual pin controls', () => {
   const primary = { model: 'gemma:latest', keepAlive: 300, contextSize: 32768, autoRestore: false };
   const embedding = { model: 'qllama/bge-m3:f16', keepAlive: -1, contextSize: 0, autoRestore: true };
 
-  async function controlHarness(selector, { model, value, checked, removing = false, ollamaConcurrency = null } = {}) {
+  async function controlHarness(selector, { model, value, checked, removing = false, ollamaConcurrency = null, gpuRows = [] } = {}) {
     const body = { innerHTML: '' };
     const listeners = {};
     const control = {
@@ -38,7 +38,7 @@ describe('Nerve Center individual pin controls', () => {
         models: [], runningModels: [] }] } },
       '/api/nerve-center/host-preferences': { data: [{ hostUrl, pinnedModels: [primary, embedding],
         maxConcurrentModels: 2, ollamaConcurrency, status: 'ready', live: { runningModels: [{ name: embedding.model }, { name: primary.model }] } }] },
-      '/api/nerve-center/inference/gpu-status': { data: [] }
+      '/api/nerve-center/inference/gpu-status': { data: gpuRows }
     };
     const fetchJson = jest.fn(async (url, options) => options ? { status: 'success' } : responses[url]);
     const window = { NerveCenterShared: {
@@ -93,6 +93,50 @@ describe('Nerve Center individual pin controls', () => {
     const { body } = await controlHarness('unused', { ollamaConcurrency });
     expect(body.innerHTML).toContain('Parallel requests per model</span> · <strong>Unknown');
     expect(body.innerHTML).not.toContain('Last observed:');
+  });
+
+  describe('Ollama server settings read by the GPU collector', () => {
+    const observedAt = () => new Date(Date.now() - 3 * 60000).toISOString();
+    const settingsRow = environment => [{ hostId: 'primary', telemetry: { status: 'fresh', ageMs: 4000 }, gpus: [],
+      ollamaEnvironment: { source: 'systemd', unit: 'ollama.service', observedAt: observedAt(), ...environment } }];
+
+    it('shows the observed settings, Ollama defaults for unset keys and their source', async () => {
+      const { body } = await controlHarness('unused', { gpuRows: settingsRow({
+        ok: true, values: { OLLAMA_KV_CACHE_TYPE: 'q8_0', OLLAMA_NUM_PARALLEL: '1', CUDA_VISIBLE_DEVICES: '0,1' },
+        rejectedKeys: [], activeSince: 'Sat 2026-10-03 21:14:02 EDT', needDaemonReload: true, environmentFiles: false
+      }) });
+      expect(body.innerHTML).toContain('Ollama server settings');
+      expect(body.innerHTML).toContain('KV cache</span> <strong>q8_0');
+      expect(body.innerHTML).toContain('Flash attention</span> <strong>Ollama default');
+      expect(body.innerHTML).toContain('Visible GPUs</span> <strong>0,1');
+      expect(body.innerHTML).toContain('Read by the GPU collector from the systemd unit ollama.service · 3 min ago');
+      expect(body.innerHTML).toContain('systemd has not reloaded it');
+      // Without a recorded observation, the parallel-request line uses the collector's reading.
+      expect(body.innerHTML).toContain('Parallel requests per model</span> · <strong>1 configured');
+      expect(body.innerHTML).not.toContain('Parallel requests</span> <strong>');
+    });
+
+    it('keeps a recorded parallel-request observation and still shows the collector reading', async () => {
+      const { body } = await controlHarness('unused', {
+        ollamaConcurrency: { numParallel: 4, observedAt: new Date(Date.now() - 86400000).toISOString(), source: 'startup-log' },
+        gpuRows: settingsRow({ ok: true, values: { OLLAMA_NUM_PARALLEL: '1' }, rejectedKeys: [] })
+      });
+      expect(body.innerHTML).toContain('Parallel requests per model</span> · <strong>4 configured');
+      expect(body.innerHTML).toContain('Parallel requests</span> <strong>1');
+    });
+
+    it('states a failed read instead of showing defaults', async () => {
+      const { body } = await controlHarness('unused', { gpuRows: settingsRow({ ok: false, error: 'Permission denied (publickey).' }) });
+      expect(body.innerHTML).toContain('Ollama server settings</span> · <strong>not read');
+      expect(body.innerHTML).toContain('Permission denied (publickey).');
+      expect(body.innerHTML).not.toContain('KV cache');
+      expect(body.innerHTML).toContain('Parallel requests per model</span> · <strong>Unknown');
+    });
+
+    it('shows nothing when the collector does not read the service', async () => {
+      const { body } = await controlHarness('unused', { gpuRows: [{ hostId: 'primary', telemetry: { status: 'fresh' }, gpus: [] }] });
+      expect(body.innerHTML).not.toContain('Ollama server settings');
+    });
   });
 
   it('changes embedding keep-alive without overwriting the conversation pin', async () => {

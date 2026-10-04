@@ -411,7 +411,10 @@ observation's error.
 
 Core's Nerve Center reads `/api/v1/hardware/latest` through `DATAAPI_BASE_URL`
 and shows a fresh sample's values with its age; a stale, failing or uncollected
-host shows that state instead of numbers. Benchmark reads the same projection
+host shows that state instead of numbers. A host card also shows the latest
+Ollama server settings the collector read, with their source and age, whatever
+the GPU sample's freshness: an unset key reads as Ollama's default (`f16` for
+the KV cache), and a failed read says so instead of showing defaults. Benchmark reads the same projection
 (its `DATAAPI_BASE_URL`, default `http://data:3083` in Compose) to fill
 `agentx.profiler-hardware-collector/v1`. A retired host-report agent still
 running on a GPU host is removed by hand on that host; Core has no
@@ -1066,8 +1069,13 @@ After inspecting the running process environment or its matching startup log,
 record the observation through
 `PUT /api/nerve-center/host-preferences/<encoded-host-url>/ollama-concurrency`
 with `{ numParallel, observedAt, source }`, where `source` is
-`process-environment` or `startup-log`. This updates host metadata only; changing
-Ollama's parallelism requires separate host configuration and qualification.
+`process-environment` or `startup-log`. Without a recorded observation, the card
+uses the `OLLAMA_NUM_PARALLEL` the GPU collector read from the host's Ollama
+service (`ollamaService` in the GPU collector setup under
+[optional surface integrations](#optional-surface-integrations)) and says so; a
+recorded observation stays authoritative and a differing collector reading is
+shown beside it. This updates host metadata only; changing Ollama's parallelism
+requires separate host configuration and qualification.
 
 One host can keep a conversation model and an embedding model resident together.
 `pinnedModels` holds an independent `{ model, keepAlive, contextSize, autoRestore, numThread }`
