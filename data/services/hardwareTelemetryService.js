@@ -4,9 +4,12 @@
  * Bounded GPU telemetry store fed by the native gpu-agent collector.
  *
  * - `hardware_collectors`: one row per collector (heartbeat, interval, declared hosts)
- * - `hardware_hosts`: latest snapshot and error/staleness state per GPU host
+ * - `hardware_hosts`: latest snapshot and error/staleness state per GPU host,
+ *   with the latest observation of its Ollama service settings when collected
  * - `hardware_gpu_samples`: per-GPU history, expired by a TTL index
  */
+
+const { normalizeOllamaEnvironment } = require('../../shared/ollamaServiceEnvironment');
 
 const COLLECTORS = 'hardware_collectors';
 const HOSTS = 'hardware_hosts';
@@ -142,13 +145,17 @@ async function ingestSamples(db, body = {}, now = new Date()) {
     });
     if (!base) continue;
     const sampledAt = validDate(raw.sampledAt, now);
+    // Ollama settings are read less often than GPUs: a result without them keeps
+    // the previous observation, which carries its own observedAt.
+    const ollamaEnvironment = normalizeOllamaEnvironment(raw.ollamaEnvironment);
     const common = {
       collectorId: collector.collectorId,
       name: base.name,
       ollamaUrl: base.ollamaUrl,
       local: base.local,
       intervalMs: collector.intervalMs,
-      lastAttemptAt: sampledAt
+      lastAttemptAt: sampledAt,
+      ...(ollamaEnvironment && { ollamaEnvironment })
     };
     if (raw.ok === true) {
       const gpus = (Array.isArray(raw.gpus) ? raw.gpus : []).slice(0, MAX_GPUS).map(normalizeGpu);

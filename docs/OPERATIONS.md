@@ -369,9 +369,9 @@ results to `/api/v1/hardware/samples`. Nothing is installed on a GPU host.
    without an authorized key is unsupported; it stays "not collected".
 2. Copy `gpu-hosts.example.json` outside Git and list the hosts:
    `[{"id":"gpu-a","name":"GPU A","ssh":"user@gpu-a","ollamaUrl":"http://gpu-a:11434"},{"id":"core","local":true}]`.
-   Optional per host: `sshPort`, `nvidiaSmi` (executable path). `ollamaUrl`
-   must equal the Ollama URL Core and Benchmark use for that host: it is how
-   they find the host's GPUs.
+   Optional per host: `sshPort`, `nvidiaSmi` (executable path), and
+   `ollamaService` (below). `ollamaUrl` must equal the Ollama URL Core and
+   Benchmark use for that host: it is how they find the host's GPUs.
 3. Copy `gpu-agent.env.example` (set `DATA_URL=http://127.0.0.1:<DATA_PORT>`)
    and `gpu-agent.service.example` into the user's systemd directory, then
    enable the unit. `GPU_AGENT_HOSTS_JSON` may replace the file.
@@ -380,6 +380,34 @@ results to `/api/v1/hardware/samples`. Nothing is installed on a GPU host.
 4. Check once with `GPU_AGENT_ONCE=1 node gpu-agent.js` (non-zero exit when a
    host or the post failed), then
    `node integrations/operations/verify-native-data-collectors.js --expect-gpu <GPU_AGENT_ID>`.
+
+Some Ollama behaviour is set by the server's environment, not by a request:
+the KV cache type, flash attention, parallel requests, resident model slots,
+GPU spreading and visible devices. Name a host's Ollama service with
+`ollamaService` and the collector also reads these settings, read-only, every
+`GPU_AGENT_OLLAMA_ENV_INTERVAL_MS` (default 10 min, 1 min to 24 h):
+
+- a systemd unit name, such as `"ollama.service"` or `"ollama-cpu.service"`:
+  `systemctl show <unit>` with the unit's `Environment`, load and active state,
+  main-process start time, `NeedDaemonReload` and whether it also reads an
+  `EnvironmentFile`. A user that is not root can run it.
+- `"windows"`: `reg query` of the machine environment, then of the SSH user's
+  environment (the user's values win). The SSH user should be the one running
+  Ollama.
+
+Only `OLLAMA_KV_CACHE_TYPE`, `OLLAMA_FLASH_ATTENTION`, `OLLAMA_NUM_PARALLEL`,
+`OLLAMA_MAX_LOADED_MODELS`, `OLLAMA_MAX_QUEUE`, `OLLAMA_SCHED_SPREAD`,
+`OLLAMA_KEEP_ALIVE`, `OLLAMA_CONTEXT_LENGTH`, `OLLAMA_GPU_OVERHEAD`,
+`OLLAMA_LLM_LIBRARY`, `OLLAMA_VULKAN` and `CUDA_VISIBLE_DEVICES` are kept, with
+plain values of at most 64 characters (`shared/ollamaServiceEnvironment.js`);
+every other variable is discarded where it is read. A listed key with an
+unexpected value is reported by name only. An unset key means Ollama's
+default. What is observed is the configuration: a systemd unit shows what
+systemd has loaded, values in an `EnvironmentFile` are not seen, and a service
+not restarted since a change still runs the previous values (compare the
+start time). Data keeps the latest observation per host; a cycle without a
+fresh read leaves it unchanged, and a failed read is stored as that
+observation's error.
 
 Core's Nerve Center reads `/api/v1/hardware/latest` through `DATAAPI_BASE_URL`
 and shows a fresh sample's values with its age; a stale, failing or uncollected

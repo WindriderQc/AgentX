@@ -35,7 +35,10 @@ at start), unauthenticated like the network and storage collectors because Data
 publishes only on loopback. `GET /latest` returns one snapshot per GPU host with
 its collector, `ollamaUrl`, last error, consecutive failures, `ageMs` and
 `freshness` (`fresh`, `stale` after three collector intervals with a 90 s floor,
-or `no_data`); a failing host keeps its last GPUs and sample time. `GET /history`
+or `no_data`); a failing host keeps its last GPUs and sample time. A host whose
+Ollama service the collector reads also carries `ollamaEnvironment`: the latest
+observation of its allowlisted Ollama server settings, with its own
+`observedAt` (see `docs/OPERATIONS.md`). `GET /history`
 returns bounded per-GPU samples (`hostId`, optional `gpuIndex`, `from`, `to`,
 `limit` up to 2 000). History expires through a TTL index,
 `DATA_HARDWARE_HISTORY_TTL_DAYS` (default 7, at most 90); a changed value is
