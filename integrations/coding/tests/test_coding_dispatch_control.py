@@ -94,6 +94,17 @@ class HostControlTests(unittest.TestCase):
         with self.assertRaises(ControlError):
             control._execute({"requestId": "../not-a-request", "pipelineId": "0700"})
 
+    def test_request_id_accepts_exact_lowercase_and_rejects_case_length_hex_and_path_forms(self):
+        from integrations.coding.coding_dispatch_control import request_id
+        self.assertEqual(request_id("abcdefab-0000-4000-8000-000000000001"), "abcdefab-0000-4000-8000-000000000001")
+        for rejected in ("ABCDEFAB-0000-4000-8000-000000000001",
+                         "abc-0000",
+                         "ghijklkl-0000-4000-8000-000000000001",
+                         "../not-a-request"):
+            with self.subTest(rejected=rejected):
+                with self.assertRaises(ControlError):
+                    request_id(rejected)
+
     def test_status_uses_dispatcher_admission_and_keeps_private_tasks_out(self):
         result = self.control.status()
         self.assertEqual([t["pipelineId"] for t in result["candidates"]], ["0700"])
