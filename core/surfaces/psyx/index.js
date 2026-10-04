@@ -24,6 +24,8 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
     stateRepository,
     conversationRepository: createConversationAdapter({ conversationLifecycle }),
     recapForUser: userId => runtimeServices.conversationRecaps.forOwner({ userId: `surface:psyx:${userId}`, promptName: 'psyx' }),
+    preferencesForUser: userId => runtimeServices.conversationPreferences.forOwner({ ownerId: `surface:psyx:${userId}`, surface: 'psyx' }),
+    preferencesChanged: userId => collection.updateOne({ userId }, { $inc: { revision: 1 } }),
     generateRecap: require('../../src/services/conversationRecapService').localRecapGenerator(runtimeServices.inference, 'psyx'),
     async ping() { await mongoose.connection.db.command({ ping: 1 }); return true; }
   };

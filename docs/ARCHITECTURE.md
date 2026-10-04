@@ -217,6 +217,19 @@ include the embedded point. PsyX and personal Nestor share its routes and browse
 editor, clear private drafts on locking/navigation, and carry confirmed points
 as reference context. Family conversations do not receive personal points.
 
+Core's `runtimeServices.conversationPreferences.forOwner` binds an exact server-selected
+owner and surface. The `agentx.conversation-preferences/v1` contract reads an
+applicable catalog and environment defaults without writing. Explicit overrides
+live in `ConversationPreferences`; a unique owner/surface index and revision compare
+refuse concurrent editors. Playground, PsyX, personal Nestor and Famille are
+independent. A shared browser editor applies presets only after confirmation.
+Surfaces use the selected optional context, inference and background-work switches;
+saved content remains available for manual reading and export. Settings changes
+invalidate obsolete background results without cancelling admitted PsyX inference.
+Famille preferences are editable through the private parental space. Access,
+transcript integrity and deterministic safety checks remain mandatory. Native
+OpenClaw memory, history and tools retain their own configuration authority.
+
 Surface records use a distinct internal user namespace and are not exposed by
 the default Playground history API. PsyX transcripts are namespaced away from
 ordinary chat.

@@ -640,7 +640,7 @@ function createTrustedRuntimeServices(overrides = {}) {
     contractVersion: CONTRACT_VERSION,
     personas: Object.freeze(require('../services/personaCatalog')),
     conversations: Object.freeze(require('../services/surfaceConversationService')),
-    conversationRecaps: require('../services/conversationRecapService').createConversationRecapService(),
+    ...require('../services/conversations/capabilities').createConversationCapabilities(),
     attachments: Object.freeze(require('../services/conversationAttachmentService')),
     memory: Object.freeze({ ...require('../services/memoryReadService'),
       notes: Object.freeze(require('../services/memoryNoteService')) }),

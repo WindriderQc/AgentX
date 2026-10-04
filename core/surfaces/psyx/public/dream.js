@@ -81,7 +81,7 @@ function renderPortrait() {
   $('dreamNow').textContent = running ? 'PsyX réfléchit…' : 'Approfondir maintenant';
   if (!portrait?.sections?.length) {
     $('portraitMeta').textContent = dream.status?.status === 'failed' ? 'La dernière réflexion n’a pas abouti. Elle sera reprise la nuit prochaine.' : '';
-    $('portraitView').innerHTML = `<p class="state-empty">${running ? 'PsyX écrit ton portrait…' : 'Pas encore de portrait. PsyX l’écrit après tes séances et chaque nuit, à partir du contexte disponible.'}</p>`;
+    $('portraitView').innerHTML = `<p class="state-empty">${running ? 'PsyX écrit ton portrait…' : state.conversationFeatures?.dreamEnabled === false ? 'Rêverie désactivée dans Contexte et performance.' : state.conversationFeatures?.automaticDream === false ? 'Pas encore de portrait. Tu peux demander une réflexion avec Approfondir maintenant.' : 'Pas encore de portrait. PsyX l’écrit après tes séances et chaque nuit, à partir du contexte disponible.'}</p>`;
   } else {
     const sources = (portrait.sources || []).map(key => DREAM_SOURCE_LABELS[key] || key);
     $('portraitMeta').textContent = [dream.status?.status === 'failed' ? 'La dernière réflexion n’a pas abouti' : null, `Écrit le ${new Date(portrait.updatedAt).toLocaleString('fr-CA', { dateStyle: 'long', timeStyle: 'short' })}`,
@@ -134,6 +134,7 @@ async function pollDream(accessEpoch, epoch = dream.epoch) {
 }
 
 function watchDream() {
+  if (state.conversationFeatures?.dreamEnabled === false) { stopDreamWatch(); renderPortrait(); return; }
   clearTimeout(dream.timer);
   dream.epoch = (dream.epoch || 0) + 1;
   void pollDream(state.accessEpoch);

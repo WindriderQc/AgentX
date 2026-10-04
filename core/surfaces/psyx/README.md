@@ -1,6 +1,6 @@
 # PsyX in AgentX
 
-The full profile serves the PsyX 2.11.0 conversation UI at `/psyx`. Psychological
+The full profile serves the PsyX 2.12.0 conversation UI at `/psyx`. Psychological
 domain rules and longitudinal state live in `core/src/domains/psyx`; generic
 conversation persistence/lifecycle and admitted inference are Core capabilities.
 No separate PsyX server, database client or inference router starts here.
@@ -191,3 +191,15 @@ model; when it is also the reply model, `--judge-model` gives a second opinion.
 `--judge frontier` for the grades (`OPENCLAW_GATEWAY_URL`, `OPENCLAW_GATEWAY_TOKEN`,
 `PSYX_FRONTIER_AGENT`), so local replies can be graded by a model that did not
 write them. `--preface` puts a text before the PsyX prompt to test a wording.
+
+## Context and performance
+
+The header opens Core’s shared preferences editor. PsyX keeps its own persisted
+settings, independent of Playground, Nestor and Famille. The owner can omit
+profile, history, memory, portrait, previous digests, goals, assessments, techniques,
+time and confirmed recap context; disable review recommendations or deep replies;
+and disable model-generated recap drafts while still writing a point manually.
+Review availability and delay, manual/automatic dream availability, idle duration,
+local night hour and each read-only dream source are configurable without a restart.
+Environment switches supply initial defaults. Saving preferences preserves stored
+content, invalidates obsolete background work and leaves crisis safeguards active.

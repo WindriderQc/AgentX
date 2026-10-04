@@ -24,6 +24,17 @@ test('confirmed Core recaps reach both personal transports without crossing into
   assert.equal(reads, 2);
   assert.ok(!corePayload.messages.at(-1).content.includes('Synthetic confirmed point'));
 });
+test('disabled confirmed recap performs no read on either personal transport', async () => {
+  const payloads = [];
+  const execute = createConversationExecutor({ personalRecaps: { read: () => assert.fail('Disabled context must not be read'), latest: () => assert.fail('Disabled continuation must not be read') },
+    inference: { execute: async value => { payloads.push(value); return { ok: true, body: { response: 'Synthetic' } }; } },
+    agentClient: async value => { payloads.push(value); return { text: 'Synthetic native' }; } });
+  const input = { ...request(), session: { sessionId: 'synthetic-personal', packId: 'personal_operator', modeId: 'personal' },
+    conversationFeatures: { recapContext: false }, turnContext: 'Selected context' };
+  await execute(input); await execute({ ...input, backend: 'openclaw' });
+  assert.ok(payloads[0].messages.at(-1).content.includes('Selected context'));
+  assert.equal(payloads[1].turnContext, 'Selected context');
+});
 const request = () => ({ backend: 'agentx', session: { sessionId: 'conversation', modeId: 'family' },
   pack: { id: 'kidx_nestor', taskType: 'nestor_answer_light', temperature: 0.5, maxTokens: 800 },
   text: 'Et ensuite?', history: [{ role: 'user', content: 'Je construis un rover.' }, { role: 'assistant', content: 'Commençons par les roues.' }],

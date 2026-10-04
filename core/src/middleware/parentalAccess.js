@@ -14,6 +14,7 @@ const familyPages = new Set(['/panel', '/kids', '/kids/sounds', '/lecture']);
 const landingPages = new Set(['/', '/portal', '/ecosystem']);
 const shellAssets = new Set(['/css/local-fonts.css', '/css/product-shell.css', '/css/home.css',
   '/css/conversation-recap.css', '/js/conversation-recap.js',
+  '/css/conversation-preferences.css', '/js/conversation-preferences.js',
   '/css/platform-chrome.css', '/css/shortcuts-modal.css', '/dist/shared-tokens.css', '/dist/shared-utils.js',
   '/js/product-navigation.js', '/js/home.js', '/js/utils/shared.js', '/js/utils/typed-confirmation.js',
   '/js/utils/polling-controller-global.js', '/js/utils/polling-controller.js', '/js/utils/shortcut-hints.js',

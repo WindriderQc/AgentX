@@ -103,6 +103,30 @@ build revision. This checkout has no automatic production pull/deploy scheduler.
 Configure [parental access](PARENTAL_ACCESS.md) at the LAN HTTPS gateway before
 opening the full profile to family devices.
 
+### Conversation context and performance
+
+**Contexte et performance** edits optional work without recreating Core. Each
+interface has an independent persisted preference scope:
+
+| Interface | Entry | Optional work |
+| --- | --- | --- |
+| Playground | Conversation header | Profile and model history; its existing precision controls hold RAG, web search, thinking and model parameters. |
+| PsyX | Conversation header | Context sources, automatic recommendations, deep replies, recap drafts, review and dream availability, timing and dream sources. |
+| Nestor | Private conversation settings | Core history, selected notes, confirmed point, approved documents, family context, review advice, recap drafts and background review with its delay. |
+| Famille | Performance settings in Nestor's private parental space | Separate Core history, notes, approved documents, routines, review advice and background review with its delay. |
+
+**Allégé** disables the applicable optional switches; **Par défaut** removes
+saved overrides. Both are drafts until **Enregistrer les réglages**. Concurrent
+editors receive a conflict and can reload. Current instance environment values
+supply initial defaults; stored overrides survive restarts. A disabled context
+source stays stored, but is omitted from subsequent model context. A disabled
+background feature stops scheduling new inference and invalidates obsolete
+results; an already admitted PsyX inference settles normally. Access checks,
+transcript integrity and deterministic crisis protections stay active. A recap
+can still be written manually with its model-generated proposal disabled.
+Native OpenClaw history, memory and tools are configured in OpenClaw; the panel
+links to that interface and the Nerve Center's model/routing settings.
+
 ### Bounded maintenance actions
 
 `./agentx action <name>` runs one action from a closed list on a running
