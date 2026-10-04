@@ -418,8 +418,12 @@ def run_independent_verification(
     )
     output = (proc.stdout or "") + (proc.stderr or "")
     if output_path:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(output, encoding="utf-8")
+        output_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor = os.open(output_path, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            if hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), 0o600)
+            handle.write(output)
         print(f"verification_output={output_path}")
     return proc.returncode, output
 
