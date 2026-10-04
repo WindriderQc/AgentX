@@ -153,10 +153,19 @@ function sameResidencyAs(hostKey) {
     return (otherKey) => otherKey === hostKey || residencyOf(otherKey) === residencyOf(hostKey);
 }
 
+// A task stays on its configured host when it is one of the fixed lanes above,
+// or when that host is CPU-resident: each CPU instance is a lane the operator
+// fills on purpose in the routing table, so work is not pooled across them.
+function staysOnConfiguredHost(taskType, hostKey) {
+    if (STRICT_CONFIGURED_HOST_TASKS.has(taskType)) return true;
+    return typeof hostConfig.getHostResidency === 'function' && hostConfig.getHostResidency(HOSTS[hostKey]) === 'cpu';
+}
+
 module.exports = {
     HOSTS,
     refreshHosts,
     sameResidencyAs,
+    staysOnConfiguredHost,
     PRODUCT_DEFAULT_MODEL: DEFAULT_CHAT_MODEL,
     PRODUCT_MASTER_BRAIN_MODEL: MASTER_BRAIN_MODEL,
     CLASSIFIABLE_TASKS,

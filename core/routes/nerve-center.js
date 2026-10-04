@@ -465,6 +465,7 @@ router.get('/inference/routing-config', async (_req, res) => {
         ip: describeHost(url, key).ip,
         pinnedModels: pinnedNames,
         maxConcurrentModels: pref.maxConcurrentModels || 1,
+        residency: require('../src/helpers/hostResidency').hostResidency(url),
       };
     }
 
@@ -473,6 +474,7 @@ router.get('/inference/routing-config', async (_req, res) => {
       data: {
         taskModels: TASK_MODELS,
         hosts,
+        hostLockedTasks: Object.keys(TASK_MODELS).filter(task => require('../src/services/modelRouterDefaults').staysOnConfiguredHost(task, TASK_MODELS[task].host)),
       }
     });
   } catch (err) {

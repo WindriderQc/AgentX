@@ -355,8 +355,11 @@ distinct set of findings is one `ops-watch-report` incident (`telegram`), which
 resolves once the findings are gone; `GET /api/nerve-center/ops-watch` returns
 the latest report and the settings. The input is small
 and nothing waits on the answer, so route `ops_watch` to a CPU-resident host in
-the Nerve Center routing table: the task stays on its configured host, and no
-task follows its model to a host of the other residency.
+the Nerve Center routing table. Any task routed to a CPU-resident host stays on
+that host (the table shows "Stays on this host"): each CPU instance is a lane
+filled on purpose, so two background tasks routed to two CPU hosts never end up
+on the same one. A task routed to a GPU host may follow its model to another
+GPU host, never to a host of the other residency.
 
 `config/obsidian-vault/` holds generic household note templates (appliance,
 routine, recipe, procedure) and `Maison.base`, an Obsidian Base listing
@@ -999,12 +1002,41 @@ Environment=CUDA_VISIBLE_DEVICES=
 Environment=OLLAMA_VULKAN=0
 Environment=OLLAMA_MAX_LOADED_MODELS=1
 Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_KEEP_ALIVE=-1
 ExecStart=/usr/local/bin/ollama serve
 CPUQuota=600%
 Nice=10
 IOSchedulingClass=idle
 MemoryMax=24G
 ```
+
+Set `OLLAMA_MODELS` as well when the GPU instance keeps its store outside the
+default path, so both instances read the same models. `CPUQuota` leaves cores
+to whatever else the machine runs.
+
+A CPU brain, from nothing to work:
+
+1. Start the instance and pull a model there. Generation speed follows memory
+   bandwidth divided by active weights, so prefer a mixture-of-experts model
+   with few active parameters; a dense model of the same size is several times
+   slower.
+2. Add the host in the Nerve Center, section "Inference hosts", with residency
+   CPU.
+3. Pin the model on it with its context and **CPU threads** (at most the cores
+   `CPUQuota` allows). The threads are not optional: every request and every
+   health probe reuses the pin's context and threads, and a pin without them
+   lets callers load the model with different options, which reloads it each
+   time. Through the API, `PUT .../pin` only names the model; `PATCH .../pin`
+   with `{model, contextSize, numThread}` sets the rest.
+4. Route background tasks to it in the routing table. They stay on that host.
+5. Read the journal of the instance for `starting llama-server`: after the
+   first load there should be none.
+
+What suits it: one short request at a time whose answer nothing waits on (a
+watch report, an advisory, a classification). What does not: agent turns, whose
+prompts take minutes to read at a few dozen tokens per second, and judgment
+tasks the smaller model does differently. Before moving such a task, send the
+same prompts to both models and read where they differ.
 
 In the `full` profile Benchmark reads the registry from Core every 30 seconds,
 so a registered host becomes a Profiler and benchmark target with its residency. On a CPU host the

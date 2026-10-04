@@ -55,7 +55,7 @@ const {
     DEFAULT_TASK_MODELS,
     CLASSIFICATION_MODEL,
     CLASSIFICATION_HOST,
-    STRICT_CONFIGURED_HOST_TASKS, sameResidencyAs
+    staysOnConfiguredHost, sameResidencyAs
 } = require('./modelRouterDefaults');
 
 // ── Pin cache: model → hostUrl — loaded async from HostPreference ────────
@@ -527,7 +527,7 @@ async function resolvePreferredTaskEntry(taskType, options = {}) {
     refreshHosts();
     const configured = TASK_MODELS[taskType] || TASK_MODELS.general_chat;
 
-    if (STRICT_CONFIGURED_HOST_TASKS.has(taskType)) {
+    if (staysOnConfiguredHost(taskType, configured.host)) {
         return {
             model: configured.model,
             host: configured.host,
@@ -615,13 +615,13 @@ async function resolveTaskAdvisory(taskType, options = {}) {
     refreshHosts();
     const task = await resolvePreferredTaskEntry(taskType);
 
-    if (STRICT_CONFIGURED_HOST_TASKS.has(taskType)) {
+    if (staysOnConfiguredHost(taskType, task.host)) {
         return {
             model: task.model,
             host: task.host,
             url: HOSTS[task.host],
             source: 'configured_host',
-            reason: 'Task is pinned to its configured lightweight host to avoid model swaps.',
+            reason: 'Task stays on its configured host (fixed lane or CPU-resident host).',
             claimId: null,
             claimExpiresAt: null,
             recommendation: null,

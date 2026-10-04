@@ -131,6 +131,23 @@ An existing active `pin-vram-spill` incident remains separate from the current
 read: silence or a stale sample cannot resolve it. See the [GPU contract and
 fallback policy](OPERATIONS.md#light-task-fallback-ladder).
 
+**Inference hosts** lists every Ollama endpoint with its residency (GPU or
+CPU) and its concurrent-request limit, and registers a new one. A machine that
+runs a GPU instance and a CPU instance shows two rows.
+
+**Operations watch** shows the latest report: what the monitoring rules flag,
+and whether the model or the plain rule list wrote it. "Nothing needs
+attention" means the rules flag nothing; no model ran. **Check now** runs a
+check at once. The switch, the interval and the report language are saved by
+Core when you press **Save**; until then the line says they come from the
+configuration file.
+
+In the task routing table, a host tagged **CPU** is a slow background host, and
+**Stays on this host** means the task does not follow its model to another
+host: when that host is busy the task waits. Every task routed to a CPU host
+stays there. The light tasks of the fallback ladder may still step down when
+their host is unavailable.
+
 ## Profiler
 
 Open Benchmark's `/profiler`. **Runtime continuity** appears above preparation
