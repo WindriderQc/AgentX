@@ -64,6 +64,9 @@
                 ? [String(hostConfig.role || host).toUpperCase(), hostConfig.ip].filter(Boolean).join(' · ')
                 : '';
             const metadata = config.taskMetadata?.[task] || {};
+            const cpuTag = hostConfig?.residency === 'cpu' ? ' <span class="nc-model-tag" title="CPU-resident host: slower, for background work">CPU</span>' : '';
+            const lockNote = (config.hostLockedTasks || []).includes(task)
+                ? '<div class="nc-muted" style="font-size:0.68rem;" title="This task does not follow its model to another host: it waits for this one."><i class="fas fa-lock" aria-hidden="true"></i> Stays on this host</div>' : '';
             const isDefaultModel = isDefault(model, host, hosts);
             const statusHtml = isDefaultModel
                 ? '<span style="color:#4ade80">● default</span>'
@@ -76,7 +79,8 @@
                         <span class="nc-model-tag">${shared.escapeHtml(shared.shortModel(model))}</span>
                     </td>
                     <td class="nc-td-md nc-inf-task-host">
-                        <span style="font-weight:600;">${shared.escapeHtml(hostName)}</span>
+                        <span style="font-weight:600;">${shared.escapeHtml(hostName)}</span>${cpuTag}
+                        ${lockNote}
                         ${hostSecondary ? `<div class="nc-muted" style="font-size:0.68rem;">${shared.escapeHtml(hostSecondary)}</div>` : ''}
                     </td>
                     <td class="nc-td-md">${statusHtml}</td>

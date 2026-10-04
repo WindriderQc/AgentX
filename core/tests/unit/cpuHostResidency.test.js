@@ -114,6 +114,22 @@ describe('a task keeps to hosts of its residency', () => {
     defaults.refreshHosts();
   });
 
+  test('any task routed to a CPU host stays there, and moves again once routed to a GPU host', async () => {
+    const defaults = require('../../src/services/modelRouterDefaults');
+    const routerConfig = require('../../src/services/modelRouterConfig');
+    defaults.refreshHosts();
+    expect(defaults.staysOnConfiguredHost('janitor_ai', 'cpu-fixture')).toBe(true);
+    expect(defaults.staysOnConfiguredHost('janitor_ai', 'primary')).toBe(false);
+    expect(defaults.staysOnConfiguredHost('quick_chat', 'primary')).toBe(true);
+
+    await routerConfig.saveTaskModelOverride('janitor_ai', { model: MODEL, host: 'cpu-fixture' });
+    await expect(routerConfig.resolvePreferredTaskEntry('janitor_ai')).resolves.toEqual({
+      model: MODEL, host: 'cpu-fixture', url: CPU_URL, readiness: null, fallbackApplied: false });
+    await routerConfig.resetTaskModelOverride('janitor_ai');
+    hostConfig.setRegisteredHosts([]);
+    defaults.refreshHosts();
+  });
+
   test('the operations watch task stays on its configured host', () => {
     const defaults = require('../../src/services/modelRouterDefaults');
     expect(defaults.DEFAULT_TASK_MODELS.ops_watch).toEqual(expect.objectContaining({ model: expect.any(String) }));
