@@ -133,6 +133,9 @@ def build_message(
         lines.extend([
             "",
             "Correction attempt:",
+            "This is a new dispatcher-authorized turn. The prior instruction to stop",
+            "using tools ended the previous turn; use only the permitted file tools",
+            "for this correction and then stop again.",
             "The prior patch failed independent verification. Preserve correct work,",
             "fix the failures below, and update the structured feedback file.",
             "----- BEGIN PRIOR INDEPENDENT FAILURE -----",

@@ -25,6 +25,147 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ClawdXGuardedDispatchTests(unittest.TestCase):
+    def test_verification_repair_requires_a_real_failing_test(self):
+        check = MODULE.dispatch_attempt.failed_test_output
+        self.assertTrue(check("Test Suites: 1 failed, 1 total\nTests: 1 failed, 22 passed, 23 total\n"))
+        self.assertTrue(check("FAILED (failures=1)\n"))
+        self.assertFalse(check("Test Suites: 1 failed, 1 total\nTests: 0 total\n"))
+        self.assertFalse(check("FAILED (failures=1, errors=1)\n"))
+        self.assertFalse(check("Ran 162 tests\nOK\n"))
+
+    def test_verification_repair_requires_a_changed_patch_and_feedback(self):
+        check = MODULE.dispatch_attempt.verification_repair_change_failures
+        before = {"files": {"focused.test.js": b"before"}}
+        after = {"files": {"focused.test.js": b"after"}}
+        self.assertEqual(check(before, after, "old", "new"), [])
+        self.assertEqual(check(before, before, "old", "old"), [
+            "verification_repair_patch_unchanged", "verification_repair_feedback_unchanged",
+        ])
+
+    def test_two_turn_energy_receipt_sums_both_samples(self):
+        source = "nvidia-smi-baseline-integral/v1"
+        first = {"measurementScope": "gpu-incremental-lower-bound", "energyMillijoules": 100,
+                 "measurementDurationMs": 1000, "sampleCount": 3, "baselineMilliwatts": 50000,
+                 "source": source}
+        second = {**first, "energyMillijoules": 200, "measurementDurationMs": 2000,
+                  "sampleCount": 4, "baselineMilliwatts": 60000}
+        combined = MODULE.dispatch_attempt.combine_local_energy(
+            first, second, MODULE.argparse.Namespace(
+                electricity_tariff_currency="CAD", electricity_tariff_rate_nano_per_kwh=111420000,
+            ),
+        )
+        self.assertEqual(combined["energyMillijoules"], 300)
+        self.assertEqual(combined["measurementDurationMs"], 3000)
+        self.assertEqual(combined["sampleCount"], 7)
+        self.assertEqual(combined["source"], source)
+        self.assertRegex(combined["evidenceFingerprint"], r"^[0-9a-f]{64}$")
+        self.assertEqual(combined["tariff"]["currency"], "CAD")
+
+    def test_bounded_verification_repair_rechecks_and_attests_both_worker_turns(self):
+        task = self.task()
+        task["automation"]["budgets"] = {"maxCostNanodollars": 0, "maxDurationMs": 900_000}
+        args = MODULE.argparse.Namespace(
+            api_base="http://agentx", host="worker",
+            remote_repo="/home/operator/.openclaw/workspace-clawdx-coder/repo",
+            agent="clawdx-coder", worker_helper="/srv/openclaw_pipeline_worker.py",
+            task_id="0377", source_revision="a" * 40, session_key="guarded-0377",
+            session_prefix="guarded", model="ollama/agentx-pipeline",
+            cost_evidence_mode="local-zero", thinking=None, timeout=300,
+            json_output=None, max_changed_files=1, max_changed_bytes=10_000,
+            independent_verification_command="npm test", independent_verification_timeout=60,
+            verification_output=None, lease_id="lease-1", attest_attribution=True,
+            automated_lease=True, verification_repair_turns=1, verification_repair_timeout=90,
+        )
+        worker_json = json.dumps({"result": {"meta": {
+            "toolSummary": {"tools": ["write"]},
+            "executionTrace": {"winnerProvider": "ollama", "winnerModel": "agentx-pipeline",
+                               "fallbackUsed": False},
+        }}})
+        completed = subprocess.CompletedProcess([], 0, stdout=worker_json, stderr="")
+        completed_repair = subprocess.CompletedProcess(
+            [], 0, stdout=json.dumps({"result": {"meta": {
+                "toolSummary": {"tools": ["write"]},
+            }}}), stderr="",
+        )
+        feedback = '```json\n{"criteria_verified":[{"id":"scope","status":"pass"}]}\n```'
+        failed = "FAIL focused.test.js\nTest Suites: 1 failed, 1 total\nTests: 1 failed, 22 passed, 23 total\n"
+        snapshots = []
+        def validate_snapshot(*_args, **kwargs):
+            snapshots.append(len(snapshots) + 1)
+            if kwargs.get("snapshot") is not None:
+                kwargs["snapshot"]["files"] = {"focused.test.js": bytes([snapshots[-1]])}
+            return []
+        with (
+            patch.object(MODULE.dispatch_attempt, "local_energy_sampler", return_value=None),
+            patch.object(MODULE.dispatch_openclaw, "run_openclaw_process", side_effect=[
+                (completed, {"effectiveModel": "qwen-qualified", "requestCount": 2}),
+                (completed_repair, {"effectiveModel": "qwen-qualified", "requestCount": 2}),
+            ]) as run_worker,
+            patch.object(MODULE.dispatch_openclaw, "read_openclaw_session_cost", side_effect=[
+                self.local_cost_observation(calls=2), self.local_cost_observation(calls=4),
+            ]),
+            patch.object(MODULE.dispatch_remote, "run_independent_verification",
+                         side_effect=[(1, failed), (0, "23 tests passed")]) as verify,
+            patch.object(MODULE.dispatch_remote, "validate_remote_repo", side_effect=validate_snapshot),
+            patch.object(MODULE.dispatch_remote, "read_remote_feedback",
+                         side_effect=[feedback, feedback + "\nCorrected assertion."]),
+            patch.object(MODULE.dispatch_attempt, "worker_snapshot_fingerprint", return_value="c" * 64),
+            patch.object(MODULE.dispatch_attempt, "register_verification_report",
+                         return_value={"ref": "task-0377/verification"}),
+            patch.object(MODULE.dispatch_message, "feedback_validation_errors", return_value=[]),
+            patch.object(MODULE.dispatch_api, "submit_worker_feedback",
+                         return_value={"status": "review"}) as submit,
+            patch.object(MODULE.dispatch_api, "block_failed_dispatch") as block,
+        ):
+            result = MODULE.dispatch_attempt.run_claimed_dispatch(
+                args, task, "20261004T000000Z", "/home/operator/.openclaw/workspace-clawdx-coder/.agentx-feedback-0377.md", None,
+            )
+        self.assertEqual(result, 0)
+        self.assertEqual(run_worker.call_count, 2)
+        self.assertIn("--timeout 90", run_worker.call_args_list[1].args[1])
+        self.assertEqual(verify.call_count, 2)
+        self.assertEqual(submit.call_args.kwargs["attempt_evidence"]["routing"]["requestCount"], 4)
+        self.assertEqual(submit.call_args.kwargs["attempt_evidence"]["verification"]["status"], "passed")
+        block.assert_not_called()
+
+    def test_bounded_verification_repair_refuses_a_patch_outside_scope(self):
+        task = self.task()
+        task["automation"]["budgets"] = {"maxCostNanodollars": 0, "maxDurationMs": 900_000}
+        args = MODULE.argparse.Namespace(
+            api_base="http://agentx", host="worker",
+            remote_repo="/home/operator/.openclaw/workspace-clawdx-coder/repo",
+            agent="clawdx-coder", worker_helper="/srv/openclaw_pipeline_worker.py",
+            task_id="0377", source_revision="a" * 40, session_key="guarded-0377",
+            session_prefix="guarded", model=None, cost_evidence_mode="local-zero",
+            thinking=None, timeout=300, json_output=None, max_changed_files=1,
+            max_changed_bytes=10_000, independent_verification_command="npm test",
+            independent_verification_timeout=60, verification_output=None,
+            automated_lease=True, verification_repair_turns=1, verification_repair_timeout=90,
+        )
+        failed = "Test Suites: 1 failed, 1 total\nTests: 1 failed, 22 passed, 23 total\n"
+        with (
+            patch.object(MODULE.dispatch_attempt, "local_energy_sampler", return_value=None),
+            patch.object(MODULE.dispatch_openclaw, "run_openclaw_process", return_value=(
+                subprocess.CompletedProcess([], 0, stdout="{}", stderr=""), None,
+            )) as run_worker,
+            patch.object(MODULE.dispatch_openclaw, "read_openclaw_session_cost",
+                         return_value=self.local_cost_observation()),
+            patch.object(MODULE.dispatch_remote, "run_independent_verification",
+                         return_value=(1, failed)) as verify,
+            patch.object(MODULE.dispatch_remote, "validate_remote_repo",
+                         return_value=["changed paths do not match task scope"]),
+            patch.object(MODULE.dispatch_remote, "read_remote_feedback", return_value='```json\n{"criteria_verified":[{"id":"scope","status":"pass"}]}\n```'),
+            patch.object(MODULE.dispatch_api, "block_failed_dispatch",
+                         return_value={"status": "blocked"}) as block,
+        ):
+            result = MODULE.dispatch_attempt.run_claimed_dispatch(
+                args, task, "20261004T000000Z", "/home/operator/.openclaw/workspace-clawdx-coder/.agentx-feedback-0377.md", None,
+            )
+        self.assertEqual(result, 3)
+        run_worker.assert_called_once()
+        verify.assert_called_once()
+        self.assertTrue(any("task scope" in reason for reason in block.call_args.kwargs["failures"]))
+
     def test_verification_report_upload_is_exact_and_requires_verified_receipt(self):
         text = "Dispatcher independent verification: PASS\n"
         payload = report_payload(agent="worker-a", attempt=2, lease_id="lease-2", text=text)

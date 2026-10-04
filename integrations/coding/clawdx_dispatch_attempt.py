@@ -8,7 +8,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shlex
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -94,6 +96,62 @@ def local_energy_sampler(args: argparse.Namespace) -> NvidiaSmiEnergySampler | N
     )
 
 
+def failed_test_output(output: str) -> bool:
+    """Do not spend another worker turn on boot, configuration or zero-test errors."""
+    jest = (re.search(r"^Test Suites:\s+[1-9]\d* failed\b", output, re.MULTILINE)
+            and re.search(r"^Tests:\s+[1-9]\d* failed\b", output, re.MULTILINE))
+    unittest = re.search(r"^FAILED \(failures=[1-9]\d*\)$", output, re.MULTILINE)
+    return bool(jest or unittest)
+
+
+def verification_repair_change_failures(
+    before: dict[str, Any], after: dict[str, Any],
+    old_feedback: str, new_feedback: str,
+) -> list[str]:
+    failures = []
+    if before.get("files") == after.get("files"):
+        failures.append("verification_repair_patch_unchanged")
+    if old_feedback == new_feedback:
+        failures.append("verification_repair_feedback_unchanged")
+    return failures
+
+
+def combine_local_energy(first: dict[str, Any] | None,
+                         second: dict[str, Any] | None,
+                         args: argparse.Namespace) -> dict[str, Any] | None:
+    """Account for both sampled worker turns; never report only the first."""
+    if first is None or second is None:
+        return None
+    if (first.get("measurementScope") != second.get("measurementScope")
+            or first.get("source") != second.get("source")):
+        return None
+    duration = int(first["measurementDurationMs"]) + int(second["measurementDurationMs"])
+    if duration <= 0:
+        return None
+    baseline = round(
+        (int(first["baselineMilliwatts"]) * int(first["measurementDurationMs"])
+         + int(second["baselineMilliwatts"]) * int(second["measurementDurationMs"])) / duration
+    )
+    evidence = {
+        "measurementScope": first["measurementScope"],
+        "energyMillijoules": int(first["energyMillijoules"]) + int(second["energyMillijoules"]),
+        "measurementDurationMs": duration,
+        "sampleCount": int(first["sampleCount"]) + int(second["sampleCount"]),
+        "baselineMilliwatts": baseline,
+        "source": first["source"],
+    }
+    evidence["evidenceFingerprint"] = hashlib.sha256(json.dumps(
+        evidence, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")).hexdigest()
+    return attach_tariff(
+        evidence,
+        currency=getattr(args, "electricity_tariff_currency", None),
+        rate_nano_currency_units_per_kwh=getattr(
+            args, "electricity_tariff_rate_nano_per_kwh", None
+        ),
+    )
+
+
 def run_claimed_dispatch(
     args: argparse.Namespace,
     task: dict[str, Any],
@@ -119,27 +177,20 @@ def run_claimed_dispatch(
     )
     session_key = args.session_key or f"{args.session_prefix}-{args.task_id}-{stamp}"
 
-    openclaw_cmd = ["openclaw", "agent", "--agent", args.agent]
-    if args.model:
-        openclaw_cmd.extend(["--model", args.model])
-    openclaw_cmd.extend(
-        [
-            "--session-key",
-            session_key,
-            "--message",
-            message,
-            "--json",
-            "--timeout",
-            str(args.timeout),
-        ]
-    )
-    if args.thinking:
-        openclaw_cmd.extend(["--thinking", args.thinking])
+    def worker_command(worker_message: str, timeout_seconds: int) -> str:
+        openclaw_cmd = ["openclaw", "agent", "--agent", args.agent]
+        if args.model:
+            openclaw_cmd.extend(["--model", args.model])
+        openclaw_cmd.extend([
+            "--session-key", session_key, "--message", worker_message,
+            "--json", "--timeout", str(timeout_seconds),
+        ])
+        if args.thinking:
+            openclaw_cmd.extend(["--thinking", args.thinking])
+        return (f"cd {shlex.quote(args.remote_repo)} && "
+                + " ".join(shlex.quote(part) for part in openclaw_cmd))
 
-    remote_cmd = (
-        f"cd {shlex.quote(args.remote_repo)} && "
-        + " ".join(shlex.quote(part) for part in openclaw_cmd)
-    )
+    remote_cmd = worker_command(message, args.timeout)
     request_id = f"guarded-dispatch:{args.task_id}:{stamp}"
     sampler = local_energy_sampler(args)
     local_energy: dict[str, Any] | None = None
@@ -288,6 +339,166 @@ def run_claimed_dispatch(
     )
     if lease_heartbeat:
         lease_heartbeat.ensure_healthy()
+    repair_turn_ran = False
+    repair_initial_snapshot: dict[str, Any] = {}
+    preflight_feedback = ""
+    repair_enabled = (getattr(args, "automated_lease", False)
+                      and getattr(args, "verification_repair_turns", 0) == 1)
+    if repair_enabled and verification_rc == 1 and not failures and failed_test_output(verification_text):
+        # A test failure alone may be repaired. Refuse another model turn if
+        # the first patch or its structured feedback already failed a guard.
+        preflight_errors = dispatch_remote.validate_remote_repo(
+            args.host, args.remote_repo, task,
+            max_changed_files=args.max_changed_files,
+            max_changed_bytes=args.max_changed_bytes,
+            exact_scope=exact_scope,
+            snapshot=repair_initial_snapshot,
+        )
+        try:
+            preflight_feedback = dispatch_remote.read_remote_feedback(args.host, feedback_path)
+            preflight_errors.extend(feedback_text_validation_errors(
+                preflight_feedback, allow_pending_independent=True
+            ))
+        except PipelineApiError as exc:
+            preflight_errors.append(str(exc))
+        max_duration_ms = (task.get("automation") or {}).get("budgets", {}).get("maxDurationMs")
+        remaining_ms = (max_duration_ms - elapsed_ms()
+                        - args.independent_verification_timeout * 1000 - 30_000
+                        if type(max_duration_ms) is int else 0)
+        repair_timeout = min(180, max(0, getattr(args, "verification_repair_timeout", 0)),
+                             remaining_ms // 1000)
+        if preflight_errors:
+            print("verification_repair=skipped_first_patch_guard_failed")
+        elif repair_timeout < 30:
+            print("verification_repair=skipped_insufficient_time")
+        else:
+            print("verification_repair=starting_bounded_worker_turn")
+            repair_message = dispatch_message.build_message(
+                task, api_base=args.api_base, remote_repo=args.remote_repo,
+                agent=args.agent, worker_helper=args.worker_helper,
+                repair_context=verification_text[-6000:],
+            )
+            repair_args = argparse.Namespace(**{**vars(args), "timeout": repair_timeout})
+            repair_sampler = local_energy_sampler(args)
+            repair_energy = None
+            repair_process = None
+            repair_lease = None
+            if repair_sampler is not None:
+                try:
+                    repair_sampler.collect_baseline()
+                    repair_sampler.start()
+                except ObservabilityError:
+                    observed_energy_failures.append("local_energy_repair_evidence_unavailable")
+                    repair_sampler = None
+            try:
+                repair_process, repair_lease = dispatch_openclaw.run_openclaw_process(
+                    repair_args, worker_command(repair_message, repair_timeout),
+                    request_id=f"{request_id}:verification-repair-1",
+                )
+            except (PipelineApiError, OSError, subprocess.TimeoutExpired) as exc:
+                failures.append(f"worker_repair_process_failed:{type(exc).__name__}:{exc}")
+                cost_observation = None
+            finally:
+                if repair_sampler is not None:
+                    try:
+                        repair_energy = repair_sampler.stop()
+                    except ObservabilityError:
+                        observed_energy_failures.append("local_energy_repair_evidence_unavailable")
+                try:
+                    local_energy = combine_local_energy(local_energy, repair_energy, args)
+                except (ObservabilityError, KeyError, ValueError, TypeError):
+                    local_energy = None
+                if local_energy is None:
+                    observed_energy_failures.append("local_energy_two_turn_evidence_unavailable")
+                    print("telemetry_warning=local_energy_two_turn_evidence_unavailable")
+            if repair_process is not None:
+                repair_turn_ran = True
+                if repair_process.stderr:
+                    sys.stderr.write(repair_process.stderr)
+                if args.json_output:
+                    Path(args.json_output).write_text(repair_process.stdout or "", encoding="utf-8")
+                if repair_process.returncode != 0:
+                    failures.append(f"worker_repair_process_failed:exit={repair_process.returncode}")
+                    cost_observation = None
+                else:
+                    try:
+                        # The first session receipt no longer covers every call.
+                        cost_observation = None
+                        repair_payload = openclaw_json(repair_process.stdout)
+                        names.update(tool_names(repair_payload))
+                        repair_provider, repair_model, repair_fallback = execution_route(repair_payload)
+                        if not getattr(args, "attest_attribution", False):
+                            failures.extend(execution_route_validation_errors(
+                                args.model, repair_provider, repair_model, repair_fallback
+                            ))
+                        if not isinstance(repair_lease, dict) or not isinstance(attribution_lease, dict) \
+                                or repair_lease.get("effectiveModel") != attribution_lease.get("effectiveModel"):
+                            failures.append("attribution_repair_model_mismatch")
+                        else:
+                            first_inference = attribution_lease.get("inference")
+                            second_inference = repair_lease.get("inference")
+                            combined_inference = None
+                            if isinstance(first_inference, dict) and isinstance(second_inference, dict):
+                                combined_inference = {
+                                    "state": ("completed" if first_inference.get("state") == "completed"
+                                              and second_inference.get("state") == "completed" else "unknown"),
+                                    "attempts": (int(first_inference.get("attempts") or 0)
+                                                 + int(second_inference.get("attempts") or 0)),
+                                    "elapsedMs": (int(first_inference.get("elapsedMs") or 0)
+                                                  + int(second_inference.get("elapsedMs") or 0)),
+                                    "history": [*(first_inference.get("history") or []),
+                                                *(second_inference.get("history") or [])],
+                                    "workerTurns": 2,
+                                }
+                            attribution_lease = {
+                                **{key: value for key, value in attribution_lease.items()
+                                   if key != "inference"},
+                                "requestCount": (attribution_lease["requestCount"]
+                                                 + repair_lease["requestCount"]),
+                                **({"inference": combined_inference} if combined_inference else {}),
+                            }
+                        cost_observation = dispatch_openclaw.read_openclaw_session_cost(
+                            args.host, args.agent, session_key
+                        )
+                        failures.extend(cost_evidence_failures(
+                            task, cost_observation, mode=cost_mode,
+                            requested_model=args.model,
+                        ))
+                        if getattr(args, "attest_attribution", False):
+                            failures.extend(attested_execution_validation_errors(
+                                args.model, repair_provider, repair_model, repair_fallback,
+                                attribution_lease, cost_observation,
+                            ))
+                        if lease_heartbeat:
+                            lease_heartbeat.ensure_healthy()
+                        if not failures:
+                            routing_evidence = {
+                                "status": "verified", "provider": "ollama",
+                                "effectiveModel": attribution_lease["effectiveModel"],
+                                "requestCount": attribution_lease["requestCount"],
+                                "sessionCallCount": cost_observation["calls"],
+                                "evidenceFingerprint": hashlib.sha256(json.dumps({
+                                    "lease": attribution_lease,
+                                    "session": cost_observation["fingerprint"],
+                                }, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(),
+                            }
+                            verification_started = time.monotonic()
+                            verification_rc, verification_text = dispatch_remote.run_independent_verification(
+                                args.host, args.remote_repo, args.independent_verification_command,
+                                expected_revision=args.source_revision,
+                                timeout=args.independent_verification_timeout,
+                                output_path=verification_output,
+                            )
+                            verification_duration_ms += max(
+                                0, round((time.monotonic() - verification_started) * 1000)
+                            )
+                            print("verification_repair=verified" if verification_rc == 0
+                                  else "verification_repair=still_failing")
+                    except (PipelineApiError, KeyError, ValueError, TypeError,
+                            OSError, subprocess.TimeoutExpired) as exc:
+                        failures.append(f"worker_repair_evidence_failed:{type(exc).__name__}:{exc}")
+            if lease_heartbeat:
+                lease_heartbeat.ensure_healthy()
     if verification_rc != 0:
         summary = verification_text.strip().replace("\n", " ")[-500:]
         failures.append(
@@ -295,6 +506,10 @@ def run_claimed_dispatch(
         )
     else:
         print("independent_verification=pass")
+
+    budget_ms = (task.get("automation") or {}).get("budgets", {}).get("maxDurationMs")
+    if getattr(args, "automated_lease", False) and type(budget_ms) is int and elapsed_ms() > budget_ms:
+        failures.append("attempt_duration_budget_exceeded")
 
     change_metrics: dict[str, int] = {}
     worker_snapshot: dict[str, Any] = {}
@@ -325,6 +540,10 @@ def run_claimed_dispatch(
     feedback_text = ""
     try:
         feedback_text = dispatch_remote.read_remote_feedback(args.host, feedback_path)
+        if repair_turn_ran:
+            failures.extend(verification_repair_change_failures(
+                repair_initial_snapshot, worker_snapshot, preflight_feedback, feedback_text,
+            ))
         failures.extend(
             feedback_text_validation_errors(
                 feedback_text,
