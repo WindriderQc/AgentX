@@ -13,4 +13,5 @@ test('an explicit personal question can still retrieve a note by one topic', () 
     assert.deepEqual(voiceRecallOptions(utterance, true, 25), { limit: 4, minMatchedTerms: 1 });
   }
   assert.deepEqual(voiceRecallOptions('Hockey.', false, 25), { limit: 25 });
+  assert.deepEqual(voiceRecallOptions('Parle-moi de mes enfants', true, 25), { limit: 4, minMatchedTerms: 1 });
 });
