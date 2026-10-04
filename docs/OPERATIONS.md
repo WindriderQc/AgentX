@@ -564,8 +564,16 @@ browser's own voice selection still wins; invalid entries keep the catalog voice
 Kids Room and Lecture create their conversation with the Nestor personality and
 read replies through the same voice ladder, so Nestor's instance voice applies
 there too; the reading voice chosen on that browser ("Voix des lectures") wins.
-The chosen engine must be available: an unavailable VoxCPM2 worker leaves the
-reply unspoken rather than substituting another voice.
+On the Household browser conversation page (Super Dad or Famille), the reply
+speaks through the browser voice ladder (`core/public/js/voice/speech-ladder.js`):
+the selected voice is tried first (an explicit instance voice, for example a
+VoxCPM2 voice cloned on the voice host), then the persona's presentation voice
+(defaulting to a Kokoro voice when the persona declares no specific provider),
+then the persona's declared catalog fallback voice, and finally the browser's
+own speech (`speechSynthesis`) where that surface permits it. A rung is skipped
+when its synthesis request is rejected, so an unavailable VoxCPM2 worker falls
+through to the next rung rather than leaving the reply unspoken. Server replies
+and native voice sessions do not use the browser `speechSynthesis` fallback.
 
 `HOUSEHOLD_TEAM_MEMBERS` optionally lets the owner address a team member
 directly in Super Dad: a JSON object maps an OpenClaw agent id to the names it
