@@ -120,3 +120,45 @@ describe('caller runtime compatibility', () => {
     expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.objectContaining({ tools }));
   });
 });
+
+describe('runner option parity across inference, probes and warm-up', () => {
+  const primitives =
+    require('../../src/services/hostPinPrimitives');
+  const { probePayload } = require('../../src/services/watchdogRuntimePayload');
+  const { withContextRefusal } = require('../../src/services/routing/contextIntegrityPolicy');
+
+  const model = 'example:latest';
+  const preference = {
+    pinnedModels: [{ model, contextSize: 8192, keepAlive: -1, numThread: 6 }]
+  };
+  const runnerMode = payload => ({
+    num_ctx: payload.options?.num_ctx,
+    num_thread: payload.options?.num_thread,
+    truncate: payload.truncate,
+    shift: payload.shift
+  });
+
+  test('pinned CPU model keeps identical runner mode on every path', async () => {
+    const prepared = await prepareInferenceRuntime({
+      model, host: 'http://ollama.test:11435', options: { num_predict: 512 }
+    }, 'generate', {
+      hostPreferenceService: { ...primitives, getByHost: jest.fn(async () => preference) },
+      resolveInferenceContract: jest.fn(async () => ({
+        contextBudget: { output: { reservedTokens: 512 } }
+      })),
+      resolveThinkingPolicy: jest.fn(() => ({ think: false }))
+    });
+    const inference = withContextRefusal({ model, options: prepared.options });
+    const probe = probePayload(model, prepared.options);
+    const warmUp = primitives.buildWarmPayload(model, {
+      keepAlive: -1,
+      contextSize: 8192,
+      numThread: 6
+    });
+
+    const expected = { num_ctx: 8192, num_thread: 6, truncate: false, shift: false };
+    for (const payload of [inference, probe, warmUp]) {
+      expect(runnerMode(payload)).toEqual(expected);
+    }
+  });
+});
