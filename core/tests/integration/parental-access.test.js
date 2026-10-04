@@ -36,6 +36,17 @@ describe('parental access at the single household gateway', () => {
       await edge(request(app).get(`/js/voice/${name}.js`)).expect(200).expect('Content-Type', /javascript/);
     }
     await edge(request(app).get('/js/dashboard.js')).expect(302);
+    // Both household pages load the same content-free editor; its private API stays behind the gate.
+    await edge(request(app).get('/js/conversation-recap.js')).expect(200).expect('Content-Type', /javascript/);
+    await edge(request(app).get('/css/conversation-recap.css')).expect(200).expect('Content-Type', /css/);
+    for (const method of ['get', 'put', 'post']) {
+      const path = '/api/voice-personas/private/sessions/unknown-session/recap' + (method === 'post' ? '/draft' : '');
+      expect((await edge(request(app)[method](path)).send({}).expect(401)).body.code).toBe('ADULT_LOCKED');
+    }
+    for (const pathname of ['/js/conversation-recap.js/x', '/css/conversation-recap.css/x']) {
+      expect(familyRequest({ method: 'GET' }, pathname)).toBe(false);
+    }
+    expect(familyRequest({ method: 'POST' }, '/js/conversation-recap.js')).toBe(false);
     for (const pathname of ['/js/voice/../dashboard.js', '/js/voice/x/../../dashboard.js', '/js/voice/%2e%2e/dashboard.js', '/js/voice/', '/js/voice/browser-conversation.js/x']) {
       expect(familyRequest({ method: 'GET' }, pathname)).toBe(false);
     }
