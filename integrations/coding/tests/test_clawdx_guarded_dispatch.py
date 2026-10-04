@@ -1615,8 +1615,24 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         remote_command = mocked.call_args.args[1]
         self.assertIn("rev-parse --show-toplevel", remote_command)
         self.assertIn("rev-parse HEAD", remote_command)
-        self.assertIn('cd "$repository_root" && npm test -- --runInBand', remote_command)
+        self.assertIn("/usr/bin/bwrap", remote_command)
+        self.assertIn("--unshare-net", remote_command)
+        self.assertIn("--unshare-pid", remote_command)
+        self.assertIn("--tmpfs /tmp", remote_command)
+        self.assertIn("--ro-bind /srv/repo /workspace", remote_command)
+        self.assertIn("'npm test -- --runInBand'", remote_command)
+        self.assertNotIn('cd "$repository_root" && npm test', remote_command)
+        self.assertNotIn("--ro-bind / /", remote_command)
         self.assertEqual(mocked.call_args.kwargs["timeout"], 120)
+
+    def test_missing_sandbox_never_falls_back_to_host_verification(self):
+        failed = subprocess.CompletedProcess([], 127, stdout="", stderr="bwrap missing")
+        with patch.object(MODULE.dispatch_remote, "ssh_run", return_value=failed) as mocked:
+            code, output = MODULE.dispatch_remote.run_independent_verification(
+                "worker", "/srv/repo", "python3 -m unittest", expected_revision="a" * 40, timeout=30)
+        self.assertEqual(code, 127)
+        self.assertIn("bwrap missing", output)
+        self.assertEqual(mocked.call_count, 1)
 
     def test_verification_baseline_passes_before_claim(self):
         with patch.object(
