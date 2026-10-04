@@ -2,13 +2,21 @@
  * Nerve Center — inference host registry.
  *
  * Lists every Ollama endpoint, registers a new LAN endpoint (GPU or CPU),
- * edits residency, name and concurrent requests, removes a registered one.
+ * edits residency and concurrent requests, removes a registered one.
  * The configuration file hosts stay listed and can be annotated, not removed.
  */
 (function () {
     'use strict';
     const shared = window.NerveCenterShared;
     const API = '/api/nerve-center/inference-hosts';
+    const SOURCES = {
+        registry: { icon: 'fa-pen-to-square', label: 'Registered here' },
+        env: { icon: 'fa-file-lines', label: 'Configuration file' }
+    };
+    const BENCHMARK_SOURCE = { icon: 'fa-gauge-high', label: 'Benchmark config' };
+    // The outcome of the last change. Every change redraws the section, so the
+    // message is kept here and drawn with it.
+    let notice = null;
 
     function residencyOptions(selected) {
         return ['gpu', 'cpu'].map(value =>
@@ -23,41 +31,67 @@
 
     function hostRow(host) {
         const id = shared.escapeHtml(host.id);
-        const source = host.source === 'registry' ? 'Registered' : host.source === 'env' ? 'Configuration file' : 'Benchmark config';
+        const source = SOURCES[host.source] || BENCHMARK_SOURCE;
+        const action = host.removable
+            ? `<button class="nc-btn nc-btn-icon nc-btn-danger nc-host-remove" type="button" data-host-id="${id}" title="Remove host" aria-label="Remove ${id}"><i class="fas fa-trash" aria-hidden="true"></i></button>`
+            : '<span class="nc-hosts-locked" title="Declared in the configuration file: it is removed there"><i class="fas fa-lock" aria-hidden="true"></i></span>';
         return `<tr data-host-id="${id}">
-            <td><strong>${shared.escapeHtml(host.name || host.id)}</strong><div class="nc-muted">${id} · ${source}</div></td>
-            <td><code>${shared.escapeHtml(host.url)}</code></td>
-            <td><select class="nc-inline-select nc-host-residency" data-host-id="${id}" aria-label="Residency of ${id}">${residencyOptions(host.residency || 'gpu')}</select></td>
-            <td><select class="nc-inline-select nc-host-inflight" data-host-id="${id}" aria-label="Concurrent requests on ${id}"
+            <td><div class="nc-hosts-name"><strong>${shared.escapeHtml(host.name || host.id)}</strong><span class="nc-host-key-badge">${id}</span></div>
+                <div class="nc-hosts-source"><i class="fas ${source.icon}" aria-hidden="true"></i> ${source.label}</div></td>
+            <td><code class="nc-hosts-url">${shared.escapeHtml(host.url)}</code></td>
+            <td data-label="Residency"><select class="nc-inline-select nc-host-residency" data-host-id="${id}" aria-label="Residency of ${id}">${residencyOptions(host.residency || 'gpu')}</select></td>
+            <td data-label="Concurrent requests"><select class="nc-inline-select nc-host-inflight" data-host-id="${id}" aria-label="Concurrent requests on ${id}"
                 title="Requests Core sends at once per model; a CPU instance usually serves one">${inflightOptions(host.maxInflight)}</select></td>
-            <td>${host.removable ? `<button class="nc-btn nc-btn-icon nc-host-remove" data-host-id="${id}" title="Remove host" aria-label="Remove ${id}"><i class="fas fa-trash"></i></button>` : ''}</td>
+            <td class="nc-hosts-actions">${action}</td>
         </tr>`;
     }
 
     function addForm() {
-        return `<form class="nc-host-add" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:12px;font-size:11px;">
-            <label>Id <input class="nc-inline-select" name="id" required pattern="[a-z0-9][a-z0-9-]{0,31}" placeholder="frank-cpu" size="12"></label>
-            <label>Name <input class="nc-inline-select" name="name" placeholder="Local CPU" size="14"></label>
-            <label>Address <input class="nc-inline-select" name="url" required placeholder="http://192.168.1.20:11435" size="24"></label>
-            <label>Residency <select class="nc-inline-select" name="residency">${residencyOptions('gpu')}</select></label>
+        return `<form class="nc-host-add nc-form-bar" aria-label="Add an inference host">
+            <span class="nc-form-bar-title">Add a host <small>Private network addresses only. An address is not edited afterwards: remove the host and add it again.</small></span>
+            <label class="nc-field"><span class="nc-field-label">Id</span>
+                <input class="nc-input" name="id" required pattern="[a-z0-9][a-z0-9-]{0,31}" placeholder="frank-cpu" size="14"
+                    title="Lowercase letters, digits and dashes, 32 characters at most"></label>
+            <label class="nc-field"><span class="nc-field-label">Name</span>
+                <input class="nc-input" name="name" maxlength="64" placeholder="Local CPU" size="16"></label>
+            <label class="nc-field"><span class="nc-field-label">Address</span>
+                <input class="nc-input" name="url" required placeholder="http://192.168.1.20:11435" size="26"></label>
+            <label class="nc-field"><span class="nc-field-label">Residency</span>
+                <select class="nc-input" name="residency">${residencyOptions('gpu')}</select></label>
             <button class="nc-btn" type="submit"><i class="fas fa-plus" aria-hidden="true"></i> Add host</button>
-            <span class="nc-host-add-status nc-muted" role="status" aria-live="polite"></span>
+            <span class="nc-host-add-status nc-form-bar-status" role="status" aria-live="polite"></span>
         </form>`;
     }
 
+    function noticeHtml() {
+        if (!notice) return '';
+        const icon = notice.tone === 'ok' ? 'fa-circle-check' : 'fa-triangle-exclamation';
+        return `<p class="nc-notice is-${notice.tone} nc-hosts-notice" role="${notice.tone === 'ok' ? 'status' : 'alert'}">
+            <i class="fas ${icon}" aria-hidden="true"></i> <span>${shared.escapeHtml(notice.text)}</span></p>`;
+    }
+
+    function setHeaderSummary(hosts) {
+        const summary = document.getElementById('nc-hosts-summary');
+        if (!summary) return;
+        const cpu = hosts.filter(host => host.residency === 'cpu').length;
+        summary.textContent = hosts.length
+            ? `${hosts.length} host${hosts.length === 1 ? '' : 's'} · ${hosts.length - cpu} GPU · ${cpu} CPU`
+            : 'No host yet';
+    }
+
+    // A refused change redraws the list too: the control returns to the saved value.
     async function patch(hostId, body, control) {
         control.disabled = true;
         try {
             await shared.fetchJson(`${API}/${encodeURIComponent(hostId)}`, {
                 method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
             });
-            await refreshAll();
+            notice = null;
         } catch (err) {
-            control.title = err.message;
-            control.style.outline = '1px solid var(--danger)';
-        } finally {
-            control.disabled = false;
+            notice = { tone: 'error', text: `${hostId} was not changed: ${err.message}` };
+            return loadHosts();
         }
+        return refreshAll();
     }
 
     async function remove(hostId, button) {
@@ -65,35 +99,41 @@
             action: 'REMOVE HOST', resource: hostId, title: 'Remove inference host',
             description: `Remove ${hostId}? Core stops routing to it. Its resident models must be cleared first.`
         });
-        if (!headers) return;
+        if (!headers) return undefined;
         button.disabled = true;
         try {
             await shared.fetchJson(`${API}/${encodeURIComponent(hostId)}`, { method: 'DELETE', headers });
-            await refreshAll();
+            notice = { tone: 'ok', text: `${hostId} was removed.` };
         } catch (err) {
-            button.title = err.message;
-            button.style.outline = '1px solid var(--danger)';
-            button.disabled = false;
+            notice = { tone: 'error', text: `${hostId} was not removed: ${err.message}` };
+            return loadHosts();
         }
+        return refreshAll();
     }
 
+    // A refused host keeps the form as typed; an added one redraws the section.
     async function submit(form) {
         const status = form.querySelector('.nc-host-add-status');
+        const button = form.querySelector('button[type="submit"]');
         const body = Object.fromEntries(new FormData(form).entries());
+        status.classList.remove('is-error');
         status.textContent = 'Checking the address…';
+        button.disabled = true;
         try {
             const json = await shared.fetchJson(API, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
             });
             const reach = json.data?.reachability;
-            status.textContent = reach?.reachable
-                ? `Added. Ollama ${reach.version || ''} answered.`
-                : `Added, but Ollama did not answer (${reach?.error || 'unknown'}).`;
-            form.reset();
-            await refreshAll();
+            notice = reach?.reachable
+                ? { tone: 'ok', text: `${body.id} was added. Ollama${reach.version ? ` ${reach.version}` : ''} answered.` }
+                : { tone: 'warn', text: `${body.id} was added, but Ollama did not answer (${reach?.error || 'unknown'}).` };
         } catch (err) {
+            status.classList.add('is-error');
             status.textContent = err.message;
+            button.disabled = false;
+            return undefined;
         }
+        return refreshAll();
     }
 
     function attach(body) {
@@ -115,10 +155,14 @@
         try {
             const json = await shared.fetchJson(API);
             const hosts = json.data?.hosts || [];
-            body.innerHTML = `<p class="nc-muted">Each Ollama endpoint is a host. A machine can run a GPU instance and a CPU instance side by side; declare the CPU one so its pins are expected outside VRAM.</p>
-                <table class="nc-table"><thead><tr><th>Host</th><th>Address</th><th>Residency</th><th>Concurrent requests</th><th></th></tr></thead>
-                <tbody>${hosts.map(hostRow).join('') || '<tr><td colspan="5" class="nc-muted">No host yet: add the first one below.</td></tr>'}</tbody></table>
+            body.innerHTML = `<p class="nc-section-note">Each Ollama endpoint is a host. A machine can run a GPU instance and a CPU instance side by side; declare the CPU one so its pins are expected outside VRAM.</p>
+                <div class="nc-hosts"><table class="nc-table nc-hosts-table">
+                    <thead><tr><th scope="col">Host</th><th scope="col">Address</th><th scope="col">Residency</th><th scope="col">Concurrent requests</th><th scope="col" aria-label="Actions"></th></tr></thead>
+                    <tbody>${hosts.map(hostRow).join('') || '<tr><td colspan="5" class="nc-hosts-empty">No host yet: add the first one below.</td></tr>'}</tbody>
+                </table></div>
+                ${noticeHtml()}
                 ${addForm()}`;
+            setHeaderSummary(hosts);
             attach(body);
         } catch (err) {
             shared.renderSectionError(body, `Failed to load hosts: ${err.message}`);

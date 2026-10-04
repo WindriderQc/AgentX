@@ -569,7 +569,7 @@ app.get('/nerve-center', (req, res) => {
     bodyClass: 'nerve-center-page',
     headCss: [
       '<link rel="stylesheet" href="/styles.css">',
-      '<link rel="stylesheet" href="/css/nerve-center.css"><link rel="stylesheet" href="/css/nerve-center-diagnostics.css">',
+      '<link rel="stylesheet" href="/css/nerve-center.css"><link rel="stylesheet" href="/css/nerve-center-diagnostics.css"><link rel="stylesheet" href="/css/nerve-center-controls.css">',
       '<script src="/vendor/chart.js/4.5.1/chart.umd.js"></script>'
     ].join('\n'),
     footerJs: [
