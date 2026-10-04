@@ -25,7 +25,7 @@ describe('Nerve Center individual pin controls', () => {
   const primary = { model: 'gemma:latest', keepAlive: 300, contextSize: 32768, autoRestore: false };
   const embedding = { model: 'qllama/bge-m3:f16', keepAlive: -1, contextSize: 0, autoRestore: true };
 
-  async function controlHarness(selector, { model, value, checked, removing = false, ollamaConcurrency = null, gpuRows = [] } = {}) {
+  async function controlHarness(selector, { model, value, checked, removing = false, ollamaConcurrency = null, gpuRows = [], modelParallelism } = {}) {
     const body = { innerHTML: '' };
     const listeners = {};
     const control = {
@@ -37,7 +37,7 @@ describe('Nerve Center individual pin controls', () => {
       '/api/ollama-hosts': { data: { hosts: [{ id: 'primary', name: 'Host', url: hostUrl, available: true,
         models: [], runningModels: [] }] } },
       '/api/nerve-center/host-preferences': { data: [{ hostUrl, pinnedModels: [primary, embedding],
-        maxConcurrentModels: 2, ollamaConcurrency, status: 'ready', live: { runningModels: [{ name: embedding.model }, { name: primary.model }] } }] },
+        maxConcurrentModels: 2, ollamaConcurrency, status: 'ready', live: { runningModels: [{ name: embedding.model }, { name: primary.model }], modelParallelism } }] },
       '/api/nerve-center/inference/gpu-status': { data: gpuRows }
     };
     const fetchJson = jest.fn(async (url, options) => options ? { status: 'success' } : responses[url]);
@@ -93,6 +93,37 @@ describe('Nerve Center individual pin controls', () => {
     const { body } = await controlHarness('unused', { ollamaConcurrency });
     expect(body.innerHTML).toContain('Parallel requests per model</span> · <strong>Unknown');
     expect(body.innerHTML).not.toContain('Last observed:');
+  });
+
+  describe('effective request slots per model', () => {
+    const modelParallelism = [
+      { model: 'synthetic-qwen:27b', family: 'qwen35', architecture: 'qwen35', requestSlots: 1, reason: 'architecture' },
+      { model: embedding.model, family: 'bert', architecture: 'bert', requestSlots: 1, reason: 'no_completion' },
+      { model: primary.model, family: 'gemma3', architecture: 'gemma3', requestSlots: null, reason: 'server_setting' },
+      { model: 'unreadable:latest', family: null, architecture: null, requestSlots: null, reason: 'unknown' }
+    ];
+
+    it('shows the slot Ollama forces and the configured value for other models', async () => {
+      const { body } = await controlHarness('unused', { modelParallelism, ollamaConcurrency: {
+        numParallel: 4, observedAt: new Date(Date.now() - 86400000).toISOString(), source: 'startup-log'
+      } });
+      expect(body.innerHTML).toContain('Parallel requests per model</span> · <strong>4 configured');
+      expect(body.innerHTML).toContain('synthetic-qwen:27b</span> <strong>1 (architecture qwen35)');
+      expect(body.innerHTML).toContain('qllama/bge-m3:f16</span> <strong>1 (embedding model)');
+      expect(body.innerHTML).toContain('gemma:latest</span> <strong>4 (server setting)');
+      expect(body.innerHTML).toContain('unreadable:latest</span> <strong>unknown');
+    });
+
+    it('does not invent a value for models that follow an unknown server setting', async () => {
+      const { body } = await controlHarness('unused', { modelParallelism });
+      expect(body.innerHTML).toContain('synthetic-qwen:27b</span> <strong>1 (architecture qwen35)');
+      expect(body.innerHTML).toContain('gemma:latest</span> <strong>server setting');
+    });
+
+    it('omits the line when no model was described', async () => {
+      const { body } = await controlHarness('unused');
+      expect(body.innerHTML).not.toContain('Effective</span>');
+    });
   });
 
   describe('Ollama server settings read by the GPU collector', () => {

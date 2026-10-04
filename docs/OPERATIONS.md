@@ -1077,6 +1077,19 @@ recorded observation stays authoritative and a differing collector reading is
 shown beside it. This updates host metadata only; changing Ollama's parallelism
 requires separate host configuration and qualification.
 
+Below that value, the **Effective** line gives each pinned and loaded model the
+request slots Ollama actually gives it. Ollama gives one slot, whatever
+`OLLAMA_NUM_PARALLEL` says, to a model that cannot complete text (an embedding
+model) and to the architectures its scheduler runs sequentially, among them the
+Qwen 3.5/3.6 hybrids (`qwen35`, `qwen35moe`) and `qwen3next`: the card shows
+`1 (architecture qwen35)`. Core reads each model's family and capabilities
+from `/api/show` (cached ten minutes per host and model) and compares the
+family with the scheduler's list in
+`core/src/services/ollamaModelParallelismService.js`, copied from Ollama's
+`server/sched.go`; review it when upgrading Ollama. Any other model shows the
+configured value with `(server setting)`, or only `server setting` while that
+value is unknown, and a model whose metadata cannot be read shows `unknown`.
+
 One host can keep a conversation model and an embedding model resident together.
 `pinnedModels` holds an independent `{ model, keepAlive, contextSize, autoRestore, numThread }`
 entry for each resident. `keepAlive: -1` requests permanent residency; a positive

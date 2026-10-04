@@ -175,6 +175,7 @@
             pinnedEntries: normalizePinnedEntries(pref),
             maxConcurrentModels: pref?.maxConcurrentModels || 1,
             ollamaConcurrency: pref?.ollamaConcurrency || null,
+            modelParallelism: Array.isArray(pref?.live?.modelParallelism) ? pref.live.modelParallelism : [],
             driftModels: pref?.driftModels || [],
             hostUrl: pref?.hostUrl || '',
             prefDisplayName: pref?.displayName || '',
@@ -342,6 +343,20 @@
         return { observation, timestamp, known };
     }
 
+    // Request slots each resident model gets: Ollama forces one for embeddings
+    // and for the architectures its scheduler runs sequentially; any other
+    // model follows the server setting.
+    function buildModelParallelism(host, configured) {
+        const rows = (host.modelParallelism || []).filter(item => item && item.model);
+        if (!rows.length) return '';
+        const describe = item => item.requestSlots === 1
+            ? (item.reason === 'architecture' ? '1 (architecture ' + shared.escapeHtml(item.family || item.architecture || '') + ')' : '1 (embedding model)')
+            : item.reason === 'server_setting' ? (configured ? shared.escapeHtml(configured) + ' (server setting)' : 'server setting') : 'unknown';
+        return '<div style="margin-top:2px;"><span style="color:var(--muted);">Effective</span> ' + rows.map(item =>
+            '<span style="margin-right:10px;white-space:nowrap;"><span style="color:var(--muted);">' + shared.escapeHtml(shared.shortModel(item.model)) +
+            '</span> <strong>' + describe(item) + '</strong></span>').join(' ') + '</div>';
+    }
+
     function buildOllamaConcurrency(host) {
         const { observation, timestamp, known } = recordedConcurrency(host);
         const observed = known ? new Date(timestamp).toLocaleString() : '';
@@ -350,14 +365,15 @@
         const collected = known ? null : collectedOllamaSettings(host);
         const collectedValue = collected && Object.prototype.hasOwnProperty.call(collected.values, 'OLLAMA_NUM_PARALLEL')
             ? collected.values.OLLAMA_NUM_PARALLEL : '';
+        const configured = known ? String(observation.numParallel) : collectedValue;
         return '<div class="nc-ollama-concurrency" style="margin-bottom:8px;font-size:11px;overflow-wrap:anywhere;">' +
             '<span style="color:var(--muted);">Parallel requests per model</span> · <strong>' +
-            (known ? observation.numParallel + ' configured'
-                : collectedValue ? shared.escapeHtml(collectedValue) + ' configured' : 'Unknown') + '</strong>' +
+            (configured ? shared.escapeHtml(configured) + ' configured' : 'Unknown') + '</strong>' +
             (known ? '<div style="color:var(--muted);" title="' + shared.escapeHtml(observation.source || '') + '">Last observed: ' +
                 shared.escapeHtml(observed) + (ageDays >= 1 ? ' · ' + ageDays + 'd old' : '') + '</div>' : '') +
             (collectedValue ? '<div style="color:var(--muted);">Read by the GPU collector from the ' +
                 shared.escapeHtml(collected.origin) + (collected.age ? ' · ' + collected.age + ' ago' : '') + '</div>' : '') +
+            buildModelParallelism(host, configured) +
             '<div style="color:var(--muted);">Extra requests queue. VRAM, context and AgentX admission can lower concurrency.</div></div>';
     }
 
