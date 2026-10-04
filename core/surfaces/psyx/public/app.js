@@ -223,12 +223,12 @@ function currentDepthInfo(depth = state.depth) {
 // What the next reply will use: an explicit choice, or the review's
 // recommendation for this conversation when the choice is auto.
 function upcomingControl() {
-  const next = state.conversationId ? sessionDigest(state.conversationId)?.next : null;
+  const next = state.conversationId && state.conversationFeatures?.autoRecommendations !== false ? sessionDigest(state.conversationId)?.next : null;
   const autoMode = state.mode === 'auto';
   const autoDepth = state.depth === 'auto';
   return {
     mode: autoMode ? next?.stance || 'talk' : state.mode,
-    depth: autoDepth ? next?.depth || 'normal' : state.depth,
+    depth: state.conversationFeatures?.deepReasoning === false ? 'normal' : autoDepth ? next?.depth || 'normal' : state.depth,
     auto: { mode: autoMode, depth: autoDepth },
     reason: autoMode ? next?.reason || '' : ''
   };
@@ -242,7 +242,8 @@ function renderStance() {
   $('stanceLabel').textContent = `${prefix} : ${stance}${control.auto.mode ? ' · auto' : ''}${control.depth === 'deep' ? ' · réflexion profonde' : ''}`;
   $('stanceReason').textContent = control.reason
     || (control.auto.mode
-      ? 'PsyX choisit sa posture après avoir réfléchi à la conversation.'
+      ? state.conversationFeatures?.autoRecommendations === false || state.conversationFeatures?.backgroundReview === false
+        ? currentModeInfo('auto').description : 'PsyX choisit sa posture après avoir réfléchi à la conversation.'
       : 'Posture choisie par toi. Choisis Auto pour laisser PsyX décider.');
   renderFrontier(control);
 }
@@ -253,7 +254,7 @@ function updateControlExplanation() {
   modeSummary.textContent = `${mode.title || state.mode} · ${mode.short || ''}`;
   depthSummary.textContent = `${depth.title || state.depth} · ${depth.short || ''}`;
   controlExplainer.innerHTML = state.mode === 'auto' && state.depth === 'auto'
-    ? `<strong>Auto</strong> ${escapeHtml(AUTO_INFO.description)}`
+    ? `<strong>Auto</strong> ${escapeHtml(mode.description)}${state.conversationFeatures?.deepReasoning === false ? `<br>${escapeHtml(depth.short)}` : ''}`
     : `<strong>${escapeHtml(mode.title || state.mode)}</strong> ${escapeHtml(mode.description || '')}<br><strong>${escapeHtml(depth.title || state.depth)}</strong> ${escapeHtml(depth.description || '')}`;
   renderStance();
   updateBrainRouting();

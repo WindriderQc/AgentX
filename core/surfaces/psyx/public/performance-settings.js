@@ -7,6 +7,7 @@ function applyPerformancePreferences(values = {}) {
   review.enabled = values.backgroundReview !== false;
   if (!review.enabled) { stopReviewWatch(); $('reviewStatus').hidden = true; }
   if (values.dreamEnabled === false) { dream.status = { enabled: false, status: 'disabled' }; renderPortrait(); }
+  syncSegmentedControls();
   updateControlExplanation();
 }
 function wirePerformancePreferences() {
