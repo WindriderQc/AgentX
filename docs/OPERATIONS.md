@@ -1010,6 +1010,23 @@ a hash, never prompt content. A miss whose divergence is `append` or `none`
 points elsewhere: another caller used the model in between, or the model was
 reloaded (`loadMs` is high).
 
+`GET /api/analytics/inference/distribution` turns these rows into
+distributions. It accepts the `/api/analytics/inference/logs` filters, covers
+`window` (`24h`, `7d`, `30d`, `90d`; default `7d`) unless `from`/`to` are given,
+and groups by one or two of `consumerContract` (default), `taskType`, `model`,
+`host`, `hostKey`, `caller`, `runtime` and `status` (`limit` groups, default 50,
+at most 200). For the totals and each group it returns p50, p90, p95, p99 and
+max of `inputTokens` (`tokensIn`, or the dispatch estimate when the call ended
+without usage), `tokensOut`, `durationMs`, `firstTokenMs`, `loadMs`,
+`promptEvalMs`, `evalMs`, `nonModelMs` (wall clock not covered by the three
+Ollama phases: routing, admission, queueing, retries and network), `numCtx` and
+`contextFill` (`inputTokens / num_ctx`); the calls per prompt-size bucket (up to
+8k, 16k, 32k, 64k, 96k, 128k, 192k, above); and the calls filling at least 50,
+75 and 90 % of their context. Percentiles are MongoDB approximations. A metric
+no row reports has a null value with a count of 0. Rows expire after
+`INFERENCE_LOG_TTL_DAYS` (returned as `retentionDays`), so a window longer
+than that covers only the retained rows.
+
 ## Resident model pins
 
 The Nerve Center host cards show parallel requests **per model** separately from
