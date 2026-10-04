@@ -40,6 +40,9 @@ const stopWords = new Set(['les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'a
   'maintenant', 'actuel', 'actuelle', 'actuels', 'actuelles',
   'bonjour', 'salut', 'hello', 'merci', 'thanks', 'please']);
 const words = value => [...new Set(String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().match(/[a-z0-9]{3,}/g) || [])].filter(word => !stopWords.has(word));
+// Broad child queries can match individual son/daughter facts. Specific relation queries stay exact.
+const childQueryTerms = new Set(['enfant', 'enfants', 'child', 'children']);
+const childNoteTerms = ['fils', 'fille', 'filles', 'garcon', 'garcons', 'daughter', 'daughters'];
 
 function project(row) {
   return { id: String(row._id), text: row.text, kind: row.kind || 'fact', type: row.type,
@@ -145,6 +148,8 @@ function forSpace({ audience, scopeId, packIds } = {}) {
   async function search(query, { limit = 8, minMatchedTerms = 1 } = {}) {
     cleanText(query, 4000);
     const terms = words(query);
+    const matchingTerms = new Set(terms);
+    if (terms.some(term => childQueryTerms.has(term))) childNoteTerms.forEach(term => matchingTerms.add(term));
     const minimum = minMatchedTerms === 2 ? 2 : 1;
     // A greeting or vague request has no recall topic. It must not turn into
     // an implicit list of every note; explicit list/filter remains available.
@@ -154,7 +159,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     let best = [], offset = 0, page;
     do {
       page = await list({ offset, limit: 100 });
-      best = [...best, ...page.notes.map(note => ({ note, score: words(note.text).filter(term => terms.includes(term)).length }))]
+      best = [...best, ...page.notes.map(note => ({ note, score: words(note.text).filter(term => matchingTerms.has(term)).length }))]
         .filter(entry => entry.score >= minimum)
         .sort((a, b) => b.score - a.score || new Date(b.note.updatedAt) - new Date(a.note.updatedAt))
         .slice(0, limitOf(limit, 8));
