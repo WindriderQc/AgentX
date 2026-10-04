@@ -1,5 +1,5 @@
 /**
- * Integration Controller — webhook event handling for n8n, ClickUp, etc.
+ * Integration Controller — webhook event handling for ClickUp and other sources.
  */
 
 function normalizeData(data) {
@@ -9,27 +9,6 @@ function normalizeData(data) {
   }
   return { value: data };
 }
-
-exports.createN8nEvent = async (req, res, next) => {
-  try {
-    const db = req.app.locals.db;
-    const body = { ...req.body };
-    if (body.data !== undefined) body.data = normalizeData(body.data);
-
-    const doc = { src: 'n8n', at: new Date(), body };
-    await db.collection('integration_events').insertOne(doc);
-    res.json({ ok: true, id: doc._id });
-  } catch (err) { next(err); }
-};
-
-exports.getN8nEvents = async (req, res, next) => {
-  try {
-    const db = req.app.locals.db;
-    const limit = parseInt(req.query.limit) || 100;
-    const events = await db.collection('integration_events').find({ src: 'n8n' }).sort({ at: -1 }).limit(limit).toArray();
-    res.json({ status: 'success', data: events });
-  } catch (err) { next(err); }
-};
 
 exports.createClickUpEvent = async (req, res, next) => {
   try {

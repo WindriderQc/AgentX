@@ -2032,36 +2032,6 @@
       "secret": false,
       "description": "Username of the Data MQTT connection."
     },
-    "N8N_WEBHOOK_BASE_URL": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "network",
-      "secret": false,
-      "description": "n8n base URL combined with N8N_WEBHOOK_GENERIC when N8N_WEBHOOK_URL is unset."
-    },
-    "N8N_WEBHOOK_GENERIC": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "operations",
-      "secret": false,
-      "description": "n8n webhook path appended to N8N_WEBHOOK_BASE_URL."
-    },
-    "N8N_WEBHOOK_URL": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "network",
-      "secret": false,
-      "description": "Full n8n webhook URL used by Data storage. Unset: base URL plus generic path, or none."
-    },
     "NESTOR_KNOWLEDGE_CONFIG_PATH": {
       "services": [
         "core"
