@@ -9,6 +9,7 @@ const { validateHostUrl } = require('../src/helpers/ollamaHostConfig');
 const { projectHostPreferenceForRead } = require('../src/services/hostPreferencePublicProjection');
 const { readHostGpuHealth } = require('../src/services/hostGpuHealthService');
 const { getGpuTelemetryForHosts } = require('../src/services/gpuTelemetryService');
+const { readModelParallelism } = require('../src/services/ollamaModelParallelismService');
 router.get('/host-preferences', async (_req, res) => {
   try {
     const prefs = await hostPrefService.getAll();
@@ -78,6 +79,8 @@ router.get('/host-preferences', async (_req, res) => {
           };
         });
         const anyPinnedLoaded = runningModels.some(rm => rm.matchedPinned !== null);
+        // Request slots Ollama forces per model; other models follow OLLAMA_NUM_PARALLEL.
+        const modelParallelism = await readModelParallelism(safeHostUrl, [...pinnedNames, ...runningModels.map(rm => rm.name)]);
         return {
           ...pref,
           pinnedModels: pinnedEntries,
@@ -90,6 +93,7 @@ router.get('/host-preferences', async (_req, res) => {
               ? runningModels.some(rm => modelsMatch(rm.name, primaryPin))
               : null,
             anyPinnedLoaded,
+            modelParallelism,
             allPinnedLoaded: pinnedEntries.length > 0 && pinnedEntries.every(entry => {
               const status = getLoadedEntryStatus(entry, psData.models);
               return status.loaded && !status.contextMismatch && !status.residencyMismatch && !status.vramSpill;

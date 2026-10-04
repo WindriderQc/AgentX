@@ -3,7 +3,8 @@
     "id": "gpu-a",
     "name": "GPU host A",
     "ssh": "agentx@gpu-a.example",
-    "ollamaUrl": "http://gpu-a.example:11434"
+    "ollamaUrl": "http://gpu-a.example:11434",
+    "ollamaService": "ollama.service"
   },
   {
     "id": "gpu-b",

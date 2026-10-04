@@ -393,9 +393,9 @@ results to `/api/v1/hardware/samples`. Nothing is installed on a GPU host.
    without an authorized key is unsupported; it stays "not collected".
 2. Copy `gpu-hosts.example.json` outside Git and list the hosts:
    `[{"id":"gpu-a","name":"GPU A","ssh":"user@gpu-a","ollamaUrl":"http://gpu-a:11434"},{"id":"core","local":true}]`.
-   Optional per host: `sshPort`, `nvidiaSmi` (executable path). `ollamaUrl`
-   must equal the Ollama URL Core and Benchmark use for that host: it is how
-   they find the host's GPUs.
+   Optional per host: `sshPort`, `nvidiaSmi` (executable path), and
+   `ollamaService` (below). `ollamaUrl` must equal the Ollama URL Core and
+   Benchmark use for that host: it is how they find the host's GPUs.
 3. Copy `gpu-agent.env.example` (set `DATA_URL=http://127.0.0.1:<DATA_PORT>`)
    and `gpu-agent.service.example` into the user's systemd directory, then
    enable the unit. `GPU_AGENT_HOSTS_JSON` may replace the file.
@@ -405,9 +405,40 @@ results to `/api/v1/hardware/samples`. Nothing is installed on a GPU host.
    host or the post failed), then
    `node integrations/operations/verify-native-data-collectors.js --expect-gpu <GPU_AGENT_ID>`.
 
+Some Ollama behaviour is set by the server's environment, not by a request:
+the KV cache type, flash attention, parallel requests, resident model slots,
+GPU spreading and visible devices. Name a host's Ollama service with
+`ollamaService` and the collector also reads these settings, read-only, every
+`GPU_AGENT_OLLAMA_ENV_INTERVAL_MS` (default 10 min, 1 min to 24 h):
+
+- a systemd unit name, such as `"ollama.service"` or `"ollama-cpu.service"`:
+  `systemctl show <unit>` with the unit's `Environment`, load and active state,
+  main-process start time, `NeedDaemonReload` and whether it also reads an
+  `EnvironmentFile`. A user that is not root can run it.
+- `"windows"`: `reg query` of the machine environment, then of the SSH user's
+  environment (the user's values win). The SSH user should be the one running
+  Ollama.
+
+Only `OLLAMA_KV_CACHE_TYPE`, `OLLAMA_FLASH_ATTENTION`, `OLLAMA_NUM_PARALLEL`,
+`OLLAMA_MAX_LOADED_MODELS`, `OLLAMA_MAX_QUEUE`, `OLLAMA_SCHED_SPREAD`,
+`OLLAMA_KEEP_ALIVE`, `OLLAMA_CONTEXT_LENGTH`, `OLLAMA_GPU_OVERHEAD`,
+`OLLAMA_LLM_LIBRARY`, `OLLAMA_VULKAN` and `CUDA_VISIBLE_DEVICES` are kept, with
+plain values of at most 64 characters (`shared/ollamaServiceEnvironment.js`);
+every other variable is discarded where it is read. A listed key with an
+unexpected value is reported by name only. An unset key means Ollama's
+default. What is observed is the configuration: a systemd unit shows what
+systemd has loaded, values in an `EnvironmentFile` are not seen, and a service
+not restarted since a change still runs the previous values (compare the
+start time). Data keeps the latest observation per host; a cycle without a
+fresh read leaves it unchanged, and a failed read is stored as that
+observation's error.
+
 Core's Nerve Center reads `/api/v1/hardware/latest` through `DATAAPI_BASE_URL`
 and shows a fresh sample's values with its age; a stale, failing or uncollected
-host shows that state instead of numbers. Benchmark reads the same projection
+host shows that state instead of numbers. A host card also shows the latest
+Ollama server settings the collector read, with their source and age, whatever
+the GPU sample's freshness: an unset key reads as Ollama's default (`f16` for
+the KV cache), and a failed read says so instead of showing defaults. Benchmark reads the same projection
 (its `DATAAPI_BASE_URL`, default `http://data:3083` in Compose) to fill
 `agentx.profiler-hardware-collector/v1`. A retired host-report agent still
 running on a GPU host is removed by hand on that host; Core has no
@@ -1034,6 +1065,23 @@ a hash, never prompt content. A miss whose divergence is `append` or `none`
 points elsewhere: another caller used the model in between, or the model was
 reloaded (`loadMs` is high).
 
+`GET /api/analytics/inference/distribution` turns these rows into
+distributions. It accepts the `/api/analytics/inference/logs` filters, covers
+`window` (`24h`, `7d`, `30d`, `90d`; default `7d`) unless `from`/`to` are given,
+and groups by one or two of `consumerContract` (default), `taskType`, `model`,
+`host`, `hostKey`, `caller`, `runtime` and `status` (`limit` groups, default 50,
+at most 200). For the totals and each group it returns p50, p90, p95, p99 and
+max of `inputTokens` (`tokensIn`, or the dispatch estimate when the call ended
+without usage), `tokensOut`, `durationMs`, `firstTokenMs`, `loadMs`,
+`promptEvalMs`, `evalMs`, `nonModelMs` (wall clock not covered by the three
+Ollama phases: routing, admission, queueing, retries and network), `numCtx` and
+`contextFill` (`inputTokens / num_ctx`); the calls per prompt-size bucket (up to
+8k, 16k, 32k, 64k, 96k, 128k, 192k, above); and the calls filling at least 50,
+75 and 90 % of their context. Percentiles are MongoDB approximations. A metric
+no row reports has a null value with a count of 0. Rows expire after
+`INFERENCE_LOG_TTL_DAYS` (returned as `retentionDays`), so a window longer
+than that covers only the retained rows.
+
 ## Resident model pins
 
 The Nerve Center host cards show parallel requests **per model** separately from
@@ -1045,8 +1093,26 @@ After inspecting the running process environment or its matching startup log,
 record the observation through
 `PUT /api/nerve-center/host-preferences/<encoded-host-url>/ollama-concurrency`
 with `{ numParallel, observedAt, source }`, where `source` is
-`process-environment` or `startup-log`. This updates host metadata only; changing
-Ollama's parallelism requires separate host configuration and qualification.
+`process-environment` or `startup-log`. Without a recorded observation, the card
+uses the `OLLAMA_NUM_PARALLEL` the GPU collector read from the host's Ollama
+service (`ollamaService` in the GPU collector setup under
+[optional surface integrations](#optional-surface-integrations)) and says so; a
+recorded observation stays authoritative and a differing collector reading is
+shown beside it. This updates host metadata only; changing Ollama's parallelism
+requires separate host configuration and qualification.
+
+Below that value, the **Effective** line gives each pinned and loaded model the
+request slots Ollama actually gives it. Ollama gives one slot, whatever
+`OLLAMA_NUM_PARALLEL` says, to a model that cannot complete text (an embedding
+model) and to the architectures its scheduler runs sequentially, among them the
+Qwen 3.5/3.6 hybrids (`qwen35`, `qwen35moe`) and `qwen3next`: the card shows
+`1 (architecture qwen35)`. Core reads each model's family and capabilities
+from `/api/show` (cached ten minutes per host and model) and compares the
+family with the scheduler's list in
+`core/src/services/ollamaModelParallelismService.js`, copied from Ollama's
+`server/sched.go`; review it when upgrading Ollama. Any other model shows the
+configured value with `(server setting)`, or only `server setting` while that
+value is unknown, and a model whose metadata cannot be read shows `unknown`.
 
 One host can keep a conversation model and an embedding model resident together.
 `pinnedModels` holds an independent `{ model, keepAlive, contextSize, autoRestore, numThread }`

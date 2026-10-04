@@ -10,7 +10,9 @@ const {
   parseNvidiaSmiCsv,
   decodeThrottleReasons,
   commandFor,
+  ollamaEnvCommands,
   sampleHost,
+  readOllamaEnvironment,
   runCycle
 } = require('../../../integrations/data-collectors/gpu-agent');
 
@@ -73,8 +75,8 @@ describe('gpu-agent configuration', () => {
       { id: 'core', local: true }
     ]) });
     expect(hosts).toEqual([
-      { id: 'gpu-a', name: 'GPU A', local: false, ssh: 'user@gpu-a.example', sshPort: null, nvidiaSmi: '', ollamaUrl: 'http://gpu-a.example:11434' },
-      { id: 'core', name: 'core', local: true, ssh: '', sshPort: null, nvidiaSmi: '', ollamaUrl: '' }
+      { id: 'gpu-a', name: 'GPU A', local: false, ssh: 'user@gpu-a.example', sshPort: null, nvidiaSmi: '', ollamaUrl: 'http://gpu-a.example:11434', ollamaService: '' },
+      { id: 'core', name: 'core', local: true, ssh: '', sshPort: null, nvidiaSmi: '', ollamaUrl: '', ollamaService: '' }
     ]);
     const readFile = jest.fn(() => '[{"id":"core","local":true}]');
     expect(loadHosts({ GPU_AGENT_HOSTS_FILE: '/etc/agentx/gpu-hosts.json' }, readFile)).toHaveLength(1);
@@ -175,6 +177,122 @@ describe('gpu-agent sampling', () => {
     const fetchImpl = jest.fn(async () => { throw new Error('connect ECONNREFUSED'); });
     const cycle = await runCycle({ settings, hosts: [hosts[0]], execFileImpl: fakeExec({ 'user@gpu-a.example': ROW }), fetchImpl });
     expect(cycle).toMatchObject({ failedHosts: 0, posted: null, postError: 'connect ECONNREFUSED' });
+  });
+});
+
+describe('gpu-agent Ollama service settings', () => {
+  const SYSTEMD_SHOW = [
+    'LoadState=loaded',
+    'ActiveState=active',
+    'ExecMainStartTimestamp=Sat 2026-10-03 21:14:02 EDT',
+    'NeedDaemonReload=no',
+    'Environment="OLLAMA_HOST=0.0.0.0" CUDA_VISIBLE_DEVICES=0,1 OLLAMA_SCHED_SPREAD=true OLLAMA_FLASH_ATTENTION=1 OLLAMA_NUM_PARALLEL=1 "PATH=/usr/bin:/bin" HF_TOKEN=synthetic-secret',
+    'EnvironmentFiles='
+  ].join('\n');
+  const REG_MACHINE = '\r\nHKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment\r\n' +
+    '    ComSpec    REG_EXPAND_SZ    %SystemRoot%\\system32\\cmd.exe\r\n    OLLAMA_NUM_PARALLEL    REG_SZ    2\r\n';
+  const REG_USER = '\r\nHKEY_CURRENT_USER\\Environment\r\n    OLLAMA_KV_CACHE_TYPE    REG_SZ    q8_0\r\n' +
+    '    ollama_num_parallel    REG_SZ    4\r\n    OPENAI_API_KEY    REG_SZ    synthetic-secret\r\n';
+
+  function hostsFrom(list) {
+    return loadHosts({ GPU_AGENT_HOSTS_JSON: JSON.stringify(list) });
+  }
+
+  test('validates the service name and reads it with fixed read-only commands', () => {
+    expect(() => hostsFrom([{ id: 'a', local: true, ollamaService: 'ollama.service; reboot' }])).toThrow(/ollamaService/);
+    expect(() => hostsFrom([{ id: 'a', local: true, ollamaService: '-H evil' }])).toThrow(/ollamaService/);
+
+    const [linux, windows, local] = hostsFrom([
+      { id: 'gpu-a', ssh: 'user@gpu-a.example', ollamaService: 'ollama.service' },
+      { id: 'gpu-w', ssh: 'user@gpu-w.example', ollamaService: 'windows' },
+      { id: 'core', local: true, ollamaService: 'ollama-cpu.service' }
+    ]);
+    const [remote] = ollamaEnvCommands(linux, settings);
+    expect(remote.file).toBe('ssh');
+    expect(remote.args.at(-1)).toBe('systemctl show ollama.service --no-pager --property=LoadState --property=ActiveState ' +
+      '--property=ExecMainStartTimestamp --property=NeedDaemonReload --property=Environment --property=EnvironmentFiles');
+    expect(ollamaEnvCommands(windows, settings).map(command => command.args.at(-1))).toEqual([
+      'reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"',
+      'reg query HKCU\\Environment'
+    ]);
+    const [own] = ollamaEnvCommands(local, settings);
+    expect(own).toMatchObject({ file: 'systemctl', args: expect.arrayContaining(['show', 'ollama-cpu.service']) });
+  });
+
+  test('keeps only the allowlisted settings of a systemd unit', async () => {
+    const [host] = hostsFrom([{ id: 'gpu-a', ssh: 'user@gpu-a.example', ollamaService: 'ollama.service' }]);
+    const execFileImpl = jest.fn((file, args, options, callback) => setImmediate(() => callback(null, SYSTEMD_SHOW, '')));
+    const observation = await readOllamaEnvironment(host, settings, execFileImpl);
+    expect(observation).toMatchObject({
+      source: 'systemd',
+      unit: 'ollama.service',
+      ok: true,
+      values: { CUDA_VISIBLE_DEVICES: '0,1', OLLAMA_SCHED_SPREAD: 'true', OLLAMA_FLASH_ATTENTION: '1', OLLAMA_NUM_PARALLEL: '1' },
+      activeState: 'active',
+      activeSince: 'Sat 2026-10-03 21:14:02 EDT',
+      needDaemonReload: false,
+      environmentFiles: false
+    });
+    expect(JSON.stringify(observation)).not.toMatch(/synthetic-secret|OLLAMA_HOST|PATH/);
+    expect(Date.parse(observation.observedAt)).not.toBeNaN();
+  });
+
+  test('merges the Windows machine and user environment, user last', async () => {
+    const [host] = hostsFrom([{ id: 'gpu-w', ssh: 'user@gpu-w.example', ollamaService: 'windows' }]);
+    const outputs = [REG_MACHINE, REG_USER];
+    const execFileImpl = jest.fn((file, args, options, callback) => setImmediate(() => callback(null, outputs.shift(), '')));
+    const observation = await readOllamaEnvironment(host, settings, execFileImpl);
+    expect(observation).toMatchObject({
+      source: 'windows-registry', unit: null, ok: true,
+      values: { OLLAMA_KV_CACHE_TYPE: 'q8_0', OLLAMA_NUM_PARALLEL: '4' }
+    });
+    expect(JSON.stringify(observation)).not.toMatch(/synthetic-secret|ComSpec/);
+  });
+
+  test('a failed read is an observation error, not a thrown exception', async () => {
+    const [host] = hostsFrom([{ id: 'gpu-a', ssh: 'user@gpu-a.example', ollamaService: 'ollama.service' }]);
+    const failing = jest.fn((file, args, options, callback) => setImmediate(() => callback(new Error('exit 255'), '', 'Permission denied (publickey).')));
+    await expect(readOllamaEnvironment(host, settings, failing)).resolves.toMatchObject({
+      source: 'systemd', ok: false, error: 'Permission denied (publickey).'
+    });
+    const missing = jest.fn((file, args, options, callback) => setImmediate(() => callback(null, 'LoadState=not-found\nActiveState=inactive\n', '')));
+    await expect(readOllamaEnvironment(host, settings, missing)).resolves.toMatchObject({ ok: false, error: 'unit ollama.service not found' });
+  });
+
+  test('reads the settings at their own interval and posts them with the GPU result', async () => {
+    const [host, plain] = hostsFrom([
+      { id: 'gpu-a', ssh: 'user@gpu-a.example', ollamaService: 'ollama.service' },
+      { id: 'gpu-b', ssh: 'user@gpu-b.example' }
+    ]);
+    const execFileImpl = jest.fn((file, args, options, callback) => {
+      const output = args.at(-1).startsWith('systemctl') ? SYSTEMD_SHOW : ROW;
+      setImmediate(() => callback(null, output, ''));
+    });
+    const posts = [];
+    const fetchImpl = jest.fn(async (url, options) => {
+      posts.push(JSON.parse(options.body));
+      return { ok: true, status: 200, json: async () => ({ data: {} }) };
+    });
+    const envState = new Map();
+    let clock = 1_000_000;
+    const cycle = () => runCycle({ settings, hosts: [host, plain], execFileImpl, fetchImpl, envState, now: () => clock });
+
+    await cycle();
+    clock += settings.ollamaEnvIntervalMs - 1;
+    await cycle();
+    clock += 1;
+    await cycle();
+
+    const withSettings = posts.map(post => post.results.map(result => Boolean(result.ollamaEnvironment)));
+    expect(withSettings).toEqual([[true, false], [false, false], [true, false]]);
+    expect(posts[0].results[0]).toMatchObject({ hostId: 'gpu-a', ok: true, ollamaEnvironment: { ok: true, unit: 'ollama.service' } });
+    expect(execFileImpl.mock.calls.filter(([, args]) => args.at(-1).startsWith('systemctl'))).toHaveLength(2);
+  });
+
+  test('the settings interval defaults to 10 minutes and is bounded', () => {
+    expect(readSettings({}).ollamaEnvIntervalMs).toBe(600000);
+    expect(readSettings({ GPU_AGENT_OLLAMA_ENV_INTERVAL_MS: '1000' }).ollamaEnvIntervalMs).toBe(60000);
+    expect(readSettings({ GPU_AGENT_OLLAMA_ENV_INTERVAL_MS: '999999999' }).ollamaEnvIntervalMs).toBe(86400000);
   });
 });
 

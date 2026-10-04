@@ -60,7 +60,8 @@
                     throttleReasons: [...new Set((gpu.throttleReasons || []).map(throttleFamily))]
                 }))
             } : null,
-            lastSeen: row.telemetry?.sampledAt || null
+            lastSeen: row.telemetry?.sampledAt || null,
+            ollamaEnvironment: row.ollamaEnvironment || null
         };
     }
 
@@ -167,12 +168,14 @@
             gpuTelemetry: doc?.gpuTelemetry || null,
             swap: doc?.swap || null,
             ollamaService: doc?.ollamaService || null,
+            ollamaEnvironment: doc?.ollamaEnvironment || null,
             // Host preference fields — the canonical shape uses
             // `pinnedEntries` (array of {model,keepAlive,contextSize,autoRestore}).
             // The first entry remains the primary pin; every entry has its own controls.
             pinnedEntries: normalizePinnedEntries(pref),
             maxConcurrentModels: pref?.maxConcurrentModels || 1,
             ollamaConcurrency: pref?.ollamaConcurrency || null,
+            modelParallelism: Array.isArray(pref?.live?.modelParallelism) ? pref.live.modelParallelism : [],
             driftModels: pref?.driftModels || [],
             hostUrl: pref?.hostUrl || '',
             prefDisplayName: pref?.displayName || '',
@@ -322,19 +325,105 @@
             '</span>';
     }
 
-    function buildOllamaConcurrency(host) {
+    // The GPU collector's latest reading of the host's Ollama service settings.
+    function collectedOllamaSettings(host) {
+        const env = host.ollamaEnvironment;
+        const timestamp = Date.parse(env?.observedAt);
+        if (!env || !Number.isFinite(timestamp) || timestamp > Date.now() + 30000) return null;
+        const origin = env.source === 'windows-registry' ? 'Windows environment' : 'systemd unit ' + (env.unit || '');
+        return { env, values: env.ok && env.values ? env.values : {}, origin, age: formatAge(Math.max(0, Date.now() - timestamp)) };
+    }
+
+    // A parallel-request observation recorded through the host-preference API.
+    function recordedConcurrency(host) {
         const observation = host.ollamaConcurrency;
         const timestamp = Date.parse(observation?.observedAt);
         const known = Number.isSafeInteger(observation?.numParallel) && observation.numParallel > 0
             && Number.isFinite(timestamp) && timestamp <= Date.now() + 30000;
+        return { observation, timestamp, known };
+    }
+
+    // Request slots each resident model gets: Ollama forces one for embeddings
+    // and for the architectures its scheduler runs sequentially; any other
+    // model follows the server setting.
+    function buildModelParallelism(host, configured) {
+        const rows = (host.modelParallelism || []).filter(item => item && item.model);
+        if (!rows.length) return '';
+        const describe = item => item.requestSlots === 1
+            ? (item.reason === 'architecture' ? '1 (architecture ' + shared.escapeHtml(item.family || item.architecture || '') + ')' : '1 (embedding model)')
+            : item.reason === 'server_setting' ? (configured ? shared.escapeHtml(configured) + ' (server setting)' : 'server setting') : 'unknown';
+        return '<div style="margin-top:2px;"><span style="color:var(--muted);">Effective</span> ' + rows.map(item =>
+            '<span style="margin-right:10px;white-space:nowrap;"><span style="color:var(--muted);">' + shared.escapeHtml(shared.shortModel(item.model)) +
+            '</span> <strong>' + describe(item) + '</strong></span>').join(' ') + '</div>';
+    }
+
+    function buildOllamaConcurrency(host) {
+        const { observation, timestamp, known } = recordedConcurrency(host);
         const observed = known ? new Date(timestamp).toLocaleString() : '';
         const ageDays = known ? Math.floor((Date.now() - timestamp) / 86400000) : 0;
+        // Without a recorded observation, a value the collector read is shown as such.
+        const collected = known ? null : collectedOllamaSettings(host);
+        const collectedValue = collected && Object.prototype.hasOwnProperty.call(collected.values, 'OLLAMA_NUM_PARALLEL')
+            ? collected.values.OLLAMA_NUM_PARALLEL : '';
+        const configured = known ? String(observation.numParallel) : collectedValue;
         return '<div class="nc-ollama-concurrency" style="margin-bottom:8px;font-size:11px;overflow-wrap:anywhere;">' +
             '<span style="color:var(--muted);">Parallel requests per model</span> · <strong>' +
-            (known ? observation.numParallel + ' configured' : 'Unknown') + '</strong>' +
+            (configured ? shared.escapeHtml(configured) + ' configured' : 'Unknown') + '</strong>' +
             (known ? '<div style="color:var(--muted);" title="' + shared.escapeHtml(observation.source || '') + '">Last observed: ' +
                 shared.escapeHtml(observed) + (ageDays >= 1 ? ' · ' + ageDays + 'd old' : '') + '</div>' : '') +
+            (collectedValue ? '<div style="color:var(--muted);">Read by the GPU collector from the ' +
+                shared.escapeHtml(collected.origin) + (collected.age ? ' · ' + collected.age + ' ago' : '') + '</div>' : '') +
+            buildModelParallelism(host, configured) +
             '<div style="color:var(--muted);">Extra requests queue. VRAM, context and AgentX admission can lower concurrency.</div></div>';
+    }
+
+    const OLLAMA_SETTING_ROWS = [
+        ['OLLAMA_KV_CACHE_TYPE', 'KV cache', 'f16 (default)'],
+        ['OLLAMA_FLASH_ATTENTION', 'Flash attention', 'Ollama default'],
+        ['OLLAMA_MAX_LOADED_MODELS', 'Loaded models', 'Ollama default'],
+        ['OLLAMA_SCHED_SPREAD', 'Spread across GPUs', 'Ollama default'],
+        ['CUDA_VISIBLE_DEVICES', 'Visible GPUs', 'all'],
+        ['OLLAMA_KEEP_ALIVE', 'Keep alive', null],
+        ['OLLAMA_CONTEXT_LENGTH', 'Default context', null],
+        ['OLLAMA_MAX_QUEUE', 'Queue limit', null],
+        ['OLLAMA_GPU_OVERHEAD', 'GPU overhead', null],
+        ['OLLAMA_LLM_LIBRARY', 'LLM library', null],
+        ['OLLAMA_VULKAN', 'Vulkan', null]
+    ];
+
+    function buildOllamaServiceSettings(host) {
+        const collected = collectedOllamaSettings(host);
+        if (!collected) return '';
+        const { env, values, origin, age } = collected;
+        const muted = text => '<div style="color:var(--muted);">' + text + '</div>';
+        const source = 'Read by the GPU collector from the ' + shared.escapeHtml(origin) + (age ? ' · ' + age + ' ago' : '');
+        const open = '<div class="nc-ollama-settings" style="margin-bottom:8px;font-size:11px;overflow-wrap:anywhere;">' +
+            '<span style="color:var(--muted);">Ollama server settings</span>';
+        if (!env.ok) {
+            return open + ' · <strong>not read</strong>' + muted(shared.escapeHtml(env.error || '')) + muted(source) + '</div>';
+        }
+        const has = key => Object.prototype.hasOwnProperty.call(values, key);
+        // The parallel-request line shows the collector's value unless an
+        // observation was recorded; then a differing reading must stay visible.
+        const settingRows = recordedConcurrency(host).known && has('OLLAMA_NUM_PARALLEL')
+            ? [['OLLAMA_NUM_PARALLEL', 'Parallel requests', null], ...OLLAMA_SETTING_ROWS]
+            : OLLAMA_SETTING_ROWS;
+        const rows = settingRows
+            .filter(([key, , fallback]) => has(key) || fallback !== null)
+            .map(([key, label, fallback]) => {
+                const value = !has(key) ? fallback
+                    : values[key] === '' ? (key === 'CUDA_VISIBLE_DEVICES' ? 'none' : 'empty') : values[key];
+                return '<span style="margin-right:10px;white-space:nowrap;"><span style="color:var(--muted);">' + label +
+                    '</span> <strong>' + shared.escapeHtml(value) + '</strong></span>';
+            }).join(' ');
+        const notes = [];
+        if (env.activeSince) notes.push('Service started ' + shared.escapeHtml(env.activeSince) + '.');
+        if (env.needDaemonReload) notes.push('The unit changed on disk and systemd has not reloaded it.');
+        if (env.environmentFiles) notes.push('The unit also reads an environment file; its values are not shown.');
+        if ((env.rejectedKeys || []).length) notes.push('Unexpected value ignored: ' + shared.escapeHtml(env.rejectedKeys.join(', ')) + '.');
+        return open + '<div style="margin-top:2px;">' + rows + '</div>' +
+            muted(source + '. A service not restarted since a change still runs the previous values.') +
+            (notes.length ? muted(notes.join(' ')) : '') + '</div>';
     }
 
     function buildPinnedModelsSection(host) {
@@ -391,6 +480,7 @@
         }).join(' ') || '<span class="nc-pinned-note">Nothing loaded</span>';
         return '<div class="nc-defaults-panel nc-pinned-panel">' +
             buildOllamaConcurrency(host) +
+            buildOllamaServiceSettings(host) +
             '<div class="nc-pinned-header"><div class="nc-pinned-title">' +
                 '<span class="nc-defaults-label">Pinned Models</span>' +
                 '<span class="nc-pinned-note">' + loadedCount + '/' + entries.length + ' loaded</span></div>' +
