@@ -394,3 +394,23 @@ a.icon-btn { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+.session-welcome h2 { font-size: 1.2rem; margin: 0 0 .8rem; }
+.welcome-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.welcome-actions button { color: inherit; font: inherit; background: #ffffff08; border: 1px solid #ffffff26; border-radius: 12px; padding: .8rem 1rem; cursor: pointer; text-align: left; }
+.welcome-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#sessionPoint { margin: 0 1rem .7rem; max-height: 30vh; overflow: auto; flex-shrink: 0; }
+@media (max-width: 600px) { .welcome-actions { flex-direction: column; } }
+/* Keep the welcome, transcript and composer in the viewport; panels scroll internally. */
+body:not(.psyx-locked) { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+body > #nav-container { flex-shrink: 0; }
+body:not(.psyx-locked) .app-shell { flex: 1; min-height: 0; }
+.app-shell > .topbar, .app-shell > .stance-bar { flex-shrink: 0; }
+.workspace > .side-panel, .workspace > .conversation-panel, .conversation-panel .messages { min-height: 0; }
+@media (max-width: 900px) {
+  .topbar { flex-wrap: wrap; }
+  .top-actions { width: 100%; flex-wrap: wrap; gap: 6px; }
+  .drawer-backdrop { z-index: 1100; }
+  .workspace > .side-panel { z-index: 1101; }
+}
+html { overflow-x: hidden; }

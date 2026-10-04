@@ -13,7 +13,7 @@ const { detectRecentCrisis, RESOURCES } = require('../../../src/domains/psyx/saf
 const assessments = require('../../../src/domains/psyx/assessments');
 const { TECHNIQUES } = require('../../../src/domains/psyx/techniques');
 
-const VERSION = '2.10.1';
+const VERSION = '2.11.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -193,6 +193,10 @@ function createApp({ config, database, provider, voice = null, logger = console,
     return responseData(res, { unlocked: Boolean(auth.current(req)) });
   });
   api.use(auth.requireSession);
+  if (database.recapForUser) require('../../../src/services/conversations/recapRoutes').registerRecapRoutes(api, {
+    base: '/sessions', serviceFor: (_req, res) => database.recapForUser(res.locals.psyxUserId),
+    generate: database.generateRecap, busy: (_req, res) => streaming.has(res.locals.psyxUserId)
+  });
 
   api.get('/status', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)), frontierSupported())));
   api.post('/bootstrap', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)), frontierSupported())));
@@ -350,11 +354,14 @@ function createApp({ config, database, provider, voice = null, logger = console,
     // The frontier lane reads a wide context; the local routes keep their bounded one.
     const budget = location === 'frontier' ? 'frontier' : 'local';
     const lastSessionAt = longitudinal.sessionDigests?.filter(item => item.conversationId !== conversationId).at(-1)?.updatedAt || null;
+    const points = database.recapForUser?.(userId);
+    const confirmed = points ? (conversationId ? (await points.read(conversationId)).recap : null) || (await points.latest())?.recap : null;
+    const recapContext = require('../../../src/services/conversationRecapService').recapContext(confirmed);
     const compose = lane => {
       const selected = domain.selectConversationContext(context || [], { ...domain.CONTEXT_BUDGETS[lane], availableMessages });
       return {
         system: domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane,
-          time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } }),
+          time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } }) + (recapContext ? `\n\n${recapContext}` : ''),
         messages: selected.messages, contextCoverage: selected.coverage
       };
     };

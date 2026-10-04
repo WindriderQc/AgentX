@@ -21,7 +21,10 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **Core ownership.** Conversations, selected notes, tasks, attachments and
   memory reads have one owner each, in Core. Surfaces and native harnesses
   (OpenClaw, VoiX, Data collectors, usage and memory-review tasks) call those
-  capabilities.
+  capabilities. Core also owns user-confirmed conversation points; PsyX and
+  personal Nestor share their editor and continuation context. Optional local
+  drafts disclose coverage and require confirmation; concurrent edits refuse
+  rather than overwrite. Exports and erasure cover the saved point.
 - **Conversation recovery.** Playground retains accepted requests and response
   bytes in Core. Owners can download refused or interrupted exchanges without
   sending the request again. Completed retries replay the saved response;
@@ -72,7 +75,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   displayed name, voice, avatar colour and personality text, and creates an
   identity or another style for an agent. In Super Dad the owner can address a
   configured team member by name.
-- **PsyX.** Each reply receives the user's profile, goals and the time, with
+- **PsyX.** Its welcome opens listening, the toolbox or the latest active
+  session; an optional editable point of the session supports finishing and
+  resuming. The conversation and composer fit the viewport while panels scroll.
+  Each reply receives the user's profile, goals and the time, with
   memory fitted to its lane's budget. A user may choose a frontier cloud agent
   for deep turns or for all turns when the instance names one: it is never a
   fallback, and Core keeps the conversation and its memory. Between sessions

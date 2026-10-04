@@ -205,6 +205,18 @@ The recorded voice describes the server's requested synthesis, not a playback
 receipt. Earlier audits retain their captured identity and voice when session
 presentation or instance settings change.
 
+Core's `runtimeServices.conversationRecaps` binds an exact owner/prompt or
+surface/pack/scope in server code. The `agentx.conversation-recap/v1` contract
+reads the latest confirmed point, prepares an optional local-inference draft and
+saves the person's summary, takeaway and next step in `Conversation.sessionRecap`.
+Drafts include actual whole-message coverage and write nothing. Saved edits
+require the previous recap revision and canonical transcript fingerprint; the
+atomic root version refuses concurrent turns or editors. Canonical transcript
+references support metadata-only continuity reads. Existing exports and erasure
+include the embedded point. PsyX and personal Nestor share its routes and browser
+editor, clear private drafts on locking/navigation, and carry confirmed points
+as reference context. Family conversations do not receive personal points.
+
 Surface records use a distinct internal user namespace and are not exposed by
 the default Playground history API. PsyX transcripts are namespaced away from
 ordinary chat.

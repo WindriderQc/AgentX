@@ -1,0 +1,20 @@
+.conversation-recap { padding: 1rem; border: 1px solid #ffffff24; border-radius: 14px; background: #ffffff05; }
+.conversation-recap[hidden] { display: none; }
+.conversation-recap p { white-space: pre-wrap; overflow-wrap: anywhere; margin: .55rem 0; }
+.conversation-recap small { display: block; opacity: .75; }
+.conversation-recap button, .conversation-recap-dialog button { color: inherit; background: #ffffff10; border: 1px solid #ffffff30; border-radius: 9px; padding: .6rem .8rem; cursor: pointer; margin: .4rem .4rem 0 0; font: inherit; }
+.conversation-recap button:focus-visible, .conversation-recap-dialog :focus-visible { outline: 2px solid #8bcab6; outline-offset: 3px; }
+.conversation-recap-dialog { color: #f0f3f5; background: #17212a; border: 1px solid #ffffff30; border-radius: 16px; width: min(560px, calc(100vw - 32px)); padding: 1.3rem; max-height: calc(100dvh - 32px); overflow: auto; }
+.conversation-recap-dialog::backdrop { background: #0009; }
+.conversation-recap-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.conversation-recap-dialog h2 { font-size: 1.3rem; margin: 0; }
+.conversation-recap-dialog label { display: block; margin: 1rem 0; }
+.conversation-recap-dialog small { opacity: .7; font-size: .85em; }
+.conversation-recap-dialog textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; line-height: 1.5; color: inherit; background: #0003; border: 1px solid #ffffff35; border-radius: 9px; padding: .7rem; margin-top: .4rem; }
+.conversation-recap-dialog footer { display: flex; gap: .5rem; flex-wrap: wrap; }
+.conversation-recap-dialog [data-status] { font-size: .9rem; line-height: 1.5; }
+.conversation-recap-dialog button:disabled { opacity: .5; cursor: wait; }
+.conversation-recap-dialog footer button { font-size: .95rem; min-height: 44px; }
+
+.conversation-recap-dialog footer { color: inherit; padding: 0; }
+.conversation-recap-dialog footer button[type="submit"] { background: #b8dccb; border-color: #b8dccb; color: #12291f; font-weight: 650; }

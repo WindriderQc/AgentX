@@ -14,7 +14,7 @@ build/
 logs/
 **/logs/
 test-results/
-**/test-results/
+**/test-results
 playwright-report/
 reports/
 !integrations/openclaw/jobs/reports/

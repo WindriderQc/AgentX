@@ -23,6 +23,8 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
   const database = {
     stateRepository,
     conversationRepository: createConversationAdapter({ conversationLifecycle }),
+    recapForUser: userId => runtimeServices.conversationRecaps.forOwner({ userId: `surface:psyx:${userId}`, promptName: 'psyx' }),
+    generateRecap: require('../../src/services/conversationRecapService').localRecapGenerator(runtimeServices.inference, 'psyx'),
     async ping() { await mongoose.connection.db.command({ ping: 1 }); return true; }
   };
   const config = loadConfig();

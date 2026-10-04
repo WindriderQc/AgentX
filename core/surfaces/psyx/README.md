@@ -1,9 +1,18 @@
 # PsyX in AgentX
 
-The full profile serves the PsyX 2.10.1 conversation UI at `/psyx`. Psychological
+The full profile serves the PsyX 2.11.0 conversation UI at `/psyx`. Psychological
 domain rules and longitudinal state live in `core/src/domains/psyx`; generic
 conversation persistence/lifecycle and admitted inference are Core capabilities.
 No separate PsyX server, database client or inference router starts here.
+
+The welcome opens listening, the existing toolbox or the latest active session.
+A shared Core editor saves an optional user-confirmed point of the session: a
+summary, takeaway and next step. Local inference can propose a draft with its
+actual message coverage; the person edits and confirms it before saving. Core
+keeps the point in the canonical conversation, protects concurrent edits and
+marks it stale when that conversation changes. The same capability and editor
+serve personal Nestor. Confirmed points are reference context for subsequent
+replies and new sessions, within each surface's existing private namespace.
 
 `PSYX_ACCESS_TOKEN` configures the existing private access code. Without it,
 private APIs stay locked. `PSYX_ACCESS_MODE=trusted-network` preserves the explicit

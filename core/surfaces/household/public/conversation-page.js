@@ -22,6 +22,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <div id="conversationRecent" class="conversation-recent" aria-live="polite"></div>
       ${family ? '' : '<a href="/dad/memories" class="conversation-native">Mes souvenirs</a>'}
     </section>
+    <section id="conversationRecap" class="conversation-recap" aria-label="Point de l’échange" hidden></section>
     <div class="conversation-layout"><details class="conversation-settings" id="conversationSettings"><summary>Réglages de l’espace</summary>
       <p id="conversationLocked" class="conversation-locked" role="status" hidden></p>
       <label for="conversationPersona">Style</label><select id="conversationPersona">${personas.map(p => `<option value="${esc(p.id)}" ${p.id === 'nestor' ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
@@ -226,6 +227,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     row.scrollIntoView({ block: 'nearest' });
   };
   async function createSession(prefs, signal) {
+    recap?.clear();
     // A new session has no history: never leave an older transcript on screen beside it.
     if (transcript.querySelector('.conversation-message')) {
       transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; partial = null; board.clear(); brain.reset();
@@ -300,6 +302,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
       if (pending.trim()) consume(pending);
       if (!result?.reply) throw new Error('The reply was interrupted. Start again when ready.');
+      void recap?.refresh(session.sessionId);
       personalNotes.show(result.continuity?.personal); degradedReply = result.routing?.fallbackUsed === true;
       showTools(result.tools);
       return { ...result.reply, sound: result.sound };
@@ -594,12 +597,13 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   open.onchange = () => { if (open.checked) void openHold.start(); else void releaseOpen(); };
   el('conversationStart').onclick = () => { stopPreview(); preferences.lastVoice = chosenVoice(); savePreferences(); if (open.checked) void openHold.start(); return conversation.start(selection()); };
   el('conversationPause').onclick = () => { conversation.stop(true); };
-  el('conversationEnd').onclick = () => { stopPreview(); conversation.stop(); void releaseOpen(); restoreProfile(); describe(); showTools(null); };
+  el('conversationEnd').onclick = () => { stopPreview(); conversation.stop(); void releaseOpen(); restoreProfile(); describe(); showTools(null); void recap?.refresh(); };
   el('conversationNew').onclick = () => {
+    recap?.clear();
     el('conversationResume').hidden = true; setHistoryOpen(false); stopPreview(); conversation.stop(); void releaseOpen(); partial = null;
     transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; board.clear(); brain.reset();
     personalNotes.show(null);
-    showTools(null);
+    showTools(null); void recap?.refresh();
     el('conversationMessage').value = ''; draftFiles = []; renderDraftFiles(); restoreProfile(); describe(); picker.focus();
   };
   // Enter sends, Shift+Enter adds a line; an IME composition keeps its Enter.
@@ -654,6 +658,12 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   window.addEventListener('pagehide', () => { clearInterval(audioReviewClock); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
   conversation.show('idle');
+  const recap = family ? null : ConversationRecap.mount({ host: el('conversationRecap'), api, base: sessionBase,
+    currentId: () => conversation.session?.sessionId || null, title: 'Point de l’échange',
+    prepare: async () => { if (textBusy || conversation.state === 'thinking') return false; stopPreview(); conversation.stop(true); await releaseOpen(); },
+    onResume: async id => { const data = await api(`${sessionBase}/${encodeURIComponent(id)}/history`); return resumeSession(data.session, el('conversationHistoryToggle')); }
+  });
+  void recap?.refresh();
   let historyRequest = 0;
   function setHistoryOpen(visible, restoreFocus = false) {
     el('conversationHistory').hidden = !visible;
@@ -669,6 +679,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   };
   // Opens a saved conversation from Core: the same on every device (#120).
   async function resumeSession(session, button) {
+    recap?.clear();
     el('conversationResume').hidden = true; stopPreview(); conversation.stop();
     void releaseOpen();
     const epoch = conversation.epoch;
@@ -696,6 +707,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       });
       personalNotes.show(data.turns?.at(-1)?.personalContinuity);
       showTools(data.turns?.at(-1)?.toolEvidence);
+      void recap?.refresh();
       describe(); conversation.show('paused'); setHistoryOpen(false); el('conversationStart').focus();
     } catch (error) { if (epoch === conversation.epoch) el('conversationStatus').textContent = error.message; }
     finally { button.disabled = false; }
