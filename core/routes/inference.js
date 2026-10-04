@@ -33,6 +33,7 @@ const { buildRouteDecision, DECISION_MODES, REJECTION_REASONS, ROUTE_OUTCOME_COD
 const { resolveEmbeddingKeepAlive } = require('../src/services/inferenceRuntimePolicy');
 
 const { resolveInferenceRequestCaller } = require('../src/services/routing/inferenceCallerAccess');
+const { embedFailureReason } = require('../src/services/routing/admissionRefusal');
 
 const { resolveInferenceContractSnapshot } = require('../src/services/inferenceContractService');
 const { telemetryContextFromRequest } = require('../src/helpers/llmTelemetryContext');
@@ -380,9 +381,7 @@ router.post('/inference/embed', async (req, res) => {
                     await embedAdmission.abandon(err);
                     embedAdmission = null;
                 }
-                const failureReason = err.name === 'AbortError'
-                    ? 'pre_response_timeout'
-                    : 'connection_failure';
+                const failureReason = embedFailureReason(err);
                 const failureStatus = err.name === 'AbortError' ? 'timeout' : 'error';
                 lastError = err.name === 'AbortError'
                     ? new Error(`Embedding request to ${candidate} timed out after ${EMBED_TIMEOUT_MS}ms`)
