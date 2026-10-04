@@ -1625,6 +1625,18 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         self.assertNotIn("--ro-bind / /", remote_command)
         self.assertEqual(mocked.call_args.kwargs["timeout"], 120)
 
+    def test_node_verifier_binds_only_the_resolved_executable(self):
+        completed = subprocess.CompletedProcess([], 0, stdout="PASS\n", stderr="")
+        with patch.object(MODULE.dispatch_remote, "ssh_run", return_value=completed) as mocked:
+            code, output = MODULE.dispatch_remote.run_independent_verification(
+                "worker", "/srv/repo", "/node/node core/node_modules/jest/bin/jest.js --runInBand",
+                expected_revision="a" * 40, timeout=120)
+        self.assertEqual((code, output), (0, "PASS\n"))
+        remote_command = mocked.call_args.args[1]
+        self.assertIn('node_bin="$(readlink -f /usr/local/bin/node)"', remote_command)
+        self.assertIn('--ro-bind "$node_bin" /node/node', remote_command)
+        self.assertNotIn("--ro-bind /home/yb", remote_command)
+
     def test_missing_sandbox_never_falls_back_to_host_verification(self):
         failed = subprocess.CompletedProcess([], 127, stdout="", stderr="bwrap missing")
         with patch.object(MODULE.dispatch_remote, "ssh_run", return_value=failed) as mocked:

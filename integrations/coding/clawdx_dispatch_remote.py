@@ -404,6 +404,7 @@ def run_independent_verification(
     # The verifier executes worker-controlled source code. Give it the checkout
     # read-only, a disposable /tmp, no network, and no host home or instance
     # mounts. A missing bwrap fails verification instead of falling back.
+    node_verifier = command.lstrip().startswith("/node/node ")
     sandbox = [
         "/usr/bin/bwrap", "--die-with-parent", "--unshare-net", "--unshare-pid",
         "--ro-bind", "/usr", "/usr",
@@ -417,16 +418,25 @@ def run_independent_verification(
         "--setenv", "PATH", "/usr/bin:/bin",
         "--setenv", "HOME", "/tmp",
         "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
-        "/usr/bin/bash", "-e", "-c", command,
     ]
-    sandbox_command = " ".join(shlex.quote(part) for part in sandbox)
+    if node_verifier:
+        # Bind only the resolved executable. The host's /usr/local/bin/node is
+        # a symlink into the operator's home, which must not enter the sandbox.
+        sandbox.extend(["--dir", "/node", "--ro-bind", "__HOST_NODE_BIN__", "/node/node"])
+    sandbox.extend(["/usr/bin/bash", "-e", "-c", command])
+    sandbox_command = " ".join(
+        '"$node_bin"' if part == "__HOST_NODE_BIN__" else shlex.quote(part)
+        for part in sandbox
+    )
+    node_prefix = ('node_bin="$(readlink -f /usr/local/bin/node)" && '
+                   'test -f "$node_bin" && ') if node_verifier else ''
     proc = ssh_run(
         host,
         (
             f'repository_root="$(git -C {repository} rev-parse --show-toplevel 2>/dev/null)" && '
             f'test "$repository_root" = {repository} && '
             f'test "$(git -C "$repository_root" rev-parse HEAD 2>/dev/null)" = {revision} && '
-            f'{sandbox_command}'
+            f'{node_prefix}{sandbox_command}'
         ),
         text=True,
         encoding="utf-8",
