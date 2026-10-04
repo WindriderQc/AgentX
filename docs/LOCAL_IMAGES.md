@@ -141,7 +141,7 @@ to pass on the real host before a profile or placement changes.
 | Profile | Unmeasured VRAM envelope | Unmeasured RAM envelope |
 |---|---|---|
 | FLUX.2 klein 4B (`klein`) | minimum 8 GB, recommended 12 GB | minimum 32 GB, recommended 32–64 GB |
-| Qwen-Image-2.1 (`qwen21`) | minimum 12 GB, recommended 16–24 GB at 1 MP | minimum 64 GB (8 GB VRAM is an unmeasured exception only at 1 MP with offload), recommended 64 GB at 1 MP or 96–128 GB for 4 MP plus two references |
+| Qwen-Image-2.1 (`qwen21`) | minimum 12 GB; 8 GB only at 1 MP with offload (unmeasured exception), recommended 16–24 GB at 1 MP | minimum 64 GB, recommended 64 GB at 1 MP or 96–128 GB for 4 MP plus two references |
 
 Estimated diffusion-step VRAM peaks (unmeasured, issue #373):
 
