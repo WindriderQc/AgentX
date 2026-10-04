@@ -22,6 +22,7 @@ function hideSafety() {
 
 // Only a new conversation shows the recap; PsyX itself decides whether to bring it up.
 function renderOpening() {
+  renderSessionExperience();
   const recap = $('openingRecap');
   const last = (state.psyxState?.sessionDigests || []).at(-1);
   const experiments = (state.psyxState?.experiments || []).filter((item) => ['planned', 'active'].includes(item.status)).slice(-2);

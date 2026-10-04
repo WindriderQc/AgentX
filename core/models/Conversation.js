@@ -68,6 +68,7 @@ const ConversationSchema = new mongoose.Schema({
   userId: { type: String, default: 'default' },
   surface: { type: String, default: undefined },
   surfaceSession: { type: require('./conversationSessionSchema'), default: undefined },
+  sessionRecap: { type: require('./conversationRecapSchema'), default: undefined },
 
   model: String,
   systemPrompt: String,

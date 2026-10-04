@@ -6,6 +6,24 @@ const { Readable } = require('node:stream');
 const { conversationBackend, familyConversationBackend, voiceTask, createConversationExecutor } = require('../conversation-executor');
 
 const configured = { OPENCLAW_GATEWAY_URL: 'http://test.invalid', OPENCLAW_GATEWAY_TOKEN: 'fixture' };
+
+test('confirmed Core recaps reach both personal transports without crossing into family', async () => {
+  let corePayload, nativePayload, reads = 0;
+  const personalRecaps = { read: async () => { reads++; return { recap: { summary: 'Synthetic confirmed point', nextStep: '', takeaway: '' } }; }, latest: async () => null };
+  const execute = createConversationExecutor({ personalRecaps,
+    inference: { execute: async value => { corePayload = value; return { ok: true, body: { message: { content: 'Synthetic reply' } } }; } },
+    agentClient: async value => { nativePayload = value; return { text: 'Synthetic native reply' }; }
+  });
+  const personal = { ...request(), session: { sessionId: 'synthetic-personal', packId: 'personal_operator', modeId: 'personal' }, turnContext: 'Existing selected context' };
+  await execute(personal);
+  assert.ok(corePayload.messages.at(-1).content.includes('Synthetic confirmed point'));
+  assert.ok(corePayload.messages.at(-1).content.includes('Existing selected context'));
+  await execute({ ...personal, backend: 'openclaw' });
+  assert.ok(nativePayload.turnContext.includes('Synthetic confirmed point'));
+  await execute(request());
+  assert.equal(reads, 2);
+  assert.ok(!corePayload.messages.at(-1).content.includes('Synthetic confirmed point'));
+});
 const request = () => ({ backend: 'agentx', session: { sessionId: 'conversation', modeId: 'family' },
   pack: { id: 'kidx_nestor', taskType: 'nestor_answer_light', temperature: 0.5, maxTokens: 800 },
   text: 'Et ensuite?', history: [{ role: 'user', content: 'Je construis un rover.' }, { role: 'assistant', content: 'Commençons par les roues.' }],

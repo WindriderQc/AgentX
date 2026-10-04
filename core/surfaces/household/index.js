@@ -167,7 +167,11 @@ function register(api) {
   const nestorClient = app.locals?.agentxNestorContinuity || createNestorClient();
   const conversationEnv = app.locals?.agentxConversationEnv || process.env;
   const agentClient = app.locals?.agentxNestorAgent || createAgentClient({ env: conversationEnv, continuity: nestorClient });
-  const executeConversation = createConversationExecutor({ agentClient, inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, env: conversationEnv });
+  const recapService = require('../../src/services/conversationRecapService');
+  const personalRecaps = runtimeServices.conversationRecaps.forSession({
+    surface: 'household', packId: 'personal_operator', scopeId: 'personal'
+  });
+  const executeConversation = createConversationExecutor({ agentClient, inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, env: conversationEnv, personalRecaps });
   const requireNativeAgent = async id => {
     if (id === 'main') return;
     const { agents } = await nestorClient({ operation: 'agents' });
@@ -359,6 +363,11 @@ function register(api) {
       error.code || 'NESTOR_CONTINUITY_UNAVAILABLE'); }
   });
   const activePersonaTurns = new Map();
+  require('../../src/services/conversations/recapRoutes').registerRecapRoutes(personas, {
+    base: '/private/sessions', serviceFor: () => personalRecaps,
+    generate: recapService.localRecapGenerator(runtimeServices.inference, HOUSEHOLD_CONSUMER_CONTRACT),
+    busy: req => activePersonaTurns.has(req.params.id)
+  });
   require('./session-persona').registerSessionPersonaRoutes(personas, { conversations, personas: runtimeServices.personas,
     ensureCatalog, activePersonaTurns, envelope, fail });
   const openingPayload = (session, active = false) => {

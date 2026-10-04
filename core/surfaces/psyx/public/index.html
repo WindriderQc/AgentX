@@ -2,15 +2,16 @@
 <html lang="fr">
 <head>
   <link rel="stylesheet" href="/access-assets/client.css">
+  <link rel="stylesheet" href="/css/conversation-recap.css?v=1">
   <script src="/access-assets/client.js" defer></script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>PsyX</title>
-  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.10.1">
-  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.10.1">
-  <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.10.1">
-  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.10.1">
+  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.11.0">
+  <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.11.0">
+  <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.11.0">
+  <link rel="stylesheet" href="/psyx/assets/review.css?v=2.11.0">
 </head>
 <body class="psyx-locked">
   <!-- product-navigation -->
@@ -37,7 +38,7 @@
         <div class="eyebrow">PSYX · PERSONNEL</div>
         <div class="brand-line">
           <h1>PsyX</h1>
-          <span class="version-pill">V2.10.1</span>
+          <span class="version-pill">V2.11.0</span>
         </div>
         <p class="subtitle">Partenaire de réflexion psychologique · changement durable</p>
       </div>
@@ -118,12 +119,18 @@
           <article class="message assistant intro">
             <div class="avatar">PX</div>
             <div class="bubble intro-bubble">
+              <div id="sessionWelcome" class="session-welcome">
+                <h2>De quoi as-tu besoin aujourd’hui?</h2>
+                <div class="welcome-actions"><button id="startTalking" type="button">Parler de ce qui me pèse</button><button id="startExercise" type="button">Trouver un exercice</button><button id="resumeLatest" type="button" hidden>Reprendre la dernière séance</button></div>
+              </div>
               <p><strong>Je suis PsyX.</strong> Amène-moi ce qui prend vraiment de la place dans ta tête.</p>
-              <p>Après chaque réponse, je garde un résumé de la séance et je propose des observations à retenir : tu les acceptes ou les écartes. Entre les séances, je réécris aussi ton portrait et peux ajouter des observations en mémoire. Ces réflexions sont visibles et tu peux les annuler.</p>
+              <details><summary>Ce que PsyX retient</summary><p>Après chaque réponse, je garde un résumé de la séance et je propose des observations à retenir : tu les acceptes ou les écartes. Entre les séances, je réécris aussi ton portrait et peux ajouter des observations en mémoire. Ces réflexions sont visibles et tu peux les annuler.</p></details>
               <div id="openingRecap" class="opening-recap" hidden></div>
             </div>
           </article>
         </section>
+
+        <section id="sessionPoint" class="conversation-recap" aria-label="Point de séance" hidden></section>
 
         <button id="reviewStatus" class="review-chip" type="button" aria-live="polite" hidden></button>
         <button id="dreamStatus" class="review-chip" type="button" aria-live="polite" hidden></button>
@@ -332,22 +339,24 @@
   </dialog>
 
   <script src="/psyx/assets/voice-audio.js?v=local-voice-0680" defer></script>
-  <script src="/js/voice/speech-language.js?v=2.10.1" defer></script>
-  <script src="/js/voice/playback-hold.js?v=2.10.1" defer></script>
-  <script src="/js/voice/browser-conversation.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/voice-session.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/voice-preferences.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/voice-controls.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/state-panel.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/review.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/care.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/follow-up.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/frontier.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/profile.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/dream.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/toolbox.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/formulation.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/setup.js?v=2.10.1" defer></script>
-  <script src="/psyx/assets/app.js?v=2.10.1" defer></script>
+  <script src="/js/voice/speech-language.js?v=2.11.0" defer></script>
+  <script src="/js/voice/playback-hold.js?v=2.11.0" defer></script>
+  <script src="/js/voice/browser-conversation.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/voice-session.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/voice-preferences.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/voice-controls.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/state-panel.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/review.js?v=2.11.0" defer></script>
+  <script src="/js/conversation-recap.js?v=1" defer></script>
+  <script src="/psyx/assets/session-experience.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/care.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/follow-up.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/frontier.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/profile.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/dream.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/toolbox.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/formulation.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/setup.js?v=2.11.0" defer></script>
+  <script src="/psyx/assets/app.js?v=2.11.0" defer></script>
 </body>
 </html>

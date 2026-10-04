@@ -120,6 +120,7 @@ function clearRenderedConversation() {
 }
 
 function showGate(message = '') {
+  clearSessionExperience();
   stopVoiceSession();
   state.accessEpoch += 1;
   state.turnSequence += 1;
@@ -384,6 +385,7 @@ function assertCurrentAccess(epoch) {
 }
 
 async function restoreConversation(conversationId = state.conversationId) {
+  clearSessionExperience();
   stopVoiceSession();
   if (!conversationId) return;
   try {
@@ -460,6 +462,7 @@ async function loadSessions() {
   try {
     state.sessions = await api(`/api/psyx/sessions?limit=30&status=${encodeURIComponent(state.sessionStatus)}`);
     renderSessions();
+    renderSessionExperience();
   } catch (error) { if (error.code !== 'PSYX_LOCKED') throw error; }
 }
 
@@ -488,7 +491,7 @@ function renderSessions() {
     <article class="session-card ${String(item.id) === state.conversationId ? 'active' : ''}" data-session-id="${escapeHtml(item.id)}">
       <button class="session-open" type="button" ${state.sessionStatus === 'archived' ? `data-session-options="${escapeHtml(item.id)}"` : `data-session-open="${escapeHtml(item.id)}"`}>
         <strong>${escapeHtml(item.title || 'Conversation PsyX')}</strong>
-        <span>${escapeHtml(sessionDigest(item.id)?.summary || item.preview || 'Pas d’aperçu')}</span>
+        <span>${escapeHtml(item.sessionRecap?.summary || sessionDigest(item.id)?.summary || item.preview || 'Pas d’aperçu')}</span>
         <small>${state.sessionStatus === 'archived' ? 'Archivée · ' : ''}${escapeHtml(relativeDate(item.updatedAt))}${item.model ? ` · ${escapeHtml(item.model)}` : ''}${item.promptVersion ? ` · prompt v${escapeHtml(item.promptVersion)}` : ''}</small>
       </button>
       <div class="session-actions">
@@ -527,7 +530,8 @@ async function bootstrap() {
     watchDream();
     renderSetup();
     setReady(true, 'PsyX prêt');
-    input.focus();
+    sessionLabel.textContent = state.conversationId ? sessionLabel.textContent : 'Nouvelle conversation';
+    if (window.matchMedia('(min-width: 900px)').matches) input.focus({ preventScroll: true });
   } catch (error) {
     if (error.code !== 'PSYX_LOCKED') {
       setReady(false, 'PsyX indisponible');
@@ -707,6 +711,7 @@ async function sendMessage(text, overrides = {}) {
 }
 
 function startNewSession(focus = true) {
+  clearSessionExperience();
   stopVoiceSession();
   state.conversationId = null;
   state.history = [];
@@ -1009,6 +1014,7 @@ async function start() {
   wireSetup();
   wireReview();
   wireCare();
+  wireSessionExperience();
   wireFrontier();
   wireProfile();
   wireDream();
