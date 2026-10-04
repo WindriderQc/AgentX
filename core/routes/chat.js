@@ -382,7 +382,7 @@ router.get('/chat/stream', async (req, res) => {
     promptVersion: req.query.promptVersion,
     options: safeJsonParse(req.query.options, {}),
     conversationId: req.query.conversationId,
-    useRag: req.query.useRag === 'true',
+    useRag: req.query.useRag === undefined ? undefined : req.query.useRag === 'true',
     ragTopK: req.query.ragTopK ? parseInt(req.query.ragTopK, 10) : undefined,
     ragFilters: safeJsonParse(req.query.ragFilters, undefined),
     ragCompress: req.query.ragCompress === 'true',
