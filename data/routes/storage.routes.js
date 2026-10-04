@@ -15,7 +15,7 @@ router.post('/agent-scans', storageController.enqueueAgentScan);
 router.post('/agent/heartbeat', storageController.heartbeatAgent);
 router.get('/agent/requests', storageController.pollAgentScan);
 
-// Batch operations (n8n workflow support)
+// Batch operations (native storage collector)
 router.post('/scan/:scan_id/batch', storageController.insertBatch);
 router.patch('/scan/:scan_id', storageController.updateScan);
 router.get('/scan/:scan_id', storageController.getStatus);

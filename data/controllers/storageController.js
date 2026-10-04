@@ -5,7 +5,6 @@ const { resolveAllowedPath } = require('../services/janitorService');
 const storageAgentService = require('../services/storageAgentService');
 const { classifyFileMetadata, normalizeContentType } = require('../utils/fileMetadata');
 const { log } = require('../utils/logger');
-const { fetchWithTimeoutAndRetry } = require('../utils/fetch-utils');
 
 // Track running scans so they can be stopped
 const runningScans = new Map();
@@ -32,13 +31,6 @@ function validHashExpression() {
       }
     ]
   };
-}
-
-// Helper to resolve n8n Webhook URL
-function resolveN8nUrl() {
-  return process.env.N8N_WEBHOOK_URL ||
-    (process.env.N8N_WEBHOOK_BASE_URL && process.env.N8N_WEBHOOK_GENERIC
-      ? `${process.env.N8N_WEBHOOK_BASE_URL}/${process.env.N8N_WEBHOOK_GENERIC}` : null);
 }
 
 // Cleanup stale "running" scans on server restart
@@ -498,17 +490,6 @@ const updateScan = async (req, res) => {
 
     const result = await scans.updateOne({ _id: scan_id }, { $set: updateFields });
     if (result.matchedCount === 0) return res.status(404).json({ status: 'error', message: `Scan not found: ${scan_id}` });
-
-    // Trigger n8n webhook if scan completed
-    const n8nUrl = resolveN8nUrl();
-    if (status === 'completed' && n8nUrl) {
-      fetchWithTimeoutAndRetry(n8nUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'scan_complete', scan_id, stats: stats || {} }),
-        timeout: 5000, retries: 1, name: 'n8n-webhook'
-      }).catch(err => log(`[Storage] Failed to trigger n8n webhook: ${err.message}`, 'warn'));
-    }
 
     res.json({ status: 'success', message: 'Scan updated', data: { scan_id, updated: updateFields } });
   } catch (error) {
