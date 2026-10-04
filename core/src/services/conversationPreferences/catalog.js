@@ -49,6 +49,9 @@ function selectPsyxState(state, values) {
   if (values.previousSessionsContext === false) selected.sessionDigests = [];
   if (values.experimentContext === false) for (const key of ['goals', 'experiments', 'checkIns']) selected[key] = [];
   if (values.assessmentContext === false) selected.assessments = [];
+  selected.proposals = (state.proposals || []).filter(item =>
+    (values.memoryContext !== false || !['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops'].includes(item.kind))
+    && (values.experimentContext !== false || !['goals', 'experiments', 'experimentResult'].includes(item.kind)));
   return selected;
 }
 module.exports = { CATALOG, SURFACES, catalogFor, defaultsFor, selectPsyxState };

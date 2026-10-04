@@ -55,10 +55,12 @@ test('disabling context removes model material, retains stored state, and preser
   for (const key of ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops', 'goals']) state[key] = [{ text: 'SYNTHETIC_' + key }];
   state.experiments = [{ id: 'fixture', status: 'active', action: 'SYNTHETIC_EXPERIMENT' }];
   state.sessionDigests = [{ summary: 'SYNTHETIC_OLD_SESSION' }];
+  state.proposals = [{ kind: 'notes', text: 'SYNTHETIC_PENDING_NOTE' }, { kind: 'experiments', hypothesis: 'SYNTHETIC_PENDING_EXPERIMENT', action: 'SYNTHETIC_ACTION' }];
   const before = JSON.stringify(state), values = Object.fromEntries(catalogFor('psyx').filter(item => item.type !== 'number').map(item => [item.key, false]));
   const selected = selectPsyxState(state, values);
   const prompt = composeSystemContext(selected, normalizeControl({ mode: 'talk' }), { safety: { level: 'crisis' }, features: values });
   expect(prompt).not.toContain('SYNTHETIC_'); expect(prompt).toMatch(/crisis|immediate danger/i);
+  expect(require('../../src/domains/psyx/review').reviewMessages({ state: selected, turns: [] })[1].content).not.toContain('SYNTHETIC_');
   expect(JSON.stringify(state)).toBe(before);
 });
 test('routes bind trusted scope, signal a revision conflict, and do not cache preferences', async () => {
