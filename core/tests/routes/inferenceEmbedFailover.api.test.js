@@ -41,9 +41,11 @@ jest.mock('../../src/services/inferenceAdmissionService', () => ({
 }));
 
 jest.mock('../../src/services/buddyEvents', () => ({ emit: jest.fn() }));
-jest.mock('../../src/services/alertService', () => ({ getAlertService: jest.fn(() => null) }));
+jest.mock('../../src/services/alertService', () => ({ getAlertService: jest.fn(() => null), evaluateEvent: jest.fn(async () => ({})) }));
 
 const { recordInference } = require('../../src/services/modelRouter');
+const { evaluateEvent } = require('../../src/services/alertService');
+const { beginInferenceAdmission } = require('../../src/services/inferenceAdmissionService');
 const { emit: emitBuddyEvent } = require('../../src/services/buddyEvents');
 const apiRoutes = require('../../routes/api');
 const inferenceRouter = require('../../routes/inference');
@@ -125,6 +127,34 @@ describe('POST /api/inference/embed — dead-host failover', () => {
       { intent: 'warning', surfaceScope: 'core' }
     );
   }, 10000);
+
+  it('raises no host-unreachable incident when Core itself refuses admission on a host', async () => {
+    fetch.mockImplementation(url => Promise.resolve(url.includes('/api/tags') ? { ok: true, status: 200 }
+      : { ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ embedding: [0.4] })) }));
+    beginInferenceAdmission.mockImplementationOnce(async () => {
+      throw Object.assign(new Error('incompatible residency blocks inference on this host'),
+        { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', statusCode: 503 });
+    });
+
+    const response = await request(app).post('/api/inference/embed')
+      .send({ model: 'nomic-embed-text:v1.5', prompt: 'probe' }).expect(200);
+
+    expect(response.headers['x-routed-host']).toBe('http://primary:11434');
+    expect(evaluateEvent).not.toHaveBeenCalledWith(expect.objectContaining({ metric: 'host_unreachable' }));
+  });
+
+  it('still raises it when the host does not answer', async () => {
+    fetch.mockImplementation(url => {
+      if (url.includes('/api/tags')) return Promise.resolve({ ok: true, status: 200 });
+      if (url.includes('secondary')) return Promise.reject(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ embedding: [0.4] })) });
+    });
+
+    await request(app).post('/api/inference/embed').send({ model: 'nomic-embed-text:v1.5', prompt: 'probe' }).expect(200);
+
+    expect(evaluateEvent).toHaveBeenCalledWith(expect.objectContaining({
+      metric: 'host_unreachable', additionalData: expect.objectContaining({ host: 'http://secondary:11434' }) }));
+  });
 
   it('gives up with 502 rather than hanging when every host is unreachable', async () => {
     fetch.mockImplementation(hangingFetch);
