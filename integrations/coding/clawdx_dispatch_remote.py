@@ -401,13 +401,32 @@ def run_independent_verification(
         raise PipelineApiError("independent verification revision is invalid")
     repository = shlex.quote(remote_repo)
     revision = shlex.quote(expected_revision)
+    # The verifier executes worker-controlled source code. Give it the checkout
+    # read-only, a disposable /tmp, no network, and no host home or instance
+    # mounts. A missing bwrap fails verification instead of falling back.
+    sandbox = [
+        "/usr/bin/bwrap", "--die-with-parent", "--unshare-net", "--unshare-pid",
+        "--ro-bind", "/usr", "/usr",
+        "--ro-bind-try", "/lib", "/lib",
+        "--ro-bind-try", "/lib64", "/lib64",
+        "--symlink", "usr/bin", "/bin",
+        "--symlink", "usr/sbin", "/sbin",
+        "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+        "--dir", "/workspace", "--ro-bind", remote_repo, "/workspace",
+        "--chdir", "/workspace", "--clearenv",
+        "--setenv", "PATH", "/usr/bin:/bin",
+        "--setenv", "HOME", "/tmp",
+        "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
+        "/usr/bin/bash", "-e", "-c", command,
+    ]
+    sandbox_command = " ".join(shlex.quote(part) for part in sandbox)
     proc = ssh_run(
         host,
         (
             f'repository_root="$(git -C {repository} rev-parse --show-toplevel 2>/dev/null)" && '
             f'test "$repository_root" = {repository} && '
             f'test "$(git -C "$repository_root" rev-parse HEAD 2>/dev/null)" = {revision} && '
-            f'cd "$repository_root" && {command}'
+            f'{sandbox_command}'
         ),
         text=True,
         encoding="utf-8",

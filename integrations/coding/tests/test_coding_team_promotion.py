@@ -55,6 +55,23 @@ def policy_config():
 
 
 class CodingTeamPromotionTests(unittest.TestCase):
+    def test_promotion_rechecks_accepted_patch_in_the_same_sandbox(self):
+        with patch.object(promotion.clawdx_dispatch_remote, "run_independent_verification",
+                          return_value=(0, "158 tests passed")) as verify:
+            output = promotion.verify_accepted_snapshot(
+                "worker", Path("/workspace/repo"), "python3 -m unittest",
+                BASE_REVISION, 120)
+        self.assertEqual(output, "158 tests passed")
+        verify.assert_called_once_with(
+            "worker", str(Path("/workspace/repo")), "python3 -m unittest",
+            expected_revision=BASE_REVISION, timeout=120)
+        with patch.object(promotion.clawdx_dispatch_remote, "run_independent_verification",
+                          return_value=(127, "bwrap missing")):
+            with self.assertRaisesRegex(promotion.PromotionError, "sandboxed promotion verification failed"):
+                promotion.verify_accepted_snapshot(
+                    "worker", Path("/workspace/repo"), "python3 -m unittest",
+                    BASE_REVISION, 120)
+
     def test_accepts_review_and_merge_contract_without_an_extra_deployment_approval(self):
         candidate = accepted_task()
         candidate["automation"]["humanGates"] = ["review", "merge"]
