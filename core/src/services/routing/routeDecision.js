@@ -146,6 +146,7 @@ const STABLE_REASON_CODES = new Set([
   'no_unclaimed_ollama_host',
   'benchmark_claim_active',
   'inference_pre_dispatch_error',
+  'admission_refused',
   'abort_error',
   // Task fallback ladder (#135): why the configured primary was unavailable.
   'task_fallback_host_unconfigured',

@@ -48,7 +48,7 @@
         ]},
         "channels": ["local_log"],
         "renotifyMs": 900000,
-        "description": "Windowed platform-inference error rate. Requires at least 20 inference rows in the preceding hour."
+        "description": "Windowed platform-inference error rate over the calls dispatched to a model; an attempt Core refused before dispatch is neither a call nor a failure. Requires at least 20 such rows in the preceding hour."
     },
     {
         "id": "host-unreachable",

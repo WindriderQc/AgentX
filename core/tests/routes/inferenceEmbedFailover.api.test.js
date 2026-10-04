@@ -141,6 +141,9 @@ describe('POST /api/inference/embed — dead-host failover', () => {
 
     expect(response.headers['x-routed-host']).toBe('http://primary:11434');
     expect(evaluateEvent).not.toHaveBeenCalledWith(expect.objectContaining({ metric: 'host_unreachable' }));
+    // The refused attempt is logged as a refusal, not as a host that failed to answer.
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({ status: 'error',
+      routeDecision: expect.objectContaining({ outcome: expect.objectContaining({ reasonCode: 'admission_refused' }) }) }));
   });
 
   it('still raises it when the host does not answer', async () => {
@@ -154,6 +157,8 @@ describe('POST /api/inference/embed — dead-host failover', () => {
 
     expect(evaluateEvent).toHaveBeenCalledWith(expect.objectContaining({
       metric: 'host_unreachable', additionalData: expect.objectContaining({ host: 'http://secondary:11434' }) }));
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({ status: 'error',
+      routeDecision: expect.objectContaining({ outcome: expect.objectContaining({ reasonCode: 'connection_failure' }) }) }));
   });
 
   it('gives up with 502 rather than hanging when every host is unreachable', async () => {
