@@ -22,6 +22,27 @@ const turn = async (id, body = {}) => (await request(app).post(`${privateBase}/$
   .send({ text: 'Bonjour.', ...body }).expect(200));
 
 describe('Household live personality through authenticated space routes', () => {
+  test('independent Core preferences omit optional personal context without erasing history or weakening family access', async () => {
+    const endpoint = '/api/voice-personas/preferences';
+    const current = (await request(app).get(endpoint).expect(200)).body.data;
+    const family = (await request(app).get(endpoint + '?space=family').expect(200)).body.data;
+    const values = Object.fromEntries(current.catalog.filter(item => item.type !== 'number').map(item => [item.key, false]));
+    const { sessionId: id } = await createPersonal();
+    await turn(id, { text: 'SYNTHETIC_PREVIOUS_CONTEXT' });
+    const saved = (await request(app).put(endpoint).send({ revision: current.revision, values }).expect(200)).body.data;
+    try {
+      await turn(id, { text: 'SYNTHETIC_CURRENT_QUESTION' });
+      const messages = executeForTest.mock.calls.at(-1)[0].messages;
+      expect(messages).toHaveLength(2);
+      expect(messages.map(row => row.content).join(' ')).not.toContain('SYNTHETIC_PREVIOUS_CONTEXT');
+      expect((await request(app).get(`${privateBase}/${id}/history`).expect(200)).body.data.turns).toHaveLength(2);
+      expect((await request(app).get(endpoint + '?space=family').expect(200)).body.data).toEqual(family);
+      expect((await request(app).post(`${privateBase}/${id}/recap/draft`).send({}).expect(409)).body.code).toBe('CONVERSATION_RECAP_DRAFT_DISABLED');
+      await request(app).get(endpoint + '?space=unknown').expect(400);
+      await request(app).put(endpoint).send({ revision: saved.revision, values, ownerId: 'foreign' }).expect(400);
+    } finally { await request(app).put(endpoint).send({ revision: saved.revision, values: current.overrides }).expect(200); }
+  });
+
   test('switches the snapshot between turns and preserves earlier audit attribution and execution scope', async () => {
     const session = await createPersonal(), id = session.sessionId;
     const first = (await turn(id)).body.data;

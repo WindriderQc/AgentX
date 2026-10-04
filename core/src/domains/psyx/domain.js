@@ -174,7 +174,7 @@ function longitudinalSystemMessage(state, { conversationId = null, budget = 'loc
 
 const SESSION_OPENING = 'This is the first message of a new session. Acknowledge what the user brings first. Then, if recent sessions or active experiments in the longitudinal state relate to it, connect in one sentence and ask how a planned experiment went. Never force it.';
 
-function composeSystemContext(state, control, { conversationId = null, safety = null, voice = false, budget = 'local', time = null } = {}) {
+function composeSystemContext(state, control, { conversationId = null, safety = null, voice = false, budget = 'local', time = null, features = {} } = {}) {
   // AgentX's external contract caps an individual local message at 16k
   // characters: persona and controls first, then the profile, then fallible
   // longitudinal memory in what remains. A frontier model takes a wide budget.
@@ -184,7 +184,7 @@ function composeSystemContext(state, control, { conversationId = null, safety = 
   const portrait = portraitSystemMessage(state, { maxCharacters: wide ? 14000 : 1600, evidence: wide });
   // The frontier agent cuts its instructions at 60,000 characters: the whole context stays well under, so control and safety at the end always arrive.
   const measures = assessmentSystemMessage(state, time?.now);
-  const techniques = techniquesSystemMessage({ full: wide });
+  const techniques = features.techniqueContext === false ? '' : techniquesSystemMessage({ full: wide });
   const memory = longitudinalSystemMessage(state, { conversationId, budget, maxCharacters: (wide ? 40000 : 6000 - profile.length - measures.length) - portrait.length });
   const opening = !conversationId && (state.sessionDigests?.length || state.experiments?.some(item => ['planned', 'active'].includes(item.status)))
     ? SESSION_OPENING : '';

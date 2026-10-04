@@ -166,6 +166,11 @@ function register(api) {
   });
   const nestorClient = app.locals?.agentxNestorContinuity || createNestorClient();
   const conversationEnv = app.locals?.agentxConversationEnv || process.env;
+  const preferenceStore = runtimeServices.conversationPreferences;
+  const preferencesFor = family => {
+    const surface = family ? 'family' : 'nestor', defaults = require('../../src/services/conversationPreferences/catalog').defaultsFor(surface, conversationEnv);
+    return preferenceStore ? preferenceStore.forOwner({ ownerId: 'default', surface, defaults }) : { read: async () => ({ revision: 0, values: defaults }) };
+  };
   const agentClient = app.locals?.agentxNestorAgent || createAgentClient({ env: conversationEnv, continuity: nestorClient });
   const recapService = require('../../src/services/conversationRecapService');
   const personalRecaps = runtimeServices.conversationRecaps.forSession({
@@ -213,6 +218,7 @@ function register(api) {
   // Resolved once at registration: the pack is read-only in the container, and
   // a clip that is not on disk is never advertised nor selected.
   const sounds = soundLibrary.createSoundLibrary({ soundsDir: path.join(publicRoot, 'sounds'), logger }), visuals = createVisuals({ logger }), brain = createBrain({ inference: runtimeServices.inference, conversations, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, logger,
+    preferencesFor: family => preferencesFor(family).read(),
     loadTurns: session => loadSessionAuditRows(conversations, session, { historyTurns: 12 }).then(rows => rows.slice().reverse().map(publicAudit)) });
 
 
@@ -363,9 +369,16 @@ function register(api) {
       error.code || 'NESTOR_CONTINUITY_UNAVAILABLE'); }
   });
   const activePersonaTurns = new Map();
+  if (preferenceStore) require('../../src/services/conversationPreferences/routes').registerPreferenceRoutes(personas, {
+    base: '/preferences', serviceFor: req => {
+      if (req.query.space && !['nestor', 'family'].includes(req.query.space)) throw Object.assign(new Error('Choisis Nestor ou Famille.'), { statusCode: 400 });
+      return preferencesFor(req.query.space === 'family');
+    }, onSaved: req => brain.reconfigure(req.query.space === 'family')
+  });
   require('../../src/services/conversations/recapRoutes').registerRecapRoutes(personas, {
     base: '/private/sessions', serviceFor: () => personalRecaps,
     generate: recapService.localRecapGenerator(runtimeServices.inference, HOUSEHOLD_CONSUMER_CONTRACT),
+    allowDraft: async () => (await preferencesFor(false).read()).values.recapDraft,
     busy: req => activePersonaTurns.has(req.params.id)
   });
   require('./session-persona').registerSessionPersonaRoutes(personas, { conversations, personas: runtimeServices.personas,
@@ -406,7 +419,7 @@ function register(api) {
   });
   require('./attachment-routes').registerAttachmentRoutes(personas, { express, personalAttachments, envelope, fail });
   const handlePersonaTurn = createPersonaTurnHandler({
-    logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent,
+    logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
     sounds, visuals, brain, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,

@@ -48,9 +48,10 @@ function createSources({ runtimeServices, mailJournal = null, logger = console, 
   };
 
   // -> { sources: [{ key, title, text, count }], unavailable: [key] }
-  async function gather({ now = new Date() } = {}) {
+  async function gather({ now = new Date(), keys = Object.keys(readers) } = {}) {
     const sources = [], unavailable = [];
     for (const [key, reader] of Object.entries(readers)) {
+      if (!keys.includes(key)) continue;
       try {
         const source = await reader(now);
         if (source?.text) sources.push({ key, ...source });

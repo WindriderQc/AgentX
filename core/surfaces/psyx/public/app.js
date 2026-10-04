@@ -202,12 +202,13 @@ const DEPTH_LABELS = {
 };
 
 function currentModeInfo(mode = state.mode) {
-  if (mode === 'auto') return AUTO_INFO;
+  if (mode === 'auto') return state.conversationFeatures?.autoRecommendations === false ? { ...AUTO_INFO, description: 'Auto utilise la posture par défaut. L’adaptation par revue est désactivée dans Contexte et performance.' }
+    : state.conversationFeatures?.backgroundReview === false ? { ...AUTO_INFO, description: 'Auto peut reprendre les recommandations déjà enregistrées. La revue après réponse est désactivée.' } : AUTO_INFO;
   return { title: mode, short: '', description: '', ...state.modeConfig[mode], ...MODE_LABELS[mode] };
 }
 
 function currentDepthInfo(depth = state.depth) {
-  if (depth === 'auto') return AUTO_INFO;
+  if (depth === 'auto') return state.conversationFeatures?.deepReasoning === false ? { ...AUTO_INFO, short: 'Normale · réflexion approfondie désactivée.' } : AUTO_INFO;
   return {
     title: depth,
     short: '',
@@ -517,6 +518,7 @@ async function bootstrap() {
     state.depthConfig = payload.depths || {};
     state.voice.enabled = payload.voice?.enabled === true;
     review.enabled = payload.review?.automatic === true;
+    applyPerformancePreferences(payload.conversationFeatures);
     setFrontierCapabilities(payload.frontier);
     const lifecycle = payload.conversationLifecycle || {};
     $('lifecycleStatus').textContent = lifecycle.archive

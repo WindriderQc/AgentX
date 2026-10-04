@@ -24,7 +24,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   capabilities. Core also owns user-confirmed conversation points; PsyX and
   personal Nestor share their editor and continuation context. Optional local
   drafts disclose coverage and require confirmation; concurrent edits refuse
-  rather than overwrite. Exports and erasure cover the saved point.
+  rather than overwrite. Exports and erasure cover the saved point. Core also
+  persists independent optional-context and performance preferences for
+  Playground, PsyX, personal Nestor and Famille. Their shared editor explains
+  resource effects, offers presets and requires an explicit save; Famille
+  controls live in the parental space.
 - **Conversation recovery.** Playground retains accepted requests and response
   bytes in Core. Owners can download refused or interrupted exchanges without
   sending the request again. Completed retries replay the saved response;
@@ -78,11 +82,13 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **PsyX.** Its welcome opens listening, the toolbox or the latest active
   session; an optional editable point of the session supports finishing and
   resuming. The conversation and composer fit the viewport while panels scroll.
-  Each reply receives the user's profile, goals and the time, with
-  memory fitted to its lane's budget. A user may choose a frontier cloud agent
+  Each reply receives the context enabled in its performance settings, with
+  memory fitted to its lane's budget. Review and dream availability, timing and
+  read-only sources are configurable there; crisis checks remain active. A user
+  may choose a frontier cloud agent
   for deep turns or for all turns when the instance names one: it is never a
   fallback, and Core keeps the conversation and its memory. Between sessions
-  PsyX selects context from its conversations and three read-only owner sources
+  PsyX can select context from its conversations and three read-only owner sources
   and writes a portrait of the user; each such run is logged and can be undone.
   Messages remain whole, omitted reply context is counted, and portraits report
   the text coverage of the actual inference lane. New portrait quotations are

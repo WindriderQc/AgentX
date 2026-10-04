@@ -183,6 +183,26 @@ describe('chatService', () => {
             expect(Conversation).toHaveBeenCalled(); // New conversation created
         });
 
+        it('honors disabled profile, history and RAG while retaining the saved transcript', async () => {
+            const oldEnv = process.env.RAG_ENABLED; process.env.RAG_ENABLED = 'true';
+            const previous = [{ role: 'user', content: 'Synthetic previous question' }, { role: 'assistant', content: 'Synthetic previous reply' }];
+            const saved = new Conversation({ _id: '507f1f77bcf86cd799439011', userId: 'user123', messages: previous });
+            Conversation.findOne.mockResolvedValue(saved);
+            try {
+                await handleChatRequest({ userId: 'user123', model: 'llama2', message: 'Current question',
+                    conversationId: saved._id, messages: previous, ragEnabled: false, useRag: true, ragStore: mockRagStore,
+                    conversationFeatures: { profileContext: false, historyContext: false } });
+                expect(getOrCreateProfile).not.toHaveBeenCalled();
+                expect(mockRagStore.searchSimilarChunks).not.toHaveBeenCalled();
+                expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({ messages: [
+                    { role: 'system', content: mockPrompt.systemPrompt }, { role: 'user', content: 'Current question' }
+                ] }));
+                expect(saved.messages.slice(0, 2)).toEqual(previous);
+                expect(saved.messages.map(row => row.content)).toEqual([...previous.map(row => row.content), 'Current question', 'Test response']);
+                expect(saved.save).toHaveBeenCalled();
+            } finally { if (oldEnv === undefined) delete process.env.RAG_ENABLED; else process.env.RAG_ENABLED = oldEnv; }
+        });
+
         it('reports an unavailable knowledge base distinctly from no match', async () => {
             mockRagStore.searchSimilarChunks.mockRejectedValueOnce(new Error('RAG down'));
             const unavailable = await handleChatRequest({

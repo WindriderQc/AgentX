@@ -141,7 +141,7 @@ test('in auto mode the next turn follows the review recommendation and tells the
     const control = JSON.parse(auto.match(/event: control\ndata: ([^\n]+)/)[1]);
     assert.deepEqual(control, { mode: 'challenge', depth: 'deep', auto: { mode: true, depth: true },
       reason: 'The story is too convenient.', safety: false, location: 'local',
-      contextCoverage: { availableMessages: 1, includedMessages: 1, omittedMessages: 0, complete: true } });
+      contextCoverage: { availableMessages: 1, includedMessages: 1, omittedMessages: 0, complete: true }, preferencesRevision: 0 });
     assert.deepEqual([requests[0].taskType, requests[0].think, requests[0].options.temperature], ['deep_reasoning', true, 0.55]);
     assert.match(requests[0].system, /Chosen automatically after reviewing this conversation/);
 

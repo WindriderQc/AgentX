@@ -12,8 +12,9 @@ const domain = require('../../../src/domains/psyx/domain');
 const { detectRecentCrisis, RESOURCES } = require('../../../src/domains/psyx/safety');
 const assessments = require('../../../src/domains/psyx/assessments');
 const { TECHNIQUES } = require('../../../src/domains/psyx/techniques');
+const { defaultsFor, selectPsyxState } = require('../../../src/services/conversationPreferences/catalog');
 
-const VERSION = '2.11.0';
+const VERSION = '2.12.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -124,14 +125,25 @@ function createApp({ config, database, provider, voice = null, logger = console,
   const auth = accessAuth || createAuth(config);
   const voiceClient = voice || createVoiceClient(config);
   const { stateRepository, conversationRepository } = database;
+  const readPreferences = userId => database.preferencesForUser?.(userId).read() || Promise.resolve({ revision: 0,
+    values: { ...defaultsFor('psyx', {}), backgroundReview: config.review?.enabled !== false,
+      dreamEnabled: config.dream?.enabled !== false, automaticDream: config.dream?.enabled !== false } });
   const streaming = new Map();
   const frontierSupported = () => Boolean(provider.frontierReady?.());
+  const statusFor = async (req, res) => {
+    const info = serviceStatus(config, Boolean(auth.configured?.(req)), frontierSupported()), preferences = await readPreferences(res.locals.psyxUserId);
+    return { ...info, conversationFeatures: preferences.values, preferencesRevision: preferences.revision,
+      review: { ...info.review, automatic: preferences.values.backgroundReview },
+      dream: { ...info.dream, automatic: preferences.values.dreamEnabled && preferences.values.automaticDream } };
+  };
   // The user's choice, else the instance default; always local when no frontier agent is configured.
   const frontierMode = state => frontierSupported() ? state.settings?.frontierMode || config.frontier?.defaultMode || 'local' : 'local';
   const review = reviewer || createReviewer({ config, provider, stateRepository, conversationRepository, logger,
+    preferencesFor: database.preferencesForUser ? readPreferences : null,
     isBusy: userId => (streaming.get(userId) || 0) > 0,
     locationFor: state => frontierMode(state) === 'local' ? 'local' : 'frontier' });
   const dream = dreamer || createDreamer({ config, provider, stateRepository, conversationRepository, sources, logger,
+    preferencesFor: database.preferencesForUser ? readPreferences : null,
     isBusy: userId => (streaming.get(userId) || 0) > 0,
     locationFor: state => frontierMode(state) === 'local' ? 'local' : 'frontier' });
   app.locals.dreamer = dream;
@@ -193,19 +205,28 @@ function createApp({ config, database, provider, voice = null, logger = console,
     return responseData(res, { unlocked: Boolean(auth.current(req)) });
   });
   api.use(auth.requireSession);
+  if (database.preferencesForUser) require('../../../src/services/conversationPreferences/routes').registerPreferenceRoutes(api, {
+    base: '/preferences', serviceFor: (_req, res) => database.preferencesForUser(res.locals.psyxUserId),
+    onSaved: async (_req, res) => {
+      await database.preferencesChanged?.(res.locals.psyxUserId);
+      review.forgetUser?.(res.locals.psyxUserId); dream.reconfigure?.(res.locals.psyxUserId);
+    }
+  });
   if (database.recapForUser) require('../../../src/services/conversations/recapRoutes').registerRecapRoutes(api, {
     base: '/sessions', serviceFor: (_req, res) => database.recapForUser(res.locals.psyxUserId),
-    generate: database.generateRecap, busy: (_req, res) => streaming.has(res.locals.psyxUserId)
+    generate: database.generateRecap, busy: (_req, res) => streaming.has(res.locals.psyxUserId),
+    allowDraft: async (_req, res) => (await readPreferences(res.locals.psyxUserId)).values.recapDraft
   });
 
-  api.get('/status', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)), frontierSupported())));
-  api.post('/bootstrap', (req, res) => responseData(res, serviceStatus(config, Boolean(auth.configured?.(req)), frontierSupported())));
+  api.get('/status', asyncRoute(async (req, res) => responseData(res, await statusFor(req, res))));
+  api.post('/bootstrap', asyncRoute(async (req, res) => responseData(res, await statusFor(req, res))));
   api.put('/state/profile', asyncRoute(async (req, res) => responseData(res, await stateRepository.updateProfile(res.locals.psyxUserId, {
     about: req.body?.about, expectations: req.body?.expectations
   }))));
   api.post('/state/settings', asyncRoute(async (req, res) => responseData(res, await stateRepository.updateSettings(res.locals.psyxUserId, { frontierMode: req.body?.frontierMode }))));
   api.get('/state', asyncRoute(async (_req, res) => responseData(res, await stateRepository.read(res.locals.psyxUserId))));
-  api.get('/state/prompt-context', asyncRoute(async (_req, res) => responseData(res, stateForPrompt(await stateRepository.read(res.locals.psyxUserId)))));
+  api.get('/state/prompt-context', asyncRoute(async (_req, res) => responseData(res, stateForPrompt(selectPsyxState(
+    await stateRepository.read(res.locals.psyxUserId), (await readPreferences(res.locals.psyxUserId)).values)))));
   api.post('/state/items/:key', asyncRoute(async (req, res) => responseData(res, await stateRepository.addItem(res.locals.psyxUserId, req.params.key, req.body || {}))));
   api.patch('/state/items/:key/:id', asyncRoute(async (req, res) => responseData(res, await stateRepository.updateItem(res.locals.psyxUserId, req.params.key, cleanText(req.params.id, 80), req.body || {}))));
   api.delete('/state/items/:key/:id', asyncRoute(async (req, res) => responseData(res, await stateRepository.deleteItem(res.locals.psyxUserId, req.params.key, cleanText(req.params.id, 80)))));
@@ -225,9 +246,15 @@ function createApp({ config, database, provider, voice = null, logger = console,
   }));
   api.post('/state/proposals/:id/accept', asyncRoute(async (req, res) => responseData(res, await stateRepository.acceptProposal(res.locals.psyxUserId, cleanText(req.params.id, 80), req.body || {}))));
   api.post('/state/proposals/:id/reject', asyncRoute(async (req, res) => responseData(res, await stateRepository.rejectProposal(res.locals.psyxUserId, cleanText(req.params.id, 80)))));
-  api.get('/review/status', (req, res) => responseData(res, review.status(res.locals.psyxUserId, cleanText(req.query.conversationId, 80))));
-  api.get('/dream/status', (_req, res) => responseData(res, dream.status(res.locals.psyxUserId)));
-  api.post('/dream/run', (_req, res) => responseData(res, { scheduled: dream.request(res.locals.psyxUserId) }, 202));
+  api.get('/review/status', asyncRoute(async (req, res) => responseData(res, (await readPreferences(res.locals.psyxUserId)).values.backgroundReview
+    ? review.status(res.locals.psyxUserId, cleanText(req.query.conversationId, 80)) : { enabled: false, status: 'disabled' })));
+  api.get('/dream/status', asyncRoute(async (_req, res) => responseData(res, (await readPreferences(res.locals.psyxUserId)).values.dreamEnabled
+    ? dream.status(res.locals.psyxUserId) : { enabled: false, status: 'disabled' })));
+  api.post('/dream/run', asyncRoute(async (_req, res) => {
+    if (!(await readPreferences(res.locals.psyxUserId)).values.dreamEnabled) return res.status(409).json({ ok: false,
+      code: 'PSYX_DREAM_DISABLED', message: 'La rêverie est désactivée dans Contexte et performance.' });
+    return responseData(res, { scheduled: dream.request(res.locals.psyxUserId) }, 202);
+  }));
   api.post('/dream/:id/undo', asyncRoute(async (req, res) => responseData(res, { state: (await stateRepository.undoDream(res.locals.psyxUserId, cleanText(req.params.id, 80))).state })));
   api.delete('/portrait/statements/:id', asyncRoute(async (req, res) => responseData(res, { state: (await stateRepository.rejectPortraitStatement(res.locals.psyxUserId, cleanText(req.params.id, 80))).state })));
   api.post('/state/reset', asyncRoute(async (req, res) => {
@@ -242,6 +269,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
       conversationRepository.listTranscripts(userId)
     ]);
     const document = exportDocument({ state, metadata, conversations });
+    document.conversationPreferences = (await readPreferences(userId)).values;
     res.setHeader('Content-Disposition', `attachment; filename="psyx-export-${document.exportedAt.slice(0, 10)}.json"`);
     return res.json(document);
   }));
@@ -343,25 +371,29 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const availableMessages = Array.isArray(history) ? history.length : history?.availableMessages;
     if (conversationId && !context) return res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
     const longitudinal = await stateRepository.read(userId);
-    const recommendation = conversationId ? longitudinal.sessionDigests?.find(item => item.conversationId === conversationId)?.next : null;
+    const preferences = await readPreferences(userId), features = preferences.values;
+    const selectedState = selectPsyxState(longitudinal, features);
+    const recommendation = features.autoRecommendations && conversationId ? longitudinal.sessionDigests?.find(item => item.conversationId === conversationId)?.next : null;
     // A crisis signal overrides any stance: stay with the person, answer promptly.
     // Actions carry no words of their own, but a crisis in the last messages still holds.
     const safety = detectRecentCrisis(action ? '' : input, context || []);
     const resolved = domain.resolveControl(requested, recommendation);
+    if (!features.deepReasoning) resolved.depth = 'normal';
     const control = safety ? { ...resolved, mode: 'talk', depth: 'normal', reason: '' } : resolved;
 
     const location = domain.frontierLocation(frontierMode(longitudinal), control.depth);
     // The frontier lane reads a wide context; the local routes keep their bounded one.
     const budget = location === 'frontier' ? 'frontier' : 'local';
     const lastSessionAt = longitudinal.sessionDigests?.filter(item => item.conversationId !== conversationId).at(-1)?.updatedAt || null;
-    const points = database.recapForUser?.(userId);
+    const points = features.recapContext ? database.recapForUser?.(userId) : null;
     const confirmed = points ? (conversationId ? (await points.read(conversationId)).recap : null) || (await points.latest())?.recap : null;
     const recapContext = require('../../../src/services/conversationRecapService').recapContext(confirmed);
     const compose = lane => {
-      const selected = domain.selectConversationContext(context || [], { ...domain.CONTEXT_BUDGETS[lane], availableMessages });
+      const selected = domain.selectConversationContext(context || [], { ...domain.CONTEXT_BUDGETS[lane], availableMessages,
+        ...(features.historyContext === false ? { maxMessages: 0 } : {}) });
       return {
-        system: domain.composeSystemContext(longitudinal, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane,
-          time: { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } }) + (recapContext ? `\n\n${recapContext}` : ''),
+        system: domain.composeSystemContext(selectedState, control, { conversationId, safety, voice: req.body?.psyx?.source === 'voice', budget: lane, features,
+          time: features.timeContext ? { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } : null }) + (recapContext ? `\n\n${recapContext}` : ''),
         messages: selected.messages, contextCoverage: selected.coverage
       };
     };
@@ -379,7 +411,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     const handlers = providerHandlers(res);
     streaming.set(userId, (streaming.get(userId) || 0) + 1);
     const applied = { mode: control.mode, depth: control.depth, auto: control.auto, reason: control.reason, safety: Boolean(safety), location,
-      contextCoverage: prepared.contextCoverage };
+      contextCoverage: prepared.contextCoverage, preferencesRevision: preferences.revision };
     handlers.send('control', applied);
     if (safety) handlers.send('safety', safety);
 
@@ -411,8 +443,9 @@ function createApp({ config, database, provider, voice = null, logger = console,
         provider: provider.id,
         routing: result.routing
       });
-      const reviewScheduled = review.schedule(userId, session.id);
-      dream.touch(userId);
+      const currentPreferences = (await readPreferences(userId)).values;
+      const reviewScheduled = currentPreferences.backgroundReview ? review.schedule(userId, session.id) : false;
+      if (currentPreferences.dreamEnabled && currentPreferences.automaticDream) dream.touch(userId);
       handlers.send('done', {
         review: { scheduled: reviewScheduled },
         control: { ...applied,

@@ -2,6 +2,7 @@
 
 let sessionPoint = null;
 function wireSessionExperience() {
+  wirePerformancePreferences();
   sessionPoint = ConversationRecap.mount({ host: $('sessionPoint'), api, base: '/api/psyx/sessions',
     currentId: () => state.conversationId,
     prepare: () => { if (state.busy) return false; stopVoiceSession(); },
@@ -16,4 +17,4 @@ function renderSessionExperience() {
   $('resumeLatest').hidden = !state.sessions.some(item => item.lifecycle?.status !== 'archived');
   if (state.unlocked) void sessionPoint?.refresh();
 }
-function clearSessionExperience() { sessionPoint?.clear(); }
+function clearSessionExperience() { sessionPoint?.clear(); performancePreferences?.clear(); }

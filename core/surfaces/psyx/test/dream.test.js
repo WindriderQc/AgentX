@@ -281,8 +281,9 @@ test('review findings: Core dates are instants, a deletion during a dream discar
   await dreamer.invalidate('u');
   release();
   await tick(30);
-  assert.equal(fresh.calls.recorded[0].wanted, false, 'the dream that read the deleted conversation is discarded');
-  assert.equal(fresh.calls.recorded.at(-1).wanted, true, 'and a new one runs');
+  assert.equal(fresh.calls.complete.length, 1, 'the obsolete dream stops before inference dispatch');
+  assert.equal(fresh.calls.recorded.length, 1, 'only the replacement dream reaches storage');
+  assert.equal(fresh.calls.recorded[0].wanted, true, 'the replacement uses the current source generation');
   assert.equal(fresh.calls.recorded[0].covers.through, '2026-10-03T12:00:00.000Z');
   assert.match(fresh.calls.complete[0].messages[1].content, /séance old[\s\S]*séance mid[\s\S]*séance newest/);
   dreamer.stop();
@@ -322,4 +323,44 @@ test('the dream routes sit behind the session and reach the store', async () => 
     assert.deepEqual(calls.map(call => call[0]), ['run', 'undo', 'reject']);
     assert.equal(calls[1][2], 'd1');
   } finally { server.close(); }
+});
+
+test('live dream switches permit manual work, filter sources and discard results after disable', async () => {
+  const { defaultsFor } = require('../../../src/services/conversationPreferences/catalog');
+  let values = { ...defaultsFor('psyx', {}), automaticDream: false, dreamNotes: false, dreamMail: false }, revision = 1, release;
+  const keys = [], gate = new Promise(resolve => { release = resolve; });
+  const fixture = dreamerFakes({ complete: async request => { await gate; return { content: JSON.stringify(groundedFixture(request)), model: 'fixture' }; } });
+  const dreamer = createDreamer({ ...fixture, config: { dream: { enabled: false } }, logger: {},
+    preferencesFor: async () => ({ values, revision }), sources: { gather: async input => { keys.push(input.keys); return { sources: [], unavailable: [] }; } } });
+  try {
+    dreamer.touch('u'); await tick(10);
+    assert.equal(dreamer.status('u').scheduled, false, 'automatic off does not queue idle work');
+    dreamer.request('u'); await tick(10);
+    assert.equal(fixture.calls.complete.length, 1, 'manual remains available despite the environment default');
+    assert.deepEqual(keys, [['tasks']]);
+    values = { ...values, dreamEnabled: false }; revision++; dreamer.reconfigure('u'); release(); await tick(10);
+    assert.equal(fixture.calls.recorded[0].wanted, false, 'admitted work finishes but its result is obsolete');
+    dreamer.request('u'); await tick(10);
+    assert.equal(fixture.calls.complete.length, 1, 'full disable also blocks subsequent manual requests');
+  } finally { release(); dreamer.stop(); }
+});
+
+test('the saved idle duration and local night hour determine when a dream is dispatched', async t => {
+  const { defaultsFor } = require('../../../src/services/conversationPreferences/catalog');
+  const fixture = dreamerFakes();
+  let values = { ...defaultsFor('psyx', {}), dreamIdleMinutes: 2, dreamNightHour: 4 };
+  const dreamer = createDreamer({ ...fixture, config: { dream: {} }, logger: {},
+    now: () => new Date('2026-10-04T07:10:00Z'), preferencesFor: async () => ({ revision: 1, values }) });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  try {
+    dreamer.touch('u'); await flush();
+    t.mock.timers.tick(119999); await flush(); assert.equal(fixture.calls.complete.length, 0);
+    t.mock.timers.tick(1); await flush(); assert.equal(fixture.calls.complete.length, 1);
+    await dreamer.nightly(); await flush(); t.mock.timers.tick(0); await flush();
+    assert.equal(fixture.calls.complete.length, 1, '03:10 local is not the selected 04:00 hour');
+    values = { ...values, dreamNightHour: 3 };
+    await dreamer.nightly(); await flush(); t.mock.timers.tick(0); await flush();
+    assert.equal(fixture.calls.complete.length, 2, 'the configured local hour admits the night pass');
+  } finally { dreamer.stop(); t.mock.timers.reset(); }
 });

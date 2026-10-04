@@ -129,3 +129,18 @@ test('a long shown list reaches the reviewer marked as shortened, never silently
   assert.match(prompt, /never claim or suggest that Nestor was cut off/);
   assert.match(prompt, /Never praise, grade or comment on Nestor's answer/);
 });
+
+test('live preferences enable the optional brain, block disabled work, and discard admitted results without cancellation', async () => {
+  let prefs = { revision: 1, values: { backgroundReview: false, reviewDelaySeconds: 0 } }, release, start;
+  const calls = [], started = new Promise(resolve => { start = resolve; });
+  const brain = createBrain({ env: {}, preferencesFor: async () => structuredClone(prefs), loadTurns: async () => TURNS,
+    inference: { execute: async (_body, options) => { calls.push(options.signal); start(); await new Promise(resolve => { release = resolve; }); return { ok: true, body: { response: REVIEW } }; } } });
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'disabled' });
+  assert.equal(await brain.wait(SESSION.sessionId, 'disabled', { timeoutMs: 30 }), null); assert.equal(calls.length, 0);
+  prefs = { revision: 2, values: { backgroundReview: true, reviewDelaySeconds: 0 } };
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'running' }); await started;
+  const wait = brain.wait(SESSION.sessionId, 'running');
+  prefs = { revision: 3, values: { backgroundReview: false, reviewDelaySeconds: 0 } }; brain.reconfigure(false);
+  assert.equal(calls[0].aborted, false, 'settings do not abort admitted runtime work'); release();
+  assert.equal(await wait, null); await new Promise(resolve => setTimeout(resolve, 5)); assert.equal(brain.latest(SESSION.sessionId), null);
+});

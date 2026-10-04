@@ -24,6 +24,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     </section>
     <section id="conversationRecap" class="conversation-recap" aria-label="Point de l’échange" hidden></section>
     <div class="conversation-layout"><details class="conversation-settings" id="conversationSettings"><summary>Réglages de l’espace</summary>
+      ${family ? '' : '<button id="conversationPerformance" class="button" type="button">Contexte et performance</button><button id="familyPerformance" class="button" type="button">Réglages de performance · Famille</button>'}
       <p id="conversationLocked" class="conversation-locked" role="status" hidden></p>
       <label for="conversationPersona">Style</label><select id="conversationPersona">${personas.map(p => `<option value="${esc(p.id)}" ${p.id === 'nestor' ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
       <p id="personaDescription" class="muted"></p><p class="muted">Le style donne le ton. Le membre apporte ses outils et ses souvenirs.</p>
@@ -658,6 +659,13 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   window.addEventListener('pagehide', () => { clearInterval(audioReviewClock); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
   conversation.show('idle');
+  const performance = family ? null : ConversationPreferences.mount({ button: el('conversationPerformance'), api, endpoint: '/api/voice-personas/preferences',
+    note: 'Ces réglages pilotent les ajouts fournis par Core. Avec OpenClaw, la mémoire, l’historique et les outils propres à l’agent se règlent dans son interface native.',
+    integrations: [{ title: 'Modèles, routage et hôtes locaux', href: '/nerve-center' }, { title: 'Mémoire et outils de l’agent natif · OpenClaw', href: '/api/openclaw/control-launch/chat' }],
+    onSaved: () => brain.reset()
+  });
+  const familyPerformance = family ? null : ConversationPreferences.mount({ button: el('familyPerformance'), api, endpoint: '/api/voice-personas/preferences?space=family', title: 'Famille · Contexte et performance' });
+  window.addEventListener('pagehide', () => { performance?.clear(); familyPerformance?.clear(); });
   const recap = family ? null : ConversationRecap.mount({ host: el('conversationRecap'), api, base: sessionBase,
     currentId: () => conversation.session?.sessionId || null, title: 'Point de l’échange',
     prepare: async () => { if (textBusy || conversation.state === 'thinking') return false; stopPreview(); conversation.stop(true); await releaseOpen(); },

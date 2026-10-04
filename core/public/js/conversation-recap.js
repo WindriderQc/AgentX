@@ -18,7 +18,7 @@
     const path = id => `${base}/${encodeURIComponent(id)}/recap`;
     let epoch = 0, viewEpoch = 0, editingId = null, snapshot = null, working = false;
     const writeFields = values => ['summary', 'takeaway', 'nextStep'].forEach(key => { input(key).value = values?.[key] || ''; });
-    const setWorking = (value, lockFields = false) => { working = value; for (const b of form.querySelectorAll('footer button')) b.disabled = value;
+    const setWorking = (value, lockFields = false) => { working = value; for (const b of form.querySelectorAll('footer button')) b.disabled = value || (b.hasAttribute('data-draft') && snapshot?.canDraft === false);
       for (const field of form.querySelectorAll('textarea')) field.disabled = value && lockFields;
     };
     function clear() {
@@ -69,6 +69,7 @@
         const data = await api(path(id));
         if (token !== epoch || !dialog.open) return;
         snapshot = data; writeFields(data.recap); status.textContent = data.recap?.stale ? 'La conversation a évolué. Mets à jour ce que tu souhaites retenir.' : '';
+        if (data.canDraft === false) status.textContent += ' Proposition automatique désactivée dans Contexte et performance. Tu peux écrire ton point directement.';
       } catch (error) { if (token === epoch) status.textContent = error.message; }
       finally { if (token === epoch) setWorking(false); }
     }

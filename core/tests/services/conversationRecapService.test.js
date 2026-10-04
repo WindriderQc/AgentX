@@ -154,4 +154,14 @@ describe('Core user-confirmed conversation continuity', () => {
     expect(execute.mock.calls[0][1]).toEqual({ consumerContract: 'psyx' });
     expect(recapContext({ ...content, stale: true })).toContain('des échanges ont suivi');
   });
+  test('disabled model drafts remain disabled while manual points can be saved', async () => {
+    const app = express(), generate = jest.fn(); app.use(express.json());
+    registerRecapRoutes(app, { base: '/sessions', serviceFor: () => points, generate, allowDraft: async () => false });
+    const read = (await request(app).get(`/sessions/${id}/recap`).expect(200)).body.data;
+    expect(read.canDraft).toBe(false);
+    expect((await request(app).post(`/sessions/${id}/recap/draft`).send({}).expect(409)).body.code).toBe('CONVERSATION_RECAP_DRAFT_DISABLED');
+    expect(generate).not.toHaveBeenCalled();
+    const saved = (await request(app).put(`/sessions/${id}/recap`).send({ ...content, revision: read.revision, sourceHash: read.source.hash }).expect(200)).body.data;
+    expect(saved.canDraft).toBe(false); expect(saved.recap.summary).toBe(content.summary);
+  });
 });
