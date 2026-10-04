@@ -371,6 +371,8 @@ def parse_args() -> argparse.Namespace:
         help="Required live-dispatch command run by the dispatcher after the worker stops",
     )
     parser.add_argument("--independent-verification-timeout", type=int, default=900)
+    parser.add_argument("--verification-repair-turns", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--verification-repair-timeout", type=int, default=180)
     parser.add_argument("--verification-output")
     parser.add_argument("--energy-meter-host", help="SSH target exposing nvidia-smi power.draw")
     parser.add_argument("--energy-gpu-index", type=int, action="append")
