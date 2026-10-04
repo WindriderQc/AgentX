@@ -654,7 +654,7 @@ function productionCommand(root, { projectName = 'agentx', envFile, overrideFile
     'printf "checkout=%s\\n" "$(git -C "$root" rev-parse HEAD)"',
     'if git -C "$root" diff --quiet HEAD -- && git -C "$root" diff --cached --quiet; then printf "clean=yes\\n"; else printf "clean=no\\n"; fi',
     'enabled=$(compose config --services)',
-    'for service in core benchmark rag data; do if [ "$service" = data ] && ! printf "%s\\n" "$enabled" | grep -qx data; then printf "data=not-enabled\\n"; continue; fi; container=$(compose ps -q "$service"); state=$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" "$container" 2>/dev/null || true); printf "%s=%s\\n" "$service" "$state"; revision=$(docker inspect -f "{{range .Config.Env}}{{println .}}{{end}}" "$container" 2>/dev/null | sed -n "s/^AGENTX_BUILD_REVISION=//p" || true); printf "%sRevision=%s\\n" "$service" "$revision"; done'
+    `for service in core benchmark rag data; do if [ "$service" = data ] && ! printf "%s\\n" "$enabled" | grep -qx data; then printf "data=not-enabled\\n"; continue; fi; container=$(compose ps -q "$service"); state=$(docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" "$container" 2>/dev/null || true); printf "%s=%s\\n" "$service" "$state"; revision=$(docker inspect -f "{{range .Config.Env}}{{println .}}{{end}}" "$container" 2>/dev/null | sed -n "s/^AGENTX_BUILD_REVISION=//p" || true); printf "%sRevision=%s\\n" "$service" "$revision"; created=$(docker inspect -f "{{.Created}}" "$container" 2>/dev/null || true); equivalent=$(python3 "$root/integrations/coding/service-image-parity.py" "$root" "$service" "$revision" "$(git -C "$root" rev-parse HEAD)" "$created" ${safeEnv}${overrideFile ? ` ${exactRemoteRoot(overrideFile)}` : ''} 2>/dev/null || true); printf "%sEquivalent=%s\\n" "$service" "$equivalent"; done`
   ].join('; ');
 }
 
@@ -702,7 +702,8 @@ function parseProductionState(stdout) {
   const checkoutSha = SHA_PATTERN.test(values.checkout || '') ? values.checkout : null;
   const services = Object.fromEntries(['core', 'benchmark', 'rag', 'data'].map((name) => [name, values[name] || 'unknown']));
   const requiredServices = Object.keys(services).filter(name => name !== 'data' || services.data !== 'not-enabled');
-  const runtimeMatchesCheckout = Boolean(checkoutSha) && requiredServices.every(name => values[`${name}Revision`] === checkoutSha);
+  const runtimeMatchesCheckout = Boolean(checkoutSha) && requiredServices.every(name =>
+    values[`${name}Revision`] === checkoutSha || values[`${name}Equivalent`] === 'yes');
   return {
     available: Boolean(checkoutSha),
     checkoutSha,
