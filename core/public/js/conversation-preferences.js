@@ -6,7 +6,7 @@
     dialog.className = 'conversation-preferences-dialog'; dialog.setAttribute('aria-label', title);
     dialog.innerHTML = `<form><header><div><h2></h2><p>Choisis les ajouts utiles à tes échanges.</p></div><button type="button" data-close aria-label="Fermer">×</button></header>
       <p data-scope></p><p data-note class="conversation-preferences-help" hidden></p><div class="conversation-preferences-presets"><button type="button" data-light>Allégé</button><button type="button" data-reload>Recharger</button><button type="button" data-default>Par défaut</button></div>
-      <p class="conversation-preferences-help">Allégé coupe les ajouts facultatifs. Par défaut reprend les réglages initiaux de cet espace. Tes données restent conservées.</p>
+      <p class="conversation-preferences-help">Allégé désactive les options de ce panneau. Par défaut reprend les réglages initiaux de cet espace. Tes données restent conservées.</p>
       <div data-groups></div><div data-integrations></div><p class="conversation-preferences-help">Les contrôles d’accès, d’intégrité et de sécurité restent actifs. Un calcul déjà lancé peut finir ; son résultat est écarté si les réglages ont changé.</p>
       <p data-status role="status" aria-live="polite"></p><footer><button type="button" data-cancel>Annuler</button><button type="submit">Enregistrer les réglages</button></footer></form>`;
     dialog.querySelector('h2').textContent = title; doc.body.append(dialog);
