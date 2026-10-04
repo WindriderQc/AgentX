@@ -159,9 +159,9 @@ async function isEmbedHostLive(hostUrl) {
     return ok;
 }
 
-function emitEmbedHostFailure(candidate, model, error) {
-    const alertSvc = alertService;
-    if (!alertSvc?.evaluateEvent) return;
+function emitEmbedHostFailure(candidate, model, error, code = '') {
+    const alertSvc = alertService; // An admission refusal is Core's own decision: the host answered nothing.
+    if (!alertSvc?.evaluateEvent || String(code).startsWith('RUNTIME_INFERENCE_')) return;
     alertSvc.evaluateEvent({
         component: resolveHostKey(candidate) || candidate,
         metric: 'host_unreachable',
@@ -413,7 +413,7 @@ router.post('/inference/embed', async (req, res) => {
                     model,
                     error: lastError.message
                 });
-                emitEmbedHostFailure(candidate, model, lastError.message);
+                emitEmbedHostFailure(candidate, model, lastError.message, lastError.code);
                 rejections.push({
                     model,
                     host: resolveHostKey(candidate),
