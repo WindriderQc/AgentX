@@ -129,10 +129,69 @@ model failure. The native attempt remains in the audit; its text cannot cancel
 an accepted image. This receipt observation neither generates another image nor
 grants tools to a fallback model. A later status reads the same verified artifact.
 
+## Estimated hardware envelopes
+
+The following sizes are **unmeasured estimates from curated issue #373**
+(https://github.com/WindriderQc/AgentX/issues/373). They have not been
+measured on this installation; no receipt supports them, and they are a
+starting point for qualification, not measured results. They do not guarantee
+that a named GPU or host fits, and the Qualification section below still has
+to pass on the real host before a profile or placement changes.
+
+| Profile | Unmeasured VRAM envelope | Unmeasured RAM envelope |
+|---|---|---|
+| FLUX.2 klein 4B (`klein`) | minimum 8 GB, recommended 12 GB | minimum 32 GB, recommended 32–64 GB |
+| Qwen-Image-2.1 (`qwen21`) | minimum 12 GB, recommended 16–24 GB at 1 MP | minimum 64 GB (8 GB VRAM is an unmeasured exception only at 1 MP with offload), recommended 64 GB at 1 MP or 96–128 GB for 4 MP plus two references |
+
+Estimated diffusion-step VRAM peaks (unmeasured, issue #373):
+
+| Workload | Estimated diffusion-step VRAM peak |
+|---|---|
+| `klein`, 1 MP | 7.8 GB |
+| `klein`, 1 MP plus two references | 10.2 GB |
+| `qwen21`, 1 MP | 10.3 GB |
+| `qwen21`, 4 MP | 15.0 GB |
+| `qwen21`, 4 MP plus two references | 19.0 GB, with about 21.6 GB system-RAM prefix cache |
+
+Estimated per-request setup/restore cost (unmeasured, issue #373): 30–90
+seconds. For `qwen21` at 4 MP plus two references the same source estimates
+8–10 minutes on a 3090-class GPU — near the 15-minute default request timeout
+below.
+
+These estimates only make sense against the existing runtime bounds, which the
+service code and supervisor already enforce:
+
+- **One GPU:** the supervisor launches exactly one CUDA child on the one GPU
+  it is given, and the request contract gives only one operation a worker slot
+  at a time.
+- **Memory reserve:** the CUDA child starts with an explicit reserve
+  (`--reserve-vram`, 1.2 GB in the supervisor's default arguments) and raises
+  it to 4.5 GB when a graph's pixel budget exceeds 2 359 296 pixels, because
+  large INT8 activations need room beyond the model-loading estimate and
+  staging weights in RAM preserves precision. Before each operation, Core also
+  refuses to compute when free VRAM falls below 75% of total VRAM.
+- **Pixel:** each profile bounds its pixel budget — 262 144 to 4 194 304
+  pixels per profile, with dimensions 256–2048 in steps of 32; the reference
+  editing budget is explicit and a large source photo does not silently create
+  a 12 MP render.
+- **References:** at most two PNG/JPEG references per request, each decoded and
+  bounded (4 MP, 8:1 aspect ratio maximum).
+- **Timeout:** a request timeout bounded to 60 000–1 800 000 ms with a
+  900 000 ms (15-minute) default; the manifest in this document uses the
+  default. The `qwen21` 4 MP plus two references estimate above sits near the
+  top of that window, which is why it is called out.
+
+The one-GPU, reserve, pixel, reference and timeout bounds above are runtime
+evidence from the declared source files; the envelope, peak and timing numbers
+in this section are not. Qualify every estimate on the actual host before
+relying on it.
+
 ## Qualification
 
 Measure cold and repeated generation, editing, multiple references, actual
 RAM/VRAM peaks, cancellation, offline refusal, storage recovery and restored
-Nestor inference. Compare the same graph and seed across hosts before changing
-placement. A file's byte size is not its pipeline's minimum VRAM. Passing code
-tests is separate from container, GPU and real-device acceptance.
+Nestor inference. The estimated hardware envelopes above are unmeasured inputs
+to this qualification, not receipts. Compare the same graph and seed across
+hosts before changing placement. A file's byte size is not its pipeline's
+minimum VRAM. Passing code tests is separate from container, GPU and
+real-device acceptance.
