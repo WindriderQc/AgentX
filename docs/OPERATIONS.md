@@ -934,7 +934,12 @@ answer tries `secondary` next.
   Playground badge shows "mode dégradé"), `routing.fallbackUsed` on household
   turns (the Nestor conversation marks the reply "mode dégradé"). InferenceLog rows record `fallbackUsed` with a
   `task_fallback_<reason>` code, and the lane observability projection
-  (`taskFallbacks`) counts ladder use since the last start.
+  (`taskFallbacks`) counts ladder use since the last start. Hourly counters
+  that survive a restart keep the rungs served, the ladders exhausted (no
+  rung could serve) and the `/api/inference/generate` refusals at selection or
+  admission, which write no InferenceLog row: `GET
+  /api/analytics/inference/contention?window=24h|7d|30d|90d` returns their
+  buckets and totals by task and code, kept as long as the inference logs.
 
 A strict task never changes model, and never changes host unless the other
 host has its model installed: the scheduler's placement away from the

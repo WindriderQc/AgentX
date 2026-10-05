@@ -46,6 +46,7 @@ const {
   parseGroupLimit,
   shapeDistribution
 } = require('../src/services/inferenceDistributionService');
+const { readContention } = require('../src/services/routing/inferenceContentionCounters');
 
 /**
  * A summary is computed on demand from `inferencelogs`; a rendered copy older
@@ -262,6 +263,35 @@ router.get('/distribution', async (req, res) => {
   } catch (err) {
     logger.error('Inference distribution query failed', { error: err.message });
     envelope.error(res, err.statusCode || 500, err.message);
+  }
+});
+
+/**
+ * GET /api/analytics/inference/contention?window=24h|7d|30d|90d
+ *
+ * Hourly counters that survive a restart (#363): fallback rungs served,
+ * ladders exhausted, and /api/inference/generate refusals at selection or
+ * admission, which leave no inferencelogs row. Buckets are whole hours.
+ */
+router.get('/contention', async (req, res) => {
+  try {
+    const window = resolveWindow(req.query.window);
+    const { buckets, totals } = await readContention({ from: window.from, to: window.to });
+    envelope.success(res, {
+      source: 'inferencecontentioncounters',
+      window: { key: window.key, from: window.from, to: window.to },
+      retentionDays: parseInt(process.env.INFERENCE_LOG_TTL_DAYS || '30', 10),
+      events: {
+        ladder_served: 'A fallback ladder rung served a task; code is the degradation reason.',
+        ladder_exhausted: 'The primary was unavailable and no rung could serve; code is the reason.',
+        route_refused: '/api/inference/generate refused at selection or admission; code is the refusal.',
+      },
+      totals,
+      buckets,
+    });
+  } catch (err) {
+    logger.error('Inference contention query failed', { error: err.message });
+    envelope.error(res, 500, err.message);
   }
 });
 
