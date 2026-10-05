@@ -284,6 +284,9 @@ loop; its wait stops at 45 s, under the gateway's provider timeout.
 
 ### Voice
 
+See [agents, personalities and voice](AGENTS_AND_VOICE.md) for the selection
+boundaries and the evidence required to qualify conversation and speech paths.
+
 Core's `core/public/js/voice` owns browser microphone capture, speech endpoint
 detection, echo rejection and cancellable playback. Household and PsyX compose
 its conversation loop with their protected session and turn adapters.
@@ -484,7 +487,8 @@ pages and APIs retain the parental gateway guard.
   cannot start during resolution or snapshot replacement. The write updates
   only the personality snapshot; later turns apply and record that snapshot.
   `HOUSEHOLD_PERSONA_VOICES` applies when the snapshot is selected and is resolved
-  again for each server reply. Changing or removing an instance override affects
+  again for each server reply; a voice saved through Team takes precedence over
+  that map. Changing or removing an instance override affects
   later speech; the frozen catalog voice supplies the default, and explicit
   session voice choices take precedence.
   Its Super Dad and

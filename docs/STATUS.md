@@ -50,8 +50,24 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **Voice.** Household and PsyX share Core's browser conversation engine, VoiX
   transport, synthesis validation, stream relay and spoken-text cleanup. Native
   voice replies use the same speech boundary; physical device adapters retain
-  their own capture and playback. Voice choices are request-scoped, and Stop or
-  disconnect cancels upstream work without starting a backup request.
+  their own capture and playback. The loop keeps one language per turn, prepares
+  clauses ahead and permits one bounded retry after a speech stream failure.
+  Household flushes its final clause before turn completion and persists browser
+  voice timings; PsyX keeps its protected speech route without a timing store.
+  Voice choices are request-scoped; Stop or disconnect cancels upstream work
+  without starting a backup request. See [agents and voice](AGENTS_AND_VOICE.md).
+- **Personalities.** Household versions personalities separately from modes and
+  binds them to agents on the server. An adult-authorized session can switch its
+  personality between turns while keeping its agent and permissions. Turns
+  distinguish the presenting speaker, observed performing agents and requested
+  voice; a requested voice does not establish what the device heard.
+- **Conversation paths.** Household keeps stable contracts in system/native
+  instructions and variable context beside the current request. Canonical user
+  text stays unchanged. New family sessions can opt into direct Core inference;
+  existing sessions keep their backend. Direct inference composes Core's family
+  features but has no native tool loop. The personal fast lane's delegation
+  definition and conversation replay are available for offline qualification;
+  the production lane remains gated.
 - **Local images.** An optional full-profile studio creates and edits images
   through a local ComfyUI worker. Core retains operation identities, GPU recovery
   fences and verified archived output. The private native tool returns a
@@ -95,7 +111,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   checked against supplied source text; older quotations remain unverified.
 - **Routing.** Light tasks may carry an instance-configured fallback ladder;
   every other task stays on its model. The OpenClaw conversation provider can
-  borrow that ladder when the instance opts in; it is off by default.
+  borrow that ladder when the instance opts in; it is off by default. A bounded
+  snapshot cache shares routing refreshes while live admission and claims remain
+  authoritative. Inference logs expose reported native phases and instrumented
+  agent prefix divergence, without treating missing data as zero or a stable
+  prefix as proof of a cache hit.
 - **Nerve Center.** Inference hosts are registered from the Nerve Center
   without a count limit; the configuration file only bootstraps the first.
   Each host is GPU- or CPU-resident, so one machine can run a GPU brain and a
@@ -168,11 +188,11 @@ Issues hold the current work and remaining acceptance:
 | Household photo metadata and staged visual retrieval | [#26](https://github.com/WindriderQc/AgentX/issues/26) |
 | Qualify French Canadian speech recognition | [#28](https://github.com/WindriderQc/AgentX/issues/28) |
 | Local French Canadian voices and custom voice profiles | [#29](https://github.com/WindriderQc/AgentX/issues/29) |
-| Hand a Household turn to another agent and speak its answer in that agent's voice | [#41](https://github.com/WindriderQc/AgentX/issues/41) |
+| Specialist handoff acceptance and multi-speaker reply continuity | [#41](https://github.com/WindriderQc/AgentX/issues/41) |
 | Qualify a small co-resident model beside the sequential 27B pin | [#60](https://github.com/WindriderQc/AgentX/issues/60) |
 | Backup speech peer when the primary speech host is down | [#117](https://github.com/WindriderQc/AgentX/issues/117) |
 | Secretary mailbox lifecycle: one full catch-up, then a steady service | [#130](https://github.com/WindriderQc/AgentX/issues/130) |
-| Agents, personas and capabilities: one model and a migration path | [#131](https://github.com/WindriderQc/AgentX/issues/131) |
+| Native agent job isolation and migration acceptance | [#131](https://github.com/WindriderQc/AgentX/issues/131) |
 | Technical debt from the October audit | [#133](https://github.com/WindriderQc/AgentX/issues/133) |
 | Action-ready personal morning brief with a stable task focus | [#176](https://github.com/WindriderQc/AgentX/issues/176) |
 | Offline replay to qualify fast-lane delegation decisions | [#262](https://github.com/WindriderQc/AgentX/issues/262) |

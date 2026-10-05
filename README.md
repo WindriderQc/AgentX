@@ -32,6 +32,8 @@ conversation and task storage rather than creating its own.
 MongoDB stores application data, Qdrant provides vector search, and Ollama serves
 the configured models. AgentX runs locally or on a private network. See
 [status](docs/STATUS.md) for available features and outstanding acceptance.
+The [agents, personalities and voice reference](docs/AGENTS_AND_VOICE.md)
+explains selection, execution attribution, speech fallback and qualification.
 
 ## Start locally
 

@@ -553,30 +553,35 @@ model's conversation continuity and tools; it is not a reasoning-quality guarant
 Every turn, on both engines, carries what was selected for it (notes, household
 members, approved knowledge, routines, save receipts, the sound note, the reply
 language, a team member's last exchange and the reviewer's advice) as labelled
-reference data beside the request. The system message and the native
-instructions therefore stay identical from turn to turn, which lets the model
-server reuse its prompt cache. Core's canonical transcript still contains the
-submitted user text only.
+reference data beside the request. With the same pack, mode and personality,
+the system message and native instructions keep a stable prefix. This supports
+prompt reuse; history reconstruction, runner options and competing callers can
+still prevent a cache hit. LLMx scene instructions remain variable. Core's
+canonical transcript contains the submitted user text only. See
+[voice qualification](AGENTS_AND_VOICE.md#measure-the-path-that-the-person-experiences).
 
 `HOUSEHOLD_PERSONA_VOICES` optionally gives personas an instance voice without
 editing the shared catalog: a JSON object maps a persona id, or `"*"` for every
 persona, to `provider|voice` (`kokoro`, `windows_sapi` or `voxcpm`), for example
-a VoxCPM2 voice cloned on the voice host. Persona catalog snapshots carry it, so
-browser conversations and server replies speak with it in both languages. A
-browser's own voice selection still wins; invalid entries keep the catalog voice.
+a VoxCPM2 voice cloned on the voice host. A voice saved through Agent Ops › Team
+outranks this map; an explicit browser voice selection wins over both. Catalog
+snapshots carry the effective voice, and server replies resolve the instance map
+again for each reply. Invalid map entries keep the catalog voice. See
+[personality selection and authoring](AGENTS_AND_VOICE.md#personality-selection-and-attribution).
 Kids Room and Lecture create their conversation with the Nestor personality and
 read replies through the same voice ladder, so Nestor's instance voice applies
 there too; the reading voice chosen on that browser ("Voix des lectures") wins.
-On the Household browser conversation page (Super Dad or Famille), the reply
-speaks through the browser voice ladder (`core/public/js/voice/speech-ladder.js`):
-the selected voice is tried first (an explicit instance voice, for example a
-VoxCPM2 voice cloned on the voice host), then the persona's presentation voice
-(defaulting to a Kokoro voice when the persona declares no specific provider),
-then the persona's declared catalog fallback voice, and finally the browser's
-own speech (`speechSynthesis`) where that surface permits it. A rung is skipped
-when its synthesis request is rejected, so an unavailable VoxCPM2 worker falls
-through to the next rung rather than leaving the reply unspoken. Server replies
-and native voice sessions do not use the browser `speechSynthesis` fallback.
+On the Household browser conversation page (Super Dad or Famille), replies use
+`core/public/js/voice/speech-ladder.js`: the selected voice, the personality's
+presentation voice, its declared catalog fallback when present, then the
+browser's own speech where permitted. Duplicate choices are skipped, and a
+rejected synthesis request advances to the next rung. A failure after the stream
+starts permits one clause retry below the failed voice, at most once per turn.
+Interruption never starts that retry. The reply can remain unspoken if every
+voice fails. Server replies
+and native voice sessions do not use browser `speechSynthesis`. PsyX uses its
+protected chosen-voice route without a device voice fallback. See
+[shared speech behavior](AGENTS_AND_VOICE.md#shared-speech-behavior).
 
 `HOUSEHOLD_TEAM_MEMBERS` optionally lets the owner address a team member
 directly in Super Dad: a JSON object maps an OpenClaw agent id to the names it
