@@ -121,6 +121,7 @@ describe('BenchmarkTarget v1', () => {
   });
 
   test.each([
+    ['num_ctx', 16384],
     ['num_predict', 1600], ['timeout', 120000], ['temperature', 0.2],
     ['seed', 42], ['max_retries', 3], ['voting_count', 3],
   ])('another judge %s starts another cohort', (field, value) => {

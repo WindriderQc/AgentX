@@ -317,6 +317,7 @@ function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink 
     // Resolved and saved at launch: a changed service default must not give
     // another judge budget or sampling policy the same comparison identity.
     judgeSettings: judgeConfig ? {
+      numCtx: judgeConfig.num_ctx ?? null,
       numPredict: judgeConfig.num_predict ?? null,
       timeoutMs: judgeConfig.timeout ?? null,
       temperature: judgeConfig.temperature ?? null,
