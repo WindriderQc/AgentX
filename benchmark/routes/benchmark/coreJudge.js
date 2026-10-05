@@ -18,7 +18,7 @@ const {
     getQuickJudgeCalibrationProtocol,
     evaluateQuickJudgeCalibrationCase
 } = require('../../src/services/benchmark/quickJudgeCalibration');
-const { evaluateCalibrationCase, summarizeAccuracyCalibration } = require('../../src/services/benchmark/judgeCalibration');
+const { calibrationPrompt, evaluateCalibrationCase, summarizeAccuracyCalibration } = require('../../src/services/benchmark/judgeCalibration');
 const { buildAccuracyCalibrationReport, recordAccuracyCalibration } = require('../../src/services/benchmark/judgeQualification');
 const { getModelDigest } = require('../../src/services/benchmark/modelDigestService');
 const {
@@ -203,12 +203,7 @@ router.post('/judge/calibrate-accuracy', withManagedWorkloadRoute('judge-accurac
             try {
                 const scores = await scoreResponse({
                     response: item.response,
-                    prompt: {
-                        prompt: item.prompt,
-                        category: item.category,
-                        expected_answer: item.expected_answer,
-                        reference_tests: item.reference_tests
-                    },
+                    prompt: calibrationPrompt(item),
                     judgeConfig: { host: judgeHost, model: judgeModel,
                         ...(num_ctx !== undefined && { num_ctx }), cancelSignal: req.workloadAdmissionSignal }
                 });
