@@ -33,6 +33,70 @@ function profileCollection(profile) {
 }
 
 describe('inferenceContractService', () => {
+  describe('configured default output reserve', () => {
+    let originalDefault;
+    beforeEach(() => {
+      originalDefault = process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS;
+      delete process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS;
+    });
+    afterEach(() => {
+      if (originalDefault === undefined) delete process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS;
+      else process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS = originalDefault;
+    });
+
+    function budgetFor(requestedNumCtx, requestedMaxOutputTokens) {
+      return resolveContextBudget(
+        { model: 'model-a', prompt: 'hello', requestedNumCtx, requestedMaxOutputTokens },
+        { resolveContextDetails: async () => null }
+      );
+    }
+
+    it('keeps the product default when no setting is supplied', async () => {
+      expect((await budgetFor(131072)).output).toEqual({
+        reservedTokens: 4096, source: 'default_reserve',
+        defaultMaxTokens: 4096, defaultSource: 'product_default'
+      });
+    });
+
+    it('uses the configured default and preserves the small-window bound', async () => {
+      process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS = '32768';
+      expect((await budgetFor(131072)).output).toEqual({
+        reservedTokens: 32768, source: 'default_reserve',
+        defaultMaxTokens: 32768, defaultSource: 'environment'
+      });
+      expect((await budgetFor(8192)).output.reservedTokens).toBe(2048);
+    });
+
+    it('preserves an explicit caller budget', async () => {
+      process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS = '32768';
+      expect((await budgetFor(131072, 700)).output).toMatchObject({
+        reservedTokens: 700, source: 'caller'
+      });
+      expect((await budgetFor(1024, 2000)).output.reservedTokens).toBe(1024);
+    });
+
+    it('reports the configured reserve without inventing an unresolved window', async () => {
+      process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS = '32768';
+      const budget = await budgetFor();
+      expect(budget.windowTokens).toBeNull();
+      expect(budget.output.reservedTokens).toBe(32768);
+      expect(budget.warnings).toContain('runtime context is unresolved; no context window was inferred');
+    });
+
+    it.each(['0', '-1', '12.5', 'invalid', '9007199254740992'])(
+      'warns and uses the product default for invalid setting %s', async (value) => {
+        process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS = value;
+        const budget = await budgetFor(131072);
+        expect(budget.output).toMatchObject({
+          reservedTokens: 4096, defaultMaxTokens: 4096, defaultSource: 'product_default'
+        });
+        expect(budget.warnings).toContain(
+          'AGENTX_DEFAULT_MAX_OUTPUT_TOKENS must be a positive safe integer; using the product default'
+        );
+      }
+    );
+  });
+
   it('resolves thinking from the deployed host/artifact profile rather than its name', async () => {
     const hostProfile = {
       hostId: 'host-alpha',

@@ -1242,6 +1242,16 @@ To know a model's run-to-run noise, compare two batches of the same artifact;
 the response says so (`sameArtifact`). `POST /api/benchmark/regression/compare`
 keeps comparing batches of the same model and host.
 
+Core's default output reserve is configurable with
+`AGENTX_DEFAULT_MAX_OUTPUT_TOKENS` (4,096 when unset). A resolved context window
+bounds this default to one quarter of the window, with the existing minimum
+reserve of 256 tokens. Explicit caller budgets take priority and remain bounded
+by the full context window. The inference contract reports the effective reserve,
+the configured default and its source in `contextBudget.output`; an invalid
+setting produces a contract warning and uses 4,096. The Configuration view
+also lists this setting. Change the instance env file and recreate Core to apply
+it; this setting does not qualify a model or alter its measured context.
+
 A batch's response budget is the most a candidate may generate, reasoning
 included. When the launch sets `execution_config.response_max_tokens`, that value
 applies. When it sets none, each candidate gets the documented default (32,000),
