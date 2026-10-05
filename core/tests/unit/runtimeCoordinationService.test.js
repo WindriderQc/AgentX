@@ -811,7 +811,7 @@ describe('runtime maintenance and benchmark workload coordination', () => {
     expect(await service.hostHasActiveInferences('http://host-a:11434')).toBe(false);
   });
 
-  test('shared inference coexistence requires the same canonical host and residency key', async () => {
+  test('shared inference of one model coexists only under the same canonical host and residency key', async () => {
     const first = await service.acquireInference({
       principal: 'core-service', requestId: 'shared-a', host: 'HTTP://HOST-A:11434/',
       model: 'model-a', runtimeOptions: { num_ctx: 8192, temperature: 0.1 }, keepAlive: '5m'
@@ -833,8 +833,8 @@ describe('runtime maintenance and benchmark workload coordination', () => {
     })).resolves.toMatchObject({ acquired: true, residencyKey: first.residencyKey });
 
     for (const [requestId, model, runtimeOptions] of [
-      ['shared-other-model', 'model-b', { num_ctx: 8192 }],
       ['shared-other-context', 'model-a', { num_ctx: 16384 }],
+      ['shared-latest-alias-other-context', 'MODEL-A:latest', { num_ctx: 16384 }],
       ['shared-explicit-default', 'model-a', { num_ctx: null }]
     ]) {
       await expect(service.acquireInference({
@@ -842,6 +842,36 @@ describe('runtime maintenance and benchmark workload coordination', () => {
         runtimeOptions, keepAlive: '5m'
       })).resolves.toMatchObject({ acquired: false });
     }
+  });
+
+  test('several models run on one host at once; an exclusive request still waits for all of them', async () => {
+    const host = 'http://host-a:11434';
+    const first = await service.acquireInference({
+      principal: 'core-service', requestId: 'model-a-call', host, model: 'model-a', runtimeOptions: { num_ctx: 8192 }
+    });
+    const second = await service.acquireInference({
+      principal: 'core-service', requestId: 'model-b-call', host, model: 'model-b', runtimeOptions: { num_ctx: 4096 }
+    });
+    expect(first).toMatchObject({ acquired: true, modelKey: 'model-a' });
+    expect(second).toMatchObject({ acquired: true, modelKey: 'model-b' });
+    await expect(service.acquireInference({
+      principal: 'core-service', requestId: 'model-c-handoff', host, model: 'model-c', mode: 'exclusive'
+    })).resolves.toMatchObject({ acquired: false, failure: { cause: 'inference_active' } });
+    await expect(service.acquireInference({
+      principal: 'core-service', requestId: 'model-b-other-context', host, model: 'model-b', runtimeOptions: { num_ctx: 8192 }
+    })).resolves.toMatchObject({ acquired: false,
+      failure: { cause: 'inference_residency_active', holder: { model: 'model-b' } } });
+  });
+
+  test('an admission recorded before model keys keeps the one-residency rule', async () => {
+    const legacy = await service.acquireInference({
+      principal: 'core-service', requestId: 'legacy', host: 'http://host-a:11434', model: 'model-a'
+    });
+    await RuntimeCoordination.updateOne({ _id: 'runtime', 'inferences.admissionId': legacy.admissionId },
+      { $unset: { 'inferences.$.modelKey': '' } });
+    await expect(service.acquireInference({
+      principal: 'core-service', requestId: 'other-model', host: 'http://host-a:11434', model: 'model-b'
+    })).resolves.toMatchObject({ acquired: false, failure: { cause: 'inference_residency_active' } });
   });
 
   test('UNKNOWN or exclusive inference blocks every new inference on the canonical host alias', async () => {

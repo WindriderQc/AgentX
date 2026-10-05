@@ -65,7 +65,9 @@ function inferenceConflict(state, request, now) {
   if (exclusive || (request.mode === 'exclusive' && inferences.length)) {
     return failure('inference_active', true, holderOf('inference', exclusive || inferences[0]));
   }
-  const resident = inferences.find(item => canonicalHost(item.host) !== request.host || item.residencyKey !== request.residencyKey);
+  // Another endpoint on the same device, or the same model under another residency.
+  const resident = inferences.find(item => canonicalHost(item.host) !== request.host
+    || (item.residencyKey !== request.residencyKey && (!item.modelKey || item.modelKey === request.modelKey)));
   if (resident) return failure('inference_residency_active', true, holderOf('inference', resident));
   return failure('admission_conflict_unclassified');
 }

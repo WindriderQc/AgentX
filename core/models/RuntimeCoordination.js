@@ -72,9 +72,12 @@ const InferenceAdmissionSchema = new mongoose.Schema({
   host: { type: String, required: true },
   model: { type: String, required: true },
   resourceIds: { type: [String], default: [] },
+  // Normalized model tag. Shared admissions of different models coexist on a
+  // host; absent on admissions written before that rule.
+  modelKey: { type: String, default: null },
   // Core derives this key from the canonical host-independent residency
-  // intent. Callers never choose it. Shared admissions may coexist only when
-  // the exact runner/residency key matches.
+  // intent. Callers never choose it. Shared admissions of one model coexist
+  // only when the exact runner/residency key matches.
   residencyKey: { type: String, required: true },
   residencySpec: { type: mongoose.Schema.Types.Mixed, required: true },
   kind: { type: String, required: true },
