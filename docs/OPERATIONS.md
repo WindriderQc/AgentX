@@ -573,11 +573,12 @@ read replies through the same voice ladder, so Nestor's instance voice applies
 there too; the reading voice chosen on that browser ("Voix des lectures") wins.
 On the Household browser conversation page (Super Dad or Famille), replies use
 `core/public/js/voice/speech-ladder.js`: the selected voice, the personality's
-presentation voice, its catalog voice, then the browser's own speech where
-permitted. Duplicate choices are skipped, and a rejected synthesis request
-advances to the next rung. A failure after the stream starts permits one clause
-retry below the failed voice, at most once per turn; interruption never starts
-that retry. The reply can remain unspoken if every voice fails. Server replies
+presentation voice, its declared catalog fallback when present, then the
+browser's own speech where permitted. Duplicate choices are skipped, and a
+rejected synthesis request advances to the next rung. A failure after the stream
+starts permits one clause retry below the failed voice, at most once per turn.
+Interruption never starts that retry. The reply can remain unspoken if every
+voice fails. Server replies
 and native voice sessions do not use browser `speechSynthesis`. PsyX uses its
 protected chosen-voice route without a device voice fallback. See
 [shared speech behavior](AGENTS_AND_VOICE.md#shared-speech-behavior).
