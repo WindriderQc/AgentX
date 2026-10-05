@@ -67,15 +67,25 @@ allocated context window nor a partially filled successful probe proves recall
 quality across every token of that window. `qualityContextStatus: unknown` is
 intentional until separate quality evidence exists.
 
+## Agent-sized prefill
+
+The Full matrix's fixed cells stop at a 16k prompt. Its `longPrefill` series
+measures 32k, 64k and 128k windows (`PROFILER_MATRIX_LONG_PREFILL_TOKENS`), each
+on its own and filled to 90 %, skipped above the verified safe context, with
+two samples of 32 decoded tokens. It reports the prefill rate
+(`prompt_eval_count` over `prompt_eval_duration`), the time to first token
+(prompt evaluation plus one generated token, from Ollama's timings) and, apart,
+the model load that a new window usually costs.
+
 ## Prompt cache
 
 Ollama serves a repeated identical prompt from its prompt cache: it still
 reports every prompt token in `prompt_eval_count`, but `prompt_eval_duration`
 covers only the last one (measured on Ollama's main branch: 5,052 ms, then
-59 ms, for the same 1,534-token prompt). Every throughput and matrix sample
-therefore starts with a line of its own, and the evidence says so
-(`promptIsolation: "unique_first_line"`). Prompt-eval speeds and TTFT in
-profiles without that field may have been served from the cache.
+59 ms, for the same 1,534-token prompt). Every throughput, matrix and
+agent-sized prefill sample therefore starts with a line of its own, and the
+evidence says so (`promptIsolation: "unique_first_line"`). Prompt-eval speeds
+and TTFT in profiles without that field may have been served from the cache.
 
 ## Pin context proposals
 

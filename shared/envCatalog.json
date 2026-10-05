@@ -2550,6 +2550,16 @@
       "secret": false,
       "description": "Comma-separated decode lengths of the profiler matrix. Unset: built-in values."
     },
+    "PROFILER_MATRIX_LONG_PREFILL_TOKENS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Comma-separated windows of the Full profile's agent-sized prefill series, each filled to 90 %. Unset: 32768, 65536, 131072."
+    },
     "PROFILER_MATRIX_PREFILL_TOKENS": {
       "services": [
         "benchmark"

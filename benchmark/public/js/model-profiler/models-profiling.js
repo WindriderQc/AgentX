@@ -231,6 +231,28 @@ function _formatRepeatedEvidence(statistics) {
   return `n=${statistics.sampleCount} · p50 ${Number(statistics.p50).toFixed(1)} · p95 ${Number(statistics.p95).toFixed(1)} · ${cv} · ${ciText}`;
 }
 
+const _ctxLabel = value => (value >= 1024 ? `${Math.round(value / 1024)}k` : String(value ?? '?'));
+
+// Agent-sized prefill (32k-128k windows) of the Full matrix (#367).
+function _renderAgentSizedEvidence(profile) {
+  let html = '';
+  const series = profile?.prefillDecodeMatrix?.longPrefill;
+  if (Array.isArray(series?.sizes) && series.sizes.length) {
+    html += `<table class="mp-extras-table">
+      <caption>Agent-sized prefill (window filled to ${Math.round((series.fillRatio || 0.9) * 100)} %)</caption>
+      <thead><tr><th>Window</th><th>Prefill tok/s</th><th>First token</th><th>Load</th><th>Status</th></tr></thead>
+      <tbody>${series.sizes.map(size => `<tr>
+        <td>${_ctxLabel(size.numCtx)}</td>
+        <td>${size.prefillTokensPerSec ?? '—'}</td>
+        <td>${size.ttftMs != null ? `${(size.ttftMs / 1000).toFixed(1)} s` : '—'}</td>
+        <td>${size.loadDurationMs != null ? `${(size.loadDurationMs / 1000).toFixed(1)} s` : '—'}</td>
+        <td>${size.status || 'unknown'}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }
+  return html;
+}
+
 function _renderFullDepthExtras(profile) {
   let html = '';
 
@@ -263,6 +285,8 @@ function _renderFullDepthExtras(profile) {
       </tr>`).join('')}</tbody>
     </table>`;
   }
+
+  html += _renderAgentSizedEvidence(profile);
 
   // Generation stability table
   const stability = profile?.generationStability || [];

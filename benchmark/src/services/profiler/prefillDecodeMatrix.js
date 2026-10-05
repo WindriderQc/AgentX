@@ -28,6 +28,7 @@ const { jsonMutationDuration } = require('./profilerMutationObservation');
 
 const { generate, listRunning } = require('../../clients/ollamaClient');
 const { generateFillPrompt, isolatePrompt } = require('../contextProbePayload');
+const { runLongPrefillSeries } = require('./longPrefillSeries');
 const logger = require('../../../config/logger');
 
 const DEFAULT_REPEATS = 5;
@@ -338,6 +339,8 @@ function aggregateCellSamples(samples, plan, numCtx, minimumSamples) {
  * @param {number[]} [options.prefillTokens]
  * @param {number[]} [options.decodeTokens]
  * @param {function} [options.onProgress]  - ({ index, total, cell }) per completed cell
+ * @param {object|false} [options.longPrefill] - options of the agent-sized prefill
+ *   series (longPrefillSeries.js), or false to skip it
  * @returns {Promise<object>} matrix result stored in exact-artifact performance evidence
  */
 async function runPrefillDecodeMatrix(hostUrl, modelName, options = {}) {
@@ -428,6 +431,12 @@ async function runPrefillDecodeMatrix(hostUrl, modelName, options = {}) {
   }
 
   const passing = cells.filter((c) => c.status === 'pass');
+  const longPrefill = options.longPrefill === false ? null : await runLongPrefillSeries(hostUrl, modelName, {
+    safeNumCtx: options.safeNumCtx,
+    signal: options.signal,
+    assertClaimActive: options.assertClaimActive,
+    ...(options.longPrefill || {}),
+  });
   return {
     measuredAt: new Date(),
     numCtx,
@@ -442,7 +451,8 @@ async function runPrefillDecodeMatrix(hostUrl, modelName, options = {}) {
     skippedCount: cells.filter((c) => c.status === 'skipped').length,
     telemetrySampleCount: cells.reduce((sum, cell) => sum
       + (cell.samples || []).filter(sample => sample.hardwareTelemetry).length, 0),
-    cells
+    cells,
+    longPrefill
   };
 }
 

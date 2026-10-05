@@ -420,6 +420,13 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
       `matrix_${prefillTokens}p_${decodeTokens}d_r${repeat}`,
       settings
     ),
+    longPrefill: {
+      timeoutMs: require('../probePlacement').residencyTimeoutMs(hostUrl, contextProbeService.getConfig().timeoutMs),
+      onProgress: ({ index, total, size }) => notify('prefill_decode_matrix', {
+        message: `Agent-sized prefill ${index}/${total} — ${_formatCtx(size.numCtx)}: ${size.status === 'pass'
+          ? `${size.prefillTokensPerSec} tok/s, first token ${Math.round(size.ttftMs)} ms` : size.status}`,
+      }),
+    },
     onProgress: ({ index, total, cell }) => {
       const label = `${cell.prefillTokens}p/${cell.decodeTokens}d`;
       const detail = cell.status === 'pass'
