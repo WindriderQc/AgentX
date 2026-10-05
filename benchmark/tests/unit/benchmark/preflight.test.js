@@ -540,7 +540,7 @@ describe('benchmark preflight', () => {
             } },
             thinkingProfiles: {
                 'exec-host': {
-                    profileVersion: 2,
+                    profileVersion: 3,
                     supported: true,
                     channel: 'hidden',
                     probeCount: 4,
@@ -608,7 +608,7 @@ describe('benchmark preflight', () => {
 
         expect(result.ready).toBe(true);
         expect(result.checks.hosts[0].warnings).toEqual(expect.arrayContaining([
-            expect.stringMatching(/predates calibrated retry profiling/),
+            expect.stringMatching(/predates the current classification/),
             expect.stringMatching(/Forced think=true will run/)
         ]));
     });

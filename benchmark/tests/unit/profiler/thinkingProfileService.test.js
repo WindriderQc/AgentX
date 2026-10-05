@@ -161,11 +161,11 @@ describe('profileThinkingBehavior()', () => {
     expect(profile.runawayRisk).toBe(false);
     expect(profile.retryProbeCount).toBe(1);
     expect(profile.probeAttempts).toBe(5);
-    expect(profile.maxProbeNumPredict).toBe(2048);
+    expect(profile.maxProbeNumPredict).toBe(4096);
     expect(profile.probes.reasoning_stress).toMatchObject({
       retried: true,
       initialNumPredict: 512,
-      numPredict: 2048,
+      numPredict: 4096,
       visibleFinalAnswerOk: true,
       finalAnswerContractOk: true
     });
@@ -174,7 +174,7 @@ describe('profileThinkingBehavior()', () => {
     expect(chat).toHaveBeenCalledTimes(5);
   });
 
-  it('recommends disallowed when think=true returns thinking only', async () => {
+  it('leaves a contract probe cut off by the cap while thinking undecided, not disallowed', async () => {
     chat
       .mockResolvedValueOnce({
         message: { content: 'FINAL: 42' },
@@ -208,7 +208,40 @@ describe('profileThinkingBehavior()', () => {
     expect(profile.channel).toBe('visible_tags');
     expect(profile.thinkingOnlyResponse).toBe(true);
     expect(profile.runawayRisk).toBe(true);
+    expect(profile.recommendedPolicy).toBe('unknown');
+    expect(profile.recommendationReason).toMatch(/reached the probe output cap \(2048 tokens\) while thinking, before a visible answer/);
+  });
+
+  it('recommends disallowed when think=true stops with thinking and no visible answer', async () => {
+    chat
+      .mockResolvedValueOnce({ message: { content: 'FINAL: 42' }, done_reason: 'stop', eval_count: 20 })
+      .mockResolvedValueOnce({ message: { thinking: '17 + 25 = 42' }, done_reason: 'stop', eval_count: 40 })
+      .mockResolvedValueOnce({ message: { content: '42' }, done_reason: 'stop', eval_count: 20 })
+      .mockResolvedValueOnce({ message: { content: 'FINAL: 2', thinking: 'Cy is 2' }, done_reason: 'stop', eval_count: 24 });
+
+    const profile = await profileThinkingBehavior('qwen3:8b', 'http://localhost:11434');
+
+    expect(profile.thinkingOnlyResponse).toBe(true);
+    expect(profile.retryProbeCount).toBe(0);
     expect(profile.recommendedPolicy).toBe('disallowed');
+    expect(profile.recommendationReason).toMatch(/did not consistently produce visible answer text/);
+  });
+
+  it('meters a model that answers visibly, then reaches the cap while still thinking', async () => {
+    chat
+      .mockResolvedValueOnce({ message: { content: 'FINAL: 42' }, done_reason: 'stop', eval_count: 20 })
+      .mockResolvedValueOnce({ message: { content: 'FINAL: 42', thinking: '17 + 25 = 42, checking again' },
+        done_reason: 'length', eval_count: 512 })
+      .mockResolvedValueOnce({ message: { content: '42', thinking: '17 + 25 = 42' }, done_reason: 'stop', eval_count: 30 })
+      .mockResolvedValueOnce({ message: { content: 'FINAL: 2', thinking: 'Cy is 2' }, done_reason: 'stop', eval_count: 40 });
+
+    const profile = await profileThinkingBehavior('qwen3.8:27b', 'http://localhost:11434');
+
+    expect(profile.visibleFinalAnswerOk).toBe(true);
+    expect(profile.finalAnswerContractOk).toBe(true);
+    expect(profile.runawayRisk).toBe(true);
+    expect(profile.recommendedPolicy).toBe('metered');
+    expect(profile.recommendationReason).toMatch(/answered visibly, then reached the probe output cap/);
   });
 
   it('recommends off when think=true has no observable effect', async () => {
@@ -281,7 +314,7 @@ describe('profileThinkingBehavior()', () => {
     expect(profile.recommendationReason).toMatch(/visible-final-answer contract/);
   });
 
-  it('disallows auto thinking when the reasoning stress probe runs away', async () => {
+  it('leaves a stress probe still capped after its larger retry undecided', async () => {
     chat
       .mockResolvedValueOnce({
         message: { content: 'FINAL: 42' },
@@ -312,7 +345,7 @@ describe('profileThinkingBehavior()', () => {
       .mockResolvedValueOnce({
         message: { content: '<think>still enumerating seats</think>' },
         done_reason: 'length',
-        eval_count: 2048
+        eval_count: 4096
       });
 
     const profile = await profileThinkingBehavior('qwen3:8b', 'http://localhost:11434');
@@ -322,7 +355,8 @@ describe('profileThinkingBehavior()', () => {
     expect(profile.runawayRisk).toBe(true);
     expect(profile.retryProbeCount).toBe(1);
     expect(profile.probeAttempts).toBe(5);
-    expect(profile.recommendedPolicy).toBe('disallowed');
+    expect(profile.recommendedPolicy).toBe('unknown');
+    expect(profile.recommendationReason).toMatch(/\(4096 tokens\)/);
   });
 
   it('marks the profile unknown when a contracted stress probe errors', async () => {

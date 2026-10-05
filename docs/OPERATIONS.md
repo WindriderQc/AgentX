@@ -535,7 +535,16 @@ Ollama server settings the collector read, with their source and age, whatever
 the GPU sample's freshness: an unset key reads as Ollama's default (`f16` for
 the KV cache), and a failed read says so instead of showing defaults. Benchmark reads the same projection
 (its `DATAAPI_BASE_URL`, default `http://data:3083` in Compose) to fill
-`agentx.profiler-hardware-collector/v1`. A retired host-report agent still
+`agentx.profiler-hardware-collector/v1`. When it resolves an artifact's
+identity (at most every 5 minutes per host), it records on the host profile
+the settings that change what a profile measures: KV cache type, flash
+attention, `CUDA_VISIBLE_DEVICES`, `OLLAMA_SCHED_SPREAD` and the GPU count
+Ollama sees. They become part of the runtime fingerprint, so a profile,
+context result or benchmark qualification measured under other settings
+stops matching, and preflight or a sweep asks to profile the host again. Only
+a successful observation changes them, and none while the unit waits for
+`daemon-reload`; a host never observed keeps the fingerprint it had. A
+retired host-report agent still
 running on a GPU host is removed by hand on that host; Core has no
 host-report route.
 
@@ -1173,6 +1182,15 @@ generation stability, prefill/decode matrix, thinking) waits at least as long,
 so a 512-token answer at a few tokens per second is not cut at the GPU-sized
 `testTimeoutSec` and left without a terminal receipt. A probe unloads models only on its own Ollama instance,
 so profiling the CPU instance leaves the machine's GPU pins resident.
+The Profiler's thinking probe classes each model and host. `disallowed` is
+kept for a model that stops with reasoning and no visible answer. A probe cut
+off by its output cap while still reasoning is retried at 2,048 tokens (4,096
+for the reasoning puzzle); still cut off, it reads `unknown`, since the budget
+did not decide. A model that answers, then reaches the cap while reasoning,
+reads `metered`. Core lets a qualified `metered` or `on` model think on
+reasoning tasks (`deep_reasoning`, `analysis`); profiles from before this
+classification (`profileVersion` below 3) are flagged in preflight until
+re-profiled.
 Leaderboard rows carry their host's residency (`local · CPU`), and
 `GET /api/benchmark/generalist-leaderboard?residency=cpu|gpu` keeps one kind;
 rank CPU and GPU runs with `axis=quality`, since the composite axis penalises
