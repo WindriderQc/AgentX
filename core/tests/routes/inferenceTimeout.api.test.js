@@ -288,7 +288,16 @@ describe('POST /api/inference/generate — fetch timeout', () => {
     }));
   });
 
-  it.each([0, -1, 1.5, 3600001, '1200000', null])('refuses invalid Benchmark timeout %j before dispatch', async timeoutMs => {
+  it.each([3600001, 2147483647])('accepts a representable Benchmark deadline of %i ms', async timeoutMs => {
+    fetch.mockImplementation(async url => benchmarkEvidenceResponse(url) || {
+      ok: true, status: 200, text: async () => JSON.stringify({ response: 'hi', done: true })
+    });
+    const response = await request(server).post('/api/inference/generate')
+      .set('X-AgentX-Caller', 'benchmark-service').send(benchmarkRequest(timeoutMs)).expect(200);
+    expect(response.body.response).toBe('hi');
+  });
+
+  it.each([0, -1, 1.5, 2147483648, '1200000', null])('refuses invalid Benchmark timeout %j before dispatch', async timeoutMs => {
     const response = await request(server).post('/api/inference/generate')
       .set('X-AgentX-Caller', 'benchmark-service').send(benchmarkRequest(timeoutMs)).expect(400);
     expect(response.body.code).toBe('INFERENCE_TIMEOUT_INVALID');

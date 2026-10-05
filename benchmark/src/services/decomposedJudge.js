@@ -99,7 +99,7 @@ ${answerRule}: ${question}`;
     // call takes ~13s; binary fan-out fires 4-deep against the same model
     // so the 3rd/4th wait at the per-host queue and routinely run past 15s.
     // 45s gives a comfortable margin without unbounded waits. Override via
-    // judge_config.timeout in the batch API (validated 5000–120000).
+    // judge_config.timeout in the batch API; larger budgets are kept with warnings.
     const abortContext = await openJudgeCall(judgeConfig, judgeConfig.timeout || 45000);
 
     try {
@@ -112,6 +112,7 @@ ${answerRule}: ${question}`;
             host: judgeConfig.host,
             prompt,
             stream: false,
+            timeoutMs: judgeConfig.timeout || 45000,
             responseMode: 'normalized',
             think,
             callerDetail: 'benchmark-decomposed-judge',

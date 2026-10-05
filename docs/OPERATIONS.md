@@ -237,7 +237,7 @@ starts a batch. The Benchmark page and the batch action both use it.
 | `targets`, or `host` + `models` | Required. `targets` are provider-neutral Benchmark targets; `host` and `models` name Ollama models on one host. At most 50 targets. A local host must be a configured host that answers its inventory with every model installed (422 otherwise). |
 | `levels` | Required array, at most 5 values from 1 to 5. With `prompt_ids`, the stored levels are those of the selected prompts. |
 | `prompt_ids` | Optional, at most 100 prompt ids. This is how categories are chosen: the route has no category field. Unknown ids give 422. Without it, every prompt of the levels runs, sampled by `depth_config` when given. |
-| `judge_config` | Optional. `host` and `model` go together and name a configured host with that model installed; without them Benchmark takes the selected ready judge. No ready judge gives 503 `JUDGE_NOT_READY`. Bounded tuning fields: `temperature`, `num_predict` (up to 32,768), `num_ctx`, `max_retries`, `timeout` (up to 30 min), `voting_count`; values above 4,096 tokens or 120 s are kept and listed in `data.warnings`. `think` is false unless the operator sets `true`: the judge then reasons before each verdict, the launch warns that reasoning shares `num_predict` with the verdict, and the results form their own quality cohort. A `target` of kind `harness` selects an isolated-model harness judge. |
+| `judge_config` | Optional. `host` and `model` go together and name a configured host with that model installed; without them Benchmark takes the selected ready judge. No ready judge gives 503 `JUDGE_NOT_READY`. Tuning fields: `temperature`, `num_predict` (safe integer, at least 100), `num_ctx`, `max_retries`, `timeout` (integer milliseconds, 5,000–2,147,483,647), `voting_count`; values above 4,096 tokens or 120 s are kept and listed in `data.warnings`. `think` is false unless the operator sets `true`: the judge then reasons before each verdict, the launch warns that reasoning shares `num_predict` with the verdict, and the results form their own quality cohort. A `target` of kind `harness` selects an isolated-model harness judge. |
 | `execution_config` | Optional. `repeats` (1 to 5), timeouts, `think` and `response_mode` within the route's bounds. |
 | `multi_judge` | Optional rule (`off`, `l4l5`, `low_confidence`, `always`) or object. Absent means off. |
 | `run_name`, `description`, `tags` | Optional: 200 and 2000 characters, 20 tags of 50 characters. `GET /api/benchmark/batches?tag=` filters on one tag. |
@@ -1300,16 +1300,20 @@ ranking, and its visible answer and hidden reasoning remain available for review
 Historical `thinking_runaway` flags remain stored; new token-cap observations
 do not set that flag. Paired thinking reports count the two separately.
 
-No judge size is assumed. A launch may set `judge_config.num_predict` up to
-32,768 tokens and `judge_config.timeout` up to 30 minutes. Values above the
-usual 4,096 tokens and 120 seconds are kept as chosen, and the launch result
-lists what they cost in `data.warnings`.
+No judge size is assumed. A launch keeps the operator’s integer output budget
+and deadline, including values above the former 32,768-token and 30-minute
+ceilings. Values above the usual 4,096 tokens and 120 seconds are kept as chosen,
+and the launch result lists what they cost in `data.warnings`. Output budgets
+must be safe integers of at least 100; deadlines must be at least 5,000 ms and
+at most 2,147,483,647 ms, because Node turns a larger timer into a 1 ms delay.
 
 Benchmark batches send their configured `per_test_timeout_ms` to Core as
 `timeoutMs`, so Core's non-streamed Ollama attempt uses the same budget instead
-of the default `INFERENCE_FETCH_TIMEOUT_MS` (10 minutes). Core accepts this
-override only from the Benchmark direct lane with workload admission proof,
-as a positive integer up to one hour. Benchmark's own timer covers its HTTP
+of the default `INFERENCE_FETCH_TIMEOUT_MS` (10 minutes). The monolithic,
+reference and decomposed judge paths also send their configured
+`judge_config.timeout` to Core. Core accepts this override only from the
+Benchmark direct lane with workload admission proof, as a positive integer
+within Node’s 2,147,483,647 ms timer limit. Benchmark's own timer covers its HTTP
 request through response-body consumption, including time spent before Core
 dispatches to Ollama. A disconnect still cancels the upstream request.
 Other callers retain Core's configured default. A timeout alone does not prove
