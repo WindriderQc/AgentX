@@ -242,7 +242,10 @@ function createPersonaTurnHandler({
           { soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected, channel: req.body?.channel })
           + (member ? teamAddress.memberInstruction(speaker.name) : '') + workshopPrompt(workshop)
           + sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : '') + (isLlmX ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }));
-        const agentxInstructions = [systemPromptFor(pack, { modeId: session.modeId }), session.persona?.identity,
+        // Child presentation follows the selected adult personality on both
+        // transports. Adult conversations keep their normal style overlay order.
+        const agentxInstructions = [pack.childSafe ? session.persona?.identity : '',
+          systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,
           'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
           workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) })].filter(Boolean).join('\n\n');
         abort.signal.throwIfAborted();

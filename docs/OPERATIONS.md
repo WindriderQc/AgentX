@@ -605,8 +605,11 @@ returns the pending alerts and marks them reported for a delivery job.
 The OpenClaw finance agent (`comptable`) reads it through the `finance_ledger` tool of the
 `integrations/openclaw/finance-ledger` plugin (loopback Core URL, visible only
 to the configured finance agent); amounts arrive as cents plus a formatted
-string so the model never converts or sums them. Its only write,
-`finance_categorize`, saves rules the owner confirmed in the conversation.
+string so the model never converts or sums them. `finance_categorize` saves
+rules the owner confirmed in the conversation; `finance_plan` applies the
+owner's explicit changes to the Core plan. `finance_alerts` can mark alerts
+reported in an authorized delivery workflow. These bounded Core writes grant
+no financial transaction, workbook edit or general filesystem permission.
 
 Full profile serves `/dad`, `/panel`, `/kids/sounds` and `/lecture`. The normal
 Core inference configuration is sufficient for text conversation. OpenClaw needs
@@ -761,7 +764,10 @@ Famille keeps the Nestor personality but replaces its adult temperament with a
 playful, curious tone for children (`FAMILY_TONE` in
 `core/surfaces/household/family-context.js`), sent with the family surface
 contract on the OpenClaw backend and appended to the family pack prompt on the
-AgentX backend. Accuracy and the safety rules still come first.
+AgentX backend. In both final prompts the child temperament follows the selected
+adult personality. A follow-up invitation is optional when useful. Accuracy
+and the safety rules still come first. Composition tests establish this ordering;
+the installed runtime and conversational preference need separate qualification.
 Every Super Dad turn also receives the active child profiles of the Family page
 (`/dad/family`) as approved knowledge, so the children's names and age bands
 do not depend on which notes a search selects. Famille turns do not.
