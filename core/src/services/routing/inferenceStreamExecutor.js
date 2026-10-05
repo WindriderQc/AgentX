@@ -235,7 +235,7 @@ async function executeAdmittedOllamaStream(options, dependencies = {}) {
       });
       scope.admission.assertActive();
       await scope.admission.complete();
-      return { ...result, waits: scope.waits };
+      return { ...result, waits: scope.waits, promptCache: scope.promptCache };
     }
     // Chat also accepts an async byte iterable (for embedded transports).
     const source = typeof response.body.pipe === 'function' ? response.body
@@ -244,9 +244,12 @@ async function executeAdmittedOllamaStream(options, dependencies = {}) {
       abortBridge, release: scope.release, inferenceAdmission: scope.admission, dispatchedAt,
     });
     relaying = true;
-    return { ok: true, status: response.status, response, ...relay, waits: scope.waits };
+    return { ok: true, status: response.status, response, ...relay, waits: scope.waits, promptCache: scope.promptCache };
   } catch (error) {
-    if (scope) error.inferenceWaits ??= scope.waits;
+    if (scope) {
+      error.inferenceWaits ??= scope.waits;
+      error.inferencePromptCache ??= scope.promptCache;
+    }
     error.ollamaRequestNotSent = Boolean(scope) && !receivedResponse && requestNotSent(error);
     if (scope) await (error.ollamaRequestNotSent ? scope.admission.complete() : scope.admission.abandon(error)).catch(quarantineError => {
       error.inferenceQuarantineError = quarantineError;

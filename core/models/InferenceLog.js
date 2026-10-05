@@ -82,6 +82,10 @@ const InferenceLogSchema = new mongoose.Schema({
   // the first position that differs from the previous call to the same host
   // and model. Never prompt text — see routing/promptPrefixFingerprint.js.
   promptPrefix: { type: Schema.Types.Mixed },
+  // Who cost this call its prompt cache: the verdict, character counts of the
+  // prefix it shared and lost, the prefill time lost and the labels of the
+  // calls in between. Never prompt text — see routing/promptCacheAttribution.js.
+  promptCache: { type: Schema.Types.Mixed },
 
   // Status
   status: {

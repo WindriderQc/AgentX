@@ -420,7 +420,7 @@ async function executeRoutedInference(deps, request, options = {}) {
       // Ollama sends headers. A caller can stop delivery without losing the
       // terminal evidence required to release the inference admission.
       ...(request.stream === true && { onDispatch: () => abortBridge.detachCaller() }),
-      admissionKind: request.stream === true ? 'trusted-runtime-stream' : 'trusted-runtime',
+      admissionKind: request.stream === true ? 'trusted-runtime-stream' : 'trusted-runtime', cacheLabels: { consumerContract, taskType },
       principal: benchmarkClaim ? 'benchmark-service' : 'core-trusted-runtime',
       ...(benchmarkClaim && {
         workloadAdmissionId: benchmarkClaim.workloadAdmissionId,
@@ -458,7 +458,7 @@ async function executeRoutedInference(deps, request, options = {}) {
       void attempt.completion.then(data => {
         abortBridge.cleanup();
         const completed = data?.completed === true && data?.terminalComplete === true;
-        void record(telemetryEntry(request, { ...metadata, waits: attempt.waits, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
+        void record(telemetryEntry(request, { ...metadata, waits: attempt.waits, promptCache: attempt.promptCache, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
           completed && !abortBridge.signal.aborted && !options.signal?.aborted ? 'success' : 'error', data,
           options.signal?.aborted ? 'cancelled' : abortBridge.signal.aborted ? 'timeout'
             : (completed ? null : (data?.admissionError || 'terminal_record_unverified')),
@@ -482,7 +482,7 @@ async function executeRoutedInference(deps, request, options = {}) {
         stream: attempt.stream, completion, metadata, retry: attempt.retry });
     }
     abortBridge.cleanup();
-    void record(telemetryEntry(request, { ...metadata, waits: attempt.waits, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
+    void record(telemetryEntry(request, { ...metadata, waits: attempt.waits, promptCache: attempt.promptCache, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
       attempt.ok ? 'success' : 'error', attempt.data,
       attempt.ok ? null : `upstream_http_${attempt.status}`, attribution));
     return Object.freeze({ ok: attempt.ok, status: attempt.status, headers: attempt.response.headers,
@@ -496,7 +496,7 @@ async function executeRoutedInference(deps, request, options = {}) {
       && deps.refusedBeforeDispatch?.(error) && await deps.fallbackAfterRefusal?.(taskType,
         { model, host: hostKey, url: hostUrl, degraded: taskFallback });
     void record(telemetryEntry(
-      request, { ...metadata, retry: error.retry, waits: error.inferenceWaits }, startedAt, timedOut ? 'timeout' : 'error', null,
+      request, { ...metadata, retry: error.retry, waits: error.inferenceWaits, promptCache: error.inferencePromptCache }, startedAt, timedOut ? 'timeout' : 'error', null,
       cancelled ? 'cancelled' : (timedOut ? `timeout_${timeoutMs}ms`
         : (Object.hasOwn(INFERENCE_REFUSALS, error.code) ? error.code : error.message)),
       attribution

@@ -139,6 +139,7 @@ function createAttemptRecorder({
         outcomeReasonCode,
         rejections = [],
         waits = null,
+        promptCache = null,
     }) => {
         const resolvedOutcomeStage = outcomeStage || (
             fallbackUsed ? ROUTE_OUTCOME_STAGES.FALLBACK : ROUTE_OUTCOME_STAGES.EXECUTION
@@ -201,6 +202,7 @@ function createAttemptRecorder({
             tokensOut: attemptData?.eval_count || 0,
             ...ollamaPhaseTimings(attemptData),
             waits,
+            promptCache,
             fallbackUsed,
             fallbackReason,
             durationMs,

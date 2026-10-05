@@ -1283,6 +1283,34 @@ a hash, never prompt content. A miss whose divergence is `append` or `none`
 points elsewhere: another caller used the model in between, or the model was
 reloaded (`loadMs` is high).
 
+Every admitted call that Core dispatches to Ollama, whoever makes it (chat,
+Nestor, household, agents, classifier, council, Benchmark through Core), is
+also compared at dispatch with the last eight requests sent to the same host
+and model, in the order Ollama receives them. Chat, `/api/inference/generate`
+and trusted-runtime rows then carry `promptCache` (council turns and a
+degraded retry's own row do not, though their requests count as interleavers).
+`sharedChars` is the prefix,
+in characters, identical to the request just before (what the cache still
+holds); `reusableChars` the longest prefix identical to any of the eight (what
+it could have offered); `chars` the whole prompt. A prompt is compared in
+segments: the leading system message split at `## ` lines, the tools, then each
+message, or for `/api/generate` the system text and the prompt's paragraphs.
+`verdict` is `warm` (nothing lost), `interleaved` (other requests came between
+this call and the earlier one it continues: `interleaved` counts them and
+`interleavedBy` names up to three by admission `kind`, `consumerContract` and
+`taskType`), `reload` (`loadMs` of at least one second: the model was loaded
+again and its cache with it), `cold` (no recent request shares a prefix) or
+`untracked` (Core has seen no earlier request there since it started).
+`lostChars` is the reusable prefix that was evaluated again and
+`lostPrefillMs` its share of `promptEvalMs`, prorated over the characters
+evaluated, so it never exceeds the call's own prefill. It assumes one cache
+slot, which is how the `qwen35` family runs; on a model with several slots
+Ollama may still hold the earlier prefix, and the row's small `promptEvalMs`
+then keeps the estimate small. Calls that reach Ollama without Core (another
+client on the host) are not seen: the miss they cause reads `warm` with a high
+`promptEvalMs`, or `reload`. The hashes stay in Core's memory; the row holds
+counts and labels only.
+
 A row also says what the call waited for before Ollama received it.
 `admissionWaitMs` is the runtime admission of the attempt that ended the call
 (admission accepts or refuses without queueing, so a large value points at its
