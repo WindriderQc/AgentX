@@ -202,6 +202,9 @@ function createJudgeOrchestrator({
                     warmupTimeoutCold: executionConfig.warmup_timeout_cold || 180000,
                     warmupTimeoutLoaded: executionConfig.warmup_timeout_loaded || 90000,
                     num_ctx: judgeNumCtx,
+                    // Nothing is measured on a separate judge host: its other
+                    // residents (embeddings, pins) stay, as for a standalone judge.
+                    preUnloadOthers: false,
                     onPhaseDetail: (detail) => _setPhase('judge_warmup', detail),
                     signal: cancelSignal,
                     claimIdentity: getBenchmarkClaimIdentity(judgeHostUrl, String(batchId)),
