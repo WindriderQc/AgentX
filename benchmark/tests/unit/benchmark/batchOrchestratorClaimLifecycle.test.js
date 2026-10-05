@@ -38,6 +38,7 @@ jest.mock('../../../src/clients/coreApiClient', () => ({
     releaseBenchmarkClaim: (...args) => mockReleaseBenchmarkClaim(...args),
     getBenchmarkClaims: (...args) => mockGetBenchmarkClaims(...args),
     getBenchmarkClaimIdentity: (...args) => mockGetBenchmarkClaimIdentity(...args),
+    getWorkloadAdmissionIdentity: () => null,
     getDedicationStatuses: jest.fn(() => Promise.resolve([])),
     resolveHostKey: jest.fn(() => Promise.resolve(null)),
     restoreDedication: jest.fn(() => Promise.resolve({}))
