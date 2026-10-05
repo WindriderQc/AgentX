@@ -340,7 +340,7 @@ async function executeInferenceOnce(body = {}, {
         model, host: target, prompt, messages, system, tools: requestedTools, options, keepAlive,
         think, thinkingMode, taskType, callerDetail: body.callerDetail,
         laneName, rawResponseRequested, stream,
-        includeArtifactIdentity: requireProfiledModels(),
+        includeArtifactIdentity: requireProfiledModels() || body.includeArtifactIdentity === true,
     }, lane.route ? 'generate' : 'direct');
     ({ options, keepAlive, numCtxSource } = runtime);
     const { inferenceContract, thinkingPolicy } = runtime;

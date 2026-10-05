@@ -119,6 +119,27 @@ describe('BenchmarkTarget v1', () => {
     expect(buildPromptFingerprint({ ...prompt, _id: '2' })).not.toBe(base);
     expect(buildPromptFingerprint({ ...prompt, expected_tokens: 400 })).toBe(base);
   });
+
+  test.each([
+    ['num_ctx', 16384],
+    ['num_predict', 1600], ['timeout', 120000], ['temperature', 0.2],
+    ['seed', 42], ['max_retries', 3], ['voting_count', 3],
+  ])('another judge %s starts another cohort', (field, value) => {
+    const common = {
+      scorerVersion: 'scorer-v1', judgeTarget: buildOllamaTarget('http://judge:11434', 'judge'),
+      judgeConfig: { num_predict: 800, timeout: 60000, temperature: 0.1, seed: 7, max_retries: 2, voting_count: 1 },
+      executionConfig: { seed: null },
+    };
+    const base = buildQualityCohortFingerprint(common);
+    expect(buildQualityCohortFingerprint({ ...common, judgeConfig: { ...common.judgeConfig } })).toBe(base);
+    expect(buildQualityCohortFingerprint({ ...common, judgeConfig: { ...common.judgeConfig, [field]: value } })).not.toBe(base);
+  });
+
+  test('an unseeded generation cannot share the seed-zero cohort', () => {
+    const common = { scorerVersion: 'scorer-v1', judgeTarget: null };
+    expect(buildQualityCohortFingerprint({ ...common, executionConfig: { seed: null } }))
+      .not.toBe(buildQualityCohortFingerprint({ ...common, executionConfig: { seed: 0 } }));
+  });
 });
 
 describe('harness envelope, receipt, and spend contracts', () => {

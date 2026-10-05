@@ -1,5 +1,7 @@
 'use strict';
 
+const { exactModelNamesMatch, normalizeHostUrl } = require('../../../../shared/artifactIdentity');
+
 // Preserve complete evidence unless the caller explicitly asks for an excerpt.
 // All scoring steps must see the same excerpt and report its actual extent.
 function prepareJudgeResponse(response, config = {}) {
@@ -16,7 +18,25 @@ function prepareJudgeResponse(response, config = {}) {
     };
 }
 
-function assertJudgeInputUnmodified(data) {
+function assertJudgeInputUnmodified(data, config = {}) {
+    const expected = config.execution_contract;
+    if (expected) {
+        const artifact = data?.agentx_contract?.artifact;
+        const frozen = expected.artifact;
+        if (expected.schema !== 'agentx.benchmark-judge-execution/v1'
+            || !artifact || !frozen || artifact.identityQualified !== true
+            || artifact.registryQualified !== true
+            || !exactModelNamesMatch(artifact.model, frozen.model)
+            || normalizeHostUrl(artifact.host) !== normalizeHostUrl(frozen.host)
+            || String(artifact.hostId || '') !== String(frozen.hostId || '')
+            || artifact.digest !== frozen.digest
+            || artifact.runtimeFingerprint !== frozen.runtimeFingerprint
+            || data.agentx_contract.contextBudget?.windowTokens !== expected.num_ctx) {
+            throw Object.assign(new Error('Judge artifact, runtime or context differs from the frozen contract; quality was not evaluated'), {
+                code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH'
+            });
+        }
+    }
     const changes = data?.agentx_contract?.contextBudget?.transformations;
     if (changes?.truncation?.applied === true || changes?.condensation?.applied === true) {
         throw new Error('Judge input was truncated or condensed upstream; quality was not evaluated');

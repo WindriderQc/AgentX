@@ -39,6 +39,7 @@ const CORE_OPERATIONS = Object.freeze({
   WORKLOAD_RECOVERY_RELEASE: 'benchmark.core-api.workload-recovery-release',
   WORKLOAD_YIELD_POINT: 'benchmark.core-api.workload-yield-point',
   INFERENCE_GENERATE: 'benchmark.core-api.inference-generate',
+  INFERENCE_CONTRACT: 'benchmark.core-api.inference-contract',
 });
 
 function operation(method, pathPattern, {
@@ -61,6 +62,9 @@ function operation(method, pathPattern, {
 }
 
 const CORE_OPERATION_SPECS = Object.freeze({
+  [CORE_OPERATIONS.INFERENCE_CONTRACT]: operation('POST', '^/api/inference/contract/resolve$', {
+    maxRequestBytes: 4 * 1024, maxResponseBytes: 256 * 1024,
+  }),
   [CORE_OPERATIONS.MODEL_REGISTRIES]: operation('GET', '^/api/models/registry$', {
     allowSearch: true,
     maxResponseBytes: 2 * 1024 * 1024,

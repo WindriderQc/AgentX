@@ -340,6 +340,7 @@ describe('Core API client scoped outbound execution', () => {
       ['DELETE', '/api/nerve-center/workload-recoveries/recovery-1', CORE_OPERATIONS.WORKLOAD_RECOVERY_RELEASE],
       ['POST', '/api/nerve-center/workload-admissions/admission-1/yield-point', CORE_OPERATIONS.WORKLOAD_YIELD_POINT],
       ['POST', '/api/inference/generate', CORE_OPERATIONS.INFERENCE_GENERATE],
+      ['POST', '/api/inference/contract/resolve', CORE_OPERATIONS.INFERENCE_CONTRACT],
     ].map(([method, path, operationId]) => classifyCoreOperation(path, method)))
       .toEqual(Object.values(CORE_OPERATIONS));
     expect(() => classifyCoreOperation('/api/nerve-center/host-preferences', 'POST'))

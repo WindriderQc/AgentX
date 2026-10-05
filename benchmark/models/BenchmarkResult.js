@@ -41,6 +41,7 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.Mixed,
         default: null
     },
+    judge_execution_contract: { type: mongoose.Schema.Types.Mixed, default: null },
     judge_target: {
         type: mongoose.Schema.Types.Mixed,
         default: null
@@ -291,6 +292,7 @@ const BenchmarkResultSchema = new mongoose.Schema({
     judge_scores: [{
         judge_model: String,
         judge_host: String,
+        execution_contract: { type: mongoose.Schema.Types.Mixed, default: null },
         quality_score: Number,
         explanation: String,
         scoring_time_ms: Number,

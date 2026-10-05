@@ -79,6 +79,17 @@ describe('reference scoring with short references', () => {
     expect(body.options.num_predict).toBe(160);
     expect(body.prompt).toContain('independently of other task requirements');
   });
+  it('propagates frozen runtime drift instead of returning a partial reference score', async () => {
+    const config = { model: 'judge:latest', host: 'http://judge:11434', execution_contract: {
+      schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 65536,
+      artifact: { model: 'judge:latest', digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) }
+    } };
+    await expect(checkKeyPoint('answer', 'criterion', config)).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
+    await expect(checkContradictions('answer', 'reference', config)).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
+    await expect(checkOverallSimilarity('answer', 'reference', config)).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
+    expect(mockFetch.mock.calls.every(([, options]) => JSON.parse(options.body).includeArtifactIdentity === true)).toBe(true);
+  });
+
   it('does not infer a criterion verdict from an incomplete explanation', async () => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: 'YES may apply, but further analysis is needed.' }) });
     expect(await checkKeyPoint('answer', 'criterion', { model: 'judge', host: 'http://judge:11434' }))

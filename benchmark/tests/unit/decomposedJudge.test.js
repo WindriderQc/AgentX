@@ -83,6 +83,16 @@ describe('Default voting (single call, voting_count=1)', () => {
         expect(evidence.calls[0]).not.toHaveProperty('context');
     });
 
+    test.each([1, 3])('runtime drift stops a verdict with voting_count=%i instead of retrying or accepting other votes', async voting_count => {
+        mockFetchFn.mockImplementation(() => mockFetchResponse('YES'));
+        await expect(askBinaryQuestion('Paris', 'Correct?', { ...JUDGE_CONFIG, voting_count,
+            execution_contract: { schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 65536,
+                artifact: { model: 'judge:latest', digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) } }
+        })).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
+        expect(mockFetchFn).toHaveBeenCalledTimes(voting_count);
+        expect(mockFetchFn.mock.calls.every(([, options]) => JSON.parse(options.body).includeArtifactIdentity === true)).toBe(true);
+    });
+
     test('honors the explicit verdict budget for binary judging', async () => {
         mockFetchFn.mockImplementation(() => mockFetchResponse('YES'));
         expect(await askBinaryQuestion('Paris', 'Correct?', { ...JUDGE_CONFIG, num_predict: 1024 })).toBe(true);

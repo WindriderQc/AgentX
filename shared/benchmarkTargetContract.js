@@ -293,7 +293,22 @@ function buildPromptFingerprint(prompt) {
  * are not part of it; each result carries its own prompt fingerprint, so a
  * catalog edit only affects the results on the edited prompt.
  */
-function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink = false, executionConfig, profileContract = 'isolated-model-v1' }) {
+function judgeCohortSettings(config) {
+  return config ? {
+    numCtx: config.num_ctx ?? null, numPredict: config.num_predict ?? null,
+    timeoutMs: config.timeout ?? null, temperature: config.temperature ?? null,
+    seed: config.seed ?? null, maxRetries: config.max_retries ?? null,
+    votingCount: config.voting_count ?? 1, think: config.think ?? false,
+    responseCharBudget: config.response_char_budget ?? null,
+  } : null;
+}
+
+function multiJudgeIdentity(config) {
+  return config ? { model: config.model, host: config.host,
+    contract: config.execution_contract ?? null, settings: judgeCohortSettings(config) } : null;
+}
+
+function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink = false, judgeConfig = null, executionConfig, profileContract = 'isolated-model-v1' }) {
   const normalizedJudge = judgeTarget
     ? normalizeBenchmarkTarget(judgeTarget, { allowMissingCatalogFingerprint: judgeTarget.executionKind === 'ollama' })
     : null;
@@ -309,16 +324,33 @@ function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink 
     api: normalizedJudge.api,
   } : null;
   return fingerprint({
-    schema: 'agentx.benchmark-quality-cohort/v2',
+    schema: 'agentx.benchmark-quality-cohort/v4',
     scorerVersion: String(scorerVersion || ''),
     judgeIdentity,
     // A reasoning judge scores differently; judges without it keep their cohort.
     ...(judgeThink === true ? { judgeThink } : {}),
+    // Resolved and saved at launch: a changed service default must not give
+    // another judge budget or sampling policy the same comparison identity.
+    judgeSettings: judgeCohortSettings(judgeConfig),
+    judgeExecutionContract: judgeConfig?.execution_contract ?? null,
+    multiJudge: judgeConfig?.multi_judge?.enabled ? {
+      // Mutable escalation usage and per-call evidence do not change a cohort.
+      judges: (judgeConfig.multi_judge.judges || []).map(multiJudgeIdentity),
+      tiebreaker: multiJudgeIdentity(judgeConfig.multi_judge.tiebreaker),
+      escalationBudgetPercent: judgeConfig.multi_judge.escalation_budget_percent ?? 20,
+      confidenceThreshold: judgeConfig.multi_judge.confidenceThreshold ?? 0.8,
+      autoMinLevel: judgeConfig.multi_judge.autoMinLevel ?? 4,
+      escalateOnJudgeFailure: judgeConfig.multi_judge.escalateOnJudgeFailure !== false,
+      escalateOnReview: judgeConfig.multi_judge.escalateOnReview !== false,
+      escalateOnLowConfidence: judgeConfig.multi_judge.escalateOnLowConfidence !== false,
+      escalateOnHighLevel: judgeConfig.multi_judge.escalateOnHighLevel !== false,
+    } : null,
     generation: {
       responseMaxTokens: Number(executionConfig?.response_max_tokens) || null,
       temperature: Number.isFinite(Number(executionConfig?.temperature)) ? Number(executionConfig.temperature) : null,
       topP: Number.isFinite(Number(executionConfig?.top_p)) ? Number(executionConfig.top_p) : null,
-      seed: Number.isFinite(Number(executionConfig?.seed)) ? Number(executionConfig.seed) : null,
+      seed: executionConfig?.seed == null ? null
+        : Number.isFinite(Number(executionConfig.seed)) ? Number(executionConfig.seed) : null,
       think: executionConfig?.think ?? null,
       // Batches launched before the documented-default budget ran under a
       // smaller hidden reserve: the rule separates their cohort.

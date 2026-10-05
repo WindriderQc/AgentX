@@ -81,4 +81,13 @@ describe('JUDGE_CONFIG env overrides', () => {
         expect(JUDGE_CONFIG.timeout).toBe(60000);
         expect(JUDGE_CONFIG.max_retries).toBe(2);
     });
+
+    it('preserves an explicitly unseeded judge while null limits keep their defaults', () => {
+        process.env.JUDGE_SEED = '7';
+        const { JUDGE_CONFIG } = loadFresh();
+        const { resolveJudgeConfig } = require('../../src/services/scoring/resolveJudgeConfig');
+        expect(resolveJudgeConfig({ seed: null, num_predict: null })).toMatchObject({
+            seed: null, num_predict: JUDGE_CONFIG.num_predict,
+        });
+    });
 });

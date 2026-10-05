@@ -18,6 +18,7 @@ const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const { SCORER_VERSION } = require('../scoring/scorerVersion');
+const { resolveJudgeConfig } = require('../scoring/resolveJudgeConfig');
 const { GENERALIST_AGGREGATION_OPTIONS } = require('./generalistScoreConstants');
 const {
     buildOllamaTarget,
@@ -40,10 +41,12 @@ function judgeTargetFor(judgeConfig = {}) {
  * The cohort a batch's results belong to once `judgeConfig` has judged them.
  */
 async function cohortFingerprintForBatch(batch, judgeConfig, { scorerVersion = SCORER_VERSION } = {}) {
+    const resolvedJudge = resolveJudgeConfig(judgeConfig || {});
     return buildQualityCohortFingerprint({
         scorerVersion,
         judgeTarget: judgeTargetFor(judgeConfig),
         judgeThink: judgeConfig?.think,
+        judgeConfig: resolvedJudge,
         executionConfig: batch.execution_config || {},
         profileContract: profileContractFor(batch.campaign_kind)
     });
@@ -104,9 +107,9 @@ async function recoverPromptFingerprints(batchId, { dryRun = false, signal = nul
 }
 
 /**
- * After a standalone judge run, every result of the batch belongs to the
- * cohort of the judge that ran, deterministic results included. Results
- * written before prompt fingerprints get theirs where it is provable; a
+ * After a standalone judge run, move the judged results and independent
+ * deterministic results to its cohort. Unjudged rows retain their identity.
+ * Results written before prompt fingerprints get theirs where it is provable; a
  * result whose prompt cannot be proven leaves every cohort (null), since a
  * cohort no longer pins the catalog and nothing else would pin its prompt.
  */
@@ -117,7 +120,11 @@ async function applyJudgeCohort(batchId, judgeConfig, options = {}) {
     const writeOptions = options.signal ? { signal: options.signal } : undefined;
     await recoverPromptFingerprints(batch._id, { signal: options.signal });
     await BenchmarkResult.updateMany(
-        { batch_id: batch._id, prompt_fingerprint: { $type: 'string' } },
+        { batch_id: batch._id, prompt_fingerprint: { $type: 'string' },
+            ...(Array.isArray(options.resultIds) ? { $or: [
+                { _id: { $in: options.resultIds } },
+                { scoring_method: { $in: ['deterministic', 'executable'] } }
+            ] } : {}) },
         { $set: { quality_cohort_fingerprint: qualityCohortFingerprint } },
         writeOptions
     );

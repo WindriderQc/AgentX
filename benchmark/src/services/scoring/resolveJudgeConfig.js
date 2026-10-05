@@ -29,9 +29,10 @@ function resolveJudgeConfig(overrides = {}, { resultDefaults = null } = {}) {
     }
 
     // Layer 3: caller/batch overrides (highest priority)
-    // Only copy defined, non-null keys to avoid accidentally nuking defaults
+    // Null normally keeps the default; a null seed explicitly disables the
+    // fixed RNG seed and must survive a saved batch's later execution.
     for (const [key, value] of Object.entries(overrides)) {
-        if (value !== undefined && value !== null) {
+        if (value !== undefined && (value !== null || key === 'seed')) {
             resolved[key] = value;
         }
     }
