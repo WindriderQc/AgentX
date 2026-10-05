@@ -188,11 +188,11 @@ Issues hold the current work and remaining acceptance:
 | Household photo metadata and staged visual retrieval | [#26](https://github.com/WindriderQc/AgentX/issues/26) |
 | Qualify French Canadian speech recognition | [#28](https://github.com/WindriderQc/AgentX/issues/28) |
 | Local French Canadian voices and custom voice profiles | [#29](https://github.com/WindriderQc/AgentX/issues/29) |
-| Hand a Household turn to another agent and speak its answer in that agent's voice | [#41](https://github.com/WindriderQc/AgentX/issues/41) |
+| Specialist handoff acceptance and multi-speaker reply continuity | [#41](https://github.com/WindriderQc/AgentX/issues/41) |
 | Qualify a small co-resident model beside the sequential 27B pin | [#60](https://github.com/WindriderQc/AgentX/issues/60) |
 | Backup speech peer when the primary speech host is down | [#117](https://github.com/WindriderQc/AgentX/issues/117) |
 | Secretary mailbox lifecycle: one full catch-up, then a steady service | [#130](https://github.com/WindriderQc/AgentX/issues/130) |
-| Agents, personas and capabilities: one model and a migration path | [#131](https://github.com/WindriderQc/AgentX/issues/131) |
+| Native agent job isolation and migration acceptance | [#131](https://github.com/WindriderQc/AgentX/issues/131) |
 | Technical debt from the October audit | [#133](https://github.com/WindriderQc/AgentX/issues/133) |
 | Action-ready personal morning brief with a stable task focus | [#176](https://github.com/WindriderQc/AgentX/issues/176) |
 | Offline replay to qualify fast-lane delegation decisions | [#262](https://github.com/WindriderQc/AgentX/issues/262) |

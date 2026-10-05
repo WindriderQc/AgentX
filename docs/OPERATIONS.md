@@ -563,9 +563,11 @@ canonical transcript contains the submitted user text only. See
 `HOUSEHOLD_PERSONA_VOICES` optionally gives personas an instance voice without
 editing the shared catalog: a JSON object maps a persona id, or `"*"` for every
 persona, to `provider|voice` (`kokoro`, `windows_sapi` or `voxcpm`), for example
-a VoxCPM2 voice cloned on the voice host. Persona catalog snapshots carry it, so
-browser conversations and server replies speak with it in both languages. A
-browser's own voice selection still wins; invalid entries keep the catalog voice.
+a VoxCPM2 voice cloned on the voice host. A voice saved through Agent Ops › Team
+outranks this map; an explicit browser voice selection wins over both. Catalog
+snapshots carry the effective voice, and server replies resolve the instance map
+again for each reply. Invalid map entries keep the catalog voice. See
+[personality selection and authoring](AGENTS_AND_VOICE.md#personality-selection-and-attribution).
 Kids Room and Lecture create their conversation with the Nestor personality and
 read replies through the same voice ladder, so Nestor's instance voice applies
 there too; the reading voice chosen on that browser ("Voix des lectures") wins.

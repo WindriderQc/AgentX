@@ -487,7 +487,8 @@ pages and APIs retain the parental gateway guard.
   cannot start during resolution or snapshot replacement. The write updates
   only the personality snapshot; later turns apply and record that snapshot.
   `HOUSEHOLD_PERSONA_VOICES` applies when the snapshot is selected and is resolved
-  again for each server reply. Changing or removing an instance override affects
+  again for each server reply; a voice saved through Team takes precedence over
+  that map. Changing or removing an instance override affects
   later speech; the frozen catalog voice supplies the default, and explicit
   session voice choices take precedence.
   Its Super Dad and
