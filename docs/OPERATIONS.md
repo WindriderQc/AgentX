@@ -136,7 +136,8 @@ A mutating action also needs `AGENTX_LEAD_FILE`, the instance's `LEAD.md`
 coordination file, and `--actor <who>`: it takes that lease, refuses while
 another operator holds it, releases it with a note, and prints a JSON receipt
 (`agentx.maintenance-action/v1`), also written to `AGENTX_ACTION_RECEIPTS_DIR`
-when set. Exit codes: 0 completed, 1 failed, 2 usage, 4 refused (held or busy).
+when set. Exit codes: 0 completed, 1 failed, 2 usage, 3 unknown (a dispatched
+Benchmark launch not yet reconciled), 4 refused (held, busy or not admitted).
 
 | Action | Effect |
 |---|---|
@@ -146,6 +147,9 @@ when set. Exit codes: 0 completed, 1 failed, 2 usage, 4 refused (held or busy).
 | `deploy --services core,benchmark[,...] [--revision origin/main] [--wait-minutes 10] [--queue-minutes 0]` | Deploys take turns, and one deploy carries every commit merged before it fetched. A held `LEAD.md` or a running deploy refuses at once, or is waited for up to `--queue-minutes`, checked every 10 s. Before taking the lease the action looks at what is served. A service is up to date when it reports the revision, a descendant, or a commit with the same build (nothing its Dockerfile copies, the Dockerfile, the compose file or `.dockerignore` differs), from a container created after the instance env file and override last changed; a service that reports no revision (`benchmark-runner`) never is. When every requested service is up to date and the checkout holds the revision, the action completes with `alreadyServed: true`, without the lease, a build or a recreate; a queued action leaves that way as soon as the deploy ahead of it serves its revision. Otherwise the action takes the lease and needs a clean tree, a revision on `origin/main` and a fast-forward of the checkout; fast-forwards to `origin/main` as fetched at that moment and, when a merge of docs, integrations or another service left every requested image unchanged, completes there with `alreadyServed: true`; otherwise it builds the images first (building touches no running container), then waits for the instance to be idle and recreates with `./agentx up --no-deps`, without rebuilding, through Core's runtime lease. Automated inferences start again within seconds, so a lease refusal is retried every 10 s until a gap appears; `--wait-minutes` bounds the idle wait and the retries together, after which the action stops refused (exit 4) with the images built and the checkout already on the new revision. Any other launcher failure stops at once. Nothing running is cut; it then checks the served revision. |
 | `recover-quarantine --host <ollama url>` | For an UNKNOWN inference on a local Ollama: refuses while an inference or a workload is active there, restarts the unit named for that host in `AGENTX_ACTION_OLLAMA_UNITS` (`{"<url>": {"unit": "...", "scope": "system"\|"user"}}`, `sudo -n` for system units), checks a new process answers, then attests each UNKNOWN admission with `recover-runtime-restart`. Workloads keep the profiler procedure below. |
 | `recalibrate-judges [--host <url> --model <name>]` | Runs Benchmark's quick judge calibration (the default judge when no target is given) and returns its report. |
+| `benchmark-batch-prepare --host <ollama url> --model <name> --categories coding,agent [--levels 1,2,3,4,5] [--repeats 1-5] [--judge-host <url> --judge-model <name>] [--name <run name>] [--tag <tag>]` | Starts nothing and takes no lease. Checks the request against Benchmark as it is now and records a plan: see "Benchmark batches from an action" below. |
+| `benchmark-batch-start --plan <reference>` | Starts exactly the prepared plan, once, under the lease, and returns Benchmark's batch id. The lease is released when Benchmark has answered, not when the batch ends. |
+| `benchmark-batch-status --id <batch id>` | Read-only, no actor, no lease, no receipt file: Benchmark's own record of a batch (state, tests planned, completed and failed, judging counters, mean score per category once judged). |
 
 An instance can install a small wrapper that exports these variables, so an
 operator session or agent calls a single command.
@@ -159,9 +163,94 @@ ten-second probe budget. They require a complete successful Core snapshot;
 an unavailable or incomplete response never establishes idle state. This read
 retry does not repeat a maintenance mutation.
 The OpenClaw plugin `integrations/openclaw/agentx-maintenance` exposes status,
-deployment, quarantine recovery and judge calibration to configured operator agents as one tool,
-`agentx_maintenance_action`: no shell, validated arguments, and the actor is
-always `openclaw:<agent>`. See its README for the configuration.
+deployment, quarantine recovery, judge calibration and Benchmark batches to
+configured operator agents as one tool, `agentx_maintenance_action`: no shell,
+validated arguments, a closed subset of actions per agent, and the actor is
+always `openclaw:<agent>`. A batch start passes the runtime's approval hook.
+See its README for the configuration and for what local tests do not prove.
+
+#### Benchmark batches from an action
+
+The three batch actions cover one model on one registered local Ollama host:
+prepare, start, read. Stopping or resuming a batch stays an operator route
+(`POST /api/benchmark/batch/:id/stop`). They need `AGENTX_ACTION_RECEIPTS_DIR`:
+each plan is one file under its `benchmark-batch/` directory.
+
+- **Closed request.** Categories come from `shared/benchmarkCategories.js`,
+  levels are 1 to 5 (all by default), repeats 1 to 5 (1 by default). The name is
+  at most 60 characters and the tag 40. Any other option is a usage error:
+  there is no request body, prompt text, judge prompt, `paid_approval`, harness
+  target or `multi_judge`, and a model under Ollama's `cloud` tag is refused as
+  candidate and as judge. `shared/benchmarkBatchPlan.cjs` holds this contract
+  for the action and for the plugin.
+- **Prepare.** The host, and the judge host when one is named, must be among
+  the hosts of `GET /api/benchmark/judge/readiness`. Without a named judge the
+  plan pins that route's `preferred_target`; with none ready it refuses. Fixed
+  reads of each registered host's `/api/tags` verify installed model identities
+  and reject `remote_host`/`remote_model` aliases before any preflight probe. The
+  categories are resolved to `prompt_ids` from `GET /api/benchmark/prompts`; a
+  category with no prompt at the chosen levels, or more than 100 prompts,
+  refuses. `POST /api/benchmark/preflight` then gives Benchmark's verdict on the
+  installed model, the judge and the prompts. The receipt carries the plan
+  reference, the exact launch body, the projection (prompts, repeats, tests,
+  prompts per category) and the `start` object that names the plan.
+- **Plan identity.** A reference is `bp-<id>-<digest>`; the digest covers the
+  id and every request value, including the pinned judge. A start may restate
+  the values (the plugin always does): values that do not reproduce the digest
+  are a usage error, as is a plan file that no longer matches its reference.
+- **Start.** Under the lease, the action reads the same three routes again. A
+  launch body that differs from the prepared one refuses with `PLAN_STALE`. It
+  then marks the plan dispatched and sends one `POST /api/benchmark/batch`.
+  Benchmark's own launch rules decide. A success returns `batchId` and
+  `totalTests`. A 409 or 423 is a refusal with `verdict: conflict`; a 400, 422
+  or 503 error is a refusal with `verdict: not-admitted`. The exact pre-insert
+  errors `WORKLOAD_ADMISSION_REJECTED`, `WORKLOAD_ADMISSION_CONFLICT` and
+  `WORKLOAD_RECOVERY_ARM_REJECTED` are also refusals, even when returned as 500.
+  These verdicts carry Benchmark's
+  answer. The plan can be started again only when Benchmark also lists no batch
+  for it (`planStartable: true`).
+- **Unknown.** A lost connection, a timeout or any other answer, including a
+  500 not identified as a pre-insert refusal, leaves the launch unknown (exit 3).
+  A dispatched plan is never posted again. The launched
+  batch carries the tag `agentx-plan-<id>`, so the same start run again looks it
+  up with `GET /api/benchmark/batches?tag=`: one batch found completes with
+  `recovered: true` and its id; none found stays unknown. An unknown plan is
+  held until reconciled. Do not prepare a replacement launch to work around an
+  unknown outcome: admission alone cannot prevent a duplicate after the first
+  batch finishes. If an error response accompanies a stored batch, its ID and
+  original error remain explicit and execution stays unknown even on replay;
+  a running row does not prove admission hand-off succeeded. A plan already
+  confirmed launched replays its batch id without a request.
+- **What tests prove.** The action tests run against a loopback stand-in for
+  these routes. They do not run Benchmark, Ollama or a judge.
+
+### Benchmark batch launch contract
+
+`POST /api/benchmark/batch` (route `benchmark/routes/benchmark/coreBatchLaunch.js`)
+starts a batch. The Benchmark page and the batch action both use it.
+
+| Field | Rule |
+|---|---|
+| `targets`, or `host` + `models` | Required. `targets` are provider-neutral Benchmark targets; `host` and `models` name Ollama models on one host. At most 50 targets. A local host must be a configured host that answers its inventory with every model installed (422 otherwise). |
+| `levels` | Required array, at most 5 values from 1 to 5. With `prompt_ids`, the stored levels are those of the selected prompts. |
+| `prompt_ids` | Optional, at most 100 prompt ids. This is how categories are chosen: the route has no category field. Unknown ids give 422. Without it, every prompt of the levels runs, sampled by `depth_config` when given. |
+| `judge_config` | Optional. `host` and `model` go together and name a configured host with that model installed; without them Benchmark takes the selected ready judge. No ready judge gives 503 `JUDGE_NOT_READY`. Bounded tuning fields: `temperature`, `num_predict`, `num_ctx`, `max_retries`, `timeout`, `voting_count`; `think` is always false. A `target` of kind `harness` selects an isolated-model harness judge. |
+| `execution_config` | Optional. `repeats` (1 to 5), timeouts, `think` and `response_mode` within the route's bounds. |
+| `multi_judge` | Optional rule (`off`, `l4l5`, `low_confidence`, `always`) or object. Absent means off. |
+| `run_name`, `description`, `tags` | Optional: 200 and 2000 characters, 20 tags of 50 characters. `GET /api/benchmark/batches?tag=` filters on one tag. |
+| `execution_mode`, `depth_config`, `paid_approval` | Optional: `latency` (default) or `throughput`; prompt sampling; the approval a paid target needs. |
+
+The route answers in this order: 400 for a malformed body, 422 for a target that
+cannot be a candidate, 503 when no judge is ready, 422 for an unusable execution
+host, 409 when a batch is already active (`active_batch`) or when the host is
+profiling (`EXECUTION_HOST_PROFILING`), 422 when the judge model or the
+preflight fails (`issues`, `preflight`). Creating the batch then takes Core's
+workload admission; an error from that step carries its own status when it has
+one and 500 otherwise, so a 500 does not say whether a batch exists. A success
+returns `batch_id`, `total_tests`, the execution `plan` and the `preflight`
+report. One batch is active at a time. The route has no request identity: a
+caller that loses the answer must not post again, and finds its batch through
+a tag it set.
 
 ### Moving an instance to a fresh source history
 

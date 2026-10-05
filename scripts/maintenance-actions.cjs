@@ -13,23 +13,33 @@
 //   ./agentx action deploy --actor <who> --services core,benchmark [--revision origin/main] [--wait-minutes 10] [--queue-minutes 0]
 //   ./agentx action recover-quarantine --actor <who> --host http://127.0.0.1:11434
 //   ./agentx action recalibrate-judges --actor <who> [--host <url> --model <name>]
+//   ./agentx action benchmark-batch-prepare --actor <who> --host <url> --model <name> --categories coding,agent
+//       [--levels 1,2,3] [--repeats 1-5] [--judge-host <url> --judge-model <name>] [--name <run name>] [--tag <tag>]
+//   ./agentx action benchmark-batch-start --actor <who> --plan <reference>
+//   ./agentx action benchmark-batch-status --id <batch id>
 //
 // Instance configuration (never in Git): AGENTX_ENV_FILE, AGENTX_PROJECT_NAME,
 // AGENTX_COMPOSE_OVERRIDE, AGENTX_LEAD_FILE, optional AGENTX_ACTION_RECEIPTS_DIR
 // and AGENTX_ACTION_OLLAMA_UNITS ({"<host url>": {"unit": "...", "scope": "system"|"user"}}).
-// Exit codes: 0 completed, 1 failed, 2 usage, 4 refused (busy or held).
+// Exit codes: 0 completed, 1 failed, 2 usage, 3 unknown (a dispatched launch
+// not yet reconciled), 4 refused (busy or held).
 
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { readCoordination } = require('./maintenance-coordination.cjs');
+const benchmarkBatch = require('./maintenance-benchmark.cjs');
 
 // The checkout the actions operate on; it defaults to the one holding this script.
 const ROOT = path.resolve(process.env.AGENTX_CHECKOUT || path.join(__dirname, '..'));
 const CONTRACT = 'agentx.maintenance-action/v1';
 const DEPLOYABLE = Object.freeze(['core', 'benchmark', 'benchmark-runner', 'rag', 'data']);
 const REVISION_PORTS = Object.freeze({ core: 3080, benchmark: 3081, rag: 3082, data: 3083 });
-const ACTIONS = Object.freeze(['status', 'lease', 'deploy', 'recover-quarantine', 'recalibrate-judges']);
+const ACTIONS = Object.freeze(['status', 'lease', 'deploy', 'recover-quarantine', 'recalibrate-judges', ...Object.keys(benchmarkBatch.ACTIONS)]);
+// Read-only actions need no actor, take no lease and leave no receipt file.
+const READ_ONLY = Object.freeze(['status', 'benchmark-batch-status']);
+// These take the lease themselves, when and if they mutate; a prepared plan mutates nothing.
+const OWN_LEASE = Object.freeze(['deploy', 'lease', 'benchmark-batch-prepare', 'benchmark-batch-start']);
 const RESTART_CONFIRMATION = 'OLLAMA_RUNTIME_RESTARTED_AND_PRIOR_REQUESTS_TERMINATED';
 
 class ActionError extends Error {
@@ -475,6 +485,13 @@ async function recalibrateJudges(config, options) {
   return { judge: body, report: result.json?.data ?? result.json };
 }
 
+// A Benchmark batch action, on the instance's published Benchmark.
+const benchmarkAction = name => (config, options, takeLead) => {
+  const benchmark = publishedUrl(config, 'benchmark', 3081);
+  if (!benchmark) throw new ActionError('Benchmark is not published on this instance');
+  return benchmarkBatch.ACTIONS[name]({ benchmark, http, receiptsDir: config.receiptsDir, options, takeLead, ActionError });
+};
+
 // --- Receipt and entry point ----------------------------------------------------------
 
 function writeReceipt(config, receipt) {
@@ -487,22 +504,23 @@ function writeReceipt(config, receipt) {
 
 async function main(argv = process.argv.slice(2)) {
   const startedAt = new Date().toISOString();
-  let action = argv[0] || '', config = null, holder = null, receipt;
+  let action = argv[0] || '', actor = null, config = null, holder = null, receipt;
   try {
     const parsed = parseArgs(argv);
     action = parsed.action;
-    const mutating = action !== 'status';
+    actor = parsed.options.actor || null;
+    const mutating = !READ_ONLY.includes(action);
     config = instance(process.env, { mutating });
     if (mutating && !parsed.options.actor) throw new ActionError('--actor names who requested the action', { exitCode: 2 });
-    const takeLead = () => (holder = acquireLead(config.leadFile, parsed.options.actor, `${action} ${JSON.stringify(parsed.options)}`));
+    const takeLead = (purpose = `${action} ${JSON.stringify(parsed.options)}`) => (holder = acquireLead(config.leadFile, parsed.options.actor, purpose));
     // A deploy takes the lease itself, once its turn comes and something is left to deploy.
-    if (mutating && !['deploy', 'lease'].includes(action)) takeLead();
-    const handler = { status, lease, deploy, 'recover-quarantine': recoverQuarantine, 'recalibrate-judges': recalibrateJudges }[action];
+    if (mutating && !OWN_LEASE.includes(action)) takeLead();
+    const handler = { status, lease, deploy, 'recover-quarantine': recoverQuarantine, 'recalibrate-judges': recalibrateJudges }[action] || benchmarkAction(action);
     const result = await handler(config, parsed.options, takeLead);
     receipt = { contract: CONTRACT, action, actor: parsed.options.actor || null, outcome: 'completed', startedAt, finishedAt: new Date().toISOString(), result };
   } catch (error) {
     const known = error instanceof ActionError ? error : new ActionError(error.message);
-    receipt = { contract: CONTRACT, action, outcome: known.outcome, startedAt, finishedAt: new Date().toISOString(), reason: known.message, details: known.details, exitCode: known.exitCode };
+    receipt = { contract: CONTRACT, action, actor, outcome: known.outcome, startedAt, finishedAt: new Date().toISOString(), reason: known.message, details: known.details, exitCode: known.exitCode };
   } finally {
     if (holder) {
       const done = receipt?.result?.revision ? `${action} completed at ${receipt.result.revision.slice(0, 9)}.` : `${action} completed.`;
@@ -510,11 +528,11 @@ async function main(argv = process.argv.slice(2)) {
       catch (error) { receipt.leaseReleaseError = error.message; }
     }
   }
-  if (action !== 'status') receipt.file = writeReceipt(config, receipt);
+  if (!READ_ONLY.includes(action)) receipt.file = writeReceipt(config, receipt);
   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
   return receipt.outcome === 'completed' ? 0 : receipt.exitCode || 1;
 }
 
 if (require.main === module) main().then(code => { process.exitCode = code; });
 
-module.exports = { main, parseArgs, parseServices, waitMinutes, queueMinutes, recreateWhenIdle, deployTurn, alreadyServed, imageSources, readLead, acquireLead, releaseLead, instance, launcherEnv, ActionError, DEPLOYABLE };
+module.exports = { main, parseArgs, parseServices, waitMinutes, queueMinutes, recreateWhenIdle, deployTurn, alreadyServed, imageSources, readLead, acquireLead, releaseLead, instance, launcherEnv, http, ActionError, DEPLOYABLE, ACTIONS };
