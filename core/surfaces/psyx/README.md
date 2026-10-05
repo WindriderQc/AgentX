@@ -113,6 +113,12 @@ frontier reply gets a wide budget, a local one stays inside the 16k-character
 message contract. The prompt names when to suggest professional help and the
 Québec doors for it.
 
+Dream source collection preserves the complete text of each collected note,
+task title and mail-journal field. The dream request applies its source budget
+once and reports included and available characters in `sourceCoverage`.
+Collection still has its existing page limits; these counts describe the
+collected material, not every record in the source store.
+
 PsyX can think on a frontier cloud model when the instance names an OpenClaw
 agent for it (`PSYX_FRONTIER_AGENT`, with `OPENCLAW_GATEWAY_URL` and its token).
 This is an explicit owner choice for PsyX only, never a fallback: each user picks

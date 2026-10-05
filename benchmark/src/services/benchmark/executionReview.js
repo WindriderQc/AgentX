@@ -8,6 +8,8 @@
 const EXECUTION_REVIEW_REASONS = Object.freeze({
     hiddenRuntimeCap: 'Response hit a hidden runtime token cap; the prompt did not expose a response budget, so the row is invalid for automatic quality ranking',
     thinkingOnly: 'Thinking mode produced hidden reasoning but no visible final answer; hidden thinking is preserved for audit but not scored',
+    thinkingBudgetExhausted: 'Generation reached its token budget while hidden reasoning was present; the visible answer may be incomplete. This does not establish runaway reasoning',
+    // Preserve the execution reason on historical rows during rejudging.
     thinkingRunaway: 'Thinking mode hit the generation token limit while hidden reasoning was present; the visible final answer may be incomplete or starved',
     inputTruncated: 'Prompt likely hit the input context budget before generation; judge cannot know whether the model saw the full task',
     nonRankableMode: 'Campaign mode is diagnostic/profile-only under the frozen artifact contract and is not rankable',

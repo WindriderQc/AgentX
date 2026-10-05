@@ -418,9 +418,15 @@ async function resolveContextBudget(input, deps = {}) {
   const resolvedTokens = positiveInteger(resolved?.num_ctx);
   const windowTokens = requestedNumCtx || resolvedTokens;
   const explicitOutput = positiveInteger(input.requestedMaxOutputTokens);
+  const configuredDefault = process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS;
+  const hasConfiguredDefault = String(configuredDefault || '').trim() !== '';
+  const parsedDefault = Number(configuredDefault);
+  const validConfiguredDefault = hasConfiguredDefault
+    && Number.isSafeInteger(parsedDefault) && parsedDefault > 0;
+  const defaultMaxTokens = validConfiguredDefault ? parsedDefault : DEFAULT_MAX_OUTPUT_TOKENS;
   const defaultOutput = windowTokens
-    ? Math.min(DEFAULT_MAX_OUTPUT_TOKENS, Math.max(256, Math.floor(windowTokens / 4)))
-    : DEFAULT_MAX_OUTPUT_TOKENS;
+    ? Math.min(defaultMaxTokens, Math.max(256, Math.floor(windowTokens / 4)))
+    : defaultMaxTokens;
   const reservedOutputTokens = windowTokens
     ? Math.min(windowTokens, explicitOutput || defaultOutput)
     : (explicitOutput || defaultOutput);
@@ -444,6 +450,9 @@ async function resolveContextBudget(input, deps = {}) {
     : null;
   const warnings = [];
 
+  if (hasConfiguredDefault && !validConfiguredDefault) {
+    warnings.push('AGENTX_DEFAULT_MAX_OUTPUT_TOKENS must be a positive safe integer; using the product default');
+  }
   if (!windowTokens) {
     warnings.push('runtime context is unresolved; no context window was inferred');
   }
@@ -466,7 +475,9 @@ async function resolveContextBudget(input, deps = {}) {
     validatedInputTokens,
     output: {
       reservedTokens: reservedOutputTokens,
-      source: explicitOutput ? 'caller' : 'default_reserve'
+      source: explicitOutput ? 'caller' : 'default_reserve',
+      defaultMaxTokens,
+      defaultSource: validConfiguredDefault ? 'environment' : 'product_default'
     },
     input: {
       estimatedTokens: estimate.tokens,

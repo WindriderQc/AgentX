@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { MongoClient } = require('mongodb');
 const { createStateRepository, emptyState } = require('../../../src/domains/psyx/stateRepository');
-const { dreamMessages, readDream, portraitSystemMessage, normalizeStoredPortrait } = require('../../../src/domains/psyx/dream');
+const { dreamMessages, prepareDreamRequest, readDream, portraitSystemMessage, normalizeStoredPortrait } = require('../../../src/domains/psyx/dream');
 const { composeSystemContext } = require('../../../src/domains/psyx/domain');
 const { createDreamer } = require('../src/dreamer');
 const { createSources } = require('../src/sources');
@@ -213,6 +213,27 @@ test('sources are read-only, optional and bounded; a failing one is reported, no
   assert.deepEqual(unavailable, ['tasks']);
   assert.equal(searches[0].limit, 50);
   assert.deepEqual((await createSources({}).gather()).sources, []);
+});
+
+test('source fields survive collection and source coverage measures the complete collected text', async () => {
+  const note = 'n'.repeat(1500) + ' NOTE_END';
+  const title = 't'.repeat(500) + ' TASK_END';
+  const mail = { id: 'm1', occurredAt: '2026-10-01T10:00:00Z', counterpart: 'c'.repeat(150) + ' SENDER_END',
+    subject: 's'.repeat(300) + ' SUBJECT_END', summary: 'm'.repeat(900) + ' MAIL_END' };
+  const runtimeServices = {
+    memory: { notes: { personal: () => ({ list: async () => ({ notes: [{ text: note }], truncated: false }) }) } },
+    tasks: { personal: { list: async () => ({ tasks: [{ title }] }) } }
+  };
+  const { sources } = await createSources({ runtimeServices, mailJournal: { search: async () => ({ entries: [mail], truncated: false }) } }).gather();
+  assert.ok(sources[0].text.includes(note));
+  assert.ok(sources[1].text.includes(title));
+  for (const field of ['counterpart', 'subject', 'summary']) assert.ok(sources[2].text.includes(mail[field]));
+  const complete = prepareDreamRequest({ state: emptyState(), conversations: [], sources });
+  assert.ok(complete.messages[1].content.includes(mail.summary));
+  assert.ok(complete.coverage.sourceCoverage.every(source => source.complete));
+  const bounded = prepareDreamRequest({ state: emptyState(), conversations: [], sources, sourceCharacters: 400 });
+  assert.deepEqual(bounded.coverage.sourceCoverage.map(source => source.availableCharacters), sources.map(source => source.text.length));
+  assert.ok(bounded.coverage.sourceCoverage.every(source => !source.complete && source.includedCharacters <= 400));
 });
 
 test('a dream that falls back from the frontier lane dreams locally over the bounded material', async () => {

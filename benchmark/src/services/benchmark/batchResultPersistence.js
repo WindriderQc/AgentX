@@ -125,14 +125,16 @@ async function persistSuccessfulResult({
         ? (executionSettings?.thinking_final_answer_policy || null)
         : null;
     const thinkingOnlyResponse = !!(thinkingPresent && visibleResponseChars === 0);
-    const thinkingRunaway = !!(thinkingPresent && responseTruncated);
+    // Reaching the configured cap is a budget observation, not evidence that
+    // the model's reasoning is runaway. Incomplete answers remain unrankable.
+    const thinkingBudgetExhausted = !!(thinkingPresent && responseTruncated);
     const hasEmptyVisibleResponse = !!(hasEmptyResponse || visibleResponseChars === 0);
     const hiddenRuntimeCap = !!(responseTruncated && !visibleResponseBudget);
     const responseContractFailure = thinkingOnlyResponse;
     const nativeAgent = executionTarget?.mode === 'native_agent';
     const nonRankableMode = !nativeAgent && executionSettings?.rankable_mode === false;
     const executableVerificationRequired = prompt.evaluation_authority === 'executable';
-    const truncationInvalidatesScore = hiddenRuntimeCap || !!inputTruncated || thinkingRunaway;
+    const truncationInvalidatesScore = hiddenRuntimeCap || !!inputTruncated || thinkingBudgetExhausted;
     const excludedFromLeaderboard = truncationInvalidatesScore
         || nativeAgent
         || responseContractFailure
@@ -141,7 +143,7 @@ async function persistSuccessfulResult({
     const reviewReasons = [];
     if (hiddenRuntimeCap) reviewReasons.push(EXECUTION_REVIEW_REASONS.hiddenRuntimeCap);
     if (thinkingOnlyResponse) reviewReasons.push(EXECUTION_REVIEW_REASONS.thinkingOnly);
-    if (thinkingRunaway) reviewReasons.push(EXECUTION_REVIEW_REASONS.thinkingRunaway);
+    if (thinkingBudgetExhausted) reviewReasons.push(EXECUTION_REVIEW_REASONS.thinkingBudgetExhausted);
     if (inputTruncated) reviewReasons.push(EXECUTION_REVIEW_REASONS.inputTruncated);
     if (nonRankableMode) reviewReasons.push(EXECUTION_REVIEW_REASONS.nonRankableMode);
     if (executableVerificationRequired) reviewReasons.push(EXECUTION_REVIEW_REASONS.executableFixture(prompt.executable_fixture_id));
@@ -219,7 +221,8 @@ async function persistSuccessfulResult({
             thinking_chars: thinkingChars,
             visible_response_chars: visibleResponseChars,
             thinking_only_response: thinkingOnlyResponse,
-            thinking_runaway: thinkingRunaway,
+            thinking_budget_exhausted: thinkingBudgetExhausted,
+            thinking_runaway: false,
             thinking_final_answer_policy: thinkingFinalAnswerPolicy
         },
         execution_settings: {
