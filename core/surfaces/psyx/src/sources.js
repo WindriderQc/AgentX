@@ -7,7 +7,9 @@
 
 const DAY = 86400000;
 const day = value => { const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10); };
-const line = (value, max) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+// Preserve each collected field; prepareDreamRequest owns the source budget
+// and reports how much source text it includes.
+const line = value => String(value || '').replace(/\s+/g, ' ').trim();
 
 function createSources({ runtimeServices, mailJournal = null, logger = console, mailDays = 45 } = {}) {
   const readers = {
@@ -21,7 +23,7 @@ function createSources({ runtimeServices, mailJournal = null, logger = console, 
         offset = page.truncated && page.nextOffset > offset ? page.nextOffset : null;
       }
       return { title: 'Notes his assistant keeps about him (facts, preferences, decisions)', count: notes.length,
-        text: notes.map(note => `- [${note.kind || 'fact'}, ${day(note.updatedAt)}] ${line(note.text, 600)}`).join('\n') };
+        text: notes.map(note => `- [${note.kind || 'fact'}, ${day(note.updatedAt)}] ${line(note.text)}`).join('\n') };
     },
     async tasks() {
       const list = runtimeServices?.tasks?.personal?.list;
@@ -29,7 +31,7 @@ function createSources({ runtimeServices, mailJournal = null, logger = console, 
       const result = await list({ limit: 100 });
       const tasks = result.tasks || [];
       return { title: `His open tasks and reminders (${result.overdueCount || 0} overdue)`, count: tasks.length,
-        text: tasks.map(task => `- ${line(task.title, 200)}${task.dueAt ? ` (due ${day(task.dueAt)}${task.overdue ? ', overdue' : ''})` : ''}`).join('\n') };
+        text: tasks.map(task => `- ${line(task.title)}${task.dueAt ? ` (due ${day(task.dueAt)}${task.overdue ? ', overdue' : ''})` : ''}`).join('\n') };
     },
     async mail(now) {
       if (!mailJournal?.search) return null;
@@ -43,7 +45,7 @@ function createSources({ runtimeServices, mailJournal = null, logger = console, 
         until = oldest;
       }
       return { title: `His mail journal, last ${mailDays} days (summaries written by his mail assistant)`, count: entries.size,
-        text: [...entries.values()].map(entry => `- ${day(entry.occurredAt)} | ${line(entry.counterpart, 80)} | ${line(entry.subject, 120)}: ${line(entry.summary, 300)}`).join('\n') };
+        text: [...entries.values()].map(entry => `- ${day(entry.occurredAt)} | ${line(entry.counterpart)} | ${line(entry.subject)}: ${line(entry.summary)}`).join('\n') };
     }
   };
 
