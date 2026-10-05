@@ -1293,6 +1293,13 @@ Batches launched before this rule ran under Core's default output reserve
 (at most 4,096 tokens), which cut long reasoning. They keep their own quality
 cohort, so the leaderboard does not mix the two.
 
+A response that reaches its generation budget while hidden reasoning is present
+records `truncation.thinking_budget_exhausted`. This observation alone does not
+prove runaway reasoning. The incomplete response stays excluded from automatic
+ranking, and its visible answer and hidden reasoning remain available for review.
+Historical `thinking_runaway` flags remain stored; new token-cap observations
+do not set that flag. Paired thinking reports count the two separately.
+
 No judge size is assumed. A launch may set `judge_config.num_predict` up to
 32,768 tokens and `judge_config.timeout` up to 30 minutes. Values above the
 usual 4,096 tokens and 120 seconds are kept as chosen, and the launch result

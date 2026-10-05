@@ -369,7 +369,7 @@ function buildPromptAlignmentWarnings(prompts, executionConfig = {}) {
         }
     } else if (config.think === 'auto') {
         warnings.push(
-            'think=auto enabled: benchmark will use host-specific thinking profiles. Rows resolved to think=true still share response_max_tokens with hidden reasoning and remain subject to runaway quarantine.'
+            'think=auto enabled: benchmark will use host-specific thinking profiles. Rows resolved to think=true still share response_max_tokens with hidden reasoning; a row that reaches this budget stays excluded from automatic ranking, without establishing runaway reasoning.'
         );
     }
 
