@@ -876,6 +876,8 @@
             attachHostCardHandlers();
             attachClusterPreferenceHandlers();
             attachPinHandlers();
+            // Occupancy over a window loads on its own and never holds the cards.
+            void window.NerveCenterGpuOccupancy?.mount(body);
         } catch (err) {
             console.error('[NerveCenter] loadCluster failed', err);
             shared.renderSectionError(body, `Failed to load cluster data: ${err.message}`);

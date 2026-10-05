@@ -500,6 +500,24 @@ results to `/api/v1/hardware/samples`. Nothing is installed on a GPU host.
    host or the post failed), then
    `node integrations/operations/verify-native-data-collectors.js --expect-gpu <GPU_AGENT_ID>`.
 
+Below the cluster cards, the Nerve Center shows GPU occupancy over a window
+(1 h, 6 h, 24 h, 7 d or 30 d) from the same samples
+(`GET /api/nerve-center/inference/gpu-occupancy?window=`, read from Data's
+`/api/v1/hardware/occupancy`). For each physical GPU it gives the busy share
+(utilization of at least 10 %, or `busyAtPct=`), mean utilization, VRAM used
+p95 and maximum against the total, mean and p95 power against the limit, the
+throttled share, and the sample count with its coverage of the window. Every
+share is of the time samples cover: a stretch without samples (collector or
+host down, Data unreachable) is reported as missing, never as idle. Each
+collector host names the configured Ollama hosts it matches by `ollamaUrl`.
+When `AGENTX_RUNTIME_RESOURCES_JSON` is set, a GPU is linked to its physical
+resource, and so to every endpoint that uses it (Ollama, voice, images), when
+the resource `id` is the GPU's UUID or PCI bus id as `nvidia-smi` reports them,
+or when the resource lists the Ollama URL of a collector host that has a single
+GPU. Resources linked to no sampled GPU are named; on a host with several GPUs,
+name each resource after its GPU's UUID to link it, changing the map only as
+[Physical GPU admission](#physical-gpu-admission) requires.
+
 Some Ollama behaviour is set by the server's environment, not by a request:
 the KV cache type, flash attention, parallel requests, resident model slots,
 GPU spreading and visible devices. Name a host's Ollama service with
