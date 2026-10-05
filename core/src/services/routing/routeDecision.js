@@ -147,6 +147,10 @@ const STABLE_REASON_CODES = new Set([
   'benchmark_claim_active',
   'inference_pre_dispatch_error',
   'admission_refused',
+  // Refusals before dispatch that name the holder kind (#363).
+  'host_session_hold_busy',
+  'runtime_inference_admission_denied',
+  'runtime_inference_recovery_required',
   'abort_error',
   // Task fallback ladder (#135): why the configured primary was unavailable.
   'task_fallback_host_unconfigured',
@@ -582,5 +586,6 @@ module.exports = {
   normalizeHostOriginUrl,
   normalizeSelectionSource,
   normalizeStableReasonCode,
+  STABLE_REASON_CODES,
   assertNoPayload,
 };

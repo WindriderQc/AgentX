@@ -191,6 +191,9 @@ describe('POST /api/inference/generate — behaviour contract', () => {
       // both the new executor and the old path is invisible in a diff and
       // silently corrupts cost and usage analytics.
       expect(recordInference).toHaveBeenCalledTimes(1);
+      expect(recordInference.mock.calls[0][0].waits).toEqual({
+        admissionMs: expect.any(Number), hostGateMs: expect.any(Number)
+      });
       expect(logger.info).toHaveBeenCalledWith(
         '[InferenceProxy] route outcome',
         expect.objectContaining({
@@ -215,9 +218,10 @@ describe('POST /api/inference/generate — behaviour contract', () => {
         .send({ model: 'test-model', prompt: 'hello' });
 
       expect(recordInference).toHaveBeenCalledTimes(1);
-      expect(recordInference).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'error' })
-      );
+      expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'error',
+        waits: { admissionMs: expect.any(Number), hostGateMs: expect.any(Number) }
+      }));
     });
 
     test('a request rejected before dispatch records nothing', async () => {

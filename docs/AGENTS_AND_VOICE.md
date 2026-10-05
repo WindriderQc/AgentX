@@ -202,6 +202,7 @@ information needed in the spoken reply.
 | `InferenceLog.durationMs` | Core wall clock, including routing and queueing | Not acoustic response time |
 | `loadMs`, `promptEvalMs`, `evalMs` | Native Ollama phases converted to milliseconds | Absent when the provider/path does not report them |
 | `firstTokenMs` | Dispatch to the first streamed content, thinking or tool-call frame | Not necessarily visible reply text or audible speech |
+| `admissionWaitMs`, `hostGateWaitMs`, `retry` | Waits before Ollama received the call: runtime admission, Core's host gate, and retries with their backoff | Absent on rows recorded before they existed; Ollama's internal queue is not reported separately |
 | `promptPrefix.divergence` | First structural change between observed agent calls on the same host/model | Hashes/counts, not token-level cache evidence; unobserved callers can interfere |
 | Household `voiceTimings` | Browser endpoint decision to transcription, request, reply text, holding and first reply playback | Starts after trailing silence; does not measure physical speech end or acoustic output |
 | Device acceptance | Actual capture, interruption, reconnect and audible reply | Must be checked on the intended device |

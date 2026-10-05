@@ -21,6 +21,7 @@ const {
 const {
   buildPipelineAutomationPerformance,
 } = require('../src/services/pipelineAutomationPerformanceService');
+const { readAttemptResourceWaits } = require('../src/services/pipelineAttemptResourceWaits');
 const { statusTransition, supersedeTransition } = require('../src/services/pipelineTaskTransitionPaths');
 const { expectedStatusGuard } = require('../src/services/pipelineExpectedStatus');
 const STATUSES = ['queued', 'in_progress', 'review', 'blocked', 'done'];
@@ -182,8 +183,10 @@ router.get('/performance', async (req, res) => {
     const tasks = await PipelineTask.find({
       'automationAttempts.acquiredAt': { $gte: from, $lte: now },
     }).select('pipelineId createdAt automation automationAttempts').lean();
+    // Without readable waits the phase reads unknown; the rest still answers.
+    const resourceWaits = await readAttemptResourceWaits(tasks, { from, to: now }).catch(() => null);
     return envelope.success(res, {
-      performance: buildPipelineAutomationPerformance(tasks, { now, windowDays }),
+      performance: buildPipelineAutomationPerformance(tasks, { now, windowDays, resourceWaits }),
     });
   } catch (err) { return envelope.error(res, 500, err.message); }
 });

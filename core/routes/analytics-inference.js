@@ -41,10 +41,12 @@ const {
 } = require('../../shared/signalEvidence');
 const {
   buildDistributionPipeline,
+  fallbackReasonExpression,
   parseGroupBy,
   parseGroupLimit,
   shapeDistribution
 } = require('../src/services/inferenceDistributionService');
+const { readContention } = require('../src/services/routing/inferenceContentionCounters');
 
 /**
  * A summary is computed on demand from `inferencelogs`; a rendered copy older
@@ -84,7 +86,8 @@ const LOG_FILTER_FIELDS = [
   'correlationId',
   'taskType',
   'model',
-  'host'
+  'host',
+  'fallbackReason'
 ];
 const LOG_STATUSES = new Set(['success', 'error', 'timeout']);
 
@@ -220,6 +223,8 @@ router.get('/logs', async (req, res) => {
 
 function distributionLabel(field, value) {
   if (value === 'unknown') return 'unknown';
+  // Already reduced to a stable code (or none/other) by the aggregation.
+  if (field === 'fallbackReason') return value;
   const projected = projectInferenceLog({ [field]: value });
   return projected?.[field] ?? 'unknown';
 }
@@ -232,7 +237,7 @@ function distributionLabel(field, value) {
  * how much of a call is spent outside the model). Accepts the /logs filters;
  * without from/to it covers `window` (24h|7d|30d|90d, default 7d).
  * `groupBy` takes one or two of consumerContract, taskType, model, host,
- * hostKey, caller, runtime, status (default consumerContract).
+ * hostKey, caller, runtime, status, fallbackReason (default consumerContract).
  */
 router.get('/distribution', async (req, res) => {
   try {
@@ -258,6 +263,35 @@ router.get('/distribution', async (req, res) => {
   } catch (err) {
     logger.error('Inference distribution query failed', { error: err.message });
     envelope.error(res, err.statusCode || 500, err.message);
+  }
+});
+
+/**
+ * GET /api/analytics/inference/contention?window=24h|7d|30d|90d
+ *
+ * Hourly counters that survive a restart (#363): fallback rungs served,
+ * ladders exhausted, and /api/inference/generate refusals at selection or
+ * admission, which leave no inferencelogs row. Buckets are whole hours.
+ */
+router.get('/contention', async (req, res) => {
+  try {
+    const window = resolveWindow(req.query.window);
+    const { buckets, totals } = await readContention({ from: window.from, to: window.to });
+    envelope.success(res, {
+      source: 'inferencecontentioncounters',
+      window: { key: window.key, from: window.from, to: window.to },
+      retentionDays: parseInt(process.env.INFERENCE_LOG_TTL_DAYS || '30', 10),
+      events: {
+        ladder_served: 'A fallback ladder rung served a task; code is the degradation reason.',
+        ladder_exhausted: 'The primary was unavailable and no rung could serve; code is the reason.',
+        route_refused: '/api/inference/generate refused at selection or admission; code is the refusal.',
+      },
+      totals,
+      buckets,
+    });
+  } catch (err) {
+    logger.error('Inference contention query failed', { error: err.message });
+    envelope.error(res, 500, err.message);
   }
 });
 
@@ -343,6 +377,7 @@ router.get('/summary', async (req, res) => {
           byConsumerContract: [{ $group: { _id: { $ifNull: ['$consumerContract', 'unknown'] }, ...groupMetrics } }, { $sort: { calls: -1 } }],
           byTaskType: [{ $group: { _id: { $ifNull: ['$taskType', 'unknown'] }, ...groupMetrics } }, { $sort: { calls: -1 } }],
           byFallbackUsed: [{ $group: { _id: '$fallbackUsed', ...groupMetrics } }, { $sort: { calls: -1 } }],
+          byFallbackReason: [{ $group: { _id: fallbackReasonExpression(), ...groupMetrics } }, { $sort: { calls: -1 } }],
           byDegraded: [{ $group: { _id: { $ifNull: ['$routeDecision.degraded', false] }, ...groupMetrics } }, { $sort: { calls: -1 } }],
           byRuntime: [{ $group: { _id: '$runtime', ...groupMetrics } }, { $sort: { calls: -1 } }],
           byHost: [{ $group: { _id: '$host', ...groupMetrics } }, { $sort: { calls: -1 } }],
@@ -547,6 +582,7 @@ router.get('/summary', async (req, res) => {
       }),
       byTaskType: (facet?.byTaskType || []).map((r) => shape(r, 'taskType')),
       byFallbackUsed: (facet?.byFallbackUsed || []).map((r) => shape(r, 'fallbackUsed')),
+      byFallbackReason: (facet?.byFallbackReason || []).map((r) => shape(r, 'fallbackReason')),
       byDegraded: (facet?.byDegraded || []).map((r) => shape(r, 'degraded')),
       byRuntime: (facet?.byRuntime || []).map((r) => shape(r, 'runtime')),
       byHost: (facet?.byHost || []).map((r) => shape(r, 'host')),

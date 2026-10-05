@@ -14,6 +14,7 @@ const { buildRouteDecision, ROUTE_OUTCOME_CODES, ROUTE_OUTCOME_STAGES } = requir
 const { summarizeOllamaOutcome } = require('../laneObservabilityService');
 const { fallbackReasonCode } = require('./taskFallbackLadder');
 const { ollamaPhaseTimings } = require('../../helpers/ollamaResponseHandler');
+const { countRouteRefusal } = require('./inferenceContentionCounters');
 
 function safeRoutingConfigVersion() {
     return typeof getRoutingConfigVersion === 'function'
@@ -98,6 +99,7 @@ function observeRouteDecision(routeDecision) {
         routeDecision,
         outcomeCode: routeDecision?.outcome?.code || ROUTE_OUTCOME_CODES.UNKNOWN,
     });
+    countRouteRefusal(routeDecision);
     return routeDecision;
 }
 
@@ -136,6 +138,7 @@ function createAttemptRecorder({
         outcomeCode,
         outcomeReasonCode,
         rejections = [],
+        waits = null,
     }) => {
         const resolvedOutcomeStage = outcomeStage || (
             fallbackUsed ? ROUTE_OUTCOME_STAGES.FALLBACK : ROUTE_OUTCOME_STAGES.EXECUTION
@@ -197,6 +200,7 @@ function createAttemptRecorder({
             tokensIn: attemptData?.prompt_eval_count || 0,
             tokensOut: attemptData?.eval_count || 0,
             ...ollamaPhaseTimings(attemptData),
+            waits,
             fallbackUsed,
             fallbackReason,
             durationMs,

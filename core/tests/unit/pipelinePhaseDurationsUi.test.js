@@ -10,9 +10,9 @@ function load() {
 }
 
 const NOW = '2026-09-27T00:00:00.000Z';
-const performanceFor = (attempts, createdAt = '2026-09-20T09:00:00.000Z') => buildPipelineAutomationPerformance(
+const performanceFor = (attempts, createdAt = '2026-09-20T09:00:00.000Z', resourceWaits = new Map()) => buildPipelineAutomationPerformance(
   [{ pipelineId: '0710', createdAt, updatedAt: '2026-09-26T00:00:00.000Z', automationAttempts: attempts }],
-  { now: NOW, windowDays: 30 }
+  { now: NOW, windowDays: 30, resourceWaits }
 );
 
 describe('pipeline phase durations view', () => {
@@ -22,7 +22,7 @@ describe('pipeline phase durations view', () => {
       attempt: 1, acquiredAt: '2026-09-20T10:00:00.000Z', completedAt: '2026-09-20T10:20:00.000Z',
       reviewedAt: '2026-09-20T11:20:00.000Z', finalState: 'review', reviewOutcome: 'accepted',
       evidence: { source: 'clawdx-guarded/v1', verification: { status: 'passed', durationMs: 120_000 }, usage: { durationMs: 1_020_000 } },
-    }]);
+    }], undefined, new Map([['0710#1', { calls: 3, measuredCalls: 3, waitMs: 420 }]]));
     const html = api.summaryMarkup(performance);
     expect(html).toContain('Where attempt time goes');
     expect(html).toContain('agentx.pipeline-attempt-phases/v1');
@@ -30,7 +30,8 @@ describe('pipeline phase durations view', () => {
     expect(html).toMatch(/data-phase="worker"[\s\S]*?Worker clock[\s\S]*?<strong>15m<\/strong>/);
     expect(html).toMatch(/data-phase="verification"[\s\S]*?<strong>2m<\/strong>/);
     expect(html).toMatch(/data-phase="decision"[\s\S]*?Core clock[\s\S]*?<strong>1h<\/strong>[\s\S]*?1\/1 observed/);
-    expect(html).toMatch(/data-phase="resource_wait" data-instrumented="false"[\s\S]*?Not measured/);
+    expect(html).toMatch(/data-phase="resource_wait" data-instrumented="true"[\s\S]*?Core clock[\s\S]*?<strong>420ms<\/strong>/);
+    expect(api.attemptMarkup(performance.attempts[0])).toContain('Resource wait <b>420ms</b>');
     expect(html).toMatch(/data-phase="startup" data-instrumented="false"[\s\S]*?Not measured/);
     expect(html).not.toContain('clock mismatch');
   });

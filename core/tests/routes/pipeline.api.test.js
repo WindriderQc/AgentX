@@ -18,7 +18,12 @@ jest.mock('../../src/services/pipelineTaskService', () => ({
   loadDependencyStatuses: jest.fn(async () => new Map()),
 }));
 
+jest.mock('../../src/services/pipelineAttemptResourceWaits', () => ({
+  readAttemptResourceWaits: jest.fn(async () => new Map()),
+}));
+
 const PipelineTask = require('../../models/PipelineTask');
+const { readAttemptResourceWaits } = require('../../src/services/pipelineAttemptResourceWaits');
 const pipelineTaskService = require('../../src/services/pipelineTaskService');
 const pipelineRoutes = require('../../routes/pipeline');
 
@@ -250,6 +255,25 @@ describe('GET /api/pipeline/performance', () => {
       observedProviderSpendNanodollars: 0,
       observedSessionEstimateNanodollars: 125971320,
     });
+  });
+
+  test('reports model-call waits per attempt, and unknown waits when they cannot be read', async () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const completed = new Date(Date.now() - 30_000).toISOString();
+    const tasks = [{ pipelineId: '0703', createdAt: recent, automationAttempts: [
+      { attempt: 1, acquiredAt: recent, completedAt: completed, finalState: 'blocked' },
+    ] }];
+    PipelineTask.find.mockReturnValue(createFindQuery(tasks));
+    readAttemptResourceWaits.mockResolvedValueOnce(new Map([['0703#1', { calls: 2, measuredCalls: 2, waitMs: 750 }]]));
+    const read = await request(createApp()).get('/api/pipeline/performance?window=7d').expect(200);
+    expect(readAttemptResourceWaits).toHaveBeenCalledWith(tasks, { from: expect.any(Date), to: expect.any(Date) });
+    expect(read.body.data.performance.attempts[0].phases.resource_wait).toEqual({ status: 'observed', durationMs: 750 });
+
+    PipelineTask.find.mockReturnValue(createFindQuery(tasks));
+    readAttemptResourceWaits.mockRejectedValueOnce(new Error('inference logs unavailable'));
+    const failed = await request(createApp()).get('/api/pipeline/performance?window=7d').expect(200);
+    expect(failed.body.data.performance.attempts[0].phases.resource_wait)
+      .toMatchObject({ status: 'missing', reason: 'inference_waits_not_read' });
   });
 
   test('rejects unbounded performance windows', async () => {

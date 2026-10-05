@@ -26,6 +26,7 @@ const { setTimeout: sleep } = require('node:timers/promises');
 const logger = require('../../../config/logger');
 const { HOSTS, refreshHosts, DEFAULT_TASK_MODELS } = require('../modelRouterDefaults');
 const { modelsMatch } = require('../../helpers/modelNameNormalization');
+const { countContention } = require('./inferenceContentionCounters');
 
 const CONFIG_ENV = 'AGENTX_TASK_FALLBACKS_JSON';
 const WAIT_ENV = 'AGENTX_TASK_FALLBACK_WAIT_MS';
@@ -310,6 +311,7 @@ async function probePrimary(primary, deps) {
 }
 
 function recordServed(taskType, reason, now) {
+  void countContention('ladder_served', { taskType, code: reason });
   stats.served[taskType] = (stats.served[taskType] || 0) + 1;
   stats.byReason[reason] = (stats.byReason[reason] || 0) + 1;
   stats.lastServedAt = new Date(now).toISOString();
@@ -349,6 +351,7 @@ async function selectRung(taskType, base, { fallbackFrom, reason, startIndex = 0
       degraded,
     };
   }
+  void countContention('ladder_exhausted', { taskType, code: reason });
   stats.exhausted += 1;
   stats.lastExhaustedAt = new Date(deps.now()).toISOString();
   logger.warn('[TaskFallbackLadder] primary unavailable and no fallback is available', {
@@ -449,6 +452,15 @@ function publicDegradedMarker(degraded) {
   };
 }
 
+/**
+ * The marker of a rung a caller already chose (OpenClaw's conversation
+ * fallback, #143), kept only when it names the model being served.
+ */
+function servedRungMarker(degraded, model) {
+  const marker = publicDegradedMarker(degraded);
+  return marker && model && marker.fallbackTo.model === model ? marker : null;
+}
+
 /** Stable telemetry reason code (RouteDecision vocabulary). */
 function fallbackReasonCode(degraded) {
   return degraded?.degraded === true && degraded.reason ? `task_fallback_${degraded.reason}` : null;
@@ -490,6 +502,7 @@ module.exports = {
   planExactModelFallback,
   refusedBeforeDispatch,
   publicDegradedMarker,
+  servedRungMarker,
   fallbackReasonCode,
   getTaskFallbackStats,
   _internal: { coordinationBlock, probeTarget, resetForTests },

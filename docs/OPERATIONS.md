@@ -934,7 +934,12 @@ answer tries `secondary` next.
   Playground badge shows "mode dégradé"), `routing.fallbackUsed` on household
   turns (the Nestor conversation marks the reply "mode dégradé"). InferenceLog rows record `fallbackUsed` with a
   `task_fallback_<reason>` code, and the lane observability projection
-  (`taskFallbacks`) counts ladder use since the last start.
+  (`taskFallbacks`) counts ladder use since the last start. Hourly counters
+  that survive a restart keep the rungs served, the ladders exhausted (no
+  rung could serve) and the `/api/inference/generate` refusals at selection or
+  admission, which write no InferenceLog row: `GET
+  /api/analytics/inference/contention?window=24h|7d|30d|90d` returns their
+  buckets and totals by task and code, kept as long as the inference logs.
 
 A strict task never changes model, and never changes host unless the other
 host has its model installed: the scheduler's placement away from the
@@ -960,7 +965,9 @@ asked to yield (at most 30 s with a fallback configured), and a refusal before
 any output then moves the turn to a rung once. The degraded turn goes without
 tools or thinking, its system prompt names the brain in use, its reply starts
 with a one-line notice (`🪶 Cerveau léger (…)`), and it carries the
-`X-AgentX-Degraded*` headers. When no rung answers, the busy reply remains.
+`X-AgentX-Degraded*` headers. Its InferenceLog row records `fallbackUsed` and
+the `task_fallback_<reason>` code, like a ladder rung served by Core. When no
+rung answers, the busy reply remains.
 
 `OPENCLAW_CONVERSATION_NO_THINK_MODELS` lists conversation models that answer
 without reasoning whatever thinking level the agent asks for, for example the
@@ -1255,17 +1262,33 @@ a hash, never prompt content. A miss whose divergence is `append` or `none`
 points elsewhere: another caller used the model in between, or the model was
 reloaded (`loadMs` is high).
 
+A row also says what the call waited for before Ollama received it.
+`admissionWaitMs` is the runtime admission of the attempt that ended the call
+(admission accepts or refuses without queueing, so a large value points at its
+coordination store, not at contention). `hostGateWaitMs` is the wait at Core's per-(host, model)
+gate, the only queue Core holds itself; a call refused before the gate has
+none. Calls retried by the trusted-runtime retry policy add `retry`: the
+number of `attempts`, the total backoff `delayMs` and a `history` of at most
+six failed attempts, each with its `attempt`, its `cause` code (`other` for
+anything that is not a code), its backoff and its own admission and gate
+waits. Rows recorded before these fields existed have none of them.
+
 `GET /api/analytics/inference/distribution` turns these rows into
 distributions. It accepts the `/api/analytics/inference/logs` filters, covers
 `window` (`24h`, `7d`, `30d`, `90d`; default `7d`) unless `from`/`to` are given,
 and groups by one or two of `consumerContract` (default), `taskType`, `model`,
-`host`, `hostKey`, `caller`, `runtime` and `status` (`limit` groups, default 50,
-at most 200). For the totals and each group it returns p50, p90, p95, p99 and
+`host`, `hostKey`, `caller`, `runtime`, `status` and `fallbackReason` (`limit`
+groups, default 50, at most 200). A fallback reason is grouped as its stable code
+(for example `task_fallback_primary_busy`): a free-text legacy reason reads
+`other`, and a call without one reads `none`. The same codes filter `/logs` and
+`/distribution` (`fallbackReason=`) and appear in the summary's
+`byFallbackReason`. For the totals and each group it returns p50, p90, p95, p99 and
 max of `inputTokens` (`tokensIn`, or the dispatch estimate when the call ended
 without usage), `tokensOut`, `durationMs`, `firstTokenMs`, `loadMs`,
 `promptEvalMs`, `evalMs`, `nonModelMs` (wall clock not covered by the three
-Ollama phases: routing, admission, queueing, retries and network), `numCtx` and
-`contextFill` (`inputTokens / num_ctx`); the calls per prompt-size bucket (up to
+Ollama phases: routing, admission, queueing, retries and network),
+`admissionWaitMs`, `hostGateWaitMs`, `numCtx` and `contextFill`
+(`inputTokens / num_ctx`); the calls per prompt-size bucket (up to
 8k, 16k, 32k, 64k, 96k, 128k, 192k, above); and the calls filling at least 50,
 75 and 90 % of their context. Percentiles are MongoDB approximations. A metric
 no row reports has a null value with a count of 0. Rows expire after

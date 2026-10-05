@@ -134,8 +134,9 @@ async function runWithConversationFallback({ runtimeServices, request, fallbackT
   });
   const runPlan = async (chosen, unavailable) => {
     try {
+      // `degraded` lets Core record the turn as a fallback (#363).
       const result = await runtimeServices.inference.execute(degradeRequest(request, chosen), {
-        signal, consumerContract, hostUrl: chosen.hostUrl,
+        signal, consumerContract, hostUrl: chosen.hostUrl, degraded: chosen.routing,
         retry: { interactive: true, interactiveWaitMs: FALLBACK_WAIT_MS }
       });
       return { result, plan: chosen };

@@ -22,6 +22,7 @@ const {
     projectRouteDecision,
 } = require('./routeDecision');
 const { sanitizePromptPrefix } = require('./promptPrefixFingerprint');
+const { inferenceWaitFields } = require('./inferenceWaitTelemetry');
 
 const PHASE_TIMING_FIELDS = ['loadMs', 'promptEvalMs', 'evalMs', 'firstTokenMs'];
 
@@ -437,6 +438,7 @@ async function recordInference(data) {
             tokensIn: data.tokensIn || 0,
             tokensOut: data.tokensOut || 0,
             ...phaseTimingFields(data),
+            ...inferenceWaitFields({ waits: data.waits, retry: data.retry }),
             ...(promptPrefix && { promptPrefix }),
             durationMs: data.durationMs || 0,
             status: data.status || 'success',

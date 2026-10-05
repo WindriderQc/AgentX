@@ -246,6 +246,9 @@ function settleAdmissionFailure(error, { cancelled = false, onCancelled = () => 
 async function beginAdmittedOllamaAttempt(options, dependencies = {}) {
   const begin = dependencies.beginInferenceAdmission || beginInferenceAdmission;
   const gate = dependencies.hostGate || hostGate;
+  // Time spent before Ollama receives the call, for its telemetry row (#363).
+  const admissionStartedAt = Date.now();
+  const waits = { admissionMs: null, hostGateMs: null };
   const distributed = await begin({
     host: options.hostUrl,
     model: options.model,
@@ -260,9 +263,14 @@ async function beginAdmittedOllamaAttempt(options, dependencies = {}) {
     ttlMs: options.admissionTtlMs,
     signal: options.signal,
     ...(options.exclusive && { mode: 'exclusive' }),
+  }).catch((error) => {
+    error.inferenceWaits = { admissionMs: Date.now() - admissionStartedAt };
+    throw error;
   });
+  waits.admissionMs = Date.now() - admissionStartedAt;
   let release = () => {};
   let dispatched = false;
+  const gateStartedAt = Date.now();
   try {
     if (options.exclusive) {
       release = await gate.acquireExclusive(options.hostUrl, options.model, { signal: distributed.signal });
@@ -275,6 +283,7 @@ async function beginAdmittedOllamaAttempt(options, dependencies = {}) {
         signal: distributed.signal,
       });
     }
+    waits.hostGateMs = Date.now() - gateStartedAt;
     await options.afterAdmission?.();
     distributed.assertActive();
     distributed.markDispatched();
@@ -287,12 +296,13 @@ async function beginAdmittedOllamaAttempt(options, dependencies = {}) {
     }
     options.onDispatch?.();
     let released = false;
-    return { admission: distributed, signal: distributed.signal, release: async () => {
+    return { admission: distributed, signal: distributed.signal, waits, release: async () => {
       if (released) return;
       released = true;
       await release();
     } };
   } catch (err) {
+    err.inferenceWaits ??= { ...waits, hostGateMs: waits.hostGateMs ?? Date.now() - gateStartedAt };
     await distributed.abandon(err).catch(quarantineError => {
       err.inferenceQuarantineError = quarantineError;
     });
@@ -311,8 +321,9 @@ async function executeAdmittedOllamaAttempt(options, dependencies = {}) {
     const result = await executeOllamaAttempt({ ...options, signal: scope.signal }, dependencies);
     scope.admission.assertActive();
     await scope.admission.complete();
-    return result;
+    return { ...result, waits: scope.waits };
   } catch (error) {
+    error.inferenceWaits ??= scope.waits;
     // A connection refused before response headers cannot have generated output.
     // Resets/timeouts after dispatch remain unknown and retain quarantine.
     const ownedDeadline = error.isOllamaTimeout === true && error.ollamaAbortSource === OLLAMA_ABORT_SOURCE.TIMEOUT;

@@ -39,6 +39,8 @@ function telemetryEntry(
     tokensIn: data?.prompt_eval_count || data?.usage?.prompt_tokens || 0,
     tokensOut: data?.eval_count || data?.usage?.completion_tokens || 0,
     ...ollamaPhaseTimings(data),
+    waits: metadata.waits || null,
+    retry: metadata.retry || null,
     durationMs: Date.now() - startedAt,
     status,
     error

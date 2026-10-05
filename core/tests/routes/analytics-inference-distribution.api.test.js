@@ -80,6 +80,19 @@ describe('GET /api/analytics/inference/distribution', () => {
     expect(Object.keys(pipeline[1].$project)).toEqual(expect.arrayContaining(['model', 'host']));
   });
 
+  test('filters on a fallback reason and groups by its stable code', async () => {
+    InferenceLog.aggregate.mockResolvedValue([{ totals: [{ calls: 2 }], groups: [
+      group({ taskType: 'quick_chat', fallbackReason: 'task_fallback_primary_busy' }, 2)
+    ] }]);
+    const res = await request(server).get('/api/analytics/inference/distribution')
+      .query({ fallbackReason: 'task_fallback_primary_busy', groupBy: 'taskType,fallbackReason' });
+
+    expect(res.status).toBe(200);
+    const [pipeline] = InferenceLog.aggregate.mock.calls[0];
+    expect(pipeline[0].$match.fallbackReason).toBe('task_fallback_primary_busy');
+    expect(res.body.data.groups[0].key).toEqual({ taskType: 'quick_chat', fallbackReason: 'task_fallback_primary_busy' });
+  });
+
   test('sanitizes group labels through the inference log read projection', async () => {
     InferenceLog.aggregate.mockResolvedValue([{
       totals: [{ calls: 5 }],

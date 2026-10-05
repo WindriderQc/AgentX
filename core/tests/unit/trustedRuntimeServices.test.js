@@ -635,6 +635,22 @@ describe('trusted runtime services', () => {
     expect(deps.recordInference).toHaveBeenCalledWith(expect.objectContaining({ fallbackUsed: false }));
   });
 
+  test('a rung chosen by the caller is recorded as a fallback only for the model it names', async () => {
+    const marker = { degraded: true, reason: 'primary_busy', note: 'dropped',
+      fallbackFrom: { model: 'model-big', host: 'primary' }, fallbackTo: { model: 'model-a', host: 'tertiary' } };
+    const served = inferenceDeps();
+    const result = await executeRoutedInference(served, { mode: 'generate', model: 'model-a', prompt: 'hello' },
+      { hostUrl: 'http://ollama.test:11434', degraded: marker });
+    expect(result.metadata.routing).toEqual({ degraded: true, reason: 'primary_busy',
+      fallbackFrom: marker.fallbackFrom, fallbackTo: marker.fallbackTo });
+    expect(served.recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      fallbackUsed: true, fallbackReason: 'task_fallback_primary_busy'
+    }));
+    const other = inferenceDeps();
+    await executeRoutedInference(other, { mode: 'generate', model: 'model-b', prompt: 'hello' }, { degraded: marker });
+    expect(other.recordInference).toHaveBeenCalledWith(expect.objectContaining({ fallbackUsed: false, fallbackReason: null }));
+  });
+
   test('releases admission after an exact Ollama HTTP rejection', async () => {
     const lifecycle = [];
     const complete = jest.fn(async () => lifecycle.push('complete'));
