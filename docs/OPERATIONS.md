@@ -1311,6 +1311,14 @@ client on the host) are not seen: the miss they cause reads `warm` with a high
 `promptEvalMs`, or `reload`. The hashes stay in Core's memory; the row holds
 counts and labels only.
 
+`GET /api/analytics/inference/prompt-cache` adds these rows up per group: the
+calls under each verdict, `lostChars`, `lostPrefillMs` against the
+`promptEvalMs` of the rows where it was measured (`lostPrefillShare`), and the
+five labels that came in between most often. It accepts the `/distribution`
+filters, `window` and `groupBy` fields; the default groups by `hostKey,model`,
+and `groupBy=consumerContract` (or `taskType`, `runtime`, `caller`) gives the
+same per agent.
+
 A row also says what the call waited for before Ollama received it.
 `admissionWaitMs` is the runtime admission of the attempt that ended the call
 (admission accepts or refuses without queueing, so a large value points at its
