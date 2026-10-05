@@ -62,6 +62,19 @@ describe('preflight response budgets', () => {
         expect(result.warnings[2]).toMatch(/^math recommend a reasoning judge .*judges without reasoning/);
     });
 
+    test('a judge whose profile is not current is reported with the window it judges at', async () => {
+        const stale = await checkResponseBudgets(targets, {}, { host: 'http://judge:11434', model: 'judge', think: true },
+            { ...seams, resolveJudgeNumCtx: async () => ({ num_ctx: 131072, source: 'inference_contract:pin', profile_qualified: false }) });
+        expect(stale.judge).toMatchObject({ num_ctx: 131072, profile_qualified: false });
+        expect(stale.warnings).toContainEqual(
+            expect.stringMatching(/profile of judge judge on http:\/\/judge:11434 is not current.*131072 tokens.*Profile it again/));
+
+        const current = await checkResponseBudgets(targets, {}, { host: 'http://judge:11434', model: 'judge', think: true },
+            { ...seams, resolveJudgeNumCtx: async () => ({ num_ctx: 131072, source: 'inference_contract:pin', profile_qualified: true }) });
+        expect(current.judge.profile_qualified).toBe(true);
+        expect(current.warnings.join(' ')).not.toMatch(/is not current/);
+    });
+
     test('an unresolved candidate or judge window is reported, not thrown', async () => {
         const result = await checkResponseBudgets([...targets, { host: 'http://gpu-b:11434', model: 'huge-model' }], {},
             { host: 'http://judge:11434', model: 'judge', think: true },

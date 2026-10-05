@@ -77,7 +77,7 @@ describe('judge context from the inference contract', () => {
     it('reads the pinned context of a judge whose profile is stale', async () => {
         const fetchImpl = jest.fn(async () => response(stalePinned()));
         await expect(resolveContractNumCtx('model-a', 'http://exec:11434', { fetchImpl, coreUrl: 'http://core' }))
-            .resolves.toEqual({ num_ctx: 114688, source: 'inference_contract:host_preference_pin' });
+            .resolves.toEqual({ num_ctx: 114688, source: 'inference_contract:host_preference_pin', profile_qualified: false });
     });
 
     it('still refuses the same stale artifact as a measured candidate', async () => {
