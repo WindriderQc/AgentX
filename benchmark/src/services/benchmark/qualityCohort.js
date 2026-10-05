@@ -43,6 +43,7 @@ async function cohortFingerprintForBatch(batch, judgeConfig, { scorerVersion = S
     return buildQualityCohortFingerprint({
         scorerVersion,
         judgeTarget: judgeTargetFor(judgeConfig),
+        judgeThink: judgeConfig?.think,
         executionConfig: batch.execution_config || {},
         profileContract: profileContractFor(batch.campaign_kind)
     });

@@ -98,6 +98,18 @@ describe('BenchmarkTarget v1', () => {
     expect(changed).not.toBe(first);
   });
 
+  test('a reasoning judge starts its own cohort; a judge without reasoning keeps the existing one', () => {
+    const common = {
+      scorerVersion: 'scorer-v1',
+      judgeTarget: buildOllamaTarget('http://ollama:11434', 'judge'),
+      executionConfig: { response_max_tokens: 1024, temperature: 0, top_p: 1, seed: 7, think: false },
+    };
+    const base = buildQualityCohortFingerprint(common);
+    expect(buildQualityCohortFingerprint({ ...common, judgeThink: false })).toBe(base);
+    expect(buildQualityCohortFingerprint({ ...common, judgeThink: undefined })).toBe(base);
+    expect(buildQualityCohortFingerprint({ ...common, judgeThink: true })).not.toBe(base);
+  });
+
   test('prompt fingerprint pins identity and scoring content', () => {
     const prompt = { _id: '1', name: 'A', level: 1, category: 'coding', prompt: 'Write a sort.', expected_answer: 'sorted' };
     const base = buildPromptFingerprint(prompt);

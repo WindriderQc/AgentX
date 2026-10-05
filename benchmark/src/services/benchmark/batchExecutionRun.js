@@ -23,6 +23,7 @@ const { startBenchmarkClaimHeartbeat } = require('./benchmarkClaimLifecycle');
 const { batchAdmissionScope } = require('./batchAdmissionScope');
 const { normalizeBatchTargets } = require('../../../../shared/benchmarkTargetContract');
 const { markReconciliationPending, retainAdmissionHeartbeat } = require('./batchAuthorityRecovery');
+const { normalizeJudgeThink } = require('./judgeLaunchLimits');
 const {
     getActiveBatchId,
     getActiveHeartbeatInterval,
@@ -36,7 +37,7 @@ async function updateHardwareProfiles(batchId) {
 }
 
 async function executeBatch(batchId, defaultHost, models, prompts, options = {}) {
-    const judgeConfig = { ...(options.judge_config || {}), think: false };
+    const judgeConfig = { ...(options.judge_config || {}), think: normalizeJudgeThink(options.judge_config?.think) ?? false };
     const executionMode = options.execution_mode || 'latency';
 
     // Re-attest the Core-owned global admission before the first execution

@@ -127,9 +127,6 @@ router.post('/batch', async (req, res) => {
         if (jc.voting_count !== undefined && (typeof jc.voting_count !== 'number' || ![1, 3, 5].includes(jc.voting_count))) {
             return res.status(400).json({ status: 'error', error: 'judge_config.voting_count must be 1, 3, or 5' });
         }
-        if (jc.think !== undefined && jc.think !== false) {
-            return res.status(400).json({ status: 'error', error: 'judge_config.think must be false; judges always score visible final answers with thinking disabled' });
-        }
     }
 
     // Validate advanced execution_config fields if provided
