@@ -105,10 +105,10 @@ function summarizeThinkingPreflight(profile, hostId, normalizedModel, executionC
     if (!isThinkingProfileCurrent(thinkingProfile)) {
         const staleReason = probeCount < MIN_THINKING_PROBE_COUNT
             ? 'Thinking profile was created before the multi-probe behavior matrix'
-            : `Thinking profile predates calibrated retry profiling (requires profileVersion >= ${THINKING_PROFILE_VERSION})`;
+            : `Thinking profile predates the current classification (requires profileVersion >= ${THINKING_PROFILE_VERSION})`;
         const action = forced
             ? 'Forced think=true will run, but rows should be labeled diagnostic and reviewed manually.'
-            : 'Auto will keep thinking off until this model is re-profiled.';
+            : 'Core keeps applying the earlier classification until this model is re-profiled.';
         return {
             warning: `${base}. ${staleReason}; ${action}`,
             profile: thinkingProfile

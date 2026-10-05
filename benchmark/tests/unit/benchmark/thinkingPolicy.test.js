@@ -39,7 +39,7 @@ describe('benchmark thinking policy', () => {
 
     it('auto-enables only safe profiled thinking policies', () => {
         expect(shouldEnableProfiledThinking({
-            profileVersion: 2,
+            profileVersion: 3,
             supported: true,
             recommendedPolicy: 'on',
             probeCount: 4,
@@ -49,7 +49,7 @@ describe('benchmark thinking policy', () => {
         })).toBe(true);
 
         expect(shouldEnableProfiledThinking({
-            profileVersion: 2,
+            profileVersion: 3,
             supported: true,
             recommendedPolicy: 'metered',
             probeCount: 4,
@@ -67,7 +67,7 @@ describe('benchmark thinking policy', () => {
         })).toBe(false);
 
         expect(shouldEnableProfiledThinking({
-            profileVersion: 2,
+            profileVersion: 3,
             supported: true,
             recommendedPolicy: 'on',
             probeCount: 4,
@@ -79,7 +79,7 @@ describe('benchmark thinking policy', () => {
 
     it('keeps auto thinking off for old two-call thinking profiles', () => {
         expect(shouldEnableProfiledThinking({
-            profileVersion: 2,
+            profileVersion: 3,
             supported: true,
             recommendedPolicy: 'on',
             visibleFinalAnswerOk: true,
@@ -114,7 +114,7 @@ describe('benchmark thinking policy', () => {
             name: 'ax/gemma4:26b',
             thinkingProfiles: {
                 primary: {
-                    profileVersion: 2,
+                    profileVersion: 3,
                     supported: true,
                     recommendedPolicy: 'metered',
                     probeCount: 4,

@@ -1173,6 +1173,15 @@ generation stability, prefill/decode matrix, thinking) waits at least as long,
 so a 512-token answer at a few tokens per second is not cut at the GPU-sized
 `testTimeoutSec` and left without a terminal receipt. A probe unloads models only on its own Ollama instance,
 so profiling the CPU instance leaves the machine's GPU pins resident.
+The Profiler's thinking probe classes each model and host. `disallowed` is
+kept for a model that stops with reasoning and no visible answer. A probe cut
+off by its output cap while still reasoning is retried at 2,048 tokens (4,096
+for the reasoning puzzle); still cut off, it reads `unknown`, since the budget
+did not decide. A model that answers, then reaches the cap while reasoning,
+reads `metered`. Core lets a qualified `metered` or `on` model think on
+reasoning tasks (`deep_reasoning`, `analysis`); profiles from before this
+classification (`profileVersion` below 3) are flagged in preflight until
+re-profiled.
 Leaderboard rows carry their host's residency (`local · CPU`), and
 `GET /api/benchmark/generalist-leaderboard?residency=cpu|gpu` keeps one kind;
 rank CPU and GPU runs with `axis=quality`, since the composite axis penalises

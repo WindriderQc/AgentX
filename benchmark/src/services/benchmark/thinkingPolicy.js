@@ -8,7 +8,7 @@ const { modelNameCandidates } = require('../modelContextResolver');
 
 const AUTO_ENABLE_POLICIES = new Set(['on', 'metered']);
 const MIN_THINKING_PROBE_COUNT = 4;
-const THINKING_PROFILE_VERSION = 2;
+const THINKING_PROFILE_VERSION = 3;
 
 function readMapLikeEntry(mapLike, key) {
     if (!mapLike || !key) return null;
