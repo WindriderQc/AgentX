@@ -1259,8 +1259,12 @@ reloaded (`loadMs` is high).
 distributions. It accepts the `/api/analytics/inference/logs` filters, covers
 `window` (`24h`, `7d`, `30d`, `90d`; default `7d`) unless `from`/`to` are given,
 and groups by one or two of `consumerContract` (default), `taskType`, `model`,
-`host`, `hostKey`, `caller`, `runtime` and `status` (`limit` groups, default 50,
-at most 200). For the totals and each group it returns p50, p90, p95, p99 and
+`host`, `hostKey`, `caller`, `runtime`, `status` and `fallbackReason` (`limit`
+groups, default 50, at most 200). A fallback reason is grouped as its stable code
+(for example `task_fallback_primary_busy`): a free-text legacy reason reads
+`other`, and a call without one reads `none`. The same codes filter `/logs` and
+`/distribution` (`fallbackReason=`) and appear in the summary's
+`byFallbackReason`. For the totals and each group it returns p50, p90, p95, p99 and
 max of `inputTokens` (`tokensIn`, or the dispatch estimate when the call ended
 without usage), `tokensOut`, `durationMs`, `firstTokenMs`, `loadMs`,
 `promptEvalMs`, `evalMs`, `nonModelMs` (wall clock not covered by the three

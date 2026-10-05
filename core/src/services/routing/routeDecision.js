@@ -582,5 +582,6 @@ module.exports = {
   normalizeHostOriginUrl,
   normalizeSelectionSource,
   normalizeStableReasonCode,
+  STABLE_REASON_CODES,
   assertNoPayload,
 };

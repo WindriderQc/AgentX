@@ -13,6 +13,32 @@
  * (MongoDB 7.0+), which the response states.
  */
 
+const { STABLE_REASON_CODES } = require('./routing/routeDecision');
+
+// A fallback reason is grouped only as a stable code, like the read projection
+// returns it: free-text legacy reasons become `other`, no reason is `none`.
+function fallbackReasonExpression() {
+  const reason = { $toLower: { $trim: { input: { $ifNull: ['$fallbackReason', ''] } } } };
+  return {
+    $let: {
+      vars: { reason },
+      in: {
+        $switch: {
+          branches: [
+            { case: { $eq: ['$$reason', ''] }, then: 'none' },
+            { case: { $in: ['$$reason', [...STABLE_REASON_CODES]] }, then: '$$reason' },
+            {
+              case: { $regexMatch: { input: '$$reason', regex: '^(upstream_(http|status)_[1-5][0-9]{2}|fetch_timeout_[1-9][0-9]{0,8}ms)$' } },
+              then: '$$reason'
+            }
+          ],
+          default: 'other'
+        }
+      }
+    }
+  };
+}
+
 const GROUP_FIELDS = Object.freeze({
   consumerContract: '$consumerContract',
   taskType: '$taskType',
@@ -22,6 +48,7 @@ const GROUP_FIELDS = Object.freeze({
   caller: '$caller',
   runtime: '$runtime',
   status: '$status',
+  fallbackReason: fallbackReasonExpression(),
 });
 
 const DEFAULT_GROUP_BY = Object.freeze(['consumerContract']);
@@ -268,6 +295,7 @@ module.exports = {
   CONTEXT_FILL_THRESHOLDS,
   DEFAULT_GROUP_BY,
   GROUP_FIELDS,
+  fallbackReasonExpression,
   INPUT_TOKEN_BUCKETS,
   METRICS,
   PERCENTILES,

@@ -106,6 +106,22 @@ describe('inference distribution aggregation', () => {
     expect(all.groups.map(group => group.key)).toContainEqual({ consumerContract: 'unknown', model: 'model-c' });
   });
 
+  test('groups by stable fallback reason codes, never by free text', async () => {
+    await InferenceLog.insertMany([
+      row({ fallbackReason: 'task_fallback_primary_busy', durationMs: 4000 }),
+      row({ fallbackReason: 'TASK_FALLBACK_PRIMARY_BUSY ', durationMs: 6000 }),
+      row({ fallbackReason: 'upstream_http_503', durationMs: 1000 }),
+      row({ fallbackReason: 'Embedding route moved from http://a:11434 to http://b:11434', durationMs: 2000 }),
+      row({ durationMs: 3000 }),
+    ]);
+
+    const result = await distribution(['fallbackReason']);
+
+    const calls = Object.fromEntries(result.groups.map(group => [group.key.fallbackReason, group.calls]));
+    expect(calls).toEqual({ task_fallback_primary_busy: 2, upstream_http_503: 1, other: 1, none: 1 });
+    expect(JSON.stringify(result.groups)).not.toContain('http://');
+  });
+
   test('returns empty metrics instead of zeros when nothing matches', async () => {
     const result = await distribution();
 
@@ -117,6 +133,10 @@ describe('inference distribution aggregation', () => {
 });
 
 describe('distribution query parsing', () => {
+  test('accepts fallbackReason as a group field', () => {
+    expect(parseGroupBy('taskType,fallbackReason')).toEqual(['taskType', 'fallbackReason']);
+  });
+
   test('defaults to consumerContract and accepts at most two known fields', () => {
     expect(parseGroupBy(undefined)).toEqual(['consumerContract']);
     expect(parseGroupBy('taskType, model')).toEqual(['taskType', 'model']);

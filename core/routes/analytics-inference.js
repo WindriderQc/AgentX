@@ -41,6 +41,7 @@ const {
 } = require('../../shared/signalEvidence');
 const {
   buildDistributionPipeline,
+  fallbackReasonExpression,
   parseGroupBy,
   parseGroupLimit,
   shapeDistribution
@@ -84,7 +85,8 @@ const LOG_FILTER_FIELDS = [
   'correlationId',
   'taskType',
   'model',
-  'host'
+  'host',
+  'fallbackReason'
 ];
 const LOG_STATUSES = new Set(['success', 'error', 'timeout']);
 
@@ -220,6 +222,8 @@ router.get('/logs', async (req, res) => {
 
 function distributionLabel(field, value) {
   if (value === 'unknown') return 'unknown';
+  // Already reduced to a stable code (or none/other) by the aggregation.
+  if (field === 'fallbackReason') return value;
   const projected = projectInferenceLog({ [field]: value });
   return projected?.[field] ?? 'unknown';
 }
@@ -232,7 +236,7 @@ function distributionLabel(field, value) {
  * how much of a call is spent outside the model). Accepts the /logs filters;
  * without from/to it covers `window` (24h|7d|30d|90d, default 7d).
  * `groupBy` takes one or two of consumerContract, taskType, model, host,
- * hostKey, caller, runtime, status (default consumerContract).
+ * hostKey, caller, runtime, status, fallbackReason (default consumerContract).
  */
 router.get('/distribution', async (req, res) => {
   try {
@@ -343,6 +347,7 @@ router.get('/summary', async (req, res) => {
           byConsumerContract: [{ $group: { _id: { $ifNull: ['$consumerContract', 'unknown'] }, ...groupMetrics } }, { $sort: { calls: -1 } }],
           byTaskType: [{ $group: { _id: { $ifNull: ['$taskType', 'unknown'] }, ...groupMetrics } }, { $sort: { calls: -1 } }],
           byFallbackUsed: [{ $group: { _id: '$fallbackUsed', ...groupMetrics } }, { $sort: { calls: -1 } }],
+          byFallbackReason: [{ $group: { _id: fallbackReasonExpression(), ...groupMetrics } }, { $sort: { calls: -1 } }],
           byDegraded: [{ $group: { _id: { $ifNull: ['$routeDecision.degraded', false] }, ...groupMetrics } }, { $sort: { calls: -1 } }],
           byRuntime: [{ $group: { _id: '$runtime', ...groupMetrics } }, { $sort: { calls: -1 } }],
           byHost: [{ $group: { _id: '$host', ...groupMetrics } }, { $sort: { calls: -1 } }],
@@ -547,6 +552,7 @@ router.get('/summary', async (req, res) => {
       }),
       byTaskType: (facet?.byTaskType || []).map((r) => shape(r, 'taskType')),
       byFallbackUsed: (facet?.byFallbackUsed || []).map((r) => shape(r, 'fallbackUsed')),
+      byFallbackReason: (facet?.byFallbackReason || []).map((r) => shape(r, 'fallbackReason')),
       byDegraded: (facet?.byDegraded || []).map((r) => shape(r, 'degraded')),
       byRuntime: (facet?.byRuntime || []).map((r) => shape(r, 'runtime')),
       byHost: (facet?.byHost || []).map((r) => shape(r, 'host')),
