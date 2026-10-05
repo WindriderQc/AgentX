@@ -22,7 +22,7 @@ const logger = require('../../config/logger');
 const STEPS_BY_DEPTH = {
   quick:    ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'saving'],
   standard: ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'context_probe', 'saving'],
-  full:     ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'context_probe', 'throughput_curve', 'generation_stability', 'prefill_decode_matrix', 'load_timing', 'saving']
+  full:     ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'context_probe', 'throughput_curve', 'generation_stability', 'prefill_decode_matrix', 'long_context_quality', 'load_timing', 'saving']
 };
 
 // Rough upper bound on how long a profile run can take — used by the
@@ -30,7 +30,9 @@ const STEPS_BY_DEPTH = {
 const ESTIMATED_DURATION_MS_BY_DEPTH = {
   quick:    5  * 60 * 1000,
   standard: 30 * 60 * 1000,
-  full:     45 * 60 * 1000
+  // Agent-sized prefill and the long-context quality probe add minutes per
+  // 128k+ prompt on a large model.
+  full:     90 * 60 * 1000
 };
 
 router.post('/scout', async (req, res) => {

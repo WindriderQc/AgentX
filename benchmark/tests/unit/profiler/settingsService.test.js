@@ -46,6 +46,7 @@ describe('settingsService', () => {
         documentDegradationThreshold: 30,
         performanceKneeDegradationThreshold: 15,
         thinkingProbeEnabled: true,
+        longContextQualityEnabled: true,
         warmup: true,
         testTimeoutSec: 60,
         baselineModel: 'qwen2.5:3b',

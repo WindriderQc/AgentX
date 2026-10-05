@@ -64,8 +64,30 @@ the allocation fixed and varies the fill, is the evidence for that.
 The prompt generator's requested fill is not the measured tokenizer coverage.
 Use `promptTokens` and `promptCoveragePct` for the actual workload. Neither an
 allocated context window nor a partially filled successful probe proves recall
-quality across every token of that window. `qualityContextStatus: unknown` is
-intentional until separate quality evidence exists.
+quality across every token of that window.
+
+## Long-context quality
+
+A Full profile then checks whether the model still reads such a window
+(`longContextQuality` in the profile evidence). At 32k, 64k, 128k and 196k
+(`PROFILER_LONG_CONTEXT_QUALITY_TOKENS`) up to the largest verified context, and
+at that context itself when it is larger, the model reads a deterministic
+document of varied filler filled to about 80 % of the window. Five facts are
+planted at 5, 25, 50, 75 and 95 % of its depth, plus a two-hop chain (a
+shipment's courier, then the cabinet where that courier keeps a key) with a
+decoy chain beside it. It answers six numbered lines, scored exactly, with no
+judge: a line counts when it holds its planted value and no other. The prompt
+is refilled from Ollama's `prompt_eval_count` when it underfills (below 60 %)
+or leaves no room for the answer, since Ollama drops the start of a prompt that
+does not fit. A window Ollama did not run at the requested size
+(`context_mismatch`), a request error or an empty answer (`no_answer`) is not
+scored. `qualityVerifiedContext` is the largest window that passed, all six
+lines exact, with every smaller window passing too; `qualityContextStatus`
+reads `verified` only then. Each result keeps the per-depth recall, whether the
+two-hop answer was right or the decoy's, and its prompt size. The probe runs
+under the profile's workload reservation and is skipped with
+`PROFILER_LONG_CONTEXT_QUALITY_ENABLED=false`. It measures recall and one
+inference step on synthetic text, not the reasoning of a real agent task.
 
 ## Agent-sized prefill
 

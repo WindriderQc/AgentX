@@ -51,11 +51,11 @@ export function _showFeedback(container, modelName, html) {
 const STEPS_BY_DEPTH = {
   quick:    ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Save'],
   standard: ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Context probe', 'Save'],
-  full:     ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Context probe', 'Throughput curve', 'Generation stability', 'Prefill / decode matrix', 'Load timing', 'Save'],
+  full:     ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Context probe', 'Throughput curve', 'Generation stability', 'Prefill / decode matrix', 'Long-context quality', 'Load timing', 'Save'],
 };
 
 // Nominal wall-clock estimate per depth (seconds) — matches UI hint text
-const DEPTH_NOMINAL_SEC = { quick: 60, standard: 300, full: 1200 };
+const DEPTH_NOMINAL_SEC = { quick: 60, standard: 300, full: 2400 };
 
 // Per-step descriptors: a short tagline shown under the active pill so users
 // know *why* the profiler is in this phase. Keep concise (≤ 32 chars).
@@ -68,6 +68,7 @@ const STEP_DESCRIPTIONS = {
   'Throughput curve':      'Mapping tok/s across contexts',
   'Generation stability':  'Stress-testing long generations',
   'Prefill / decode matrix':'Validating every workload cell',
+  'Long-context quality':  'Recall of facts at agent sizes',
   'Load timing':           'Cold vs hot reload timing',
   'Save':                  'Persisting profile to database',
 };
@@ -233,7 +234,7 @@ function _formatRepeatedEvidence(statistics) {
 
 const _ctxLabel = value => (value >= 1024 ? `${Math.round(value / 1024)}k` : String(value ?? '?'));
 
-// Agent-sized prefill (32k-128k windows) of the Full matrix (#367).
+// Agent-sized prefill (32k-128k windows) and the long-context quality probe (#367).
 function _renderAgentSizedEvidence(profile) {
   let html = '';
   const series = profile?.prefillDecodeMatrix?.longPrefill;
@@ -248,6 +249,23 @@ function _renderAgentSizedEvidence(profile) {
         <td>${size.loadDurationMs != null ? `${(size.loadDurationMs / 1000).toFixed(1)} s` : '—'}</td>
         <td>${size.status || 'unknown'}</td>
       </tr>`).join('')}</tbody>
+    </table>`;
+  }
+  const quality = profile?.longContextQuality;
+  if (Array.isArray(quality?.results) && quality.results.length) {
+    html += `<table class="mp-extras-table">
+      <caption>Long-context quality (verified ${quality.qualityVerifiedContext ? _ctxLabel(quality.qualityVerifiedContext) : 'at no size'})</caption>
+      <thead><tr><th>Window</th><th>Planted facts</th><th>Two-hop</th><th>Prompt</th><th>Status</th></tr></thead>
+      <tbody>${quality.results.map(result => {
+        const missed = (result.retrieval || []).filter(item => !item.correct).map(item => `${item.depthPct} %`);
+        const facts = result.retrieval ? `${result.retrievalCorrect}/5${missed.length ? ` (missed at ${missed.join(', ')})` : ''}` : '—';
+        const hop = result.retrieval ? (result.multiHopCorrect ? 'right' : result.multiHopDistractor ? 'decoy' : 'wrong') : '—';
+        return `<tr>
+          <td>${_ctxLabel(result.numCtx)}</td><td>${facts}</td><td>${hop}</td>
+          <td>${result.promptTokens ? `${result.promptTokens} tok (${result.promptCoveragePct} %)` : '—'}</td>
+          <td>${result.status || 'unknown'}</td>
+        </tr>`;
+      }).join('')}</tbody>
     </table>`;
   }
   return html;

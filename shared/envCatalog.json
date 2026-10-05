@@ -2540,6 +2540,16 @@
       "secret": false,
       "description": "Timeout of portal service health probes. Unset: 1500 ms."
     },
+    "PROFILER_LONG_CONTEXT_QUALITY_TOKENS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Comma-separated window sizes of the Full profile's long-context quality probe; the verified window is added when it is larger. Unset: 32768, 65536, 131072, 196608."
+    },
     "PROFILER_MATRIX_DECODE_TOKENS": {
       "services": [
         "benchmark"
