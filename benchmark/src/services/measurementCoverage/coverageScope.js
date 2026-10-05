@@ -19,9 +19,11 @@ const modelKey = name => normalizeModelTag(name).toLowerCase();
  */
 async function resolveScope(deps = {}) {
   const hosts = (deps.hosts || getConfiguredHosts)();
+  // The routing table lives under the Nerve Center, which the demo profile
+  // does not serve: without it the scope is the pinned models.
   const [preferences, routing] = await Promise.all([
     (deps.preferences || getDedicationStatuses)(),
-    (deps.routing || getRoutingConfig)(),
+    (deps.routing || getRoutingConfig)().catch(() => ({ taskModels: {}, hosts: {} })),
   ]);
   const cells = new Map();
   const known = new Map(hosts.map(host => [hostKey(host.url), host]));

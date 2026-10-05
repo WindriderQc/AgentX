@@ -42,6 +42,17 @@ describe('coverage scope', () => {
   });
 });
 
+describe('coverage scope without a routing table', () => {
+  it('keeps the pinned models when Core does not serve the routing table', async () => {
+    const scope = await resolveScope({
+      hosts,
+      preferences: async () => [{ hostUrl: CPU, pinnedModels: [{ model: 'small:26b' }] }],
+      routing: async () => { throw new Error('HTTP 404'); }
+    });
+    expect(scope.map(cell => [cell.model, cell.pinned, cell.tasks])).toEqual([['small:26b', true, []]]);
+  });
+});
+
 describe('coverage matrix', () => {
   const catalog = new Map([
     ['fp-1', { id: 'p1', name: 'One', category: 'agent', level: 1 }],
