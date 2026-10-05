@@ -33,6 +33,11 @@ routed task model, for example a second agent on a smaller GPU. The bridge sets
 no `num_ctx`: Core applies that host's pinned context and keep-alive, so pin
 the model on the host first or each turn may load it beside the resident one.
 
+`OPENCLAW_CONVERSATION_NO_THINK_MODELS` (model names, comma-separated) makes the
+listed conversation models answer without reasoning, whatever thinking level the
+agent or session asks for. It suits a spoken lane, where reasoning delays the
+first word; other models and Pipeline turns keep the level they were sent.
+
 The operations projection, protected OpenClaw/DSH launchers, runtime config
 export/validation and coding delivery inbox retain their existing HTTP contracts.
 Historical `aio-ops-*` wire identifiers and old Product release receipt readers

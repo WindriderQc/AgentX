@@ -2328,6 +2328,16 @@
       "secret": false,
       "description": "Comma-separated model=http://host:port entries routing an OpenClaw conversation model to one inference host. Unset: the routed task model applies; an invalid entry fails bridge startup."
     },
+    "OPENCLAW_CONVERSATION_NO_THINK_MODELS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Comma-separated OpenClaw conversation models that answer without reasoning, whatever thinking level the agent asks for, e.g. the model of a spoken lane. Unset: every model keeps the level it was sent."
+    },
     "OPENCLAW_GATEWAY_TOKEN": {
       "services": [
         "core"

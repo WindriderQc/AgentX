@@ -18,7 +18,7 @@ const {
   requestAbort, pipeRuntimeStream
 } = require('../common');
 const { OPENCLAW_CONSUMER_CONTRACT, registerOpenClawProtocol } = require('../openclaw/protocol');
-const { createConversationHostResolver, parseConversationHosts } = require('../openclaw/conversationHosts');
+const { createConversationHostResolver, parseConversationHosts, parseNoThinkModels } = require('../openclaw/conversationHosts');
 const {
   PIPELINE_CONSUMER_CONTRACT,
   PIPELINE_MODEL_ALIAS
@@ -509,6 +509,37 @@ test('conversation hosts reject malformed entries', () => {
   assert.equal(parseConversationHosts(' a=http://h:1 , b:9b=https://h2:2 ').get('b:9b').hostUrl, 'https://h2:2');
   for (const value of ['no-host', '=http://h:1', 'a=ftp://h:1', 'a=http://user@h:1', 'a=http://h:1/path?x=1']) {
     assert.throws(() => parseConversationHosts(value), /OPENCLAW_CONVERSATION_HOSTS/);
+  }
+});
+
+test('a conversation model on the no-reasoning list answers without thinking, others keep their level', async () => {
+  let captured;
+  const resolve = createConversationHostResolver('companion:12b=http://second-host:11434');
+  const router = registerOpenClawProtocol({ express: fakeExpress(), logger: {},
+    noThinkModels: parseNoThinkModels(' companion:12b , other:4b '),
+    resolveConversationTarget: async model => resolve(model),
+    runtimeServices: runtimeServices(async (request) => {
+      captured = request;
+      return { ok: true, status: 200, body: { done: true }, metadata: {} };
+    }) });
+  const turn = async (model, think) => {
+    const res = new Response();
+    await route(router, 'post', '/api/chat').handlers[0](new Request({ body: { model, stream: false,
+      ...(think !== undefined && { think }), messages: [{ role: 'user', content: 'hello' }] } }), res);
+    assert.equal(res.statusCode, 200);
+    return captured.think;
+  };
+  assert.equal(await turn('companion:12b', 'high'), false);
+  assert.equal(await turn('companion:12b', undefined), false);
+  assert.equal(await turn('model-a', 'high'), 'high');
+  assert.equal(await turn('model-a', undefined), undefined);
+});
+
+test('the no-reasoning list rejects malformed entries', () => {
+  assert.equal(parseNoThinkModels('').size, 0);
+  assert.deepEqual([...parseNoThinkModels('a:1b,, b ')], ['a:1b', 'b']);
+  for (const value of ['a=http://h:1', 'two words']) {
+    assert.throws(() => parseNoThinkModels(value), /OPENCLAW_CONVERSATION_NO_THINK_MODELS/);
   }
 });
 

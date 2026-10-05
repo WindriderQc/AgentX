@@ -46,7 +46,9 @@ function modelInfo(task) {
   };
 }
 
-function registerOpenClawProtocol({ express, runtimeServices, pipelineAttribution = null, resolveConversationTarget, logger }) {
+function registerOpenClawProtocol({
+  express, runtimeServices, pipelineAttribution = null, resolveConversationTarget, noThinkModels = new Set(), logger
+}) {
   const router = express.Router();
 
   router.get('/api/version', (_req, res) => res.json({ version: 'agentx-runtime-bridge-v1' }));
@@ -161,7 +163,8 @@ function registerOpenClawProtocol({ express, runtimeServices, pipelineAttributio
         stream: effectiveBody.stream === true,
         options,
         keepAlive: effectiveBody.keep_alive,
-        think: effectiveBody.think,
+        // The operator's no-reasoning list wins over the level the agent asked for.
+        think: !pipeline && noThinkModels.has(String(body.model || '').trim()) ? false : effectiveBody.think,
         format: effectiveBody.format,
         tools: effectiveBody.tools,
         ...(conversationTarget && { exclusiveHost: conversationTarget.exclusiveHost !== false }),
