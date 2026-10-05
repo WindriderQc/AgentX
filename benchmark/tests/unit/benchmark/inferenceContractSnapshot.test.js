@@ -7,6 +7,7 @@ const {
     loadOrResolveCampaignInferenceContracts,
     loadOrResumeCampaignInferenceContracts,
     resolveStandaloneCampaignInferenceContracts,
+    resolveContractNumCtx,
     resolveFrozenMode
 } = require('../../../src/services/benchmark/inferenceContractSnapshot');
 
@@ -66,6 +67,36 @@ function batchModel(existingDocs = []) {
         updateOne: jest.fn(async () => ({ matchedCount: 1 }))
     };
 }
+
+describe('judge context from the inference contract', () => {
+    const stalePinned = () => snapshot({
+        qualification: { qualified: false, exactArtifact: false, stale: true, state: 'profiled' },
+        contextBudget: { windowTokens: 114688, validatedWindowTokens: null, source: 'host_preference_pin', output: { reservedTokens: 4096 } }
+    });
+
+    it('reads the pinned context of a judge whose profile is stale', async () => {
+        const fetchImpl = jest.fn(async () => response(stalePinned()));
+        await expect(resolveContractNumCtx('model-a', 'http://exec:11434', { fetchImpl, coreUrl: 'http://core' }))
+            .resolves.toEqual({ num_ctx: 114688, source: 'inference_contract:host_preference_pin' });
+    });
+
+    it('still refuses the same stale artifact as a measured candidate', async () => {
+        const fetchImpl = jest.fn(async () => response(stalePinned()));
+        await expect(resolveStandaloneCampaignInferenceContracts({
+            hostGroups: [['http://exec:11434', ['model-a']]],
+            executionConfig: { response_mode: 'final_only' }
+        }, { fetchImpl, coreUrl: 'http://core' })).rejects.toThrow('deployed artifact digest is unresolved');
+    });
+
+    it('refuses a contract for another host or without a window', async () => {
+        const otherHost = jest.fn(async () => response(snapshot({ artifact: { ...snapshot().artifact, host: 'http://other:11434' } })));
+        await expect(resolveContractNumCtx('model-a', 'http://exec:11434', { fetchImpl: otherHost, coreUrl: 'http://core' }))
+            .rejects.toThrow('different artifact or host');
+        const noWindow = jest.fn(async () => response(snapshot({ contextBudget: { source: 'none' } })));
+        await expect(resolveContractNumCtx('model-a', 'http://exec:11434', { fetchImpl: noWindow, coreUrl: 'http://core' }))
+            .rejects.toThrow('carries no context window');
+    });
+});
 
 describe('campaign inference contract snapshots', () => {
     it('declares the Benchmark caller when resolving a Core contract snapshot', async () => {
