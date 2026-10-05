@@ -51,6 +51,10 @@ jobs:
         run: npm run setup:integrations
       - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
         run: python3 -m unittest discover -s integrations/voix -p 'test_*.py'
+      # The image worker fsyncs its state directory through a POSIX-only flag,
+      # so its test runs here and not with the cross-platform native tests.
+      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
+        run: python3 -m unittest discover -s integrations/local-images -p 'test_*.py'
       # integrations/coding/tests is not a package, so its modules run by
       # dotted name from the repository root instead of through discover.
       - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'

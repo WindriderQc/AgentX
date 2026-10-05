@@ -39,6 +39,12 @@ const {
   ratioSignal,
   serializeSignal
 } = require('../../shared/signalEvidence');
+const {
+  buildDistributionPipeline,
+  parseGroupBy,
+  parseGroupLimit,
+  shapeDistribution
+} = require('../src/services/inferenceDistributionService');
 
 /**
  * A summary is computed on demand from `inferencelogs`; a rendered copy older
@@ -208,6 +214,49 @@ router.get('/logs', async (req, res) => {
     });
   } catch (err) {
     logger.error('Inference log query failed', { error: err.message });
+    envelope.error(res, err.statusCode || 500, err.message);
+  }
+});
+
+function distributionLabel(field, value) {
+  if (value === 'unknown') return 'unknown';
+  const projected = projectInferenceLog({ [field]: value });
+  return projected?.[field] ?? 'unknown';
+}
+
+/**
+ * GET /api/analytics/inference/distribution
+ *
+ * Percentiles, maxima and prompt-size buckets per traffic class: the evidence
+ * a placement decision needs (does a lane's real prompt fit a smaller context,
+ * how much of a call is spent outside the model). Accepts the /logs filters;
+ * without from/to it covers `window` (24h|7d|30d|90d, default 7d).
+ * `groupBy` takes one or two of consumerContract, taskType, model, host,
+ * hostKey, caller, runtime, status (default consumerContract).
+ */
+router.get('/distribution', async (req, res) => {
+  try {
+    const groupBy = parseGroupBy(req.query.groupBy);
+    const limit = parseGroupLimit(req.query.limit);
+    const match = buildLogQuery(req.query);
+    let window = { key: null, from: match.timestamp?.$gte || null, to: match.timestamp?.$lte || match.timestamp?.$lt || null };
+    if (!match.timestamp) {
+      window = resolveWindow(req.query.window);
+      match.timestamp = { $gte: window.from, $lte: window.to };
+    }
+    const [facet] = await InferenceLog.aggregate(buildDistributionPipeline({ match, groupBy, limit }));
+    envelope.success(res, {
+      source: 'inferencelogs',
+      timestampField: 'timestamp',
+      window: { key: window.key, from: window.from, to: window.to },
+      retentionDays: parseInt(process.env.INFERENCE_LOG_TTL_DAYS || '30', 10),
+      filters: Object.fromEntries(
+        [...LOG_FILTER_FIELDS, 'status'].map(field => [field, req.query[field] || null])
+      ),
+      ...shapeDistribution(facet, { groupBy, limit, sanitizeLabel: distributionLabel })
+    });
+  } catch (err) {
+    logger.error('Inference distribution query failed', { error: err.message });
     envelope.error(res, err.statusCode || 500, err.message);
   }
 });

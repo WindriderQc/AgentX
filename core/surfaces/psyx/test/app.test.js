@@ -131,9 +131,80 @@ test('chat ignores browser transcript authority and persists only provider compl
     assert.match(text, /event: done/);
   });
   assert.deepEqual(providerRequest.messages, [{ role: 'user', content: 'trusted prior' }]);
+  assert.deepEqual(providerRequest.contextCoverage, { availableMessages: 1, includedMessages: 1, omittedMessages: 0, complete: true });
   assert.doesNotMatch(providerRequest.system, /browser override/);
   assert.deepEqual(providerRequest.options, { temperature: 0.7 });
   assert.equal(saved.assistantMessage, 'safe answer');
+});
+
+test('accepted long messages retain their tail for safety, inference and storage; replies stay whole', async () => {
+  const message = `${'x'.repeat(12000)} Je veux mourir.`;
+  const answer = `${'a'.repeat(50000)} Fin de la réponse.`;
+  let received, saved;
+  const database = repositories();
+  database.conversationRepository.saveCompletedTurn = async input => {
+    saved = input;
+    return { id: '507f1f77bcf86cd799439011' };
+  };
+  const provider = { id: 'synthetic', async stream(input, sink) {
+    received = input;
+    sink.onToken(answer);
+    return { content: answer, model: 'synthetic' };
+  } };
+  await withServer(createApp({ config: config(), database, provider, logger: {} }), async base => {
+    const response = await fetch(`${base}/api/psyx/chat/stream`, {
+      method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, psyx: { mode: 'challenge', depth: 'deep' } })
+    });
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.match(text, /event: safety/);
+    assert.equal(JSON.parse(text.match(/event: done\ndata: ([^\n]+)/)[1]).response, answer);
+  });
+  assert.equal(received.message, message);
+  assert.match(received.system, /SAFETY STANCE/);
+  assert.equal(saved.userMessage, message);
+  assert.equal(saved.assistantMessage, answer);
+});
+
+test('reply coverage includes older canonical messages outside the fetched context window', async () => {
+  const { createConversationAdapter } = require('../src/conversations');
+  const id = '507f1f77bcf86cd799439011';
+  const messages = Array.from({ length: 250 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', content: `message ${index}` }));
+  const adapter = createConversationAdapter({ conversationLifecycle: {
+    getConversation: async () => ({ id, lifecycle: { status: 'active' }, messages }),
+    recordCompletedTurn: async () => ({ id })
+  } });
+  const database = repositories({ conversationRepository: adapter });
+  let received;
+  const provider = { async stream(request, sink) { received = request; sink.onToken('ok'); return { content: 'ok' }; } };
+  await withServer(createApp({ config: config(), database, provider, logger: {} }), async base => {
+    const response = await fetch(`${base}/api/psyx/chat/stream`, {
+      method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: id, message: 'suite' })
+    });
+    assert.equal(response.status, 200);
+    const control = JSON.parse((await response.text()).match(/event: control\ndata: ([^\n]+)/)[1]);
+    assert.deepEqual(control.contextCoverage, { availableMessages: 250, includedMessages: 40, omittedMessages: 210, complete: false });
+  });
+  assert.deepEqual(received.messages, messages.slice(-40));
+  assert.deepEqual(received.contextCoverage, { availableMessages: 250, includedMessages: 40, omittedMessages: 210, complete: false });
+  assert.equal((await adapter.context('default', id, 40)).length, 40, 'the review retains its array contract');
+});
+
+test('a request exceeding the configured body limit is refused before inference or storage', async () => {
+  let calls = 0;
+  const database = repositories();
+  database.conversationRepository.saveCompletedTurn = async () => { calls += 1; };
+  const provider = { async stream() { calls += 1; } };
+  await withServer(createApp({ config: { ...config(), maxBodyBytes: 1024 }, database, provider, logger: {} }), async base => {
+    const response = await fetch(`${base}/api/psyx/chat/stream`, {
+      method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'x'.repeat(2048) })
+    });
+    assert.equal(response.status, 413);
+    assert.equal(calls, 0);
+  });
 });
 
 test('failed or incomplete inference never persists a turn', async () => {
@@ -173,12 +244,12 @@ test('voice stays protected, permits this origin, and relays audio without persi
     assert.match(page.headers.get('permissions-policy'), /microphone=\(self\)/);
     const html = await page.text();
     assert.match(html, /voice-preferences\.js/);
-    // app.js calls functions declared by the voice, state, review, care and follow-up scripts, so they load first.
-    assert.match(html, /voice-session\.js[^]*voice-controls\.js[^]*state-panel\.js[^]*review\.js[^]*care\.js[^]*follow-up\.js[^]*assets\/app\.js/);
+    // app.js calls functions declared by the voice, state, review, care, follow-up and frontier scripts, so they load first.
+    assert.match(html, /voice-session\.js[^]*voice-controls\.js[^]*state-panel\.js[^]*review\.js[^]*care\.js[^]*follow-up\.js[^]*frontier\.js[^]*assets\/app\.js/);
     // setBusy in app.js re-syncs the voice session controls, so both scripts carry the same asset version.
     assert.equal(html.match(/voice-session\.js\?v=([\d.]+)/)[1], html.match(/assets\/app\.js\?v=([\d.]+)/)[1]);
     assert.equal((await fetch(`${base}/api/psyx/voice/status`)).status, 401);
-    for (const asset of ['voice-preferences.js', 'voice-controls.js', 'state-panel.js', 'review.js', 'care.js', 'follow-up.js']) {
+    for (const asset of ['voice-preferences.js', 'voice-controls.js', 'state-panel.js', 'review.js', 'care.js', 'follow-up.js', 'frontier.js', 'profile.js']) {
       assert.equal((await fetch(`${base}/psyx/assets/${asset}`)).status, 200);
     }
 

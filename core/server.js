@@ -190,6 +190,9 @@ async function startServer() {
   // Check MongoDB
   try {
     await connectDB();
+    await require('./src/services/conversations/infrastructure').ensureInfrastructure();
+    try { await require('./src/services/conversations/exchangeReceipts').resumeErasure(); }
+    catch { logger.warn('Pending exchange erasure has not completed and remains fenced.'); }
     // Resume only previously requested erasures after an interrupted shutdown.
     try { await require('./src/services/surfaceConversationService').resumeDeletedSessionCleanup(); }
     catch { logger.warn('Pending attachment erasure remains hidden and will be retried at the next start.'); }
@@ -521,6 +524,20 @@ async function startServer() {
     } catch (err) {
       console.log(`   ⚠ Network Device Watch: ${err.message}`);
     }
+  }
+
+  // A short model-written report of what monitoring rules currently flag.
+  // Set in the Nerve Center; OPS_WATCH_MS only bootstraps it.
+  try {
+    const opsWatch = require('./src/services/opsWatchService').getOpsWatch();
+    await startCoreSingletonDaemon({ name: 'ops-watch', label: 'Operations Watch',
+      start: async () => {
+        const settings = await require('./src/services/opsWatchSettings').effective();
+        console.log(`   ✓ Operations Watch: ${opsWatch.activate(settings) ? `Active (${settings.intervalMs}ms)` : 'Off'}`);
+      },
+      stop: async () => opsWatch.deactivate() });
+  } catch (err) {
+    console.log(`   ⚠ Operations Watch: ${err.message}`);
   }
 
   // Forgotten and expired notes are hidden at once; remove their text after retention.

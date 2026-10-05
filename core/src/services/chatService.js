@@ -68,6 +68,7 @@ const handleChatRequest = async ({
     ragFilters,
     target,
     ragStore,
+    conversationFeatures = {},
     autoRoute = false,
     taskType = null,
     enableWebSearch = false,
@@ -115,11 +116,11 @@ const handleChatRequest = async ({
         personaName,
         exactPromptVersion == null ? {} : { promptVersion: exactPromptVersion }
     );
-    const userProfile = await getOrCreateProfile(userId);
+    const userProfile = conversationFeatures.profileContext === false ? {} : await getOrCreateProfile(userId);
 
     // Shared prelude, second pass: RAG + web-search.
     // Routing already ran above (no model/target passed here, so it's skipped).
-    const ragRequested = ragEnabled === true || useRag === true || process.env.RAG_ENABLED === 'true';
+    const ragRequested = ragEnabled !== false && useRag !== false && (ragEnabled === true || useRag === true || process.env.RAG_ENABLED === 'true');
     const {
         ragUsed,
         ragSources,
@@ -142,7 +143,7 @@ const handleChatRequest = async ({
 
     const formattedMessages = [
         { role: 'system', content: effectiveSystemPrompt },
-        ...messages.map(m => ({ role: m.role, content: m.content })),
+        ...(conversationFeatures.historyContext === false ? [] : messages).map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: message.trim() }
     ];
 

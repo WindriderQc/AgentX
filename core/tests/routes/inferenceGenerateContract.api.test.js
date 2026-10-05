@@ -634,6 +634,57 @@ describe('RouteDecision attribution is populated', () => {
     hostPreferenceService.getByHost.mockImplementation(async () => null);
   });
 
+  test('a strict task whose only host is claimed gets the busy refusal, never a dispatch', async () => {
+    getModelForTask.mockReturnValue({ model: 'task-model', host: 'primary', url: 'http://primary:11434' });
+    getAdvisoryModelForTask.mockResolvedValue({
+      model: 'task-model', host: null, url: null, source: 'scheduler-blocked',
+      reason: 'task-model is only installed on primary, which is held by an active benchmark claim',
+      recommendation: { blockedByBenchmarkClaim: true },
+    });
+    mockOllamaOk();
+
+    const response = await request(app)
+      .post('/api/inference/generate')
+      .send({ taskType: 'analysis', messages: [{ role: 'user', content: 'hello' }] })
+      .expect(503);
+
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'NO_UNCLAIMED_OLLAMA_HOST',
+      message: expect.stringContaining('held by an active benchmark claim'),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(fallbackAfterRefusal).not.toHaveBeenCalled();
+  });
+
+  test('a strict task refused by runtime admission answers with the refusal code, not a 500', async () => {
+    const { beginInferenceAdmission } = require('../../src/services/inferenceAdmissionService');
+    getModelForTask.mockReturnValue({ model: 'task-model', host: 'primary', url: 'http://primary:11434' });
+    getAdvisoryModelForTask.mockResolvedValue({
+      model: 'task-model', host: 'primary', url: 'http://primary:11434', source: 'scheduler', recommendation: null,
+    });
+    beginInferenceAdmission.mockRejectedValueOnce(Object.assign(
+      new Error('maintenance, workload, UNKNOWN inference, or incompatible residency blocks inference on this host'),
+      { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', statusCode: 503 }
+    ));
+    mockOllamaOk();
+
+    const response = await request(app)
+      .post('/api/inference/generate')
+      .send({ taskType: 'deep_reasoning', messages: [{ role: 'user', content: 'hello' }] })
+      .expect(503);
+
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'RUNTIME_INFERENCE_ADMISSION_DENIED',
+      message: expect.stringContaining('blocks inference on this host'),
+    });
+    expect(response.headers['x-agentx-route-outcome']).not.toBe('response_processing_error');
+    expect(fetch.mock.calls.filter(([url]) => /\/api\/(chat|generate)$/.test(url))).toHaveLength(0);
+    // Strict: the ladder is consulted and has no rung for this task.
+    expect(fallbackAfterRefusal).toHaveBeenCalledTimes(1);
+  });
+
   test('an explicit model or a failure after dispatch is never sent to another rung', async () => {
     fetch.mockImplementation((url) => (String(url).includes('/api/show')
       ? Promise.resolve({ ok: false, status: 404 })

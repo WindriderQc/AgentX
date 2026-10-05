@@ -8,6 +8,10 @@ your documents and compare model quality in one place.
 use Core's shared capabilities. Other deployments use the same repository with
 the capabilities they enable.
 
+The common home at `/` offers Personnel, Famille and Atelier in the full profile.
+The same navigation connects surfaces and services, with system tools behind
+Système. The demo profile shows only its enabled capabilities.
+
 One repository contains several Node.js/Express services, each with its own
 dependencies and tests. Docker Compose runs them together through one launcher.
 

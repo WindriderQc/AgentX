@@ -1,0 +1,477 @@
+/* Nerve Center — operator controls
+   Form fields, notices and the two sections built from them:
+   Operations watch and Inference hosts.
+   Prefix: .nc-
+*/
+
+/* ── Section accents and header summary ───────────────────────── */
+
+.nc-section.ops-watch { border-left-color: #c4b5fd; }
+.nc-section.ops-watch .nc-section-icon { color: #c4b5fd; }
+.nc-section.hosts { border-left-color: #60a5fa; }
+.nc-section.hosts .nc-section-icon { color: #60a5fa; }
+
+.nc-section-summary {
+    margin-right: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: right;
+}
+
+.nc-section-summary.attention { color: #fbbf24; }
+.nc-section-summary.critical { color: #f87171; }
+
+.nc-section-note {
+    max-width: 96ch;
+    margin: 0 0 12px;
+    color: var(--muted);
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.nc-section-note code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    font-size: 0.74rem;
+}
+
+/* ── Fields ───────────────────────────────────────────────────── */
+
+.nc-form-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px 16px;
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.nc-form-bar-title {
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+}
+
+.nc-form-bar-title small {
+    font-size: 0.74rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.nc-form-bar .nc-btn { min-height: 30px; }
+
+.nc-form-bar-status {
+    flex: 1 1 200px;
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.76rem;
+    color: var(--muted);
+}
+
+.nc-form-bar-status.is-error { color: #fca5a5; }
+
+.nc-field {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    font-weight: 400;
+}
+
+.nc-field-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+}
+
+.nc-field-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.nc-input {
+    width: auto;
+    max-width: 100%;
+    height: 30px;
+    padding: 4px 9px;
+    border: 1px solid rgba(124, 240, 255, 0.3);
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.3);
+    color: var(--text-bright);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-size: 0.8rem;
+}
+
+.nc-input::placeholder { color: rgba(147, 160, 181, 0.6); }
+
+.nc-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(124, 240, 255, 0.15);
+}
+
+.nc-input-number { width: 76px; }
+select.nc-input { cursor: pointer; }
+
+/* A checkbox drawn as a switch: the input stays in the tab order. */
+.nc-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 30px;
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.nc-switch input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+}
+
+.nc-switch-track {
+    position: relative;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.nc-switch-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.nc-switch input:checked + .nc-switch-track {
+    border-color: rgba(124, 240, 255, 0.55);
+    background: rgba(124, 240, 255, 0.2);
+}
+
+.nc-switch input:checked + .nc-switch-track::after {
+    transform: translateX(16px);
+    background: var(--accent);
+}
+
+.nc-switch input:focus-visible + .nc-switch-track {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+}
+
+/* ── Notices and tones ────────────────────────────────────────── */
+
+.nc-notice {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 0.8rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.nc-notice[hidden] { display: none; }
+.nc-notice.is-ok { color: #86efac; border-color: rgba(74, 222, 128, 0.25); background: rgba(74, 222, 128, 0.07); }
+.nc-notice.is-warn { color: #fcd34d; border-color: rgba(251, 191, 36, 0.28); background: rgba(251, 191, 36, 0.07); }
+.nc-notice.is-error { color: #fca5a5; border-color: rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.08); }
+
+.nc-host-chip.ok {
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.25);
+    background: rgba(74, 222, 128, 0.08);
+}
+
+.nc-btn.nc-btn-danger {
+    border-color: rgba(248, 113, 113, 0.3);
+    background: rgba(248, 113, 113, 0.08);
+    color: #f87171;
+}
+
+.nc-btn.nc-btn-danger:hover {
+    border-color: #f87171;
+    background: rgba(248, 113, 113, 0.18);
+    box-shadow: 0 4px 12px rgba(248, 113, 113, 0.15);
+}
+
+/* ── Operations watch ─────────────────────────────────────────── */
+
+.nc-watch {
+    padding: 12px 14px;
+    border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--muted);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.nc-watch.is-clear { border-left-color: var(--success); }
+.nc-watch.is-findings { border-left-color: var(--warning); background: rgba(245, 158, 11, 0.045); }
+.nc-watch.is-critical { border-left-color: var(--danger); background: rgba(248, 113, 113, 0.05); }
+
+.nc-watch-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+}
+
+.nc-watch-icon {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--muted);
+    font-size: 1rem;
+}
+
+.nc-watch.is-clear .nc-watch-icon { background: rgba(74, 222, 128, 0.12); color: var(--success); }
+.nc-watch.is-findings .nc-watch-icon { background: rgba(245, 158, 11, 0.14); color: var(--warning); }
+.nc-watch.is-critical .nc-watch-icon { background: rgba(248, 113, 113, 0.14); color: var(--danger); }
+
+.nc-watch-text {
+    flex: 1 1 180px;
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.nc-watch-headline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    color: var(--text-bright);
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.nc-watch-meta {
+    color: var(--muted);
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+}
+
+.nc-watch-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.nc-watch-report {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.24);
+    font-size: 0.85rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* ── Inference hosts ──────────────────────────────────────────── */
+
+.nc-hosts {
+    overflow: hidden;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.015);
+}
+
+.nc-hosts-table thead th {
+    padding: 9px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 10px;
+}
+
+.nc-hosts-table tbody td { padding: 10px 14px; }
+.nc-hosts-table tbody tr:last-child { border-bottom: 0; }
+
+.nc-hosts-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+}
+
+.nc-hosts-name strong {
+    color: var(--text-bright);
+    font-size: 0.9rem;
+}
+
+.nc-hosts-source {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 0.72rem;
+}
+
+.nc-hosts-url {
+    display: inline-block;
+    padding: 3px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.25);
+    color: #cbd5e1;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 0.76rem;
+    white-space: nowrap;
+}
+
+.nc-hosts-table .nc-inline-select {
+    width: auto;
+    min-width: 104px;
+}
+
+.nc-hosts-actions {
+    width: 1%;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.nc-hosts-locked {
+    display: inline-grid;
+    place-items: center;
+    min-width: 36px;
+    color: rgba(147, 160, 181, 0.55);
+    font-size: 0.78rem;
+}
+
+.nc-hosts-empty {
+    padding: 18px 14px;
+    color: var(--muted);
+    text-align: center;
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+
+/* Below the width a five-column table needs, each host is one block: name
+   and address on the left, its controls on the right. */
+@media (max-width: 1000px) {
+    .nc-section-body .nc-hosts-table {
+        display: block;
+        overflow: visible;
+        white-space: normal;
+    }
+
+    .nc-hosts-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+
+    .nc-hosts-table tbody { display: block; }
+
+    .nc-hosts-table tbody tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto auto;
+        align-items: center;
+        gap: 6px 14px;
+        padding: 12px 14px;
+    }
+
+    .nc-hosts-table tbody td {
+        display: block;
+        width: auto;
+        min-width: 0;
+        padding: 0;
+        grid-row: 1 / span 2;
+    }
+
+    .nc-hosts-table tbody td:nth-child(1) { grid-area: 1 / 1; }
+    .nc-hosts-table tbody td:nth-child(2) { grid-area: 2 / 1; }
+    .nc-hosts-table tbody td.nc-hosts-empty { grid-area: 1 / 1 / auto / -1; }
+    /* Level with the selects, which sit under a label. */
+    .nc-hosts-table tbody td.nc-hosts-actions { padding-top: 18px; }
+
+    .nc-hosts-table td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .nc-hosts-url {
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+}
+
+@media (max-width: 768px) {
+    .nc-section-summary {
+        margin-right: 0;
+        text-align: left;
+    }
+
+    .nc-form-bar .nc-field { flex: 1 1 140px; }
+    .nc-form-bar .nc-field .nc-input:not(.nc-input-number) { width: 100%; }
+    .nc-watch-actions { flex: 1 1 100%; }
+}
+
+/* Phone: name and address take the full width, the controls a row below. */
+@media (max-width: 600px) {
+    .nc-hosts-table tbody tr {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+        align-items: end;
+        gap: 10px;
+    }
+
+    .nc-hosts-table tbody td { grid-area: auto; }
+    .nc-hosts-table tbody td:nth-child(-n+2) { grid-area: auto / 1 / auto / -1; }
+    .nc-hosts-table tbody td.nc-hosts-actions { padding-top: 0; }
+
+    .nc-hosts-table .nc-inline-select {
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+    }
+}

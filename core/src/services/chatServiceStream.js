@@ -72,6 +72,7 @@ const handleChatRequestStream = async ({
     ragFilters,
     target,
     ragStore,
+    conversationFeatures = {},
     autoRoute = false,
     taskType = null,
     enableWebSearch = false,
@@ -111,12 +112,13 @@ const handleChatRequestStream = async ({
         const promptResolutionOptions = { preferSystem: authoritativeSystem === true };
         if (exactPromptVersion != null) promptResolutionOptions.promptVersion = exactPromptVersion;
         const activePrompt = await getActivePrompt(system, personaName, promptResolutionOptions);
-        const userProfile = loadUserProfile === false ? {} : await getOrCreateProfile(userId);
+        const userProfile = loadUserProfile === false || conversationFeatures.profileContext === false ? {} : await getOrCreateProfile(userId);
 
         // Shared orchestration prelude — routing + RAG + web-search in one call.
         // onWebSearchStart / onWebSearchDone are threaded through so the
         // SSE-only side effects remain in this file.
         const ragRequested = allowRag !== false
+            && ragEnabled !== false && useRag !== false
             && (ragEnabled === true || useRag === true || process.env.RAG_ENABLED === 'true');
         const {
             routingInfo,
@@ -165,7 +167,7 @@ const handleChatRequestStream = async ({
 
         const formattedMessages = [
             { role: 'system', content: effectiveSystemPrompt },
-            ...messages.map(m => ({ role: m.role, content: m.content })),
+            ...(conversationFeatures.historyContext === false ? [] : messages).map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content: message.trim() }
         ];
 

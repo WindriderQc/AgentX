@@ -408,6 +408,29 @@ describe('chatServiceStream', () => {
     }));
   });
 
+  it('honors explicit RAG off and skips profile/history without skipping turn persistence', async () => {
+    const previousEnv = process.env.RAG_ENABLED; process.env.RAG_ENABLED = 'true';
+    mockFetch.mockResolvedValue({ ok: true, body: (async function* () {
+      yield Buffer.from(JSON.stringify({ message: { content: 'Synthetic reply' }, done: true }) + '\n');
+    })() });
+    try {
+      const onError = jest.fn();
+      await handleChatRequestStream({ userId: 'user-1', model: 'qwen3:14b', message: 'Current question',
+        conversationId: '507f1f77bcf86cd799439011', messages: [{ role: 'assistant', content: 'Synthetic past' }],
+        ragEnabled: true, useRag: false, conversationFeatures: { profileContext: false, historyContext: false },
+        onToken: jest.fn(), onThinking: jest.fn(), onComplete: jest.fn(), onError });
+      expect(onError).not.toHaveBeenCalled();
+      expect(mockGetOrCreateProfile).not.toHaveBeenCalled();
+      expect(require('../../src/services/chat/ragContextBuilder').buildRagContext).not.toHaveBeenCalled();
+      expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({ messages: [
+        { role: 'system', content: 'You are helpful.' }, { role: 'user', content: 'Current question' }
+      ] }));
+      expect(mockPersistConversation).toHaveBeenCalledWith(expect.objectContaining({
+        conversationId: '507f1f77bcf86cd799439011', message: 'Current question', assistantContent: 'Synthetic reply'
+      }));
+    } finally { if (previousEnv === undefined) delete process.env.RAG_ENABLED; else process.env.RAG_ENABLED = previousEnv; }
+  });
+
   it('includes the current user message in the streaming Ollama payload', async () => {
     mockFetch.mockResolvedValue({
       ok: true,

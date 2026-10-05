@@ -166,8 +166,17 @@ function register(api) {
   });
   const nestorClient = app.locals?.agentxNestorContinuity || createNestorClient();
   const conversationEnv = app.locals?.agentxConversationEnv || process.env;
+  const preferenceStore = runtimeServices.conversationPreferences;
+  const preferencesFor = family => {
+    const surface = family ? 'family' : 'nestor', defaults = require('../../src/services/conversationPreferences/catalog').defaultsFor(surface, conversationEnv);
+    return preferenceStore ? preferenceStore.forOwner({ ownerId: 'default', surface, defaults }) : { read: async () => ({ revision: 0, values: defaults }) };
+  };
   const agentClient = app.locals?.agentxNestorAgent || createAgentClient({ env: conversationEnv, continuity: nestorClient });
-  const executeConversation = createConversationExecutor({ agentClient, inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, env: conversationEnv });
+  const recapService = require('../../src/services/conversationRecapService');
+  const personalRecaps = runtimeServices.conversationRecaps.forSession({
+    surface: 'household', packId: 'personal_operator', scopeId: 'personal'
+  });
+  const executeConversation = createConversationExecutor({ agentClient, inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, env: conversationEnv, personalRecaps });
   const requireNativeAgent = async id => {
     if (id === 'main') return;
     const { agents } = await nestorClient({ operation: 'agents' });
@@ -209,6 +218,7 @@ function register(api) {
   // Resolved once at registration: the pack is read-only in the container, and
   // a clip that is not on disk is never advertised nor selected.
   const sounds = soundLibrary.createSoundLibrary({ soundsDir: path.join(publicRoot, 'sounds'), logger }), visuals = createVisuals({ logger }), brain = createBrain({ inference: runtimeServices.inference, conversations, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, logger,
+    preferencesFor: family => preferencesFor(family).read(),
     loadTurns: session => loadSessionAuditRows(conversations, session, { historyTurns: 12 }).then(rows => rows.slice().reverse().map(publicAudit)) });
 
 
@@ -222,9 +232,9 @@ function register(api) {
   app.use('/assets/household', express.static(publicRoot, { fallthrough: false, maxAge: '5m' }));
   app.get('/dad/nestor', (_req, res) => res.redirect(302, '/voice'));
   app.get([
-    '/', '/ecosystem', '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/family', '/voice-personas/debug', '/kids', '/kids/sounds', '/lecture', '/lecture/parents', '/lecture/parents.html',
+    '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/family', '/voice-personas/debug', '/kids', '/kids/sounds', '/lecture', '/lecture/parents', '/lecture/parents.html',
     '/voice', '/voice/native', '/voice.html', '/voix', '/voice-personas', '/voice-personas.html', '/device-check'
-  ], (_req, res) => res.sendFile(path.join(publicRoot, 'index.html')));
+  ], require('../../src/ui/productShell').householdPage(app, path.join(publicRoot, 'index.html')));
   app.get('/api/household/avatar/llmx-face.js', createScriptRelay({ resolveUrl: avatarModuleUrl, fetchWithTimeout,
     unavailable: (res, error) => fail(res, error.status || 503, error.message, error.code || 'AVATAR_UNAVAILABLE') }));
 
@@ -359,6 +369,18 @@ function register(api) {
       error.code || 'NESTOR_CONTINUITY_UNAVAILABLE'); }
   });
   const activePersonaTurns = new Map();
+  if (preferenceStore) require('../../src/services/conversationPreferences/routes').registerPreferenceRoutes(personas, {
+    base: '/preferences', serviceFor: req => {
+      if (req.query.space && !['nestor', 'family'].includes(req.query.space)) throw Object.assign(new Error('Choisis Nestor ou Famille.'), { statusCode: 400 });
+      return preferencesFor(req.query.space === 'family');
+    }, onSaved: req => brain.reconfigure(req.query.space === 'family')
+  });
+  require('../../src/services/conversations/recapRoutes').registerRecapRoutes(personas, {
+    base: '/private/sessions', serviceFor: () => personalRecaps,
+    generate: recapService.localRecapGenerator(runtimeServices.inference, HOUSEHOLD_CONSUMER_CONTRACT),
+    allowDraft: async () => (await preferencesFor(false).read()).values.recapDraft,
+    busy: req => activePersonaTurns.has(req.params.id)
+  });
   require('./session-persona').registerSessionPersonaRoutes(personas, { conversations, personas: runtimeServices.personas,
     ensureCatalog, activePersonaTurns, envelope, fail });
   const openingPayload = (session, active = false) => {
@@ -397,7 +419,7 @@ function register(api) {
   });
   require('./attachment-routes').registerAttachmentRoutes(personas, { express, personalAttachments, envelope, fail });
   const handlePersonaTurn = createPersonaTurnHandler({
-    logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent,
+    logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
     sounds, visuals, brain, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,

@@ -175,7 +175,12 @@ function register(api) {
   }));
   app.use('/api/dsh', registerDshStudioOperations({ express }));
   app.use('/api/hermes', registerHermesOperations({ express, logger, statusProvider: evidence.getHermesStatusEvidence }));
-  app.use('/api/agent-ops', registerAgentOps({ express, logger, projectionProvider: evidence.getAgentOpsProjection }));
+  app.use('/api/agent-ops', registerAgentOps({ express, logger, projectionProvider: evidence.getAgentOpsProjection,
+    // The Team view joins each agent with the persona that presents it.
+    personaProvider: runtimeServices.personas
+      ? async () => (await runtimeServices.personas.list()).filter(row => row.uiConfig?.layoutConfig?.kind === 'personality')
+        .map(row => ({ ...require('../../surfaces/household/persona-catalog').snapshot(row), edited: row.uiConfig.layoutConfig.source?.edited === true }))
+      : null }));
   app.use(
     '/api/runtime-bridges/pipeline-attribution',
     standardJsonParser,

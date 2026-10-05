@@ -117,6 +117,29 @@ describe('portalStatusService', () => {
     expect(status.consistency.issues).toContain(`Mixed product versions: ${productVersion}, 0.1.0`);
   });
 
+  it('reports builds from different revisions as mixed without degrading the product', async () => {
+    global.fetch = jest.fn(async (url) => {
+      const isBenchmark = String(url).includes('3081');
+      const service = isBenchmark ? 'agentx-benchmark' : 'agentx-rag';
+      return {
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          ok: true,
+          status: 'ok',
+          ...identity(service, { revision: isBenchmark ? 'earlier-revision' : 'test-revision' })
+        })
+      };
+    });
+
+    const status = await getPortalStatus({
+      mongodb: { status: 'connected' },
+      ollama: { status: 'connected' }
+    });
+
+    expect(status.summary).toMatchObject({ status: 'ok', degraded: 0, identityStatus: 'mixed' });
+    expect(status.consistency.issues).toEqual(['Mixed build revisions: test-revision, earlier-revision']);
+  });
+
   it('rejects a reachable endpoint that reports the wrong service identity', async () => {
     global.fetch = jest.fn(async () => {
       return {

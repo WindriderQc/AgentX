@@ -103,6 +103,20 @@ python3 integrations/secretary/mail_catchup.py --root "$GMAIL_SECRETARY_ROOT" --
 python3 integrations/secretary/mail_catchup.py --root "$GMAIL_SECRETARY_ROOT" --status
 ```
 
+### Steady review after the catch-up
+
+Once the archive is caught up, the same job keeps it so: run it after each
+archive sync with `--task-type mail_review` and no `--light-model`. It reviews
+only the pages collected since the last run, then stops. `mail_review` is its
+own Core task, so the Nerve Center routing table chooses the model and host;
+the task stays on that host. Each page is one short request and nothing waits
+on the answer, which suits a CPU-resident host and leaves the GPU hosts to
+conversation.
+
+```bash
+python3 integrations/secretary/mail_catchup.py --root "$GMAIL_SECRETARY_ROOT" --task-type mail_review
+```
+
 ## Original messages and completeness
 
 `raw_messages.py sync` stores the original of every message in every archived

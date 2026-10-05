@@ -8,9 +8,14 @@
  * `ollamaUrl` the collector reports. Values are returned only while Data calls
  * the sample fresh; a stale or failing host keeps its age and error instead of
  * frozen numbers. The retired Core host-report collection is not read.
+ *
+ * The host's Ollama service settings, when the collector reads them, travel
+ * separately: they carry their own observation time and are shown whatever the
+ * GPU sample's freshness.
  */
 
 const { fetchData } = require('./dataServiceClient');
+const { normalizeOllamaEnvironment } = require('../../../shared/ollamaServiceEnvironment');
 
 const REQUEST_TIMEOUT_MS = 3000;
 
@@ -58,7 +63,7 @@ function projectHost(dataHost) {
   };
   // Only a fresh snapshot is shown as current values.
   const gpus = freshness === 'fresh' && Array.isArray(dataHost.gpus) ? dataHost.gpus.map(projectGpu) : [];
-  return { telemetry, gpus };
+  return { telemetry, gpus, ollamaEnvironment: normalizeOllamaEnvironment(dataHost.ollamaEnvironment) };
 }
 
 async function readLatest(fetchImpl = fetchData) {

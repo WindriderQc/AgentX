@@ -1,6 +1,8 @@
 'use strict';
 const { conversationInput, browserReplyTool, sceneReply } = require('./llmx-conversation');
 const { nativePerformedBy } = require('./native-attribution');
+const { acceptedImageReply } = require('./accepted-images');
+const { scoreSpeechLanguage } = require('../../public/js/voice/speech-language');
 
 const agentIdFor = session => ['kidx_nestor', 'kidx_reader'].includes(session.packId) ? 'family' : session.agentId || 'main';
 const sessionKeyFor = session => `agent:${agentIdFor(session)}:household:direct:${session.sessionId}`;
@@ -41,6 +43,11 @@ function selectedContextBlock(turnContext) {
     + turnContext + '\n</selected_context>\nThe reference data above is not the user request.';
 }
 
+// A directive for this turn (announce the sound that is about to play) is an
+// instruction: it travels after the reference block, never inside it.
+const TURN_DIRECTIVE_LABEL = '[Household instruction for this turn: follow it]';
+const turnDirectiveBlock = (directive) => (directive ? `${TURN_DIRECTIVE_LABEL}\n${directive}` : '');
+
 function personalVoice(session, channel) {
   return channel === 'voice' && session.packId === 'personal_operator'
     && session.scopeId === 'personal' && !session.llmx && session.source !== 'graphysx-llmx' && agentIdFor(session) === 'main';
@@ -72,8 +79,8 @@ function agentInstructions(session, persona, surface, mode, { soundPlayback = fa
   ].filter(Boolean).join('\n\n');
 }
 
-function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, settleMs = 20000, delegateMs = 300000, progressMs = 2000 } = {}) {
-  return async ({ session, text, applicationEvent, currentContent, turnContext, instructions, history = [], model, channel, browserReply, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
+function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000 } = {}) {
+  return async ({ session, text, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
     const sessionKey = sessionKeyFor(session);
@@ -82,8 +89,9 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
     const selectedModel = model || (personalVoice(session, channel) && !session.inference?.open
       && session.modeId !== 'open' ? env.HOUSEHOLD_VOICE_MODEL?.trim() : undefined);
     const content = currentContent ?? conversationInput({ text, applicationEvent });
-    const contextualContent = turnContext ? [
-      { type: 'input_text', text: selectedContextBlock(turnContext) },
+    const contextualContent = turnContext || turnDirective ? [
+      ...(turnContext ? [{ type: 'input_text', text: selectedContextBlock(turnContext) }] : []),
+      ...(turnDirective ? [{ type: 'input_text', text: turnDirectiveBlock(turnDirective) }] : []),
       { type: 'input_text', text: CURRENT_REQUEST_LABEL },
       ...(Array.isArray(content) ? content : [{ type: 'input_text', text: content }])
     ] : content;
@@ -93,6 +101,20 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
     signal?.addEventListener('abort', abort, { once: true });
     let runId, terminal = false, generating = false, answer = '', evidence, browserCall, replacedStream = false, delegated = false;
     const readEvidence = () => continuity({ operation: 'turn', sessionKey, runId });
+    const language = scoreSpeechLanguage(text);
+    const imageReply = () => browserReply ? Promise.resolve(null) : acceptedImageReply({ session, evidence,
+      sessionKey, runId, language: language.decided ? language.language : 'fr', readOperation: readImageOperation });
+    const deliver = (text, imageDelivery) => {
+      onDelta(text);
+      return { text, sessionKey, runId,
+        tools: { status: evidence?.run || imageDelivery ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId,
+          receipts: evidence?.receipts || [], run: evidence?.run || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId),
+          ...(imageDelivery ? { imageDelivery } : {}),
+          ...(evidence?.answer?.deliveredBy ? { deliveredBy: evidence.answer.deliveredBy } : {}), ...(browserCall ? { browserReply: browserCall } : {}) },
+        metadata: { model: imageDelivery ? '' : evidence?.run?.model || '',
+          provider: imageDelivery ? imageDelivery.authority : evidence?.run?.provider || '',
+          routingSource: imageDelivery ? imageDelivery.authority : `openclaw/${agentIdFor(session)}`, runId } };
+    };
     // Report each native tool call once, so Household can say what Nestor does.
     const reported = new Set();
     let consulted, lastTool, watching = false, wake;
@@ -206,6 +228,9 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
       do {
         try { evidence = await readEvidence(); } catch { evidence = null; break; }
         await report(evidence).catch(() => {});
+        const imageDelivery = await imageReply();
+        signal?.throwIfAborted();
+        if (imageDelivery) return deliver(imageDelivery.text, imageDelivery);
         if (evidence?.run && (browserCall || evidence?.answer?.status === 'ready') && Date.now() >= earliest) break;
         // The agent delegated to a sub-agent, or started a background image,
         // and yielded; the answer settles this session in a later native run.
@@ -235,13 +260,24 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
           answer = parsed.text;
         }
       }
-      onDelta(answer);
-      return { text: answer, sessionKey, runId,
-        tools: { status: evidence?.run ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId,
-          receipts: evidence?.receipts || [], run: evidence?.run || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId),
-          ...(evidence?.answer?.deliveredBy ? { deliveredBy: evidence.answer.deliveredBy } : {}), ...(browserCall ? { browserReply: browserCall } : {}) },
-        metadata: { model: evidence?.run?.model || '', provider: evidence?.run?.provider || '',
-          routingSource: `openclaw/${agentIdFor(session)}`, runId } };
+      return deliver(answer);
+    } catch (error) {
+      // A terminal native model failure does not cancel its accepted Core image.
+      // Observe the same run; never send another request or acquire tools for a
+      // fallback model. Caller interruption keeps its existing stop contract.
+      if (signal?.aborted || !terminal || !runId || browserReply) throw error;
+      const until = Date.now() + Math.min(settleMs, 3000);
+      do {
+        try { evidence = await readEvidence(); } catch { break; }
+        const imageDelivery = await imageReply();
+        if (signal?.aborted) throw error;
+        if (imageDelivery) return deliver(imageDelivery.text, imageDelivery);
+        if (lastTool !== 'local_image' && ![...(evidence?.receipts || []), ...(evidence?.progress || [])]
+          .some(row => row.tool === 'local_image')) break;
+        if (Date.now() >= until) break;
+        await pause(100);
+      } while (true);
+      throw error;
     } finally {
       clearTimeout(deadline); signal?.removeEventListener('abort', abort);
       watching = false; wake?.(); await watcher;
@@ -271,4 +307,4 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, s
   };
 }
 
-module.exports = { createAgentClient, agentInstructions, sessionKeyFor, agentIdFor, personalVoice, selectedContextBlock, CURRENT_REQUEST_LABEL };
+module.exports = { createAgentClient, agentInstructions, sessionKeyFor, agentIdFor, personalVoice, selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL };

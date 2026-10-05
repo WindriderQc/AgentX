@@ -98,6 +98,16 @@ describe('ecosystemEvidenceTrust', () => {
     expect(result.checks.find((check) => check.id === 'runtime-identity').status).toBe('fail');
   });
 
+  it('accepts builds that only differ by revision as a consistent runtime', () => {
+    const consistent = assessEcosystemEvidence(snapshot());
+    const result = assessEcosystemEvidence(snapshot({
+      identityConsistency: { status: 'mixed', issues: ['Mixed build revisions: abc123, def456'] },
+    }));
+
+    expect(result.status).toBe(consistent.status);
+    expect(result.checks.find((check) => check.id === 'runtime-identity')).toMatchObject({ status: 'pass', detail: 'mixed' });
+  });
+
   it('treats a materially future observation as a contradiction', () => {
     const future = snapshot();
     future.cluster[0].checkedAt = '2026-08-28T12:01:00.000Z';

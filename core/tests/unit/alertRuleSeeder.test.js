@@ -66,4 +66,17 @@ describe('alertRuleSeeder retired built-ins', () => {
     expect(AlertRule.find).toHaveBeenCalledWith({ enabled: true });
     expect(alertService.loadRules).toHaveBeenCalledWith([]);
   });
+
+  test('refreshes a built-in message the operator never edited, and leaves a customised one', async () => {
+    const defaults = require('../../config/default-alert-rules.json');
+    const rule = defaults.find(item => item.id === 'network-new-device');
+    AlertRule.findOne.mockImplementation(async ({ ruleId }) => ({
+      builtIn: true, title: 'existing title', renotifyMs: 1,
+      message: ruleId === 'network-new-device' ? rule.previousMessages[0] : 'my own wording'
+    }));
+    await seedDefaultRules();
+    expect(AlertRule.updateOne).toHaveBeenCalledTimes(1);
+    expect(AlertRule.updateOne).toHaveBeenCalledWith({ ruleId: 'network-new-device' }, { $set: { message: rule.message } });
+    expect(rule.message).toContain('{{guess}}');
+  });
 });

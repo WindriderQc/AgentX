@@ -68,10 +68,17 @@ test('a restored secret says it was not retained', () => {
   assert.match(container.text(), /non conservé/);
 });
 
-test('links only open http(s) targets', () => {
+test('links open http(s) targets and exact same-origin Core image operations', () => {
   assert.equal(safeUrl('https://example.test/a'), 'https://example.test/a');
   assert.equal(safeUrl('www.example.test'), 'https://www.example.test/');
   assert.equal(safeUrl('javascript:alert(1)'), '');
+  const studio = '/images?operation=33333333-3333-4333-8333-333333333333';
+  assert.equal(safeUrl(studio), studio);
+  assert.equal(safeUrl('//external.test/images?operation=33333333-3333-4333-8333-333333333333'), '');
+  assert.equal(safeUrl(studio + '&redirect=https://external.test'), '');
+  const container = new Element('section');
+  create(container).add({ id: 'studio', kind: 'link', title: 'Studio d’images', body: studio });
+  assert.equal(container.find(element => element.tagName === 'A').href, studio);
 });
 
 test('the page loads the board before the conversation that mounts it', () => {

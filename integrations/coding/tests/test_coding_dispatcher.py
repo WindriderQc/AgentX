@@ -336,6 +336,19 @@ class CodingDispatcherTests(unittest.TestCase):
             "https://agentx.example/pipeline",
         )
 
+    def test_verifier_repair_turn_requires_explicit_bounded_profile_setting(self):
+        deployed = config()
+        profile = deployed["verificationProfiles"]["agentx-dispatcher-tests/v1"]
+        adapter = dispatcher.build_adapter(config=deployed, automation=automation())
+        self.assertNotIn("--verification-repair-turns", adapter.command(task(), automation()))
+        profile["repairTurns"] = 1
+        self.assertEqual(adapter.command(task(), automation()).count("--verification-repair-turns"), 1)
+        for invalid in (-1, 2, True, "1"):
+            with self.subTest(value=invalid):
+                profile["repairTurns"] = invalid
+                with self.assertRaisesRegex(dispatcher.DispatcherError, "repairTurns"):
+                    adapter.command(task(), automation())
+
     def test_partial_tariff_fails_closed_instead_of_building_a_command(self):
         for field, value in (
             ("tariffCurrency", "CAD"),

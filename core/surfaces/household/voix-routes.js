@@ -1,4 +1,5 @@
 'use strict';
+const { matchesVoixMemoryTurn } = require('./voice-memory-turns');
 
 // VoiX HTTP routes of the Household surface: the browser-facing /api/voix
 // proxy and the native Nestor voice-memory consumer. Household's register()
@@ -320,6 +321,9 @@ function registerVoixRoutes(app, {
         audit = await conversations.getTurn({ traceId });
         duplicate = true;
       }
+    }
+    if (!matchesVoixMemoryTurn(audit, turn)) {
+      return fail(res, 409, 'This native turn identity belongs to different completed content; the original was preserved.', 'VOIX_MEMORY_TURN_CONFLICT');
     }
     setImmediate(() => {
       drainVoixMemoryAudits().catch((error) => logger?.error?.('VoiX memory drain failed', { error: error.message }));

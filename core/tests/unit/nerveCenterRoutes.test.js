@@ -487,7 +487,9 @@ describe('Nerve Center GPU status from Data', () => {
         { hostId: 'gpu-primary', collectorId: 'gpu-agent', ollamaUrl: 'http://primary:11434', freshness: 'fresh',
           ageMs: 4000, lastSampleAt: '2026-09-25T12:00:00.000Z', gpus: [gpu] },
         { hostId: 'gpu-secondary', ollamaUrl: 'http://secondary:11434', freshness: 'stale', ageMs: 3600000,
-          lastError: 'ssh: connect timed out', consecutiveFailures: 40, gpus: [gpu] }
+          lastError: 'ssh: connect timed out', consecutiveFailures: 40, gpus: [gpu],
+          ollamaEnvironment: { source: 'systemd', unit: 'ollama.service', ok: true, observedAt: '2026-09-25T11:00:00Z',
+            values: { OLLAMA_KV_CACHE_TYPE: 'q8_0', HF_TOKEN: 'synthetic-secret' }, rejectedKeys: [] } }
       ] } });
     });
 
@@ -503,7 +505,15 @@ describe('Nerve Center GPU status from Data', () => {
       utilization: null, temperature: null, gpus: [], gpuCount: 0,
       telemetry: { status: 'stale', ageMs: 3600000, lastError: 'ssh: connect timed out' }
     });
+    // Ollama settings carry their own observation time, shown even when the GPU sample is stale.
+    expect(byId.secondary.ollamaEnvironment).toMatchObject({
+      source: 'systemd', unit: 'ollama.service', ok: true, observedAt: '2026-09-25T11:00:00.000Z',
+      values: { OLLAMA_KV_CACHE_TYPE: 'q8_0' }
+    });
+    expect(JSON.stringify(byId.secondary.ollamaEnvironment)).not.toContain('synthetic-secret');
+    expect(byId.primary.ollamaEnvironment).toBeNull();
     expect(byId.tertiary.telemetry).toMatchObject({ status: 'no_collector_host' });
+    expect(byId.tertiary.ollamaEnvironment).toBeNull();
   });
 
   it('reports Data as unavailable without failing the cluster view', async () => {

@@ -101,6 +101,19 @@ class GmailSecretaryWatchdogTest(unittest.TestCase):
                 "complete",
             )
 
+    def test_action_receipts_are_not_read_as_tool_outcomes(self):
+        now = datetime(2026, 10, 3, 6, 40, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            audit = Path(directory) / "audit.jsonl"
+            audit.write_text("\n".join([
+                '{"at":"2026-10-03T06:38:11.465Z","tool":"gmail_secretary_backlog_next","status":"ok","outcome":"empty"}',
+                '{"at":"2026-10-03T06:38:11.506Z","schema":"agentx.tool-action-receipt/v1","tool":"gmail_secretary_backlog_next","phase":"observed","status":"observed"}',
+                "not json",
+            ]), encoding="utf-8")
+            records = MODULE.read_audit_records(audit)
+        self.assertEqual([record["status"] for record in records], ["ok"])
+        MODULE.check_audit_records_health(records, now=now)
+
     def test_incomplete_triage_audit_fails_after_grace(self):
         with tempfile.TemporaryDirectory() as directory:
             audit = Path(directory) / "audit.jsonl"

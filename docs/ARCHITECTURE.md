@@ -22,7 +22,9 @@ Qdrant stay internal.
 
 Distribution uses optional profiles and capabilities from this one repository.
 Concrete host settings, credentials, personal data and backups are external
-runtime material. There is no separate private operations repository.
+runtime material. No other repository holds product or operations code; an
+instance may keep a private instance repository for its own configuration,
+runbooks and assets ([ADR 0001](adr/0001-one-repository.md)).
 
 ## Ownership
 
@@ -57,6 +59,10 @@ is strict and never changes model
 ### Fallback matrix
 
 Four mechanisms may retry or substitute a model call. None escalates to cloud.
+A cloud model is only ever reached by an explicit lane a surface owner chose:
+PsyX's frontier lane sends a turn to an OpenClaw agent
+(`core/src/services/frontier/openclawAgentClient.js`) when its user setting asks
+for it, and falls back to the local route, visibly, when that agent fails.
 
 | Mechanism | Applies to | Trigger | Requested vs used | Replay of an executed request | Control |
 | --- | --- | --- | --- | --- | --- |
@@ -135,6 +141,48 @@ in, approve or reach personal tasks.
 
 ### Conversations
 
+Core's owner-scoped exchange store (`services/conversations/`) preserves the
+accepted request and ordered response bytes for Playground chat and streaming.
+Authenticated server middleware selects the owner; public receipt fields cannot
+select another exchange. Recovery checks content hashes and packet counts before
+returning complete content. An identical completed retry replays its stored
+HTTP response without another inference; an uncertain or interrupted outcome
+never authorizes reexecution. A concurrent local retry can wait up to five
+seconds for its original delivery to settle.
+
+Canonical conversations store immutable BSON pages and complete binary payloads
+behind an atomic reference in `Conversation`. Model reads hydrate the complete
+messages; embedded legacy histories move to pages on their next content write.
+Message IDs, feedback, attachments and audit evidence retain their contracts.
+One durable owner fence spans content writes and canonical publication, including
+session counters and conditional review updates in the same root command.
+Final writes retain the caller's scope and version predicates; stale saves refuse.
+Playground publishers reuse their admitted fence through an owner-bound context.
+Search indexes complete current content rather than preview fragments or old
+pages, and applies exclusions across the conversation. Full exports hydrate
+before writing any output. Missing or corrupt content refuses explicitly.
+Publication and erasure share the owner's scope
+gate: an erased exchange cannot publish a late first conversation, and a late
+browser stopped/failed outcome cannot restore its erased turn identity.
+
+Ordinary admitted Ollama calls preserve complete input with `truncate: false`;
+generation and chat also disable context shifting with `shift: false`. The
+shared buffered and streaming executors qualify the runtime before admission.
+An unavailable or unqualified stable version returns
+`INFERENCE_CONTEXT_POLICY_UNAVAILABLE` without dispatch. Benchmark/Profiler
+requests retain their exact probes only under a Core-owned workload identity
+validated by distributed admission. Internal session-hold warmups retain their
+own runtime preparation contract. Neither caller context values nor benchmarked
+Modelfiles are rewritten by this policy.
+
+Content writes and erasure share a durable Mongo owner fence, including across
+Core workers. Erasure closes admission before waiting for an existing writer,
+then deletes the owner's pages, payload chunks and exchange packets. It leaves
+only the identity and erasure tombstones needed to reject a replay. A dead writer
+or unknown Mongo mutation outcome retains its exact fence: elapsed time does
+not prove that a database command stopped, so no TTL steals this ownership.
+These primitives work with standalone Mongo and require no transactions.
+
 Surface sessions and turns use Core's `Conversation` collection through
 `surfaceConversationService`. Session settings are embedded in the conversation;
 text lives in its normal messages, and the turn's tool, safety, voice and scene
@@ -156,6 +204,31 @@ payload exposes speaker both as `data.speaker` and `data.reply.speaker`.
 The recorded voice describes the server's requested synthesis, not a playback
 receipt. Earlier audits retain their captured identity and voice when session
 presentation or instance settings change.
+
+Core's `runtimeServices.conversationRecaps` binds an exact owner/prompt or
+surface/pack/scope in server code. The `agentx.conversation-recap/v1` contract
+reads the latest confirmed point, prepares an optional local-inference draft and
+saves the person's summary, takeaway and next step in `Conversation.sessionRecap`.
+Drafts include actual whole-message coverage and write nothing. Saved edits
+require the previous recap revision and canonical transcript fingerprint; the
+atomic root version refuses concurrent turns or editors. Canonical transcript
+references support metadata-only continuity reads. Existing exports and erasure
+include the embedded point. PsyX and personal Nestor share its routes and browser
+editor, clear private drafts on locking/navigation, and carry confirmed points
+as reference context. Family conversations do not receive personal points.
+
+Core's `runtimeServices.conversationPreferences.forOwner` binds an exact server-selected
+owner and surface. The `agentx.conversation-preferences/v1` contract reads an
+applicable catalog and environment defaults without writing. Explicit overrides
+live in `ConversationPreferences`; a unique owner/surface index and revision compare
+refuse concurrent editors. Playground, PsyX, personal Nestor and Famille are
+independent. A shared browser editor applies presets only after confirmation.
+Surfaces use the selected optional context, inference and background-work switches;
+saved content remains available for manual reading and export. Settings changes
+invalidate obsolete background results without cancelling admitted PsyX inference.
+Famille preferences are editable through the private parental space. Access,
+transcript integrity and deterministic safety checks remain mandatory. Native
+OpenClaw memory, history and tools retain their own configuration authority.
 
 Surface records use a distinct internal user namespace and are not exposed by
 the default Playground history API. PsyX transcripts are namespaced away from
@@ -293,6 +366,27 @@ support. OpenClaw receives native image blocks, with bounded earlier attachment
 material rehydrated on later turns. Extracted document text is not indexed as
 memory. See [attachment behavior and limits](api/NESTOR_ATTACHMENTS.md).
 
+### Local images
+
+Core's optional image capability owns `ImageOperation`, idempotent action
+identities, execution state, GPU admission and verified archive references.
+The full-profile `/images` page and private native `local_image` tool compose
+that capability. ComfyUI only executes bounded server-owned graphs; callers
+cannot submit arbitrary workflows. Generation remains adult-only even when
+the instance archive is visible in household photos.
+
+The worker reserves every configured GPU consumer endpoint through the existing
+runtime coordinator. An optional private physical-resource map also excludes
+Core admissions through other endpoints on the same GPU. Stored resource IDs
+and an atomic topology fingerprint retain that fence across processes and
+configuration changes. CPU-only endpoints remain distinct. This map does not
+control unmanaged speech or other CUDA consumers. The image worker's durable
+journal precedes resident unloading and prompt submission. Completion requires
+terminal job evidence, archive validation and verified resident restoration. Lost responses and restarts preserve an unknown
+outcome instead of submitting another prompt. Archive retry is independent of
+GPU execution. Native tools return asynchronously so the caller's agent loop
+can release a shared GPU before image preparation. See [local images](LOCAL_IMAGES.md).
+
 ### Memory
 
 `memoryReadService.forAudience` binds owner or household access in trusted
@@ -326,7 +420,8 @@ private evidence. Recording the same thread again replaces its entry, and Mongo
 removes entries `MAIL_JOURNAL_RETENTION_DAYS` (default 365) after the mail's
 date. The mail assistant and owner Nestor reach it with the OpenClaw
 `mail_journal` tool through `/api/consumers/nestor/v1/mail-journal`; a lasting
-fact drawn from mail is still saved as one note. There is no household reader.
+fact drawn from mail is still saved as one note. There is no household reader;
+PsyX's dream reads recent entries in-process as context about the owner's life.
 
 Sensitive identifiers (NIQ, NAS, REEE, account numbers named as such, and card
 numbers that pass the Luhn check) never stay in a note or journal text when
@@ -366,7 +461,14 @@ distributable chat/model/RAG/benchmark experience. Personal capabilities such as
 finance (`/api/finance`, `/finance`) are in the demo exclusion list of
 `shared/agentxRuntimeProfile.js`, and their daemons start in `full` only.
 
-- `core/surfaces/household`: the French home, Nestor, Family, Reader and
+Core owns the common home (`/`, `/portal`, `/ecosystem`).
+`shared/productSpaces.js` defines the browser destination catalogue;
+`shared/productNavigation.js` applies profile filtering and configured service
+authorities. `core/src/ui/productShell.js` renders the same EJS navigation in
+static surfaces. The landing exposes no private application content; adult
+pages and APIs retain the parental gateway guard.
+
+- `core/surfaces/household`: Nestor, Family, Reader and
   animal-sound UI. Its HTTP and MCP handlers call Core capabilities and declare
   no session, audit, task or profile models of their own. The server derives a
   new session's agent from a personality's declared agent binding; a tone-only
@@ -430,7 +532,12 @@ finance (`/api/finance`, `/finance`) are in the demo exclusion list of
   rules. After each completed turn a background review (router task
   `PSYX_REVIEW_TASK`, default `deep_reasoning`) writes a conversation digest and
   memory proposals into PsyX state; proposals enter memory only when the user
-  accepts them. Browser access uses the shared [parental session](PARENTAL_ACCESS.md);
+  accepts them. Between sessions a dream reads selected context, with the owner's
+  notes, open tasks and mail journal read in-process and read-only, and writes a
+  portrait and memory changes directly into PsyX state, each one logged and
+  undoable. Coverage and verified quotation references describe the material
+  supplied to that inference; quotation matching does not validate hypotheses.
+  Browser access uses the shared [parental session](PARENTAL_ACCESS.md);
   native consumers keep a separate access token.
 - `core/surfaces/data-toolbox`: UI served by Core, consuming the optional
   Data process over HTTP. It is read-only except for naming a network device

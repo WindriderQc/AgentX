@@ -42,6 +42,9 @@ async function prepareInferenceRuntime(request, policy, overrides = {}) {
           options.num_ctx = Math.round(contextSize);
           numCtxSource = 'host_preference_pin';
         }
+        // A different num_thread reloads the runner, so inference reuses the pin's.
+        const numThread = Number(pin.numThread);
+        if (options.num_thread == null && Number.isSafeInteger(numThread) && numThread > 0) options.num_thread = numThread;
       }
     }
   }

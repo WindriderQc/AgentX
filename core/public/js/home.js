@@ -33,6 +33,7 @@
     const ecosystemIssues = Array.isArray(ecosystem.issues) ? ecosystem.issues : [];
     consistencyDetail.textContent = [
       consistency.status === 'degraded' ? 'Deployment mismatch' :
+        consistency.status === 'mixed' ? 'Services run different builds' :
         consistency.status === 'ok' ? 'Deployment identity matches' : 'Build identity unverified',
       ...issues,
       ecosystem.status ? 'Ecosystem: ' + ecosystem.status : '',
@@ -43,7 +44,7 @@
   }
 
   async function loadReadiness() {
-    if (loading) return;
+    if (loading || document.documentElement?.dataset.agentxAccess === 'locked') return;
     loading = true;
     refresh.disabled = true;
     const controller = new AbortController();
@@ -57,6 +58,7 @@
       if (!response.ok) throw new Error('Status unavailable');
       const payload = await response.json();
       const routingPayload = routingResponse?.ok ? await routingResponse.json() : null;
+      if (document.documentElement?.dataset.agentxAccess === 'locked') return;
       const routing = routingPayload?.data || routingPayload;
       const services = Array.isArray(payload.services) ? payload.services : [];
       const core = services.find(service => service.id === 'core');
@@ -74,7 +76,7 @@
         present('attention', 'Chat route not observed', 'Open Chat to inspect or choose an installed model.', 'fa-circle-question');
       } else if (!routeReady) {
         present('attention', 'Chat route needs attention', 'Open Chat, then Take the controls to choose an installed model.', 'fa-triangle-exclamation');
-      } else if (payload.consistency?.status !== 'ok') {
+      } else if (!['ok', 'mixed'].includes(payload.consistency?.status)) {
         present('attention', 'Deployment needs attention', 'Open System details to inspect the service versions.', 'fa-triangle-exclamation');
       } else if (payload.summary?.status !== 'ok') {
         present('attention', 'Chat route is available', 'Some tools need attention; open System details.', 'fa-triangle-exclamation');
@@ -99,6 +101,8 @@
     });
   });
   refresh.addEventListener('click', loadReadiness);
-  loadReadiness();
-  setInterval(loadReadiness, 20000);
+  const healthPanel = document.getElementById('homeHealth');
+  healthPanel?.addEventListener('toggle', () => { if (healthPanel.open) loadReadiness(); });
+  if (healthPanel?.open) loadReadiness();
+  setInterval(() => { if (healthPanel?.open && document.documentElement?.dataset.agentxAccess !== 'locked') loadReadiness(); }, 20000);
 }());

@@ -21,6 +21,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlparse
 from urllib.request import Request, urlopen
 
+try:
+    from integrations.coding import clawdx_dispatch_remote
+except ModuleNotFoundError:  # direct execution from the scripts directory
+    import clawdx_dispatch_remote  # type: ignore
+
 
 PROMOTION_SCHEMA = "agentx.coding-promotion/v1"
 WORKER_RECEIPT_SCHEMA = "agentx.coding-worker-snapshot/v1"
@@ -144,6 +149,19 @@ def git_zpaths(repo: Path, args: list[str]) -> set[str]:
         for item in completed.stdout.split(b"\0")
         if item
     }
+
+
+def verify_accepted_snapshot(host: str, worker_repo: Path, command: str,
+                             base_revision: str, timeout: int) -> str:
+    if not host:
+        raise PromotionError("reviewed verifier host is unavailable")
+    code, output = clawdx_dispatch_remote.run_independent_verification(
+        host, str(worker_repo), command, expected_revision=base_revision,
+        timeout=timeout,
+    )
+    if code != 0:
+        raise PromotionError(f"sandboxed promotion verification failed with exit {code}")
+    return output
 
 
 def changed_snapshot(repo: Path) -> dict[str, Any]:
@@ -844,10 +862,10 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
             ["git", "-C", str(worker_repo), "merge-base", "--is-ancestor", base_revision, "origin/main"],
             env=environment,
         )
-        verify = run_command(
-            ["bash", "-lc", str(verification["command"])],
-            cwd=worker_repo,
-            timeout=int(verification.get("timeoutSeconds") or 900),
+        verify_output = verify_accepted_snapshot(
+            str(profile.get("host") or ""), worker_repo,
+            str(verification["command"]), base_revision,
+            int(verification.get("timeoutSeconds") or 900),
         )
         remote_sha = remote_branch_sha(worker_repo, branch, env=environment)
         pr = existing_pr(repository, branch, env=environment)
@@ -899,7 +917,7 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
         "verification": {
             "status": "passed",
             "commandFingerprint": hashlib.sha256(str(verification["command"]).encode("utf-8")).hexdigest(),
-            "outputFingerprint": hashlib.sha256(verify.stdout.encode("utf-8")).hexdigest(),
+            "outputFingerprint": hashlib.sha256(verify_output.encode("utf-8")).hexdigest(),
         },
         "preReview": {
             "schema": PRE_REVIEW_SCHEMA,

@@ -40,11 +40,13 @@ function createConversationAdapter({ conversationLifecycle: core }) {
       for (const row of await all(userId)) { const session = await getSession(userId, row.id); if (session) items.push(session); }
       return items;
     },
-    async context(userId, id, limit = 40) {
+    async context(userId, id, limit = 40, { timestamps = false, withCoverage = false } = {}) {
       const session = await getSession(userId, id);
       if (!session || session.lifecycle.status === 'archived') return null;
-      return session.messages.filter(m => ['user', 'assistant', 'action'].includes(m.role)).slice(-limit)
-        .map(m => ({ role: m.role === 'action' ? 'user' : m.role, content: m.content }));
+      const eligible = session.messages.filter(m => ['user', 'assistant', 'action'].includes(m.role));
+      const messages = eligible.slice(-limit)
+        .map(m => ({ role: m.role === 'action' ? 'user' : m.role, content: m.content, ...(timestamps ? { createdAt: m.createdAt } : {}) }));
+      return withCoverage ? { messages, availableMessages: eligible.length } : messages;
     },
     async saveCompletedTurn(input) {
       return view(await core.recordCompletedTurn({ ...input, ...scope(input.userId), surface: 'psyx', promptVersion: PROMPT_VERSION }));

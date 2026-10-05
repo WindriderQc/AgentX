@@ -273,4 +273,4 @@ async function restoreBenchmarkRuntime(hostUrl, snapshot, benchmarkClaim, { warm
   };
 }
 
-module.exports = { restoreBenchmarkRuntime };
+module.exports = { restoreBenchmarkRuntime, placementRestored };

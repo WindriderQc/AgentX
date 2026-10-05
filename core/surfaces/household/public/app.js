@@ -96,30 +96,6 @@
     const family = path === '/panel' || path.startsWith('/kids') || path === '/lecture';
     const personal = path.startsWith('/dad') || path.startsWith('/voice-personas') || path.startsWith('/lecture/parents') || ['/voice', '/voice.html', '/voix'].includes(path);
     document.getElementById('readingVoiceSettings').hidden = !(family || personal);
-    const section = family ? 'family' : personal ? 'personal' : ['/voice', '/voice.html', '/voix', '/voice/native'].includes(path) ? 'conversation' : ['/', '/ecosystem'].includes(path) ? 'home' : null;
-    document.querySelectorAll('.primary-nav a').forEach(link => {
-      const active = link.dataset.section === section;
-      link.classList.toggle('active', active);
-      if (active) link.setAttribute('aria-current', link.pathname === path ? 'page' : 'location');
-      else link.removeAttribute('aria-current');
-    });
-    const pages = family ? [['/panel', 'Avec Nestor'], ['/kids', 'Enfants'], ['/lecture', 'Lecture']]
-      : personal ? [['/dad', 'Avec mon agent'], ['/dad/day', 'Ma journée'], ['/dad/memories', 'Souvenirs'], ['/dad/family', 'Suivi familial']] : [];
-    const subnav = document.getElementById('householdSectionNav');
-    subnav.hidden = !pages.length;
-    subnav.innerHTML = pages.map(([href, label]) => {
-      const active = path === href || (href === '/kids' && path.startsWith('/kids/'));
-      return `<a href="${href}"${active ? ' class="active" aria-current="page"' : ''}>${label}</a>`;
-    }).join('');
-    const tools = document.getElementById('householdTools');
-    const close = (restoreFocus = false) => {
-      if (!tools.open) return;
-      tools.open = false;
-      if (restoreFocus) tools.querySelector('summary').focus();
-    };
-    document.addEventListener('keydown', event => { if (event.key === 'Escape' && tools.open) { event.preventDefault(); close(true); } });
-    document.addEventListener('click', event => { if (!tools.contains(event.target)) close(); });
-    tools.addEventListener('focusout', event => { if (!tools.contains(event.relatedTarget)) close(); });
   }
 
   function clock() {
@@ -447,157 +423,6 @@
     });
   }
 
-  function ecosystemLiveBadge(key, label = 'checking live') {
-    return `<span class="ecosystem-live"><span class="status-dot" data-ecosystem-dot="${esc(key)}" aria-hidden="true"></span><small data-ecosystem-status="${esc(key)}">${esc(label)}</small></span>`;
-  }
-
-  function ecosystemWorkspace({ href, glyph, title, description, liveKey = '', note = '', preflight = '' }) {
-    const status = liveKey ? ecosystemLiveBadge(liveKey) : `<small class="ecosystem-note">${esc(note)}</small>`;
-    const preflightAttr = preflight ? ` data-launch-preflight="${esc(preflight)}"` : '';
-    return `<a class="ecosystem-workspace" href="${esc(href)}"${preflightAttr}><span class="ecosystem-glyph" aria-hidden="true">${esc(glyph)}</span><span class="ecosystem-workspace-copy"><strong>${esc(title)}</strong><small>${esc(description)}</small></span>${status}<span class="ecosystem-arrow" aria-hidden="true">→</span></a>`;
-  }
-
-  // One-click launches leave AgentX for a private runtime. Ask the server
-  // first whether the launch can succeed, so a failure names its cause instead
-  // of ending in a blank tab: a product/configuration fault, an offline
-  // gateway, or (when every server-side check passed) a browser policy or
-  // extension blocking the launched host.
-  function attachLaunchPreflights(root) {
-    root.querySelectorAll('a[data-launch-preflight]').forEach((link) => {
-      link.addEventListener('click', async (event) => {
-        event.preventDefault();
-        const target = link.dataset.launchPreflight;
-        try {
-          const preflight = await api(`/api/openclaw/control-launch-preflight/${encodeURIComponent(target)}`);
-          if (preflight.status !== 'ok') {
-            const failing = (preflight.checks || []).filter((check) => check.state === 'blocked').map((check) => check.id).join(', ');
-            toast(`OpenClaw ne peut pas être lancé : ${preflight.code || 'préflight bloqué'} (${failing || 'vérification'}).`);
-            return;
-          }
-          if (preflight.browserHint) console.info(preflight.browserHint);
-          window.location.assign(link.getAttribute('href'));
-        } catch (error) {
-          toast(`Préflight OpenClaw indisponible : ${error.message}`);
-        }
-      });
-    });
-  }
-
-  function benchmarkHref(pathname) {
-    return `http://${location.hostname}:3081${pathname}`;
-  }
-
-  function ecosystemTemplate() {
-    const household = [
-      { href: '/dad/day', glyph: 'J', title: 'Ma journée', description: 'Les tâches et le courrier.', liveKey: 'household' },
-      { href: '/dad', glyph: 'D', title: 'Super Dad', description: 'Ton agent, tes outils et tes souvenirs privés.', liveKey: 'voix' },
-      { href: '/panel', glyph: 'F', title: 'Famille', description: 'Nestor, les enfants et la lecture.', liveKey: 'household' },
-      { href: '/dad/memories', glyph: 'N', title: 'Souvenirs', description: 'Relire les échanges et gérer ce qui est retenu.', liveKey: 'nestor' }
-    ];
-    const work = [
-      { href: '/api/openclaw/control-launch/chat', glyph: 'O', title: 'OpenClaw', description: 'Le bureau agentique protégé (Control UI officiel), vérifié avant le lancement.', liveKey: 'openclaw', preflight: 'chat' },
-      { href: '/api/dsh/control-launch', glyph: 'S', title: 'DSH Studio', description: 'L’équipe d’exécution : studio de code isolé, lancé depuis AgentX.', liveKey: 'dsh' },
-      { href: '/pipeline', glyph: 'C', title: 'Coding Team', description: 'Travail, attribution, revue et preuves dans Pipeline.', note: 'vérité des tâches' },
-      { href: '/agent-ops', glyph: 'A', title: 'Agent Ops', description: 'Agents, automatisations et exceptions opérationnelles.', note: 'cockpit en lecture seule' }
-    ];
-    const dataAndMind = [
-      { href: '/data-toolbox', glyph: 'D', title: 'Data', description: 'Stockage, réseau, bases, flux et Janitor en lecture bornée.', liveKey: 'data' },
-      { href: '/psyx', glyph: 'P', title: 'PsyX', description: 'Espace privé longitudinal et conversationnel.', liveKey: 'psyx' }
-    ];
-    const proofAndSystem = [
-      { href: '/portal/', glyph: 'X', title: 'AgentX Portal', description: 'Le workspace Produit complet : Core, Benchmark et RAG.', note: 'Produit complet' },
-      { href: benchmarkHref('/leaderboard'), glyph: 'B', title: 'Benchmarks', description: 'Résultats, profils et comparaison de modèles.', liveKey: 'benchmark' },
-      { href: '/nerve-center', glyph: 'S', title: 'Santé système', description: 'Hôtes, modèles, routage, alertes et posture RAG.', liveKey: 'system' },
-      { href: '/models', glyph: 'M', title: 'Modèles', description: 'Inventaire et preuves attachées aux artefacts actifs.', note: 'autorité Produit' }
-    ];
-    const links = (items) => items.map(ecosystemWorkspace).join('');
-    return `<section class="home-heading"><p class="eyebrow">Bienvenue chez vous</p><h1>Qu’aimeriez-vous faire ?</h1><p class="lede">Parler, organiser votre journée ou retrouver la famille.</p></section>
-      <section class="ecosystem-primary household-spaces" aria-label="Nos espaces"><a class="ecosystem-primary-link dad" href="/dad"><span class="ecosystem-primary-index">01</span><span><small>Privé</small><strong>Super Dad</strong><span>Ton agent, tes outils et tes souvenirs.</span></span></a><a class="ecosystem-primary-link nestor" href="/panel"><span class="ecosystem-primary-index">02</span><span><small>Partagé</small><strong>Famille</strong><span>Parler à Nestor, apprendre et vivre la maison.</span></span>${ecosystemLiveBadge('voix')}</a></section>
-      <section id="ecosystemWorkspaces" class="ecosystem-directory" aria-labelledby="ecosystemDirectoryTitle"><div class="ecosystem-directory-heading"><div><h2 id="ecosystemDirectoryTitle">Applications & outils</h2><p class="muted">Pour aller plus loin, ouvrez l’espace dont vous avez besoin.</p></div><a class="button compact" href="/portal/" target="_blank" rel="noopener">Ouvrir AgentX Portal ↗</a></div><div class="ecosystem-groups"><details class="ecosystem-group"><summary><span><small>Au quotidien</small><strong>Maison & notes</strong></span><span>4 espaces</span></summary><div class="ecosystem-workspace-list">${links(household)}</div></details><details class="ecosystem-group"><summary><span><small>Travailler</small><strong>Agents & Coding Team</strong></span><span>4 espaces</span></summary><div class="ecosystem-workspace-list">${links(work)}</div></details><details class="ecosystem-group"><summary><span><small>Explorer</small><strong>Data & PsyX</strong></span><span>2 espaces</span></summary><div class="ecosystem-workspace-list">${links(dataAndMind)}</div></details><details class="ecosystem-group"><summary><span><small>Configurer</small><strong>AgentX & système</strong></span><span>4 espaces</span></summary><p class="ecosystem-help">Portal donne accès aux fonctions avancées d’AgentX.</p><div class="ecosystem-workspace-list">${links(proofAndSystem)}</div></details></div>
-      <details class="home-service-status"><summary>État des services <span id="ecosystemPulse" class="pill waiting">lecture en cours</span></summary><p><strong id="ecosystemPulseTitle">Vérification des services…</strong></p><p id="ecosystemPulseDetail" class="muted"></p><small id="ecosystemUpdated" class="muted"></small></details></section>`;
-
-  }
-
-  function setEcosystemStatus(key, status, label) {
-    const tone = status === 'ok' ? 'ok' : status === 'degraded' ? 'degraded' : status === 'down' ? 'down' : '';
-    document.querySelectorAll(`[data-ecosystem-dot="${key}"]`).forEach((node) => { node.className = `status-dot ${tone}`.trim(); });
-    document.querySelectorAll(`[data-ecosystem-status="${key}"]`).forEach((node) => { node.textContent = label; });
-  }
-
-  async function loadEcosystem() {
-    app.innerHTML = ecosystemTemplate();
-    document.title = 'Accueil · AgentX';
-    setRuntime('waiting', 'checking ecosystem');
-    attachLaunchPreflights(app);
-    const [panelResult, dataResult, psyxResult, dshResult] = await Promise.allSettled([
-      api('/api/panel/status'),
-      api('/api/data-toolbox/status'),
-      api('/api/psyx/status'),
-      api('/api/dsh/status')
-    ]);
-
-    // DSH Studio has its own configuration authority; it is not an OpenClaw
-    // sub-state. Configured means launchable through AgentX, not "live".
-    const dshConfigured = dshResult.status === 'fulfilled' && dshResult.value?.configured === true;
-    setEcosystemStatus('dsh', dshConfigured ? 'ok' : 'down', dshConfigured ? 'DSH Studio configuré · lancement protégé' : (dshResult.status === 'fulfilled' ? 'DSH Studio non configuré' : 'DSH Studio : état indisponible'));
-
-    if (panelResult.status === 'fulfilled') {
-      const panel = panelResult.value;
-      const crew = new Map((panel.crew || []).map((member) => [member.id, member]));
-      const services = new Map((panel.services || []).map((service) => [String(service.name || '').toLowerCase(), service]));
-      const crewStatus = (id, fallback) => crew.get(id)?.status || fallback;
-      const householdReady = ['nestor', 'agentx', 'voix'].every((id) => crewStatus(id, 'down') === 'ok');
-      setEcosystemStatus('household', householdReady ? 'ok' : 'degraded', householdReady ? 'Household prêt' : 'Household à vérifier');
-      setEcosystemStatus('nestor', crewStatus('nestor', 'down'), crewStatus('nestor', 'down') === 'ok' ? 'Nestor prêt' : 'Nestor indisponible');
-      setEcosystemStatus('openclaw', crewStatus('openclaw', 'down'), crewStatus('openclaw', 'down') === 'ok' ? 'OpenClaw prêt' : 'OpenClaw à vérifier');
-      // Nestor's cloned voice (VoxCPM2) can be down while VoiX itself answers: say so, with since when.
-      const gazz = panel.voix?.engines?.voxcpm;
-      const gazzDown = gazz?.configured && gazz.ready === false;
-      const gazzSince = gazzDown ? new Date(gazz.since).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' }) : '';
-      setEcosystemStatus('voix', crewStatus('voix', 'down') === 'ok' && gazzDown ? 'degraded' : crewStatus('voix', 'down'),
-        crewStatus('voix', 'down') !== 'ok' ? 'VoiX indisponible' : gazzDown ? `VoiX prêt · voix de Nestor (Gazz) indisponible depuis ${gazzSince}` : 'VoiX prêt');
-      const benchmark = services.get('benchmark');
-      setEcosystemStatus('benchmark', benchmark?.status || 'down', benchmark?.status === 'ok' ? 'Benchmark prêt' : 'Benchmark indisponible');
-      const attention = [
-        ...(panel.crew || []).filter((member) => member.status !== 'ok').map((member) => `${member.name} à vérifier`),
-        ...(panel.fleet?.attention || [])
-      ];
-      const servicesReady = (panel.services || []).filter((service) => service.status === 'ok').length;
-      const hostsReady = Number(panel.fleet?.onlineHosts || 0);
-      const hostsTotal = Number(panel.fleet?.configuredHosts || 0);
-      const systemStatus = panel.status === 'ok' ? 'ok' : 'degraded';
-      setEcosystemStatus('system', systemStatus, `${servicesReady}/${panel.services?.length || 0} services · ${hostsReady}/${hostsTotal} hôtes`);
-      document.getElementById('ecosystemPulse').textContent = panel.status === 'ok' ? 'prêt' : 'à vérifier';
-      document.getElementById('ecosystemPulse').className = `pill ${panel.status === 'ok' ? 'ok' : 'waiting'}`;
-      document.getElementById('ecosystemPulseTitle').textContent = panel.status === 'ok' ? 'Les fondations sont prêtes.' : 'Points à vérifier';
-      document.getElementById('ecosystemPulseDetail').textContent = `${servicesReady}/${panel.services?.length || 0} services · ${hostsReady}/${hostsTotal} hôtes${attention.length ? ` · ${attention.join(' · ')}` : ''}`;
-      document.getElementById('ecosystemUpdated').textContent = `Projection live · ${new Date(panel.generatedAt || Date.now()).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`;
-      setRuntime(panel.status === 'ok' ? true : 'waiting', panel.status === 'ok' ? 'ecosystem ready' : 'attention');
-    } else {
-      for (const key of ['household', 'nestor', 'openclaw', 'voix', 'benchmark', 'system']) setEcosystemStatus(key, 'down', 'live state unavailable');
-      document.getElementById('ecosystemPulse').textContent = 'indisponible';
-      document.getElementById('ecosystemPulse').className = 'pill down';
-      document.getElementById('ecosystemPulseTitle').textContent = 'La projection live ne répond pas.';
-      document.getElementById('ecosystemPulseDetail').textContent = panelResult.reason?.message || 'Les portes restent visibles, sans état inventé.';
-      setRuntime(false, 'ecosystem unavailable');
-    }
-
-    if (dataResult.status === 'fulfilled') {
-      const data = dataResult.value;
-      const healthy = Number(data.dataService?.healthy || 0);
-      const total = Number(data.dataService?.total || 0);
-      const ok = Boolean(total) && healthy === total;
-      setEcosystemStatus('data', ok ? 'ok' : 'degraded', total ? `Data ${healthy}/${total} sources` : 'Data status incomplete');
-    } else setEcosystemStatus('data', 'down', 'Data unavailable');
-
-    if (psyxResult.status === 'fulfilled') {
-      const psyx = psyxResult.value;
-      const active = psyx.extension === 'psyx-standalone' && psyx.persona?.installed === true && psyx.persona?.active === true;
-      const version = psyx.serviceVersion || psyx.extensionVersion || '';
-      setEcosystemStatus('psyx', active ? 'ok' : 'degraded', active ? `PsyX ${version || 'active'}` : 'PsyX needs attention');
-    } else setEcosystemStatus('psyx', 'down', 'PsyX unavailable');
-  }
-
   async function loadPanel() {
     await window.mountConversation({ app, api, esc, space: 'family' });
     app.insertAdjacentHTML('beforeend', `<section class="ecosystem-primary household-spaces" aria-label="Activités en famille"><a class="ecosystem-primary-link" href="/kids"><span class="ecosystem-primary-index">01</span><span><small>Enfants</small><strong>Apprendre & participer</strong><span>Les activités et les responsabilités de la maison.</span></span></a><a class="ecosystem-primary-link" href="/lecture"><span class="ecosystem-primary-index">02</span><span><small>Lecture</small><strong>Lire ensemble</strong><span>Découvrir un texte avec Nestor.</span></span></a></section>`);
@@ -792,7 +617,7 @@
   }
 
   async function loadParents() {
-    app.innerHTML = `<section class="hero"><div class="hero-copy"><p class="eyebrow">Private parent controls</p><h1>Guide the rhythm.</h1><p class="lede">Create kid profiles, set one-time or recurring responsibilities, approve check-ins, and review every child-safe Nestor turn. These controls are available only on the private household surface.</p></div><aside class="hero-copy hero-status"><span id="parentSummary" class="clock">0</span><span class="muted">active family routines</span></aside></section><section class="parent-grid"><article id="familyLaunchCard" class="card full family-launch"><div class="row"><div class="grow"><p class="card-kicker">First family launch · explicit setup</p><h2>Open Kids Room with a real rhythm</h2><p class="muted">Name the first profile, edit or uncheck every suggestion, then create the profile and selected routines together. Nothing is created until you press Launch.</p></div><span class="pill">private</span></div><form id="familyLaunchForm" class="stack"><div class="parent-profile-form"><label><span>Name shown at home</span><input id="launchProfileName" maxlength="80" required placeholder="Kid name"></label><label><span>Avatar</span><input id="launchProfileAvatar" maxlength="8" value="⭐" aria-label="Starter profile avatar"></label><label><span>Age band</span><select id="launchProfileAge"><option value="little">Little</option><option value="school" selected>School age</option><option value="teen">Teen</option></select></label></div><fieldset class="launch-routines"><legend>Editable starter routines · choose 1–5</legend><div class="launch-routine"><input type="checkbox" checked aria-label="Include first starter routine"><input data-launch-title maxlength="160" value="Remettre tes choses à leur place" aria-label="First routine title"><select data-launch-cadence aria-label="First routine cadence"><option value="daily" selected>Daily</option><option value="weekly">Weekly</option><option value="once">One time</option></select><select data-launch-stars aria-label="First routine stars"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option></select><input class="launch-note" data-launch-note maxlength="1000" value="Commence par ce que tu as utilisé en dernier." aria-label="First routine hint"></div><div class="launch-routine"><input type="checkbox" checked aria-label="Include second starter routine"><input data-launch-title maxlength="160" value="Préparer tes choses pour demain" aria-label="Second routine title"><select data-launch-cadence aria-label="Second routine cadence"><option value="daily" selected>Daily</option><option value="weekly">Weekly</option><option value="once">One time</option></select><select data-launch-stars aria-label="Second routine stars"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select><input class="launch-note" data-launch-note maxlength="1000" value="Sac, vêtements ou tout ce dont tu auras besoin." aria-label="Second routine hint"></div><div class="launch-routine"><input type="checkbox" checked aria-label="Include third starter routine"><input data-launch-title maxlength="160" value="Aider à ranger un espace commun" aria-label="Third routine title"><select data-launch-cadence aria-label="Third routine cadence"><option value="daily">Daily</option><option value="weekly" selected>Weekly</option><option value="once">One time</option></select><select data-launch-stars aria-label="Third routine stars"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option></select><input class="launch-note" data-launch-note maxlength="1000" value="Demande à papa quel espace a besoin d’aide." aria-label="Third routine hint"></div></fieldset><div class="row wrap"><button id="familyLaunchButton" class="primary">Launch profile + selected routines</button><a class="button" href="/kids">Preview safe guest room</a></div></form></article><article class="card full"><h2>Family profiles</h2><form id="profileForm" class="parent-profile-form"><label><span>Name shown at home</span><input id="profileName" maxlength="80" required placeholder="Kid name"></label><label><span>Avatar</span><input id="profileAvatar" maxlength="8" value="⭐" aria-label="Profile avatar"></label><label><span>Age band</span><select id="profileAge"><option value="little">Little</option><option value="school" selected>School age</option><option value="teen">Teen</option></select></label><button class="primary">Add profile</button></form><div id="profiles" class="profile-list"></div></article><article class="card full"><h2>Add a responsibility</h2><form id="choreForm" class="parent-chore-form"><label><span>For</span><select id="choreProfile" required></select></label><label class="wide-field"><span>What needs doing?</span><input id="choreTitle" maxlength="160" required placeholder="Put school bag by the door"></label><label><span>When</span><input id="choreDue" type="date"></label><label><span>Repeats</span><select id="choreCadence"><option value="once">One time</option><option value="daily">Every day</option><option value="weekly">Every week</option></select></label><label><span>Stars</span><select id="choreStars"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label class="wide-field"><span>Helpful note</span><input id="choreNote" maxlength="1000" placeholder="A short, concrete hint"></label><button class="primary">Add to Kids Room</button></form><div id="choreSetupEmpty" class="empty" hidden>Create a profile before adding responsibilities.</div><div id="chores" class="stack"></div></article><article class="card full"><div class="row"><div class="grow"><h2>Child-safe Nestor journal</h2><p class="muted">Question, answer, safety flags, and routing evidence. Raw audio is never retained.</p></div><span id="journalCount" class="pill">0 recent turns</span><button id="refreshJournal">Refresh</button></div><div id="journal" class="stack"></div></article></section>`;
+    app.innerHTML = `<section class="hero"><div class="hero-copy"><p class="eyebrow">Famille</p><h1>Espace parents</h1><p class="lede">Profils, tâches et échanges avec Nestor.</p></div><aside class="hero-copy hero-status"><span id="parentSummary" class="clock">0</span><span class="muted">tâches actives</span></aside></section><section class="parent-grid"><article id="familyLaunchCard" class="card full family-launch"><div class="row"><div class="grow"><p class="card-kicker">First family launch · explicit setup</p><h2>Open Kids Room with a real rhythm</h2><p class="muted">Name the first profile, edit or uncheck every suggestion, then create the profile and selected routines together. Nothing is created until you press Launch.</p></div><span class="pill">private</span></div><form id="familyLaunchForm" class="stack"><div class="parent-profile-form"><label><span>Name shown at home</span><input id="launchProfileName" maxlength="80" required placeholder="Kid name"></label><label><span>Avatar</span><input id="launchProfileAvatar" maxlength="8" value="⭐" aria-label="Starter profile avatar"></label><label><span>Age band</span><select id="launchProfileAge"><option value="little">Little</option><option value="school" selected>School age</option><option value="teen">Teen</option></select></label></div><fieldset class="launch-routines"><legend>Editable starter routines · choose 1–5</legend><div class="launch-routine"><input type="checkbox" checked aria-label="Include first starter routine"><input data-launch-title maxlength="160" value="Remettre tes choses à leur place" aria-label="First routine title"><select data-launch-cadence aria-label="First routine cadence"><option value="daily" selected>Daily</option><option value="weekly">Weekly</option><option value="once">One time</option></select><select data-launch-stars aria-label="First routine stars"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option></select><input class="launch-note" data-launch-note maxlength="1000" value="Commence par ce que tu as utilisé en dernier." aria-label="First routine hint"></div><div class="launch-routine"><input type="checkbox" checked aria-label="Include second starter routine"><input data-launch-title maxlength="160" value="Préparer tes choses pour demain" aria-label="Second routine title"><select data-launch-cadence aria-label="Second routine cadence"><option value="daily" selected>Daily</option><option value="weekly">Weekly</option><option value="once">One time</option></select><select data-launch-stars aria-label="Second routine stars"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select><input class="launch-note" data-launch-note maxlength="1000" value="Sac, vêtements ou tout ce dont tu auras besoin." aria-label="Second routine hint"></div><div class="launch-routine"><input type="checkbox" checked aria-label="Include third starter routine"><input data-launch-title maxlength="160" value="Aider à ranger un espace commun" aria-label="Third routine title"><select data-launch-cadence aria-label="Third routine cadence"><option value="daily">Daily</option><option value="weekly" selected>Weekly</option><option value="once">One time</option></select><select data-launch-stars aria-label="Third routine stars"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option></select><input class="launch-note" data-launch-note maxlength="1000" value="Demande à papa quel espace a besoin d’aide." aria-label="Third routine hint"></div></fieldset><div class="row wrap"><button id="familyLaunchButton" class="primary">Launch profile + selected routines</button><a class="button" href="/kids">Preview safe guest room</a></div></form></article><article class="card full"><h2>Profils des enfants</h2><form id="profileForm" class="parent-profile-form"><label><span>Name shown at home</span><input id="profileName" maxlength="80" required placeholder="Kid name"></label><label><span>Avatar</span><input id="profileAvatar" maxlength="8" value="⭐" aria-label="Profile avatar"></label><label><span>Age band</span><select id="profileAge"><option value="little">Little</option><option value="school" selected>School age</option><option value="teen">Teen</option></select></label><button class="primary">Add profile</button></form><div id="profiles" class="profile-list"></div></article><article class="card full"><h2>Tâches</h2><form id="choreForm" class="parent-chore-form"><label><span>For</span><select id="choreProfile" required></select></label><label class="wide-field"><span>What needs doing?</span><input id="choreTitle" maxlength="160" required placeholder="Put school bag by the door"></label><label><span>When</span><input id="choreDue" type="date"></label><label><span>Repeats</span><select id="choreCadence"><option value="once">One time</option><option value="daily">Every day</option><option value="weekly">Every week</option></select></label><label><span>Stars</span><select id="choreStars"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label><label class="wide-field"><span>Helpful note</span><input id="choreNote" maxlength="1000" placeholder="A short, concrete hint"></label><button class="primary">Add to Kids Room</button></form><div id="choreSetupEmpty" class="empty" hidden>Create a profile before adding responsibilities.</div><div id="chores" class="stack"></div></article><article class="card full"><div class="row"><div class="grow"><h2>Échanges avec Nestor</h2><p class="muted">Questions et réponses des espaces Famille, Enfants et Lecture.</p></div><span id="journalCount" class="pill">0 recent turns</span><button id="refreshJournal">Refresh</button></div><div id="journal" class="stack"></div></article></section>`;
     document.getElementById('refreshJournal').parentElement.classList.add('wrap', 'journal-toolbar');
     document.getElementById('journalCount').insertAdjacentHTML('beforebegin', '<div class="row wrap journal-filters" role="group" aria-label="Journal view"><button type="button" class="compact journal-filter" data-journal-view="recent" aria-pressed="true">Recent</button><button type="button" class="compact journal-filter" data-journal-view="safety" aria-pressed="false">Safety</button><button type="button" class="compact journal-filter" data-journal-view="all" aria-pressed="false">All</button></div>');
     document.getElementById('profileForm').closest('article').hidden = true;
@@ -971,7 +796,6 @@
   async function start() {
     navActive(); app.innerHTML = '<div class="empty" role="status">Chargement…</div>';
     try {
-      if (location.pathname === '/' || location.pathname === '/ecosystem') return await loadEcosystem();
       if (location.pathname === '/panel') return await loadPanel();
       if (['/dad/memories', '/voice-personas', '/voice-personas.html'].includes(location.pathname)) return await loadMemories();
       if (location.pathname === '/dad/family') return await loadParents();

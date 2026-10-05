@@ -38,6 +38,26 @@ const { ageInYears, instanceToday } = require('../../src/domains/household/famil
 const KNOWN_UNKNOWN = 'dis simplement ce que tu ne sais pas; ne devine jamais un âge exact';
 
 describe('built-in Household surface on Core', () => {
+  test('Household refuses excess input before inference or audit and keeps a complete boundary-sized request', async () => {
+    const base = '/api/voice-personas/private/sessions';
+    const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    const calls = executeForTest.mock.calls.length;
+    const rejected = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'é'.repeat(3999) + '🦉' }).expect(413);
+    expect(rejected.body.code).toBe('VOICE_PERSONA_TEXT_TOO_LARGE');
+    const scene = await request(app).post(`/api/consumers/nestor/v1/llmx/sessions/${id}/turns/text`)
+      .send({ text: 'é'.repeat(3999) + '🦉', turnId: '11111111-1111-4111-8111-111111111111' }).expect(413);
+    expect(scene.body.code).toBe('VOICE_PERSONA_TEXT_TOO_LARGE');
+    expect(executeForTest.mock.calls.length).toBe(calls);
+    const untouched = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
+    expect(untouched.messages).toEqual([]);
+    expect(untouched.surfaceSession.turnCount).toBe(0);
+    const text = 'é'.repeat(3998) + '🦉';
+    await request(app).post(`${base}/${id}/turns/text`).send({ text }).expect(200);
+    const saved = await Conversation.findById(untouched._id).lean();
+    expect(saved.messages[0].content).toBe(text);
+    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain(text);
+    expect(saved.surfaceSession.turnCount).toBe(1);
+  });
   test('the server selects a bound personality’s agent and refuses conflicting choices without creating a session', async () => {
     const base = '/api/voice-personas/private/sessions';
     const create = body => request(app).post(base).send({ packId: 'personal_operator', backend: 'agentx', ...body });
@@ -150,7 +170,7 @@ describe('built-in Household surface on Core', () => {
       const member = agentForTest.mock.calls.at(-1)[0];
       expect(member.session).toMatchObject({ agentId: 'secretary', agentSessionKey: `agent:secretary:household:direct:${id}` });
       expect(member.instructions).toContain('addressed you (Secretary) directly');
-      expect(direct.body.data.reply.speaker).toEqual({ agentId: 'secretary', name: 'Secretary', personaId: 'secretary', personaVersion: 0 });
+      expect(direct.body.data.reply.speaker).toEqual({ agentId: 'secretary', name: 'Secretary', personaId: 'secretary', personaVersion: 1 });
       expect(direct.body.data.reply.speech).toMatchObject({ provider: 'kokoro', voice: 'ff_siwis' });
       const back = (await turn('Merci, et toi Nestor?'), agentForTest.mock.calls.at(-1)[0]);
       expect(back.session).toMatchObject({ agentId: 'main', agentSessionKey: `agent:main:household:direct:${id}` });
@@ -388,7 +408,7 @@ describe('built-in Household surface on Core', () => {
     process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = 'synthetic-voice-consumer';
     const sessionId = 's'.repeat(120), turnId = 't'.repeat(120);
     const payload = { schemaVersion: 1, sessionId, turnId, eventId: `voix:${sessionId}:${turnId}`, sequence: 1,
-      userText: 'Synthetic native voice input', assistantText: 'Synthetic native voice reply', completedAt: new Date().toISOString() };
+      userText: ' Synthetic native voice input é 🦉 '.repeat(250), assistantText: ' Synthetic native voice reply 🦉 '.repeat(300), completedAt: new Date().toISOString() };
     try {
       await request(app).post('/api/voix/memory/turns').send(payload).expect(401);
       const send = () => request(app).post('/api/voix/memory/turns').set('Authorization', 'Bearer synthetic-voice-consumer').send(payload);
@@ -400,6 +420,23 @@ describe('built-in Household surface on Core', () => {
       const row = await Conversation.findOne({ 'surfaceSession.sessionId': sessionId }).lean();
       expect(row.surfaceSession.turnCount).toBe(1);
       expect(row.messages.map(message => message.content)).toEqual([payload.userText, payload.assistantText]);
+      for (const change of [{ userText: payload.userText + 'changed' }, { assistantText: payload.assistantText + 'changed' },
+        { sequence: 2 }, { completedAt: '2026-01-01T00:00:00.000Z' }]) {
+        const conflict = await request(app).post('/api/voix/memory/turns')
+          .set('Authorization', 'Bearer synthetic-voice-consumer').send({ ...payload, ...change }).expect(409);
+        expect(conflict.body.code).toBe('VOIX_MEMORY_TURN_CONFLICT');
+      }
+      const unchanged = await Conversation.findById(row._id).lean();
+      expect(unchanged.messages.map(message => message.content)).toEqual([payload.userText, payload.assistantText]);
+      expect(unchanged.surfaceSession.turnCount).toBe(1);
+      const beforeRefusal = await Conversation.countDocuments({});
+      for (const change of [{ userText: 'x'.repeat(16001) }, { assistantText: 'x'.repeat(16001) },
+        { sessionId: sessionId + 's' }, { turnId: turnId + 't' }]) {
+        const refused = await request(app).post('/api/voix/memory/turns')
+          .set('Authorization', 'Bearer synthetic-voice-consumer').send({ ...payload, ...change });
+        expect(refused.status).toBe(change.userText || change.assistantText ? 413 : 400);
+      }
+      expect(await Conversation.countDocuments({})).toBe(beforeRefusal);
       // Wait for the real asynchronous capture worker before the suite closes Mongo.
       const service = require('../../src/services/surfaceConversationService').forSurface('household');
       for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -832,7 +869,7 @@ describe('built-in Household surface on Core', () => {
       expect(executeForTest.mock.calls.length).toBe(inferences);
       const cow = (await turn({ text: 'Quel bruit fait la vache?', channel: 'voice' }).expect(200)).body.data;
       expect(cow.sound).toMatchObject({ id: 'cow', play: 'after-reply' });
-      expect(lastInference().messages.at(-1).content).toContain('Son : l\'enfant entend un vrai enregistrement (une vache)');
+      expect(lastInference().messages.at(-1).content).toContain('[Household instruction for this turn: follow it]\nSon : un vrai enregistrement (une vache) joue');
       expect(lastInference().taskType).toBe('voice_persona_chat');
       expect(agentForTest.mock.calls.length).toBe(nativeRuns + 1);
     } finally {

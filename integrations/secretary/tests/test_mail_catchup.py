@@ -232,6 +232,13 @@ class CoreClientTests(unittest.TestCase):
             client.extract("sys", "page")
         self.assertEqual(client.busy(), "benchmark running")
 
+    def test_an_announced_recreate_pauses_the_job_before_its_next_page(self):
+        open_, _ = self.opener({"data": {"maintenance": None, "workloads": [], "drain": {"scope": "core-recreate"}}},
+                               {"data": {"maintenance": None, "workloads": [], "drain": None}})
+        client = catchup.CoreClient("http://core.invalid", opener=open_)
+        self.assertEqual(client.busy(), "deploy pending")
+        self.assertIsNone(client.busy())
+
 
 if __name__ == "__main__":
     unittest.main()

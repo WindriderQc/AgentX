@@ -120,6 +120,7 @@ function clearRenderedConversation() {
 }
 
 function showGate(message = '') {
+  clearSessionExperience();
   stopVoiceSession();
   state.accessEpoch += 1;
   state.turnSequence += 1;
@@ -135,6 +136,9 @@ function showGate(message = '') {
   review.last = null;
   hideSafety();
   resetFollowUp();
+  resetProfileDraft();
+  stopDreamWatch();
+  resetToolbox();
   state.unlocked = false;
   state.ready = false;
   state.history = [];
@@ -198,12 +202,13 @@ const DEPTH_LABELS = {
 };
 
 function currentModeInfo(mode = state.mode) {
-  if (mode === 'auto') return AUTO_INFO;
+  if (mode === 'auto') return state.conversationFeatures?.autoRecommendations === false ? { ...AUTO_INFO, description: 'Auto utilise la posture par défaut. L’adaptation par revue est désactivée dans Contexte et performance.' }
+    : state.conversationFeatures?.backgroundReview === false ? { ...AUTO_INFO, description: 'Auto peut reprendre les recommandations déjà enregistrées. La revue après réponse est désactivée.' } : AUTO_INFO;
   return { title: mode, short: '', description: '', ...state.modeConfig[mode], ...MODE_LABELS[mode] };
 }
 
 function currentDepthInfo(depth = state.depth) {
-  if (depth === 'auto') return AUTO_INFO;
+  if (depth === 'auto') return state.conversationFeatures?.deepReasoning === false ? { ...AUTO_INFO, short: 'Normale · réflexion approfondie désactivée.' } : AUTO_INFO;
   return {
     title: depth,
     short: '',
@@ -218,12 +223,12 @@ function currentDepthInfo(depth = state.depth) {
 // What the next reply will use: an explicit choice, or the review's
 // recommendation for this conversation when the choice is auto.
 function upcomingControl() {
-  const next = state.conversationId ? sessionDigest(state.conversationId)?.next : null;
+  const next = state.conversationId && state.conversationFeatures?.autoRecommendations !== false ? sessionDigest(state.conversationId)?.next : null;
   const autoMode = state.mode === 'auto';
   const autoDepth = state.depth === 'auto';
   return {
     mode: autoMode ? next?.stance || 'talk' : state.mode,
-    depth: autoDepth ? next?.depth || 'normal' : state.depth,
+    depth: state.conversationFeatures?.deepReasoning === false ? 'normal' : autoDepth ? next?.depth || 'normal' : state.depth,
     auto: { mode: autoMode, depth: autoDepth },
     reason: autoMode ? next?.reason || '' : ''
   };
@@ -237,8 +242,10 @@ function renderStance() {
   $('stanceLabel').textContent = `${prefix} : ${stance}${control.auto.mode ? ' · auto' : ''}${control.depth === 'deep' ? ' · réflexion profonde' : ''}`;
   $('stanceReason').textContent = control.reason
     || (control.auto.mode
-      ? 'PsyX choisit sa posture après avoir réfléchi à la conversation.'
+      ? state.conversationFeatures?.autoRecommendations === false || state.conversationFeatures?.backgroundReview === false
+        ? currentModeInfo('auto').description : 'PsyX choisit sa posture après avoir réfléchi à la conversation.'
       : 'Posture choisie par toi. Choisis Auto pour laisser PsyX décider.');
+  renderFrontier(control);
 }
 
 function updateControlExplanation() {
@@ -247,7 +254,7 @@ function updateControlExplanation() {
   modeSummary.textContent = `${mode.title || state.mode} · ${mode.short || ''}`;
   depthSummary.textContent = `${depth.title || state.depth} · ${depth.short || ''}`;
   controlExplainer.innerHTML = state.mode === 'auto' && state.depth === 'auto'
-    ? `<strong>Auto</strong> ${escapeHtml(AUTO_INFO.description)}`
+    ? `<strong>Auto</strong> ${escapeHtml(mode.description)}${state.conversationFeatures?.deepReasoning === false ? `<br>${escapeHtml(depth.short)}` : ''}`
     : `<strong>${escapeHtml(mode.title || state.mode)}</strong> ${escapeHtml(mode.description || '')}<br><strong>${escapeHtml(depth.title || state.depth)}</strong> ${escapeHtml(depth.description || '')}`;
   renderStance();
   updateBrainRouting();
@@ -256,6 +263,8 @@ function updateControlExplanation() {
 function updateContextStatus() {
   const recentCount = state.history.filter((item) => item.role !== 'action').length;
   $('contextStatus').textContent = `${recentCount} message${recentCount === 1 ? '' : 's'} récent${recentCount === 1 ? '' : 's'} affiché${recentCount === 1 ? '' : 's'} (maximum ${MAX_CONTEXT_MESSAGES}). Le contexte de confiance est reconstruit depuis le stockage de PsyX.`;
+  const coverage = state.applied?.contextCoverage;
+  if (coverage) $('contextStatus').textContent += ` Pour cette réponse : ${coverage.includedMessages}/${coverage.availableMessages} messages précédents transmis${coverage.complete ? '.' : ' · contexte partiel.'}`;
 }
 
 function stripLegacyControlPrefix(content) {
@@ -378,6 +387,7 @@ function assertCurrentAccess(epoch) {
 }
 
 async function restoreConversation(conversationId = state.conversationId) {
+  clearSessionExperience();
   stopVoiceSession();
   if (!conversationId) return;
   try {
@@ -391,6 +401,7 @@ async function restoreConversation(conversationId = state.conversationId) {
     localStorage.setItem(STORAGE_KEY, state.conversationId);
     state.history = normalizeConversationMessages(conversation.messages);
     hideSafety();
+    frontierUi.fallbackNote = '';
     clearRenderedConversation();
     for (const item of state.history) addMessage(item.role, item.content);
     updateContextStatus();
@@ -424,7 +435,8 @@ function getLaneConfig(depth = upcomingControl().depth) {
 // The footer keeps the technical route discreet; the Brain tab has the details.
 function updateBrainRouting(lastResult = null, note = '') {
   const depth = lastResult?.control?.depth || upcomingControl().depth;
-  const { entry } = getLaneConfig(depth);
+  // A frontier reply names its own model; the local lanes come from the router.
+  const entry = !lastResult && frontierLocationFor(depth) === 'frontier' ? { model: frontierUi.model, host: '' } : getLaneConfig(depth).entry;
   const routing = lastResult?.routing || {};
   const model = routing.routedModel || lastResult?.model || entry?.model || 'modèle non résolu';
   const host = routing.routedHost || entry?.host || '';
@@ -452,6 +464,7 @@ async function loadSessions() {
   try {
     state.sessions = await api(`/api/psyx/sessions?limit=30&status=${encodeURIComponent(state.sessionStatus)}`);
     renderSessions();
+    renderSessionExperience();
   } catch (error) { if (error.code !== 'PSYX_LOCKED') throw error; }
 }
 
@@ -480,7 +493,7 @@ function renderSessions() {
     <article class="session-card ${String(item.id) === state.conversationId ? 'active' : ''}" data-session-id="${escapeHtml(item.id)}">
       <button class="session-open" type="button" ${state.sessionStatus === 'archived' ? `data-session-options="${escapeHtml(item.id)}"` : `data-session-open="${escapeHtml(item.id)}"`}>
         <strong>${escapeHtml(item.title || 'Conversation PsyX')}</strong>
-        <span>${escapeHtml(sessionDigest(item.id)?.summary || item.preview || 'Pas d’aperçu')}</span>
+        <span>${escapeHtml(item.sessionRecap?.summary || sessionDigest(item.id)?.summary || item.preview || 'Pas d’aperçu')}</span>
         <small>${state.sessionStatus === 'archived' ? 'Archivée · ' : ''}${escapeHtml(relativeDate(item.updatedAt))}${item.model ? ` · ${escapeHtml(item.model)}` : ''}${item.promptVersion ? ` · prompt v${escapeHtml(item.promptVersion)}` : ''}</small>
       </button>
       <div class="session-actions">
@@ -506,17 +519,22 @@ async function bootstrap() {
     state.depthConfig = payload.depths || {};
     state.voice.enabled = payload.voice?.enabled === true;
     review.enabled = payload.review?.automatic === true;
+    applyPerformancePreferences(payload.conversationFeatures);
+    setFrontierCapabilities(payload.frontier);
     const lifecycle = payload.conversationLifecycle || {};
     $('lifecycleStatus').textContent = lifecycle.archive
       ? 'L’archivage et la restauration des conversations sont disponibles.'
       : 'Le stockage du cycle de vie des conversations est indisponible.';
     updateControlExplanation();
     await Promise.all([loadPsyXState(), loadRouting(), loadSessions(), loadVoiceStatus()]);
+    await loadToolbox().catch(() => {});
     await restoreConversation();
     assertCurrentAccess(accessEpoch);
+    watchDream();
     renderSetup();
     setReady(true, 'PsyX prêt');
-    input.focus();
+    sessionLabel.textContent = state.conversationId ? sessionLabel.textContent : 'Nouvelle conversation';
+    if (window.matchMedia('(min-width: 900px)').matches) input.focus({ preventScroll: true });
   } catch (error) {
     if (error.code !== 'PSYX_LOCKED') {
       setReady(false, 'PsyX indisponible');
@@ -609,6 +627,12 @@ async function sendMessage(text, overrides = {}) {
       else if (event === 'control') {
         state.applied = data;
         renderStance();
+        updateContextStatus();
+      } else if (event === 'route' && data.location && state.applied) {
+        // The frontier model was asked but the local route answers: say so while it answers.
+        state.applied = { ...state.applied, location: data.location, contextCoverage: data.contextCoverage || state.applied.contextCoverage };
+        renderStance();
+        updateContextStatus();
       } else if (event === 'safety') {
         showSafety(data.resources);
       } else if (event === 'thinking') {
@@ -646,9 +670,11 @@ async function sendMessage(text, overrides = {}) {
       localStorage.setItem(STORAGE_KEY, state.conversationId);
       sessionLabel.textContent = `Séance ${state.conversationId.slice(-8)}`;
     }
-    const deep = (finalResult.control?.depth || effectiveDepth) === 'deep';
+    // Thinking is a local-route notion; the frontier model reasons on its own.
+    const deep = (finalResult.control?.depth || effectiveDepth) === 'deep' && finalResult.routing?.location !== 'frontier';
     updateBrainRouting(finalResult, deep ? (state.thinkingObserved ? 'thinking observed' : 'thinking requested, not observed') : '');
     await loadSessions();
+    noteFrontierResult(finalResult);
     if (finalResult?.review?.scheduled) watchReview(state.conversationId);
     maybeAskCheckIn();
     if (state.voice.prefs.spokenReplies && !overrides.voiceSession) void speakText(assistantContent);
@@ -688,6 +714,7 @@ async function sendMessage(text, overrides = {}) {
 }
 
 function startNewSession(focus = true) {
+  clearSessionExperience();
   stopVoiceSession();
   state.conversationId = null;
   state.history = [];
@@ -699,6 +726,7 @@ function startNewSession(focus = true) {
   hideSafety();
   $('checkInPrompt').hidden = true;
   followUp.openingDone = false;
+  frontierUi.fallbackNote = '';
   renderOpening();
   clearRenderedConversation();
   updateContextStatus();
@@ -989,6 +1017,11 @@ async function start() {
   wireSetup();
   wireReview();
   wireCare();
+  wireSessionExperience();
+  wireFrontier();
+  wireProfile();
+  wireDream();
+  wireToolbox();
   wireFollowUp();
   wireSegmented('modeControl', 'mode');
   wireSegmented('depthControl', 'depth');

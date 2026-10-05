@@ -35,44 +35,6 @@ function buildApp(overrides = {}) {
 describe('Integration Routes', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  describe('POST /api/v1/integrations/events/n8n', () => {
-    test('logs n8n event', async () => {
-      const app = buildApp();
-      const res = await request(app)
-        .post('/api/v1/integrations/events/n8n')
-        .send({ workflow: 'test', data: { foo: 'bar' } })
-        .expect(200);
-      expect(res.body.ok).toBe(true);
-      expect(app.locals.db._col.insertOne).toHaveBeenCalled();
-    });
-
-    test('normalizes string data field', async () => {
-      const app = buildApp();
-      const res = await request(app)
-        .post('/api/v1/integrations/events/n8n')
-        .send({ data: '{"key":"val"}' })
-        .expect(200);
-      expect(res.body.ok).toBe(true);
-    });
-  });
-
-  describe('GET /api/v1/integrations/events/n8n', () => {
-    test('returns n8n events', async () => {
-      const docs = [{ src: 'n8n', body: { test: true } }];
-      const res = await request(buildApp({ docs }))
-        .get('/api/v1/integrations/events/n8n')
-        .expect(200);
-      expect(res.body.status).toBe('success');
-      expect(res.body.data).toHaveLength(1);
-    });
-
-    test('respects limit param', async () => {
-      await request(buildApp())
-        .get('/api/v1/integrations/events/n8n?limit=10')
-        .expect(200);
-    });
-  });
-
   describe('POST /api/v1/integrations/webhooks/clickup', () => {
     test('logs ClickUp webhook', async () => {
       const res = await request(buildApp())
@@ -90,6 +52,17 @@ describe('Integration Routes', () => {
         .send({ action: 'push', repo: 'test' })
         .expect(200);
       expect(res.body.ok).toBe(true);
+    });
+
+    test('stores a string data field as parsed JSON under its source', async () => {
+      const app = buildApp();
+      await request(app)
+        .post('/api/v1/integrations/webhooks/github')
+        .send({ data: '{"key":"val"}' })
+        .expect(200);
+      expect(app.locals.db._col.insertOne).toHaveBeenCalledWith(
+        expect.objectContaining({ src: 'github', body: { data: { key: 'val' } } })
+      );
     });
   });
 });

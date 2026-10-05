@@ -38,6 +38,12 @@ test('a session owes its header, each finished turn under the speaker name, then
     synthesis: { response: 'Attendre la prochaine révision du taux.' } });
   assert.deepEqual(pendingMessages(later, { header: true, turns: ['1:main'] }, CONFIG).map((m) => m.text),
     ['⚠️ Comptable · tour 1 : Timeout after 300000ms', '🧾 Synthèse\nAttendre la prochaine révision du taux.']);
+  // A team member who chairs the table signs the verdict.
+  const chaired = { ...later, synthesizerConfig: { runtime: 'openclaw', agentId: 'main' } };
+  const settled = { header: true, turns: ['1:main', '1:comptable'] };
+  assert.equal(pendingMessages(chaired, settled, { ...CONFIG, agentNames: { main: 'Nestor' } })[0].text,
+    '🧾 Synthèse · Nestor (président)\nAttendre la prochaine révision du taux.');
+  assert.match(pendingMessages(chaired, settled, CONFIG)[0].text, /^🧾 Synthèse · main \(président\)/);
 });
 
 test('only sessions that seat agents are mirrored unless all is set, and each message is sent once', async () => {

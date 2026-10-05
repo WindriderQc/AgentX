@@ -203,7 +203,7 @@ Commands:
                         --force-runtime skips that check for an operator recovery
   action <name> [--option value...]
                         Bounded maintenance action on a running instance: status,
-                        deploy, recover-quarantine or recalibrate-judges (see
+                        lease, deploy, recover-quarantine or recalibrate-judges (see
                         docs/OPERATIONS.md, "Bounded maintenance actions")
   ollama-doctor         Detect native Ollama; never install or download
   ollama-up             Start the opt-in isolated Docker Ollama stack

@@ -120,11 +120,13 @@ function assessEcosystemEvidence(snapshot, options = {}) {
   const currentSources = freshnessSources.filter((source) => source.status === 'current');
 
   const runtimeConsistency = snapshot.identityConsistency?.status || 'unverified';
+  // Builds of one product version from different revisions are consistent.
+  const runtimeConsistent = runtimeConsistency === 'ok' || runtimeConsistency === 'mixed';
   let status = 'verified';
   if (contradictions.length > 0) status = 'contradictory';
   else if (runtimeConsistency === 'degraded') status = 'inconsistent';
   else if (staleSources.length > 0) status = 'stale';
-  else if (unknownSources.length > 0 || runtimeConsistency !== 'ok') status = 'partial';
+  else if (unknownSources.length > 0 || !runtimeConsistent) status = 'partial';
 
   const checks = Object.freeze([
     Object.freeze({
@@ -134,7 +136,7 @@ function assessEcosystemEvidence(snapshot, options = {}) {
     }),
     Object.freeze({
       id: 'runtime-identity',
-      status: runtimeConsistency === 'ok' ? 'pass' : (runtimeConsistency === 'degraded' ? 'fail' : 'warn'),
+      status: runtimeConsistent ? 'pass' : (runtimeConsistency === 'degraded' ? 'fail' : 'warn'),
       detail: runtimeConsistency,
     }),
     Object.freeze({

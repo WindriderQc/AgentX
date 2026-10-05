@@ -1,5 +1,6 @@
 'use strict';
 
+const { overlaps } = require('./runtimePhysicalResources');
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const { describeFailure } = require('../../../shared/failureDiagnostics');
 
@@ -39,7 +40,7 @@ function inferenceConflict(state, request, now) {
   if (state?.maintenance) return failure(state.maintenance.state === 'UNKNOWN'
     ? 'maintenance_recovery_required' : 'maintenance_active', state.maintenance.state !== 'UNKNOWN',
   holderOf('maintenance', state.maintenance));
-  const inferences = (state?.inferences || []).filter(item => canonicalHost(item.host) === request.host);
+  const inferences = (state?.inferences || []).filter(item => overlaps(item, request.host, request.resourceIds || []));
   if (inferences.some(item => item.state !== 'ACTIVE' || new Date(item.expiresAt) <= now)) {
     return failure('inference_recovery_required');
   }
@@ -47,7 +48,7 @@ function inferenceConflict(state, request, now) {
     item.admissionId === request.workloadAdmissionId && item.generation === request.workloadGeneration
     && item.principal === request.principal && item.hosts.includes(request.host)
     && new Date(item.expiresAt) > now)) return failure('workload_proof_invalid');
-  const workloads = (state?.workloads || []).filter(item => item.hosts.includes(request.host));
+  const workloads = (state?.workloads || []).filter(item => overlaps(item, request.host, request.resourceIds || []));
   if (workloads.some(item => item.recoveryState === 'UNKNOWN' || new Date(item.expiresAt) <= now)) {
     return failure('workload_recovery_required');
   }
@@ -57,14 +58,14 @@ function inferenceConflict(state, request, now) {
     const yielded = workloads.find(item => item.yieldedAt);
     if (yielded) return failure('workload_yielded', true, holderOf('workload', yielded));
   } else {
-    const reserving = workloads.find(item => !item.yieldedAt);
+    const reserving = workloads.find(item => !item.yieldedAt || !item.hosts.includes(request.host));
     if (reserving) return failure('workload_reserved', true, holderOf('workload', reserving));
   }
   const exclusive = inferences.find(item => item.mode === 'exclusive');
   if (exclusive || (request.mode === 'exclusive' && inferences.length)) {
     return failure('inference_active', true, holderOf('inference', exclusive || inferences[0]));
   }
-  const resident = inferences.find(item => item.residencyKey !== request.residencyKey);
+  const resident = inferences.find(item => canonicalHost(item.host) !== request.host || item.residencyKey !== request.residencyKey);
   if (resident) return failure('inference_residency_active', true, holderOf('inference', resident));
   return failure('admission_conflict_unclassified');
 }

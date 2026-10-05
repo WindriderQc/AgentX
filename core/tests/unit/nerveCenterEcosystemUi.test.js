@@ -88,6 +88,12 @@ describe('Nerve Center ecosystem-v2 UI authority', () => {
 
     expect(buildState.value).toBe('DEGRADED/MIXED');
     expect(buildState.state).toBe('attention');
+    const mixedBuilds = shared.serviceBuildWidget({
+      serviceHealth: { status: 'ok', total: 3, healthy: 3, down: 0 },
+      identityConsistency: { status: 'mixed', profiles: ['full'], issues: ['Mixed build revisions: abc123, def456'] }
+    });
+    expect(mixedBuilds).toMatchObject({ value: 'FULL', state: 'nominal' });
+    expect(mixedBuilds.title).toContain('Mixed build revisions: abc123, def456');
     expect(buildState.title).toContain('2/3 services healthy');
     expect(buildState.title).toContain('Mixed runtime profiles: full, lite');
     expect(controllerSource).toContain('markEcosystemSummaryUnavailable');

@@ -347,7 +347,7 @@ function register(api) {
   const indexFile = path.join(publicRoot, 'index.html');
 
   app.use('/assets/data-toolbox', express.static(publicRoot, { fallthrough: false, maxAge: '5m' }));
-  app.get('/data-toolbox', (_req, res) => res.sendFile(indexFile));
+  app.get('/data-toolbox', require('../../src/ui/productShell').surfacePage(app, indexFile, { activePage: 'data-toolbox' }));
 
   const router = express.Router();
   router.get('/status', async (_req, res) => {

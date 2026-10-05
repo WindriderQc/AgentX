@@ -4,41 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07131d">
-  <title>AgentX · chez vous</title>
+  <title>AgentX · Nestor</title>
   <link rel="stylesheet" href="/access-assets/client.css">
+  <link rel="stylesheet" href="/css/conversation-recap.css?v=1">
+  <link rel="stylesheet" href="/css/conversation-preferences.css?v=1">
   <script src="/access-assets/client.js" defer></script>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/assets/household/app.css?v=resume-1">
   <link rel="stylesheet" href="/assets/household/avatar-dock.css?v=avatar-5">
   <link rel="stylesheet" href="/assets/household/display-board.css?v=journal-1">
+  <link rel="stylesheet" href="/assets/household/conversation-experience.css">
 </head>
-<body>
+<body class="household-product">
   <a class="skip" href="#app">Aller au contenu</a>
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="AgentX · Accueil">
-      <span class="brand-mark">A</span>
-      <span><strong>AgentX</strong><small>chez vous</small></span>
-    </a>
-    <nav class="primary-nav" aria-label="Navigation principale">
-      <a href="/" data-section="home" data-access="adult">Accueil</a>
-      <a href="/dad" data-section="personal" data-access="adult">Super Dad</a>
-      <a href="/panel" data-section="family">Famille</a>
-    </nav>
-    <details class="nav-tools" id="householdTools">
-      <summary>Réglages et outils</summary>
-      <div class="nav-tools-panel">
-        <a href="/unlock?next=%2F" data-access="unlock">Espace adulte <small>Code parental · Super Dad, AgentX et réglages</small></a>
-        <a href="/portal" data-access="adult">Toutes les applications</a>
-        <a href="/playground" data-access="adult">AgentX Chat <small>Modèles et prompts</small></a>
-        <a href="/api/openclaw/control-launch/chat" data-access="adult">Espace agents <small>OpenClaw</small></a>
-        <a href="/voice/native" data-access="adult">Appareils audio <small>Microphone du PC hôte</small></a>
-        <button type="button" id="readingVoiceSettings">Voix des lectures <small>Ce navigateur</small></button>
-        <a href="/device-check" data-access="adult">Vérifier un appareil</a>
-        <span class="runtime-pill" id="runtimePill">checking</span>
-      </div>
-    </details>
-  </header>
-  <nav id="householdSectionNav" class="section-nav" aria-label="Dans cet espace" hidden></nav>
+  <!-- product-navigation -->
   <main id="app" tabindex="-1"></main>
   <dialog id="readingVoiceDialog" aria-labelledby="readingVoiceTitle">
     <h2 id="readingVoiceTitle">Voix des lectures</h2>
@@ -67,7 +46,9 @@
   <script src="/assets/household/browser-speech-fallback.js?v=stt-fallback-1" defer></script>
   <script src="/assets/household/attachment-images.js?v=archive-1" defer></script>
   <script src="/assets/household/conversation-team.js?v=team-1" defer></script>
-  <script src="/assets/household/conversation-page.js?v=spoken-reply-1" defer></script>
+  <script src="/js/conversation-preferences.js?v=1" defer></script>
+  <script src="/js/conversation-recap.js?v=2" defer></script>
+  <script src="/assets/household/conversation-page.js?v=performance-1" defer></script>
   <script src="/assets/household/secretary-rules.js?v=rules-1" defer></script>
   <script src="/assets/household/desk-cards.js?v=remember-1" defer></script>
   <script src="/assets/household/family-conversations.js?v=family-erase-3" defer></script>
@@ -76,6 +57,6 @@
   <script src="/assets/household/journal-display.js?v=voice-timings-1" defer></script>
   <script src="/assets/household/device-check-page.js?v=device-check-1" defer></script>
   <script src="/assets/household/native-voice-page.js?v=native-voice-1" defer></script>
-  <script src="/assets/household/app.js?v=kids-voice-1" defer></script>
+  <script src="/assets/household/app.js?v=product-shell-1" defer></script>
 </body>
 </html>

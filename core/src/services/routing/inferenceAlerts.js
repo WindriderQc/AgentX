@@ -8,6 +8,7 @@
 
 const { resolveHostKey } = require('../modelRouter');
 const alertService = require('../alertService');
+const { hostResidency } = require('../../helpers/hostResidency');
 
 /** Latency, recovery and upstream-error alerts after Ollama answered. */
 function evaluateResponseAlerts({ lane, response, startedAt, routedHostKey, target, model, body, taskType, laneName }) {
@@ -29,7 +30,8 @@ function evaluateResponseAlerts({ lane, response, startedAt, routedHostKey, targ
                         latencyMs: durationMs
                     }).catch(() => {});
                 }
-                if (response.ok && durationMs > 10000 && lane.alert !== 'error-only') {
+                // A CPU-resident host is slow by design: its latency is not an incident.
+                if (response.ok && durationMs > 10000 && lane.alert !== 'error-only' && hostResidency(target) !== 'cpu') {
                     alertSvc.evaluateEvent({
                         component: alertComponent, metric: 'latency',
                         value: durationMs, threshold: 10000, trend: 'spike',

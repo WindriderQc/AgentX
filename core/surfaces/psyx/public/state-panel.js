@@ -32,7 +32,7 @@ async function removeStateItem(key, id) {
   stateSaveStatus.textContent = `synchronisé · r${state.psyxState.revision ?? 0}`;
 }
 
-const SOURCE_LABELS = { user: 'toi', psyx: 'PsyX', legacy: 'ancien', import: 'import' };
+const SOURCE_LABELS = { user: 'toi', psyx: 'PsyX', dream: 'PsyX, entre les séances', legacy: 'ancien', import: 'import' };
 const ITEM_STATUS_LABELS = { working: 'en test', confirmed: 'confirmé', rejected: 'rejeté', resolved: 'résolu' };
 const EXPERIMENT_STATUS_LABELS = { planned: 'prévue', active: 'en cours', completed: 'terminée', abandoned: 'abandonnée' };
 
@@ -85,6 +85,8 @@ function renderExperiments() {
 }
 
 function renderPsyXState() {
+  renderStateItems('goalsList', 'goals');
+  renderProfile();
   renderStateItems('threadsList', 'activeThreads');
   renderStateItems('notesList', 'notes');
   renderStateItems('loopsList', 'openLoops');
@@ -93,6 +95,8 @@ function renderPsyXState() {
   renderExperiments();
   renderProposals();
   renderFormulation();
+  renderPortrait();
+  renderToolbox();
   renderFollowUp();
   updateControlExplanation();
   renderSessions();

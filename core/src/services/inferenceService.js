@@ -599,6 +599,14 @@ async function executeInferenceOnce(body = {}, {
         if (settled.cancelled) return undefined;
         if (settled.response) return result(settled.response.status, settled.response.body);
 
+        // A claim, hold or admission refusal before dispatch is a busy answer
+        // with its own code, not a response-processing fault.
+        if (err.isOllamaAttemptError !== true && refusedBeforeDispatch(err)) {
+            return refusedResult(err, rejectRoute(buildClaimAdmissionRejection(err, {
+                headers, target, routedHostKey, model, laneName,
+            })));
+        }
+
         if (err.isOllamaAttemptError !== true) {
             logger.error('[InferenceProxy] response processing failed', {
                 host: target,
@@ -610,7 +618,7 @@ async function executeInferenceOnce(body = {}, {
                 outcomeCode: ROUTE_OUTCOME_CODES.RESPONSE_PROCESSING_ERROR,
             });
             setRouteOutcomeHeader(headers, ROUTE_OUTCOME_CODES.RESPONSE_PROCESSING_ERROR);
-            return refusedResult(err, result(500, { status: 'error', message: 'Inference response processing failed' }));
+            return result(500, { status: 'error', message: 'Inference response processing failed' });
         }
 
         const isTimeout = err.isOllamaTimeout === true || err.name === 'AbortError';

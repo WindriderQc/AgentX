@@ -101,3 +101,66 @@ describe('routing to a registered host', () => {
     expect(defaults.HOSTS['cpu-fixture']).toBeUndefined();
   });
 });
+
+describe('a task keeps to hosts of its residency', () => {
+  test('a CPU-routed task never follows its model to a GPU host, and the reverse', () => {
+    const defaults = require('../../src/services/modelRouterDefaults');
+    defaults.refreshHosts();
+    const keys = Object.keys(defaults.HOSTS).filter(key => defaults.HOSTS[key]);
+    expect(keys).toEqual(expect.arrayContaining(['primary', 'cpu-fixture']));
+    expect(keys.filter(defaults.sameResidencyAs('cpu-fixture'))).toEqual(['cpu-fixture']);
+    expect(keys.filter(defaults.sameResidencyAs('primary'))).not.toContain('cpu-fixture');
+    hostConfig.setRegisteredHosts([]);
+    defaults.refreshHosts();
+  });
+
+  test('any task routed to a CPU host stays there, and moves again once routed to a GPU host', async () => {
+    const defaults = require('../../src/services/modelRouterDefaults');
+    const routerConfig = require('../../src/services/modelRouterConfig');
+    defaults.refreshHosts();
+    expect(defaults.staysOnConfiguredHost('janitor_ai', 'cpu-fixture')).toBe(true);
+    expect(defaults.staysOnConfiguredHost('janitor_ai', 'primary')).toBe(false);
+    expect(defaults.staysOnConfiguredHost('quick_chat', 'primary')).toBe(true);
+
+    await routerConfig.saveTaskModelOverride('janitor_ai', { model: MODEL, host: 'cpu-fixture' });
+    await expect(routerConfig.resolvePreferredTaskEntry('janitor_ai')).resolves.toEqual({
+      model: MODEL, host: 'cpu-fixture', url: CPU_URL, readiness: null, fallbackApplied: false });
+    await routerConfig.resetTaskModelOverride('janitor_ai');
+    hostConfig.setRegisteredHosts([]);
+    defaults.refreshHosts();
+  });
+
+  test('the operations watch task stays on its configured host', () => {
+    const defaults = require('../../src/services/modelRouterDefaults');
+    expect(defaults.DEFAULT_TASK_MODELS.ops_watch).toEqual(expect.objectContaining({ model: expect.any(String) }));
+    expect(defaults.STRICT_CONFIGURED_HOST_TASKS.has('ops_watch')).toBe(true);
+  });
+
+  test('the mail review task starts on the analysis model and stays on its configured host', () => {
+    const defaults = require('../../src/services/modelRouterDefaults');
+    expect(defaults.DEFAULT_TASK_MODELS.mail_review).toEqual(defaults.DEFAULT_TASK_MODELS.analysis);
+    expect(defaults.STRICT_CONFIGURED_HOST_TASKS.has('mail_review')).toBe(true);
+    expect(require('../../src/services/modelRouterTaskMetadata').TASK_TYPE_METADATA.mail_review.title).toBe('Mail Review');
+  });
+});
+
+describe('latency alerts on a CPU host', () => {
+  test('a slow answer is an incident on a GPU host, not on a CPU host', () => {
+    const alertService = require('../../src/services/alertService');
+    const { evaluateResponseAlerts } = require('../../src/services/routing/inferenceAlerts');
+    const evaluate = jest.spyOn(alertService, 'evaluateEvent').mockResolvedValue({});
+    jest.spyOn(alertService, 'resolveRecoveredInferenceAlerts').mockResolvedValue(0);
+    const slow = target => evaluateResponseAlerts({
+      lane: { alert: true }, response: { ok: true }, startedAt: Date.now() - 60000, routedHostKey: 'fixture',
+      target, model: MODEL, body: {}, taskType: 'ops_watch', laneName: 'automated'
+    });
+    slow(CPU_URL);
+    expect(evaluate).not.toHaveBeenCalled();
+    slow(GPU_URL);
+    expect(evaluate).toHaveBeenCalledWith(expect.objectContaining({ metric: 'latency' }));
+    evaluateResponseAlerts({ lane: { alert: true }, response: { ok: false, status: 500 }, startedAt: Date.now(),
+      routedHostKey: 'fixture', target: CPU_URL, model: MODEL, body: {}, taskType: 'ops_watch', laneName: 'automated' });
+    expect(evaluate).toHaveBeenLastCalledWith(expect.objectContaining({ metric: 'error' }));
+    jest.restoreAllMocks();
+  });
+});

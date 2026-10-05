@@ -175,7 +175,7 @@ class AlertService extends EventEmitter {
       if (values.length === 0) throw new Error('Inference rate numerator requires at least one value');
 
       const InferenceLog = require('../../models/InferenceLog');
-      const match = { timestamp: { $gte: new Date(Date.now() - durationMs) } };
+      const match = { timestamp: { $gte: new Date(Date.now() - durationMs) }, ...require('./routing/admissionRefusal').DISPATCHED_ONLY };
       const [total, numerator] = await Promise.all([
         InferenceLog.countDocuments(match),
         InferenceLog.countDocuments({

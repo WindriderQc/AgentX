@@ -465,6 +465,7 @@ router.get('/inference/routing-config', async (_req, res) => {
         ip: describeHost(url, key).ip,
         pinnedModels: pinnedNames,
         maxConcurrentModels: pref.maxConcurrentModels || 1,
+        residency: require('../src/helpers/hostResidency').hostResidency(url),
       };
     }
 
@@ -473,6 +474,7 @@ router.get('/inference/routing-config', async (_req, res) => {
       data: {
         taskModels: TASK_MODELS,
         hosts,
+        hostLockedTasks: Object.keys(TASK_MODELS).filter(task => require('../src/services/modelRouterDefaults').staysOnConfiguredHost(task, TASK_MODELS[task].host)),
       }
     });
   } catch (err) {
@@ -533,12 +535,12 @@ router.get('/inference/gpu-status', async (req, res) => {
     // Live values come from Data's GPU collector; stale hosts carry age and error, not numbers.
     const [rows, live] = await Promise.all([ollamaVramService.getVramForHosts(configured), getGpuTelemetryForHosts(configured)]);
     const data = rows.map((host) => {
-      const { telemetry, gpus } = live.get(host.id) || { telemetry: { status: 'unavailable' }, gpus: [] };
+      const { telemetry, gpus, ollamaEnvironment = null } = live.get(host.id) || { telemetry: { status: 'unavailable' }, gpus: [] };
       const total = gpus.reduce((sum, gpu) => sum + (gpu.vramTotal || 0), 0);
       return {
         hostId: host.id, hostname: host.name || host.id, ip: '', ollamaHostKey: host.id,
         gpuName: gpus[0]?.name || '', temperature: gpus[0]?.temperature ?? null, utilization: gpus[0]?.utilization ?? null,
-        gpuCount: gpus.length, gpus, telemetry,
+        gpuCount: gpus.length, gpus, telemetry, ollamaEnvironment,
         vramTotalMiB: total || host.memoryTotalMiBTotal || 0,
         vramUsedMiB: total ? gpus.reduce((sum, gpu) => sum + (gpu.vramUsed || 0), 0) : host.memoryUsedMiBTotal || 0,
         source: total ? 'gpu-collector' : host._source || 'none'
@@ -680,6 +682,7 @@ router.use('/', require('./nerve-center-config')); // read-only configuration st
 router.use('/', require('./nerve-center-host-preferences'));
 router.use('/', require('./nerve-center-interactive-priority'));
 router.use('/', require('./nerve-center-inference-hosts')); // host registry
+router.use('/', require('./nerve-center-ops-watch')); // operations watch report and settings
 
 module.exports = router;
 module.exports.buildIntelligenceSummary = buildIntelligenceSummary;

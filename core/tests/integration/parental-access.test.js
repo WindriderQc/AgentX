@@ -23,7 +23,9 @@ describe('parental access at the single household gateway', () => {
     await request(app).get('/api/access/authorize').set('Authorization', 'Bearer invalid').expect(401);
   });
   test('anonymous family navigation works while direct adult APIs, parent controls and path variants stay closed', async () => {
-    await edge(request(app).get('/')).expect(302).expect('Location', '/panel');
+    const landing = await edge(request(app).get('/')).expect(200);
+    expect(landing.text).toContain('Choisir un espace');
+    expect(landing.text).not.toContain('household/workspaces');
     await edge(request(app).get('/panel')).expect(200);
     await edge(request(app).get('/dad')).expect(302).expect('Location', '/unlock?next=%2Fdad');
     await edge(request(app).get('/api/family/profiles')).expect(200);
@@ -33,8 +35,28 @@ describe('parental access at the single household gateway', () => {
     for (const name of ['speech-language', 'playback-hold', 'voice-timeline', 'browser-conversation', 'speech-ladder', 'voice-capture-worklet']) {
       await edge(request(app).get(`/js/voice/${name}.js`)).expect(200).expect('Content-Type', /javascript/);
     }
-    await edge(request(app).get('/js/home.js')).expect(302);
-    for (const pathname of ['/js/voice/../home.js', '/js/voice/x/../../home.js', '/js/voice/%2e%2e/home.js', '/js/voice/', '/js/voice/browser-conversation.js/x']) {
+    await edge(request(app).get('/js/dashboard.js')).expect(302);
+    // Both household pages load the same content-free editor; its private API stays behind the gate.
+    await edge(request(app).get('/js/conversation-recap.js')).expect(200).expect('Content-Type', /javascript/);
+    await edge(request(app).get('/css/conversation-recap.css')).expect(200).expect('Content-Type', /css/);
+    await edge(request(app).get('/js/conversation-preferences.js')).expect(200).expect('Content-Type', /javascript/);
+    await edge(request(app).get('/css/conversation-preferences.css')).expect(200).expect('Content-Type', /css/);
+    for (const method of ['get', 'put']) {
+      for (const path of ['/api/conversation-preferences', '/api/psyx/preferences', '/api/voice-personas/preferences', '/api/voice-personas/preferences?space=family']) {
+        expect((await edge(request(app)[method](path)).send({}).expect(401)).body.code).toBe('ADULT_LOCKED');
+      }
+    }
+    expect(familyRequest({ method: 'GET' }, '/js/conversation-preferences.js/x')).toBe(false);
+    expect(familyRequest({ method: 'PUT' }, '/js/conversation-preferences.js')).toBe(false);
+    for (const method of ['get', 'put', 'post']) {
+      const path = '/api/voice-personas/private/sessions/unknown-session/recap' + (method === 'post' ? '/draft' : '');
+      expect((await edge(request(app)[method](path)).send({}).expect(401)).body.code).toBe('ADULT_LOCKED');
+    }
+    for (const pathname of ['/js/conversation-recap.js/x', '/css/conversation-recap.css/x']) {
+      expect(familyRequest({ method: 'GET' }, pathname)).toBe(false);
+    }
+    expect(familyRequest({ method: 'POST' }, '/js/conversation-recap.js')).toBe(false);
+    for (const pathname of ['/js/voice/../dashboard.js', '/js/voice/x/../../dashboard.js', '/js/voice/%2e%2e/dashboard.js', '/js/voice/', '/js/voice/browser-conversation.js/x']) {
       expect(familyRequest({ method: 'GET' }, pathname)).toBe(false);
     }
     expect(familyRequest({ method: 'POST' }, '/js/voice/browser-conversation.js')).toBe(false);
@@ -83,8 +105,8 @@ describe('parental access at the single household gateway', () => {
   test('a locked family page offers the unlock entry and the home destination survives the unlock round trip', async () => {
     const panel = await edge(request(app).get('/panel')).expect(200);
     expect(panel.text).toContain('href="/unlock?next=%2F" data-access="unlock"');
-    expect(panel.text).toContain('href="/" data-section="home" data-access="adult"');
-    expect(panel.text).toContain('href="/playground" data-access="adult"');
+    expect(panel.text).toContain('href="/" class="nav-brand"');
+    expect(panel.text).toMatch(/href="\/playground"[^>]*data-access="adult"/);
     await edge(request(app).get('/unlock?next=%2F')).expect(200);
     const session = await edge(request(app).get('/api/access/session')).expect(200);
     expect(session.body.data.numericCodeLength).toBe(6);
@@ -93,6 +115,22 @@ describe('parental access at the single household gateway', () => {
     const cookie = unlock.headers['set-cookie'][0].split(';')[0];
     const home = await edge(request(app).get('/')).set('Cookie', cookie).expect(200);
     expect(home.text).toContain('id="householdTools"');
+  });
+
+  test('parent controls and their legacy reading URLs stay adult-only without revoking the parent session', async () => {
+    const urls = ['/dad/family', '/lecture/parents', '/lecture/parents.html'];
+    for (const url of urls) {
+      await edge(request(app).get(url)).expect(302).expect('Location', '/unlock?next=' + encodeURIComponent(url));
+    }
+    const unlock = await edge(request(app).post('/api/access/unlock')).send({ code: '739251', next: '/dad/family' }).expect(200);
+    const cookie = unlock.headers['set-cookie'][0].split(';')[0];
+    for (const url of urls) {
+      const page = await edge(request(app).get(url)).set('Cookie', cookie).expect(200);
+      expect(page.text).toMatch(/id="nav-trigger-family-group"[^>]*aria-expanded="false"/);
+      expect(page.text).toMatch(/href="\/dad\/family" class="dropdown-item active"\s+aria-current="page"\s+data-access="adult"/);
+      expect(page.text).not.toContain('Suivi des lectures');
+      await edge(request(app).get('/api/access/authorize')).set('Cookie', cookie).expect(204);
+    }
   });
 
   test('one parental cookie opens both personal surfaces; family navigation revokes it for all tabs', async () => {
@@ -107,6 +145,43 @@ describe('parental access at the single household gateway', () => {
     await edge(request(app).get('/panel')).set('Cookie', cookie).expect(200);
     await edge(request(app).get('/api/psyx/state')).set('Cookie', cookie).expect(401);
     await edge(request(app).post('/api/voice-personas/private/notes')).set('Cookie', cookie).send({ operation: 'list' }).expect(401);
+  });
+
+  test('common home aliases and chrome load while locked, while service health and private pages stay guarded', async () => {
+    for (const url of ['/', '/portal/', '/ecosystem/']) {
+      const landing = await edge(request(app).get(url)).expect(200);
+      expect(landing.text).toContain('Choisir un espace');
+      expect(landing.headers.location).toBeUndefined();
+    }
+    for (const asset of ['/css/home.css', '/css/product-shell.css', '/js/product-navigation.js',
+      '/vendor/fonts/space-grotesk/5.3.0/files/space-grotesk-latin-wght-normal.woff2']) {
+      await edge(request(app).get(asset)).expect(200);
+    }
+    await edge(request(app).get('/api/portal/health')).expect(401);
+    for (const page of ['/pipeline', '/finance', '/psyx', '/data-toolbox']) {
+      await edge(request(app).get(page)).expect(302).expect('Location', '/unlock?next=' + encodeURIComponent(page));
+    }
+  });
+
+  test('PsyX uses the parent Core navigation authority and trusted launchers', async () => {
+    const previousUrls = app.locals.publicUrls;
+    const previousLaunchers = app.locals.trustedRuntimeNavItems;
+    try {
+      app.locals.publicUrls = { core: 'https://core.example.test', benchmark: 'https://bench.example.test', rag: 'https://rag.example.test' };
+      app.locals.trustedRuntimeNavItems = [{ id: 'test-runtime', label: 'Test runtime', href: '/api/test-runtime/open', icon: 'fa-terminal', owner: 'Test' }];
+      const unlock = await edge(request(app).post('/api/access/unlock')).send({ code: '739251' }).expect(200);
+      const cookie = unlock.headers['set-cookie'][0].split(';')[0];
+      const page = await edge(request(app).get('/psyx')).set('Cookie', cookie).expect(200);
+      expect(page.text).toContain('href="https://bench.example.test/"');
+      expect(page.text).toContain('href="https://rag.example.test/upload"');
+      expect(page.text).toContain('href="/api/test-runtime/open"');
+      expect(page.text).toMatch(/id="nav-trigger-personal-group"/);
+      expect(page.text).toMatch(/href="\/psyx" class="dropdown-item active"/);
+      expect(page.text).toContain('class="privacy-home"');
+    } finally {
+      app.locals.publicUrls = previousUrls;
+      app.locals.trustedRuntimeNavItems = previousLaunchers;
+    }
   });
 
   test('PsyX lock revokes the shared adult session and proxy HTTPS sets a secure cookie', async () => {

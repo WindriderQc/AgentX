@@ -2,7 +2,7 @@
 
 const { readReplyStream } = require('./persona-catalog');
 const { conversationInput } = require('./llmx-conversation');
-const { selectedContextBlock, CURRENT_REQUEST_LABEL } = require('./conversation-agent');
+const { selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL } = require('./conversation-agent');
 const interactivePriority = require('../../src/services/interactivePriorityService');
 
 const HOST_BUSY_CODES = new Set(['BENCHMARK_CLAIM_ACTIVE', 'RUNTIME_INFERENCE_ADMISSION_DENIED']);
@@ -43,7 +43,7 @@ function voiceTask(env = process.env) {
 // These are transports, not two agent loops. OpenClaw runs its native agent;
 // AgentX runs the existing routed inference contract. A started turn is never
 // replayed through the other transport, including after an ambiguous failure.
-function createConversationExecutor({ agentClient, inference, consumerContract, env = process.env }) {
+function createConversationExecutor({ agentClient, inference, consumerContract, env = process.env, personalRecaps = null }) {
   const run = runTurn({ agentClient, inference, consumerContract, env });
   // A household turn outranks evaluation work (#62). If the host stayed
   // reserved past the bounded wait, say so plainly instead of a generic error.
@@ -52,6 +52,12 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
     const endTurn = interactivePriority.beginHouseholdTurn();
     const stopWaiting = interactivePriority.onWaiting(info => request.onWaiting?.(info));
     try {
+      if (personalRecaps && request.session?.packId === 'personal_operator' && request.conversationFeatures?.recapContext !== false) {
+        const { recapContext } = require('../../src/services/conversationRecapService');
+        const confirmed = (await personalRecaps.read(request.session.sessionId)).recap || (await personalRecaps.latest())?.recap;
+        const context = recapContext(confirmed);
+        if (context) request = { ...request, turnContext: [request.turnContext, context].filter(Boolean).join('\n\n') };
+      }
       return await run(request);
     } catch (error) {
       if (interactivePriority.busySince(startedAt) || HOST_BUSY_CODES.has(error.code)) {
@@ -72,8 +78,10 @@ function runTurn({ agentClient, inference, consumerContract, env }) {
     // message, so the system message and the history stay a reusable prefix.
     // The native agent client adds the same block to its own request.
     const input = conversationInput(request);
-    const content = backend === 'agentx' && request.turnContext
-      ? `${selectedContextBlock(request.turnContext)}\n\n${CURRENT_REQUEST_LABEL}\n${input}` : input;
+    // Reference data first, then what the model must do on this turn, then the request.
+    const framed = [request.turnContext ? selectedContextBlock(request.turnContext) : '', turnDirectiveBlock(request.turnDirective)].filter(Boolean);
+    const content = backend === 'agentx' && framed.length
+      ? `${framed.join('\n\n')}\n\n${CURRENT_REQUEST_LABEL}\n${input}` : input;
     const messages = [...history, { role: 'user', content, attachments: request.attachments || [] }];
     const prepared = request.attachmentStore ? await request.attachmentStore.prepare(messages, backend) : messages;
     if (backend === 'openclaw') {

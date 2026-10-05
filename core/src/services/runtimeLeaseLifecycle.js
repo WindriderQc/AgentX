@@ -1,6 +1,7 @@
 'use strict';
 
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
+const { resourceTopology, topologyMatches } = require('./runtimePhysicalResources');
 const {
   clean, ttlMs, normalizedHosts, ensureDocument, reapExpired
 } = require('./runtimeCoordinationState');
@@ -214,7 +215,17 @@ async function recoverRelease(kind, { id, generation, principal } = {}) {
 async function listActive() {
   await reapExpired();
   const state = await RuntimeCoordination.findById('runtime').lean();
+  let physicalResources;
+  try {
+    const topology = resourceTopology();
+    physicalResources = { configured: topology.resources.length > 0, configurationValid: true,
+      mappingChangeBlocked: !topologyMatches(state, topology), resourceCount: topology.resources.length };
+  } catch {
+    physicalResources = { configured: true, configurationValid: false,
+      mappingChangeBlocked: true, resourceCount: null };
+  }
   return {
+    physicalResources,
     maintenance: state?.maintenance ? {
       active: (state.maintenance.state || 'ACTIVE') === 'ACTIVE',
       quarantined: state.maintenance.state === 'UNKNOWN',
@@ -234,6 +245,7 @@ async function listActive() {
       kind: item.kind,
       batchId: item.batchId,
       hosts: item.hosts,
+      resourceIds: item.resourceIds || [],
       recoveryRequired: item.recoveryRequired === true,
       acquiredAt: item.acquiredAt,
       heartbeatAt: item.heartbeatAt,
@@ -243,6 +255,7 @@ async function listActive() {
       active: item.state === 'ACTIVE',
       quarantined: item.state === 'UNKNOWN',
       host: item.host,
+      resourceIds: item.resourceIds || [],
       model: item.model,
       kind: item.kind, unknownOrigin: item.unknownOrigin || null,
       mode: item.mode || 'shared',

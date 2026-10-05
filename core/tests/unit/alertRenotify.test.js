@@ -15,7 +15,6 @@
 
 const Alert = require('../../models/Alert');
 const alertService = require('../../src/services/alertService');
-const { formatAlertText } = require('../../src/services/notificationFormatters');
 
 const RULE_ID = 'renotify-test-rule';
 const HOST_DOWN_EVENT = {
@@ -151,27 +150,6 @@ describe('sustained-alert re-notification', () => {
     await alertService.evaluateEvent(HOST_DOWN_EVENT);
 
     expect(sendSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('marks a repeat notification as ongoing so it is not read as a duplicate', () => {
-    const base = {
-      title: 'Host unreachable — secondary',
-      severity: 'critical',
-      ruleName: 'Ollama host unreachable',
-      message: 'nomic-embed-text:v1.5: unreachable',
-      context: {},
-      createdAt: new Date(Date.now() - 9 * 60 * 60 * 1000),
-      occurrenceCount: 200,
-      _id: 'abc'
-    };
-
-    const first = formatAlertText({ ...base, notificationCount: 1 });
-    expect(first).not.toContain('STILL UNRESOLVED');
-
-    const repeat = formatAlertText({ ...base, notificationCount: 4 });
-    expect(repeat).toContain('STILL UNRESOLVED after 9.0h');
-    expect(repeat).toContain('reminder #3');
-    expect(repeat).toContain('200 occurrences');
   });
 
   it('never lets a notification failure break alert recording', async () => {

@@ -19,6 +19,9 @@ COPY core/src/frontend/shared-tokens.css /core/public/dist/shared-tokens.css
 COPY core/src/frontend/shared-utils.js /core/public/dist/shared-utils.js
 COPY core/public/css/local-fonts.css /core/public/css/local-fonts.css
 COPY core/public/css/platform-chrome.css /core/public/css/platform-chrome.css
+COPY core/public/css/product-shell.css /core/public/css/product-shell.css
+COPY core/public/css/shortcuts-modal.css /core/public/css/shortcuts-modal.css
+COPY core/public/js/product-navigation.js /core/public/js/product-navigation.js
 COPY core/public/js/utils/polling-controller.js /core/public/js/utils/polling-controller.js
 COPY core/public/js/utils/polling-controller-global.js /core/public/js/utils/polling-controller-global.js
 COPY core/public/js/utils/shared.js /core/public/js/utils/shared.js

@@ -500,3 +500,24 @@ test('a user rejecting a proposal during a review wins over the stale review sna
   assert.equal(result.added, 0);
   assert.equal(result.state.sessionDigests.length, 1);
 });
+
+test('the frontier mode is a preference that survives a memory reset', async () => {
+  const harness = createHarness();
+  await harness.repository.ensureInfrastructure();
+  assert.equal((await harness.repository.read('default')).settings.frontierMode, null);
+  await assert.rejects(harness.repository.updateSettings('default', { frontierMode: 'cloud' }), /local, deep or all/);
+  const saved = await harness.repository.updateSettings('default', { frontierMode: 'all' });
+  assert.equal(saved.state.settings.frontierMode, 'all');
+  assert.equal((await harness.repository.reset('default')).settings.frontierMode, 'all');
+});
+
+test('the profile is the user\'s own text and survives a memory reset; goals are memory items', async () => {
+  const harness = createHarness();
+  await harness.repository.ensureInfrastructure();
+  const saved = await harness.repository.updateProfile('default', { about: '  Père seul de deux enfants.  ', expectations: 'x'.repeat(5000), other: 'ignored' });
+  assert.deepEqual([saved.state.profile.about, saved.state.profile.expectations.length, Object.keys(saved.state.profile)], ['Père seul de deux enfants.', 1500, ['about', 'expectations']]);
+  const goal = await harness.repository.addItem('default', 'goals', { text: 'Crier moins le soir' });
+  assert.equal(goal.state.goals[0].text, 'Crier moins le soir');
+  const reset = await harness.repository.reset('default');
+  assert.deepEqual([reset.profile.about, reset.goals], ['Père seul de deux enfants.', []]);
+});

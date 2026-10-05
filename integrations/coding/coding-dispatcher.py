@@ -565,6 +565,11 @@ class ClawdXGuardedAdapter(WorkerAdapter):
             str(self.execution["costEvidenceMode"]),
             "--allow-dispatch",
         ]
+        repair_turns = self.verification.get("repairTurns", 0)
+        if type(repair_turns) is not int or repair_turns not in (0, 1):
+            raise DispatcherError("verification repairTurns must be 0 or 1")
+        if repair_turns:
+            command.extend(["--verification-repair-turns", "1"])
         energy = self.execution["localEnergyEvidence"]
         if not isinstance(energy, dict) or energy.get("measurementScope") != "gpu-incremental-lower-bound":
             raise DispatcherError("localEnergyEvidence must use gpu-incremental-lower-bound")

@@ -31,10 +31,6 @@ jest.mock('../../services/storageAgentService', () => ({
   listMetadataProbePaths: jest.fn().mockResolvedValue([])
 }));
 
-jest.mock('../../utils/fetch-utils', () => ({
-  fetchWithTimeoutAndRetry: jest.fn().mockResolvedValue({ ok: true })
-}));
-
 jest.mock('../../utils/file-operations', () => ({
   formatFileSize: jest.fn(n => `${n} B`)
 }));

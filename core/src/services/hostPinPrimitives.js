@@ -1,4 +1,5 @@
 'use strict';
+const { withContextRefusal } = require('./routing/contextIntegrityPolicy');
 /**
  * Host Pin Primitives
  *
@@ -140,7 +141,7 @@ function buildWarmPayload(model, { keepAlive = -1, contextSize = 0, numThread = 
     if (positiveInteger(numThread)) payload.options = { num_thread: positiveInteger(numThread) };
     return payload;
   }
-  const payload = { model, prompt: 'warmup', stream: false, keep_alive: keepAlive, options: { num_predict: 1 } };
+  const payload = withContextRefusal({ model, prompt: 'warmup', stream: false, keep_alive: keepAlive, options: { num_predict: 1 } });
   if (contextSize > 0) payload.options.num_ctx = contextSize;
   if (positiveInteger(numThread)) payload.options.num_thread = positiveInteger(numThread);
   return payload;

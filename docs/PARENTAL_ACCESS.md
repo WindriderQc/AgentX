@@ -54,10 +54,12 @@ are configured; API calls and unknown destinations get a plain 401.
 
 Opening `/panel`, `/kids`, `/kids/sounds` or `/lecture` revokes this browser's
 adult session. Other tabs receive a lock event and clear private content before
-redirecting. On a locked family page the Household header marks adult
-destinations with a lock, offers an "Espace adulte" entry in the tools menu and
-sends `/` links through `/unlock`, because a locked `/` request is redirected
-to `/panel`. Expiry, explicit lock, visibility changes and back/forward navigation
+redirecting. On a locked family page the shared header marks adult
+destinations with a lock and offers an "Espace adulte" entry in the tools menu.
+The common home (`/`, `/portal`, `/ecosystem`) stays accessible while locked;
+it presents the space choices without private application content. Adult pages
+still require unlocking, and system health APIs stay protected. Expiry, explicit
+lock, visibility changes and back/forward navigation
 also check the session. The server independently rejects protected APIs, including
 direct private-history, memory, settings and parent-approval requests. Family
 conversation handlers retain their existing server-bound child/family scopes.

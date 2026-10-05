@@ -1,9 +1,47 @@
 # Operations
 
+The conversation storage primitives retain a durable writer token
+when a worker dies or a Mongo mutation has an unknown outcome. An erasure call
+then reports `CONVERSATION_ERASURE_PENDING` or
+`CONVERSATION_WRITE_RECOVERY_REQUIRED`; it has not completed. The erasure barrier
+continues to reject new content writes. A successful erasure means the prior
+writer settled and all of that owner's content was deleted with acknowledged
+Mongo writes. Other owners remain independent.
+
+Playground chat records accepted requests and response bytes before delivering
+them. Its recovery disclosure lists refused, interrupted or unassociated
+exchanges from Core in pages of 50, including older copies. Downloading a saved exchange never sends its
+request again. `GET /api/history/receipts/:receiptId` and the corresponding
+`DELETE` stay in the server-resolved Playground owner scope and use no-store
+responses. Erasing a recovery copy leaves an already saved conversation intact;
+erasing that conversation purges its associated copies and rejects late writes.
+Household, PsyX and external consumer routes keep their existing contracts.
+
+`Conversation` keeps an atomic reference to immutable transcript pages and
+complete payload chunks. Existing embedded histories remain readable and move
+on their next content write; no bulk migration is required. Content and search
+metadata have integrity checks. A missing page, chunk or search index projection
+returns `CONVERSATION_TRANSCRIPT_UNAVAILABLE`, never a partial history or export.
+A whitespace-delimited search token larger than the safe index row (8 MiB)
+also refuses search explicitly; its full content remains readable and exportable.
+Queries requiring an oversized field's bounded index projection refuse with
+`CONVERSATION_QUERY_REQUIRES_FULL_CONTENT`. Partial message selections cannot
+replace a full transcript. Query upserts, update pipelines and raw/unordered
+bulk inserts have no transcript implementation and refuse explicitly.
+
+There is no automatic fence takeover or recovery endpoint. Never clear a writer
+token merely because it is old, or report erasure complete after an uncertain
+database command. Recovery requires independent proof that the exact writer and
+its database operations have settled, followed by a retry of the requested
+erasure. Receipts and runtime evidence belong outside Git.
+
 For the screen labels, inspection steps and evidence disclosures used by Pipeline,
 Nerve Center and Profiler, see [operational screens](OPERATOR_UI.md).
 
 For a first installation and local Ollama setup, follow [installation](INSTALLATION.md).
+
+The optional [local image service](LOCAL_IMAGES.md) documents worker isolation,
+external profiles, GPU restoration and explicit recovery.
 
 ## Local foundation
 
@@ -65,6 +103,30 @@ build revision. This checkout has no automatic production pull/deploy scheduler.
 Configure [parental access](PARENTAL_ACCESS.md) at the LAN HTTPS gateway before
 opening the full profile to family devices.
 
+### Conversation context and performance
+
+**Contexte et performance** edits optional work without recreating Core. Each
+interface has an independent persisted preference scope:
+
+| Interface | Entry | Optional work |
+| --- | --- | --- |
+| Playground | Conversation header | Profile and model history; its existing precision controls hold RAG, web search, thinking and model parameters. |
+| PsyX | Conversation header | Context sources, automatic recommendations, deep replies, recap drafts, review and dream availability, timing and dream sources. |
+| Nestor | Private conversation settings | Core history, selected notes, confirmed point, approved documents, family context, review advice, recap drafts and background review with its delay. |
+| Famille | Performance settings in Nestor's private parental space | Separate Core history, notes, approved documents, routines, review advice and background review with its delay. |
+
+**Allégé** disables the applicable optional switches; **Par défaut** removes
+saved overrides. Both are drafts until **Enregistrer les réglages**. Concurrent
+editors receive a conflict and can reload. Current instance environment values
+supply initial defaults; stored overrides survive restarts. A disabled context
+source stays stored, but is omitted from subsequent model context. A disabled
+background feature stops scheduling new inference and invalidates obsolete
+results; an already admitted PsyX inference settles normally. Access checks,
+transcript integrity and deterministic crisis protections stay active. A recap
+can still be written manually with its model-generated proposal disabled.
+Native OpenClaw history, memory and tools are configured in OpenClaw; the panel
+links to that interface and the Nerve Center's model/routing settings.
+
 ### Bounded maintenance actions
 
 `./agentx action <name>` runs one action from a closed list on a running
@@ -78,15 +140,26 @@ when set. Exit codes: 0 completed, 1 failed, 2 usage, 4 refused (held or busy).
 
 | Action | Effect |
 |---|---|
-| `status` | Read-only: checkout revision, revision served by Core, Benchmark and RAG, active coordination, lease holder, running deploys. |
-| `deploy --services core,benchmark[,...] [--revision origin/main] [--wait-minutes 10]` | Clean tree, no other deploy, revision on `origin/main` and a fast-forward of the checkout; fast-forwards, then builds the images first (building touches no running container), then waits for the instance to be idle and recreates with `./agentx up --no-deps`, without rebuilding, through Core's runtime lease. Automated inferences start again within seconds, so a lease refusal is retried every 10 s until a gap appears; `--wait-minutes` bounds the idle wait and the retries together, after which the action stops refused (exit 4) with the images built and the checkout already on the new revision. Any other launcher failure stops at once. Nothing running is cut; it then checks the served revision. |
+| `status` | Read-only: checkout revision, revision served by Core, Benchmark, RAG and Data, active coordination, lease holder, running deploys. |
+| `lease --actor <who> --claim <purpose>` | Takes the configured `AGENTX_LEAD_FILE` only when free and keeps it held after the command. The actor is a stable session identifier. |
+| `lease --actor <same-who> --release <summary>` | Releases only that actor's current lease, records its summary and preserves every earlier note. Another holder or a free lease refuses. |
+| `deploy --services core,benchmark[,...] [--revision origin/main] [--wait-minutes 10] [--queue-minutes 0]` | Deploys take turns, and one deploy carries every commit merged before it fetched. A held `LEAD.md` or a running deploy refuses at once, or is waited for up to `--queue-minutes`, checked every 10 s. Before taking the lease the action looks at what is served. A service is up to date when it reports the revision, a descendant, or a commit with the same build (nothing its Dockerfile copies, the Dockerfile, the compose file or `.dockerignore` differs), from a container created after the instance env file and override last changed; a service that reports no revision (`benchmark-runner`) never is. When every requested service is up to date and the checkout holds the revision, the action completes with `alreadyServed: true`, without the lease, a build or a recreate; a queued action leaves that way as soon as the deploy ahead of it serves its revision. Otherwise the action takes the lease and needs a clean tree, a revision on `origin/main` and a fast-forward of the checkout; fast-forwards to `origin/main` as fetched at that moment and, when a merge of docs, integrations or another service left every requested image unchanged, completes there with `alreadyServed: true`; otherwise it builds the images first (building touches no running container), then waits for the instance to be idle and recreates with `./agentx up --no-deps`, without rebuilding, through Core's runtime lease. Automated inferences start again within seconds, so a lease refusal is retried every 10 s until a gap appears; `--wait-minutes` bounds the idle wait and the retries together, after which the action stops refused (exit 4) with the images built and the checkout already on the new revision. Any other launcher failure stops at once. Nothing running is cut; it then checks the served revision. |
 | `recover-quarantine --host <ollama url>` | For an UNKNOWN inference on a local Ollama: refuses while an inference or a workload is active there, restarts the unit named for that host in `AGENTX_ACTION_OLLAMA_UNITS` (`{"<url>": {"unit": "...", "scope": "system"\|"user"}}`, `sudo -n` for system units), checks a new process answers, then attests each UNKNOWN admission with `recover-runtime-restart`. Workloads keep the profiler procedure below. |
 | `recalibrate-judges [--host <url> --model <name>]` | Runs Benchmark's quick judge calibration (the default judge when no target is given) and returns its report. |
 
 An instance can install a small wrapper that exports these variables, so an
 operator session or agent calls a single command.
-The OpenClaw plugin `integrations/openclaw/agentx-maintenance` exposes the
-same actions to configured operator agents as one tool,
+Lease changes serialize their read/write pair through a `LEAD.md.writer-lock`
+sidecar. A leftover sidecar refuses further changes; verify that the exact
+writer and its filesystem operation have stopped before operator recovery.
+Age alone never authorizes takeover. Both lease commands return the normal
+JSON action receipt and use the same configured path as deployment.
+Coordination GETs may retry one dropped transport within their original
+ten-second probe budget. They require a complete successful Core snapshot;
+an unavailable or incomplete response never establishes idle state. This read
+retry does not repeat a maintenance mutation.
+The OpenClaw plugin `integrations/openclaw/agentx-maintenance` exposes status,
+deployment, quarantine recovery and judge calibration to configured operator agents as one tool,
 `agentx_maintenance_action`: no shell, validated arguments, and the actor is
 always `openclaw:<agent>`. See its README for the configuration.
 
@@ -146,6 +219,21 @@ the Profiler panel or `POST /api/profiler/pipeline/profile/:profileId/cancel`,
 `POST /api/profiler/hosts/test/run-fleet/:queueId/cancel` or
 `POST /api/benchmark/batch/:id/stop` on Benchmark. Core serves the same verdict
 at `/api/nerve-center/runtime-coordination/deploy-blockers?service=core|benchmark|all`.
+
+When the only blockers are background inference (`inference-automated`, or
+Core's own `watchdog-probe`), the launcher does not refuse at once. It posts a
+drain request (`POST /api/nerve-center/runtime-coordination/drain`), which
+`/runtime-coordination/active` reports as `drain`, and retries the lease for up
+to `AGENTX_RUNTIME_LEASE_DRAIN_SECONDS` (120 by default, 0 disables the wait).
+A resumable job that reads coordination before each unit, such as the Secretary
+mail catch-up, pauses on it, so the launcher waits for at most the unit in
+flight. The request is advisory, lives in the Core process and is withdrawn
+when the wait ends. Interactive, benchmark and maintenance blockers refuse
+immediately, as before.
+The bounded action wrapper delegates a Core-only recreate to this launcher
+gate, so back-to-back background calls cannot prevent the drain request from
+being sent. Other or mixed service selections retain the full idle wait.
+
 Images are built first (`up --build` included), so the lease, which keeps new
 work out, covers only the recreate: it is heartbeated and released once health
 is green. Recreating mid-batch would otherwise cut the workload and quarantine
@@ -161,6 +249,13 @@ operators of the instance. A new setting (for example
 `AGENTX_FACE_UNLOCK_ENABLED`) is added to the external env file by hand; code
 deployment never changes instance configuration. The service `/health`
 responses report the deployed `revision`.
+
+Services rebuilt at different revisions of one product version read as mixed
+builds on the home page, the Playground cockpit and the Nerve Center
+Services / Build widget, which lists the revisions. That state is expected
+after a partial deployment and raises no operational finding. Different product
+versions or profiles, or a service that reports no identity, are a deployment
+mismatch: service health is degraded and the finding names the cause.
 
 ### Code runner
 
@@ -221,6 +316,11 @@ inference. If that host is off, unset the variable to fall back to GitHub.
 Run the relevant tests locally before pushing: every push to a pull request
 starts a run.
 
+A pull request run tests only the services its files touch, and a merge starts
+no run. `main` is therefore validated as a whole only by a manual run, in which
+every job runs: `gh workflow run agentx-ci --ref main`. Start one after a batch
+of merges and wait for its result before deploying.
+
 ## Optional surface integrations
 
 Data is available through Compose profile `data`. Set `COMPOSE_PROFILES=data`
@@ -237,7 +337,29 @@ Set `NETWORK_DEVICE_WATCH_MS` (for example `300000`) to let Core check the
 network inventory and raise the `network-new-device` alert once per unknown
 device. The first check accepts the current inventory as the baseline; name a
 device or mark it known in the Data Toolbox to acknowledge it. The rule
-targets `telegram`, so the operations relay delivers it when configured.
+targets `telegram`, so the operations relay delivers it when configured. The
+alert carries a guess of what the device is and a suggested name, asked from
+the `ops_watch` task's model with the vendor, hostname and address; it is a
+hint, never applied by itself, and a missing answer never delays the alert
+beyond three minutes.
+
+Switch the operations watch on in the Nerve Center, section "Operations
+watch", which also shows the latest report, checks on demand and sets the
+interval and the report language. Core stores these settings; `OPS_WATCH_MS`
+and `OPS_WATCH_LANGUAGE` apply only until they are saved there. Core takes what its rules already flag (the ecosystem snapshot's operational
+issues and the active alerts) and asks the `ops_watch` task's model for one
+short report: findings by severity, impact, next action. The model runs only
+when the set of findings changes, never decides what is wrong, and cannot hide
+a finding: when it is unavailable the report carries the plain list. Each
+distinct set of findings is one `ops-watch-report` incident (`telegram`), which
+resolves once the findings are gone; `GET /api/nerve-center/ops-watch` returns
+the latest report and the settings. The input is small
+and nothing waits on the answer, so route `ops_watch` to a CPU-resident host in
+the Nerve Center routing table. Any task routed to a CPU-resident host stays on
+that host (the table shows "Stays on this host"): each CPU instance is a lane
+filled on purpose, so two background tasks routed to two CPU hosts never end up
+on the same one. A task routed to a GPU host may follow its model to another
+GPU host, never to a host of the other residency.
 
 `config/obsidian-vault/` holds generic household note templates (appliance,
 routine, recipe, procedure) and `Maison.base`, an Obsidian Base listing
@@ -274,9 +396,9 @@ results to `/api/v1/hardware/samples`. Nothing is installed on a GPU host.
    without an authorized key is unsupported; it stays "not collected".
 2. Copy `gpu-hosts.example.json` outside Git and list the hosts:
    `[{"id":"gpu-a","name":"GPU A","ssh":"user@gpu-a","ollamaUrl":"http://gpu-a:11434"},{"id":"core","local":true}]`.
-   Optional per host: `sshPort`, `nvidiaSmi` (executable path). `ollamaUrl`
-   must equal the Ollama URL Core and Benchmark use for that host: it is how
-   they find the host's GPUs.
+   Optional per host: `sshPort`, `nvidiaSmi` (executable path), and
+   `ollamaService` (below). `ollamaUrl` must equal the Ollama URL Core and
+   Benchmark use for that host: it is how they find the host's GPUs.
 3. Copy `gpu-agent.env.example` (set `DATA_URL=http://127.0.0.1:<DATA_PORT>`)
    and `gpu-agent.service.example` into the user's systemd directory, then
    enable the unit. `GPU_AGENT_HOSTS_JSON` may replace the file.
@@ -286,9 +408,40 @@ results to `/api/v1/hardware/samples`. Nothing is installed on a GPU host.
    host or the post failed), then
    `node integrations/operations/verify-native-data-collectors.js --expect-gpu <GPU_AGENT_ID>`.
 
+Some Ollama behaviour is set by the server's environment, not by a request:
+the KV cache type, flash attention, parallel requests, resident model slots,
+GPU spreading and visible devices. Name a host's Ollama service with
+`ollamaService` and the collector also reads these settings, read-only, every
+`GPU_AGENT_OLLAMA_ENV_INTERVAL_MS` (default 10 min, 1 min to 24 h):
+
+- a systemd unit name, such as `"ollama.service"` or `"ollama-cpu.service"`:
+  `systemctl show <unit>` with the unit's `Environment`, load and active state,
+  main-process start time, `NeedDaemonReload` and whether it also reads an
+  `EnvironmentFile`. A user that is not root can run it.
+- `"windows"`: `reg query` of the machine environment, then of the SSH user's
+  environment (the user's values win). The SSH user should be the one running
+  Ollama.
+
+Only `OLLAMA_KV_CACHE_TYPE`, `OLLAMA_FLASH_ATTENTION`, `OLLAMA_NUM_PARALLEL`,
+`OLLAMA_MAX_LOADED_MODELS`, `OLLAMA_MAX_QUEUE`, `OLLAMA_SCHED_SPREAD`,
+`OLLAMA_KEEP_ALIVE`, `OLLAMA_CONTEXT_LENGTH`, `OLLAMA_GPU_OVERHEAD`,
+`OLLAMA_LLM_LIBRARY`, `OLLAMA_VULKAN` and `CUDA_VISIBLE_DEVICES` are kept, with
+plain values of at most 64 characters (`shared/ollamaServiceEnvironment.js`);
+every other variable is discarded where it is read. A listed key with an
+unexpected value is reported by name only. An unset key means Ollama's
+default. What is observed is the configuration: a systemd unit shows what
+systemd has loaded, values in an `EnvironmentFile` are not seen, and a service
+not restarted since a change still runs the previous values (compare the
+start time). Data keeps the latest observation per host; a cycle without a
+fresh read leaves it unchanged, and a failed read is stored as that
+observation's error.
+
 Core's Nerve Center reads `/api/v1/hardware/latest` through `DATAAPI_BASE_URL`
 and shows a fresh sample's values with its age; a stale, failing or uncollected
-host shows that state instead of numbers. Benchmark reads the same projection
+host shows that state instead of numbers. A host card also shows the latest
+Ollama server settings the collector read, with their source and age, whatever
+the GPU sample's freshness: an unset key reads as Ollama's default (`f16` for
+the KV cache), and a failed read says so instead of showing defaults. Benchmark reads the same projection
 (its `DATAAPI_BASE_URL`, default `http://data:3083` in Compose) to fill
 `agentx.profiler-hardware-collector/v1`. A retired host-report agent still
 running on a GPU host is removed by hand on that host; Core has no
@@ -416,12 +569,15 @@ browser's own voice selection still wins; invalid entries keep the catalog voice
 Kids Room and Lecture create their conversation with the Nestor personality and
 read replies through the same voice ladder, so Nestor's instance voice applies
 there too; the reading voice chosen on that browser ("Voix des lectures") wins.
-In Household, an unavailable chosen engine lets the speech ladder try the
-personality's voice, its catalog voice and the device voice, skipping duplicates.
-A failure after the stream starts permits one clause retry below the failed
-voice, at most once per turn; interruption never starts that retry. The reply
-can remain unspoken if no voice is available. PsyX uses its protected chosen-voice
-route without a device voice fallback. See
+On the Household browser conversation page (Super Dad or Famille), replies use
+`core/public/js/voice/speech-ladder.js`: the selected voice, the personality's
+presentation voice, its catalog voice, then the browser's own speech where
+permitted. Duplicate choices are skipped, and a rejected synthesis request
+advances to the next rung. A failure after the stream starts permits one clause
+retry below the failed voice, at most once per turn; interruption never starts
+that retry. The reply can remain unspoken if every voice fails. Server replies
+and native voice sessions do not use browser `speechSynthesis`. PsyX uses its
+protected chosen-voice route without a device voice fallback. See
 [shared speech behavior](AGENTS_AND_VOICE.md#shared-speech-behavior).
 
 `HOUSEHOLD_TEAM_MEMBERS` optionally lets the owner address a team member
@@ -682,6 +838,16 @@ answer tries `secondary` next.
   `task_fallback_<reason>` code, and the lane observability projection
   (`taskFallbacks`) counts ladder use since the last start.
 
+A strict task never changes model, and never changes host unless the other
+host has its model installed: the scheduler's placement away from the
+configured host is verified first. While a benchmark claim holds the only host
+with the model, `/api/inference/generate` answers 503
+`NO_UNCLAIMED_OLLAMA_HOST` without dispatching. A claim, session hold or
+runtime admission refusal met at dispatch answers with its own code
+(`BENCHMARK_CLAIM_ACTIVE`, `HOST_SESSION_HOLD_BUSY`,
+`RUNTIME_INFERENCE_ADMISSION_DENIED`, `RUNTIME_INFERENCE_RECOVERY_REQUIRED`).
+The caller retries after the campaign or the hold.
+
 The ladder is chosen before dispatch. `DEGRADED_FALLBACK=true` is separate:
 one retry after a failed dispatch, normally of the same model on another host,
 for three interactive lanes.
@@ -743,6 +909,60 @@ AGENTX_ROUTING_SNAPSHOT_STALE_MS=300000
 
 ## Inference hosts
 
+### Physical GPU admission
+
+`AGENTX_RUNTIME_RESOURCES_JSON` optionally maps private physical GPU identities
+to consumer endpoint URLs. Keep the actual inventory in the external instance
+env file; the Configuration view hides its value. A generic example is:
+
+```json
+[{"id":"gpu-a","endpoints":["http://gpu-a:11434","http://gpu-alias:11435"]}]
+```
+
+Each identity describes one physical device, independently of an IP address or
+port. Include every managed endpoint that uses that GPU; an endpoint using
+several GPUs appears in each device's list. Leave CPU-only endpoints unmapped.
+Endpoints are HTTP(S) origins without credentials, paths or query strings.
+Unset or an empty array retains endpoint-only coordination. Invalid entries
+refuse inference and workload admission as a whole.
+
+Core stores the derived resource IDs on each admission. Distinct endpoints
+sharing a device cannot acquire concurrent inference, even for the same model.
+A workload reserves both its endpoints and their physical devices; its own
+inference still requires its exact endpoint-bound proof. A yielded workload
+admits ordinary inference only on its listed endpoints. Unrelated GPUs and
+unmapped CPU endpoints keep their existing admission rules.
+
+Configure or change this map only after all inference and workload admissions
+have settled. A fingerprint in the same Mongo admission command prevents a
+new mapping from bypassing held legacy or UNKNOWN admissions. Until those
+owners release or reconcile, new dispatch refuses with
+`runtime_resource_configuration_changed`; exact heartbeat, release and recovery
+remain available. Do not remove admission records to activate a new map.
+`GET /api/nerve-center/runtime-coordination/active` reports configuration validity,
+whether a change is blocked, and the stored resource IDs on held admissions.
+
+This mapping coordinates participating Core consumers. Listing a speech peer,
+game or other application does not make it participate or prove that its CUDA
+allocations were freed. Speech compute drain, backup readiness and physical
+GPU release require their own adapter and qualification under
+[#342](https://github.com/WindriderQc/AgentX/issues/342).
+
+Ordinary Core inference requires a stable Ollama version of at least 0.30.10.
+Before dispatch, Core reads `/api/version` with a five-second bound; missing,
+malformed, prerelease or older evidence returns
+`INFERENCE_CONTEXT_POLICY_UNAVAILABLE` (503). Chat and generation send
+`truncate: false` and `shift: false`; embeddings send `truncate: false`. Input
+and history are preserved for the runtime to accept or explicitly reject.
+Configured `num_ctx`, output limits, model artifacts and pin preferences stay
+under their existing authority. Disabling context shifting can reload an
+already resident runner, so qualify startup latency on the instance. A direct
+lane does not opt out. Benchmark/Profiler probes require an exact Core workload
+reservation to retain their boundary-testing behavior.
+Resident pin warmups, session warmups, model starts, pin speed checks and
+watchdog probes/restores carry the same refusal flags. This keeps periodic
+maintenance from reloading the runner merely to re-enable context shifting.
+
 Every Ollama endpoint Core may use is a host. `OLLAMA_HOST` (and the optional
 `OLLAMA_HOST_2`, `OLLAMA_HOST_3`) bootstrap the first hosts under the keys
 `primary`, `secondary` and `tertiary`. Every further endpoint is registered from
@@ -792,12 +1012,41 @@ Environment=CUDA_VISIBLE_DEVICES=
 Environment=OLLAMA_VULKAN=0
 Environment=OLLAMA_MAX_LOADED_MODELS=1
 Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_KEEP_ALIVE=-1
 ExecStart=/usr/local/bin/ollama serve
 CPUQuota=600%
 Nice=10
 IOSchedulingClass=idle
 MemoryMax=24G
 ```
+
+Set `OLLAMA_MODELS` as well when the GPU instance keeps its store outside the
+default path, so both instances read the same models. `CPUQuota` leaves cores
+to whatever else the machine runs.
+
+A CPU brain, from nothing to work:
+
+1. Start the instance and pull a model there. Generation speed follows memory
+   bandwidth divided by active weights, so prefer a mixture-of-experts model
+   with few active parameters; a dense model of the same size is several times
+   slower.
+2. Add the host in the Nerve Center, section "Inference hosts", with residency
+   CPU.
+3. Pin the model on it with its context and **CPU threads** (at most the cores
+   `CPUQuota` allows). The threads are not optional: every request and every
+   health probe reuses the pin's context and threads, and a pin without them
+   lets callers load the model with different options, which reloads it each
+   time. Through the API, `PUT .../pin` only names the model; `PATCH .../pin`
+   with `{model, contextSize, numThread}` sets the rest.
+4. Route background tasks to it in the routing table. They stay on that host.
+5. Read the journal of the instance for `starting llama-server`: after the
+   first load there should be none.
+
+What suits it: one short request at a time whose answer nothing waits on (a
+watch report, an advisory, a classification). What does not: agent turns, whose
+prompts take minutes to read at a few dozen tokens per second, and judgment
+tasks the smaller model does differently. Before moving such a task, send the
+same prompts to both models and read where they differ.
 
 In the `full` profile Benchmark reads the registry from Core every 30 seconds,
 so a registered host becomes a Profiler and benchmark target with its residency. On a CPU host the
@@ -858,6 +1107,23 @@ a hash, never prompt content. A miss whose divergence is `append` or `none`
 points elsewhere: another caller used the model in between, or the model was
 reloaded (`loadMs` is high).
 
+`GET /api/analytics/inference/distribution` turns these rows into
+distributions. It accepts the `/api/analytics/inference/logs` filters, covers
+`window` (`24h`, `7d`, `30d`, `90d`; default `7d`) unless `from`/`to` are given,
+and groups by one or two of `consumerContract` (default), `taskType`, `model`,
+`host`, `hostKey`, `caller`, `runtime` and `status` (`limit` groups, default 50,
+at most 200). For the totals and each group it returns p50, p90, p95, p99 and
+max of `inputTokens` (`tokensIn`, or the dispatch estimate when the call ended
+without usage), `tokensOut`, `durationMs`, `firstTokenMs`, `loadMs`,
+`promptEvalMs`, `evalMs`, `nonModelMs` (wall clock not covered by the three
+Ollama phases: routing, admission, queueing, retries and network), `numCtx` and
+`contextFill` (`inputTokens / num_ctx`); the calls per prompt-size bucket (up to
+8k, 16k, 32k, 64k, 96k, 128k, 192k, above); and the calls filling at least 50,
+75 and 90 % of their context. Percentiles are MongoDB approximations. A metric
+no row reports has a null value with a count of 0. Rows expire after
+`INFERENCE_LOG_TTL_DAYS` (returned as `retentionDays`), so a window longer
+than that covers only the retained rows.
+
 ## Resident model pins
 
 The Nerve Center host cards show parallel requests **per model** separately from
@@ -869,8 +1135,26 @@ After inspecting the running process environment or its matching startup log,
 record the observation through
 `PUT /api/nerve-center/host-preferences/<encoded-host-url>/ollama-concurrency`
 with `{ numParallel, observedAt, source }`, where `source` is
-`process-environment` or `startup-log`. This updates host metadata only; changing
-Ollama's parallelism requires separate host configuration and qualification.
+`process-environment` or `startup-log`. Without a recorded observation, the card
+uses the `OLLAMA_NUM_PARALLEL` the GPU collector read from the host's Ollama
+service (`ollamaService` in the GPU collector setup under
+[optional surface integrations](#optional-surface-integrations)) and says so; a
+recorded observation stays authoritative and a differing collector reading is
+shown beside it. This updates host metadata only; changing Ollama's parallelism
+requires separate host configuration and qualification.
+
+Below that value, the **Effective** line gives each pinned and loaded model the
+request slots Ollama actually gives it. Ollama gives one slot, whatever
+`OLLAMA_NUM_PARALLEL` says, to a model that cannot complete text (an embedding
+model) and to the architectures its scheduler runs sequentially, among them the
+Qwen 3.5/3.6 hybrids (`qwen35`, `qwen35moe`) and `qwen3next`: the card shows
+`1 (architecture qwen35)`. Core reads each model's family and capabilities
+from `/api/show` (cached ten minutes per host and model) and compares the
+family with the scheduler's list in
+`core/src/services/ollamaModelParallelismService.js`, copied from Ollama's
+`server/sched.go`; review it when upgrading Ollama. Any other model shows the
+configured value with `(server setting)`, or only `server setting` while that
+value is unknown, and a model whose metadata cannot be read shows `unknown`.
 
 One host can keep a conversation model and an embedding model resident together.
 `pinnedModels` holds an independent `{ model, keepAlive, contextSize, autoRestore, numThread }`

@@ -68,6 +68,7 @@ const ConversationSchema = new mongoose.Schema({
   userId: { type: String, default: 'default' },
   surface: { type: String, default: undefined },
   surfaceSession: { type: require('./conversationSessionSchema'), default: undefined },
+  sessionRecap: { type: require('./conversationRecapSchema'), default: undefined },
 
   model: String,
   systemPrompt: String,
@@ -242,7 +243,9 @@ ConversationSchema.index({ 'usage.totalTokens': -1 });
 
 // Update timestamp on save
 ConversationSchema.pre('save', function() {
-  this.updatedAt = Date.now();
+  if (!this.$locals.transcriptBulkInsert) this.updatedAt = Date.now();
 });
+
+ConversationSchema.plugin(require('../src/services/conversations/transcriptPlugin'));
 
 module.exports = mongoose.model('Conversation', ConversationSchema);

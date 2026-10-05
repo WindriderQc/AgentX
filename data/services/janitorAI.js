@@ -8,6 +8,20 @@ const { log } = require('../utils/logger');
 
 const CORE_PROXY_URL = (process.env.CORE_PROXY_URL || 'http://localhost:3080').replace(/\/+$/, '');
 
+// How long one advisory request may take. The default suits a GPU host; raise
+// it when `janitor_ai` is routed to a slow CPU-resident host.
+const DEFAULT_TIMEOUT_MS = 60000;
+const MAX_TIMEOUT_MS = 20 * 60 * 1000;
+// Past this, a retry would only queue a second long request behind the first.
+const RETRY_BELOW_MS = 120000;
+
+function requestLimits(env = process.env) {
+  const value = Number(env.JANITOR_AI_TIMEOUT_MS);
+  const timeout = Number.isFinite(value) && value > 0
+    ? Math.min(MAX_TIMEOUT_MS, Math.max(10000, Math.floor(value))) : DEFAULT_TIMEOUT_MS;
+  return { timeout, retries: timeout <= RETRY_BELOW_MS ? 1 : 0 };
+}
+
 const ACTIONS = {
   triage: {
     system: `You are a storage analyst. Given file metadata (paths, sizes, ages, extensions), classify files into three categories: KEEP, ARCHIVE, or JUNK. KEEP = actively used or important. ARCHIVE = stale but potentially valuable (suggest cold storage). JUNK = safe to delete (temp, cache, orphaned). Respond ONLY with JSON: { "categories": [{ "label": "KEEP|ARCHIVE|JUNK", "reason": "string", "files_count": number, "total_size": number, "paths": ["..."] }] }`
@@ -84,8 +98,7 @@ async function callAI(action, context = {}) {
       think: false,
       callerDetail: `janitor-ai-${action}`
     }),
-    timeout: 60000,
-    retries: 1,
+    ...requestLimits(),
     name: `janitor-ai-${action}`
   });
 
@@ -114,5 +127,6 @@ module.exports = {
   buildPrompt,
   parseAIResponse,
   callAI,
+  requestLimits,
   CORE_PROXY_URL
 };

@@ -61,14 +61,21 @@ function createImageArchive({ dir = process.env.IMAGE_ARCHIVE_DIR, now = () => n
     const file = path.join(root, ...relative.split('/'));
     const receipt = { sha256, mimeType, size: data.length, path: relative, origin, archivedAt: at.toISOString() };
     await fs.mkdir(path.dirname(file), { recursive: true });
-    const exists = await fs.stat(file).then(stat => stat.size === data.length, () => false);
+    const sameSize = await fs.stat(file).then(stat => stat.isFile() && stat.size === data.length, () => false);
+    const exists = sameSize && await fs.readFile(file).then(existing =>
+      crypto.createHash('sha256').update(existing).digest('hex') === sha256, () => false);
     if (!exists) {
       const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
       await fs.writeFile(temporary, data, { flag: 'wx' });
       await fs.rename(temporary, file);
-      const sidecar = { ...receipt, name: cleanName(name), context };
-      await fs.writeFile(file.replace(/\.[a-z]+$/, '.json'), `${JSON.stringify(sidecar, null, 2)}\n`);
     }
+    const sidecarFile = file.replace(/\.[a-z]+$/, '.json');
+    const sidecarExists = await fs.readFile(sidecarFile, 'utf8').then(text => {
+      try { const record = JSON.parse(text); return record.sha256 === sha256 && record.size === data.length; }
+      catch { return false; }
+    }, () => false);
+    if (!sidecarExists) await fs.writeFile(sidecarFile,
+      `${JSON.stringify({ ...receipt, name: cleanName(name), context }, null, 2)}\n`);
     logger?.info?.('Image archived', { origin, sha256, size: data.length, duplicate: exists });
     return { ...receipt, duplicate: exists };
   }

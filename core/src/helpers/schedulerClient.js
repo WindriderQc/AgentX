@@ -26,6 +26,10 @@ function buildFallbackResolution({ fallbackHostId, fallbackHostUrl, fallbackReas
   };
 }
 
+function modelInstalledOn(hostUrl, model) {
+  return require('../services/routing/inferenceAttemptExecutor').modelExistsOnHost(hostUrl, model);
+}
+
 async function resolveAdvisoryHost(options = {}) {
   const {
     model,
@@ -63,6 +67,34 @@ async function resolveAdvisoryHost(options = {}) {
         ...fallback,
         reason: recommendation?.reason || fallback.reason,
         recommendation: recommendation || null
+      };
+    }
+
+    // The scheduler scores residency and VRAM, not installation. A placement
+    // away from the configured host is kept only when that host has the model;
+    // otherwise its Ollama would answer "model not found" for a busy primary.
+    if (fallback.hostUrl && recommendation.hostUrl !== fallback.hostUrl
+      && !(await modelInstalledOn(recommendation.hostUrl, model))) {
+      const configuredHostClaimed = (recommendation._scored || []).some((entry) => entry.host === fallback.hostId
+        && (entry.reasons || []).includes('benchmarking in progress'));
+      logger.info('Scheduler placement lacks the model; keeping the configured host', {
+        caller, model, placement: recommendation.host, configuredHost: fallback.hostId, configuredHostClaimed
+      });
+      if (configuredHostClaimed) {
+        return {
+          source: 'scheduler-blocked',
+          hostId: null,
+          hostUrl: null,
+          reason: `${model} is only installed on ${fallback.hostId}, which is held by an active benchmark claim`,
+          claimId: null,
+          claimExpiresAt: null,
+          recommendation: { ...recommendation, blockedByBenchmarkClaim: true }
+        };
+      }
+      return {
+        ...fallback,
+        reason: `${model} is not installed on ${recommendation.host}; using the configured host`,
+        recommendation
       };
     }
 

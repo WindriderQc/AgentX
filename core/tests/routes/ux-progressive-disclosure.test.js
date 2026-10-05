@@ -26,6 +26,7 @@ const analyticsInferencePath = path.join(root, 'public/js/analytics-inference.js
 async function renderDemo() {
   return ejs.renderFile(demoPath, {
     buildProductNavigation,
+    agentxProfile: 'demo',
     publicUrls: {
       core: 'https://core.example',
       benchmark: 'https://benchmark.example',
@@ -154,9 +155,9 @@ describe('simple-to-expert UX contract', () => {
     const demoCss = fs.readFileSync(demoCssPath, 'utf8');
     const chatCss = fs.readFileSync(chatCssPath, 'utf8');
 
-    expect(demoCss).toContain('@media (max-width: 640px)');
+    expect(demoCss).toContain('@media (max-width: 760px)');
     expect(chatCss).toContain('@media (max-width: 720px)');
-    expect(demoCss).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(fs.readFileSync(path.join(root, 'public/css/product-shell.css'), 'utf8')).toContain('@media (prefers-reduced-motion: reduce)');
     expect(chatCss).toContain('@media (prefers-reduced-motion: reduce)');
     expect(chatCss).toContain('.agent-selector.single-option');
     expect(chatCss).toContain('body[data-agentx-profile="demo"] .chat-command-bar { padding-left: 66px; }');
@@ -165,6 +166,7 @@ describe('simple-to-expert UX contract', () => {
   test('navigation uses the human Chat label while preserving the route', async () => {
     const html = await ejs.renderFile(navPath, {
       buildProductNavigation,
+    agentxProfile: 'demo',
       service: 'core',
       activePage: 'playground',
       agentxProfile: 'demo',

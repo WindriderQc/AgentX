@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { replyRequest, judgeRequest, readJudgement, measure, summarize, GENERIC_CRITERIA } = require('../eval/run');
+const { replyRequest, judgeRequest, converse, readJudgement, measure, summarize, GENERIC_CRITERIA } = require('../eval/run');
 
 const scenarios = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'eval', 'scenarios.json'), 'utf8')).scenarios;
 
@@ -13,7 +13,7 @@ test('scenarios are well formed and unique', () => {
   for (const scenario of scenarios) {
     assert.ok(!ids.has(scenario.id), scenario.id);
     ids.add(scenario.id);
-    assert.ok(scenario.message && scenario.skill && scenario.criteria.length >= 2, scenario.id);
+    assert.ok((scenario.message || scenario.turns?.length >= 2) && !(scenario.message && scenario.turns) && scenario.skill && scenario.criteria.length >= 2, scenario.id);
     for (const criterion of scenario.criteria) assert.ok(!GENERIC_CRITERIA.some(item => item.id === criterion.id), criterion.id);
   }
 });
@@ -48,4 +48,25 @@ test('judgements are clamped, missing criteria score zero, and summaries average
   const run = score => ({ judgement: { scores: { a: { score }, french: { score: 2 } }, overall: score + 3 }, metrics: { words: 10, questions: 1 } });
   const summary = summarize([{ id: 'x', runs: [run(2), run(0)] }]);
   assert.deepEqual(summary.rows[0], { id: 'x', skill: 50, criteria: 75, overall: 4, words: 10, questions: 1 });
+});
+
+test('a conversation scenario is answered turn by turn on the chosen lane and judged as a whole', async () => {
+  const byId = Object.fromEntries(scenarios.map(item => [item.id, item]));
+  const seen = [];
+  const frontier = { run: async input => { seen.push(input); return { content: `réponse ${seen.length}` }; } };
+  const options = { lane: 'frontier', frontier, agent: 'psyx', preface: 'PREFACE', judgeTask: 'deep_reasoning' };
+  const scenario = byId['conversation-guidance'];
+  const result = await converse(options, scenario);
+  assert.equal(seen.length, scenario.turns.length);
+  assert.match(seen[0].instructions, /^PREFACE\n\nYou are PsyX/);
+  assert.deepEqual(seen.at(-1).messages.map(item => item.role), ['user', 'assistant', 'user', 'assistant', 'user', 'assistant', 'user']);
+  assert.equal(seen.at(-1).messages[1].content, 'réponse 1');
+  assert.deepEqual([result.reply, result.transcript.length, result.model], ['réponse 4', 8, 'openclaw/psyx']);
+  const judge = judgeRequest(options, scenario, result.reply, result.transcript);
+  assert.match(judge.messages[0].content, /whole conversation/);
+  assert.match(judge.messages[1].content, /PsyX: réponse 1[\s\S]*PsyX: réponse 4[\s\S]*- ends_with_step:/);
+
+  const portrait = replyRequest(byId['uses-portrait'], { lane: 'frontier' });
+  assert.match(portrait.messages[0].content, /PSYX PORTRAIT[\s\S]*Quand tu te sens jugé comme père[\s\S]*séance du 28 septembre/);
+  assert.doesNotMatch(replyRequest(byId['uses-portrait']).messages[0].content, /séance du 28 septembre/);
 });

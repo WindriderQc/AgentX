@@ -19,6 +19,7 @@ const MAX_TIMEOUT_MS = 900_000;
 const CONTRACT_VERSION = 1;
 const MODES = new Set(['chat', 'generate', 'embed']);
 const INFERENCE_REFUSALS = Object.freeze({
+  INFERENCE_CONTEXT_POLICY_UNAVAILABLE: 'Inference runtime cannot enforce complete input and context overflow refusal.',
   BENCHMARK_CLAIM_ACTIVE: 'Inference host is reserved by an active benchmark workload.',
   BENCHMARK_CLAIM_PROOF_INVALID: 'Benchmark host reservation is no longer active.',
   RUNTIME_INFERENCE_ADMISSION_DENIED: 'Inference host is busy with another workload or incompatible model residency.',
@@ -639,6 +640,7 @@ function createTrustedRuntimeServices(overrides = {}) {
     contractVersion: CONTRACT_VERSION,
     personas: Object.freeze(require('../services/personaCatalog')),
     conversations: Object.freeze(require('../services/surfaceConversationService')),
+    ...require('../services/conversations/capabilities').createConversationCapabilities(),
     attachments: Object.freeze(require('../services/conversationAttachmentService')),
     memory: Object.freeze({ ...require('../services/memoryReadService'),
       notes: Object.freeze(require('../services/memoryNoteService')) }),

@@ -370,7 +370,9 @@ describe('POST /api/inference/generate', () => {
           system: undefined,
           stream: false,
           options: { num_predict: 4096 },
-          think: false
+          think: false,
+          truncate: false,
+          shift: false
         })
       })
     );

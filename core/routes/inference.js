@@ -33,6 +33,7 @@ const { buildRouteDecision, DECISION_MODES, REJECTION_REASONS, ROUTE_OUTCOME_COD
 const { resolveEmbeddingKeepAlive } = require('../src/services/inferenceRuntimePolicy');
 
 const { resolveInferenceRequestCaller } = require('../src/services/routing/inferenceCallerAccess');
+const { embedFailureReason } = require('../src/services/routing/admissionRefusal');
 
 const { resolveInferenceContractSnapshot } = require('../src/services/inferenceContractService');
 const { telemetryContextFromRequest } = require('../src/helpers/llmTelemetryContext');
@@ -159,9 +160,9 @@ async function isEmbedHostLive(hostUrl) {
     return ok;
 }
 
-function emitEmbedHostFailure(candidate, model, error) {
-    const alertSvc = alertService;
-    if (!alertSvc?.evaluateEvent) return;
+function emitEmbedHostFailure(candidate, model, error, code = '') {
+    const alertSvc = alertService; // An admission refusal is Core's own decision: the host answered nothing.
+    if (!alertSvc?.evaluateEvent || String(code).startsWith('RUNTIME_INFERENCE_')) return;
     alertSvc.evaluateEvent({
         component: resolveHostKey(candidate) || candidate,
         metric: 'host_unreachable',
@@ -380,9 +381,7 @@ router.post('/inference/embed', async (req, res) => {
                     await embedAdmission.abandon(err);
                     embedAdmission = null;
                 }
-                const failureReason = err.name === 'AbortError'
-                    ? 'pre_response_timeout'
-                    : 'connection_failure';
+                const failureReason = embedFailureReason(err);
                 const failureStatus = err.name === 'AbortError' ? 'timeout' : 'error';
                 lastError = err.name === 'AbortError'
                     ? new Error(`Embedding request to ${candidate} timed out after ${EMBED_TIMEOUT_MS}ms`)
@@ -413,7 +412,7 @@ router.post('/inference/embed', async (req, res) => {
                     model,
                     error: lastError.message
                 });
-                emitEmbedHostFailure(candidate, model, lastError.message);
+                emitEmbedHostFailure(candidate, model, lastError.message, lastError.code);
                 rejections.push({
                     model,
                     host: resolveHostKey(candidate),

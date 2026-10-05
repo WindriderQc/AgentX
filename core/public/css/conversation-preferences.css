@@ -1,0 +1,25 @@
+.conversation-preferences-dialog { width: min(740px, calc(100vw - 32px)); max-height: 88dvh; box-sizing: border-box; overflow: auto; border: 1px solid #43535e; border-radius: 18px; background: #17232b; color: #f1f5f7; padding: 24px; font: 16px/1.5 system-ui, sans-serif; }
+.conversation-preferences-dialog::backdrop { background: #000b; }
+.conversation-preferences-dialog header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.conversation-preferences-dialog h2 { margin: 0; font-size: 1.4rem; }
+.conversation-preferences-dialog p { margin: 10px 0 16px; }
+.conversation-preferences-dialog button { min-height: 44px; padding: 10px 16px; border: 1px solid #536570; border-radius: 10px; background: #26343e; color: #f1f5f7; font: inherit; cursor: pointer; }
+.conversation-preferences-dialog button:disabled, .conversation-preferences-dialog input:disabled { opacity: .55; cursor: wait; }
+.conversation-preferences-presets { display: flex; gap: 10px; flex-wrap: wrap; }
+.conversation-preferences-dialog .conversation-preferences-help { font-size: .85rem; color: #b8c7d1; }
+.conversation-preferences-dialog details { border-top: 1px solid #40515d; padding: 14px 0; }
+.conversation-preferences-dialog summary { cursor: pointer; font-weight: 600; min-height: 34px; }
+.conversation-preference-option { display: flex; align-items: flex-start; gap: 14px; padding: 14px 0; margin: 0; }
+.conversation-preference-option input { flex: 0 0 auto; width: 22px; height: 22px; margin-top: 3px; accent-color: #a7d7c5; }
+.conversation-preference-option > span { display: grid; gap: 4px; }
+.conversation-preference-option strong { font-size: 1rem; }
+.conversation-preference-option span span { font-size: .9rem; color: #c5d1d9; }
+.conversation-preference-option small { color: #9fe2ce; font-size: .8rem; }
+.conversation-preferences-dialog [data-integrations] { display: grid; gap: 8px; margin: 10px 0; }
+.conversation-preferences-dialog a { color: #a7d7c5; }
+.conversation-preferences-dialog footer { position: sticky; bottom: -24px; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding: 16px 0; background: #17232b; margin: 0; border-top: 1px solid #40515d; font-size: 1rem; }
+.conversation-preferences-dialog button[type=submit] { background: #b7ddcf; color: #123328; border-color: #b7ddcf; font-weight: 700; }
+.conversation-preferences-dialog [data-status] { min-height: 24px; }
+.conversation-preferences-dialog button:focus-visible, .conversation-preferences-dialog input:focus-visible, .conversation-preferences-dialog summary:focus-visible { outline: 3px solid #a7d7c5; outline-offset: 3px; }
+@media (max-width: 540px) { .conversation-preferences-dialog { padding: 18px; } .conversation-preferences-dialog footer { bottom: -18px; } .conversation-preferences-dialog footer button { flex: 1 1 auto; } }
+.conversation-preference-option input[type=number] { width: 76px; height: 42px; box-sizing: border-box; border: 1px solid #607780; border-radius: 8px; padding: 6px; background: #23343e; color: #f1f5f7; font: inherit; }

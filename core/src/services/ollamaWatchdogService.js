@@ -33,6 +33,7 @@ const { runRuntimeMutation } = require('./runtimeMutationLeaseService');
 const { beginInferenceAdmission } = require('./inferenceAdmissionService');
 const runtimeCoordination = require('./runtimeCoordinationService');
 const { collectRecoveryRequired } = require('./watchdogProbeRecovery'), { isSpillOnlyRestore } = require('./hostPinPrimitives');
+const { probePayload, probeTarget, restorePayload } = require('./watchdogRuntimePayload');
 
 let _fetch = nodeFetch;
 let _outboundExecutor = null;
@@ -283,14 +284,7 @@ async function probeHost(host, model = null, executor = getWatchdogExecutor(), c
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: probeModel,
-          prompt: 'ok',
-          stream: false,
-          think: false,
-          keep_alive: -1,
-          options: runtimeOptions
-        }),
+        body: JSON.stringify(probePayload(probeModel, runtimeOptions)),
         signal: admission.signal
       },
       executor
@@ -456,12 +450,7 @@ async function reloadModel(host, model, executor = getWatchdogExecutor()) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model,
-            prompt: 'warmup',
-            stream: false,
-            options: { num_predict: 1 }
-          }),
+          body: JSON.stringify(restorePayload(model)),
           signal
         },
         executor
@@ -580,8 +569,8 @@ async function probeCycle(isStopped = () => false) {
         continue;
       }
 
-      const probeModel = meta.models[0] || null;
-      const contextLength = meta.residentModels[0]?.contextLength;
+      const target = probeTarget(meta.residentModels);
+      const probeModel = target?.model || null, contextLength = target?.contextLength;
       // Omitting num_ctx can reload a resident worker at the model default,
       // overriding a profiled context and turning this probe into a cold load.
       // Metadata alone cannot prove worker health when residency is incomplete.

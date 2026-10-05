@@ -9,7 +9,8 @@
 // Core contracts, releases the lease with a note and prints a JSON receipt.
 //
 //   ./agentx action status
-//   ./agentx action deploy --actor <who> --services core,benchmark [--revision origin/main] [--wait-minutes 10]
+//   ./agentx action lease --actor <who> --claim <purpose> | --release <summary>
+//   ./agentx action deploy --actor <who> --services core,benchmark [--revision origin/main] [--wait-minutes 10] [--queue-minutes 0]
 //   ./agentx action recover-quarantine --actor <who> --host http://127.0.0.1:11434
 //   ./agentx action recalibrate-judges --actor <who> [--host <url> --model <name>]
 //
@@ -21,13 +22,14 @@
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { readCoordination } = require('./maintenance-coordination.cjs');
 
 // The checkout the actions operate on; it defaults to the one holding this script.
 const ROOT = path.resolve(process.env.AGENTX_CHECKOUT || path.join(__dirname, '..'));
 const CONTRACT = 'agentx.maintenance-action/v1';
 const DEPLOYABLE = Object.freeze(['core', 'benchmark', 'benchmark-runner', 'rag', 'data']);
-const REVISION_PORTS = Object.freeze({ core: 3080, benchmark: 3081, rag: 3082 });
-const ACTIONS = Object.freeze(['status', 'deploy', 'recover-quarantine', 'recalibrate-judges']);
+const REVISION_PORTS = Object.freeze({ core: 3080, benchmark: 3081, rag: 3082, data: 3083 });
+const ACTIONS = Object.freeze(['status', 'lease', 'deploy', 'recover-quarantine', 'recalibrate-judges']);
 const RESTART_CONFIRMATION = 'OLLAMA_RUNTIME_RESTARTED_AND_PRIOR_REQUESTS_TERMINATED';
 
 class ActionError extends Error {
@@ -79,25 +81,66 @@ function writeLead(file, lead, { heldBy, since, note }) {
   lines[2] = `since: ${since}`;
   lines[3] = `notes: ${note}${lead.notes ? ` || ${lead.notes}` : ''}`;
   const temporary = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(temporary, lines.join('\n'));
+  fs.writeFileSync(temporary, lines.join('\n'), { mode: fs.statSync(file).mode & 0o777 });
   fs.renameSync(temporary, file);
 }
 
 const minute = (now = new Date()) => now.toISOString().slice(0, 16) + 'Z';
 
+const leadRefusal = lead => (lead.heldBy === 'none' ? null : refuse(`LEAD.md is held by ${lead.heldBy} since ${lead.since}`, { heldBy: lead.heldBy }));
+
 function acquireLead(file, actor, purpose, now = new Date()) {
-  const lead = readLead(file);
-  if (lead.heldBy !== 'none') throw refuse(`LEAD.md is held by ${lead.heldBy} since ${lead.since}`, { heldBy: lead.heldBy });
-  const holder = `agentx-action (${actor})`;
-  writeLead(file, lead, { heldBy: holder, since: minute(now), note: `${minute(now)} ${holder}: ${purpose}` });
-  return holder;
+  return withLeadWriter(file, () => {
+    const lead = readLead(file);
+    const held = leadRefusal(lead);
+    if (held) throw held;
+    const holder = `agentx-action (${actor})`;
+    writeLead(file, lead, { heldBy: holder, since: minute(now), note: `${minute(now)} ${holder}: ${purpose}` });
+    return holder;
+  });
 }
 
 function releaseLead(file, holder, summary, now = new Date()) {
-  const lead = readLead(file);
-  if (lead.heldBy !== holder) return false;
-  writeLead(file, lead, { heldBy: 'none', since: '', note: `${minute(now)} ${holder}: ${summary} Released.` });
-  return true;
+  return withLeadWriter(file, () => {
+    const lead = readLead(file);
+    if (lead.heldBy !== holder) return false;
+    writeLead(file, lead, { heldBy: 'none', since: '', note: `${minute(now)} ${holder}: ${summary} Released.` });
+    return true;
+  });
+}
+
+// Serialize the read/rename pair between independent action processes. A dead
+// writer's sidecar remains visible; age never authorizes removing it.
+function withLeadWriter(file, action) {
+  const lock = `${file}.writer-lock`;
+  let fd;
+  try { fd = fs.openSync(lock, 'wx', 0o600); }
+  catch (error) {
+    if (error.code === 'EEXIST') throw refuse('The LEAD.md writer is busy or requires operator recovery.');
+    throw error;
+  }
+  try {
+    fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }) + '\n');
+    return action();
+  }
+  finally { fs.closeSync(fd); fs.unlinkSync(lock); }
+}
+
+function lease(config, options) {
+  const usage = message => new ActionError(message, { exitCode: 2 });
+  if (Object.keys(options).some(key => !['actor', 'claim', 'release'].includes(key))) throw usage('lease accepts only --actor and exactly one of --claim or --release');
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:@/-]{0,99}$/.test(options.actor || '')) throw usage('--actor needs a stable identifier of 1 to 100 characters');
+  if (Object.hasOwn(options, 'claim') === Object.hasOwn(options, 'release')) throw usage('Choose exactly one of --claim or --release');
+  const note = options.claim ?? options.release;
+  if (!note?.trim() || note.length > 2000 || /[\u0000-\u001f\u007f]/.test(note)) throw usage('The lease note needs one nonempty line of at most 2000 characters');
+  let holder = `agentx-action (${options.actor})`;
+  if (options.claim != null) holder = acquireLead(config.leadFile, options.actor, note.trim());
+  else if (!releaseLead(config.leadFile, holder, note.trim())) {
+    const lead = readLead(config.leadFile);
+    throw refuse('Only the current LEAD.md holder can release this lease.', { heldBy: lead.heldBy });
+  }
+  return { operation: options.claim != null ? 'claim' : 'release', holder,
+    lease: (({ heldBy, since }) => ({ heldBy, since }))(readLead(config.leadFile)) };
 }
 
 // --- Instance, processes and HTTP -----------------------------------------------------
@@ -157,10 +200,7 @@ async function http(url, { method = 'GET', body, timeoutMs = 10_000 } = {}) {
 }
 
 async function activeWork(coreUrl) {
-  const { ok, json } = await http(`${coreUrl}/api/nerve-center/runtime-coordination/active`);
-  if (!ok) throw new ActionError('Core runtime coordination is unavailable');
-  const data = json?.data || {};
-  return { maintenance: data.maintenance || null, workloads: data.workloads || [], inferences: data.inferences || [] };
+  return readCoordination({ coreUrl, read: http });
 }
 
 function deployProcesses() {
@@ -208,9 +248,13 @@ const RECREATE_RETRY_MS = 10_000;
 // one refused lease says only that this moment was busy. The recreate is
 // retried, lease-checked each time, until a gap appears or the wait runs out;
 // any other launcher failure stops at once.
-async function recreateWhenIdle({ recreate, waitIdle, deadline, now = Date.now, pause = sleep, retryMs = RECREATE_RETRY_MS }) {
+async function recreateWhenIdle({ recreate, waitIdle, services = [], deadline, now = Date.now, pause = sleep, retryMs = RECREATE_RETRY_MS }) {
   for (let attempts = 1; ; attempts += 1) {
-    await waitIdle(Math.max(0, deadline - now()));
+    // Core's launcher owns its lease and asks resumable work to drain. Waiting
+    // for total idle here prevents that request from ever reaching the writer.
+    if (services.length !== 1 || services[0] !== 'core') {
+      await waitIdle(Math.max(0, deadline - now()));
+    }
     const launched = recreate();
     const refused = launched.status === 4 && LEASE_REFUSED.test(launched.output);
     if (!refused || now() + retryMs >= deadline) return { attempts, launched };
@@ -224,23 +268,124 @@ function waitMinutes(value) {
   return minutes;
 }
 
-async function deploy(config, options) {
+function queueMinutes(value) {
+  const minutes = Number(value ?? 0);
+  if (!Number.isFinite(minutes) || minutes < 0) throw new ActionError('--queue-minutes needs zero or a positive number', { exitCode: 2 });
+  return minutes;
+}
+
+async function servedRevisions(config, services) {
+  const served = {};
+  for (const service of services.filter(s => REVISION_PORTS[s])) {
+    const base = publishedUrl(config, service, REVISION_PORTS[service]);
+    const health = base ? await http(`${base}/health`).catch(() => null) : null;
+    served[service] = health?.json?.revision || null;
+  }
+  return served;
+}
+
+function containerCreatedAt(config, service) {
+  const id = run('docker', [...composeArgs(config), 'ps', '-q', service], { allowFailure: true, timeoutMs: 20_000 }).output.trim().split('\n').pop();
+  if (!id) return NaN;
+  const { status, output } = run('docker', ['inspect', '--format', '{{.Created}}', id], { allowFailure: true, timeoutMs: 20_000 });
+  return status === 0 ? Date.parse(output.trim()) : NaN;
+}
+
+// The repository paths a Dockerfile copies into its image, or null when they
+// cannot be told (no COPY, or one continued on the next line).
+function imageSources(dockerfile) {
+  const copies = String(dockerfile).split('\n').map(line => line.trim()).filter(line => /^(COPY|ADD)\s/.test(line) && !line.includes('--from='));
+  if (!copies.length || copies.some(line => line.endsWith('\\'))) return null;
+  return copies.flatMap(line => line.split(/\s+/).slice(1, -1).filter(token => !token.startsWith('--')));
+}
+
+const descends = (commit, ancestor) => run('git', ['merge-base', '--is-ancestor', ancestor, commit], { allowFailure: true }).status === 0;
+
+// A merge of docs, integrations or another service moves main without changing
+// this service's image: the revision it reports still serves the same build.
+function sameBuild(service, revision, wanted) {
+  const dockerfile = `docker/${service}.Dockerfile`;
+  let sources = null;
+  try { sources = imageSources(fs.readFileSync(path.join(ROOT, dockerfile), 'utf8')); } catch { return false; }
+  return Boolean(sources) && run('git', ['diff', '--quiet', revision, wanted, '--', ...sources, dockerfile, 'docker-compose.yml', '.dockerignore'], { allowFailure: true }).status === 0;
+}
+
+// Nothing is left to deploy when every requested service reports the wanted
+// commit, a descendant or a commit with the same build, from a container
+// created after the instance configuration last changed: a deploy is also how
+// an edited env file reaches a container. A service that reports no revision
+// is never assumed up to date.
+async function alreadyServed(config, services, wanted) {
+  if (services.some(service => !REVISION_PORTS[service])) return null;
+  const served = await servedRevisions(config, services);
+  const configuredAt = Math.max(...[config.envFile, config.override].filter(Boolean).map(file => fs.statSync(path.resolve(ROOT, file)).mtimeMs));
+  for (const service of services) {
+    const revision = served[service];
+    if (!revision || !(descends(revision, wanted) || sameBuild(service, revision, wanted))) return null;
+    if (!(containerCreatedAt(config, service) > configuredAt)) return null;
+  }
+  return served;
+}
+
+const QUEUE_RETRY_MS = 10_000;
+
+// Deploys take turns. A deploy carries every commit merged before it fetched,
+// so an operator queued behind another one usually finds its revision already
+// served and leaves without the lease, a build or a recreate. With no queue
+// time left, a held lease or a running deploy refuses at once.
+async function deployTurn({ blocker, served, acquire, deadline, now = Date.now, pause = sleep, retryMs = QUEUE_RETRY_MS }) {
+  for (;;) {
+    const blocked = blocker();
+    const last = now() + retryMs >= deadline;
+    if (blocked && last) throw blocked;
+    const live = await served();
+    if (live) return { served: live };
+    if (!blocked) {
+      try { return { holder: acquire() }; } catch (error) {
+        if (error.outcome !== 'refused' || last) throw error;
+      }
+    }
+    await pause(retryMs);
+  }
+}
+
+async function deploy(config, options, takeLead) {
   const services = parseServices(options.services);
   const waitMs = waitMinutes(options['wait-minutes']) * 60_000;
+  const queueMs = queueMinutes(options['queue-minutes']) * 60_000;
   const target = options.revision || 'origin/main';
-  if (deployProcesses().length) throw refuse('Another deploy is running', { processes: deployProcesses() });
+  const resolveTarget = () => {
+    run('git', ['fetch', '--quiet', 'origin']);
+    return run('git', ['rev-parse', '--verify', `${target}^{commit}`]).output.trim();
+  };
+  let wanted = null;
+  const turn = await deployTurn({
+    blocker: () => {
+      const held = leadRefusal(readLead(config.leadFile));
+      if (held) return held;
+      const processes = deployProcesses();
+      return processes.length ? refuse('Another deploy is running', { processes }) : null;
+    },
+    // Leaving without the lease also needs the checkout on the wanted commit: native jobs run from it.
+    served: async () => {
+      wanted ??= resolveTarget();
+      return descends(run('git', ['rev-parse', 'HEAD']).output.trim(), wanted) ? alreadyServed(config, services, wanted) : null;
+    },
+    acquire: takeLead,
+    deadline: Date.now() + queueMs
+  });
+  if (turn.served) return { revision: wanted, services, served: turn.served, alreadyServed: true };
   if (run('git', ['status', '--porcelain']).output.trim()) throw refuse('The instance checkout has local changes');
-  run('git', ['fetch', '--quiet', 'origin']);
-  const revision = run('git', ['rev-parse', '--verify', `${target}^{commit}`]).output.trim();
+  // Fetched again: this deploy carries what was merged while it queued.
+  const revision = resolveTarget();
   // Only a revision already on the public main branch, reachable by fast-forward.
-  if (run('git', ['merge-base', '--is-ancestor', revision, 'origin/main'], { allowFailure: true }).status !== 0) {
-    throw refuse(`${target} is not on origin/main`);
-  }
+  if (!descends('origin/main', revision)) throw refuse(`${target} is not on origin/main`);
   const before = run('git', ['rev-parse', 'HEAD']).output.trim();
-  if (run('git', ['merge-base', '--is-ancestor', before, revision], { allowFailure: true }).status !== 0) {
-    throw refuse(`${revision.slice(0, 9)} does not descend from the deployed checkout ${before.slice(0, 9)}`);
-  }
+  if (!descends(revision, before)) throw refuse(`${revision.slice(0, 9)} does not descend from the deployed checkout ${before.slice(0, 9)}`);
   run('git', ['merge', '--ff-only', '--quiet', revision]);
+  // The fast-forward can be all there was to do: the images did not change.
+  const unchanged = await alreadyServed(config, services, revision);
+  if (unchanged) return { revision, before, services, served: unchanged, alreadyServed: true };
   // Building touches no running container, so it runs before the wait: the
   // recreate that needs Core's lease then takes seconds, not a whole build.
   const built = run('docker', [...composeArgs(config), 'build', ...services], { env: launcherEnv(config, revision), allowFailure: true });
@@ -251,6 +396,7 @@ async function deploy(config, options) {
   let recreated;
   try {
     recreated = await recreateWhenIdle({
+      services,
       recreate: () => run('./agentx', ['up', '--no-deps', ...services], { env: launcherEnv(config, revision), allowFailure: true }),
       waitIdle: remaining => (core ? waitIdle(core, remaining) : undefined),
       deadline: Date.now() + waitMs
@@ -264,12 +410,7 @@ async function deploy(config, options) {
     throw new ActionError(`The launcher did not recreate ${services.join(', ')} (exit ${launched.status}, ${attempts} attempt${attempts === 1 ? '' : 's'})`,
       { exitCode: launched.status === 4 ? 4 : 1, outcome: launched.status === 4 ? 'refused' : 'failed', details: { revision, before, built: true, attempts, tail: launched.output.slice(-2000) } });
   }
-  const served = {};
-  for (const service of services.filter(s => REVISION_PORTS[s])) {
-    const base = publishedUrl(config, service, REVISION_PORTS[service]);
-    const health = base ? await http(`${base}/health`).catch(() => null) : null;
-    served[service] = health?.json?.revision || null;
-  }
+  const served = await servedRevisions(config, services);
   const mismatched = Object.entries(served).filter(([, value]) => value !== revision).map(([service]) => service);
   if (mismatched.length) throw new ActionError(`Not serving ${revision.slice(0, 9)}: ${mismatched.join(', ')}`, { details: { served } });
   return { revision, before, services, served, attempts };
@@ -353,16 +494,19 @@ async function main(argv = process.argv.slice(2)) {
     const mutating = action !== 'status';
     config = instance(process.env, { mutating });
     if (mutating && !parsed.options.actor) throw new ActionError('--actor names who requested the action', { exitCode: 2 });
-    if (mutating) holder = acquireLead(config.leadFile, parsed.options.actor, `${action} ${JSON.stringify(parsed.options)}`);
-    const handler = { status, deploy, 'recover-quarantine': recoverQuarantine, 'recalibrate-judges': recalibrateJudges }[action];
-    const result = await handler(config, parsed.options);
+    const takeLead = () => (holder = acquireLead(config.leadFile, parsed.options.actor, `${action} ${JSON.stringify(parsed.options)}`));
+    // A deploy takes the lease itself, once its turn comes and something is left to deploy.
+    if (mutating && !['deploy', 'lease'].includes(action)) takeLead();
+    const handler = { status, lease, deploy, 'recover-quarantine': recoverQuarantine, 'recalibrate-judges': recalibrateJudges }[action];
+    const result = await handler(config, parsed.options, takeLead);
     receipt = { contract: CONTRACT, action, actor: parsed.options.actor || null, outcome: 'completed', startedAt, finishedAt: new Date().toISOString(), result };
   } catch (error) {
     const known = error instanceof ActionError ? error : new ActionError(error.message);
     receipt = { contract: CONTRACT, action, outcome: known.outcome, startedAt, finishedAt: new Date().toISOString(), reason: known.message, details: known.details, exitCode: known.exitCode };
   } finally {
     if (holder) {
-      try { releaseLead(config.leadFile, holder, receipt?.outcome === 'completed' ? `${action} completed.` : `${action} ${receipt?.outcome}: ${receipt?.reason}`); }
+      const done = receipt?.result?.revision ? `${action} completed at ${receipt.result.revision.slice(0, 9)}.` : `${action} completed.`;
+      try { releaseLead(config.leadFile, holder, receipt?.outcome === 'completed' ? done : `${action} ${receipt?.outcome}: ${receipt?.reason}`); }
       catch (error) { receipt.leaseReleaseError = error.message; }
     }
   }
@@ -373,4 +517,4 @@ async function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) main().then(code => { process.exitCode = code; });
 
-module.exports = { main, parseArgs, parseServices, waitMinutes, recreateWhenIdle, readLead, acquireLead, releaseLead, instance, launcherEnv, ActionError, DEPLOYABLE };
+module.exports = { main, parseArgs, parseServices, waitMinutes, queueMinutes, recreateWhenIdle, deployTurn, alreadyServed, imageSources, readLead, acquireLead, releaseLead, instance, launcherEnv, ActionError, DEPLOYABLE };

@@ -41,8 +41,8 @@
     if (selected) { const index = selected.indexOf('|'); return { provider: selected.slice(0, index), language, voice: selected.slice(index + 1) }; }
     const voice = persona?.voice || {};
     const presentation = preferences?.presentation || voice.presentation || 'feminine';
-    // An instance voice replaces the persona's presentation pair; only an explicit selection overrides it.
-    const voices = presentation === voice.presentation || voice.source === 'instance' ? voice.voices : null;
+    // An instance voice, or one chosen on the Team page, replaces the persona's presentation pair; only an explicit selection overrides it.
+    const voices = presentation === voice.presentation || ['instance', 'team'].includes(voice.source) ? voice.voices : null;
     const defaults = presentation === 'masculine'
       ? { en: 'am_michael', fr: 'am_michael:0.50+ff_siwis:0.50' }
       : { en: 'af_heart', fr: 'ff_siwis' };

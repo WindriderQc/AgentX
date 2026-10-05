@@ -1,6 +1,7 @@
 'use strict';
 
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
+const { resourceTopology, resourcesFor, topologyGuard, topologyMatches, resourceFailure } = require('./runtimePhysicalResources');
 const {
   clean, ttlMs, secret, canonicalHost, normalizedHosts, reapExpired
 } = require('./runtimeCoordinationState');
@@ -25,8 +26,12 @@ async function acquireWorkload({ principal, requestId, workloadId, kind, batchId
   if (!principal || !requestId || !workloadId) {
     return { acquired: false, reason: 'principal, requestId, and workloadId required' };
   }
+  let topology;
+  try { topology = resourceTopology(); } catch (error) { return resourceFailure(error.code); }
+  const resourceIds = resourcesFor(topology, hosts);
   await reapExpired();
   const current = await RuntimeCoordination.findById('runtime').lean();
+  if (!topologyMatches(current, topology)) return resourceFailure('runtime_resource_configuration_changed');
   const existing = (current?.workloads || []).find(item =>
     item.requestId === requestId && item.principal === principal);
   if (existing) {
@@ -52,6 +57,7 @@ async function acquireWorkload({ principal, requestId, workloadId, kind, batchId
     kind,
     batchId,
     hosts,
+    resourceIds,
     acquiredAt: now,
     heartbeatAt: now,
     expiresAt: new Date(now.getTime() + duration),
@@ -71,26 +77,31 @@ async function acquireWorkload({ principal, requestId, workloadId, kind, batchId
   const updated = await RuntimeCoordination.findOneAndUpdate(
     {
       _id: 'runtime',
+      ...topologyGuard(topology),
       maintenance: null,
       // Workload admission is exclusive for every requested host. This veto
       // lives in the same CAS as the workload insert so inference/workload
       // acquisition is linearizable in both directions. UNKNOWN inference
       // entries deliberately continue to block.
       ...(hosts.length > 0
-        ? { inferences: { $not: { $elemMatch: { host: { $in: hosts } } } } }
+        ? { inferences: { $not: { $elemMatch: { $or: [
+          { host: { $in: hosts } }, ...(resourceIds.length ? [{ resourceIds: { $in: resourceIds } }] : [])
+        ] } } } }
         : { 'inferences.0': { $exists: false } }),
       workloads: { $not: { $elemMatch: {
         $or: [
           { requestId, principal },
-          ...(hosts.length > 0 ? [{ hosts: { $in: hosts } }] : [])
+          ...(hosts.length > 0 ? [{ hosts: { $in: hosts } }] : []),
+          ...(resourceIds.length ? [{ resourceIds: { $in: resourceIds } }] : [])
         ]
       } } }
     },
-    { $push: { workloads: admission } },
+    { $push: { workloads: admission }, $set: { resourceTopologyHash: topology.hash } },
     { new: true }
   ).lean();
   if (updated) return { acquired: true, ...admission };
   const raced = await RuntimeCoordination.findById('runtime').lean();
+  if (!topologyMatches(raced, topology)) return resourceFailure('runtime_resource_configuration_changed');
   const racedAdmission = (raced?.workloads || []).find(item =>
     item.requestId === requestId && item.principal === principal);
   if (racedAdmission) {
@@ -130,9 +141,12 @@ async function assertWorkloadAdmission({ id, generation, principal, workloadId, 
   if (!id || !generation || !principal || !workloadId) {
     return { admitted: false, reason: 'exact workload admission proof required' };
   }
+  let topology;
+  try { topology = resourceTopology(); } catch (error) { return { admitted: false, reason: resourceFailure(error.code).reason }; }
   await reapExpired();
   const state = await RuntimeCoordination.findOne({
     _id: 'runtime',
+    ...topologyGuard(topology),
     workloads: { $elemMatch: {
       admissionId: id,
       generation,

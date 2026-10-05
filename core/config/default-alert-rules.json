@@ -48,7 +48,7 @@
         ]},
         "channels": ["local_log"],
         "renotifyMs": 900000,
-        "description": "Windowed platform-inference error rate. Requires at least 20 inference rows in the preceding hour."
+        "description": "Windowed platform-inference error rate over the calls dispatched to a model; an attempt Core refused before dispatch is neither a call nor a failure. Requires at least 20 such rows in the preceding hour."
     },
     {
         "id": "host-unreachable",
@@ -165,11 +165,26 @@
         "enabled": true,
         "severity": "warning",
         "title": "New device on the network — {{vendor}}",
-        "message": "{{mac}} at {{ip}} ({{hostname}}). Name it or mark it known in the Data Toolbox.",
+        "message": "{{mac}} at {{ip}} ({{hostname}}). {{guess}} Name it or mark it known in the Data Toolbox.",
+        "previousMessages": ["{{mac}} at {{ip}} ({{hostname}}). Name it or mark it known in the Data Toolbox."],
         "conditions": { "all": [
             { "fact": "metric", "operator": "equal", "value": "network_new_device" }
         ]},
         "channels": ["local_log", "telegram"],
         "description": "Raised once per MAC that joins the LAN without an alias, after the baseline inventory. Requires NETWORK_DEVICE_WATCH_MS and the Data network collector."
+    },
+    {
+        "id": "ops-watch-report",
+        "name": "Operations watch report",
+        "enabled": true,
+        "severity": "warning",
+        "title": "Operations watch — {{findingCount}} finding(s)",
+        "message": "{{summary}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "ops_watch_report" }
+        ]},
+        "channels": ["local_log", "telegram"],
+        "renotifyMs": 21600000,
+        "description": "One short report, written by the ops_watch task model, of what monitoring rules currently flag. One incident per distinct set of findings; it resolves when they are gone. Requires OPS_WATCH_MS."
     }
 ]

@@ -265,7 +265,8 @@ function forSurface(surface) {
         try {
           yield JSON.stringify({ schema: 'agentx.conversation-export/v1', exportedAt: new Date(),
             conversation: { id: String(row._id), surface, session: row.surfaceSession, title: row.title,
-              createdAt: row.createdAt, updatedAt: row.updatedAt, messages: row.messages } }).slice(0, -1) + ',"attachments":[';
+              createdAt: row.createdAt, updatedAt: row.updatedAt, messages: row.messages,
+              ...(row.sessionRecap ? { sessionRecap: row.sessionRecap } : {}) } }).slice(0, -1) + ',"attachments":[';
           let separator = '';
           for await (const attachment of cursor) {
             const data = Buffer.isBuffer(attachment.data) ? attachment.data : Buffer.from(attachment.data.buffer || attachment.data);

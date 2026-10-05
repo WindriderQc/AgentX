@@ -16,6 +16,13 @@ const {
   conversationNotFound
 } = require('../src/services/chat/conversationPersistence');
 const ragStore = getRagServiceClient();
+const conversationPreferences = require('../src/services/conversationPreferences/service').createConversationPreferences();
+require('../src/services/conversationPreferences/routes').registerPreferenceRoutes(router, {
+  base: '/conversation-preferences', serviceFor: (_req, res) => conversationPreferences.forOwner({ ownerId: getUserId(res), surface: 'playground' })
+});
+const { durableConversationExchange } = require('../src/middleware/durableConversationExchange');
+router.use(durableConversationExchange({ scope: (_req, res) => `playground:${getUserId(res)}`,
+  matches: req => ['/chat', '/chat/stream'].includes(req.path) && ['POST', 'GET'].includes(req.method) }));
 
 function resolveAllowlistedTarget(target) {
   const validation = validateHostUrl(target);
@@ -130,7 +137,8 @@ async function resolveChatRequest(payload, userId) {
     options: { ...options, ...(ragCompress !== undefined ? { ragCompress: ragCompress === true } : {}) },
     target: allowlistedTarget.target,
     thinkingMode: thinkingMode ?? thinking_mode,
-    turnAction
+    turnAction,
+    conversationFeatures: (await conversationPreferences.forOwner({ ownerId: userId, surface: 'playground' }).read()).values
   };
 }
 
@@ -159,6 +167,7 @@ router.post('/chat', async (req, res) => {
       ...input, userId, ragStore, abortSignal: abortController.signal
     });
 
+    res.locals.exchangeConversationId = result.conversationId;
     const responseData = turnAction ? { ...result, turnAction } : result;
 
     res.json({
@@ -321,6 +330,7 @@ const handleChatStreamRequest = async (req, res, payload) => {
         sendEvent('thinking', { content: thinking });
       },
       onComplete: (result) => {
+        res.locals.exchangeConversationId = result.conversationId;
         const completionReceipt = turnAction ? { ...result, turnAction } : result;
         if (finishStream('done', completionReceipt)) {
           emitBuddyEvent('message_received', 'chat', 'Streamed response completed', 'normal');
@@ -372,7 +382,7 @@ router.get('/chat/stream', async (req, res) => {
     promptVersion: req.query.promptVersion,
     options: safeJsonParse(req.query.options, {}),
     conversationId: req.query.conversationId,
-    useRag: req.query.useRag === 'true',
+    useRag: req.query.useRag === undefined ? undefined : req.query.useRag === 'true',
     ragTopK: req.query.ragTopK ? parseInt(req.query.ragTopK, 10) : undefined,
     ragFilters: safeJsonParse(req.query.ragFilters, undefined),
     ragCompress: req.query.ragCompress === 'true',

@@ -19,9 +19,15 @@ const { scoreSpeechLanguage, speechText } = require('../../public/js/voice/speec
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
 const teamAddress = require('./team-address');
+const { turnDirective } = require('./persona-prompt');
 
-// A team member's own personality, from the shared catalog definitions.
-function teamPersona(agentId) {
+// A team member's own personality: the active catalog persona naming that agent, so an
+// edit made on the Team page applies; the shared definition when the catalog is unreadable.
+async function teamPersona(agentId, personas) {
+  try {
+    const active = (await personas?.list?.() || []).find((entry) => entry.uiConfig?.layoutConfig?.agentId === agentId);
+    if (active) return personaCatalog.snapshot(active);
+  } catch { /* the shared definition below */ }
   const row = personaCatalog.generatedPersonas().find((entry) => entry.uiConfig.layoutConfig.agentId === agentId);
   return row ? personaCatalog.snapshot({ ...row, version: 0, _id: 'catalog' }) : null;
 }
@@ -29,7 +35,7 @@ function teamPersona(agentId) {
 const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
 
 function createPersonaTurnHandler({
-  logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent,
+  logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null,
   familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
   sounds, visuals, brain, activePersonaTurns, validClientTurnId,
   envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
@@ -40,7 +46,10 @@ function createPersonaTurnHandler({
   return async (req, res, access, requiredSession = null) => {
     const isLlmX = Boolean(req.llmx), isOpening = req.llmx?.opening === true;
     const sceneEnabled = isLlmX && !isOpening && llmx.sceneCapable(req.llmx.sceneContext);
-    const userText = isOpening ? '' : cleanText(req.body?.text, 4000);
+    const userText = isOpening ? '' : String(req.body?.text || '').trim();
+    if (userText.length > 4000) {
+      return fail(res, 413, 'Le texte dépasse la limite de 4 000 caractères. Rien n’a été raccourci ni envoyé au modèle.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
+    }
     if (!userText && !isOpening) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
     if (activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
     const clientTurnId = (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice' && req.body?.stream === true))
@@ -70,6 +79,8 @@ function createPersonaTurnHandler({
       }
       const pack = packById(session.packId);
       if (!pack) return fail(res, 409, 'Session persona pack is unavailable', 'VOICE_PERSONA_PACK_NOT_FOUND');
+      const preferences = preferencesFor ? await preferencesFor(pack.childSafe).read() : null;
+      const features = preferences?.values || {};
       const selectedMode = pack.modes.find((entry) => entry.id === session.modeId);
       if (!selectedMode) return fail(res, 409, 'Session mode is unavailable', 'VOICE_PERSONA_SESSION_MODE_UNAVAILABLE');
       if (access === 'child' && !pack.childSafe) {
@@ -157,7 +168,7 @@ function createPersonaTurnHandler({
         // #41: a turn that names another team member runs in that member's own session.
         member = backend === 'openclaw' && !pack.childSafe && !isLlmX
           ? teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session)) : null;
-        memberPersona = member ? teamPersona(member.agentId) : null;
+        memberPersona = member ? await teamPersona(member.agentId, runtimeServices.personas) : null;
         const turnSession = member ? teamAddress.memberSession(session, member, memberPersona) : session;
         if (member) {
           speaker = { agentId: member.agentId, name: memberPersona?.name || member.agentId, personaId: memberPersona?.id || null };
@@ -165,7 +176,7 @@ function createPersonaTurnHandler({
         }
         if (backend === 'openclaw') await requireNativeAgent(agentIdFor(turnSession));
         let history = [];
-        if (backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore) {
+        if (features.historyContext !== false && (backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore)) {
           // Core inference reads a block window, so its history start (and the cached prefix) moves rarely.
           try { history = sessionHistoryMessages(await loadSessionAuditRows(conversations, session, pack), pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {}); }
           catch { return fail(res, 503, 'Conversation history is unavailable; no out-of-context answer was generated.', 'VOICE_PERSONA_HISTORY_UNAVAILABLE'); }
@@ -177,23 +188,26 @@ function createPersonaTurnHandler({
         let memories = [], savedNow = false, family = {}, members = '';
         if (!isOpening) {
           const notes = notesFor(pack, session.scopeId);
-          if (!pack.childSafe) members = await householdMembers(familyTasks, { logger });
+          if (!pack.childSafe && features.householdContext !== false) members = await householdMembers(familyTasks, { logger });
           // Kids Room routines, and a child's idea or reminder kept for Dad (#41, #13).
-          if (pack.childSafe) ({ savedNow, ...family } = await familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, withChores: pack.id === VOIX_FAMILY_PACK_ID }));
+          if (pack.childSafe) ({ savedNow, ...family } = await familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, withChores: features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID }));
           try {
-            memories = (await notes.search(userText, voiceRecallOptions(userText, personalVoice(session, req.body?.channel), MEMORY_RECALL_LIMIT))).notes;
+            if (features.memoryContext !== false) memories = (await notes.search(userText, voiceRecallOptions(userText, personalVoice(session, req.body?.channel), MEMORY_RECALL_LIMIT))).notes;
           } catch (error) {
             logger?.error?.('Core note recall failed', { error: error.message });
             return fail(res, 503, 'Les souvenirs sont indisponibles. Réessaie avant de poursuivre.', 'MEMORY_NOTES_UNAVAILABLE');
           }
-          if (pack.childSafe || backend === 'agentx') {
+          if (features.knowledgeContext !== false && (pack.childSafe || backend === 'agentx')) {
             knowledge = await nestorKnowledge.retrieve(knowledgeState, pack.id, userText, {
               logger, memory: pack.childSafe ? familyMemory : ownerMemory
             });
           }
         }
         const browserSoundPlayback = (!requiredSession || requiredSession.browser === true) && req.body?.soundPlayback === true;
-        sound = pack.childSafe && (!requiredSession || requiredSession.browser === true) ? sounds.select(userText) : null;
+        // The clip an explicit request names is chosen here, in both spaces, so playing it never
+        // depends on a model calling a tool: the voice model announced the sound and called nothing.
+        sound = (pack.childSafe ? !requiredSession || requiredSession.browser === true : browserSoundPlayback) ? sounds.select(userText) : null;
+        const preselected = Boolean(sound);
         const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores].filter(Boolean).join('\n\n'),
           modeId: session.modeId, sound, latestUserText: userText };
         let lastProposal = null, previousBrowserOutput = null;
@@ -222,10 +236,10 @@ function createPersonaTurnHandler({
         // member's last exchange and the reviewer's advice) goes last, beside the request.
         const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }),
           member ? '' : teamAddress.exchangeContext(session.teamExchange),
-          isLlmX ? '' : brain.contextFor(session.sessionId)].join('').trim();
+          isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId)].join('').trim();
         const nativeInstructions = agentInstructions(turnSession, turnSession.persona,
           pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode,
-          { soundPlayback: !pack.childSafe && browserSoundPlayback, channel: req.body?.channel })
+          { soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected, channel: req.body?.channel })
           + (member ? teamAddress.memberInstruction(speaker.name) : '') + workshopPrompt(workshop)
           + sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : '') + (isLlmX ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }));
         const agentxInstructions = [systemPromptFor(pack, { modeId: session.modeId }), session.persona?.identity,
@@ -239,10 +253,12 @@ function createPersonaTurnHandler({
           onSay: delta => { if (!res.writableEnded) event('delta', { delta }); }, onShow: block => visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage })
             .then(shown => { if (!res.writableEnded) event('show', { block: shown }); })) });
         const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
-          : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history, streaming, channel: req.body?.channel,
+          : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history: features.historyContext === false ? [] : history, streaming, channel: req.body?.channel,
+          conversationFeatures: features,
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
           instructions: nativeInstructions, agentxInstructions, ...(turnContext ? { turnContext } : {}),
+          ...(turnDirective(context) ? { turnDirective: turnDirective(context) } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
           signal: abort.signal, onWaiting: () => event('status', { phase: 'waiting_host' }), onActivity: activity => event('status', { phase: 'activity', activity }),
@@ -272,7 +288,7 @@ function createPersonaTurnHandler({
           : { status: 'ready', source: 'session-audit', messageCount: history.length };
         if (!pack.childSafe) continuity.personal = { status: 'ready', authority: 'agentx.core', notes: memories };
         toolEvidence = result.tools;
-        if (!pack.childSafe && browserSoundPlayback) {
+        if (!pack.childSafe && browserSoundPlayback && !preselected) {
           const receipt = toolEvidence?.status === 'observed' && toolEvidence.runId ? toolEvidence.receipts?.filter(row =>
             ['agentx__get_sound', 'get_sound'].includes(row.tool) && row.runId === toolEvidence.runId).at(-1) : null;
           sound = receipt?.status === 'verified' ? sounds.get(receipt.soundId) : null;
@@ -341,7 +357,8 @@ function createPersonaTurnHandler({
         'llmx.opening.traceId': traceId, 'llmx.opening.replyText': replyText
       } : {} });
       entry.auditWritten = true;
-      entry.traceId = traceId; if (!isLlmX) brain.schedule({ session, pack, traceId });
+      entry.traceId = traceId;
+      if (!isLlmX && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
       entry.replyText = replyText;
       // The conversation's agent hears about a member's answer once, on its next turn.
       if (member) await conversations.updateSession({ sessionId: session.sessionId },

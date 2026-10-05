@@ -401,13 +401,42 @@ def run_independent_verification(
         raise PipelineApiError("independent verification revision is invalid")
     repository = shlex.quote(remote_repo)
     revision = shlex.quote(expected_revision)
+    # The verifier executes worker-controlled source code. Give it the checkout
+    # read-only, a disposable /tmp, no network, and no host home or instance
+    # mounts. A missing bwrap fails verification instead of falling back.
+    node_verifier = command.lstrip().startswith("/node/node ")
+    sandbox = [
+        "/usr/bin/bwrap", "--die-with-parent", "--unshare-net", "--unshare-pid",
+        "--ro-bind", "/usr", "/usr",
+        "--ro-bind-try", "/lib", "/lib",
+        "--ro-bind-try", "/lib64", "/lib64",
+        "--symlink", "usr/bin", "/bin",
+        "--symlink", "usr/sbin", "/sbin",
+        "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+        "--dir", "/workspace", "--ro-bind", remote_repo, "/workspace",
+        "--chdir", "/workspace", "--clearenv",
+        "--setenv", "PATH", "/usr/bin:/bin",
+        "--setenv", "HOME", "/tmp",
+        "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
+    ]
+    if node_verifier:
+        # Bind only the resolved executable. The host's /usr/local/bin/node is
+        # a symlink into the operator's home, which must not enter the sandbox.
+        sandbox.extend(["--dir", "/node", "--ro-bind", "__HOST_NODE_BIN__", "/node/node"])
+    sandbox.extend(["/usr/bin/bash", "-e", "-c", command])
+    sandbox_command = " ".join(
+        '"$node_bin"' if part == "__HOST_NODE_BIN__" else shlex.quote(part)
+        for part in sandbox
+    )
+    node_prefix = ('node_bin="$(readlink -f /usr/local/bin/node)" && '
+                   'test -f "$node_bin" && ') if node_verifier else ''
     proc = ssh_run(
         host,
         (
             f'repository_root="$(git -C {repository} rev-parse --show-toplevel 2>/dev/null)" && '
             f'test "$repository_root" = {repository} && '
             f'test "$(git -C "$repository_root" rev-parse HEAD 2>/dev/null)" = {revision} && '
-            f'cd "$repository_root" && {command}'
+            f'{node_prefix}{sandbox_command}'
         ),
         text=True,
         encoding="utf-8",
@@ -418,8 +447,12 @@ def run_independent_verification(
     )
     output = (proc.stdout or "") + (proc.stderr or "")
     if output_path:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(output, encoding="utf-8")
+        output_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor = os.open(output_path, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            if hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), 0o600)
+            handle.write(output)
         print(f"verification_output={output_path}")
     return proc.returncode, output
 

@@ -1,4 +1,5 @@
-/* agent-ops.css: its rules live in 2 parts, imported here in their original
+/* agent-ops.css: its rules live in 3 parts, imported here in their original
    order so the cascade is unchanged; pages link only this file. */
 @import url("agent-ops/1-agent-ops-surface.css");
 @import url("agent-ops/2-agent-ops-automation-name.css");
+@import url("agent-ops/3-agent-ops-team.css");

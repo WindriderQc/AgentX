@@ -19,6 +19,7 @@ const { validateHostUrl } = require('../src/helpers/ollamaHostConfig');
 const { emit: emitBuddyEvent } = require('../src/services/buddyEvents');
 const { requestPrincipal } = require('../src/helpers/requestCaller');
 const runtimeCoordinationService = require('../src/services/runtimeCoordinationService');
+const runtimeDrainIntent = require('../src/services/runtimeDrainIntent');
 const { runRuntimeMutation } = require('../src/services/runtimeMutationLeaseService');
 const { projectHostPreferenceForRead } = require('../src/services/hostPreferencePublicProjection');
 
@@ -532,11 +533,24 @@ router.post('/workload-admissions/:admissionId/release-receipt', async (req, res
 router.get('/runtime-coordination/active', async (_req, res) => {
   try {
     const data = await runtimeCoordinationService.listActive();
-    return res.json({ status: 'success', data });
+    // drain: a recreate is announced; resumable background work pauses before its next unit (#253).
+    return res.json({ status: 'success', data: { ...data, drain: runtimeDrainIntent.current() } });
   } catch (error) {
     return res.status(500).json({ status: 'error', code: 'RUNTIME_COORDINATION_STATUS_FAILED', message: error.message });
   }
 });
+
+router.post('/runtime-coordination/drain', (req, res) => {
+  try {
+    const data = runtimeDrainIntent.request({ scope: req.body?.scope, ttlMs: req.body?.ttlMs,
+      principal: req.get('X-AgentX-Caller') || 'operator' });
+    return res.json({ status: 'success', data });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ status: 'error', code: 'RUNTIME_DRAIN_REQUEST_INVALID', message: error.message });
+  }
+});
+
+router.delete('/runtime-coordination/drain', (_req, res) => res.json({ status: 'success', data: runtimeDrainIntent.clear() }));
 
 // What recreating a service would cut (#47): ?service=core|benchmark|all.
 router.get('/runtime-coordination/deploy-blockers', async (req, res) => {

@@ -242,7 +242,10 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   }
   assert.match(html, /Filesystem-safe review console/);
   assert.match(html, /Survivor choices and accept\/reject decisions stay in a local draft/);
-  assert.match(html, /href="\/playground">Chat/);
+  assert.match(html, /<!-- product-navigation -->/);
+  const { buildProductNavigation } = require('../../../../shared/productNavigation');
+  const destinations = buildProductNavigation({ activePage: 'data-toolbox' }).navItems.flatMap(group => group.children);
+  assert.equal(destinations.find(item => item.id === 'playground').href, '/playground');
   assert.match(app, /Shared-drive Janitor/);
   assert.match(app, /Download full JSON/);
   assert.match(app, /proven duplicate savings/i);

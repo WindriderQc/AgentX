@@ -40,6 +40,9 @@ describe('Ollama model mutations use durable runtime coordination', () => {
     await invoke();
     expect(beginRuntimeMutation).toHaveBeenCalledWith(expect.objectContaining({ principal: 'operator-token' }));
     expect(fetch.mock.calls[0][0]).toBe(`http://host:11434${path}`);
+    if (_action === 'start') expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
+      truncate: false, shift: false, keep_alive: '5m',
+    });
     expect(lease.markDispatched.mock.invocationCallOrder[0])
       .toBeLessThan(lease.complete.mock.invocationCallOrder[0]);
     expect(lease.complete).toHaveBeenCalledTimes(1);

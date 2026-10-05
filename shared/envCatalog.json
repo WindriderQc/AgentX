@@ -255,6 +255,16 @@
       "secret": false,
       "description": "true registers the OpenClaw, Hermes, DSH and coding runtime bridges in Core (full profile). Any other value or unset: the bridges are not loaded."
     },
+    "AGENTX_RUNTIME_RESOURCES_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "inference",
+      "secret": true,
+      "description": "Private physical GPU IDs with their consumer endpoint URLs. Unset: endpoint-only coordination. Invalid or changed mappings refuse new admissions while existing work remains fenced."
+    },
     "AGENTX_TASK_FALLBACK_WAIT_MS": {
       "services": [
         "core"
@@ -1688,6 +1698,16 @@
       "secret": false,
       "description": "Maximum stored ISS positions. Unset: 8000."
     },
+    "JANITOR_AI_TIMEOUT_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "How long one janitor AI advisory request may take, from 10000 to 1200000. Raise it when janitor_ai is routed to a CPU-resident host; above 120000 a timed-out request is not retried. Unset: 60000 with one retry."
+    },
     "JANITOR_ALLOWED_ROOTS": {
       "services": [
         "data"
@@ -1797,6 +1817,16 @@
       "category": "bridges",
       "secret": false,
       "description": "Leantime URL for household email actions and agent-ops links. Unset: email actions answer 503."
+    },
+    "LOCAL_IMAGES_CONFIG": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Path to an external local image worker manifest (profiles and GPU consumers). Unset: local generation is disabled."
     },
     "MAIL_JOURNAL_RETENTION_DAYS": {
       "services": [
@@ -2002,36 +2032,6 @@
       "secret": false,
       "description": "Username of the Data MQTT connection."
     },
-    "N8N_WEBHOOK_BASE_URL": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "network",
-      "secret": false,
-      "description": "n8n base URL combined with N8N_WEBHOOK_GENERIC when N8N_WEBHOOK_URL is unset."
-    },
-    "N8N_WEBHOOK_GENERIC": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "operations",
-      "secret": false,
-      "description": "n8n webhook path appended to N8N_WEBHOOK_BASE_URL."
-    },
-    "N8N_WEBHOOK_URL": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "network",
-      "secret": false,
-      "description": "Full n8n webhook URL used by Data storage. Unset: base URL plus generic path, or none."
-    },
     "NESTOR_KNOWLEDGE_CONFIG_PATH": {
       "services": [
         "core"
@@ -2051,6 +2051,26 @@
       "category": "memory",
       "secret": false,
       "description": "Timeout of Nestor memory RAG calls, 1000 to 30000. Unset: 5000."
+    },
+    "OPS_WATCH_LANGUAGE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Language the operations watch report is written in, for example French, until one is saved in the Nerve Center. Unset: English."
+    },
+    "OPS_WATCH_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Interval at which Core turns the current operational findings and active alerts into one short model-written report (task ops_watch), minimum 300000. Applies until the watch is set in the Nerve Center. Unset: off."
     },
     "NETWORK_DEVICE_WATCH_MS": {
       "services": [
@@ -2619,6 +2639,46 @@
       "category": "household",
       "secret": false,
       "description": "PsyX background review after each completed turn (digest and memory proposals the user approves). false disables it. Unset: true."
+    },
+    "PSYX_DREAM": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "true",
+      "category": "household",
+      "secret": false,
+      "description": "PsyX dream between sessions: rereads conversations, memory and the owner's notes, tasks and mail journal, then writes the portrait and memory changes the user can undo. false disables it. Unset: true."
+    },
+    "PSYX_FRONTIER_AGENT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "OpenClaw agent PsyX uses as its frontier lane (a cloud model reached through OPENCLAW_GATEWAY_URL). Unset: PsyX stays on local routes and the setting is hidden."
+    },
+    "PSYX_FRONTIER_MODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "local",
+      "category": "household",
+      "secret": false,
+      "description": "Default frontier use for a PsyX user who has not chosen: local, deep (deep turns and the background review) or all. Another value fails startup. Unset: local."
+    },
+    "PSYX_FRONTIER_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "frontier",
+      "category": "household",
+      "secret": false,
+      "description": "Label of the model behind the PsyX frontier agent, shown in the interface and saved with turns. Unset: frontier."
     },
     "PSYX_LOOPBACK_BYPASS": {
       "services": [

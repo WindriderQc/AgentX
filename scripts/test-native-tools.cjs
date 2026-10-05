@@ -4,7 +4,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const tests = [
   [process.execPath, ['--test', ...['codex-usage-sync', 'alert-governance-sweep', 'sync-openclaw-schedule', 'native-data-collectors-verifier', 'alert-telegram-relay', 'council-telegram-relay'].map(name => `integrations/operations/tests/${name}.test.js`)]],
-  [process.execPath, ['--test', 'integrations/openclaw/gmail-secretary/test/index.test.js', 'integrations/openclaw/gmail-secretary/test/triage-rules.test.js','integrations/openclaw/dsh-coding-agent/test/index.test.js', 'integrations/openclaw/jobs/subscriptions/test/subscription-audit.test.js']],
+  [process.execPath, ['--test', 'integrations/openclaw/gmail-secretary/test/index.test.js', 'integrations/openclaw/gmail-secretary/test/triage-rules.test.js', 'integrations/openclaw/gmail-secretary/test/provenance.test.js', 'integrations/openclaw/dsh-coding-agent/test/index.test.js', 'integrations/openclaw/jobs/subscriptions/test/subscription-audit.test.js']],
   ...['secretary', 'memory-review', 'coding', 'openclaw/jobs', 'operations'].map(name => [process.env.AGENTX_PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3'), ['-m', 'unittest', 'discover', '-s', `integrations/${name}/tests`, '-v']])
 ];
 for (const [command, args] of tests) {

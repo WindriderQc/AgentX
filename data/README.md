@@ -17,6 +17,12 @@ defaults to loopback. Background feeds and existing janitor schedules start only
 with `DATA_BACKGROUND_JOBS_ENABLED=true`; manual APIs remain available. Network
 scan defaults require `NETWORK_SCAN_CIDR` or an explicit request target.
 
+Janitor AI advice (triage, duplicate resolution, path analysis) asks Core's
+`janitor_ai` task and waits 60 seconds, with one retry. When that task is
+routed to a slow CPU-resident host, raise `JANITOR_AI_TIMEOUT_MS` (up to
+1200000); above two minutes a timed-out request is not retried, so a second
+long request never queues behind the first.
+
 Native collectors live in `integrations/data-collectors`. Set `DATA_URL`,
 `SCAN_CIDR` (network) and `STORAGE_SOURCES_JSON` (storage) in external instance
 configuration. Storage sources map explicit host roots to stable canonical paths,
@@ -29,7 +35,10 @@ at start), unauthenticated like the network and storage collectors because Data
 publishes only on loopback. `GET /latest` returns one snapshot per GPU host with
 its collector, `ollamaUrl`, last error, consecutive failures, `ageMs` and
 `freshness` (`fresh`, `stale` after three collector intervals with a 90 s floor,
-or `no_data`); a failing host keeps its last GPUs and sample time. `GET /history`
+or `no_data`); a failing host keeps its last GPUs and sample time. A host whose
+Ollama service the collector reads also carries `ollamaEnvironment`: the latest
+observation of its allowlisted Ollama server settings, with its own
+`observedAt` (see `docs/OPERATIONS.md`). `GET /history`
 returns bounded per-GPU samples (`hostId`, optional `gpuIndex`, `from`, `to`,
 `limit` up to 2 000). History expires through a TTL index,
 `DATA_HARDWARE_HISTORY_TTL_DAYS` (default 7, at most 90); a changed value is
