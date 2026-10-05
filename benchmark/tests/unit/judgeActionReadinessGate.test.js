@@ -102,6 +102,9 @@ describe('judge-required API action gates', () => {
             expect(response.status).toBe(200);
             expect(response.body.data.requested_num_ctx).toBe(8192);
             expect(scorer.mock.calls.every(([input]) => input.judgeConfig.num_ctx === 8192)).toBe(true);
+            // A case is scored on its category's path: its criteria and reference answer reach the scorer.
+            const translation = scorer.mock.calls.map(([input]) => input.prompt).find(prompt => prompt.reference_answer);
+            expect(translation).toMatchObject({ category: 'translation', judge_criteria: expect.arrayContaining([expect.any(String)]) });
             expect(response.body.data.results[0]).toMatchObject({ judge_score: 0,
                 explanation: 'Missing behavior', judge_prompt: '["criterion"]', judge_raw_response: '{"calls":[]}' });
             // Without a database the report is still returned; the missing record is stated.

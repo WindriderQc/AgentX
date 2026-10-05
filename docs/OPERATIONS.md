@@ -1281,9 +1281,9 @@ under `categories`, what each selected prompt category requires of it:
   (`POST /api/benchmark/judge/calibrate-accuracy`), the reference cases of the
   category, their mean absolute deviation from the reference grades and any
   identity or attention failure among them: `validated` (deviation at most
-  1.5, no failure), `failed`, `no_reference_cases` (the reference set covers
-  coding, reasoning, math, knowledge, instruction and creative, not translation
-  or agent) or `unvalidated` (no qualifying calibration).
+  1.5, no failure), `failed`, `no_reference_cases` (the calibration record
+  holds no case of that category) or `unvalidated` (no qualifying
+  calibration). The reference set covers every catalog category.
 
 Each unmet requirement is one line of `warnings`, naming the categories.
 These are warnings: they never block a launch, and the catalog is not

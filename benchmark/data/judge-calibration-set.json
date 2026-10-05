@@ -493,5 +493,203 @@
     "gold_score": 10,
     "tier": "excellent",
     "notes": "Evocative ocean imagery with a verified 5-7-5 syllable structure."
+  },
+  {
+    "id": "cal-tr-01",
+    "category": "translation",
+    "prompt": "Translate to French: 'Could you send me the report before Friday? The client meeting is on Monday.'",
+    "expected_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
+    "response": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
+    "gold_score": 10,
+    "tier": "excellent",
+    "notes": "The reference translation itself: an identity case.",
+    "reference_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
+    "judge_criteria": [
+      "Polite request to send the report, such as Pourriez-vous m'envoyer le rapport",
+      "Deadline rendered as avant vendredi",
+      "States in French that the client meeting is on Monday (lundi)",
+      "Correct French grammar, accents and question punctuation"
+    ]
+  },
+  {
+    "id": "cal-tr-02",
+    "category": "translation",
+    "prompt": "Translate to French: 'Could you send me the report before Friday? The client meeting is on Monday.'",
+    "expected_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
+    "response": "Pourriez-vous m'envoyer le rapport ? La réunion avec le client a lieu lundi.",
+    "gold_score": 6,
+    "tier": "mediocre",
+    "notes": "Fluent and correct, but drops the deadline \"before Friday\", the actionable part of the request.",
+    "reference_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
+    "judge_criteria": [
+      "Polite request to send the report, such as Pourriez-vous m'envoyer le rapport",
+      "Deadline rendered as avant vendredi",
+      "States in French that the client meeting is on Monday (lundi)",
+      "Correct French grammar, accents and question punctuation"
+    ]
+  },
+  {
+    "id": "cal-tr-03",
+    "category": "translation",
+    "prompt": "Translate to French: 'Could you send me the report before Friday? The client meeting is on Monday.'",
+    "expected_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
+    "response": "Yes, I will send you the report before Friday, ahead of the client meeting on Monday.",
+    "gold_score": 1,
+    "tier": "clearly_wrong",
+    "notes": "Replies to the message in English instead of translating it into French.",
+    "reference_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
+    "judge_criteria": [
+      "Polite request to send the report, such as Pourriez-vous m'envoyer le rapport",
+      "Deadline rendered as avant vendredi",
+      "States in French that the client meeting is on Monday (lundi)",
+      "Correct French grammar, accents and question punctuation"
+    ]
+  },
+  {
+    "id": "cal-tr-04",
+    "category": "translation",
+    "prompt": "Translate to Spanish: 'The library opens at nine, but on Sundays it closes at noon.'",
+    "expected_answer": "La biblioteca abre a las nueve, pero los domingos cierra al mediodía. (also acceptable: La biblioteca abre a las 9, pero los domingos cierra a las doce.)",
+    "response": "La biblioteca abre a las 9, pero los domingos cierra a las doce.",
+    "gold_score": 10,
+    "tier": "excellent",
+    "notes": "Faithful; uses the accepted variants (a las 9, a las doce) instead of the reference wording.",
+    "judge_criteria": [
+      "Opening time rendered as a las nueve or a las 9",
+      "The noon closing applies to Sundays only (los domingos)",
+      "Noon rendered as al mediodía or a las doce",
+      "Correct Spanish grammar, accents and punctuation"
+    ]
+  },
+  {
+    "id": "cal-tr-05",
+    "category": "translation",
+    "prompt": "Translate to Spanish: 'The library opens at nine, but on Sundays it closes at noon.'",
+    "expected_answer": "La biblioteca abre a las nueve, pero los domingos cierra al mediodía. (also acceptable: La biblioteca abre a las 9, pero los domingos cierra a las doce.)",
+    "response": "La biblioteca abre a las nueve, pero cierra al mediodía.",
+    "gold_score": 6,
+    "tier": "mediocre",
+    "notes": "Drops \"on Sundays\", so the library now closes at noon every day; otherwise correct.",
+    "judge_criteria": [
+      "Opening time rendered as a las nueve or a las 9",
+      "The noon closing applies to Sundays only (los domingos)",
+      "Noon rendered as al mediodía or a las doce",
+      "Correct Spanish grammar, accents and punctuation"
+    ]
+  },
+  {
+    "id": "cal-tr-06",
+    "category": "translation",
+    "prompt": "Translate to Spanish: 'The library opens at nine, but on Sundays it closes at noon.'",
+    "expected_answer": "La biblioteca abre a las nueve, pero los domingos cierra al mediodía. (also acceptable: La biblioteca abre a las 9, pero los domingos cierra a las doce.)",
+    "response": "Thanks, I will go before noon on Sunday then.",
+    "gold_score": 1,
+    "tier": "clearly_wrong",
+    "notes": "Answers the sentence in English instead of translating it into Spanish.",
+    "judge_criteria": [
+      "Opening time rendered as a las nueve or a las 9",
+      "The noon closing applies to Sundays only (los domingos)",
+      "Noon rendered as al mediodía or a las doce",
+      "Correct Spanish grammar, accents and punctuation"
+    ]
+  },
+  {
+    "id": "cal-ag-01",
+    "category": "agent",
+    "prompt": "You are a diagnostic agent. Last night's photo backup failed. Find the root cause in this log, cite the log line that shows it, and propose one fix. Reply in at most four lines.\n\n02:00:01 backup    info  start source=/srv/photos dest=nas:/backups/photos\n02:00:02 backup    info  connected to nas as backup-user\n02:31:40 backup    error write failed: No space left on device (dest=nas:/backups/photos)\n02:31:40 backup    error aborted after 9120 of 18233 files\n02:31:41 retention info  skipped: retention runs only after a successful backup\n\nContext: retention deletes the copies older than 30 days.",
+    "expected_answer": "Root cause: the NAS destination is full; the 02:31:40 line reads \"write failed: No space left on device\", and the backup aborted after 9120 of 18233 files.\nRetention runs only after a successful backup, so it skipped and the old copies filling the disk were not removed.\nFix: run retention once by hand to delete the copies older than 30 days, then let it run even after a failed backup.",
+    "response": "Root cause: the NAS destination is full; the 02:31:40 line reads \"write failed: No space left on device\", and the backup aborted after 9120 of 18233 files.\nRetention runs only after a successful backup, so it skipped and the old copies filling the disk were not removed.\nFix: run retention once by hand to delete the copies older than 30 days, then let it run even after a failed backup.",
+    "gold_score": 10,
+    "tier": "excellent",
+    "notes": "The reference diagnosis itself: an identity case.",
+    "judge_criteria": [
+      "Identifies the full NAS destination as the root cause",
+      "Cites the No space left on device line",
+      "Explains that retention skipping after a failure keeps the disk full",
+      "Proposes freeing space by running retention or deleting the copies older than 30 days",
+      "Does not blame the connection or the source files"
+    ]
+  },
+  {
+    "id": "cal-ag-02",
+    "category": "agent",
+    "prompt": "You are a diagnostic agent. Last night's photo backup failed. Find the root cause in this log, cite the log line that shows it, and propose one fix. Reply in at most four lines.\n\n02:00:01 backup    info  start source=/srv/photos dest=nas:/backups/photos\n02:00:02 backup    info  connected to nas as backup-user\n02:31:40 backup    error write failed: No space left on device (dest=nas:/backups/photos)\n02:31:40 backup    error aborted after 9120 of 18233 files\n02:31:41 retention info  skipped: retention runs only after a successful backup\n\nContext: retention deletes the copies older than 30 days.",
+    "expected_answer": "Root cause: the NAS destination is full; the 02:31:40 line reads \"write failed: No space left on device\", and the backup aborted after 9120 of 18233 files.\nRetention runs only after a successful backup, so it skipped and the old copies filling the disk were not removed.\nFix: run retention once by hand to delete the copies older than 30 days, then let it run even after a failed backup.",
+    "response": "Root cause: the NAS is full (02:31:40 \"No space left on device\"), so the backup aborted. The NAS connection was also unstable and slowed the copy.\nFix: free space on the NAS, check its network cable, and rerun the backup.",
+    "gold_score": 6,
+    "tier": "mediocre",
+    "notes": "Right root cause and evidence, but invents an unstable connection the log does not show and misses that retention skips after a failure, which keeps the disk full.",
+    "judge_criteria": [
+      "Identifies the full NAS destination as the root cause",
+      "Cites the No space left on device line",
+      "Explains that retention skipping after a failure keeps the disk full",
+      "Proposes freeing space by running retention or deleting the copies older than 30 days",
+      "Does not blame the connection or the source files"
+    ]
+  },
+  {
+    "id": "cal-ag-03",
+    "category": "agent",
+    "prompt": "You are a diagnostic agent. Last night's photo backup failed. Find the root cause in this log, cite the log line that shows it, and propose one fix. Reply in at most four lines.\n\n02:00:01 backup    info  start source=/srv/photos dest=nas:/backups/photos\n02:00:02 backup    info  connected to nas as backup-user\n02:31:40 backup    error write failed: No space left on device (dest=nas:/backups/photos)\n02:31:40 backup    error aborted after 9120 of 18233 files\n02:31:41 retention info  skipped: retention runs only after a successful backup\n\nContext: retention deletes the copies older than 30 days.",
+    "expected_answer": "Root cause: the NAS destination is full; the 02:31:40 line reads \"write failed: No space left on device\", and the backup aborted after 9120 of 18233 files.\nRetention runs only after a successful backup, so it skipped and the old copies filling the disk were not removed.\nFix: run retention once by hand to delete the copies older than 30 days, then let it run even after a failed backup.",
+    "response": "Root cause: the connection to the NAS dropped during the copy, so the backup aborted.\nFix: restart the NAS and rerun the backup.",
+    "gold_score": 1,
+    "tier": "clearly_wrong",
+    "notes": "Wrong root cause: the log shows a working connection and a full disk.",
+    "judge_criteria": [
+      "Identifies the full NAS destination as the root cause",
+      "Cites the No space left on device line",
+      "Explains that retention skipping after a failure keeps the disk full",
+      "Proposes freeing space by running retention or deleting the copies older than 30 days",
+      "Does not blame the connection or the source files"
+    ]
+  },
+  {
+    "id": "cal-ag-04",
+    "category": "agent",
+    "prompt": "Review this crontab. Intent: the database dump runs every night at 01:30, before the off-site sync at 03:00, and the log cleanup runs every Sunday at 04:00. Report each line that does not match the intent, one line per finding, then give the corrected entries.\n\n```\n30 13 * * *  /opt/jobs/db-dump.sh\n0 3 * * *    /opt/jobs/offsite-sync.sh\n0 4 * * 1    /opt/jobs/log-cleanup.sh\n```",
+    "expected_answer": "1. db-dump.sh has hour 13, so it runs at 13:30 instead of 01:30 and the 03:00 sync ships a dump made 13.5 hours earlier.\n2. log-cleanup.sh has day-of-week 1, which is Monday, not Sunday.\nCorrected entries: 30 1 * * * /opt/jobs/db-dump.sh and 0 4 * * 0 /opt/jobs/log-cleanup.sh (7 also means Sunday). The off-site sync line is correct.",
+    "response": "- Line 1: hour 13 means the dump runs at 13:30, not 01:30, so the 03:00 sync would ship a stale dump.\n- Line 3: day-of-week 1 is Monday; Sunday is 0 or 7.\nFixed: 30 1 * * * /opt/jobs/db-dump.sh and 0 4 * * 7 /opt/jobs/log-cleanup.sh. The off-site sync entry already matches the intent.",
+    "gold_score": 10,
+    "tier": "excellent",
+    "notes": "Both planted findings, the correct decoy left alone, and valid corrected entries in other words.",
+    "judge_criteria": [
+      "Flags the dump hour 13 instead of 1",
+      "Flags day-of-week 1 (Monday) instead of Sunday for the cleanup",
+      "Does not report the off-site sync line as wrong",
+      "Gives the corrected entries 30 1 * * * for the dump and 0 4 * * 0 (or 7) for the cleanup"
+    ]
+  },
+  {
+    "id": "cal-ag-05",
+    "category": "agent",
+    "prompt": "Review this crontab. Intent: the database dump runs every night at 01:30, before the off-site sync at 03:00, and the log cleanup runs every Sunday at 04:00. Report each line that does not match the intent, one line per finding, then give the corrected entries.\n\n```\n30 13 * * *  /opt/jobs/db-dump.sh\n0 3 * * *    /opt/jobs/offsite-sync.sh\n0 4 * * 1    /opt/jobs/log-cleanup.sh\n```",
+    "expected_answer": "1. db-dump.sh has hour 13, so it runs at 13:30 instead of 01:30 and the 03:00 sync ships a dump made 13.5 hours earlier.\n2. log-cleanup.sh has day-of-week 1, which is Monday, not Sunday.\nCorrected entries: 30 1 * * * /opt/jobs/db-dump.sh and 0 4 * * 0 /opt/jobs/log-cleanup.sh (7 also means Sunday). The off-site sync line is correct.",
+    "response": "1. db-dump.sh runs at 13:30 instead of 01:30.\n2. offsite-sync.sh at 03:00 can overlap the dump and copy a partial file.\nCorrected: 30 1 * * * /opt/jobs/db-dump.sh",
+    "gold_score": 5,
+    "tier": "mediocre",
+    "notes": "Finds the dump hour, misses the Monday cleanup, and reports a sync overlap the table does not show.",
+    "judge_criteria": [
+      "Flags the dump hour 13 instead of 1",
+      "Flags day-of-week 1 (Monday) instead of Sunday for the cleanup",
+      "Does not report the off-site sync line as wrong",
+      "Gives the corrected entries 30 1 * * * for the dump and 0 4 * * 0 (or 7) for the cleanup"
+    ]
+  },
+  {
+    "id": "cal-ag-06",
+    "category": "agent",
+    "prompt": "Review this crontab. Intent: the database dump runs every night at 01:30, before the off-site sync at 03:00, and the log cleanup runs every Sunday at 04:00. Report each line that does not match the intent, one line per finding, then give the corrected entries.\n\n```\n30 13 * * *  /opt/jobs/db-dump.sh\n0 3 * * *    /opt/jobs/offsite-sync.sh\n0 4 * * 1    /opt/jobs/log-cleanup.sh\n```",
+    "expected_answer": "1. db-dump.sh has hour 13, so it runs at 13:30 instead of 01:30 and the 03:00 sync ships a dump made 13.5 hours earlier.\n2. log-cleanup.sh has day-of-week 1, which is Monday, not Sunday.\nCorrected entries: 30 1 * * * /opt/jobs/db-dump.sh and 0 4 * * 0 /opt/jobs/log-cleanup.sh (7 also means Sunday). The off-site sync line is correct.",
+    "response": "Cron is a time-based job scheduler in Unix-like systems. Each line has five time fields followed by the command to run. Make sure your scripts are executable and that they log their output.",
+    "gold_score": 1,
+    "tier": "clearly_wrong",
+    "notes": "Explains cron instead of reviewing the table; reports no finding.",
+    "judge_criteria": [
+      "Flags the dump hour 13 instead of 1",
+      "Flags day-of-week 1 (Monday) instead of Sunday for the cleanup",
+      "Does not report the off-site sync line as wrong",
+      "Gives the corrected entries 30 1 * * * for the dump and 0 4 * * 0 (or 7) for the cleanup"
+    ]
   }
 ]
