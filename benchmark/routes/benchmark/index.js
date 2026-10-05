@@ -26,6 +26,7 @@ router.use('/', require('./quickComparison'));
 router.use('/', require('./results'));
 router.use('/', require('./batches'));
 router.use('/', require('./analytics'));
+router.use('/', require('./artifactComparison'));
 router.use('/', require('./diagnostics'));
 router.use('/', require('./efficiency'));
 router.use('/', require('./judgeDefaults'));
