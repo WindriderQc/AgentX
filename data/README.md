@@ -43,6 +43,18 @@ returns bounded per-GPU samples (`hostId`, optional `gpuIndex`, `from`, `to`,
 `limit` up to 2 000). History expires through a TTL index,
 `DATA_HARDWARE_HISTORY_TTL_DAYS` (default 7, at most 90); a changed value is
 applied to the existing index at startup. `GET /collectors` lists heartbeats.
+`GET /occupancy` aggregates the history per physical GPU (collector host and
+GPU UUID, or index when no UUID was read) over `from`/`to` (default the last
+24 h, at most 90 days), optionally for one `hostId`, with `busyAtPct` (default
+10) as the busy threshold. Each sample stands for the time since that GPU's
+previous sample, up to 1.5 collector intervals, else for one interval; what no
+sample covers is `missingMs`, and `coverage` is the observed share of the
+window. Per GPU it returns `samples`, the first and last sample times, `busy`
+(time at or above the threshold and its share of the time utilization was
+read), time-weighted mean and p50/p95 utilization, VRAM used p50/p95/max and
+total, mean/p95/max power and the limit, and `throttled` time (power cap,
+thermal, hardware slowdown) with its share of the time throttle reasons were
+read. A GPU the host last reported with no sample in the window has coverage 0.
 
 `DATA_COLLECTOR_PLACEMENT_JSON` may provide the Toolbox's operator display map:
 `{"network":{},"storage":{}}`, with rows keyed by configured collector ID and

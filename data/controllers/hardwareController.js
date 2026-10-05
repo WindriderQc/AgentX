@@ -1,6 +1,7 @@
 'use strict';
 
 const hardware = require('../services/hardwareTelemetryService');
+const { occupancy: gpuOccupancy } = require('../services/hardwareOccupancyService');
 
 function handle(work) {
   return async (req, res, next) => {
@@ -42,4 +43,6 @@ const latest = handle(async (req) => {
 
 const history = handle(req => hardware.history(req.app.locals.db, req.query || {}));
 
-module.exports = { heartbeat, ingestSamples, listCollectors, latest, history };
+const occupancy = handle(req => gpuOccupancy(req.app.locals.db, req.query || {}));
+
+module.exports = { heartbeat, ingestSamples, listCollectors, latest, history, occupancy };

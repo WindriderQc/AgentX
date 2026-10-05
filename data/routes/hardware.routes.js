@@ -5,6 +5,7 @@ const hardwareController = require('../controllers/hardwareController');
 router.get('/collectors', hardwareController.listCollectors);
 router.get('/latest', hardwareController.latest);
 router.get('/history', hardwareController.history);
+router.get('/occupancy', hardwareController.occupancy);
 
 // ─── Native GPU collector surfaces ────────────────────────
 router.post('/collector/heartbeat', hardwareController.heartbeat);
