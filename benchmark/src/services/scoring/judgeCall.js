@@ -419,6 +419,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
                 host: judgeConfig.host,
                 messages: [{ role: 'user', content: evalPrompt }],
                 stream: false,
+                timeoutMs: judgeConfig.timeout,
                 responseMode: 'normalized',
                 think,
                 callerDetail: 'benchmark-judge',

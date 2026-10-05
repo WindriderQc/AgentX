@@ -60,9 +60,9 @@ export function _buildAdvancedSettings() {
             <div class="bf-adv-field">
               <label class="bf-adv-label" for="bv2-adv-num_predict">Max Response Tokens</label>
               <input type="number" id="bv2-adv-num_predict" class="bf-adv-input"
-                min="100" max="32768" step="100" value="${s.num_predict}"
+                min="100" step="1" value="${s.num_predict}"
                 data-adv-key="num_predict" data-adv-group="judge">
-              <span class="bf-adv-range">100 – 32768 (above 4096: warning)</span>
+              <span class="bf-adv-range">100+ (above 4096: warning)</span>
               <span class="bf-adv-help">Maximum tokens the judge can use for its evaluation response. Increase if judge outputs are being truncated.</span>
             </div>
 
@@ -87,9 +87,9 @@ export function _buildAdvancedSettings() {
             <div class="bf-adv-field">
               <label class="bf-adv-label" for="bv2-adv-timeout">Judge Timeout (ms)</label>
               <input type="number" id="bv2-adv-timeout" class="bf-adv-input"
-                min="5000" max="1800000" step="5000" value="${s.timeout}"
+                min="5000" max="2147483647" step="1" value="${s.timeout}"
                 data-adv-key="timeout" data-adv-group="judge">
-              <span class="bf-adv-range">5s – 30min, above 120s: warning (${judgeTimeoutSec}s current)</span>
+              <span class="bf-adv-range">5s+, above 120s: warning (${judgeTimeoutSec}s current)</span>
               <span class="bf-adv-help">Maximum time (ms) to wait for a judge response. Increase for slower hosts or larger models.</span>
             </div>
 

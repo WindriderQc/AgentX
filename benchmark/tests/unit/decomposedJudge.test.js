@@ -373,10 +373,12 @@ describe('Model options', () => {
 
     test('sends correct model name', async () => {
         mockFetchSequence(['YES']);
-        await askBinaryQuestion('response', 'q?', JUDGE_CONFIG);
+        await askBinaryQuestion('response', 'q?', { ...JUDGE_CONFIG, timeout: 7200000, num_predict: 65536 });
 
         const body = JSON.parse(mockFetchFn.mock.calls[0][1].body);
         expect(body.model).toBe('qwen2.5:7b');
+        expect(body.timeoutMs).toBe(7200000);
+        expect(body.options.num_predict).toBe(65536);
     });
 
     test('stream is false', async () => {

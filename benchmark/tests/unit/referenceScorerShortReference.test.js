@@ -112,14 +112,17 @@ describe('reference scoring with short references', () => {
     expect(calls).toHaveLength(3);
     expect(calls.every(body => body.prompt.includes('TASK: Write a function that sums an array.'))).toBe(true);
   });
-  it('honors the explicit verdict budget for all reference checks', async () => {
+  it('honors the explicit verdict budget and deadline for all reference checks', async () => {
     await score('The answer is correct.', { reference_answer: 'The answer is correct.' }, {
-      model: 'judge', host: 'http://judge:11434', num_predict: 1024
+      model: 'judge', host: 'http://judge:11434', num_predict: 65536, timeout: 7200000
     });
     expect(new Set(mockFetch.mock.calls.map(([, opts]) => JSON.parse(opts.body).callerDetail))).toEqual(
       new Set(['benchmark-ref-keypoint', 'benchmark-ref-contradictions', 'benchmark-ref-overall'])
     );
-    expect(mockFetch.mock.calls.every(([, opts]) => JSON.parse(opts.body).options.num_predict === 1024)).toBe(true);
+    expect(mockFetch.mock.calls.every(([, opts]) => {
+      const body = JSON.parse(opts.body);
+      return body.options.num_predict === 65536 && body.timeoutMs === 7200000;
+    })).toBe(true);
   });
   it.each(['benchmark-ref-keypoint', 'benchmark-ref-contradictions', 'benchmark-ref-overall'])(
     'does not score when %s returns a readable but truncated verdict', async truncatedCaller => {

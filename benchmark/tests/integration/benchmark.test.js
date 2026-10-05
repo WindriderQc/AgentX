@@ -907,7 +907,9 @@ describe('Benchmark System - Integration Tests', () => {
                     levels: [1],
                     judge_config: {
                         host: 'http://judge-host:11434',
-                        model: 'qwen2.5:14b-instruct'
+                        model: 'qwen2.5:14b-instruct',
+                        num_predict: 65536,
+                        timeout: 7200000
                     }
                 });
 
@@ -920,9 +922,17 @@ describe('Benchmark System - Integration Tests', () => {
             expect(runPreflight).toHaveBeenCalledWith(expect.objectContaining({
                 judgeConfig: expect.objectContaining({
                     model: 'qwen2.5:14b-instruct',
-                    host: 'http://judge-host:11434'
+                    host: 'http://judge-host:11434',
+                    num_predict: 65536,
+                    timeout: 7200000
                 })
             }));
+            const saved = await BenchmarkBatch.findById(response.body.data.batch_id).lean();
+            expect(saved.judge_config).toMatchObject({ num_predict: 65536, timeout: 7200000 });
+            expect(response.body.data.warnings).toEqual(expect.arrayContaining([
+                expect.stringMatching(/num_predict 65536.*Kept as chosen/),
+                expect.stringMatching(/timeout 7200000 ms.*Kept as chosen/)
+            ]));
         });
 
         it('should return 409 on duplicate-key race collision during start', async () => {

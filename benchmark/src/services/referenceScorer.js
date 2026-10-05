@@ -45,6 +45,7 @@ function buildGenerateRequest(judgeConfig, prompt, numPredict, callerDetail) {
             host: judgeConfig.host,
             prompt,
             stream: false,
+            timeoutMs: judgeConfig.timeout,
             responseMode: 'normalized',
             think: resolveThink(judgeConfig),
             callerDetail: callerDetail || 'benchmark-reference-scorer',
