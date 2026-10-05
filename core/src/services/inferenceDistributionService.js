@@ -80,6 +80,8 @@ const METRICS = Object.freeze({
   promptEvalMs: 'Prompt evaluation (prefill) time reported by Ollama.',
   evalMs: 'Generation time reported by Ollama.',
   nonModelMs: 'durationMs minus load, prompt evaluation and generation, when all three are reported: routing, admission, queueing, retries and network.',
+  admissionWaitMs: 'Runtime admission wait of the attempt that ended the call. Absent on older rows.',
+  hostGateWaitMs: "Wait at Core's per-host and model gate for the attempt that ended the call. Absent on older rows.",
   numCtx: 'Context window sent to the runtime (num_ctx).',
   contextFill: 'inputTokens divided by num_ctx.',
 });
@@ -193,6 +195,8 @@ function projectionStage(groupBy) {
         ]
       },
       numCtx: positive('$num_ctx'),
+      admissionWaitMs: present('$admissionWaitMs'),
+      hostGateWaitMs: present('$hostGateWaitMs'),
     }
   };
 }

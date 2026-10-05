@@ -1255,6 +1255,17 @@ a hash, never prompt content. A miss whose divergence is `append` or `none`
 points elsewhere: another caller used the model in between, or the model was
 reloaded (`loadMs` is high).
 
+A row also says what the call waited for before Ollama received it.
+`admissionWaitMs` is the runtime admission of the attempt that ended the call
+(admission accepts or refuses without queueing, so a large value points at its
+coordination store, not at contention). `hostGateWaitMs` is the wait at Core's per-(host, model)
+gate, the only queue Core holds itself; a call refused before the gate has
+none. Calls retried by the trusted-runtime retry policy add `retry`: the
+number of `attempts`, the total backoff `delayMs` and a `history` of at most
+six failed attempts, each with its `attempt`, its `cause` code (`other` for
+anything that is not a code), its backoff and its own admission and gate
+waits. Rows recorded before these fields existed have none of them.
+
 `GET /api/analytics/inference/distribution` turns these rows into
 distributions. It accepts the `/api/analytics/inference/logs` filters, covers
 `window` (`24h`, `7d`, `30d`, `90d`; default `7d`) unless `from`/`to` are given,
@@ -1268,8 +1279,9 @@ groups, default 50, at most 200). A fallback reason is grouped as its stable cod
 max of `inputTokens` (`tokensIn`, or the dispatch estimate when the call ended
 without usage), `tokensOut`, `durationMs`, `firstTokenMs`, `loadMs`,
 `promptEvalMs`, `evalMs`, `nonModelMs` (wall clock not covered by the three
-Ollama phases: routing, admission, queueing, retries and network), `numCtx` and
-`contextFill` (`inputTokens / num_ctx`); the calls per prompt-size bucket (up to
+Ollama phases: routing, admission, queueing, retries and network),
+`admissionWaitMs`, `hostGateWaitMs`, `numCtx` and `contextFill`
+(`inputTokens / num_ctx`); the calls per prompt-size bucket (up to
 8k, 16k, 32k, 64k, 96k, 128k, 192k, above); and the calls filling at least 50,
 75 and 90 % of their context. Percentiles are MongoDB approximations. A metric
 no row reports has a null value with a count of 0. Rows expire after
