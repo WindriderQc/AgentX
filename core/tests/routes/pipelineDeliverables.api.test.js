@@ -1,22 +1,17 @@
 'use strict';
 const { createHash } = require('node:crypto');
 const express = require('express');
-const cookieParser = require('cookie-parser');
 const PipelineTask = require('../../models/PipelineTask');
 const Deliverable = require('../../models/PipelineTaskDeliverable');
 const { startTestHttpHarness } = require('../helpers/testHttpServer');
-const { registerParentalAccess } = require('../../src/middleware/parentalAccess');
 const routes = require('../../routes/pipeline');
 
-const CODE = '482913';
 let harness;
 beforeAll(async () => {
   await Deliverable.createCollection();
   await Deliverable.createIndexes();
   const app = express();
-  app.use(cookieParser());
   app.use(express.json({ limit: '5mb' }));
-  registerParentalAccess({ app, express, env: { AGENTX_PARENTAL_CODE: CODE, AGENTX_PARENTAL_SESSION_MINUTES: '30' } });
   app.use('/api/pipeline', routes);
   harness = await startTestHttpHarness(app, { transport: process.platform === 'win32' ? 'pipe' : 'tcp' });
 });
@@ -212,19 +207,13 @@ test('worker registration refuses a stale assignee, expired lease, and a lease w
   expect(await Deliverable.countDocuments({ pipelineId: id })).toBe(0);
 });
 
-test('download needs an adult session at the household gateway and returns the verified bytes', async () => {
+test('LAN download returns verified bytes without a human session', async () => {
   const id = await create();
   const report = file('{"passed":12,"failed":0}', { name: 'results.json', mime: 'application/json' });
   const receipt = (await register(id, upload(report)).expect(201)).body.data.receipt;
   const url = `/api/pipeline/tasks/${id}/deliverables/${receipt.id}/download`;
-  const edge = pending => pending.set('X-AgentX-Entry', 'household');
-
-  expect((await edge(harness.request.get(url)).expect(401)).body.code).toBe('ADULT_LOCKED');
-  expect((await edge(harness.request.get(`/api/pipeline/tasks/${id}/deliverables`)).expect(401)).body.code).toBe('ADULT_LOCKED');
-  const unlock = await edge(harness.request.post('/api/access/unlock')).send({ code: CODE }).expect(200);
-  const cookie = unlock.headers['set-cookie'][0].split(';')[0];
-
-  const response = await edge(harness.request.get(url)).set('Cookie', cookie).buffer(true)
+  await harness.request.get(`/api/pipeline/tasks/${id}/deliverables`).expect(200);
+  const response = await harness.request.get(url).buffer(true)
     .parse((res, done) => { const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('end', () => done(null, Buffer.concat(chunks))); })
     .expect(200);
   expect(Buffer.compare(response.body, report.bytes)).toBe(0);

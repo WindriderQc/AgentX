@@ -5,7 +5,7 @@ const { agentForPersona } = require('./persona-selection');
 const { publicSession } = require('./persona-records');
 
 // Mounted on the existing persona router: both spaces require the existing
-// adult gateway session. The family write is absent from the child allowlist.
+// private LAN. This declaration does not identify an adult.
 function registerSessionPersonaRoutes(router, { conversations, personas, ensureCatalog, activePersonaTurns, envelope, fail }) {
   for (const [space, packId, scopeId] of [['private', 'personal_operator', 'personal'], ['family', 'kidx_nestor', 'family']]) {
     router.post(`/${space}/sessions/:sessionId/persona`, async (req, res) => {

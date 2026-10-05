@@ -121,6 +121,11 @@ Before contributing, read this README, [Status](docs/STATUS.md),
 order. Preserve personal, family and child access boundaries and the existing
 stack. Record modernization proposals in [MODERNIZATION.md](MODERNIZATION.md).
 
+Human pages and APIs use [private LAN HTTPS](docs/PARENTAL_ACCESS.md) without
+an account or adult code; anyone reaching an entry can use human capabilities.
+Native integration tokens and family memory/tool boundaries remain separate.
+[Local voice identification](docs/VOICE_ID.md) is a proposed next step, not delivered.
+
 AgentX runs locally or on your LAN. Keep runtime secrets, instance configuration
 and personal content outside Git. The code is [MIT licensed](LICENSE); bundled
 animal sounds retain their [individual licences](core/surfaces/household/public/sounds/CREDITS.md).

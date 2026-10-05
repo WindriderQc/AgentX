@@ -100,8 +100,8 @@ instance configuration, then run `./agentx up --build` (or `./agentx.ps1 up --bu
 It waits for container and published HTTP health. Builds receive the Git revision,
 with a dirty suffix when appropriate, unless the operator supplies an explicit
 build revision. This checkout has no automatic production pull/deploy scheduler.
-Configure [parental access](PARENTAL_ACCESS.md) at the LAN HTTPS gateway before
-opening the full profile to family devices.
+Configure [private LAN access](PARENTAL_ACCESS.md) at the HTTPS gateway. Human
+interfaces and APIs require no account or code; the network is their boundary.
 
 ### Conversation context and performance
 
@@ -338,7 +338,7 @@ Core or Benchmark on a running instance only through the launcher
 (`./agentx rebuild --no-deps core` or `./agentx up --build --no-deps core`): a
 direct `docker compose up` bypasses the lease. Still coordinate with other
 operators of the instance. A new setting (for example
-`AGENTX_FACE_UNLOCK_ENABLED`) is added to the external env file by hand; code
+`PSYX_VOICE_MODE`) is added to the external env file by hand; code
 deployment never changes instance configuration. The service `/health`
 responses report the deployed `revision`.
 
@@ -581,8 +581,8 @@ inbox outside approved ingestion roots (e.g. `RAG/Inbox` beside `RAG/Docs`):
 moving a note into the documents folder is the owner's approval.
 
 External agents reach the owner's durable memory through the same `/mcp`
-endpoint, which needs the adult session or bearer through the gateway (like
-every `/mcp` tool, it is open to trusted unmarked loopback/Docker callers): `memory_search` searches the
+endpoint, available through the private LAN gateway or trusted loopback/Docker
+callers: `memory_search` searches the
 owner's personal notes and `memory_remember` saves or corrects one fact,
 preference or decision. They use the store Nestor and the memory editor use,
 labelled owner/private, refuse secret-like text and record `mcp-agent` as the
@@ -612,8 +612,8 @@ off otherwise. Keep them outside every approved RAG ingestion root: owner RAG
 search has no exclusion filter. `/api/finance` (statements, balances,
 transactions, monthly summary, top outgoing descriptions, inbox status and
 scan) and the `/finance` page (balances, monthly in/out, where the money goes,
-a "how much at…" search and statement status) require an adult session
-through the gateway.
+a "how much at…" search and statement status) use the private LAN HTTPS entry without a code. The network boundary is
+responsible for human access.
 Transactions get a category from a fixed list and free tags through rules the
 owner teaches (`/api/finance/rules`: description contains a pattern, the longest
 pattern wins); rules apply to past and future rows, and `/api/finance/uncategorized`
@@ -881,8 +881,8 @@ invalid value keeps the default):
 The household documents floor is `householdDocuments.minScore` in the Nestor
 knowledge configuration.
 
-Every installation needs the parental gateway and the absence of alternate raw
-entries verified before family device access.
+Every installation needs private HTTPS, LAN peer restrictions and loopback
+backend bindings verified before device access; check IPv6, NAT and tunnels too.
 Native agent tools, voice and external evidence panels need their configured
 services; their inclusion as code is not a live operational receipt.
 Selected-note editing and recall use Core and do not require OpenClaw or VoiX.
@@ -1137,8 +1137,8 @@ not answer, saying so. `PATCH` on `primary`, `secondary` or `tertiary` stores a
 name, residency or limit for that configuration file host. The address of a
 registered host does not change: remove it and add it again. Removal requires
 `REMOVE HOST <id>` confirmation and is refused while the host has pins or a
-task routes to it. Household-entry requests need an adult session, like every
-other Nerve Center change.
+task routes to it. Human Nerve Center changes use LAN access without identity
+verification; confirmations and runtime admission rules remain required.
 
 A CPU instance is a second Ollama service on the same machine, outside AgentX.
 A generic systemd unit for it:

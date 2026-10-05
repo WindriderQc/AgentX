@@ -1,9 +1,7 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <link rel="stylesheet" href="/access-assets/client.css">
   <link rel="stylesheet" href="/css/conversation-recap.css?v=1">
-  <script src="/access-assets/client.js" defer></script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
@@ -13,26 +11,11 @@
   <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.12.0">
   <link rel="stylesheet" href="/psyx/assets/review.css?v=2.12.0">
 </head>
-<body class="psyx-locked">
+<body>
   <!-- product-navigation -->
-  <div id="privacyGate" class="privacy-gate" role="dialog" aria-modal="true" aria-labelledby="privacyTitle">
-    <form id="unlockForm" class="privacy-card">
-      <a href="/" class="privacy-home">← Accueil AgentX</a>
-      <div class="eyebrow">PSYX · PERSONNEL · PROTÉGÉ</div>
-      <h1 id="privacyTitle">Déverrouiller PsyX</h1>
-      <p>Tes conversations et ta mémoire PsyX sont protégées des autres appareils du réseau. Entre ton code d’accès PsyX.</p>
-      <label>
-        Code d’accès
-        <input id="unlockCode" type="password" autocomplete="current-password" required>
-      </label>
-      <button id="unlockButton" class="primary-button" type="submit">Déverrouiller</button>
-      <div id="unlockStatus" class="privacy-status" role="status" aria-live="polite"></div>
-    </form>
-  </div>
-
   <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
 
-  <main id="appShell" class="app-shell" aria-hidden="true">
+  <main id="appShell" class="app-shell">
     <header class="topbar">
       <div class="brand-wrap">
         <div class="eyebrow">PSYX · PERSONNEL</div>
@@ -50,7 +33,6 @@
         <button id="voiceSettings" class="icon-btn" type="button">Voix</button>
         <button id="performancePsyx" class="icon-btn" type="button">Contexte et performance</button>
         <button id="settingsPsyx" class="icon-btn" type="button">Données</button>
-        <button id="lockPsyx" class="icon-btn" type="button" title="Verrouiller PsyX">Verrouiller</button>
         <div class="status-wrap" role="status" aria-live="polite">
           <span id="statusDot" class="status-dot"></span>
           <span id="statusText">Démarrage de PsyX…</span>
@@ -293,8 +275,7 @@
       <div class="modal-header"><div><div class="panel-kicker">Confidentialité et données</div><h2>Données PsyX</h2></div><button value="cancel" class="icon-btn" type="submit" aria-label="Fermer les données">×</button></div>
       <section class="data-section">
         <h3>Confidentialité</h3>
-        <p id="privacySummary">Ce navigateur reste déverrouillé jusqu’à 8 heures. Le code d’accès n’est jamais stocké dans le navigateur.</p>
-        <button id="lockPsyxSettings" class="ghost-button" type="button">Verrouiller PsyX maintenant</button>
+        <p id="privacySummary">PsyX est accessible depuis ce LAN privé sans compte ni code. Protège le réseau, la base de données et les sauvegardes.</p>
       </section>
       <section class="data-section" id="frontierSection" hidden>
         <h3>Cerveau cloud</h3>

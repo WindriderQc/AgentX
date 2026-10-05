@@ -29,14 +29,16 @@ function stopVoiceSession({ close = true } = {}) {
 }
 
 async function voiceSessionFetch(path, options, signal) {
-  const epoch = state.accessEpoch;
-  assertCurrentAccess(epoch);
-  if (!state.unlocked) throw Object.assign(new Error('PsyX est verrouillé.'), { name: 'AbortError' });
+
+
+
+  signal?.throwIfAborted();
   const response = await fetch('/api/psyx/voice/' + path, { credentials: 'same-origin', ...options, signal });
-  assertCurrentAccess(epoch);
+
+  signal?.throwIfAborted();
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    if (response.status === 401 && payload.code === 'PSYX_LOCKED') showGate('La séance privée a expiré.');
+
     throw Object.assign(new Error(payload.message || `La voix a échoué (${response.status}).`), { code: payload.code, status: response.status });
   }
   return response;
@@ -119,14 +121,14 @@ function createPsyXVoiceSession() {
 }
 
 async function startPsyXVoiceSession() {
-  if (!state.unlocked || !state.ready || state.busy || !state.voice.reachable) return;
+  if (!state.ready || state.busy || !state.voice.reachable) return;
   psyxVoiceSession ||= createPsyXVoiceSession();
   await psyxVoiceSession.start({ language: state.voice.prefs.language, wakeWord: false, interruption: false });
 }
 
 function wireVoiceSession() {
   $('voiceSessionOpen').addEventListener('click', async () => {
-    if (!state.unlocked || !state.ready || state.busy || (state.voice.recordingPending || state.voice.recorder?.state === 'recording')) return;
+    if (!state.ready || state.busy || (state.voice.recordingPending || state.voice.recorder?.state === 'recording')) return;
     state.voice.speech?.cancel();
     const chosen = state.voice.catalog?.voices?.find(voice => voice.provider === state.voice.prefs.ttsProvider && voice.id === state.voice.prefs.ttsVoice);
     $('voiceSessionVoice').textContent = voicePreferences.describePreferences(state.voice.prefs, state.voice.status) + (chosen?.locale ? ` · ${chosen.locale}` : '');

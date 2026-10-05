@@ -240,4 +240,6 @@ Core uses `OPENCLAW_INVENTORY_SSH_TARGET` and an explicit
 `SECRETARY_MAIL_REMOTE_ROOT` (falling back to `CODING_DISPATCHER_REMOTE_ROOT`).
 The root must be the canonical checkout on that host. With no native settings,
 mail actions report unavailable while the rest of the desk remains usable.
-Household's existing parental boundary protects the personal Secretary routes.
+Personal Secretary routes are accessible through the private LAN without a
+human code. Native Gmail grants and explicit review before family publication
+remain separate; the server does not authenticate a parent.

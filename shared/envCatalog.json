@@ -72,26 +72,6 @@
       "secret": true,
       "description": "Token required from the VoiX voice-memory consumer. Unset: that consumer answers 503 not configured."
     },
-    "AGENTX_FACE_UNLOCK_ENABLED": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "false",
-      "category": "household",
-      "secret": false,
-      "description": "true enables face unlock of the adult space once a parental code exists (configured or set from the host). Any other value or unset: face unlock is off."
-    },
-    "AGENTX_FACE_UNLOCK_MAX_DISTANCE": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "0.4",
-      "category": "household",
-      "secret": false,
-      "description": "Maximum face-descriptor distance accepted by face unlock, from 0.3 to 0.5; a value outside that range fails startup. Unset: 0.4."
-    },
     "AGENTX_HOST_HOME_LABEL": {
       "services": [
         "core"
@@ -141,26 +121,6 @@
       "category": "bridges",
       "secret": false,
       "description": "Maximum age of the OpenClaw manifest in the agent-ops projection before it counts as stale. Unset: a built-in default."
-    },
-    "AGENTX_PARENTAL_CODE": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "security",
-      "secret": true,
-      "description": "Optional parental code that unlocks the adult space through the gateway and bearer access; when set it takes precedence and cannot be changed from the UI. Unset: the code is set and changed from the unlock page and stored hashed in MongoDB; until it is set from the AgentX host, adult pages stay locked."
-    },
-    "AGENTX_PARENTAL_SESSION_MINUTES": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "30",
-      "category": "security",
-      "secret": false,
-      "description": "Lifetime in minutes of an adult session after unlock, from 5 to 480; a value outside that range fails startup. Unset: 30."
     },
     "AGENTX_PLATFORM_MAP_PATH": {
       "services": [
@@ -1443,16 +1403,6 @@
       "secret": false,
       "description": "URL of the GraphysX llmx-face.js module relayed by Core for the avatar dock. Unset: the relay answers 404 and the dock shows a 2D orb."
     },
-    "HOUSEHOLD_BROWSER_STT_FALLBACK": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "false",
-      "category": "household",
-      "secret": false,
-      "description": "Allow the browser's own speech recognition when local transcription (VoiX) is unavailable: false, personal (Super Dad only) or true (Super Dad and Famille). Each browser must still consent per space; Chrome and Edge send the audio to the vendor's cloud. Unset: off."
-    },
     "HOUSEHOLD_BRAIN_ENABLED": {
       "services": [
         "core"
@@ -1463,38 +1413,6 @@
       "secret": false,
       "description": "Run a bounded background review after each Household turn. Unset: enabled in Compose."
     },
-    "HOUSEHOLD_BRAIN_FAMILY": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "true",
-      "category": "household",
-      "secret": false,
-      "description": "Allow the background review on the Famille surface. Unset: enabled in Compose."
-    },
-    "HOUSEHOLD_PERSONA_VOICES": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Optional JSON mapping a Household persona id, or \"*\", to an instance voice \"provider|voice\" (kokoro, windows_sapi or voxcpm). A browser voice selection still wins. Unset: catalog voices.",
-      "fallback": "catalog persona voices"
-    },
-    "HOUSEHOLD_TEAM_MEMBERS": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Optional JSON mapping an OpenClaw agent id to the names the owner uses to address it directly in Super Dad (\"Secretary, ...\", \"ask the secretary ...\"). That turn goes to the agent's own session and voice. Unset: every turn stays with the conversation's agent.",
-      "fallback": "no direct addressing"
-    },
     "HOUSEHOLD_BRAIN_EXCLUSIVE": {
       "services": [
         "core"
@@ -1504,6 +1422,16 @@
       "category": "household",
       "secret": false,
       "description": "Ask for exclusive admission on HOUSEHOLD_BRAIN_HOST_URL for background reviews (waits for an idle host, blocks other callers, unloads co-resident models). Unset: shared admission."
+    },
+    "HOUSEHOLD_BRAIN_FAMILY": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "true",
+      "category": "household",
+      "secret": false,
+      "description": "Allow the background review on the Famille surface. Unset: enabled in Compose."
     },
     "HOUSEHOLD_BRAIN_HOST_URL": {
       "services": [
@@ -1526,6 +1454,16 @@
       "secret": false,
       "description": "Optional Ollama model for Household background reviews. Unset: use the router master_brain lane.",
       "fallback": "the router master_brain lane"
+    },
+    "HOUSEHOLD_BROWSER_STT_FALLBACK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Allow the browser's own speech recognition when local transcription (VoiX) is unavailable: false, personal (Super Dad only) or true (Super Dad and Famille). Each browser must still consent per space; Chrome and Edge send the audio to the vendor's cloud. Unset: off."
     },
     "HOUSEHOLD_CONVERSATION_BACKEND": {
       "services": [
@@ -1577,6 +1515,28 @@
       "category": "household",
       "secret": false,
       "description": "Model of the household permissive personal-operator pack. Unset: a built-in default model."
+    },
+    "HOUSEHOLD_PERSONA_VOICES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional JSON mapping a Household persona id, or \"*\", to an instance voice \"provider|voice\" (kokoro, windows_sapi or voxcpm). A browser voice selection still wins. Unset: catalog voices.",
+      "fallback": "catalog persona voices"
+    },
+    "HOUSEHOLD_TEAM_MEMBERS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional JSON mapping an OpenClaw agent id to the names the owner uses to address it directly in Super Dad (\"Secretary, ...\", \"ask the secretary ...\"). That turn goes to the agent's own session and voice. Unset: every turn stays with the conversation's agent.",
+      "fallback": "no direct addressing"
     },
     "HOUSEHOLD_VOICE_MODEL": {
       "services": [
@@ -1834,10 +1794,10 @@
       ],
       "forwarded": true,
       "default": null,
-      "fallback": "365",
       "category": "memory",
       "secret": false,
-      "description": "Days a mail journal entry is kept, counted from the mail's date; Mongo removes it afterwards. Applies to entries recorded after a change. 0 keeps entries forever; an invalid value uses 365."
+      "description": "Days a mail journal entry is kept, counted from the mail's date; Mongo removes it afterwards. Applies to entries recorded after a change. 0 keeps entries forever; an invalid value uses 365.",
+      "fallback": "365"
     },
     "MEMORY_NOTE_RETENTION_DAYS": {
       "services": [
@@ -1845,10 +1805,10 @@
       ],
       "forwarded": true,
       "default": null,
-      "fallback": "30",
       "category": "memory",
       "secret": false,
-      "description": "Days a forgotten or expired memory note is kept before Core deletes its text (daily sweep). 0 keeps hidden notes forever."
+      "description": "Days a forgotten or expired memory note is kept before Core deletes its text (daily sweep). 0 keeps hidden notes forever.",
+      "fallback": "30"
     },
     "MEMORY_REVIEW_AUTOMATION_MODE": {
       "services": [
@@ -2051,26 +2011,6 @@
       "category": "memory",
       "secret": false,
       "description": "Timeout of Nestor memory RAG calls, 1000 to 30000. Unset: 5000."
-    },
-    "OPS_WATCH_LANGUAGE": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "operations",
-      "secret": false,
-      "description": "Language the operations watch report is written in, for example French, until one is saved in the Nerve Center. Unset: English."
-    },
-    "OPS_WATCH_MS": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "operations",
-      "secret": false,
-      "description": "Interval at which Core turns the current operational findings and active alerts into one short model-written report (task ops_watch), minimum 300000. Applies until the watch is set in the Nerve Center. Unset: off."
     },
     "NETWORK_DEVICE_WATCH_MS": {
       "services": [
@@ -2480,6 +2420,26 @@
       "secret": false,
       "description": "Cache lifetime of OpenClaw runtime evidence. Unset: 15000 ms."
     },
+    "OPS_WATCH_LANGUAGE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Language the operations watch report is written in, for example French, until one is saved in the Nerve Center. Unset: English."
+    },
+    "OPS_WATCH_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Interval at which Core turns the current operational findings and active alerts into one short model-written report (task ops_watch), minimum 300000. Applies until the watch is set in the Nerve Center. Unset: off."
+    },
     "PIN_CONTEXT_SPEED_TOLERANCE_PCT": {
       "services": [
         "core"
@@ -2539,6 +2499,26 @@
       "category": "observability",
       "secret": false,
       "description": "Timeout of portal service health probes. Unset: 1500 ms."
+    },
+    "PROFILE_CANCEL_PROOF_BUDGET_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "How long a profile waits for Ollama /api/ps to prove a request it aborted (operator cancel or expired deadline) stopped before leaving it UNKNOWN, in ms, at least 10000. Unset: 60000."
+    },
+    "PROFILE_CANCEL_SETTLE_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Minimum wait after a profile aborts a request (operator cancel or expired deadline) before /api/ps can prove it stopped, in ms, at least 5000. Unset: 15000."
     },
     "PROFILER_LONG_CONTEXT_QUALITY_TOKENS": {
       "services": [
@@ -2600,26 +2580,6 @@
       "secret": false,
       "description": "Interval of profiler projection recovery. Unset: a built-in default."
     },
-    "PROFILE_CANCEL_PROOF_BUDGET_MS": {
-      "services": [
-        "benchmark"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "benchmark",
-      "secret": false,
-      "description": "How long a profile waits for Ollama /api/ps to prove a request it aborted (operator cancel or expired deadline) stopped before leaving it UNKNOWN, in ms, at least 10000. Unset: 60000."
-    },
-    "PROFILE_CANCEL_SETTLE_MS": {
-      "services": [
-        "benchmark"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "benchmark",
-      "secret": false,
-      "description": "Minimum wait after a profile aborts a request (operator cancel or expired deadline) before /api/ps can prove it stopped, in ms, at least 5000. Unset: 15000."
-    },
     "PROMPT_ANALYSIS_MODEL": {
       "services": [
         "core"
@@ -2645,7 +2605,7 @@
         "core"
       ],
       "forwarded": true,
-      "default": "token",
+      "default": "trusted-network",
       "category": "household",
       "secret": false,
       "description": "PsyX access mode: token (access code required) or trusted-network (no locking, an operator decision); another value fails startup. Unset: token."
@@ -2709,16 +2669,6 @@
       "category": "household",
       "secret": false,
       "description": "Label of the model behind the PsyX frontier agent, shown in the interface and saved with turns. Unset: frontier."
-    },
-    "PSYX_LOOPBACK_BYPASS": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "false",
-      "category": "household",
-      "secret": false,
-      "description": "true lets loopback requests bypass the PsyX access code. Any other value or unset: loopback requests need the code too."
     },
     "PSYX_REVIEW_TASK": {
       "services": [

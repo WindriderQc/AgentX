@@ -13,14 +13,12 @@ loopback port 3180; set `--agentx-url` for the intended instance. Synthesis need
 explicit accepted model and the enabled Core Hermes bridge; shadow mode is the
 default and this CLI has no apply/approve command.
 
-For a Windows consumer using the HTTPS household entry, set
-`AGENTX_ACCESS_CODE_FILE` in its existing supervisor wrapper to an ACL-protected
-external file containing the same parental code as Core. Both review API calls and
-synthesis read the file for each request, so rotating it does not reset collection
-state. Missing configuration keeps same-host loopback access unchanged; a selected
-empty/unreadable file fails before sending observations. Redirects are rejected.
-Trust the instance CA using the normal Python trust settings (for example
-`SSL_CERT_FILE`); certificate verification remains enabled.
+Windows consumers may use the private HTTPS LAN entry without a human code.
+Review calls and synthesis send no parental credential. Remove obsolete code-file
+settings from supervisor wrappers; they no longer authenticate these requests.
+Redirects remain rejected, and certificate verification remains enabled. Trust the
+instance CA through normal Python settings (for example `SSL_CERT_FILE`). Native
+consumer grants and memory-review validation/application rules remain separate.
 
 Claude/Codex default project filters select `codes/AgentX` only. Supply explicit
 `--claude-project` / `--codex-cwd` filters to review other projects or former

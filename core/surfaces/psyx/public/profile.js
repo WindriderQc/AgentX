@@ -25,7 +25,7 @@ async function saveProfile() {
     renderPsyXState();
     $('profileStatus').textContent = 'Enregistré. PsyX le lit à chaque réponse.';
   } catch (error) {
-    if (error.code !== 'PSYX_LOCKED') $('profileStatus').textContent = 'Le profil n’a pas été enregistré.';
+    $('profileStatus').textContent = 'Le profil n’a pas été enregistré.';
   }
 }
 

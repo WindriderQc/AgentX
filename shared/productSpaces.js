@@ -19,7 +19,7 @@ function productSpaces(link) {
         item('kids', 'Enfants', '/kids', 'fa-shapes'),
         item('lecture', 'Lecture', '/lecture', 'fa-book-open'),
         item('kids-sounds', 'Sons et jeux', '/kids/sounds', 'fa-music'),
-        item('dad-family', 'Espace parents', '/dad/family', 'fa-user-shield', 'core', { adult: true })
+        item('dad-family', 'Suivi familial', '/dad/family', 'fa-clipboard-check', 'core')
       ] },
     { id: 'workshop-group', label: 'Atelier', icon: 'fa-bolt', entry: '/pipeline',
       description: 'Créer, chercher et faire avancer tes projets.', children: [

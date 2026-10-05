@@ -1,7 +1,5 @@
 'use strict';
 
-process.env.AGENTX_PARENTAL_CODE = 'synthetic-persona-access';
-
 jest.mock('../../src/extensions/trustedRuntimeServices', () => {
   const actual = jest.requireActual('../../src/extensions/trustedRuntimeServices');
   const execute = jest.fn(async () => ({ ok: true, body: { response: 'Bonjour, réponse synthétique.' }, metadata: { model: 'synthetic' } }));
@@ -21,7 +19,7 @@ const createPersonal = async (body = {}) => (await request(app).post(privateBase
 const turn = async (id, body = {}) => (await request(app).post(`${privateBase}/${id}/turns/text`)
   .send({ text: 'Bonjour.', ...body }).expect(200));
 
-describe('Household live personality through authenticated space routes', () => {
+describe('Household live personality through server-bound LAN space routes', () => {
   test('independent Core preferences omit optional personal context without erasing history or weakening family access', async () => {
     const endpoint = '/api/voice-personas/preferences';
     const current = (await request(app).get(endpoint).expect(200)).body.data;
@@ -145,19 +143,14 @@ describe('Household live personality through authenticated space routes', () => 
     }
   });
 
-  test('both personality write routes use the existing adult gateway authentication', async () => {
+  test('both personality write routes use LAN access and retain their bound agent and scope', async () => {
     const session = await createPersonal();
     const family = (await request(app).post(familyBase).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session;
-    for (const [base, id] of [[privateBase, session.sessionId], [familyBase, family.sessionId]]) {
-      expect((await request(app).post(`${base}/${id}/persona`).set('X-AgentX-Entry', 'household')
-        .send({ personaId: 'nestor' }).expect(401)).body.code).toBe('ADULT_LOCKED');
-    }
-    const unlocked = await request(app).post('/api/access/unlock').set('X-AgentX-Entry', 'household')
-      .send({ code: 'synthetic-persona-access' }).expect(200);
-    const cookie = unlocked.headers['set-cookie'][0].split(';')[0];
-    for (const [base, id] of [[privateBase, session.sessionId], [familyBase, family.sessionId]]) {
-      await request(app).post(`${base}/${id}/persona`).set('X-AgentX-Entry', 'household').set('Cookie', cookie)
-        .send({ personaId: 'nestor' }).expect(200);
+    for (const [base, id, agentId, scopeId] of [[privateBase, session.sessionId, 'main', 'personal'], [familyBase, family.sessionId, 'family', 'family']]) {
+      const response = await request(app).post(`${base}/${id}/persona`)
+        .send({ personaId: 'nestor', agentId: 'secretary', scopeId: 'foreign' }).expect(200);
+      expect(response.body.data.session).toMatchObject({ agentId, scopeId });
+      expect(response.headers['set-cookie']).toBeUndefined();
     }
   });
 });

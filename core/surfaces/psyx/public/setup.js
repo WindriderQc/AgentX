@@ -20,15 +20,15 @@ function clearSetup() {
 
 function renderSetup() {
   const container = $('setupChecklist');
-  if (!setupCapabilities || !state.unlocked) { container.replaceChildren(); return; }
+  if (!setupCapabilities) { container.replaceChildren(); return; }
   const privacy = setupCapabilities.privacy || {};
   const routes = state.routing?.taskConfigState || {};
   const routeReady = task => Boolean(routes[task]?.effective?.model || state.routing?.taskModels?.[task]?.model);
   const microphoneLabels = { unknown: 'permission non vérifiée', prompt: 'permission à demander',
     granted: 'permission accordée', denied: 'permission refusée', unavailable: 'microphone indisponible' };
   const rows = [
-    ['Accès privé', privacy.accessMode === 'trusted-network' ? 'Réseau de confiance : aucun code exigé'
-      : privacy.configured ? 'Code d’accès configuré' : 'Code d’accès manquant'],
+    ['Accès privé', privacy.accessMode === 'token' ? 'Jeton natif requis'
+      : 'LAN privé : aucun compte ni code exigé'],
     ['Réponse normale', routeReady('analysis') ? 'Modèle configuré' : 'Modèle non confirmé'],
     ['Réponse profonde', routeReady('deep_reasoning') ? 'Modèle configuré' : 'Modèle non confirmé'],
     ['Réflexion automatique', setupCapabilities.review?.automatic ? 'Activée' : 'Désactivée'],
@@ -44,44 +44,44 @@ function renderSetup() {
 }
 
 async function refreshSetup() {
-  if (!state.unlocked) return;
+
   const generation = ++setupGeneration;
   $('setupNotice').textContent = 'Vérification en cours…';
   try {
     const payload = await api('/api/psyx/status', { cache: 'no-store' });
-    if (!state.unlocked || generation !== setupGeneration) return;
+    if (generation !== setupGeneration) return;
     setupCapabilities = payload;
     await Promise.all([loadRouting(), loadVoiceStatus()]);
-    if (!state.unlocked || generation !== setupGeneration) return;
+    if (generation !== setupGeneration) return;
     let permission = null;
     try { permission = await navigator.permissions?.query({ name: 'microphone' }); } catch { /* Some browsers expose permission only on capture. */ }
-    if (!state.unlocked || generation !== setupGeneration) return;
+    if (generation !== setupGeneration) return;
     setupMicrophone = permission?.state || 'unknown';
     renderSetup();
     $('setupNotice').textContent = 'Configuration vérifiée. Aucun audio n’a été enregistré.';
   } catch (error) {
-    if (state.unlocked && generation === setupGeneration) $('setupNotice').textContent = error.message;
+    if (generation === setupGeneration) $('setupNotice').textContent = error.message;
   }
 }
 
 function wireSetup() {
   $('refreshSetup').addEventListener('click', refreshSetup);
   $('testSetupMicrophone').addEventListener('click', async () => {
-    if (!state.unlocked) return;
+
     const generation = ++setupGeneration;
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!state.unlocked || generation !== setupGeneration) return;
+      if (generation !== setupGeneration) return;
       setupMicrophone = 'granted';
       $('setupNotice').textContent = 'Microphone accessible. Le test est terminé; aucun audio n’est conservé.';
     } catch (error) {
-      if (!state.unlocked || generation !== setupGeneration) return;
+      if (generation !== setupGeneration) return;
       setupMicrophone = error.name === 'NotAllowedError' ? 'denied' : 'unavailable';
       $('setupNotice').textContent = 'Vérifie la permission du microphone et le périphérique dans ce navigateur.';
     } finally {
       stream?.getTracks().forEach(track => track.stop());
-      if (state.unlocked && generation === setupGeneration) renderSetup();
+      if (generation === setupGeneration) renderSetup();
     }
   });
 }

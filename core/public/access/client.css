@@ -1,7 +1,0 @@
-.agentx-access-checking { visibility: hidden !important; }
-.agentx-adult-lock { padding: .65rem 1rem; border: 1px solid #496674; border-radius: .65rem; color: #e9f2f8; background: #112633; cursor: pointer; font: inherit; }
-body > .agentx-adult-lock { position: fixed; bottom: 1rem; right: 1rem; z-index: 1000; max-width: calc(100vw - 2rem); }
-
-[data-agentx-access="locked"] .home-health { display: none; }
-[data-agentx-access="unlocked"] [data-access="unlock"] { display: none !important; }
-[data-agentx-access="locked"] #agentxAdultLock { display: none !important; }

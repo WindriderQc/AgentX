@@ -2,7 +2,6 @@
 
 const path = require('path');
 const express = require('express');
-const cookieParser = require('cookie-parser');
 const { createAuth } = require('./auth');
 const { createVoiceClient } = require('./voice');
 const { createReviewer } = require('./reviewer');
@@ -76,7 +75,7 @@ function serviceStatus(config, accessConfigured = false, frontierSupported = fal
       protected: config.accessMode !== 'trusted-network',
       configured: config.accessMode === 'trusted-network' || Boolean(config.accessToken) || accessConfigured,
       accessMode: config.accessMode,
-      sessionHours: config.sessionTtlMs / 3600000
+      humanIdentityVerified: false
     },
     conversationLifecycle: {
       provider: 'agentx-core',
@@ -157,7 +156,6 @@ function createApp({ config, database, provider, voice = null, logger = console,
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     next();
   });
-  app.use(cookieParser());
   app.use(express.json({ limit: config.maxBodyBytes }));
 
   app.get('/healthz', (_req, res) => responseData(res, { status: 'alive', service: 'psyx', version: VERSION }));
@@ -188,23 +186,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
 
   const api = express.Router();
   api.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
-  api.get('/auth/status', (req, res) => responseData(res, {
-    unlocked: Boolean(auth.current(req)),
-    configured: config.accessMode === 'trusted-network' || Boolean(config.accessToken) || Boolean(auth.configured?.(req)),
-    accessMode: config.accessMode,
-    loopback: auth.isLoopback(req),
-    sessionHours: config.sessionTtlMs / 3600000
-  }));
-  api.post('/auth/unlock', (req, res) => {
-    const result = auth.unlock(req, res, req.body?.code);
-    if (!result.ok) return res.status(result.status).json({ ok: false, status: 'error', code: result.code, message: result.message });
-    return responseData(res, { unlocked: true, sessionHours: config.sessionTtlMs / 3600000 });
-  });
-  api.post('/auth/lock', (req, res) => {
-    auth.lock(req, res);
-    return responseData(res, { unlocked: Boolean(auth.current(req)) });
-  });
-  api.use(auth.requireSession);
+  api.use(auth.requireAccess);
   if (database.preferencesForUser) require('../../../src/services/conversationPreferences/routes').registerPreferenceRoutes(api, {
     base: '/preferences', serviceFor: (_req, res) => database.preferencesForUser(res.locals.psyxUserId),
     onSaved: async (_req, res) => {

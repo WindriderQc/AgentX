@@ -53,7 +53,7 @@ function wireFormulation() {
   });
   $('formulationList').addEventListener('click', async event => {
     const button = event.target.closest('[data-formulation-save], [data-formulation-remove]');
-    if (!button || !state.unlocked) return;
+    if (!button) return;
     const card = button.closest('[data-formulation-id]');
     const key = card.dataset.formulationKey, id = card.dataset.formulationId;
     button.disabled = true;
@@ -72,7 +72,7 @@ function wireFormulation() {
       formulationDrafts.delete(`${key}:${id}`);
       $('formulationStatus').textContent = 'Ta modification est enregistrée.';
     } catch (error) {
-      if (error.code === 'PSYX_LOCKED') return;
+
       if (error.status === 409) { formulationDrafts.delete(`${key}:${id}`); await loadPsyXState().catch(() => {}); }
       $('formulationStatus').textContent = error.status === 409
         ? 'La mémoire a changé entre-temps. Vérifie la nouvelle observation avant de la corriger.' : error.message;

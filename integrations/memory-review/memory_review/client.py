@@ -12,7 +12,7 @@ import json
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request
-from .transport import parental_headers, urlopen
+from .transport import urlopen
 
 DEFAULT_BASE_URL = "http://127.0.0.1:3180"
 DEFAULT_TIMEOUT_S = 30
@@ -40,10 +40,6 @@ class MemoryReviewClient:
         url = f"{self.base_url}/api/memory-review{path}"
         body = json.dumps(payload).encode("utf-8") if payload is not None else None
         headers = {"Accept": "application/json"}
-        try:
-            headers.update(parental_headers())
-        except OSError as exc:
-            raise AgentXUnavailable("Unable to read the configured access code") from exc
         if body is not None:
             headers["Content-Type"] = "application/json"
         request = Request(url, data=body, headers=headers, method=method)

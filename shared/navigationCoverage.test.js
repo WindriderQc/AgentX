@@ -28,16 +28,12 @@ const ALIASES = {
     '/ecosystem': '/', '/portal': '/',
     '/dad/nestor': '/dad', '/voice': '/dad', '/voix': '/dad', '/voice.html': '/dad',
     '/voice-personas': '/dad/memories', '/voice-personas.html': '/dad/memories',
-    '/lecture/parents': '/dad/family', '/lecture/parents.html': '/dad/family'
+    '/lecture/parents': '/dad/family', '/lecture/parents.html': '/dad/family',
+    '/unlock': '/dad', '/access/code': '/dad', '/access/face': '/dad'
   }
 };
 // Pages entered from another page rather than a menu: [file holding the link, the link].
 const CONTEXTUAL = {
-  core: {
-    '/unlock': ['core/views/partials/nav.ejs', 'href="/unlock?next=%2F"'],
-    '/access/code': ['core/public/access/unlock.html', 'href="/access/code"'],
-    '/access/face': ['core/public/access/unlock.html', 'href="/access/face"']
-  },
   benchmark: {
     '/setup': ['benchmark/public/js/benchmark-v2/experience.js', "'/setup'"]
   }

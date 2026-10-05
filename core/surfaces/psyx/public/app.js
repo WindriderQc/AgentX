@@ -15,9 +15,6 @@ const state = {
   history: [],
   busy: false,
   ready: false,
-  unlocked: false,
-  accessEpoch: 0,
-  accessMode: 'token',
   modeConfig: {},
   depthConfig: {},
   psyxState: null,
@@ -30,6 +27,7 @@ const state = {
   managedSessionId: null,
   lastDrawerTrigger: null,
   voice: {
+    captureSequence: 0,
     enabled: false,
     reachable: false,
     recorder: null,
@@ -55,7 +53,6 @@ const modeSummary = $('modeSummary');
 const depthSummary = $('depthSummary');
 const controlExplainer = $('controlExplainer');
 const stateSaveStatus = $('stateSaveStatus');
-const privacyGate = $('privacyGate');
 const appShell = $('appShell');
 const drawerBackdrop = $('drawerBackdrop');
 const cancelGeneration = $('cancelGeneration');
@@ -117,57 +114,6 @@ function createStreamingAssistant() {
 
 function clearRenderedConversation() {
   for (const node of [...messages.querySelectorAll('.message:not(.intro)')]) node.remove();
-}
-
-function showGate(message = '') {
-  clearSessionExperience();
-  stopVoiceSession();
-  state.accessEpoch += 1;
-  state.turnSequence += 1;
-  state.activeAbort?.abort();
-  state.voice.speech?.cancel();
-  state.voice.mediaStream?.getTracks().forEach(track => track.stop());
-  clearTimeout(state.voice.stopTimer);
-  if (state.voice.recorder?.state === 'recording') state.voice.recorder.stop();
-  state.voice.recorder = null;
-  state.voice.mediaStream = null;
-  state.voice.chunks = [];
-  stopReviewWatch();
-  review.last = null;
-  hideSafety();
-  resetFollowUp();
-  resetProfileDraft();
-  stopDreamWatch();
-  resetToolbox();
-  state.unlocked = false;
-  state.ready = false;
-  state.history = [];
-  state.sessions = [];
-  state.psyxState = null;
-  clearSetup();
-  // The static intro stays; the conversation and the recap of past sessions go.
-  clearRenderedConversation();
-  if ($('openingRecap')) { $('openingRecap').replaceChildren(); $('openingRecap').hidden = true; }
-  for (const form of document.querySelectorAll('form')) form.reset();
-  input.value = '';
-  sessionLabel.textContent = 'PsyX verrouillé';
-  $('sessionDataTitle').textContent = 'Conversation PsyX';
-  renderSessions();
-  renderPsyXState();
-  for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
-  closeDrawers({ restoreFocus: false });
-  document.body.classList.add('psyx-locked');
-  privacyGate.hidden = false;
-  appShell.setAttribute('aria-hidden', 'true');
-  $('unlockStatus').textContent = message;
-  setTimeout(() => $('unlockCode').focus(), 0);
-}
-
-function hideGate() {
-  state.unlocked = true;
-  document.body.classList.remove('psyx-locked');
-  privacyGate.hidden = true;
-  appShell.setAttribute('aria-hidden', 'false');
 }
 
 function setBusy(busy) {
@@ -349,7 +295,7 @@ async function reconcileCompletedTurn(conversationId, humanText, actionType, pre
       highlightActiveSession();
       return true;
     } catch (error) {
-      if (error.code === 'PSYX_LOCKED') return false;
+
       if (waitMs === 1800) console.warn('PsyX cancel reconciliation skipped', error);
     }
   }
@@ -357,7 +303,7 @@ async function reconcileCompletedTurn(conversationId, humanText, actionType, pre
 }
 
 async function api(url, options = {}) {
-  const accessEpoch = state.accessEpoch;
+
   const response = await fetch(url, {
     credentials: 'same-origin',
     ...options,
@@ -367,10 +313,7 @@ async function api(url, options = {}) {
     }
   });
   const payload = await response.json().catch(() => ({}));
-  assertCurrentAccess(accessEpoch);
-  if (response.status === 401 && payload.code === 'PSYX_LOCKED') {
-    showGate('PsyX a été verrouillé ou la séance privée a expiré.');
-  }
+
   if (!response.ok || payload.status === 'error' || payload.ok === false) {
     const error = new Error(payload.message || `La requête a échoué (${response.status})`);
     error.code = payload.code;
@@ -378,12 +321,6 @@ async function api(url, options = {}) {
     throw error;
   }
   return payload.data ?? payload;
-}
-
-function assertCurrentAccess(epoch) {
-  if (epoch !== state.accessEpoch) {
-    throw Object.assign(new Error('PsyX a été verrouillé pendant cette requête.'), { name: 'AbortError', code: 'PSYX_LOCKED' });
-  }
 }
 
 async function restoreConversation(conversationId = state.conversationId) {
@@ -410,8 +347,8 @@ async function restoreConversation(conversationId = state.conversationId) {
     renderOpening();
     void resumeReviewStatus(state.conversationId);
   } catch (error) {
-    if (error.code !== 'PSYX_LOCKED') console.warn('PsyX session restore skipped', error);
-    if (state.unlocked) startNewSession(false);
+    console.warn('PsyX session restore skipped', error);
+    startNewSession(false);
   }
 }
 
@@ -465,7 +402,7 @@ async function loadSessions() {
     state.sessions = await api(`/api/psyx/sessions?limit=30&status=${encodeURIComponent(state.sessionStatus)}`);
     renderSessions();
     renderSessionExperience();
-  } catch (error) { if (error.code !== 'PSYX_LOCKED') throw error; }
+  } catch (error) { throw error; }
 }
 
 function relativeDate(value) {
@@ -509,7 +446,7 @@ function highlightActiveSession() {
 }
 
 async function bootstrap() {
-  const accessEpoch = state.accessEpoch;
+
   setReady(false, 'Démarrage de PsyX…');
   try {
     const payload = await api('/api/psyx/bootstrap', { method: 'POST', body: '{}' });
@@ -529,14 +466,14 @@ async function bootstrap() {
     await Promise.all([loadPsyXState(), loadRouting(), loadSessions(), loadVoiceStatus()]);
     await loadToolbox().catch(() => {});
     await restoreConversation();
-    assertCurrentAccess(accessEpoch);
+
     watchDream();
     renderSetup();
     setReady(true, 'PsyX prêt');
     sessionLabel.textContent = state.conversationId ? sessionLabel.textContent : 'Nouvelle conversation';
     if (window.matchMedia('(min-width: 900px)').matches) input.focus({ preventScroll: true });
   } catch (error) {
-    if (error.code !== 'PSYX_LOCKED') {
+    {
       setReady(false, 'PsyX indisponible');
       console.error('PsyX bootstrap failed', error);
     }
@@ -565,7 +502,7 @@ async function streamChat(payload, onEvent, signal) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    if (response.status === 401 && body.code === 'PSYX_LOCKED') showGate('PsyX a été verrouillé ou la séance privée a expiré.');
+
     const error = new Error(body.message || `La conversation a échoué (${response.status})`);
     error.code = body.code;
     throw error;
@@ -622,7 +559,7 @@ async function sendMessage(text, overrides = {}) {
       conversationId: state.conversationId || undefined,
       psyx: { mode: effectiveMode, depth: effectiveDepth, action: actionType, source: overrides.source === 'voice' ? 'voice' : 'text' }
     }, (event, data) => {
-      if (!state.unlocked || state.turnSequence !== turnSequence) return;
+      if (state.turnSequence !== turnSequence) return;
       if (event === 'token') { stream.append(data.content || ''); overrides.onDelta?.(data.content || ''); }
       else if (event === 'control') {
         state.applied = data;
@@ -644,7 +581,7 @@ async function sendMessage(text, overrides = {}) {
       }
     }, state.activeAbort.signal);
 
-    if (!state.unlocked || state.turnSequence !== turnSequence) return;
+    if (state.turnSequence !== turnSequence) return;
 
     if (streamError) throw streamError;
     if (!finalResult) {
@@ -680,7 +617,7 @@ async function sendMessage(text, overrides = {}) {
     if (state.voice.prefs.spokenReplies && !overrides.voiceSession) void speakText(assistantContent);
     return { text: assistantContent, language: state.voice.prefs.language };
   } catch (error) {
-    if (!state.unlocked || state.turnSequence !== turnSequence) return;
+    if (state.turnSequence !== turnSequence) return;
     if (error.name === 'AbortError') {
       stream.set('Annulé.');
     } else {
@@ -691,7 +628,7 @@ async function sendMessage(text, overrides = {}) {
         : `Je n’ai pas pu terminer cette réponse. ${error.message}`);
       await loadSessions().catch(() => {});
     }
-    if (error.code !== 'PSYX_LOCKED' && state.conversationId) {
+    if (state.conversationId) {
       void reconcileCompletedTurn(
         state.conversationId,
         humanText,
@@ -708,7 +645,7 @@ async function sendMessage(text, overrides = {}) {
       setBusy(false);
       state.applied = null;
       updateControlExplanation();
-      if (state.unlocked && !overrides.voiceSession) input.focus();
+      if (!overrides.voiceSession) input.focus();
     }
   }
 }
@@ -872,26 +809,18 @@ document.querySelectorAll('[data-session-status]').forEach((button) => {
   });
 });
 
-async function lockPsyxNow() {
-  if (state.accessMode === 'trusted-network') return;
-  setReady(false, 'PsyX verrouillé');
-  showGate('PsyX est verrouillé.');
-  try { await api('/api/psyx/auth/lock', { method: 'POST', body: '{}' }); } catch { /* lock locally regardless */ }
-}
-
 $('settingsPsyx').addEventListener('click', () => {
   $('dataStatus').textContent = '';
   dataDialog.showModal();
 });
 
 $('exportPsyx').addEventListener('click', async () => {
-  const accessEpoch = state.accessEpoch;
+
   $('dataStatus').textContent = 'Préparation de l’export…';
   try {
     const response = await fetch('/api/psyx/export', { credentials: 'same-origin' });
     const payload = await response.json().catch(() => ({}));
-    assertCurrentAccess(accessEpoch);
-    if (response.status === 401 && payload.code === 'PSYX_LOCKED') showGate('PsyX a été verrouillé ou la séance privée a expiré.');
+
     if (!response.ok) throw new Error(payload.message || `L’export a échoué (${response.status})`);
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -933,7 +862,7 @@ $('confirmResetMemory').addEventListener('click', async () => {
 });
 
 resetMemoryDialog.addEventListener('close', () => {
-  if (state.unlocked) $('settingsPsyx').focus();
+  $('settingsPsyx').focus();
 });
 
 $('sessionDeleteConfirmation').addEventListener('change', () => {
@@ -991,25 +920,6 @@ window.addEventListener('resize', () => {
 });
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDrawers(); });
 
-$('unlockForm').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  $('unlockStatus').textContent = 'Déverrouillage…';
-  $('unlockButton').disabled = true;
-  try {
-    await api('/api/psyx/auth/unlock', { method: 'POST', body: JSON.stringify({ code: $('unlockCode').value }) });
-    $('unlockCode').value = '';
-    hideGate();
-    await bootstrap();
-  } catch (error) {
-    $('unlockStatus').textContent = error.message;
-  } finally {
-    $('unlockButton').disabled = false;
-  }
-});
-
-$('lockPsyx').addEventListener('click', lockPsyxNow);
-$('lockPsyxSettings').addEventListener('click', lockPsyxNow);
-
 async function start() {
   wireVoiceControls();
   wireStatePanel();
@@ -1031,26 +941,9 @@ async function start() {
   renderVoiceStatus();
   setBusy(false);
   try {
-    const auth = await api('/api/psyx/auth/status');
-    state.accessMode = auth.accessMode || 'token';
-    const trustedNetwork = state.accessMode === 'trusted-network';
-    $('lockPsyx').hidden = trustedNetwork;
-    $('lockPsyxSettings').hidden = trustedNetwork;
-    $('privacySummary').textContent = trustedNetwork
-      ? 'PsyX est ouvert aux appareils de ce réseau de confiance. Protège la base de données, les sauvegardes et la frontière du réseau.'
-      : 'Ce navigateur reste déverrouillé jusqu’à 8 heures. Le code d’accès n’est jamais stocké dans le navigateur.';
-    if (!auth.configured && !auth.loopback) {
-      showGate('PsyX reste fermé par sécurité : configure PSYX_ACCESS_TOKEN sur l’hôte.');
-      return;
-    }
-    if (!auth.unlocked) {
-      showGate('Entre le code d’accès PsyX.');
-      return;
-    }
-    hideGate();
     await bootstrap();
   } catch (error) {
-    showGate(error.message);
+    setReady(false, error.message);
   }
 }
 

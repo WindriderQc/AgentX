@@ -57,8 +57,8 @@ purchases as income.
 
 ## Interfaces
 
-- `/api/finance/*` (adult session through the gateway; loopback for the
-  agent): statements, balances, transactions, monthly, yearly, categories,
+- `/api/finance/*` (private LAN HTTPS access without a code; loopback for the
+  persona): statements, balances, transactions, monthly, yearly, categories,
   merchants, category-months, coverage, tags, insights, alerts, rules,
   uncategorized, suggestions, transaction decisions, plan (whole, per section,
   operations), situation, debt and cash-flow simulations, balance history,
