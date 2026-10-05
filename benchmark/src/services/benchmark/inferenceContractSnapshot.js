@@ -205,7 +205,9 @@ async function resolveContractNumCtx(model, host, deps = {}) {
     const snapshot = await fetchSnapshot({ model, host, options: {} }, { ...deps, validate: validateJudgeContext });
     return {
         num_ctx: snapshot.contextBudget.windowTokens,
-        source: `inference_contract:${snapshot.contextBudget.source}`
+        source: `inference_contract:${snapshot.contextBudget.source}`,
+        // Informational: a stale judge profile does not withhold the window.
+        profile_qualified: snapshot.qualification?.qualified === true
     };
 }
 

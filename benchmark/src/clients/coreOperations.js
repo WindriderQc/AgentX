@@ -18,6 +18,7 @@ const CORE_OPERATIONS = Object.freeze({
   MODEL_REGISTRY: 'benchmark.core-api.model-registry',
   PUBLIC_CONFIG: 'benchmark.core-api.public-config',
   HOST_PREFERENCES: 'benchmark.core-api.host-preferences',
+  ROUTING_CONFIG: 'benchmark.core-api.routing-config',
   HOST_RELOAD: 'benchmark.core-api.host-reload',
   PIN_CONTEXT_APPLY: 'benchmark.core-api.pin-context-apply',
   CLAIM_ACQUIRE: 'benchmark.core-api.claim-acquire',
@@ -76,6 +77,7 @@ const CORE_OPERATION_SPECS = Object.freeze({
     maxResponseBytes: 64 * 1024,
   }),
   [CORE_OPERATIONS.HOST_PREFERENCES]: operation('GET', '^/api/nerve-center/host-preferences$'),
+  [CORE_OPERATIONS.ROUTING_CONFIG]: operation('GET', '^/api/nerve-center/inference/routing-config$'),
   [CORE_OPERATIONS.HOST_RELOAD]: operation(
     'POST',
     '^/api/nerve-center/host-preferences/[^/]+/reload$',

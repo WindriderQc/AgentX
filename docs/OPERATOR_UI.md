@@ -155,6 +155,15 @@ actions when journals exist or recovery evidence is unavailable. It shows host,
 operation state, next safe action and expandable operation evidence. The
 preparation action leads directly to that panel while continuity needs inspection.
 
+Under **Take the controls**, the **Coverage** section lists each model pinned on
+a host or routed to it in Core's task routing table, with the state of its
+profile and how many catalog prompts have a scored answer. A prompt counts when
+the answer was scored with the current scorer version, for the prompt as the
+catalog holds it today, by the artifact the profile describes: a new artifact,
+a new scorer version or an edited prompt re-opens what it affects. **Next**
+says what the pair still needs, a profile first, then the benchmark. The view
+only reads; `GET /api/benchmark/coverage` returns the same matrix.
+
 | Operation label | Meaning |
 |---|---|
 | Profiling prepared / in progress | The journal records recent writer activity; observe the existing operation |
