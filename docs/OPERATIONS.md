@@ -1256,12 +1256,28 @@ launch's own preflight) lists the same per candidate before the launch, in
 (`input_tokens`), resolved from Core's contract as the launch resolves them. A
 candidate whose contract does not resolve is listed with its error.
 `checks.budgets.judge` gives the window the judge reads (`num_ctx`: the
-launch's `judge_config.num_ctx`, else the judge model's frozen window) and the
-tokens a full-length answer needs there: the longest candidate budget, about
-2,048 tokens of task and instructions, and the judge's own `num_predict`. When
-they do not fit, a judge input Core would have to truncate leaves that row
-unscored, and preflight says so in `warnings`. These are warnings: they never
-block a launch.
+launch's `judge_config.num_ctx`, else the judge model's frozen window) and,
+under `categories`, what each selected prompt category requires of it:
+
+- **Window.** `window_needed` adds the category's longest selected prompt
+  (task, expected and reference answers and criteria, about four characters a
+  token), 512 tokens for the question and its format, the longest candidate
+  budget and the judge's own `num_predict`. `fits` compares it with the judge's
+  window: a judge input Core would have to truncate leaves that row unscored.
+- **Reasoning.** `math` and `reasoning` recommend a judge that reasons
+  (`judge_config.think: true`), since their questions ask it to check every
+  step and calculation; the other categories do not need it.
+- **Validation.** From the judge's qualifying accuracy calibration
+  (`POST /api/benchmark/judge/calibrate-accuracy`), the reference cases of the
+  category, their mean absolute deviation from the reference grades and any
+  identity or attention failure among them: `validated` (deviation at most
+  1.5, no failure), `failed`, `no_reference_cases` (the reference set covers
+  coding, reasoning, math, knowledge, instruction and creative, not translation
+  or agent) or `unvalidated` (no qualifying calibration).
+
+Each unmet requirement is one line of `warnings`, naming the categories.
+These are warnings: they never block a launch, and the catalog is not
+lowered for a judge that does not meet them.
 
 Batches launched before this rule ran under Core's default output reserve
 (at most 4,096 tokens), which cut long reasoning. They keep their own quality

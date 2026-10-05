@@ -629,7 +629,8 @@ async function runPreflight(options = {}) {
         checkOrphanedBatches(),
         checkPinnedResidents(uniqueTargets, { judgeHost }),
         checkResponseBudgets(uniqueTargets, executionConfig, { ...judgeConfig, host: judgeHost, model: judgeConfig?.model || JUDGE_CONFIG.model,
-            num_ctx: judgeConfig?.num_ctx ?? JUDGE_CONFIG.num_ctx, num_predict: judgeConfig?.num_predict || JUDGE_CONFIG.num_predict })
+            num_ctx: judgeConfig?.num_ctx ?? JUDGE_CONFIG.num_ctx, num_predict: judgeConfig?.num_predict || JUDGE_CONFIG.num_predict },
+            { levels, promptIds: promptIds || prompt_ids })
     ]);
     const judgeResult = judgeConfig?.target?.executionKind === 'harness'
         ? {

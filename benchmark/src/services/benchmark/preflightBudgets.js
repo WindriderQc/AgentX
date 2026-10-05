@@ -6,18 +6,32 @@
  * For each candidate, the window and output budget the launch will freeze,
  * resolved from Core's inference contract exactly as the launch resolves them,
  * with the budget's source (caller, the documented default or Core's reserve).
- * For the judge, the window it reads and whether the longest candidate answer,
- * the task and its own verdict fit in it: a judge input Core has to truncate
- * leaves that row unscored. Informational: nothing here blocks a launch.
+ * For the judge, the window it reads and, per selected prompt category, what
+ * the category requires of it (scoring/judgeRequirements.js): a window that
+ * holds the longest prompt, the longest candidate answer and its verdict (a
+ * judge input Core has to truncate leaves that row unscored), reasoning where
+ * the questions verify a derivation, and a calibration that covers the
+ * category. Informational: nothing here blocks a launch.
  */
 
 const { normalizeExecutionConfig } = require('./config');
 const { resolveCandidateContract, resolveContractNumCtx } = require('./inferenceContractSnapshot');
 const { normalizeJudgeNumCtx } = require('../scoring/judgeRuntimeConfig');
+const { assessJudgeRequirements, categoryPromptSizes } = require('../scoring/judgeRequirements');
 
-// The task, its expected answer and the judge's instructions beside the answer.
-const JUDGE_PROMPT_ALLOWANCE_TOKENS = 2048;
 const DEFAULT_JUDGE_NUM_PREDICT = 800;
+
+/** The prompts a launch with these levels or prompt ids would run. */
+function loadSelectedPrompts({ levels, promptIds }) {
+    const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
+    const ids = Array.isArray(promptIds) ? [...new Set(promptIds.map(String).filter(Boolean))] : [];
+    const filter = ids.length ? { _id: { $in: ids } } : { level: { $in: Array.isArray(levels) ? levels : [1, 2, 3, 4, 5] } };
+    return BenchmarkPrompt.find(filter).select('category prompt expected_answer reference_answer judge_criteria').lean();
+}
+
+function assessCategories(judge, categories) {
+    return require('./judgeQualification').assessJudgeCategories(judge, categories);
+}
 
 async function candidateBudget({ host, model }, config, resolve) {
     try {
@@ -51,12 +65,16 @@ async function judgeWindow(judgeConfig, resolveNumCtx) {
 /**
  * @param {Array<{host, model}>} targets
  * @param {object|null} executionConfig - the launch's execution_config
- * @param {object} judgeConfig - { host, model, num_ctx?, num_predict?, target? }
+ * @param {object} judgeConfig - { host, model, num_ctx?, num_predict?, think?, target? }
+ * @param {object} [options] - { levels, promptIds } of the launch, and test seams
  * @returns {Promise<{ candidates: object[], judge: object|null, warnings: string[] }>}
  */
 async function checkResponseBudgets(targets, executionConfig, judgeConfig = {}, {
+    levels, promptIds,
     resolveCandidate = resolveCandidateContract,
     resolveJudgeNumCtx = resolveContractNumCtx,
+    loadPrompts = loadSelectedPrompts,
+    assessJudgeCategories = assessCategories,
 } = {}) {
     let config;
     try {
@@ -74,26 +92,31 @@ async function checkResponseBudgets(targets, executionConfig, judgeConfig = {}, 
     const window = await judgeWindow(judgeConfig, resolveJudgeNumCtx);
     const judgeNumPredict = Number(judgeConfig.num_predict) > 0 ? Number(judgeConfig.num_predict) : DEFAULT_JUDGE_NUM_PREDICT;
     const longestAnswer = Math.max(0, ...candidates.map(row => Number(row.num_predict) || 0));
-    const neededTokens = longestAnswer + JUDGE_PROMPT_ALLOWANCE_TOKENS + judgeNumPredict;
+    if (window.error) warnings.push(`Judge window of ${judgeConfig.model} on ${judgeConfig.host} is unresolved: ${window.error}`);
+
+    const sizes = categoryPromptSizes(await loadPrompts({ levels, promptIds }).catch(() => []));
+    const validation = await assessJudgeCategories({ host: judgeConfig.host, model: judgeConfig.model }, Object.keys(sizes))
+        .catch(error => Object.fromEntries(Object.keys(sizes).map(category => [category,
+            { status: 'unvalidated', cases: 0, mae: null, causes: [`qualification_unreadable: ${error.message}`] }])));
+    const requirements = assessJudgeRequirements({
+        judge: { model: judgeConfig.model, numCtx: window.num_ctx ?? null, numPredict: judgeNumPredict, think: judgeConfig.think === true },
+        sizes,
+        longestAnswer,
+        validation,
+    });
+    const fits = Object.values(requirements.categories).map(category => category.fits);
     const judge = {
         host: judgeConfig.host,
         model: judgeConfig.model,
         num_ctx: window.num_ctx ?? null,
         num_ctx_source: window.num_ctx_source ?? null,
         num_predict: judgeNumPredict,
-        needed_tokens: longestAnswer > 0 ? neededTokens : null,
-        fits: window.num_ctx && longestAnswer > 0 ? neededTokens <= window.num_ctx : null,
+        think: judgeConfig.think === true,
+        fits: fits.includes(false) ? false : (fits.length && fits.every(value => value === true) ? true : null),
+        categories: requirements.categories,
     };
-    if (window.error) {
-        warnings.push(`Judge window of ${judgeConfig.model} on ${judgeConfig.host} is unresolved: ${window.error}`);
-    } else if (judge.fits === false) {
-        warnings.push(
-            `Judge ${judgeConfig.model} reads a ${window.num_ctx}-token window, but a candidate may answer up to ${longestAnswer} tokens; `
-            + `with about ${JUDGE_PROMPT_ALLOWANCE_TOKENS} tokens of task and instructions and its own ${judgeNumPredict}-token verdict, `
-            + `a full-length answer does not fit and its row stays unscored. Give the judge a larger window or the candidates a smaller response budget.`
-        );
-    }
+    warnings.push(...requirements.warnings);
     return { candidates, judge, warnings };
 }
 
-module.exports = { JUDGE_PROMPT_ALLOWANCE_TOKENS, checkResponseBudgets };
+module.exports = { checkResponseBudgets };
