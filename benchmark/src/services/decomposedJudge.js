@@ -1,7 +1,10 @@
 /**
  * Decomposed Judge Service
- * Breaks complex evaluations into simple yes/no questions
- * the 7B model can answer reliably
+ * Breaks complex evaluations into simple yes/no (or listed-count) questions,
+ * so each verdict is auditable and comparable across judges of any size. No
+ * judge size is assumed (#397). The method needs a judge that answers in the
+ * constrained format and whose window holds the task, the answer and the
+ * question (preflight checks the window: preflightBudgets.js).
  *
  * Instead of asking "Rate the code clarity 0-10", we ask:
  * - "Are variable names descriptive? YES/NO"

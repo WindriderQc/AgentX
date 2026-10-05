@@ -232,6 +232,27 @@ function buildCandidate(snapshot, request, executionConfig) {
     };
 }
 
+/**
+ * One candidate's frozen window and response budget, as a launch would run it.
+ * A launch without its own budget gets the documented default in the same
+ * window instead of Core's reserve.
+ */
+async function resolveCandidate(candidateRequest, executionConfig, deps = {}) {
+    let resolved = candidateRequest;
+    let snapshot = await fetchSnapshot(candidateRequest, deps);
+    const budget = candidateRequest.options.num_predict ? null : documentedDefaultBudget(snapshot, executionConfig);
+    if (budget) {
+        resolved = { ...candidateRequest, options: { ...candidateRequest.options, num_predict: budget } };
+        snapshot = await fetchSnapshot(resolved, deps);
+    }
+    return buildCandidate(snapshot, resolved, executionConfig);
+}
+
+/** The candidate a launch would freeze for one model on one host. */
+function resolveCandidateContract(model, host, executionConfig = {}, deps = {}) {
+    return resolveCandidate(buildResolutionRequest(model, host, executionConfig), executionConfig, deps);
+}
+
 function campaignRequest(hostGroups, executionConfig) {
     const candidates = [];
     for (const [host, models] of hostGroups) {
@@ -418,15 +439,7 @@ async function resolveStandaloneCampaignInferenceContracts({
     const requestFingerprint = fingerprint(request);
     const candidates = [];
     for (const candidateRequest of request.candidates) {
-        let resolved = candidateRequest;
-        let snapshot = await fetchSnapshot(candidateRequest, deps);
-        const budget = candidateRequest.options.num_predict ? null : documentedDefaultBudget(snapshot, executionConfig);
-        if (budget) {
-            // Same window, documented budget instead of Core's reserve.
-            resolved = { ...candidateRequest, options: { ...candidateRequest.options, num_predict: budget } };
-            snapshot = await fetchSnapshot(resolved, deps);
-        }
-        candidates.push(buildCandidate(snapshot, resolved, executionConfig));
+        candidates.push(await resolveCandidate(candidateRequest, executionConfig, deps));
     }
     return {
         schemaVersion: CAMPAIGN_SCHEMA_VERSION,
@@ -521,6 +534,7 @@ module.exports = {
     loadOrResumeCampaignInferenceContracts,
     normalizeResponseMode,
     promptExecConfig,
+    resolveCandidateContract,
     resolveContractNumCtx,
     resolveStandaloneCampaignInferenceContracts,
     resolveFrozenMode,

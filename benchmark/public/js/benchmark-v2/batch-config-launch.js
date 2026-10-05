@@ -97,6 +97,33 @@ function _clearPreflightBanner(container) {
     if (existing) existing.remove();
 }
 
+const BUDGET_SOURCES = {
+    caller: 'set for this launch',
+    core_default_reserve: "Core's reserve",
+    documented_default_half_window_v1: 'documented default, at most half the window',
+};
+
+/** The response budget each candidate will run with, as preflight resolved it (#397). */
+function _showBudgetSummary(container, pf) {
+    container.querySelector('#bv2-preflight-budgets')?.remove();
+    const budgets = pf?.checks?.budgets;
+    const rows = Array.isArray(budgets?.candidates) ? budgets.candidates.filter(row => row.num_predict) : [];
+    if (!rows.length) return;
+    const lines = rows.map(row => `<li>${esc(row.model)}: answers up to ${Number(row.num_predict).toLocaleString()} tokens `
+        + `(${esc(BUDGET_SOURCES[row.num_predict_source] || row.num_predict_source || 'unknown source')}) `
+        + `in a ${Number(row.num_ctx).toLocaleString()}-token window</li>`);
+    if (budgets.judge?.num_ctx) {
+        lines.push(`<li>Judge ${esc(budgets.judge.model)} reads a ${Number(budgets.judge.num_ctx).toLocaleString()}-token window</li>`);
+    }
+    const block = document.createElement('div');
+    block.id = 'bv2-preflight-budgets';
+    block.style.cssText = 'margin:0.5rem 0;font-size:0.72rem;line-height:1.5;color:var(--r-muted,#8b949e)';
+    block.innerHTML = `<div style="font-weight:600;">Response budgets</div><ul style="margin:0;padding-left:1.2rem;">${lines.join('')}</ul>`;
+    const errEl = container.querySelector('#bv2-form-error');
+    if (errEl) errEl.parentNode.insertBefore(block, errEl);
+    else container.appendChild(block);
+}
+
 // ── Form submit / launch ──────────────────────────────────────────────────────
 
 function _wireSubmit(container, host, onLaunch) {
@@ -271,6 +298,7 @@ async function _launchBatch(container, host, onLaunch) {
 
     // Collect warnings from the checks object
     const pfWarnings = _collectPreflightWarnings(preflightResult);
+    _showBudgetSummary(container, preflightResult);
 
     // If preflight has blocking issues, show them and abort
     if (preflightResult && preflightResult.ready === false) {

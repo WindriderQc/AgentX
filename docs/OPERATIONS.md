@@ -1249,7 +1249,19 @@ limited to half of its frozen context window so the other half stays for the
 prompt, and never lower than the reserve Core chose. The plan's
 `execution_config` names the rule (`response_budget_rule`). Each candidate of
 the frozen campaign records its budget and where it came from
-(`num_predict_source`).
+(`num_predict_source`). Preflight (`POST /api/benchmark/preflight` and the
+launch's own preflight) lists the same per candidate before the launch, in
+`checks.budgets.candidates`: the window (`num_ctx`), the budget
+(`num_predict`), its source and the room left for the prompt
+(`input_tokens`), resolved from Core's contract as the launch resolves them. A
+candidate whose contract does not resolve is listed with its error.
+`checks.budgets.judge` gives the window the judge reads (`num_ctx`: the
+launch's `judge_config.num_ctx`, else the judge model's frozen window) and the
+tokens a full-length answer needs there: the longest candidate budget, about
+2,048 tokens of task and instructions, and the judge's own `num_predict`. When
+they do not fit, a judge input Core would have to truncate leaves that row
+unscored, and preflight says so in `warnings`. These are warnings: they never
+block a launch.
 
 Batches launched before this rule ran under Core's default output reserve
 (at most 4,096 tokens), which cut long reasoning. They keep their own quality
