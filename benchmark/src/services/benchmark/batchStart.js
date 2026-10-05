@@ -28,6 +28,7 @@ const { createSpendGrant } = require('./harnessBrokerClient');
 const { fingerprint } = require('../../../../shared/workerContract');
 const { markReconciliationPending, retainAdmissionHeartbeat } = require('./batchAuthorityRecovery');
 const { executeBatch } = require('./batchExecutionRun');
+const { normalizeJudgeThink } = require('./judgeLaunchLimits');
 
 async function startBatch({
     host,
@@ -52,7 +53,8 @@ async function startBatch({
     campaign_kind = normalizedTargets.some((target) => target.mode === 'native_agent') ? 'native_agent' : 'model';
     const defaultHost = normalizedTargets.find((target) => target.executionKind === 'ollama')?.host || 'harness';
     const displayModels = normalizedTargets.map((target) => target.model);
-    judge_config = { ...(judge_config || {}), think: false };
+    // Judges score visible final answers; reasoning only by explicit choice (#397).
+    judge_config = { ...(judge_config || {}), think: normalizeJudgeThink(judge_config?.think) ?? false };
     const judgeTarget = judge_config.target
         ? normalizeBenchmarkTarget(judge_config.target, { allowMissingCatalogFingerprint: judge_config.target.executionKind === 'ollama' })
         : buildOllamaTarget(judge_config.host || defaultHost, judge_config.model || JUDGE_CONFIG.model);
@@ -138,6 +140,7 @@ async function startBatch({
     const qualityCohortFingerprint = buildQualityCohortFingerprint({
         scorerVersion: SCORER_VERSION,
         judgeTarget,
+        judgeThink: judge_config.think,
         executionConfig: normalizedExecutionConfig,
         profileContract: campaign_kind === 'native_agent' ? 'native-agent-v1' : 'isolated-model-v1'
     });

@@ -162,4 +162,24 @@ describe('startBatch prompt-scoped level persistence', () => {
             })
         );
     });
+
+    it('keeps the judge reasoning the operator chose and gives it its own cohort', async () => {
+        jest.spyOn(BenchmarkPrompt, 'getByLevels').mockResolvedValue([{
+            _id: new mongoose.Types.ObjectId(), name: 'Prompt',
+            prompt: 'Return a bounded answer.', level: 1, category: 'reasoning'
+        }]);
+        const saved = [];
+        jest.spyOn(BenchmarkBatch.prototype, 'save').mockImplementation(async function () { saved.push(this); return this; });
+        const launch = (judge_config) => startBatch({
+            host: 'http://exec:11434', models: ['candidate-model'], levels: [1], judge_config
+        });
+
+        await launch({ host: 'http://judge:11434', model: 'judge-model' });
+        await launch({ host: 'http://judge:11434', model: 'judge-model', think: false });
+        await launch({ host: 'http://judge:11434', model: 'judge-model', think: true });
+
+        expect(saved.map((batch) => batch.judge_config.think)).toEqual([false, false, true]);
+        expect(saved[1].quality_cohort_fingerprint).toBe(saved[0].quality_cohort_fingerprint);
+        expect(saved[2].quality_cohort_fingerprint).not.toBe(saved[0].quality_cohort_fingerprint);
+    });
 });

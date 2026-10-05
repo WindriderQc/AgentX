@@ -293,7 +293,7 @@ function buildPromptFingerprint(prompt) {
  * are not part of it; each result carries its own prompt fingerprint, so a
  * catalog edit only affects the results on the edited prompt.
  */
-function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, executionConfig, profileContract = 'isolated-model-v1' }) {
+function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink = false, executionConfig, profileContract = 'isolated-model-v1' }) {
   const normalizedJudge = judgeTarget
     ? normalizeBenchmarkTarget(judgeTarget, { allowMissingCatalogFingerprint: judgeTarget.executionKind === 'ollama' })
     : null;
@@ -312,6 +312,8 @@ function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, executionCo
     schema: 'agentx.benchmark-quality-cohort/v2',
     scorerVersion: String(scorerVersion || ''),
     judgeIdentity,
+    // A reasoning judge scores differently; judges without it keep their cohort.
+    ...(judgeThink === true ? { judgeThink } : {}),
     generation: {
       responseMaxTokens: Number(executionConfig?.response_max_tokens) || null,
       temperature: Number.isFinite(Number(executionConfig?.temperature)) ? Number(executionConfig.temperature) : null,

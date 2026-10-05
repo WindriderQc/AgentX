@@ -191,7 +191,10 @@ each plan is one file under its `benchmark-batch/` directory.
   categories are resolved to `prompt_ids` from `GET /api/benchmark/prompts`; a
   category with no prompt at the chosen levels, or more than 100 prompts,
   refuses. `POST /api/benchmark/preflight` then gives Benchmark's verdict on the
-  installed model, the judge and the prompts. The receipt carries the plan
+  installed model, the judge and the prompts. Its warnings also name the
+  pinned models the batch affects: an execution host's are unloaded and
+  restored after it; a separate judge host's stay loaded, but Core refuses
+  their ordinary calls while the batch holds that host. The receipt carries the plan
   reference, the exact launch body, the projection (prompts, repeats, tests,
   prompts per category) and the `start` object that names the plan.
 - **Plan identity.** A reference is `bp-<id>-<digest>`; the digest covers the
@@ -234,7 +237,7 @@ starts a batch. The Benchmark page and the batch action both use it.
 | `targets`, or `host` + `models` | Required. `targets` are provider-neutral Benchmark targets; `host` and `models` name Ollama models on one host. At most 50 targets. A local host must be a configured host that answers its inventory with every model installed (422 otherwise). |
 | `levels` | Required array, at most 5 values from 1 to 5. With `prompt_ids`, the stored levels are those of the selected prompts. |
 | `prompt_ids` | Optional, at most 100 prompt ids. This is how categories are chosen: the route has no category field. Unknown ids give 422. Without it, every prompt of the levels runs, sampled by `depth_config` when given. |
-| `judge_config` | Optional. `host` and `model` go together and name a configured host with that model installed; without them Benchmark takes the selected ready judge. No ready judge gives 503 `JUDGE_NOT_READY`. Bounded tuning fields: `temperature`, `num_predict`, `num_ctx`, `max_retries`, `timeout`, `voting_count`; `think` is always false. A `target` of kind `harness` selects an isolated-model harness judge. |
+| `judge_config` | Optional. `host` and `model` go together and name a configured host with that model installed; without them Benchmark takes the selected ready judge. No ready judge gives 503 `JUDGE_NOT_READY`. Bounded tuning fields: `temperature`, `num_predict` (up to 32,768), `num_ctx`, `max_retries`, `timeout` (up to 30 min), `voting_count`; values above 4,096 tokens or 120 s are kept and listed in `data.warnings`. `think` is false unless the operator sets `true`: the judge then reasons before each verdict, the launch warns that reasoning shares `num_predict` with the verdict, and the results form their own quality cohort. A `target` of kind `harness` selects an isolated-model harness judge. |
 | `execution_config` | Optional. `repeats` (1 to 5), timeouts, `think` and `response_mode` within the route's bounds. |
 | `multi_judge` | Optional rule (`off`, `l4l5`, `low_confidence`, `always`) or object. Absent means off. |
 | `run_name`, `description`, `tags` | Optional: 200 and 2000 characters, 20 tags of 50 characters. `GET /api/benchmark/batches?tag=` filters on one tag. |

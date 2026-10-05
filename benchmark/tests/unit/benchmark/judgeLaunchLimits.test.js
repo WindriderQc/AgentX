@@ -1,6 +1,6 @@
 'use strict';
 
-const { checkJudgeLimits } = require('../../../src/services/benchmark/judgeLaunchLimits');
+const { checkJudgeLimits, normalizeJudgeThink } = require('../../../src/services/benchmark/judgeLaunchLimits');
 
 describe('judge limits at launch', () => {
     it('accepts a larger judge budget and timeout, with a warning for each', () => {
@@ -17,7 +17,35 @@ describe('judge limits at launch', () => {
         expect(checkJudgeLimits({})).toEqual({ error: null, warnings: [] });
     });
 
+    it('accepts judge reasoning chosen by the operator, with its cost and cohort stated', () => {
+        const result = checkJudgeLimits({ think: true, num_predict: 16384 });
+        expect(result.error).toBeNull();
+        expect(result.warnings).toEqual([
+            expect.stringMatching(/num_predict 16384 is above 4096/),
+            expect.stringMatching(/think true: the judge reasons before each verdict.*own scoring cohort.*Kept as chosen/)
+        ]);
+    });
+
+    it('warns that reasoning shares a usual judge budget with the verdict', () => {
+        const result = checkJudgeLimits({ think: true });
+        expect(result.error).toBeNull();
+        expect(result.warnings).toEqual([
+            expect.stringMatching(/think true/),
+            expect.stringMatching(/shares judge_config.num_predict \(default\).*cannot be scored/)
+        ]);
+        expect(checkJudgeLimits({ think: false })).toEqual({ error: null, warnings: [] });
+    });
+
+    it('accepts only a boolean judge reasoning setting', () => {
+        expect([undefined, null, false].map(normalizeJudgeThink)).toEqual([false, false, false]);
+        expect(normalizeJudgeThink(true)).toBe(true);
+        // Core's thinking policy does not carry effort levels.
+        expect(normalizeJudgeThink('high')).toBeUndefined();
+        expect(normalizeJudgeThink('true')).toBeUndefined();
+    });
+
     it.each([
+        [{ think: 'high' }, /judge_config.think must be a boolean/],
         [{ num_predict: 50 }, /num_predict must be a number between 100 and 32768/],
         [{ num_predict: 40000 }, /num_predict must be a number between 100 and 32768/],
         [{ num_predict: '800' }, /num_predict/],
