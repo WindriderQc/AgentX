@@ -112,6 +112,22 @@ describe('caller runtime compatibility', () => {
     expect(caller.options.num_thread).toBe(2);
   });
 
+  test('direct evaluation runs at the CPU threads of the pin and keeps every other option exact', async () => {
+    const deps = { ...makeDeps(), pinNumThread: jest.fn(async () => 4) };
+    const options = { num_ctx: 2048, num_predict: 13, temperature: 0 };
+    const result = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435', options }, 'direct', deps);
+    expect(result.options).toEqual({ ...options, num_thread: 4 });
+    expect(deps.pinNumThread).toHaveBeenCalledWith('http://ollama.test:11435', 'example:latest');
+    expect(deps.hostPreferenceService.getByHost).not.toHaveBeenCalled();
+
+    const explicit = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435',
+      options: { num_thread: 2 } }, 'direct', deps);
+    expect(explicit.options.num_thread).toBe(2);
+    const unpinned = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11434', options: {} },
+      'direct', { ...makeDeps(), pinNumThread: async () => 0 });
+    expect(unpinned.options.num_thread).toBeUndefined();
+  });
+
   test.each(['chat', 'extension', 'direct'])('%s passes native tool schemas to context accounting', async policy => {
     const deps = makeDeps();
     const tools = [{ type: 'function', function: { name: 'read', description: 'Full schema' } }];
