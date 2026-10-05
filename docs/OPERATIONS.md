@@ -1418,6 +1418,26 @@ and does not stop ingestion or search; without the `text` index the keyword
 half of a hybrid search fails and reports `applied.keywordSearchFailed`.
 Keyword search scores at most 500 candidate chunks that contain a query term.
 
+### Embedding host chain
+
+Core's embedding proxy (`POST /api/inference/embed`, used by RAG) tries the
+host routed for the model, then every other configured host, registered CPU
+hosts included. It moves to the next host when any of these happens:
+
+- the host fails a short liveness probe;
+- Core refuses admission there, for example under a Benchmark claim or a
+  workload;
+- the host does not answer in time;
+- the host answers that the model is not installed (HTTP 404).
+
+Only the last host's 404 reaches the caller. A response served by another host
+carries `X-AgentX-Fallback-Used: true` and `X-Routed-Host`, and the inference
+log keeps one error row per skipped host with its reason. To keep searches
+working while the GPU embedding host is claimed, install the embedding model on
+a CPU host and register it. A CPU host answers a short query almost as fast as
+a GPU, but ingests documents several times slower. An explicit `ollamaHost` in
+the request disables the chain.
+
 ## Switching the embedding model
 
 The embedding model and its dimension belong to one Qdrant collection. A new

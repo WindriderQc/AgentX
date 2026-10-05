@@ -40,6 +40,7 @@ const { telemetryContextFromRequest } = require('../src/helpers/llmTelemetryCont
 const { beginInferenceAdmission } = require('../src/services/inferenceAdmissionService');
 const { trustedNestorConsumer } = require('../src/services/nestorConsumerAttribution');
 const alertService = require('../src/services/alertService');
+const { EMBED_TIMEOUT_MS, isEmbedHostLive, emitEmbedHostFailure, isModelMissingResponse, _resetEmbedLiveness } = require('../src/services/embeddingHostChain');
 
 const ragStore = getRagServiceClient();
 
@@ -127,50 +128,6 @@ router.get('/ollama/models', async (req, res) => {
         disconnect.cleanup();
     }
 });
-
-// Split liveness from the long embed budget: cold loads can be slow, while a
-// black-holed host should be skipped after a short probe.
-const EMBED_TIMEOUT_MS = Number(process.env.EMBED_TIMEOUT_MS) > 0
-    ? Number(process.env.EMBED_TIMEOUT_MS)
-    : 60000;
-const EMBED_PROBE_TIMEOUT_MS = Number(process.env.EMBED_PROBE_TIMEOUT_MS) > 0
-    ? Number(process.env.EMBED_PROBE_TIMEOUT_MS)
-    : 3000;
-// Liveness is cached so a batch ingest doesn't pay a probe per chunk.
-const EMBED_LIVENESS_TTL_MS = 15000;
-const embedLiveness = new Map();
-
-async function isEmbedHostLive(hostUrl) {
-    const cached = embedLiveness.get(hostUrl);
-    if (cached && Date.now() - cached.at < EMBED_LIVENESS_TTL_MS) return cached.ok;
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), EMBED_PROBE_TIMEOUT_MS);
-    let ok = false;
-    try {
-        const probe = await fetch(`${hostUrl}/api/tags`, { signal: controller.signal });
-        ok = probe.ok;
-    } catch (err) {
-        ok = false;
-    } finally {
-        clearTimeout(timer);
-    }
-
-    embedLiveness.set(hostUrl, { ok, at: Date.now() });
-    return ok;
-}
-
-function emitEmbedHostFailure(candidate, model, error, code = '') {
-    const alertSvc = alertService; // An admission refusal is Core's own decision: the host answered nothing.
-    if (!alertSvc?.evaluateEvent || String(code).startsWith('RUNTIME_INFERENCE_')) return;
-    alertSvc.evaluateEvent({
-        component: resolveHostKey(candidate) || candidate,
-        metric: 'host_unreachable',
-        value: 1,
-        source: 'embedding-proxy',
-        additionalData: { model, host: candidate, error }
-    }).catch(() => {});
-}
 
 router.post('/inference/embed', async (req, res) => {
     const startedAt = Date.now();
@@ -305,6 +262,22 @@ router.post('/inference/embed', async (req, res) => {
     let lastError = null;
     let lastFailureReason = null;
     let embedAdmission = null;
+    // One error row per abandoned candidate, so telemetry tells the whole failover.
+    const recordAttemptFailure = (candidate, candidateIndex, fallbackReason, status, reasonCode) => recordInference({
+        host: candidate,
+        routedHostUrl: routedTarget,
+        model,
+        caller: 'embedding',
+        attempt: candidateIndex + 1,
+        routeDecision: buildEmbedDecision({
+            candidate, attempt: candidateIndex + 1, fallbackUsed: candidateIndex > 0, fallbackReason, status, reasonCode
+        }),
+        num_ctx: null,
+        num_ctx_source: 'n/a',
+        durationMs: Date.now() - startedAt,
+        status,
+        error: lastError.message
+    });
 
     try {
         for (const [candidateIndex, candidate] of candidates.entries()) {
@@ -317,26 +290,7 @@ router.post('/inference/embed', async (req, res) => {
             if (!await isEmbedHostLive(candidate)) {
                 lastError = new Error(`Embedding host ${candidate} is unreachable`);
                 lastFailureReason = REJECTION_REASONS.HOST_OFFLINE;
-                recordInference({
-                    host: candidate,
-                    routedHostUrl: routedTarget,
-                    model,
-                    caller: 'embedding',
-                    attempt: candidateIndex + 1,
-                    routeDecision: buildEmbedDecision({
-                        candidate,
-                        attempt: candidateIndex + 1,
-                        fallbackUsed: candidateIndex > 0,
-                        fallbackReason: attemptFallbackReasonCode,
-                        status: 'error',
-                        reasonCode: REJECTION_REASONS.HOST_OFFLINE,
-                    }),
-                    num_ctx: null,
-                    num_ctx_source: 'n/a',
-                    durationMs: Date.now() - startedAt,
-                    status: 'error',
-                    error: lastError.message
-                });
+                recordAttemptFailure(candidate, candidateIndex, attemptFallbackReasonCode, 'error', REJECTION_REASONS.HOST_OFFLINE);
                 logger.warn('Embedding host failed liveness probe; trying next', {
                     host: candidate,
                     model
@@ -387,26 +341,7 @@ router.post('/inference/embed', async (req, res) => {
                     ? new Error(`Embedding request to ${candidate} timed out after ${EMBED_TIMEOUT_MS}ms`)
                     : err;
                 lastFailureReason = failureReason;
-                recordInference({
-                    host: candidate,
-                    routedHostUrl: routedTarget,
-                    model,
-                    caller: 'embedding',
-                    attempt: candidateIndex + 1,
-                    routeDecision: buildEmbedDecision({
-                        candidate,
-                        attempt: candidateIndex + 1,
-                        fallbackUsed: candidateIndex > 0,
-                        fallbackReason: attemptFallbackReasonCode,
-                        status: failureStatus,
-                        reasonCode: failureReason,
-                    }),
-                    num_ctx: null,
-                    num_ctx_source: 'n/a',
-                    durationMs: Date.now() - startedAt,
-                    status: failureStatus,
-                    error: lastError.message
-                });
+                recordAttemptFailure(candidate, candidateIndex, attemptFallbackReasonCode, failureStatus, failureReason);
                 logger.warn('Embedding host unreachable; trying next', {
                     host: candidate,
                     model,
@@ -427,6 +362,21 @@ router.post('/inference/embed', async (req, res) => {
                 continue;
             } finally {
                 clearTimeout(timer);
+            }
+
+            // The host answered that the model is not installed: try the next
+            // one (a CPU host may have it) instead of ending the chain here.
+            if (isModelMissingResponse(response) && candidateIndex < candidates.length - 1) {
+                await response.text();
+                await embedAdmission.complete();
+                embedAdmission = null;
+                lastError = new Error(`Embedding model ${model} is not installed on ${candidate}`);
+                lastFailureReason = REJECTION_REASONS.MODEL_NOT_INSTALLED;
+                recordAttemptFailure(candidate, candidateIndex, attemptFallbackReasonCode, 'error', lastFailureReason);
+                logger.warn('Embedding model missing on host; trying next', { host: candidate, model });
+                rejections.push({ model, host: resolveHostKey(candidate), hostUrl: candidate, reason: lastFailureReason });
+                response = null;
+                continue;
             }
 
             break;
@@ -848,6 +798,6 @@ router.get('/models/health', async (req, res) => {
 // Test seam for the embed liveness cache, mirroring hostGate._resetForTests().
 // The cache is module-level and TTL'd, so without this the probe result from
 // one test leaks into the next.
-router._resetEmbedLivenessForTests = () => embedLiveness.clear();
+router._resetEmbedLivenessForTests = _resetEmbedLiveness;
 
 module.exports = router;
