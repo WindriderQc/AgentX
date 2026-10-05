@@ -157,6 +157,27 @@ function validateSnapshot(snapshot, requested) {
     }
 }
 
+/**
+ * A judge is not the artifact being measured: it only needs the context Core
+ * serves it at, so its profile may be stale. The artifact identity and the
+ * window still have to be the ones asked for.
+ */
+function validateJudgeContext(snapshot, requested) {
+    if (!snapshot || snapshot.version !== CONTRACT_VERSION) {
+        throw new Error(`Core returned an unsupported inference contract for ${requested.model} on ${requested.host}`);
+    }
+    const requestedHost = String(requested.host || '').replace(/\/+$/, '').toLowerCase();
+    const returnedHost = String(snapshot.artifact?.host || '').replace(/\/+$/, '').toLowerCase();
+    if (normalizeModelTag(snapshot.artifact?.model).toLowerCase() !== normalizeModelTag(requested.model).toLowerCase()
+        || returnedHost !== requestedHost) {
+        throw new Error(`Core returned a contract for a different artifact or host than ${requested.model} on ${requested.host}`);
+    }
+    const windowTokens = Number(snapshot.contextBudget?.windowTokens);
+    if (!Number.isInteger(windowTokens) || windowTokens <= 0) {
+        throw new Error(`Inference contract for ${requested.model} on ${requested.host} carries no context window`);
+    }
+}
+
 async function fetchSnapshot(request, deps = {}) {
     const coreUrl = deps.coreUrl || CORE_URL;
     const fetchImpl = deps.fetchImpl || benchmarkFetch;
@@ -170,17 +191,18 @@ async function fetchSnapshot(request, deps = {}) {
     if (!response.ok) {
         throw new Error(payload?.message || payload?.error || `Core contract resolution failed with HTTP ${response.status}`);
     }
-    validateSnapshot(payload, request);
+    (deps.validate || validateSnapshot)(payload, request);
     return payload;
 }
 
 /**
  * The context window Core freezes for a model on a host, from the same
  * contract candidates use. A judge that omits num_ctx makes Ollama reload a
- * resident model at its default context, so judges read this value instead.
+ * resident model at its default context, so judges read this value instead,
+ * whether or not the judge's own profile is benchmark-qualified.
  */
 async function resolveContractNumCtx(model, host, deps = {}) {
-    const snapshot = await fetchSnapshot({ model, host, options: {} }, deps);
+    const snapshot = await fetchSnapshot({ model, host, options: {} }, { ...deps, validate: validateJudgeContext });
     return {
         num_ctx: snapshot.contextBudget.windowTokens,
         source: `inference_contract:${snapshot.contextBudget.source}`
