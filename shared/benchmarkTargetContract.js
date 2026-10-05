@@ -293,7 +293,7 @@ function buildPromptFingerprint(prompt) {
  * are not part of it; each result carries its own prompt fingerprint, so a
  * catalog edit only affects the results on the edited prompt.
  */
-function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink = false, executionConfig, profileContract = 'isolated-model-v1' }) {
+function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink = false, judgeConfig = null, executionConfig, profileContract = 'isolated-model-v1' }) {
   const normalizedJudge = judgeTarget
     ? normalizeBenchmarkTarget(judgeTarget, { allowMissingCatalogFingerprint: judgeTarget.executionKind === 'ollama' })
     : null;
@@ -309,16 +309,27 @@ function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink 
     api: normalizedJudge.api,
   } : null;
   return fingerprint({
-    schema: 'agentx.benchmark-quality-cohort/v2',
+    schema: 'agentx.benchmark-quality-cohort/v3',
     scorerVersion: String(scorerVersion || ''),
     judgeIdentity,
     // A reasoning judge scores differently; judges without it keep their cohort.
     ...(judgeThink === true ? { judgeThink } : {}),
+    // Resolved and saved at launch: a changed service default must not give
+    // another judge budget or sampling policy the same comparison identity.
+    judgeSettings: judgeConfig ? {
+      numPredict: judgeConfig.num_predict ?? null,
+      timeoutMs: judgeConfig.timeout ?? null,
+      temperature: judgeConfig.temperature ?? null,
+      seed: judgeConfig.seed ?? null,
+      maxRetries: judgeConfig.max_retries ?? null,
+      votingCount: judgeConfig.voting_count ?? 1,
+    } : null,
     generation: {
       responseMaxTokens: Number(executionConfig?.response_max_tokens) || null,
       temperature: Number.isFinite(Number(executionConfig?.temperature)) ? Number(executionConfig.temperature) : null,
       topP: Number.isFinite(Number(executionConfig?.top_p)) ? Number(executionConfig.top_p) : null,
-      seed: Number.isFinite(Number(executionConfig?.seed)) ? Number(executionConfig.seed) : null,
+      seed: executionConfig?.seed == null ? null
+        : Number.isFinite(Number(executionConfig.seed)) ? Number(executionConfig.seed) : null,
       think: executionConfig?.think ?? null,
       // Batches launched before the documented-default budget ran under a
       // smaller hidden reserve: the rule separates their cohort.
