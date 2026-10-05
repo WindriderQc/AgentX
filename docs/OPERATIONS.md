@@ -960,7 +960,9 @@ asked to yield (at most 30 s with a fallback configured), and a refusal before
 any output then moves the turn to a rung once. The degraded turn goes without
 tools or thinking, its system prompt names the brain in use, its reply starts
 with a one-line notice (`🪶 Cerveau léger (…)`), and it carries the
-`X-AgentX-Degraded*` headers. When no rung answers, the busy reply remains.
+`X-AgentX-Degraded*` headers. Its InferenceLog row records `fallbackUsed` and
+the `task_fallback_<reason>` code, like a ladder rung served by Core. When no
+rung answers, the busy reply remains.
 
 `OPENCLAW_CONVERSATION_NO_THINK_MODELS` lists conversation models that answer
 without reasoning whatever thinking level the agent asks for, for example the

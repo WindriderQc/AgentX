@@ -449,6 +449,15 @@ function publicDegradedMarker(degraded) {
   };
 }
 
+/**
+ * The marker of a rung a caller already chose (OpenClaw's conversation
+ * fallback, #143), kept only when it names the model being served.
+ */
+function servedRungMarker(degraded, model) {
+  const marker = publicDegradedMarker(degraded);
+  return marker && model && marker.fallbackTo.model === model ? marker : null;
+}
+
 /** Stable telemetry reason code (RouteDecision vocabulary). */
 function fallbackReasonCode(degraded) {
   return degraded?.degraded === true && degraded.reason ? `task_fallback_${degraded.reason}` : null;
@@ -490,6 +499,7 @@ module.exports = {
   planExactModelFallback,
   refusedBeforeDispatch,
   publicDegradedMarker,
+  servedRungMarker,
   fallbackReasonCode,
   getTaskFallbackStats,
   _internal: { coordinationBlock, probeTarget, resetForTests },

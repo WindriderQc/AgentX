@@ -9,7 +9,7 @@ const { executeAdmittedOllamaStream } = require('../services/routing/inferenceSt
 const { withInferenceRetry } = require('../services/routing/inferenceRetry');
 const { telemetryEntry } = require('../services/routing/trustedRuntimeTelemetry');
 const { observePromptPrefix } = require('../services/routing/promptPrefixFingerprint');
-const { publicDegradedMarker } = require('../services/routing/taskFallbackLadder');
+const { publicDegradedMarker, servedRungMarker } = require('../services/routing/taskFallbackLadder');
 const { buildEffectiveRoutingSnapshot } = require('../services/routing/effectiveRoutingSnapshot');
 const { frozenCopy } = require('../helpers/frozenCopy');
 
@@ -287,7 +287,7 @@ async function executeRoutedInference(deps, request, options = {}) {
   let hostUrl = null;
   let hostKey = null;
   let routingSource = 'model_router';
-  let taskFallback = null; // a fallback ladder rung serves this task (#135)
+  let taskFallback = servedRungMarker(options.degraded, requestedModel); // a ladder rung serves this call (#135, #143)
 
   if (!model && taskType) {
     const recommendation = options.ladderRetry || await deps.getAdvisoryModelForTask(taskType, {

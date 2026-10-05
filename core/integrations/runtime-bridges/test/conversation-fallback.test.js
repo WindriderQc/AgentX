@@ -116,6 +116,7 @@ test('a busy primary sends the turn to the always-on brain, marked and without t
   const { request, options } = calls[0];
   assert.equal(request.model, LIGHT);
   assert.equal(options.hostUrl, PLAN.hostUrl);
+  assert.deepEqual(options.degraded, ROUTING);
   assert.equal(request.tools, undefined);
   assert.equal(request.think, false);
   assert.equal(request.exclusiveHost, false);
@@ -166,6 +167,7 @@ test('a primary refused before output degrades once and the notice keeps the rea
     const res = await send(handler);
     assert.equal(calls.length, 2);
     assert.equal(calls[1].request.model, LIGHT);
+    assert.equal(calls[1].options.degraded.reason, reason);
     assert.deepEqual(planned.map(item => [item.afterRefusal, item.refusalReason]), [[false, undefined], [true, reason]]);
     assert.equal(res.headers['X-AgentX-Degraded-Reason'], reason);
     assert.equal(res.jsonBody.message.content, `🪶 Cerveau léger (${LIGHT}) : le cerveau principal est ${label}.\n\nMe voici`);
