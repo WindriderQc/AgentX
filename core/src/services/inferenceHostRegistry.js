@@ -137,8 +137,13 @@ function readAttributes(body = {}, { partial = false } = {}) {
 async function list() {
   const docs = await InferenceHost.find({}).lean();
   const byKey = new Map(docs.map(doc => [hostUrlKey(doc.url), doc]));
+  // Benchmark reads this list: its probes on a CPU host reuse the pin's threads.
+  const preferences = await HostPreference.find({ 'pinnedModels.numThread': { $gt: 0 } }).select('hostUrl pinnedModels').lean();
+  const threadsByKey = new Map(preferences.map(pref => [hostUrlKey(pref.hostUrl), Object.fromEntries(
+    (pref.pinnedModels || []).filter(pin => pin.numThread > 0).map(pin => [pin.model, pin.numThread]))]));
   return hostConfig.getConfiguredHosts().map(host => ({
     ...host,
+    pinThreads: threadsByKey.get(hostUrlKey(host.url)) || {},
     registered: byKey.has(hostUrlKey(host.url)),
     removable: host.source === 'registry'
   }));

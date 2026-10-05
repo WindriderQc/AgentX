@@ -169,7 +169,7 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
     const res = await hostTestRequest(HOST_TEST_OPERATIONS.PROBE, url, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: JSON.stringify(require('./probeThreads').withPinThreads(hostUrl, {
         model:   normalizedModelName,
         prompt,
         stream:  true,
@@ -180,7 +180,7 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
           temperature: 0,
           seed: 7
         }
-      }),
+      })),
       signal: combineAbortSignals(probeDeadline.signal, signal)
     });
 
