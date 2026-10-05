@@ -182,6 +182,30 @@ describe('hostTestService config helpers', () => {
     );
   });
 
+  it('starts every throughput prompt with its own line, so a repeat is not served from the prompt cache (#367)', async () => {
+    require('../../src/services/modelContextResolver').resolveModelNumCtxDetails.mockResolvedValue({ num_ctx: 8192, source: 'test' });
+    require('../../src/helpers/ollamaModelIdentity').isSameOllamaModel.mockReturnValue(true);
+    require('../../src/services/ollamaVramService').getHostVram.mockResolvedValue({ ok: true, memoryUsedMiBTotal: 5000, memoryTotalMiBTotal: 16000 });
+    HostPerformanceSnapshot.create.mockImplementation(async payload => payload);
+    const prompts = [];
+    mockHostRequest.mockImplementation(async ({ url }, init) => {
+      if (url.endsWith('/api/ps')) return { ok: true, data: { models: [{ name: 'model-a', context_length: 8192 }] } };
+      prompts.push(JSON.parse(init.body).prompt);
+      return { ok: true, stream: async function* () {
+        yield Buffer.from(JSON.stringify({ response: 'Answer', done: false }) + '\n');
+        yield Buffer.from(JSON.stringify({ done: true, eval_count: 64, eval_duration: 1e9, prompt_eval_count: 2048, prompt_eval_duration: 2e9 }) + '\n');
+      } };
+    });
+    const options = { _skipHostCheck: true, warmup: false, benchmarkClaim: { claimBatchId: 'test-isolated-prompt' } };
+    const first = await testModelOnHost('model-a', 'http://192.0.2.12:11434', options);
+    await testModelOnHost('model-a', 'http://192.0.2.12:11434', options);
+    expect(first.promptIsolation).toBe('unique_first_line');
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0].split('\n')[0]).toMatch(/^Sample [0-9a-f-]{36}$/);
+    expect(prompts[0].split('\n')[0]).not.toBe(prompts[1].split('\n')[0]);
+    expect(prompts[0].slice(prompts[0].indexOf('\n'))).toBe(prompts[1].slice(prompts[1].indexOf('\n')));
+  });
+
   it('routes the loaded prime pass through Core for telemetry', () => {
     const request = buildWarmupRequest(
       'http://192.0.2.199:11434',

@@ -5,6 +5,8 @@
  * Used by the host test service to fill context windows during performance probes.
  */
 
+const crypto = require('crypto');
+
 // ~100 tokens of repeatable prose (measured against Ollama tokenizers)
 const FILL_BLOCK = [
   'The quick brown fox jumps over the lazy dog near the riverbank.',
@@ -64,4 +66,16 @@ function generateFillPrompt(targetTokens, opts = {}) {
   return { prompt, estimatedTokens };
 }
 
-module.exports = { generateFillPrompt };
+/**
+ * Give a prompt a first line of its own. Ollama reuses its prompt cache for the
+ * longest prefix identical to the previous request, and a repeated identical
+ * prompt is served from that cache: prompt_eval_count still reports every
+ * token while prompt_eval_duration covers only the last one, so prefill tok/s
+ * and time to first token read many times too fast. A unique first line makes
+ * every sample evaluate its whole prompt.
+ */
+function isolatePrompt(prompt) {
+  return `Sample ${crypto.randomUUID()}\n${prompt}`;
+}
+
+module.exports = { generateFillPrompt, isolatePrompt };

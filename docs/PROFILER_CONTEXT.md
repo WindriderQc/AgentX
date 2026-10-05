@@ -67,6 +67,16 @@ allocated context window nor a partially filled successful probe proves recall
 quality across every token of that window. `qualityContextStatus: unknown` is
 intentional until separate quality evidence exists.
 
+## Prompt cache
+
+Ollama serves a repeated identical prompt from its prompt cache: it still
+reports every prompt token in `prompt_eval_count`, but `prompt_eval_duration`
+covers only the last one (measured on Ollama's main branch: 5,052 ms, then
+59 ms, for the same 1,534-token prompt). Every throughput and matrix sample
+therefore starts with a line of its own, and the evidence says so
+(`promptIsolation: "unique_first_line"`). Prompt-eval speeds and TTFT in
+profiles without that field may have been served from the cache.
+
 ## Pin context proposals
 
 A completed profile compares its evidence with the host's Core pins

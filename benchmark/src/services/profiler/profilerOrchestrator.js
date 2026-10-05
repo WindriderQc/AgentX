@@ -255,6 +255,9 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
     ttftP50Ms: measurementQuality.ttftP50Ms ?? null,
     ttftP95Ms: measurementQuality.ttftP95Ms ?? null,
     ttftMeasurement: measurementQuality.ttftP50Ms != null ? 'streamed_wall_clock' : null,
+    // Prompt eval speed and TTFT from samples that each evaluated their whole
+    // prompt; profiles without it may report prefill served from Ollama's cache.
+    promptIsolation: 'unique_first_line',
     comparisonPromptTokens: representativeSample?.promptTokens || null,
     comparisonPromptTargetTokens: testResult.requestedPromptTokens || null,
     contextProbeFillPct: Number(settings.contextProbeFillPct) || 80,
