@@ -87,6 +87,16 @@ describe('inference host registry API', () => {
     expect(moved.body.code).toBe('HOST_URL_IMMUTABLE');
   });
 
+  it('lists the CPU threads pinned per model, for Benchmark probes', async () => {
+    await registry.create({ id: 'cpu-a', url: 'http://192.168.50.99:11435', residency: 'cpu' });
+    await HostPreference.updateOne({ hostUrl: 'http://192.168.50.99:11435' },
+      { $set: { pinnedModels: [{ model: 'example:26b', numThread: 6 }, { model: 'other:1b' }] } });
+    const listed = await http.request.get('/api/nerve-center/inference-hosts');
+    const byId = Object.fromEntries(listed.body.data.hosts.map(host => [host.id, host.pinThreads]));
+    expect(byId['cpu-a']).toEqual({ 'example:26b': 6 });
+    expect(byId.primary).toEqual({});
+  });
+
   it('removes a host only with confirmation and once nothing depends on it', async () => {
     await registry.create({ id: 'frank-cpu', url: 'http://192.168.50.99:11435', residency: 'cpu' });
     const url = '/api/nerve-center/inference-hosts/frank-cpu';

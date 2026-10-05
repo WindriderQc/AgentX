@@ -19,6 +19,7 @@ const { getConfiguredHosts } = require('../helpers/ollamaHostConfig');
 const { admitOllamaTargetResolved } = require('../helpers/ollamaTargetAdmission');
 const logger = require('../../config/logger');
 const { observeJsonMutation } = require('../services/profiler/profilerMutationObservation');
+const { withPinThreads } = require('../services/probeThreads');
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -205,13 +206,13 @@ function withRequestControl(opts = {}, control) {
 
 /** POST /api/generate — text completion */
 const generate = async (host, body, opts) => observeJsonMutation(async control => requireExactTerminal(
-    await ollamaFetch(host, '/api/generate', { method: 'POST', body, ...withRequestControl(opts, control) }),
+    await ollamaFetch(host, '/api/generate', { method: 'POST', body: withPinThreads(host, body), ...withRequestControl(opts, control) }),
     'generate'
 ), abortableRequest(body, opts));
 
 /** POST /api/chat — chat completion */
 const chat = async (host, body, opts) => observeJsonMutation(async control => requireExactTerminal(
-    await ollamaFetch(host, '/api/chat', { method: 'POST', body, ...withRequestControl(opts, control) }),
+    await ollamaFetch(host, '/api/chat', { method: 'POST', body: withPinThreads(host, body), ...withRequestControl(opts, control) }),
     'chat'
 ), abortableRequest(body, opts));
 

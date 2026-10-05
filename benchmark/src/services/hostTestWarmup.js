@@ -60,11 +60,11 @@ const WARMUP_TIMEOUT_COLD   = 600000; // 10 min — 40GB+ model swap and context
 const WARMUP_TIMEOUT_LOADED =  90000; // 1.5 min — model already in VRAM
 
 function buildWarmupRequest(hostUrl, modelName, alreadyLoaded, numCtx) {
-  const options = {
+  const { options } = require('./probeThreads').withPinThreads(hostUrl, { model: modelName, options: {
     num_predict: 1,
     temperature: 0.1,
     ...(numCtx ? { num_ctx: numCtx } : {})
-  };
+  } });
   if (!alreadyLoaded) {
     return {
       phase: 'cold_preload',

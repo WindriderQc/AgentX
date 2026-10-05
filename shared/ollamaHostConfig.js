@@ -99,8 +99,23 @@ function normalizeRegisteredHost(raw) {
     priority: Number.isSafeInteger(Number(raw.priority)) && Number(raw.priority) > 0 ? Number(raw.priority) : 0,
     vramMb: Number(raw.vramMb) > 0 ? Number(raw.vramMb) : 0,
     residency: RESIDENCIES.has(raw.residency) ? raw.residency : 'gpu',
-    maxInflight: Number.isSafeInteger(maxInflight) && maxInflight > 0 ? maxInflight : null
+    maxInflight: Number.isSafeInteger(maxInflight) && maxInflight > 0 ? maxInflight : null,
+    pinThreads: normalizePinThreads(raw.pinThreads)
   };
+}
+
+// CPU threads per pinned model, as Core's host registry publishes them.
+function modelKey(name) {
+  const value = String(name || '').trim().toLowerCase();
+  return value && !value.includes(':') ? `${value}:latest` : value;
+}
+
+function normalizePinThreads(raw) {
+  const threads = {};
+  for (const [model, value] of Object.entries(raw && typeof raw === 'object' ? raw : {})) {
+    if (modelKey(model) && Number.isSafeInteger(value) && value > 0 && value <= 256) threads[modelKey(model)] = value;
+  }
+  return threads;
 }
 
 function createOllamaHostConfig({ readDotenv = () => ({}), readFallbackHosts = () => [] } = {}) {
@@ -264,10 +279,17 @@ function createOllamaHostConfig({ readDotenv = () => ({}), readFallbackHosts = (
     return getConfiguredHosts().find(host => hostUrlKey(host.url) === key)?.residency || 'gpu';
   }
 
+  // Thread count pinned for a model on a CPU-resident host, or 0.
+  function getHostPinThreads(hostUrl, model) {
+    const host = registeredFor(hostUrl);
+    return host?.residency === 'cpu' ? host.pinThreads[modelKey(model)] || 0 : 0;
+  }
+
   return {
     normalizeHostUrl,
     getConfiguredHosts,
     getHostResidency,
+    getHostPinThreads,
     setRegisteredHosts,
     resolveHostVramMb,
     getHostUrls,
