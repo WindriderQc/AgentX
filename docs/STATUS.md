@@ -142,7 +142,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   result carries a qualification card. The Profiler shows runtime continuity and, after a
   profile, a pin context proposal that Core applies with a speed check and
   rollback. It profiles and benchmarks CPU-resident hosts too, and leaderboard
-  rows show their host's residency.
+  rows show their host's residency. `./agentx action` and the OpenClaw
+  maintenance plugin prepare, start and read a bounded batch (one model, one
+  registered local host, chosen categories): a start names a prepared plan,
+  passes the runtime approval hook in the plugin and is never sent twice. Its
+  tests use a stand-in for Benchmark; an installed OpenClaw runtime and a
+  messaging channel have not exercised the approval.
 - **Finance.** A personal ledger in Core accepts only statements that reconcile
   to the cent. The Wallet Beefer page (`/finance`), deterministic alerts and
   the `comptable` agent's tools read it. See [finance](FINANCE.md).
