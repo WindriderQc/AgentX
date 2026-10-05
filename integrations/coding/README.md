@@ -75,6 +75,12 @@ Its wrapper accepts one task ID or selects the first admissible task. Private
 personal/family tasks remain excluded. Automatic execution and publication are
 disabled in the generic example. No native process is installed by Compose.
 
+When Core refuses an autonomous claim because the coding slot is occupied, the
+ticket stays queued with the capacity reason and consumes no attempt. The feedback
+is conditional on the observed queued version, so it cannot overwrite a newer
+claim. Retrying after capacity becomes available is explicit; this adds no
+scheduler. A lost claim response is not automatically replayed.
+
 `coding_team_promotion.py --config /external/coding-dispatcher.json --task-id 0000`
 publishes only an accepted, independently verified snapshot when publication is
 configured. It requires the instance's GitHub credential and creates a draft PR.

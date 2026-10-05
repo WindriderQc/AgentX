@@ -51,9 +51,14 @@ REPO_PATH_PATTERN = re.compile(
 class PipelineApiError(RuntimeError):
     """Raised when the AgentX pipeline API cannot satisfy a request."""
 
+    def __init__(self, message: str, *, status: int | None = None, code: str | None = None):
+        super().__init__(message)
+        self.status = status
+        self.code = code
+
 
 class ResourcePreflightDeferred(PipelineApiError):
-    """Raised before claim when shared inference capacity is busy or unknown."""
+    """Raised when capacity refuses an autonomous claim before an attempt starts."""
 
 
 def utc_stamp() -> str:
