@@ -357,7 +357,7 @@ function register(api) {
   personas.post('/sessions', createPersonaSession('child'));
   personas.post('/private/sessions', createPersonaSession('private'));
   personas.post('/family/sessions', createNativeFamilySession);
-  // The existing adult surface edits Core notes regardless of the harness.
+  // The personal surface edits Core notes regardless of the harness.
   personas.post('/private/notes', async (req, res) => {
     const { operation, id, text, kind } = req.body || {};
     if (!['list', 'remember', 'forget'].includes(operation)) return fail(res, 400, 'Invalid note operation', 'NESTOR_NOTE_INVALID');
@@ -411,7 +411,7 @@ function register(api) {
       return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Export indisponible.', error.code);
     }
   });
-  personas.delete('/:space(private|family)/sessions/:sessionId', async (req, res) => { // family: adult session at the gateway
+  personas.delete('/:space(private|family)/sessions/:sessionId', async (req, res) => { // explicit confirmation, no authenticated human identity
     if (req.body?.confirmation !== 'DELETE CONVERSATION') return fail(res, 400, 'Confirme l’effacement de cette conversation.', 'CONVERSATION_DELETE_CONFIRMATION_REQUIRED');
     if (activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Arrête la réponse en cours avant d’effacer la conversation.', 'VOICE_TURN_IN_PROGRESS');
     try { return envelope(res, await conversations.deleteSession((req.params.space === 'family' ? familySessionScope : personalSessionScope)(req.params.sessionId))); }

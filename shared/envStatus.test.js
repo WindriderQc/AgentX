@@ -9,7 +9,7 @@ const CATALOG = {
   version: 1,
   variables: {
     FALLBACK_TASK: { services: ['core'], forwarded: true, default: null, category: 'routing', secret: false, description: 'Ladder task.' },
-    FACE_ENABLED: { services: ['core'], forwarded: true, default: 'false', category: 'household', secret: false, description: 'Face unlock.' },
+    FACE_ENABLED: { services: ['core'], forwarded: true, default: 'false', category: 'household', secret: false, description: 'Synthetic camera flag.' },
     BRIDGE_TOKEN: { services: ['core'], forwarded: true, default: null, category: 'bridges', secret: true, description: 'Bridge token.' },
     GATEWAY_URL: { services: ['core'], forwarded: true, default: null, category: 'bridges', secret: false, description: '' },
     SNEAKY_PASSWORD: { services: ['core'], forwarded: false, default: null, category: 'other', secret: false, description: '' },

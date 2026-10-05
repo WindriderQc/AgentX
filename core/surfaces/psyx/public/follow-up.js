@@ -115,7 +115,7 @@ function wireFollowUp() {
       if (outcome) await recordOutcome(outcome.dataset.experimentOutcome, outcome.dataset.outcome);
       else await recordCheckIn(Number(checkIn.dataset.checkIn), checkIn.dataset.phase);
     } catch (error) {
-      if (error.code !== 'PSYX_LOCKED') stateSaveStatus.textContent = 'échec de l’enregistrement';
+      stateSaveStatus.textContent = 'échec de l’enregistrement';
     } finally {
       pending = false;
     }

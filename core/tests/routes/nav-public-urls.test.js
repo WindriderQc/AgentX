@@ -84,20 +84,20 @@ describe('shared navigation public URL contract', () => {
     }
   });
 
-  test('parent controls have one adult entry in Family across all services', async () => {
+  test('household review has one direct LAN entry in Family across all services', async () => {
     const navigation = buildProductNavigation({ activePage: 'dad-family' });
     expect(navigation.activeSpace.id).toBe('family-group');
     expect(navigation.navItems.flatMap(group => group.children).filter(item => item.id === 'dad-family')).toHaveLength(1);
     for (const service of ['core', 'benchmark', 'rag']) {
       const html = await renderNav(service, 'full', 'dad-family');
       const destination = (service === 'core' ? '' : publicUrls.core) + '/dad/family';
-      expect(hrefFor(html, 'Espace parents')).toBe(destination);
-      const anchor = [...html.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/g)].find(match => match[0].includes('Espace parents'))[0];
-      expect(anchor).toContain('data-access="adult"');
+      expect(hrefFor(html, 'Suivi familial')).toBe(destination);
+      const anchor = [...html.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/g)].find(match => match[0].includes('Suivi familial'))[0];
+      expect(anchor).not.toContain('data-access="adult"');
       expect(anchor).toContain('aria-current="page"');
       expect(html).not.toContain('Suivi des lectures');
-      expect(html).not.toContain('Suivi familial');
-      expect(hrefFor(await renderNav(service, 'demo'), 'Espace parents')).toBeUndefined();
+      expect(html).not.toContain('Espace parents');
+      expect(hrefFor(await renderNav(service, 'demo'), 'Suivi familial')).toBeUndefined();
     }
   });
 

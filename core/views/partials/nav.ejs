@@ -22,7 +22,7 @@
                    <% if (child.external) { %>target="_blank" rel="noopener"<% } %>
                    <% if (child.owner) { %>data-nav-owner="<%= child.owner %>"<% } %>
                    <% if (child.description) { %>title="<%= child.description %>"<% } %>
-                   <% if (item.id !== 'family-group' || child.adult) { %>data-access="adult"<% } %>>
+                   >
                   <i class="fas <%= child.icon %>" aria-hidden="true"></i><%= child.label %>
                   <% if (child.owner) { %><span class="nav-owner-tag"><%= child.owner %></span><% } %>
                   <% if (child.external) { %><i class="fas fa-arrow-up-right-from-square nav-external" aria-label="Nouvel onglet"></i><% } %>
@@ -33,11 +33,10 @@
         </div>
       <% }); %>
     </div>
-    <% if (locals.parentalAccess || locals.householdControls) { %>
+    <% if (locals.householdControls) { %>
       <details class="nav-tools" id="householdTools">
         <summary aria-label="Accès et réglages"><i class="fas fa-ellipsis" aria-hidden="true"></i></summary>
         <div class="nav-tools-panel">
-          <a href="/unlock?next=%2F" data-access="unlock">Espace adulte</a>
           <% if (locals.householdControls) { %><button type="button" id="readingVoiceSettings">Voix des lectures</button><span class="runtime-pill" id="runtimePill" role="status">Connexion…</span><% } %>
         </div>
       </details>

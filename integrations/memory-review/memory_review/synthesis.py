@@ -19,7 +19,7 @@ import re
 from typing import Any, Callable
 from urllib.error import HTTPError
 from urllib.request import Request
-from .transport import parental_headers, urlopen
+from .transport import urlopen
 
 from . import PROMPT_VERSION
 from . import sanitizer, schema
@@ -91,15 +91,10 @@ def http_chat_completion(
     timeout: int = DEFAULT_TIMEOUT_S,
 ) -> str:
     url = f"{base_url.rstrip('/')}/api/hermes-openai/v1/chat/completions"
-    try:
-        access_headers = parental_headers()
-    except OSError as exc:
-        raise SynthesisError("Unable to read the configured access code") from exc
     request = Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
         headers={
-            **access_headers,
             "Content-Type": "application/json",
             "Accept": "application/json",
             "X-AgentX-Caller": "memory-review",

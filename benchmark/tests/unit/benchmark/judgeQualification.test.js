@@ -10,6 +10,7 @@ const JudgeQualification = require('../../../models/JudgeQualification');
 const { SCORER_VERSION } = require('../../../src/services/scoring/scorerVersion');
 const {
     assessJudge,
+    assessJudgeCategories,
     assessLeaderboardRows,
     assessResult,
     buildAccuracyCalibrationReport,
@@ -179,5 +180,37 @@ describe('judge qualification records', () => {
         });
         const full = await getQualificationRecord(first.id);
         expect(full.cases[0]).toMatchObject({ id: 'cal-good-05', attention_passed: true, identity_full_marks: true });
+    });
+});
+
+describe('judge validation per prompt category (#397)', () => {
+    const results = [
+        { id: 'c1', category: 'math', gold_score: 10, judge_score: 9, abs_diff: 1 },
+        { id: 'c2', category: 'math', gold_score: 2, judge_score: 3, abs_diff: 1 },
+        { id: 'c3', category: 'creative', gold_score: 5, judge_score: 8, abs_diff: 3 },
+        { id: 'c4', category: 'reasoning', gold_score: 10, judge_score: 10, abs_diff: 0, identity_case: true, identity_full_marks: true,
+            attention_check: { passed: false } },
+    ];
+    const calibration = (overrides = {}) => {
+        const set = require('../../../data/judge-calibration-set.json');
+        return buildAccuracyCalibrationReport({ host: JUDGE.host, model: JUDGE.model, summary: summary(overrides), results, calibrationSet: set });
+    };
+
+    test('a qualified judge is validated where its calibration cases agree, and named where they do not', async () => {
+        await recordAccuracyCalibration(calibration());
+        const categories = await assessJudgeCategories(JUDGE, ['math', 'creative', 'reasoning', 'translation']);
+        expect(categories.math).toMatchObject({ status: 'validated', cases: 2, mae: 1, causes: [] });
+        expect(categories.creative).toMatchObject({ status: 'failed', cases: 1, mae: 3, causes: ['category_mae_above_1.5'] });
+        expect(categories.reasoning).toMatchObject({ status: 'failed', causes: ['attention_failed'] });
+        expect(categories.translation).toMatchObject({ status: 'no_reference_cases', cases: 0 });
+    });
+
+    test('a judge without a qualifying calibration is unvalidated everywhere', async () => {
+        expect(await assessJudgeCategories(JUDGE, ['math'])).toEqual({
+            math: { status: 'unvalidated', cases: 0, mae: null, causes: ['no_calibration_record'] }
+        });
+        await recordAccuracyCalibration(calibration({ mae: 2 }));
+        const { math } = await assessJudgeCategories(JUDGE, ['math']);
+        expect(math).toMatchObject({ status: 'unvalidated', causes: ['calibration_failed_mae'] });
     });
 });

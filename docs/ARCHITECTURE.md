@@ -1,5 +1,9 @@
 # Architecture
 
+See [private LAN access and migration](PARENTAL_ACCESS.md) and the illustrated
+[local voice ID proposal](VOICE_ID.md). Human access has no account or code;
+voice identity is not implemented.
+
 ## Components
 
 | Component | Responsibility | Runtime dependencies |
@@ -92,8 +96,9 @@ enter the coding lane, including after a requeue clears their assignee. Query
 parameters do not widen that scope. Human management of private tasks continues
 through the task list, detail and editing routes.
 
-Internal task ownership is not browser authorization. The parental gateway
-permits child check-in and requires an adult session for parent controls.
+Internal task ownership is distinct from human identity. Human APIs use the
+private LAN without an account or code. Check-in and explicit household review
+remain separate operations; receipts cannot attest that a parent acted.
 
 `GET /api/pipeline/tasks/:id/eligibility?automation=true` explains the current
 engineering-task admission snapshot with the same dependency, time and automation
@@ -406,8 +411,8 @@ can release a shared GPU before image preparation. See [local images](LOCAL_IMAG
 server code and reuses the RAG client and Memory Policy V2 labels. The Nestor
 consumer, memory adapter, chat context builder, MCP search and Household
 approved-corpus reader share it. It is an information filter, not
-authentication: the request ingress still establishes which capability a caller
-may use. See [ADR 0002](adr/0002-memory-access.md).
+authentication: server-bound capabilities constrain operations, while human
+LAN access does not establish the identity of a person. See [ADR 0002](adr/0002-memory-access.md).
 
 Selected notes live in Core's `MemoryNote` model and scoped `memoryNoteService`.
 The Nestor browser editor, voice operations and the OpenClaw `personal_memory`
@@ -551,7 +556,7 @@ pages and APIs retain the parental gateway guard.
   portrait and memory changes directly into PsyX state, each one logged and
   undoable. Coverage and verified quotation references describe the material
   supplied to that inference; quotation matching does not validate hypotheses.
-  Browser access uses the shared [parental session](PARENTAL_ACCESS.md);
+  Human access uses the [private LAN](PARENTAL_ACCESS.md) without a code;
   native consumers keep a separate access token.
 - `core/surfaces/data-toolbox`: UI served by Core, consuming the optional
   Data process over HTTP. It is read-only except for naming a network device

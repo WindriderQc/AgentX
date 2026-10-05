@@ -14,14 +14,12 @@ marks it stale when that conversation changes. The same capability and editor
 serve personal Nestor. Confirmed points are reference context for subsequent
 replies and new sessions, within each surface's existing private namespace.
 
-`PSYX_ACCESS_TOKEN` configures the existing private access code. Without it,
-private APIs stay locked. `PSYX_ACCESS_MODE=trusted-network` preserves the explicit
-network-only option; it disables locking and is an operator decision.
-Loopback bypass is off by default because Core may sit behind a local proxy.
-`PSYX_LOOPBACK_BYPASS=true` is an explicit instance exception. Cookies remain
-HttpOnly/SameSite Strict, random, expiring and invalidated on process restart.
-Locking hides the application, aborts active browser inference and clears the
-visible transcript/state. An opaque recent-session ID can remain in localStorage.
+Core's human pages/APIs use private LAN access without an account, code, lock
+screen or cookie session. `PSYX_ACCESS_TOKEN` is an independent bearer credential
+for native integrations; explicit invalid credentials are refused. Native-only
+embeddings may select `PSYX_ACCESS_MODE=token`, but Core always uses LAN human
+access. Network restrictions and HTTPS must be checked at the actual gateway.
+An opaque recent-conversation ID may remain in localStorage; it is not identity.
 
 Conversations use Core's collection with owner `surface:psyx:default` and prompt
 `psyx`. Ordinary default-user history cannot read them. PsyX state keeps the
@@ -70,7 +68,7 @@ capture, endpoint detection and playback. It sends completed utterances through
 the same private PsyX chat path, requests short spoken replies and resumes
 listening after playback. The first browser setup prefers an available female
 Canadian French voice from the local catalog, then a female French voice; an
-explicit saved choice wins. Pause, closing, locking, navigation and a hidden page
+explicit saved choice wins. Pause, closing, navigation and a hidden page
 stop capture and cancel browser requests. During PsyX playback the microphone
 stays quiet; the visible stop control cancels the session. Crisis call links
 remain visible in the voice view. Audio buffers are transient, while completed

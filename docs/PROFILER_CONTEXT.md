@@ -64,8 +64,50 @@ the allocation fixed and varies the fill, is the evidence for that.
 The prompt generator's requested fill is not the measured tokenizer coverage.
 Use `promptTokens` and `promptCoveragePct` for the actual workload. Neither an
 allocated context window nor a partially filled successful probe proves recall
-quality across every token of that window. `qualityContextStatus: unknown` is
-intentional until separate quality evidence exists.
+quality across every token of that window.
+
+## Long-context quality
+
+A Full profile then checks whether the model still reads such a window
+(`longContextQuality` in the profile evidence). At 32k, 64k, 128k and 196k
+(`PROFILER_LONG_CONTEXT_QUALITY_TOKENS`) up to the largest verified context, and
+at that context itself when it is larger, the model reads a deterministic
+document of varied filler filled to about 80 % of the window. Five facts are
+planted at 5, 25, 50, 75 and 95 % of its depth, plus a two-hop chain (a
+shipment's courier, then the cabinet where that courier keeps a key) with a
+decoy chain beside it. It answers six numbered lines, scored exactly, with no
+judge: a line counts when it holds its planted value and no other. The prompt
+is refilled from Ollama's `prompt_eval_count` when it underfills (below 60 %)
+or leaves no room for the answer, since Ollama drops the start of a prompt that
+does not fit. A window Ollama did not run at the requested size
+(`context_mismatch`), a request error or an empty answer (`no_answer`) is not
+scored. `qualityVerifiedContext` is the largest window that passed, all six
+lines exact, with every smaller window passing too; `qualityContextStatus`
+reads `verified` only then. Each result keeps the per-depth recall, whether the
+two-hop answer was right or the decoy's, and its prompt size. The probe runs
+under the profile's workload reservation and is skipped with
+`PROFILER_LONG_CONTEXT_QUALITY_ENABLED=false`. It measures recall and one
+inference step on synthetic text, not the reasoning of a real agent task.
+
+## Agent-sized prefill
+
+The Full matrix's fixed cells stop at a 16k prompt. Its `longPrefill` series
+measures 32k, 64k and 128k windows (`PROFILER_MATRIX_LONG_PREFILL_TOKENS`), each
+on its own and filled to 90 %, skipped above the verified safe context, with
+two samples of 32 decoded tokens. It reports the prefill rate
+(`prompt_eval_count` over `prompt_eval_duration`), the time to first token
+(prompt evaluation plus one generated token, from Ollama's timings) and, apart,
+the model load that a new window usually costs.
+
+## Prompt cache
+
+Ollama serves a repeated identical prompt from its prompt cache: it still
+reports every prompt token in `prompt_eval_count`, but `prompt_eval_duration`
+covers only the last one (measured on Ollama's main branch: 5,052 ms, then
+59 ms, for the same 1,534-token prompt). Every throughput, matrix and
+agent-sized prefill sample therefore starts with a line of its own, and the
+evidence says so (`promptIsolation: "unique_first_line"`). Prompt-eval speeds
+and TTFT in profiles without that field may have been served from the cache.
 
 ## Pin context proposals
 

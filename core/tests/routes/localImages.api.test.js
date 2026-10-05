@@ -2,15 +2,16 @@
 const express = require('express');
 const request = require('supertest');
 const { createRouter } = require('../../routes/local-images');
-const { registerParentalAccess } = require('../../src/middleware/parentalAccess');
-test('the family ingress can neither generate nor read private operation receipts', async () => {
+const { registerLegacyHumanAccess } = require('../../src/middleware/legacyHumanAccess');
+test('human LAN image APIs are direct and still report unavailable native generation', async () => {
   const app = express(); app.use(express.json());
-  registerParentalAccess({ app, express, env: { AGENTX_PARENTAL_CODE: 'synthetic-code' } });
-  const images = { accept: jest.fn(), list: jest.fn() };
-  app.use('/api/images', createRouter(images));
-  await request(app).post('/api/images/operations').set('X-AgentX-Entry', 'household').send({}).expect(401);
-  await request(app).get('/api/images/operations').set('X-AgentX-Entry', 'household').expect(401);
-  expect(images.accept).not.toHaveBeenCalled(); expect(images.list).not.toHaveBeenCalled();
+  registerLegacyHumanAccess({ app });
+  app.use('/api/images', createRouter());
+  const response = await request(app).post('/api/images/operations').send({}).expect(503);
+  expect(response.body.code).toBe('LOCAL_IMAGE_ERROR');
+  expect(response.headers['set-cookie']).toBeUndefined();
+  const listed = await request(app).get('/api/images/operations').expect(200);
+  expect(Array.isArray(listed.body.operations)).toBe(true);
 });
 test('trusted local callers receive a persisted pending receipt, not a fabricated result', async () => {
   const app = express(); app.use(express.json());

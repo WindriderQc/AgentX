@@ -66,7 +66,7 @@ function wireFrontier() {
         frontierUi.fallbackNote = '';
         $('frontierStatus').textContent = 'Enregistré.';
       } catch (error) {
-        if (error.code !== 'PSYX_LOCKED') $('frontierStatus').textContent = 'Le réglage n’a pas été enregistré.';
+        $('frontierStatus').textContent = 'Le réglage n’a pas été enregistré.';
       }
       renderPsyXState();
       renderSetup();

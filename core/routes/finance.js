@@ -1,8 +1,8 @@
 'use strict';
 
 // Personal finance ledger (read-only questions + inbox trigger). Gateway
-// traffic needs an adult session through parentalAccess; the OpenClaw finance
-// persona reaches it over loopback.
+// traffic uses the private LAN; the OpenClaw finance persona keeps its
+// native permissions and reaches it over loopback.
 
 const express = require('express');
 const { Readable } = require('stream');

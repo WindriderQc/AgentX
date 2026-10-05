@@ -6,7 +6,7 @@ const { createApp } = require('../src/app');
 
 function config() {
   return {
-    env: 'test', accessMode: 'token', accessToken: 'psyx-secret', sessionTtlMs: 3600000, loopbackBypass: false,
+    env: 'test', accessMode: 'token', accessToken: 'psyx-secret',
     maxBodyBytes: 262144, requestTimeoutMs: 1000, provider: 'ollama',
     voice: { mode: 'disabled', maxAudioBytes: 1024 * 1024 }
   };
@@ -89,21 +89,19 @@ test('protected status supports bearer automation without creating a cookie', as
   });
 });
 
-test('trusted-network mode serves protected APIs without a code and cannot be browser-locked', async () => {
+test('trusted-network human access has no code routes or cookies, and rejects invalid native credentials', async () => {
   const provider = { id: 'ollama', probe: async () => ({}), routing: async () => ({}), stream: async () => ({}) };
-  const trustedConfig = { ...config(), accessMode: 'trusted-network', accessToken: '' };
+  const trustedConfig = { ...config(), accessMode: 'trusted-network' };
   await withServer(createApp({ config: trustedConfig, database: repositories(), provider, logger: { error() {} } }), async (base) => {
-    const auth = await (await fetch(`${base}/api/psyx/auth/status`)).json();
-    assert.equal(auth.data.unlocked, true);
-    assert.equal(auth.data.accessMode, 'trusted-network');
-
     const status = await fetch(`${base}/api/psyx/status`);
     assert.equal(status.status, 200);
-    assert.equal((await status.json()).data.privacy.protected, false);
-
-    const locked = await (await fetch(`${base}/api/psyx/auth/lock`, { method: 'POST' })).json();
-    assert.equal(locked.data.unlocked, true);
-    assert.equal((await fetch(`${base}/api/psyx/status`)).status, 200);
+    assert.equal((await status.json()).data.privacy.humanIdentityVerified, false);
+    assert.equal(status.headers.get('set-cookie'), null);
+    for (const route of ['status', 'unlock', 'lock']) {
+      assert.equal((await fetch(`${base}/api/psyx/auth/${route}`, { method: route === 'status' ? 'GET' : 'POST' })).status, 404);
+    }
+    assert.equal((await fetch(`${base}/api/psyx/state`, { headers: { Authorization: 'Bearer wrong-native-token' } })).status, 401);
+    assert.equal((await fetch(`${base}/api/psyx/state`, { headers: { Authorization: 'Bearer psyx-secret' } })).status, 200);
   });
 });
 
@@ -360,18 +358,17 @@ test('namespaced chat and routing endpoints support the LAN HTTPS proxy', async 
   });
 });
 
-test('configuration reports gateway access without disclosing the code and keeps frontier disabled', async () => {
-  const accessAuth = {
-    isLoopback: () => true, configured: () => true,
-    requireSession: (_req, res, next) => { res.locals.psyxUserId = 'gateway-owner'; next(); }
-  };
-  await withServer(createApp({ config: { ...config(), accessToken: '' }, database: repositories(), provider: {}, accessAuth }), async base => {
-    const status = (await (await fetch(`${base}/api/psyx/status`)).json()).data;
+test('configuration reports human LAN access without identity and keeps frontier disabled', async () => {
+  const app = createApp({ config: { ...config(), accessMode: 'trusted-network', accessToken: '' }, database: repositories(), provider: {} });
+  await withServer(app, async base => {
+    const response = await fetch(base + '/api/psyx/status');
+    assert.equal(response.status, 200);
+    const status = (await response.json()).data;
     assert.equal(status.privacy.configured, true);
-    assert.equal(status.privacy.protected, true);
-    assert.deepEqual(status.frontier, { supported: false, enabled: false, location: 'local' });
-    assert.equal(status.voice.enabled, false);
-    assert.doesNotMatch(JSON.stringify(status), /psyx-secret/);
+    assert.equal(status.privacy.protected, false);
+    assert.equal(status.privacy.humanIdentityVerified, false);
+    assert.equal(status.frontier.enabled, false);
+    assert.equal(JSON.stringify(status).includes('psyx-secret'), false);
   });
 });
 

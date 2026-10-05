@@ -79,7 +79,6 @@ function renderVoiceStatus(status = null, error = null) {
 }
 
 async function loadVoiceStatus() {
-  const accessEpoch = state.accessEpoch;
   if (!state.voice.enabled) {
     state.voice.reachable = false;
     renderVoiceStatus();
@@ -88,7 +87,6 @@ async function loadVoiceStatus() {
   $('voiceStatusText').textContent = 'Vérification de VoiX local…';
   try {
     const [status, catalog] = await Promise.all([api('/api/psyx/voice/status', { cache: 'no-store' }), api('/api/psyx/voice/catalog', { cache: 'no-store' }).catch(() => null)]);
-    assertCurrentAccess(accessEpoch);
     state.voice.catalog = catalog;
     chooseInitialVoice(catalog);
     state.voice.reachable = Boolean(status.reachable);
@@ -96,7 +94,6 @@ async function loadVoiceStatus() {
     state.voice.status = status;
     renderVoiceStatus(status);
   } catch (error) {
-    if (accessEpoch !== state.accessEpoch) return;
     state.voice.reachable = false;
     state.voice.status = null;
     renderVoiceStatus(null, error);
@@ -118,8 +115,8 @@ async function refreshMicrophones({ requestPermission = false } = {}) {
 }
 
 async function transcribeRecording(blob) {
-  const accessEpoch = state.accessEpoch;
-  if (!state.unlocked) return;
+  const captureSequence = state.voice.captureSequence;
+  if (!state.ready) return;
   $('voiceActionStatus').textContent = 'Transcription locale…';
   const response = await fetch('/api/psyx/voice/transcribe', {
     method: 'POST',
@@ -131,8 +128,8 @@ async function transcribeRecording(blob) {
     body: blob
   });
   const payload = await response.json().catch(() => ({}));
-  assertCurrentAccess(accessEpoch);
-  if (response.status === 401 && payload.code === 'PSYX_LOCKED') showGate('PsyX a été verrouillé ou la séance privée a expiré.');
+  assertCurrentCapture(captureSequence);
+
   if (!response.ok || payload.ok === false) throw new Error(payload.message || `La transcription a échoué (${response.status})`);
   const transcript = String(payload.data?.text || payload.text || '').trim();
   if (!transcript) throw new Error('Aucune parole détectée.');
@@ -145,7 +142,7 @@ async function transcribeRecording(blob) {
 }
 
 async function stopVoiceRecording() {
-  const accessEpoch = state.accessEpoch;
+  const captureSequence = state.voice.captureSequence;
   const recorder = state.voice.recorder;
   if (!recorder || recorder.state !== 'recording') return;
   clearTimeout(state.voice.stopTimer);
@@ -153,7 +150,7 @@ async function stopVoiceRecording() {
     recorder.addEventListener('stop', resolve, { once: true });
     recorder.stop();
   });
-  assertCurrentAccess(accessEpoch);
+  assertCurrentCapture(captureSequence);
   state.voice.mediaStream?.getTracks().forEach((track) => track.stop());
   const blob = new Blob(state.voice.chunks, { type: recorder.mimeType || 'audio/webm' });
   state.voice.recorder = null;
@@ -165,17 +162,17 @@ async function stopVoiceRecording() {
 
 async function startVoiceRecording() {
   if ($('voiceSessionDialog').open) return;
-  const accessEpoch = state.accessEpoch;
-  if (!state.unlocked) return;
+  const captureSequence = state.voice.captureSequence;
+  if (!state.ready) return;
   if (!voiceSecureContextAvailable()) throw new Error('Utilise l’adresse HTTPS de confiance de PsyX pour enregistrer.');
   state.voice.speech?.cancel();
   const deviceId = state.voice.prefs.inputDeviceId;
   const mediaStream = await navigator.mediaDevices.getUserMedia({
     audio: deviceId ? { deviceId: { exact: deviceId } } : true
   });
-  if (accessEpoch !== state.accessEpoch) {
+  if (captureSequence !== state.voice.captureSequence) {
     mediaStream.getTracks().forEach(track => track.stop());
-    assertCurrentAccess(accessEpoch);
+    assertCurrentCapture(captureSequence);
   }
   const preferredType = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'].find((type) => MediaRecorder.isTypeSupported(type));
   const recorder = preferredType ? new MediaRecorder(mediaStream, { mimeType: preferredType }) : new MediaRecorder(mediaStream);
@@ -183,7 +180,7 @@ async function startVoiceRecording() {
   state.voice.recorder = recorder;
   state.voice.chunks = [];
   recorder.addEventListener('dataavailable', (event) => {
-    if (accessEpoch === state.accessEpoch && event.data.size) state.voice.chunks.push(event.data);
+    if (captureSequence === state.voice.captureSequence && event.data.size) state.voice.chunks.push(event.data);
   });
   recorder.start(250);
   state.voice.stopTimer = setTimeout(() => void stopVoiceRecording().catch(showVoiceError), 120000);
@@ -215,7 +212,7 @@ async function toggleVoiceRecording() {
 }
 
 async function speakText(text) {
-  if (!state.unlocked || !state.voice.enabled || !state.voice.reachable || !String(text || '').trim()) return;
+  if (!state.ready || !state.voice.enabled || !state.voice.reachable || !String(text || '').trim()) return;
   try {
     if (!window.VoixAudio) throw new Error('Le lecteur de voix local est indisponible.');
     state.voice.speech ||= new window.VoixAudio.Speech({
@@ -230,7 +227,7 @@ async function speakText(text) {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        if (response.status === 401 && payload.code === 'PSYX_LOCKED') showGate('PsyX a été verrouillé ou la séance privée a expiré.');
+
         throw new Error(payload.message || `La synthèse a échoué (${response.status})`);
       }
       return response;
@@ -270,8 +267,29 @@ function wireVoiceControls() {
   $('voiceTtsProvider').addEventListener('change', () => updateVoicePreference('ttsProvider', $('voiceTtsProvider').value));
   $('voiceTtsVoice').addEventListener('change', () => updateVoicePreference('ttsVoice', $('voiceTtsVoice').value.trim()));
   $('voiceTest').addEventListener('click', () => speakText(voicePreferences.testSentence(state.voice.prefs)));
-  $('voiceStop').addEventListener('click', () => { stopVoiceSession(); state.voice.speech?.cancel(); $('voiceActionStatus').textContent = 'Voix arrêtée.'; });
+  $('voiceStop').addEventListener('click', () => { cancelVoiceCapture(); stopVoiceSession(); state.voice.speech?.cancel(); $('voiceActionStatus').textContent = 'Voix arrêtée.'; });
   $('voiceTtsCustom').addEventListener('change', () => updateVoicePreference('ttsVoice', $('voiceTtsCustom').value.trim()));
+  voiceDialog.addEventListener('close', cancelVoiceCapture);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancelVoiceCapture(); });
+  window.addEventListener('pagehide', cancelVoiceCapture);
   wireVoiceSession();
   voiceRecord.addEventListener('click', toggleVoiceRecording);
+}
+
+// Capture cancellation is a microphone lifecycle guard, independent of human access.
+function assertCurrentCapture(sequence) {
+  if (sequence !== state.voice.captureSequence) {
+    throw Object.assign(new Error('Voice capture was cancelled.'), { name: 'AbortError' });
+  }
+}
+
+function cancelVoiceCapture() {
+  state.voice.captureSequence += 1;
+  clearTimeout(state.voice.stopTimer);
+  state.voice.mediaStream?.getTracks().forEach(track => track.stop());
+  if (state.voice.recorder?.state === 'recording') state.voice.recorder.stop();
+  state.voice.recorder = null;
+  state.voice.mediaStream = null;
+  state.voice.chunks = [];
+  updateVoiceButton();
 }

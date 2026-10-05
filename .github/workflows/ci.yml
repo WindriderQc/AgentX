@@ -100,7 +100,6 @@ jobs:
           RAG_PORT=43182
           DATA_PORT=43183
           PSYX_ACCESS_TOKEN=ci-synthetic-psyx-code
-          AGENTX_PARENTAL_CODE=ci-synthetic-parent-code
           AGENTX_RUNTIME_BRIDGES_ENABLED=true
           AGENTX_PRINTER_VISION_ENABLED=true
           ENV
@@ -142,14 +141,12 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:43180/data-toolbox | grep -q 'assets/data-toolbox/app.js'
           curl --fail --silent --show-error http://127.0.0.1:43180/api/data-toolbox/status | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{const d=JSON.parse(s).data;require('node:assert/strict').equal(d.dataService.healthy,d.dataService.total)})"
           curl --fail --silent --show-error http://127.0.0.1:43180/psyx | grep -q 'PsyX'
-          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/psyx/state)" = 401
+          curl --fail --silent --show-error http://127.0.0.1:43180/api/psyx/state
           curl --fail --silent --show-error -H 'Authorization: Bearer ci-synthetic-psyx-code' http://127.0.0.1:43180/api/psyx/state
-          test "$(curl --silent -H 'X-AgentX-Entry: household' -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/voice-personas/private/agents)" = 401
-          curl --fail --silent --show-error -c /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' -H 'Content-Type: application/json' -d '{"code":"ci-synthetic-parent-code"}' http://127.0.0.1:43180/api/access/unlock
-          curl --fail --silent --show-error -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' http://127.0.0.1:43180/api/psyx/state
-          curl --fail --silent --show-error -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' http://127.0.0.1:43180/api/voice-personas/private/agents
-          curl --fail --silent --show-error -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' http://127.0.0.1:43180/panel > /dev/null
-          test "$(curl --silent -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/psyx/state)" = 401
+          curl --fail --silent --show-error http://127.0.0.1:43180/api/voice-personas/private/agents
+          curl --fail --silent --show-error http://127.0.0.1:43180/panel > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:43180/api/psyx/state
+          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/access/authorize)" = 404
           curl --fail --silent --show-error http://127.0.0.1:43180/api/runtime-bridges/status
           curl --fail --silent --show-error http://127.0.0.1:43180/api/printer-vision/adapter
           docker compose --env-file "$AGENTX_ENV_FILE" exec -T rag node <<'NODE'

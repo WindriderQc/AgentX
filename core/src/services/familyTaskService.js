@@ -182,7 +182,7 @@ async function checkIn(input = {}) {
   }
   const updated = await commitLaneTask(task, {
     fields: { status: 'review', assignee: FAMILY_PIPELINE_ASSIGNEE, checkedInAt: new Date() },
-    feedback: feedback(`kid:${childId}`, 'Checked in from the tool-free Kids Room; waiting for parent approval.'),
+    feedback: feedback(`kid:${childId}`, 'Checked in from the tool-free Kids Room; waiting for household review.'),
     kind: 'family_check_in', channel: 'family_surface', declaredActor: 'family-child',
   });
   return { alreadyWaiting: false, chore: familyChore(updated) };
@@ -191,14 +191,14 @@ async function checkIn(input = {}) {
 async function approve(input = {}) {
   const task = await getTask(input.ref);
   if (task.status === 'done') return { alreadyApproved: true, rolledOver: false, chore: familyChore(task) };
-  if (task.status !== 'review') throw failure(409, 'FAMILY_CHORE_NOT_WAITING', 'Chore is not waiting for parent approval');
+  if (task.status !== 'review') throw failure(409, 'FAMILY_CHORE_NOT_WAITING', 'Chore is not waiting for household review');
   const now = new Date();
   const nextDue = nextRoutineDue(task, now);
   const updated = await commitLaneTask(task, {
     fields: { lastCompletedAt: now, completionCount: Math.max(0, Number(task.completionCount) || 0) + 1,
       checkedInAt: null, status: nextDue ? 'queued' : 'done', assignee: FAMILY_PIPELINE_ASSIGNEE,
       ...(nextDue ? { dueAt: nextDue } : {}) },
-    feedback: feedback('household-parent', nextDue ? `Approved; ${task.cadence} routine rolled forward.` : 'Approved and completed by parent.'),
+    feedback: feedback('household-parent', nextDue ? `Approved; ${task.cadence} routine rolled forward.` : 'Approved and completed from the household review surface.'),
     kind: nextDue ? 'family_rolled_over' : 'family_approved',
     channel: 'family_surface', declaredActor: 'household-parent',
   });
@@ -218,7 +218,7 @@ async function reopen(input = {}) {
 
 async function cancel(input = {}) {
   const task = await getTask(input.ref);
-  return { chore: familyChore(await cancelTask(task, 'household-parent', 'Cancelled from the parent household surface.')) };
+  return { chore: familyChore(await cancelTask(task, 'household-parent', 'Cancelled from the household review surface.')) };
 }
 
 module.exports = { listProfiles, listProfileDetails, setProfileBirthDate, addProfile, archiveProfile, launch, room, list, create, checkIn, approve, reopen, cancel };

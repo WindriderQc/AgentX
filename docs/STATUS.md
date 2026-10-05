@@ -2,11 +2,16 @@
 
 AgentX is one active repository with optional profiles and capabilities.
 Core, Benchmark and RAG run together; Data is optional. Application ports bind
-to loopback. Family devices use the LAN HTTPS [parental gateway](PARENTAL_ACCESS.md).
+to loopback. Family devices use the LAN HTTPS [private gateway without a human code](PARENTAL_ACCESS.md).
 The runtime baseline is Node.js 24 with Express, MongoDB, Qdrant, Ollama and Docker.
 Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
+
+- **Human access.** Private LAN HTTPS entries open human pages/APIs directly,
+  without an account, code or adult cookie. Native credentials and business
+  boundaries remain separate. [Voice ID](VOICE_ID.md) is a design proposal only;
+  this repository change does not establish deployment or device acceptance.
 
 - **Surfaces.** The full profile serves Nestor (`/dad`), Household (`/panel`),
   Reader (`/lecture`), animal sounds (`/kids/sounds`), PsyX (`/psyx`) and the
@@ -178,17 +183,15 @@ Issues hold the current work and remaining acceptance:
 | Evaluate dedicated collections for family and personal tasks | [#7](https://github.com/WindriderQc/AgentX/issues/7) |
 | Bounded maintenance actions through Core | [#8](https://github.com/WindriderQc/AgentX/issues/8) |
 | Measure spoken-turn latency by observed phase | [#9](https://github.com/WindriderQc/AgentX/issues/9) |
-| Build an adult-reviewed household RAG corpus | [#10](https://github.com/WindriderQc/AgentX/issues/10) |
+| Build an explicitly reviewed household RAG corpus | [#10](https://github.com/WindriderQc/AgentX/issues/10) |
 | Characterize CPU spill for models exceeding GPU memory | [#11](https://github.com/WindriderQc/AgentX/issues/11) |
-| Real-device acceptance for camera face unlock | [#12](https://github.com/WindriderQc/AgentX/issues/12) |
-| Per-person camera profiles | [#13](https://github.com/WindriderQc/AgentX/issues/13) |
 | Bounded capability milestones for an additional Nestor persona | [#14](https://github.com/WindriderQc/AgentX/issues/14) |
 | Complete finance capability and legacy retirement | [#15](https://github.com/WindriderQc/AgentX/issues/15) |
 | Qualify a reproducible thinking-mode benchmark campaign | [#16](https://github.com/WindriderQc/AgentX/issues/16) |
 | Optional visual math stage for Household | [#18](https://github.com/WindriderQc/AgentX/issues/18) |
 | Apply context proposals with co-resident model evidence | [#19](https://github.com/WindriderQc/AgentX/issues/19) |
 | Nestor reviewer context and measured voice impact | [#20](https://github.com/WindriderQc/AgentX/issues/20) |
-| Adult-reviewed household document promotion to RAG | [#21](https://github.com/WindriderQc/AgentX/issues/21) |
+| Explicitly reviewed household document promotion to RAG | [#21](https://github.com/WindriderQc/AgentX/issues/21) |
 | Verified local mail archive and safe provider cleanup | [#23](https://github.com/WindriderQc/AgentX/issues/23) |
 | Nestor private knowledge across sources | [#24](https://github.com/WindriderQc/AgentX/issues/24) |
 | Instance inventory and storage placement tooling | [#25](https://github.com/WindriderQc/AgentX/issues/25) |

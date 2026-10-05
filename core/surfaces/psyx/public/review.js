@@ -44,11 +44,11 @@ function stopReviewWatch() {
   review.watch = null;
 }
 
-async function pollReview(conversationId, accessEpoch, startedAt) {
-  if (accessEpoch !== state.accessEpoch || review.watch?.conversationId !== conversationId) return;
+async function pollReview(conversationId, watch, startedAt) {
+  if (watch !== review.watch || review.watch?.conversationId !== conversationId) return;
   try {
     const status = await api(`/api/psyx/review/status?conversationId=${encodeURIComponent(conversationId)}`, { cache: 'no-store' });
-    if (accessEpoch !== state.accessEpoch || state.conversationId !== conversationId) return;
+    if (watch !== review.watch || state.conversationId !== conversationId) return;
     review.enabled = status.enabled !== false;
     review.last = status;
     if (['done', 'failed'].includes(status.status)) {
@@ -63,12 +63,12 @@ async function pollReview(conversationId, accessEpoch, startedAt) {
     }
     renderReviewIndicator(status);
   } catch (error) {
-    if (error.code === 'PSYX_LOCKED') return stopReviewWatch();
+
   }
   if (Date.now() - startedAt > REVIEW_POLL_LIMIT_MS) return stopReviewWatch();
   // Another session may have been opened while this poll was in flight.
-  if (review.watch?.conversationId !== conversationId) return;
-  review.watch.timer = setTimeout(() => void pollReview(conversationId, accessEpoch, startedAt), REVIEW_POLL_MS);
+  if (watch !== review.watch || review.watch?.conversationId !== conversationId) return;
+  review.watch.timer = setTimeout(() => void pollReview(conversationId, watch, startedAt), REVIEW_POLL_MS);
 }
 
 function watchReview(conversationId) {
@@ -77,7 +77,7 @@ function watchReview(conversationId) {
   review.last = { status: 'queued' };
   renderReviewIndicator();
   review.watch = { conversationId, timer: null };
-  void pollReview(conversationId, state.accessEpoch, Date.now());
+  void pollReview(conversationId, review.watch, Date.now());
 }
 
 // On session restore, show a review still in progress for that conversation.
@@ -136,7 +136,7 @@ async function settleProposal(id, action, body = {}) {
   try {
     result = await api(`/api/psyx/state/proposals/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: JSON.stringify(body) });
   } catch (error) {
-    if (error.code === 'PSYX_LOCKED') return;
+
     // Already settled elsewhere (a double click, another tab): show the current state.
     stateSaveStatus.textContent = error.status === 404 ? 'déjà traitée' : 'échec de l’enregistrement';
     await loadPsyXState().catch(() => {});

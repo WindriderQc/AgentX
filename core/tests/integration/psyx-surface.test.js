@@ -13,7 +13,6 @@ jest.mock('../../src/extensions/trustedRuntimeServices', () => {
 });
 
 process.env.PSYX_ACCESS_TOKEN = 'synthetic-psyx-access';
-process.env.PSYX_LOOPBACK_BYPASS = 'false';
 // The background review is covered by the surface tests; here it must not add
 // inference calls in the middle of the exact call counts below.
 process.env.PSYX_REVIEW_DELAY_MS = '600000';
@@ -32,16 +31,16 @@ describe('PsyX built into Core with private scope', () => {
     executeForTest.mockClear();
   });
 
-  test('locks private APIs, honors browser unlock/lock and leaves other Core surfaces untouched', async () => {
+  test('opens human LAN APIs directly and preserves explicit native bearer validation', async () => {
     const page = await request(app).get('/psyx').expect(200);
     expect(page.headers['content-security-policy']).toContain("frame-ancestors 'none'");
-    await request(app).get('/api/psyx/state').expect(401);
-    await request(app).get('/api/psyx/state').set('X-Forwarded-For', '127.0.0.1').expect(401);
+    await request(app).get('/api/psyx/state').expect(200);
+    await request(app).get('/api/psyx/state').set('Authorization', 'Bearer invalid').expect(401);
     const browser = request.agent(app);
-    await browser.post('/api/psyx/auth/unlock').send({ code: 'synthetic-psyx-access' }).expect(200);
     await browser.get('/api/psyx/state').expect(200);
-    await browser.post('/api/psyx/auth/lock').send({}).expect(200);
-    await browser.get('/api/psyx/state').expect(401);
+    await browser.get('/panel').expect(200);
+    await browser.get('/api/psyx/state').expect(200);
+    await browser.post('/api/psyx/auth/unlock').send({ code: 'synthetic-psyx-access' }).expect(404);
     expect((await request(app).get('/health')).body.service).toBe('agentx-core');
     const dad = await request(app).get('/dad').expect(200);
     expect(String(dad.headers['content-security-policy'] || '')).not.toContain("frame-ancestors 'none'");
@@ -122,7 +121,7 @@ describe('PsyX built into Core with private scope', () => {
     state = (await auth(request(app).get('/api/psyx/state')).expect(200)).body.data;
     const item = state.hypotheses[0];
     const url = `/api/psyx/state/items/hypotheses/${item.id}`;
-    await request(app).patch(url).send({ text: 'Unauthorized', expectedRevision: state.revision }).expect(401);
+    await request(app).patch(url).set('Authorization', 'Bearer invalid-native-token').send({ text: 'Unauthorized', expectedRevision: state.revision }).expect(401);
     const corrected = (await auth(request(app).patch(url)).send({ text: 'User corrected hypothesis', expectedRevision: state.revision }).expect(200)).body.data.state;
     expect(corrected.hypotheses[0]).toMatchObject({ text: 'User corrected hypothesis', sourceConversationId: 'synthetic-origin', correctedBy: 'user', evidence: ['Synthetic user statement'] });
     await auth(request(app).patch(url)).send({ text: 'Stale', expectedRevision: state.revision }).expect(409);
