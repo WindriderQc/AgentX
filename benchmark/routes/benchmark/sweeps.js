@@ -33,6 +33,10 @@ const {
  * The response includes:
  * - payloads.profileQueue for /api/profiler/pipeline/profile-host
  * - payloads.benchmark for /api/benchmark/batch when models are ready
+ * Each candidate's advisory fit estimate reads the KV layout of installed
+ * models from /api/show. Optional `kv_cache_type` (f16 | q8_0 | q4_0) and
+ * `request_slots` state the host's Ollama settings; unstated, f16 and one slot
+ * are assumed and the estimate says so.
  */
 router.post('/sweeps/plan', async (req, res) => {
     try {
