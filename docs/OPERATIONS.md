@@ -862,6 +862,10 @@ tools or thinking, its system prompt names the brain in use, its reply starts
 with a one-line notice (`🪶 Cerveau léger (…)`), and it carries the
 `X-AgentX-Degraded*` headers. When no rung answers, the busy reply remains.
 
+`OPENCLAW_CONVERSATION_NO_THINK_MODELS` lists conversation models that answer
+without reasoning whatever thinking level the agent asks for, for example the
+model of a spoken lane; the other models keep the level they were sent.
+
 ## Routing snapshot cache
 
 The runtime bridges (OpenClaw model discovery, inspection and every model call;

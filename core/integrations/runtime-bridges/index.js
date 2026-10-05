@@ -6,7 +6,7 @@ const { CodingTaskPreparation } = require('./coding-task-preparation');
 const { cleanBaseUrl } = require('./common');
 const { registerHermesProtocol } = require('./hermes/protocol');
 const { registerOpenClawProtocol } = require('./openclaw/protocol');
-const { createConversationHostResolver, parseConversationHosts } = require('./openclaw/conversationHosts');
+const { createConversationHostResolver, parseConversationHosts, parseNoThinkModels } = require('./openclaw/conversationHosts');
 const { createAioOpsEvidenceService } = require('./evidence-service');
 const { registerEcosystemSnapshotMcp } = require('./ecosystem-snapshot-mcp');
 const { registerHermesOperations, registerOpenClawOperations } = require('./operations');
@@ -61,6 +61,7 @@ function validateEnvironment() {
     throw new Error('HERMES_AUTHORITY_CONTEXT is invalid');
   }
   parseConversationHosts(process.env.OPENCLAW_CONVERSATION_HOSTS);
+  parseNoThinkModels(process.env.OPENCLAW_CONVERSATION_NO_THINK_MODELS);
   validateDshStudioEnvironment();
 }
 
@@ -79,6 +80,7 @@ function register(api) {
   const { app, express, logger, mongoose, runtimeServices, standardJsonParser } = api;
   const evidence = createAioOpsEvidenceService();
   const conversationHosts = createConversationHostResolver(process.env.OPENCLAW_CONVERSATION_HOSTS);
+  const noThinkModels = parseNoThinkModels(process.env.OPENCLAW_CONVERSATION_NO_THINK_MODELS);
   const pipelineAttribution = new PipelineAttributionLeaseManager({
     taskReader: async (pipelineId) => {
       const db = mongoose?.connection?.db;
@@ -162,7 +164,7 @@ function register(api) {
   });
 
   app.use('/api/openclaw-ollama', registerOpenClawProtocol({
-    express, runtimeServices, pipelineAttribution, logger,
+    express, runtimeServices, pipelineAttribution, logger, noThinkModels,
     resolveConversationTarget: async model => await app.locals?.aioOpsConversationTarget?.(model)
       || conversationHosts(model)
   }));

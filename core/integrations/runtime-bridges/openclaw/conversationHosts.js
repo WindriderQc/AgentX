@@ -23,4 +23,18 @@ function createConversationHostResolver(value) {
   return model => targets.get(model) || null;
 }
 
-module.exports = { createConversationHostResolver, parseConversationHosts };
+// Operator-declared conversation models that answer without reasoning, e.g.
+// OPENCLAW_CONVERSATION_NO_THINK_MODELS="gemma4:12b-it-qat" for a spoken lane
+// where the wait before the first word matters more than the reasoning pass.
+function parseNoThinkModels(value) {
+  const models = new Set();
+  for (const model of String(value || '').split(',').map(item => item.trim()).filter(Boolean)) {
+    if (/[\s=]/.test(model)) {
+      throw new Error(`OPENCLAW_CONVERSATION_NO_THINK_MODELS entry "${model}" must be a model name`);
+    }
+    models.add(model);
+  }
+  return models;
+}
+
+module.exports = { createConversationHostResolver, parseConversationHosts, parseNoThinkModels };
