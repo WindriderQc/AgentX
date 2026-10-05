@@ -78,6 +78,8 @@ const DEFAULT_EXECUTION_CONFIG = {
  * @param {Object} config - User-provided config
  * @returns {Object} - Normalized config with defaults applied
  */
+const RESPONSE_BUDGET_RULE = 'documented_default_half_window_v1';
+
 function normalizeExecutionConfig(config = {}) {
     const responseMaxTokensExplicit = config?.response_max_tokens_source
         ? config.response_max_tokens_source === 'caller'
@@ -114,6 +116,13 @@ function normalizeExecutionConfig(config = {}) {
         merged.response_max_tokens = merged.response_min_tokens;
     }
     merged.response_max_tokens_source = responseMaxTokensExplicit ? 'caller' : 'default';
+    // A launch without its own budget gets the documented default, limited to
+    // half of each candidate's window (inferenceContractSnapshot). A stored
+    // config keeps the rule it was launched with: earlier batches ran under
+    // Core's smaller output reserve and stay in their own cohort.
+    if (responseMaxTokensExplicit) delete merged.response_budget_rule;
+    else if (!config?.response_max_tokens_source) merged.response_budget_rule = RESPONSE_BUDGET_RULE;
+    else if (merged.response_budget_rule !== RESPONSE_BUDGET_RULE) delete merged.response_budget_rule;
     if (merged.num_ctx === null || merged.num_ctx === undefined || merged.num_ctx === '') {
         merged.num_ctx = null;
     } else {
@@ -411,6 +420,7 @@ function applyLengthHint(promptText, expectedTokens, numPredict, config) {
 
 module.exports = {
     DEFAULT_EXECUTION_CONFIG,
+    RESPONSE_BUDGET_RULE,
     normalizeExecutionConfig,
     applyLengthHint,
     buildPromptHints,

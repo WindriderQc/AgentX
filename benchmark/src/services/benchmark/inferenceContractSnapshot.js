@@ -7,6 +7,7 @@ const { withBenchmarkServiceAuth } = require('../../helpers/coreServiceAuth');
 const { benchmarkFetch } = require('./http');
 const { getModelDigest } = require('./modelDigestService');
 const { normalizeModelTag } = require('../../../../shared/modelNames');
+const { RESPONSE_BUDGET_RULE } = require('./config');
 
 const CORE_URL = process.env.CORE_URL || 'http://localhost:3080';
 const CAMPAIGN_SCHEMA_VERSION = 1;
@@ -186,6 +187,21 @@ async function resolveContractNumCtx(model, host, deps = {}) {
     };
 }
 
+/**
+ * The response budget of a launch that set none: the documented default
+ * (`execution_config.response_max_tokens`), limited to half of the frozen
+ * window so the other half stays for the prompt, and never below the reserve
+ * Core chose. Null when Core's reserve already covers it.
+ */
+function documentedDefaultBudget(snapshot, executionConfig) {
+    if (executionConfig.response_budget_rule !== RESPONSE_BUDGET_RULE) return null;
+    const windowTokens = snapshot.contextBudget.windowTokens;
+    const reserved = snapshot.contextBudget.output.reservedTokens;
+    const inputFloor = Math.max(MIN_FROZEN_INPUT_TOKENS, Math.ceil(windowTokens / 2));
+    const budget = Math.min(Number(executionConfig.response_max_tokens) || 0, windowTokens - inputFloor);
+    return budget > reserved ? budget : null;
+}
+
 function buildCandidate(snapshot, request, executionConfig) {
     const mode = resolveFrozenMode(snapshot, executionConfig);
     return {
@@ -199,6 +215,9 @@ function buildCandidate(snapshot, request, executionConfig) {
             num_ctx: snapshot.contextBudget.windowTokens,
             num_ctx_source: `inference_contract:${snapshot.contextBudget.source}`,
             num_predict: snapshot.contextBudget.output.reservedTokens,
+            num_predict_source: request.options?.num_predict
+                ? (executionConfig.response_max_tokens_source === 'caller' ? 'caller' : RESPONSE_BUDGET_RULE)
+                : 'core_default_reserve',
             sampling: {
                 profile: executionConfig.sampling_profile || 'controlled',
                 source: executionConfig.sampling_source || 'controlled_override',
@@ -399,8 +418,15 @@ async function resolveStandaloneCampaignInferenceContracts({
     const requestFingerprint = fingerprint(request);
     const candidates = [];
     for (const candidateRequest of request.candidates) {
-        const snapshot = await fetchSnapshot(candidateRequest, deps);
-        candidates.push(buildCandidate(snapshot, candidateRequest, executionConfig));
+        let resolved = candidateRequest;
+        let snapshot = await fetchSnapshot(candidateRequest, deps);
+        const budget = candidateRequest.options.num_predict ? null : documentedDefaultBudget(snapshot, executionConfig);
+        if (budget) {
+            // Same window, documented budget instead of Core's reserve.
+            resolved = { ...candidateRequest, options: { ...candidateRequest.options, num_predict: budget } };
+            snapshot = await fetchSnapshot(resolved, deps);
+        }
+        candidates.push(buildCandidate(snapshot, resolved, executionConfig));
     }
     return {
         schemaVersion: CAMPAIGN_SCHEMA_VERSION,
@@ -489,6 +515,7 @@ module.exports = {
     assertFrozenArtifactDigest,
     buildResolutionRequest,
     candidateKey,
+    documentedDefaultBudget,
     getFrozenModelExecutionConfig,
     loadOrResolveCampaignInferenceContracts,
     loadOrResumeCampaignInferenceContracts,
