@@ -71,4 +71,5 @@ Disposable Mongo/HTTP checks cover export, scope boundaries, repeated deletion,
 an in-flight upload and interrupted cleanup.
 
 Conversation scoping does not authenticate a person on a shared child device.
-Adult entry is the [parental session](../PARENTAL_ACCESS.md).
+Human entry uses the [private LAN](../PARENTAL_ACCESS.md), without an account
+or code; this does not establish the identity of a person.

@@ -2,7 +2,7 @@
 
 AgentX is intended for local or private-LAN use. Application ports bind to
 loopback; MongoDB and Qdrant stay on the internal Docker network. Configure the
-[LAN HTTPS parental gateway](docs/PARENTAL_ACCESS.md) before family access from
+[private LAN HTTPS gateway](docs/PARENTAL_ACCESS.md) before family access from
 other devices. Public source visibility does not make the application suitable
 for an internet-facing deployment.
 

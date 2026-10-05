@@ -2,11 +2,11 @@
 
 Operations capabilities for an AgentX instance. Use the existing systemd timers and Windows tasks; this directory does
 not install a scheduler or start background work. Keep instance settings, receipts,
-access codes and backup generations outside the checkout.
+credentials and backup generations outside the checkout.
 
 | Helper | External settings | Behavior |
 |---|---|---|
-| `codex-usage-sync.js` / `sync-codex-usage-to-prod.ps1` | Endpoint, sessions root, optional `AGENTX_ACCESS_CODE_FILE` | Sends sanitized counters only; `--dry-run` sends nothing |
+| `codex-usage-sync.js` / `sync-codex-usage-to-prod.ps1` | Endpoint, sessions root | Sends sanitized counters only; `--dry-run` sends nothing |
 | `alert-governance-sweep.js` | `AGENTX_ALERT_RULES`, Core URL, Mongo container/database, optional SSH target | Compares by default; `--apply` reconciles managed rules without deleting unrelated rules |
 | `alert-telegram-relay.js` | `AGENTX_ALERT_TELEGRAM_CONFIG` (see `alert-telegram.example.json`): chat, forum topic, private token file and JSON pointer | Core's Telegram adapter: posts active alerts whose rule lists `telegram`, records delivery in Core, and posts one « Résolu » notice per relayed alert. Optional `quietHours` hold non-critical alerts and notices; previews without `--send` |
 | `council-telegram-relay.js` | `AGENTX_COUNCIL_TELEGRAM_CONFIG` (default `~/.config/agentx/council-telegram.json`): `chatId`, `topicId`, `tokenFile`/`tokenPointer`, optional `councilUrl`, `all`, `lookbackHours`, `maxPerRun` | Mirrors Council sessions that seat OpenClaw agents (or all with `"all": true`) to one forum topic: header with the question, each turn under the speaker's name, then the synthesis, each once and in order. A mirror only: interjections and the chair's decision stay on `/council`. `--create-topic NAME` creates the topic once; previews without `--send` |
@@ -18,12 +18,11 @@ access codes and backup generations outside the checkout.
 | `archive_mirror.py` | Required `--source-host`, `--source-root`, private `--destination`; optional `--latest-zfs-snapshot`, `--remote-receipt` | Append-only pull of a private archive directory (for example the Secretary evidence archive); copies new and changed files, verifies each by SHA-256, keeps replaced versions, never deletes |
 
 Core defaults to loopback port 3180; Data defaults to 3183. Linux helpers on the
-same host use the internal/loopback endpoint. Windows consumers using the HTTPS
-household entry must authenticate with the existing parental code. For usage sync,
-store that code in an ACL-protected external file and select `-AccessCodeFile` or
-`AGENTX_ACCESS_CODE_FILE`; the code is read per request and never passed on the
-command line. Redirects are rejected. Install the instance CA through the normal
-Node trust configuration; never disable TLS verification.
+same host use the internal/loopback endpoint. Windows consumers may use the private
+HTTPS LAN entry without a human code. Usage sync sends no parental bearer and
+requires an explicit API acceptance receipt. Remove obsolete access-code arguments
+from existing tasks/wrappers. Redirects are rejected. Trust the instance CA through
+normal Node configuration; never disable TLS verification.
 
 The alert example is disabled and uses local logging. Preserve the live instance's
 rule IDs, delivery channels and cadence when copying its private configuration.

@@ -108,7 +108,7 @@ function wireToolbox() {
     const button = event.target.querySelector('[type="submit"]');
     button.disabled = true;
     try { await submitAssessment(event.target); } catch (error) {
-      if (error.code !== 'PSYX_LOCKED') { $('assessmentNote').textContent = error.message; button.disabled = false; }
+      { $('assessmentNote').textContent = error.message; button.disabled = false; }
     }
   });
 }

@@ -19,17 +19,16 @@ function browser({ voice = {}, ...extras } = {}) {
   let utterance;
   const audio = { close: () => calls.push('close'), quiet: () => calls.push('quiet'),
     listen: callback => { utterance = callback; }, play: async response => { calls.push(['play', response.status]); } };
-  const state = { accessEpoch: 1, unlocked: true, ready: true, busy: false,
+  const state = { ready: true, busy: false,
     voice: { enabled: true, reachable: true, prefs: { ...prefs.DEFAULTS, ttsProvider: 'windows_sapi', ttsVoice: 'Microsoft Caroline' } } };
   const context = { state, $, voicePreferences: prefs, AbortController, console,
     localStorage: { getItem: () => null }, saveVoicePreferences() {},
-    assertCurrentAccess: epoch => { if (epoch !== state.accessEpoch) throw Object.assign(new Error('locked'), { name: 'AbortError' }); },
     window: { NestorSpeech: speech, AgentXVoice: { ...shared, openAudio: async () => audio, ...voice }, addEventListener(type, fn) { listeners[type] = fn; } },
     document: { hidden: false, addEventListener(type, fn) { listeners[type] = fn; } },
     async fetch(url, options) { calls.push({ url, options });
       return url.endsWith('transcribe') ? new Response(JSON.stringify({ data: { text: 'Je suis débordé.' } })) : new Response('pcm'); },
     async sendMessage(text, options) { calls.push({ text, options }); return { text: '**Je t’écoute.** [Une piste](https://example.test)\n```js\nsecret();\n```', language: 'fr' }; },
-    showGate() { state.unlocked = false; }, ...extras };
+    ...extras };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/voice-session.js'), 'utf8'), context);
   return { context, state, $, calls, listeners, audio, say: () => utterance(new Blob(['voice'], { type: 'audio/wav' })) };
@@ -76,13 +75,13 @@ test('closing during recognition cancels its fetch and ignores the late private 
   assert.equal(turns, 0); assert.ok(h.calls.includes('close'));
 });
 
-test('locking before capture forbids private voice requests; hidden pages stop capture', async () => {
+test('LAN voice needs no unlock; hidden pages stop capture and aborted requests never dispatch', async () => {
   const h = browser(); h.context.wireVoiceSession();
   await h.$('voiceSessionStart').listeners.click();
   h.context.document.hidden = true; h.listeners.visibilitychange();
   assert.ok(h.calls.includes('close'));
-  h.state.unlocked = false;
-  await assert.rejects(h.context.voiceSessionFetch('transcribe', {}, new AbortController().signal), /verrouillé/);
+  const abort = new AbortController(); abort.abort();
+  await assert.rejects(h.context.voiceSessionFetch('transcribe', {}, abort.signal), { name: 'AbortError' });
   assert.equal(h.calls.filter(call => call.url).length, 0);
 });
 

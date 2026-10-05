@@ -188,7 +188,6 @@ function parseArgs(argv) {
     if (arg === '--dry-run') options.dryRun = true;
     else if (arg === '--payload-stdout') options.payloadStdout = true;
     else if (arg === '--endpoint') options.endpoint = argv[++i];
-    else if (arg === '--access-code-file') options.accessCodeFile = argv[++i];
     else if (arg === '--sessions-root') options.sessionsRoot = argv[++i];
     else if (arg === '--lookback-days') options.lookbackDays = Number(argv[++i]);
     else if (arg === '--tail-bytes') options.tailBytes = Number(argv[++i]);
@@ -200,14 +199,10 @@ function parseArgs(argv) {
 }
 
 async function postPayload(payload, options) {
-  const codeFile = options.accessCodeFile || process.env.AGENTX_ACCESS_CODE_FILE;
-  const code = codeFile ? fs.readFileSync(codeFile, 'utf8').trim() : '';
-  if (codeFile && !code) throw new Error('Configured access-code file is empty');
   const response = await fetch(options.endpoint || DEFAULT_ENDPOINT, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      ...(code ? { authorization: `Bearer ${code}` } : {}),
     },
     redirect: 'error',
     body: JSON.stringify(payload),
@@ -229,7 +224,6 @@ Options:
   --dry-run                 Build and summarize without sending
   --payload-stdout          Write the sanitized JSON payload only (for SSH piping)
   --endpoint URL            AgentX analytics endpoint (default: ${DEFAULT_ENDPOINT})
-  --access-code-file PATH   Existing parental code for the HTTPS household entry
   --sessions-root PATH      Override ~/.codex/sessions
   --lookback-days N         Scan files updated in the last N days (default: ${DEFAULT_LOOKBACK_DAYS})
   --tail-bytes N            Bytes read from the tail of each file (default: ${DEFAULT_TAIL_BYTES})

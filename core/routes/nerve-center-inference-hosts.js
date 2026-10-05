@@ -6,7 +6,7 @@
  * Lists every Ollama endpoint (env bootstrap and registered), registers new
  * LAN endpoints, edits residency and concurrency, removes registered ones.
  * Mounted at `/api/nerve-center`. Household-entry requests already need an
- * adult session (parental access middleware).
+ * private LAN access; confirmations and runtime constraints still apply.
  */
 
 const express = require('express');

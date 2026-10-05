@@ -16,7 +16,7 @@ function browser(file, extras = {}) {
     return elements.get(id);
   };
   const context = { console, Map, Set, Date, Number, Object,
-    state: { unlocked: true, psyxState: null, voice: { reachable: false }, routing: null },
+    state: { psyxState: null, voice: { reachable: false }, routing: null },
     window: { isSecureContext: true }, navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } },
     $: element, escapeHtml: value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]),
     SOURCE_LABELS: { user: 'toi', psyx: 'PsyX' }, ...extras
@@ -26,7 +26,7 @@ function browser(file, extras = {}) {
   return { context, element };
 }
 
-test('understanding escapes statements and provenance, separates proposals, and clears private drafts on lock', () => {
+test('understanding escapes statements and provenance, separates proposals, and clears private drafts when state is cleared', () => {
   const { context: b, element } = browser('formulation.js');
   b.state.psyxState = { revision: 7, patterns: [{ id: 'p', text: '<img onerror="bad()">', evidence: ['<script>private evidence</script>'], source: 'psyx', sourceConversationId: 'source"session' }],
     proposals: [{ text: 'Unapproved hypothesis', evidence: ['Pending evidence'], conversationId: 'pending-source' }] };
@@ -51,27 +51,25 @@ test('understanding escapes statements and provenance, separates proposals, and 
   assert.doesNotMatch(element('formulationList').innerHTML, /Private unfinished/);
 });
 
-test('setup distinguishes disabled voice, missing access, insecure capture and local-only frontier', () => {
+test('setup distinguishes disabled voice, LAN access, insecure capture and local-only frontier', () => {
   const { context: b, element } = browser('setup.js');
   b.window.isSecureContext = false;
   b.setSetupCapabilities({ privacy: { configured: false }, voice: { enabled: false }, review: { automatic: true } });
-  assert.match(element('setupChecklist').innerHTML, /Code d’accès manquant/);
+  assert.match(element('setupChecklist').innerHTML, /LAN privé : aucun compte ni code exigé/);
   assert.match(element('setupChecklist').innerHTML, /Facultative, non configurée/);
   assert.match(element('setupChecklist').innerHTML, /HTTPS ou localhost requis/);
   assert.match(element('setupChecklist').innerHTML, /Désactivé : les réponses et revues/);
   assert.equal(element('testSetupMicrophone').disabled, true);
-  b.state.unlocked = false;
   b.clearSetup();
   assert.equal(element('setupChecklist').innerHTML, '');
 });
 
-test('microphone permission granted after lock immediately stops capture without repopulating setup', async () => {
+test('microphone permission granted after clearing setup immediately stops capture without repopulating setup', async () => {
   let resolveCapture, stopped = 0;
   const capture = new Promise(resolve => { resolveCapture = resolve; });
   const { context: b, element } = browser('setup.js', { navigator: { mediaDevices: { getUserMedia: () => capture } } });
   b.wireSetup();
   const pending = element('testSetupMicrophone').listeners.click();
-  b.state.unlocked = false;
   b.clearSetup();
   resolveCapture({ getTracks: () => [{ stop: () => { stopped += 1; } }] });
   await pending;

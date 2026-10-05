@@ -225,9 +225,9 @@ app.use(correlationId);
 // route. This guard runs before route modules can perform upstream work.
 app.use(createAgentXProfileGuard(agentxProfile));
 
-const parentalAccess = isDemoProfile(agentxProfile) ? null
-  : require('./middleware/parentalAccess').registerParentalAccess({ app, express });
-app.locals.parentalAccess = parentalAccess;
+if (!isDemoProfile(agentxProfile)) {
+  require('./middleware/legacyHumanAccess').registerLegacyHumanAccess({ app });
+}
 
 // Request logging middleware
 app.use(requestLogger);
@@ -258,7 +258,7 @@ if (!isDemoProfile(agentxProfile)) {
     extensionRoot: path.join(__dirname, '../surfaces/household')
   });
   require('../surfaces/data-toolbox').register({ contractVersion: 2, app, express });
-  require('../surfaces/psyx').register({ app, mongoose, runtimeServices, conversationLifecycle, logger, parentalAccess });
+  require('../surfaces/psyx').register({ app, mongoose, runtimeServices, conversationLifecycle, logger });
   // Optional host integrations use the same admitted Core runtime and models.
   // Instance configuration and native harness processes remain external.
   const integrationApi = { contractVersion: 2, app, express, mongoose, logger, standardJsonParser, runtimeServices };
@@ -407,7 +407,7 @@ const pipelineRoutes = require('../routes/pipeline');
 app.use('/api/pipeline', standardJsonParser, pipelineRoutes);
 
 // AgentX-native planning (workstreams, outcomes, ideas, decisions, runtime
-// schedule linkage) and the personal finance ledger (adult-only via gateway).
+// schedule linkage) and the personal finance ledger (private LAN access).
 require('../routes/product-capabilities').mount(app, standardJsonParser);
 
 // AgentX MCP skill bus (Streamable HTTP JSON-RPC endpoint)

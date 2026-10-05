@@ -386,7 +386,7 @@ function register(api) {
   router.get('/network/agents', relay(() => '/api/v1/network/agents'));
   router.get('/network/capability', relay(() => '/api/v1/network/capability'));
   // The one write: name a device or mark it known, which acknowledges it as
-  // not new. Through the LAN gateway it requires the adult session.
+  // not new. These existing controls follow private LAN human access.
   router.patch('/network/devices/:mac', async (req, res) => {
     const mac = String(req.params.mac || '').toUpperCase();
     const { alias, known } = req.body || {};

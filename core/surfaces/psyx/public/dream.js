@@ -117,9 +117,9 @@ function dreamCoverageLabel(covers = {}) {
   return `${covers.conversations}/${covers.availableConversations} séances consultées · ${covers.messages}/${covers.availableMessages} messages · ${partial ? 'couverture partielle' : 'texte des séances complet'}${missing.length ? ` · sources indisponibles : ${missing.join(', ')}` : ''}`;
 }
 
-async function pollDream(accessEpoch, epoch = dream.epoch) {
+async function pollDream(epoch = dream.epoch) {
   // A newer watch replaces this one, so a click never leaves two polling chains.
-  if (accessEpoch !== state.accessEpoch || !state.unlocked || epoch !== dream.epoch) return;
+  if (epoch !== dream.epoch) return;
   try {
     const previous = dream.status;
     dream.status = await api('/api/psyx/dream/status', { cache: 'no-store' });
@@ -127,17 +127,17 @@ async function pollDream(accessEpoch, epoch = dream.epoch) {
     if (previous && dream.status.completedAt !== previous.completedAt) await loadPsyXState();
     else renderPortrait();
   } catch (error) {
-    if (error.code === 'PSYX_LOCKED') return;
+
   }
-  if (accessEpoch !== state.accessEpoch || epoch !== dream.epoch) return;
-  dream.timer = setTimeout(() => void pollDream(accessEpoch, epoch), dream.status?.status === 'running' ? 5000 : DREAM_POLL_MS);
+  if (epoch !== dream.epoch) return;
+  dream.timer = setTimeout(() => void pollDream(epoch), dream.status?.status === 'running' ? 5000 : DREAM_POLL_MS);
 }
 
 function watchDream() {
   if (state.conversationFeatures?.dreamEnabled === false) { stopDreamWatch(); renderPortrait(); return; }
   clearTimeout(dream.timer);
   dream.epoch = (dream.epoch || 0) + 1;
-  void pollDream(state.accessEpoch);
+  void pollDream();
 }
 
 function stopDreamWatch() {
@@ -153,7 +153,7 @@ async function dreamAction(button, request) {
     const result = await request();
     if (result?.state) { state.psyxState = result.state; renderPsyXState(); }
   } catch (error) {
-    if (error.code === 'PSYX_LOCKED') return;
+
     $('portraitMeta').textContent = error.status === 404 ? 'Déjà fait.' : error.message;
     await loadPsyXState().catch(() => {});
   } finally { button.disabled = false; renderPortrait(); }
@@ -185,7 +185,7 @@ function wireDream() {
             || !message.content.normalize('NFC').includes(open.dataset.evidenceQuote)) throw new Error('Source unavailable');
         preview.textContent = message.content;
       } catch (error) {
-        if (error.code !== 'PSYX_LOCKED') preview.textContent = 'Le message source n’est plus disponible ou a changé.';
+        preview.textContent = 'Le message source n’est plus disponible ou a changé.';
       } finally { open.disabled = false; preview.hidden = false; }
       return;
     }

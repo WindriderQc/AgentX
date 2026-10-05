@@ -15,6 +15,6 @@ function wireSessionExperience() {
 function renderSessionExperience() {
   $('sessionWelcome').hidden = Boolean(state.conversationId);
   $('resumeLatest').hidden = !state.sessions.some(item => item.lifecycle?.status !== 'archived');
-  if (state.unlocked) void sessionPoint?.refresh();
+  if (state.conversationId) void sessionPoint?.refresh();
 }
 function clearSessionExperience() { sessionPoint?.clear(); performancePreferences?.clear(); }

@@ -7,7 +7,7 @@ function bounded(value, fallback, min, max) {
 }
 
 function loadConfig(env = process.env) {
-  const accessMode = env.PSYX_ACCESS_MODE || 'token';
+  const accessMode = env.PSYX_ACCESS_MODE || 'trusted-network';
   if (!['token', 'trusted-network'].includes(accessMode)) throw new Error('Invalid PSYX_ACCESS_MODE');
   const mode = env.PSYX_VOICE_MODE || 'disabled';
   if (!['disabled', 'voix'].includes(mode)) throw new Error('Invalid PSYX_VOICE_MODE');
@@ -26,9 +26,6 @@ function loadConfig(env = process.env) {
     env: env.NODE_ENV || 'development', provider: 'agentx', accessMode,
     frontier: { agent: frontierAgent, model: env.PSYX_FRONTIER_MODEL || 'frontier', defaultMode: frontierMode },
     accessToken: env.PSYX_ACCESS_TOKEN || '',
-    // Core may sit behind a loopback proxy. Socket loopback alone is not consent.
-    loopbackBypass: env.PSYX_LOOPBACK_BYPASS === 'true',
-    sessionTtlMs: bounded(env.PSYX_SESSION_TTL_HOURS, 8, 0.25, 168) * 3600000,
     maxBodyBytes: bounded(env.PSYX_MAX_BODY_BYTES, 256 * 1024, 1024, 2 * 1024 * 1024),
     requestTimeoutMs: bounded(env.PSYX_INFERENCE_TIMEOUT_MS, 300000, 1000, 900000),
     // The background review runs after completed turns unless explicitly disabled.

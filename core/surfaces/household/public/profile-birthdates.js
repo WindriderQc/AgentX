@@ -9,7 +9,6 @@
     const text = await response.text();
     let body;
     try { body = text ? JSON.parse(text) : {}; } catch { body = { message: text }; }
-    window.AgentXAccess?.assertCurrent?.();
     if (!response.ok || body.ok === false || body.status === 'error') throw new Error(body.message || `HTTP ${response.status}`);
     return body.data;
   }

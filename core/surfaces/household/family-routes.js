@@ -17,7 +17,7 @@ function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, s
   };
   router.use(standardJsonParser);
   // One household shopping list, the same one Nestor keeps. Children may read
-  // and add (see parentalAccess); crossing items off stays with the parent.
+  // and add; crossing items off is an explicit household review action.
   const shopping = [['get', '/shopping', 'list'], ['post', '/shopping/add', 'add'], ['post', '/shopping/bought', 'bought']];
   for (const [method, path, action] of shopping) {
     router[method](path, async (req, res) => {
@@ -32,8 +32,8 @@ function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, s
   }
   const endpoints = [
     ['get', '/profiles', 'listProfiles', 200],
-    // Adult only: parentalAccess opens exactly /profiles to the Family page,
-    // never these, so a child page cannot read or change a birth date.
+    // Profile management is available on the private LAN.
+    // The page choice does not attest who is performing the update.
     ['get', '/profiles/details', 'listProfileDetails', 200],
     ['post', '/profiles/birth-date', 'setProfileBirthDate', 200],
     ['post', '/profiles', 'addProfile', 201],
@@ -58,8 +58,8 @@ function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, s
       }
     });
   }
-  // Ideas and reminders children and Nestor captured (#13). These routes are
-  // not family routes in parentalAccess, so only the unlocked parent reaches them.
+  // Ideas and reminders children and Nestor captured (#13). Explicit review
+  // remains required; LAN access does not authenticate the human reviewer.
   router.get('/ideas', (req, res) => reply(res, 200, () => ideaInbox.listIdeas(req.query)));
   router.post('/ideas/:id/promote', (req, res) => reply(res, 201,
     () => ideaInbox.promoteToExecution(req.params.id, { ...req.body, by: 'household-dad-desk' })));

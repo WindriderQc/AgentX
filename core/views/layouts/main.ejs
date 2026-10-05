@@ -4,10 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><%= title %></title>
-  <% if (locals.parentalAccess) { %>
-    <link rel="stylesheet" href="/access-assets/client.css">
-    <script src="/access-assets/client.js" defer></script>
-  <% } %>
   <%- include('../partials/head-assets') %>
   <%- locals.headCss ? headCss : '' %>
 </head>

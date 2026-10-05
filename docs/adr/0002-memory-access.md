@@ -45,6 +45,7 @@ Selected notes share one Core capability across the browser, voice and the nativ
 matching space. Household and PsyX sessions use canonical Core conversations, so
 the owner can recall PsyX history without a second index or a copied memory.
 
-Browser adult entry uses the [parental session](../PARENTAL_ACCESS.md).
+Human browser entry uses the [private LAN](../PARENTAL_ACCESS.md) without an
+account or code. Scope binding is not proof of human identity.
 Model-generated native recall and physical-device journeys are open acceptance;
 see [status](../STATUS.md).

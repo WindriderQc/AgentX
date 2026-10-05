@@ -71,11 +71,7 @@ test('builds a versioned payload with hashed session identifiers', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('external access code authenticates the request and is never forwarded on redirect', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'usage-auth-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const codeFile = path.join(root, 'access-code');
-  fs.writeFileSync(codeFile, 'synthetic-parent-code\n');
+test('LAN sync sends no credentials and refuses redirects', async (t) => {
   const seen = [];
   const server = require('node:http').createServer((req, res) => {
     seen.push({ path: req.url, authorization: req.headers.authorization });
@@ -88,13 +84,11 @@ test('external access code authenticates the request and is never forwarded on r
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const base = `http://127.0.0.1:${server.address().port}`;
-  await postPayload({}, { endpoint: `${base}/accepted`, accessCodeFile: codeFile });
-  await assert.rejects(postPayload({}, { endpoint: `${base}/redirect`, accessCodeFile: codeFile }));
+  await postPayload({}, { endpoint: `${base}/accepted` });
+  await assert.rejects(postPayload({}, { endpoint: `${base}/redirect` }));
   assert.deepEqual(seen, [
-    { path: '/accepted', authorization: 'Bearer synthetic-parent-code' },
-    { path: '/redirect', authorization: 'Bearer synthetic-parent-code' },
+    { path: '/accepted', authorization: undefined },
+    { path: '/redirect', authorization: undefined },
   ]);
-  fs.writeFileSync(codeFile, '\n');
-  await assert.rejects(postPayload({}, { endpoint: `${base}/empty`, accessCodeFile: codeFile }), /empty/);
   assert.equal(seen.length, 2);
 });

@@ -5,7 +5,7 @@
  *
  * The latest report, the watch settings (on/off, interval, language) and a
  * check on demand. Mounted at `/api/nerve-center`. Household-entry requests
- * already need an adult session (parental access middleware).
+ * follow private LAN human access and the domain-specific confirmation rules.
  */
 
 const express = require('express');

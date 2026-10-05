@@ -188,7 +188,7 @@ no collector target, storage mount or background job enabled by default. See
 [Data configuration](../data/README.md). Voice, private harnesses, photos and
 other integrations require their own configuration; enabling `full` does not
 install them. Before family access from another device, configure the
-[LAN HTTPS parental gateway](PARENTAL_ACCESS.md). Keep raw service ports local.
+[private LAN HTTPS gateway](PARENTAL_ACCESS.md). Keep raw service ports local.
 
 ### Private sound packs
 
@@ -262,7 +262,9 @@ Follow [Operations](OPERATIONS.md) for routing and voice settings, and
 Set `HOUSEHOLD_PHOTOS_DIR` and `HOUSEHOLD_MEDIA_DIR` to external directories when
 using those mounts. Use the [private sound pack override](#private-sound-packs)
 for your own recordings. Enabling the full profile does not import these files.
-Configure [parental access](PARENTAL_ACCESS.md) before sharing with family devices.
+Configure [private LAN HTTPS access](PARENTAL_ACCESS.md) before sharing with
+family devices. Every LAN user can reach human pages/APIs without a code or
+account; keep backend ports on loopback and refuse non-LAN gateway peers.
 
 Reusable changes to code or interfaces belong in a reviewed source PR. Actual
 family names, prompts containing personal memories, host inventories, secrets,

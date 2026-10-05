@@ -805,13 +805,6 @@ a.service { text-decoration: none; }
 .nav-tools-panel a:hover, .nav-tools-panel a:focus-visible { background: var(--panel-2); }
 .nav-tools-panel small { display: block; color: var(--soft); font-size: .75rem; }
 .nav-tools-panel .runtime-pill { margin: .5rem .8rem; }
-/* The access client marks <html data-agentx-access="locked"> on a family page behind the
-   parental gateway: adult destinations show a lock and the menu offers the unlock first. */
-.nav-tools-panel a[data-access="unlock"] { display: none; }
-html[data-agentx-access="locked"] .nav-tools-panel a[data-access="unlock"] { display: block; margin-bottom: .3rem; border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; }
-html[data-agentx-access="locked"] a[data-access="adult"]::after { content: '🔒'; margin-left: .35rem; font-size: .8em; }
-html[data-agentx-access="locked"] .nav-tools-panel a[data-access="adult"] { position: relative; padding-right: 2.2rem; }
-html[data-agentx-access="locked"] .nav-tools-panel a[data-access="adult"]::after { position: absolute; right: .8rem; top: .7rem; margin: 0; }
 .section-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem; padding: .65rem 1rem; border-bottom: 1px solid var(--line); background: rgba(13,25,35,.72); }
 .section-nav[hidden] { display: none; }
 .section-nav a { padding: .4rem .7rem; border-radius: 8px; color: var(--soft); text-decoration: none; font-size: .85rem; }
