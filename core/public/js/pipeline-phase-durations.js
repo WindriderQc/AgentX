@@ -5,7 +5,7 @@
   // renders them and never fills a missing phase from another value.
   const SCHEMA = 'agentx.pipeline-attempt-phases/v1';
   const CLOCKS = { core: 'Core clock', worker: 'Worker clock' };
-  const SHORT = { before_claim: 'Before claim', worker: 'Worker', verification: 'Verification', decision: 'Decision' };
+  const SHORT = { before_claim: 'Before claim', resource_wait: 'Resource wait', worker: 'Worker', verification: 'Verification', decision: 'Decision' };
   const STATUS = {
     pending: 'pending',
     missing: 'unknown',
@@ -27,6 +27,9 @@
     attempt_end_before_start: 'The attempt end precedes its start',
     worker_duration_exceeds_core_attempt: 'The worker duration exceeds the Core attempt window',
     verification_exceeds_worker_run: 'Verification exceeds the whole worker run',
+    inference_waits_not_read: 'Model-call waits could not be read',
+    no_attributed_model_calls: 'No model call through Core is attributed to this attempt',
+    wait_not_recorded: 'Some model calls of this attempt carry no recorded wait',
   };
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const count = value => (Number.isSafeInteger(value) && value >= 0 ? value : 0);
@@ -35,6 +38,7 @@
     if (value == null) return '--';
     const milliseconds = Number(value);
     if (!Number.isFinite(milliseconds) || milliseconds < 0) return '--';
+    if (milliseconds < 1000) return `${Math.round(milliseconds)}ms`;
     const seconds = Math.round(milliseconds / 1000);
     if (seconds < 60) return `${seconds}s`;
     const minutes = Math.round(seconds / 60);

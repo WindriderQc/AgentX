@@ -187,7 +187,7 @@ function buildPipelineAutomationPerformance(tasks = [], options = {}) {
           reviewMs: elapsed(completedAt, reviewedAt),
           cycleMs: elapsed(task.createdAt, reviewedAt),
         },
-        phases: attemptPhases(task, attempt),
+        phases: attemptPhases(task, attempt, { resourceWaits: options.resourceWaits }),
         unknown,
       });
     }

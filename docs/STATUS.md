@@ -81,8 +81,8 @@ Instance configuration, data and deployment receipts remain outside Git.
   bound. An expired automation lease reads as worker state unknown, and Core
   refuses late input naming it. The dossier shows recorded attempt references,
   status transitions, versioned plans and task deliverables with integrity
-  checks. Attempt timing reports coverage for observed phases; resource wait
-  and startup are not yet measured. A read-only diagnosis explains stalled
+  checks. Attempt timing reports coverage for observed phases, including the
+  model-call waits of each attempt; startup is not yet measured. A read-only diagnosis explains stalled
   tasks and gives a stable escalation key without repairing them. See
   [operational screens](OPERATOR_UI.md).
 - **Planning.** The page is a frozen historical reference. Its idea inbox is
