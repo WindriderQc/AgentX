@@ -47,6 +47,11 @@ const {
   shapeDistribution
 } = require('../src/services/inferenceDistributionService');
 const { readContention } = require('../src/services/routing/inferenceContentionCounters');
+const {
+  buildPromptCachePipeline,
+  parsePromptCacheGroupBy,
+  shapePromptCache
+} = require('../src/services/promptCacheAnalyticsService');
 
 /**
  * A summary is computed on demand from `inferencelogs`; a rendered copy older
@@ -262,6 +267,41 @@ router.get('/distribution', async (req, res) => {
     });
   } catch (err) {
     logger.error('Inference distribution query failed', { error: err.message });
+    envelope.error(res, err.statusCode || 500, err.message);
+  }
+});
+
+/**
+ * GET /api/analytics/inference/prompt-cache
+ *
+ * Prompt-cache misses (#364): per group, the calls under each verdict, the
+ * reusable prefix lost, the prefill time it cost and the labels that came in
+ * between most often. Accepts the /logs filters and `window` like
+ * /distribution; `groupBy` takes the same fields (default hostKey,model).
+ */
+router.get('/prompt-cache', async (req, res) => {
+  try {
+    const groupBy = parsePromptCacheGroupBy(req.query.groupBy);
+    const limit = parseGroupLimit(req.query.limit);
+    const match = buildLogQuery(req.query);
+    let window = { key: null, from: match.timestamp?.$gte || null, to: match.timestamp?.$lte || match.timestamp?.$lt || null };
+    if (!match.timestamp) {
+      window = resolveWindow(req.query.window);
+      match.timestamp = { $gte: window.from, $lte: window.to };
+    }
+    const [facet] = await InferenceLog.aggregate(buildPromptCachePipeline({ match, groupBy, limit }));
+    envelope.success(res, {
+      source: 'inferencelogs',
+      timestampField: 'timestamp',
+      window: { key: window.key, from: window.from, to: window.to },
+      retentionDays: parseInt(process.env.INFERENCE_LOG_TTL_DAYS || '30', 10),
+      filters: Object.fromEntries(
+        [...LOG_FILTER_FIELDS, 'status'].map(field => [field, req.query[field] || null])
+      ),
+      ...shapePromptCache(facet, { groupBy, limit, sanitizeLabel: distributionLabel })
+    });
+  } catch (err) {
+    logger.error('Inference prompt-cache query failed', { error: err.message });
     envelope.error(res, err.statusCode || 500, err.message);
   }
 });

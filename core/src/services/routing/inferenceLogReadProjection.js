@@ -19,6 +19,7 @@ const {
 } = require('./routeDecision');
 const { sanitizeRoutingTrace } = require('./inferenceTelemetry');
 const { sanitizePromptPrefix } = require('./promptPrefixFingerprint');
+const { sanitizePromptCache } = require('./promptCacheAttribution');
 const { sanitizeRetry } = require('./inferenceWaitTelemetry');
 
 const CALLERS = new Set(['chat', 'council', 'benchmark', 'embedding', 'classification', 'proxy', 'unknown']);
@@ -169,6 +170,7 @@ function projectInferenceLog(row) {
     ...(Object.prototype.hasOwnProperty.call(row, 'hostGateWaitMs') && { hostGateWaitMs: finiteNumber(row.hostGateWaitMs) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'retry') && { retry: sanitizeRetry(row.retry) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'promptPrefix') && { promptPrefix: sanitizePromptPrefix(row.promptPrefix) }),
+    ...(Object.prototype.hasOwnProperty.call(row, 'promptCache') && { promptCache: sanitizePromptCache(row.promptCache) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'status') && { status: enumValue(row.status, STATUSES) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'timestamp') && { timestamp: safeTimestamp(row.timestamp) }),
     ...(isCancellationEvidence(row) && { cancelled: true }),

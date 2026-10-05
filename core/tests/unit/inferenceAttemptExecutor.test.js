@@ -318,6 +318,34 @@ describe('inferenceAttemptExecutor cancellation', () => {
     expect(lifecycle.abandon).not.toHaveBeenCalled();
   });
 
+  test('each dispatch is observed for the prompt cache under its admission kind (#364)', async () => {
+    const observePromptCache = jest.fn(() => ({ tracked: false, chars: 5 }));
+    const options = {
+      hostUrl: 'http://ollama.test:11434', model: 'model-a', payload: { model: 'model-a', prompt: 'hello' },
+      useChat: false, timeoutMs: 60_000, admissionKind: 'classifier', cacheLabels: { consumerContract: 'nestor-v1' },
+    };
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ response: 'ok', done: true }) });
+    await expect(executeAdmittedOllamaAttempt(options, { observePromptCache }))
+      .resolves.toMatchObject({ promptCache: { tracked: false, chars: 5 } });
+    expect(observePromptCache).toHaveBeenCalledWith({
+      hostUrl: 'http://ollama.test:11434', model: 'model-a',
+      payload: expect.objectContaining({ prompt: 'hello' }),
+      labels: { consumerContract: 'nestor-v1', kind: 'classifier' },
+    });
+
+    // A failure after dispatch still carries the observation for its row.
+    fetch.mockRejectedValueOnce(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
+    await expect(executeAdmittedOllamaAttempt(options, { observePromptCache }))
+      .rejects.toMatchObject({ inferencePromptCache: { tracked: false, chars: 5 } });
+
+    // Embeddings have no prompt cache to observe.
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ embeddings: [[0]] }) });
+    observePromptCache.mockClear();
+    await executeAdmittedOllamaAttempt({ ...options, mode: 'embed', payload: { model: 'model-a', input: ['x'] } },
+      { observePromptCache });
+    expect(observePromptCache).not.toHaveBeenCalled();
+  });
+
   test('a lost admission with the caller still connected is not a caller cancellation', async () => {
     const lease = new AbortController();
     const caller = new AbortController();

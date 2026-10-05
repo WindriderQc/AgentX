@@ -351,6 +351,7 @@ const handleChatRequestStream = async ({
             tokensIn: stats?.usage?.promptTokens || 0,
             tokensOut: stats?.usage?.completionTokens || 0,
             ...ollamaPhaseTimings(completion),
+            promptCache: streamAttempt.promptCache,
             durationMs: successDurationMs,
             status: 'success'
         });
@@ -437,6 +438,7 @@ const handleChatRequestStream = async ({
                 },
                 num_ctx: streamTelemetry.streamSanitized?.num_ctx || null,
                 num_ctx_source: streamTelemetry.streamNumCtxSource,
+                promptCache: streamAttempt?.promptCache || err.inferencePromptCache || null,
                 durationMs: Date.now() - inferenceStartedAt,
                 status: terminalStatus,
                 error: err.message

@@ -22,6 +22,7 @@ const {
     projectRouteDecision,
 } = require('./routeDecision');
 const { sanitizePromptPrefix } = require('./promptPrefixFingerprint');
+const { promptCacheVerdict } = require('./promptCacheAttribution');
 const { inferenceWaitFields } = require('./inferenceWaitTelemetry');
 
 const PHASE_TIMING_FIELDS = ['loadMs', 'promptEvalMs', 'evalMs', 'firstTokenMs'];
@@ -391,6 +392,7 @@ function decisionForTelemetry(data = {}) {
  * @param {number}  [data.evalMs]        - Ollama eval_duration, ms
  * @param {number}  [data.firstTokenMs]  - Streamed: dispatch to first output frame, ms
  * @param {Object}  [data.promptPrefix]  - Payload-free prompt structure (promptPrefixFingerprint)
+ * @param {Object}  [data.promptCache]   - Dispatch observation of the prompt cache (promptCacheAttribution)
  * @param {number}  [data.durationMs]
  * @param {'success'|'error'|'timeout'} [data.status]
  * @param {string}  [data.error]
@@ -407,6 +409,8 @@ async function recordInference(data) {
         const host = data.host || data.routedHostUrl || 'unknown';
         const routedHost = data.routedHost || resolveHostKey(data.routedHostUrl || data.host);
         const promptPrefix = sanitizePromptPrefix(data.promptPrefix);
+        const phases = phaseTimingFields(data);
+        const promptCache = promptCacheVerdict(data.promptCache, phases);
         const row = await InferenceLog.create({
             host,
             hostKey: resolveHostKey(host),
@@ -437,9 +441,10 @@ async function recordInference(data) {
                 : null,
             tokensIn: data.tokensIn || 0,
             tokensOut: data.tokensOut || 0,
-            ...phaseTimingFields(data),
+            ...phases,
             ...inferenceWaitFields({ waits: data.waits, retry: data.retry }),
             ...(promptPrefix && { promptPrefix }),
+            ...(promptCache && { promptCache }),
             durationMs: data.durationMs || 0,
             status: data.status || 'success',
             error: data.error || null,

@@ -160,6 +160,7 @@ const handleChatRequest = async ({
     let inferenceContract = null;
     let observabilityOutcome = null;
     let phaseTimings = {};
+    let promptCache = null;
     let sanitized = {};
     let numCtxSource = null;
     let inferenceDispatched = false;
@@ -203,6 +204,7 @@ const handleChatRequest = async ({
                 afterAdmission: () => { inferenceDispatched = true; }
             });
             const { response, data, raw } = attempt;
+            promptCache = attempt.promptCache;
             if (!response.ok) {
                 const errDetail = typeof data?.error === 'string'
                     ? data.error
@@ -222,6 +224,7 @@ const handleChatRequest = async ({
 
             if (warning) logger.warn('Response extraction warning', { model, warning });
         } catch (err) {
+            promptCache ??= err.inferencePromptCache || null;
             throw wrapOllamaFetchError({
                 url,
                 error: err,
@@ -271,6 +274,7 @@ const handleChatRequest = async ({
             },
             num_ctx: sanitized.num_ctx || null,
             num_ctx_source: numCtxSource,
+            promptCache,
             durationMs,
             status: terminalStatus,
             error: err.message
@@ -312,6 +316,7 @@ const handleChatRequest = async ({
         tokensIn: stats?.usage?.promptTokens || 0,
         tokensOut: stats?.usage?.completionTokens || 0,
         ...phaseTimings,
+        promptCache,
         durationMs: successDurationMs,
         status: 'success'
     });

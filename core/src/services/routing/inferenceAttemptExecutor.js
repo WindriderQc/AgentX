@@ -5,6 +5,7 @@ const logger = require('../../../config/logger');
 const hostGate = require('../hostGate');
 const { beginInferenceAdmission } = require('../inferenceAdmissionService');
 const { protectContext } = require('./contextIntegrityPolicy');
+const { observePromptCache } = require('./promptCacheAttribution');
 
 const OLLAMA_ABORT_SOURCE = Object.freeze({
   CALLER: 'caller',
@@ -249,10 +250,11 @@ async function beginAdmittedOllamaAttempt(options, dependencies = {}) {
   // Time spent before Ollama receives the call, for its telemetry row (#363).
   const admissionStartedAt = Date.now();
   const waits = { admissionMs: null, hostGateMs: null };
+  const kind = options.admissionKind || (options.stream ? 'inference-stream' : 'inference');
   const distributed = await begin({
     host: options.hostUrl,
     model: options.model,
-    kind: options.admissionKind || (options.stream ? 'inference-stream' : 'inference'),
+    kind,
     principal: options.principal || 'core-service',
     requestId: options.requestId,
     workloadAdmissionId: options.workloadAdmissionId || null,
@@ -294,9 +296,13 @@ async function beginAdmittedOllamaAttempt(options, dependencies = {}) {
       await options.prepareExclusive(distributed);
       distributed.assertActive();
     }
+    // Observed in dispatch order, the order Ollama receives prompts (#364).
+    const promptCache = options.mode === 'embed' ? null : (dependencies.observePromptCache || observePromptCache)({
+      hostUrl: options.hostUrl, model: options.model, payload: options.payload, labels: { ...options.cacheLabels, kind },
+    });
     options.onDispatch?.();
     let released = false;
-    return { admission: distributed, signal: distributed.signal, waits, release: async () => {
+    return { admission: distributed, signal: distributed.signal, waits, promptCache, release: async () => {
       if (released) return;
       released = true;
       await release();
@@ -321,9 +327,10 @@ async function executeAdmittedOllamaAttempt(options, dependencies = {}) {
     const result = await executeOllamaAttempt({ ...options, signal: scope.signal }, dependencies);
     scope.admission.assertActive();
     await scope.admission.complete();
-    return { ...result, waits: scope.waits };
+    return { ...result, waits: scope.waits, promptCache: scope.promptCache };
   } catch (error) {
     error.inferenceWaits ??= scope.waits;
+    error.inferencePromptCache ??= scope.promptCache;
     // A connection refused before response headers cannot have generated output.
     // Resets/timeouts after dispatch remain unknown and retain quarantine.
     const ownedDeadline = error.isOllamaTimeout === true && error.ollamaAbortSource === OLLAMA_ABORT_SOURCE.TIMEOUT;
