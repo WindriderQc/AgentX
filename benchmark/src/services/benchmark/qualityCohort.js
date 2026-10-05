@@ -107,9 +107,9 @@ async function recoverPromptFingerprints(batchId, { dryRun = false, signal = nul
 }
 
 /**
- * After a standalone judge run, every result of the batch belongs to the
- * cohort of the judge that ran, deterministic results included. Results
- * written before prompt fingerprints get theirs where it is provable; a
+ * After a standalone judge run, move the judged results and independent
+ * deterministic results to its cohort. Unjudged rows retain their identity.
+ * Results written before prompt fingerprints get theirs where it is provable; a
  * result whose prompt cannot be proven leaves every cohort (null), since a
  * cohort no longer pins the catalog and nothing else would pin its prompt.
  */
@@ -120,7 +120,11 @@ async function applyJudgeCohort(batchId, judgeConfig, options = {}) {
     const writeOptions = options.signal ? { signal: options.signal } : undefined;
     await recoverPromptFingerprints(batch._id, { signal: options.signal });
     await BenchmarkResult.updateMany(
-        { batch_id: batch._id, prompt_fingerprint: { $type: 'string' } },
+        { batch_id: batch._id, prompt_fingerprint: { $type: 'string' },
+            ...(Array.isArray(options.resultIds) ? { $or: [
+                { _id: { $in: options.resultIds } },
+                { scoring_method: { $in: ['deterministic', 'executable'] } }
+            ] } : {}) },
         { $set: { quality_cohort_fingerprint: qualityCohortFingerprint } },
         writeOptions
     );

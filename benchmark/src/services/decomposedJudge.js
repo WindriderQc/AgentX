@@ -141,7 +141,7 @@ ${answerRule}: ${question}`;
         const data = await res.json();
         finishJudgeCallEvidence(callEvidence, { data });
         throwIfJudgeCancelled(judgeConfig);
-        assertJudgeInputUnmodified(data);
+        assertJudgeInputUnmodified(data, judgeConfig);
         assertJudgeOutputComplete(data);
         const text = (data.response || '').toLowerCase().trim();
         if (graded) {
@@ -219,6 +219,7 @@ async function askBinaryQuestion(response, question, judgeConfig, taskContext = 
         calls.push(singleBinaryCall(response, question, judgeConfig, taskContext, options));
     }
     const votes = await Promise.allSettled(calls);
+    for (const vote of votes) if (vote.status === 'rejected') rethrowIfJudgeCancelled(vote.reason, judgeConfig);
     throwIfJudgeCancelled(judgeConfig);
 
     const answered = votes.filter(v => v.status === 'fulfilled' && v.value !== null).map(v => v.value);

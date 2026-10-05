@@ -37,7 +37,7 @@ const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { JUDGE_CONFIG } = require('../qualityScorer');
 const { SCORER_VERSION } = require('../scoring/scorerVersion');
-const { applyJudgeCohort } = require('./qualityCohort');
+const { applyJudgeCohort, cohortFingerprintForBatch } = require('./qualityCohort');
 // hardwareProfileService removed — profiler handles hardware detection now
 const ConcurrencyQueue = require('./ConcurrencyQueue');
 const { applyScoresToResult, judgeResult } = require('./judgeExecutor');
@@ -211,6 +211,7 @@ async function judgeBatch(batchId, options = {}) {
     const job = { queue, stopped: false };
     activeJudgingJobs.set(batchId, job);
 
+    const judgedResultIds = [];
     let judged = 0;
     let failed = 0;
     let timedOut = false;
@@ -221,7 +222,9 @@ async function judgeBatch(batchId, options = {}) {
 
     try {
         const batchHardwareSnapshot = null; // hardware detection removed — handled by profiler pipeline
-        const runJudgeConfig = await prepareStandaloneJudge(judgeConfig, { workloadId: cancelSignal?.workloadId, signal: cancelSignal });
+        const preparedConfig = await prepareStandaloneJudge({ ...judgeConfig, multi_judge: multiJudge || judgeConfig.multi_judge }, { workloadId: cancelSignal?.workloadId, signal: cancelSignal });
+        const runJudgeConfig = { ...preparedConfig,
+            quality_cohort_fingerprint: await cohortFingerprintForBatch(batch, preparedConfig) };
         assertAuthorityActive();
 
         for (const result of pendingResults) {
@@ -237,9 +240,10 @@ async function judgeBatch(batchId, options = {}) {
                 }
 
                 try {
-                    await judgeResult(result._id.toString(), runJudgeConfig, batchHardwareSnapshot, multiJudge);
+                    await judgeResult(result._id.toString(), runJudgeConfig, batchHardwareSnapshot, runJudgeConfig.multi_judge || null);
                     assertAuthorityActive();
                     judged++;
+                    judgedResultIds.push(result._id);
 
                     await BenchmarkBatch.updateOne(
                         { _id: batchId },
@@ -267,7 +271,11 @@ async function judgeBatch(batchId, options = {}) {
                                 scorer_version: SCORER_VERSION,
                                 scoring_method: 'llm_failed',
                                 quality_explanation: error.message,
-                                judge_model: judgeConfig.model || JUDGE_CONFIG.model
+                                judge_model: runJudgeConfig.model || JUDGE_CONFIG.model,
+                                ...(error?.code === 'JUDGE_EXECUTION_CONTRACT_MISMATCH' ? {
+                                    quality_score: null, composite_score: null, needs_review: true,
+                                    review_reason: error.message, judge_execution_contract: runJudgeConfig.execution_contract
+                                } : {})
                             }
                         },
                         cancelSignal ? { signal: cancelSignal } : undefined
@@ -328,10 +336,10 @@ async function judgeBatch(batchId, options = {}) {
             assertAuthorityActive
         });
 
-        // The batch's results now belong to the cohort of the judge that ran,
-        // deterministic ones included, so a re-judge joins its leaderboard.
+        // Only completed verdicts move to this runtime cohort. Older verdicts
+        // and results left pending by a partial run retain their identity.
         if (finalStatus !== 'stopped' && judged > 0) {
-            await applyJudgeCohort(batchId, judgeConfig, { signal: cancelSignal });
+            await applyJudgeCohort(batchId, runJudgeConfig, { signal: cancelSignal, resultIds: judgedResultIds });
             assertAuthorityActive();
         }
 

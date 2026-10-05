@@ -95,6 +95,17 @@ describe('quality cohort', () => {
         expect(stored.map(r => r.quality_cohort_fingerprint)).toEqual([cohort, cohort]);
     });
 
+    test('a partial re-judge keeps older verdicts and pending rows in their original cohort', async () => {
+        const { insertedId: batchId } = await BenchmarkBatch.collection.insertOne({ execution_config: EXEC, campaign_kind: 'model' });
+        const ids = [1, 2, 3, 4].map(() => new mongoose.Types.ObjectId());
+        await BenchmarkResult.collection.insertMany(ids.map((_id, index) => ({ _id, batch_id: batchId,
+            prompt_fingerprint: `p${index}`, quality_cohort_fingerprint: 'old-runtime',
+            scoring_method: ['decomposed', 'deterministic', 'pending', 'reference'][index] })));
+        const cohort = await applyJudgeCohort(batchId, QWEN, { resultIds: [ids[0]] });
+        const rows = await BenchmarkResult.collection.find({ batch_id: batchId }).toArray();
+        expect(rows.map(row => row.quality_cohort_fingerprint)).toEqual([cohort, cohort, 'old-runtime', 'old-runtime']);
+    });
+
     test('a re-judge gives legacy results the fingerprint of the catalog prompt they provably ran', async () => {
         const { insertedId: batchId } = await BenchmarkBatch.collection.insertOne({ execution_config: EXEC, campaign_kind: 'model' });
         const legacy = (level, extra = {}) => ({

@@ -15,7 +15,9 @@ jest.mock('../../../src/services/benchmark/standaloneJudgePreparation', () => ({
     prepareStandaloneJudge: (...args) => mockPrepare(...args),
     judgeDrainBudgetMs: () => 50
 }));
-jest.mock('../../../src/services/benchmark/qualityCohort', () => ({ applyJudgeCohort: jest.fn(async () => null) }));
+jest.mock('../../../src/services/benchmark/qualityCohort', () => ({
+    applyJudgeCohort: jest.fn(async () => null), cohortFingerprintForBatch: jest.fn(async () => 'prepared-runtime-cohort')
+}));
 
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
@@ -39,7 +41,7 @@ describe('standalone judge run over its budget (#59)', () => {
         })));
         const started = [];
         mockJudgeResult.mockImplementation(async (resultId, config) => {
-            started.push({ resultId, numCtx: config.num_ctx });
+            started.push({ resultId, numCtx: config.num_ctx, cohort: config.quality_cohort_fingerprint });
             await new Promise(resolve => setTimeout(resolve, 300));
         });
 
@@ -53,6 +55,7 @@ describe('standalone judge run over its budget (#59)', () => {
         // Every call used the prepared judge config (contract num_ctx).
         expect(mockPrepare).toHaveBeenCalledTimes(1);
         expect(started[0].numCtx).toBe(65536);
+        expect(started[0].cohort).toBe('prepared-runtime-cohort');
 
         const rows = await BenchmarkResult.collection.find({ batch_id: batchId }).toArray();
         expect(rows.filter(row => row.scoring_method === 'llm_failed')).toHaveLength(0);
@@ -60,6 +63,20 @@ describe('standalone judge run over its budget (#59)', () => {
         const batch = await BenchmarkBatch.collection.findOne({ _id: batchId });
         expect(batch.judge_status).toBe('failed');
         expect(batch.judge_failed || 0).toBe(0);
+    });
+
+    test('runtime drift clears an old grade without assigning the new runtime cohort', async () => {
+        const { insertedId: batchId } = await BenchmarkBatch.collection.insertOne({ status: 'completed', judge_status: 'completed' });
+        const { insertedId: resultId } = await BenchmarkResult.collection.insertOne({ batch_id: batchId,
+            success: true, response: 'answer', scoring_method: 'decomposed', quality_score: 9,
+            composite_score: 8, quality_cohort_fingerprint: 'old-runtime', prompt_fingerprint: 'p' });
+        mockJudgeResult.mockReset();
+        mockJudgeResult.mockRejectedValue(Object.assign(new Error('judge runtime changed'), { code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' }));
+        const outcome = await judgeBatch(String(batchId), { force: true, judgeConfig: { host: 'http://judge:11434', model: 'judge' } });
+        expect(outcome.failed).toBe(1);
+        const result = await BenchmarkResult.collection.findOne({ _id: resultId });
+        expect(result).toMatchObject({ scoring_method: 'llm_failed', quality_score: null, composite_score: null,
+            needs_review: true, quality_cohort_fingerprint: 'old-runtime' });
     });
 
     test('a run that loses its admission stops, records no judge failures and leaves no call running', async () => {

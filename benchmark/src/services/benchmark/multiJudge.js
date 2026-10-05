@@ -101,6 +101,7 @@ async function multiJudgeScore({
         results.push({
             judge_model: seedJudgeResult.judge_model,
             judge_host: seedJudgeResult.judge_host,
+            execution_contract: seedJudgeResult.execution_contract || null,
             quality_score: seedJudgeResult.quality_score,
             explanation: seedJudgeResult.explanation,
             scoring_time_ms: seedJudgeResult.scoring_time_ms || 0,
@@ -137,6 +138,7 @@ async function multiJudgeScore({
             return {
                 judge_model: judgeConfig.model,
                 judge_host: judgeConfig.host,
+                execution_contract: judgeConfig.execution_contract || null,
                 quality_score: scores.quality_score,
                 explanation: scores.explanation,
                 scoring_time_ms: Date.now() - start,
@@ -153,6 +155,7 @@ async function multiJudgeScore({
             return {
                 judge_model: judgeConfig.model,
                 judge_host: judgeConfig.host,
+                execution_contract: judgeConfig.execution_contract || null,
                 quality_score: null,
                 explanation: `Judge failed: ${err.message}`,
                 scoring_time_ms: Date.now() - start,
@@ -223,6 +226,7 @@ async function multiJudgeScore({
             results.push({
                 judge_model: tiebreakerJudge.model,
                 judge_host: tiebreakerJudge.host,
+                execution_contract: tiebreakerJudge.execution_contract || null,
                 quality_score: tbScores.quality_score,
                 explanation: tbScores.explanation,
                 scoring_time_ms: Date.now() - start,
@@ -242,6 +246,7 @@ async function multiJudgeScore({
             results.push({
                 judge_model: tiebreakerJudge.model,
                 judge_host: tiebreakerJudge.host,
+                execution_contract: tiebreakerJudge.execution_contract || null,
                 quality_score: null,
                 explanation: `Tiebreaker failed: ${err.message}`,
                 scoring_time_ms: Date.now() - start,

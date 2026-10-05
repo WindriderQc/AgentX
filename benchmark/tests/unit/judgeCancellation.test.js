@@ -77,6 +77,15 @@ describe('judge caller cancellation', () => {
         expect(request.claimGeneration).toBeUndefined();
     });
 
+    it('refuses a verdict without its frozen runtime identity and does not retry', async () => {
+        benchmarkFetch.mockResolvedValue({ ok: true, json: async () => ({ response: '{"overall":8}' }) });
+        await expect(callJudge('evaluate this', { ...CONFIG,
+            execution_contract: { schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 65536,
+                artifact: { model: CONFIG.model, digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) } }
+        })).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
+        expect(benchmarkFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('aborts an active fetch with a stable code and does not retry', async () => {
         const fetchStarted = deferred();
         benchmarkFetch.mockImplementation((url, options) => {

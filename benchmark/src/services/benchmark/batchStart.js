@@ -30,6 +30,7 @@ const { markReconciliationPending, retainAdmissionHeartbeat } = require('./batch
 const { executeBatch } = require('./batchExecutionRun');
 const { normalizeJudgeThink } = require('./judgeLaunchLimits');
 const { resolveJudgeConfig } = require('../scoring/resolveJudgeConfig');
+const { freezeJudgeConfig } = require('./judgeExecutionContract');
 
 async function startBatch({
     host,
@@ -88,6 +89,7 @@ async function startBatch({
     let admissionHandedOff = false;
     try {
     judge_config = resolveJudgeConfig({ ...judge_config, target: judgeTarget, host: judgeTarget.host || `harness:${judgeTarget.harness.name}`, model: judgeTarget.model });
+    judge_config = await freezeJudgeConfig(judge_config, { signal: creationAbort.signal });
 
     await seedPrompts();
 

@@ -40,6 +40,15 @@ describe('applyScoresToResult — composite_score uses performance_baseline', ()
         judge_confidence: 0.9
     };
 
+    it('retains the frozen judge contract beside the persisted verdict', async () => {
+        const contract = { schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 65536,
+            artifact: { model: 'judge:latest', digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) } };
+        await applyScoresToResult('frozen-verdict', baseScores, { latency: 500, tokens_per_sec: 20,
+            prompt_category: 'knowledge' }, { execution_contract: contract, quality_cohort_fingerprint: 'frozen-runtime-cohort' });
+        expect(captured[0].update.$set.judge_execution_contract).toEqual(contract);
+        expect(captured[0].update.$set.quality_cohort_fingerprint).toBe('frozen-runtime-cohort');
+    });
+
     it('does not persist scores when batch cancellation is already committed', async () => {
         const controller = new AbortController();
         controller.abort(new Error('private stop reason'));

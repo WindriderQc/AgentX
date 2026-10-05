@@ -1283,6 +1283,18 @@ Batches launched before this rule ran under Core's default output reserve
 (at most 4,096 tokens), which cut long reasoning. They keep their own quality
 cohort, so the leaderboard does not mix the two.
 
+A new batch freezes its Ollama judge's context (including an automatic pin),
+exact installed digest and Core runtime fingerprint before it is saved. Missing
+identity or context refuses the launch; a stale performance profile alone does
+not. Secondary judges and the tiebreaker are frozen too. Quality cohort v4
+includes their settings and escalation policy. Each normalized verdict must
+return the same artifact, runtime and window through Core, otherwise it cannot
+supply a score. This uses the returned contract without another lookup per
+verdict. It is contract evidence, not a resident-runtime receipt or a measure of
+judge accuracy. Historical rows retain their stored cohorts. A standalone
+re-judge freezes its runtime before warmup; a partial run moves only the judged
+rows and independent deterministic/executable scores into its new cohort.
+
 No judge size is assumed. A launch may set `judge_config.num_predict` up to
 32,768 tokens and `judge_config.timeout` up to 30 minutes. Values above the
 usual 4,096 tokens and 120 seconds are kept as chosen, and the launch result

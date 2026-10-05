@@ -14,10 +14,8 @@
  *   minutes, over the old fixed 30-minute cap.
  */
 
-const logger = require('../../../config/logger');
 const { getWorkloadAdmissionIdentity } = require('../../clients/coreApiClient');
-const { normalizeJudgeNumCtx } = require('../scoring/judgeRuntimeConfig');
-const { resolveContractNumCtx } = require('./inferenceContractSnapshot');
+const { freezeJudgeConfig } = require('./judgeExecutionContract');
 const { warmupModel } = require('./modelWarmup');
 const { withInference } = require('./workloadYield');
 
@@ -36,22 +34,14 @@ function judgeDrainBudgetMs(pendingCount, concurrency, configuredMs = null) {
 }
 
 /**
- * Resolve the judge context and warm the judge. Returns the judge config the
+ * Freeze the judge identity and context, then warm it. Returns the config the
  * run's calls use. A warmup that fails throws: the run stops before its first
  * call instead of recording every result as a judge failure.
  */
-async function prepareStandaloneJudge(judgeConfig, { workloadId = null, signal = null, _resolveNumCtx = resolveContractNumCtx, _warmup = warmupModel } = {}) {
-    const { host, model } = judgeConfig || {};
-    if (!host || !model || judgeConfig.target?.executionKind === 'harness') return judgeConfig;
-    let numCtx = normalizeJudgeNumCtx(judgeConfig.num_ctx);
-    if (!numCtx) {
-        try {
-            numCtx = normalizeJudgeNumCtx((await _resolveNumCtx(model, host))?.num_ctx);
-            logger.info('Standalone judge context resolved from inference contract', { host, model, num_ctx: numCtx });
-        } catch (error) {
-            logger.warn('Standalone judge context unresolved; judge calls omit num_ctx', { host, model, error: error.message });
-        }
-    }
+async function prepareStandaloneJudge(judgeConfig, { workloadId = null, signal = null, _freezeConfig = freezeJudgeConfig, _warmup = warmupModel } = {}) {
+    if (judgeConfig?.target?.executionKind === 'harness') return judgeConfig;
+    const frozen = await _freezeConfig(judgeConfig, { signal });
+    const { host, model, num_ctx: numCtx } = frozen;
     await withInference(workloadId, () => _warmup(host, model, {
         strict: true,
         num_ctx: numCtx,
@@ -61,7 +51,7 @@ async function prepareStandaloneJudge(judgeConfig, { workloadId = null, signal =
         signal,
         claimIdentity: workloadId ? getWorkloadAdmissionIdentity(workloadId) : null
     }), { signal });
-    return numCtx ? { ...judgeConfig, num_ctx: numCtx } : judgeConfig;
+    return frozen;
 }
 
 module.exports = { judgeDrainBudgetMs, prepareStandaloneJudge, PER_RESULT_BUDGET_MS, MIN_DRAIN_BUDGET_MS };

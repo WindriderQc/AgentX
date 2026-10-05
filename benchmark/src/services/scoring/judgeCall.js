@@ -75,6 +75,9 @@ function throwIfJudgeCancelled(config = {}) {
 }
 
 function rethrowIfJudgeCancelled(error, config = {}) {
+    // Identity drift is fatal to the whole score, including reference and
+    // decomposed sub-verdicts. It must not become a retry or partial score.
+    if (error?.code === 'JUDGE_EXECUTION_CONTRACT_MISMATCH') throw error;
     if (isBenchmarkBatchStoppedError(error) || getJudgeCancelSignal(config)?.aborted) {
         throw createBenchmarkBatchStoppedError();
     }
@@ -439,7 +442,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
             data = await response.json();
         }
         throwIfJudgeCancelled(judgeConfig);
-        assertJudgeInputUnmodified(data);
+        assertJudgeInputUnmodified(data, judgeConfig);
         const text = data.message?.content || data.response || '';
 
         const judgeTruncated = data.done_reason === 'length';

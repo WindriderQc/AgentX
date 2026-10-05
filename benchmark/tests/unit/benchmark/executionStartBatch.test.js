@@ -47,6 +47,13 @@ jest.mock('../../../src/clients/coreApiClient', () => ({
     releaseWorkloadAdmission: jest.fn(async () => ({ released: true }))
 }));
 
+jest.mock('../../../src/services/benchmark/judgeExecutionContract', () => ({
+    freezeJudgeConfig: jest.fn(async config => ({ ...config, num_ctx: config.num_ctx || 32768,
+        execution_contract: { schema: 'agentx.benchmark-judge-execution/v1', num_ctx: config.num_ctx || 32768,
+            artifact: { model: config.model, host: config.host, digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) } }
+    }))
+}));
+
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const coreApiClient = require('../../../src/clients/coreApiClient');
@@ -92,6 +99,16 @@ describe('startBatch prompt-scoped level persistence', () => {
         expect(result.batch_id).toBe(savedBatch._id.toString());
         expect(savedBatch.levels).toEqual([4]);
         expect(savedBatch.prompt_ids).toEqual([promptId.toString()]);
+    });
+
+    it('releases admission and creates no batch when judge identity cannot be frozen', async () => {
+        require('../../../src/services/benchmark/judgeExecutionContract').freezeJudgeConfig
+            .mockRejectedValueOnce(new Error('judge identity unavailable'));
+        const save = jest.spyOn(BenchmarkBatch.prototype, 'save');
+        await expect(startBatch({ host: 'http://exec:11434', models: ['candidate-model'], levels: [1] }))
+            .rejects.toThrow('judge identity unavailable');
+        expect(save).not.toHaveBeenCalled();
+        expect(coreApiClient.releaseWorkloadAdmission).toHaveBeenCalledWith(expect.any(String));
     });
 
     it('retains the admission when an ambiguous batch insert cannot be compensated', async () => {
@@ -183,6 +200,7 @@ describe('startBatch prompt-scoped level persistence', () => {
 
         expect(saved.map((batch) => batch.judge_config.think)).toEqual([false, false, true, false]);
         expect(saved[0].judge_config).toMatchObject({
+            num_ctx: 32768, execution_contract: expect.objectContaining({ num_ctx: 32768 }),
             num_predict: JUDGE_CONFIG.num_predict, timeout: JUDGE_CONFIG.timeout,
             temperature: JUDGE_CONFIG.temperature, seed: JUDGE_CONFIG.seed, max_retries: JUDGE_CONFIG.max_retries,
         });
