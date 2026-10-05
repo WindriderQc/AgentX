@@ -51,6 +51,18 @@ describe('hardware collector client (Data)', () => {
     expect(ollamaOrigin('HTTP://GPU-A.example:11434/api')).toBe('http://gpu-a.example:11434');
   });
 
+  test('carries the Ollama service observation and the known GPU count, even from a stale sample', async () => {
+    const ollamaEnvironment = { source: 'systemd', unit: 'ollama.service', observedAt: '2026-09-25T11:55:00.000Z',
+      ok: true, values: { OLLAMA_KV_CACHE_TYPE: 'q8_0', SECRET_TOKEN: 'never kept' } };
+    const result = await readHostHardware('http://gpu-a.example:11434', {
+      env: ENV, fetchImpl: respond({ ok: true, data: { hosts: [dataHost({ freshness: 'stale', stale: true, gpuCount: 2, ollamaEnvironment })] } })
+    });
+    expect(result).toMatchObject({ status: 'stale', knownGpuCount: 2,
+      ollamaEnvironment: { ok: true, source: 'systemd', values: { OLLAMA_KV_CACHE_TYPE: 'q8_0' } } });
+    expect(result.ollamaEnvironment.values).not.toHaveProperty('SECRET_TOKEN');
+    expect(result.gpus).toBeUndefined();
+  });
+
   test('stale, absent and unreachable evidence is never observed', async () => {
     await expect(readHostHardware('http://gpu-a.example:11434', {
       env: ENV, fetchImpl: respond({ ok: true, data: { hosts: [dataHost({ freshness: 'stale', stale: true, lastError: 'ssh timed out' })] } })

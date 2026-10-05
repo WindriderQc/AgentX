@@ -17,7 +17,19 @@ const HostProfileSchema = new mongoose.Schema({
       enum: ['CPU', 'CUDA', 'Metal', 'ROCm', 'Vulkan', 'OpenCL', 'Unknown'],
       default: 'Unknown'
     },
-    cudaVersion: String
+    cudaVersion: String,
+    // Observed server settings that change what a profile measures (#368),
+    // part of the runtime fingerprint once present. Kept until a successful
+    // observation differs: a missed observation never clears them.
+    settings: {
+      kvCacheType: String,
+      flashAttention: String,
+      visibleDevices: String,
+      schedSpread: String,
+      gpuCount: Number
+    },
+    settingsObservedAt: Date,
+    settingsSource: String
   },
   baseline: {
     authorityState: {

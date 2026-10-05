@@ -535,7 +535,16 @@ Ollama server settings the collector read, with their source and age, whatever
 the GPU sample's freshness: an unset key reads as Ollama's default (`f16` for
 the KV cache), and a failed read says so instead of showing defaults. Benchmark reads the same projection
 (its `DATAAPI_BASE_URL`, default `http://data:3083` in Compose) to fill
-`agentx.profiler-hardware-collector/v1`. A retired host-report agent still
+`agentx.profiler-hardware-collector/v1`. When it resolves an artifact's
+identity (at most every 5 minutes per host), it records on the host profile
+the settings that change what a profile measures: KV cache type, flash
+attention, `CUDA_VISIBLE_DEVICES`, `OLLAMA_SCHED_SPREAD` and the GPU count
+Ollama sees. They become part of the runtime fingerprint, so a profile,
+context result or benchmark qualification measured under other settings
+stops matching, and preflight or a sweep asks to profile the host again. Only
+a successful observation changes them, and none while the unit waits for
+`daemon-reload`; a host never observed keeps the fingerprint it had. A
+retired host-report agent still
 running on a GPU host is removed by hand on that host; Core has no
 host-report route.
 
