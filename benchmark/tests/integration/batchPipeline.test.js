@@ -37,7 +37,8 @@ jest.mock('../../src/clients/coreApiClient', () => ({
     getBenchmarkClaimIdentity: jest.fn((_host, batchId) => ({
         claimBatchId: batchId,
         claimGeneration: `generation-${batchId}`
-    }))
+    })),
+    getWorkloadAdmissionIdentity: jest.fn(() => null)
 }));
 
 // Exact-artifact admission and profiling are covered by their focused suites.
