@@ -58,7 +58,8 @@ function inferenceConflict(state, request, now) {
     const yielded = workloads.find(item => item.yieldedAt);
     if (yielded) return failure('workload_yielded', true, holderOf('workload', yielded));
   } else {
-    const reserving = workloads.find(item => !item.yieldedAt || !item.hosts.includes(request.host));
+    const sharedHere = item => request.mode !== 'exclusive' && (item.sharedHosts || []).includes(request.host);
+    const reserving = workloads.find(item => (!item.yieldedAt || !item.hosts.includes(request.host)) && !sharedHere(item));
     if (reserving) return failure('workload_reserved', true, holderOf('workload', reserving));
   }
   const exclusive = inferences.find(item => item.mode === 'exclusive');

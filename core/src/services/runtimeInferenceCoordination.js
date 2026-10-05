@@ -117,8 +117,11 @@ async function acquireInference({
       ] }
     ]
   };
+  // A workload's shared host keeps admitting shared inference; another
+  // endpoint on the same device does not.
   const resourceWorkload = resourceIds.length ? [{ resourceIds: { $in: resourceIds },
-    ...(mode === 'shared' && { $or: [{ hosts: { $ne: host } }, { yieldedAt: null }, { drainingHosts: host }] }) }] : [];
+    ...(mode === 'shared' && { $or: [{ hosts: { $ne: host } },
+      { yieldedAt: null, sharedHosts: { $ne: host } }, { drainingHosts: host, sharedHosts: { $ne: host } }] }) }] : [];
   const ordinaryFilter = {
     _id: 'runtime',
     ...topologyGuard(topology),
@@ -131,7 +134,7 @@ async function acquireInference({
     } } },
     workloads: { $not: { $elemMatch: { $or: [
       mode === 'exclusive' ? { hosts: host }
-        : { hosts: host, $or: [{ yieldedAt: null }, { drainingHosts: host }] },
+        : { hosts: host, sharedHosts: { $ne: host }, $or: [{ yieldedAt: null }, { drainingHosts: host }] },
       ...resourceWorkload
     ] } } }
   };

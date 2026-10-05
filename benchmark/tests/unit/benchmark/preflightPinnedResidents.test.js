@@ -12,7 +12,7 @@ const JUDGE = 'http://judge:11434';
 describe('pre-flight pinned residents', () => {
     beforeEach(() => jest.clearAllMocks());
 
-    it('warns that a separate judge host keeps its pinned models but refuses their calls during the batch', async () => {
+    it('says that a separate judge host keeps serving its pinned models beside the judge', async () => {
         getDedicationStatuses.mockResolvedValue([
             { host: `${JUDGE}/`, pinnedModels: [{ model: 'bge-m3' }, { model: 'gemma4:12b' }] }
         ]);
@@ -21,7 +21,7 @@ describe('pre-flight pinned residents', () => {
         expect(result.affectedHosts).toEqual([]);
         expect(result.judgeHost).toEqual({ host: JUDGE, pinnedModels: ['bge-m3', 'gemma4:12b'] });
         expect(result.warnings).toEqual([
-            expect.stringMatching(/^Judge host http:\/\/judge:11434 serves pinned model\(s\): bge-m3, gemma4:12b\. They stay loaded.*Core refuses their ordinary calls.*CPU host/)
+            expect.stringMatching(/^Judge host http:\/\/judge:11434 serves pinned model\(s\): bge-m3, gemma4:12b\. The batch holds it as a shared host: they keep serving beside the judge/)
         ]);
     });
 

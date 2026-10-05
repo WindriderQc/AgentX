@@ -15,7 +15,15 @@ function sameWorkloadIntent(existing, { workloadId, kind, batchId, hosts }) {
     && JSON.stringify(existingHosts) === JSON.stringify(requestedHosts);
 }
 
-async function acquireWorkload({ principal, requestId, workloadId, kind, batchId, hosts, recoveryRequestId, ttl } = {}) {
+// Shared hosts must be held hosts and must not share a physical resource with
+// an unshared one, whose work they would otherwise disturb.
+function effectiveSharedHosts(topology, hosts, sharedHosts) {
+  const requested = normalizedHosts(sharedHosts).filter(host => hosts.includes(host));
+  const unsharedResources = resourcesFor(topology, hosts.filter(host => !requested.includes(host)));
+  return requested.filter(host => !resourcesFor(topology, [host]).some(id => unsharedResources.includes(id)));
+}
+
+async function acquireWorkload({ principal, requestId, workloadId, kind, batchId, hosts, sharedHosts, recoveryRequestId, ttl } = {}) {
   principal = clean(principal);
   requestId = clean(requestId);
   workloadId = clean(workloadId);
@@ -29,6 +37,9 @@ async function acquireWorkload({ principal, requestId, workloadId, kind, batchId
   let topology;
   try { topology = resourceTopology(); } catch (error) { return resourceFailure(error.code); }
   const resourceIds = resourcesFor(topology, hosts);
+  sharedHosts = effectiveSharedHosts(topology, hosts, sharedHosts);
+  const unsharedHosts = hosts.filter(host => !sharedHosts.includes(host));
+  const unsharedResourceIds = resourcesFor(topology, unsharedHosts);
   await reapExpired();
   const current = await RuntimeCoordination.findById('runtime').lean();
   if (!topologyMatches(current, topology)) return resourceFailure('runtime_resource_configuration_changed');
@@ -57,6 +68,7 @@ async function acquireWorkload({ principal, requestId, workloadId, kind, batchId
     kind,
     batchId,
     hosts,
+    sharedHosts,
     resourceIds,
     acquiredAt: now,
     heartbeatAt: now,
@@ -79,13 +91,16 @@ async function acquireWorkload({ principal, requestId, workloadId, kind, batchId
       _id: 'runtime',
       ...topologyGuard(topology),
       maintenance: null,
-      // Workload admission is exclusive for every requested host. This veto
+      // Workload admission is exclusive for every unshared host. This veto
       // lives in the same CAS as the workload insert so inference/workload
       // acquisition is linearizable in both directions. UNKNOWN inference
-      // entries deliberately continue to block.
+      // entries deliberately continue to block. A shared host only waits
+      // for an exclusive or UNKNOWN inference.
       ...(hosts.length > 0
         ? { inferences: { $not: { $elemMatch: { $or: [
-          { host: { $in: hosts } }, ...(resourceIds.length ? [{ resourceIds: { $in: resourceIds } }] : [])
+          ...(unsharedHosts.length ? [{ host: { $in: unsharedHosts } }] : []),
+          ...(unsharedResourceIds.length ? [{ resourceIds: { $in: unsharedResourceIds } }] : []),
+          ...(sharedHosts.length ? [{ host: { $in: sharedHosts }, $or: [{ mode: 'exclusive' }, { state: 'UNKNOWN' }] }] : [])
         ] } } } }
         : { 'inferences.0': { $exists: false } }),
       workloads: { $not: { $elemMatch: {

@@ -364,6 +364,7 @@ router.post('/workload-admissions', async (req, res) => {
       kind: req.body?.kind,
       batchId: req.body?.batchId,
       hosts: req.body?.hosts,
+      sharedHosts: req.body?.sharedHosts,
       recoveryRequestId: req.body?.recoveryRequestId,
       ttl: req.body?.ttlMs
     });

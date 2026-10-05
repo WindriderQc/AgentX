@@ -22,6 +22,11 @@ async function acquireWorkloadAdmission(workloadId, options = {}) {
   const expectedHosts = [...new Set((Array.isArray(options.hosts) ? options.hosts : [])
     .map(hostUrlKey)
     .filter(Boolean))].sort();
+  // Hosts held for the judge only (#396). Core grants a subset; a Core that
+  // does not know shared hosts grants none, and the host stays reserved.
+  const requestedSharedHosts = [...new Set((Array.isArray(options.sharedHosts) ? options.sharedHosts : [])
+    .map(hostUrlKey)
+    .filter(host => host && expectedHosts.includes(host)))].sort();
   const existing = workloadAdmissionById.get(key);
   if (existing) {
     if (existing.requestId !== requestId
@@ -51,6 +56,7 @@ async function acquireWorkloadAdmission(workloadId, options = {}) {
       kind: expectedKind,
       batchId: expectedBatchId,
       hosts: expectedHosts,
+      ...(requestedSharedHosts.length && { sharedHosts: requestedSharedHosts }),
       recoveryRequestId,
       ttlMs: options.ttlMs || null
     })
@@ -68,13 +74,15 @@ async function acquireWorkloadAdmission(workloadId, options = {}) {
     }
   }
   const result = data?.data;
+  const grantedSharedHosts = [...(Array.isArray(result?.sharedHosts) ? result.sharedHosts : [])].sort();
   if (!result?.acquired || !result.admissionId || !result.generation
     || !result.principal
     || result.workloadId !== key
     || result.requestId !== requestId
     || result.kind !== expectedKind
     || (result.batchId || null) !== expectedBatchId
-    || JSON.stringify([...(result.hosts || [])].sort()) !== JSON.stringify(expectedHosts)) {
+    || JSON.stringify([...(result.hosts || [])].sort()) !== JSON.stringify(expectedHosts)
+    || grantedSharedHosts.some(host => !expectedHosts.includes(host))) {
     const error = new Error(result?.reason || 'Core workload admission receipt is invalid');
     error.code = 'WORKLOAD_ADMISSION_REJECTED';
     throw error;
@@ -88,6 +96,7 @@ async function acquireWorkloadAdmission(workloadId, options = {}) {
     kind: expectedKind,
     batchId: expectedBatchId,
     hosts: expectedHosts,
+    sharedHosts: grantedSharedHosts,
     expiresAt: result.expiresAt || null
   };
   const arm = async () => coreRequest(

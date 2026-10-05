@@ -236,7 +236,9 @@ function coordinationBlock(runtime, hostUrl, nowMs, { busyCounts = false, model 
   }
   const inferences = (runtime.inferences || []).filter(item => canonical(item.host) === host);
   if (inferences.some(item => item.state === 'UNKNOWN')) return UNAVAILABLE_REASONS.QUARANTINED;
-  const workloads = (runtime.workloads || []).filter(item => (item.hosts || []).some(h => canonical(h) === host));
+  // A workload's shared host (a separate judge host) stays open to other callers.
+  const workloads = (runtime.workloads || []).filter(item => (item.hosts || []).some(h => canonical(h) === host)
+    && !(item.sharedHosts || []).some(h => canonical(h) === host));
   if (workloads.some(item => item.recoveryRequired === true || item.recoveryState === 'UNKNOWN')) {
     return UNAVAILABLE_REASONS.QUARANTINED;
   }

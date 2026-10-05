@@ -31,6 +31,10 @@ const WorkloadAdmissionSchema = new mongoose.Schema({
   kind: { type: String, required: true },
   batchId: { type: String, default: null },
   hosts: { type: [String], default: [] },
+  // Hosts held for a role that tolerates other models, such as a separate
+  // judge host: ordinary shared inference stays admitted there; exclusive
+  // admission does not. Core drops a host sharing a GPU with an unshared one.
+  sharedHosts: { type: [String], default: [] },
   resourceIds: { type: [String], default: [] },
   // Claim release closes inference dispatch on these hosts until the workload
   // is released. The native finalizer still owns exact runtime restoration.
