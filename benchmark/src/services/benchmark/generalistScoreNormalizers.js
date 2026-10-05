@@ -233,5 +233,6 @@ module.exports = {
     countByValue,
     buildCategoryEvidenceView,
     confidenceMargin,
+    tCritical95,
     weightedConfidenceMargin
 };

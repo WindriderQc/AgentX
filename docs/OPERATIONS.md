@@ -1064,6 +1064,34 @@ Leaderboard rows carry their host's residency (`local · CPU`), and
 rank CPU and GPU runs with `axis=quality`, since the composite axis penalises
 latency.
 
+`POST /api/benchmark/comparison/paired` compares two artifacts prompt by
+prompt, for example one model at Q8 on two GPUs and at Q4 on one. The body
+names two arms, `a` and `b`, each `{ batch_id, model, host? }`. It also takes an
+optional `categories` list and an optional `bootstrap` (`iterations` 200–20000,
+default 2000; `seed`, default 1).
+
+- **Pairing.** Results pair on the catalog prompt they ran. When both rows carry
+  a prompt fingerprint, it must match, so an edited prompt never pairs. The
+  repeats of a prompt are averaged inside an arm.
+- **Overall and per category.** The response gives `B − A` in points (0–100)
+  with a paired t interval and a seeded bootstrap interval; `significant` means
+  the bootstrap interval excludes zero. `minimumDetectableDelta` is the smallest
+  difference these prompts would detect at 5 % and 80 % power. It is an
+  approximation that shows what the current catalog can resolve.
+- **Spread and pairing counts.** Each arm reports `repeatSpread`, how much a
+  prompt's score moves between repeats. The response also counts the prompts
+  only one arm ran and those left out because they changed.
+- **Authority.** `comparability.authoritative` is false when any of these holds:
+  - the arms were scored in different quality cohorts or scorer versions;
+  - a judge is one of the contenders (`self`), or shares their model family
+    by name (`same_family`).
+
+  Results scored by executed tests or deterministic checks have no judge.
+
+To know a model's run-to-run noise, compare two batches of the same artifact;
+the response says so (`sameArtifact`). `POST /api/benchmark/regression/compare`
+keeps comparing batches of the same model and host.
+
 Benchmark batches send their configured `per_test_timeout_ms` to Core as
 `timeoutMs`, so Core's non-streamed Ollama attempt uses the same budget instead
 of the default `INFERENCE_FETCH_TIMEOUT_MS` (10 minutes). Core accepts this
