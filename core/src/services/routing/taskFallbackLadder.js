@@ -26,6 +26,7 @@ const { setTimeout: sleep } = require('node:timers/promises');
 const logger = require('../../../config/logger');
 const { HOSTS, refreshHosts, DEFAULT_TASK_MODELS } = require('../modelRouterDefaults');
 const { modelsMatch } = require('../../helpers/modelNameNormalization');
+const { modelIdentityKey } = require('../../../../shared/modelNames');
 const { countContention } = require('./inferenceContentionCounters');
 
 const CONFIG_ENV = 'AGENTX_TASK_FALLBACKS_JSON';
@@ -225,7 +226,7 @@ function defaultDeps() {
 }
 
 /** Read-only view of what ordinary admission would refuse on this host. */
-function coordinationBlock(runtime, hostUrl, nowMs, { busyCounts = false } = {}) {
+function coordinationBlock(runtime, hostUrl, nowMs, { busyCounts = false, model = null } = {}) {
   if (!runtime) return null;
   const host = canonical(hostUrl);
   if (runtime.maintenance) {
@@ -235,14 +236,18 @@ function coordinationBlock(runtime, hostUrl, nowMs, { busyCounts = false } = {})
   }
   const inferences = (runtime.inferences || []).filter(item => canonical(item.host) === host);
   if (inferences.some(item => item.state === 'UNKNOWN')) return UNAVAILABLE_REASONS.QUARANTINED;
-  const workloads = (runtime.workloads || []).filter(item => (item.hosts || []).some(h => canonical(h) === host));
+  // A workload's shared host (a separate judge host) stays open to other callers.
+  const workloads = (runtime.workloads || []).filter(item => (item.hosts || []).some(h => canonical(h) === host)
+    && !(item.sharedHosts || []).some(h => canonical(h) === host));
   if (workloads.some(item => item.recoveryRequired === true || item.recoveryState === 'UNKNOWN')) {
     return UNAVAILABLE_REASONS.QUARANTINED;
   }
   if (inferences.some(item => item.mode === 'exclusive'
     && new Date(item.expiresAt).getTime() > nowMs)) return UNAVAILABLE_REASONS.ADMISSION_BLOCKED;
   if (workloads.some(item => !item.yieldedAt)) return UNAVAILABLE_REASONS.ADMISSION_BLOCKED;
-  if (busyCounts && inferences.some(item => item.state === 'ACTIVE'
+  // Several models may run on a host at once: only the same model is busy.
+  const sameModel = item => !model || !item.modelKey || item.modelKey === modelIdentityKey(model);
+  if (busyCounts && inferences.some(item => item.state === 'ACTIVE' && sameModel(item)
     && new Date(item.expiresAt).getTime() > nowMs)) return UNAVAILABLE_REASONS.PRIMARY_BUSY;
   return null;
 }
@@ -271,7 +276,7 @@ async function probeTarget({ model, host, url = null }, deps, { requireModel = f
   } catch (err) {
     logger.debug('[TaskFallbackLadder] coordination read skipped', { error: err.message });
   }
-  const blocked = coordinationBlock(runtime, hostUrl, deps.now(), { busyCounts });
+  const blocked = coordinationBlock(runtime, hostUrl, deps.now(), { busyCounts, model });
   if (blocked) return { available: false, reason: blocked };
   let spilled = [];
   try {

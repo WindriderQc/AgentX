@@ -12,6 +12,8 @@ function batchAdmissionScope(targets, judgeConfig = {}) {
         .map(host => resolveJudgeHost(host, judgeConfig).judgeHost).filter(Boolean);
     return {
         hosts: [...new Set([...hosts, ...judgeHosts])],
+        // A host that only judges keeps serving other models during the batch (#396).
+        sharedHosts: [...new Set(judgeHosts.filter(host => !hosts.includes(host)))],
         kind: externalJudge || (targets || []).some(target => target.executionKind !== 'ollama')
             ? 'benchmark-cloud' : 'benchmark'
     };

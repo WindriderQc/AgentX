@@ -13,6 +13,7 @@ const {
     releaseWorkloadAdmission
 } = require('../../clients/coreApiClient');
 const { isCoreUnavailable, withinConfirmedAdmission } = require('./coreRestartTolerance');
+const { hostUrlKey } = require('../../../../shared/ollamaHostConfig');
 
 const PHASE_BUDGET_PER_TEST_MS = 30_000;
 const CLAIM_HEARTBEAT_INTERVAL_MS = 30_000;
@@ -30,14 +31,18 @@ const CLAIM_HEARTBEAT_INTERVAL_MS = 30_000;
  */
 async function acquireBenchmarkClaims(hostUrls, batchId, estimatedDurationMs, claimOptions = {}) {
     const acquired = [];
-    await acquireWorkloadAdmission(batchId, {
+    const admission = await acquireWorkloadAdmission(batchId, {
         requestId: claimOptions.requestId || `benchmark:${batchId}`,
         kind: claimOptions.kind || (claimOptions.source === 'profiler' ? 'profiler' : 'benchmark'),
         batchId: claimOptions.source === 'benchmark' || !claimOptions.source ? batchId : null,
         hosts: claimOptions.admissionHosts || hostUrls,
+        sharedHosts: claimOptions.sharedHosts || [],
         ttlMs: estimatedDurationMs
     });
-    for (const hostUrl of hostUrls) {
+    // A host Core granted as shared (a judge-only host) gets no claim: its
+    // pinned models keep serving and the batch never unloads or drains it.
+    const shared = new Set(admission?.sharedHosts || []);
+    for (const hostUrl of hostUrls.filter(url => !shared.has(hostUrlKey(url)))) {
         try {
             const result = await claimHostForBenchmark(hostUrl, batchId, estimatedDurationMs, {
                 source: claimOptions.source || 'benchmark',

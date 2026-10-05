@@ -6,6 +6,14 @@ const { inferenceConflict } = require('./runtimeInferenceConflict');
 const { WORKLOAD_INFERENCE_MAINTENANCE_FILTER } = require('./runtimeDeployGate');
 const { clean, ttlMs, secret, canonicalHost, reapExpired } = require('./runtimeCoordinationState');
 const { buildInferenceResidencySpec, buildInferenceResidencyKey } = require('./runtimeInferenceResidency');
+const { modelIdentityKey } = require('../../../shared/modelNames');
+
+// Several models may run on one host at once. The same model under another
+// residency (context, runner options, keep-alive) would make Ollama reload it
+// under the running call, so that pair still conflicts.
+function modelKeyOf(model) {
+  return modelIdentityKey(model) || null;
+}
 
 function sameInferenceIntent(existing, {
   host, model, residencyKey, kind, mode, workloadAdmissionId, workloadGeneration
@@ -49,6 +57,7 @@ async function acquireInference({
   const keepAliveSupplied = keepAlive !== undefined;
   const residencySpec = buildInferenceResidencySpec({ model, runtimeOptions, keepAlive, keepAliveSupplied });
   const residencyKey = buildInferenceResidencyKey({ model, runtimeOptions, keepAlive, keepAliveSupplied });
+  const modelKey = modelKeyOf(model);
   let topology;
   try { topology = resourceTopology(); } catch (error) { return resourceFailure(error.code); }
   const resourceIds = resourcesFor(topology, [host]);
@@ -81,6 +90,7 @@ async function acquireInference({
     requestId,
     host,
     model,
+    modelKey,
     residencyKey,
     residencySpec,
     resourceIds,
@@ -102,12 +112,16 @@ async function acquireInference({
         { host: { $ne: host } },
         { state: 'UNKNOWN' },
         { mode: 'exclusive' },
-        ...(mode === 'exclusive' ? [{}] : [{ residencyKey: { $ne: residencyKey } }])
+        // Admissions written before modelKey existed keep the old one-residency rule.
+        ...(mode === 'exclusive' ? [{}] : [{ residencyKey: { $ne: residencyKey }, $or: [{ modelKey }, { modelKey: null }] }])
       ] }
     ]
   };
+  // A workload's shared host keeps admitting shared inference; another
+  // endpoint on the same device does not.
   const resourceWorkload = resourceIds.length ? [{ resourceIds: { $in: resourceIds },
-    ...(mode === 'shared' && { $or: [{ hosts: { $ne: host } }, { yieldedAt: null }, { drainingHosts: host }] }) }] : [];
+    ...(mode === 'shared' && { $or: [{ hosts: { $ne: host } },
+      { yieldedAt: null, sharedHosts: { $ne: host } }, { drainingHosts: host, sharedHosts: { $ne: host } }] }) }] : [];
   const ordinaryFilter = {
     _id: 'runtime',
     ...topologyGuard(topology),
@@ -120,7 +134,7 @@ async function acquireInference({
     } } },
     workloads: { $not: { $elemMatch: { $or: [
       mode === 'exclusive' ? { hosts: host }
-        : { hosts: host, $or: [{ yieldedAt: null }, { drainingHosts: host }] },
+        : { hosts: host, sharedHosts: { $ne: host }, $or: [{ yieldedAt: null }, { drainingHosts: host }] },
       ...resourceWorkload
     ] } } }
   };
@@ -156,7 +170,7 @@ async function acquireInference({
   return {
     acquired: false,
     recoveryRequired,
-    failure: inferenceConflict(blocked, { host, resourceIds, mode, residencyKey, principal, workloadAdmissionId, workloadGeneration }, now),
+    failure: inferenceConflict(blocked, { host, resourceIds, mode, residencyKey, modelKey, principal, workloadAdmissionId, workloadGeneration }, now),
     reason: workloadAdmissionId
       ? 'exact workload proof is absent/expired, or a conflicting inference residency blocks this host'
       : 'maintenance, workload, UNKNOWN inference, or incompatible residency blocks inference on this host'

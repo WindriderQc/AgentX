@@ -317,6 +317,7 @@ async function runBatchOrchestrator({
         claimedHostUrls = await acquireBenchmarkClaims(allAffectedHosts, batchId, claimEstimateMs, {
             kind: admissionScope.kind,
             admissionHosts: admissionScope.hosts,
+            sharedHosts: admissionScope.sharedHosts,
             source: 'benchmark'
         });
     } catch (error) {

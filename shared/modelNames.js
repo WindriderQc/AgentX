@@ -5,4 +5,9 @@ function normalizeModelTag(value) {
   return String(value || '').trim().replace(/:latest$/i, '');
 }
 
-module.exports = { normalizeModelTag };
+/** Case-insensitive identity of a model tag, `:latest` folded. */
+function modelIdentityKey(value) {
+  return normalizeModelTag(value).toLowerCase();
+}
+
+module.exports = { modelIdentityKey, normalizeModelTag };

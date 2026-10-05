@@ -167,6 +167,26 @@ describe('benchmark coordination helpers', () => {
                 'http://judge:11434', BATCH, 30_000, expect.any(Object));
         });
 
+        it('claims no host Core granted as shared: a judge-only host keeps serving', async () => {
+            coreApiClient.claimHostForBenchmark.mockResolvedValue({ claimed: true });
+            coreApiClient.acquireWorkloadAdmission.mockResolvedValue({ acquired: true, sharedHosts: ['http://judge:11434'] });
+            const acquired = await acquireBenchmarkClaims(['http://exec:11434', 'http://judge:11434/'], BATCH, 30_000, {
+                sharedHosts: ['http://judge:11434']
+            });
+            expect(coreApiClient.acquireWorkloadAdmission).toHaveBeenCalledWith(BATCH,
+                expect.objectContaining({ sharedHosts: ['http://judge:11434'] }));
+            expect(acquired).toEqual(['http://exec:11434']);
+            expect(coreApiClient.claimHostForBenchmark).toHaveBeenCalledTimes(1);
+        });
+
+        it('claims a requested shared host that Core did not grant as shared', async () => {
+            coreApiClient.claimHostForBenchmark.mockResolvedValue({ claimed: true });
+            const acquired = await acquireBenchmarkClaims(['http://exec:11434', 'http://judge:11434'], BATCH, 30_000, {
+                sharedHosts: ['http://judge:11434']
+            });
+            expect(acquired).toEqual(['http://exec:11434', 'http://judge:11434']);
+        });
+
         it('refuses before any host claim when runtime maintenance blocks admission', async () => {
             coreApiClient.acquireWorkloadAdmission.mockRejectedValue(new Error('maintenance active'));
             await expect(acquireBenchmarkClaims(['http://a:11434'], BATCH, 30_000))

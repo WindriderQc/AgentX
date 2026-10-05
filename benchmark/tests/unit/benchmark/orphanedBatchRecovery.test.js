@@ -89,6 +89,6 @@ describe('orphaned batch recovery at startup', () => {
         const refreshed = await BenchmarkBatch.findById(batch._id).lean();
         expect(refreshed.status).toBe('running');
         expect(releaseBenchmarkClaim).not.toHaveBeenCalled();
-        expect(acquireBenchmarkClaims).toHaveBeenCalledWith([HOST], String(batch._id), 60_000);
+        expect(acquireBenchmarkClaims).toHaveBeenCalledWith([HOST], String(batch._id), 60_000, { sharedHosts: [] });
     });
 });

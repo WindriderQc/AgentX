@@ -175,6 +175,19 @@ validated by distributed admission. Internal session-hold warmups retain their
 own runtime preparation contract. Neither caller context values nor benchmarked
 Modelfiles are rewritten by this policy.
 
+Runtime admission lets several models run on one host at once. A shared
+admission conflicts only with the same model under another residency (context,
+runner options or keep-alive), which would make Ollama reload it under a running
+call. An exclusive model handoff, an UNKNOWN inference and another endpoint on
+the same physical GPU still exclude every other admission on that host.
+
+A workload reserves its hosts, except the ones it holds as shared. Benchmark
+holds a separate judge host that way and takes no host claim on it: other
+callers keep their ordinary shared inference there, beside the judge, and a
+household turn does not ask the batch to yield for it. An exclusive handoff
+still waits for the batch, and Core does not share a host that sits on the
+same GPU as one the workload reserves.
+
 Content writes and erasure share a durable Mongo owner fence, including across
 Core workers. Erasure closes admission before waiting for an existing writer,
 then deletes the owner's pages, payload chunks and exchange packets. It leaves

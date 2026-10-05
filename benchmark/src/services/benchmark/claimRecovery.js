@@ -197,7 +197,9 @@ async function reacquireActiveBatchClaims({ processStartedAt = null } = {}) {
                 judgeConfig: batch.judge_config || {}
             });
 
-            const claimed = await acquireBenchmarkClaims(allHosts, String(batch._id), estimateMs);
+            const claimed = await acquireBenchmarkClaims(allHosts, String(batch._id), estimateMs, {
+                sharedHosts: judgeHosts.filter(url => !execHosts.includes(url))
+            });
             if (claimed.length > 0) {
                 reacquired += claimed.length;
                 logger.info('[ClaimRecovery] Re-acquired claims for active batch', {

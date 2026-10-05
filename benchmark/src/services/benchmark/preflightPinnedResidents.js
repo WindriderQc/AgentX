@@ -6,10 +6,10 @@
  *
  * - An execution host's pinned models that the batch does not test are
  *   unloaded during the batch and restored after it.
- * - A separate judge host keeps its pinned models loaded, but while the batch
- *   holds that host Core refuses their ordinary calls (#396). Embeddings move
- *   to a registered CPU host that holds the model; household and conversation
- *   turns ask the batch to yield and wait for it; other callers are refused.
+ * - A separate judge host is held as shared (#396): its pinned models keep
+ *   serving beside the judge, and Ollama makes one wait or reloads it when
+ *   VRAM runs short. A judge host on the same GPU as an execution host is
+ *   reserved instead, so their calls wait until the batch ends.
  */
 
 const logger = require('../../../config/logger');
@@ -66,9 +66,9 @@ async function checkPinnedResidents(targets, { judgeHost = null } = {}) {
         if (judgePinned.length) {
             judge = { host: judgeUrl, pinnedModels: judgePinned };
             warnings.push(
-                `Judge host ${judgeUrl} serves pinned model(s): ${judgePinned.join(', ')}. They stay loaded, but while ` +
-                'the batch holds this host Core refuses their ordinary calls: embeddings move to a registered CPU host ' +
-                'that holds the model, household and conversation turns ask the batch to yield and wait, other callers are refused.'
+                `Judge host ${judgeUrl} serves pinned model(s): ${judgePinned.join(', ')}. The batch holds it as a shared ` +
+                'host: they keep serving beside the judge, and Ollama makes one wait or reloads it when VRAM runs short. ' +
+                'On the same GPU as an execution host it is reserved instead, and their calls wait until the batch ends.'
             );
         }
     } catch (err) {

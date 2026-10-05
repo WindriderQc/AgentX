@@ -58,14 +58,17 @@ function inferenceConflict(state, request, now) {
     const yielded = workloads.find(item => item.yieldedAt);
     if (yielded) return failure('workload_yielded', true, holderOf('workload', yielded));
   } else {
-    const reserving = workloads.find(item => !item.yieldedAt || !item.hosts.includes(request.host));
+    const sharedHere = item => request.mode !== 'exclusive' && (item.sharedHosts || []).includes(request.host);
+    const reserving = workloads.find(item => (!item.yieldedAt || !item.hosts.includes(request.host)) && !sharedHere(item));
     if (reserving) return failure('workload_reserved', true, holderOf('workload', reserving));
   }
   const exclusive = inferences.find(item => item.mode === 'exclusive');
   if (exclusive || (request.mode === 'exclusive' && inferences.length)) {
     return failure('inference_active', true, holderOf('inference', exclusive || inferences[0]));
   }
-  const resident = inferences.find(item => canonicalHost(item.host) !== request.host || item.residencyKey !== request.residencyKey);
+  // Another endpoint on the same device, or the same model under another residency.
+  const resident = inferences.find(item => canonicalHost(item.host) !== request.host
+    || (item.residencyKey !== request.residencyKey && (!item.modelKey || item.modelKey === request.modelKey)));
   if (resident) return failure('inference_residency_active', true, holderOf('inference', resident));
   return failure('admission_conflict_unclassified');
 }

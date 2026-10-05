@@ -460,6 +460,25 @@ describe('Core API client scoped outbound execution', () => {
     });
   });
 
+  test('asks Core to share a judge-only host and keeps the subset Core grants', async () => {
+    const hosts = ['http://exec:11434', 'http://judge:11434'];
+    queueWorkloadAcquire('batch-shared', hosts, { sharedHosts: ['http://judge:11434'] });
+    const receipt = await acquireWorkloadAdmission('batch-shared', {
+      hosts, sharedHosts: ['http://judge:11434/', 'http://not-held:11434']
+    });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ hosts, sharedHosts: ['http://judge:11434'] });
+    expect(receipt.sharedHosts).toEqual(['http://judge:11434']);
+
+    queueWorkloadAcquire('batch-unshared', hosts);
+    await expect(acquireWorkloadAdmission('batch-unshared', { hosts, sharedHosts: ['http://judge:11434'] }))
+      .resolves.toMatchObject({ sharedHosts: [] });
+
+    fetch.mockImplementationOnce(async url => response(url, { body: JSON.stringify({ status: 'success',
+      data: { ...workloadAcquireBody('batch-forged', hosts).data, sharedHosts: ['http://elsewhere:11434'] } }) }));
+    await expect(acquireWorkloadAdmission('batch-forged', { hosts }))
+      .rejects.toMatchObject({ code: 'WORKLOAD_ADMISSION_REJECTED' });
+  });
+
   test('enforces the claim request cap before dispatch', async () => {
     queueWorkloadAcquire('batch-1', ['http://ollama:11434']);
     await acquireWorkloadAdmission('batch-1', { hosts: ['http://ollama:11434'] });
