@@ -44,6 +44,12 @@ no Product pin or second repository to synchronize. Task scopes and policy
 fingerprints created for the archived repositories must be retargeted explicitly
 before execution.
 
+Worker prompts retain complete verifier output, operator/coding-team discussion
+and supplied Planning text. The dispatcher does not shorten these inputs;
+inference admission and the existing task scope, tools and turn budgets still
+apply. Dispatcher reports stay separate from the discussion, and Planning remains
+untrusted reference data that grants no permission.
+
 Copy `config.example.json` outside Git to
 `~/.config/agentx/coding-dispatcher.json`, or set `AGENTX_CODING_CONFIG`. Configure
 the actual native SSH target, worker checkout under its OpenClaw workspace,

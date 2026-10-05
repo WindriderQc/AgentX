@@ -376,7 +376,7 @@ def run_claimed_dispatch(
             repair_message = dispatch_message.build_message(
                 task, api_base=args.api_base, remote_repo=args.remote_repo,
                 agent=args.agent, worker_helper=args.worker_helper,
-                repair_context=verification_text[-6000:],
+                repair_context=verification_text,
             )
             repair_args = argparse.Namespace(**{**vars(args), "timeout": repair_timeout})
             repair_sampler = local_energy_sampler(args)
