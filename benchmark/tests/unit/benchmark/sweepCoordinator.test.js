@@ -33,6 +33,7 @@ function makeDeps({
     performanceByName = {},
     contextByName = {},
     identityErrorByName = {},
+    modelInfoByName = {},
     host = {}
 } = {}) {
     const resolvedHost = { ...HOST, ...host };
@@ -54,7 +55,8 @@ function makeDeps({
         },
         ModelContextProfile: {
             findOne: jest.fn(({ modelName }) => queryResult(contextByName[modelName] || null))
-        }
+        },
+        showModel: jest.fn(async (_host, model) => ({ model_info: modelInfoByName[model] || {} }))
     };
 }
 
@@ -244,6 +246,38 @@ describe('benchmark sweep coordinator exact-artifact planning', () => {
             vramUsedMiB: 18000,
             vramLimitMiB: 12000
         });
+    });
+
+    it('estimates an installed hybrid model from its metadata, not the parameter rule of thumb', async () => {
+        const model = 'qwen3.6:27b-q4_K_M';
+        const info = {
+            'general.architecture': 'qwen35', 'general.parameter_count': 27e9, 'qwen35.block_count': 64,
+            'qwen35.attention.head_count': 24, 'qwen35.attention.head_count_kv': 4,
+            'qwen35.attention.key_length': 256, 'qwen35.attention.value_length': 256,
+            'qwen35.full_attention_interval': 4
+        };
+        const deps = makeDeps({ inventory: [model], modelInfoByName: { [model]: info }, host: { vramMb: 24576 } });
+        const plan = await buildSweepPlan({
+            hostId: HOST.hostId, candidates: [model], kv_cache_type: 'q8_0',
+            execution_config: { num_ctx: 65536 }
+        }, deps);
+        expect(deps.showModel).toHaveBeenCalledWith(HOST.hostUrl, model);
+        const { estimate } = plan.candidates[0];
+        expect(estimate.kv).toMatchObject({
+            basis: 'model_info', bytesPerToken: 34 * 1024, kvCacheType: 'q8_0', kvCacheTypeSource: 'observed', requestSlots: 1
+        });
+        expect(estimate.fitsAsNamed).toBe(true);
+        // The rule of thumb alone puts the KV of a 27B at 64k near 93 GiB: nothing fits.
+        const ruleOfThumb = _internal.estimateCandidateFit({ model }, 24576, 65536);
+        expect(ruleOfThumb.kv).toEqual({ basis: 'parameter_rule_of_thumb' });
+        expect(ruleOfThumb.bestFittingQuant).toBeNull();
+    });
+
+    it('a model that is not installed is estimated by name, without asking its metadata', async () => {
+        const deps = makeDeps({ inventory: [] });
+        const plan = await buildSweepPlan({ hostId: HOST.hostId, candidates: ['gemma4:12b'] }, deps);
+        expect(deps.showModel).not.toHaveBeenCalled();
+        expect(plan.candidates[0].estimate.kv).toEqual({ basis: 'parameter_rule_of_thumb' });
     });
 
     it('estimates active-parameter and named-quant fit from the exact model tag', () => {

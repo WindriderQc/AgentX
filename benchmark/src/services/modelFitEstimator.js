@@ -23,7 +23,8 @@ const {
   parseParameterCount,
   parseQuantization,
   bytesPerParam,
-  estimateTotalVram
+  estimateTotalVram,
+  estimateVramBreakdown
 } = require('./parameterDetection');
 
 const GIB = 1024 * 1024 * 1024;
@@ -215,7 +216,10 @@ const DEFAULT_QUANT_LADDER = ['Q8_0', 'Q6_K', 'Q5_K_M', 'Q4_K_M', 'Q3_K_M', 'Q2_
  * @param {number} args.numCtx - explicit context to evaluate
  * @param {string[]} [args.ladder=DEFAULT_QUANT_LADDER]
  * @param {number} [args.utilization=0.9] - target VRAM utilization budget
- * @returns {{ fits: boolean, quantization: string|null, num_ctx: number, estVramMiB: number|null, reason: string }}
+ * @param {object} [args.kvCache] - describeKvCache() of the model's metadata;
+ *   the KV size then comes from it instead of the parameter rule of thumb
+ * @param {number} [args.requestSlots=1] - request slots the model gets
+ * @returns {{ fits: boolean, quantization: string|null, num_ctx: number, estVramMiB: number|null, kvBasis: string, reason: string }}
  */
 function selectBestQuantForVram({
   paramBillions,
@@ -223,7 +227,9 @@ function selectBestQuantForVram({
   hostVramMiB,
   numCtx,
   ladder = DEFAULT_QUANT_LADDER,
-  utilization = 0.9
+  utilization = 0.9,
+  kvCache = null,
+  requestSlots = 1
 }) {
   const paramB = Number.isFinite(paramBillions) && paramBillions > 0
     ? paramBillions
@@ -233,8 +239,11 @@ function selectBestQuantForVram({
     return { fits: false, quantization: null, num_ctx: numCtx || null, estVramMiB: null, reason: 'insufficient inputs (paramBillions / hostVramMiB / numCtx)' };
   }
   const budgetBytes = hostVramMiB * 1024 * 1024 * utilization;
+  const kvOptions = { kvCache, requestSlots };
+  // The KV term does not depend on the weight quantization.
+  const kvBasis = estimateVramBreakdown(paramB, ladder[0], numCtx, kvOptions)?.kvBasis || 'parameter_rule_of_thumb';
   for (const quant of ladder) {
-    const needed = estimateTotalVram(paramB, quant, numCtx);
+    const needed = estimateTotalVram(paramB, quant, numCtx, kvOptions);
     if (Number.isFinite(needed) && needed <= budgetBytes) {
       const estVramMiB = Math.round(needed / 1024 / 1024);
       return {
@@ -242,7 +251,8 @@ function selectBestQuantForVram({
         quantization: quant,
         num_ctx: numCtx,
         estVramMiB,
-        reason: `${paramB}B ${quant} @ ${numCtx} ctx ≈ ${estVramMiB} MiB ≤ ${Math.round(budgetBytes / 1024 / 1024)} MiB budget (${Math.round(utilization * 100)}% of ${hostVramMiB} MiB)`
+        kvBasis,
+        reason: `${paramB}B ${quant} @ ${numCtx} ctx ≈ ${estVramMiB} MiB ≤ ${Math.round(budgetBytes / 1024 / 1024)} MiB budget (${Math.round(utilization * 100)}% of ${hostVramMiB} MiB; KV from ${kvBasis})`
       };
     }
   }
@@ -251,7 +261,8 @@ function selectBestQuantForVram({
     quantization: null,
     num_ctx: numCtx,
     estVramMiB: null,
-    reason: `no quant in [${ladder.join(', ')}] fits ${paramB}B at the requested ${numCtx} context in ${hostVramMiB} MiB`
+    kvBasis,
+    reason: `no quant in [${ladder.join(', ')}] fits ${paramB}B at the requested ${numCtx} context in ${hostVramMiB} MiB (KV from ${kvBasis})`
   };
 }
 

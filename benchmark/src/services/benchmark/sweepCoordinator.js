@@ -9,6 +9,8 @@ const ModelContextProfile = require('../../../models/ModelContextProfile');
 const { parseParameterCount, parseQuantization, estimateTotalVram } = require('../parameterDetection');
 const { selectBestQuantForVram, parseActiveParams } = require('../modelFitEstimator');
 const { normalizeModelTag } = require('../../../../shared/modelNames');
+const { describeKvCache, normalizeKvCacheType } = require('../../../../shared/kvCacheEstimate');
+const { showModel } = require('../../clients/ollamaClient');
 
 const READY_STAGES = new Set(['profiled', 'benchmarked']);
 const ESTIMATE_NUM_CTX = 8192;
@@ -67,18 +69,25 @@ function getProfileVramMiB(evidence) {
  * quant would fit, so an operator can pull the right artifact before spending a
  * profile run. Returns null when params/VRAM can't be determined.
  */
-function estimateCandidateFit(candidate, vramLimitMiB, numCtx = ESTIMATE_NUM_CTX) {
+function estimateCandidateFit(candidate, vramLimitMiB, numCtx = ESTIMATE_NUM_CTX, {
+    modelInfo = null, kvCacheType = null, requestSlots = 1
+} = {}) {
     if (!vramLimitMiB || !Number.isFinite(Number(numCtx)) || Number(numCtx) <= 0) return null;
-    const paramB = parseParameterCount(candidate.model)
+    // An installed model's metadata gives its exact size and KV layout (#368).
+    const metadataParams = Number(modelInfo?.['general.parameter_count']);
+    const paramB = (Number.isFinite(metadataParams) && metadataParams > 0 ? metadataParams / 1e9 : null)
+        || parseParameterCount(candidate.model)
         // Fall back to the MoE/effective active-param tag (e.g. gemma4:e4b → 4)
         // when no total-param count is encoded in the name.
         || parseActiveParams(candidate.model);
     if (!paramB) return null;
 
+    const kvCache = describeKvCache(modelInfo, { kvCacheType });
+    const kvOptions = { kvCache, requestSlots };
     const namedQuant = parseQuantization(candidate.model);
     const budgetBytes = vramLimitMiB * 1024 * 1024;
-    const asNamedBytes = namedQuant ? estimateTotalVram(paramB, namedQuant, numCtx) : null;
-    const walk = selectBestQuantForVram({ paramBillions: paramB, hostVramMiB: vramLimitMiB, numCtx, utilization: 1 });
+    const asNamedBytes = namedQuant ? estimateTotalVram(paramB, namedQuant, numCtx, kvOptions) : null;
+    const walk = selectBestQuantForVram({ paramBillions: paramB, hostVramMiB: vramLimitMiB, numCtx, utilization: 1, ...kvOptions });
     const fitsAsNamed = Number.isFinite(asNamedBytes) ? asNamedBytes <= budgetBytes : null;
     let note;
     if (!walk.fits) {
@@ -98,18 +107,28 @@ function estimateCandidateFit(candidate, vramLimitMiB, numCtx = ESTIMATE_NUM_CTX
         bestFittingQuant: walk.fits ? walk.quantization : null,
         bestFittingNumCtx: walk.fits ? walk.num_ctx : null,
         bestFittingVramMiB: walk.fits ? walk.estVramMiB : null,
+        kv: kvCache ? {
+            basis: kvCache.basis,
+            bytesPerToken: kvCache.bytesPerToken,
+            kvCacheType: kvCache.kvCacheType,
+            kvCacheTypeSource: kvCache.kvCacheTypeSource,
+            requestSlots,
+            layout: kvCache.layout,
+            upperBound: kvCache.upperBound === true
+        } : { basis: 'parameter_rule_of_thumb' },
         note
     };
 }
 
-function classifyCandidate({ candidate, inventory, hostVramMiB, maxVramFraction, requestedNumCtx, evidence = {}, identityError = null }) {
+function classifyCandidate({ candidate, inventory, hostVramMiB, maxVramFraction, requestedNumCtx, evidence = {}, identityError = null, kvOptions = {} }) {
     const onHost = { exact: inventory.has(candidate.model) };
     const vramUsedMiB = getProfileVramMiB(evidence.performance);
     const vramLimitMiB = hostVramMiB && maxVramFraction
         ? Math.floor(Number(hostVramMiB) * Number(maxVramFraction))
         : Number(hostVramMiB) || null;
     const measuredNumCtx = Number(evidence.context?.recommendedInteractiveContext) || null;
-    const estimate = estimateCandidateFit(candidate, vramLimitMiB, requestedNumCtx || measuredNumCtx || ESTIMATE_NUM_CTX);
+    const estimate = estimateCandidateFit(candidate, vramLimitMiB, requestedNumCtx || measuredNumCtx || ESTIMATE_NUM_CTX,
+        { ...kvOptions, modelInfo: evidence.modelInfo });
 
     if (vramLimitMiB && vramUsedMiB && vramUsedMiB > vramLimitMiB) {
         return {
@@ -242,6 +261,7 @@ async function buildSweepPlan(input = {}, deps = {}) {
         ModelPerformanceProfile,
         ModelProfile,
         ModelContextProfile,
+        showModel,
         ...deps
     };
     const hostRef = String(input.hostId || input.host || '').trim();
@@ -264,10 +284,21 @@ async function buildSweepPlan(input = {}, deps = {}) {
     const requestedNumCtx = Number(
         input.execution_config?.force_num_ctx || input.execution_config?.num_ctx || 0
     ) || null;
+    // The server's KV cache type and the model's request slots are host
+    // settings the caller states; unstated, Ollama's defaults are assumed.
+    const kvOptions = {
+        kvCacheType: normalizeKvCacheType(input.kv_cache_type),
+        requestSlots: Number.isSafeInteger(Number(input.request_slots)) && Number(input.request_slots) > 0
+            ? Number(input.request_slots) : 1
+    };
 
     const candidates = [];
     for (const candidate of candidatesInput.map(resolveCandidate)) {
         const evidence = await loadCandidateEvidence(candidate, host.hostId, host.hostUrl, services);
+        if (inventory.has(candidate.model)) {
+            evidence.modelInfo = await services.showModel(host.hostUrl, candidate.model)
+                .then((show) => show?.model_info || null, () => null);
+        }
         candidates.push(classifyCandidate({
             candidate,
             inventory,
@@ -275,7 +306,8 @@ async function buildSweepPlan(input = {}, deps = {}) {
             maxVramFraction,
             requestedNumCtx,
             evidence,
-            identityError: evidence.identityError
+            identityError: evidence.identityError,
+            kvOptions
         }));
     }
     const { readyModels, payloads } = buildPayloads({
