@@ -245,7 +245,7 @@ function wireCardActions(container, api, state) {
           <label class="mp-depth-option">
             <input type="radio" name="mp-depth-${CSS.escape(modelName)}" value="full">
             <span class="mp-depth-option-label">Full</span>
-            <span class="mp-depth-option-est">~15-20 min</span>
+            <span class="mp-depth-option-est">~30-60 min</span>
           </label>
           <div class="mp-depth-inline__actions">
             <button class="mp-action mp-btn-depth-cancel" type="button">Cancel</button>

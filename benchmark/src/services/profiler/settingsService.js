@@ -22,6 +22,8 @@ const DEFAULTS = {
   documentDegradationThreshold: 30,
   performanceKneeDegradationThreshold: 15,
   thinkingProbeEnabled: true,
+  // Full profiles also check recall at agent-sized contexts (#367).
+  longContextQualityEnabled: true,
   collectHardwareTelemetry: true,
   showHardwareDiagnostics: true,
   warmup: true,
@@ -46,6 +48,7 @@ const ENV_MAP = {
   documentDegradationThreshold: 'PROFILER_DOCUMENT_DEGRADATION_PCT',
   performanceKneeDegradationThreshold: 'PROFILER_PERFORMANCE_KNEE_DEGRADATION_PCT',
   thinkingProbeEnabled: 'PROFILER_THINKING_PROBE_ENABLED',
+  longContextQualityEnabled: 'PROFILER_LONG_CONTEXT_QUALITY_ENABLED',
   collectHardwareTelemetry: 'PROFILER_COLLECT_HARDWARE_TELEMETRY',
   showHardwareDiagnostics: 'PROFILER_SHOW_HARDWARE_DIAGNOSTICS',
   warmup: 'HOST_TEST_WARMUP',

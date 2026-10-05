@@ -42,6 +42,19 @@ describe('profiler UI evidence semantics', () => {
     expect(profiling).not.toMatch(/optimal ctx/i);
   });
 
+  test('shows agent-sized prefill and long-context quality, in the backend step order (#367)', () => {
+    const profiling = publicSource('models-profiling.js');
+    expect(profiling).toContain('profile?.prefillDecodeMatrix?.longPrefill');
+    expect(profiling).toContain('profile?.longContextQuality');
+    expect(profiling).toContain('Agent-sized prefill');
+    const pipeline = fs.readFileSync(path.resolve(__dirname, '..', '..', '..', 'routes', 'profiler', 'pipeline.js'), 'utf8');
+    const backendFull = pipeline.match(/full:\s*\[([^\]]+)\]/)[1].split(',').map(step => step.trim().replace(/'/g, ''));
+    const frontendFull = profiling.match(/full:\s*\[([^\]]+)\]/)[1].split(',').map(step => step.trim().replace(/'/g, ''));
+    expect(frontendFull).toHaveLength(backendFull.length);
+    expect(backendFull.indexOf('long_context_quality')).toBe(frontendFull.indexOf('Long-context quality'));
+    expect(backendFull.indexOf('long_context_quality')).toBe(backendFull.indexOf('prefill_decode_matrix') + 1);
+  });
+
   test('renders only aggregate streamed TTFT p50 instead of a representative throughput sample', () => {
     const render = publicSource('models-render.js');
     const profiling = publicSource('models-profiling.js');

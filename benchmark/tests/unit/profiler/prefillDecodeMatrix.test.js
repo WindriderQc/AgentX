@@ -312,3 +312,31 @@ describe('prompt fill calibration', () => {
     expect(_internal.nextFillScale(1.3, 2048, 0)).toBe(1.3);
   });
 });
+
+describe('prompt cache isolation (#367)', () => {
+  // Like Ollama, serve the longest prefix shared with the previous request from
+  // the prompt cache: prompt_eval_count still counts every token, but the
+  // duration covers only what was evaluated.
+  test('repeated cells evaluate their whole prompt instead of reading the cache', async () => {
+    let previous = '';
+    generate.mockImplementation(async (_host, body) => {
+      let shared = 0;
+      while (shared < previous.length && previous[shared] === body.prompt[shared]) shared += 1;
+      previous = body.prompt;
+      const promptTokens = Math.round(body.prompt.length / 4);
+      const evaluated = Math.max(1, promptTokens - Math.round(shared / 4));
+      return { ...ollamaResponse({ promptTokens, completionTokens: body.options.num_predict }),
+        prompt_eval_duration: (evaluated / 500) * 1e9 };
+    });
+    const matrix = await runPrefillDecodeMatrix('http://host:11434', 'm:latest', {
+      prefillTokens: [2048], decodeTokens: [64, 256], repeats: 5, safeNumCtx: 8192, longPrefill: false,
+    });
+    expect(matrix.promptIsolation).toBe('unique_first_line');
+    const firstLines = generate.mock.calls.map(([, body]) => body.prompt.split('\n')[0]);
+    expect(new Set(firstLines).size).toBe(firstLines.length);
+    for (const cell of matrix.cells) {
+      expect(cell.status).toBe('pass');
+      expect(cell.prefillStatistics.p95).toBeLessThan(600);
+    }
+  });
+});

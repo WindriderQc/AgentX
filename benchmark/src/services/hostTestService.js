@@ -15,7 +15,7 @@
  *   HOST_TEST_WARMUP           - Enable warm-up (default true)
  */
 
-const { generateFillPrompt }   = require('./contextProbePayload');
+const { generateFillPrompt, isolatePrompt } = require('./contextProbePayload');
 const { getConfiguredHosts }   = require('../helpers/ollamaHostConfig');
 const {
   OUTBOUND_ERROR_CODES,
@@ -155,7 +155,9 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
   // 3. Probe
   const probePlan = buildProbePlan(numCtx, cfg);
   const { targetPromptTokens, requestedPromptTokens, promptWorkloadMode } = probePlan;
-  const { prompt } = generateFillPrompt(targetPromptTokens);
+  // Repeated samples would otherwise reuse Ollama's prompt cache and report a
+  // cached prefill as prompt eval speed and time to first token.
+  const prompt = isolatePrompt(generateFillPrompt(targetPromptTokens).prompt);
 
   checkpoint();
   const start = Date.now();
@@ -283,6 +285,7 @@ async function testModelOnHost(modelName, hostUrl, options = {}) {
     completionTokens:       evalCount,
     requestedPromptTokens,
     promptWorkloadMode,
+    promptIsolation:        'unique_first_line',
     vramUsedMiB:            vram.usedMiB,
     vramTotalMiB:           vram.totalMiB,
     numCtx,

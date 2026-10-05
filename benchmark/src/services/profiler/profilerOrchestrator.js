@@ -8,6 +8,7 @@ const hostProfileService = require('./hostProfileService');
 const settingsService = require('./settingsService');
 const { _captureHardwareSnapshot, _buildHardwareTelemetry } = require('./profilerHardwareSnapshots');
 const { runPrefillDecodeMatrix } = require('./prefillDecodeMatrix');
+const { runLongContextQualityProbe } = require('./longContextQualityProbe');
 const { profileThinkingBehavior } = require('./thinkingProfileService');
 const { resolveModelNumCtxDetails } = require('../modelContextResolver');
 const { listRunning, showModel } = require('../../clients/ollamaClient');
@@ -255,6 +256,9 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
     ttftP50Ms: measurementQuality.ttftP50Ms ?? null,
     ttftP95Ms: measurementQuality.ttftP95Ms ?? null,
     ttftMeasurement: measurementQuality.ttftP50Ms != null ? 'streamed_wall_clock' : null,
+    // Prompt eval speed and TTFT from samples that each evaluated their whole
+    // prompt; profiles without it may report prefill served from Ollama's cache.
+    promptIsolation: 'unique_first_line',
     comparisonPromptTokens: representativeSample?.promptTokens || null,
     comparisonPromptTargetTokens: testResult.requestedPromptTokens || null,
     contextProbeFillPct: Number(settings.contextProbeFillPct) || 80,
@@ -359,8 +363,8 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
   profileData.performanceKneeDegradationPct = Number(probeResult.performanceKneeDegradationThreshold)
     || Number(settings.performanceKneeDegradationThreshold)
     || 15;
-  // Profiler measures runtime behavior only. Long-context semantic quality is
-  // populated exclusively by a separately qualified Benchmark campaign.
+  // A window that fits is not a window the model still reads well: only the
+  // Full profile's long-context quality probe (below) verifies that.
   profileData.qualityVerifiedContext = null;
   profileData.qualityContextStatus = 'unknown';
   profileData.degradationPct = probeResult.degradationPct || null;
@@ -417,6 +421,13 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
       `matrix_${prefillTokens}p_${decodeTokens}d_r${repeat}`,
       settings
     ),
+    longPrefill: {
+      timeoutMs: require('../probePlacement').residencyTimeoutMs(hostUrl, contextProbeService.getConfig().timeoutMs),
+      onProgress: ({ index, total, size }) => notify('prefill_decode_matrix', {
+        message: `Agent-sized prefill ${index}/${total} — ${_formatCtx(size.numCtx)}: ${size.status === 'pass'
+          ? `${size.prefillTokensPerSec} tok/s, first token ${Math.round(size.ttftMs)} ms` : size.status}`,
+      }),
+    },
     onProgress: ({ index, total, cell }) => {
       const label = `${cell.prefillTokens}p/${cell.decodeTokens}d`;
       const detail = cell.status === 'pass'
@@ -425,6 +436,22 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
       notify('prefill_decode_matrix', { message: `Matrix ${index}/${total} — ${label}: ${detail}` });
     }
   });
+  if (settings.longContextQualityEnabled !== false) {
+    notify('long_context_quality', { message: 'Checking recall of planted facts at agent-sized contexts…' });
+    checkpoint();
+    profileData.longContextQuality = await runLongContextQualityProbe(hostUrl, modelName, {
+      maxVerifiedContext: maxCtx,
+      timeoutMs: require('../probePlacement').residencyTimeoutMs(hostUrl, contextProbeService.getConfig().timeoutMs),
+      signal,
+      checkpoint,
+      onProgress: ({ index, total, result }) => notify('long_context_quality', {
+        message: `Quality ${index}/${total} — ${_formatCtx(result.numCtx)}: ${result.status}`
+          + (result.score != null ? ` (${Math.round(result.score * 100)}% exact)` : ''),
+      }),
+    });
+    profileData.qualityVerifiedContext = profileData.longContextQuality.qualityVerifiedContext;
+    profileData.qualityContextStatus = profileData.qualityVerifiedContext ? 'verified' : 'unknown';
+  }
   notify('load_timing', { message: 'Measuring cold and hot load timing…' });
   profileData.loadTiming = await _runLoadTiming(hostUrl, modelName, {
     checkpoint,

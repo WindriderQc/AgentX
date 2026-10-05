@@ -27,7 +27,8 @@ const { jsonMutationDuration } = require('./profilerMutationObservation');
  */
 
 const { generate, listRunning } = require('../../clients/ollamaClient');
-const { generateFillPrompt } = require('../contextProbePayload');
+const { generateFillPrompt, isolatePrompt } = require('../contextProbePayload');
+const { runLongPrefillSeries } = require('./longPrefillSeries');
 const logger = require('../../../config/logger');
 
 const DEFAULT_REPEATS = 5;
@@ -50,8 +51,14 @@ const MIN_PROMPT_COVERAGE_RATIO = 0.8;
 const MAX_FILL_SCALE = 2;
 const MAX_CALIBRATION_RETRIES_PER_CELL = 2;
 
+// A fill within this tolerance keeps its scale: the filler grows in whole
+// blocks, so rescaling a near-exact small prompt only flips it between two
+// block counts.
+const FILL_TOLERANCE = 0.05;
+
 function nextFillScale(scale, requestedTokens, observedTokens) {
   if (!(Number(observedTokens) > 0) || !(Number(requestedTokens) > 0)) return scale;
+  if (Math.abs(observedTokens / requestedTokens - 1) <= FILL_TOLERANCE) return scale;
   return Math.min(MAX_FILL_SCALE, Math.max(1 / MAX_FILL_SCALE, scale * requestedTokens / observedTokens));
 }
 
@@ -116,8 +123,10 @@ function planMatrix(prefillTokens, decodeTokens, safeNumCtx) {
 async function _runCell(hostUrl, modelName, cellPlan, numCtx, timeoutMs, signal = null, fillScale = 1) {
   const { prefillTokens, decodeTokens } = cellPlan;
   // Ask for far more integers than fit in num_predict so decode always runs
-  // to the requested length instead of stopping early at a natural end.
-  const { prompt } = generateFillPrompt(Math.round(prefillTokens * fillScale), { decodeIntegers: decodeTokens * 4 });
+  // to the requested length instead of stopping early at a natural end. Each
+  // sample's own first line keeps Ollama's prompt cache from serving a repeat.
+  const { prompt: filler } = generateFillPrompt(Math.round(prefillTokens * fillScale), { decodeIntegers: decodeTokens * 4 });
+  const prompt = isolatePrompt(filler);
   const start = Date.now();
 
   try {
@@ -330,6 +339,8 @@ function aggregateCellSamples(samples, plan, numCtx, minimumSamples) {
  * @param {number[]} [options.prefillTokens]
  * @param {number[]} [options.decodeTokens]
  * @param {function} [options.onProgress]  - ({ index, total, cell }) per completed cell
+ * @param {object|false} [options.longPrefill] - options of the agent-sized prefill
+ *   series (longPrefillSeries.js), or false to skip it
  * @returns {Promise<object>} matrix result stored in exact-artifact performance evidence
  */
 async function runPrefillDecodeMatrix(hostUrl, modelName, options = {}) {
@@ -420,18 +431,28 @@ async function runPrefillDecodeMatrix(hostUrl, modelName, options = {}) {
   }
 
   const passing = cells.filter((c) => c.status === 'pass');
+  const longPrefill = options.longPrefill === false ? null : await runLongPrefillSeries(hostUrl, modelName, {
+    safeNumCtx: options.safeNumCtx,
+    signal: options.signal,
+    assertClaimActive: options.assertClaimActive,
+    ...(options.longPrefill || {}),
+  });
   return {
     measuredAt: new Date(),
     numCtx,
     repeats,
     prefillTokens,
     decodeTokens,
+    // Every sample evaluated its whole prompt (contextProbePayload.isolatePrompt).
+    // Matrices without this field may report prefill served from Ollama's cache.
+    promptIsolation: 'unique_first_line',
     cellCount: cells.length,
     passCount: passing.length,
     skippedCount: cells.filter((c) => c.status === 'skipped').length,
     telemetrySampleCount: cells.reduce((sum, cell) => sum
       + (cell.samples || []).filter(sample => sample.hardwareTelemetry).length, 0),
-    cells
+    cells,
+    longPrefill
   };
 }
 
