@@ -449,10 +449,11 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
         const judgeTruncated = data.done_reason === 'length';
         const judgeTokens = data.eval_count || 0;
 
-        // Retry with expanded num_predict on truncation before attempting parse
+        // Legacy calls may expand on truncation. A frozen cohort must retain
+        // its chosen budget; incomplete output cannot become a scored retry.
         const NUM_PREDICT_CAP = 4096;
         const currentNumPredict = judgeConfig.num_predict || JUDGE_CONFIG.num_predict;
-        if (judgeTruncated && retryCount < (judgeConfig.max_retries ?? 2)) {
+        if (judgeTruncated && !judgeConfig.execution_contract && retryCount < (judgeConfig.max_retries ?? 2)) {
             if (currentNumPredict >= NUM_PREDICT_CAP) {
                 logger.warn('Judge output truncated but num_predict already at cap, stopping retry', {
                     judge_model: judgeConfig.model || JUDGE_CONFIG.model,

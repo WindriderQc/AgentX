@@ -1297,7 +1297,9 @@ A new batch freezes its Ollama judge's context (including an automatic pin),
 exact installed digest and Core runtime fingerprint before it is saved. Missing
 identity or context refuses the launch; a stale performance profile alone does
 not. Secondary judges and the tiebreaker are frozen too. Quality cohort v4
-includes their settings and escalation policy. Each normalized verdict must
+includes their settings and escalation policy. Frozen calls keep their chosen
+output budget after a length stop; incomplete output cannot supply a score.
+Each normalized verdict must
 return the same artifact, runtime and window through Core, otherwise it cannot
 supply a score. Frozen judge calls request `includeArtifactIdentity: true`,
 so Core resolves and returns identity even without mandatory performance
