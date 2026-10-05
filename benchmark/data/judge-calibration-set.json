@@ -505,8 +505,8 @@
     "notes": "The reference translation itself: an identity case.",
     "reference_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
     "judge_criteria": [
-      "Polite request to send the report, such as Pourriez-vous m'envoyer le rapport",
-      "Deadline rendered as avant vendredi",
+      "Asks in French for the report to be sent, such as Pourriez-vous m'envoyer le rapport",
+      "Deadline written in French as avant vendredi",
       "States in French that the client meeting is on Monday (lundi)",
       "Correct French grammar, accents and question punctuation"
     ]
@@ -522,8 +522,8 @@
     "notes": "Fluent and correct, but drops the deadline \"before Friday\", the actionable part of the request.",
     "reference_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
     "judge_criteria": [
-      "Polite request to send the report, such as Pourriez-vous m'envoyer le rapport",
-      "Deadline rendered as avant vendredi",
+      "Asks in French for the report to be sent, such as Pourriez-vous m'envoyer le rapport",
+      "Deadline written in French as avant vendredi",
       "States in French that the client meeting is on Monday (lundi)",
       "Correct French grammar, accents and question punctuation"
     ]
@@ -539,8 +539,8 @@
     "notes": "Replies to the message in English instead of translating it into French.",
     "reference_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
     "judge_criteria": [
-      "Polite request to send the report, such as Pourriez-vous m'envoyer le rapport",
-      "Deadline rendered as avant vendredi",
+      "Asks in French for the report to be sent, such as Pourriez-vous m'envoyer le rapport",
+      "Deadline written in French as avant vendredi",
       "States in French that the client meeting is on Monday (lundi)",
       "Correct French grammar, accents and question punctuation"
     ]
