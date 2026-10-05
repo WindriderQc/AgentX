@@ -24,6 +24,7 @@ const { normalizeHostUrl, getConfiguredHosts } = require('../../helpers/ollamaHo
 const { admitOllamaTargetResolved } = require('../../helpers/ollamaTargetAdmission');
 const { readBoundedJson } = require('../../helpers/boundedJsonResponse');
 const { checkPinnedResidents } = require('./preflightPinnedResidents');
+const { checkResponseBudgets } = require('./preflightBudgets');
 const { identitiesMatch, resolveArtifactIdentity } = require('../profiler/artifactIdentityService');
 const { hasQualifiedProfilerAuthority } = require('../profiler/profilerAuthorityReceipt');
 const { normalizeJudgeNumCtx } = require('../scoring/judgeRuntimeConfig');
@@ -622,11 +623,13 @@ async function runPreflight(options = {}) {
     const judgeHost = judgeConfig?.target?.executionKind === 'harness'
         ? null
         : normalizeHostUrl(judgeConfig?.host || JUDGE_CONFIG.host);
-    const [hostResults, promptResult, batchResult, dedicationResult] = await Promise.all([
+    const [hostResults, promptResult, batchResult, dedicationResult, budgetResult] = await Promise.all([
         Promise.all(hostChecks),
         checkPromptCoverage(levels, promptIds || prompt_ids, executionConfig),
         checkOrphanedBatches(),
-        checkPinnedResidents(uniqueTargets, { judgeHost })
+        checkPinnedResidents(uniqueTargets, { judgeHost }),
+        checkResponseBudgets(uniqueTargets, executionConfig, { ...judgeConfig, host: judgeHost, model: judgeConfig?.model || JUDGE_CONFIG.model,
+            num_ctx: judgeConfig?.num_ctx ?? JUDGE_CONFIG.num_ctx, num_predict: judgeConfig?.num_predict || JUDGE_CONFIG.num_predict })
     ]);
     const judgeResult = judgeConfig?.target?.executionKind === 'harness'
         ? {
@@ -648,6 +651,7 @@ async function runPreflight(options = {}) {
     checks.prompts = promptResult;
     checks.batches = batchResult;
     checks.dedication = dedicationResult;
+    checks.budgets = budgetResult;
 
     const allHostsOk = checks.hosts.every(h => h.ok);
     const judgeOk = checks.judge && checks.judge.ok;
@@ -667,7 +671,7 @@ async function runPreflight(options = {}) {
     if (!judgeOk) issues.push(...checks.judge.blockers);
     if (!promptsOk) issues.push(...checks.prompts.blockers);
     if (!batchesOk) issues.push(`${checks.batches.orphanedBatches.length} orphaned batch(es) detected`);
-    warnings.push(...dedicationResult.warnings);
+    warnings.push(...dedicationResult.warnings, ...budgetResult.warnings);
 
     logger.info('Pre-flight check completed', { ready, issues, warnings });
 

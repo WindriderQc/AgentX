@@ -67,6 +67,11 @@ jest.mock('../../../models/ModelProfile', () => ({
     }))
 }));
 
+// Response budgets resolve contracts through Core; preflightBudgets.test.js covers them.
+jest.mock('../../../src/services/benchmark/preflightBudgets', () => ({
+    checkResponseBudgets: jest.fn(async () => ({ candidates: [], judge: null, warnings: [] }))
+}));
+
 jest.mock('../../../models/HostProfile', () => ({
     findOne: jest.fn(() => ({
         select: jest.fn().mockReturnValue({
@@ -424,6 +429,30 @@ describe('benchmark preflight', () => {
             '1 orphaned batch(es) detected'
         ]));
         expect(benchmarkFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('lists the response budgets and their warnings without blocking (#397)', async () => {
+        const { checkResponseBudgets } = require('../../../src/services/benchmark/preflightBudgets');
+        checkResponseBudgets.mockResolvedValueOnce({
+            candidates: [{ host: 'http://exec-host:11434', model: 'model-a', num_ctx: 65536, num_predict: 32000,
+                num_predict_source: 'documented_default_half_window_v1' }],
+            judge: { host: 'http://judge-host:11434', model: 'judge-model', num_ctx: 16384, fits: false },
+            warnings: ['Judge judge-model reads a 16384-token window, but a candidate may answer up to 32000 tokens']
+        });
+        const result = await runPreflight({
+            targets: [{ host: 'http://exec-host:11434', model: 'model-a' }],
+            judgeConfig: { host: 'http://judge-host:11434', model: 'judge-model:latest', num_predict: 1200 },
+            levels: [5],
+            executionConfig: { response_max_tokens: 32000 }
+        });
+        expect(checkResponseBudgets).toHaveBeenLastCalledWith(
+            [{ host: 'http://exec-host:11434', model: 'model-a' }],
+            { response_max_tokens: 32000 },
+            expect.objectContaining({ host: 'http://judge-host:11434', model: 'judge-model:latest', num_predict: 1200 })
+        );
+        expect(result.checks.budgets.candidates[0]).toMatchObject({ num_ctx: 65536, num_predict: 32000 });
+        expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/16384-token window/)]));
+        expect(result.issues.join(' ')).not.toMatch(/16384/);
     });
 
     it('uses exact prompt_ids for preflight prompt coverage and budget alignment', async () => {
