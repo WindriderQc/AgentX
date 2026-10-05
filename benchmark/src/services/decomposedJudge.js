@@ -113,6 +113,7 @@ ${answerRule}: ${question}`;
             prompt,
             stream: false,
             responseMode: 'normalized',
+            ...(judgeConfig.execution_contract ? { includeArtifactIdentity: true } : {}),
             think,
             callerDetail: 'benchmark-decomposed-judge',
             ...judgeRequestIdentity(judgeConfig), ...(options.constrained ? { format } : {}),

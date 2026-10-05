@@ -1299,8 +1299,10 @@ identity or context refuses the launch; a stale performance profile alone does
 not. Secondary judges and the tiebreaker are frozen too. Quality cohort v4
 includes their settings and escalation policy. Each normalized verdict must
 return the same artifact, runtime and window through Core, otherwise it cannot
-supply a score. This uses the returned contract without another lookup per
-verdict. It is contract evidence, not a resident-runtime receipt or a measure of
+supply a score. Frozen judge calls request `includeArtifactIdentity: true`,
+so Core resolves and returns identity even without mandatory performance
+qualification. Benchmark verifies that reply without a separate contract request
+per verdict. It is contract evidence, not a resident-runtime receipt or a measure of
 judge accuracy. Historical rows retain their stored cohorts. A standalone
 re-judge freezes its runtime before warmup; a partial run moves only the judged
 rows and independent deterministic/executable scores into its new cohort.

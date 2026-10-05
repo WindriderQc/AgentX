@@ -423,6 +423,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
                 messages: [{ role: 'user', content: evalPrompt }],
                 stream: false,
                 responseMode: 'normalized',
+                ...(judgeConfig.execution_contract ? { includeArtifactIdentity: true } : {}),
                 think,
                 callerDetail: 'benchmark-judge',
                 ...judgeRequestIdentity(judgeConfig),

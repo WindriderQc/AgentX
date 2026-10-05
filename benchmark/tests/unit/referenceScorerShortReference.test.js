@@ -87,6 +87,7 @@ describe('reference scoring with short references', () => {
     await expect(checkKeyPoint('answer', 'criterion', config)).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
     await expect(checkContradictions('answer', 'reference', config)).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
     await expect(checkOverallSimilarity('answer', 'reference', config)).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
+    expect(mockFetch.mock.calls.every(([, options]) => JSON.parse(options.body).includeArtifactIdentity === true)).toBe(true);
   });
 
   it('does not infer a criterion verdict from an incomplete explanation', async () => {

@@ -90,6 +90,7 @@ describe('Default voting (single call, voting_count=1)', () => {
                 artifact: { model: 'judge:latest', digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) } }
         })).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
         expect(mockFetchFn).toHaveBeenCalledTimes(voting_count);
+        expect(mockFetchFn.mock.calls.every(([, options]) => JSON.parse(options.body).includeArtifactIdentity === true)).toBe(true);
     });
 
     test('honors the explicit verdict budget for binary judging', async () => {

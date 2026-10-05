@@ -84,6 +84,7 @@ describe('judge caller cancellation', () => {
                 artifact: { model: CONFIG.model, digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) } }
         })).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
         expect(benchmarkFetch).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(benchmarkFetch.mock.calls[0][1].body).includeArtifactIdentity).toBe(true);
     });
 
     it('aborts an active fetch with a stable code and does not retry', async () => {

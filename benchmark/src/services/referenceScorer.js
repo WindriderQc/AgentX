@@ -46,6 +46,7 @@ function buildGenerateRequest(judgeConfig, prompt, numPredict, callerDetail) {
             prompt,
             stream: false,
             responseMode: 'normalized',
+            ...(judgeConfig.execution_contract ? { includeArtifactIdentity: true } : {}),
             think: resolveThink(judgeConfig),
             callerDetail: callerDetail || 'benchmark-reference-scorer',
             ...judgeRequestIdentity(judgeConfig),

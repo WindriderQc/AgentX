@@ -83,6 +83,11 @@ jest.mock('../../src/services/hostPreferenceService', () => ({
   stop: jest.fn(),
 }));
 
+jest.mock('../../src/services/artifactIdentityService', () => ({
+  ...jest.requireActual('../../src/services/artifactIdentityService'),
+  resolveArtifactIdentity: jest.fn(jest.requireActual('../../src/services/artifactIdentityService').resolveArtifactIdentity)
+}));
+
 jest.mock('../../src/services/buddyEvents', () => ({ emit: jest.fn() }));
 jest.mock('../../src/services/routing/taskFallbackLadder', () => ({
   ...jest.requireActual('../../src/services/routing/taskFallbackLadder'),
@@ -138,6 +143,24 @@ describe('caller-neutral generation entry point', () => {
       .toEqual(upstream.map(([url, options]) => [url, options.body]));
     expect(recordInference).toHaveBeenCalledTimes(records);
     expect(fetch.mock.calls.some(([url]) => String(url).includes('/api/inference/'))).toBe(false);
+  });
+
+  test('an explicit identity request returns the current digest without requiring a qualified performance profile', async () => {
+    const { resolveArtifactIdentity } = require('../../src/services/artifactIdentityService');
+    mockOllamaOk();
+    const ordinary = await request(app).post('/api/inference/generate').send({ model: 'test-model', prompt: 'hello' });
+    expect(ordinary.status).toBe(200);
+    expect(resolveArtifactIdentity).not.toHaveBeenCalled();
+    const artifact = { model: 'test-model:latest', hostUrl: 'http://primary:11434', hostId: 'primary',
+      digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64), identityQualified: true, registryQualified: true };
+    resolveArtifactIdentity.mockResolvedValueOnce(artifact);
+    const exact = await request(app).post('/api/inference/generate').send({ model: 'test-model', prompt: 'hello',
+      responseMode: 'normalized', includeArtifactIdentity: true });
+    expect(exact.status).toBe(200);
+    expect(exact.body.agentx_contract.artifact).toMatchObject({ digest: artifact.digest,
+      runtimeFingerprint: artifact.runtimeFingerprint, identityQualified: true });
+    expect(resolveArtifactIdentity).toHaveBeenCalledTimes(1);
+    expect(exact.body.agentx_contract.qualification.qualified).toBe(false);
   });
 
   test('an already-cancelled internal call neither dispatches nor invents an inference', async () => {
