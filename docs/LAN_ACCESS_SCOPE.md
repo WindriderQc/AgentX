@@ -78,7 +78,7 @@ the concurrent work. The instance checkout is isolated in the same way.
 
 | References | Classification and reason |
 |---|---|
-| Old middleware, services, models, UI/assets, timers and env settings | Removed from executable product/configuration; face/TensorFlow/JPEG dependencies removed from package and lockfile |
+| Old middleware, services, models, UI/assets, timers and env settings | Removed from executable product/configuration; face/TensorFlow dependencies removed from package and lockfile; `jpeg-js` retained for the independent image codec |
 | `/unlock`, `/access/code`, `/access/face`, `agentx_adult`, `psyx_session` in `legacyHumanAccess.js` | Deliberate migration only: bounded redirect/cookie expiry, no sessions or privilege |
 | Retired routes and UI names in migration tests and CI | Negative assertions proving absence; never used to unlock a human request |
 | Collection names in preservation tests and retirement procedure | Required historical data identity; no production deletion performed |
