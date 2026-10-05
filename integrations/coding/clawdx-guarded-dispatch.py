@@ -398,7 +398,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def return_preflight_problem(args, task, error) -> None:
+def return_preflight_problem(args, task, error, *, deferred=False) -> None:
     """Return a launch problem without consuming an attempt or overwriting a newer claim."""
     if not getattr(args, "allow_dispatch", False) or not isinstance(task, dict):
         return
@@ -406,9 +406,10 @@ def return_preflight_problem(args, task, error) -> None:
         return
     try:
         dispatch_api.api_json(args.api_base, f"/api/pipeline/tasks/{args.task_id}/feedback", method="POST", timeout=10, payload={
-            "status": "blocked", "by": "guarded-dispatch", "expectedQueuedUpdatedAt": task["updatedAt"],
+            "status": "deferred" if deferred else "blocked", "by": "guarded-dispatch", "expectedQueuedUpdatedAt": task["updatedAt"],
             "text": "The team could not start this task. No coding attempt was consumed.\n\n"
-                    + str(error)[:1000] + "\n\nResolve this problem, then reply and resume this same ticket.",
+                    + str(error)[:1000] + ("\n\nThe task remains queued. Retry when capacity is available." if deferred
+                                         else "\n\nResolve this problem, then reply and resume this same ticket."),
         })
     except (PipelineApiError, subprocess.TimeoutExpired):
         print("preflight_feedback=not_recorded_task_changed_or_api_unavailable")
@@ -502,7 +503,7 @@ def main() -> int:
     except ResourcePreflightDeferred as exc:
         print("guarded_dispatch=deferred")
         print(f"reason={exc}")
-        return_preflight_problem(args, task, exc)
+        return_preflight_problem(args, task, exc, deferred=True)
         return 4
     except (PipelineApiError, subprocess.TimeoutExpired) as exc:
         print("guarded_dispatch=failed")

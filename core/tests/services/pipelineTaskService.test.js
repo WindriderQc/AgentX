@@ -451,13 +451,16 @@ describe('pipeline task eligibility and metadata', () => {
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
     expect(loser).toMatchObject({ code: 'AUTOMATION_SLOT_OCCUPIED', status: 409 });
+    const remainingId = winner.pipelineId === '0311' ? '0312' : '0311';
+    expect(await PipelineTask.findOne({ pipelineId: remainingId }).lean()).toMatchObject({
+      status: 'queued', assignee: null, automationAttemptCount: 0, automationAttempts: [],
+    });
 
     await releaseAutomationSlot({
       leaseId: winner.automationLease.leaseId,
       pipelineId: winner.pipelineId,
       assignee: winner.assignee,
     });
-    const remainingId = winner.pipelineId === '0311' ? '0312' : '0311';
     const next = await claimEligibleTask(remainingId, 'worker-c', new Date(now.getTime() + 1000), {
       automated: true,
       leaseDurationMs: 60000,
