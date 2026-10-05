@@ -191,7 +191,10 @@ each plan is one file under its `benchmark-batch/` directory.
   categories are resolved to `prompt_ids` from `GET /api/benchmark/prompts`; a
   category with no prompt at the chosen levels, or more than 100 prompts,
   refuses. `POST /api/benchmark/preflight` then gives Benchmark's verdict on the
-  installed model, the judge and the prompts. The receipt carries the plan
+  installed model, the judge and the prompts. Its warnings also name the
+  pinned models the batch affects: an execution host's are unloaded and
+  restored after it; a separate judge host's stay loaded, but Core refuses
+  their ordinary calls while the batch holds that host. The receipt carries the plan
   reference, the exact launch body, the projection (prompts, repeats, tests,
   prompts per category) and the `start` object that names the plan.
 - **Plan identity.** A reference is `bp-<id>-<digest>`; the digest covers the

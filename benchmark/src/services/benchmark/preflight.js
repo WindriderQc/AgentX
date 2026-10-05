@@ -23,7 +23,7 @@ const { normalizeModelName } = require('./modelMetadata');
 const { normalizeHostUrl, getConfiguredHosts } = require('../../helpers/ollamaHostConfig');
 const { admitOllamaTargetResolved } = require('../../helpers/ollamaTargetAdmission');
 const { readBoundedJson } = require('../../helpers/boundedJsonResponse');
-const { getDedicationStatuses } = require('../../clients/coreApiClient');
+const { checkPinnedResidents } = require('./preflightPinnedResidents');
 const { identitiesMatch, resolveArtifactIdentity } = require('../profiler/artifactIdentityService');
 const { hasQualifiedProfilerAuthority } = require('../profiler/profilerAuthorityReceipt');
 const { normalizeJudgeNumCtx } = require('../scoring/judgeRuntimeConfig');
@@ -572,52 +572,6 @@ async function checkOrphanedBatches() {
 }
 
 /**
- * Check if any execution hosts have GPU-dedicated models.
- * Non-blocking — dedication is informational, not a blocker.
- * @param {Array<{host, model}>} targets
- * @returns {Object} { ok, affectedHosts, warnings }
- */
-async function checkDedication(targets) {
-    const affectedHosts = [];
-    const warnings = [];
-
-    try {
-        const statuses = await getDedicationStatuses();
-        const execHosts = [...new Set(targets.map(t => t.host?.replace(/\/+$/, '')))];
-
-        for (const hostUrl of execHosts) {
-            const match = statuses.find(s => s.host?.replace(/\/+$/, '') === hostUrl);
-            if (!match?.pinnedModels?.length) continue;
-
-            const pinnedModels = match.pinnedModels
-                .map(p => normalizeModelName(p?.model || p?.name || p?.modelName || p))
-                .filter(Boolean);
-            if (!pinnedModels.length) continue;
-
-            const batchModels = targets.filter(t => t.host?.replace(/\/+$/, '') === hostUrl).map(t => t.model);
-            const nonPinned = batchModels.filter(m => !pinnedModels.some(p => normalizeModelName(p) === normalizeModelName(m)));
-
-            if (nonPinned.length > 0) {
-                affectedHosts.push({
-                    host: hostUrl,
-                    pinnedModels,
-                    nonPinnedBatchModels: nonPinned,
-                    state: match.state
-                });
-                warnings.push(
-                    `Host ${hostUrl} has pinned model(s): ${pinnedModels.join(', ')}. ` +
-                    `Pinned models will be temporarily unloaded during the batch and automatically restored after completion.`
-                );
-            }
-        }
-    } catch (err) {
-        logger.debug('Dedication check skipped — core unreachable', { error: err.message });
-    }
-
-    return { ok: true, affectedHosts, warnings };
-}
-
-/**
  * Run all pre-flight checks.
  * @param {Object} options
  * @param {Array<{host, model}>} options.targets - Models to check
@@ -665,11 +619,14 @@ async function runPreflight(options = {}) {
         };
     });
 
+    const judgeHost = judgeConfig?.target?.executionKind === 'harness'
+        ? null
+        : normalizeHostUrl(judgeConfig?.host || JUDGE_CONFIG.host);
     const [hostResults, promptResult, batchResult, dedicationResult] = await Promise.all([
         Promise.all(hostChecks),
         checkPromptCoverage(levels, promptIds || prompt_ids, executionConfig),
         checkOrphanedBatches(),
-        checkDedication(uniqueTargets)
+        checkPinnedResidents(uniqueTargets, { judgeHost })
     ]);
     const judgeResult = judgeConfig?.target?.executionKind === 'harness'
         ? {
@@ -710,9 +667,7 @@ async function runPreflight(options = {}) {
     if (!judgeOk) issues.push(...checks.judge.blockers);
     if (!promptsOk) issues.push(...checks.prompts.blockers);
     if (!batchesOk) issues.push(`${checks.batches.orphanedBatches.length} orphaned batch(es) detected`);
-    if (dedicationResult.affectedHosts.length > 0) {
-        warnings.push(...dedicationResult.warnings);
-    }
+    warnings.push(...dedicationResult.warnings);
 
     logger.info('Pre-flight check completed', { ready, issues, warnings });
 
