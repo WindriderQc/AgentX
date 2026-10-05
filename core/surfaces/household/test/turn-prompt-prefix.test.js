@@ -87,6 +87,23 @@ const CASES = [
   { packId: 'kidx_nestor', backend: 'agentx' }, { packId: 'kidx_nestor', backend: 'openclaw' }
 ];
 
+for (const backend of ['agentx', 'openclaw']) {
+  test(`the final ${backend} family prompt places child temperament after the adult persona`, async () => {
+    const { state, sent, turn } = harness({ packId: 'kidx_nestor', backend });
+    state.session.persona.identity = 'You are an adult majordomo: formal, dry-witted and sarcastic.';
+    await turn('Pourquoi la lune change de forme?', 'voice');
+    const prefix = sent[0].prefix;
+    const adult = prefix.indexOf(state.session.persona.identity);
+    const child = prefix.indexOf('Tone with children: playful, curious and encouraging');
+    assert.ok(adult >= 0, 'the selected persona is still present');
+    assert.ok(child > adult, 'the surface override follows the competing adult temperament');
+    assert.match(prefix, /replaces the selected personality's adult temperament/);
+    assert.match(prefix, /Fun never overrides accuracy or the safety rules/);
+    assert.match(prefix, /do not force a question after every reply/);
+    if (backend === 'agentx') assert.match(prefix, /No native agent tools, skills or Dreaming run here/);
+  });
+}
+
 for (const { packId, backend } of CASES) {
   for (const channel of ['voice', 'text']) {
     test(`${packId} on ${backend} (${channel}) keeps one prefix while notes, language and reviewer advice change`, async () => {

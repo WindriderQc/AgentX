@@ -78,7 +78,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   tab shows each agent with the persona that presents it, edits a member's
   displayed name, voice, avatar colour and personality text, and creates an
   identity or another style for an agent. In Super Dad the owner can address a
-  configured team member by name.
+  configured team member by name. Family prompts place the child temperament
+  after the selected adult personality on both native and Core inference paths;
+  this is verified by composition tests, not installed-runtime conversation tests.
 - **PsyX.** Its welcome opens listening, the toolbox or the latest active
   session; an optional editable point of the session supports finishing and
   resuming. The conversation and composer fit the viewport while panels scroll.
