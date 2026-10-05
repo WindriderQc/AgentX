@@ -39,6 +39,21 @@ function row(prompt, score, overrides = {}) {
 }
 
 describe('paired thinking campaign evidence summary', () => {
+  test('distinguishes exhausted thinking budgets from historical runaway flags', () => {
+    const exhausted = row('logic', null, {
+      needs_review: true, excluded_from_leaderboard: true,
+      truncation: { response_truncated: true, thinking_budget_exhausted: true, thinking_runaway: false }
+    });
+    const historical = row('logic', null, {
+      needs_review: true, excluded_from_leaderboard: true,
+      truncation: { response_truncated: true, thinking_runaway: true }
+    });
+    const summary = summarizeMode([exhausted, historical], { mode: 'explicit_thinking', expectedRepeats: 3 });
+    expect(isReviewClean(exhausted)).toBe(false);
+    expect(summary.execution).toMatchObject({ thinking_budget_exhausted: 1, thinking_runaway: 1 });
+    expect(summary.evidence.unresolved).toEqual({ thinking_budget_exhausted: 1, thinking_runaway: 1 });
+  });
+
   test('separates raw scores from review-clean scores', () => {
     const rows = [
       row('logic', 8),

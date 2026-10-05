@@ -280,14 +280,15 @@ describe('batchResultPersistence truncation quarantine', () => {
         expect(doc.scoring_method).toBe('pending');
         expect(doc.needs_review).toBe(true);
         expect(doc.excluded_from_leaderboard).toBe(true);
-        expect(doc.review_reason).toMatch(/generation token limit while hidden reasoning was present/);
+        expect(doc.review_reason).toMatch(/reached its token budget while hidden reasoning was present/);
         expect(doc.truncation).toMatchObject({
             response_truncated: true,
             hidden_response_cap: false,
             visible_response_budget: true,
             thinking_present: true,
             thinking_only_response: false,
-            thinking_runaway: true,
+            thinking_budget_exhausted: true,
+            thinking_runaway: false,
             truncation_invalidates_score: true
         });
     });
@@ -315,7 +316,7 @@ describe('batchResultPersistence truncation quarantine', () => {
         expect(doc.truncation.thinking_only_response).toBe(true);
     });
 
-    it('quarantines thinking runaway even when no visible answer was produced', async () => {
+    it('records exhausted thinking budget even when no visible answer was produced', async () => {
         await persistSuccessfulResult(baseArgs({
             cleanedResponse: '',
             extractedThinking: 'hidden reasoning consumed the full generation budget',
@@ -336,13 +337,14 @@ describe('batchResultPersistence truncation quarantine', () => {
         expect(doc.scoring_method).toBe('response_contract_failed');
         expect(doc.excluded_from_leaderboard).toBe(true);
         expect(doc.review_reason).toMatch(/hidden reasoning but no visible final answer/);
-        expect(doc.review_reason).toMatch(/generation token limit while hidden reasoning was present/);
+        expect(doc.review_reason).toMatch(/reached its token budget while hidden reasoning was present/);
         expect(doc.truncation).toMatchObject({
             response_truncated: true,
             visible_response_budget: true,
             thinking_present: true,
             thinking_only_response: true,
-            thinking_runaway: true,
+            thinking_budget_exhausted: true,
+            thinking_runaway: false,
             truncation_invalidates_score: true
         });
     });
