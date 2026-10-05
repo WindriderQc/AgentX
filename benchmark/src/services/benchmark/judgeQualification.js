@@ -324,6 +324,42 @@ async function assessResult(result = {}, { judgeUsed = true } = {}) {
     return combineJudges([judge], { scorerVersion: result.scorer_version || null });
 }
 
+function categoryValidation(assessment, record, category) {
+    if (assessment.status !== GRADER_STATUS.QUALIFIED || !record) {
+        return { status: 'unvalidated', cases: 0, mae: null, causes: assessment.causes.length ? assessment.causes : ['not_qualified'] };
+    }
+    const cases = (record.cases || []).filter(item => item.category === category);
+    if (!cases.length) return { status: 'no_reference_cases', cases: 0, mae: null, causes: [], record_id: String(record._id) };
+    const diffs = cases.map(item => item.abs_diff).filter(Number.isFinite);
+    const mae = diffs.length ? Number((diffs.reduce((sum, value) => sum + value, 0) / diffs.length).toFixed(2)) : null;
+    const causes = [];
+    if (mae == null || mae > QUALIFICATION_CRITERIA.mae_max) causes.push(`category_mae_above_${QUALIFICATION_CRITERIA.mae_max}`);
+    if (cases.some(item => item.identity_case === true && item.identity_full_marks === false)) causes.push('identity_marked_down');
+    if (cases.some(item => item.attention_passed === false)) causes.push('attention_failed');
+    return { status: causes.length ? 'failed' : 'validated', cases: cases.length, mae, causes, record_id: String(record._id) };
+}
+
+/**
+ * The judge's calibration per prompt category (#397), from the record that
+ * decides its qualification: the category's cases, their mean absolute
+ * deviation from the reference grades, and any identity or attention failure
+ * among them. A judge that is not qualified is unvalidated everywhere; a
+ * category the reference set does not cover reads `no_reference_cases`.
+ */
+async function assessJudgeCategories({ host, model }, categories = []) {
+    const hKey = hostKey(host);
+    const mKey = modelKey(model);
+    const records = hKey && mKey
+        ? await JudgeQualification.find({ judge_host_key: hKey, judge_model_key: mKey })
+            .sort({ recorded_at: -1, _id: -1 }).limit(20).lean()
+        : [];
+    const assessment = assessJudge({
+        host, model, scorerVersion: SCORER_VERSION, records, referenceFingerprint: currentReferenceFingerprint()
+    });
+    const decisive = assessment.record?.id ? records.find(record => String(record._id) === assessment.record.id) : null;
+    return Object.fromEntries(categories.map(category => [category, categoryValidation(assessment, decisive, category)]));
+}
+
 /**
  * The newest record of every judge identity and scorer version, plus the
  * scorer version and reference set that currently qualify evidence.
@@ -372,6 +408,7 @@ module.exports = {
     GRADER_STATUS,
     QUALIFICATION_SCHEMA,
     assessJudge,
+    assessJudgeCategories,
     assessLeaderboardRows,
     assessResult,
     buildAccuracyCalibrationReport,

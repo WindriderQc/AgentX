@@ -448,7 +448,8 @@ describe('benchmark preflight', () => {
         expect(checkResponseBudgets).toHaveBeenLastCalledWith(
             [{ host: 'http://exec-host:11434', model: 'model-a' }],
             { response_max_tokens: 32000 },
-            expect.objectContaining({ host: 'http://judge-host:11434', model: 'judge-model:latest', num_predict: 1200 })
+            expect.objectContaining({ host: 'http://judge-host:11434', model: 'judge-model:latest', num_predict: 1200 }),
+            { levels: [5], promptIds: null }
         );
         expect(result.checks.budgets.candidates[0]).toMatchObject({ num_ctx: 65536, num_predict: 32000 });
         expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/16384-token window/)]));
