@@ -169,6 +169,23 @@ describe('judge-required API action gates', () => {
         expect(validateExecutionHost).not.toHaveBeenCalled();
     });
 
+    test('lets a launch with a larger judge budget and timeout reach the readiness check', async () => {
+        readinessService.resolveReadyJudgeTarget.mockResolvedValue(blocked);
+
+        const response = await request(app)
+            .post('/api/benchmark/batch')
+            .send({
+                host: 'http://exec:11434',
+                models: ['candidate:7b'],
+                levels: [1],
+                judge_config: { num_predict: 8192, timeout: 300000 }
+            });
+
+        // Before, these limits were refused with 400 before any check ran.
+        expect(response.status).toBe(503);
+        expect(response.body).toMatchObject({ code: 'JUDGE_NOT_READY' });
+    });
+
     test('blocks an executing sweep before its runner can launch a batch', async () => {
         const { runSweep } = require('../../src/services/benchmark/sweepRunner');
         readinessService.resolveReadyJudgeTarget.mockResolvedValue(blocked);

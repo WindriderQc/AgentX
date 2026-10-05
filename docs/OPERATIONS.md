@@ -1209,6 +1209,11 @@ Batches launched before this rule ran under Core's default output reserve
 (at most 4,096 tokens), which cut long reasoning. They keep their own quality
 cohort, so the leaderboard does not mix the two.
 
+No judge size is assumed. A launch may set `judge_config.num_predict` up to
+32,768 tokens and `judge_config.timeout` up to 30 minutes. Values above the
+usual 4,096 tokens and 120 seconds are kept as chosen, and the launch result
+lists what they cost in `data.warnings`.
+
 Benchmark batches send their configured `per_test_timeout_ms` to Core as
 `timeoutMs`, so Core's non-streamed Ollama attempt uses the same budget instead
 of the default `INFERENCE_FETCH_TIMEOUT_MS` (10 minutes). Core accepts this

@@ -37,6 +37,7 @@ const {
     buildActiveBatchConflict,
     buildActiveProfilingConflict
 } = require('./coreShared');
+const { checkJudgeLimits } = require('../../src/services/benchmark/judgeLaunchLimits');
 /**
  * POST /api/benchmark/batch
  * Start a batch benchmark test with quality scoring
@@ -105,23 +106,23 @@ router.post('/batch', async (req, res) => {
         }
     }
 
+    // A judge limit above the usual size is reported, not refused.
+    let launchWarnings = [];
+
     // Validate advanced judge_config fields if provided
     if (judge_config && typeof judge_config === 'object') {
         const jc = judge_config;
+        const judgeLimits = checkJudgeLimits(jc);
+        if (judgeLimits.error) return res.status(400).json({ status: 'error', error: judgeLimits.error });
+        launchWarnings = judgeLimits.warnings;
         if (jc.temperature !== undefined && (typeof jc.temperature !== 'number' || jc.temperature < 0 || jc.temperature > 1)) {
             return res.status(400).json({ status: 'error', error: 'judge_config.temperature must be a number between 0 and 1' });
-        }
-        if (jc.num_predict !== undefined && (typeof jc.num_predict !== 'number' || jc.num_predict < 100 || jc.num_predict > 4096)) {
-            return res.status(400).json({ status: 'error', error: 'judge_config.num_predict must be a number between 100 and 4096' });
         }
         if (jc.num_ctx != null && (typeof jc.num_ctx !== 'number' || jc.num_ctx < 512)) {
             return res.status(400).json({ status: 'error', error: 'judge_config.num_ctx must be a number of at least 512' });
         }
         if (jc.max_retries !== undefined && (typeof jc.max_retries !== 'number' || jc.max_retries < 0 || jc.max_retries > 5)) {
             return res.status(400).json({ status: 'error', error: 'judge_config.max_retries must be a number between 0 and 5' });
-        }
-        if (jc.timeout !== undefined && (typeof jc.timeout !== 'number' || jc.timeout < 5000 || jc.timeout > 120000)) {
-            return res.status(400).json({ status: 'error', error: 'judge_config.timeout must be a number between 5000 and 120000' });
         }
         if (jc.voting_count !== undefined && (typeof jc.voting_count !== 'number' || ![1, 3, 5].includes(jc.voting_count))) {
             return res.status(400).json({ status: 'error', error: 'judge_config.voting_count must be 1, 3, or 5' });
@@ -394,6 +395,7 @@ router.post('/batch', async (req, res) => {
             data: {
                 ...data,
                 preflight,
+                warnings: launchWarnings,
                 message: 'Batch test started with quality scoring'
             }
         });
