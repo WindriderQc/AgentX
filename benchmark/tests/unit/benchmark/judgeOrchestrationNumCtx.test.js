@@ -75,3 +75,21 @@ describe('judge num_ctx resolution', () => {
     }));
   });
 });
+
+describe('judge warmup on a separate host', () => {
+  const { warmupModel } = require('../../../src/services/benchmark/modelWarmup');
+  const { resolveJudgeHost } = require('../../../src/services/benchmark/judgeHostResolution');
+  const BenchmarkBatch = require('../../../models/BenchmarkBatch');
+
+  it('leaves the judge host\'s other residents loaded', async () => {
+    BenchmarkBatch.updateOne = jest.fn().mockResolvedValue({});
+    resolveJudgeHost.mockReturnValue({ judgeHost: HOST, resolution: 'explicit' });
+    const judge = orchestrator({ model: 'judge:latest', num_ctx: 16384 }, jest.fn());
+
+    await judge.resolveJudgeTargetForHost('http://candidate-host:11434');
+
+    expect(warmupModel).toHaveBeenCalledWith(HOST, 'judge:latest', expect.objectContaining({
+      num_ctx: 16384, preUnloadOthers: false
+    }));
+  });
+});

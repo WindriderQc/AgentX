@@ -324,3 +324,66 @@ describe('campaign inference contract snapshots', () => {
         }, { BatchModel, fetchImpl })).rejects.toThrow(/Run a Full profile/);
     });
 });
+
+describe('response budget of a launch that set none', () => {
+    const { normalizeExecutionConfig, RESPONSE_BUDGET_RULE } = require('../../../src/services/benchmark/config');
+    const { buildQualityCohortFingerprint } = require('../../../../shared/benchmarkTargetContract');
+    // Core answers with the reserve it chose, or with the caller's budget when one is sent.
+    const coreFetch = (windowTokens, coreReserve) => jest.fn(async (_url, options) => {
+        const requested = JSON.parse(options.body).options?.num_predict;
+        return response(snapshot({ contextBudget: { windowTokens, validatedWindowTokens: windowTokens,
+            source: 'host_preference_pin', output: { reservedTokens: requested ? Math.min(windowTokens, requested) : coreReserve } } }));
+    });
+    const freeze = (executionConfig, fetchImpl) => resolveStandaloneCampaignInferenceContracts({
+        hostGroups: [['http://exec:11434', ['model-a']]], executionConfig
+    }, { fetchImpl, coreUrl: 'http://core:3080' });
+
+    it('runs with the documented default instead of Core\'s 4096-token reserve on a large window', async () => {
+        const executionConfig = normalizeExecutionConfig({ response_mode: 'final_only' });
+        expect(executionConfig).toMatchObject({ response_max_tokens: 32000, response_max_tokens_source: 'default', response_budget_rule: RESPONSE_BUDGET_RULE });
+        const fetchImpl = coreFetch(196608, 4096);
+        const campaign = await freeze(executionConfig, fetchImpl);
+        expect(fetchImpl).toHaveBeenCalledTimes(2);
+        expect(JSON.parse(fetchImpl.mock.calls[1][1].body).options).toEqual({ num_predict: 32000 });
+        expect(campaign.candidates[0].execution).toMatchObject({ num_ctx: 196608, num_predict: 32000, num_predict_source: RESPONSE_BUDGET_RULE });
+        expect(getFrozenModelExecutionConfig(campaign, 'model-a', 'http://exec:11434').response_max_tokens).toBe(32000);
+    });
+
+    it('keeps half of a small window for the prompt', async () => {
+        const campaign = await freeze(normalizeExecutionConfig({}), coreFetch(16384, 4096));
+        expect(campaign.candidates[0].execution).toMatchObject({ num_predict: 8192, num_predict_source: RESPONSE_BUDGET_RULE });
+    });
+
+    it('raises Core\'s reserve to half of a small window', async () => {
+        const campaign = await freeze(normalizeExecutionConfig({}), coreFetch(4096, 1024));
+        expect(campaign.candidates[0].execution).toMatchObject({ num_predict: 2048, num_predict_source: RESPONSE_BUDGET_RULE });
+    });
+
+    it('never lowers a reserve Core already set above half the window', async () => {
+        const fetchImpl = coreFetch(8192, 6000);
+        const campaign = await freeze(normalizeExecutionConfig({}), fetchImpl);
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+        expect(campaign.candidates[0].execution).toMatchObject({ num_predict: 6000, num_predict_source: 'core_default_reserve' });
+    });
+
+    it('sends an explicit budget once and leaves it unchanged', async () => {
+        const executionConfig = normalizeExecutionConfig({ response_max_tokens: 6000 });
+        expect(executionConfig.response_budget_rule).toBeUndefined();
+        const fetchImpl = coreFetch(196608, 4096);
+        const campaign = await freeze(executionConfig, fetchImpl);
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+        expect(campaign.candidates[0].execution).toMatchObject({ num_predict: 6000, num_predict_source: 'caller' });
+    });
+
+    it('leaves batches stored before the rule under their old budget and cohort', () => {
+        const stored = normalizeExecutionConfig({});
+        delete stored.response_budget_rule;
+        const renormalized = normalizeExecutionConfig(stored);
+        expect(renormalized.response_budget_rule).toBeUndefined();
+        const cohort = (executionConfig) => buildQualityCohortFingerprint({ scorerVersion: '3.1.0', judgeTarget: null, executionConfig });
+        expect(cohort(renormalized)).toBe(cohort(stored));
+        expect(cohort(normalizeExecutionConfig({}))).not.toBe(cohort(stored));
+        // A batch launched under the rule keeps it on resume.
+        expect(normalizeExecutionConfig(normalizeExecutionConfig({})).response_budget_rule).toBe(RESPONSE_BUDGET_RULE);
+    });
+});

@@ -318,6 +318,9 @@ function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, executionCo
       topP: Number.isFinite(Number(executionConfig?.top_p)) ? Number(executionConfig.top_p) : null,
       seed: Number.isFinite(Number(executionConfig?.seed)) ? Number(executionConfig.seed) : null,
       think: executionConfig?.think ?? null,
+      // Batches launched before the documented-default budget ran under a
+      // smaller hidden reserve: the rule separates their cohort.
+      ...(executionConfig?.response_budget_rule ? { responseBudgetRule: executionConfig.response_budget_rule } : {}),
       ...(executionConfig?.response_mode === 'best_qualified'
         ? { responseMode: 'best_qualified', thinkMinLevel: executionConfig.thinking_min_level ?? 4 }
         : {}),

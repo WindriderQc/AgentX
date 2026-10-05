@@ -1196,6 +1196,24 @@ To know a model's run-to-run noise, compare two batches of the same artifact;
 the response says so (`sameArtifact`). `POST /api/benchmark/regression/compare`
 keeps comparing batches of the same model and host.
 
+A batch's response budget is the most a candidate may generate, reasoning
+included. When the launch sets `execution_config.response_max_tokens`, that value
+applies. When it sets none, each candidate gets the documented default (32,000),
+limited to half of its frozen context window so the other half stays for the
+prompt, and never lower than the reserve Core chose. The plan's
+`execution_config` names the rule (`response_budget_rule`). Each candidate of
+the frozen campaign records its budget and where it came from
+(`num_predict_source`).
+
+Batches launched before this rule ran under Core's default output reserve
+(at most 4,096 tokens), which cut long reasoning. They keep their own quality
+cohort, so the leaderboard does not mix the two.
+
+No judge size is assumed. A launch may set `judge_config.num_predict` up to
+32,768 tokens and `judge_config.timeout` up to 30 minutes. Values above the
+usual 4,096 tokens and 120 seconds are kept as chosen, and the launch result
+lists what they cost in `data.warnings`.
+
 Benchmark batches send their configured `per_test_timeout_ms` to Core as
 `timeoutMs`, so Core's non-streamed Ollama attempt uses the same budget instead
 of the default `INFERENCE_FETCH_TIMEOUT_MS` (10 minutes). Core accepts this

@@ -16,8 +16,8 @@ const { assertJudgeInputUnmodified, assertJudgeOutputComplete } = require('./jud
 // authenticates the Benchmark policy while telemetry remains caller-supplied.
 const CORE_URL = process.env.CORE_URL || 'http://localhost:3080';
 // Judge model configuration
-// Default: 7B model — fits on most hosts without stealing context from the
-// model being tested. Upgrade per-batch via judge_config.
+// No judge size is assumed: the judge is whatever JUDGE_MODEL names, and a
+// batch chooses its own through judge_config.
 // All fields are overridable via env: JUDGE_MODEL, JUDGE_HOST, JUDGE_NUM_CTX,
 // JUDGE_TEMPERATURE, JUDGE_NUM_PREDICT. Per-batch judge_config still wins.
 //
