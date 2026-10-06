@@ -75,6 +75,25 @@ test('a voice turn reports its offsets from the end of speech when its first rep
   h.conversation.stop();
 });
 
+test('a measure keeps a reported duration beside the marks; anything else is ignored', () => {
+  const timeline = new VoiceTimeline(() => 0);
+  timeline.mark('requestSent');
+  timeline.measure('sttServer', 449.6); timeline.measure('audioMs', 4200); timeline.measure('silenceMs', 1000);
+  timeline.measure('sttServer', '450'); timeline.measure('audioMs', -1); timeline.measure('silenceMs', NaN); timeline.measure('uploadGuess', 3);
+  assert.deepEqual(timeline.values(), { requestSent: 0, sttServer: 450, audioMs: 4200, silenceMs: 1000, interrupted: false });
+});
+
+test('a voice turn reports what explains its transcription: silence waited, clip length and recognition time', async () => {
+  let utterance;
+  const h = loop({ async transcribe() { h.clock.at += 600; return { text: 'Bonjour Nestor', sttMs: 450 }; } });
+  h.audio.listen = callback => { utterance = callback; };
+  await h.conversation.start({ language: 'fr' });
+  await utterance(new Blob(['sample']), { audioMs: 4200.4, silenceMs: 1000 });
+  assert.deepEqual(h.sent[0].timings, { sttDone: 600, requestSent: 600, firstDelta: 4600, firstAudio: 5100,
+    silenceMs: 1000, audioMs: 4200, sttServer: 450, interrupted: false });
+  h.conversation.stop();
+});
+
 test('the holding phrase and a waiting notice are not the reply’s first audio', async () => {
   const slow = deferred(), played = [];
   const h = loop({ holdingDelayMs: 5,
@@ -127,6 +146,13 @@ test('speech that never becomes a model turn, a typed message and a surface with
   await unwired.conversation.start({ language: 'fr' }); await unwired.say();
   assert.equal(unwired.conversation.state, 'listening');
   unwired.conversation.stop();
+});
+
+test('Core keeps the known measures beside the marks and drops an unusable one without refusing the timeline', () => {
+  assert.deepEqual(normalizeVoiceTimings({ sttDone: 640, silenceMs: 1000, audioMs: 4200.4, sttServer: 449.6, uploadGuess: 3 }),
+    { sttDone: 640, silenceMs: 1000, audioMs: 4200, sttServer: 450, interrupted: false });
+  assert.deepEqual(normalizeVoiceTimings({ sttDone: 640, sttServer: '450', audioMs: -1, silenceMs: MAX_OFFSET_MS + 1 }), { sttDone: 640, interrupted: false });
+  assert.equal(normalizeVoiceTimings({ sttServer: 450, audioMs: 4200 }), null, 'measures alone are not a timeline');
 });
 
 test('Core keeps only known marks as bounded whole numbers', () => {

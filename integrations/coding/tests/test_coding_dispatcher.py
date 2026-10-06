@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -119,6 +120,38 @@ def task(task_id="0700", **overrides):
 
 
 class CodingDispatcherTests(unittest.TestCase):
+    def test_configured_worker_turn_is_bounded_by_task_and_envelope_covers_baseline_verification(self):
+        settings = config()
+        settings["executionProfiles"]["clawdx-file-tools/v1"]["workerTimeoutSeconds"] = 300
+        settings["verificationProfiles"]["agentx-dispatcher-tests/v1"]["repairTurns"] = 1
+        adapter = dispatcher.build_adapter(config=settings, automation=automation())
+        with patch.object(dispatcher.dispatch_budget.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            result = adapter.run(task(), automation())
+        self.assertEqual(result.exit_code, 0)
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index("--timeout") + 1], "300")
+        self.assertGreater(run.call_args.kwargs["timeout"], 900 * 3 + 180)
+        short = automation(budgets={"maxDurationMs": 120000, "maxAttempts": 2, "maxCostNanodollars": 0})
+        command = adapter.command(task(), short)
+        self.assertEqual(command[command.index("--timeout") + 1], "120")
+
+    def test_outer_timeout_returns_unknown_instead_of_a_capacity_deferral(self):
+        adapter = dispatcher.build_adapter(config=config(), automation=automation())
+        with patch.object(dispatcher.dispatch_budget.subprocess, "run", side_effect=subprocess.TimeoutExpired("guard", 300)):
+            result = adapter.run(task(), automation())
+        self.assertEqual(result.exit_code, 5)
+        self.assertEqual(dispatcher.dispatch_budget.stopped_at(result.exit_code), "unknown")
+
+    def test_invalid_worker_timeout_refuses_before_dispatch(self):
+        for value in (True, 0, -1, "300"):
+            settings = config()
+            settings["executionProfiles"]["clawdx-file-tools/v1"]["workerTimeoutSeconds"] = value
+            adapter = dispatcher.build_adapter(config=settings, automation=automation())
+            with patch.object(dispatcher.dispatch_budget.subprocess, "run") as run:
+                with self.assertRaises(dispatcher.DispatcherError):
+                    adapter.run(task(), automation())
+                run.assert_not_called()
     def test_legacy_repository_policy_requires_explicit_task_retargeting(self):
         settings = config()
         settings["policies"]["agentx.reviewed-code/v1"]["repository"] = "aiops"

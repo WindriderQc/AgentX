@@ -349,11 +349,15 @@ For a surface that keeps it, the loop measures each voice turn
 speech is decided (after the endpoint's trailing silence) to the transcript,
 the turn request, the first reply text, the holding phrase if one played, and
 the start of the reply's first clause, with whether the turn was interrupted by
-then. This is browser timing, not an acoustic measurement. The loop sends it
+then. Three durations explain those marks: the silence waited before the end
+of speech was decided (it comes on top of every mark), the length of the
+captured clip, and the recognition time the speech service reports, so the rest
+of the transcript delay is upload and transport. This is browser timing, not an
+acoustic measurement. The loop sends it
 once per turn, when that first clause starts or the turn ends without one; a
 surface that answers `pending` receives it once more when the turn's request
-has ended. `core/src/services/voice/timeline.js` keeps only the known marks as
-bounded whole numbers. Household stores them as `voiceTimings` on the recorded
+has ended. `core/src/services/voice/timeline.js` keeps only the known marks and durations
+as bounded whole numbers. Household stores them as `voiceTimings` on the recorded
 turn (`POST …/sessions/:sessionId/voice-timings`, by the browser's turn id,
 within the session's own space) and the parent journal shows the main delays.
 PsyX provides no store, so nothing is measured or sent there.

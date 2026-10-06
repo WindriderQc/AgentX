@@ -27,6 +27,26 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ClawdXGuardedDispatchTests(unittest.TestCase):
+    def test_post_claim_timeout_keeps_the_task_lease_and_unknown_receipt(self):
+        args = MODULE.argparse.Namespace(api_base="http://core", host="worker",
+            remote_repo="/home/operator/.openclaw/workspace-clawdx-coder/repo",
+            agent="clawdx-coder", task_id="0377", model=None,
+            attest_attribution=False, repair_attempt=False, verification_output=None,
+            automated_lease=True, lease_duration_ms=900000)
+        claimed = {"automationLease": {"leaseId": "lease-1", "durationMs": 900000}}
+        with (tempfile.TemporaryDirectory() as state,
+              patch.dict(os.environ, {"XDG_STATE_HOME": state}),
+              patch.object(MODULE.dispatch_remote, "ensure_remote_repo_clean"),
+              patch.object(MODULE.dispatch_remote, "ensure_remote_feedback_absent"),
+              patch.object(MODULE.dispatch_api, "claim_task", return_value=claimed),
+              patch.object(MODULE.dispatch_api, "LeaseHeartbeat"),
+              patch.object(MODULE.dispatch_attempt, "run_claimed_dispatch",
+                           side_effect=subprocess.TimeoutExpired("ssh", 60)),
+              patch.object(MODULE.dispatch_api, "block_failed_dispatch") as block):
+            self.assertEqual(MODULE.run_dispatch(args, self.task(), "stamp"), 5)
+        block.assert_not_called()
+        self.assertEqual(args.lease_id, "lease-1")
+
     def test_verification_repair_requires_a_real_failing_test(self):
         check = MODULE.dispatch_attempt.failed_test_output
         self.assertTrue(check("Test Suites: 1 failed, 1 total\nTests: 1 failed, 22 passed, 23 total\n"))
@@ -779,6 +799,22 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 request_id="dispatch-0377",
             )
         close.assert_called_once_with(args, lease, request_id="dispatch-0377")
+
+    def test_close_failure_does_not_hide_an_unproven_worker_timeout(self):
+        args = self.attribution_args()
+        with (patch.object(MODULE.dispatch_api, "open_attribution_lease", return_value={"leaseId": "lease-1"}),
+              patch.object(MODULE.dispatch_remote, "ssh_run", side_effect=subprocess.TimeoutExpired("ssh", 60)),
+              patch.object(MODULE.dispatch_api, "close_attribution_lease", side_effect=MODULE.PipelineApiError("lost close reply")),
+              self.assertRaises(subprocess.TimeoutExpired)):
+            MODULE.dispatch_openclaw.run_openclaw_process(args, "worker", request_id="request-1")
+
+    def test_ssh_disconnect_is_unknown_even_when_attribution_close_succeeds(self):
+        args = self.attribution_args()
+        with (patch.object(MODULE.dispatch_api, "open_attribution_lease", return_value={"leaseId": "lease-1"}),
+              patch.object(MODULE.dispatch_remote, "ssh_run", return_value=subprocess.CompletedProcess([], 255, stdout="", stderr="lost transport")),
+              patch.object(MODULE.dispatch_api, "close_attribution_lease", return_value=1),
+              self.assertRaises(MODULE.dispatch_openclaw.WorkerCompletionUnknown)):
+            MODULE.dispatch_openclaw.run_openclaw_process(args, "worker", request_id="request-1")
 
     def test_openclaw_process_returns_server_attributed_request_count(self):
         args = self.attribution_args()
@@ -1989,6 +2025,12 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         self.assertTrue(any(value.startswith("winner_route_mismatch") for value in failures))
 
     def test_local_success_with_unknown_money_and_energy_retains_route_and_verification(self):
+        self.assert_success_with_unknown_energy("stop")
+
+    def test_failed_energy_baseline_does_not_block_verified_local_execution(self):
+        self.assert_success_with_unknown_energy("baseline")
+
+    def assert_success_with_unknown_energy(self, failed_phase):
         """Telemetry cannot block a verified local result or fabricate a zero."""
         args = MODULE.argparse.Namespace(
             api_base="http://agentx",
@@ -2027,6 +2069,8 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             interval_seconds=1.0,
         )
         sampler.collect_baseline = MagicMock(return_value=50_000)
+        if failed_phase == "baseline":
+            sampler.collect_baseline.side_effect = subprocess.TimeoutExpired("nvidia-smi", 15)
         sampler.start = MagicMock()
         sampler.stop = MagicMock(
             side_effect=MODULE.dispatch_attempt.ObservabilityError("energy_meter_run_sample_failed")
@@ -2112,7 +2156,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         self.assertEqual(failed_result, 3)
-        self.assertEqual(unknown_result, 4)
+        self.assertEqual(unknown_result, 5)
         block.assert_called_once()
         self.assertIn("verification_deliverable_failed:receipt missing", block.call_args.kwargs["failures"])
         register.assert_called_once()

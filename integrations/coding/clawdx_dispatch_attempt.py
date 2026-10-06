@@ -192,15 +192,17 @@ def run_claimed_dispatch(
 
     remote_cmd = worker_command(message, args.timeout)
     request_id = f"guarded-dispatch:{args.task_id}:{stamp}"
-    sampler = local_energy_sampler(args)
+    sampler = None
     local_energy: dict[str, Any] | None = None
     observed_energy_failures: list[str] = []
-    if sampler is not None:
-        try:
+    try:
+        sampler = local_energy_sampler(args)
+        if sampler is not None:
             sampler.collect_baseline()
             sampler.start()
-        except ObservabilityError as exc:
-            raise PipelineApiError(str(exc)) from exc
+    except (ObservabilityError, OSError, subprocess.TimeoutExpired) as exc:
+        print(f"telemetry_warning=local_energy_baseline_unavailable:{type(exc).__name__}")
+        sampler = None
     try:
         proc, attribution_lease = dispatch_openclaw.run_openclaw_process(
             args,
@@ -379,23 +381,26 @@ def run_claimed_dispatch(
                 repair_context=verification_text,
             )
             repair_args = argparse.Namespace(**{**vars(args), "timeout": repair_timeout})
-            repair_sampler = local_energy_sampler(args)
+            repair_sampler = None
             repair_energy = None
             repair_process = None
             repair_lease = None
-            if repair_sampler is not None:
-                try:
+            try:
+                repair_sampler = local_energy_sampler(args)
+                if repair_sampler is not None:
                     repair_sampler.collect_baseline()
                     repair_sampler.start()
-                except ObservabilityError:
-                    observed_energy_failures.append("local_energy_repair_evidence_unavailable")
-                    repair_sampler = None
+            except (ObservabilityError, OSError, subprocess.TimeoutExpired):
+                observed_energy_failures.append("local_energy_repair_evidence_unavailable")
+                repair_sampler = None
             try:
                 repair_process, repair_lease = dispatch_openclaw.run_openclaw_process(
                     repair_args, worker_command(repair_message, repair_timeout),
                     request_id=f"{request_id}:verification-repair-1",
                 )
-            except (PipelineApiError, OSError, subprocess.TimeoutExpired) as exc:
+            except (subprocess.TimeoutExpired, dispatch_openclaw.WorkerCompletionUnknown):
+                raise  # The same remote-completion fence applies to a repair turn.
+            except (PipelineApiError, OSError) as exc:
                 failures.append(f"worker_repair_process_failed:{type(exc).__name__}:{exc}")
                 cost_observation = None
             finally:
@@ -568,7 +573,7 @@ def run_claimed_dispatch(
                 print(f"verification_deliverable={report['ref']}")
             except ReportOutcomeUnknown as exc:
                 print(f"verification_deliverable_unknown={exc}")
-                return 4
+                return 5
             except (PipelineApiError, ValueError, KeyError) as exc:
                 failures.append(f"verification_deliverable_failed:{exc}")
     if failures:

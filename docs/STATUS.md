@@ -94,6 +94,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   model-call waits of each attempt; startup is not yet measured. A read-only diagnosis explains stalled
   tasks and gives a stable escalation key without repairing them. See
   [operational screens](OPERATOR_UI.md).
+  Coding execution profiles configure the worker turn timeout within the task
+  budget. The outer dispatcher and host unit cover baseline verification,
+  execution and final evidence collection. Missing energy telemetry remains
+  unknown without invalidating verified work. Unproven remote completion or a
+  lost verification receipt retains an unknown request and prevents a new
+  launch; only Core's verified completion of that exact attempt resolves it.
 - **Planning.** The page is a frozen historical reference. Its idea inbox is
   live: Nestor and family captures wait there until the parent reviews them.
   Coding workers receive bounded context from linked Planning objectives;

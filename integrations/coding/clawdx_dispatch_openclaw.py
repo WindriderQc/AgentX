@@ -154,6 +154,10 @@ print(json.dumps({
 '''
 
 
+class WorkerCompletionUnknown(PipelineApiError):
+    """Transport/attribution failed without proof that the worker is settled."""
+
+
 def run_openclaw_process(
     args: argparse.Namespace,
     remote_cmd: str,
@@ -183,19 +187,25 @@ def run_openclaw_process(
             lease = {**lease, "requestCount": request_count}
     except Exception as exc:
         close_error = exc
+    if isinstance(process_error, subprocess.TimeoutExpired):
+        if close_error:
+            print(f"pipeline_attribution_close=unknown:{type(close_error).__name__}")
+        raise process_error
     if process_error and close_error:
-        raise PipelineApiError(
+        raise WorkerCompletionUnknown(
             f"OpenClaw process failed and Pipeline attribution close failed: "
             f"{type(process_error).__name__}; {type(close_error).__name__}"
         ) from process_error
     if close_error:
-        raise PipelineApiError(
+        raise WorkerCompletionUnknown(
             f"Pipeline attribution close failed: {type(close_error).__name__}: {close_error}"
         ) from close_error
     if process_error:
-        raise process_error
+        raise WorkerCompletionUnknown(f"OpenClaw transport failed: {type(process_error).__name__}") from process_error
     if proc is None:
-        raise PipelineApiError("OpenClaw process returned no result")
+        raise WorkerCompletionUnknown("OpenClaw process returned no result")
+    if proc.returncode == 255:
+        raise WorkerCompletionUnknown("OpenClaw SSH transport ended without proof of worker completion")
     return proc, lease
 
 

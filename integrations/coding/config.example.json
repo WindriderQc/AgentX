@@ -60,6 +60,7 @@
       "workerHelper": "/srv/agentx/AgentX/integrations/coding/openclaw_pipeline_worker.py",
       "model": "ollama/agentx-pipeline",
       "costEvidenceMode": "local-zero",
+      "workerTimeoutSeconds": 900,
       "attestAttribution": true,
       "localEnergyEvidence": {
         "measurementScope": "gpu-incremental-lower-bound",

@@ -326,7 +326,7 @@
       if (!this.current(epoch)) return;
       this.show('listening');
       this.captureFollowup = this.wake.active();
-      this.audio.listen(blob => this.exchange(blob, epoch), () => {
+      this.audio.listen((blob, capture) => this.exchange(blob, epoch, capture), () => {
         this.cancelWakeAck();
         this.captureFollowup = this.wake.active();
         if (this.current(epoch)) this.show('hearing');
@@ -389,7 +389,7 @@
     monitor(turn) {
       if (turn.monitoring || !this.audio.canInterrupt || this.selection.interruption === false || !this.io.interrupt) return;
       turn.monitoring = true;
-      this.audio.listen(blob => this.exchange(blob, turn.epoch), () => {
+      this.audio.listen((blob, capture) => this.exchange(blob, turn.epoch, capture), () => {
         this.captureFollowup = true;
         // Standalone consumers can adopt the optional hold asset separately.
         if (this.state === 'speaking' && !this.audio.holdPlayback) { this.interrupt(turn); return; }
@@ -437,7 +437,7 @@
         .catch(error => { this.fail(error, turn.epoch); throw error; });
       turn.interruption.catch(() => {}); // handled when the captured utterance arrives
     }
-    async exchange(blob, epoch) {
+    async exchange(blob, epoch, capture = {}) {
       if (!this.current(epoch) || !['listening', 'hearing'].includes(this.state)) return;
       this.cancelWakeAck();
       const wakeFollowup = this.captureFollowup;
@@ -448,6 +448,7 @@
       // The end of the person's speech has just been decided: a surface that keeps
       // voice timings gets this turn's timeline from that moment.
       if (this.io.timings && VoiceTimeline) turn.timeline = new VoiceTimeline(this.io.now);
+      turn.timeline?.measure('silenceMs', capture.silenceMs); turn.timeline?.measure('audioMs', capture.audioMs);
       const lifetimeSignal = this.abort.signal;
       const excerptId = this.audio.reviewStatus?.().id;
       this.audio.recordTranscription?.(excerptId, 'pending', '', { turnId: turn.id, bytes: blob.size });
@@ -461,7 +462,7 @@
         let text = typeof result === 'string' ? result : String(result?.text || '');
         const stopControl = result?.control === 'stop';
         if (!this.current(epoch)) return;
-        transcribed = true; turn.timeline?.mark('sttDone');
+        transcribed = true; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text, typeof result === 'object' && result ? result : {});
         if (isTranscriptHallucination(text)) text = '';
         if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) text = '';
@@ -888,7 +889,10 @@
             history.push(data.samples, data.time === undefined ? Date.now() : data.time * 1000, rejectedEcho);
             const utterance = endpoint.push(rejectedEcho ? new Float32Array(data.samples.length) : data.samples);
             if (!prior && endpoint.speaking) onSpeech();
-            if (utterance) { freeze('utterance', utterance.length); quiet(); onUtterance(wav(utterance, context.sampleRate)); }
+            if (utterance) {
+              freeze('utterance', utterance.length); quiet();
+              onUtterance(wav(utterance, context.sampleRate), { audioMs: utterance.length / context.sampleRate * 1000, silenceMs: endpoint.endSilenceMs });
+            }
           };
           node.port.postMessage({ epoch: expected });
           stream.getAudioTracks().forEach((track) => { track.enabled = true; });
