@@ -162,6 +162,16 @@ class SynthesisTests(unittest.TestCase):
         self.assertEqual(len(transport.calls), 2)
         self.assertIn("violated the contract", transport.calls[1]["messages"][1]["content"])
 
+    def test_repair_receives_the_whole_previous_output_and_budget(self):
+        long_output = "not json " + "x" * 12000 + " END-OF-OUTPUT"
+        transport = FakeTransport([
+            long_output,
+            json.dumps({"candidates": [good_candidate()]}),
+        ])
+        self.assertEqual(len(self._run(transport)), 1)
+        self.assertIn("END-OF-OUTPUT", transport.calls[1]["messages"][1]["content"])
+        self.assertEqual(transport.calls[1]["max_tokens"], transport.calls[0]["max_tokens"])
+
     def test_second_failure_raises_and_stops(self):
         transport = FakeTransport(["nope", "still nope"])
         with self.assertRaises(schema.SynthesisOutputError):
