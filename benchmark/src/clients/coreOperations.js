@@ -33,6 +33,7 @@ const CORE_OPERATIONS = Object.freeze({
   WORKLOAD_RELEASE: 'benchmark.core-api.workload-release',
   WORKLOAD_RELEASE_RECOVERY: 'benchmark.core-api.workload-release-recovery',
   WORKLOAD_RECOVERY_ARM: 'benchmark.core-api.workload-recovery-arm',
+  WORKLOAD_RECOVERY_LOOKUP: 'benchmark.core-api.workload-recovery-lookup',
   WORKLOAD_RECOVERY_ADOPT: 'benchmark.core-api.workload-recovery-adopt',
   WORKLOAD_RECOVERY_HEARTBEAT: 'benchmark.core-api.workload-recovery-heartbeat',
   WORKLOAD_RECOVERY_ASSERT: 'benchmark.core-api.workload-recovery-assert',
@@ -141,6 +142,11 @@ const CORE_OPERATION_SPECS = Object.freeze({
     'POST',
     '^/api/nerve-center/workload-admissions/[^/]+/recovery$',
     { maxRequestBytes: 32 * 1024, maxResponseBytes: 256 * 1024 }
+  ),
+  [CORE_OPERATIONS.WORKLOAD_RECOVERY_LOOKUP]: operation(
+    'POST',
+    '^/api/nerve-center/workload-recoveries/lookup$',
+    { maxRequestBytes: 4 * 1024, maxResponseBytes: 32 * 1024 }
   ),
   [CORE_OPERATIONS.WORKLOAD_RECOVERY_ADOPT]: operation(
     'POST',

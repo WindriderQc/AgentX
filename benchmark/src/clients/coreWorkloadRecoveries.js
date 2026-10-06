@@ -52,6 +52,32 @@ async function transitionWorkloadRecovery(workloadId, state, options = {}) {
   return result;
 }
 
+/**
+ * Reads back from Core the recovery identity of a quarantined workload this
+ * process no longer remembers. Core answers only once the original owner is
+ * no longer live; null means nothing can be journaled yet.
+ */
+async function lookupWorkloadRecovery({ workloadId, recoveryRequestId, signal }) {
+  let data;
+  try {
+    data = await coreRequest('/api/nerve-center/workload-recoveries/lookup', {
+      method: 'POST',
+      operationId: CORE_OPERATIONS.WORKLOAD_RECOVERY_LOOKUP,
+      signal,
+      body: JSON.stringify({ workloadId, recoveryRequestId })
+    });
+  } catch (error) {
+    if (error.status === 409 || error.status === 404) return null;
+    throw error;
+  }
+  const result = data?.data;
+  const exact = result?.found === true
+    && result.workloadId === String(workloadId)
+    && result.recoveryRequestId === recoveryRequestId
+    && result.admissionId && result.generation && result.principal && result.recoveryId;
+  return exact ? result : null;
+}
+
 async function adoptWorkloadRecovery({ workloadId, recoveryId, recoveryRequestId, ownerId, signal }) {
   const data = await coreRequest(
     `/api/nerve-center/workload-recoveries/${encodeURIComponent(recoveryId)}/adopt`,
@@ -189,6 +215,7 @@ async function restoreWorkloadRecoveryHosts(workloadId, excludedModelsByHost = {
 module.exports = {
   getWorkloadRecoveryIdentity,
   transitionWorkloadRecovery,
+  lookupWorkloadRecovery,
   adoptWorkloadRecovery,
   heartbeatWorkloadRecovery,
   assertWorkloadRecovery,

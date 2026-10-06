@@ -19,6 +19,7 @@ jest.mock('../../src/services/benchmark/benchmarkAuthorityReconciliation', () =>
 }));
 jest.mock('../../src/services/registeredHostSync', () => ({ startRegisteredHostSync: jest.fn() }));
 jest.mock('../../src/services/measurementCoverage/coverageJob', () => ({ getCoverageJob: jest.fn(() => ({ start: jest.fn() })) }));
+jest.mock('../../src/services/benchmark/recordlessQuarantineRecovery', () => ({ startRecordlessQuarantineRecovery: jest.fn() }));
 
 const claimRecovery = require('../../src/services/benchmark/claimRecovery');
 const { interruptOrphanedBatches } = require('../../src/services/benchmark/orphanedBatchRecovery');
@@ -26,6 +27,7 @@ const { recoverJudgeQueue } = require('../../src/services/benchmark/judgeQueueRe
 const { startProfilerProjectionRecovery } = require('../../src/services/profiler/profilerProjectionRecovery');
 const { startBenchmarkAuthorityReconciliation } = require('../../src/services/benchmark/benchmarkAuthorityReconciliation');
 const { startRegisteredHostSync } = require('../../src/services/registeredHostSync');
+const { startRecordlessQuarantineRecovery } = require('../../src/services/benchmark/recordlessQuarantineRecovery');
 const { startStartupRecovery } = require('../../src/services/startupRecovery');
 const { CORE_OPERATIONS, CORE_OPERATION_SPECS } = require('../../src/clients/coreOperations');
 const { createAgentXProfileGuard } = require('../../../shared/agentxRuntimeProfile');
@@ -62,8 +64,10 @@ describe('startup recovery', () => {
   it('syncs registered hosts only in the full profile', () => {
     startStartupRecovery('demo');
     expect(startRegisteredHostSync).not.toHaveBeenCalled();
+    expect(startRecordlessQuarantineRecovery).not.toHaveBeenCalled();
     startStartupRecovery('full');
     expect(startRegisteredHostSync).toHaveBeenCalledTimes(1);
+    expect(startRecordlessQuarantineRecovery).toHaveBeenCalledTimes(1);
   });
 
   it('is started by the server for every profile', () => {
@@ -77,8 +81,10 @@ describe('startup recovery', () => {
 // and the interactive-priority yield point. Pin context editing stays
 // full-only (operator-confirmed Profiler proposal under Nerve Center), and so
 // does the task routing table the coverage matrix reads: the demo profile has
-// no Nerve Center, and coverage then covers the pinned models only.
-const FULL_ONLY_OPERATIONS = ['PIN_CONTEXT_APPLY', 'ROUTING_CONFIG', 'RUNTIME_ACTIVE', 'HOUSEHOLD_IDLE'];
+// no Nerve Center, and coverage then covers the pinned models only. Rebuilding
+// a record-less quarantine reads the same coordination state, so it is full-only.
+const FULL_ONLY_OPERATIONS = ['PIN_CONTEXT_APPLY', 'ROUTING_CONFIG', 'RUNTIME_ACTIVE', 'HOUSEHOLD_IDLE',
+  'WORKLOAD_RECOVERY_LOOKUP'];
 const DEMO_OPERATIONS = Object.keys(CORE_OPERATIONS).filter(name => !FULL_ONLY_OPERATIONS.includes(name));
 
 function samplePath(pattern) {

@@ -21,42 +21,55 @@ async function enqueueAuthorityInvalidation({
   phase,
   reason,
   details = null,
-  resolutionMode = 'invalidate'
+  resolutionMode = 'invalidate',
+  // The identity Core read back, when this process no longer remembers it.
+  recovery: suppliedRecovery = null
 }) {
   const identity = String(resultId || '');
   const workloadKey = String(workloadId || batchId || '');
   if (!identity) throw new Error('resultId is required for authority reconciliation');
-  const recovery = getWorkloadRecoveryIdentity(workloadKey);
+  const recovery = suppliedRecovery || getWorkloadRecoveryIdentity(workloadKey);
   if (!workloadKey || !recovery?.recoveryId || !recovery?.recoveryRequestId
     || !recovery?.admissionId || !recovery?.generation || !recovery?.principal) {
     throw new Error(`Durable recovery quarantine proof is missing for workload ${workloadKey || 'unknown'}`);
   }
   const resourceType = resourceTypeForKind(kind);
   if (!resourceType) throw new Error(`Unsupported authority reconciliation kind: ${kind}`);
+  const pending = {
+    kind,
+    resultId: identity,
+    resourceType,
+    batchId: batchId ? String(batchId) : null,
+    workloadId: workloadKey,
+    admissionId: recovery.admissionId,
+    admissionGeneration: recovery.generation,
+    admissionPrincipal: recovery.principal,
+    recoveryId: recovery.recoveryId,
+    recoveryRequestId: recovery.recoveryRequestId,
+    phase,
+    details,
+    resolutionMode,
+    state: 'pending_reconciliation',
+    reason: reason || null,
+    attempts: 0,
+    startedAt: new Date()
+  };
+  // A record an earlier admission of the same resource left resolved is
+  // re-armed for this admission; otherwise the upsert below would keep it
+  // resolved and the new quarantine would have no record.
   const record = await BenchmarkAuthorityReconciliation.findOneAndUpdate(
-    { resultId: identity },
+    { resultId: identity, state: 'resolved', admissionId: { $ne: recovery.admissionId } },
     {
-      $setOnInsert: {
-        kind,
-        resultId: identity,
-        resourceType,
-        batchId: batchId ? String(batchId) : null,
-        workloadId: workloadKey,
-        admissionId: recovery.admissionId,
-        admissionGeneration: recovery.generation,
-        admissionPrincipal: recovery.principal,
-        recoveryId: recovery.recoveryId,
-        recoveryRequestId: recovery.recoveryRequestId,
-        phase,
-        details,
-        resolutionMode,
-        state: 'pending_reconciliation',
-        reason: reason || null,
-        attempts: 0,
-        startedAt: new Date()
-      },
-      $set: { lastError: reason || null }
+      $set: { ...pending, lastError: reason || null },
+      $unset: {
+        compensationReceipt: '', releaseReceipt: '', resolvedAt: '', lastAttemptAt: '',
+        ownerId: '', ownerEpoch: '', ownerClaimedAt: ''
+      }
     },
+    { new: true }
+  ).lean() || await BenchmarkAuthorityReconciliation.findOneAndUpdate(
+    { resultId: identity },
+    { $setOnInsert: pending, $set: { lastError: reason || null } },
     { upsert: true, new: true }
   ).lean();
 

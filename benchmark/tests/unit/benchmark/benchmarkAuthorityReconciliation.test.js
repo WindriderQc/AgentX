@@ -117,7 +117,9 @@ beforeEach(() => {
 });
 
 test('journals the Core quarantine identity before handing ambiguous authority to recovery', async () => {
-  mockReconciliationFindOneAndUpdate.mockReturnValueOnce(lean({ _id: 'journal-1' }));
+  mockReconciliationFindOneAndUpdate
+    .mockReturnValueOnce(lean(null)) // no record left resolved by an earlier admission
+    .mockReturnValueOnce(lean({ _id: 'journal-1' }));
   await expect(service.enqueueResultInvalidation({
     resultId: 'result-1',
     batchId: 'batch-1',
