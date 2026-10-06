@@ -283,3 +283,13 @@ describe('pipeline automation contract', () => {
     })).toThrow(/estimated cost does not match/);
   });
 });
+
+
+test('keeps actual model and token usage on failed evidence with nullable legacy usage', () => {
+  const raw = { schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA, verification: { status: 'failed' }, changes: {},
+    usage: { inputTokens: 0, outputTokens: 3, cacheReadTokens: 0, totalTokens: 3, modelCalls: 1,
+      effectiveModel: 'actual-model', tokenStatus: 'complete' } };
+  expect(normalizePipelineAutomationEvidence(raw).usage).toMatchObject(raw.usage);
+  expect(() => normalizePipelineAutomationEvidence({ ...raw, usage: { ...raw.usage, totalTokens: null } })).toThrow('complete token usage');
+  expect(() => normalizePipelineAutomationEvidence({ ...raw, usage: { ...raw.usage, inputTokens: -1 } })).toThrow();
+});

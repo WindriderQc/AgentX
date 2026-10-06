@@ -805,7 +805,6 @@
       if (location.pathname === '/lecture') return await loadReader();
       if (location.pathname.startsWith('/lecture/parents')) return await loadParents();
       if (location.pathname === '/voice-personas/debug') return await loadPersonas();
-      if (location.pathname === '/voice/native') return await window.HouseholdNativeVoice.load({ app, api, esc, state, toast, setRuntime, stopPlayback, speak, browserSpeak });
       if (['/voice', '/voice.html', '/voix'].includes(location.pathname)) return await window.mountConversation({ app, api, esc });
       if (location.pathname === '/device-check') return await window.HouseholdDeviceCheck.load({ app, esc, state, api, toast, transcribe, stopPlayback, setRuntime });
       app.innerHTML = '<div class="empty">Page introuvable.</div>';

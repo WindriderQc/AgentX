@@ -719,7 +719,7 @@ rejected synthesis request advances to the next rung. A failure after the stream
 starts permits one clause retry below the failed voice, at most once per turn.
 Interruption never starts that retry. The reply can remain unspoken if every
 voice fails. Server replies
-and native voice sessions do not use browser `speechSynthesis`. PsyX uses its
+do not use browser `speechSynthesis`. PsyX uses its
 protected chosen-voice route without a device voice fallback. See
 [shared speech behavior](AGENTS_AND_VOICE.md#shared-speech-behavior).
 
@@ -781,8 +781,7 @@ uses the backup while the probe fails. A primary network error or 502/503/504 is
 once on the backup; a 4xx is not. Answers carry `X-Voix-Upstream: primary|fallback`,
 `GET /api/voix/upstream` reports the active upstream, and the conversation page
 shows "Voix de secours (serveur principal indisponible) : réponses plus lentes."
-while the backup answers. Native sessions, the media vault and configuration
-stay on the primary. Caller disconnects cancel transcription and synthesis;
+while the backup answers. Caller disconnects cancel transcription and synthesis;
 no backup starts after cancellation. Deadlines cover body reads; both surfaces
 reject a synthesis error event before streaming audio.
 The optional [spoken-controls adapter](../integrations/voix/README.md) adds local
@@ -1643,6 +1642,49 @@ docker exec agentx-core-1 node scripts/seal-identifiers.js --apply --backup /tmp
 
 Back the key up with the instance secrets: without it, stored values cannot be
 read.
+
+## Completed coding task replay
+
+`core/scripts/completed-coding-replay.js` reads a private
+`agentx.completed-coding-corpus/v1` manifest with a `tasks` array. Each entry
+contains the completed `pipelineId`, `status: "done"`, original `spec`, exact
+40-character `baseRevision`, `originalReceiptFingerprint`, repository-relative
+`sourceFiles` and permitted `scope`. Its operator-selected `verification`
+contains a profile name, immutable original `sourceFiles`, executable `argv`
+and bounded `timeoutMs`. The original receipt supplies the base revision;
+current HEAD is never substituted. Missing bases or authority files refuse the
+corpus before inference. Task, authority and verifier snapshots enter the
+corpus fingerprint.
+
+```sh
+node core/scripts/completed-coding-replay.js --corpus /private/completed-tasks.json --repo /path/to/AgentX --out /private/replay-run --model example-model --host-url http://gpu.example.test:11434 --dry-run
+```
+
+Removing `--dry-run` admits each call through Core against the selected host's
+pinned model. The replay never claims or writes Pipeline tasks, changes a
+routing default or chooses a capacity fallback. Only proven refusals before
+dispatch wait and retry; uncertain dispatch stops the run. Each task receives
+its full original authority text and returns one unified patch. A detached
+worktree at its original base receives that patch. Changes outside scope or
+to the immutable verifier refuse verification. Bubblewrap runs the exact
+verifier with a read-only worktree, disposable `/tmp`, no home or network;
+missing sandbox support or dependencies fail verification without a fallback.
+`/node/node` selects the running Node executable when a profile needs Node.
+The worktree is removed after recording the result.
+
+The private report directory must be outside every Git checkout. It contains
+the pinned corpus, model responses, attempt results and summary with verified
+pass rate, duration, actual model, call count and nullable token usage. The
+fixed gate requires every selected task to finish and pass; interrupted or
+uncertain runs are incomplete. This bounded patch replay measures the supplied
+corpus and adapter, not an unrestricted worker session.
+
+Live coding attempt evidence also retains observed session tokens and the
+actual model on successful and failed outcomes, independently of cost
+telemetry. An attribution alias is resolved only from server evidence; missing
+or mixed model attribution remains unknown. `GET /api/pipeline/performance?groupBy=model`
+returns per-model aggregates and a separate unknown bucket. Observed token
+sums and coverage stay distinct from totals when attempts have missing usage.
 
 ## Fast voice lane replay
 

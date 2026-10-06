@@ -16,6 +16,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
+const { reportDirectory } = require('../src/helpers/offlineReportDirectory');
 const lane = require('../surfaces/household/voice-lane');
 const { detectMemoryRequest } = require('../surfaces/household/persona-prompt');
 const { forgetMemoryStatement } = require('../surfaces/household/voice-memory-turns');
@@ -48,31 +49,6 @@ function parseArgs(argv) {
   }
   if (!options.out) throw new Error('--out <dir> is required; choose a directory outside the checkout');
   return options;
-}
-
-// Resolves links on the part of a path that exists, so a link cannot hide where it lands.
-function realPath(target) {
-  const missing = [];
-  let current = path.resolve(target);
-  while (!fs.existsSync(current) && path.dirname(current) !== current) {
-    missing.unshift(path.basename(current));
-    current = path.dirname(current);
-  }
-  return path.join(fs.realpathSync.native(current), ...missing);
-}
-
-// The report holds private text: never inside the application tree or a Git checkout.
-function reportDirectory(out, { appRoot = path.resolve(__dirname, '..') } = {}) {
-  const target = realPath(out);
-  const relative = path.relative(realPath(appRoot), target);
-  const refuse = () => new Error('--out must be outside the checkout and the application directory: the report holds private request text');
-  if (!relative || (!relative.startsWith('..') && !path.isAbsolute(relative))) throw refuse();
-  for (let directory = target; ; directory = path.dirname(directory)) {
-    if (fs.existsSync(path.join(directory, '.git'))) throw refuse();
-    if (path.dirname(directory) === directory) break;
-  }
-  if (fs.existsSync(path.join(target, 'summary.json'))) throw new Error('--out already holds a report; choose a new directory');
-  return target;
 }
 
 const timeOf = value => new Date(value || 0).getTime();

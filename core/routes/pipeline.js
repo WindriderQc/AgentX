@@ -173,6 +173,9 @@ router.get('/tasks', async (req, res) => {
 // evidence remains null and is reported through coverage rather than becoming
 // a false zero. GET /api/pipeline/performance?window=7d|30d|90d
 router.get('/performance', async (req, res) => {
+  if (req.query.groupBy != null && req.query.groupBy !== 'model') {
+    return envelope.error(res, 400, 'groupBy must be model', 'INVALID_PERFORMANCE_GROUP');
+  }
   const windowDays = performanceWindow(req.query.window);
   if (!windowDays) {
     return envelope.error(res, 400, 'window must be one of 7d, 30d, or 90d', 'INVALID_PERFORMANCE_WINDOW');
@@ -186,7 +189,7 @@ router.get('/performance', async (req, res) => {
     // Without readable waits the phase reads unknown; the rest still answers.
     const resourceWaits = await readAttemptResourceWaits(tasks, { from, to: now }).catch(() => null);
     return envelope.success(res, {
-      performance: buildPipelineAutomationPerformance(tasks, { now, windowDays, resourceWaits }),
+      performance: buildPipelineAutomationPerformance(tasks, { now, windowDays, resourceWaits, groupBy: req.query.groupBy }),
     });
   } catch (err) { return envelope.error(res, 500, err.message); }
 });

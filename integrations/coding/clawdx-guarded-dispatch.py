@@ -278,6 +278,9 @@ def run_dispatch(
         return 5
     except PipelineApiError as exc:
         failure = f"post_claim_dispatch_error:{type(exc).__name__}:{exc}"
+        evidence = build_attempt_evidence(duration_ms=0, failures=[failure])
+        evidence["usage"]["durationMs"] = None
+        evidence["usage"].update(getattr(args, "observed_attempt_usage", {}))
         block_error: str | None = None
         blocked_task: dict[str, Any] | None = None
         try:
@@ -286,6 +289,7 @@ def run_dispatch(
                 args.task_id,
                 agent=args.agent,
                 failures=[failure],
+                attempt_evidence=evidence,
                 lease_id=getattr(args, "lease_id", None),
             )
         except PipelineApiError as block_exc:

@@ -910,6 +910,8 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                     "costKind": None,
                     "costSource": None,
                     "costEvidenceFingerprint": None,
+                    "inputTokens": None, "outputTokens": None, "cacheReadTokens": None,
+                    "totalTokens": None, "modelCalls": None, "effectiveModel": None, "tokenStatus": "unknown",
                 },
                 "failureCodes": ["independent_verification_failed"],
                 "workerReceiptFingerprint": None,
@@ -999,6 +1001,8 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 "costKind": "provider-spend",
                 "costSource": "openclaw-local-provider-spend/v1",
                 "costEvidenceFingerprint": "a" * 64,
+                "inputTokens": 100, "outputTokens": 20, "cacheReadTokens": 30, "totalTokens": 150,
+                "modelCalls": 2, "effectiveModel": None, "tokenStatus": "complete",
             },
         )
 
@@ -1618,6 +1622,10 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             repair_attempt=False,
         )
 
+        args.observed_attempt_usage = {"inputTokens": 100, "outputTokens": 20,
+            "cacheReadTokens": 0, "totalTokens": 120, "modelCalls": 2,
+            "effectiveModel": "actual-model", "tokenStatus": "complete"}
+
         with (
             patch.object(MODULE.dispatch_remote, "ensure_repo_inside_worker_workspace"),
             patch.object(MODULE.dispatch_remote, "ensure_remote_repo_clean"),
@@ -1641,6 +1649,10 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             "post_claim_dispatch_error:PipelineApiError:invalid OpenClaw JSON",
             block.call_args.kwargs["failures"],
         )
+        usage = block.call_args.kwargs["attempt_evidence"]["usage"]
+        self.assertEqual(usage["inputTokens"], 100)
+        self.assertEqual(usage["outputTokens"], 20)
+        self.assertEqual(usage["modelCalls"], 2)
 
     def test_worker_repo_must_be_inside_file_tool_workspace(self):
         MODULE.dispatch_remote.ensure_repo_inside_worker_workspace(
@@ -2200,6 +2212,10 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 self.assertEqual(observed["calls"], 2)
                 self.assertEqual(observed["totalTokens"], 30)
                 self.assertEqual(observed["models"], ["agentx-pipeline"])
+                self.assertEqual(observed["inputTokens"], 24)
+                self.assertEqual(observed["outputTokens"], 6)
+                self.assertIsNone(observed["cacheReadTokens"])
+                self.assertEqual(observed["tokenStatus"], "partial")
                 self.assertEqual(observed["costStatus"], expected)
                 self.assertEqual(observed["costNanodollars"], 0 if expected == "partial" else None)
 

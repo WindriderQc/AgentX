@@ -359,6 +359,22 @@ function normalizePipelineAutomationEvidence(rawValue) {
     costSource,
     costEvidenceFingerprint,
   };
+  for (const key of ['inputTokens', 'outputTokens', 'cacheReadTokens', 'totalTokens', 'modelCalls']) {
+    if (Object.hasOwn(usageRaw, key)) normalizedUsage[key] = optionalInteger(
+      usageRaw[key], `attemptEvidence.usage.${key}`, { min: 0, max: 9_000_000_000_000_000 }
+    );
+  }
+  if (Object.hasOwn(usageRaw, 'effectiveModel')) normalizedUsage.effectiveModel = optionalIdentifier(
+    usageRaw.effectiveModel, 'attemptEvidence.usage.effectiveModel', 160
+  );
+  if (usageRaw.tokenStatus != null) {
+    if (!['complete', 'partial', 'unknown'].includes(usageRaw.tokenStatus)) {
+      throw automationError('attemptEvidence.usage.tokenStatus is not supported');
+    }
+    if (usageRaw.tokenStatus === 'complete' && ['inputTokens', 'outputTokens', 'cacheReadTokens', 'totalTokens']
+      .some(key => normalizedUsage[key] == null)) throw automationError('complete token usage requires all token counts');
+    normalizedUsage.tokenStatus = usageRaw.tokenStatus;
+  }
   if (localEnergy != null) normalizedUsage.localEnergy = localEnergy;
   if (usageRaw.costStatus != null) {
     if (!['complete', 'partial', 'unknown'].includes(usageRaw.costStatus)
@@ -382,6 +398,9 @@ function normalizePipelineAutomationEvidence(rawValue) {
     routing = { status: 'verified', provider: 'ollama',
       effectiveModel: identifier(value.effectiveModel, 'routing.effectiveModel', 160),
       requestCount, sessionCallCount, evidenceFingerprint };
+  }
+  if (routing && normalizedUsage.effectiveModel != null && routing.effectiveModel !== normalizedUsage.effectiveModel) {
+    throw automationError('usage effective model disagrees with verified routing');
   }
   let inference;
   if (raw.inference != null) {
