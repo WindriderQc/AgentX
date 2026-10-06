@@ -252,6 +252,13 @@ Surface records use a distinct internal user namespace and are not exposed by
 the default Playground history API. PsyX transcripts are namespaced away from
 ordinary chat.
 
+Execution selection distinguishes local direct inference from OpenClaw, whose
+model and agent modes are separate. Provider credentials and the native cloud
+catalogue belong to OpenClaw. Core keeps conversation/context persistence and
+inference events; isolated model benchmarks use a native SDK invocation without
+an agent loop. [Execution sources](EXECUTION_SOURCES.md) defines receipts,
+parameter observability, billing and migration validation.
+
 The Household conversation executor selects Core inference or the configured
 OpenClaw native agent loop per session and never replays an uncertain turn on
 the other backend. Core inference reports that agent tools are unavailable;
