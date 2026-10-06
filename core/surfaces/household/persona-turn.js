@@ -173,6 +173,8 @@ function createPersonaTurnHandler({
         if (member) {
           speaker = { agentId: member.agentId, name: memberPersona?.name || member.agentId, personaId: memberPersona?.id || null };
           event('speaker', { speaker });
+          // Heard at once: the member's first words can be many seconds away.
+          event('status', { phase: 'activity', activity: { kind: 'member_addressed', agentId: member.agentId } });
         }
         if (backend === 'openclaw') await requireNativeAgent(agentIdFor(turnSession));
         let history = [];
