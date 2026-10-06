@@ -12,7 +12,8 @@ function setup() {
     disconnectDB: jest.fn(async () => events.push('disconnect')),
     beginManagedWorkload: jest.fn(async () => { events.push('admit'); return workload; }),
     claimHostForBenchmark: jest.fn(async () => { events.push('claim'); return { claimed: true, claimGeneration: 'generation-a' }; }),
-    getBenchmarkClaims: jest.fn(async () => [{ hostUrl: args.host, batchId: args.claimId, claimGeneration: 'generation-a' }]),
+    getBenchmarkClaims: jest.fn(async () => [{ hostUrl: args.host, batchId: args.claimId, snapshotExact: true }]),
+    heartbeatBenchmarkClaim: jest.fn(async () => ({ heartbeat: true, batchId: args.claimId, claimGeneration: 'generation-a' })),
     releaseBenchmarkClaim: jest.fn(async () => { events.push('restore'); return { released: true }; }),
     startHeartbeat: () => ({ ready: Promise.resolve(), assertActive: jest.fn(), stop: async () => events.push('stop') }) };
   return { deps, events, workload };
@@ -22,6 +23,8 @@ test('admission precedes the claim and confirmed restoration precedes workload r
   const { deps, events } = setup();
   expect(await withRepoAdmission(args, async session => { await session.assertActive(); events.push('infer'); return 'result'; }, deps)).toBe('result');
   expect(events).toEqual(['connect', 'admit', 'claim', 'infer', 'restore', 'complete', 'stop', 'disconnect']);
+  expect(deps.getBenchmarkClaims).not.toHaveBeenCalled();
+  expect(deps.heartbeatBenchmarkClaim).toHaveBeenCalledWith(args.host, args.claimId, 62000);
 });
 test('a refused claim never dispatches and releases its empty admission', async () => {
   const { deps, workload } = setup(); deps.claimHostForBenchmark.mockResolvedValue({ claimed: false, reason: 'busy' });
@@ -31,7 +34,7 @@ test('a refused claim never dispatches and releases its empty admission', async 
 });
 test.each(['unknown', 'lost'])('%s completion/authority is retained without clearing the host', async mode => {
   const { deps, workload } = setup();
-  if (mode === 'lost') deps.getBenchmarkClaims.mockResolvedValue([{ hostUrl: args.host, batchId: args.claimId, claimGeneration: 'replacement' }]);
+  if (mode === 'lost') deps.heartbeatBenchmarkClaim.mockResolvedValue({ heartbeat: true, batchId: args.claimId, claimGeneration: 'replacement' });
   await expect(withRepoAdmission(args, async () => { throw Object.assign(new Error('unknown'), { retainAdmission: true }); }, deps)).rejects.toThrow();
   expect(deps.releaseBenchmarkClaim).not.toHaveBeenCalled(); expect(workload.complete).not.toHaveBeenCalled();
   expect(workload.retainForRecovery).toHaveBeenCalled();
