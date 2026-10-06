@@ -108,6 +108,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   and host before claiming a task. Occupied capacity leaves a visible queued
   wait with no attempt consumed. An existing host tick can resume that same
   request; an inactive wait can be cancelled from the Coding Team panel.
+  A local consultative review reads the original task authority and exact
+  independently verified patch. Its private advice and usage receipt grants
+  no task acceptance or merge authority.
 - **Planning.** The page is a frozen historical reference. Its idea inbox is
   live: Nestor and family captures wait there until the parent reviews them.
   Coding workers receive bounded context from linked Planning objectives;

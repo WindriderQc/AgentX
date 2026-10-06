@@ -7,13 +7,32 @@ import time
 import unittest
 from integrations.coding import coding_worker_verification as verification
 from integrations.coding.coding_task_worktree import configure_execution, task_workspace, promotion_workspace
-from integrations.coding.coding_task_worktree import prepare_task_worktree, profile_fingerprint
+from integrations.coding.coding_task_worktree import prepare_task_worktree, profile_fingerprint, promotion_profiles
 from integrations.coding import clawdx_dispatch_remote as remote
 from types import SimpleNamespace
 from unittest.mock import Mock
+from integrations.coding.coding_advisory_packet import packet_for
+from integrations.coding.coding_team_promotion import worker_snapshot_fingerprint
 
 
 class WorkerVerificationTests(unittest.TestCase):
+    def test_promotion_uses_original_selected_verifier_and_refuses_profile_drift(self):
+        task = {'spec': 'bounded Jest regression', 'automation': {'executionProfile': 'worker/v1',
+            'verificationProfile': 'jest/v1', 'scope': ['core/tests/unit/example.test.js'], 'fingerprint': 'c' * 64}}
+        args = SimpleNamespace(independent_verification_command='node jest bounded-test',
+            independent_verification_timeout=120, allowed_path=task['automation']['scope'],
+            max_changed_files=1, max_changed_bytes=20000)
+        attempt = {'evidence': {'repository': {'verificationProfileFingerprint': profile_fingerprint(args, task)}}}
+        config = {'executionProfiles': {'worker/v1': {'agent': 'test-worker',
+            'remoteRepo': str(self.repo.parent.parent / 'agentx-seed')}}, 'verificationProfiles': {
+            'jest/v1': {'command': args.independent_verification_command, 'timeoutSeconds': 120,
+                'maxChangedFiles': 1, 'maxChangedBytes': 20000},
+            'agentx-dispatcher-tests/v1': {'command': 'python default verifier'}}}
+        self.assertEqual(promotion_profiles(config, task, attempt)[1]['command'], 'node jest bounded-test')
+        config['verificationProfiles']['jest/v1']['command'] = 'python default verifier'
+        with self.assertRaisesRegex(ValueError, 'profile changed'):
+            promotion_profiles(config, task, attempt)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
@@ -150,6 +169,30 @@ class WorkerVerificationTests(unittest.TestCase):
         cli.return_value.update(ready=True, fileScopeHook=True, helperPath='/srv/product/integrations/coding/coding_worker_verification.py', grantRoot='/private/grants')
         remote.validate_worker_verification_preflight(args, cli)
         self.assertEqual(args.worker_grant_root, '/private/grants')
+
+    def test_advisory_packet_reads_original_authority_and_exact_verified_patch(self):
+        (self.repo / 'sum.py').write_text('def add(a,b):\n return a+b\n')
+        config = {'executionProfiles': {'files/v1': {'remoteRepo': str(self.repo.parent.parent / 'seed')}},
+            'verificationProfiles': {'unit/v1': {'command': 'python3 -B -m unittest', 'timeoutSeconds': 10,
+                'maxChangedFiles': 1, 'maxChangedBytes': 10000}}}
+        task = {'pipelineId': '0700', 'status': 'review', 'spec': 'Repair sum', 'automation': {
+            'fingerprint': 'a'*64, 'executionProfile': 'files/v1', 'verificationProfile': 'unit/v1',
+            'scope': ['sum.py'], 'sourceFiles': ['sum.py']}}
+        args = SimpleNamespace(independent_verification_command='python3 -B -m unittest',
+            independent_verification_timeout=10, allowed_path=['sum.py'], max_changed_files=1, max_changed_bytes=10000)
+        fingerprint = worker_snapshot_fingerprint(pipeline_id='0700', attempt=1, assignee='test-worker',
+            base_revision=self.base, files={'sum.py': (self.repo / 'sum.py').read_bytes()})
+        task['automationAttempts'] = [{'attempt': 1, 'assignee': 'test-worker', 'finalState': 'review', 'evidence': {
+            'verification': {'status': 'passed'}, 'workerReceiptFingerprint': fingerprint,
+            'repository': {'workspaceRef': 'tasks/0700', 'baseRevision': self.base,
+                'verificationProfileFingerprint': profile_fingerprint(args, task)}}}]
+        packet = packet_for(task, config)
+        self.assertIn('a-b', packet['authority'][0]['content'])
+        self.assertIn('a+b', packet['changes'][0]['content'])
+        self.assertNotIn('automationLease', packet)
+        (self.repo / 'sum.py').write_text('different unverified patch')
+        with self.assertRaisesRegex(ValueError, 'verified worker receipt'):
+            packet_for(task, config)
 
 
 if __name__ == '__main__':

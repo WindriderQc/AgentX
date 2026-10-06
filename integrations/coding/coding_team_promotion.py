@@ -4,9 +4,9 @@
 from __future__ import annotations
 
 try:
-    from integrations.coding.coding_task_worktree import promotion_workspace
+    from integrations.coding.coding_task_worktree import promotion_workspace, promotion_profiles
 except ModuleNotFoundError:
-    from coding_task_worktree import promotion_workspace
+    from coding_task_worktree import promotion_workspace, promotion_profiles
 
 import argparse
 import hashlib
@@ -784,14 +784,6 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
     repository = promotion["repository"]
     if args.repository and args.repository != repository:
         raise PromotionError("workflow repository differs from reviewed promotion configuration")
-    profile = (config.get("executionProfiles") or {}).get("clawdx-file-tools/v1")
-    verification = (config.get("verificationProfiles") or {}).get("agentx-dispatcher-tests/v1")
-    if not isinstance(profile, dict) or not isinstance(verification, dict):
-        raise PromotionError("reviewed worker or verification profile is unavailable")
-    worker_repo = Path(profile.get("remoteRepo") or "").resolve()
-    expected_name = "workspace-" + str(profile.get("agent") or "")
-    if not any(parent.name == expected_name and parent.parent.name == ".openclaw" for parent in worker_repo.parents):
-        raise PromotionError("worker repository is outside the reviewed workspace")
     tasks = list_tasks(config["apiBase"], ca_file=args.ca_file)
     candidates = eligible_candidates(tasks)
     if args.task_id:
@@ -812,6 +804,7 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
     if len(pending) > promotion["maxPerRun"] and not all(item[1].get("evidence", {}).get("repository") for item in pending):
         raise PromotionError("multiple accepted results await one shared worker checkout")
     task, attempt, receipt_file, prepared_receipt = pending[0]
+    profile, verification = promotion_profiles(config, task, attempt, PromotionError)
     pipeline_id = str(task["pipelineId"])
     attempt_number = int(attempt["attempt"])
     branch = f"{promotion['branchPrefix']}{pipeline_id}-attempt-{attempt_number}"

@@ -1679,6 +1679,36 @@ fixed gate requires every selected task to finish and pass; interrupted or
 uncertain runs are incomplete. This bounded patch replay measures the supplied
 corpus and adapter, not an unrestricted worker session.
 
+`integrations/coding/coding_advisory_packet.py --config /private/coding-dispatcher.json
+--task-id 0700 --out /private/reports/0700-packet.json` exports a review-ready
+task's exact verified patch and original-base authority from its recorded
+worktree. A changed task, verification profile, scope or worker receipt refuses
+export. The packet excludes task leases and discussion history.
+
+`core/scripts/coding-advisory-review.js --packet /private/reports/0700-packet.json
+--out /private/reports/0700-advice --model local-coding-model
+--host-url http://localhost:11434` runs a consultative review against an explicitly
+selected configured host and pinned model, through Core's trusted inference
+admission. `--dry-run` validates the packet without inference. The private receipt
+records the original base, patch and packet fingerprints, actual tokens and model,
+whether it is a self-review, and the model's notes. The command never writes
+Pipeline tasks, accepts work, changes verification or merges a PR. An existing
+receipt prevents another call; only a proven refusal before dispatch is eligible
+for a later attempt. Unknown completion remains fenced by Core. Truncated or
+empty notes carry an explicit status. Advisory notes are not an executable test
+or a model qualification.
+
+The optional host command `integrations/coding/coding_advisory_control.py
+--config /private/coding-dispatcher.json` schedules one verified review-ready
+patch when `advisoryReview.enabled` is true. The operator config supplies the
+exact Core container, pinned model and configured host. Its private state records
+the packet fingerprint before launching the detached Core command. Later ticks
+collect that same receipt, including after a host process restart; a missing,
+mismatched or uncertain receipt prevents another execution. A proven zero-call
+capacity refusal can retry on a later tick. Completed patches are not reviewed
+again. The existing host timer can invoke this command after its Lead and host
+maintenance gates; advisory scheduling has no task acceptance authority.
+
 Live coding attempt evidence also retains observed session tokens and the
 actual model on successful and failed outcomes, independently of cost
 telemetry. An attribution alias is resolved only from server evidence; missing
