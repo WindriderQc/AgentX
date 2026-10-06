@@ -114,6 +114,10 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **PsyX source coverage.** Dream portraits distinguish source items collected
   from text supplied to the model. Collection limits, stalled pagination and
   unknown task totals appear in the prompt and saved portrait coverage.
+- **Inference health.** Nerve Center shows per-host watchdog success counts and
+  the last probe or skip reason. Unusable, skipped and control-plane-only probes
+  leave resident worker health unknown; only a completed resident inference
+  establishes it. These counters cover the current Core process.
 - **Retrieval input.** Reranking passes complete passages to Core. Embedding
   inputs are sent whole or refused: the provider declares its character limit,
   Core requests native context refusal, and ingestion does not index a partial

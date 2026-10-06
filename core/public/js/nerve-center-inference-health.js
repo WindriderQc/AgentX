@@ -126,6 +126,14 @@
         if (!w || w.error) {
             return `<div class="nc-muted">Watchdog stats unavailable: ${shared.escapeHtml(w?.error || 'unknown')}</div>`;
         }
+        const hostRows = (w.hosts || []).map(host => {
+            const tone = host.health === 'ok' ? '#4ade80' : host.health === 'error' ? '#f87171' : '#94a3b8';
+            const reason = host.reason || 'not_observed';
+            return `<tr><td>${shared.escapeHtml(host.hostName || hostLabel(host.hostUrl))}</td>
+                <td style="color:${tone}">${shared.escapeHtml(host.health || 'unknown')}</td>
+                <td>${host.probesOk ?? 0}/${host.probesSent ?? 0} successful probes</td>
+                <td>${shared.escapeHtml(reason)}${host.lastStatus ? ` (HTTP ${Number(host.lastStatus)})` : ''}</td></tr>`;
+        }).join('');
         const okRate = w.probesSent > 0 ? ((w.probesOk / w.probesSent) * 100).toFixed(1) : '—';
         const events = (w.recentEvents || []).slice(0, 5).map(ev => {
             const when = shared.timeAgo ? shared.timeAgo(ev.timestamp) : new Date(ev.timestamp).toLocaleTimeString();
@@ -155,6 +163,7 @@
                     <div><span class="nc-muted">Jams</span><br><strong style="color:${w.jamsDetected > 0 ? '#f87171' : 'inherit'}">${w.jamsDetected ?? 0}</strong></div>
                     <div><span class="nc-muted">Unjams</span><br><strong>${w.unjamsDone ?? 0}</strong></div>
                 </div>
+                ${hostRows ? `<table class="nc-table" style="width:100%;font-size:12px;margin-bottom:8px;"><thead><tr><th>Host</th><th>Worker health</th><th>Probes</th><th>Last observation</th></tr></thead><tbody>${hostRows}</tbody></table><div class="nc-muted" style="font-size:11px;">Skipped and control-plane probes do not establish worker health. Counters are since Core started.</div>` : ''}
                 ${events ? `<div><span class="nc-muted" style="font-size:11px;">Recent events:</span><ul style="list-style:none;padding:0;margin:4px 0 0;">${events}</ul></div>` : ''}
             </div>`;
     }
@@ -397,6 +406,7 @@
 
     window.NerveCenterInferenceHealth = {
         loadInferenceHealth,
+        buildWatchdogPanel,
         buildJudgeDriftPanel,
         buildSummary
     };

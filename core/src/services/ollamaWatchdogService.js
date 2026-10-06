@@ -241,16 +241,7 @@ const _consecutiveFails = new Map();  // hostUrl → count
 const _lastProbeStatus = new Map();   // hostUrl → 'ok' | 'fail' (previous cycle)
 const _graceWindowEndsAt = new Map(); // hostUrl → timestamp (ms since epoch)
 const _recoveryRequired = new Map(); // last cycle's durable quarantine projection
-const _stats = {
-  probesSent: 0,
-  probesOk: 0,
-  probesFailed: 0,
-  jamsDetected: 0,
-  unjamsDone: 0,
-  lastProbeAt: null,
-  lastJamAt: null,
-  history: []   // last N events (ring buffer, max 50)
-};
+const { stats: _stats, recordEvent, observeHost, hostSnapshots } = require('./ollamaWatchdogHealth');
 
 // ── Core Logic ──────────────────────────────────────────────
 
@@ -498,23 +489,6 @@ async function restorePinnedModel(host, hostPrefService, primaryPin) {
 }
 
 /**
- * Push an event into the ring buffer history.
- */
-function recordEvent(type, host, details) {
-  const event = {
-    type,
-    hostId: host.id,
-    hostName: host.name,
-    hostUrl: host.url,
-    timestamp: new Date().toISOString(),
-    ...details
-  };
-  _stats.history.push(event);
-  if (_stats.history.length > 50) _stats.history.shift();
-  return event;
-}
-
-/**
  * Run one probe cycle across all configured hosts.
  */
 async function probeCycle(isStopped = () => false) {
@@ -533,6 +507,7 @@ async function probeCycle(isStopped = () => false) {
   for (const host of hosts) {
     if (isStopped()) return;
     if (_recoveryRequired.has(host.url)) {
+      observeHost(host, { reason: _recoveryRequired.get(host.url).reason }, false);
       _lastProbeStatus.set(host.url, 'fail');
       _consecutiveFails.set(host.url, 0);
       continue;
@@ -551,6 +526,7 @@ async function probeCycle(isStopped = () => false) {
         model: hold.model || null,
         owner: hold.owner || null
       });
+      observeHost(host, { reason: 'session_hold' }, false);
       recordEvent('hold_skip', host, { model: hold.model || null, owner: hold.owner || null });
       continue;
     }
@@ -570,6 +546,7 @@ async function probeCycle(isStopped = () => false) {
       // currently loaded model during that window can repeatedly win the
       // scheduler race and starve the legitimate cold swap.
       if (hostGate.hostHasInflight(host.url)) {
+        observeHost(host, { reason: 'active_inference' }, false);
         logger.debug(`[Watchdog] ${host.name} probe skipped — host has active inference`);
         continue;
       }
@@ -581,18 +558,21 @@ async function probeCycle(isStopped = () => false) {
       // Metadata alone cannot prove worker health when residency is incomplete.
       if (probeModel && !contextLength) {
         logger.debug(`[Watchdog] ${host.name} probe skipped — resident context unavailable`, { model: probeModel });
+        observeHost(host, { reason: 'resident_context_unavailable' }, false);
         recordEvent('context_skip', host, { model: probeModel });
         continue;
       }
 
-      _stats.probesSent++;
       result = await probeHost(host, probeModel, undefined, contextLength);
     }
 
     // Complete the dispatched probe, but never begin recovery or another host
     // after shutdown/demotion has stopped this generation of the watchdog.
     if (isStopped()) return;
+    const dispatched = meta.ok && result.reason !== 'coordination_busy';
+    observeHost(host, result, dispatched);
     if (result.reason === 'coordination_busy') continue;
+    if (dispatched) _stats.probesSent++;
 
     // Track fail→ok transitions to arm the recovery grace window. A recovering
     // host may queue cold model loads that exceed the probe timeout; without
@@ -784,7 +764,7 @@ function stop() {
 }
 
 function getStats() {
-  return { ..._stats, recoveryRequired: Array.from(_recoveryRequired, ([hostUrl, details]) => ({ hostUrl, ...details })), isRunning: !!_interval, config: { probeIntervalMs: PROBE_INTERVAL_MS, probeTimeoutMs: PROBE_TIMEOUT_MS, maxConsecutive: MAX_CONSECUTIVE, reloadAfterUnjam: RELOAD_AFTER_UNJAM } };
+  return { ..._stats, hosts: hostSnapshots(getConfiguredHosts()), recoveryRequired: Array.from(_recoveryRequired, ([hostUrl, details]) => ({ hostUrl, ...details })), isRunning: !!_interval, config: { probeIntervalMs: PROBE_INTERVAL_MS, probeTimeoutMs: PROBE_TIMEOUT_MS, maxConsecutive: MAX_CONSECUTIVE, reloadAfterUnjam: RELOAD_AFTER_UNJAM } };
 }
 
 /** Manual trigger: run one probe cycle right now */
