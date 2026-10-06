@@ -1,6 +1,8 @@
 'use strict';
 
 async function open(options) {
+  const purpose = options.purpose || 'completed-coding-replay';
+  if (!['completed-coding-replay', 'coding-advisory-review'].includes(purpose)) throw new Error('unsupported offline coding purpose');
   require('dotenv').config({ quiet: true });
   for (const transport of require('../../config/logger').transports) if (transport.name === 'console') transport.silent = true;
   const mongoose = require('mongoose');
@@ -24,7 +26,7 @@ async function open(options) {
         try {
           result = await inference.execute({ mode: 'chat', model: options.model, messages, stream: false,
             think: false, temperature: 0, max_tokens: options.outputTokens, timeoutMs: options.timeoutMs,
-            callerDetail: 'completed-coding-replay' }, { hostUrl: check.host, consumerContract: 'completed-coding-replay' });
+            callerDetail: purpose }, { hostUrl: check.host, consumerContract: purpose });
         } catch (error) {
           const { refusedBeforeDispatch } = require('./routing/taskFallbackLadder');
           error.replay = refusedBeforeDispatch(error) ? 'busy' : 'stop';

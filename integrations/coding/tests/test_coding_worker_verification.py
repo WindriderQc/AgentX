@@ -11,6 +11,8 @@ from integrations.coding.coding_task_worktree import prepare_task_worktree, prof
 from integrations.coding import clawdx_dispatch_remote as remote
 from types import SimpleNamespace
 from unittest.mock import Mock
+from integrations.coding.coding_advisory_packet import packet_for
+from integrations.coding.coding_team_promotion import worker_snapshot_fingerprint
 
 
 class WorkerVerificationTests(unittest.TestCase):
@@ -150,6 +152,30 @@ class WorkerVerificationTests(unittest.TestCase):
         cli.return_value.update(ready=True, fileScopeHook=True, helperPath='/srv/product/integrations/coding/coding_worker_verification.py', grantRoot='/private/grants')
         remote.validate_worker_verification_preflight(args, cli)
         self.assertEqual(args.worker_grant_root, '/private/grants')
+
+    def test_advisory_packet_reads_original_authority_and_exact_verified_patch(self):
+        (self.repo / 'sum.py').write_text('def add(a,b):\n return a+b\n')
+        config = {'executionProfiles': {'files/v1': {'remoteRepo': str(self.repo.parent.parent / 'seed')}},
+            'verificationProfiles': {'unit/v1': {'command': 'python3 -B -m unittest', 'timeoutSeconds': 10,
+                'maxChangedFiles': 1, 'maxChangedBytes': 10000}}}
+        task = {'pipelineId': '0700', 'status': 'review', 'spec': 'Repair sum', 'automation': {
+            'fingerprint': 'a'*64, 'executionProfile': 'files/v1', 'verificationProfile': 'unit/v1',
+            'scope': ['sum.py'], 'sourceFiles': ['sum.py']}}
+        args = SimpleNamespace(independent_verification_command='python3 -B -m unittest',
+            independent_verification_timeout=10, allowed_path=['sum.py'], max_changed_files=1, max_changed_bytes=10000)
+        fingerprint = worker_snapshot_fingerprint(pipeline_id='0700', attempt=1, assignee='test-worker',
+            base_revision=self.base, files={'sum.py': (self.repo / 'sum.py').read_bytes()})
+        task['automationAttempts'] = [{'attempt': 1, 'assignee': 'test-worker', 'finalState': 'review', 'evidence': {
+            'verification': {'status': 'passed'}, 'workerReceiptFingerprint': fingerprint,
+            'repository': {'workspaceRef': 'tasks/0700', 'baseRevision': self.base,
+                'verificationProfileFingerprint': profile_fingerprint(args, task)}}}]
+        packet = packet_for(task, config)
+        self.assertIn('a-b', packet['authority'][0]['content'])
+        self.assertIn('a+b', packet['changes'][0]['content'])
+        self.assertNotIn('automationLease', packet)
+        (self.repo / 'sum.py').write_text('different unverified patch')
+        with self.assertRaisesRegex(ValueError, 'verified worker receipt'):
+            packet_for(task, config)
 
 
 if __name__ == '__main__':
