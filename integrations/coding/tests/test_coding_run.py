@@ -83,6 +83,21 @@ class CodingRunTest(unittest.TestCase):
         self.assertNotIn("--force", git.call_args.args)
         self.assertNotIn("secret-fixture", " ".join(str(arg) for arg in git.call_args.args))
 
+    def test_delivery_git_does_not_execute_repository_hooks_or_owner_filters(self):
+        marker = self.workspace / "outside-command-ran"
+        hook = self.workspace / ".git/hooks/pre-commit"
+        hook.write_text(f"#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(marker)!r}).touch()\n")
+        hook.chmod(0o700)
+        global_config = self.workspace.parent / "owner-gitconfig"
+        global_config.write_text(f'[filter "probe"]\n clean = touch {marker}\n')
+        (self.workspace / ".gitattributes").write_text("result.txt filter=probe\n")
+        (self.workspace / "result.txt").write_text("Preserve the worker's file\n")
+        with mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(global_config)}):
+            runner.git(self.workspace, "add", "-A")
+            runner.git(self.workspace, *runner.AUTHOR, "commit", "--quiet", "-m", "Fixture")
+        self.assertFalse(marker.exists())
+        self.assertEqual(runner.git(self.workspace, "show", "HEAD:result.txt"), "Preserve the worker's file")
+
 
 if __name__ == "__main__":
     unittest.main()

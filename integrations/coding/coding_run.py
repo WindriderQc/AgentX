@@ -109,15 +109,18 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int) -> subprocess
             "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--dir", "/home",
             "--bind", home, "/home/agent", "--ro-bind", str(NODE_ROOT), "/opt/node",
             "--ro-bind", str(DSH_ROOT), "/opt/dsh", "--ro-bind", str(HERE / "guard.patch.yml"), "/opt/guard.patch.yml",
-            "--bind", str(workspace), "/workspace", "--chdir", "/workspace",
+            "--bind", str(workspace), "/workspace", "--ro-bind", str(workspace / ".git"), "/workspace/.git",
+            "--chdir", "/workspace",
             "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/opt/guard.patch.yml", "--", prompt,
         ]
         return subprocess.run(sandbox, text=True, capture_output=True)
 
 
 def git(workspace: Path, *args: str, env: dict | None = None) -> str:
-    return subprocess.run(["git", "-C", str(workspace), *args], check=True, text=True,
-                          capture_output=True, env=env).stdout.strip()
+    isolated = {**(env or os.environ), "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
+    return subprocess.run(["git", "-C", str(workspace), "-c", "core.hooksPath=/dev/null",
+                           "-c", "core.fsmonitor=false", *args], check=True, text=True,
+                          capture_output=True, env=isolated).stdout.strip()
 
 
 def feedback(task_id: str, text: str, status: str | None = None) -> None:

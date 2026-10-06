@@ -30,7 +30,8 @@ follow-up.
 The runner uses three protections:
 
 - The sandbox shows the worker its own clone and nothing else of the host: no
-  live checkout, no instance files, no credentials.
+  live checkout, no instance files, no credentials. Git metadata stays read-only
+  during the turn; delivery ignores Git hooks and owner filters.
 - The GitHub token stays with the runner outside the sandbox. The worker cannot
   push; the runner only pushes the task branch and opens a draft pull request.
 - The worker reaches the model through Core's OpenAI-compatible endpoint, so
