@@ -49,10 +49,11 @@ test('private voice uses only PsyX routes, a scoped female voice and the canonic
   assert.equal(h.$('voiceSessionDialog').dataset.phase, 'listening');
   await h.say();
   const requests = h.calls.filter(call => call.url);
-  assert.deepEqual(requests.map(call => call.url), ['/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream']);
+  // The session wakes speech recognition as it opens, then transcribes and speaks.
+  assert.deepEqual(requests.map(call => call.url), ['/api/psyx/voice/warm', '/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream']);
   const turn = h.calls.find(call => call.text);
   assert.equal(turn.options.source, 'voice'); assert.equal(turn.options.voiceSession, true);
-  const synthesis = JSON.parse(requests[1].options.body);
+  const synthesis = JSON.parse(requests.at(-1).options.body);
   assert.equal(synthesis.voice, 'Microsoft Caroline'); assert.equal(synthesis.ttsProvider, 'windows_sapi');
   assert.equal(synthesis.text, 'Je t’écoute. Une piste');
   assert.equal(h.$('voiceSessionDialog').dataset.phase, 'listening');
@@ -82,7 +83,8 @@ test('LAN voice needs no unlock; hidden pages stop capture and aborted requests 
   assert.ok(h.calls.includes('close'));
   const abort = new AbortController(); abort.abort();
   await assert.rejects(h.context.voiceSessionFetch('transcribe', {}, abort.signal), { name: 'AbortError' });
-  assert.equal(h.calls.filter(call => call.url).length, 0);
+  // Only the wake-up of speech recognition, sent as the session opened, was dispatched.
+  assert.deepEqual(h.calls.filter(call => call.url).map(call => call.url), ['/api/psyx/voice/warm']);
 });
 
 test('female voice selection requires availability and Canadian locale evidence and preserves explicit preferences', () => {
@@ -158,7 +160,7 @@ test('PsyX keeps no voice timeline: the shared loop measures only for a surface 
   const h = wiring(); h.context.wireVoiceSession();
   await h.$('voiceSessionStart').listeners.click(); await h.say();
   assert.equal(h.captured.io.timings, undefined);
-  assert.deepEqual(h.calls.filter(call => call.url).map(call => call.url), ['/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream'],
+  assert.deepEqual(h.calls.filter(call => call.url).map(call => call.url), ['/api/psyx/voice/warm', '/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream'],
     'nothing about the private turn leaves through another route');
   // The same loop reports as soon as a surface provides somewhere to keep it.
   const sent = [];
@@ -191,7 +193,7 @@ test('a PsyX voice stream that breaks while it plays is requested once more on t
     };
     h.context.wireVoiceSession(); await h.$('voiceSessionStart').listeners.click(); await h.say();
     assert.deepEqual(h.calls.filter(call => call.url).map(call => call.url),
-      ['/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream', '/api/psyx/voice/synthesize/stream']);
+      ['/api/psyx/voice/warm', '/api/psyx/voice/transcribe', '/api/psyx/voice/synthesize/stream', '/api/psyx/voice/synthesize/stream']);
     assert.deepEqual(spoken(h).map(request => [request.text, request.voice]), Array(2).fill(['Je suis là avec toi.', 'Microsoft Caroline']));
     assert.equal(plays, 2);
     assert.equal(h.$('voiceSessionDialog').dataset.phase, phase);

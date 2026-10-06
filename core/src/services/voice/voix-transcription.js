@@ -33,4 +33,25 @@ function registerTranscriptionProxy(router, { express, normalizeMultipart, upstr
   });
 }
 
-module.exports = { registerTranscriptionProxy };
+// Someone starts speaking: ask the speech service to run its recognition model
+// once now, so the utterance that follows is not its first inference after a
+// pause. Best effort on the primary only: a speech service that is unreachable,
+// or older than this request, is never an error for the conversation.
+const WARM_TIMEOUT_MS = 4000;
+async function warmRecognition({ upstream, fetchWithTimeout }) {
+  try {
+    const { response } = await upstream.send('/api/stt/warm', (url) => fetchWithTimeout(url, { method: 'POST' }, WARM_TIMEOUT_MS),
+      { canRetry: () => false });
+    const body = response.ok ? await response.json().catch(() => null) : null;
+    const warmMs = Number(body?.warmMs);
+    return { warmed: body?.warmed === true, ...(body?.warmed === true && Number.isFinite(warmMs) && warmMs >= 0 ? { warmMs: Math.round(warmMs) } : {}) };
+  } catch {
+    return { warmed: false };
+  }
+}
+
+function registerRecognitionWarmProxy(router, dependencies) {
+  router.post('/warm', async (_req, res) => res.json(await warmRecognition(dependencies)));
+}
+
+module.exports = { registerTranscriptionProxy, registerRecognitionWarmProxy, warmRecognition };

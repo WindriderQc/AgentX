@@ -427,6 +427,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       partial = null;
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
+    // The person starts speaking: wake speech recognition while they talk (best effort).
+    warm: () => fetch('/api/voix/warm', { method: 'POST' }),
     // The voice loop's timeline of a spoken turn, kept by Core on that recorded turn.
     timings: (session, turnId, timings) => api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/voice-timings`,
       { method: 'POST', keepalive: true, body: JSON.stringify({ turnId, timings }) }),

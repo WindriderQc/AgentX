@@ -44,7 +44,7 @@ test('PsyX has no path that writes the shared VoiX configuration', async () => {
   const requests = [];
   const client = createVoiceClient(VOICE_CONFIG, recordingFetch(requests));
   assert.equal(typeof client.updateConfig, 'undefined');
-  assert.deepEqual(Object.keys(client).sort(), ['catalog', 'config', 'enabled', 'player', 'status', 'stream', 'synthesize', 'transcribe']);
+  assert.deepEqual(Object.keys(client).sort(), ['catalog', 'config', 'enabled', 'player', 'status', 'stream', 'synthesize', 'transcribe', 'warm']);
   await client.synthesize({ text: 'bonjour', ttsProvider: 'windows_sapi', language: 'fr' });
   assert.deepEqual(requests.map((item) => `${item.method} ${item.path}`), ['POST /api/tts']);
 });
@@ -204,4 +204,23 @@ test('browser voice remains ready on the shared backup without reading or borrow
   assert.equal(status.nativeAvailable, false); assert.equal(status.nativeSessionRunning, false);
   assert.deepEqual(status.devices, []);
   assert.deepEqual(calls, [VOICE_CONFIG.voice.baseUrl + '/health', 'http://backup.test/health']);
+});
+
+test('waking recognition is one best-effort request to the primary speech service', async () => {
+  const requests = [];
+  const client = createVoiceClient(VOICE_CONFIG, async (url, options = {}) => {
+    requests.push({ path: new URL(url).pathname, method: options.method || 'GET' });
+    return new Response(JSON.stringify({ warmed: true, warmMs: 400 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  });
+  assert.deepEqual(await client.warm(), { warmed: true });
+  assert.deepEqual(requests, [{ path: '/api/stt/warm', method: 'POST' }]);
+  // An older speech service, an unreachable one or a disabled voice is never an error.
+  const older = createVoiceClient(VOICE_CONFIG, async () => new Response(JSON.stringify({ detail: 'Not Found' }), { status: 404, headers: { 'Content-Type': 'application/json' } }));
+  assert.deepEqual(await older.warm(), { warmed: false });
+  const away = createVoiceClient(VOICE_CONFIG, async () => { throw new Error('connection refused'); });
+  assert.deepEqual(await away.warm(), { warmed: false });
+  let reached = false;
+  const disabled = createVoiceClient({ voice: { mode: 'disabled' } }, async () => { reached = true; return new Response('{}'); });
+  assert.deepEqual(await disabled.warm(), { warmed: false });
+  assert.equal(reached, false);
 });

@@ -118,6 +118,16 @@ function createVoiceClient(config, fetchImpl) {
       return sanitizeConfig(await json('/config'));
     },
 
+    // Someone starts speaking: wake recognition while they talk. Best effort, like the
+    // shared proxy: a disabled, unreachable or older speech service is not an error.
+    async warm() {
+      if (!enabled) return { warmed: false };
+      try {
+        const body = await (await transport.request('/api/stt/warm', { method: 'POST' }, 4000)).json();
+        return { warmed: body?.warmed === true };
+      } catch { return { warmed: false }; }
+    },
+
     async transcribe(buffer, { contentType, language, signal }) {
       requireEnabled();
       if (!Buffer.isBuffer(buffer) || !buffer.length) throw voiceError('An audio recording is required.', 'PSYX_VOICE_AUDIO_REQUIRED', 400);
