@@ -86,6 +86,28 @@ describe('Busy judge host', () => {
 });
 
 describe('Default voting (single call, voting_count=1)', () => {
+    test('failed HTTP votes retain the complete upstream body and never become a verdict', async () => {
+        const body = JSON.stringify({ message: 'Synthetic runner failure: ' + 'x'.repeat(9000) });
+        mockFetchFn.mockResolvedValue({ ok: false, status: 500, text: async () => body });
+        const calls = [];
+        expect(await askBinaryQuestion('42', 'Correct?', { ...JUDGE_CONFIG, judgeCallEvidence: calls })).toBeNull();
+        expect(mockFetchFn).toHaveBeenCalledTimes(2);
+        expect(calls).toHaveLength(2);
+        expect(calls.every(call => call.status === 500 && call.http_error_body === body
+            && call.error === 'Judge HTTP 500' && call.response === undefined)).toBe(true);
+        expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('Synthetic runner failure');
+    });
+
+    test('an unreadable HTTP error body preserves the original failed vote', async () => {
+        mockFetchFn.mockResolvedValue({ ok: false, status: 500,
+            text: async () => { throw new Error('Synthetic response disconnected'); } });
+        const calls = [];
+        expect(await askBinaryQuestion('42', 'Correct?', { ...JUDGE_CONFIG, judgeCallEvidence: calls })).toBeNull();
+        expect(calls).toHaveLength(2);
+        expect(calls.every(call => call.error === 'Judge HTTP 500'
+            && call.http_error_body_error === 'Synthetic response disconnected')).toBe(true);
+    });
+
     test('sends the selected temperature and seed, including zero', async () => {
         mockFetchFn.mockImplementation(() => mockFetchResponse('YES'));
         await askBinaryQuestion('42', 'Correct?', { ...JUDGE_CONFIG, temperature: 0, seed: 0 });

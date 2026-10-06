@@ -12,7 +12,7 @@ const { normalizeJudgeNumCtx } = require('./scoring/judgeRuntimeConfig');
 const { DEFAULT_SCORING_CATEGORY, normalizeScoringCategory } = require('./scoring/scoringConfigs');
 const { judgeRequestIdentity } = require('./scoring/judgeRequestIdentity');
 const { GATE_BOUND, assessGates, boundByGates, failedGates, gatesAnswered } = require('./scoring/categoryGates');
-const { prepareJudgeResponse, assertJudgeInputUnmodified, assertJudgeOutputComplete, beginJudgeCallEvidence, finishJudgeCallEvidence, judgeCallEvidenceFields } = require('./scoring/judgeInput');
+const { prepareJudgeResponse, assertJudgeInputUnmodified, assertJudgeOutputComplete, beginJudgeCallEvidence, finishJudgeCallEvidence, judgeHttpError, judgeCallEvidenceFields } = require('./scoring/judgeInput');
 const {
     fetchWhenJudgeHostFree,
     openJudgeCall,
@@ -131,7 +131,7 @@ Give one brief sentence of evidence for this criterion, then end with a separate
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
-            throw new Error(`Judge HTTP ${res.status}`);
+            throw await judgeHttpError(res, callEvidence);
         }
 
         const data = await res.json();
@@ -202,7 +202,7 @@ Give one brief sentence identifying a specific contradiction, or explaining why 
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
-            throw new Error(`Judge HTTP ${res.status}`);
+            throw await judgeHttpError(res, callEvidence);
         }
 
         const data = await res.json();
@@ -274,7 +274,7 @@ Give one brief sentence identifying any missing required behavior, or stating th
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
-            throw new Error(`Judge HTTP ${res.status}`);
+            throw await judgeHttpError(res, callEvidence);
         }
 
         const data = await res.json();
