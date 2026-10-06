@@ -77,10 +77,13 @@ async function saveSettings(input) {
   return write(SETTINGS_KEY, validate(input, await getSettings()));
 }
 
-/** { last: {...}, cells: { key: { failures, lastAttemptAt, lastError } } } */
+/**
+ * { last: {...}, cells: { key: { failures, lastAttemptAt, lastError } },
+ *   requests: { key: { priority, reason, requestedBy, at } } }
+ */
 async function getState() {
   const state = await read(STATE_KEY, {});
-  return { last: state.last || null, cells: state.cells || {} };
+  return { last: state.last || null, cells: state.cells || {}, requests: state.requests || {} };
 }
 
 const saveState = state => write(STATE_KEY, state);

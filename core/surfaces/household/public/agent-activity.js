@@ -18,7 +18,10 @@
     [/personal_task/, () => 'Je regarde tes tâches.'],
     [/shopping_list/, () => 'Je vérifie la liste d’épicerie.'],
     [/^(web_search|web_fetch|searxng.*)$/, () => 'Je cherche sur le web.'],
-    [/finance|ledger/, () => 'Je consulte tes finances.']
+    [/finance|ledger/, () => 'Je consulte tes finances.'],
+    [/mail/, () => 'Je cherche dans tes courriels.'],
+    [/calendar|agenda/, () => 'Je regarde ton agenda.'],
+    [/^(memory_search|rag_search|wiki_search)$/, () => 'Je cherche dans mes notes.']
   ];
   const QUIET = /^(sessions_yield|get_sound|agentx__get_sound)$/;
 
@@ -26,6 +29,10 @@
     const agent = activity?.agentId ? agentName(activity.agentId) : '';
     if (activity?.kind === 'waiting_agent') {
       return { text: agent ? `J’attends la réponse de ${agent}. Ça peut prendre une minute.` : 'J’attends la réponse de l’autre agent. Ça peut prendre une minute.', spoken: true };
+    }
+    // Said the moment a turn goes to another team member, before that member's first model call.
+    if (activity?.kind === 'member_addressed') {
+      return { text: agent ? `Je passe ta question à ${agent}.` : 'Je passe ta question à un autre agent.', spoken: true };
     }
     if (activity?.kind === 'waiting_image') return { text: 'L’image est en préparation. Ça peut prendre une minute.', spoken: false };
     if (activity?.kind !== 'tool' || typeof activity.tool !== 'string' || QUIET.test(activity.tool)) return null;

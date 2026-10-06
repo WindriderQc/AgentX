@@ -3,9 +3,9 @@
  *
  * One record per completed `POST /judge/calibrate-accuracy` run. A record
  * qualifies exactly one judge identity: the judge model on one host, one
- * scorer version and one reference set (fingerprinted). Records are append
+ * scorer version, frozen execution/settings contract and reference set. Records are append
  * only; the newest record of an identity is the one readers use, so a later
- * failing run withdraws an earlier qualification.
+ * failing run withdraws an earlier qualification only for the same contract.
  *
  * The per-case grades stay with the record so the causes of a failure remain
  * inspectable without re-running inference.
@@ -40,6 +40,8 @@ const JudgeQualificationSchema = new mongoose.Schema({
     reference_count: { type: Number, default: 0 },
     requested_num_ctx: { type: Number, default: null },
     judge_config: { type: mongoose.Schema.Types.Mixed, default: null },
+    qualification_contract: { type: mongoose.Schema.Types.Mixed, default: null },
+    qualification_contract_fingerprint: { type: String, default: null },
     qualified: { type: Boolean, required: true },
     failed: { type: [String], default: [] },
     criteria: { type: mongoose.Schema.Types.Mixed, default: null },
@@ -49,6 +51,7 @@ const JudgeQualificationSchema = new mongoose.Schema({
 }, { timestamps: false });
 
 JudgeQualificationSchema.index({ judge_host_key: 1, judge_model_key: 1, scorer_version: 1, recorded_at: -1 });
+JudgeQualificationSchema.index({ judge_host_key: 1, judge_model_key: 1, scorer_version: 1, qualification_contract_fingerprint: 1, recorded_at: -1 });
 JudgeQualificationSchema.index({ recorded_at: -1 });
 
 module.exports = mongoose.models.JudgeQualification

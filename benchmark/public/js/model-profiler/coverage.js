@@ -46,7 +46,8 @@
         escapeHtml(PROFILE_LABELS[cell.profile.state] || cell.profile.state) + '</span>' +
         (cell.profile.depth ? '<small>' + escapeHtml(cell.profile.depth) + '</small>' : '') + '</td>' +
       '<td>' + bar(cell.catalog.covered, cell.catalog.total) + '<div class="mp-coverage-cats">' + categories(cell) + '</div></td>' +
-      '<td>' + (cell.complete ? '<span class="mp-coverage-done">Complete</span>' : escapeHtml(next)) + '</td>' +
+      '<td>' + (cell.complete ? '<span class="mp-coverage-done">Complete</span>' : escapeHtml(next)) +
+        (cell.request ? '<small title="' + escapeHtml(cell.request.reason) + '">requested first by ' + escapeHtml(cell.request.requestedBy) + '</small>' : '') + '</td>' +
       '</tr>';
   }
 
