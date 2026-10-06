@@ -86,11 +86,19 @@ test('installed native SDK projects its registry and sends a single isolated req
     await assert.rejects(service.execute({ schema: 'agentx.openclaw-model-request/v1', model: 'openrouter/fixture/model',
       messages: [{ role: 'user', content: 'Only this prompt.' }], parameters: { maxTokens: 64 } }), { code: 'OPENCLAW_CONTEXT_DRIFT' });
     assert.equal(requests.length, 4, 'native configuration cannot inject context before HTTP');
+    cfg.agents.defaults.models['openrouter/fixture/model'].params.extraBody = { n: 2 };
+    await assert.rejects(service.execute({ schema: 'agentx.openclaw-model-request/v1', model: 'openrouter/fixture/model',
+      messages: [{ role: 'user', content: 'Only this prompt.' }], parameters: { maxTokens: 64 } }), { code: 'OPENCLAW_MULTIPLE_COMPLETIONS_FORBIDDEN' });
+    assert.equal(requests.length, 4, 'native configuration cannot multiply completions beyond the single-output reservation');
+    cfg.agents.defaults.models['openrouter/fixture/model'].params.extraBody = { n: 1 };
+    await service.execute({ schema: 'agentx.openclaw-model-request/v1', model: 'openrouter/fixture/model',
+      messages: [{ role: 'user', content: 'Only this prompt.' }], parameters: { maxTokens: 64 } });
+    assert.equal(requests[4].payload.n, 1);
     delete cfg.agents.defaults.models['openrouter/fixture/model'].params.extraBody;
     failFetch = true;
     await assert.rejects(service.execute({ schema: 'agentx.openclaw-model-request/v1', model: 'openrouter/fixture/model',
       messages: [{ role: 'user', content: 'Only this prompt.' }], parameters: { maxTokens: 64 } }), { code: 'OPENCLAW_NATIVE_MODEL_FAILED' });
-    assert.equal(requests.length, 5, 'the native transport cannot retry a failed HTTP request');
+    assert.equal(requests.length, 6, 'the native transport cannot retry a failed HTTP request');
   } finally { if (originalHost) ai.configureAiTransportHost(originalHost); globalThis.fetch = originalFetch; }
 });
 
