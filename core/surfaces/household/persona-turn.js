@@ -37,12 +37,25 @@ const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null,
   familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-  sounds, visuals, brain, memberWork, activePersonaTurns, validClientTurnId,
+  sounds, visuals, brain, memberWork, warmup = null, activePersonaTurns, validClientTurnId,
   envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
   packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
   sessionHistoryMessages, loadSessionAuditRows,
   MEMORY_RECALL_LIMIT, PERSONAL_OPERATOR_SURFACE_CONTRACT, VOIX_FAMILY_PACK_ID
 }) {
+  // The instructions of a native turn. They hold only what stays the same for the
+  // whole conversation, so the model's prompt cache keeps them; the opening
+  // warm-up (voice-warmup.js) builds its own through this same function.
+  const nativeInstructionsFor = ({ turnSession, pack, selectedMode, channel, soundPlayback, addressed = '', workshop = null, scene = '', llmxTurn = false }) =>
+    agentInstructions(turnSession, turnSession.persona,
+      pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode, { soundPlayback, channel })
+    + addressed + workshopPrompt(workshop) + scene
+    + (llmxTurn ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }));
+  // What an ordinary spoken turn of the conversation's own agent sends, in a personal session nobody has spoken in yet.
+  const openingInstructions = (session, pack, selectedMode) => nativeInstructionsFor({ turnSession: session, pack, selectedMode,
+    channel: 'voice', soundPlayback: true,
+    addressed: memberWork ? teamAddress.consultContract(teamAddress.teamMembers(conversationEnv), agentIdFor(session)) : '',
+    workshop: workshopContext(undefined, session) });
   const handle = async (req, res, access, requiredSession = null) => {
     // Set only by this handler when the conversation's agent consults a member (#41): never a request field.
     const consult = req.consult || null;
@@ -257,12 +270,11 @@ function createPersonaTurnHandler({
         const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }),
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || '',
           isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId)].join('').trim();
-        const nativeInstructions = agentInstructions(turnSession, turnSession.persona,
-          pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode,
-          { soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected, channel: req.body?.channel })
-          + (member ? (consult ? teamAddress.consultInstruction : teamAddress.memberInstruction)(speaker.name)
-            : memberWork ? teamAddress.consultContract(team, agentIdFor(session)) : '') + workshopPrompt(workshop)
-          + sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : '') + (isLlmX ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }));
+        const nativeInstructions = nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
+          soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
+          addressed: member ? (consult ? teamAddress.consultInstruction : teamAddress.memberInstruction)(speaker.name)
+            : memberWork ? teamAddress.consultContract(team, agentIdFor(session)) : '',
+          workshop, scene: sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : ''), llmxTurn: isLlmX });
         // Child presentation follows the selected adult personality on both
         // transports. Adult conversations keep their normal style overlay order.
         const agentxInstructions = [pack.childSafe ? session.persona?.identity : '',
@@ -278,6 +290,8 @@ function createPersonaTurnHandler({
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage })
             .then(shown => { if (!res.writableEnded) event('show', { block: shown }); })) });
+        // The opening warm-up shares this native session: its run ends before the first real turn starts.
+        if (!member) await warmup?.settled(session.sessionId);
         const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history: features.historyContext === false ? [] : history, streaming, channel: req.body?.channel,
           conversationFeatures: features,
@@ -499,6 +513,7 @@ function createPersonaTurnHandler({
       }
     }
   };
+  handle.openingInstructions = openingInstructions;
   return handle;
 }
 
