@@ -143,7 +143,9 @@ const DIRECT_INVOKE_TASKS = {
 const DEFAULT_TASK_MODELS = { ...CLASSIFIABLE_TASKS, ...DIRECT_INVOKE_TASKS };
 const CLASSIFICATION_MODEL = envModel('AGENTX_CLASSIFIER_MODEL', LIGHTWEIGHT_MODEL);
 const CLASSIFICATION_HOST = envHost('AGENTX_CLASSIFIER_HOST', LIGHTWEIGHT_HOST);
-const STRICT_CONFIGURED_HOST_TASKS = new Set(['quick_chat', 'buddy_reaction', 'nestor_answer_light', 'ops_watch', 'mail_review']);
+// The spoken lane stays on the host the operator chose for it: its prompt cache and its
+// measured timings live there, and it must never follow its model to the speech host.
+const STRICT_CONFIGURED_HOST_TASKS = new Set(['quick_chat', 'buddy_reaction', 'nestor_answer_light', 'ops_watch', 'mail_review', 'voice_persona_chat']);
 
 // A task may follow its model to another host only when that host has the
 // same residency: a CPU-routed task never moves to a GPU host (the model would

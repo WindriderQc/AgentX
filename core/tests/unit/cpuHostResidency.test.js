@@ -136,6 +136,13 @@ describe('a task keeps to hosts of its residency', () => {
     expect(defaults.STRICT_CONFIGURED_HOST_TASKS.has('ops_watch')).toBe(true);
   });
 
+  test('the spoken lane stays on its configured host, wherever else its model is installed', () => {
+    const defaults = require('../../src/services/modelRouterDefaults');
+    expect(defaults.STRICT_CONFIGURED_HOST_TASKS.has('voice_persona_chat')).toBe(true);
+    expect(defaults.staysOnConfiguredHost('voice_persona_chat', 'primary')).toBe(true);
+    expect(defaults.staysOnConfiguredHost('voice_persona_reader', 'primary')).toBe(false);
+  });
+
   test('the mail review task starts on the analysis model and stays on its configured host', () => {
     const defaults = require('../../src/services/modelRouterDefaults');
     expect(defaults.DEFAULT_TASK_MODELS.mail_review).toEqual(defaults.DEFAULT_TASK_MODELS.analysis);
