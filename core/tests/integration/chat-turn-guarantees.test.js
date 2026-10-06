@@ -243,3 +243,19 @@ describe('idempotent turns', () => {
     });
   });
 });
+
+test('an unanswered native failure retains its receipt and unknown usage without inventing an assistant reply', async () => {
+  const { persistConversation } = require('../../src/services/chat/conversationPersistence');
+  const receipt = { source: 'openclaw', mode: 'agent', usage: null, cost: null, completion: 'unknown' };
+  const saved = await persistConversation({ userId: 'default', clientTurnId: 'native-unknown',
+    model: 'openclaw:agent:fixture', message: 'A fictional question.', assistantContent: '',
+    effectiveSystemPrompt: 'Fixture system prompt', activePrompt: { name: 'default_chat', version: 1 },
+    metadata: { executionReceipt: receipt } });
+  const stored = await Conversation.findById(saved.conversation._id);
+  expect(stored.messages).toHaveLength(1);
+  expect(stored.messages[0].role).toBe('user');
+  expect(stored.messages[0].metadata.executionReceipt).toEqual(receipt);
+  expect(stored.usage.totalTokens).toBeNull();
+  expect(stored.usage.estimatedCost).toBeNull();
+  expect(stored.totalCost.sum).toBeNull();
+});

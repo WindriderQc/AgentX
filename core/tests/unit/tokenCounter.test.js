@@ -81,6 +81,32 @@ describe('TokenCounterService', () => {
       expect(analysis.cost).toBeCloseTo(0.000004);
     });
 
+    it('uses native measured tokens and cost instead of legacy transcript estimates', () => {
+      const receipt = { source: 'openclaw', usage: { input: 10, output: 3, cacheRead: 5, cacheWrite: 0 },
+        cost: { nanodollars: 1230000, currency: 'USD' } };
+      const analysis = tokenCounter.analyzeConversation({ model: 'openclaw:model:openrouter/gpt-4',
+        messages: [{ role: 'user', content: '1234' }, { role: 'assistant', content: '1234', metadata: { executionReceipt: receipt } }] });
+      expect(analysis).toMatchObject({ promptTokens: 15, completionTokens: 3, totalTokens: 18, cost: .00123 });
+    });
+    it('keeps missing native usage and cost unknown even when text is present', () => {
+      const analysis = tokenCounter.analyzeConversation({ model: 'openclaw:agent:main', messages: [
+        { role: 'assistant', content: '1234', stats: { usage: { promptTokens: 1, completionTokens: 1 } }, metadata: { executionReceipt: { source: 'openclaw', usage: null, cost: null } } }
+      ] });
+      expect(analysis).toMatchObject({ promptTokens: null, completionTokens: null, totalTokens: null, cost: null });
+    });
+    it('keeps unknown unanswered native calls and mixed conversation cost incomplete', () => {
+      const receipt = { source: 'openclaw', usage: { input_tokens: 7, output_tokens: 2 }, cost: null };
+      const unanswered = tokenCounter.analyzeConversation({ model: 'qwen:8b', messages: [
+        { role: 'user', content: '1234', metadata: { executionReceipt: { ...receipt, usage: null } } }
+      ] });
+      expect(unanswered.totalTokens).toBeNull(); expect(unanswered.cost).toBeNull();
+      const mixed = tokenCounter.analyzeConversation({ model: 'qwen:8b', messages: [
+        { role: 'assistant', content: '1234', stats: { usage: { promptTokens: 10, completionTokens: 4 } }, cost: { totalCost: 0, currency: 'USD' } },
+        { role: 'assistant', content: '1234', metadata: { executionReceipt: receipt } }
+      ] });
+      expect(mixed.totalTokens).toBe(23); expect(mixed.cost).toBeNull();
+    });
+
     it('should handle empty conversation', () => {
         const analysis = tokenCounter.analyzeConversation({});
         expect(analysis.totalTokens).toBe(0);

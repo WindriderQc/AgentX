@@ -26,7 +26,7 @@ test('installed native SDK projects its registry and sends a single isolated req
       models: [{ id: 'fixture/model', name: 'Fixture', params: { billingKind: 'free' }, input: ['text'], reasoning: true, contextWindow: 8192, maxTokens: 1024,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } },
       agents: { defaults: { workspace: '/synthetic', model: { primary: 'openrouter/fixture/model' },
-        models: { 'openrouter/fixture/model': { params: { provider: { only: ['fixture'], allow_fallbacks: false } } } } } } };
+        models: { 'openrouter/fixture/model': { params: { privateNativeValue: 'private-config-must-stay-native', provider: { only: ['fixture'], allow_fallbacks: false } } } } } } };
     const storage = sdk.AuthStorage.inMemory({ openrouter: { type: 'api_key', key: 'synthetic' } });
     const backend = createNativeBackend({ config: cfg, pluginConfig: { agentIds: ['main'] } }, { loadSdk: async () => ({ ...sdk,
       AuthStorage: { forAgent: () => storage }, getRuntimeAuthForModel: async () => ({ apiKey: 'synthetic' }),
@@ -53,6 +53,8 @@ test('installed native SDK projects its registry and sends a single isolated req
     assert.deepEqual(requests[0].payload.provider.only, ['fixture']);
     assert.equal(result.text, 'answer'); assert.equal(result.receipt.usage.total, 12);
     assert.equal(result.receipt.isolation.modelCalls, 1);
+    assert.ok(!JSON.stringify(result.receipt).includes('private-config-must-stay-native'));
+    assert.ok(!JSON.stringify(result.receipt).includes('privateNativeValue'));
     const reasoning = await service.execute({ schema: 'agentx.openclaw-model-request/v1', model: 'openrouter/fixture/model',
       messages: [{ role: 'user', content: 'Only this prompt.' }], parameters: { maxTokens: 64, thinking: true } });
     assert.equal(requests[1].payload.reasoning.effort, 'low');
