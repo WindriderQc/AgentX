@@ -35,14 +35,17 @@ function invocationConfig(profile, input) {
     if (!agent) throw new Error('pinned profile does not contain the selected agent');
     agent.model = { primary: key, fallbacks: [] };
   }
-  config.agents.defaults.models = {
-    [key]: { params: { maxTokens: parameters.maxTokens, temperature: parameters.temperature, topP: parameters.topP, seed: parameters.seed } }
+  const modelSettings = config.agents.defaults.models || {};
+  config.agents.defaults.models = { ...modelSettings,
+    [key]: { ...modelSettings[key], params: { ...modelSettings[key]?.params,
+      maxTokens: parameters.maxTokens, temperature: parameters.temperature, topP: parameters.topP, seed: parameters.seed } }
   };
   return config;
 }
 
 function parseResult(body, input, durationMs, env = process.env) {
   const target = input.target;
+  if (target.mode !== 'native_agent') throw new Error('agent exec cannot attest an isolated model result');
   if (body.ok !== true || body.status !== 'ok') throw new Error(`OpenClaw execution ${body.status || 'failed'}`);
   if (body.provider !== target.provider || body.model !== target.model) throw new Error('OpenClaw returned a different provider or model');
   const output = typeof body.final === 'string' ? body.final : '';
@@ -51,12 +54,13 @@ function parseResult(body, input, durationMs, env = process.env) {
     if (!Number.isSafeInteger(value) || value < 0) throw new Error(`OpenClaw did not report valid ${label}`);
     return value;
   };
-  const inputTokens = count(body.usage?.input, 'input tokens');
+  const cacheRead = body.usage?.cacheRead == null ? null : count(body.usage.cacheRead, 'cached input tokens');
+  const cacheWrite = body.usage?.cacheWrite == null ? null : count(body.usage.cacheWrite, 'cache write tokens');
+  const inputTokens = count(body.usage?.input, 'input tokens') + (cacheRead || 0) + (cacheWrite || 0);
   const outputTokens = count(body.usage?.output, 'output tokens');
   const turns = count(body.assistantTurns, 'model turns');
   // agent exec omits the summary for a single assistant turn without tool activity.
   const toolCalls = count(body.toolSummary?.calls ?? (turns === 1 ? 0 : undefined), 'tool calls');
-  if (target.mode === 'isolated_model' && toolCalls !== 0) throw new Error('isolated OpenClaw profile reported tool activity');
   return {
     requestFingerprint: hash({ targetFingerprint: target.fingerprint, envelopeFingerprint: input.envelope.fingerprint, promptFingerprint: input.envelope.prompt.fingerprint }),
     responseFingerprint: hash(output), output, thinking: null, finishReason: null,
@@ -64,17 +68,19 @@ function parseResult(body, input, durationMs, env = process.env) {
     fallbackUsed: false,
     actual: {
       provider: body.provider, providerVersion: 'openclaw-provider-api',
-      model: body.model, modelVersion: body.model,
+      model: body.model, modelVersion: 'unknown',
       harnessVersion: env.OPENCLAW_RUNTIME_VERSION, adapterVersion: ADAPTER_VERSION,
       environmentId: target.profile.id, environmentVersion: target.profile.version,
       environmentFingerprint: env.AGENTX_OBSERVED_PROFILE_FINGERPRINT || null,
       runtimeFingerprint: env.AGENTX_OBSERVED_RUNTIME_FINGERPRINT || null, modelDigest: null
     },
-    usage: { durationMs, inputTokens, outputTokens, turns, toolCalls }
+    usage: { durationMs, inputTokens, outputTokens, turns, toolCalls,
+      ...(cacheRead != null ? { cacheReadTokens: cacheRead } : {}), ...(cacheWrite != null ? { cacheWriteTokens: cacheWrite } : {}) }
   };
 }
 
 async function execute(input, fixed, run = spawn) {
+  if (input.target.tier === 'paid_cloud') throw new Error('OPENCLAW_NATIVE_AGENT_BUDGET_UNQUALIFIED');
   const runtimeVersion = String(process.env.OPENCLAW_RUNTIME_VERSION || '');
   if (!runtimeVersion || runtimeVersion !== input.target.harness.version) throw new Error('OPENCLAW_RUNTIME_VERSION does not match the catalog target');
   const config = invocationConfig(JSON.parse(await readFile(fixed.config, 'utf8')), input);

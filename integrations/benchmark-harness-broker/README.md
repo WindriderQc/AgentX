@@ -1,8 +1,9 @@
 # Benchmark harness broker
 
 This optional host process serves the existing AgentX Benchmark target catalog
-and WorkerEnvelope/WorkerReceipt contracts. It preserves isolated Ollama and
-OpenRouter execution, Hermès execution and native OpenClaw agent benchmarks.
+and WorkerEnvelope/WorkerReceipt contracts. It preserves isolated Ollama,
+Hermès execution and native OpenClaw benchmarks. Cloud models use OpenClaw
+model mode; agent profiles retain their distinct native agent mode.
 It does not create another benchmark UI, model router or personal memory store.
 Historical broker wire identifiers remain compatible with existing receipts.
 
@@ -53,10 +54,27 @@ execution still requires a live matching Core host claim. The native OpenClaw
 local profile requires Core's runtime bridge, whose activation is a
 separate prerequisite; do not bypass it with an uncoordinated Ollama call.
 
-The existing `materialize-openrouter-qwen38-catalog.js` observes the provider's
-public catalog and prices only when invoked. Paid execution additionally requires
-the private signing key, exact target/pricing identity and explicit spend grant.
-No grant or provider request is made by these tests or by normal AgentX startup.
+Cloud model targets are projected from the native execution catalogue:
+
+```bash
+node materialize-openclaw-model-catalog.js /external/new-targets.json /external/existing-targets.json
+```
+
+This command reads the private OpenClaw gateway, preserves existing local/native
+agent entries, and creates bounded, pinned model profiles outside Git. Fixed
+routing, native billing and a current observation window are required. It does
+not contact a provider or execute a model. Paid model execution retains the
+existing signed SpendGrant plus the native per-request ceiling. Paid native
+agent benchmarks stay unavailable until their native turn/spend boundary is
+qualified before execution. The agent materializer reads native catalogue
+billing for cloud profiles beyond local and included subscription profiles.
+
+Direct OpenRouter execution, its provider key and its model-specific materializer
+are retired. Historical results and their exact former provider/cost provenance
+remain unchanged. Native SDK receipts identify the selected route, retain cache
+usage and explicitly leave the served revision/upstream identity unobserved.
+See [execution sources](../../docs/EXECUTION_SOURCES.md) for parameter limits and
+migration validation.
 
 To connect an installed broker, supply these external Benchmark Compose inputs:
 

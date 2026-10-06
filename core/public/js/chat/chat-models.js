@@ -5,6 +5,7 @@ import {
   getHostChatState, getHostPinnedModels, getHostRunningModels, isRouterMode, modelsEquivalent,
   selectedHostPreference, targetHost, updateConfigSummary
 } from './chat-config.js';
+import { syncSourceControls } from './chat-execution-sources.js';
 import { fetchWithDeadline } from './chat-network.js';
 
 export async function fetchModels(ctx, showStatus = true) {
@@ -54,6 +55,7 @@ export async function fetchModels(ctx, showStatus = true) {
       orderedModels.forEach((model) => {
         const opt = document.createElement('option');
         opt.value = model.name;
+        if (model.execution) opt.dataset.parameterSupport = JSON.stringify(model.parameterSupport || {});
         if (readinessUi) {
           readinessUi.applyOptionState(opt, model, requireProfiledModels);
         } else {
@@ -109,6 +111,7 @@ export async function fetchModels(ctx, showStatus = true) {
         if (firstAllowedOption) elements.modelSelect.value = firstAllowedOption.value;
       }
     }
+    syncSourceControls(elements);
     helpers.setStatus('Ready', 'success');
     helpers.setFeedback(
       modelEvidence === 'deferred'
@@ -126,9 +129,9 @@ export async function fetchModels(ctx, showStatus = true) {
   } catch (err) {
     console.warn('Failed to fetch models:', err.message);
     helpers.setStatus('Connection failed', 'error');
-    let userMessage = 'Unable to connect to Ollama.';
+    let userMessage = 'Unable to connect to the selected execution source.';
     if (err.message.includes('EHOSTUNREACH') || err.message.includes('ECONNREFUSED')) {
-      userMessage = `Cannot reach ${targetHost(elements, defaults)}. Check if Ollama is running.`;
+      userMessage = `Cannot reach ${targetHost(elements, defaults)}. Check the selected execution source.`;
     } else if (err.message.includes('ETIMEDOUT')) {
       userMessage = `Connection timed out.`;
     } else if (err.message.includes('500')) {
@@ -160,7 +163,7 @@ export function cancelModelWarmup(ctx = {}) {
 
 export async function warmupModelIfNeeded(ctx) {
   const { elements, state, defaults, helpers } = ctx;
-  if (isRouterMode(elements, state)) return;
+  if (isRouterMode(elements, state) || elements.hostInput?.value === 'openclaw') return;
   const model = elements.modelSelect.value;
   if (!model) return;
 

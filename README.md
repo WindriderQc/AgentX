@@ -126,6 +126,8 @@ an account or adult code; anyone reaching an entry can use human capabilities.
 Native integration tokens and family memory/tool boundaries remain separate.
 [Local voice identification](docs/VOICE_ID.md) is a proposed next step, not delivered.
 
+See [execution sources](docs/EXECUTION_SOURCES.md) for local direct and OpenClaw model/agent execution.
+
 AgentX runs locally or on your LAN. Keep runtime secrets, instance configuration
 and personal content outside Git. The code is [MIT licensed](LICENSE); bundled
 animal sounds retain their [individual licences](core/surfaces/household/public/sounds/CREDITS.md).

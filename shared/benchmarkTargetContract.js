@@ -222,6 +222,7 @@ function normalizeBenchmarkTarget(rawValue, options = {}) {
     observedAt: raw.observedAt == null ? null : isoTimestamp(raw.observedAt, 'target.observedAt'),
     catalogFingerprint: fingerprintValue(raw.catalogFingerprint, 'target.catalogFingerprint', executionKind === 'ollama' || options.allowMissingCatalogFingerprint === true),
   };
+  if (raw.billing != null) target.billing = enumValue(raw.billing, 'target.billing', ['local', 'free', 'included', 'paid', 'unknown']);
   const computed = fingerprint(targetUnsigned(target));
   if (raw.fingerprint && fingerprintValue(raw.fingerprint, 'target.fingerprint') !== computed) {
     throw contractError('TARGET_FINGERPRINT_MISMATCH', 'target fingerprint does not match normalized contents');

@@ -153,6 +153,14 @@ describe('cloud/local lane campaign policy', () => {
         expect(changed.contract.fingerprint).not.toBe(base.contract.fingerprint);
     });
 
+    test('keeps historical null seed normalization while portable native defaults form a separate contract', () => {
+        const historical = plan({ contract: contract({ version: '1.0.0', seed: null }) });
+        const native = plan({ contract: contract({ version: '1.1.0', seed: null }) });
+        expect(historical.contract.seed).toBe(0);
+        expect(native.contract.seed).toBeNull();
+        expect(native.contract.fingerprint).not.toBe(historical.contract.fingerprint);
+    });
+
     test('rejects ambiguous non-boolean thinking settings', () => {
         expect(() => plan({ contract: contract({ thinking: 'false' }) }))
             .toThrow(expect.objectContaining({ code: 'INVALID_BOOLEAN' }));

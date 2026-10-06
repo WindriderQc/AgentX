@@ -8,6 +8,12 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
+- **Execution sources.** Playground and the existing inference contract select local
+  Ollama or OpenClaw, with distinct model and native agent modes. Provider
+  credentials and catalogues belong to OpenClaw. Model receipts attest supplied
+  context, no native memory or agent prompt, zero tool executions and one native
+  invocation. Benchmark model and agent cohorts remain distinct; historical
+  results keep their original provenance. See [execution sources](EXECUTION_SOURCES.md).
 - **Human access.** Private LAN HTTPS entries open human pages/APIs directly,
   without an account, code or adult cookie. Native credentials and business
   boundaries remain separate. [Voice ID](VOICE_ID.md) is a design proposal only;

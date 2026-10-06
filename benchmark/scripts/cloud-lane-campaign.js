@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const { executeCampaign, prepareCampaign } = require('../src/services/benchmark/cloudLaneCampaignRunner');
 const { fingerprint } = require('../src/services/benchmark/cloudLaneAccounting');
-const { createOllamaTransport, createOpenRouterTransport } = require('../src/services/benchmark/cloudLaneTransports');
+const { createOllamaTransport, createOpenClawTransport } = require('../src/services/benchmark/cloudLaneTransports');
 
 function cliError(code, message) {
     const error = new Error(message);
@@ -84,19 +84,9 @@ function buildTransports(plan, rawConfig, environment = process.env) {
         if (config.type === 'ollama') {
             return [candidate.id, createOllamaTransport({ baseUrl: config.baseUrl, timeoutMs: config.timeoutMs })];
         }
-        if (config.type === 'openrouter') {
-            const envName = String(config.apiKeyEnv || '');
-            if (!/^[A-Z_][A-Z0-9_]*$/.test(envName)) {
-                throw cliError('API_KEY_ENV_REQUIRED', `transport ${candidate.id} requires a valid apiKeyEnv name`);
-            }
-            const apiKey = environment[envName];
-            if (!apiKey) throw cliError('API_KEY_MISSING', `required credential environment variable is not set: ${envName}`);
-            return [candidate.id, createOpenRouterTransport({
-                apiKey,
-                baseUrl: config.baseUrl,
-                modelsUrl: config.modelsUrl,
-                timeoutMs: config.timeoutMs
-            })];
+        if (config.type === 'openclaw') {
+            if (config.apiKeyEnv || config.baseUrl || config.modelsUrl) throw cliError('PROVIDER_CONFIG_FORBIDDEN', 'Cloud credentials and endpoints belong to OpenClaw.');
+            return [candidate.id, createOpenClawTransport({ modelFingerprint: config.modelFingerprint, timeoutMs: config.timeoutMs, environment })];
         }
         throw cliError('UNKNOWN_TRANSPORT_TYPE', `unsupported transport type for ${candidate.id}: ${config.type}`);
     }));

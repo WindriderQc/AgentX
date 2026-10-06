@@ -34,6 +34,11 @@ function applyChatEligibility(models) {
   });
 }
 
+router.get('/execution-sources', async (_req, res) => {
+  const openclaw = await require('../src/services/execution/openclawSources').readOpenClawSource();
+  res.json({ sources: [{ id: 'local', name: 'Local direct', engine: 'ollama' }, openclaw] });
+});
+
 function resolveExplicitHost(rawHost) {
   if (!rawHost || !String(rawHost).trim()) {
     return { valid: false, message: 'A target Ollama host is required.' };
@@ -62,6 +67,12 @@ function sendOperationError(res, error, context) {
 router.get('/all', async (req, res) => {
   try {
     const filters = readModelFilters(req.query);
+    if (req.query.source === 'openclaw' || filters.host === 'openclaw') {
+      const models = await require('../src/services/execution/openclawSources').openClawModels();
+      res.set('X-Require-Profiled-Models', 'false');
+      res.set('X-Model-Evidence', 'runtime-source');
+      return res.json(models);
+    }
     const profiledGate = requireProfiledModels();
     const runtimeScope = req.query.scope === 'runtime' && !profiledGate;
 

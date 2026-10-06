@@ -119,9 +119,7 @@ function normalizeTarget(value) {
   const mode = required(value.mode, 'target.mode').toLowerCase();
   const tier = required(value.tier, 'target.tier').toLowerCase();
   if (!['isolated_model', 'native_agent'].includes(mode) || !['local', 'free_cloud', 'paid_cloud'].includes(tier)) fail('INVALID_CATALOG', 'target mode or tier is invalid');
-  if (tier === 'local' && value.provider !== 'ollama') {
-    fail('INVALID_CATALOG', 'local harness targets must use Ollama');
-  }
+  if (tier === 'local' && value.provider !== 'ollama') fail('INVALID_CATALOG', 'local harness targets must use Ollama');
   const catalogFingerprint = String(value.catalogFingerprint || '').toLowerCase();
   if (!HEX64.test(catalogFingerprint)) fail('INVALID_CATALOG', 'target.catalogFingerprint must be SHA-256');
   const target = {
@@ -148,6 +146,10 @@ function normalizeTarget(value) {
     observedAt: value.observedAt == null ? null : timestamp(value.observedAt, 'target.observedAt'),
     catalogFingerprint
   };
+  if (value.billing != null) {
+    if (!['local', 'free', 'included', 'paid', 'unknown'].includes(value.billing)) fail('INVALID_CATALOG', 'target.billing is invalid');
+    target.billing = value.billing;
+  }
   return { ...target, fingerprint: fingerprint(target) };
 }
 
@@ -182,6 +184,7 @@ function buildReceipt({ envelope, target, actual, usage, output, evidence = null
     toolErrors: [], humanInterventions: [], evidence: evidence || { patches: [], artifacts: [], tests: [] }, violations: [],
     result: { contractSatisfied: contractSatisfied === true, fingerprint: fingerprint(String(output)) }
   };
+  if (actual.execution) normalized.execution = require('../../shared/executionEvidence').normalizeExecutionEvidence(actual.execution);
   if (usage.cacheReadTokens != null) normalized.usage.cacheReadTokens = integer(usage.cacheReadTokens, 'usage.cacheReadTokens');
   if (usage.cacheWriteTokens != null) normalized.usage.cacheWriteTokens = integer(usage.cacheWriteTokens, 'usage.cacheWriteTokens');
   if (usage.costSource != null) {

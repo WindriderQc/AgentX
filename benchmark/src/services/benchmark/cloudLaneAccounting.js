@@ -125,7 +125,7 @@ function normalizeContract(raw = {}, laneInput) {
         responseMode: requiredText(raw.responseMode, 'contract.responseMode', 80),
         maxOutputTokens: integer(raw.maxOutputTokens, 'contract.maxOutputTokens', { min: 1, max: 1_000_000 }),
         temperature,
-        seed: integer(raw.seed == null ? 0 : raw.seed, 'contract.seed', { min: 0, max: 2_147_483_647 }),
+        seed: raw.version === '1.1.0' && raw.seed === null ? null : integer(raw.seed == null ? 0 : raw.seed, 'contract.seed', { min: 0, max: 2_147_483_647 }),
         thinking: raw.thinking === true,
         toolProtocol: optionalText(raw.toolProtocol, 80)
     };
@@ -566,6 +566,17 @@ function compareLaneObservations(raw = {}) {
     return { ...report, fingerprint: fingerprint(report) };
 }
 
+// Native model execution reserves the full context without guessing its tokenizer.
+function nativeModelSpendBound(candidate, maxOutputTokens) {
+    if (!candidate.apiVersion?.startsWith('openclaw-model-sdk-')) return null;
+    const rates = candidate.priceSnapshot?.rates;
+    if (!rates) throw contractError('PRICE_SNAPSHOT_REQUIRED', 'native paid model needs a frozen price snapshot');
+    const bound = Math.ceil((candidate.contextWindow * Math.max(rates.input, rates.cacheRead, rates.cacheWrite)
+        + maxOutputTokens * rates.output) / 1_000_000);
+    if (!Number.isSafeInteger(bound)) throw contractError('INVALID_SPEND_BOUND', 'native context cost exceeds the accounting boundary');
+    return bound;
+}
+
 module.exports = {
     APPROVAL_SCHEMA_VERSION,
     LANES,
@@ -585,6 +596,7 @@ module.exports = {
     normalizeContract,
     normalizeObservation,
     normalizePriceSnapshot,
+    nativeModelSpendBound,
     stableSerialize,
     validateAttributionReceipt
 };

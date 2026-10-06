@@ -458,4 +458,4 @@ const handleChatRequestStream = async ({
 };
 
 
-module.exports = { handleChatRequestStream };
+module.exports = { handleChatRequestStream: require('./chat/openclawChat').withOpenClawChat(handleChatRequestStream) };

@@ -429,7 +429,7 @@ async function recordInference(data) {
             routedModel: data.routedModel || data.model || null,
             routedHost,
             routedHostUrl: data.routedHostUrl || data.host || null,
-            fallbackUsed: data.fallbackUsed || false,
+            fallbackUsed: data.fallbackUsed === null ? null : data.fallbackUsed || false,
             fallbackReason: data.fallbackReason || null,
             swapped: data.swapped || false,
             routingTrace: sanitizeRoutingTrace(data.routingTrace),
@@ -439,8 +439,11 @@ async function recordInference(data) {
             estimatedInputTokensAtDispatch: Number.isFinite(Number(data.estimatedInputTokensAtDispatch))
                 ? Math.max(0, Number(data.estimatedInputTokensAtDispatch))
                 : null,
-            tokensIn: data.tokensIn || 0,
-            tokensOut: data.tokensOut || 0,
+            executionSource: ['local', 'openclaw'].includes(data.executionSource) ? data.executionSource : null,
+            executionMode: ['model', 'agent'].includes(data.executionMode) ? data.executionMode : null,
+            executionReceiptFingerprint: /^[a-f0-9]{64}$/.test(data.executionReceiptFingerprint || '') ? data.executionReceiptFingerprint : null,
+            tokensIn: data.executionSource === 'openclaw' ? data.tokensIn ?? null : data.tokensIn || 0,
+            tokensOut: data.executionSource === 'openclaw' ? data.tokensOut ?? null : data.tokensOut || 0,
             ...phases,
             ...inferenceWaitFields({ waits: data.waits, retry: data.retry }),
             ...(promptPrefix && { promptPrefix }),

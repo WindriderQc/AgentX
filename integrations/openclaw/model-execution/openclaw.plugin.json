@@ -1,0 +1,31 @@
+{
+  "id": "agentx-model-execution",
+  "name": "AgentX model execution",
+  "description": "Native model-only execution and an expurgated model/agent catalogue. Provider transports and credentials stay in OpenClaw.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "agentIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "catalogTtlSeconds": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 3600
+      },
+      "maxRequestBytes": {
+        "type": "integer",
+        "minimum": 4096,
+        "maximum": 8000000
+      },
+      "maxRequestCostNanodollars": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  }
+}
