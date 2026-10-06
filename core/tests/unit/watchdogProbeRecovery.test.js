@@ -255,9 +255,85 @@ describe('caller-aborted inference recovery without a runtime restart (#35)', ()
     });
   });
 
-  test('never releases an UNKNOWN inference without the caller-abort origin', async () => {
+  describe('a runtime disconnect', () => {
+    const disconnect = () => quarantine({ kind: 'trusted-runtime', principal: 'core-trusted-runtime',
+      requestId: 'cut-1', origin: 'runtime-disconnect', reason: 'socket hang up' });
+
+    test('is released after the full settle window on a stable runtime, never after the short one', async () => {
+      const cut = await disconnect();
+      const readPs = jest.fn().mockResolvedValue(residentAt(8192));
+
+      await expect(recoverSettledWatchdogProbes(HOST, { readPs, sleep: noSleep, now: AFTER_ABORT_WINDOW }))
+        .resolves.toEqual({ recovered: false, reason: 'settle window not elapsed' });
+      expect(readPs).not.toHaveBeenCalled();
+
+      await expect(recoverSettledWatchdogProbes(HOST, { readPs, sleep: noSleep, now: LATER }))
+        .resolves.toMatchObject({ recovered: true });
+      expect(await inferences()).toEqual([]);
+      const { releaseReceipts } = await RuntimeCoordination.findById('runtime').select('+releaseReceipts').lean();
+      expect(releaseReceipts.at(-1)).toMatchObject({
+        contract: 'agentx.runtime-disconnect-recovery/v1', admissionId: cut.admissionId,
+        unknownOrigin: 'runtime-disconnect', unknownReason: 'socket hang up', evidence: { settleMs: DEFAULT_SETTLE_MS }
+      });
+    });
+
+    test('is released when the restarted runtime holds no model at all', async () => {
+      await disconnect();
+      await expect(recoverSettledWatchdogProbes(HOST, { readPs: jest.fn().mockResolvedValue([]), sleep: noSleep, now: LATER }))
+        .resolves.toMatchObject({ recovered: true });
+    });
+
+    test('stays while the runtime still changes between the two samples', async () => {
+      await disconnect();
+      const changing = jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce(residentAt(8192));
+      await expect(recoverSettledWatchdogProbes(HOST, { readPs: changing, sleep: noSleep, now: LATER }))
+        .resolves.toEqual({ recovered: false, reason: 'runtime not stable' });
+      expect(await inferences()).toHaveLength(1);
+    });
+
+    describe('under a Benchmark workload', () => {
+      async function batchCut({ ownerGone }) {
+        const workload = await service.acquireWorkload({ principal: 'benchmark-service', requestId: 'crash-request',
+          workloadId: 'batch-crash', kind: 'benchmark', hosts: [HOST], ttl: 30 * 60_000 });
+        const call = await service.acquireInference({ principal: 'benchmark-service', requestId: 'batch-call', host: HOST,
+          model: 'model-a', kind: 'inference-direct', runtimeOptions: { num_ctx: 8192 },
+          workloadAdmissionId: workload.admissionId, workloadGeneration: workload.generation });
+        expect(call.acquired).toBe(true);
+        await service.markInferenceUnknown({ id: call.admissionId, generation: call.generation,
+          principal: 'benchmark-service', reason: 'socket hang up', origin: 'runtime-disconnect' });
+        if (ownerGone) {
+          await RuntimeCoordination.updateOne({ _id: 'runtime', 'workloads.admissionId': workload.admissionId },
+            { $set: { 'workloads.$.expiresAt': new Date(Date.now() - 1_000), 'workloads.$.recoveryState': 'UNKNOWN' } });
+        }
+        return workload;
+      }
+      const stable = () => jest.fn().mockResolvedValue([]);
+
+      test('stays while the batch owner is still live', async () => {
+        await batchCut({ ownerGone: false });
+        await expect(recoverSettledWatchdogProbes(HOST, { readPs: stable(), sleep: noSleep, now: LATER }))
+          .resolves.toEqual({ recovered: false, reason: 'workload covers host' });
+        expect(await inferences()).toHaveLength(1);
+      });
+
+      test('is released once the batch owner is gone, and the workload stays quarantined', async () => {
+        const workload = await batchCut({ ownerGone: true });
+        await expect(recoverSettledWatchdogProbes(HOST, { readPs: stable(), sleep: noSleep, now: LATER }))
+          .resolves.toMatchObject({ recovered: true });
+        expect(await inferences()).toEqual([]);
+        const state = await RuntimeCoordination.findById('runtime').select('+releaseReceipts').lean();
+        expect(state.workloads).toHaveLength(1);
+        expect(state.workloads[0]).toMatchObject({ admissionId: workload.admissionId, recoveryState: 'UNKNOWN' });
+        expect(state.releaseReceipts.at(-1)).toMatchObject({
+          contract: 'agentx.runtime-disconnect-recovery/v1', parentWorkload: { workloadId: 'batch-crash' }
+        });
+      });
+    });
+  });
+
+  test('never releases an UNKNOWN inference that carries no origin', async () => {
     await quarantine({ kind: 'trusted-runtime', principal: 'core-trusted-runtime', requestId: 'lost-1',
-      reason: 'socket hang up' });
+      reason: 'heartbeat lost' });
     await expect(recoverSettledWatchdogProbes(HOST, { readPs: jest.fn().mockResolvedValue(residentAt(8192)),
       sleep: noSleep, now: LATER })).resolves.toEqual({ recovered: false, reason: 'no quarantined watchdog probe or caller abort' });
     expect(await inferences()).toHaveLength(1);

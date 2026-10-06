@@ -177,11 +177,23 @@ async function acquireInferenceAdmission({
       // Only the attempt executor supplies this proof after its own timer
       // closes the transport. Error text/flags alone never establish it.
       const origin = fatalError ? null : bridge.callerAborted ? 'caller-abort'
-        : deadlineAborted === true && !bridge.controller.signal.aborted ? 'deadline-abort' : null;
+        : deadlineAborted === true && !bridge.controller.signal.aborted ? 'deadline-abort'
+          : !bridge.controller.signal.aborted && runtimeClosedConnection(reason) ? 'runtime-disconnect' : null;
       return quarantine(reason, origin);
     },
     _heartbeatOnce: heartbeatOnce
   };
+}
+
+// The runtime end closed the connection while this side had not aborted it:
+// the process serving the request died or was restarted. A deadline, a caller
+// abort or a lost admission never classify here.
+const RUNTIME_CLOSED_CODES = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET', 'OLLAMA_STREAM_CLOSED_EARLY']);
+function runtimeClosedConnection(error) {
+  for (let current = error, depth = 0; current && depth < 4; current = current.cause, depth += 1) {
+    if (RUNTIME_CLOSED_CODES.has(current.code) || /socket hang up/i.test(String(current.message || ''))) return true;
+  }
+  return false;
 }
 
 function beginInferenceAdmission(options) {

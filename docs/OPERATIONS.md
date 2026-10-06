@@ -1885,8 +1885,19 @@ models resident on that host then serve other callers again without waiting
 for the execution host. The receipt names the parent workload with
 `sharedHost: true`.
 
-A lost heartbeat, a socket hang-up or a runtime bridge quarantine
-still needs the restart attestation below.
+A runtime disconnect is released the same way without an operator: when the
+runtime end closes the connection of a dispatched request that Core had not
+aborted (a socket hang-up, a reset, a stream cut before its end), the runtime
+died or was restarted. Core releases that quarantine after the full
+`WATCHDOG_PROBE_RECOVERY_SETTLE_MS` window (ten minutes by default) once two
+`/api/ps` samples are identical and nothing else it admitted touches the host.
+The release rests on a quiet runtime, not on an observed restart; the receipt
+says `agentx.runtime-disconnect-recovery/v1`. Under a Benchmark workload it
+applies once that workload's owner is gone; the workload keeps its own
+recovery.
+
+A lost heartbeat or a runtime bridge quarantine still needs the restart
+attestation below.
 
 For an UNKNOWN workload, use this operator sequence:
 

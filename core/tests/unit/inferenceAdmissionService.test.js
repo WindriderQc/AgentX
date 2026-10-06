@@ -53,11 +53,32 @@ describe('distributed inference admission lifecycle', () => {
     expect(runtime.releaseInference).not.toHaveBeenCalled();
   });
 
-  test('an abort without a caller signal is quarantined with no origin', async () => {
+  test('a failure that is neither an abort nor a closed connection is quarantined with no origin', async () => {
     const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
     lifecycle.markDispatched();
-    await lifecycle.abandon(new Error('socket hang up'));
+    await lifecycle.abandon(new Error('unexpected upstream failure'));
     expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: null }));
+  });
+
+  test.each([
+    ['a socket hang-up', new Error('socket hang up')],
+    ['a connection reset', Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })],
+    ['a reset reported as the cause', Object.assign(new Error('fetch failed'), { cause: { code: 'UND_ERR_SOCKET' } })],
+    ['a stream closed early', Object.assign(new Error('stream closed'), { code: 'OLLAMA_STREAM_CLOSED_EARLY' })]
+  ])('%s that Core did not cause is quarantined as a runtime disconnect', async (_label, error) => {
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
+    lifecycle.markDispatched();
+    await lifecycle.abandon(error);
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: 'runtime-disconnect' }));
+  });
+
+  test('a connection Core closed itself is never a runtime disconnect', async () => {
+    const caller = new AbortController();
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a', signal: caller.signal });
+    lifecycle.markDispatched();
+    caller.abort(new Error('client disconnected'));
+    await lifecycle.abandon(new Error('socket hang up'));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: 'caller-abort' }));
   });
 
   test('a caller abort after dispatch is quarantined as a caller abort', async () => {

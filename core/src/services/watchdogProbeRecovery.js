@@ -35,6 +35,16 @@
  * On a host a Benchmark workload holds as shared (a judge-only host), its own
  * aborts follow the ordinary caller-abort rule instead: the host has no claim
  * to drain, and the models resident there serve other callers.
+ *
+ * A runtime disconnect (origin `runtime-disconnect`: the runtime end closed
+ * the connection of a dispatched request that Core had not aborted) is the
+ * ordinary sign of a runtime that died or was restarted. It is released on the
+ * same two samples, always after the full settle window: the release rests on
+ * a quiet runtime, not on an observed restart. It may also sit under a
+ * Benchmark workload whose owner is gone (its lease ended, so it dispatches
+ * nothing more); the workload itself stays quarantined for its own recovery.
+ * A lost heartbeat or a bridge quarantine has no origin and keeps the operator
+ * attestation.
  */
 
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
@@ -47,6 +57,8 @@ const CALLER_ABORT_ORIGIN = 'caller-abort';
 const CALLER_ABORT_CONTRACT = 'agentx.caller-abort-recovery/v1';
 const DEADLINE_ABORT_ORIGIN = 'deadline-abort';
 const DEADLINE_ABORT_CONTRACT = 'agentx.inference-deadline-recovery/v1';
+const RUNTIME_DISCONNECT_ORIGIN = 'runtime-disconnect';
+const RUNTIME_DISCONNECT_CONTRACT = 'agentx.runtime-disconnect-recovery/v1';
 const DEFAULT_SETTLE_MS = 10 * 60_000;
 const DEFAULT_CALLER_ABORT_SETTLE_MS = 60_000;
 const DEFAULT_SAMPLE_GAP_MS = 5_000;
@@ -63,6 +75,10 @@ function callerAbortSettleMs() {
 
 const isProbe = entry => entry.kind === PROBE_KIND && entry.principal === PROBE_PRINCIPAL;
 const isCallerAbort = entry => [CALLER_ABORT_ORIGIN, DEADLINE_ABORT_ORIGIN].includes(entry.unknownOrigin);
+const isDisconnect = entry => entry.unknownOrigin === RUNTIME_DISCONNECT_ORIGIN;
+const isSettleable = entry => isCallerAbort(entry) || isDisconnect(entry);
+const contractFor = entry => (isProbe(entry) ? RECEIPT_CONTRACT : isDisconnect(entry) ? RUNTIME_DISCONNECT_CONTRACT
+  : entry.unknownOrigin === DEADLINE_ABORT_ORIGIN ? DEADLINE_ABORT_CONTRACT : CALLER_ABORT_CONTRACT);
 
 function psSignature(models) {
   return JSON.stringify((Array.isArray(models) ? models : [])
@@ -100,7 +116,7 @@ async function recoverSettledWatchdogProbes(hostUrl, {
 } = {}) {
   const state = await RuntimeCoordination.findById('runtime').lean();
   const onHost = (state?.inferences || []).filter(entry => entry.host === hostUrl);
-  const probes = onHost.filter(entry => entry.state === 'UNKNOWN' && (isProbe(entry) || isCallerAbort(entry)));
+  const probes = onHost.filter(entry => entry.state === 'UNKNOWN' && (isProbe(entry) || isSettleable(entry)));
   if (probes.length === 0) return { recovered: false, reason: 'no quarantined watchdog probe or caller abort' };
   if (probes.length !== onHost.length) return { recovered: false, reason: 'other inference on host' };
   if (state.maintenance) return { recovered: false, reason: 'maintenance lease present' };
@@ -112,7 +128,12 @@ async function recoverSettledWatchdogProbes(hostUrl, {
   // workload ends, and its resident models stop serving everyone else.
   const sharedParent = ownedAborts && !drainingParent
     ? exactParentForHost(state, hostUrl, probes, { shared: true }) : null;
-  const parent = drainingParent || sharedParent;
+  // A workload whose owner lease ended dispatches nothing more: its recovery
+  // worker only restores hosts, and that waits for these quarantines.
+  const ownerGone = w => new Date(w.expiresAt).getTime() <= now();
+  const goneParent = hasWorkload && !drainingParent && !sharedParent && probes.every(isSettleable)
+    ? [exactParentForHost(state, hostUrl, probes)].find(w => w && ownerGone(w)) || null : null;
+  const parent = drainingParent || sharedParent || goneParent;
   if (hasWorkload && !parent) {
     return { recovered: false, reason: 'workload covers host' };
   }
@@ -121,7 +142,8 @@ async function recoverSettledWatchdogProbes(hostUrl, {
   // drained Core callers there always use the full loading/cancellation
   // window, even resident. On a shared host every batch call goes through
   // Core, so an abort there follows the ordinary caller-abort rule.
-  const minimumWindow = p => (isProbe(p) || drainingParent ? settleMs : Math.min(settleMs, abortSettleMs));
+  const minimumWindow = p => (isProbe(p) || isDisconnect(p) || drainingParent || goneParent
+    ? settleMs : Math.min(settleMs, abortSettleMs));
   if (probes.some(p => quarantinedFor(p) < minimumWindow(p))) {
     return { recovered: false, reason: 'settle window not elapsed' };
   }
@@ -146,8 +168,7 @@ async function recoverSettledWatchdogProbes(hostUrl, {
   const releasedAt = new Date(now());
   const evidence = { settleMs, sampleGapMs, psSignature: psSignature(second) };
   const receipts = probes.map(p => ({
-    contract: isProbe(p) ? RECEIPT_CONTRACT : p.unknownOrigin === DEADLINE_ABORT_ORIGIN
-      ? DEADLINE_ABORT_CONTRACT : CALLER_ABORT_CONTRACT, coordinationKind: 'inference', released: true,
+    contract: contractFor(p), coordinationKind: 'inference', released: true,
     ...(!isProbe(p) && { unknownOrigin: p.unknownOrigin, quarantinedForMs: quarantinedFor(p), residentAtRequest: settledAbort(p) }),
     admissionId: p.admissionId, generation: p.generation, principal: p.principal,
     host: p.host, model: p.model, kind: p.kind, mode: p.mode,
@@ -163,7 +184,8 @@ async function recoverSettledWatchdogProbes(hostUrl, {
       maintenance: null,
       workloads: parent
         ? { $elemMatch: { ...parentPredicate(parent, hostUrl),
-          ...(sharedParent ? { sharedHosts: hostUrl } : { drainingHosts: hostUrl }) } }
+          ...(sharedParent ? { sharedHosts: hostUrl } : goneParent
+            ? { expiresAt: { $lte: new Date(now()) } } : { drainingHosts: hostUrl }) } }
         : { $not: { $elemMatch: { hosts: hostUrl } } },
       $and: [
         ...(parent ? [{ workloads: { $not: { $elemMatch: {
@@ -196,13 +218,15 @@ async function recoverSettledWatchdogProbes(hostUrl, {
 async function collectRecoveryRequired({ hosts, coordination, previous, target, recordEvent, readPs, now, sleep }) {
   for (const host of hosts) {
     let unknown = coordination.inferences.filter(item => item.quarantined && item.host === host.url);
-    if (unknown.length && unknown.every(item => item.kind === PROBE_KIND || isCallerAbort(item))
+    if (unknown.length && unknown.every(item => item.kind === PROBE_KIND || isSettleable(item))
       && !coordination.maintenance) {
       const result = await recoverSettledWatchdogProbes(host.url, { readPs, ...(now && { now }), ...(sleep && { sleep }) })
         .catch(error => ({ recovered: false, reason: error.message }));
       if (result.recovered) {
-        const aborts = result.released.filter(r => [CALLER_ABORT_CONTRACT, DEADLINE_ABORT_CONTRACT].includes(r.contract));
-        recordEvent(aborts.length ? 'caller_abort_recovered' : 'probe_recovered', host,
+        const contracts = result.released.map(r => r.contract);
+        recordEvent(contracts.includes(RUNTIME_DISCONNECT_CONTRACT) ? 'runtime_disconnect_recovered'
+          : contracts.some(c => [CALLER_ABORT_CONTRACT, DEADLINE_ABORT_CONTRACT].includes(c))
+            ? 'caller_abort_recovered' : 'probe_recovered', host,
           { models: result.released.map(r => r.model) });
         unknown = [];
       }
