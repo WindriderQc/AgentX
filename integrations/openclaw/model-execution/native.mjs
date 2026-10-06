@@ -119,7 +119,7 @@ export function createNativeBackend(api, { loadSdk = loadNativeSdk } = {}) {
           parameterSupport: { jsonResponseFormat: model.api === 'openai-completions' ? true : null, thinking: Boolean(model.reasoning), temperature: model.api === 'openai-completions' ? true : null, seed: model.api === 'openai-completions' ? true : null, topP: model.api === 'openai-completions' ? true : null }, origin: local ? 'local' : 'cloud', billing,
           // The native catalogue describes an alias, not proof of a served revision.
           modelVersion: 'unknown', modelVersionSource: 'not-observed', authScope: agentId,
-          isolation: { singleCallQualified: model.api === 'openai-completions', noMemory: true, noAgentPrompt: true, noTools: true, noRuntimeFallback: true,
+          isolation: { singleCallQualified: sdk.version === '2026.9.4' && model.api === 'openai-completions', noMemory: true, noAgentPrompt: true, noTools: true, noRuntimeFallback: true,
             providerRouting: model.provider === 'openrouter' ? Boolean(routing?.allow_fallbacks === false && Array.isArray(routing?.only) && routing.only.length === 1 && typeof routing.only[0] === 'string' && routing.only[0].trim().length > 0) : true },
           fingerprint: fingerprint(withoutSecrets({ model, params, providerParams, runtimeVersion: sdk.version, parameterApi: sdk.parameterApiFingerprint, plugin: sdk.pluginFingerprint }))
         });

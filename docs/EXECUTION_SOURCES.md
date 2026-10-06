@@ -85,7 +85,9 @@ The first model API accepts text context. Image content and replayed tool messag
 require an explicit contract extension; the existing local and Household paths retain
 their attachment contracts.
 
-Model-only admission currently qualifies the native `openai-completions` API.
+Model-only admission currently qualifies the native `openai-completions` API
+on OpenClaw 2026.9.4. A different runtime version is unavailable in model mode
+until its transport is qualified and the admission gate is updated.
 Other SDK APIs stay visible but unavailable for model execution until a single
 HTTP attempt is proven; the installed Google SDK defaults to five attempts.
 Their configured native agents remain accessible. This is a runtime capability
