@@ -33,6 +33,7 @@
   }
   async function select(op) {
     const epoch = ++draftEpoch;
+    if (selectedReference && selectedReference.id !== op.id) { selectedReference = null; $('image-selected-reference').hidden = true; }
     show(op);
     try {
       const { draft } = await api(`/operations/${op.id}/draft`);
@@ -42,6 +43,12 @@
       if (config.profiles.some(profile => profile.id === draft.profile)) {
         $('image-profile').value = draft.profile; $('image-profile').dispatchEvent(new Event('change'));
         const size = `${draft.width},${draft.height}`;
+        const profile = config.profiles.find(item => item.id === draft.profile);
+        if (![...$('image-size').options].some(option => option.value === size)
+          && [draft.width, draft.height].every(value => Number.isInteger(value) && value >= 256 && value <= 2048 && value % 32 === 0)
+          && draft.width * draft.height <= profile.maxPixels) {
+          const option = document.createElement('option'); option.value = size; option.textContent = `Format précédent · ${draft.width} × ${draft.height}`; $('image-size').append(option);
+        }
         if ([...$('image-size').options].some(option => option.value === size && !option.disabled)) $('image-size').value = size;
       }
     } catch { $('image-status').textContent += ' Le brief précédent ne peut pas être chargé.'; }
@@ -49,7 +56,7 @@
   async function poll() {
     const id = operation.id;
     try { const result = await api(`/operations/${id}`); if (operation.id === id) show(result.operation); }
-    catch { $('image-status').textContent = 'Connexion interrompue. La demande enregistrée continue ; vérification en cours…'; pollTimer = setTimeout(poll, 5000); }
+    catch { if (operation.id !== id) return; $('image-status').textContent = 'Connexion interrompue. La demande enregistrée continue ; vérification en cours…'; pollTimer = setTimeout(poll, 5000); }
   }
   $('image-form').addEventListener('input', () => { draftEpoch += 1; });
   async function loadHistory() {
@@ -132,7 +139,7 @@
     for (const option of $('image-size').options) {
       const [w, h] = option.value.split(',').map(Number); option.disabled = w * h > profile.maxPixels;
     }
-    if ($('image-size').selectedOptions[0].disabled) $('image-size').value = '1024,1024';
+    if ($('image-size').selectedOptions[0]?.disabled) $('image-size').value = [...$('image-size').options].find(option => !option.disabled)?.value || '';
   });
   (async () => {
     try {
