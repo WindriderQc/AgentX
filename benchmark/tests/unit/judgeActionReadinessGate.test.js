@@ -8,8 +8,9 @@ const { callJudge } = require('../../src/services/scoring/judgeCall');
 
 jest.mock('../../src/services/benchmark/judgeExecutionContract', () => ({
     freezeJudgeConfig: jest.fn(async config => ({
-        ...config, num_ctx: config.num_ctx ?? 32768,
-        execution_contract: { num_ctx: config.num_ctx ?? 32768, artifact: { digest: 'resolved-digest' } }
+        ...require('../../src/services/scoring/resolveJudgeConfig').resolveJudgeConfig(config), num_ctx: config.num_ctx ?? 32768,
+        execution_contract: { schema: 'agentx.benchmark-judge-execution/v1', num_ctx: config.num_ctx ?? 32768,
+            artifact: { model: config.model, host: config.host, digest: 'resolved-digest', runtimeFingerprint: 'runtime-a' } }
     }))
 }));
 const { freezeJudgeConfig } = require('../../src/services/benchmark/judgeExecutionContract');
@@ -118,13 +119,10 @@ describe('judge-required API action gates', () => {
             expect(response.body.data.results[0]).toMatchObject({ judge_score: 0,
                 explanation: 'Missing behavior', judge_prompt: '["criterion"]', judge_raw_response: '{"calls":[]}' });
             expect(response.body.data.valid).toBe(false);
-            expect(response.body.data.diagnostic).toBe(input.num_ctx !== undefined);
-            if (input.num_ctx !== undefined) {
-                expect(response.body.data.qualification_record).toEqual({ skipped: true, reason: 'diagnostic_run' });
-            } else {
-                // A default run attempts to record qualification; unavailable storage stays visible.
-                expect(response.body.data.qualification_record).toEqual({ error: expect.stringMatching(/not recorded/) });
-            }
+            expect(response.body.data.diagnostic).toBe(false);
+            expect(response.body.data.qualification_contract.settings.numCtx).toBe(input.num_ctx ?? 32768);
+            // Complete coverage with explicit options attempts to record its own contract.
+            expect(response.body.data.qualification_record).toEqual({ error: expect.stringMatching(/not recorded/) });
         } finally { scorer.mockRestore(); }
     });
 
@@ -228,10 +226,10 @@ describe('judge-required API action gates', () => {
             .send({ judge_host: 'http://judge:11434', judge_model: 'judge:7b' });
 
         expect(response.status).toBe(200);
-        expect(judgeResult).toHaveBeenCalledWith('507f1f77bcf86cd799439011', {
+        expect(judgeResult).toHaveBeenCalledWith('507f1f77bcf86cd799439011', expect.objectContaining({
             host: 'http://judge:11434',
-            model: 'judge:7b'
-        });
+            model: 'judge:7b', execution_contract: expect.any(Object)
+        }));
     });
 
     test('blocks benchmark launch before execution-host work begins', async () => {

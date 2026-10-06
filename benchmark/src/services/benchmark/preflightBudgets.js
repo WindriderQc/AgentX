@@ -29,8 +29,10 @@ function loadSelectedPrompts({ levels, promptIds }) {
     return BenchmarkPrompt.find(filter).select('category prompt expected_answer reference_answer judge_criteria').lean();
 }
 
-function assessCategories(judge, categories) {
-    return require('./judgeQualification').assessJudgeCategories(judge, categories);
+async function assessCategories(judge, categories) {
+    const frozen = await require('./judgeExecutionContract').freezeJudgeConfig(judge);
+    const qualification_contract = require('./judgeQualificationContract').buildJudgeQualificationContract(frozen);
+    return require('./judgeQualification').assessJudgeCategories({ ...judge, qualification_contract }, categories);
 }
 
 async function candidateBudget({ host, model }, config, resolve) {
@@ -100,7 +102,7 @@ async function checkResponseBudgets(targets, executionConfig, judgeConfig = {}, 
     }
 
     const sizes = categoryPromptSizes(await loadPrompts({ levels, promptIds }).catch(() => []));
-    const validation = await assessJudgeCategories({ host: judgeConfig.host, model: judgeConfig.model }, Object.keys(sizes))
+    const validation = await assessJudgeCategories(judgeConfig, Object.keys(sizes))
         .catch(error => Object.fromEntries(Object.keys(sizes).map(category => [category,
             { status: 'unvalidated', cases: 0, mae: null, causes: [`qualification_unreadable: ${error.message}`] }])));
     const requirements = assessJudgeRequirements({

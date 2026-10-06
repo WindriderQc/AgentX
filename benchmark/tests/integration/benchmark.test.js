@@ -2567,6 +2567,11 @@ describe('Benchmark System - Integration Tests', () => {
         const { SCORER_VERSION } = require('../../src/services/scoring/scorerVersion');
         const { currentReferenceFingerprint } = require('../../src/services/benchmark/judgeQualification');
         const JUDGE = { model: 'judge-qualified:27b', host: 'http://judge-a:11434' };
+        const { buildJudgeQualificationContract } = require('../../src/services/benchmark/judgeQualificationContract');
+        const contract = buildJudgeQualificationContract({ ...JUDGE, num_ctx: 65536, num_predict: 800, timeout: 60000,
+            temperature: 0.1, seed: 7, max_retries: 2, execution_contract: {
+                schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 65536,
+                artifact: { ...JUDGE, digest: 'digest-a', runtimeFingerprint: 'runtime-a' } } });
         const cohort = 'e'.repeat(64);
 
         afterEach(async () => {
@@ -2575,6 +2580,7 @@ describe('Benchmark System - Integration Tests', () => {
 
         async function qualify(judge, overrides = {}) {
             return JudgeQualification.create({
+                qualification_contract: contract,
                 judge_model: judge.model, judge_host: judge.host,
                 judge_model_key: judge.model, judge_host_key: judge.host,
                 scorer_version: SCORER_VERSION, reference_fingerprint: currentReferenceFingerprint(),
@@ -2588,7 +2594,7 @@ describe('Benchmark System - Integration Tests', () => {
                 host: 'http://localhost:11434', prompt: 'Explain', prompt_name: 'Reasoning prompt',
                 prompt_category: 'reasoning', prompt_level: 3, success: true, response: 'An answer',
                 scorer_version: SCORER_VERSION, scoring_method: 'decomposed', quality_cohort_fingerprint: cohort,
-                judge_model: JUDGE.model, judge_host: JUDGE.host
+                judge_qualification_contract: contract, judge_model: JUDGE.model, judge_host: JUDGE.host
             };
             await BenchmarkResult.create([
                 { ...base, model: 'model-a', quality_score: 8 },
@@ -2657,14 +2663,14 @@ describe('Benchmark System - Integration Tests', () => {
                     model: 'model-a', host: 'http://localhost:11434', prompt: 'Explain', prompt_name: 'p',
                     prompt_category: 'reasoning', prompt_level: 3, success: true, response: 'An answer',
                     quality_score: 7.5, scorer_version: SCORER_VERSION, scoring_method: 'decomposed',
-                    judge_model: JUDGE.model, judge_host: JUDGE.host, attention_check: { passed: false },
+                    judge_qualification_contract: contract, judge_model: JUDGE.model, judge_host: JUDGE.host, attention_check: { passed: false },
                     needs_review: true
                 },
                 {
                     model: 'model-a', host: 'http://localhost:11434', prompt: 'Explain', prompt_name: 'p',
                     prompt_category: 'reasoning', prompt_level: 3, success: false, response: '',
                     quality_score: null, scoring_method: 'exec_failed', infra_error: true, error_type: 'infra',
-                    failure_classification: 'infra', judge_model: JUDGE.model, judge_host: JUDGE.host
+                    failure_classification: 'infra', judge_qualification_contract: contract, judge_model: JUDGE.model, judge_host: JUDGE.host
                 }
             ]);
 

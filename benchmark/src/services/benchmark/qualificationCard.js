@@ -49,13 +49,17 @@ function finiteOrNull(value) {
  * graded (fail closed: any method outside the deterministic set, a missing
  * method included) and, among them, rows that do not record which judge.
  */
-function judgeIdentityCounters() {
-    const judged = {
+function judgedRowExpression() {
+    return {
         $or: [
             { $ne: [{ $ifNull: ['$subjective_score', null] }, null] },
             { $not: [{ $in: [{ $toLower: { $ifNull: ['$scoring_method', ''] } }, [...DETERMINISTIC_METHODS]] }] }
         ]
     };
+}
+
+function judgeIdentityCounters() {
+    const judged = judgedRowExpression();
     const blank = field => ({ $in: [{ $ifNull: [field, ''] }, ['']] });
     return {
         judgedRows: { $sum: { $cond: [judged, 1, 0] } },
@@ -209,5 +213,6 @@ module.exports = {
     CARD_SCHEMA,
     buildResultQualificationCard,
     judgeIdentityCounters,
+    judgedRowExpression,
     judgeUsed
 };

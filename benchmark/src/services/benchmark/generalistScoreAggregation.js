@@ -21,7 +21,8 @@ const {
     countByValue
 } = require('./generalistScoreNormalizers');
 const { calculateGeneralistScoreFromCategories } = require('./generalistScoreCalculator');
-const { judgeIdentityCounters } = require('./qualificationCard');
+const { judgeIdentityCounters, judgedRowExpression } = require('./qualificationCard');
+const { resultJudgeTargets } = require('./judgeQualificationContract');
 
 // Lazy-load to avoid circular deps at module init time
 let _scoringProfile;
@@ -433,7 +434,16 @@ async function getLeaderboardEntryStats(matchQuery = {}) {
                 promptLevels: { $push: '$prompt_level' },
                 contexts: { $push: '$execution_settings.num_ctx' },
                 judgeModels: { $addToSet: '$judge_model' },
-                judgeTargets: { $addToSet: { model: '$judge_model', host: '$judge_host' } },
+                judgeEvidence: { $addToSet: { $cond: [judgedRowExpression(), {
+                    judge_model: '$judge_model', judge_host: '$judge_host',
+                    judge_qualification_contract: '$judge_qualification_contract',
+                    judge_scores: { $map: { input: { $ifNull: ['$judge_scores', []] }, as: 'score', in: {
+                        judge_model: '$$score.judge_model', judge_host: '$$score.judge_host',
+                        qualification_contract: '$$score.qualification_contract'
+                    } } },
+                    judge_escalated: '$judge_escalated', judge_consensus: '$judge_consensus',
+                    judge_tiebreaker_used: '$judge_tiebreaker_used'
+                }, null] } },
                 ...judgeIdentityCounters(),
                 executionTarget: { $first: '$execution_target' },
                 executionTargetFingerprints: { $addToSet: '$execution_target.fingerprint' },
@@ -546,9 +556,8 @@ async function getLeaderboardEntryStats(matchQuery = {}) {
             maxPromptLevel: numericLevels.length ? Math.max(...numericLevels) : null,
             contextCounts: contexts,
             judgeModels: (row.judgeModels || []).filter(Boolean),
-            judgeTargets: (row.judgeTargets || []).filter((target) => target?.model && target?.host),
-            // Incomplete identities are dropped above; these counts keep them
-            // visible so grader qualification can fail closed.
+            judgeTargets: (row.judgeEvidence || []).filter(Boolean).flatMap(resultJudgeTargets),
+            // Missing identities remain visible so qualification fails closed.
             judgedRows: Number(row.judgedRows || 0),
             judgeIdentityMissingRows: Number(row.judgeIdentityMissingRows || 0),
             executionTarget: row.executionTarget || null,

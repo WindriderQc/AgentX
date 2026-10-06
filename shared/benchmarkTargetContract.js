@@ -308,6 +308,21 @@ function multiJudgeIdentity(config) {
     contract: config.execution_contract ?? null, settings: judgeCohortSettings(config) } : null;
 }
 
+function multiJudgeCohortSettings(config) {
+  return config?.enabled ? {
+      // Mutable escalation usage and per-call evidence do not change a cohort.
+      judges: (config.judges || []).map(multiJudgeIdentity),
+      tiebreaker: multiJudgeIdentity(config.tiebreaker),
+      escalationBudgetPercent: config.escalation_budget_percent ?? 20,
+      confidenceThreshold: config.confidenceThreshold ?? 0.8,
+      autoMinLevel: config.autoMinLevel ?? 4,
+      escalateOnJudgeFailure: config.escalateOnJudgeFailure !== false,
+      escalateOnReview: config.escalateOnReview !== false,
+      escalateOnLowConfidence: config.escalateOnLowConfidence !== false,
+      escalateOnHighLevel: config.escalateOnHighLevel !== false,
+  } : null;
+}
+
 function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink = false, judgeConfig = null, executionConfig, profileContract = 'isolated-model-v1' }) {
   const normalizedJudge = judgeTarget
     ? normalizeBenchmarkTarget(judgeTarget, { allowMissingCatalogFingerprint: judgeTarget.executionKind === 'ollama' })
@@ -333,18 +348,7 @@ function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink 
     // another judge budget or sampling policy the same comparison identity.
     judgeSettings: judgeCohortSettings(judgeConfig),
     judgeExecutionContract: judgeConfig?.execution_contract ?? null,
-    multiJudge: judgeConfig?.multi_judge?.enabled ? {
-      // Mutable escalation usage and per-call evidence do not change a cohort.
-      judges: (judgeConfig.multi_judge.judges || []).map(multiJudgeIdentity),
-      tiebreaker: multiJudgeIdentity(judgeConfig.multi_judge.tiebreaker),
-      escalationBudgetPercent: judgeConfig.multi_judge.escalation_budget_percent ?? 20,
-      confidenceThreshold: judgeConfig.multi_judge.confidenceThreshold ?? 0.8,
-      autoMinLevel: judgeConfig.multi_judge.autoMinLevel ?? 4,
-      escalateOnJudgeFailure: judgeConfig.multi_judge.escalateOnJudgeFailure !== false,
-      escalateOnReview: judgeConfig.multi_judge.escalateOnReview !== false,
-      escalateOnLowConfidence: judgeConfig.multi_judge.escalateOnLowConfidence !== false,
-      escalateOnHighLevel: judgeConfig.multi_judge.escalateOnHighLevel !== false,
-    } : null,
+    multiJudge: multiJudgeCohortSettings(judgeConfig?.multi_judge),
     generation: {
       responseMaxTokens: Number(executionConfig?.response_max_tokens) || null,
       temperature: Number.isFinite(Number(executionConfig?.temperature)) ? Number(executionConfig.temperature) : null,
@@ -409,6 +413,8 @@ module.exports = {
   buildOllamaTarget,
   buildPromptFingerprint,
   buildQualityCohortFingerprint,
+  judgeCohortSettings,
+  multiJudgeCohortSettings,
   contractError,
   executionHost,
   normalizeBatchTargets,

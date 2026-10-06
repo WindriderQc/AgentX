@@ -4,11 +4,17 @@ const { buildResultQualificationCard, judgeUsed } = require('../../../src/servic
 const { combineJudges, assessJudge } = require('../../../src/services/benchmark/judgeQualification');
 
 const JUDGE = { model: 'qwen3.8:27b-mtp-q8_0', host: 'http://judge-a:11434' };
+const { buildJudgeQualificationContract } = require('../../../src/services/benchmark/judgeQualificationContract');
+JUDGE.qualification_contract = buildJudgeQualificationContract({ ...JUDGE, seed: 7, num_ctx: 65536, num_predict: 800,
+    temperature: 0.1, max_retries: 2, timeout: 60000, execution_contract: {
+        schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 65536,
+        artifact: { ...JUDGE, digest: 'digest-a', runtimeFingerprint: 'runtime-a' } } });
 const REF = 'a'.repeat(64);
 
 function record(overrides = {}) {
     return {
         _id: '507f1f77bcf86cd799439011',
+        qualification_contract: JUDGE.qualification_contract,
         judge_model: JUDGE.model,
         judge_host: JUDGE.host,
         scorer_version: '2.17.0',

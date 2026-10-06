@@ -40,7 +40,7 @@ describe('preflight response budgets', () => {
         // The launch's normalized config is what the contract is resolved with.
         expect(resolveCandidate.mock.calls[0][2]).toMatchObject({ response_max_tokens: 32000, response_budget_rule: expect.any(String) });
         expect(loadPrompts).toHaveBeenLastCalledWith({ levels: [3], promptIds: undefined });
-        expect(assessJudgeCategories).toHaveBeenLastCalledWith({ host: 'http://judge:11434', model: 'judge' }, ['math', 'translation']);
+        expect(assessJudgeCategories).toHaveBeenLastCalledWith({ host: 'http://judge:11434', model: 'judge', num_ctx: 131072, think: true }, ['math', 'translation']);
         expect(result.judge).toMatchObject({ num_ctx: 131072, num_ctx_source: 'explicit', think: true, fits: true });
         expect(result.judge.categories.math).toMatchObject({
             prompts: 2, prompt_tokens: 1000 + 1 + 3, reasoning: 'recommended', judge_reasons: true, fits: true,

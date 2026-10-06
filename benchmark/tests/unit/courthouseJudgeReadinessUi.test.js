@@ -149,3 +149,18 @@ describe('Courthouse judge readiness UI contracts', () => {
         expect(ledger).toContain('ledger-retry');
     });
 });
+
+test('the judge roster keeps qualifications for different settings separate', () => {
+    const { loadBrowserModule } = require('../helpers/browserModule');
+    const { hostColumn } = loadBrowserModule('courthouse-v2/the-bench.js', 'hostColumn', { escHtml: String });
+    const host = { hostUrl: 'http://judge:11434', hostName: 'Judge', judges: [{ modelName: 'judge-model' }] };
+    const html = hostColumn(host, {}, 0, { available: true, scorerVersion: 'current', map: {
+        'http://judge:11434@@judge-model': [
+            { qualification_contract_fingerprint: 'a'.repeat(64), current: { status: 'qualified' } },
+            { qualification_contract_fingerprint: 'b'.repeat(64), current: { status: 'unqualified', causes: ['calibration_failed_mae'] } }
+        ]
+    } });
+    expect(html).toContain('qualified · contract aaaaaaaa');
+    expect(html).toContain('failed qualification · contract bbbbbbbb');
+    expect(html).toContain('only for the recorded artifact, runtime and settings');
+});

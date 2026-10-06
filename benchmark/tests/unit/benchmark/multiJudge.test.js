@@ -312,3 +312,29 @@ describe('agreement computation', () => {
         expect(result.agreement).toBeUndefined();
     });
 });
+
+test('same host/model with different frozen settings remains a separate participant, including the tiebreaker', async () => {
+    const { freezeJudgeConfig } = require('../../../src/services/benchmark/judgeExecutionContract');
+    const { buildJudgeQualificationContract } = require('../../../src/services/benchmark/judgeQualificationContract');
+    const resolveContract = async (_path, options) => {
+        const request = JSON.parse(options.body);
+        return { version: 'agentx.inference-contract.v1', contextBudget: { windowTokens: 32768 },
+            artifact: { model: request.model, host: request.host, digest: 'd', runtimeFingerprint: 'r', identityQualified: true, registryQualified: true } };
+    };
+    const first = await freezeJudgeConfig({ host: 'http://judge:11434', model: 'same-judge' }, { resolveContract });
+    const second = await freezeJudgeConfig({ host: first.host, model: first.model, num_predict: 1600, seed: null }, { resolveContract });
+    const tie = await freezeJudgeConfig({ host: first.host, model: 'tie', think: true }, { resolveContract });
+    const policy = { enabled: true, judges: [first, second], tiebreaker: tie };
+    scoreResponse.mockReset();
+    scoreResponse.mockResolvedValueOnce({ quality_score: 9 }).mockResolvedValueOnce({ quality_score: 6 });
+    const result = await multiJudgeScore({ response: 'answer', prompt: makePrompt(), judges: [first, second],
+        tiebreakerJudge: tie, escalationPolicy: policy,
+        seedJudgeResult: { judge_host: first.host, judge_model: first.model, success: true, quality_score: 3,
+            qualification_contract: buildJudgeQualificationContract(first, { escalation: policy }) } });
+    expect(scoreResponse).toHaveBeenCalledTimes(2);
+    expect(result.tiebreakerUsed).toBe(true);
+    expect(result.scores.map(score => score.qualification_contract.settings.numPredict)).toEqual([800, 1600, 800]);
+    expect(result.scores[1].qualification_contract.settings.seed).toBeNull();
+    expect(result.scores[2].qualification_contract.settings.think).toBe(true);
+    expect(result.scores.every(score => score.qualification_contract.escalation.tiebreaker.model === 'tie')).toBe(true);
+});
