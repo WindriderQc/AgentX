@@ -66,8 +66,27 @@ function findParameter(payload, keys) {
   }
 }
 
+function verifyWireContext(payload, context, model) {
+  if (model.api !== 'openai-completions') reject('OPENCLAW_CONTEXT_TRANSPORT_UNQUALIFIED', 502);
+  const textOf = content => {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content) || content.some(block => block.type !== 'text' || typeof block.text !== 'string')) reject('OPENCLAW_CONTEXT_UNVERIFIED', 502);
+    return content.map(block => block.text).join('');
+  };
+  const expected = [
+    ...(context.systemPrompt ? [{ role: 'system', content: context.systemPrompt }] : []),
+    ...context.messages.map(message => ({ role: message.role, content: textOf(message.content) }))
+  ];
+  if (!Array.isArray(payload.messages)) reject('OPENCLAW_CONTEXT_UNVERIFIED', 502);
+  const observed = payload.messages.map(message => ({
+    role: message.role === 'developer' ? 'system' : message.role, content: textOf(message.content)
+  }));
+  if (JSON.stringify(observed) !== JSON.stringify(expected)) reject('OPENCLAW_CONTEXT_DRIFT', 502);
+}
+
 function verifyPayload(payload, parameters, context, model) {
   if (!payload || typeof payload !== 'object') reject('OPENCLAW_PAYLOAD_UNOBSERVED', 502);
+  verifyWireContext(payload, context, model);
   const allowedTools = new Set((context.tools || []).map(tool => tool.name));
   for (const tool of payload.tools || payload.config?.tools || []) {
     const declarations = tool.functionDeclarations || [tool];

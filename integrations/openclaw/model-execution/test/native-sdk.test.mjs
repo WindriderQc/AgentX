@@ -64,6 +64,13 @@ test('installed native SDK projects its registry and sends a single isolated req
     assert.equal(seeded.receipt.observedParameters.seed, 42);
     assert.equal(catalog.models[0].parameterSupport.jsonResponseFormat, true);
     assert.equal(requests.length, 3, 'each isolated turn sends exactly one HTTP request');
+    cfg.agents.defaults.models['openrouter/fixture/model'].params.extraBody = {
+      messages: [{ role: 'system', content: 'Native hidden memory must not enter a model result.' }]
+    };
+    await assert.rejects(service.execute({ schema: 'agentx.openclaw-model-request/v1', model: 'openrouter/fixture/model',
+      messages: [{ role: 'user', content: 'Only this prompt.' }], parameters: { maxTokens: 64 } }), { code: 'OPENCLAW_CONTEXT_DRIFT' });
+    assert.equal(requests.length, 3, 'native configuration cannot inject context before HTTP');
+    delete cfg.agents.defaults.models['openrouter/fixture/model'].params.extraBody;
     failFetch = true;
     await assert.rejects(service.execute({ schema: 'agentx.openclaw-model-request/v1', model: 'openrouter/fixture/model',
       messages: [{ role: 'user', content: 'Only this prompt.' }], parameters: { maxTokens: 64 } }), { code: 'OPENCLAW_NATIVE_MODEL_FAILED' });
@@ -80,8 +87,8 @@ test('native plugin routes require gateway auth and preserve one SSE completion 
     billing: { kind: 'free' }, isolation: { singleCallQualified: true } };
   let fail = false;
   const backend = { catalogue: async () => ({ models: [descriptor], agents: [] }), prepare: async () => ({ model, descriptor,
-    stream: (_, options) => (async function* () {
-      options.onPayload({ max_tokens: options.maxTokens }); yield { type: 'text_delta', delta: 'answer' };
+    stream: (context, options) => (async function* () {
+      options.onPayload({ messages: context.messages, max_tokens: options.maxTokens }); yield { type: 'text_delta', delta: 'answer' };
       if (fail) throw new Error('private provider details');
       yield { type: 'done', message: { provider: model.provider, model: model.id, stopReason: 'stop', content: [{ type: 'text', text: 'answer' }],
         usage: { input: 7, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 9 } } };

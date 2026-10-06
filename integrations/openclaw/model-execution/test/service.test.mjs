@@ -16,7 +16,7 @@ function fixture({ selected = descriptor, stream } = {}) {
   const backend = { catalogue: async () => ({ runtimeVersion: 'fixture', models: [selected], agents: [] }),
     prepare: async () => ({ model, descriptor: selected, runtimeVersion: 'fixture', effectiveParameters: {},
       stream: (context, options) => { calls.push(context); return stream ? stream(context, options) : (async function* () {
-        await options.onPayload({ max_tokens: options.maxTokens, temperature: options.temperature });
+        await options.onPayload({ messages: context.messages, max_tokens: options.maxTokens, temperature: options.temperature });
         yield { type: 'text_delta', delta: 'answer' }; yield { type: 'done', message: answer() };
       })(); } }) };
   return { calls, service: createExecutionService({ backend, maxRequestCostNanodollars: 30_000_000 }) };
@@ -56,10 +56,10 @@ test('drift, unsupported parameters and paid budgets fail before any model call'
 
 test('unexpected tools, ignored parameters, second calls and identity drift fail closed', async () => {
   for (const override of ['tools', 'parameter', 'second', 'identity', 'usage', 'zeroUsage']) {
-    const { service } = fixture({ stream: (_, options) => (async function* () {
-      await options.onPayload({ max_tokens: override === 'parameter' ? 63 : 64, temperature: 0,
+    const { service } = fixture({ stream: (context, options) => (async function* () {
+      await options.onPayload({ messages: context.messages, max_tokens: override === 'parameter' ? 63 : 64, temperature: 0,
         ...(override === 'tools' ? { tools: [{ type: 'web_search' }] } : {}) });
-      if (override === 'second') await options.onPayload({ max_tokens: 64, temperature: 0 });
+      if (override === 'second') await options.onPayload({ messages: context.messages, max_tokens: 64, temperature: 0 });
       const value = answer(); if (override === 'identity') value.model = 'fallback'; if (override === 'usage') delete value.usage;
       if (override === 'zeroUsage') value.usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } };
       yield { type: 'done', message: value };
@@ -70,8 +70,8 @@ test('unexpected tools, ignored parameters, second calls and identity drift fail
 
 test('cancellation stops the single stream and preserves partial output without retry', async () => {
   const controller = new AbortController();
-  const { service, calls } = fixture({ stream: (_, options) => (async function* () {
-    await options.onPayload({ max_tokens: 64, temperature: 0 }); yield { type: 'text_delta', delta: 'part' };
+  const { service, calls } = fixture({ stream: (context, options) => (async function* () {
+    await options.onPayload({ messages: context.messages, max_tokens: 64, temperature: 0 }); yield { type: 'text_delta', delta: 'part' };
     controller.abort(); options.signal.throwIfAborted();
   })() });
   await assert.rejects(service.execute(request(), { signal: controller.signal }), error => error.partialResponse === 'part' && error.executionState === 'unknown');
@@ -79,8 +79,8 @@ test('cancellation stops the single stream and preserves partial output without 
 });
 
 test('protocol tool schemas produce declarations without executing tools or claiming tool-free isolation', async () => {
-  const { service, calls } = fixture({ stream: (_, options) => (async function* () {
-    await options.onPayload({ max_tokens: 64, temperature: 0, tools: [{ type: 'function', function: { name: 'room' } }] });
+  const { service, calls } = fixture({ stream: (context, options) => (async function* () {
+    await options.onPayload({ messages: context.messages, max_tokens: 64, temperature: 0, tools: [{ type: 'function', function: { name: 'room' } }] });
     const value = answer(); value.content = [{ type: 'toolCall', id: 'call', name: 'room', arguments: { name: 'kitchen' } }];
     value.stopReason = 'toolUse'; yield { type: 'done', message: value };
   })() });
