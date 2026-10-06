@@ -137,7 +137,11 @@ ${answerRule}: ${question}`;
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
-            throw new Error(`Judge HTTP ${res.status}`);
+            const error = new Error(`Judge HTTP ${res.status}`);
+            // Core answers 503 before dispatch when the judge host is taken:
+            // nothing ran, so the same call can simply be asked again.
+            if (res.status === 503) error.code = JUDGE_HOST_BUSY;
+            throw error;
         }
 
         const data = await res.json();
@@ -179,6 +183,35 @@ ${answerRule}: ${question}`;
     }
 }
 
+const JUDGE_HOST_BUSY = 'JUDGE_HOST_BUSY';
+const HOST_BUSY_WAIT_MS = 60000; // below the batch judge stall timeout (120 s by default)
+const HOST_BUSY_RETRY_MS = 2000;
+
+/**
+ * One judge call that waits out a busy judge host. A shared judge host also
+ * serves other callers and Core's own model operations; while one of them
+ * holds it, Core refuses the call at once. The wait is bounded, stops with the
+ * batch, and does not use up the call's ordinary retry.
+ */
+async function binaryCallWhenHostFree(response, question, judgeConfig, taskContext = {}, options = {}) {
+    const budgetMs = Number.isFinite(judgeConfig.host_busy_wait_ms) ? judgeConfig.host_busy_wait_ms : HOST_BUSY_WAIT_MS;
+    const retryMs = Number.isFinite(judgeConfig.host_busy_retry_ms) ? judgeConfig.host_busy_retry_ms : HOST_BUSY_RETRY_MS;
+    const deadline = Date.now() + budgetMs;
+    let refusals = 0;
+    for (;;) {
+        try {
+            const answer = await singleBinaryCall(response, question, judgeConfig, taskContext, options);
+            if (refusals > 0) logger.info('Judge host free again', { host: judgeConfig.host, refusals });
+            return answer;
+        } catch (err) {
+            if (err?.code !== JUDGE_HOST_BUSY || Date.now() + retryMs > deadline) throw err;
+            refusals += 1;
+            if (refusals === 1) logger.warn('Judge host busy, waiting', { host: judgeConfig.host, budgetMs });
+            await waitForJudgeRetry(retryMs, judgeConfig);
+        }
+    }
+}
+
 /**
  * Ask a binary (YES/NO) question with majority voting (best-of-3)
  * Fires 3 parallel calls and takes majority vote for stability
@@ -200,13 +233,13 @@ async function askBinaryQuestion(response, question, judgeConfig, taskContext = 
     // had at least one binary call fail without retry; retry recovers most.
     if (votingCount <= 1) {
         try {
-            return await singleBinaryCall(response, question, judgeConfig, taskContext, options);
+            return await binaryCallWhenHostFree(response, question, judgeConfig, taskContext, options);
         } catch (err) {
             rethrowIfJudgeCancelled(err, judgeConfig);
             logger.warn('Binary call failed, retrying once', { question: question.substring(0, 80), error: err.message });
             await waitForJudgeRetry(500, judgeConfig);
             try { // a reply that ran out of tokens is retried constrained to the answers themselves
-                return await singleBinaryCall(response, question, judgeConfig, taskContext, { ...options, constrained: err.code === 'JUDGE_OUTPUT_INCOMPLETE' });
+                return await binaryCallWhenHostFree(response, question, judgeConfig, taskContext, { ...options, constrained: err.code === 'JUDGE_OUTPUT_INCOMPLETE' });
             } catch (retryErr) {
                 rethrowIfJudgeCancelled(retryErr, judgeConfig);
                 logger.error('Binary call failed after retry', { question, firstError: err.message, retryError: retryErr.message });
@@ -218,7 +251,7 @@ async function askBinaryQuestion(response, question, judgeConfig, taskContext = 
     // Majority voting mode
     const calls = [];
     for (let i = 0; i < votingCount; i++) {
-        calls.push(singleBinaryCall(response, question, judgeConfig, taskContext, options));
+        calls.push(binaryCallWhenHostFree(response, question, judgeConfig, taskContext, options));
     }
     const votes = await Promise.allSettled(calls);
     for (const vote of votes) if (vote.status === 'rejected') rethrowIfJudgeCancelled(vote.reason, judgeConfig);

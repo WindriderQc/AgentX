@@ -59,6 +59,32 @@ beforeEach(() => {
     jest.clearAllMocks();
 });
 
+describe('Busy judge host', () => {
+    const busy = () => Promise.resolve({ ok: false, status: 503, json: async () => ({ status: 'error' }) });
+
+    it('waits for a refused call and keeps the ordinary retry unused', async () => {
+        mockFetchFn.mockImplementationOnce(busy).mockImplementationOnce(busy).mockImplementation(() => mockFetchResponse('YES'));
+        const result = await askBinaryQuestion('response', 'question?', { ...JUDGE_CONFIG, host_busy_retry_ms: 1 });
+        expect(result).toBe(true);
+        expect(mockFetchFn).toHaveBeenCalledTimes(3);
+    });
+
+    it('gives up once the wait budget is spent', async () => {
+        mockFetchFn.mockImplementation(busy);
+        const result = await askBinaryQuestion('response', 'question?', { ...JUDGE_CONFIG, host_busy_retry_ms: 5, host_busy_wait_ms: 20 });
+        expect(result).toBeNull();
+        expect(mockFetchFn.mock.calls.length).toBeGreaterThan(2);
+        expect(mockFetchFn.mock.calls.length).toBeLessThan(20);
+    });
+
+    it('does not wait on another server error', async () => {
+        mockFetchFn.mockImplementation(() => Promise.resolve({ ok: false, status: 500, json: async () => ({}) }));
+        const result = await askBinaryQuestion('response', 'question?', { ...JUDGE_CONFIG, host_busy_retry_ms: 1 });
+        expect(result).toBeNull();
+        expect(mockFetchFn).toHaveBeenCalledTimes(2);
+    });
+});
+
 describe('Default voting (single call, voting_count=1)', () => {
     test('sends the selected temperature and seed, including zero', async () => {
         mockFetchFn.mockImplementation(() => mockFetchResponse('YES'));
