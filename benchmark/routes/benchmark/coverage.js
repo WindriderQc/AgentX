@@ -9,6 +9,8 @@
  * POST/DELETE /api/benchmark/coverage/requests — ask for a pair to be measured
  *                                          first; it still waits for quiet hours
  * GET /api/benchmark/coverage/results   — recent scores of one pair
+ * POST /api/benchmark/coverage/carry-over — carry stored grades over to the
+ *                                          current scorer version (dryRun reports)
  */
 
 const express = require('express');
@@ -18,6 +20,7 @@ const { buildCoverage } = require('../../src/services/measurementCoverage/covera
 const settingsStore = require('../../src/services/measurementCoverage/coverageSettings');
 const { getCoverageJob } = require('../../src/services/measurementCoverage/coverageJob');
 const requests = require('../../src/services/measurementCoverage/coverageRequests');
+const { carryOverStoredGrades } = require('../../src/services/measurementCoverage/gradeCarryOverPass');
 
 function fail(res, err) {
     res.status(err.statusCode || 500).json({ status: 'error', code: err.code || 'COVERAGE_FAILED', message: err.message });
@@ -58,6 +61,10 @@ router.post('/coverage/requests', (req, res) => requests.requestMeasurement(req.
     .then(data => res.status(201).json({ status: 'success', data })).catch(err => fail(res, err)));
 
 router.delete('/coverage/requests', (req, res) => requests.cancelRequest(req.body || {})
+    .then(data => res.json({ status: 'success', data })).catch(err => fail(res, err)));
+
+// Carry stored grades over to the current scorer version; { dryRun: true } only reports.
+router.post('/coverage/carry-over', (req, res) => carryOverStoredGrades({ dryRun: req.body?.dryRun === true })
     .then(data => res.json({ status: 'success', data })).catch(err => fail(res, err)));
 
 router.get('/coverage/results', (req, res) => requests.recentResults(req.query || {})

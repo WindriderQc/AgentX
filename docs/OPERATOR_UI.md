@@ -164,6 +164,17 @@ a new scorer version or an edited prompt re-opens what it affects. **Next**
 says what the pair still needs, a profile first, then the benchmark.
 `GET /api/benchmark/coverage` returns the same matrix.
 
+A new scorer version declares, per prompt category, whether stored grades keep
+their meaning, follow from the stored dimension scores, or need the judge
+again. At startup Benchmark carries over the grades that stay valid: the row
+moves to the current scorer version and quality cohort, a grade a new rule
+changes is recomputed without a judge call, and what the row held before stays
+in its `scorer_history`. A grade that cannot be derived from what the row
+stores is left as it is and its prompt re-opens. A version that declares
+nothing re-opens every prompt. `POST /api/benchmark/coverage/carry-over` runs
+the same pass; with `{ "dryRun": true }` it only reports what it would carry
+and why it would leave the rest.
+
 Below the matrix, **Automatic measurement** fills it by itself, one small
 measurement at a time: a standard profile, or a few missing prompts for one
 model on one host. It is off until switched on. It starts a measurement only

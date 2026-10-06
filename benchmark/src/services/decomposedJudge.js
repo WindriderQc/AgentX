@@ -23,12 +23,13 @@ const { prepareJudgeResponse, judgeCallEvidenceFields } = require('./scoring/jud
 const { rethrowIfJudgeCancelled, throwIfJudgeCancelled } = require('./scoring/judgeCall');
 const {
     DEFAULT_SCORING_CATEGORY,
-    ENHANCED_SCORING_CONFIGS,
     PRIMARY_DIMENSION_CAP_MARGIN,
     normalizeScoringCategory
 } = require('./scoring/scoringConfigs');
 const {
-    applySecondaryBounds,
+    SPECIFIC_CRITERIA_WEIGHT,
+    assembleOverall,
+    effectiveDimensionWeights,
     resolveDimensionWeights,
     parseGradedAnswer,
     buildExplanation,
@@ -248,7 +249,6 @@ async function score(response, prompt, judgeConfig) {
     // the generic category rubric. Phase 1.5 (regex match against criteria)
     // was rightly disabled; this is the LLM-judge version that doesn't
     // rely on regex matching.
-    const SPECIFIC_CRITERIA_WEIGHT = 0.25;
     const validCriteria = Array.isArray(prompt.judge_criteria)
         ? prompt.judge_criteria.filter(c => typeof c === 'string' && c.trim())
         : [];
@@ -262,16 +262,8 @@ async function score(response, prompt, judgeConfig) {
 
     // Reweight existing dimensions to make room for specific_criteria when active.
     // Each existing dimension keeps its relative share, scaled by (1 - SPECIFIC_CRITERIA_WEIGHT).
-    const dimensionWeights = {};
-    if (useSpecificCriteria && specificCriteriaQuestions && specificCriteriaQuestions.length > 0) {
-        const scale = 1 - SPECIFIC_CRITERIA_WEIGHT;
-        for (const [dim, w] of Object.entries(baseDimensionWeights)) {
-            dimensionWeights[dim] = w * scale;
-        }
-        dimensionWeights.specific_criteria = SPECIFIC_CRITERIA_WEIGHT;
-    } else {
-        Object.assign(dimensionWeights, baseDimensionWeights);
-    }
+    const dimensionWeights = effectiveDimensionWeights(baseDimensionWeights,
+        Boolean(useSpecificCriteria && specificCriteriaQuestions && specificCriteriaQuestions.length > 0));
 
     // Score dimensions SEQUENTIALLY. Questions within a single dimension still
     // run in parallel (3-4 at once), but we no longer stack all 4 dimensions ×
@@ -348,43 +340,12 @@ async function score(response, prompt, judgeConfig) {
     // unweighted-mean fallback is gone; `resolveDimensionWeights`
     // above always returns a non-empty weight table. Infrastructure failures
     // invalidate the overall grade; they are never candidate-quality penalties.
-    // A dimension whose every question was not applicable drops out of the
-    // average, and the remaining weights are renormalized.
-    let uncappedScore = 0;
-    {
-        let weightedSum = 0;
-        let totalWeight = 0;
-        for (const [dim, dimScore] of Object.entries(dimensionScores)) {
-            if (typeof dimScore !== 'number') continue;
-            const w = Number(dimensionWeights[dim]) || 0;
-            weightedSum += dimScore * w;
-            totalWeight += w;
-        }
-        uncappedScore = totalWeight > 0
-            ? Math.round((weightedSum / totalWeight) * 10) / 10
-            : 0;
-    }
-
-    // The primary dimension bounds the overall score: secondary dimensions
-    // refine the grade of a correct answer, they cannot rescue a wrong one.
-    const primaryDimension = ENHANCED_SCORING_CONFIGS[category]?.primary_dimension || null;
-    const primaryScore = primaryDimension ? dimensionScores[primaryDimension] : null;
-    const capApplies = typeof primaryScore === 'number'
-        && uncappedScore > primaryScore + PRIMARY_DIMENSION_CAP_MARGIN;
-    overallScore = capApplies
-        ? Math.round((primaryScore + PRIMARY_DIMENSION_CAP_MARGIN) * 10) / 10
-        : uncappedScore;
-    const primaryCap = {
-        dimension: primaryDimension,
-        score: typeof primaryScore === 'number' ? primaryScore : null,
-        margin: PRIMARY_DIMENSION_CAP_MARGIN,
-        applied: capApplies,
-        uncapped_score: uncappedScore
-    };
-
-    // A weak dimension the task's quality rests on bounds the grade too (#446).
-    const secondary = applySecondaryBounds(overallScore, dimensionScores, ENHANCED_SCORING_CONFIGS[category]?.secondary_bounds);
-    overallScore = secondary.score;
+    // The primary dimension, then the secondary bounds, hold the result.
+    const assembled = assembleOverall(category, dimensionScores, dimensionWeights);
+    const { uncappedScore, primaryCap, secondary } = assembled;
+    const primaryDimension = primaryCap.dimension;
+    const capApplies = primaryCap.applied;
+    overallScore = assembled.score;
 
     // A failed category gate (categoryGates.js) bounds the grade whatever the dimensions say.
     const gates = await assessGates(category, question => askBinaryQuestion(response, question, judgeConfig, taskContext));

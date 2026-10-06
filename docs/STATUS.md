@@ -166,6 +166,8 @@ Instance configuration, data and deployment receipts remain outside Git.
   Candidate output requests above the declared 50000-token limit are refused;
   API and stored configuration share the same timeout limits. Batches can set
   `execution_config.early_stop_enabled: false` for complete prompt coverage.
+  A scorer change re-opens only the grades it affects: the others are carried over to the new
+  version, in the leaderboard and the coverage matrix alike.
   Ranked rows share one quality cohort (judge, scorer version, generation settings) and compare only
   results on prompts as the catalog holds them today: adding a prompt keeps
   earlier results comparable, editing one takes only its results out, and
