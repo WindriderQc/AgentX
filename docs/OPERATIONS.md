@@ -590,6 +590,17 @@ source of new notes. They never read or write family notes. Infrastructure
 knowledge belongs in the docs or a vault note, not in owner memory; RAG
 documents are searched with `rag_search`.
 
+The same endpoint lets a lead agent supervise Benchmark's coverage without
+running it. `benchmark_coverage` reads the matrix (profile state and catalog
+prompts scored for each model pinned or routed on a host) and what the
+automatic measurement job is waiting for. `benchmark_results` reads the recent
+scores, speeds and judge failures of one pair, never the answer text.
+`benchmark_request_measurement` asks for a pair to be measured before the
+others, with a reason and a priority, or withdraws the request. A request only
+reorders the queue: Benchmark starts the measurement itself, in its quiet
+hours, when the runtime is idle. The agent chooses what, Benchmark chooses
+when.
+
 The personal finance capability is described for a new maintainer in
 [FINANCE.md](FINANCE.md). The personal finance ledger ingests bank and credit-card statements dropped in
 `FINANCE_INBOX_PATH`. Core reads the PDF text layer (`pdftotext -layout`), a
