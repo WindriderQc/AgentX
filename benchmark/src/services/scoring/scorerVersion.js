@@ -22,12 +22,15 @@
 // 2.18.0: an eighth prompt category, agent (triage, review, diagnosis, watch,
 // tool use), with its own judge rubric, and generalist weights spread over
 // eight categories. Generalist ranks are not comparable with 2.17.x.
-const SCORER_VERSION = '2.18.0';
+// 2.19.0: a translation not written in the requested language is bounded at
+// 1 on both the decomposed and the reference path (category gates). Translation
+// grades are not comparable with 2.18.x rows.
+const SCORER_VERSION = '2.19.0';
 
 const SCORER_COMPONENTS = Object.freeze({
     routing: 5,
     generalist: 6,
-    judge_prompt: 7,
+    judge_prompt: 8,
     judge_parsing: 9,
     confidence: 6,
     judges: 4,

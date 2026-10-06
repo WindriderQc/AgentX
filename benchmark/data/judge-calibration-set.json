@@ -7,7 +7,11 @@
     "response": "The capital of France is Berlin.",
     "gold_score": 0,
     "tier": "clearly_wrong",
-    "notes": "Confident but completely wrong answer"
+    "notes": "Confident but completely wrong answer",
+    "judge_criteria": [
+      "Answer contains 'Paris'",
+      "No incorrect information"
+    ]
   },
   {
     "id": "cal-bad-02",
@@ -17,7 +21,11 @@
     "response": "15 * 23 = 335",
     "gold_score": 0,
     "tier": "clearly_wrong",
-    "notes": "Shows work concept but wrong arithmetic"
+    "notes": "Shows work concept but wrong arithmetic",
+    "judge_criteria": [
+      "Answer is 345",
+      "Calculation is correct"
+    ]
   },
   {
     "id": "cal-bad-03",
@@ -82,7 +90,11 @@
           "weight": 2
         }
       ]
-    }
+    },
+    "judge_criteria": [
+      "Valid function named reverse_string",
+      "Returns the characters of the string in reverse order"
+    ]
   },
   {
     "id": "cal-bad-04",
@@ -92,7 +104,12 @@
     "response": "Yes, all cats are pets because cats are animals and animals are pets.",
     "gold_score": 1,
     "tier": "clearly_wrong",
-    "notes": "Invalid logical reasoning"
+    "notes": "Invalid logical reasoning",
+    "judge_criteria": [
+      "Correctly identifies answer as 'No'",
+      "Explains logical fallacy",
+      "Reasoning is clear"
+    ]
   },
   {
     "id": "cal-bad-05",
@@ -102,7 +119,11 @@
     "response": "Sure! Here are some fruits you might enjoy: apples, bananas, oranges, grapes, and strawberries. Fruits are a great source of vitamins!",
     "gold_score": 1,
     "tier": "clearly_wrong",
-    "notes": "Lists 5 instead of 3, adds unnecessary text"
+    "notes": "Lists 5 instead of 3, adds unnecessary text",
+    "judge_criteria": [
+      "Exactly three fruits",
+      "Only the list, with no other text"
+    ]
   },
   {
     "id": "cal-med-01",
@@ -112,7 +133,11 @@
     "response": "Paris is the capital and most populous city of France.",
     "gold_score": 10,
     "tier": "excellent",
-    "notes": "Fully answers the factual question. Additional correct information does not reduce correctness."
+    "notes": "Fully answers the factual question. Additional correct information does not reduce correctness.",
+    "judge_criteria": [
+      "Answer contains 'Paris'",
+      "No incorrect information"
+    ]
   },
   {
     "id": "cal-med-02",
@@ -202,7 +227,12 @@
           "expected": true
         }
       ]
-    }
+    },
+    "judge_criteria": [
+      "Returns False for numbers below 2",
+      "Returns True exactly for prime numbers",
+      "Trial division stops at the square root or earlier"
+    ]
   },
   {
     "id": "cal-med-03",
@@ -212,7 +242,11 @@
     "response": "The ball costs $0.10. Since the total is $1.10 and the bat costs $1.00 more, the bat would be $1.00 and the ball $0.10.",
     "gold_score": 0,
     "tier": "clearly_wrong",
-    "notes": "Wrong answer: the ball costs $0.05, not $0.10 (the bat would be $1.10, making the total $1.20)."
+    "notes": "Wrong answer: the ball costs $0.05, not $0.10 (the bat would be $1.10, making the total $1.20).",
+    "judge_criteria": [
+      "Answer is $0.05 (5 cents)",
+      "Uses both constraints: the $1.10 total and the $1.00 difference"
+    ]
   },
   {
     "id": "cal-med-04",
@@ -222,7 +256,13 @@
     "response": "Machine learning is a type of AI that learns from data.",
     "gold_score": 6,
     "tier": "mediocre",
-    "notes": "Captures main idea but loses key details (self-improvement, no explicit programming)"
+    "notes": "Captures main idea but loses key details (self-improvement, no explicit programming)",
+    "judge_criteria": [
+      "A single sentence",
+      "States that machine learning is a subset of AI",
+      "Mentions learning from data",
+      "Mentions improving over time without explicit programming for every case"
+    ]
   },
   {
     "id": "cal-med-05",
@@ -232,7 +272,12 @@
     "response": "The ocean is blue\nIt has many fish and waves\nI like the ocean",
     "gold_score": 4,
     "tier": "mediocre",
-    "notes": "Correct 5-7-5 syllable structure but lacks imagery and poetic quality"
+    "notes": "Correct 5-7-5 syllable structure but lacks imagery and poetic quality",
+    "judge_criteria": [
+      "Three lines in a 5-7-5 syllable pattern",
+      "About the ocean",
+      "Uses concrete imagery"
+    ]
   },
   {
     "id": "cal-good-01",
@@ -242,7 +287,11 @@
     "response": "Paris",
     "gold_score": 10,
     "tier": "excellent",
-    "notes": "Fully correct answer; brevity is sufficient for this factual question."
+    "notes": "Fully correct answer; brevity is sufficient for this factual question.",
+    "judge_criteria": [
+      "Answer contains 'Paris'",
+      "No incorrect information"
+    ]
   },
   {
     "id": "cal-good-02",
@@ -332,7 +381,12 @@
           "expected": true
         }
       ]
-    }
+    },
+    "judge_criteria": [
+      "Returns False for numbers below 2",
+      "Returns True exactly for prime numbers",
+      "Trial division stops at the square root or earlier"
+    ]
   },
   {
     "id": "cal-good-03",
@@ -342,7 +396,11 @@
     "response": "Let me work through this. If the ball costs x, then the bat costs x + $1.00. Together: x + (x + $1.00) = $1.10. So 2x + $1.00 = $1.10, meaning 2x = $0.10, and x = $0.05. The ball costs 5 cents.",
     "gold_score": 10,
     "tier": "excellent",
-    "notes": "Correct answer with clear, complete step-by-step reasoning."
+    "notes": "Correct answer with clear, complete step-by-step reasoning.",
+    "judge_criteria": [
+      "Answer is $0.05 (5 cents)",
+      "Uses both constraints: the $1.10 total and the $1.00 difference"
+    ]
   },
   {
     "id": "cal-good-04",
@@ -352,7 +410,11 @@
     "response": "15 * 23 = 15 * 20 + 15 * 3 = 300 + 45 = 345",
     "gold_score": 9,
     "tier": "excellent",
-    "notes": "Correct product; the decomposition is clear but was not requested."
+    "notes": "Correct product; the decomposition is clear but was not requested.",
+    "judge_criteria": [
+      "Answer is 345",
+      "Calculation is correct"
+    ]
   },
   {
     "id": "cal-good-05",
@@ -362,7 +424,11 @@
     "response": "Apple\nBanana\nOrange",
     "gold_score": 10,
     "tier": "excellent",
-    "notes": "Exactly three fruits, only the requested list; satisfies every instruction."
+    "notes": "Exactly three fruits, only the requested list; satisfies every instruction.",
+    "judge_criteria": [
+      "Exactly three fruits",
+      "Only the list, with no other text"
+    ]
   },
   {
     "id": "cal-exc-01",
@@ -452,7 +518,12 @@
           "expected": true
         }
       ]
-    }
+    },
+    "judge_criteria": [
+      "Returns False for numbers below 2",
+      "Returns True exactly for prime numbers",
+      "Trial division stops at the square root or earlier"
+    ]
   },
   {
     "id": "cal-exc-02",
@@ -462,7 +533,11 @@
     "response": "The ball costs $0.05.\n\nThis is a classic problem that triggers an intuitive but wrong answer of $0.10. The correct approach: let the ball = x, then the bat = x + $1.00. The equation x + (x + $1.00) = $1.10 gives 2x = $0.10, so x = $0.05. Verification: ball ($0.05) + bat ($1.05) = $1.10, and $1.05 - $0.05 = $1.00.",
     "gold_score": 10,
     "tier": "excellent",
-    "notes": "Correct, explains the cognitive trap, shows algebra, verifies answer"
+    "notes": "Correct, explains the cognitive trap, shows algebra, verifies answer",
+    "judge_criteria": [
+      "Answer is $0.05 (5 cents)",
+      "Uses both constraints: the $1.10 total and the $1.00 difference"
+    ]
   },
   {
     "id": "cal-exc-03",
@@ -472,7 +547,13 @@
     "response": "Machine learning, a branch of AI, enables systems to learn from data and improve autonomously without requiring explicit programming for each scenario.",
     "gold_score": 10,
     "tier": "excellent",
-    "notes": "Captures all key points concisely in one well-structured sentence"
+    "notes": "Captures all key points concisely in one well-structured sentence",
+    "judge_criteria": [
+      "A single sentence",
+      "States that machine learning is a subset of AI",
+      "Mentions learning from data",
+      "Mentions improving over time without explicit programming for every case"
+    ]
   },
   {
     "id": "cal-exc-04",
@@ -482,7 +563,11 @@
     "response": "345",
     "gold_score": 10,
     "tier": "excellent",
-    "notes": "Correct product; working was not requested, so a concise answer receives full credit."
+    "notes": "Correct product; working was not requested, so a concise answer receives full credit.",
+    "judge_criteria": [
+      "Answer is 345",
+      "Calculation is correct"
+    ]
   },
   {
     "id": "cal-exc-05",
@@ -492,7 +577,12 @@
     "response": "Silver moonlit waves\nWhisper secrets to the shore\nSalt scents the night air",
     "gold_score": 10,
     "tier": "excellent",
-    "notes": "Evocative ocean imagery with a verified 5-7-5 syllable structure."
+    "notes": "Evocative ocean imagery with a verified 5-7-5 syllable structure.",
+    "judge_criteria": [
+      "Three lines in a 5-7-5 syllable pattern",
+      "About the ocean",
+      "Uses concrete imagery"
+    ]
   },
   {
     "id": "cal-tr-01",
@@ -690,6 +780,186 @@
       "Flags day-of-week 1 (Monday) instead of Sunday for the cleanup",
       "Does not report the off-site sync line as wrong",
       "Gives the corrected entries 30 1 * * * for the dump and 0 4 * * 0 (or 7) for the cleanup"
+    ]
+  },
+  {
+    "id": "cal-kn-01",
+    "category": "knowledge",
+    "prompt": "What is the difference between TCP and UDP? Answer in two or three sentences.",
+    "expected_answer": "TCP is connection-oriented: it sets up a connection and delivers data reliably and in order, retransmitting lost packets. UDP is connectionless: it sends datagrams without delivery or ordering guarantees, with less overhead and latency.",
+    "response": "TCP opens a connection first and guarantees that data arrives complete and in order, resending anything lost. UDP just sends independent datagrams with no connection and no delivery or ordering guarantee, which makes it lighter and faster.",
+    "gold_score": 10,
+    "tier": "excellent",
+    "notes": "Every distinction of the reference in other words, in two sentences.",
+    "reference_answer": "TCP is connection-oriented: it sets up a connection and delivers data reliably and in order, retransmitting lost packets. UDP is connectionless: it sends datagrams without delivery or ordering guarantees, with less overhead and latency.",
+    "judge_criteria": [
+      "TCP is connection-oriented and UDP is connectionless",
+      "TCP guarantees delivery and ordering, UDP does not",
+      "UDP has lower overhead or latency",
+      "Two or three sentences"
+    ]
+  },
+  {
+    "id": "cal-kn-02",
+    "category": "knowledge",
+    "prompt": "What is the difference between TCP and UDP? Answer in two or three sentences.",
+    "expected_answer": "TCP is connection-oriented: it sets up a connection and delivers data reliably and in order, retransmitting lost packets. UDP is connectionless: it sends datagrams without delivery or ordering guarantees, with less overhead and latency.",
+    "response": "TCP is reliable and UDP is faster. TCP is used for web pages and UDP for video calls.",
+    "gold_score": 5,
+    "tier": "mediocre",
+    "notes": "Correct but thin: misses connection-oriented versus connectionless and ordering, and replaces them with usage examples.",
+    "reference_answer": "TCP is connection-oriented: it sets up a connection and delivers data reliably and in order, retransmitting lost packets. UDP is connectionless: it sends datagrams without delivery or ordering guarantees, with less overhead and latency.",
+    "judge_criteria": [
+      "TCP is connection-oriented and UDP is connectionless",
+      "TCP guarantees delivery and ordering, UDP does not",
+      "UDP has lower overhead or latency",
+      "Two or three sentences"
+    ]
+  },
+  {
+    "id": "cal-rs-01",
+    "category": "reasoning",
+    "prompt": "Three boxes are labelled 'apples', 'oranges' and 'mixed', and every label is wrong. You may take one fruit from one box without looking inside. From which box should you take it, and how do you then relabel all three boxes? Explain briefly.",
+    "expected_answer": "Take a fruit from the box labelled 'mixed'. Its label is wrong, so it holds only one kind of fruit: the fruit you draw names it. Say it is an apple: that box holds apples. The box labelled 'oranges' cannot hold oranges, and apples are taken, so it holds the mixed fruit; the box labelled 'apples' then holds oranges. If the fruit is an orange, the same reasoning applies with apples and oranges swapped.",
+    "response": "Draw from the box labelled 'mixed'. Since every label is wrong, it is not mixed, so it holds only the kind of fruit you draw, say apples. The box labelled 'oranges' is then neither oranges nor apples, so it is the mixed box, and the box labelled 'apples' holds the oranges (swap apples and oranges if you draw an orange).",
+    "gold_score": 10,
+    "tier": "excellent",
+    "notes": "Right box, the key inference and the full relabelling, in other words.",
+    "reference_answer": "Take a fruit from the box labelled 'mixed'. Its label is wrong, so it holds only one kind of fruit: the fruit you draw names it. Say it is an apple: that box holds apples. The box labelled 'oranges' cannot hold oranges, and apples are taken, so it holds the mixed fruit; the box labelled 'apples' then holds oranges. If the fruit is an orange, the same reasoning applies with apples and oranges swapped.",
+    "judge_criteria": [
+      "Takes the fruit from the box labelled 'mixed'",
+      "Explains that this box holds a single kind of fruit because its label is wrong",
+      "Deduces the contents of the other two boxes from their wrong labels",
+      "Gives the relabelling of all three boxes"
+    ]
+  },
+  {
+    "id": "cal-rs-02",
+    "category": "reasoning",
+    "prompt": "Three boxes are labelled 'apples', 'oranges' and 'mixed', and every label is wrong. You may take one fruit from one box without looking inside. From which box should you take it, and how do you then relabel all three boxes? Explain briefly.",
+    "expected_answer": "Take a fruit from the box labelled 'mixed'. Its label is wrong, so it holds only one kind of fruit: the fruit you draw names it. Say it is an apple: that box holds apples. The box labelled 'oranges' cannot hold oranges, and apples are taken, so it holds the mixed fruit; the box labelled 'apples' then holds oranges. If the fruit is an orange, the same reasoning applies with apples and oranges swapped.",
+    "response": "Take a fruit from the box labelled 'mixed'. Its label is wrong, so it holds only one kind of fruit, and the fruit you draw tells you which.",
+    "gold_score": 5,
+    "tier": "mediocre",
+    "notes": "Right box and the key inference, but stops before relabelling the other two boxes, which the question asks for.",
+    "reference_answer": "Take a fruit from the box labelled 'mixed'. Its label is wrong, so it holds only one kind of fruit: the fruit you draw names it. Say it is an apple: that box holds apples. The box labelled 'oranges' cannot hold oranges, and apples are taken, so it holds the mixed fruit; the box labelled 'apples' then holds oranges. If the fruit is an orange, the same reasoning applies with apples and oranges swapped.",
+    "judge_criteria": [
+      "Takes the fruit from the box labelled 'mixed'",
+      "Explains that this box holds a single kind of fruit because its label is wrong",
+      "Deduces the contents of the other two boxes from their wrong labels",
+      "Gives the relabelling of all three boxes"
+    ]
+  },
+  {
+    "id": "cal-ma-01",
+    "category": "math",
+    "prompt": "A fair coin is tossed 5 times. What is the probability of getting exactly 2 heads? Show your reasoning.",
+    "expected_answer": "5/16",
+    "response": "Each toss has 2 outcomes, so there are $2^5 = 32$ equally likely sequences. Choosing which 2 of the 5 tosses are heads gives $\\binom{5}{2} = 10$ sequences. The probability is $\\frac{10}{32} = \\frac{5}{16}$.",
+    "gold_score": 10,
+    "tier": "excellent",
+    "notes": "Complete and correct; the LaTeX fraction is not settled by the numeric extractor, so the judge grades it.",
+    "judge_criteria": [
+      "Counts 2^5 = 32 equally likely outcomes",
+      "Counts C(5,2) = 10 outcomes with exactly two heads",
+      "Final answer is 5/16 (0.3125)"
+    ]
+  },
+  {
+    "id": "cal-ma-02",
+    "category": "math",
+    "prompt": "A fair coin is tossed 5 times. What is the probability of getting exactly 2 heads? Show your reasoning.",
+    "expected_answer": "5/16",
+    "response": "There are $2^5 = 32$ outcomes. Exactly 2 heads can happen in $5 \\times 2 = 10$ ways, so the probability is $\\frac{10}{32} = \\frac{5}{16}$.",
+    "gold_score": 5,
+    "tier": "mediocre",
+    "notes": "Right answer by an invalid count: 5 x 2 is not the number of ways to place two heads, it only happens to equal C(5,2).",
+    "judge_criteria": [
+      "Counts 2^5 = 32 equally likely outcomes",
+      "Counts C(5,2) = 10 outcomes with exactly two heads",
+      "Final answer is 5/16 (0.3125)"
+    ]
+  },
+  {
+    "id": "cal-co-01",
+    "category": "coding",
+    "prompt": "This JavaScript function should return the largest number in a non-empty array, but it returns the wrong value for [-5, -2, -9]. Find the bug and fix it.\n\n```js\nfunction max(values) {\n  let best = 0;\n  for (const value of values) {\n    if (value > best) best = value;\n  }\n  return best;\n}\n```",
+    "expected_answer": "best starts at 0, so when every value is negative none is greater than it and the function returns 0. Start from the first element (let best = values[0]) or from -Infinity; the loop stays as it is.",
+    "response": "The bug is `let best = 0`: when every value is negative, none is greater than 0, so the function returns 0. Start from the first element instead; the loop is unchanged:\n\n```js\nfunction max(values) {\n  let best = values[0];\n  for (const value of values) {\n    if (value > best) best = value;\n  }\n  return best;\n}\n```",
+    "gold_score": 10,
+    "tier": "excellent",
+    "notes": "Names the bug, explains it and gives the reference fix.",
+    "reference_answer": "The bug is the initial value: with only negative numbers, no value is greater than 0, so the function returns 0.\n\n```js\nfunction max(values) {\n  let best = values[0];\n  for (const value of values) {\n    if (value > best) best = value;\n  }\n  return best;\n}\n```",
+    "judge_criteria": [
+      "Identifies the initial value 0 as the bug",
+      "Explains that no negative value is ever greater than 0",
+      "Initializes best with values[0] or -Infinity",
+      "The fixed function returns -2 for [-5, -2, -9]"
+    ]
+  },
+  {
+    "id": "cal-co-02",
+    "category": "coding",
+    "prompt": "This JavaScript function should return the largest number in a non-empty array, but it returns the wrong value for [-5, -2, -9]. Find the bug and fix it.\n\n```js\nfunction max(values) {\n  let best = 0;\n  for (const value of values) {\n    if (value > best) best = value;\n  }\n  return best;\n}\n```",
+    "expected_answer": "best starts at 0, so when every value is negative none is greater than it and the function returns 0. Start from the first element (let best = values[0]) or from -Infinity; the loop stays as it is.",
+    "response": "The bug is that best starts at 0, so with only negative numbers nothing is greater than it and the function returns 0.",
+    "gold_score": 5,
+    "tier": "mediocre",
+    "notes": "Right diagnosis and explanation, but no fix, which the task asks for.",
+    "reference_answer": "The bug is the initial value: with only negative numbers, no value is greater than 0, so the function returns 0.\n\n```js\nfunction max(values) {\n  let best = values[0];\n  for (const value of values) {\n    if (value > best) best = value;\n  }\n  return best;\n}\n```",
+    "judge_criteria": [
+      "Identifies the initial value 0 as the bug",
+      "Explains that no negative value is ever greater than 0",
+      "Initializes best with values[0] or -Infinity",
+      "The fixed function returns -2 for [-5, -2, -9]"
+    ]
+  },
+  {
+    "id": "cal-cr-01",
+    "category": "creative",
+    "prompt": "Write a haiku about the ocean.",
+    "expected_answer": "Waves crash on the shore\nSalt air fills the morning breeze\nEndless blue expanse",
+    "response": "The ocean is a large body of salt water that covers about 71 percent of the Earth's surface and holds most of its water.",
+    "gold_score": 1,
+    "tier": "clearly_wrong",
+    "notes": "A factual sentence, not a haiku: none of the form is there.",
+    "judge_criteria": [
+      "Three lines in a 5-7-5 syllable pattern",
+      "About the ocean",
+      "Uses concrete imagery"
+    ]
+  },
+  {
+    "id": "cal-tr-07",
+    "category": "translation",
+    "prompt": "Translate to Spanish: 'The library opens at nine, but on Sundays it closes at noon.'",
+    "expected_answer": "La biblioteca abre a las nueve, pero los domingos cierra al mediodía. (also acceptable: La biblioteca abre a las 9, pero los domingos cierra a las doce.)",
+    "response": "La biblioteca apre alle nove, ma la domenica chiude a mezzogiorno.",
+    "gold_score": 1,
+    "tier": "clearly_wrong",
+    "notes": "A faithful translation into Italian instead of Spanish: the task is not done.",
+    "judge_criteria": [
+      "Opening time rendered as a las nueve or a las 9",
+      "The noon closing applies to Sundays only (los domingos)",
+      "Noon rendered as al mediodía or a las doce",
+      "Correct Spanish grammar, accents and punctuation"
+    ]
+  },
+  {
+    "id": "cal-tr-08",
+    "category": "translation",
+    "prompt": "Translate to French: 'Could you send me the report before Friday? The client meeting is on Monday.'",
+    "expected_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
+    "response": "¿Podría enviarme el informe antes del viernes? La reunión con el cliente es el lunes.",
+    "gold_score": 1,
+    "tier": "clearly_wrong",
+    "notes": "A faithful translation into Spanish instead of French: the task is not done.",
+    "reference_answer": "Pourriez-vous m'envoyer le rapport avant vendredi ? La réunion avec le client a lieu lundi.",
+    "judge_criteria": [
+      "Asks in French for the report to be sent, such as Pourriez-vous m'envoyer le rapport",
+      "Deadline written in French as avant vendredi",
+      "States in French that the client meeting is on Monday (lundi)",
+      "Correct French grammar, accents and question punctuation"
     ]
   }
 ]

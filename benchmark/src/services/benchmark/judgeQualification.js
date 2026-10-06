@@ -30,6 +30,8 @@ const { buildJudgeQualificationContract, qualificationContractFingerprint, resul
 const { exactModelNamesMatch } = require('../../../../shared/artifactIdentity');
 
 const QUALIFICATION_SCHEMA = 'agentx.benchmark-grader-qualification/v1';
+// Scoring methods that grade a case without asking the judge.
+const SETTLED_WITHOUT_JUDGE = new Set(['deterministic', 'quick', 'executable']);
 const GRADER_STATUS = Object.freeze({
     QUALIFIED: 'qualified',
     UNQUALIFIED: 'unqualified',
@@ -156,6 +158,7 @@ async function recordAccuracyCalibration(report, { digest = null } = {}) {
             gold_score: item.gold_score ?? null,
             judge_score: item.judge_score ?? null,
             abs_diff: item.abs_diff ?? null,
+            scoring_method: item.scoring_method ?? null,
             identity_case: item.identity_case ?? null,
             identity_full_marks: item.identity_full_marks ?? null,
             attention_passed: typeof item.attention_check?.passed === 'boolean' ? item.attention_check.passed : null,
@@ -350,23 +353,26 @@ function categoryValidation(assessment, record, category) {
     if (assessment.status !== GRADER_STATUS.QUALIFIED || !record) {
         return { status: 'unvalidated', cases: 0, mae: null, causes: assessment.causes.length ? assessment.causes : ['not_qualified'] };
     }
-    const cases = (record.cases || []).filter(item => item.category === category);
-    if (!cases.length) return { status: 'no_reference_cases', cases: 0, mae: null, causes: [], record_id: String(record._id) };
+    const all = (record.cases || []).filter(item => item.category === category);
+    // A case settled without the judge (deterministic check, quick match, executed tests) says nothing about it.
+    const cases = all.filter(item => !SETTLED_WITHOUT_JUDGE.has(item.scoring_method));
+    const settled = all.length - cases.length;
+    if (!cases.length) return { status: 'no_reference_cases', cases: 0, settled, mae: null, causes: [], record_id: String(record._id) };
     const diffs = cases.map(item => item.abs_diff).filter(Number.isFinite);
     const mae = diffs.length ? Number((diffs.reduce((sum, value) => sum + value, 0) / diffs.length).toFixed(2)) : null;
     const causes = [];
     if (mae == null || mae > QUALIFICATION_CRITERIA.mae_max) causes.push(`category_mae_above_${QUALIFICATION_CRITERIA.mae_max}`);
     if (cases.some(item => item.identity_case === true && item.identity_full_marks === false)) causes.push('identity_marked_down');
     if (cases.some(item => item.attention_passed === false)) causes.push('attention_failed');
-    return { status: causes.length ? 'failed' : 'validated', cases: cases.length, mae, causes, record_id: String(record._id) };
+    return { status: causes.length ? 'failed' : 'validated', cases: cases.length, settled, mae, causes, record_id: String(record._id) };
 }
 
 /**
  * The judge's calibration per prompt category (#397), from the record that
- * decides its qualification: the category's cases, their mean absolute
- * deviation from the reference grades, and any identity or attention failure
- * among them. A judge that is not qualified is unvalidated everywhere; a
- * category the reference set does not cover reads `no_reference_cases`.
+ * decides its qualification: the category's cases the judge graded, their
+ * mean absolute deviation from the reference grades and any identity or
+ * attention failure among them. A judge that is not qualified is unvalidated
+ * everywhere; a category with no judged case reads `no_reference_cases`.
  */
 async function assessJudgeCategories({ host, model, qualification_contract = null }, categories = []) {
     const hKey = hostKey(host);

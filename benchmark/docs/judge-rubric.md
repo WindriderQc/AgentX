@@ -57,6 +57,20 @@ answer correctness for math, constraint compliance for instruction and
 relevance for creative. The result records `primary_cap` with the uncapped
 score.
 
+## Category gates
+
+A gate is one yes/no question a response must pass before its grade means
+anything for the category (`src/services/scoring/categoryGates.js`). A response
+that fails it is bounded at 1, whatever its other answers, on the decomposed
+and the reference path alike. Translation is gated on the target language:
+"Is the response written in the language the task asks the text to be
+translated into?" The judge answers on the language only, not on accuracy or
+completeness, and names, code, placeholders and terms the task keeps unchanged
+do not count against it.
+Without the gate, a faithful translation into the wrong language kept its
+accuracy and scored 4.5 to 7. The result records `gates` with each answer; an
+unanswered gate leaves the grade unscored like any failed judge call.
+
 ## Attention check
 
 After the questions, two known-answer probes are asked on the same response:
@@ -92,11 +106,17 @@ category with authored responses and reference grades. A case scores on the
 path of the catalog prompts it mirrors through the fields it carries:
 `reference_tests` run the code, a `reference_answer` selects the reference
 scorer, and `judge_criteria` become the decomposed judge's specific criteria.
-Translation has cases on both of its paths (with and without a reference
-answer); agent cases are judged against their planted findings. Both have an
-identity case (the reference answer as the response) and the three tiers.
-Changing the set changes its fingerprint, so every judge has to be calibrated
-again before its grades qualify.
+Every case carries catalog-style criteria, and every category has the three
+tiers. Knowledge, reasoning, coding and translation have cases on the
+reference path, as some of their catalog prompts do. Translation also has
+cases without a reference answer and a faithful translation into the wrong
+language on each path. Agent cases are judged against their planted findings.
+Math cases the judge grades answer in a form the numeric extractor does not
+settle, as such answers reach the judge in production. A case settled without
+the judge (a deterministic check, a quick match or executed tests) still counts
+in the run's overall figures but not in the judge's validation for its
+category. Changing the set changes its fingerprint, so every judge has to be
+calibrated again before its grades qualify.
 
 A judge **qualifies** on ordering, because the product ranks models: ordering
 with ties at half ≥ 85 %, MAE ≤ 1.5, every reference answer at full marks, and
