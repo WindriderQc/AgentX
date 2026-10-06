@@ -112,9 +112,11 @@ function renderPortrait() {
 
 function dreamCoverageLabel(covers = {}) {
   if (covers.availableConversations == null) return 'Couverture du texte non mesurée pour ce portrait';
-  const partial = !covers.complete || covers.sourceCoverage?.some(source => !source.complete);
+  const partial = !covers.complete || covers.sourceCoverage?.some(source => !source.complete || (source.collection && source.collection.complete !== true));
   const missing = (covers.unavailableSources || []).map(key => DREAM_SOURCE_LABELS[key] || key);
-  return `${covers.conversations}/${covers.availableConversations} séances consultées · ${covers.messages}/${covers.availableMessages} messages · ${partial ? 'couverture partielle' : 'texte des séances complet'}${missing.length ? ` · sources indisponibles : ${missing.join(', ')}` : ''}`;
+  const collected = (covers.sourceCoverage || []).filter(source => source.collection).map(source =>
+    `${DREAM_SOURCE_LABELS[source.key] || source.key} : ${source.collection.collectedItems ?? '?'}/${source.collection.availableItems ?? '?'} recueillis${source.collection.complete === true ? '' : ' (collecte incomplète ou inconnue)'}`);
+  return `${covers.conversations}/${covers.availableConversations} séances consultées · ${covers.messages}/${covers.availableMessages} messages · ${partial ? 'couverture partielle' : 'texte des séances complet'}${collected.length ? ` · ${collected.join(' · ')}` : ''}${missing.length ? ` · sources indisponibles : ${missing.join(', ')}` : ''}`;
 }
 
 async function pollDream(epoch = dream.epoch) {

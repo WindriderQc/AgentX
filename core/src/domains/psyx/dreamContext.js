@@ -64,7 +64,12 @@ function normalizeDreamCoverage(raw = {}) {
     through: raw.through && !Number.isNaN(through.getTime()) ? through.toISOString() : null,
     sourceCoverage: (Array.isArray(raw.sourceCoverage) ? raw.sourceCoverage : []).slice(0, 8).map(source => ({
       key: text(source.key).slice(0, 80), includedCharacters: count(source.includedCharacters),
-      availableCharacters: count(source.availableCharacters), complete: source.complete === true
+      availableCharacters: count(source.availableCharacters), complete: source.complete === true,
+      ...(source.collection && { collection: {
+        collectedItems: count(source.collection.collectedItems), availableItems: count(source.collection.availableItems),
+        complete: typeof source.collection.complete === 'boolean' ? source.collection.complete : null,
+        reason: text(source.collection.reason).slice(0, 80) || null
+      } })
     })),
     unavailableSources: (Array.isArray(raw.unavailableSources) ? raw.unavailableSources : []).map(key => text(key).slice(0, 80)).filter(Boolean).slice(0, 8)
   };

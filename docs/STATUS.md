@@ -111,6 +111,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   Coding-task preparation passes that supplied text, the full task discussion
   and the permitted file inventory without additional cuts. Its coverage is
   recorded on the ticket; a planner input refusal preserves the request.
+- **PsyX source coverage.** Dream portraits distinguish source items collected
+  from text supplied to the model. Collection limits, stalled pagination and
+  unknown task totals appear in the prompt and saved portrait coverage.
 - **Retrieval input.** Reranking passes complete passages to Core. Embedding
   inputs are sent whole or refused: the provider declares its character limit,
   Core requests native context refusal, and ingestion does not index a partial

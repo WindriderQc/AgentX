@@ -17,12 +17,18 @@ function createSources({ runtimeServices, mailJournal = null, logger = console, 
       const space = runtimeServices?.memory?.notes?.personal?.();
       if (!space?.list) return null;
       const notes = [];
+      let total = null, more = false, stalled = false;
       for (let offset = 0; offset != null && notes.length < 300;) {
         const page = await space.list({ limit: 100, offset });
         notes.push(...(page.notes || []));
-        offset = page.truncated && page.nextOffset > offset ? page.nextOffset : null;
+        total = Number.isSafeInteger(page.total) ? page.total : total;
+        more = page.truncated === true;
+        stalled = more && !(page.nextOffset > offset);
+        offset = more && !stalled ? page.nextOffset : null;
       }
       return { title: 'Notes his assistant keeps about him (facts, preferences, decisions)', count: notes.length,
+        collection: { collectedItems: notes.length, availableItems: total ?? (!more ? notes.length : null),
+          complete: !more, reason: stalled ? 'pagination_not_advancing' : more ? 'collection_limit' : null },
         text: notes.map(note => `- [${note.kind || 'fact'}, ${day(note.updatedAt)}] ${line(note.text)}`).join('\n') };
     },
     async tasks() {
@@ -30,21 +36,32 @@ function createSources({ runtimeServices, mailJournal = null, logger = console, 
       if (!list) return null;
       const result = await list({ limit: 100 });
       const tasks = result.tasks || [];
+      // This API has a limit but no continuation/total. At the limit we cannot
+      // tell whether all open tasks were collected.
+      const complete = tasks.length < 100 ? true : null;
       return { title: `His open tasks and reminders (${result.overdueCount || 0} overdue)`, count: tasks.length,
+        collection: { collectedItems: tasks.length, availableItems: complete ? tasks.length : null,
+          complete, reason: complete ? null : 'collection_limit_total_unknown' },
         text: tasks.map(task => `- ${line(task.title)}${task.dueAt ? ` (due ${day(task.dueAt)}${task.overdue ? ', overdue' : ''})` : ''}`).join('\n') };
     },
     async mail(now) {
       if (!mailJournal?.search) return null;
       const entries = new Map();
-      let until;
+      let until, total = null, more = false, stalled = false;
       for (let page = 0; page < 4; page += 1) {
         const result = await mailJournal.search({ since: new Date(now.getTime() - mailDays * DAY), limit: 50, ...(until ? { until } : {}) });
+        if (page === 0 && Number.isSafeInteger(result.total)) total = result.total;
         for (const entry of result.entries || []) entries.set(entry.id, entry);
         const oldest = result.entries?.at(-1)?.occurredAt;
-        if (!result.truncated || !oldest || String(oldest) === String(until)) break;
+        more = result.truncated === true;
+        stalled = more && (!oldest || String(oldest) === String(until));
+        if (!more || stalled) break;
         until = oldest;
       }
+      const complete = !more && (total == null || entries.size === total);
       return { title: `His mail journal, last ${mailDays} days (summaries written by his mail assistant)`, count: entries.size,
+        collection: { collectedItems: entries.size, availableItems: total ?? (complete ? entries.size : null), complete,
+          reason: stalled ? 'pagination_not_advancing' : more ? 'collection_limit' : complete ? null : 'collection_changed' },
         text: [...entries.values()].map(entry => `- ${day(entry.occurredAt)} | ${line(entry.counterpart)} | ${line(entry.subject)}: ${line(entry.summary)}`).join('\n') };
     }
   };
