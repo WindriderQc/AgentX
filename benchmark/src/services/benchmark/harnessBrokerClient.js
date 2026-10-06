@@ -220,7 +220,8 @@ function normalizeHarnessInvocationParameters(parameters = {}, {
     maxTokens: normalizedMaxTokens,
     timeoutMs: normalizedTimeoutMs,
     thinking: thinkingValue,
-    responseFormat: role === 'judge' ? 'json' : 'text'
+    responseFormat: role === 'judge' ? 'json' : 'text',
+    ...(parameters.reasoningMaxTokens != null ? { reasoningMaxTokens: Number(parameters.reasoningMaxTokens) } : {})
   };
 }
 
@@ -255,7 +256,7 @@ function buildHarnessEnvelope({
   const estimatedInputTokens = Math.max(1, Math.ceil(Buffer.byteLength(String(promptText || ''), 'utf8') / 3));
   const totalTokenBudget = Math.min(1_000_000_000, isNative
     ? (targetIdentity.contextWindow + invocationParameters.maxTokens) * nativePolicy.maxTurns
-    : estimatedInputTokens + invocationParameters.maxTokens);
+    : (targetIdentity.api?.name === 'openclaw-model-sdk' ? targetIdentity.contextWindow : estimatedInputTokens) + invocationParameters.maxTokens);
   return normalizeWorkerEnvelope({
     schema: 'agentx.worker-envelope/v1',
     schemaVersion: 1,
@@ -397,7 +398,8 @@ function buildSpendPlan({ batchId, batchFingerprint, targets, judgeTarget = null
   const inputTokensPerCall = Math.max(1, Number(executionConfig?.input_token_ceiling) || 32_000);
   const units = paidExecutionUnits.map(unit => ({
     ...unit,
-    inputTokensPerCall: unit.target.mode === 'native_agent' ? unit.target.contextWindow * unit.target.nativePolicy.maxTurns : inputTokensPerCall,
+    inputTokensPerCall: unit.target.mode === 'native_agent' ? unit.target.contextWindow * unit.target.nativePolicy.maxTurns
+      : unit.target.api?.name === 'openclaw-model-sdk' ? unit.target.contextWindow : inputTokensPerCall,
     outputTokensPerCall: outputTokensPerCall * (unit.target.mode === 'native_agent' ? unit.target.nativePolicy.maxTurns : 1)
   }));
   const maxTokens = units.reduce((sum, unit) => sum + unit.calls * (unit.inputTokensPerCall + unit.outputTokensPerCall), 0);

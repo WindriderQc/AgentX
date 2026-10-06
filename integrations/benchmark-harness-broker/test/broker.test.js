@@ -400,3 +400,19 @@ test('a failed repository verifier produces a failed receipt with its measured u
   assert.equal(receipt.usage.totalTokens, 19);
   assert.equal(receipt.evidence.tests[0].status, 'failed');
 });
+
+test('expired cloud entries do not disable freshly pinned local targets in a mixed catalog', async () => {
+  const item = await fixture();
+  try {
+    const config = JSON.parse(await fs.readFile(item.configPath, 'utf8'));
+    const localTarget = require('../contract').normalizeTarget({ ...config.targets[0].target, id: 'local-preserved', tier: 'local', provider: 'ollama', pricing: null });
+    config.targets.push({ ...config.targets[0], target: localTarget });
+    config.catalog.observedAt = new Date(Date.now() - 120000).toISOString();
+    config.catalog.expiresAt = new Date(Date.now() - 60000).toISOString();
+    await fs.writeFile(item.configPath, JSON.stringify(config));
+    const result = await item.broker.catalog();
+    assert.equal(result.targets.find(target => target.id === 'local-preserved').fingerprint, localTarget.fingerprint);
+    assert.equal(result.targets.find(target => target.id === item.target.id).available, false);
+    assert.ok(Date.parse(result.expiresAt) > Date.now());
+  } finally { await cleanup(item); }
+});
