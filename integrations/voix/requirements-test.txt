@@ -1,0 +1,11 @@
+# Enough to run `python -m pytest -q` here: no speech model, no GPU package.
+certifi
+fastapi
+httpx
+numpy
+pytest
+pytest-asyncio
+python-dotenv
+python-multipart
+requests
+soundfile

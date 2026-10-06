@@ -1,0 +1,5 @@
+# Optional Linux CUDA worker; install separately from the speech service environment.
+torch==2.8.0
+torchaudio==2.8.0
+voxcpm==2.0.3
+transformers==4.57.3
