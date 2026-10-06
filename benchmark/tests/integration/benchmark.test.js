@@ -749,6 +749,43 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.error).toContain('required');
         });
 
+        it.each([{ response_max_tokens: 80000 }, { early_stop_enabled: 'false' },
+            { per_test_timeout_ms: 3600001 }])('rejects candidate policies before creating a batch: %j', async execution_config => {
+            const response = await api.post('/api/benchmark/batch').send({
+                host: 'http://localhost:11434', models: ['ax/test-model'], levels: [1], execution_config
+            });
+            expect(response.status).toBe(400);
+            expect(response.body.code).toBe('INVALID_EXECUTION_CONFIG');
+            expect(await BenchmarkBatch.countDocuments()).toBe(0);
+        });
+
+        it('publishes candidate limits and accepts a timeout supported by stored configuration', async () => {
+            const config = await api.get('/api/benchmark/config');
+            expect(config.body.data.execution_policy).toMatchObject({ responseTokenLimit: 50000,
+                timeoutLimits: { per_test_timeout_ms: [30000, 3600000] },
+                earlyStop: { enabledByDefault: true, minJudged: 5, threshold: 2 } });
+            const response = await api.post('/api/benchmark/batch').send({
+                host: 'http://localhost:11434', models: ['ax/test-model'], levels: [1],
+                judge_config: { host: 'http://localhost:11434', model: 'judge-model' },
+                execution_config: { per_test_timeout_ms: 1800000, early_stop_enabled: false }
+            });
+            expect(response.status).toBe(200);
+            const batch = await BenchmarkBatch.findById(response.body.data.batch_id).lean();
+            expect(batch.execution_config).toMatchObject({ per_test_timeout_ms: 1800000, early_stop_enabled: false });
+        });
+
+        it('rejects an incompatible preflight budget before resolving readiness', async () => {
+            const preflight = require('../../src/services/benchmark/preflight').runPreflight;
+            const callsBefore = preflight.mock.calls.length;
+            const response = await api.post('/api/benchmark/preflight').send({
+                execution_config: { response_max_tokens: 80000 }
+            });
+            expect(response.status).toBe(400);
+            expect(response.body.code).toBe('INVALID_EXECUTION_CONFIG');
+            expect(preflight.mock.calls).toHaveLength(callsBefore);
+            expect(await BenchmarkBatch.countDocuments()).toBe(0);
+        });
+
         it('derives campaign kind from targets instead of trusting the submitted label', async () => {
             const response = await api.post('/api/benchmark/batch').send({
                 host: 'http://localhost:11434',

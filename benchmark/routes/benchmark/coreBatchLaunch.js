@@ -38,6 +38,7 @@ const {
     buildActiveProfilingConflict
 } = require('./coreShared');
 const { checkJudgeLimits } = require('../../src/services/benchmark/judgeLaunchLimits');
+const { validateExecutionPolicy } = require('../../src/services/benchmark/executionPolicy');
 /**
  * POST /api/benchmark/batch
  * Start a batch benchmark test with quality scoring
@@ -129,24 +130,14 @@ router.post('/batch', async (req, res) => {
         }
     }
 
+    try {
+        validateExecutionPolicy(execution_config);
+    } catch (error) {
+        return res.status(error.statusCode).json({ status: 'error', code: error.code, error: error.message });
+    }
     // Validate advanced execution_config fields if provided
     if (execution_config && typeof execution_config === 'object') {
         const ec = execution_config;
-        if (ec.per_test_timeout_ms !== undefined && (typeof ec.per_test_timeout_ms !== 'number' || ec.per_test_timeout_ms < 30000 || ec.per_test_timeout_ms > 1200000)) {
-            return res.status(400).json({ status: 'error', error: 'execution_config.per_test_timeout_ms must be between 30000 and 1200000' });
-        }
-        if (ec.warmup_timeout_cold !== undefined && (typeof ec.warmup_timeout_cold !== 'number' || ec.warmup_timeout_cold < 30000 || ec.warmup_timeout_cold > 600000)) {
-            return res.status(400).json({ status: 'error', error: 'execution_config.warmup_timeout_cold must be between 30000 and 600000' });
-        }
-        if (ec.warmup_timeout_loaded !== undefined && (typeof ec.warmup_timeout_loaded !== 'number' || ec.warmup_timeout_loaded < 10000 || ec.warmup_timeout_loaded > 180000)) {
-            return res.status(400).json({ status: 'error', error: 'execution_config.warmup_timeout_loaded must be between 10000 and 180000' });
-        }
-        if (ec.judge_drain_timeout_ms !== undefined && (typeof ec.judge_drain_timeout_ms !== 'number' || ec.judge_drain_timeout_ms < 300000 || ec.judge_drain_timeout_ms > 3600000)) {
-            return res.status(400).json({ status: 'error', error: 'execution_config.judge_drain_timeout_ms must be between 300000 and 3600000' });
-        }
-        if (ec.judge_stall_timeout_ms !== undefined && (typeof ec.judge_stall_timeout_ms !== 'number' || ec.judge_stall_timeout_ms < 30000 || ec.judge_stall_timeout_ms > 600000)) {
-            return res.status(400).json({ status: 'error', error: 'execution_config.judge_stall_timeout_ms must be between 30000 and 600000' });
-        }
         if (ec.think !== undefined) {
             const validThink = typeof ec.think === 'boolean'
                 || ['auto', 'on', 'off', 'true', 'false', 'enabled', 'disabled', 'force', 'forced', 'never', 'best_qualified'].includes(String(ec.think).trim().toLowerCase());

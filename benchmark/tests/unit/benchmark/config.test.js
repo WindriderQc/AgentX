@@ -5,6 +5,20 @@ const {
 } = require('../../../src/services/benchmark/config');
 
 describe('benchmark execution config prompt hints', () => {
+    it('rejects an incompatible output request instead of silently reducing it', () => {
+        expect(() => normalizeExecutionConfig({ response_max_tokens: 80000 })).toThrow('between 1 and 50000');
+        expect(() => normalizeExecutionConfig({ response_max_tokens: 4096, response_min_tokens: 8192 })).toThrow('at least response_min_tokens');
+        expect(normalizeExecutionConfig({ response_max_tokens: 50000 }).response_max_tokens).toBe(50000);
+    });
+
+    it('preserves a complete-coverage early-stop opt-out through stored normalization', () => {
+        const config = normalizeExecutionConfig({ early_stop_enabled: false });
+        expect(config.early_stop_enabled).toBe(false);
+        expect(normalizeExecutionConfig(config).early_stop_enabled).toBe(false);
+        expect(normalizeExecutionConfig({}).early_stop_enabled).toBe(true);
+        expect(() => normalizeExecutionConfig({ early_stop_enabled: 'false' })).toThrow('must be a boolean');
+    });
+
     it('defaults execution thinking to auto and preserves explicit controls', () => {
         expect(normalizeExecutionConfig({}).think).toBe('auto');
         expect(normalizeExecutionConfig({ think: 'auto' }).think).toBe('auto');

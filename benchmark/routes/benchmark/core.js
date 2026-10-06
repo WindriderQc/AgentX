@@ -11,6 +11,7 @@ const benchmarkService = require('../../src/services/benchmark');
 const { JUDGE_CONFIG, ENHANCED_SCORING_CONFIGS } = require('../../src/services/qualityScorer');
 const { runPreflight } = require('../../src/services/benchmark/preflight');
 const { resolveReadyJudgeTarget } = require('../../src/services/benchmark/judgeReadiness');
+const { RESPONSE_TOKEN_LIMIT, EXECUTION_TIMEOUT_LIMITS, EARLY_STOP_POLICY, validateExecutionPolicy } = require('../../src/services/benchmark/executionPolicy');
 const {
     readJudgeDefaults,
     lookupHostJudgeDefault,
@@ -39,6 +40,8 @@ router.get('/config', async (req, res) => {
         data: {
             judge_config: baseJudge,
             execution_config: benchmarkService.getExecutionConfigDefaults(),
+            execution_policy: { responseTokenLimit: RESPONSE_TOKEN_LIMIT,
+                timeoutLimits: EXECUTION_TIMEOUT_LIMITS, earlyStop: EARLY_STOP_POLICY },
             scoring_configs: ENHANCED_SCORING_CONFIGS,
             judge_host_defaults: judgeDefaults
         }
@@ -132,6 +135,7 @@ router.use(require('./coreJudge'));
 router.post('/preflight', async (req, res) => {
     try {
         const { targets = [], judge_config = {}, levels, prompt_ids = null, execution_config = null } = req.body || {};
+        validateExecutionPolicy(execution_config);
         const readiness = await resolveReadyJudgeTarget({
             host: judge_config.host,
             model: judge_config.model
@@ -174,7 +178,7 @@ router.post('/preflight', async (req, res) => {
         });
     } catch (err) {
         logger.error('Pre-flight check failed', { error: err.message });
-        res.status(500).json({ status: 'error', error: err.message });
+        res.status(err.statusCode || 500).json({ status: 'error', code: err.code, error: err.message });
     }
 });
 
