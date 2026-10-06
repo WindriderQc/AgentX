@@ -9,7 +9,7 @@ jest.mock('../../src/clients/coreCoverageReads', () => ({
 const { validate, DEFAULTS } = require('../../src/services/measurementCoverage/coverageSettings');
 const { checkIdle, quietWindow } = require('../../src/services/measurementCoverage/coverageIdle');
 const { launchBite, executionConfigFor } = require('../../src/services/measurementCoverage/coverageLauncher');
-const { createCoverageJob, orderCells, cellKey, MAX_FAILURES } = require('../../src/services/measurementCoverage/coverageJob');
+const { createCoverageJob, orderCells, cellKey, MAX_FAILURES, REFUSAL_COOLDOWN_MS } = require('../../src/services/measurementCoverage/coverageJob');
 
 const settings = { ...DEFAULTS, enabled: true, timeZone: 'UTC', quietStart: '01:00', quietEnd: '06:00', idleMinutes: 10, bitePrompts: 3 };
 const at = time => new Date(`2030-01-01T${time}:00Z`);
@@ -25,7 +25,7 @@ describe('coverage settings', () => {
     expect(validate({ enabled: true, quietStart: '23:30', timeZone: 'America/Toronto', bitePrompts: 12 }))
       .toMatchObject({ enabled: true, quietStart: '23:30', quietEnd: '06:00', timeZone: 'America/Toronto', bitePrompts: 12 });
     for (const bad of [{ enabled: 'yes' }, { quietStart: '25:00' }, { quietEnd: '01:00' }, { timeZone: 'Mars/Base' },
-      { idleMinutes: -1 }, { bitePrompts: 0 }, { bitePrompts: 2.5 }]) {
+      { idleMinutes: -1 }, { idleMinutes: null }, { idleMinutes: '' }, { idleMinutes: '5' }, { bitePrompts: 0 }, { bitePrompts: 2.5 }]) {
       expect(() => validate(bad)).toThrow(expect.objectContaining({ code: 'COVERAGE_SETTINGS_INVALID' }));
     }
   });
@@ -168,5 +168,23 @@ describe('coverage job', () => {
     const result = await job.tick();
     expect(state.cells[key].failures).toBe(0);
     expect(result.started).toMatchObject({ outcome: 'not_started', error: 'host is claimed' });
+    expect(state.cells[key].refusedAt).toBe(at('02:00').toISOString());
+  });
+
+  it.each([409, 422, 503, undefined])('a refused launch (status %s) lets the next pair go and is never a failure', async statusCode => {
+    const first = cell({ hostUrl: 'http://a:1', catalog: { total: 10, covered: 1 } });
+    const second = cell({ hostUrl: 'http://b:1', catalog: { total: 10, covered: 5 } });
+    const state = { last: null, cells: {} };
+    const launch = jest.fn()
+      .mockRejectedValueOnce(Object.assign(new Error('refused'), { statusCode }))
+      .mockResolvedValue({ kind: 'benchmark', id: 'b2', prompts: 3 });
+    const { job } = harness({ cells: [first, second], state, launch });
+    await job.tick();
+    expect(state.cells[cellKey(first)]).toMatchObject({ failures: 0, lastError: 'refused' });
+    const next = await job.tick();
+    expect(next.started).toMatchObject({ cell: cellKey(second), id: 'b2' });
+    const now = at('02:00').getTime();
+    expect(orderCells([first], state, now + REFUSAL_COOLDOWN_MS - 1)).toEqual([]);
+    expect(orderCells([first], state, now + REFUSAL_COOLDOWN_MS + 1)).toEqual([first]);
   });
 });

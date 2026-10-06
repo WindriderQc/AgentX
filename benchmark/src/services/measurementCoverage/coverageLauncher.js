@@ -25,7 +25,7 @@ async function post(path, body, fetchImpl = fetch) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-AgentX-Caller': 'benchmark-coverage' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(120000)
+    signal: AbortSignal.timeout(300000)
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.status === 'error') {

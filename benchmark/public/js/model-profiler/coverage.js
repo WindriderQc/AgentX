@@ -53,7 +53,8 @@
   function render(target, data) {
     var summary = data.summary;
     if (!data.cells.length) {
-      target.innerHTML = '<p class="mp-coverage-empty">No model is pinned or routed on a known host yet.</p>';
+      target.innerHTML = '<p class="mp-coverage-empty">No model is pinned or routed on a known host yet.</p>' + jobPanel(data.job);
+      bindSettings(target);
       return;
     }
     target.innerHTML =
@@ -62,6 +63,10 @@
       ' host and model pairs complete <small>scorer ' + escapeHtml(data.scorerVersion) + '</small></p>' +
       '<table class="mp-coverage-table"><thead><tr><th>Host</th><th>Model</th><th>Profile</th><th>Catalog</th><th>Next</th></tr></thead>' +
       '<tbody>' + data.cells.map(row).join('') + '</tbody></table>' + jobPanel(data.job);
+    bindSettings(target);
+  }
+
+  function bindSettings(target) {
     var form = target.querySelector('.mp-coverage-settings');
     if (form) form.addEventListener('submit', function (event) { event.preventDefault(); save(form); });
   }

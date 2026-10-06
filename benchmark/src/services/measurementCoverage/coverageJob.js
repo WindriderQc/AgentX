@@ -22,11 +22,17 @@ const { hostKey, modelKey } = require('./coverageScope');
 const TICK_MS = 60_000;
 const MAX_FAILURES = 3;
 const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
+// A launch that is refused (busy host, judge unavailable, preflight) says
+// nothing about the measurement: the pair waits a while so the others get
+// their turn, and it is never counted as a failure.
+const REFUSAL_COOLDOWN_MS = 30 * 60 * 1000;
 
 // The Profiler keeps its running jobs in memory; ask it the way the UI does.
 async function activeProfiles(fetchImpl = fetch) {
   const response = await fetchImpl(`http://127.0.0.1:${process.env.PORT || 3081}/api/profiler/pipeline/profile/active`,
     { signal: AbortSignal.timeout(10000) });
+  // Fail closed: an unreadable answer must not read as "no profile running".
+  if (!response.ok) throw new Error(`Active profiles unavailable (HTTP ${response.status})`);
   const active = (await response.json())?.data?.active;
   return Array.isArray(active) ? active.length > 0 : Object.keys(active || {}).length > 0;
 }
@@ -40,7 +46,9 @@ function orderCells(cells, state, now) {
     .filter(cell => cell.next && cell.hostId)
     .filter(cell => {
       const record = state.cells[cellKey(cell)];
-      return !record || record.failures < MAX_FAILURES || now - Date.parse(record.lastAttemptAt) > RETRY_AFTER_MS;
+      if (!record) return true;
+      if (record.refusedAt && now - Date.parse(record.refusedAt) < REFUSAL_COOLDOWN_MS) return false;
+      return !(record.failures >= MAX_FAILURES) || now - Date.parse(record.lastAttemptAt) > RETRY_AFTER_MS;
     })
     .sort((a, b) => (a.next === b.next ? 0 : a.next === 'profile' ? -1 : 1)
       || a.catalog.covered / (a.catalog.total || 1) - b.catalog.covered / (b.catalog.total || 1)
@@ -96,15 +104,14 @@ function createCoverageJob(deps = {}) {
       }
       const attempt = { cell: cellKey(cell), hostName: cell.hostName, model: cell.model, kind: cell.next,
         at: new Date(now()).toISOString(), progressBefore: progressOf(cell) };
+      const record = state.cells[attempt.cell] = state.cells[attempt.cell] || { failures: 0 };
       try {
         Object.assign(attempt, await launch(cell, settings));
+        record.refusedAt = null;
         logger.info('[Coverage] Measurement started', attempt);
       } catch (error) {
-        // A refusal (busy host, preflight) is not a failed measurement: try again later.
-        const record = state.cells[attempt.cell] = state.cells[attempt.cell] || { failures: 0 };
-        record.lastAttemptAt = attempt.at;
+        record.refusedAt = attempt.at;
         record.lastError = error.message;
-        if (!error.statusCode || error.statusCode >= 500 || error.statusCode === 400) record.failures += 1;
         Object.assign(attempt, { settledAt: attempt.at, outcome: 'not_started', error: error.message });
         logger.warn('[Coverage] Measurement not started', { cell: attempt.cell, error: error.message });
       }
@@ -140,4 +147,4 @@ function getCoverageJob() {
   return shared;
 }
 
-module.exports = { createCoverageJob, getCoverageJob, orderCells, settle, cellKey, MAX_FAILURES };
+module.exports = { createCoverageJob, getCoverageJob, orderCells, settle, cellKey, MAX_FAILURES, REFUSAL_COOLDOWN_MS };

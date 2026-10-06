@@ -52,8 +52,8 @@ function validate(input = {}, current = DEFAULTS) {
   }
   for (const [key, min, max] of [['idleMinutes', 0, 240], ['bitePrompts', 1, 50]]) {
     if (input[key] === undefined) continue;
-    const value = Number(input[key]);
-    if (!Number.isInteger(value) || value < min || value > max) throw settingsError(`${key} must be a whole number from ${min} to ${max}`);
+    const value = input[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) throw settingsError(`${key} must be a whole number from ${min} to ${max}`);
     next[key] = value;
   }
   return next;
