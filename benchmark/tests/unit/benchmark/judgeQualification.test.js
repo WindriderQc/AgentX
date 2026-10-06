@@ -46,6 +46,14 @@ function report(overrides = {}, judge = JUDGE) {
 
 let mongoServer;
 
+test('a diagnostic cannot replace qualification even if its selected cases all pass', async () => {
+    const initial = await recordAccuracyCalibration(report());
+    await expect(recordAccuracyCalibration({ ...report(), diagnostic: true })).rejects.toThrow('cannot publish qualification');
+    expect(await JudgeQualification.countDocuments()).toBe(1);
+    const saved = await getQualificationRecord(initial.id);
+    expect(saved.qualified).toBe(true);
+});
+
 beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
     await mongoose.connect(mongoServer.getUri(), mongoOptions);
@@ -74,7 +82,10 @@ describe('judge qualification records', () => {
     });
 
     test('a passing record qualifies the exact judge, host and scorer version only', async () => {
-        const saved = await recordAccuracyCalibration(report(), { digest: 'sha256:abc' });
+        const judgeConfig = { ...JUDGE, num_ctx: 65536, num_predict: 800, think: false,
+            execution_contract: { num_ctx: 65536, artifact: { digest: 'sha256:abc' } } };
+        const saved = await recordAccuracyCalibration({ ...report(), judge_config: judgeConfig }, { digest: 'sha256:abc' });
+        expect((await getQualificationRecord(saved.id)).judge_config).toEqual(judgeConfig);
         expect(saved).toMatchObject({ qualified: true, judge_digest: 'sha256:abc', scorer_version: SCORER_VERSION });
 
         const [same, otherHost, otherModel] = await assessLeaderboardRows([
