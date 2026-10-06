@@ -35,13 +35,11 @@ except ModuleNotFoundError:  # direct execution from the scripts directory
         build_verified_feedback,
     )
 
-
 PIPELINE_ATTRIBUTION_ALIAS = "ollama/agentx-pipeline"
 
 PASS_STATUSES = {"pass", "passed", "ok", "verified", "done"}
 
 AUTOMATION_EVIDENCE_SCHEMA = "agentx.pipeline-automation-evidence/v1"
-
 
 REPO_PATH_PATTERN = re.compile(
     r"(?<![/A-Za-z0-9_.-])([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)"
@@ -176,6 +174,7 @@ def build_attempt_evidence(
     routing_evidence: Mapping[str, Any] | None = None,
     attribution_lease: Mapping[str, Any] | None = None,
     inference: Mapping[str, Any] | None = None,
+    repository: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     change_metrics = changes or {}
     cost_nanodollars = None
@@ -225,6 +224,7 @@ def build_attempt_evidence(
         "source": "clawdx-guarded/v1",
         **({"routing": dict(routing_evidence)} if routing_evidence else {}),
         **({"inference": dict(inference)} if inference else {}),
+        **({"repository": dict(repository)} if repository else {}),
     }
 
 

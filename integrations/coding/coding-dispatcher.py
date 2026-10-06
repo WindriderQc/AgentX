@@ -9,6 +9,11 @@ it, and it delegates execution to the existing guarded ClawdX dispatcher.
 
 from __future__ import annotations
 
+try:
+    from integrations.coding.coding_task_worktree import configure_execution
+except ModuleNotFoundError:
+    from coding_task_worktree import configure_execution
+
 import argparse
 import hashlib
 import json
@@ -39,18 +44,14 @@ DEFAULT_CONFIG = Path(os.environ.get("AGENTX_CODING_CONFIG") or (
     if os.environ.get("AGENTX_INSTANCE_ROOT") else str(Path.home() / ".config/agentx/coding-dispatcher.json")))
 DEFAULT_GUARD = Path(__file__).resolve().with_name("clawdx-guarded-dispatch.py")
 
-
 class DispatcherError(RuntimeError):
     """Fail-closed configuration, API, or admission error."""
-
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
-
 def isoformat(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
 
 def parse_timestamp(value: Any) -> datetime | None:
     if value in (None, ""):
@@ -66,7 +67,6 @@ def parse_timestamp(value: Any) -> datetime | None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
 
-
 def stable_fingerprint(value: Any) -> str:
     encoded = json.dumps(
         value,
@@ -75,7 +75,6 @@ def stable_fingerprint(value: Any) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
-
 
 def bounded_identifier(value: Any, name: str, maximum: int = 240) -> str:
     text = str(value or "").strip()
@@ -571,6 +570,7 @@ class ClawdXGuardedAdapter(WorkerAdapter):
             str(self.execution["costEvidenceMode"]),
             "--allow-dispatch",
         ]
+        configure_execution(command, self.execution, self.verification)
         repair_turns = self.verification.get("repairTurns", 0)
         if type(repair_turns) is not int or repair_turns not in (0, 1):
             raise DispatcherError("verification repairTurns must be 0 or 1")

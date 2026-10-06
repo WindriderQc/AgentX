@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+try:
+    from integrations.coding.coding_task_worktree import promotion_workspace
+except ModuleNotFoundError:
+    from coding_task_worktree import promotion_workspace
+
 import argparse
 import hashlib
 import json
@@ -26,7 +31,6 @@ try:
 except ModuleNotFoundError:  # direct execution from the scripts directory
     import clawdx_dispatch_remote  # type: ignore
 
-
 PROMOTION_SCHEMA = "agentx.coding-promotion/v1"
 WORKER_RECEIPT_SCHEMA = "agentx.coding-worker-snapshot/v1"
 PRE_REVIEW_SCHEMA = "agentx.coding-team-pre-review/v1"
@@ -35,14 +39,11 @@ COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 PIPELINE_ID_PATTERN = re.compile(r"^[0-9]{4}$")
 
-
 class PromotionError(RuntimeError):
     """Raised when a promotion cannot be proven safe and exact."""
 
-
 def canonical_json(value: Mapping[str, Any]) -> bytes:
     return json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
-
 
 def safe_relative_path(value: str) -> str:
     text = str(value or "").strip()
@@ -56,7 +57,6 @@ def safe_relative_path(value: str) -> str:
     ):
         raise PromotionError("repository path is not a safe relative path")
     return text
-
 
 def worker_snapshot_payload(
     *,
@@ -96,7 +96,6 @@ def worker_snapshot_payload(
         "baseRevision": base_revision,
         "files": records,
     }
-
 
 def worker_snapshot_fingerprint(**values: Any) -> str:
     payload = worker_snapshot_payload(**values)
@@ -810,12 +809,13 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
             pending.append((task, attempt, path, existing_receipt))
     if not pending:
         return {"schema": PROMOTION_SCHEMA, "status": "no_eligible_accepted_result"}
-    if len(pending) > promotion["maxPerRun"]:
+    if len(pending) > promotion["maxPerRun"] and not all(item[1].get("evidence", {}).get("repository") for item in pending):
         raise PromotionError("multiple accepted results await one shared worker checkout")
     task, attempt, receipt_file, prepared_receipt = pending[0]
     pipeline_id = str(task["pipelineId"])
     attempt_number = int(attempt["attempt"])
     branch = f"{promotion['branchPrefix']}{pipeline_id}-attempt-{attempt_number}"
+    worker_repo = Path(promotion_workspace(profile, task, attempt, PromotionError)).resolve()
     token = os.environ.get(args.github_token_env, "").strip()
     worker_clean = not git_output(worker_repo, ["status", "--porcelain"])
     if prepared_receipt is not None and worker_clean:

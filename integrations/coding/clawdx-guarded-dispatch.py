@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from integrations.coding.coding_task_worktree import prepare_task_worktree
     from integrations.coding.coding_dispatch_evidence import (  # noqa: F401 (re-exported)
         PIPELINE_ATTRIBUTION_ALIAS,
         PASS_STATUSES,
@@ -46,6 +47,7 @@ try:
         append_dispatcher_verification,
     )
 except ModuleNotFoundError:  # direct execution from the scripts directory
+    from coding_task_worktree import prepare_task_worktree
     from coding_dispatch_evidence import (  # type: ignore  # noqa: F401
         PIPELINE_ATTRIBUTION_ALIAS,
         PASS_STATUSES,
@@ -278,7 +280,7 @@ def run_dispatch(
         return 5
     except PipelineApiError as exc:
         failure = f"post_claim_dispatch_error:{type(exc).__name__}:{exc}"
-        evidence = build_attempt_evidence(duration_ms=0, failures=[failure])
+        evidence = build_attempt_evidence(duration_ms=0, failures=[failure], repository=getattr(args, "repository_evidence", None))
         evidence["usage"]["durationMs"] = None
         evidence["usage"].update(getattr(args, "observed_attempt_usage", {}))
         block_error: str | None = None
@@ -351,6 +353,8 @@ def parse_args() -> argparse.Namespace:
         "--thinking",
         choices=["off", "minimal", "low", "medium", "high", "xhigh", "adaptive", "max"],
     )
+    parser.add_argument("--task-worktrees", action="store_true")
+    parser.add_argument("--worker-verification-calls", type=int, choices=range(0, 6), default=0)
     parser.add_argument("--session-prefix", default="guarded-dispatch")
     parser.add_argument("--session-key")
     parser.add_argument("--timeout", type=int, default=900)
@@ -480,8 +484,10 @@ def main() -> int:
             raise PipelineApiError(
                 "--independent-verification-command is required with --allow-dispatch"
             )
+        dispatch_remote.validate_worker_verification_preflight(args, dispatch_openclaw.openclaw_cli_json)
         revision = source_revision(root)
-        if not args.repair_attempt:
+        revision = prepare_task_worktree(args, task, revision, dispatch_remote)
+        if not args.repair_attempt and not getattr(args, "task_worktrees", False):
             dispatch_remote.synchronize_remote_checkout(args.host, args.remote_repo, revision,
                                         source_repo=getattr(args, "source_repo", DEFAULT_REMOTE_SOURCE_REPO))
         dispatch_remote.validate_remote_project_checkout(args.host, args.remote_repo, revision)

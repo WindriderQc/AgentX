@@ -402,6 +402,16 @@ function normalizePipelineAutomationEvidence(rawValue) {
   if (routing && normalizedUsage.effectiveModel != null && routing.effectiveModel !== normalizedUsage.effectiveModel) {
     throw automationError('usage effective model disagrees with verified routing');
   }
+  let repository;
+  if (raw.repository != null) {
+    const value = object(raw.repository, 'attemptEvidence.repository');
+    if (!/^[a-f0-9]{40}$/.test(value.baseRevision || '') || !/^tasks\/\d{4,}$/.test(value.workspaceRef || '')) {
+      throw automationError('repository evidence requires an original base and task-bound worktree');
+    }
+    repository = { baseRevision: value.baseRevision, workspaceRef: value.workspaceRef,
+      verificationProfileFingerprint: optionalFingerprint(value.verificationProfileFingerprint, 'repository.verificationProfileFingerprint') };
+    if (!repository.verificationProfileFingerprint) throw automationError('repository verification profile fingerprint is required');
+  }
   let inference;
   if (raw.inference != null) {
     const value = object(raw.inference, 'attemptEvidence.inference');
@@ -463,6 +473,7 @@ function normalizePipelineAutomationEvidence(rawValue) {
     ),
     source: optionalIdentifier(raw.source, 'attemptEvidence.source', 160),
     ...(routing && { routing }),
+    ...(repository && { repository }),
     ...(inference && { inference }),
   };
 }
