@@ -87,6 +87,17 @@ reports agreement within one point, MAE, correlation, the identity check, the
 keying-bias diagnostic, the attention-probe summary and pairwise ordering
 accuracy (ties counted half).
 
+The set (`benchmark/data/judge-calibration-set.json`) covers every catalog
+category with authored responses and reference grades. A case scores on the
+path of the catalog prompts it mirrors through the fields it carries:
+`reference_tests` run the code, a `reference_answer` selects the reference
+scorer, and `judge_criteria` become the decomposed judge's specific criteria.
+Translation has cases on both of its paths (with and without a reference
+answer); agent cases are judged against their planted findings. Both have an
+identity case (the reference answer as the response) and the three tiers.
+Changing the set changes its fingerprint, so every judge has to be calibrated
+again before its grades qualify.
+
 A judge **qualifies** on ordering, because the product ranks models: ordering
 with ties at half ≥ 85 %, MAE ≤ 1.5, every reference answer at full marks, and
 no failed attention probe. Absolute agreement and correlation are diagnostics;

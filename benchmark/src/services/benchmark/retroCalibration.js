@@ -460,6 +460,8 @@ function loadConfigGoldset(filePath) {
             prompt: item.prompt,
             response: item.response,
             expected_answer: item.expected_answer || null,
+            reference_answer: item.reference_answer || undefined,
+            judge_criteria: item.judge_criteria || undefined,
             reference_tests: item.reference_tests || undefined,
             expert_scores: { overall: item.gold_score },
             expert_rationale: item.notes || `Static config goldset ${item.id} (${item.tier || 'untiered'})`,

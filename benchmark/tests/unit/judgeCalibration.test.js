@@ -1,6 +1,11 @@
 'use strict';
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const {
+    calibrationPrompt,
+    loadCalibrationSet,
     validateCalibrationSet,
     evaluateCalibrationCase,
     summarizeCalibrationResults,
@@ -13,6 +18,26 @@ const {
 } = require('../../src/services/benchmark/judgeCalibration');
 
 const entry = { prompt: '2 + 2?', response: '5', category: 'math', expert_scores: { overall: 0 } };
+
+describe('calibration case prompt', () => {
+    const criteria = ['Deadline rendered as avant vendredi'];
+    const item = { id: 'case-1', category: 'translation', prompt: 'Translate to French: before Friday',
+        expected_answer: 'avant vendredi', reference_answer: 'avant vendredi', judge_criteria: criteria,
+        response: 'avant vendredi', gold_score: 10, tier: 'excellent', notes: 'Identity.' };
+
+    test('scores a case with the criteria and reference answer its category carries, and nothing it lacks', () => {
+        expect(calibrationPrompt(item)).toEqual({ prompt: item.prompt, category: 'translation', expected_answer: 'avant vendredi',
+            reference_answer: 'avant vendredi', judge_criteria: criteria, reference_tests: undefined });
+        const { reference_answer, judge_criteria, ...plain } = item;
+        expect(Object.keys(calibrationPrompt(plain)).sort()).toEqual(['category', 'expected_answer', 'prompt', 'reference_tests']);
+    });
+
+    test('the goldset loader keeps them too', () => {
+        const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'calibration-')), 'set.json');
+        fs.writeFileSync(file, JSON.stringify([item]));
+        expect(loadCalibrationSet(file)[0]).toMatchObject({ name: 'config-goldset-case-1', reference_answer: 'avant vendredi', judge_criteria: criteria });
+    });
+});
 
 describe('calibration score presence', () => {
     test('qualifies on ordering, MAE, identity and probes; agreement and correlation are diagnostics', () => {

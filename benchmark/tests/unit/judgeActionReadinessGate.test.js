@@ -112,6 +112,9 @@ describe('judge-required API action gates', () => {
             expect(response.body.data.requested_num_ctx).toBe(input.num_ctx ?? null);
             expect(response.body.data.judge_config.execution_contract.artifact.digest).toBe('resolved-digest');
             expect(scorer.mock.calls.every(([call]) => call.judgeConfig.num_ctx === (input.num_ctx ?? 32768))).toBe(true);
+            // A case is scored on its category's path: its criteria and reference answer reach the scorer.
+            const translation = scorer.mock.calls.map(([call]) => call.prompt).find(prompt => prompt.reference_answer);
+            expect(translation).toMatchObject({ category: 'translation', judge_criteria: expect.arrayContaining([expect.any(String)]) });
             expect(response.body.data.results[0]).toMatchObject({ judge_score: 0,
                 explanation: 'Missing behavior', judge_prompt: '["criterion"]', judge_raw_response: '{"calls":[]}' });
             expect(response.body.data.valid).toBe(false);
