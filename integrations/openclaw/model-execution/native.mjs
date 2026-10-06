@@ -11,6 +11,19 @@ const withoutSecrets = value => {
     .map(([key, child]) => [key, withoutSecrets(child)]));
 };
 
+function publicParameters(params) {
+  const exposed = {};
+  for (const key of ['temperature', 'topP', 'seed', 'maxTokens', 'max_tokens', 'reasoningMaxTokens']) {
+    if (Number.isFinite(params?.[key])) exposed[key] = params[key];
+  }
+  if (typeof params?.thinking === 'boolean') exposed.thinking = params.thinking;
+  if (['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(params?.thinkingLevel)) exposed.thinkingLevel = params.thinkingLevel;
+  if (['none', 'short', 'long'].includes(params?.cacheRetention)) exposed.cacheRetention = params.cacheRetention;
+  const format = params?.response_format || params?.responseFormat;
+  if (['json_object', 'json_schema'].includes(format?.type)) exposed.responseFormat = format.type;
+  return exposed;
+}
+
 export async function loadNativeSdk() {
   const llmUrl = import.meta.resolve('openclaw/plugin-sdk/llm');
   const root = resolve(dirname(fileURLToPath(llmUrl)), '../..');
@@ -41,7 +54,7 @@ export function billingFor(model, configured) {
   const declared = configured?.params?.billingKind || model.params?.billingKind;
   if (declared === 'included') return { kind: 'included', source: 'native-declared-subscription', rates: null };
   if (model.api === 'openai-chatgpt-responses') return { kind: 'included', source: 'native-subscription-route', rates: null };
-  const rates = model.cost;
+  const rates = model.cost && Object.fromEntries(['input', 'output', 'cacheRead', 'cacheWrite'].map(key => [key, model.cost[key]]));
   if (rates && ['input', 'output', 'cacheRead', 'cacheWrite'].every(key => Number.isFinite(rates[key]) && rates[key] >= 0)) {
     if (Object.values(rates).some(value => typeof value === 'number' && value > 0)) return { kind: 'paid', source: 'openclaw-native-catalog', rates };
     if (declared === 'free' || model.id.endsWith(':free')) return { kind: 'free', source: 'openclaw-native-catalog-declared-free', rates };
@@ -147,7 +160,7 @@ export function createNativeBackend(api, { loadSdk = loadNativeSdk } = {}) {
     const { effectiveExtraParams } = sdk.applyExtraParams(streamHost, pureConfig, model.provider, model.id,
       { ...parameters, ...(Object.keys(extraBody).length ? { extraBody } : {}), ...(parameters.responseFormat === 'json' ? { responseFormat: { type: 'json_object' } } : {}) },
       thinkingLevel, scope.agentId, scope.workspaceDir, selected, scope.agentDir, 'sse', { nativeWebSearchPolicyContext: {} });
-    return { model: selected, descriptor, runtimeVersion: sdk.version, pluginFingerprint: sdk.pluginFingerprint, effectiveParameters: withoutSecrets(effectiveExtraParams || {}),
+    return { model: selected, descriptor, runtimeVersion: sdk.version, pluginFingerprint: sdk.pluginFingerprint, effectiveParameters: publicParameters(effectiveExtraParams),
       stream: (context, options) => streamHost.streamFn(selected, context, { ...options, transport: 'sse',
         apiKey: auth.apiKey || keyAndHeaders.apiKey, headers: keyAndHeaders.headers,
         ...(thinkingLevel && thinkingLevel !== 'off' ? { reasoning: thinkingLevel } : {}) }) };

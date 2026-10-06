@@ -179,7 +179,7 @@ export function createExecutionService({ backend, now = () => Date.now(), catalo
           identitySource: 'native-selected-route', modelVersion: descriptor.modelVersion, modelVersionSource: descriptor.modelVersionSource, upstreamProvider: null, responseId },
         usage, cost, billing: descriptor.billing, reservation, finishReason,
         isolation: { noAgentPrompt: true, noMemory: true, noTools: !context.tools?.length, toolsExecuted: 0,
-          noRuntimeFallback: true, modelCalls: calls, providerRouting: payload.provider || null },
+          noRuntimeFallback: true, modelCalls: calls, providerRouting: payload.provider ? { only: payload.provider.only || null, allow_fallbacks: payload.provider.allow_fallbacks ?? null } : null },
         contextFingerprint: fingerprint(context), payloadFingerprint: fingerprint(payload), configuredParameters: native.effectiveParameters,
         observedParameters: { maxTokens: findParameter(payload, aliasesForMaxTokens), temperature: findParameter(payload, ['temperature']) ?? null,
           topP: findParameter(payload, ['top_p', 'topP']) ?? null, seed: findParameter(payload, ['seed']) ?? null } };

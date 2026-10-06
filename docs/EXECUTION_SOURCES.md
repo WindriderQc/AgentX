@@ -41,7 +41,10 @@ the other source.
 Core assembles and persists conversation context. Model mode does not add an
 OpenClaw persona, session history, memory or tool execution. Core-provided RAG
 and conversation history remain explicit input. Agent mode runs the native
-profile. Existing Household native sessions and tool receipts retain their
+profile. In Playground agent mode, the completed answer is delivered once; native
+progress may be rewritten, so this path does not promise stable token deltas,
+thinking or tool receipts. Its usage and cost remain unknown when the native
+Responses API does not provide them. Existing Household native sessions and tool receipts retain their
 dedicated conversation transport.
 
 Core's reverse OpenClaw local bridge stays local. It cannot delegate an
