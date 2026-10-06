@@ -54,6 +54,28 @@ test('limited source text is identified as partial and old portraits never gain 
   assert.equal(portrait.covers.complete, null);
 });
 
+test('complete collected text cannot hide incomplete source collection from the dream or portrait', () => {
+  const collection = { collectedItems: 300, availableItems: 450, complete: false, reason: 'collection_limit' };
+  const prepared = prepareDreamRequest({ state: emptyState(), conversations: sessions(1, 10),
+    sources: [{ key: 'notes', title: 'Notes', text: 'A complete collected note.', collection }] });
+  assert.equal(prepared.coverage.sourceCoverage[0].complete, true);
+  assert.deepEqual(prepared.coverage.sourceCoverage[0].collection, collection);
+  assert.ok(prepared.messages[1].content.includes('collected 300/450 items; collection not established complete'));
+  const portrait = normalizeStoredPortrait({ updatedAt: '2026-10-01', covers: prepared.coverage });
+  assert.deepEqual(portrait.covers.sourceCoverage[0].collection, collection);
+});
+
+test('the portrait labels incomplete collection even when all conversation and collected text were supplied', () => {
+  const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+  const context = vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/dream.js'), 'utf8'), context);
+  const label = vm.runInContext(`dreamCoverageLabel({ conversations: 1, availableConversations: 1,
+    messages: 2, availableMessages: 2, complete: true, sourceCoverage: [{ key: 'notes', complete: true,
+    collection: { collectedItems: 300, availableItems: 450, complete: false } }] })`, context);
+  assert.ok(label.includes('couverture partielle'));
+  assert.ok(label.includes('300/450 recueillis'));
+});
+
 test('the stored dream coverage follows the actual fallback lane and retains unavailable sources', async () => {
   let recorded, request;
   const state = emptyState();
