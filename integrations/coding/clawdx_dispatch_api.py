@@ -35,6 +35,10 @@ DEFAULT_AGENT = "clawdx-worker"
 PIPELINE_ATTRIBUTION_ROUTE = "/api/runtime-bridges/pipeline-attribution"
 
 
+class ClaimOutcomeUnknown(PipelineApiError):
+    """A claim may have committed; never launch or replay from a lost response."""
+
+
 def api_json(
     api_base: str,
     path: str,
@@ -124,12 +128,15 @@ def claim_task(
     agent: str,
     automated: bool = False,
     lease_duration_ms: int | None = None,
+    capacity_task_type: str | None = None,
     timeout: int = 30,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"assignee": agent}
     if automated:
         request_id = os.environ.get("AGENTX_CODING_DISPATCH_REQUEST_ID", "")  # launch reference, not authority
         payload.update({"automated": True, "leaseDurationMs": lease_duration_ms, **({"dispatchRequestId": request_id} if re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", request_id) else {})})
+        if capacity_task_type:
+            payload["capacityTaskType"] = capacity_task_type
     try:
         envelope = api_json(
             api_base,
@@ -141,15 +148,17 @@ def claim_task(
         )
     except PipelineApiError as exc:
         # Core acquires this slot before updating the task or incrementing attempts.
-        if automated and exc.status == 409 and exc.code == "AUTOMATION_SLOT_OCCUPIED":
+        if automated and exc.status == 409 and exc.code in {"AUTOMATION_SLOT_OCCUPIED", "CODING_CAPACITY_WAITING"}:
             raise ResourcePreflightDeferred(str(exc), status=exc.status, code=exc.code) from exc
+        if exc.status is None or exc.status >= 500:
+            raise ClaimOutcomeUnknown("Claim acceptance is unknown; inspect the same request before another launch.") from exc
         raise
     data = envelope.get("data")
     task = data.get("task") if isinstance(data, dict) else None
     if not isinstance(task, dict):
-        raise PipelineApiError("claim response is missing data.task")
+        raise ClaimOutcomeUnknown("claim response is missing data.task")
     if task.get("status") != "in_progress" or task.get("assignee") != agent:
-        raise PipelineApiError("claim did not return the expected in_progress task assignment")
+        raise ClaimOutcomeUnknown("claim did not return the expected in_progress task assignment")
     return task
 
 

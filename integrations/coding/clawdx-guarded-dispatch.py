@@ -229,6 +229,7 @@ def run_dispatch(
         agent=args.agent,
         automated=getattr(args, "automated_lease", False),
         lease_duration_ms=getattr(args, "lease_duration_ms", None),
+        capacity_task_type=getattr(args, "attribution_task_type", "code_generation") if getattr(args, "attest_attribution", False) else None,
     )
     notify_coding_event(args, "claimed")
     active_lease = claimed_task.get("automationLease")
@@ -506,6 +507,10 @@ def main() -> int:
         )
         args.session_key = session_key
         return run_dispatch(args, task, stamp)
+    except dispatch_api.ClaimOutcomeUnknown as exc:
+        print("guarded_dispatch=unknown")
+        print(f"reason={exc}")
+        return 5
     except ResourcePreflightDeferred as exc:
         print("guarded_dispatch=deferred")
         print(f"reason={exc}")

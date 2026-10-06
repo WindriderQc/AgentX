@@ -565,6 +565,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
     def test_only_a_proven_automated_slot_refusal_is_deferred(self):
         cases = [
             (409, {"ok": False, "code": "AUTOMATION_SLOT_OCCUPIED"}, True, True),
+            (409, {"ok": False, "code": "CODING_CAPACITY_WAITING"}, True, True),
             (409, {"ok": False, "code": "TASK_UNAVAILABLE"}, True, False),
             (409, {"ok": False, "code": "AUTOMATION_SLOT_OCCUPIED"}, False, False),
             (503, {"ok": False, "code": "AUTOMATION_SLOT_OCCUPIED"}, True, False),
@@ -584,6 +585,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         with patch.object(MODULE.dispatch_api, "urlopen", side_effect=URLError("lost response")) as call:
             with self.assertRaises(MODULE.PipelineApiError) as raised:
                 MODULE.dispatch_api.claim_task("http://agentx", "0377", agent="worker", automated=True)
+        self.assertIsInstance(raised.exception, MODULE.dispatch_api.ClaimOutcomeUnknown)
         self.assertNotIsInstance(raised.exception, MODULE.ResourcePreflightDeferred)
         self.assertEqual(call.call_count, 1)
 

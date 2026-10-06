@@ -94,6 +94,8 @@ function register(api) {
             status: 1,
             assignee: 1,
             automationAttemptCount: 1,
+            codingCapacity: 1,
+            'automationLease.leaseId': 1,
             'automationLease.attempt': 1,
             'automationLease.expiresAt': 1,
             'automationAttempts.attempt': 1,

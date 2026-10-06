@@ -179,11 +179,12 @@ class HostControl:
                 self._save(latest)
         # A transport failure may have occurred after systemd accepted the unit.
         # Keep that observation uncertain rather than inventing a failed task.
-        busy = busy or bool(latest and latest["phase"] in {"submitting", "uncertain", "unknown"})
+        busy = busy or bool(latest and latest["phase"] in {"submitting", "uncertain", "unknown", "waiting"})
         run = self._read(key) if key else latest
         observed = self._observe(run, tasks, unit, busy)
         if observed:
             observed["canRetry"] = observed["phase"] in {"submitting", "uncertain"} and not run.get("startedAt") and not host_busy
+            observed["canCancel"] = observed["phase"] == "waiting" and not host_busy
         if key and not run:
             observed = {"requestId": key, "phase": "not_received", "message": "No receipt for this request. Retry only with the same request id."}
         by_id = {task["pipelineId"]: task for task in tasks}
@@ -251,6 +252,41 @@ class HostControl:
             raise ControlError(run["code"], run["message"], run=run)
         return {"accepted": run["phase"] != "uncertain", "replayed": replayed, "pipelineId": run["pipelineId"], "run": run}
 
+    def resume_waiting(self, key):
+        """The existing host tick resumes only a previously accepted request."""
+        with self.lock_factory():
+            run = self._read(request_id(key))
+            if not run or run["phase"] != "waiting" or self.unit_reader().get("ActiveState") in ACTIVE or self.work_busy():
+                return {"resumed": False}
+            try:
+                self.starter(run)
+                run.update(phase="accepted", message="The same request is checking the selected model capacity again.")
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                return {"resumed": False}
+            except Exception:
+                run.update(phase="uncertain", message="Resume acceptance is unknown. Observe this request before another launch.")
+            self._save(run)
+            return {"resumed": run["phase"] == "accepted", "run": run}
+
+    def cancel_waiting(self, key):
+        with self.lock_factory():
+            run = self._read(request_id(key))
+            if not run or run["phase"] != "waiting" or self.unit_reader().get("ActiveState") in ACTIVE or self.work_busy():
+                raise ControlError("CODING_DISPATCH_CANCEL_REFUSED", "Only an inactive capacity wait can be cancelled.")
+            task = next((task for task in self.read_tasks() if task.get("pipelineId") == run["pipelineId"]), {})
+            if task.get("status") != "queued" or int(task.get("automationAttemptCount") or 0) != run["expectedAttemptCount"]:
+                raise ControlError("CODING_DISPATCH_TASK_CHANGED", "The waiting task changed; inspect its existing attempt.")
+            if task.get("codingCapacity"):
+                try:
+                    from integrations.coding.clawdx_dispatch_api import api_json
+                except ModuleNotFoundError:
+                    from clawdx_dispatch_api import api_json
+                api_json(self.config["apiBase"], f"/api/pipeline/tasks/{run['pipelineId']}/capacity/cancel",
+                         method="POST", payload={"requestId": key}, retries=0)
+            run.update(phase="stopped", message="Capacity waiting was cancelled. The task remains queued and no attempt was consumed.")
+            self._save(run)
+            return {"cancelled": True, "run": run}
+
     def execute(self, key):
         with self.lock_factory():
             run = self._read(key)
@@ -274,17 +310,23 @@ class HostControl:
             exit_code = -1
         with self.lock_factory():
             unknown = exit_code == admission.dispatch_budget.UNKNOWN_EXIT or exit_code < 0
-            run.update(phase="unknown" if unknown else "finished", exitCode=exit_code,
+            waiting = exit_code == admission.dispatch_budget.DEFERRED_EXIT
+            run.update(phase="waiting" if waiting else "unknown" if unknown else "finished", exitCode=exit_code,
                        finishedAt=admission.isoformat(admission.utc_now()),
-                       message="Execution completion is unproven. Recover this request and task before another launch."
+                       message="Waiting for the selected coding capacity. No attempt was consumed; the host tick resumes this same request."
+                       if waiting else "Execution completion is unproven. Recover this request and task before another launch."
                        if unknown else "The host dispatcher finished. Read the task status and dossier for its outcome.")
+            if waiting:
+                run.setdefault("waitingSince", run["startedAt"])
+                run.pop("startedAt", None)
+                run.pop("finishedAt", None)
             self._save(run)
         return exit_code
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["status", "launch", "execute", "catalog"])
+    parser.add_argument("action", choices=["status", "launch", "execute", "catalog", "resume-waiting", "cancel-waiting"])
     parser.add_argument("values", nargs="*")
     args = parser.parse_args()
     try:
@@ -293,6 +335,10 @@ def main():
             return control.execute(request_id(args.values[0]))
         if args.action == "catalog" and not args.values:
             data = control.catalog()
+        elif args.action == "resume-waiting" and len(args.values) == 1:
+            data = control.resume_waiting(args.values[0])
+        elif args.action == "cancel-waiting" and len(args.values) == 1:
+            data = control.cancel_waiting(args.values[0])
         elif args.action == "status" and len(args.values) <= 1:
             data = control.status(args.values[0] if args.values else None)
         elif args.action == "launch" and len(args.values) == 3:
