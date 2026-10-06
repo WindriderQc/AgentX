@@ -19,6 +19,7 @@ const { scoreSpeechLanguage, speechText } = require('../../public/js/voice/speec
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
 const teamAddress = require('./team-address');
+const { serverTimingsOf } = require('./turn-phases');
 const { turnDirective } = require('./persona-prompt');
 
 // A team member's own personality: the active catalog persona naming that agent, so an
@@ -159,6 +160,7 @@ function createPersonaTurnHandler({
       let sound = null;
       // Set when the turn addresses another team member (#41): who answers, and with which voice.
       let member = null, memberPersona = null, speaker = null, consultRequest = null;
+      const serverPhases = {}; // where this turn's server time goes (turn-phases.js)
       let continuity = { status: 'not-required', source: 'session-audit', messageCount: 0 };
       let toolEvidence = null;
       let metadata = { model: '', hostKey: '', routingSource: 'deterministic' };
@@ -300,6 +302,7 @@ function createPersonaTurnHandler({
         // The opening warm-up shares this native session: its run ends before the first real turn starts.
         if (!member) await warmup?.settled(session.sessionId);
 
+        serverPhases.prepared = Date.now() - startedAt;
         const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history: features.historyContext === false ? [] : history, streaming, channel: req.body?.channel,
           conversationFeatures: features,
@@ -329,6 +332,7 @@ function createPersonaTurnHandler({
         });
         entry.completion = run.then(() => null, error => error);
         const result = await run;
+        serverPhases.executed = Date.now() - startedAt; serverPhases.agent = result.metadata?.phases;
         entry.executionSettled = true;
         metadata = result.metadata; if (metadata?.routing?.degraded) { fallbackUsed = true; fallbackReason = `task_fallback_${metadata.routing.reason}`; } // #135 degraded fallback
         routeTier = backend === 'openclaw' ? 'agent' : 'router';
@@ -402,6 +406,7 @@ function createPersonaTurnHandler({
         personalContinuity: continuity.personal || null, toolEvidence,
         speakerAgentId: speaker?.agentId || '',
         ...(speaker ? { speaker: { ...speaker, personaVersion: memberPersona?.version ?? null } } : {}),
+        ...serverTimingsOf(serverPhases),
         durationMs: Date.now() - startedAt
       }, { sessionPatch: isOpening ? {
         'llmx.opening.status': 'completed', 'llmx.opening.completedAt': new Date(),

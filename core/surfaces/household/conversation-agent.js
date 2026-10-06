@@ -104,7 +104,12 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     const language = scoreSpeechLanguage(text);
     const imageReply = () => browserReply ? Promise.resolve(null) : acceptedImageReply({ session, evidence,
       sessionKey, runId, language: language.decided ? language.language : 'fr', readOperation: readImageOperation });
+    // When each step of the native run happened, in ms from this request: what the
+    // agent path costs outside the model can then be read from a recorded turn.
+    const requestedAt = Date.now(), phases = {};
+    const phase = name => { phases[name] ??= Date.now() - requestedAt; };
     const deliver = (text, imageDelivery) => {
+      phase('answer');
       onDelta(text);
       return { text, sessionKey, runId,
         tools: { status: evidence?.run || imageDelivery ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId,
@@ -113,7 +118,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           ...(evidence?.answer?.deliveredBy ? { deliveredBy: evidence.answer.deliveredBy } : {}), ...(browserCall ? { browserReply: browserCall } : {}) },
         metadata: { model: imageDelivery ? '' : evidence?.run?.model || '',
           provider: imageDelivery ? imageDelivery.authority : evidence?.run?.provider || '',
-          routingSource: imageDelivery ? imageDelivery.authority : `openclaw/${agentIdFor(session)}`, runId } };
+          routingSource: imageDelivery ? imageDelivery.authority : `openclaw/${agentIdFor(session)}`, runId, phases: { ...phases } } };
     };
     // Report each native tool call once, so Household can say what Nestor does.
     const reported = new Set();
@@ -150,6 +155,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           ...(session.agentSessionKey && browserReply?.previousOutput ? [browserReply.previousOutput] : []),
           { type: 'message', role: 'user', content: contextualContent }] })
       });
+      phase('accepted');
       if (!response.ok) throw new Error(`Nestor n’a pas pu prendre ta demande (erreur ${response.status}). Réessaie dans un moment.`);
       const decoder = new TextDecoder();
       let pending = '';
@@ -158,8 +164,9 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         const value = line.slice(5).trim();
         if (!value || value === '[DONE]') return;
         const row = JSON.parse(value);
-        if (startsGeneration(row)) generating = true;
+        if (startsGeneration(row)) { generating = true; phase('generating'); }
         if (row.type === 'response.created') {
+          phase('runCreated');
           runId = row.response?.id;
           if (!/^resp_[a-f0-9-]{36}$/.test(runId || '')) throw new Error('Nestor returned an invalid run identity.');
           await onStarted(sessionKey, runId);
@@ -216,6 +223,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       }
       pending += decoder.decode();
       if (pending.trim()) await consume(pending.trimEnd());
+      phase('streamEnd');
       watching = false; wake?.(); await watcher;
       if (!terminal) throw new Error('La connexion avec Nestor s’est coupée avant sa réponse. Réessaie ta demande.');
       // Native hooks carry the run identity; historical/global receipts never

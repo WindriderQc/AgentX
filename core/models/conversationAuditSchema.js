@@ -25,6 +25,8 @@ module.exports = new Schema({
     interruptionState: { type: String, enum: ['', 'confirmed', 'failed'], default: '' },
     // A spoken turn's browser timeline: ms from the end of the person's speech.
     voiceTimings: { type: Object, default: undefined },
+    // Where the turn's server time went (prepared, executed, native run steps), in ms.
+    serverTimings: { type: Object, default: undefined },
     inputPreview: String,
     replyPreview: String,
     inputSha256: String,
