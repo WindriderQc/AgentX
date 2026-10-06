@@ -557,7 +557,14 @@ the KV cache), and a failed read says so instead of showing defaults. Benchmark 
 identity (at most every 5 minutes per host), it records on the host profile
 the settings that change what a profile measures: KV cache type, flash
 attention, `CUDA_VISIBLE_DEVICES`, `OLLAMA_SCHED_SPREAD` and the GPU count
-Ollama sees. They become part of the runtime fingerprint, so a profile,
+Ollama sees. Fresh hardware samples also retain every GPU's identity and VRAM
+on the host profile, alongside the legacy aggregate GPU field. Inventory order,
+utilization and sample time do not change the identity; replacing either GPU does.
+The inventory describes the machine; the observed visible-device setting describes
+which devices the endpoint can use. A stale or failed sample preserves the last
+observed inventory. The collector does not observe the runtime's actual split mode;
+spreading settings alone do not establish placement. These facts become part of
+the runtime fingerprint, so a profile,
 context result or benchmark qualification measured under other settings
 stops matching, and preflight or a sweep asks to profile the host again. Only
 a successful observation changes them, and none while the unit waits for

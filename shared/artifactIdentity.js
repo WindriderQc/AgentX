@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { normalizeModelTag } = require('./modelNames');
 const { normalizeRuntimeSettings } = require('./ollamaRuntimeSettings');
+const { normalizeGpuInventory } = require('./gpuInventory');
 
 const RUNTIME_ARTIFACT_IDENTITY_CONTRACT = 'agentx.runtime-artifact-identity/v1';
 const DEFAULT_RUNTIME_ARTIFACT_FRESHNESS_MS = 30_000;
@@ -34,6 +35,7 @@ function runtimeIdentity(hostProfile = {}, fallbackHostUrl = null) {
   // Observed server settings (#368) join the identity once a host has them;
   // a host never observed keeps the identity it had before.
   const settings = normalizeRuntimeSettings(hostProfile.ollama?.settings);
+  const gpus = normalizeGpuInventory(hostProfile.gpus);
   return {
     hostId: hostProfile.hostId || null,
     hostUrl: normalizeHostUrl(hostProfile.hostUrl || fallbackHostUrl),
@@ -43,6 +45,7 @@ function runtimeIdentity(hostProfile = {}, fallbackHostUrl = null) {
       computeCapability: hostProfile.gpu?.computeCapability || null,
       driver: hostProfile.gpu?.driver || null
     },
+    ...(gpus && { gpus }),
     ollama: {
       version: hostProfile.ollama?.version || null,
       backend: hostProfile.ollama?.backend || null,

@@ -9,9 +9,9 @@ const environment = (values, extra = {}) => ({
   source: 'systemd', ok: true, observedAt: '2026-10-05T10:00:00.000Z', values, ...extra
 });
 
-function store(settings = null, exists = true) {
+function store(settings = null, exists = true, gpus = undefined) {
   const model = {
-    findOne: jest.fn(() => ({ select: () => ({ lean: async () => (exists ? { ollama: { settings } } : null) }) })),
+    findOne: jest.fn(() => ({ select: () => ({ lean: async () => (exists ? { ollama: { settings }, gpus } : null) }) })),
     updateOne: jest.fn(async () => ({ modifiedCount: 1 })),
   };
   return model;
@@ -64,5 +64,42 @@ describe('host Ollama settings sync', () => {
     clock += SYNC_INTERVAL_MS;
     await expect(syncHostRuntimeSettings(HOST, { readHardware, model: store(), now })).resolves.toMatchObject({ synced: true, changed: false });
     expect(readHardware).toHaveBeenCalledTimes(2);
+  });
+
+  test('records every GPU from a fresh inventory even when service settings are unavailable', async () => {
+    const model = store();
+    const gpus = [
+      { index: 0, uuid: 'GPU-A', name: 'Synthetic GPU A', memoryTotalMiB: 24576 },
+      { index: 1, uuid: 'GPU-B', name: 'Synthetic GPU B', memoryTotalMiB: 24576 }
+    ];
+    const hardware = { status: 'observed', source: 'agentx-data', sampledAt: '2026-10-06T00:00:00.000Z', gpus };
+    await expect(syncHostRuntimeSettings(HOST, { model, readHardware: async () => hardware }))
+      .resolves.toMatchObject({ synced: true });
+    const update = model.updateOne.mock.calls[0][1].$set;
+    expect(update.gpus).toHaveLength(2);
+    expect(update.gpus[1]).toMatchObject({ uuid: 'GPU-B', model: 'Synthetic GPU B', vramTotalMiB: 24576 });
+    expect(update.gpusObservedAt).toEqual(new Date(hardware.sampledAt));
+    expect(update['ollama.settings']).toBeUndefined();
+  });
+
+  test('a stale, failed or absent inventory never erases the last observed GPUs', async () => {
+    const gpus = [{ index: 0, uuid: 'GPU-A', model: 'Synthetic GPU', vramTotalMiB: 24576 }];
+    for (const status of ['stale', 'unavailable', 'no_data']) {
+      const model = store(null, true, gpus);
+      await expect(syncHostRuntimeSettings(HOST, { model, force: true, readHardware: async () => ({ status, gpus: [] }) }))
+        .resolves.toMatchObject({ synced: false });
+      expect(model.updateOne).not.toHaveBeenCalled();
+    }
+  });
+
+  test('HostProfile retains two distinct GPUs without changing legacy aggregate fields', () => {
+    const HostProfile = require('../../../models/HostProfile');
+    const profile = new HostProfile({ ...HOST, gpu: { model: 'Synthetic GPU', vramTotalMiB: 49152 }, gpus: [
+      { index: 0, uuid: 'GPU-A', model: 'Synthetic GPU', vramTotalMiB: 24576 },
+      { index: 1, uuid: 'GPU-B', model: 'Synthetic GPU', vramTotalMiB: 24576 }
+    ] }).toObject();
+    expect(profile.gpus.map(gpu => gpu.uuid)).toEqual(['GPU-A', 'GPU-B']);
+    expect(profile.gpu.vramTotalMiB).toBe(49152);
+    expect(profile.gpus.every(gpu => gpu._id === undefined)).toBe(true);
   });
 });
