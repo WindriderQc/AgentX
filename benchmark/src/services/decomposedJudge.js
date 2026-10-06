@@ -19,6 +19,7 @@ const logger = require('../../config/logger');
 const { getFetchOptions } = require('../helpers/httpAgent');
 const { withBenchmarkServiceAuth } = require('../helpers/coreServiceAuth');
 const { DECOMPOSED_QUESTIONS } = require('./decomposedJudgeQuestions');
+const { GATE_BOUND, assessGates, boundByGates, failedGates, gatesAnswered } = require('./scoring/categoryGates');
 const { normalizeJudgeNumCtx } = require('./scoring/judgeRuntimeConfig');
 const { judgeRequestIdentity } = require('./scoring/judgeRequestIdentity');
 const { prepareJudgeResponse, assertJudgeInputUnmodified, assertJudgeOutputComplete, beginJudgeCallEvidence, finishJudgeCallEvidence, judgeCallEvidenceFields } = require('./scoring/judgeInput');
@@ -607,6 +608,10 @@ async function score(response, prompt, judgeConfig) {
         uncapped_score: uncappedScore
     };
 
+    // A failed category gate (categoryGates.js) bounds the grade whatever the dimensions say.
+    const gates = await assessGates(category, question => askBinaryQuestion(response, question, judgeConfig, taskContext));
+    overallScore = boundByGates(overallScore, gates);
+
     // Two known-answer probes. Their outcome is evidence for judgeConfidence,
     // never a score change; an unanswered probe is unknown, not a failure.
     let attention = { passed: null, probes: [] };
@@ -638,7 +643,7 @@ async function score(response, prompt, judgeConfig) {
     });
 
     // Flag if judge had significant errors
-    const judgeReliable = totalErrors === 0 && failedDimensions.length === 0;
+    const judgeReliable = totalErrors === 0 && failedDimensions.length === 0 && gatesAnswered(gates);
     if (!judgeReliable) {
         logger.warn('Decomposed judge had errors, result may be unreliable', {
             prompt: prompt.name || 'unknown',
@@ -661,9 +666,11 @@ async function score(response, prompt, judgeConfig) {
         not_applicable_dimensions: notApplicableDimensions,
         supplied_dimensions: Object.keys(suppliedDimensions),
         attention_check: attention,
+        ...(gates.length ? { gates } : {}),
         explanation: judgeReliable
             ? buildExplanation(overallScore, category, dimensionScores, dimensionBreakdowns)
                 + (capApplies ? ` Capped at ${primaryDimension.replace(/_/g, ' ')} + ${PRIMARY_DIMENSION_CAP_MARGIN} (uncapped ${uncappedScore}).` : '')
+                + (failedGates(gates).length ? ` Bounded at ${GATE_BOUND}: ${failedGates(gates).map(gate => gate.key).join(', ')} not met.` : '')
             : 'Judge evaluation failed; no quality grade was assigned',
         scoring_time_ms: scoringTimeMs,
         judge_model: judgeConfig.model,
@@ -671,10 +678,8 @@ async function score(response, prompt, judgeConfig) {
         judge_reliable: judgeReliable,
         judge_errors: totalErrors,
         failed_dimensions: failedDimensions,
-        // Explicitly null — qualityScorer is the sole authority for confidence on
-        // LLM paths (contract §2.6). Setting this to null forces qualityScorer to
-        // invoke judgeConfidence.assess() instead of short-circuiting on a
-        // hardcoded 1.0.
+        // Null: qualityScorer is the sole authority for confidence on LLM paths
+        // (contract §2.6) and calls judgeConfidence.assess() for it.
         judge_confidence: null
     };
 }

@@ -57,6 +57,18 @@ answer correctness for math, constraint compliance for instruction and
 relevance for creative. The result records `primary_cap` with the uncapped
 score.
 
+## Category gates
+
+A gate is one yes/no question a response must pass before its grade means
+anything for the category (`src/services/scoring/categoryGates.js`). A response
+that fails it is bounded at 1, whatever its other answers, on the decomposed
+and the reference path alike. Translation is gated on the target language:
+"Is the translation written in the language the task asks for?" Names, code,
+placeholders and terms the task keeps unchanged do not count against it.
+Without the gate, a faithful translation into the wrong language kept its
+accuracy and scored 4.5 to 7. The result records `gates` with each answer; an
+unanswered gate leaves the grade unscored like any failed judge call.
+
 ## Attention check
 
 After the questions, two known-answer probes are asked on the same response:
