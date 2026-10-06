@@ -223,6 +223,31 @@ function previewResult(file = '/mnt/datalake/dup.txt') {
 }
 
 describe('janitorRunner.runProfile', () => {
+  test('triage declares both sample limits while preserving every proposal and file for review', async () => {
+    janitorProfiles.get.mockResolvedValue({ ...profileFixture, aiTriage: true });
+    const groups = Array.from({ length: 70 }, (_, group) => ({
+      hash: `group-${group}`, count: 11, file_size: 100,
+      files: Array.from({ length: 11 }, (_, copy) => ({
+        path: `/mnt/datalake/test/group-${group}-copy-${copy}.txt`, mtime: copy + 1, size: 100
+      }))
+    }));
+    dedupScanner.buildDedupReport.mockResolvedValue({ groups, summary: {} });
+    dedupScanner.saveReport.mockResolvedValue(new ObjectId());
+    janitorAI.callAI.mockResolvedValue({ result: { categories: [] }, model: 'test-model', duration_ms: 1 });
+    const db = makeMockDb();
+    await janitorRunner.runProfile(db, String(profileFixture._id));
+    const run = db._collections.janitor_runs.docs[0];
+    expect(run.proposed_actions).toHaveLength(70);
+    expect(run.proposed_actions.every(action => action.files.length === 10)).toBe(true);
+    expect(run.proposed_actions.flatMap(action => action.files)).toContain('/mnt/datalake/test/group-69-copy-9.txt');
+    expect(run.ai_triage.coverage).toMatchObject({ complete: false,
+      actions: { included: 50, available: 70 }, fileEntries: { included: 250, available: 700 } });
+    const submitted = janitorAI.callAI.mock.calls[0][1];
+    expect(submitted.files).toHaveLength(50);
+    expect(submitted.files.every(action => action.files.length === 5)).toBe(true);
+    expect(submitted.coverage).toEqual(run.ai_triage.coverage);
+  });
+
   test('happy path: scan → dedup → persist run as complete', async () => {
     janitorProfiles.get.mockResolvedValue(profileFixture);
     // Dedup returns one current SHA group. The explicitly persisted `newest`
@@ -328,7 +353,8 @@ describe('janitorRunner.runProfile', () => {
     expect(result.ok).toBe(true);
     const run = db._collections['janitor_runs'].docs[0];
     expect(run.status).toBe('complete');
-    expect(run.ai_triage).toEqual({ error: 'Ollama unreachable' });
+    expect(run.ai_triage).toMatchObject({ error: 'Ollama unreachable', outcome: 'failed',
+      coverage: { actions: { included: 0, available: 0 }, fileEntries: { included: 0, available: 0 } } });
   });
 
   test('dedup failure recorded but run completes', async () => {

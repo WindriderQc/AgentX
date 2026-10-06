@@ -237,6 +237,41 @@ describe('benchmark preflight', () => {
         expect(result.model_context_length).toBe(8192);
     });
 
+    describe('without a configured judge context', () => {
+        const { JUDGE_CONFIG } = require('../../../src/services/qualityScorer');
+        let configured;
+        beforeEach(() => { configured = JUDGE_CONFIG.num_ctx; JUDGE_CONFIG.num_ctx = null; });
+        afterEach(() => { JUDGE_CONFIG.num_ctx = configured; });
+        const judge = { host: 'http://judge-host:11434', model: 'judge-model:latest' };
+
+        it('takes the context Core serves the judge at', async () => {
+            const resolveNumCtx = jest.fn(async () => ({ num_ctx: 114688, source: 'inference_contract:host_preference_pin' }));
+            const result = await checkJudgeConfiguration(judge, { resolveNumCtx });
+
+            expect(resolveNumCtx).toHaveBeenCalledWith('judge-model', 'http://judge-host:11434');
+            expect(result).toMatchObject({ ok: true, blockers: [], requested_num_ctx: null, resolved_num_ctx: 114688,
+                num_ctx_source: 'inference_contract:host_preference_pin', num_ctx_authoritative: true });
+        });
+
+        it('blocks the launch when that context cannot be resolved', async () => {
+            const resolveNumCtx = jest.fn(async () => { throw new Error('Core contract resolution failed with HTTP 503'); });
+            const result = await checkJudgeConfiguration(judge, { resolveNumCtx });
+
+            expect(result.ok).toBe(false);
+            expect(result.blockers).toHaveLength(1);
+            expect(result.blockers[0]).toMatch(/cannot be resolved \(Core contract resolution failed with HTTP 503\)/);
+            expect(result.blockers[0]).toMatch(/judge_config\.num_ctx/);
+        });
+
+        it('does not ask Core when the launch names a context', async () => {
+            const resolveNumCtx = jest.fn();
+            const result = await checkJudgeConfiguration({ ...judge, num_ctx: 16384 }, { resolveNumCtx });
+
+            expect(resolveNumCtx).not.toHaveBeenCalled();
+            expect(result).toMatchObject({ ok: true, requested_num_ctx: 16384, resolved_num_ctx: 16384, num_ctx_source: 'explicit' });
+        });
+    });
+
     it('warns when requested num_ctx exceeds model context window', async () => {
         probeJudgeCapability.mockResolvedValue({
             ok: true,

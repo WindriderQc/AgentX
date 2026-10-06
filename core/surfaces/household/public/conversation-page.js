@@ -445,6 +445,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     async greet(session, signal) {
       const lang = language.value === 'en' || (language.value === 'auto' && session?.voice?.language === 'en') ? 'en' : 'fr';
       const text = lastGreeting = NestorGreetings.greetingFor({ space, language: lang, wakeWord: !!conversation.selection?.wakeWord, previous: lastGreeting });
+      // While the greeting is spoken, Core warms this conversation's own prompt (voice-warmup.js),
+      // so the first question is not preceded by a full prompt read. Best effort.
+      if (!family && session?.sessionId) void api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/warm`,
+        { method: 'POST', body: JSON.stringify({ greeting: text }) }).catch(() => {});
       const speech = await synthesize(text, lang, session?.persona || selected(), session?.voice || {}, signal, 'Greeting');
       if (!signal.aborted) message('assistant', text);
       return speech;

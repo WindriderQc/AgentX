@@ -142,14 +142,24 @@ async function _runAiTriage(profile, runDoc, proposedActions, scanCounts) {
     files: (a.files || []).slice(0, 5),
     space_saved: a.space_saved
   }));
+  const includedFiles = sample.reduce((n, a) => n + a.files.length, 0);
+  const availableFiles = proposedActions.reduce((n, a) => n + (a.files || []).length, 0);
+  const coverage = {
+    scope: 'advisory_metadata_sample',
+    actions: { included: sample.length, available: proposedActions.length },
+    fileEntries: { included: includedFiles, available: availableFiles },
+    complete: sample.length === proposedActions.length && includedFiles === availableFiles,
+    selection: `First ${AI_SAMPLE_SIZE} proposed actions; first 5 file entries per action.`
+  };
   try {
     const aiResult = await janitorAI.callAI('triage', {
       files: sample,
+      coverage,
       stats: { ...scanCounts, total_proposed_actions: proposedActions.length }
     });
-    return { verdict: aiResult.result, model: aiResult.model, duration_ms: aiResult.duration_ms };
+    return { verdict: aiResult.result, model: aiResult.model, duration_ms: aiResult.duration_ms, coverage, outcome: 'completed' };
   } catch (err) {
-    return { error: err.message };
+    return { error: err.message, coverage, outcome: 'failed' };
   }
 }
 

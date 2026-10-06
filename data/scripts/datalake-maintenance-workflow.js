@@ -219,7 +219,7 @@ function makeProposalList(collected, profileRun) {
   }
 
   const suggest = unwrap(collected.janitorSuggest, {});
-  for (const item of (suggest.suggestions || []).slice(0, 20)) {
+  for (const item of suggest.suggestions || []) {
     proposals.push({
       source: 'janitor.suggest',
       type: item.policy || 'suggestion',
@@ -291,7 +291,8 @@ function buildReport({ options, generatedAt, collected, profile, profileRun }) {
       run: profileRun ? {
         run_id: profileRun.run_id,
         status: profileRun.run?.status,
-        proposedActionCount: profileRun.run?.proposed_actions?.length || 0
+        proposedActionCount: profileRun.run?.proposed_actions?.length || 0,
+        aiTriage: profileRun.run?.ai_triage || null
       } : null
     } : null,
     storage: {
@@ -375,6 +376,10 @@ function markdownReport(report) {
   lines.push('');
   lines.push('## Ranked Proposals');
   lines.push('');
+  lines.push(`Showing ${Math.min(25, report.proposals.length)} of ${report.proposals.length} proposals by potential savings. The JSON report retains the complete received proposal list.`);
+  const triage = report.profile?.run?.aiTriage;
+  const coverage = triage?.coverage;
+  if (coverage) lines.push(`AI triage ${triage.outcome || 'unknown'}: ${coverage.actions.included}/${coverage.actions.available} actions and ${coverage.fileEntries.included}/${coverage.fileEntries.available} file entries submitted. ${coverage.selection}`);
   if (report.proposals.length === 0) {
     lines.push('No proposal actions were generated for this bounded run.');
   } else {

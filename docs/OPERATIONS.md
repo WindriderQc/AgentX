@@ -736,6 +736,18 @@ a member, in flight or in the background. Detached work lives in Core's memory:
 a page that never collects the reply still finds it in the history, and the
 conversation's agent receives it as reference data on its next turn.
 
+A new spoken personal conversation warms its own prompt while the page speaks
+its greeting (`POST /private/sessions/:id/warm`). A model with sliding-window
+attention resumes its prompt cache only near the end of the previous prompt,
+and a new native session changes a late section of the agent's system prompt,
+so the first spoken turn used to read the whole prompt again. Core runs one
+small turn in the conversation's native session, with the instructions of an
+ordinary spoken turn: it tells the agent that it has just greeted the owner, and
+the first real turn then only appends to a cached prompt. The warm-up is not a
+turn of the conversation (nothing recorded, spoken or shown), never runs once
+someone has spoken, ends after 60 s at most, and a failure is only a warning.
+Any other call to the same model before the first turn takes the cache back.
+
 Live voice transcribes through VoiX. `HOUSEHOLD_BROWSER_STT_FALLBACK` optionally
 lets Super Dad (`personal`) or both spaces (`true`) fall back to the browser's own
 speech recognition when VoiX is unreachable (transcription 502/503/504, a network

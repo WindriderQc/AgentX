@@ -28,6 +28,7 @@ const { checkResponseBudgets } = require('./preflightBudgets');
 const { identitiesMatch, resolveArtifactIdentity } = require('../profiler/artifactIdentityService');
 const { hasQualifiedProfilerAuthority } = require('../profiler/profilerAuthorityReceipt');
 const { normalizeJudgeNumCtx } = require('../scoring/judgeRuntimeConfig');
+const { resolveContractNumCtx } = require('./inferenceContractSnapshot');
 const { normalizeExecutionConfig } = require('./config');
 const {
     MIN_THINKING_PROBE_COUNT,
@@ -490,7 +491,7 @@ async function checkPromptCoverage(levels = [1, 2, 3, 4, 5], promptIds = null, e
     };
 }
 
-async function checkJudgeConfiguration(judgeConfig = {}) {
+async function checkJudgeConfiguration(judgeConfig = {}, { resolveNumCtx = resolveContractNumCtx } = {}) {
     const host = normalizeHostUrl(judgeConfig.host || JUDGE_CONFIG.host);
     const model = normalizeModelName(judgeConfig.model || JUDGE_CONFIG.model);
 
@@ -506,14 +507,35 @@ async function checkJudgeConfiguration(judgeConfig = {}) {
     const blockers = [];
 
     const requestedNumCtx = normalizeJudgeNumCtx(judgeConfig.num_ctx ?? JUDGE_CONFIG.num_ctx);
-    const numCtxSource = requestedNumCtx ? 'explicit' : 'modelfile';
-    const numCtxAuthoritative = requestedNumCtx != null;
+    let numCtxSource = requestedNumCtx ? 'explicit' : 'modelfile';
+    let numCtxAuthoritative = requestedNumCtx != null;
+    let resolvedNumCtx = requestedNumCtx || null;
 
     // Check host reachability and model availability
     const hostCheck = await checkHostModel(host, model);
     if (!hostCheck.ok) {
         blockers.push(`Judge: ${hostCheck.error}`);
         return { ok: false, host, model, warnings, blockers };
+    }
+
+    // Without a context the judge calls omit num_ctx and Ollama reloads the
+    // model at its default context, for the judge and for everyone else who
+    // uses it on that host. The batch reads the context from Core's contract;
+    // when that cannot be read, the launch stops here instead.
+    if (!requestedNumCtx) {
+        try {
+            const contract = await resolveNumCtx(model, host);
+            resolvedNumCtx = normalizeJudgeNumCtx(contract?.num_ctx);
+            if (!resolvedNumCtx) throw new Error('Core returned no context window');
+            numCtxSource = contract.source || 'inference_contract';
+            numCtxAuthoritative = true;
+        } catch (error) {
+            blockers.push(
+                `Judge context for ${model} on ${host} cannot be resolved (${error.message}). ` +
+                'Judge calls would omit num_ctx and Ollama would reload the model at its default context. ' +
+                'Set judge_config.num_ctx, or restore the Core inference contract for this judge.'
+            );
+        }
     }
 
     // Probe model capabilities (context window)
@@ -534,6 +556,7 @@ async function checkJudgeConfiguration(judgeConfig = {}) {
         host,
         model,
         requested_num_ctx: requestedNumCtx,
+        resolved_num_ctx: resolvedNumCtx,
         num_ctx_source: numCtxSource,
         num_ctx_authoritative: numCtxAuthoritative,
         model_context_length: modelContextLength,

@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const personaCatalog = require('./persona-catalog');
 const { agentForPersona } = require('./persona-selection');
 const { createNestorClient } = require('./personal-continuity');
-const { createAgentClient } = require('./conversation-agent');
+const { createAgentClient, agentIdFor } = require('./conversation-agent');
 const { browserSpeechFallback, configuredOpenClaw, conversationBackend, familyConversationBackend, createConversationExecutor } = require('./conversation-executor');
 const llmx = require('./llmx-conversation');
 const { visual: normalizeVisual, selections: voiceSelections } = require('./public/persona-presentation');
@@ -22,6 +22,7 @@ const {
 const { registerFamilyRoutes } = require('./family-routes');
 const { plainReply } = require('./reply-channels'), { createVisuals } = require('./visuals'), { createBrain } = require('./brain');
 const { createMemberWork } = require('./member-work');
+const { createVoiceWarmup } = require('./voice-warmup');
 const { registerSecretaryMcp } = require('./secretary-mcp');
 const { secretaryMailControl } = require('./secretary-mail-routes');
 const { householdActivation } = require('./readiness');
@@ -422,10 +423,14 @@ function register(api) {
   require('./attachment-routes').registerAttachmentRoutes(personas, { express, personalAttachments, envelope, fail });
   const conversationImages = require('./conversation-images').createConversationImages({ conversations });
   conversationImages.register(personas);
+  // The opening warm-up builds its instructions through the turn handler, so both send the same prompt prefix.
+  const warmup = createVoiceWarmup({ conversations, executeConversation, conversationBackend, conversationEnv, packById, requireNativeAgent,
+    agentIdFor, logger, instructions: (...args) => handlePersonaTurn.openingInstructions(...args) });
+  warmup.register(personas);
   const handlePersonaTurn = createPersonaTurnHandler({
     logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-    sounds, visuals, brain, memberWork, conversationImages, activePersonaTurns, validClientTurnId,
+    sounds, visuals, brain, memberWork, conversationImages, warmup, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
     packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
     sessionHistoryMessages, loadSessionAuditRows,
