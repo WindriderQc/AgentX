@@ -330,10 +330,13 @@ describe('callJudge think parameter', () => {
 
     test('should send think:true when configured', async () => {
         const callJudge = getCallJudge();
-        await callJudge('test prompt', { host: 'http://localhost:11434', model: 'test', think: true });
+        await callJudge('test prompt', { host: 'http://localhost:11434', model: 'test', think: true,
+            timeout: 7200000, num_predict: 65536 });
 
         expect(mockFetch).toHaveBeenCalledTimes(1);
         const body = JSON.parse(mockFetch.mock.calls[JUDGE_CALL_IDX][1].body);
         expect(body.think).toBe(true);
+        expect(body.timeoutMs).toBe(7200000);
+        expect(body.options.num_predict).toBe(65536);
     });
 });

@@ -47,10 +47,19 @@ jest.mock('../../../src/clients/coreApiClient', () => ({
     releaseWorkloadAdmission: jest.fn(async () => ({ released: true }))
 }));
 
+jest.mock('../../../src/services/benchmark/judgeExecutionContract', () => ({
+    freezeJudgeConfig: jest.fn(async config => ({ ...config, num_ctx: config.num_ctx || 32768,
+        execution_contract: { schema: 'agentx.benchmark-judge-execution/v1', num_ctx: config.num_ctx || 32768,
+            artifact: { model: config.model, host: config.host, digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) } }
+    }))
+}));
+
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const coreApiClient = require('../../../src/clients/coreApiClient');
 const { startBatch } = require('../../../src/services/benchmark/execution');
+const { JUDGE_CONFIG } = require('../../../src/services/qualityScorer');
+const { cohortFingerprintForBatch } = require('../../../src/services/benchmark/qualityCohort');
 
 describe('startBatch prompt-scoped level persistence', () => {
     beforeEach(() => {
@@ -90,6 +99,16 @@ describe('startBatch prompt-scoped level persistence', () => {
         expect(result.batch_id).toBe(savedBatch._id.toString());
         expect(savedBatch.levels).toEqual([4]);
         expect(savedBatch.prompt_ids).toEqual([promptId.toString()]);
+    });
+
+    it('releases admission and creates no batch when judge identity cannot be frozen', async () => {
+        require('../../../src/services/benchmark/judgeExecutionContract').freezeJudgeConfig
+            .mockRejectedValueOnce(new Error('judge identity unavailable'));
+        const save = jest.spyOn(BenchmarkBatch.prototype, 'save');
+        await expect(startBatch({ host: 'http://exec:11434', models: ['candidate-model'], levels: [1] }))
+            .rejects.toThrow('judge identity unavailable');
+        expect(save).not.toHaveBeenCalled();
+        expect(coreApiClient.releaseWorkloadAdmission).toHaveBeenCalledWith(expect.any(String));
     });
 
     it('retains the admission when an ambiguous batch insert cannot be compensated', async () => {
@@ -177,9 +196,19 @@ describe('startBatch prompt-scoped level persistence', () => {
         await launch({ host: 'http://judge:11434', model: 'judge-model' });
         await launch({ host: 'http://judge:11434', model: 'judge-model', think: false });
         await launch({ host: 'http://judge:11434', model: 'judge-model', think: true });
+        await launch({ host: 'http://judge:11434', model: 'judge-model', num_predict: 16384, timeout: 300000 });
 
-        expect(saved.map((batch) => batch.judge_config.think)).toEqual([false, false, true]);
+        expect(saved.map((batch) => batch.judge_config.think)).toEqual([false, false, true, false]);
+        expect(saved[0].judge_config).toMatchObject({
+            num_ctx: 32768, execution_contract: expect.objectContaining({ num_ctx: 32768 }),
+            num_predict: JUDGE_CONFIG.num_predict, timeout: JUDGE_CONFIG.timeout,
+            temperature: JUDGE_CONFIG.temperature, seed: JUDGE_CONFIG.seed, max_retries: JUDGE_CONFIG.max_retries,
+        });
         expect(saved[1].quality_cohort_fingerprint).toBe(saved[0].quality_cohort_fingerprint);
         expect(saved[2].quality_cohort_fingerprint).not.toBe(saved[0].quality_cohort_fingerprint);
+        expect(saved[3].quality_cohort_fingerprint).not.toBe(saved[0].quality_cohort_fingerprint);
+        for (const batch of saved) {
+            expect(await cohortFingerprintForBatch(batch, batch.judge_config)).toBe(batch.quality_cohort_fingerprint);
+        }
     });
 });

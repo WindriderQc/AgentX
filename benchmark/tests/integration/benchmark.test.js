@@ -61,6 +61,15 @@ jest.mock('../../src/clients/coreApiClient', () => {
     const actual = jest.requireActual('../../src/clients/coreApiClient');
     return {
         ...actual,
+        coreRequest: jest.fn(async (path, options = {}) => {
+            if (path !== '/api/inference/contract/resolve') return actual.coreRequest(path, options);
+            const { model, host, options: parameters = {} } = JSON.parse(options.body);
+            return { version: 'agentx.inference-contract.v1', artifact: {
+                model, host, hostId: 'judge-host', digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64),
+                identityQualified: true, registryQualified: true
+            }, qualification: { qualified: false, stale: true },
+            contextBudget: { windowTokens: parameters.num_ctx || 65536, source: 'host_preference_pin' } };
+        }),
         acquireWorkloadAdmission: jest.fn(async (workloadId, options = {}) => ({
             acquired: true,
             admissionId: `admission-${workloadId}`,
@@ -791,6 +800,24 @@ describe('Benchmark System - Integration Tests', () => {
             expect(batch).toBeTruthy();
             expect(batch.status).toBe('running');
             expect(batch.models).toEqual(['ax/test-model']);
+            expect(batch.judge_config).toMatchObject({ num_ctx: 65536, execution_contract: {
+                num_ctx: 65536, artifact: { digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) }
+            } });
+        });
+
+        it('refuses an unresolved judge contract before saving a batch or handing off its admission', async () => {
+            const { coreRequest, releaseWorkloadAdmission } = require('../../src/clients/coreApiClient');
+            const releasesBefore = releaseWorkloadAdmission.mock.calls.length;
+            coreRequest.mockResolvedValueOnce({ version: 'agentx.inference-contract.v1',
+                artifact: null, contextBudget: { windowTokens: 65536 } });
+            const response = await api.post('/api/benchmark/batch').send({
+                host: 'http://localhost:11434', models: ['ax/test-model'], levels: [1],
+                judge_config: { host: 'http://localhost:11434', model: 'judge-model' }
+            });
+            expect(response.status).toBe(422);
+            expect(response.body.code).toBe('JUDGE_EXECUTION_CONTRACT_UNRESOLVED');
+            expect(await BenchmarkBatch.countDocuments({})).toBe(0);
+            expect(releaseWorkloadAdmission.mock.calls.length).toBe(releasesBefore + 1);
         });
 
         it('should not report pending judge work immediately after launch', async () => {
@@ -907,7 +934,9 @@ describe('Benchmark System - Integration Tests', () => {
                     levels: [1],
                     judge_config: {
                         host: 'http://judge-host:11434',
-                        model: 'qwen2.5:14b-instruct'
+                        model: 'qwen2.5:14b-instruct',
+                        num_predict: 65536,
+                        timeout: 7200000
                     }
                 });
 
@@ -920,9 +949,17 @@ describe('Benchmark System - Integration Tests', () => {
             expect(runPreflight).toHaveBeenCalledWith(expect.objectContaining({
                 judgeConfig: expect.objectContaining({
                     model: 'qwen2.5:14b-instruct',
-                    host: 'http://judge-host:11434'
+                    host: 'http://judge-host:11434',
+                    num_predict: 65536,
+                    timeout: 7200000
                 })
             }));
+            const saved = await BenchmarkBatch.findById(response.body.data.batch_id).lean();
+            expect(saved.judge_config).toMatchObject({ num_predict: 65536, timeout: 7200000 });
+            expect(response.body.data.warnings).toEqual(expect.arrayContaining([
+                expect.stringMatching(/num_predict 65536.*Kept as chosen/),
+                expect.stringMatching(/timeout 7200000 ms.*Kept as chosen/)
+            ]));
         });
 
         it('should return 409 on duplicate-key race collision during start', async () => {

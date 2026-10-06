@@ -29,6 +29,8 @@ const { fingerprint } = require('../../../../shared/workerContract');
 const { markReconciliationPending, retainAdmissionHeartbeat } = require('./batchAuthorityRecovery');
 const { executeBatch } = require('./batchExecutionRun');
 const { normalizeJudgeThink } = require('./judgeLaunchLimits');
+const { resolveJudgeConfig } = require('../scoring/resolveJudgeConfig');
+const { freezeJudgeConfig } = require('./judgeExecutionContract');
 
 async function startBatch({
     host,
@@ -86,7 +88,8 @@ async function startBatch({
     }
     let admissionHandedOff = false;
     try {
-    judge_config = { ...judge_config, target: judgeTarget, host: judgeTarget.host || `harness:${judgeTarget.harness.name}`, model: judgeTarget.model };
+    judge_config = resolveJudgeConfig({ ...judge_config, target: judgeTarget, host: judgeTarget.host || `harness:${judgeTarget.harness.name}`, model: judgeTarget.model });
+    judge_config = await freezeJudgeConfig(judge_config, { signal: creationAbort.signal });
 
     await seedPrompts();
 
@@ -141,6 +144,7 @@ async function startBatch({
         scorerVersion: SCORER_VERSION,
         judgeTarget,
         judgeThink: judge_config.think,
+        judgeConfig: judge_config,
         executionConfig: normalizedExecutionConfig,
         profileContract: campaign_kind === 'native_agent' ? 'native-agent-v1' : 'isolated-model-v1'
     });

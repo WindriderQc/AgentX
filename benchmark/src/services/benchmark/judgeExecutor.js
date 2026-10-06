@@ -112,6 +112,7 @@ async function persistMultiJudgeScores(resultId, multiJudgeResult, cancellationC
         .map((score) => ({
             judge_model: score.judge_model,
             judge_host: score.judge_host,
+            execution_contract: score.execution_contract || null,
             quality_score: score.quality_score,
             explanation: score.explanation,
             scoring_time_ms: score.scoring_time_ms
@@ -216,6 +217,9 @@ async function applyScoresToResult(resultId, scores, resultData, cancellationCon
                 judge_model: scores.judge_model,
                 judge_host: scores.judge_host || resultData.judge_host || null,
                 judge_raw_response: scores.judge_raw_response,
+                judge_execution_contract: cancellationConfig.execution_contract || null,
+                ...(cancellationConfig.quality_cohort_fingerprint
+                    ? { quality_cohort_fingerprint: cancellationConfig.quality_cohort_fingerprint } : {}),
                 judge_target: scores.judge_target || null,
                 judge_receipt: scores.judge_receipt || null,
                 judge_provider_usage: scores.judge_provider_usage || null,
@@ -328,6 +332,7 @@ async function judgeResult(resultId, judgeConfig = {}, batchHardwareSnapshot = n
         seedJudgeResult: {
             judge_model: baseScores.judge_model || mergedConfig.model,
             judge_host: baseScores.judge_host || mergedConfig.host,
+            execution_contract: mergedConfig.execution_contract || null,
             quality_score: baseScores.quality_score,
             explanation: baseScores.explanation,
             scoring_time_ms: baseScores.scoring_time_ms,

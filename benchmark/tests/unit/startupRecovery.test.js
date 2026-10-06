@@ -18,6 +18,7 @@ jest.mock('../../src/services/benchmark/benchmarkAuthorityReconciliation', () =>
   startBenchmarkAuthorityReconciliation: jest.fn()
 }));
 jest.mock('../../src/services/registeredHostSync', () => ({ startRegisteredHostSync: jest.fn() }));
+jest.mock('../../src/services/measurementCoverage/coverageJob', () => ({ getCoverageJob: jest.fn(() => ({ start: jest.fn() })) }));
 
 const claimRecovery = require('../../src/services/benchmark/claimRecovery');
 const { interruptOrphanedBatches } = require('../../src/services/benchmark/orphanedBatchRecovery');
@@ -74,8 +75,10 @@ describe('startup recovery', () => {
 // Every Core operation Benchmark calls in both profiles: claim recovery,
 // profiler projection recovery, authority reconciliation, batch execution
 // and the interactive-priority yield point. Pin context editing stays
-// full-only (operator-confirmed Profiler proposal under Nerve Center).
-const FULL_ONLY_OPERATIONS = ['PIN_CONTEXT_APPLY'];
+// full-only (operator-confirmed Profiler proposal under Nerve Center), and so
+// does the task routing table the coverage matrix reads: the demo profile has
+// no Nerve Center, and coverage then covers the pinned models only.
+const FULL_ONLY_OPERATIONS = ['PIN_CONTEXT_APPLY', 'ROUTING_CONFIG', 'RUNTIME_ACTIVE', 'HOUSEHOLD_IDLE'];
 const DEMO_OPERATIONS = Object.keys(CORE_OPERATIONS).filter(name => !FULL_ONLY_OPERATIONS.includes(name));
 
 function samplePath(pattern) {

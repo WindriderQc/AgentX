@@ -20,6 +20,19 @@ function proof(admission) {
   return { admissionId: admission.admissionId, generation: admission.generation, principal: 'benchmark-service' };
 }
 
+describe('household quiet time', () => {
+  const service = require('../../src/services/interactivePriorityService');
+
+  it('reports no idle time during a turn and counts from its end', () => {
+    const clock = { now: 1_000_000 };
+    const end = service.beginHouseholdTurn(() => clock.now);
+    expect(service.householdIdle(clock.now + 5000)).toMatchObject({ activeTurns: 1, idleMs: 0 });
+    end();
+    expect(service.householdIdle(clock.now + 90_000)).toEqual({ activeTurns: 0, lastTurnEndedAt: clock.now, idleMs: 90_000 });
+    service._state.lastTurnEndedAt = 0;
+  });
+});
+
 describe('household priority over evaluation workloads (#62)', () => {
   beforeEach(async () => {
     await RuntimeCoordination.deleteMany({});

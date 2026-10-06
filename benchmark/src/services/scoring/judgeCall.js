@@ -75,6 +75,9 @@ function throwIfJudgeCancelled(config = {}) {
 }
 
 function rethrowIfJudgeCancelled(error, config = {}) {
+    // Identity drift is fatal to the whole score, including reference and
+    // decomposed sub-verdicts. It must not become a retry or partial score.
+    if (error?.code === 'JUDGE_EXECUTION_CONTRACT_MISMATCH') throw error;
     if (isBenchmarkBatchStoppedError(error) || getJudgeCancelSignal(config)?.aborted) {
         throw createBenchmarkBatchStoppedError();
     }
@@ -419,7 +422,9 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
                 host: judgeConfig.host,
                 messages: [{ role: 'user', content: evalPrompt }],
                 stream: false,
+                timeoutMs: judgeConfig.timeout,
                 responseMode: 'normalized',
+                ...(judgeConfig.execution_contract ? { includeArtifactIdentity: true } : {}),
                 think,
                 callerDetail: 'benchmark-judge',
                 ...judgeRequestIdentity(judgeConfig),
@@ -439,16 +444,17 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
             data = await response.json();
         }
         throwIfJudgeCancelled(judgeConfig);
-        assertJudgeInputUnmodified(data);
+        assertJudgeInputUnmodified(data, judgeConfig);
         const text = data.message?.content || data.response || '';
 
         const judgeTruncated = data.done_reason === 'length';
         const judgeTokens = data.eval_count || 0;
 
-        // Retry with expanded num_predict on truncation before attempting parse
+        // Legacy calls may expand on truncation. A frozen cohort must retain
+        // its chosen budget; incomplete output cannot become a scored retry.
         const NUM_PREDICT_CAP = 4096;
         const currentNumPredict = judgeConfig.num_predict || JUDGE_CONFIG.num_predict;
-        if (judgeTruncated && retryCount < (judgeConfig.max_retries ?? 2)) {
+        if (judgeTruncated && !judgeConfig.execution_contract && retryCount < (judgeConfig.max_retries ?? 2)) {
             if (currentNumPredict >= NUM_PREDICT_CAP) {
                 logger.warn('Judge output truncated but num_predict already at cap, stopping retry', {
                     judge_model: judgeConfig.model || JUDGE_CONFIG.model,

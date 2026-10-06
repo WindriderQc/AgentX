@@ -17,6 +17,15 @@ describe('judge limits at launch', () => {
         expect(checkJudgeLimits({})).toEqual({ error: null, warnings: [] });
     });
 
+    it('keeps operator budgets beyond the former token and duration ceilings', () => {
+        const result = checkJudgeLimits({ num_predict: 65536, timeout: 7200000 });
+        expect(result.error).toBeNull();
+        expect(result.warnings).toEqual([
+            expect.stringMatching(/num_predict 65536.*Kept as chosen/),
+            expect.stringMatching(/timeout 7200000 ms.*Kept as chosen/)
+        ]);
+    });
+
     it('accepts judge reasoning chosen by the operator, with its cost and cohort stated', () => {
         const result = checkJudgeLimits({ think: true, num_predict: 16384 });
         expect(result.error).toBeNull();
@@ -46,11 +55,17 @@ describe('judge limits at launch', () => {
 
     it.each([
         [{ think: 'high' }, /judge_config.think must be a boolean/],
-        [{ num_predict: 50 }, /num_predict must be a number between 100 and 32768/],
-        [{ num_predict: 40000 }, /num_predict must be a number between 100 and 32768/],
+        [{ num_predict: 50 }, /num_predict must be a safe integer/],
+        [{ num_predict: 100.5 }, /num_predict must be a safe integer/],
+        [{ num_predict: NaN }, /num_predict must be a safe integer/],
+        [{ num_predict: Infinity }, /num_predict must be a safe integer/],
+        [{ num_predict: Number.MAX_SAFE_INTEGER + 1 }, /num_predict must be a safe integer/],
         [{ num_predict: '800' }, /num_predict/],
-        [{ timeout: 1000 }, /timeout must be a number between 5000 and 1800000/],
-        [{ timeout: 3600000 }, /timeout must be a number between 5000 and 1800000/]
+        [{ timeout: 1000 }, /timeout must be an integer/],
+        [{ timeout: 5000.5 }, /timeout must be an integer/],
+        [{ timeout: NaN }, /timeout must be an integer/],
+        [{ timeout: Infinity }, /timeout must be an integer/],
+        [{ timeout: 2147483648 }, /Node timer limit/]
     ])('still refuses nonsense (%j)', (judgeConfig, message) => {
         expect(checkJudgeLimits(judgeConfig).error).toMatch(message);
     });

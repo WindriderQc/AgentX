@@ -45,7 +45,9 @@ function buildGenerateRequest(judgeConfig, prompt, numPredict, callerDetail) {
             host: judgeConfig.host,
             prompt,
             stream: false,
+            timeoutMs: judgeConfig.timeout,
             responseMode: 'normalized',
+            ...(judgeConfig.execution_contract ? { includeArtifactIdentity: true } : {}),
             think: resolveThink(judgeConfig),
             callerDetail: callerDetail || 'benchmark-reference-scorer',
             ...judgeRequestIdentity(judgeConfig),
@@ -133,7 +135,7 @@ Give one brief sentence of evidence for this criterion, then end with a separate
         const data = await res.json();
         finishJudgeCallEvidence(callEvidence, { data });
         throwIfJudgeCancelled(judgeConfig);
-        assertJudgeInputUnmodified(data);
+        assertJudgeInputUnmodified(data, judgeConfig);
         assertJudgeOutputComplete(data);
         const verdict = parseReferenceVerdict(data.response, 'VERDICT', ['YES', 'NO']);
         if (!verdict) throw new Error('Judge did not return a YES/NO key-point verdict');
@@ -204,7 +206,7 @@ Give one brief sentence identifying a specific contradiction, or explaining why 
         const data = await res.json();
         finishJudgeCallEvidence(callEvidence, { data });
         throwIfJudgeCancelled(judgeConfig);
-        assertJudgeInputUnmodified(data);
+        assertJudgeInputUnmodified(data, judgeConfig);
         assertJudgeOutputComplete(data);
         const verdict = parseReferenceVerdict(data.response, 'VERDICT', ['YES', 'NO']);
         if (!verdict) throw new Error('Judge did not return a YES/NO contradiction verdict');
@@ -276,7 +278,7 @@ Give one brief sentence identifying any missing required behavior, or stating th
         const data = await res.json();
         finishJudgeCallEvidence(callEvidence, { data });
         throwIfJudgeCancelled(judgeConfig);
-        assertJudgeInputUnmodified(data);
+        assertJudgeInputUnmodified(data, judgeConfig);
         assertJudgeOutputComplete(data);
         const scoreMap = {
             excellent: 10,

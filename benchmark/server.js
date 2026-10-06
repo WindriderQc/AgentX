@@ -223,10 +223,10 @@ app.get('/profiler', (req, res) => {
       '<link rel="stylesheet" href="/css/redesign-tokens.css">',
       '<link rel="stylesheet" href="/css/redesign-components.css">',
       '<link rel="stylesheet" href="/css/model-profiler.css?v=host-telemetry-20260622b">',
-      '<link rel="stylesheet" href="/css/profiler-experience.css">',
+      '<link rel="stylesheet" href="/css/profiler-experience.css">', '<link rel="stylesheet" href="/css/profiler-coverage.css">',
       '<link rel="stylesheet" href="/css/context-proposal.css">'
     ].join('\n'),
-    footerJs: '<script type="module" src="/js/model-profiler/index.js?v=host-telemetry-20260622b"></script>\n<script src="/js/model-profiler/recovery.js"></script><script src="/js/model-profiler/experience.js"></script>'
+    footerJs: '<script type="module" src="/js/model-profiler/index.js?v=host-telemetry-20260622b"></script>\n<script src="/js/model-profiler/recovery.js"></script><script src="/js/model-profiler/experience.js"></script><script src="/js/model-profiler/coverage.js"></script>'
   });
 });
 

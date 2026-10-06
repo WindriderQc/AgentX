@@ -26,11 +26,36 @@ test('a preflight problem returns the exact queued ticket without consuming an a
   expect(saved.feedback.at(-1).text).toContain('awaiting review');
 });
 
-test('late preflight feedback cannot block a newly claimed task', async () => {
+test('capacity deferral records the reason while retaining the queued task and its attempts', async () => {
+  const id = await create();
+  const { task } = await read(id);
+  const response = await harness.request.post(`/api/pipeline/tasks/${id}/feedback`).send({
+    status: 'deferred', by: 'guarded-dispatch', text: 'AUTOMATION_SLOT_OCCUPIED: waiting for capacity',
+    expectedQueuedUpdatedAt: task.updatedAt,
+  }).expect(200);
+  expect(response.body.data.task).toMatchObject({ status: 'queued', assignee: null, automationAttemptCount: 0, automationAttempts: [] });
+  expect(response.body.data.task.feedback.at(-1).text).toContain('waiting for capacity');
+  expect(response.body.data.task.transitions).toEqual(task.transitions);
+  await harness.request.post(`/api/pipeline/tasks/${id}/feedback`).send({
+    status: 'deferred', text: 'Duplicate observation', expectedQueuedUpdatedAt: task.updatedAt,
+  }).expect(409);
+  await harness.request.post(`/api/pipeline/tasks/${id}/claim`).send({ assignee: 'next-worker' }).expect(200);
+});
+
+test.each([undefined, 'invalid date'])('capacity deferral requires a valid observed queued version (%s)', async (version) => {
+  const id = await create();
+  const response = await harness.request.post(`/api/pipeline/tasks/${id}/feedback`).send({
+    status: 'deferred', text: 'Waiting for capacity', expectedQueuedUpdatedAt: version,
+  }).expect(400);
+  expect(response.body.code).toBe('INVALID_PREFLIGHT_FEEDBACK');
+  expect((await read(id)).task).toMatchObject({ status: 'queued', feedback: [], automationAttemptCount: 0 });
+});
+
+test.each(['blocked', 'deferred'])('late %s preflight feedback cannot change a newly claimed task', async (verdict) => {
   const id = await create();
   const { task } = await read(id);
   await harness.request.post(`/api/pipeline/tasks/${id}/claim`).send({ assignee: 'another-worker' }).expect(200);
-  await harness.request.post(`/api/pipeline/tasks/${id}/feedback`).send({ status: 'blocked', by: 'guarded-dispatch', text: 'Stale preflight', expectedQueuedUpdatedAt: task.updatedAt }).expect(409);
+  await harness.request.post(`/api/pipeline/tasks/${id}/feedback`).send({ status: verdict, by: 'guarded-dispatch', text: 'Stale preflight', expectedQueuedUpdatedAt: task.updatedAt }).expect(409);
   expect((await read(id)).task).toMatchObject({ status: 'in_progress', assignee: 'another-worker', feedback: [] });
 });
 

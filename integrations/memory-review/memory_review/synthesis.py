@@ -290,11 +290,13 @@ def synthesize(
                         "Your previous output violated the contract: "
                         f"{first_error}\n\nReformat it. Do not add, remove, or reinterpret "
                         "facts. Return only the JSON object.\n\nPrevious output:\n"
-                        + content[:8000]
+                        + content
                     ),
                 },
             ]
-            content = request(repair_messages, min(max_tokens, 2000))
+            # The whole previous output goes back and the repair keeps the same
+            # budget: a shortened input or reply would drop candidates unseen.
+            content = request(repair_messages, max_tokens)
             candidates = _guard_output(
                 schema.validate_candidates(_parse_json_output(content), known_ids)
             )

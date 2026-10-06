@@ -18,6 +18,9 @@ const CORE_OPERATIONS = Object.freeze({
   MODEL_REGISTRY: 'benchmark.core-api.model-registry',
   PUBLIC_CONFIG: 'benchmark.core-api.public-config',
   HOST_PREFERENCES: 'benchmark.core-api.host-preferences',
+  ROUTING_CONFIG: 'benchmark.core-api.routing-config',
+  RUNTIME_ACTIVE: 'benchmark.core-api.runtime-active',
+  HOUSEHOLD_IDLE: 'benchmark.core-api.household-idle',
   HOST_RELOAD: 'benchmark.core-api.host-reload',
   PIN_CONTEXT_APPLY: 'benchmark.core-api.pin-context-apply',
   CLAIM_ACQUIRE: 'benchmark.core-api.claim-acquire',
@@ -38,6 +41,7 @@ const CORE_OPERATIONS = Object.freeze({
   WORKLOAD_RECOVERY_RELEASE: 'benchmark.core-api.workload-recovery-release',
   WORKLOAD_YIELD_POINT: 'benchmark.core-api.workload-yield-point',
   INFERENCE_GENERATE: 'benchmark.core-api.inference-generate',
+  INFERENCE_CONTRACT: 'benchmark.core-api.inference-contract',
 });
 
 function operation(method, pathPattern, {
@@ -60,6 +64,9 @@ function operation(method, pathPattern, {
 }
 
 const CORE_OPERATION_SPECS = Object.freeze({
+  [CORE_OPERATIONS.INFERENCE_CONTRACT]: operation('POST', '^/api/inference/contract/resolve$', {
+    maxRequestBytes: 4 * 1024, maxResponseBytes: 256 * 1024,
+  }),
   [CORE_OPERATIONS.MODEL_REGISTRIES]: operation('GET', '^/api/models/registry$', {
     allowSearch: true,
     maxResponseBytes: 2 * 1024 * 1024,
@@ -72,6 +79,9 @@ const CORE_OPERATION_SPECS = Object.freeze({
     maxResponseBytes: 64 * 1024,
   }),
   [CORE_OPERATIONS.HOST_PREFERENCES]: operation('GET', '^/api/nerve-center/host-preferences$'),
+  [CORE_OPERATIONS.ROUTING_CONFIG]: operation('GET', '^/api/nerve-center/inference/routing-config$'),
+  [CORE_OPERATIONS.RUNTIME_ACTIVE]: operation('GET', '^/api/nerve-center/runtime-coordination/active$'),
+  [CORE_OPERATIONS.HOUSEHOLD_IDLE]: operation('GET', '^/api/nerve-center/interactive-priority/status$'),
   [CORE_OPERATIONS.HOST_RELOAD]: operation(
     'POST',
     '^/api/nerve-center/host-preferences/[^/]+/reload$',

@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import base64
 import hashlib
 import json
@@ -11,6 +12,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError, URLError
 
 from integrations.coding.coding_team_deliverable import (
     ReportOutcomeUnknown, report_payload, register_verification_report,
@@ -273,6 +275,17 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             MODULE.return_preflight_problem(args, task, "Stale result")
             self.assertEqual(api.call_count, 1)
 
+    def test_resource_deferral_keeps_the_observed_ticket_queued(self):
+        args = MODULE.argparse.Namespace(allow_dispatch=True, api_base="http://test", task_id="0377")
+        task = {"status": "queued", "assignee": None, "updatedAt": "2026-09-12T00:00:00Z"}
+        with patch.object(MODULE.dispatch_api, "api_json", return_value={}) as api:
+            MODULE.return_preflight_problem(args, task, "AUTOMATION_SLOT_OCCUPIED", deferred=True)
+        payload = api.call_args.kwargs["payload"]
+        self.assertEqual(payload["status"], "deferred")
+        self.assertEqual(payload["expectedQueuedUpdatedAt"], task["updatedAt"])
+        self.assertIn("No coding attempt was consumed", payload["text"])
+        self.assertIn("remains queued", payload["text"])
+
     def test_repair_accepts_empty_or_partial_patch_but_never_outside_scope(self):
         options = dict(max_changed_files=2, max_changed_bytes=100, exact_scope={"a.js", "b.js"})
         for files in ({}, {"a.js": b"partial"}):
@@ -519,6 +532,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             )
 
         self.assertEqual(result["automationLease"]["leaseId"], "lease-1")
+        self.assertEqual(mocked.call_args.kwargs["retries"], 0)
         self.assertEqual(
             mocked.call_args.kwargs["payload"],
             {
@@ -527,6 +541,31 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 "leaseDurationMs": 60000,
             },
         )
+
+    def test_only_a_proven_automated_slot_refusal_is_deferred(self):
+        cases = [
+            (409, {"ok": False, "code": "AUTOMATION_SLOT_OCCUPIED"}, True, True),
+            (409, {"ok": False, "code": "TASK_UNAVAILABLE"}, True, False),
+            (409, {"ok": False, "code": "AUTOMATION_SLOT_OCCUPIED"}, False, False),
+            (503, {"ok": False, "code": "AUTOMATION_SLOT_OCCUPIED"}, True, False),
+            (409, "proxy mentioned AUTOMATION_SLOT_OCCUPIED", True, False),
+        ]
+        for status, body, automated, deferred in cases:
+            with self.subTest(status=status, body=body, automated=automated):
+                raw = json.dumps(body) if isinstance(body, dict) else body
+                error = HTTPError("http://agentx/claim", status, "refused", {}, io.BytesIO(raw.encode()))
+                with patch.object(MODULE.dispatch_api, "urlopen", side_effect=error) as call:
+                    with self.assertRaises(MODULE.PipelineApiError) as raised:
+                        MODULE.dispatch_api.claim_task("http://agentx", "0377", agent="worker", automated=automated)
+                self.assertEqual(isinstance(raised.exception, MODULE.ResourcePreflightDeferred), deferred)
+                self.assertEqual(call.call_count, 1)
+
+    def test_a_lost_claim_response_is_not_replayed_or_called_a_capacity_deferral(self):
+        with patch.object(MODULE.dispatch_api, "urlopen", side_effect=URLError("lost response")) as call:
+            with self.assertRaises(MODULE.PipelineApiError) as raised:
+                MODULE.dispatch_api.claim_task("http://agentx", "0377", agent="worker", automated=True)
+        self.assertNotIsInstance(raised.exception, MODULE.ResourcePreflightDeferred)
+        self.assertEqual(call.call_count, 1)
 
     def test_automated_claim_carries_only_an_exact_launch_request_reference(self):
         claimed = self.task()
@@ -1276,6 +1315,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         )
         emitted = []
         order = []
+        task = {**self.task(), "updatedAt": "2026-09-12T00:00:00Z"}
 
         def defer_dispatch(*_args):
             order.append("dispatch")
@@ -1286,7 +1326,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
         with (
             patch.object(MODULE, "parse_args", return_value=args),
             patch.object(MODULE, "repo_root", return_value=Path.cwd()),
-            patch.object(MODULE.dispatch_api, "fetch_task", return_value=self.task()),
+            patch.object(MODULE.dispatch_api, "fetch_task", return_value=task),
             patch.object(MODULE.dispatch_openclaw, "validate_cost_preflight"),
             patch.object(MODULE, "source_revision", return_value="a" * 40),
             patch.object(
@@ -1320,6 +1360,7 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
                 "run_dispatch",
                 side_effect=defer_dispatch,
             ),
+            patch.object(MODULE.dispatch_api, "api_json", return_value={}) as feedback_api,
             patch("builtins.print", side_effect=lambda value: emitted.append(value)),
         ):
             result = MODULE.main()
@@ -1341,6 +1382,8 @@ class ClawdXGuardedDispatchTests(unittest.TestCase):
             emitted,
         )
         self.assertNotIn("guarded_dispatch=failed", emitted)
+        self.assertEqual(feedback_api.call_args.kwargs["payload"]["status"], "deferred")
+        self.assertEqual(feedback_api.call_args.kwargs["payload"]["expectedQueuedUpdatedAt"], task["updatedAt"])
 
     def test_main_repair_validates_exact_existing_checkout_without_clean_sync(self):
         args = MODULE.argparse.Namespace(

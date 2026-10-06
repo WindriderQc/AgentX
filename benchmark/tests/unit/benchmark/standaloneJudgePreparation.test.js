@@ -9,6 +9,8 @@ jest.mock('../../../src/clients/coreApiClient', () => ({
 const { judgeDrainBudgetMs, prepareStandaloneJudge, PER_RESULT_BUDGET_MS, MIN_DRAIN_BUDGET_MS } = require('../../../src/services/benchmark/standaloneJudgePreparation');
 const ConcurrencyQueue = require('../../../src/services/benchmark/ConcurrencyQueue');
 
+const freeze = async config => ({ ...config, num_ctx: config.num_ctx || 65536, execution_contract: { schema: 'frozen-test-contract' } });
+
 const JUDGE = { host: 'http://judge:11434', model: 'qwen3.8:27b-mtp-q8_0' };
 
 describe('standalone judge drain budget', () => {
@@ -26,11 +28,12 @@ describe('standalone judge drain budget', () => {
 describe('standalone judge preparation', () => {
     test('resolves the contract context when none is set and warms the judge with it', async () => {
         const warmup = jest.fn(async () => ({ success: true }));
-        const resolve = jest.fn(async () => ({ num_ctx: 65536, source: 'inference_contract:pinned' }));
+        const resolve = jest.fn(freeze);
 
-        const config = await prepareStandaloneJudge(JUDGE, { workloadId: 'judge-batch:1', _resolveNumCtx: resolve, _warmup: warmup });
+        const config = await prepareStandaloneJudge(JUDGE, { workloadId: 'judge-batch:1', _freezeConfig: resolve, _warmup: warmup });
 
-        expect(resolve).toHaveBeenCalledWith(JUDGE.model, JUDGE.host);
+        expect(resolve).toHaveBeenCalledWith(JUDGE, { signal: null });
+        expect(config.execution_contract).toEqual({ schema: 'frozen-test-contract' });
         expect(config.num_ctx).toBe(65536);
         expect(warmup).toHaveBeenCalledWith(JUDGE.host, JUDGE.model, expect.objectContaining({
             strict: true, num_ctx: 65536, preUnloadOthers: false, warmupTimeoutCold: 5 * 60 * 1000,
@@ -39,22 +42,22 @@ describe('standalone judge preparation', () => {
     });
 
     test('keeps an explicit context', async () => {
-        const resolve = jest.fn();
-        const config = await prepareStandaloneJudge({ ...JUDGE, num_ctx: 32768 }, { _resolveNumCtx: resolve, _warmup: jest.fn() });
-        expect(resolve).not.toHaveBeenCalled();
+        const resolve = jest.fn(freeze);
+        const config = await prepareStandaloneJudge({ ...JUDGE, num_ctx: 32768 }, { _freezeConfig: resolve, _warmup: jest.fn() });
+        expect(resolve).toHaveBeenCalled();
         expect(config.num_ctx).toBe(32768);
     });
 
-    test('an unresolvable context still warms, without num_ctx', async () => {
+    test('an unresolvable contract stops before warmup or inference', async () => {
         const warmup = jest.fn();
-        const config = await prepareStandaloneJudge(JUDGE, { _resolveNumCtx: async () => { throw new Error('no contract'); }, _warmup: warmup });
-        expect(config.num_ctx).toBeUndefined();
-        expect(warmup.mock.calls[0][2].num_ctx).toBeNull();
+        await expect(prepareStandaloneJudge(JUDGE, { _freezeConfig: async () => { throw new Error('no contract'); }, _warmup: warmup }))
+            .rejects.toThrow('no contract');
+        expect(warmup).not.toHaveBeenCalled();
     });
 
     test('a failed warmup stops the run before its first call', async () => {
         await expect(prepareStandaloneJudge(JUDGE, {
-            _resolveNumCtx: async () => ({ num_ctx: 8192 }),
+            _freezeConfig: freeze,
             _warmup: async () => { throw new Error('Warmup failed: cold load timed out'); }
         })).rejects.toThrow('cold load timed out');
     });

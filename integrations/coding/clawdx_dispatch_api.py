@@ -18,12 +18,14 @@ from urllib.request import Request, urlopen
 try:
     from integrations.coding.coding_dispatch_evidence import (
         PipelineApiError,
+        ResourcePreflightDeferred,
         retry_after_delay,
         validate_attribution_args,
     )
 except ModuleNotFoundError:  # direct execution from the scripts directory
     from coding_dispatch_evidence import (  # type: ignore
         PipelineApiError,
+        ResourcePreflightDeferred,
         retry_after_delay,
         validate_attribution_args,
     )
@@ -78,8 +80,14 @@ def api_json(
             if exc.code == 429 and attempt < retries:
                 time.sleep(retry_after_delay(raw, exc.headers))
                 continue
+            try:
+                failure = json.loads(raw)
+            except json.JSONDecodeError:
+                failure = None
+            code = failure.get("code") if isinstance(failure, dict) and failure.get("ok") is False else None
             raise PipelineApiError(
-                f"pipeline API {method} {url} failed with HTTP {exc.code}: {raw[:500]}"
+                f"pipeline API {method} {url} failed with HTTP {exc.code}: {raw[:500]}",
+                status=exc.code, code=code if isinstance(code, str) else None,
             ) from exc
         except (URLError, TimeoutError, json.JSONDecodeError) as exc:
             if attempt < retries:
@@ -122,13 +130,20 @@ def claim_task(
     if automated:
         request_id = os.environ.get("AGENTX_CODING_DISPATCH_REQUEST_ID", "")  # launch reference, not authority
         payload.update({"automated": True, "leaseDurationMs": lease_duration_ms, **({"dispatchRequestId": request_id} if re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", request_id) else {})})
-    envelope = api_json(
-        api_base,
-        f"/api/pipeline/tasks/{task_id}/claim",
-        method="POST",
-        payload=payload,
-        timeout=timeout,
-    )
+    try:
+        envelope = api_json(
+            api_base,
+            f"/api/pipeline/tasks/{task_id}/claim",
+            method="POST",
+            payload=payload,
+            timeout=timeout,
+            retries=0,  # A lost claim response must not replay a mutation.
+        )
+    except PipelineApiError as exc:
+        # Core acquires this slot before updating the task or incrementing attempts.
+        if automated and exc.status == 409 and exc.code == "AUTOMATION_SLOT_OCCUPIED":
+            raise ResourcePreflightDeferred(str(exc), status=exc.status, code=exc.code) from exc
+        raise
     data = envelope.get("data")
     task = data.get("task") if isinstance(data, dict) else None
     if not isinstance(task, dict):

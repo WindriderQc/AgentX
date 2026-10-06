@@ -93,6 +93,11 @@ async function checkResponseBudgets(targets, executionConfig, judgeConfig = {}, 
     const judgeNumPredict = Number(judgeConfig.num_predict) > 0 ? Number(judgeConfig.num_predict) : DEFAULT_JUDGE_NUM_PREDICT;
     const longestAnswer = Math.max(0, ...candidates.map(row => Number(row.num_predict) || 0));
     if (window.error) warnings.push(`Judge window of ${judgeConfig.model} on ${judgeConfig.host} is unresolved: ${window.error}`);
+    if (window.profile_qualified === false) {
+        warnings.push(`The profile of judge ${judgeConfig.model} on ${judgeConfig.host} is not current: `
+            + `it judges at the context Core serves it (${window.num_ctx} tokens), which no current profile verifies. `
+            + 'Profile it again on that host to verify this window.');
+    }
 
     const sizes = categoryPromptSizes(await loadPrompts({ levels, promptIds }).catch(() => []));
     const validation = await assessJudgeCategories({ host: judgeConfig.host, model: judgeConfig.model }, Object.keys(sizes))
@@ -112,6 +117,7 @@ async function checkResponseBudgets(targets, executionConfig, judgeConfig = {}, 
         num_ctx_source: window.num_ctx_source ?? null,
         num_predict: judgeNumPredict,
         think: judgeConfig.think === true,
+        profile_qualified: window.profile_qualified ?? null,
         fits: fits.includes(false) ? false : (fits.length && fits.every(value => value === true) ? true : null),
         categories: requirements.categories,
     };

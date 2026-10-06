@@ -33,4 +33,7 @@ router.post('/workload-admissions/:admissionId/yield-point', async (req, res) =>
   }
 });
 
+// Read by work that only starts when the household is quiet.
+router.get('/interactive-priority/status', (_req, res) => res.json({ status: 'success', data: interactivePriority.householdIdle() }));
+
 module.exports = router;

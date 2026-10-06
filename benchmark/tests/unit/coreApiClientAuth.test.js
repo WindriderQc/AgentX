@@ -319,6 +319,9 @@ describe('Core API client scoped outbound execution', () => {
       ['GET', '/api/models/registry/qwen%3A7b?host=ollama', CORE_OPERATIONS.MODEL_REGISTRY],
       ['GET', '/api/config', CORE_OPERATIONS.PUBLIC_CONFIG],
       ['GET', '/api/nerve-center/host-preferences', CORE_OPERATIONS.HOST_PREFERENCES],
+      ['GET', '/api/nerve-center/inference/routing-config', CORE_OPERATIONS.ROUTING_CONFIG],
+      ['GET', '/api/nerve-center/runtime-coordination/active', CORE_OPERATIONS.RUNTIME_ACTIVE],
+      ['GET', '/api/nerve-center/interactive-priority/status', CORE_OPERATIONS.HOUSEHOLD_IDLE],
       ['POST', '/api/nerve-center/host-preferences/ollama/reload', CORE_OPERATIONS.HOST_RELOAD],
       ['POST', '/api/nerve-center/host-preferences/ollama/pin/context', CORE_OPERATIONS.PIN_CONTEXT_APPLY],
       ['POST', '/api/nerve-center/host-preferences/ollama/benchmark-claim', CORE_OPERATIONS.CLAIM_ACQUIRE],
@@ -339,6 +342,7 @@ describe('Core API client scoped outbound execution', () => {
       ['DELETE', '/api/nerve-center/workload-recoveries/recovery-1', CORE_OPERATIONS.WORKLOAD_RECOVERY_RELEASE],
       ['POST', '/api/nerve-center/workload-admissions/admission-1/yield-point', CORE_OPERATIONS.WORKLOAD_YIELD_POINT],
       ['POST', '/api/inference/generate', CORE_OPERATIONS.INFERENCE_GENERATE],
+      ['POST', '/api/inference/contract/resolve', CORE_OPERATIONS.INFERENCE_CONTRACT],
     ].map(([method, path, operationId]) => classifyCoreOperation(path, method)))
       .toEqual(Object.values(CORE_OPERATIONS));
     expect(() => classifyCoreOperation('/api/nerve-center/host-preferences', 'POST'))
