@@ -4,6 +4,8 @@
 .image-layout{display:grid;grid-template-columns:minmax(280px,.85fr) minmax(340px,1.15fr);gap:24px;align-items:start}
 .image-compose,.image-result{background:#141c27;border:1px solid #303b49;border-radius:20px;padding:25px}.image-compose label{display:block;font-size:14px;margin:0 0 10px;font-weight:600}.image-compose label span,.image-help{font-weight:400;color:#a5b0bd;font-size:12px;line-height:1.6}
 .image-compose textarea,.image-compose select{width:100%;color:#f1f4f7;background:#0e1520;border:1px solid #354354;border-radius:10px;padding:12px;font:inherit}.image-compose textarea{resize:vertical;line-height:1.6;margin-bottom:20px;min-height:160px}.image-compose :focus-visible{outline:2px solid #b6d9c5;outline-offset:3px}
+#image-seed{width:100%;box-sizing:border-box;margin-bottom:20px;color:#f1f4f7;background:#0e1520;border:1px solid #354354;border-radius:10px;padding:12px;font:inherit}
+#image-use-reference,#image-selected-reference button{display:block;margin-top:12px;background:none;color:#b6d9c5;border:1px solid #536e60;border-radius:8px;padding:10px 12px;font:inherit;cursor:pointer}
 .image-controls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}.image-controls select{margin-top:8px;font-size:13px}
 #image-create{width:100%;display:flex;justify-content:space-between;background:#b6d9c5;color:#14291f;border:0;border-radius:11px;padding:15px 18px;font:600 15px inherit;cursor:pointer;margin-top:20px}#image-create:disabled{opacity:.5;cursor:wait}
 #image-status{font-size:13px;color:#bdc8d3;line-height:1.5;margin-bottom:0}#image-cancel{margin-top:12px;background:none;color:#ffbfac;border:1px solid #7c554b;border-radius:8px;padding:8px 12px;cursor:pointer}
