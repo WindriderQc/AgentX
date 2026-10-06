@@ -113,6 +113,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   Coding-task preparation passes that supplied text, the full task discussion
   and the permitted file inventory without additional cuts. Its coverage is
   recorded on the ticket; a planner input refusal preserves the request.
+- **PsyX source coverage.** Dream portraits distinguish source items collected
+  from text supplied to the model. Collection limits, stalled pagination and
+  unknown task totals appear in the prompt and saved portrait coverage.
 - **Inference health.** Nerve Center shows per-host watchdog success counts and
   the last probe or skip reason. Unusable, skipped and control-plane-only probes
   leave resident worker health unknown; only a completed resident inference
