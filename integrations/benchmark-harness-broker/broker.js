@@ -132,13 +132,19 @@ async function loadCatalog(configPath) {
   const allLocal = entries.length > 0 && entries.every((entry) => entry.target.tier === 'local');
   const catalogObservedAt = allLocal ? Date.now() : config.catalog?.observedAt == null ? null : Date.parse(config.catalog.observedAt);
   const catalogExpiresAt = allLocal ? catalogObservedAt + 300_000 : config.catalog?.expiresAt == null ? null : Date.parse(config.catalog.expiresAt);
+  const validWindow = Number.isFinite(catalogObservedAt) && Number.isFinite(catalogExpiresAt) && catalogObservedAt <= Date.now() + 300_000 && catalogExpiresAt > Date.now() && catalogExpiresAt > catalogObservedAt;
+  if (!allLocal && !validWindow && entries.some(entry => entry.target.tier === 'local')) {
+    for (const entry of entries) if (entry.target.tier !== 'local') entry.target = normalizeTarget({ ...entry.target, available: false });
+    for (const entry of entries) if (entry.target.available) entry.observedPins = await observeExecutorPins(entry.executor, entry.target);
+    return { entries, observedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 300_000).toISOString(), broker: config.broker };
+  }
   if (hasAvailableTargets && (!Number.isFinite(catalogObservedAt) || !Number.isFinite(catalogExpiresAt))) {
     fail('CATALOG_STALE', 'an available catalog requires observedAt and expiresAt', 409);
   }
   if (hasAvailableTargets && (catalogObservedAt > Date.now() + 300_000 || catalogExpiresAt <= Date.now() || catalogExpiresAt <= catalogObservedAt)) {
     fail('CATALOG_STALE', 'catalog observation is future-dated, expired, or has an invalid freshness window', 409);
   }
-  for (const entry of entries) entry.observedPins = await observeExecutorPins(entry.executor, entry.target);
+  for (const entry of entries) if (entry.target.available) entry.observedPins = await observeExecutorPins(entry.executor, entry.target);
   return {
     entries,
     observedAt: Number.isFinite(catalogObservedAt) ? new Date(catalogObservedAt).toISOString() : null,
@@ -228,7 +234,7 @@ function verifyEnvelope(envelope, target, role, input) {
 function estimateReservation(target, request) {
   const turns = target.mode === 'native_agent' ? target.nativePolicy.maxTurns : 1;
   const maxTokens = Math.max(1, Number(request.parameters?.maxTokens) || 1) * turns;
-  const promptTokens = target.mode === 'native_agent' ? target.contextWindow * turns
+  const promptTokens = target.mode === 'native_agent' || target.api?.name === 'openclaw-model-sdk' ? target.contextWindow * turns
     : Math.max(1, Math.ceil(Buffer.byteLength(String(request.input?.prompt || ''), 'utf8') / 3));
   const pricing = target.pricing || {};
   const conservativeInputRate = Math.max(
@@ -250,8 +256,8 @@ function estimateActualCost(target, usage) {
   const uncachedInputTokens = inputTokens - cacheReadTokens - cacheWriteTokens;
   return Number(pricing.callNanodollars || 0)
     + Math.ceil(uncachedInputTokens * Number(pricing.inputNanodollarsPerMillion || 0) / 1000000)
-    + Math.ceil(cacheReadTokens * Number(pricing.cacheReadNanodollarsPerMillion || pricing.inputNanodollarsPerMillion || 0) / 1000000)
-    + Math.ceil(cacheWriteTokens * Number(pricing.cacheWriteNanodollarsPerMillion || pricing.inputNanodollarsPerMillion || 0) / 1000000)
+    + Math.ceil(cacheReadTokens * Number(pricing.cacheReadNanodollarsPerMillion ?? pricing.inputNanodollarsPerMillion ?? 0) / 1000000)
+    + Math.ceil(cacheWriteTokens * Number(pricing.cacheWriteNanodollarsPerMillion ?? pricing.inputNanodollarsPerMillion ?? 0) / 1000000)
     + Math.ceil(Number(usage.outputTokens || 0) * Number(pricing.outputNanodollarsPerMillion || 0) / 1000000);
 }
 
@@ -386,14 +392,8 @@ async function runExecutor({ entry, request, signal }) {
       child.stdin.end(input);
     });
     if (outcome.code !== 0) {
-      const openRouterFailure = entry.target.adapter?.name === 'openrouter-isolated'
-        ? sanitizeOpenRouterExecutorFailure(outcome.stderr)
-        : null;
-      throw publicError(
-        'EXECUTOR_FAILED',
-        openRouterFailure ? `executor failed: ${openRouterFailure}` : `executor exited ${outcome.code}`,
-        502
-      );
+      const nativeFailure = /^OPENCLAW_[A-Z_]{1,80}$/.test(outcome.stderr.trim()) ? outcome.stderr.trim() : null;
+      throw publicError('EXECUTOR_FAILED', nativeFailure ? `executor failed: ${nativeFailure}` : `executor exited ${outcome.code}`, 502);
     }
     let result;
     try { result = JSON.parse(outcome.stdout); } catch { throw publicError('EXECUTOR_INVALID_JSON', 'executor returned invalid JSON', 502); }
@@ -418,6 +418,7 @@ async function runExecutor({ entry, request, signal }) {
       || !safeEqual(actual.environmentFingerprint, entry.observedPins.profileFingerprint)) {
       fail('PIN_DRIFT', 'executor receipt does not match the broker-observed runtime/profile pins', 409);
     }
+    if (result.execution) actual.execution = require('../../shared/executionEvidence').normalizeExecutionEvidence(result.execution);
     const output = String(result.output ?? '');
     if (Buffer.byteLength(output, 'utf8') > Number(request.envelope.policies.output.maxBytes)) {
       fail('OUTPUT_LIMIT_EXCEEDED', 'executor result exceeded the WorkerEnvelope output bound', 502);

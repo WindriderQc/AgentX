@@ -335,3 +335,10 @@ describe('Cost Calculator Service', () => {
     });
   });
 });
+
+
+test('a missing native runtime cost is not converted into a zero conversation total', () => {
+  const { calculateConversationCost } = require('../../src/services/costCalculator');
+  const result = calculateConversationCost([{ role: 'assistant', metadata: { executionReceipt: { cost: null } }, cost: { totalCost: null } }]);
+  expect(result.sum).toBeNull();
+});

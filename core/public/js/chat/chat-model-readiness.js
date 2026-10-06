@@ -37,6 +37,11 @@
   }
 
   function getReadinessMeta(model, requireProfiledModels) {
+    if (model && model.execution && model.execution.source === 'openclaw') {
+      return { stage: 'available', ready: model.chatAllowed === true, blocked: model.chatAllowed !== true,
+        label: model.execution.mode === 'agent' ? 'Agent' : 'Model',
+        tip: 'OpenClaw · ' + (model.origin || 'configured agent') + ' · ' + (model.billing && model.billing.kind || 'unknown billing') };
+    }
     var readiness = model && model.readiness ? model.readiness : {};
     var stage = normalizeStage(readiness.stage);
     var ready = isProfiledReady(readiness);

@@ -183,7 +183,7 @@ function buildHermesExport(lanes, coreBaseUrl) {
     codingSpecialistModelConfig: modelConfig(lanes.codingSpecialist.model, lanes.codingSpecialist.contextSize, baseUrl),
     masterBrainModelConfig: modelConfig(lanes.masterBrain.model, lanes.masterBrain.contextSize, baseUrl),
     authority: {
-      policy: authorityIsCloud ? 'cloud_first_via_agentx_proxy' : 'local_via_agentx_proxy',
+      policy: authorityIsCloud ? 'requires_explicit_openclaw_source' : 'local_via_agentx_proxy',
       expectedBaseUrl: baseUrl,
       expectedModel: authorityModel,
       expectedContext: authorityContext,
@@ -191,7 +191,7 @@ function buildHermesExport(lanes, coreBaseUrl) {
       localFallbackContext: lanes.daily.contextSize,
       liveConfigValidation: 'protected_human_gated',
       credentialPolicy: authorityIsCloud
-        ? 'provider credential stays server-side in AgentX'
+        ? 'provider credentials belong to OpenClaw; select an explicit OpenClaw execution source'
         : 'no provider credential required for local inference'
     },
     notes: [

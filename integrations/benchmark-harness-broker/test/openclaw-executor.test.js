@@ -14,7 +14,7 @@ test('native receipt preserves total multi-turn usage and observed tool calls', 
   const receipt = parseResult(result(), input, 3500, { OPENCLAW_RUNTIME_VERSION: '2026.8.2' });
   assert.deepEqual(receipt.usage, { durationMs: 3500, inputTokens: 3012, outputTokens: 64, turns: 3, toolCalls: 2 });
   assert.equal(receipt.actual.modelDigest, null);
-  assert.equal(receipt.actual.modelVersion, 'qwen');
+  assert.equal(receipt.actual.modelVersion, 'unknown');
   assert.equal(receipt.output, 'Read back: 42');
   assert.equal(parseResult({ ...result(), assistantTurns: 1, toolSummary: undefined }, input, 10).usage.toolCalls, 0);
 });
@@ -23,7 +23,7 @@ test('empty answers, errors, model drift and absent usage cannot become successf
   for (const override of [ { final: '  ' }, { ok: false }, { provider: 'cloud' }, { model: 'fallback' }, { usage: null }, { assistantTurns: undefined }, { toolSummary: undefined } ]) {
     assert.throws(() => parseResult({ ...result(), ...override }, input, 10));
   }
-  assert.throws(() => parseResult(result(), { ...input, target: { ...input.target, mode: 'isolated_model' } }, 10), /tool activity/);
+  assert.throws(() => parseResult(result(), { ...input, target: { ...input.target, mode: 'isolated_model' } }, 10), /cannot attest an isolated/);
 });
 
 test('each invocation applies Benchmark parameters without mutating the pinned profile', () => {
@@ -92,4 +92,17 @@ test('native execution stages a pinned fixture and verifies the resulting edit',
     if (oldVersion === undefined) delete process.env.OPENCLAW_RUNTIME_VERSION; else process.env.OPENCLAW_RUNTIME_VERSION = oldVersion;
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('an agent with no tool calls still cannot become an isolated model', () => {
+  assert.throws(() => parseResult({ ...result(), assistantTurns: 1, toolSummary: undefined },
+    { ...input, target: { ...input.target, mode: 'isolated_model' } }, 10), /cannot attest an isolated/);
+});
+
+test('native invocation preserves configured provider routing policy', () => {
+  const profile = { models: { providers: { ollama: { models: [{ id: 'qwen' }] } } },
+    agents: { defaults: { models: { 'ollama/qwen': { params: { provider: { only: ['fixed'], allow_fallbacks: false } } }, other: { alias: 'kept' } } } } };
+  const config = invocationConfig(profile, input);
+  assert.deepEqual(config.agents.defaults.models['ollama/qwen'].params.provider, { only: ['fixed'], allow_fallbacks: false });
+  assert.equal(config.agents.defaults.models.other.alias, 'kept');
 });

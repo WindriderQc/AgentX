@@ -361,4 +361,4 @@ const handleChatRequest = async ({
 // Streaming handler extracted to chatServiceStream.js
 const { handleChatRequestStream } = require('./chatServiceStream');
 
-module.exports = { handleChatRequest, handleChatRequestStream };
+module.exports = { handleChatRequest: require('./chat/openclawChat').withOpenClawChat(handleChatRequest), handleChatRequestStream };

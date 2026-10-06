@@ -3,6 +3,7 @@
  */
 import { STORAGE_KEYS, DEFAULTS } from './chat-constants.js';
 import { fetchWithDeadline } from './chat-network.js';
+import { appendOpenClawSource, openClawChatState, openClawOptions, syncSourceControls } from './chat-execution-sources.js';
 
 function readOptionalNumberInput(value) {
   if (value == null) return '';
@@ -37,6 +38,7 @@ export function routingModeLabel(mode) {
 }
 
 export function routingMode(elements, state) {
+  if (elements?.hostInput?.value === 'openclaw') return 'manual';
   const raw = elements?.routingModeSelect?.value || state?.settings?.routingMode || DEFAULTS.routingMode || 'standard';
   return ROUTING_MODES.includes(raw) ? raw : 'standard';
 }
@@ -98,6 +100,7 @@ export function getHostPinnedModels(pref) {
 }
 
 export function getHostChatState(elements, state, defaults) {
+  if (elements?.hostInput?.value === 'openclaw') return openClawChatState(elements, state);
   if (isRouterMode(elements, state)) {
     if (!state.ollamaHostsLoaded) {
       return {
@@ -239,6 +242,7 @@ export function getHostChatState(elements, state, defaults) {
 }
 
 export function describePendingRuntimeChange(elements, state, defaults) {
+  if (elements?.hostInput?.value === 'openclaw') return { pending: false, key: elements.modelSelect?.value, message: 'OpenClaw executes the selected model or agent.' };
   if (isRouterMode(elements, state)) {
     return {
       pending: false,
@@ -395,6 +399,7 @@ export function loadSettings(defaults) {
 }
 
 export function readOptions(elements) {
+  if (elements?.hostInput?.value === 'openclaw') return openClawOptions(elements);
   return {
     temperature: Number(elements.temperature.value),
     top_p: Number(elements.topP.value),
@@ -588,7 +593,7 @@ export async function checkRagAvailability(elements) {
 export function updateConfigSummary(elements) {
   const routerMode = isRouterMode(elements);
   const modeLabel = `${routingModeLabel(routingMode(elements))} mode`;
-  const modelName = routerMode ? modeLabel : (elements.modelSelect.value || 'Manual');
+  const modelName = routerMode ? modeLabel : (elements.modelSelect.selectedOptions?.[0]?.textContent || elements.modelSelect.value || 'Manual');
   const shortModel = modelName.length > 15 ? modelName.substring(0, 12) + '...' : modelName;
 
   const summaryModelEl = document.getElementById('summaryModel');
@@ -697,6 +702,8 @@ export async function loadOllamaHosts(elements, state) {
     opt.value = '';
     opt.textContent = '\u26a0\ufe0f Failed to load hosts';
     hostSelect.appendChild(opt);
+  } finally {
+    await appendOpenClawSource(elements, state);
   }
 }
 
@@ -731,6 +738,7 @@ export async function loadHostPreferences(state) {
 }
 
 export function updateRoutingModeUi(elements, state, defaults) {
+  syncSourceControls(elements);
   const routerMode = isRouterMode(elements, state);
   const hostState = getHostChatState(elements, state, defaults);
   const hostUnavailable = !routerMode && !hostState.available;
@@ -760,7 +768,7 @@ export function updateRoutingModeUi(elements, state, defaults) {
 
   const hostHint = document.getElementById('hostInputHint');
   if (hostHint) {
-    hostHint.textContent = routerMode
+    hostHint.textContent = elements.hostInput.value === 'openclaw' ? 'Choose an OpenClaw model or configured agent.' : routerMode
       ? `Ignored in ${modeLabel} mode. Switch to Manual to pin a host.`
       : hostUnavailable || hostState.requiresModel
         ? hostState.reason

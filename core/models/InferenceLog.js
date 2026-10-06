@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
 /**
- * InferenceLog — records every Ollama inference call across all hosts.
+ * InferenceLog — records local and delegated inference calls.
  * Written fire-and-forget from modelRouter.recordInference().
  * TTL: 30 days by default (configurable via INFERENCE_LOG_TTL_DAYS env).
  */
@@ -57,6 +57,10 @@ const InferenceLogSchema = new mongoose.Schema({
   //   'target_host_vram_estimate', 'context_test', 'execution_default', 'fallback').
   num_ctx: { type: Number, default: null },
   num_ctx_source: { type: String, default: null },
+
+  executionSource: { type: String, enum: ['local', 'openclaw'], default: null },
+  executionMode: { type: String, enum: ['model', 'agent'], default: null },
+  executionReceiptFingerprint: { type: String, default: null },
 
   // Performance
   // Estimate captured before dispatch. Unlike tokensIn, this remains available

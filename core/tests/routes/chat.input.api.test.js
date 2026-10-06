@@ -40,6 +40,23 @@ describe('chat input across ordinary and streamed responses', () => {
     }));
   });
 
+  test.each(['/chat', '/chat/stream'])('%s accepts an explicit native source without an Ollama host', async endpoint => {
+    const response = await http.request.post(`/api${endpoint}`).send({
+      model: 'openclaw:model:fixture/model', target: 'openclaw', message: 'Hello', parameters: { maxTokens: 64 }
+    });
+    expect(response.status).toBe(200);
+    const handler = endpoint.endsWith('stream') ? service.handleChatRequestStream : service.handleChatRequest;
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ model: 'openclaw:model:fixture/model', target: undefined, parameters: { maxTokens: 64 } }));
+  });
+
+  test('refuses mixed native and automatic local source selection before dispatch', async () => {
+    const response = await http.request.post('/api/chat').send({
+      model: 'openclaw:model:fixture/model', autoRoute: true, message: 'Hello'
+    });
+    expect(response.status).toBe(400); expect(response.body.code).toBe('EXECUTION_SOURCE_INVALID');
+    expect(service.handleChatRequest).not.toHaveBeenCalled();
+  });
+
   describe.each(['/chat', '/chat/stream'])('%s', (endpoint) => {
     test.each([
       { message: '   ' }, { message: 42 }, { messages: null },
