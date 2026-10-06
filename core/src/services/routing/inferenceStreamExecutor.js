@@ -152,7 +152,8 @@ function attachStreamLifecycle(stream, { abortBridge, release, inferenceAdmissio
         inferenceAdmission.assertActive();
         return inferenceAdmission.complete();
       }
-      return inferenceAdmission.abandon(error || new Error('Ollama stream closed before verified upstream EOF'));
+      return inferenceAdmission.abandon(error || Object.assign(
+        new Error('Ollama stream closed before verified upstream EOF'), { code: 'OLLAMA_STREAM_CLOSED_EARLY' }));
     })
       .then(() => ({ ...snapshot, completed: exactSourceTerminal }))
       .catch(async settlementError => {

@@ -276,7 +276,7 @@ async function markInferenceUnknown({ id, generation, principal, reason = null, 
       'inferences.$.state': 'UNKNOWN',
       'inferences.$.unknownAt': now,
       'inferences.$.unknownReason': clean(reason, 500),
-      'inferences.$.unknownOrigin': ['caller-abort', 'deadline-abort'].includes(origin) ? origin : null
+      'inferences.$.unknownOrigin': ['caller-abort', 'deadline-abort', 'runtime-disconnect'].includes(origin) ? origin : null
     } },
     { new: true }
   ).lean();
