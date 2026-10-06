@@ -59,6 +59,7 @@ total_tokens = 0
 providers = set()
 models = set()
 origins = set()
+token_seen = {key: 0 for key in ("input", "output", "cacheRead", "totalTokens")}
 
 def visit(value):
     global calls, cost_calls, cost, input_tokens, output_tokens, cache_read_tokens, total_tokens
@@ -70,10 +71,14 @@ def visit(value):
             providers.add(str(value["provider"]))
             models.add(str(value["model"]))
             usage = usage if isinstance(usage, dict) else {}
-            input_tokens += int(usage.get("input") or 0)
-            output_tokens += int(usage.get("output") or 0)
-            cache_read_tokens += int(usage.get("cacheRead") or 0)
-            total_tokens += int(usage.get("totalTokens") or 0)
+            for key in token_seen:
+                token_value = usage.get(key)
+                if isinstance(token_value, int) and not isinstance(token_value, bool) and token_value >= 0:
+                    token_seen[key] += 1
+            input_tokens += usage.get("input", 0) if token_seen["input"] == calls else 0
+            output_tokens += usage.get("output", 0) if token_seen["output"] == calls else 0
+            cache_read_tokens += usage.get("cacheRead", 0) if token_seen["cacheRead"] == calls else 0
+            total_tokens += usage.get("totalTokens", 0) if token_seen["totalTokens"] == calls else 0
             money = usage.get("cost") if isinstance(usage.get("cost"), dict) else {}
             raw_total = money.get("total")
             try:
@@ -143,10 +148,11 @@ print(json.dumps({
     "costNanodollars": nanodollars,
     "costStatus": "unknown" if not cost_calls else "complete" if cost_calls == calls and session_status == "done" else "partial",
     "sessionStatus": session_status,
-    "inputTokens": input_tokens,
-    "outputTokens": output_tokens,
-    "cacheReadTokens": cache_read_tokens,
-    "totalTokens": total_tokens,
+    "inputTokens": input_tokens if token_seen["input"] == calls else None,
+    "outputTokens": output_tokens if token_seen["output"] == calls else None,
+    "cacheReadTokens": cache_read_tokens if token_seen["cacheRead"] == calls else None,
+    "totalTokens": total_tokens if token_seen["totalTokens"] == calls else None,
+    "tokenStatus": "complete" if all(count == calls for count in token_seen.values()) else "partial" if any(token_seen.values()) else "unknown",
     "providers": sorted(providers),
     "models": sorted(models),
     "origins": sorted(origins),
@@ -374,7 +380,7 @@ def read_openclaw_session_cost(
                 "agent": agent,
                 "sessionKey": session_key,
                 **{key: observed[key] for key in sorted(required)},
-                **{key: observed[key] for key in ("costStatus", "sessionStatus") if key in observed},
+                **{key: observed[key] for key in ("costStatus", "sessionStatus", "tokenStatus") if key in observed},
             }
             fingerprint = hashlib.sha256(
                 json.dumps(canonical, separators=(",", ":"), sort_keys=True).encode("utf-8")

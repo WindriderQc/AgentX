@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 
 try:
+    from integrations.coding.coding_attempt_usage import attempt_usage
     from integrations.coding.coding_team_observability import (
         ObservabilityError,
         send_coding_team_telegram,
@@ -25,6 +26,7 @@ try:
         build_verified_feedback,
     )
 except ModuleNotFoundError:  # direct execution from the scripts directory
+    from coding_attempt_usage import attempt_usage
     from coding_team_observability import (  # type: ignore
         ObservabilityError,
         send_coding_team_telegram,
@@ -36,9 +38,7 @@ except ModuleNotFoundError:  # direct execution from the scripts directory
 
 PIPELINE_ATTRIBUTION_ALIAS = "ollama/agentx-pipeline"
 
-
 PASS_STATUSES = {"pass", "passed", "ok", "verified", "done"}
-
 
 AUTOMATION_EVIDENCE_SCHEMA = "agentx.pipeline-automation-evidence/v1"
 
@@ -174,6 +174,7 @@ def build_attempt_evidence(
     local_energy: Mapping[str, Any] | None = None,
     worker_receipt_fingerprint: str | None = None,
     routing_evidence: Mapping[str, Any] | None = None,
+    attribution_lease: Mapping[str, Any] | None = None,
     inference: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     change_metrics = changes or {}
@@ -195,6 +196,7 @@ def build_attempt_evidence(
         "costSource": cost_source,
         "costEvidenceFingerprint": cost_fingerprint,
     }
+    usage.update(attempt_usage(cost_observation, routing_evidence, attribution_lease))
     if cost_observation and "costStatus" in cost_observation:
         usage["costStatus"] = cost_observation["costStatus"]
     if local_energy is not None:
