@@ -64,6 +64,7 @@ function computeCoverage({ scope, catalog, hostIds, readiness, answers }) {
     }
     return {
       hostId, ...entry, profile,
+      artifact: ready?.artifact ? { digest: ready.artifact.digest, runtimeFingerprint: ready.artifact.runtimeFingerprint } : null,
       catalog: { total: catalog.size, covered, byCategory },
       missingPromptIds: missing,
       complete: profile.state === 'current' && covered === catalog.size,

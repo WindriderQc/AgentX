@@ -36,6 +36,8 @@ function startStartupRecovery(profile) {
   if (shouldSyncRegisteredHosts(profile)) {
     // Hosts registered in Core's Nerve Center become profiling and benchmark targets.
     require('./registeredHostSync').startRegisteredHostSync();
+    // Coverage reads the Nerve Center too; it stays idle until switched on.
+    require('./measurementCoverage/coverageJob').getCoverageJob().start();
   } else {
     logger.info('[RegisteredHostSync] Disabled by the demo product profile');
   }

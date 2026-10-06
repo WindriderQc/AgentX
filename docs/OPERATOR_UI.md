@@ -161,8 +161,20 @@ profile and how many catalog prompts have a scored answer. A prompt counts when
 the answer was scored with the current scorer version, for the prompt as the
 catalog holds it today, by the artifact the profile describes: a new artifact,
 a new scorer version or an edited prompt re-opens what it affects. **Next**
-says what the pair still needs, a profile first, then the benchmark. The view
-only reads; `GET /api/benchmark/coverage` returns the same matrix.
+says what the pair still needs, a profile first, then the benchmark.
+`GET /api/benchmark/coverage` returns the same matrix.
+
+Below the matrix, **Automatic measurement** fills it by itself, one small
+measurement at a time: a standard profile, or a few missing prompts for one
+model on one host. It is off until switched on. It starts a measurement only
+inside the quiet hours, when no workload, maintenance or batch holds the
+runtime and the household has been quiet for the set minutes, and it launches
+through the same routes as an operator, so judge selection, preflight and host
+claims apply unchanged. The line says why it is waiting. A pair whose
+measurements end three times without progress is left alone for a day.
+Conversations held through an external agent harness cannot be told apart from
+that harness's scheduled jobs and do not count as activity: choose quiet hours
+accordingly. A measurement in progress still yields to a household turn.
 
 | Operation label | Meaning |
 |---|---|

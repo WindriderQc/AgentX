@@ -320,6 +320,8 @@ describe('Core API client scoped outbound execution', () => {
       ['GET', '/api/config', CORE_OPERATIONS.PUBLIC_CONFIG],
       ['GET', '/api/nerve-center/host-preferences', CORE_OPERATIONS.HOST_PREFERENCES],
       ['GET', '/api/nerve-center/inference/routing-config', CORE_OPERATIONS.ROUTING_CONFIG],
+      ['GET', '/api/nerve-center/runtime-coordination/active', CORE_OPERATIONS.RUNTIME_ACTIVE],
+      ['GET', '/api/nerve-center/interactive-priority/status', CORE_OPERATIONS.HOUSEHOLD_IDLE],
       ['POST', '/api/nerve-center/host-preferences/ollama/reload', CORE_OPERATIONS.HOST_RELOAD],
       ['POST', '/api/nerve-center/host-preferences/ollama/pin/context', CORE_OPERATIONS.PIN_CONTEXT_APPLY],
       ['POST', '/api/nerve-center/host-preferences/ollama/benchmark-claim', CORE_OPERATIONS.CLAIM_ACQUIRE],
