@@ -57,6 +57,14 @@ class TaskWorktreeTests(unittest.TestCase):
             self.prepare(revision=git(self.base, "rev-parse", "HEAD"))
         self.assertEqual((first / "file.txt").read_text(), "preserved patch\n")
 
+    def test_repair_cannot_start_an_empty_worktree_in_place_of_a_legacy_patch(self):
+        (self.base / 'file.txt').write_text('legacy patch\n')
+        with self.assertRaises(PipelineApiError):
+            worktrees.prepare_remote_worktree(local_ssh, 'synthetic', str(self.base), '0377',
+                self.revision, 'coder', allow_create=False)
+        self.assertFalse(Path(worktrees.task_worktree_path(str(self.base), '0377')).exists())
+        self.assertEqual((self.base / 'file.txt').read_text(), 'legacy patch\n')
+
     def test_foreign_repository_or_symlink_is_not_adopted(self):
         target = Path(worktrees.task_worktree_path(str(self.base), "0377"))
         target.mkdir(parents=True)

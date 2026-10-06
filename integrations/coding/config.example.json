@@ -23,6 +23,7 @@
         "integrations/coding/clawdx_dispatch_message.py",
         "integrations/coding/clawdx_dispatch_openclaw.py",
         "integrations/coding/clawdx_dispatch_remote.py",
+        "integrations/coding/coding_task_worktrees.py",
         "integrations/coding/coding_dispatch_evidence.py",
         "integrations/coding/coding_team_promotion.py"
       ],

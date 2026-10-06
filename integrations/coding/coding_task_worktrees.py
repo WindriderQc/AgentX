@@ -39,13 +39,15 @@ def task_worktree_base(repository):
     return None
 
 
-def prepare_remote_worktree(ssh_run, host, base, task_id, revision, agent):
+def prepare_remote_worktree(ssh_run, host, base, task_id, revision, agent, *, allow_create=True):
     target = task_worktree_path(base, task_id)
     worker_workspace(target, agent)
     if not re.fullmatch(r"[0-9a-f]{40}", str(revision)):
         raise PipelineApiError("task worktree revision is invalid")
     repository, destination = shlex.quote(base), shlex.quote(target)
     parent = shlex.quote(str(PurePosixPath(target).parent))
+    create = (f"mkdir -p {parent} && git -C {repository} worktree add --quiet --detach {destination} {shlex.quote(revision)}"
+        if allow_create else "false")
     command = (
         f"test ! -L {parent} && test ! -L {destination} && "
         f"if test -e {destination}; then "
@@ -54,7 +56,7 @@ def prepare_remote_worktree(ssh_run, host, base, task_id, revision, agent):
         f'test "$(git -C {destination} rev-parse --path-format=absolute --git-common-dir)" = '
         f'"$(git -C {repository} rev-parse --path-format=absolute --git-common-dir)" && '
         f'test "$(git -C {destination} rev-parse HEAD)" = {shlex.quote(revision)}; '
-        f"else mkdir -p {parent} && git -C {repository} worktree add --quiet --detach {destination} {shlex.quote(revision)}; fi && "
+        f"else {create}; fi && "
         f"if test -d {repository}/core/node_modules; then "
         f"test ! -L {destination}/core && test ! -L {destination}/core/node_modules && mkdir -p {destination}/core/node_modules; fi"
     )
