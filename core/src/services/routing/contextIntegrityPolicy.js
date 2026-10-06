@@ -19,11 +19,24 @@ function supportsRefusal(version) {
   return true;
 }
 
-function isControlledProbe(options) {
+async function isControlledProbe(options, dependencies) {
   // The distributed admission validates this exact Core-owned workload before
   // dispatch. A direct lane or a caller-provided claim alone is not an opt-out.
-  return options.principal === 'benchmark-service'
-    && Boolean(options.workloadAdmissionId && options.workloadGeneration);
+  if (options.principal !== 'benchmark-service'
+    || !(options.workloadAdmissionId && options.workloadGeneration)) return false;
+  // On a host the workload only shares, the model stays resident for everyone
+  // else. A payload sent as is would load it in another runner mode, and each
+  // probe, pin restore or household call would then reload it. Only a host the
+  // workload reserves is its own to exercise.
+  const sharesHost = dependencies.workloadSharesHost || defaultWorkloadSharesHost;
+  return !(await sharesHost({ id: options.workloadAdmissionId, generation: options.workloadGeneration,
+    host: options.hostUrl }));
+}
+
+async function defaultWorkloadSharesHost(query) {
+  // Never wait on a disconnected database: Mongoose would buffer the query.
+  if (require('mongoose').connection.readyState !== 1) return false;
+  return require('../runtimeWorkloadAdmission').workloadSharesHost(query);
 }
 
 function withContextRefusal(payload, mode) {
@@ -32,8 +45,8 @@ function withContextRefusal(payload, mode) {
 
 async function protectContext(options, dependencies = {}) {
   const { hostUrl, payload, mode, signal, principal, admissionKind } = options;
-  if (isControlledProbe(options)
-    || (principal === 'core-session-hold' && admissionKind === 'session-hold-warm')) return payload;
+  if ((principal === 'core-session-hold' && admissionKind === 'session-hold-warm')
+    || await isControlledProbe(options, dependencies)) return payload;
   signal?.throwIfAborted();
   const read = dependencies.readRuntimeVersion || readRuntimeVersion;
   const version = await read(hostUrl, dependencies.fetch, signal);

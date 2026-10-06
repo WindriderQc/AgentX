@@ -120,6 +120,41 @@ test('a Benchmark probe keeps its exact payload only with a workload identity', 
     { readRuntimeVersion: read })).rejects.toMatchObject({ code: 'INFERENCE_CONTEXT_POLICY_UNAVAILABLE' });
 });
 
+test('a Benchmark call on a host its workload shares keeps the protected runner mode', async () => {
+  const payload = { model: 'exact-artifact', prompt: 'judge', options: { num_ctx: 8192 } };
+  const identity = { principal: 'benchmark-service', workloadAdmissionId: 'owned', workloadGeneration: 'exact' };
+  const asked = [];
+  const workloadSharesHost = jest.fn(async query => { asked.push(query); return true; });
+  expect(await protectContext(request({ payload, ...identity }), { fetch, workloadSharesHost }))
+    .toEqual({ ...payload, truncate: false, shift: false });
+  expect(asked).toEqual([{ id: 'owned', generation: 'exact', host: hostUrl }]);
+  // A reserved host stays the workload's own to exercise.
+  expect(await protectContext(request({ payload, ...identity }),
+    { fetch, workloadSharesHost: jest.fn(async () => false) })).toBe(payload);
+});
+
+test('a real shared workload host is recognised, a reserved one is not', async () => {
+  const coordination = require('../../src/services/runtimeCoordinationService');
+  const { workloadSharesHost } = require('../../src/services/runtimeWorkloadAdmission');
+  const reserved = 'http://127.0.0.1:1';
+  const workload = await coordination.acquireWorkload({ principal: 'benchmark-service', requestId: 'shared-judge',
+    workloadId: 'synthetic-shared', kind: 'benchmark', hosts: [reserved, hostUrl], sharedHosts: [hostUrl], ttl: 60000 });
+  expect(workload.acquired).toBe(true);
+  try {
+    const proof = { id: workload.admissionId, generation: workload.generation };
+    expect(await workloadSharesHost({ ...proof, host: hostUrl })).toBe(true);
+    expect(await workloadSharesHost({ ...proof, host: reserved })).toBe(false);
+    expect(await workloadSharesHost({ ...proof, generation: 'other', host: hostUrl })).toBe(false);
+    const payload = { model: 'exact-artifact', prompt: 'judge', stream: false, options: { num_ctx: 8192 } };
+    expect(await protectContext(request({ payload, principal: 'benchmark-service',
+      workloadAdmissionId: workload.admissionId, workloadGeneration: workload.generation }), { fetch }))
+      .toEqual({ ...payload, truncate: false, shift: false });
+  } finally {
+    // A workload is released through its recovery protocol; this fixture only needs the slate clean.
+    await require('../../models/RuntimeCoordination').updateOne({ _id: 'runtime' }, { $set: { workloads: [] } });
+  }
+});
+
 test('a forged workload identity cannot reach inference', async () => {
   const { dependencies } = scope();
   dependencies.beginInferenceAdmission = require('../../src/services/inferenceAdmissionService').beginInferenceAdmission;
