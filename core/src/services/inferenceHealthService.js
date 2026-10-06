@@ -125,6 +125,7 @@ function getWatchdogSnapshot() {
     // `config.probeIntervalMs` — don't let that naming leak to the UI.
     return {
       running: !!stats.isRunning,
+      hosts: stats.hosts || [],
       probeIntervalMs: stats.config?.probeIntervalMs,
       probesSent: stats.probesSent || 0,
       probesOk: stats.probesOk || 0,

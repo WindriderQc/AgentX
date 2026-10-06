@@ -70,3 +70,14 @@ describe('Nerve Center judge drift evidence honesty', () => {
     expect(html).not.toContain(`color:${healthy}`);
   });
 });
+
+test('shows an unusable host probe as unknown with its zero-success count and cause', () => {
+  const html = loadUi().buildWatchdogPanel({ running: true, hosts: [{
+    hostName: 'Host Gamma', health: 'unknown', probesSent: 7, probesOk: 0,
+    reason: 'model_error', lastStatus: 404
+  }] });
+  expect(html).toContain('Host Gamma');
+  expect(html).toContain('0/7 successful probes');
+  expect(html).toContain('model_error (HTTP 404)');
+  expect(html).toContain('color:#94a3b8">unknown');
+});
