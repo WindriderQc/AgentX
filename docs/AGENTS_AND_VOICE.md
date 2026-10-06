@@ -198,6 +198,51 @@ emergency phone numbers; stored text stays unchanged. This contract needs
 resource-line qualification: removing links or table-shaped lines can omit
 information needed in the spoken reply.
 
+## Requirements for a good spoken conversation
+
+These are the product's acceptance targets. An instance qualifies them on its
+own devices with the evidence listed in the next section; its measurements stay
+outside Git.
+
+**Experience, on real spoken turns**
+
+| Requirement | Target |
+|---|---|
+| End of the person's speech to first reply audio, full native agent | median at most 3 s, 95th percentile at most 5 s |
+| Same, direct Core lane (Family) | median at most 2 s |
+| First turn of a conversation, against the turns that follow | at most 0.3 s slower |
+| Silence without any signal while a reply is prepared | never more than 3 s |
+| Turns the person interrupts | fewer than 10 % |
+| Turns ended while the person was still speaking | fewer than 3 % (not measured yet) |
+| Recognition on the owner's reference phrases | no worse than the qualified error rate |
+| Spoken language and voice | one language per turn; the selected voice, or an audible fallback within 1 s |
+
+The end of speech includes the endpoint's trailing silence (`silenceMs`), which
+the timeline's marks do not.
+
+**Resources the voice needs**
+
+- The speech host keeps recognition and both synthesis engines in video memory,
+  with headroom, and holds no resident language model. A model that shares that
+  memory pushes the idle speech processes out, and the first utterance after a
+  pause pays for their return.
+- The spoken lane's model is resident and fully in video memory on the host
+  configured for it. `voice_persona_chat` stays on that host: it never follows
+  its model to another host, the speech host included. Another caller on the
+  same model evicts its single prompt cache slot; either keep that lane for
+  speech during use, or measure the evictions.
+- Inference hosts run the same model runtime version. A version that adds a
+  fixed load phase to each call shows in `loadMs`.
+
+**Evidence and change**
+
+- Every spoken turn records its timeline, its server phases and its model
+  phases. A change to the voice path is kept only with a measurement before and
+  after on comparable turns.
+- A speech engine that fails during a turn falls back audibly. A speech host
+  that is off leaves no server voice: that case is an accepted gap until a
+  backup speech peer is qualified.
+
 ## Measure the path that the person experiences
 
 | Evidence | Measures | Limitation |
@@ -207,7 +252,8 @@ information needed in the spoken reply.
 | `firstTokenMs` | Dispatch to the first streamed content, thinking or tool-call frame | Not necessarily visible reply text or audible speech |
 | `admissionWaitMs`, `hostGateWaitMs`, `retry` | Waits before Ollama received the call: runtime admission, Core's host gate, and retries with their backoff | Absent on rows recorded before they existed; Ollama's internal queue is not reported separately |
 | `promptPrefix.divergence` | First structural change between observed agent calls on the same host/model | Hashes/counts, not token-level cache evidence; unobserved callers can interfere |
-| Household `voiceTimings` | Browser endpoint decision to transcription, request, reply text, holding and first reply playback | Starts after trailing silence; does not measure physical speech end or acoustic output |
+| Household `voiceTimings` | Browser endpoint decision to transcription, request, reply text, holding and first reply playback; plus the trailing silence waited (`silenceMs`), the clip length (`audioMs`) and the recognition time the speech service reports (`sttServer`) | Marks start after the trailing silence; browser timing, not physical speech end or acoustic output |
+| Household `serverTimings` | From the turn request: context prepared, answer back; for a native agent run, gateway accepted, run created, generation or tool started, stream ended, final answer read | Server clock only; a deterministic reply has none, the direct lane has no run steps |
 | Device acceptance | Actual capture, interruption, reconnect and audible reply | Must be checked on the intended device |
 
 Unreported phases stay absent rather than becoming zero. Prefix observations
