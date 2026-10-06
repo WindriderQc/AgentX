@@ -444,7 +444,8 @@ async function runExecutor({ entry, request, signal }) {
       || Number(usage.toolCalls || 0) > Number(request.envelope.budgets.maxToolCalls);
     if (exceeded) fail('EXECUTION_BUDGET_EXCEEDED', 'executor usage exceeded the WorkerEnvelope budget', 409);
     const thinking = result.thinking == null ? null : String(result.thinking);
-    return { output, thinking, finishReason: result.finishReason || null, actual, usage };
+    return { output, thinking, finishReason: result.finishReason || null, actual, usage,
+      evidence: result.evidence || null, contractSatisfied: result.contractSatisfied !== false };
   } finally {
     await rm(sessionRoot, { recursive: true, force: true });
   }
@@ -518,8 +519,8 @@ function createBroker(options) {
           );
           return runExecutor({ entry, request, signal });
         });
-        const receipt = buildReceipt({ envelope: request.envelope, target: entry.target, actual: result.actual, usage: result.usage, output: result.output });
-        await appendAudit(auditPath, { at: new Date().toISOString(), requestId: request.requestId, batchFingerprint: request.batchFingerprint, targetId: entry.target.id, targetFingerprint: entry.target.fingerprint, envelopeFingerprint: request.envelope.fingerprint, receiptFingerprint: receipt.fingerprint, durationMs: Date.now() - started, status: 'succeeded' });
+        const receipt = buildReceipt({ envelope: request.envelope, target: entry.target, actual: result.actual, usage: result.usage, output: result.output, evidence: result.evidence, contractSatisfied: result.contractSatisfied });
+        await appendAudit(auditPath, { at: new Date().toISOString(), requestId: request.requestId, batchFingerprint: request.batchFingerprint, targetId: entry.target.id, targetFingerprint: entry.target.fingerprint, envelopeFingerprint: request.envelope.fingerprint, receiptFingerprint: receipt.fingerprint, durationMs: Date.now() - started, status: receipt.finalState, failureCode: receipt.failure.code });
         return { schema: 'agentx.harness-execution/v1', schemaVersion: 1, output: result.output, thinking: result.thinking, finishReason: result.finishReason, fallbackUsed: false, receipt };
       } catch (error) {
         error.failureClassification ||= classifyFailure(error.code);

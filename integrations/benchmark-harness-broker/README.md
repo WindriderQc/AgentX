@@ -12,6 +12,18 @@ claim ownership, target identity and spend grants retain their source checks.
 Native agent results remain distinct from isolated model scores and cannot serve
 as an isolated judge. No model download or paid request occurs during installation.
 
+## Executable repository cells
+
+A native cell for an executable prompt pins a product repository fixture id and
+fingerprint in its WorkerEnvelope. OpenClaw receives the project in its per-cell
+workspace with hidden tests withheld. After the turn, the adapter captures the
+edit and grades it against an independent original fixture snapshot, including
+public/hidden tests, regression checks and allowed edit paths. The receipt keeps
+patch and fixture digests, test status and whether the executable contract passed.
+A correct final explanation cannot replace a passing verifier. Native receipts
+remain distinct from isolated model quality rankings. Catalog materialization
+pins adapter version 2.3.0 and must be rerun after updating the executor.
+
 ## Instance configuration
 
 Keep catalogs, credentials, installed runtime paths, audit rows and spend ledgers

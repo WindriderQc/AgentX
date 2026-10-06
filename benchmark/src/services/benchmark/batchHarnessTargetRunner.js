@@ -6,6 +6,7 @@
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { buildPromptHints, seedForRepeat } = require('./config');
 const { persistSuccessfulResult, persistFailedResult } = require('./batchResultPersistence');
+const { loadRepoTasks } = require('../qualification/repoTaskFixtures');
 const { executionHost } = require('../../../../shared/benchmarkTargetContract');
 const { executeHarnessTarget, resolveHarnessTarget } = require('./harnessBrokerClient');
 const { registerActiveBatchController, wasControllerStoppedByUser } = require('./batchRequestRegistry');
@@ -83,11 +84,15 @@ function createHarnessTargetRunner(context) {
                             host: hostUrl, prompt_id: prompt._id ? prompt._id.toString() : null,
                             prompt_level: prompt.level, success: null
                         });
+                        const repoTask = prompt.evaluation_authority === 'executable'
+                            ? loadRepoTasks().find(task => task.id === prompt.executable_fixture_id) : null;
+                        if (prompt.evaluation_authority === 'executable' && !repoTask) throw new Error('Product repository fixture is unavailable');
                         execution = await executeHarnessTarget({
                             batchId,
                             batchFingerprint: batchContractFingerprint,
                             cellId: `${target.id}:${prompt._id || prompt.name}:${repeatIndex}`,
                             target,
+                            repoFixture: repoTask ? { id: repoTask.id, fingerprint: repoTask.fixtureFingerprint } : null,
                             promptText: promptHints.promptText,
                             parameters: {
                                 temperature: executionConfig.temperature,
@@ -190,8 +195,8 @@ function createHarnessTargetRunner(context) {
                                 inference_contract_fingerprint: target.profile.fingerprint
                             },
                             executionTarget: target,
-                            executionReceipt: execution?.publicReceipt || null,
-                            providerUsage: execution?.receipt?.usage || null,
+                            executionReceipt: execution?.publicReceipt || error.executionReceipt || null,
+                            providerUsage: execution?.receipt?.usage || error.executionReceipt?.usage || null,
                             qualityCohortFingerprint,
                             promptText: promptHints.promptText,
                             signal: batchCancellationController.signal,

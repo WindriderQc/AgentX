@@ -381,6 +381,7 @@ async function runQualification({
               seed: attemptSeeds[attempt - 1] ?? null
             }));
           } catch (err) {
+            if (err.retainAdmission === true) throw err;
             callError = err.message || String(err);
             response = { content: '', thinking: '', doneReason: null };
           }

@@ -53,7 +53,11 @@ async function materialize({ openclaw, output, profilePath, additionalProfilePat
       pin('node', process.execPath), pin('openclaw-entry', entryPath), pin('openclaw-package', packagePath),
       pin('openclaw-agent-exec', execPath), pin('openclaw-coding-tools', codingPath),
       pin('openclaw-executor', path.join(__dirname, 'executors/openclaw-executor.js')),
-      pin('broker-contract', path.join(__dirname, 'contract.js'))
+      pin('broker-contract', path.join(__dirname, 'contract.js')),
+      pin('repo-fixture-adapter', path.join(__dirname, 'repoFixture.js')),
+      pin('repo-executable-grader', path.join(__dirname, '../../benchmark/src/services/qualification/executableRepoGrader.js')),
+      pin('repo-task-loader', path.join(__dirname, '../../benchmark/src/services/qualification/repoTaskFixtures.js')),
+      pin('repo-scratch-observers', path.join(__dirname, '../../benchmark/src/services/qualification/calibrationProbes.js'))
     ]);
     const target = normalizeTarget({
       id: targetId, label: `OpenClaw${agentId ? ` / ${agentId}` : ''} · ${model.name}`, mode: 'native_agent', tier: subscription ? 'free_cloud' : 'local',

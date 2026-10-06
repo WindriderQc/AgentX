@@ -245,3 +245,16 @@ describe('harness broker client', () => {
     await expect(attempt).rejects.toMatchObject({ code, infra: true });
   });
 });
+
+test('repository cells bind an exact fixture pin and require patch, fixture and test evidence', () => {
+  const native = target({ mode: 'native_agent', tier: 'local', provider: 'ollama', pricing: null,
+    nativePolicy: { tools: [], filesystemMode: 'workspace_write', allowedOperations: ['read', 'update'], networkDestinations: [], maxTurns: 5, maxToolCalls: 10 } });
+  const input = { target: native, promptText: 'Repair sum', batchId: 'batch', cellId: 'cell',
+    parameters: { maxTokens: 512, timeoutMs: 10000 }, repoFixture: { id: 'sum-sign', fingerprint: HEX('b') } };
+  const envelope = buildHarnessEnvelope(input);
+  expect(envelope.selection.model.constraints).toContain(`repo-fixture:sum-sign:${HEX('b')}`);
+  expect(envelope.resultContract.requiredEvidence).toEqual(['artifact', 'patch', 'tests']);
+  expect(envelope.fingerprint).not.toBe(buildHarnessEnvelope({ ...input, repoFixture: { id: 'sum-sign', fingerprint: HEX('c') } }).fingerprint);
+  expect(() => buildHarnessEnvelope({ ...input, target: target() })).toThrow('require native_agent');
+  expect(() => buildHarnessEnvelope({ ...input, repoFixture: { id: '../private', fingerprint: HEX('b') } })).toThrow('require native_agent');
+});

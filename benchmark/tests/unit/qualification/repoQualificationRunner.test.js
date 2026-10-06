@@ -370,8 +370,8 @@ describe('repo-coding-qualification.js CLI (--dry-run smoke test)', () => {
       .rejects.toThrow(/Response body exceeded its byte limit/);
   });
 
-  test('live defaults are the frozen 8K/4K five-seed matrix and require a claim id', () => {
-    expect(() => qualificationCli.parseArgs([])).toThrow(/claim-id is required/);
+  test('live defaults are the frozen 8K/4K five-seed matrix and require an explicit host', () => {
+    expect(() => qualificationCli.parseArgs([])).toThrow(/host is required/);
     const args = qualificationCli.parseArgs([
       '--claim-id', 'coding-campaign',
       '--host', 'http://ollama:11434',
@@ -387,33 +387,11 @@ describe('repo-coding-qualification.js CLI (--dry-run smoke test)', () => {
     });
   });
 
-  test('hard-disables every live entry point before claim lookup or Ollama dispatch', () => {
-    const args = qualificationCli.parseArgs([
-      '--claim-id', 'coding-campaign',
-      '--host', 'http://ollama:11434',
-      '--core', 'http://core:3080',
-      '--models', 'candidate'
-    ]);
-
-    expect(() => qualificationCli.assertLiveExecutionAllowed(args)).toThrow(expect.objectContaining({
-      code: qualificationCli.LIVE_DISABLED_CODE
-    }));
-    expect(() => qualificationCli.buildOllamaCallModel({
-      host: args.host,
-      modelConfigs: new Map(),
-      timeoutMs: args.modelTimeoutMs
-    })).toThrow(expect.objectContaining({ code: qualificationCli.LIVE_DISABLED_CODE }));
-
-    const script = path.join(__dirname, '..', '..', '..', 'scripts', 'repo-coding-qualification.js');
-    const live = spawnSync(process.execPath, [
-      script,
-      '--claim-id', 'coding-campaign',
-      '--host', 'http://127.0.0.1:1',
-      '--core', 'http://127.0.0.1:1',
-      '--models', 'candidate'
-    ], { encoding: 'utf8', timeout: 10_000 });
-    expect(live.status).toBe(1);
-    expect(live.stderr).toContain('Live repository coding qualification is disabled');
+  test('the compatibility call model export refuses a borrowed claim without an owned workload', () => {
+    const args = qualificationCli.parseArgs(['--host', 'http://ollama:11434', '--core', 'http://core:3080', '--models', 'candidate']);
+    expect(() => qualificationCli.assertLiveExecutionAllowed(args)).not.toThrow();
+    expect(() => qualificationCli.buildOllamaCallModel({ host: args.host, modelConfigs: new Map(), timeoutMs: 1000 }))
+      .toThrow('owned workload admission');
   });
 
   test('refuses live execution when the exact host claim is absent', async () => {

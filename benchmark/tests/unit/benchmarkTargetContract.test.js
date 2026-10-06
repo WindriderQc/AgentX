@@ -186,6 +186,20 @@ describe('harness envelope, receipt, and spend contracts', () => {
     }, { envelope });
     const valid = { schema: 'agentx.harness-execution/v1', schemaVersion: 1, output, fallbackUsed: false, receipt };
     expect(normalizeHarnessExecutionResponse(valid, { envelope, target }).output).toBe(output);
+    const failed = normalizeWorkerReceipt({ ...receipt, fingerprint: undefined, finalState: 'failed',
+      failure: { classification: 'invalid_result', code: 'REPO_FIXTURE_VERIFICATION_FAILED' },
+      result: { ...receipt.result, contractSatisfied: false },
+      evidence: { patches: [], artifacts: [], tests: [{ id: 'repo-fixture.test', status: 'failed', digest: HEX('b') }] }
+    }, { envelope });
+    try {
+      normalizeHarnessExecutionResponse({ ...valid, receipt: failed }, { envelope, target });
+      throw new Error('Expected failed execution');
+    } catch (error) {
+      expect(error.code).toBe('HARNESS_EXECUTION_FAILED');
+      expect(error.executionReceipt.usage).toMatchObject({ inputTokens: 4, outputTokens: 2, totalTokens: 6 });
+      expect(error.executionReceipt.evidence.tests[0].status).toBe('failed');
+      expect(error.executionReceipt.identity.model.name).toBe(target.model);
+    }
     expect(() => normalizeHarnessExecutionResponse({ ...valid, receipt: undefined }, { envelope, target })).toThrow();
     expect(() => normalizeHarnessExecutionResponse({ ...valid, fallbackUsed: true }, { envelope, target }))
       .toThrow(expect.objectContaining({ code: 'HARNESS_FALLBACK_USED' }));

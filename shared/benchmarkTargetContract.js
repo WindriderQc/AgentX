@@ -392,7 +392,11 @@ function normalizeHarnessExecutionResponse(rawValue, { envelope, target } = {}) 
   const normalizedEnvelope = normalizeWorkerEnvelope(envelope);
   const receipt = normalizeWorkerReceipt(raw.receipt, { envelope: normalizedEnvelope });
   if (raw.fallbackUsed !== false) throw contractError('HARNESS_FALLBACK_USED', 'harness execution used or did not disprove fallback', 409);
-  if (receipt.finalState !== 'succeeded') throw contractError('HARNESS_EXECUTION_FAILED', `harness execution ended as ${receipt.finalState}`, 502);
+  if (receipt.finalState !== 'succeeded') {
+    const error = contractError('HARNESS_EXECUTION_FAILED', `harness execution ended as ${receipt.finalState}`, 502);
+    error.executionReceipt = projectWorkerReceiptPublic(receipt, { envelope: normalizedEnvelope });
+    throw error;
+  }
   if (receipt.identity.harness.name !== normalizedTarget.harness.name
     || receipt.identity.harness.version !== normalizedTarget.harness.version
     || receipt.identity.provider.name !== normalizedTarget.provider

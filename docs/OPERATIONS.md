@@ -1257,6 +1257,25 @@ Leaderboard rows carry their host's residency (`local · CPU`), and
 rank CPU and GPU runs with `axis=quality`, since the composite axis penalises
 latency.
 
+`benchmark/scripts/repo-coding-qualification.js --dry-run` verifies authored
+repository fixtures using golden diffs without inference. A live run selects
+`--models`, `--host`, `--core`, `--tasks`, `--attempts` and an external `--out`
+directory. `CORE_URL` must match the selected Core and the Benchmark service's
+existing credentials/database configuration must be available. The runner owns a
+managed workload, an exact host claim and renewable heartbeats; `--claim-id`,
+when supplied, names this new owned campaign rather than another process's claim.
+Every attempt resolves its frozen artifact and uses Core's durable inference
+admission. A lost or nonterminal response stops the matrix and retains authority
+for reconciliation. A completed run restores the host before releasing admission.
+Responses and run records retain effective model, tokens, seeds and contracts,
+including contract failures. Output reports stay outside Git.
+
+Tool-call reliability is separate product evidence: the profiler evidence route
+matches exact model/host/digest/runtime and the canonical tool fixture. Repeated
+campaigns persist each repetition and finalize supported, qualified or failed
+states; missing, stale or interrupted evidence cannot qualify an artifact. A
+single repository fixture attempt does not publish a tool qualification.
+
 `POST /api/benchmark/comparison/paired` compares two artifacts prompt by
 prompt, for example one model at Q8 on two GPUs and at Q4 on one. The body
 names two arms, `a` and `b`, each `{ batch_id, model, host? }`. It also takes an

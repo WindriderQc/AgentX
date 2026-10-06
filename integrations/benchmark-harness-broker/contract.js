@@ -151,7 +151,7 @@ function normalizeTarget(value) {
   return { ...target, fingerprint: fingerprint(target) };
 }
 
-function buildReceipt({ envelope, target, actual, usage, output }) {
+function buildReceipt({ envelope, target, actual, usage, output, evidence = null, contractSatisfied = true }) {
   const identity = {
     harness: target.harness,
     adapter: target.adapter,
@@ -167,7 +167,9 @@ function buildReceipt({ envelope, target, actual, usage, output }) {
     identity,
     fingerprints,
     executionTupleFingerprint: fingerprint({ identity, fingerprints: { prompt: fingerprints.prompt, tools: fingerprints.tools, policies: fingerprints.policies } }),
-    finalState: 'succeeded', failure: { classification: null, code: null },
+    finalState: contractSatisfied === true ? 'succeeded' : 'failed',
+    failure: contractSatisfied === true ? { classification: null, code: null }
+      : { classification: 'invalid_result', code: 'REPO_FIXTURE_VERIFICATION_FAILED' },
     usage: {
       durationMs: integer(usage.durationMs, 'usage.durationMs'),
       inputTokens: integer(usage.inputTokens ?? 0, 'usage.inputTokens'),
@@ -177,8 +179,8 @@ function buildReceipt({ envelope, target, actual, usage, output }) {
       turns: integer(usage.turns ?? 1, 'usage.turns'),
       toolCalls: integer(usage.toolCalls ?? 0, 'usage.toolCalls')
     },
-    toolErrors: [], humanInterventions: [], evidence: { patches: [], artifacts: [], tests: [] }, violations: [],
-    result: { contractSatisfied: true, fingerprint: fingerprint(String(output)) }
+    toolErrors: [], humanInterventions: [], evidence: evidence || { patches: [], artifacts: [], tests: [] }, violations: [],
+    result: { contractSatisfied: contractSatisfied === true, fingerprint: fingerprint(String(output)) }
   };
   if (usage.cacheReadTokens != null) normalized.usage.cacheReadTokens = integer(usage.cacheReadTokens, 'usage.cacheReadTokens');
   if (usage.cacheWriteTokens != null) normalized.usage.cacheWriteTokens = integer(usage.cacheWriteTokens, 'usage.cacheWriteTokens');

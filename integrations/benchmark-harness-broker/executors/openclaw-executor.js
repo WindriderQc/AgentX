@@ -4,7 +4,8 @@ const { spawn } = require('node:child_process');
 const { readFile, writeFile, mkdir } = require('node:fs/promises');
 const path = require('node:path');
 const { fingerprint: hash } = require('../contract');
-const ADAPTER_VERSION = '2.2.0';
+const ADAPTER_VERSION = '2.3.0';
+const { fixtureForEnvelope, stageFixture, verifyFixture } = require('../repoFixture');
 
 function parseArgs(argv) {
   const result = {};
@@ -81,6 +82,9 @@ async function execute(input, fixed, run = spawn) {
   const configPath = path.resolve('invocation.json');
   const workspace = path.resolve('work');
   await mkdir(workspace);
+  const fixture = fixtureForEnvelope(input.envelope);
+  if (fixture && input.target.mode !== 'native_agent') throw new Error('Repository fixtures require native_agent');
+  const staged = fixture ? stageFixture(fixture, workspace) : null;
   await writeFile(configPath, JSON.stringify(config), { mode: 0o600 });
   const args = ['agent', 'exec', '--config', configPath, '--cwd', workspace,
     '--model', `${input.target.provider}/${input.target.model}`, '--message-file', '-',
@@ -104,7 +108,11 @@ async function execute(input, fixed, run = spawn) {
     child.stdin.end(String(input.input?.prompt || ''));
   });
   if (result.code !== 0) throw new Error(`OpenClaw exited ${result.code}`);
-  return parseResult(JSON.parse(result.stdout), input, Date.now() - started);
+  const parsed = parseResult(JSON.parse(result.stdout), input, Date.now() - started);
+  if (staged) Object.assign(parsed, verifyFixture(staged, { model: input.target.model,
+    timeoutMs: Math.min(30_000, input.parameters.timeoutMs) }));
+  parsed.usage.durationMs = Date.now() - started;
+  return parsed;
 }
 
 async function main() {
