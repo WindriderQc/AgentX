@@ -52,6 +52,35 @@ describe('RagStore (in-memory, mocked embeddings)', () => {
     expect(result.status).toBe('created');
   });
 
+  test.each(['EMBEDDING_INPUT_TOO_LARGE', 'EMBEDDING_INPUT_REJECTED'])(
+    'a refused %s update keeps the complete previous revision', async (code) => {
+      const metadata = { source: 'synthetic', documentId: 'preserved', chunkSize: 50, chunkOverlap: 0 };
+      await store.upsertDocumentWithChunks('Original synthetic content '.repeat(5), metadata);
+      const previous = await store.getDocument('preserved');
+      const chunks = await store.getDocumentChunks('preserved');
+      const upsert = jest.spyOn(store.vectorStore, 'upsertDocument');
+      store.embeddingsService.embedBatch.mockRejectedValueOnce(
+        Object.assign(new Error('Synthetic input refused'), { code, statusCode: 413 })
+      );
+      await expect(store.upsertDocumentWithChunks('Changed synthetic content '.repeat(5), metadata))
+        .rejects.toMatchObject({ code });
+      expect(upsert).not.toHaveBeenCalled();
+      expect(await store.getDocument('preserved')).toEqual(previous);
+      expect(await store.getDocumentChunks('preserved')).toEqual(chunks);
+    }
+  );
+
+  test('a chunk-limit refusal keeps the previous revision without embedding any partial document', async () => {
+    const metadata = { source: 'synthetic', documentId: 'preserved', chunkSize: 100, chunkOverlap: 0 };
+    await store.upsertDocumentWithChunks('Original synthetic content', metadata);
+    const previous = await store.getDocumentChunks('preserved');
+    store.embeddingsService.embedBatch.mockClear();
+    await expect(store.upsertDocumentWithChunks('x'.repeat(1_000_100), metadata))
+      .rejects.toMatchObject({ code: 'RAG_CHUNK_LIMIT_EXCEEDED' });
+    expect(store.embeddingsService.embedBatch).not.toHaveBeenCalled();
+    expect(await store.getDocumentChunks('preserved')).toEqual(previous);
+  });
+
   test('classification survives same-text updates and later content-only reingestion', async () => {
     const metadata = { source: 'test', documentId: 'classified-note', scope: 'owner', sensitivity: 'private' };
     await store.upsertDocumentWithChunks('A synthetic note', metadata);
