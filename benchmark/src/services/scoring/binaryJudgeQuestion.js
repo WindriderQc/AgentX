@@ -16,7 +16,7 @@ const { getFetchOptions } = require('../../helpers/httpAgent');
 const { withBenchmarkServiceAuth } = require('../../helpers/coreServiceAuth');
 const { normalizeJudgeNumCtx } = require('./judgeRuntimeConfig');
 const { judgeRequestIdentity } = require('./judgeRequestIdentity');
-const { prepareJudgeResponse, assertJudgeInputUnmodified, assertJudgeOutputComplete, beginJudgeCallEvidence, finishJudgeCallEvidence } = require('./judgeInput');
+const { prepareJudgeResponse, assertJudgeInputUnmodified, assertJudgeOutputComplete, beginJudgeCallEvidence, finishJudgeCallEvidence, judgeHttpError } = require('./judgeInput');
 const {
     openJudgeCall,
     rethrowIfJudgeCancelled,
@@ -116,7 +116,7 @@ ${answerRule}: ${question}`;
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
-            const error = new Error(`Judge HTTP ${res.status}`);
+            const error = await judgeHttpError(res, callEvidence);
             // Core answers 503 before dispatch when the judge host is taken:
             // nothing ran, so the same call can simply be asked again.
             if (res.status === 503) error.code = JUDGE_HOST_BUSY;

@@ -88,6 +88,17 @@ function finishJudgeCallEvidence(call, { status, data, error } = {}) {
     }
 }
 
+// HTTP failures remain failed verdicts. Keep their body in the existing private
+// call diagnostics without adding runtime error text to ordinary log messages.
+async function judgeHttpError(response, call = null) {
+    const error = new Error(`Judge HTTP ${response.status}`);
+    if (call && typeof response.text === 'function') {
+        try { call.http_error_body = await response.text(); }
+        catch (readError) { call.http_error_body_error = String(readError.message || readError); }
+    }
+    return error;
+}
+
 function judgeCallEvidenceFields(calls) {
     return {
         judge_prompt: JSON.stringify(calls.map(({ index, prompt }) => ({ index, prompt }))),
@@ -96,4 +107,4 @@ function judgeCallEvidenceFields(calls) {
 }
 
 module.exports = { prepareJudgeResponse, assertJudgeInputUnmodified, assertJudgeOutputComplete,
-    beginJudgeCallEvidence, finishJudgeCallEvidence, judgeCallEvidenceFields };
+    beginJudgeCallEvidence, finishJudgeCallEvidence, judgeHttpError, judgeCallEvidenceFields };
