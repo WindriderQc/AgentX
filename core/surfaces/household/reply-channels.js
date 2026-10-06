@@ -46,7 +46,7 @@ function languageOf(value) {
 function attributes(source) {
   const values = {};
   for (const [, name, value] of String(source || '').matchAll(/([a-z]+)\s*=\s*"([^"]*)"/gi)) values[name.toLowerCase()] = value;
-  const kind = KINDS.includes(values.kind) ? values.kind : 'text';
+  const kind = KINDS.includes(values.kind) || values.kind === 'consult' ? values.kind : 'text';
   return { kind, title: values.title?.trim().slice(0, LIMITS.title) || '',
     ...(kind === 'image' ? { source: String(values.source || '').trim().toLowerCase().slice(0, 20) } : {}) };
 }
@@ -71,7 +71,7 @@ function tokenKind(core) {
   return '';
 }
 
-function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = () => {}, onShow = () => {} } = {}) {
+function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
   let pending = '', inShow = false, showAttributes = null, received = false, ended = false;
@@ -88,6 +88,8 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = ()
     const content = String(body || '').replace(/^\n+|\s+$/g, '').slice(0, LIMITS.body);
     if (!content.trim()) return false;
     if (kind === 'secret' && !allowSecrets) return false;
+    // A consult block is a request to Core (#41), never something to display or to store.
+    if (kind === 'consult') { onConsult({ member: title, question: content }); return false; }
     if (display.length >= LIMITS.blocks) return false;
     const block = { id: 'b' + (display.length + 1), kind, title, body: content, ...extra };
     display.push(block);

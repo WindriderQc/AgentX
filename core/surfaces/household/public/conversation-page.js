@@ -306,6 +306,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       void recap?.refresh(session.sessionId);
       personalNotes.show(result.continuity?.personal); degradedReply = result.routing?.fallbackUsed === true;
       showTools(result.tools);
+      // The agent consulted a team member (#41): its answer is collected and said like a member's late reply.
+      if (result.consult) void followMember(session, result.consult.turnId, result.consult.speaker);
       return { ...result.reply, sound: result.sound };
     } finally { await reader.cancel().catch(() => {}); }
   }
