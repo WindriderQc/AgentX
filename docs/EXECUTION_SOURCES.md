@@ -41,7 +41,10 @@ the other source.
 Core assembles and persists conversation context. Model mode does not add an
 OpenClaw persona, session history, memory or tool execution. Core-provided RAG
 and conversation history remain explicit input. Agent mode runs the native
-profile. Existing Household native sessions and tool receipts retain their
+profile. In Playground agent mode, the completed answer is delivered once; native
+progress may be rewritten, so this path does not promise stable token deltas,
+thinking or tool receipts. Its usage and cost remain unknown when the native
+Responses API does not provide them. Existing Household native sessions and tool receipts retain their
 dedicated conversation transport.
 
 Core's reverse OpenClaw local bridge stays local. It cannot delegate an
@@ -82,7 +85,9 @@ The first model API accepts text context. Image content and replayed tool messag
 require an explicit contract extension; the existing local and Household paths retain
 their attachment contracts.
 
-Model-only admission currently qualifies the native `openai-completions` API.
+Model-only admission currently qualifies the native `openai-completions` API
+on OpenClaw 2026.9.4. A different runtime version is unavailable in model mode
+until its transport is qualified and the admission gate is updated.
 Other SDK APIs stay visible but unavailable for model execution until a single
 HTTP attempt is proven; the installed Google SDK defaults to five attempts.
 Their configured native agents remain accessible. This is a runtime capability

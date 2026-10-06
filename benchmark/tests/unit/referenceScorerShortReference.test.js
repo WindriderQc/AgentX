@@ -30,6 +30,21 @@ beforeEach(() => {
 });
 
 describe('reference scoring with short references', () => {
+  it('persists upstream HTTP failures for every reference check without producing a quality score', async () => {
+    const body = JSON.stringify({ message: 'Synthetic upstream runner failure' });
+    mockFetch.mockResolvedValue({ ok: false, status: 500, text: async () => body });
+    const result = await score('candidate', {
+      prompt: 'Give the answer.', reference_answer: 'The reference answer.', category: 'knowledge',
+      judge_criteria: ['Required answer is present']
+    }, { model: 'judge', host: 'http://judge:11434' });
+    expect(result.quality_score).toBeNull();
+    const evidence = JSON.parse(result.judge_raw_response);
+    expect(evidence.calls).toHaveLength(mockFetch.mock.calls.length);
+    expect(evidence.calls.length).toBeGreaterThanOrEqual(3);
+    expect(evidence.calls.every(call => call.status === 500 && call.http_error_body === body
+      && call.error === 'Judge HTTP 500' && call.response === undefined)).toBe(true);
+  });
+
   it('accepts an explicit rating line followed by an explanation', async () => {
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({
       response: 'Most required behavior is present.\nRATING: GOOD\n\nMinor gaps remain.', done: true, done_reason: 'stop'
