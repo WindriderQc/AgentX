@@ -6,8 +6,10 @@
  *
  * Scores are persisted at judging time. Any change to routing, judge prompts,
  * deterministic extractors, or aggregation semantics can change what a stored
- * quality_score means. Historical rows are not rewritten; consumers should
- * filter or label cross-version comparisons instead.
+ * quality_score means. A stored grade moves to a later version only through a
+ * carry-over declared below (SCORER_CARRY_OVER), which keeps what the row held
+ * before in its `scorer_history`. Without one, rows are not rewritten and
+ * consumers filter or label cross-version comparisons.
  */
 
 // 2.15.0: positively keyed rubric with NA for conditional questions, task-
@@ -31,6 +33,21 @@
 // are not comparable with 2.19.x rows.
 const SCORER_VERSION = '2.20.0';
 
+// What a stored grade needs to stay valid across each version step (#461).
+// A category a step does not name kept its meaning: its grades carry over
+// unchanged. A named category says how its grades carry over:
+//   'secondary_bounds'  the new grade follows from the stored dimension scores
+//                       (scoring/gradeCarryOver.js); no judge is called;
+//   'judge'             the step asks the judge something new, so the answer
+//                       must be scored again.
+// A step with no entry here breaks the chain: every grade before it re-opens.
+const SCORER_CARRY_OVER = Object.freeze([
+    Object.freeze({ from: '2.18.0', to: '2.19.0', categories: Object.freeze({ translation: 'judge' }) }),
+    Object.freeze({ from: '2.19.0', to: '2.20.0', categories: Object.freeze({
+        coding: 'secondary_bounds', instruction: 'secondary_bounds', creative: 'secondary_bounds'
+    }) })
+]);
+
 const SCORER_COMPONENTS = Object.freeze({
     routing: 5,
     generalist: 6,
@@ -51,6 +68,7 @@ function versionsComparable(a, b) {
 
 module.exports = {
     SCORER_VERSION,
+    SCORER_CARRY_OVER,
     SCORER_COMPONENTS,
     versionsComparable
 };

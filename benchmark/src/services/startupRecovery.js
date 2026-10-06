@@ -41,6 +41,10 @@ function startStartupRecovery(profile) {
     // A quarantine whose owner died before journaling it gets its record back
     // from Core. It reads Core's coordination state, which the demo profile lacks.
     require('./benchmark/recordlessQuarantineRecovery').startRecordlessQuarantineRecovery();
+    // A new scorer version arrives with a restart: carry over the grades it
+    // left valid, so the matrix and the board re-open only what it affects.
+    require('./measurementCoverage/gradeCarryOverPass').carryOverStoredGrades()
+      .catch(err => logger.warn('Stored grade carry-over error', { error: err.message }));
   } else {
     logger.info('[RegisteredHostSync] Disabled by the demo product profile');
   }

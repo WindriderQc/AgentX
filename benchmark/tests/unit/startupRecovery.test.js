@@ -20,6 +20,7 @@ jest.mock('../../src/services/benchmark/benchmarkAuthorityReconciliation', () =>
 jest.mock('../../src/services/registeredHostSync', () => ({ startRegisteredHostSync: jest.fn() }));
 jest.mock('../../src/services/measurementCoverage/coverageJob', () => ({ getCoverageJob: jest.fn(() => ({ start: jest.fn() })) }));
 jest.mock('../../src/services/benchmark/recordlessQuarantineRecovery', () => ({ startRecordlessQuarantineRecovery: jest.fn() }));
+jest.mock('../../src/services/measurementCoverage/gradeCarryOverPass', () => ({ carryOverStoredGrades: jest.fn(async () => ({})) }));
 
 const claimRecovery = require('../../src/services/benchmark/claimRecovery');
 const { interruptOrphanedBatches } = require('../../src/services/benchmark/orphanedBatchRecovery');
