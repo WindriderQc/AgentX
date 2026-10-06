@@ -101,7 +101,8 @@ describe('inferenceContractService', () => {
     const hostProfile = {
       hostId: 'host-alpha',
       hostUrl: 'http://192.0.2.199:11434',
-      displayName: 'Host Alpha'
+      displayName: 'Host Alpha',
+      gpus: [0, 1].map(index => ({ index, uuid: `GPU-synthetic-${index}`, model: 'synthetic GPU', vramTotalMiB: 24576 }))
     };
     const runtimeFingerprint = buildRuntimeFingerprint(hostProfile, hostProfile.hostUrl);
     const capabilities = await resolveCapabilities(
@@ -110,7 +111,9 @@ describe('inferenceContractService', () => {
       {
         configuredHosts: HOSTS,
         includeArtifactIdentity: true,
-        hostProfilesCollection: profileCollection(hostProfile),
+        hostProfilesCollection: { findOne: jest.fn(async (_query, { projection }) => Object.fromEntries(
+          Object.entries(hostProfile).filter(([key]) => projection[key])
+        )) },
         resolveArtifactDigest: jest.fn(async () => 'sha256:profiled'),
         registryEntry: {
           _id: 'registry-a',

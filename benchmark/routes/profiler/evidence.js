@@ -103,7 +103,7 @@ router.get('/inference/:modelName', async (req, res) => {
     const toolIdentity = toolIdentityFromQuery(modelName, hostUrl, req.query);
     const [hostProfile, modelProfile, toolQualification] = await Promise.all([
       HostProfile.findOne({ hostUrl })
-        .select('hostId hostUrl displayName gpu ollama cpu')
+        .select('hostId hostUrl displayName gpu gpus ollama cpu')
         .lean(),
       ModelProfile.findOne({ name: modelName })
         .select('name capabilities thinkingProfiles readiness updatedAt')

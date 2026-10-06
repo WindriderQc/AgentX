@@ -84,7 +84,7 @@ async function readBenchmarkEvidence(model, host, deps = {}) {
         deps.hostProfilesCollection
           ? deps.hostProfilesCollection.findOne(
             { hostUrl: normalizedHost },
-            { projection: { hostId: 1, hostUrl: 1, displayName: 1, gpu: 1, ollama: 1, cpu: 1 } }
+            { projection: { hostId: 1, hostUrl: 1, displayName: 1, gpu: 1, gpus: 1, ollama: 1, cpu: 1 } }
           )
           : null,
         deps.modelProfilesCollection
