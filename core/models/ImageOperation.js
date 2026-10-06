@@ -4,6 +4,7 @@ const schema = new mongoose.Schema({
   _id: { type: String, required: true },
   actionKey: { type: String, required: true, unique: true },
   requestHash: { type: String, required: true },
+  conversation: { surface: String, sessionId: String, packId: String, scopeId: String },
   workerSlot: { type: String },
   workerUrl: { type: String, select: false },
   state: { type: String, required: true, default: 'accepted' },
@@ -23,4 +24,5 @@ const schema = new mongoose.Schema({
 }, { timestamps: true, collection: 'image_operations', versionKey: false, autoCreate: false, autoIndex: false });
 schema.index({ workerSlot: 1 }, { unique: true, sparse: true });
 schema.index({ createdAt: -1 });
+schema.index({ 'conversation.surface': 1, 'conversation.sessionId': 1, 'conversation.packId': 1, 'conversation.scopeId': 1, createdAt: -1 });
 module.exports = mongoose.models.ImageOperation || mongoose.model('ImageOperation', schema);

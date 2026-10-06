@@ -9,8 +9,16 @@ One request can create an image or edit up to two PNG/JPEG references. The
 browser offers a prompt, qualified profiles, resolution, progress, cancellation
 and the original output. A generated image is decoded, checked against the
 pixel budget, archived and hashed before Core returns an artifact URL. The
-configured archive may be part of the household photo library; generation and
-private operation receipts still require adult access at the parental gateway.
+configured archive may be part of the household photo library. Human studio
+access follows the deployment's trusted LAN boundary; native agents retain
+their separate permission policies.
+
+Nestor and Famille display conversation image cards with read-only progress,
+verified output and a **Continuer dans l’atelier** link. The atelier restores
+the selected operation's brief, seed and supported format/profile. **Utiliser
+cette image comme référence** explicitly puts a reduced copy first in the
+editing references; the original archive remains intact. A new model or prompt
+does not guarantee preservation of the previous composition.
 
 ## Configure a worker
 
@@ -45,6 +53,7 @@ to writable external storage. A minimal manifest is:
   "workerUrl": "http://127.0.0.1:8188",
   "ollamaHosts": ["http://127.0.0.1:11434"],
   "defaultProfile": "klein",
+  "conversationProfile": "klein",
   "timeoutMs": 900000,
   "drainMs": 60000,
   "profiles": {
@@ -66,6 +75,13 @@ to writable external storage. A minimal manifest is:
 Container loopback is the container itself. Select a bridge or LAN address
 when the worker is native on another host. Endpoints accept explicit private
 IP addresses or localhost; public URLs and URL credentials are refused.
+`conversationProfile` optionally selects a qualified `klein` profile with at
+most eight steps. Otherwise the first such configured profile is selected.
+Conversation drawings use a square of at most 1024 pixels per side, reduced
+to the profile's pixel budget in multiples of 32. This preset needs local
+quality/latency qualification; its presence is not a speed guarantee. Without
+a quick profile, bounded conversation drawings are unavailable; family never
+implicitly switches to the studio's quality default.
 `ollamaHosts` must name **every managed endpoint consuming the image GPU**,
 using the same endpoint identities as Core inference. The optional
 [`AGENTX_RUNTIME_RESOURCES_JSON` map](OPERATIONS.md#physical-gpu-admission)
@@ -128,6 +144,39 @@ spoken/display channels, including after a conversation fallback or terminal
 model failure. The native attempt remains in the audit; its text cannot cancel
 an accepted image. This receipt observation neither generates another image nor
 grants tools to a fallback model. A later status reads the same verified artifact.
+
+## Conversation drawings
+
+For Nestor's private native Household session, the plugin creates through
+`POST /api/voice-personas/private/sessions/:sessionId/images`. Core resolves
+the actual session and binds its surface, session, pack and scope before
+dispatch. Without an explicit profile, the quick conversation preset applies.
+Telegram keeps the existing global operation path and studio delivery contract.
+
+Famille and personal Core/Ollama conversations can request one new drawing
+with `<show kind="image" source="draw" title="caption">description</show>`.
+Household processes it only after conversation execution releases its LLM
+reservation, applies family drawing restrictions, and supplies fixed quick
+parameters. Family has no arbitrary generation POST, uploads, references,
+private tools or custom graphs. A conversational change generates a newly
+described scene; faithful reference edits belong to the atelier.
+
+Scoped `GET .../sessions/:sessionId/images`, `.../images/:id` and
+`.../images/:id/image` recover receipts and serve only the session's images.
+The image route requires completed state, restored runtime and verified archive
+bytes. Cards persist in the turn display and read the current receipt after
+resume. An interrupted connection never retries creation; a scoped operation
+list can recover an accepted request even if the turn audit was not written.
+Subsequent conversation turns receive current scoped Core image states as
+reference context, so stale pending history does not become a readiness claim.
+Deleting a conversation makes its scoped routes unavailable; the shared image
+archive and studio operation remain, like other archived household images.
+
+The family model contract and deterministic restrictions reject obvious
+unsuitable descriptions; this is not a separately qualified image-content
+classifier. Neither conversation cards nor the atelier automatically wakes
+an agent or dispatches the result to another task. HQ batches and production
+workflows are separate capabilities.
 
 ## Estimated hardware envelopes
 

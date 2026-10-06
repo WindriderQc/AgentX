@@ -25,8 +25,10 @@ export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
     if (!privateOwnerContext(context, api.config)) return null;
     const base = api.pluginConfig?.agentxUrl;
     if (!base) return null;
+    const householdId = /^agent:main:household:direct:([a-f0-9-]{36})$/.exec(context.sessionKey || '')?.[1];
+    const operationBase = householdId ? `/api/voice-personas/private/sessions/${householdId}/images` : '/api/images/operations';
     const call = async (route, body) => {
-      const r = await fetchImpl(new URL(`/api/images${route}`, base), {
+      const r = await fetchImpl(new URL(route === '/status' ? '/api/images/status' : operationBase + route.replace(/^\/operations/, ''), base), {
         method: body === undefined ? 'GET' : 'POST', redirect: 'error', signal: AbortSignal.timeout(30000),
         ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
       const result = await r.json();
@@ -35,7 +37,7 @@ export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
     };
     return {
       name: 'local_image', label: 'Local Image',
-      description: 'Create or edit an image locally through AgentX Core. create returns a durable operation and a studio link. Once accepted, end this agent turn so its LLM GPU reservation can be released; do not poll in the same turn. Explain that the image is preparing and the studio updates automatically. status in a later turn returns the verified state and the image when ready. Never invent success or resubmit an uncertain request. No cloud fallback. Optional referencePaths must be existing PNG/JPEG files under the native media directory; two maximum. Preserve image 1 and image 2 order in edit prompts.',
+      description: 'Create or edit an image locally through AgentX Core. create returns a durable operation and a studio link. Household uses a quick conversation preset by default and shows progress and the image automatically. Once accepted, end this agent turn so its LLM GPU reservation can be released; do not poll in the same turn. Explain that the image is preparing. status in a later turn returns the verified state and the image when ready. Never invent success or resubmit an uncertain request. No cloud fallback. Optional referencePaths must be existing PNG/JPEG files under the native media directory; two maximum. Preserve image 1 and image 2 order in edit prompts.',
       parameters: { type: 'object', properties: {
         action: { type: 'string', enum: ['create', 'status', 'cancel', 'profiles'] },
         prompt: { type: 'string', minLength: 1, maxLength: 8000 },
@@ -71,7 +73,8 @@ export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
           if (result.operation.studioUrl) result.studioUrl = result.operation.studioUrl;
         }
         const content = [];
-        if (params.action === 'status' && result.operation?.artifact) {
+        if (params.action === 'status' && result.operation?.state === 'completed' && result.operation.runtimeRestored === true
+          && /^[a-f0-9]{64}$/.test(result.operation.artifact?.sha256 || '')) {
           const r = await fetchImpl(new URL(result.operation.artifact.url, base), { redirect: 'error', signal: AbortSignal.timeout(30000) });
           if (!r.ok) throw new Error('Archived image unavailable');
           const bytes = Buffer.from(await r.arrayBuffer());

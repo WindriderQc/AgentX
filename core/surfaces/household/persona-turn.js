@@ -37,7 +37,7 @@ const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null,
   familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-  sounds, visuals, brain, memberWork, warmup = null, activePersonaTurns, validClientTurnId,
+  sounds, visuals, brain, memberWork, conversationImages, warmup = null, activePersonaTurns, validClientTurnId,
   envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
   packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
   sessionHistoryMessages, loadSessionAuditRows,
@@ -46,11 +46,12 @@ function createPersonaTurnHandler({
   // The instructions of a native turn. They hold only what stays the same for the
   // whole conversation, so the model's prompt cache keeps them; the opening
   // warm-up (voice-warmup.js) builds its own through this same function.
-  const nativeInstructionsFor = ({ turnSession, pack, selectedMode, channel, soundPlayback, addressed = '', workshop = null, scene = '', llmxTurn = false }) =>
+  const nativeInstructionsFor = ({ turnSession, pack, selectedMode, channel, soundPlayback, addressed = '', workshop = null, scene = '', llmxTurn = false, imageSession = turnSession, imageBackend = conversationBackend(turnSession.backend, conversationEnv), imagesEnabled = true }) =>
     agentInstructions(turnSession, turnSession.persona,
       pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode, { soundPlayback, channel })
     + addressed + workshopPrompt(workshop) + scene
-    + (llmxTurn ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }));
+    + (llmxTurn ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) })
+      + (imagesEnabled && conversationImages ? '\n' + conversationImages.contract(imageSession, imageBackend) : ''));
   // What an ordinary spoken turn of the conversation's own agent sends, in a personal session nobody has spoken in yet.
   const openingInstructions = (session, pack, selectedMode) => nativeInstructionsFor({ turnSession: session, pack, selectedMode,
     channel: 'voice', soundPlayback: true,
@@ -72,7 +73,7 @@ function createPersonaTurnHandler({
     const startedAt = Date.now();
     const abort = new AbortController();
     // A consulted member works like a detached member turn: nothing is streamed, its reply goes to member-work.
-    const entry = { abort, clientTurnId, generated: '', interrupted: false, auditWritten: false, detached: Boolean(consult),
+    const entry = { abort, clientTurnId, imageTurnId: crypto.randomUUID(), generated: '', interrupted: false, auditWritten: false, detached: Boolean(consult),
       llmx: isLlmX, profile: req.llmx?.profile || 'personal', opening: isOpening, dispatched: false };
     entry.ready = new Promise(resolve => { entry.markReady = resolve; });
     entry.finished = new Promise(resolve => { entry.finish = resolve; });
@@ -269,18 +270,21 @@ function createPersonaTurnHandler({
         // member's last exchange and the reviewer's advice) goes last, beside the request.
         const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }),
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || '',
-          isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId)].join('').trim();
+          isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId),
+          isLlmX || member ? '' : await conversationImages?.contextFor?.(session)].join('').trim();
         const nativeInstructions = nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
           soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
           addressed: member ? (consult ? teamAddress.consultInstruction : teamAddress.memberInstruction)(speaker.name)
             : memberWork ? teamAddress.consultContract(team, agentIdFor(session)) : '',
-          workshop, scene: sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : ''), llmxTurn: isLlmX });
+          workshop, scene: sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : ''), llmxTurn: isLlmX,
+          imageSession: session, imageBackend: backend, imagesEnabled: !member });
         // Child presentation follows the selected adult personality on both
         // transports. Adult conversations keep their normal style overlay order.
         const agentxInstructions = [pack.childSafe ? session.persona?.identity : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,
           'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
-          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) })].filter(Boolean).join('\n\n');
+          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }),
+          isLlmX || member ? '' : conversationImages?.contract(session, backend)].filter(Boolean).join('\n\n');
         abort.signal.throwIfAborted();
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
@@ -288,10 +292,14 @@ function createPersonaTurnHandler({
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ allowSecrets: !pack.childSafe, language: replyLanguage,
           onSay: delta => { if (!res.writableEnded) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.
-          onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage })
-            .then(shown => { if (!res.writableEnded) event('show', { block: shown }); })) });
+          onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {
+            if (block.kind === 'image' && block.source === 'draw' && conversationImages) return;
+            visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage })
+              .then(shown => { if (!res.writableEnded) event('show', { block: shown }); }));
+          } });
         // The opening warm-up shares this native session: its run ends before the first real turn starts.
         if (!member) await warmup?.settled(session.sessionId);
+
         const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history: features.historyContext === false ? [] : history, streaming, channel: req.body?.channel,
           conversationFeatures: features,
@@ -344,6 +352,9 @@ function createPersonaTurnHandler({
         // `say_end`: every spoken word is sent, so a voice page says its last clause
         // now instead of waiting for pictures, tool receipts and the record before `done`.
         if (channels) { ({ display } = channels.end()); event('say_end'); await Promise.all(visualsWork); }
+        if (channels && !abort.signal.aborted) await conversationImages?.complete({ session, pack, backend, display,
+          evidence: toolEvidence, turnId: clientTurnId || entry.imageTurnId, signal: abort.signal, member: Boolean(member),
+          onShow: block => event('show', { block }) });
         const parsed = sceneEnabled ? llmx.sceneReply(result.text, req.llmx.sceneContext) : { text: channels ? channels.end().say : result.text, sceneProposal: null };
         replyText = plainReply(parsed.text, 5000);
         sceneProposal = parsed.sceneProposal;

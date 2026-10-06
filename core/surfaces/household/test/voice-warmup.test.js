@@ -16,7 +16,7 @@ const records = require('../persona-records');
 const sessionId = 'synthetic-session';
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 
-function harness({ backend = 'openclaw', sessionFields = {} } = {}) {
+function harness({ backend = 'openclaw', sessionFields = {}, conversationImages } = {}) {
   const pack = packs.packById('personal_operator');
   const session = { sessionId, status: 'active', packId: pack.id, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: 'main', turnCount: 0,
@@ -45,7 +45,7 @@ function harness({ backend = 'openclaw', sessionFields = {} } = {}) {
     logger: { warn: (message, detail) => warnings.push({ message, ...detail }) }, deadlineMs: 200,
     instructions: (...args) => handle.openingInstructions(...args) });
   handle = createPersonaTurnHandler({
-    logger: null, runtimeServices: { attachments: { ids: () => [] } }, conversations, executeConversation, conversationEnv,
+    logger: null, runtimeServices: { attachments: { ids: () => [] } }, conversations, executeConversation, conversationEnv, conversationImages,
     requireNativeAgent: async () => {},
     familyTasks: { listProfileDetails: async () => ({ profiles: [] }), listProfiles: async () => ({ profiles: [] }), room: async () => ({ room: { available: [] } }) },
     ownerMemory: {}, familyMemory: {},
@@ -77,13 +77,18 @@ function harness({ backend = 'openclaw', sessionFields = {} } = {}) {
 }
 
 test('the warm-up sends the instructions of the first spoken turn, in the same native session, and records nothing', async () => {
-  const h = harness();
+  const h = harness({ conversationImages: {
+    contract: (_session, backend) => `Image creation through ${backend}: create once, then end this turn.`,
+    contextFor: async () => 'Current Core image receipt: ready=true.', complete: async () => {}
+  } });
   assert.deepEqual(h.warmup.start({ ...h.session }, '  Bonjour Yanik,\nje t’écoute. '), { started: true });
   while (!h.requests.length) await tick();
   const warm = h.requests[0].request;
   assert.equal(warm.text, openingEvent('Bonjour Yanik, je t’écoute.'));
   assert.equal(warm.turnDirective, OPENING_DIRECTIVE);
   assert.equal(warm.channel, 'voice');
+  assert.match(warm.instructions, /Image creation through openclaw: create once/);
+  assert.ok(!warm.instructions.includes('ready=true'), 'Current image readiness is not part of the cached prompt prefix');
   assert.equal(warm.session.agentId, 'main');
   assert.equal(h.session.agentSessionKey, 'agent:main:synthetic', 'the conversation keeps the warmed native session');
 

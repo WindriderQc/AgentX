@@ -16,6 +16,7 @@ function createRouter(images = service) {
   router.get('/operations', wrap(async (_req, res) => res.json({ ok: true, operations: await images.list() })));
   router.post('/operations', wrap(async (req, res) => res.status(202).json({ ok: true, operation: await images.accept(req.body) })));
   router.get('/operations/:id', wrap(async (req, res) => res.json({ ok: true, operation: await images.get(req.params.id) })));
+  router.get('/operations/:id/draft', wrap(async (req, res) => res.json({ ok: true, draft: await images.draft(req.params.id) })));
   router.post('/operations/:id/cancel', wrap(async (req, res) => res.json({ ok: true, operation: await images.cancel(req.params.id) })));
   router.post('/operations/:id/archive', wrap(async (req, res) => res.json({ ok: true, operation: await images.retryArchive(req.params.id) })));
   router.post('/operations/:id/recover', wrap(async (req, res) => res.json({ ok: true, operation: await images.recover(req.params.id) })));

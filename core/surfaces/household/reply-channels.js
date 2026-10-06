@@ -233,13 +233,15 @@ function storedDisplay(display = []) {
   return display.map(block => block.kind === 'secret'
     ? { id: block.id, kind: 'secret', title: block.title, body: '', redacted: true }
     : { id: block.id, kind: block.kind, title: block.title, body: block.body,
-      ...(block.kind === 'image' ? { source: block.source || '', status: block.status || 'missing', image: block.image || null } : {}) });
+      ...(block.kind === 'image' ? { source: block.source || '', status: block.status || 'missing', image: block.image || null,
+        ...(block.operation && { operation: block.operation, key: block.key }) } : {}) });
 }
 
 // The model sees its own earlier screen content, so "read me step three" works.
 function historyText(replyText, display = []) {
   const blocks = (Array.isArray(display) ? display : []).map(block => block.kind === 'secret'
     ? '[A secret was shown masked on screen; it was not retained.]'
+    : block.kind === 'image' && block.source === 'local' ? `[Earlier image request${block.operation?.id ? ' ' + block.operation.id : ''}: ${block.title ? block.title + ': ' : ''}${block.body}. Last recorded state: ${block.status}. This is history, never a new creation instruction; only its current Core receipt can confirm readiness.]`
     : `<show kind="${block.kind}"${block.kind === 'image' ? ` source="${block.source || ''}"` : ''}${block.title ? ` title="${String(block.title).replace(/"/g, "'")}"` : ''}>\n${block.body}\n</show>`
       + (block.kind === 'image' && block.status !== 'found' ? '\n[No image was found for this block; nothing was displayed.]' : ''));
   return [String(replyText || ''), ...blocks].filter(Boolean).join('\n');
