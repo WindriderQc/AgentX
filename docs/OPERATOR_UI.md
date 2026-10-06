@@ -99,7 +99,7 @@ attempts of the selected window into phases (`agentx.pipeline-attempt-phases/v1`
 | Before claim | Core | Task creation (attempt 1), or the previous attempt's recorded requeue decision or release, to the claim |
 | Resource wait | Core | Sum of the attempt's model-call waits before Ollama: runtime admission, host gate, retry backoff and retried calls' waits, from the inference rows attributed to the attempt. Part of the worker run, not added to it; unknown when a call carries no recorded wait, no call went through Core, or the rows expired (`INFERENCE_LOG_TTL_DAYS`) |
 | Startup | none | Not instrumented: claim to worker start is not recorded |
-| Worker run | worker | `clawdx-guarded/v1` run duration minus independent verification; inference and tool execution together |
+| Recorded guarded worker run | worker | `clawdx-guarded/v1` run duration minus independent verification; inference and tool execution together |
 | Verification | worker | Independent verification duration |
 | Human decision | Core | Attempt end to the recorded accepted, requeued or rejected decision |
 

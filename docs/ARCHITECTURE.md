@@ -105,7 +105,7 @@ engineering-task admission snapshot with the same dependency, time and automatio
 predicates used by selection and claim. It grants no permission, acquires no slot
 and reveals no private dependency content. The atomic claim remains authoritative.
 
-The exact worker read and coding-team preparation attach `planningContext`
+The exact worker read attaches `planningContext`
 (`core/src/services/planningWorkerContextService.js`): the linked Planning
 milestones, outcomes and workstreams plus a linked milestone's parent, with a
 short "why", success criteria (metric target, target date) and `planning:<id>`
@@ -732,21 +732,13 @@ Core's MongoDB), `availability` (`available` after a recomputed digest,
 serves only bytes whose digest matches, as an attachment; an id from another
 task is 404. Deliverables live as long as their task; there is no expiry or
 deletion path yet.
-For automated, leased attempts, the guarded coding dispatcher registers its
-bounded Markdown verification report through this API before terminal worker
-feedback. It reads and verifies an existing identical report on retry, including
-after a lost POST response. If both the POST outcome and its follow-up read are
-unknown, it leaves the task in progress for recovery; a definitively missing or
-unverified deliverable blocks the attempt instead of marking it review-ready.
 
-Opt-in task worktrees preserve the original base revision and scoped patch for
-each coding task; repairs and accepted-result promotion use that recorded base.
-The optional OpenClaw coding-verification plugin binds file access and its
-argument-free verifier to the exact task lease and worker session. It refuses
-out-of-scope files, ignored dependencies, symlinks and other tools. The worker
-can inspect real sandbox test receipts in its turn; mandatory independent final
-verification remains the acceptance gate. See the
-[plugin contract](../integrations/openclaw/coding-verification/README.md).
+The local coding worker uses a fresh repository clone on its task branch,
+with a shell and test tools inside Bubblewrap. The runner keeps credentials
+outside that sandbox, commits completed work and opens a draft pull request.
+Interrupted work stays committed locally for continuation. Core admits model
+calls; only proven admission refusals wait and retry. Review and normal PR CI
+are the acceptance gate. See [the coding worker](../integrations/coding/README.md).
 
 Nerve Center reads `live.gpuHealth` from the existing host-preference endpoint;
 HTTP reachability stays separate from pin GPU residency. Benchmark's bounded

@@ -3,7 +3,7 @@
   else root.PipelineLaunchController = factory();
 })(typeof window === 'undefined' ? globalThis : window, function () {
   'use strict';
-  const STORAGE_KEY = 'agentx.pipeline.launchRequest.v1';
+  const STORAGE_KEY = 'agentx.pipeline.simpleWorkerRequest.v1';
   const TERMINAL = new Set(['finished', 'rejected', 'stopped']);
 
   class PipelineLaunchController {

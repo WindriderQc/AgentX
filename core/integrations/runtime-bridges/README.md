@@ -46,8 +46,7 @@ remain compatible; they do not create another deployment or source repository.
 Set private values through the external `AGENTX_ENV_FILE`; Compose forwards the
 supported integration variables. Mount external inventories read-only through
 `AGENTX_COMPOSE_OVERRIDE` and set `AGENTX_INSTANCE_ROOT` to their container path.
-Its optional `config/agent-registry.yml`, `config/coding-dispatcher.json`,
-`SCHEDULED.md` and old coordination evidence are read-only projection inputs.
+Its optional `config/agent-registry.yml`, `SCHEDULED.md` and old coordination evidence are read-only projection inputs.
 Do not commit a copy here. SSH key/known-host mounts and remote paths are explicit
 instance settings. Inventory SSH does not implicitly enable coding dispatch or
 production probing.
