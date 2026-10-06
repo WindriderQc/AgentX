@@ -1,0 +1,679 @@
+[
+  {
+    "name": "Eight Islanders One",
+    "prompt": "On an island, knights always tell the truth and knaves always lie. Eight inhabitants speak. A says: \"F is a knave.\" B says: \"Exactly one of E, G and F is a knight.\" C says: \"A is the same type as me, and F is not.\" D says: \"A and H are the same type.\" E says: \"Exactly three of us eight are knights.\" F says: \"A is the same type as me, and D is not.\" G says: \"If D is a knight, then E is a knave.\" H says: \"Exactly three of us eight are knights.\" Determine the type of each. Output only one line in the form A=<type>,B=<type>,C=<type>,D=<type>,E=<type>,F=<type>,G=<type>,H=<type>, where each type is knight or knave.",
+    "level": 5,
+    "category": "reasoning",
+    "scoring_type": "reasoning",
+    "expected_tokens": 60,
+    "expected_answer": "A=knight,B=knight,C=knight,D=knave,E=knave,F=knave,G=knight,H=knave",
+    "judge_criteria": [
+      "Every speaker's statement is true exactly when the speaker is a knight",
+      "The assignment is the only consistent one",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^A=(knight|knave),B=(knight|knave),C=(knight|knave),D=(knight|knave),E=(knight|knave),F=(knight|knave),G=(knight|knave),H=(knight|knave)$"
+    }
+  },
+  {
+    "name": "Eight Islanders Two",
+    "prompt": "On an island, knights always tell the truth and knaves always lie. Eight inhabitants speak. A says: \"At least one of H and B is a knight.\" B says: \"F is a knave.\" C says: \"At least one of E and H is a knight.\" D says: \"The number of knights among us eight is odd.\" E says: \"If B is a knight, then G is a knave.\" F says: \"Exactly four of us eight are knights.\" G says: \"A is a knight if and only if B is a knave.\" H says: \"D is the same type as me, and A is not.\" Determine the type of each. Output only one line in the form A=<type>,B=<type>,C=<type>,D=<type>,E=<type>,F=<type>,G=<type>,H=<type>, where each type is knight or knave.",
+    "level": 5,
+    "category": "reasoning",
+    "scoring_type": "reasoning",
+    "expected_tokens": 60,
+    "expected_answer": "A=knight,B=knight,C=knight,D=knight,E=knight,F=knave,G=knave,H=knave",
+    "judge_criteria": [
+      "Every speaker's statement is true exactly when the speaker is a knight",
+      "The assignment is the only consistent one",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^A=(knight|knave),B=(knight|knave),C=(knight|knave),D=(knight|knave),E=(knight|knave),F=(knight|knave),G=(knight|knave),H=(knight|knave)$"
+    }
+  },
+  {
+    "name": "Eight Islanders Three",
+    "prompt": "On an island, knights always tell the truth and knaves always lie. Eight inhabitants speak. A says: \"B is the same type as me, and F is not.\" B says: \"The number of knights among us eight is odd.\" C says: \"G is a knave.\" D says: \"If E is a knight, then F is a knave.\" E says: \"G and D are the same type.\" F says: \"H is the same type as me, and C is not.\" G says: \"Exactly one of F, D and H is a knight.\" H says: \"A is a knave.\" Determine the type of each. Output only one line in the form A=<type>,B=<type>,C=<type>,D=<type>,E=<type>,F=<type>,G=<type>,H=<type>, where each type is knight or knave.",
+    "level": 5,
+    "category": "reasoning",
+    "scoring_type": "reasoning",
+    "expected_tokens": 60,
+    "expected_answer": "A=knight,B=knight,C=knave,D=knight,E=knight,F=knave,G=knight,H=knave",
+    "judge_criteria": [
+      "Every speaker's statement is true exactly when the speaker is a knight",
+      "The assignment is the only consistent one",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^A=(knight|knave),B=(knight|knave),C=(knight|knave),D=(knight|knave),E=(knight|knave),F=(knight|knave),G=(knight|knave),H=(knight|knave)$"
+    }
+  },
+  {
+    "name": "Eight Seats In A Row One",
+    "prompt": "Eight people, Ana, Ben, Cara, Dev, Eli, Fay, Gus and Hana, sit in a row of eight seats numbered 1 to 8 from left to right, one per seat. Exactly three seats separate Dev and Hana. Cara sits at one of the two ends. Fay sits somewhere to the left of Cara. Fay sits next to Hana. Cara does not sit next to Dev. Fay sits somewhere between Ben and Gus. Ben sits at one of the two ends. Eli sits somewhere to the left of Fay. Dev sits next to Ana. Give the seating from seat 1 to seat 8. Output only the eight names separated by commas, with no spaces.",
+    "level": 5,
+    "category": "reasoning",
+    "scoring_type": "reasoning",
+    "expected_tokens": 40,
+    "expected_answer": "Ben,Dev,Ana,Eli,Fay,Hana,Gus,Cara",
+    "judge_criteria": [
+      "Every clue holds for the seating",
+      "The seating is the only one that satisfies all clues",
+      "Outputs only the eight names"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^(Ana|Ben|Cara|Dev|Eli|Fay|Gus|Hana)(,(Ana|Ben|Cara|Dev|Eli|Fay|Gus|Hana)){7}$"
+    }
+  },
+  {
+    "name": "Eight Seats In A Row Two",
+    "prompt": "Eight people, Ana, Ben, Cara, Dev, Eli, Fay, Gus and Hana, sit in a row of eight seats numbered 1 to 8 from left to right, one per seat. Dev sits next to Cara. Exactly two seats separate Cara and Hana. Eli sits immediately to the right of Cara. Cara sits somewhere to the left of Gus. Dev does not sit next to Ana. Ben is not in seat 3. Fay sits at one of the two ends. Hana sits somewhere to the left of Cara. Hana does not sit at either end. Give the seating from seat 1 to seat 8. Output only the eight names separated by commas, with no spaces.",
+    "level": 5,
+    "category": "reasoning",
+    "scoring_type": "reasoning",
+    "expected_tokens": 40,
+    "expected_answer": "Fay,Ana,Hana,Ben,Dev,Cara,Eli,Gus",
+    "judge_criteria": [
+      "Every clue holds for the seating",
+      "The seating is the only one that satisfies all clues",
+      "Outputs only the eight names"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^(Ana|Ben|Cara|Dev|Eli|Fay|Gus|Hana)(,(Ana|Ben|Cara|Dev|Eli|Fay|Gus|Hana)){7}$"
+    }
+  },
+  {
+    "name": "Eight Seats In A Row Three",
+    "prompt": "Eight people, Ana, Ben, Cara, Dev, Eli, Fay, Gus and Hana, sit in a row of eight seats numbered 1 to 8 from left to right, one per seat. Ana sits somewhere to the left of Gus. Exactly one seat separates Cara and Gus. Dev sits next to Eli. Exactly three seats separate Fay and Gus. Eli sits somewhere to the left of Gus. Eli does not sit next to Gus. Dev does not sit at either end. Cara sits somewhere to the left of Hana. Hana sits at one of the two ends. Eli sits somewhere between Dev and Hana. Give the seating from seat 1 to seat 8. Output only the eight names separated by commas, with no spaces.",
+    "level": 5,
+    "category": "reasoning",
+    "scoring_type": "reasoning",
+    "expected_tokens": 40,
+    "expected_answer": "Fay,Dev,Eli,Ana,Gus,Ben,Cara,Hana",
+    "judge_criteria": [
+      "Every clue holds for the seating",
+      "The seating is the only one that satisfies all clues",
+      "Outputs only the eight names"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^(Ana|Ben|Cara|Dev|Eli|Fay|Gus|Hana)(,(Ana|Ben|Cara|Dev|Eli|Fay|Gus|Hana)){7}$"
+    }
+  },
+  {
+    "name": "Six Floors Six Pets One",
+    "prompt": "Six tenants, Ana, Ben, Cara, Dev, Eli and Fay, live in a six-floor building, one per floor, floors numbered 1 (lowest) to 6 (highest). Each owns exactly one pet, and the six pets are all different: a cat, a dog, an owl, a fox, a hen and a bat. A pet lives on its owner's floor. Cara does not own the fox. The hen lives on the floor directly above the bat. Fay lives on a higher floor than Cara. Eli lives on a floor directly above or directly below the owl, and does not own it. Dev owns the hen or the cat. The dog lives on floor 5. Cara owns the dog or the fox. The cat lives on the floor directly above the dog. Dev lives on a floor directly above or directly below the dog, and does not own it. The owl lives on a higher floor than Ben. Give each tenant's floor and pet. Output only one line in the form Ana=<floor>:<pet>,Ben=<floor>:<pet>,Cara=<floor>:<pet>,Dev=<floor>:<pet>,Eli=<floor>:<pet>,Fay=<floor>:<pet>.",
+    "level": 5,
+    "category": "reasoning",
+    "scoring_type": "reasoning",
+    "expected_tokens": 60,
+    "expected_answer": "Ana=2:owl,Ben=1:fox,Cara=5:dog,Dev=4:hen,Eli=3:bat,Fay=6:cat",
+    "judge_criteria": [
+      "Every clue holds for the assignment",
+      "The assignment is the only one that satisfies all clues",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^Ana=[1-6]:(cat|dog|owl|fox|hen|bat),Ben=[1-6]:(cat|dog|owl|fox|hen|bat),Cara=[1-6]:(cat|dog|owl|fox|hen|bat),Dev=[1-6]:(cat|dog|owl|fox|hen|bat),Eli=[1-6]:(cat|dog|owl|fox|hen|bat),Fay=[1-6]:(cat|dog|owl|fox|hen|bat)$"
+    }
+  },
+  {
+    "name": "Six Floors Six Pets Two",
+    "prompt": "Six tenants, Ana, Ben, Cara, Dev, Eli and Fay, live in a six-floor building, one per floor, floors numbered 1 (lowest) to 6 (highest). Each owns exactly one pet, and the six pets are all different: a cat, a dog, an owl, a fox, a hen and a bat. A pet lives on its owner's floor. Eli does not live on floor 3. The dog lives on floor 2. The dog lives on the floor directly above the bat. Dev lives on a higher floor than Cara. The owl does not live on floor 6. Dev lives on a higher floor than Ana. Eli owns the fox or the hen. Dev owns the cat or the owl. Ben lives on a floor directly above or directly below the dog, and does not own it. The owl does not live on floor 3. Cara owns the fox or the bat. Exactly one floor lies between Ben and the hen. The fox lives on a higher floor than Ana. Fay owns the fox or the dog. Give each tenant's floor and pet. Output only one line in the form Ana=<floor>:<pet>,Ben=<floor>:<pet>,Cara=<floor>:<pet>,Dev=<floor>:<pet>,Eli=<floor>:<pet>,Fay=<floor>:<pet>.",
+    "level": 5,
+    "category": "reasoning",
+    "scoring_type": "reasoning",
+    "expected_tokens": 60,
+    "expected_answer": "Ana=2:dog,Ben=3:cat,Cara=1:bat,Dev=4:owl,Eli=5:hen,Fay=6:fox",
+    "judge_criteria": [
+      "Every clue holds for the assignment",
+      "The assignment is the only one that satisfies all clues",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^Ana=[1-6]:(cat|dog|owl|fox|hen|bat),Ben=[1-6]:(cat|dog|owl|fox|hen|bat),Cara=[1-6]:(cat|dog|owl|fox|hen|bat),Dev=[1-6]:(cat|dog|owl|fox|hen|bat),Eli=[1-6]:(cat|dog|owl|fox|hen|bat),Fay=[1-6]:(cat|dog|owl|fox|hen|bat)$"
+    }
+  },
+  {
+    "name": "Remainder Of A Large Power",
+    "prompt": "What is the remainder when 3 raised to the power 16807 is divided by 9973? Output only the number.",
+    "level": 5,
+    "category": "math",
+    "scoring_type": "math",
+    "expected_tokens": 15,
+    "expected_answer": "1982",
+    "judge_criteria": [
+      "Uses modular arithmetic, not an approximation",
+      "The result is 3^16807 mod 9973",
+      "Outputs only the number"
+    ],
+    "deterministic_scoring": {
+      "type": "numeric",
+      "numeric_tolerance": 0
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^-?[0-9]+$"
+    }
+  },
+  {
+    "name": "Divisible By Three Numbers Not Two Others",
+    "prompt": "How many integers from 1 to 100000 inclusive are divisible by at least one of 6, 10 and 14, but divisible by neither 21 nor 35? Output only the number.",
+    "level": 5,
+    "category": "math",
+    "scoring_type": "math",
+    "expected_tokens": 15,
+    "expected_answer": "23811",
+    "judge_criteria": [
+      "Counts multiples of 6, 10 or 14 with inclusion-exclusion",
+      "Removes every multiple of 21 or 35 among them",
+      "Outputs only the number"
+    ],
+    "deterministic_scoring": {
+      "type": "numeric",
+      "numeric_tolerance": 0
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^-?[0-9]+$"
+    }
+  },
+  {
+    "name": "Lattice Paths Avoiding Three Points",
+    "prompt": "On a grid, a path goes from (0,0) to (9,8) using only steps of +1 in x or +1 in y. How many such paths pass through none of the points (2,3), (5,4) and (7,7)? Output only the number.",
+    "level": 5,
+    "category": "math",
+    "scoring_type": "math",
+    "expected_tokens": 15,
+    "expected_answer": "6434",
+    "judge_criteria": [
+      "Counts monotone lattice paths",
+      "Excludes paths through the three points without double counting",
+      "Outputs only the number"
+    ],
+    "deterministic_scoring": {
+      "type": "numeric",
+      "numeric_tolerance": 0
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^-?[0-9]+$"
+    }
+  },
+  {
+    "name": "Digit Sum Of A Factorial",
+    "prompt": "What is the sum of the decimal digits of 40! (40 factorial)? Output only the number.",
+    "level": 5,
+    "category": "math",
+    "scoring_type": "math",
+    "expected_tokens": 15,
+    "expected_answer": "189",
+    "judge_criteria": [
+      "Computes 40! exactly",
+      "Adds its decimal digits",
+      "Outputs only the number"
+    ],
+    "deterministic_scoring": {
+      "type": "numeric",
+      "numeric_tolerance": 0
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^-?[0-9]+$"
+    }
+  },
+  {
+    "name": "Strings Avoiding Two Patterns",
+    "prompt": "How many strings of length 12 over the alphabet {a, b, c} contain neither two consecutive letters a (the substring aa) nor the substring bc? Output only the number.",
+    "level": 5,
+    "category": "math",
+    "scoring_type": "math",
+    "expected_tokens": 15,
+    "expected_answer": "23427",
+    "judge_criteria": [
+      "Sets up a recurrence or automaton on the last letter",
+      "Counts exactly the strings of length 12",
+      "Outputs only the number"
+    ],
+    "deterministic_scoring": {
+      "type": "numeric",
+      "numeric_tolerance": 0
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^-?[0-9]+$"
+    }
+  },
+  {
+    "name": "Bounded Integer Solutions",
+    "prompt": "How many solutions in integers does x + y + z + w = 30 have when each of x, y, z and w is between 0 and 12 inclusive? Output only the number.",
+    "level": 5,
+    "category": "math",
+    "scoring_type": "math",
+    "expected_tokens": 15,
+    "expected_answer": "1106",
+    "judge_criteria": [
+      "Uses stars and bars with inclusion-exclusion on the upper bound",
+      "Counts ordered solutions",
+      "Outputs only the number"
+    ],
+    "deterministic_scoring": {
+      "type": "numeric",
+      "numeric_tolerance": 0
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^-?[0-9]+$"
+    }
+  },
+  {
+    "name": "Parts Inventory Pipeline",
+    "prompt": "Each record is name,quantity,zone. Records: pump,14,north. valve,9,south. gasket,22,north. filter,14,east. hose,3,north. clamp,22,south. seal,17,east. nozzle,9,north. bearing,11,west. flange,7,east. rotor,28,west. spring,11,east. washer,34,north. coupler,8,west. Apply these rules in order: (1) drop every record in zone south; (2) double the quantity of every record in zone east; (3) drop every record whose quantity is now below 12; (4) sort by quantity from highest to lowest, breaking ties by name in alphabetical order; (5) remove every fourth record of the sorted list (the 4th, the 8th and so on); (6) for each remaining record output position:NAME:value where position counts from 1 in the final list, NAME is the name in upper case and value is the quantity multiplied by 3, minus the position. Output only one line with the records separated by semicolons and no spaces.",
+    "level": 5,
+    "category": "instruction",
+    "scoring_type": "instruction",
+    "expected_tokens": 40,
+    "expected_answer": "1:SEAL:101;2:WASHER:100;3:FILTER:81;4:GASKET:62;5:SPRING:61;6:FLANGE:36",
+    "judge_criteria": [
+      "Drops the south records, doubles east and drops those below 12",
+      "Sorts by quantity descending then name and removes every fourth",
+      "Numbers, upper-cases and computes the value correctly",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^[0-9]+:[A-Z]+:[0-9]+(;[0-9]+:[A-Z]+:[0-9]+)*$"
+    }
+  },
+  {
+    "name": "Five Step Word Transformation",
+    "prompt": "Start from this sentence: \"quiet rivers carry old maps toward hidden northern harbors while patient sailors wait\". Apply these steps in order: (1) reverse the letters of each word; (2) remove every third word of the list (the 3rd, the 6th and so on); (3) replace each letter by the letter two places later in the alphabet, wrapping from z to a; (4) sort the words by length from shortest to longest, breaking ties alphabetically; (5) in every word that has an even number of letters, exchange the first and the last letter. Output only the resulting words on one line, separated by single hyphens.",
+    "level": 5,
+    "category": "instruction",
+    "scoring_type": "instruction",
+    "expected_tokens": 40,
+    "expected_answer": "fnq-orcu-ykcv-gnkjy-vgkws-jgffkp-ttgxku-vpgkvcr-ptgjvtqp",
+    "judge_criteria": [
+      "Reverses each word before anything else",
+      "Removes every third word",
+      "Shifts every letter by two with wrap-around",
+      "Sorts by length then alphabetically, then swaps ends of even-length words",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^[a-z]+(-[a-z]+)*$"
+    }
+  },
+  {
+    "name": "Ring Automaton Five Steps",
+    "prompt": "Sixteen cells are arranged in a ring, so the first and the last cell are neighbours. The starting row is 0110100011010010. At each step every cell is updated at the same time: a cell becomes 1 if exactly one of the three cells formed by its left neighbour, itself and its right neighbour is 1, and becomes 0 otherwise. Apply five steps. Output only the final row of sixteen digits.",
+    "level": 5,
+    "category": "instruction",
+    "scoring_type": "instruction",
+    "expected_tokens": 20,
+    "expected_answer": "1000010001111111",
+    "judge_criteria": [
+      "Updates all cells simultaneously",
+      "Wraps around at both ends",
+      "Applies exactly five steps",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^[01]{16}$"
+    }
+  },
+  {
+    "name": "Stack Machine Trace",
+    "prompt": "A stack machine starts with an empty stack. push n puts n on top; dup copies the top value; swap exchanges the two top values; rot removes the third value from the top and puts it on top; add, sub, mul and mod remove the two top values b (top) and a (below it) and push a+b, a-b, a*b or the remainder of a divided by b. Run this program: push 4, push 7, dup, add, swap, push 3, mul, push 2, sub, swap, dup, push 5, add, rot, push 9, swap, sub, dup, mul, push 6, mod, rot, add, swap, push 11, mul, push 8, rot, add, dup, push 4, mod, swap. Output only the final stack from bottom to top, as numbers separated by commas with no spaces.",
+    "level": 5,
+    "category": "instruction",
+    "scoring_type": "instruction",
+    "expected_tokens": 20,
+    "expected_answer": "209,3,23",
+    "judge_criteria": [
+      "Applies each operation in order",
+      "Uses a minus b with b on top for sub",
+      "Lists the stack from bottom to top",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^-?[0-9]+(,-?[0-9]+)*$"
+    }
+  },
+  {
+    "name": "Ranking With Adjustments And Tie Breaks",
+    "prompt": "Rank these players. Mira: score 82, time 31, badge 4, penalties 1. Oskar: score 91, time 28, badge 2, penalties 3. Lena: score 82, time 31, badge 1, penalties 0. Tariq: score 91, time 35, badge 5, penalties 2. Noor: score 77, time 40, badge 3, penalties 0. Hugo: score 82, time 29, badge 6, penalties 2. Ines: score 86, time 27, badge 9, penalties 1. Pavel: score 88, time 33, badge 7, penalties 0. Zoe: score 79, time 26, badge 8, penalties 2. Remy: score 93, time 30, badge 10, penalties 4. Rules, in order: (1) disqualify every player with more than 2 penalties; (2) add 5 to the score of every player whose time is below 30; (3) subtract 2 from the score for each penalty; (4) higher adjusted score ranks first; among equal adjusted scores the lower time ranks first; among equal scores and times the lower badge number ranks first. Output only the names of the remaining players in rank order, separated by the character > with no spaces.",
+    "level": 5,
+    "category": "instruction",
+    "scoring_type": "instruction",
+    "expected_tokens": 30,
+    "expected_answer": "Ines>Pavel>Tariq>Hugo>Lena>Zoe>Mira>Noor",
+    "judge_criteria": [
+      "Disqualifies players over the penalty limit",
+      "Applies the time bonus and the penalty deduction",
+      "Orders by adjusted score, then time, then badge",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^[A-Za-z]+(>[A-Za-z]+)*$"
+    }
+  },
+  {
+    "name": "Shopping List Normalisation",
+    "prompt": "Process this JSON array: [\"  green  tea \", \"#skip\", \"BLACK coffee\", \"\", \"oat   milk\", \"dark  CHOCOLATE\", \"!hold\", \"plain water\", \" Rye   Bread\", \"#later\", \"smoked  SALMON \", \"red  lentils\", \"!never\", \"wild   rice\", \"sea SALT\"]. Apply these rules in order: (1) trim each entry and collapse runs of spaces to one space; (2) drop empty entries and entries that start with # or !; (3) put every entry in lower case; (4) keep only entries whose number of letters, not counting spaces, is even; (5) sort the entries by letter count from highest to lowest, breaking ties alphabetically; (6) label the entries A, B, C and so on in that order, and write each as <label><letter count>-<entry with spaces replaced by underscores>. Output only one line with the entries separated by the character | and no spaces.",
+    "level": 5,
+    "category": "instruction",
+    "scoring_type": "instruction",
+    "expected_tokens": 40,
+    "expected_answer": "A12-smoked_salmon|B10-plain_water|C10-red_lentils|D8-green_tea|E8-rye_bread|F8-wild_rice",
+    "judge_criteria": [
+      "Trims, collapses spaces and drops the marked and empty entries",
+      "Keeps only entries with an even letter count and sorts them",
+      "Labels in order and writes count and underscores correctly",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^[A-Z][0-9]+-[a-z_]+(\\|[A-Z][0-9]+-[a-z_]+)*$"
+    }
+  },
+  {
+    "name": "Calendar Tool Working Day Before",
+    "prompt": "You are an agent with these tools: create_event(date) with an ISO date, send_note(text), search_calendar(month). Today is 2031-03-19, a Wednesday. The office is closed on weekends and on 2031-05-14. Request: \"Book the equipment check on the last day the office is open strictly before the third Thursday of the month after next.\" Reply with the single call you would make, on one line, in the form tool=<name>,date=<ISO date>.",
+    "level": 5,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 25,
+    "expected_answer": "tool=create_event,date=2031-05-13",
+    "judge_criteria": [
+      "Chooses create_event",
+      "Finds the third Thursday of the month after next",
+      "Steps back past the closed day to an open day",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^tool=[a-z_]+,date=[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    }
+  },
+  {
+    "name": "Delivery Route Under Constraints",
+    "prompt": "You choose a delivery route for an operator. The cargo is perishable. Options: A: base cost 38, hours 7, transfers 2, refrigerated. B: base cost 29, hours 11, transfers 1, refrigerated. C: base cost 41, hours 5, transfers 0, refrigerated. D: base cost 33, hours 8, transfers 3, refrigerated. E: base cost 30, hours 9, transfers 2, not refrigerated. F: base cost 44, hours 4, transfers 1, refrigerated. G: base cost 31, hours 9, transfers 2, refrigerated. H: base cost 35, hours 6, transfers 1, refrigerated. I: base cost 27, hours 8, transfers 1, not refrigerated. J: base cost 36, hours 9, transfers 0, refrigerated. Policy: perishable cargo must travel refrigerated; never exceed 9 hours; never use more than 2 transfers; the total cost is the base cost plus 4 per transfer, plus a surcharge of 6 when the route takes more than 7 hours; among the routes that remain choose the lowest total cost, and if two cost the same choose the one with fewer hours. Reply on one line in the form route=<letter>,cost=<total cost>.",
+    "level": 5,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 20,
+    "expected_answer": "route=H,cost=39",
+    "judge_criteria": [
+      "Rejects unrefrigerated, slow and many-transfer routes",
+      "Computes the total cost with transfers and surcharge",
+      "Chooses the cheapest remaining route",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^route=[A-J],cost=[0-9]+$"
+    }
+  },
+  {
+    "name": "Alert Triage Order",
+    "prompt": "You triage alerts for an operations team. Alerts: #1: warning, open 40 minutes. #2: critical, open 5 minutes. #3: critical, open 55 minutes, acknowledged. #4: info, open 300 minutes. #5: critical, open 30 minutes. #6: warning, open 90 minutes. #7: warning, open 90 minutes, acknowledged. #8: warning, open 150 minutes. #9: info, open 500 minutes. #10: critical, open 30 minutes. #11: warning, open 121 minutes. #12: warning, open 120 minutes. #13: critical, open 200 minutes, acknowledged. #14: warning, open 15 minutes. Rules: ignore acknowledged alerts; ignore info alerts; a warning that has been open for more than 120 minutes is treated as critical; handle critical before warning; within the same severity handle the alert that has been open longest first; if still tied, the lower number first; you only have time for the first seven. Reply on one line in the form order=<numbers separated by commas>.",
+    "level": 5,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 20,
+    "expected_answer": "order=8,11,5,10,2,12,6",
+    "judge_criteria": [
+      "Leaves out acknowledged and info alerts",
+      "Escalates only warnings open more than 120 minutes",
+      "Orders by severity then time open and stops at seven",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^order=[0-9]+(,[0-9]+)*$"
+    }
+  },
+  {
+    "name": "Backup Retention Decision",
+    "prompt": "You manage backups. Today is 2032-06-20, a Sunday. Backups and their dates: f01: 2032-06-20 (Sunday). f02: 2032-06-19 (Saturday). f03: 2032-06-18 (Friday). f04: 2032-06-17 (Thursday). f05: 2032-06-13 (Sunday). f06: 2032-06-11 (Friday). f07: 2032-06-06 (Sunday). f08: 2032-05-31 (Monday). f09: 2032-05-30 (Sunday). f10: 2032-05-20 (Thursday). f11: 2032-05-16 (Sunday). f12: 2032-05-02 (Sunday). f13: 2032-04-29 (Thursday). f14: 2032-04-21 (Wednesday). f15: 2032-04-04 (Sunday). Policy, applied in this order: keep the three most recent backups; in addition keep the two most recent backups taken on a Sunday that are not already kept; in addition, for May 2032 and for April 2032, keep the most recent backup of that month that is not already kept; delete everything else. Reply on one line in the form delete=<file names separated by commas, in alphabetical order>.",
+    "level": 5,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 30,
+    "expected_answer": "delete=f04,f06,f09,f10,f11,f12,f14,f15",
+    "judge_criteria": [
+      "Keeps the three most recent backups",
+      "Keeps two more Sunday backups beyond those",
+      "Keeps one more backup for May and for April, and deletes the rest",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^delete=f[0-9]{2}(,f[0-9]{2})*$"
+    }
+  },
+  {
+    "name": "Compute Budget Allocation",
+    "prompt": "You schedule jobs on a host that has 15 hours of compute tonight. Each job runs entirely or not at all. Jobs: j1: 6 hours, value 30. j2: 4 hours, value 21. j3: 3 hours, value 18. j4: 5 hours, value 24. j5: 2 hours, value 11. j6: 4 hours, value 27. j7: 7 hours, value 37. j8: 1 hours, value 4. Constraints: j6 can only run if j2 also runs; j3 and j5 cannot both run. Choose the set of jobs with the highest total value that fits in the 15 hours. Reply on one line in the form jobs=<names separated by commas, in name order>,value=<total value>.",
+    "level": 5,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 25,
+    "expected_answer": "jobs=j2,j6,j7,value=85",
+    "judge_criteria": [
+      "Stays within 15 hours and respects both constraints",
+      "Finds the highest total value, not the greedy choice",
+      "Reports the total value of the chosen set",
+      "Outputs only the requested line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^jobs=j[0-9](,j[0-9])*,value=[0-9]+$"
+    }
+  },
+  {
+    "name": "Trace Hash And Equality In Sets",
+    "prompt": "What does this Python 3 program print? Output only the printed line, exactly as Python prints it.\n\n```python\nclass P:\n    def __init__(self, x, y):\n        self.x, self.y = x, y\n    def __eq__(self, other):\n        return self.x + self.y == other.x + other.y\n    def __hash__(self):\n        return self.x * self.y % 4\n\npts = [P(1, 4), P(2, 3), P(4, 1), P(0, 5), P(3, 3), P(5, 1), P(2, 2)]\ns = set(pts)\nd = {}\nfor p in pts:\n    d[p] = d.get(p, 0) + p.x\nprint(len(s), len(d), sum(d.values()), max(d.values()), pts.index(P(4, 1)), P(0, 6) in s)\n```",
+    "level": 5,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 20,
+    "expected_answer": "4 4 17 8 0 False",
+    "judge_criteria": [
+      "Traces the program step by step instead of guessing",
+      "The line matches what Python 3 prints",
+      "Outputs only the printed line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": true,
+      "trim_only": true
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^[-0-9A-Za-z ]+$"
+    }
+  },
+  {
+    "name": "Trace Loop Else And Slices",
+    "prompt": "What does this Python 3 program print? Output only the printed line, exactly as Python prints it.\n\n```python\nout = []\nfor n in range(2, 30):\n    for d in range(2, n):\n        if n % d == 0:\n            if d * d == n:\n                out.append(-n)\n            break\n    else:\n        out.append(n)\ns = out[::-2][1:6]\nprint(len(out), sum(out), s[0], s[-1], sum(s[1:-1]))\n```",
+    "level": 5,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 20,
+    "expected_answer": "13 91 23 -4 35",
+    "judge_criteria": [
+      "Traces the program step by step instead of guessing",
+      "The line matches what Python 3 prints",
+      "Outputs only the printed line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": true,
+      "trim_only": true
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^[-0-9A-Za-z ]+$"
+    }
+  },
+  {
+    "name": "Trace Aliased Nested Lists",
+    "prompt": "What does this Python 3 program print? Output only the printed line, exactly as Python prints it.\n\n```python\ngrid = [[0] * 3] * 2\ngrid[0][1] = 5\nrows = [list(r) for r in grid]\nrows[1][1] += 2\ngrid.append(rows[0])\ngrid[2][0] = 9\nt = (grid[0], rows)\nt[1][0].append(len(grid))\nt[0][2] -= rows[1][1]\nprint(sum(map(sum, grid)), len(rows[0]), rows[0][0], rows[1][1], grid[1] is grid[0], sum(rows[0]) + sum(rows[1]))\n```",
+    "level": 5,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 20,
+    "expected_answer": "13 4 9 7 True 24",
+    "judge_criteria": [
+      "Traces the program step by step instead of guessing",
+      "The line matches what Python 3 prints",
+      "Outputs only the printed line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": true,
+      "trim_only": true
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^[-0-9A-Za-z ]+$"
+    }
+  },
+  {
+    "name": "Trace String Filtering And Joins",
+    "prompt": "What does this Python 3 program print? Output only the printed line, exactly as Python prints it.\n\n```python\ns = \"benchmarking local models\"\nt = \"\".join(c.upper() if i % 3 == 0 else c for i, c in enumerate(s) if c not in \"aeo\")\nu = t.split()\nv = \"-\".join(w[::-1][:4] for w in u)\nprint(len(t), t.count(\"L\"), v, v.find(\"l\"), sum(map(ord, v[:3])) % 97)\n```",
+    "level": 5,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 20,
+    "expected_answer": "19 0 gnIk-lCl-SlDm 5 92",
+    "judge_criteria": [
+      "Traces the program step by step instead of guessing",
+      "The line matches what Python 3 prints",
+      "Outputs only the printed line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": true,
+      "trim_only": true
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^[-0-9A-Za-z ]+$"
+    }
+  },
+  {
+    "name": "Trace Three Value State Machine",
+    "prompt": "What does this Python 3 program print? Output only the printed line, exactly as Python prints it.\n\n```python\ndef step(state):\n    a, b, c = state\n    if a % 2 == 0:\n        return (a // 2, b + c, c ^ a)\n    return (3 * a + 1, b - 1, c + b % 5)\n\nstate, seen = (27, 4, 1), {}\nn = 0\nwhile state[0] != 1 and n < 25:\n    seen[state[0] % 7] = n\n    state = step(state)\n    n += 1\nprint(n, state[0], state[1], state[2], len(seen), sum(seen.values()))\n```",
+    "level": 5,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 20,
+    "expected_answer": "25 310 2181 465 7 145",
+    "judge_criteria": [
+      "Traces the program step by step instead of guessing",
+      "The line matches what Python 3 prints",
+      "Outputs only the printed line"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": true,
+      "trim_only": true
+    },
+    "output_contract": {
+      "type": "regex",
+      "pattern": "^[-0-9A-Za-z ]+$"
+    }
+  }
+]

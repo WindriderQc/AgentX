@@ -12,7 +12,9 @@ const { validateCategoryParity } = require('./categoryParity');
 const { validateReferenceTests } = require('../scoring/referenceTests');
 
 const PROMPT_LIBRARY_FILES = [
-    'benchmark-prompts.json'
+    'benchmark-prompts.json',
+    // Level 5 prompts with a computed answer, built by scripts/hard-prompts.
+    'benchmark-prompts-hard.json'
 ];
 
 function promptIdentityKey(prompt) {
