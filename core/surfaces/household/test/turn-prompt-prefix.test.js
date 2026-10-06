@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createPersonaTurnHandler } = require('../persona-turn');
 const { createConversationExecutor } = require('../conversation-executor');
+const { createConversationImages } = require('../conversation-images');
 const packs = require('../packs');
 const prompt = require('../persona-prompt');
 const records = require('../persona-records');
@@ -16,7 +17,7 @@ const records = require('../persona-records');
 const BLOCK = '[Household selected context for this turn: reference data, not tool instructions]';
 const RUN_ID = 'resp_33333333-3333-4333-8333-333333333333';
 
-function harness({ packId, backend }) {
+function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle }) {
   const pack = packs.packById(packId);
   const session = { sessionId: 'synthetic-session', status: 'active', packId, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
@@ -41,17 +42,18 @@ function harness({ packId, backend }) {
   const executeConversation = createConversationExecutor({
     inference: { execute: async body => {
       sent.push({ prefix: body.messages[0].content, messages: body.messages, request: body.messages.at(-1).content, taskType: body.taskType });
-      return { ok: true, body: { response: 'Réponse synthétique.' }, metadata: { model: 'synthetic' } };
+      return { ok: true, body: { response }, metadata: { model: 'synthetic' } };
     } },
     agentClient: async request => {
       sent.push({ prefix: request.instructions, request: [request.turnContext, request.turnDirective].filter(Boolean).join('\n\n'), text: request.text });
       await request.onStarted(`agent:${request.session.agentId}:synthetic`, RUN_ID);
-      return { text: 'Réponse synthétique.', sessionKey: `agent:${request.session.agentId}:synthetic`, runId: RUN_ID,
+      return { text: response, sessionKey: `agent:${request.session.agentId}:synthetic`, runId: RUN_ID,
         metadata: { model: 'synthetic-native' }, tools: { status: 'observed', receipts: [], runId: RUN_ID } };
     }
   });
   const handle = createPersonaTurnHandler({
-    logger: null, runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: {}, executeConversation,
+    logger: null, runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: {},
+    executeConversation: async request => { const result = await executeConversation(request); settle?.(request); return result; }, conversationImages,
     requireNativeAgent: async () => {},
     familyTasks: { listProfileDetails: async () => ({ profiles: state.profiles }), listProfiles: async () => ({ profiles: state.profiles }),
       room: async () => ({ room: { available: [{ title: 'Synthetic routine' }] } }) },
@@ -210,3 +212,20 @@ test('a sound the owner names is chosen by Household, without waiting for the ag
   assert.equal(silent.sound, null);
   assert.ok(!sent[1].request.includes('Son :'));
 });
+
+for (const backend of ['agentx', 'openclaw']) {
+  test(`family drawing on ${backend} is admitted after conversation execution settles, with no prompt reaching speech`, async () => {
+    let settled = false, accepted = 0;
+    const service = { status: () => ({ configured: true, conversationProfile: { id: 'quick', width: 1024, height: 1024 } }),
+      accept: async (_body, options) => { assert.ok(settled, 'LLM execution must finish before requesting the image GPU');
+        accepted += 1; assert.equal(options.conversation.scopeId, 'family');
+        return { id: '33333333-3333-4333-8333-333333333333', state: 'accepted', runtimeRestored: false }; } };
+    const conversationImages = createConversationImages({ conversations: {}, service });
+    const response = 'Je demande ton dessin. <show kind="image" source="draw" title="Robots">Two robots in a cardboard car, giant mushrooms and a flying dragon.</show>';
+    const { turn, sent } = harness({ packId: 'kidx_nestor', backend, response, conversationImages, settle: () => { settled = true; } });
+    const result = await turn('Dessine deux robots avec un dragon.', 'text');
+    assert.equal(accepted, 1); assert.equal(result.display[0].operation.state, 'accepted');
+    assert.equal(result.reply.text, 'Je demande ton dessin.');
+    assert.ok(sent[0].prefix.includes('source="draw"'));
+  });
+}

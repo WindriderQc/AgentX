@@ -744,6 +744,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         if (turn.replyText) message('assistant', turn.replyText, turn.interrupted, null, [], turn.speakerAgentId ? ConversationTeam.memberName(team, agents, turn.speakerAgentId) : '');
         board.restore(turn.display);
       });
+      void ConversationImages.resume(`${sessionBase}/${encodeURIComponent(data.session.sessionId)}`, block => { if (!board.has(`image:${block.operation.id}`)) board.add(block); },
+        { current: () => epoch === conversation.epoch && conversation.session?.sessionId === data.session.sessionId });
       personalNotes.show(data.turns?.at(-1)?.personalContinuity);
       showTools(data.turns?.at(-1)?.toolEvidence);
       void recap?.refresh();

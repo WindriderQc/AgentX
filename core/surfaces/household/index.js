@@ -420,10 +420,12 @@ function register(api) {
     catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Effacement incomplet. Réessaie pour terminer.', error.code); }
   });
   require('./attachment-routes').registerAttachmentRoutes(personas, { express, personalAttachments, envelope, fail });
+  const conversationImages = require('./conversation-images').createConversationImages({ conversations });
+  conversationImages.register(personas);
   const handlePersonaTurn = createPersonaTurnHandler({
     logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-    sounds, visuals, brain, memberWork, activePersonaTurns, validClientTurnId,
+    sounds, visuals, brain, memberWork, conversationImages, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
     packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
     sessionHistoryMessages, loadSessionAuditRows,

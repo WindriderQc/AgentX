@@ -20,3 +20,10 @@ test('trusted local callers receive a persisted pending receipt, not a fabricate
   const result = await request(app).post('/api/images/operations').send({ actionKey: 'synthetic' }).expect(202);
   expect(result.body.operation).toEqual({ id: 'operation', state: 'accepted' });
 });
+test('the atelier reads the stored draft without submitting a generation', async () => {
+  const app = express(); const draft = jest.fn(async () => ({ prompt: 'Two robots', seed: 42, profile: 'quick' })), accept = jest.fn();
+  app.use('/api/images', createRouter({ draft, accept }));
+  const result = await request(app).get('/api/images/operations/synthetic/draft').expect(200);
+  expect(result.body.draft).toMatchObject({ prompt: 'Two robots', seed: 42 });
+  expect(accept).not.toHaveBeenCalled();
+});

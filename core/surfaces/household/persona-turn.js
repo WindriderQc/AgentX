@@ -37,7 +37,7 @@ const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null,
   familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-  sounds, visuals, brain, memberWork, activePersonaTurns, validClientTurnId,
+  sounds, visuals, brain, memberWork, conversationImages, activePersonaTurns, validClientTurnId,
   envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
   packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
   sessionHistoryMessages, loadSessionAuditRows,
@@ -56,7 +56,7 @@ function createPersonaTurnHandler({
       && validClientTurnId(req.body?.turnId) ? req.body.turnId : '';
     const startedAt = Date.now();
     const abort = new AbortController();
-    const entry = { abort, clientTurnId, generated: '', interrupted: false, auditWritten: false,
+    const entry = { abort, clientTurnId, imageTurnId: crypto.randomUUID(), generated: '', interrupted: false, auditWritten: false,
       llmx: isLlmX, profile: req.llmx?.profile || 'personal', opening: isOpening, dispatched: false };
     entry.ready = new Promise(resolve => { entry.markReady = resolve; });
     entry.finished = new Promise(resolve => { entry.finish = resolve; });
@@ -252,25 +252,31 @@ function createPersonaTurnHandler({
         // member's last exchange and the reviewer's advice) goes last, beside the request.
         const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }),
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || '',
-          isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId)].join('').trim();
+          isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId),
+          isLlmX || member ? '' : await conversationImages?.contextFor?.(session)].join('').trim();
         const nativeInstructions = agentInstructions(turnSession, turnSession.persona,
           pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode,
           { soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected, channel: req.body?.channel })
           + (member ? teamAddress.memberInstruction(speaker.name) : '') + workshopPrompt(workshop)
-          + sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : '') + (isLlmX ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }));
+          + sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : '') + (isLlmX ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) })
+            + (!member ? '\n' + (conversationImages?.contract(session, backend) || '') : ''));
         // Child presentation follows the selected adult personality on both
         // transports. Adult conversations keep their normal style overlay order.
         const agentxInstructions = [pack.childSafe ? session.persona?.identity : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,
           'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
-          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) })].filter(Boolean).join('\n\n');
+          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }),
+          isLlmX || member ? '' : conversationImages?.contract(session, backend)].filter(Boolean).join('\n\n');
         abort.signal.throwIfAborted();
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ allowSecrets: !pack.childSafe, language: replyLanguage,
-          onSay: delta => { if (!res.writableEnded) event('delta', { delta }); }, onShow: block => visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage })
-            .then(shown => { if (!res.writableEnded) event('show', { block: shown }); })) });
+          onSay: delta => { if (!res.writableEnded) event('delta', { delta }); }, onShow: block => {
+            if (block.kind === 'image' && block.source === 'draw' && conversationImages) return;
+            visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage })
+              .then(shown => { if (!res.writableEnded) event('show', { block: shown }); }));
+          } });
         const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history: features.historyContext === false ? [] : history, streaming, channel: req.body?.channel,
           conversationFeatures: features,
@@ -323,6 +329,9 @@ function createPersonaTurnHandler({
         // `say_end`: every spoken word is sent, so a voice page says its last clause
         // now instead of waiting for pictures, tool receipts and the record before `done`.
         if (channels) { ({ display } = channels.end()); event('say_end'); await Promise.all(visualsWork); }
+        if (channels && !abort.signal.aborted) await conversationImages?.complete({ session, pack, backend, display,
+          evidence: toolEvidence, turnId: clientTurnId || entry.imageTurnId, signal: abort.signal, member: Boolean(member),
+          onShow: block => event('show', { block }) });
         const parsed = sceneEnabled ? llmx.sceneReply(result.text, req.llmx.sceneContext) : { text: channels ? channels.end().say : result.text, sceneProposal: null };
         replyText = plainReply(parsed.text, 5000);
         sceneProposal = parsed.sceneProposal;

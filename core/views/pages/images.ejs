@@ -10,6 +10,8 @@
           <label>Rendu<select id="image-profile"></select></label>
           <label>Format<select id="image-size"><option value="1024,1024">Carré · 1 MP</option><option value="1280,768">Paysage · 1 MP</option><option value="768,1280">Portrait · 1 MP</option><option value="2048,2048">Carré · 2K</option><option value="2048,1152">Paysage · 2K</option></select></label>
         </div>
+        <label for="image-seed">Graine <span>(facultatif ; vide pour une nouvelle variante)</span></label>
+        <input id="image-seed" type="number" min="0" max="9007199254740991" step="1">
         <label for="image-references">Photos à retoucher ou références <span>(facultatif, deux maximum)</span></label>
         <input id="image-references" type="file" accept="image/png,image/jpeg" multiple>
         <p class="image-help">Pour une retouche, indique ce qui change et ce qui doit rester. Les références deviennent image 1 et image 2 dans cet ordre. Avec Qwen, le cadrage suit la première photo.</p>
@@ -24,6 +26,8 @@
       <div id="image-placeholder"><span aria-hidden="true">✦</span><p>Ton prochain paysage commence ici.</p></div>
       <img id="image-output" alt="Image générée localement" hidden>
       <a id="image-download" hidden download>Télécharger l’original</a>
+      <button id="image-use-reference" type="button" hidden>Utiliser cette image comme référence</button>
+      <p id="image-selected-reference" class="image-help" hidden></p>
     </section>
   </div>
   <section class="image-history"><h2>Les dernières créations</h2><div id="image-gallery"></div></section>

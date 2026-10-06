@@ -69,11 +69,15 @@ function validate(body, config) {
   const requestHash = hash(JSON.stringify({ ...request, seed: body.seed ?? null, profile: id, references: originals.map(hash) }));
   return { profile: { ...profile, id }, request, requestHash, originals };
 }
-async function accept(body) {
+async function accept(body, { conversation, signal } = {}) {
   await initialize();
   const config = loadConfig();
   if (!config || !defaultArchive().enabled) throw fail('Le service d’images locales n’est pas configuré.', 503);
   const input = validate(body, config);
+  if (conversation) {
+    conversation = normalizeConversation(conversation);
+    input.requestHash = hash(JSON.stringify([input.requestHash, conversation.surface, conversation.sessionId, conversation.packId, conversation.scopeId]));
+  }
   const prior = await ImageOperation.findOne({ actionKey: body.actionKey }).lean();
   if (prior) {
     if (prior.requestHash !== input.requestHash) throw fail('Cette identité appartient déjà à une autre demande.', 409);
@@ -81,11 +85,12 @@ async function accept(body) {
   }
   const client = createComfyClient(config.workerUrl);
   try { await client.ready(input.profile); } catch { throw fail('Le PC image est indisponible ou occupé. Fais une nouvelle demande quand il sera disponible.', 503); }
+  signal?.throwIfAborted();
   const id = crypto.randomUUID();
   let op;
   try {
     op = await ImageOperation.create([{ _id: id, actionKey: body.actionKey, requestHash: input.requestHash,
-      workerSlot: config.workerUrl, workerUrl: config.workerUrl, state: 'accepted', profile: input.profile, request: input.request,
+      ...(conversation && { conversation }), workerSlot: config.workerUrl, workerUrl: config.workerUrl, state: 'accepted', profile: input.profile, request: input.request,
       references: input.originals.map(reference), jobId: id }], { writeConcern: { w: 1, j: true } });
     op = op[0].toObject();
     op.references = input.originals.map(reference);
@@ -157,6 +162,29 @@ async function getForAction(id, actionKey) {
   if (!op) throw fail('Opération image inconnue pour cette demande.', 404);
   return publicOperation(op);
 }
+function normalizeConversation(conversation) {
+  const keys = ['surface', 'sessionId', 'packId', 'scopeId'];
+  if (!conversation || !keys.every(key => typeof conversation[key] === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(conversation[key]))) throw fail('Conversation image invalide.');
+  return Object.fromEntries(keys.map(key => [key, conversation[key]]));
+}
+function conversationQuery(conversation) {
+  return Object.fromEntries(Object.entries(normalizeConversation(conversation)).map(([key, value]) => [`conversation.${key}`, value]));
+}
+async function getForConversation(id, conversation) {
+  await initialize();
+  const op = await ImageOperation.findOne({ _id: id, ...conversationQuery(conversation) }).lean();
+  if (!op) throw fail('Image inconnue dans cette conversation.', 404);
+  return publicOperation(op);
+}
+async function listForConversation(conversation) {
+  await initialize();
+  return (await ImageOperation.find(conversationQuery(conversation)).sort({ createdAt: -1 }).limit(30).lean()).map(publicOperation);
+}
+async function draft(id) {
+  const op = await ImageOperation.findById(id).select('+request').lean();
+  if (!op) throw fail('Opération image inconnue.', 404);
+  return { ...op.request, profile: op.profile.id };
+}
 async function list() {
   await initialize();
   return (await ImageOperation.find().sort({ createdAt: -1 }).limit(30).lean()).map(publicOperation);
@@ -202,7 +230,12 @@ async function recover(id) {
 }
 function status() {
   const config = loadConfig();
+  const quick = ([config?.conversationProfile, ...Object.keys(config?.profiles || {})]).find(id => {
+    const p = config?.profiles[id]; return p?.family === 'klein' && p.steps <= 8;
+  });
+  const p = config?.profiles[quick];
   return { configured: Boolean(config && defaultArchive().enabled), defaultProfile: config?.defaultProfile || null,
+    conversationProfile: p ? { id: quick, width: Math.min(1024, Math.floor(Math.sqrt(p.maxPixels) / 32) * 32), height: Math.min(1024, Math.floor(Math.sqrt(p.maxPixels) / 32) * 32) } : null,
     profiles: Object.entries(config?.profiles || {}).map(([id, p]) => ({ id, label: p.label || id, maxPixels: p.maxPixels, license: p.license || null })) };
 }
-module.exports = { accept, get, getForAction, list, cancel, image, retryArchive, recover, status, validate, publicOperation };
+module.exports = { accept, get, getForAction, getForConversation, listForConversation, draft, list, cancel, image, retryArchive, recover, status, validate, publicOperation };

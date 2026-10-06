@@ -78,7 +78,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   fences and verified archived output. The private native tool returns a
   pending operation and studio link. Household delivers this Core receipt even
   when the conversation model refuses or switches to a fallback. Operation
-  observation never creates another image. Profiles and physical GPU placement require
+  cards show preparation and the completed image in Nestor/Famille and recover
+  accepted requests when a conversation resumes. Family drawings use a bounded
+  quick preset after inference, with no private native tools. The atelier opens
+  the selected operation with its brief and seed and can reuse its image as a
+  reference. Operation observation never creates another image. Profiles and physical GPU placement require
   instance qualification; see [local images](LOCAL_IMAGES.md).
 - **Pipeline.** List, dossier and Planning references share Core's read-only
   next-action projection. **Needs attention** pages the engineering and

@@ -389,9 +389,20 @@ memory. See [attachment behavior and limits](api/NESTOR_ATTACHMENTS.md).
 Core's optional image capability owns `ImageOperation`, idempotent action
 identities, execution state, GPU admission and verified archive references.
 The full-profile `/images` page and private native `local_image` tool compose
-that capability. ComfyUI only executes bounded server-owned graphs; callers
-cannot submit arbitrary workflows. Generation remains adult-only even when
-the instance archive is visible in household photos.
+that capability. Household composes the same service for simple family drawings
+after inference settles, through a bounded display directive. The family agent
+receives no private native tools. Core persists the server-resolved conversation
+scope with each operation; Household's read routes verify all scope fields.
+Private native Household creates use the same binding. ComfyUI only executes
+bounded server-owned graphs; callers cannot submit arbitrary workflows.
+
+Browser cards read progress and verified completion without re-submitting a
+creation. Resume also reads scoped operations independently of the turn audit,
+so an accepted image remains discoverable after a lost reply. `/images` loads
+the selected operation's stored brief and seed; using its artifact as an editing
+reference is an explicit browser action. These are application surface bounds,
+not separate human identities: the deployment uses trusted LAN access and its
+shared archive may be visible to the household.
 
 The worker reserves every configured GPU consumer endpoint through the existing
 runtime coordinator. An optional private physical-resource map also excludes

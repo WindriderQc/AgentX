@@ -91,4 +91,29 @@ describe('durable local image operations', () => {
     await waitFor(second.id, 'completed');
     expect(first.id).not.toBe(second.id); expect(client.submit).toHaveBeenCalledTimes(2);
   });
+  test('conversation scope is durable, isolates receipts, and participates in replay identity', async () => {
+    const conversation = { surface: 'household', sessionId: 'family-session', packId: 'kidx_nestor', scopeId: 'family' };
+    const body = { actionKey: 'action-conversation', prompt: 'Two robots in a cardboard car', seed: 42 };
+    const first = await service.accept(body, { conversation });
+    await waitFor(first.id, 'completed');
+    expect((await service.getForConversation(first.id, conversation)).id).toBe(first.id);
+    expect((await service.listForConversation(conversation)).map(op => op.id)).toEqual([first.id]);
+    const other = { ...conversation, sessionId: 'different-session' };
+    await expect(service.getForConversation(first.id, other)).rejects.toMatchObject({ statusCode: 404 });
+    expect(await service.listForConversation(other)).toEqual([]);
+    await expect(service.accept(body, { conversation: other })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.accept(body)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await service.accept(body, { conversation })).id).toBe(first.id);
+    expect(await service.draft(first.id)).toMatchObject({ prompt: body.prompt, seed: 42, profile: 'quality', width: 1024, height: 1024 });
+    expect(client.submit).toHaveBeenCalledTimes(1);
+  });
+  test('a disconnect before admission commits no work; quick preset never selects Qwen implicitly', async () => {
+    const abort = new AbortController(); abort.abort();
+    await expect(service.accept({ actionKey: 'action-disconnect', prompt: 'A lake' }, { signal: abort.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(await ImageOperation.countDocuments()).toBe(0);
+    expect(client.submit).not.toHaveBeenCalled();
+    expect(service.status().conversationProfile).toEqual({ id: 'quality', width: 1024, height: 1024 });
+    loadConfig.mockReturnValue({ defaultProfile: 'quality', profiles: { quality: { ...profile, family: 'qwen21', steps: 25 } } });
+    expect(service.status().conversationProfile).toBeNull();
+  });
 });

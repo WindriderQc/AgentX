@@ -22,7 +22,7 @@ test('only the private owner receives the image tool; create relays a bounded op
   assert.equal(factory({ ...context, sandboxed: true }), null);
   const tool = factory(context);
   const result = await tool.execute('call-1', { action: 'create', prompt: 'A lake', width: 1024 });
-  assert.equal(captured.url, 'http://127.0.0.1:3180/api/images/operations');
+  assert.equal(captured.url, 'http://127.0.0.1:3180/api/voice-personas/private/sessions/11111111-1111-1111-1111-111111111111/images');
   assert.equal(captured.body.actionKey, imageActionKey(context, 'call-1'));
   assert.equal(result.details.operation.state, 'accepted');
   assert.equal(result.details.studioPath, '/images?operation=image-1');
@@ -47,4 +47,29 @@ test('SDK tool context without runId uses the native before-tool hook and preser
     hooks.after_tool_call({ toolName: 'local_image', toolCallId: 'call-1' }, { sessionKey: native.sessionKey });
   }
   assert.notEqual(identities[0], identities[1]);
+});
+
+test('Household status/cancel stay scoped while profiles and Telegram preserve their existing routes', async () => {
+  let factory; const routes = [];
+  const api = { config: { channels: { telegram: { allowFrom: ['telegram:42'] } } }, pluginConfig: { agentxUrl: 'http://127.0.0.1:3180' }, registerTool(f) { factory = f; } };
+  registerLocalImages(api, { fetchImpl: async url => { routes.push(String(url)); return { ok: true, json: async () => ({ ok: true }) }; } });
+  const tool = factory(context), operationId = '33333333-3333-4333-8333-333333333333';
+  await tool.execute('profiles', { action: 'profiles' });
+  await tool.execute('status', { action: 'status', operationId });
+  await tool.execute('cancel', { action: 'cancel', operationId });
+  const telegram = factory({ ...context, sessionKey: 'agent:main:telegram:direct:42' });
+  await telegram.execute('create', { action: 'create', prompt: 'A lake' });
+  assert.deepEqual(routes, ['http://127.0.0.1:3180/api/images/status',
+    `http://127.0.0.1:3180/api/voice-personas/private/sessions/11111111-1111-1111-1111-111111111111/images/${operationId}`,
+    `http://127.0.0.1:3180/api/voice-personas/private/sessions/11111111-1111-1111-1111-111111111111/images/${operationId}/cancel`,
+    'http://127.0.0.1:3180/api/images/operations']);
+});
+test('native status never presents an artifact before runtime restoration is confirmed', async () => {
+  let factory, reads = 0;
+  const api = { config: {}, pluginConfig: { agentxUrl: 'http://127.0.0.1:3180' }, registerTool(f) { factory = f; } };
+  registerLocalImages(api, { fetchImpl: async () => { reads += 1; return { ok: true, json: async () => ({ ok: true,
+    operation: { id: '33333333-3333-4333-8333-333333333333', state: 'restoring', runtimeRestored: false,
+      artifact: { sha256: 'a'.repeat(64), url: '/api/images/operations/33333333-3333-4333-8333-333333333333/image' } } }) }; } });
+  const result = await factory(context).execute('status', { action: 'status', operationId: '33333333-3333-4333-8333-333333333333' });
+  assert.equal(reads, 1); assert.equal(result.content.some(block => block.type === 'image'), false);
 });

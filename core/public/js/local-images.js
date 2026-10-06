@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   const $ = id => document.getElementById(id);
-  let config, operation, pollTimer, request;
+  let config, operation, pollTimer, request, selectedReference = null, draftEpoch = 0;
   const statuses = { accepted: 'Demande enregistrée.', reserving: 'Préparation du GPU. Nestor peut attendre pendant ce temps.',
     generating: 'Ton image prend forme…', archiving: 'Conservation de l’original…', restoring: 'Restauration des services habituels…',
     completed: 'Image prête et conservée dans les photos.', cancelled: 'Génération annulée.', failed: 'La génération a échoué.',
@@ -22,17 +22,36 @@
     $('image-cancel').hidden = !busy;
     $('image-recover').hidden = !['unknown', 'archive_failed'].includes(op.state);
     $('image-status').textContent = `${statuses[op.state] || op.state}${op.error ? ' ' + op.error : ''}${op.timings?.totalMs ? ` (${Math.round(op.timings.totalMs / 1000)} s)` : ''}`;
-    if (op.artifact) {
+    const ready = op.state === 'completed' && op.runtimeRestored === true && op.artifact;
+    $('image-use-reference').hidden = !ready;
+    if (ready) {
       $('image-output').src = op.artifact.url; $('image-output').hidden = false;
       $('image-placeholder').hidden = true; $('image-download').href = op.artifact.url; $('image-download').hidden = false;
-    }
+    } else { $('image-output').hidden = true; $('image-download').hidden = true; $('image-placeholder').hidden = false; }
     clearTimeout(pollTimer);
     if (busy) pollTimer = setTimeout(poll, 1500); else loadHistory();
   }
+  async function select(op) {
+    const epoch = ++draftEpoch;
+    show(op);
+    try {
+      const { draft } = await api(`/operations/${op.id}/draft`);
+      if (epoch !== draftEpoch || operation.id !== op.id) return;
+      $('image-prompt').value = draft.prompt;
+      $('image-seed').value = draft.seed ?? '';
+      if (config.profiles.some(profile => profile.id === draft.profile)) {
+        $('image-profile').value = draft.profile; $('image-profile').dispatchEvent(new Event('change'));
+        const size = `${draft.width},${draft.height}`;
+        if ([...$('image-size').options].some(option => option.value === size && !option.disabled)) $('image-size').value = size;
+      }
+    } catch { $('image-status').textContent += ' Le brief précédent ne peut pas être chargé.'; }
+  }
   async function poll() {
-    try { show((await api(`/operations/${operation.id}`)).operation); }
+    const id = operation.id;
+    try { const result = await api(`/operations/${id}`); if (operation.id === id) show(result.operation); }
     catch { $('image-status').textContent = 'Connexion interrompue. La demande enregistrée continue ; vérification en cours…'; pollTimer = setTimeout(poll, 5000); }
   }
+  $('image-form').addEventListener('input', () => { draftEpoch += 1; });
   async function loadHistory() {
     try {
       const result = await api('/operations');
@@ -41,7 +60,7 @@
         const button = document.createElement('button'), img = document.createElement('img'), caption = document.createElement('p');
         img.src = op.artifact.url; img.alt = 'Création locale'; img.loading = 'lazy';
         caption.textContent = `${op.label || op.profile} · ${new Date(op.createdAt).toLocaleDateString('fr-CA')}`;
-        button.append(img, caption); button.addEventListener('click', () => show(op)); $('image-gallery').append(button);
+        button.append(img, caption); button.addEventListener('click', () => { void select(op); }); $('image-gallery').append(button);
       }
       return result.operations;
     } catch { return []; }
@@ -64,13 +83,33 @@
       img.onload = () => URL.revokeObjectURL(img.src); $('image-reference-previews').append(img);
     }
   });
+  $('image-use-reference').addEventListener('click', async () => {
+    const selected = operation;
+    try {
+      const img = $('image-output'); await img.decode();
+      if (operation.id !== selected.id || img.hidden) return;
+      const ratio = Math.min(1, 1536 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas'); canvas.width = Math.round(img.naturalWidth * ratio); canvas.height = Math.round(img.naturalHeight * ratio);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      selectedReference = { id: selected.id, bytes: canvas.toDataURL('image/jpeg', 0.9).split(',')[1] };
+      $('image-selected-reference').hidden = false;
+      $('image-selected-reference').replaceChildren();
+      const label = document.createElement('span'), remove = document.createElement('button');
+      label.textContent = 'Cette création est image 1. Décris les changements et ce qui doit rester.';
+      remove.type = 'button'; remove.textContent = 'Retirer la référence';
+      remove.addEventListener('click', () => { selectedReference = null; $('image-selected-reference').hidden = true; });
+      $('image-selected-reference').append(label, remove);
+      $('image-prompt').focus();
+    } catch { $('image-status').textContent = 'Cette image ne peut pas être reprise comme référence.'; }
+  });
   $('image-form').addEventListener('submit', async event => {
     event.preventDefault(); $('image-create').disabled = true;
     try {
-      const files = [...$('image-references').files]; if (files.length > 2) throw new Error('Deux références au maximum.');
+      const files = [...$('image-references').files]; if (files.length + (selectedReference ? 1 : 0) > 2) throw new Error('Deux références au maximum, y compris l’image choisie.');
       const [width, height] = $('image-size').value.split(',').map(Number);
       const payload = { prompt: $('image-prompt').value, profile: $('image-profile').value, width, height,
-        references: await Promise.all(files.map(fileBytes)) };
+        ...($('image-seed').value !== '' && { seed: Number($('image-seed').value) }),
+        references: [...(selectedReference ? [selectedReference.bytes] : []), ...await Promise.all(files.map(fileBytes))] };
       const signature = JSON.stringify(payload);
       // A network retry retains its identity. An explicit next creation gets a new identity.
       if (!request || request.signature !== signature) request = { signature, payload: { ...payload, actionKey: crypto.randomUUID() } };
@@ -106,9 +145,9 @@
       const ops = await loadHistory();
       const current = ops.find(x => ['accepted', 'reserving', 'generating', 'archiving', 'restoring', 'unknown'].includes(x.state));
       const lastId = new URLSearchParams(location.search).get('operation') || localStorage.getItem('agentx-image-operation');
-      if (current) show(current);
-      else if (lastId) show((await api(`/operations/${encodeURIComponent(lastId)}`)).operation);
-      else if (ops[0]?.artifact) show(ops[0]);
+      if (lastId) await select((await api(`/operations/${encodeURIComponent(lastId)}`)).operation);
+      else if (current) await select(current);
+      else if (ops[0]?.artifact) await select(ops[0]);
     } catch (error) { $('image-status').textContent = error.message; }
   })();
 })();
