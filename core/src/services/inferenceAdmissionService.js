@@ -52,6 +52,7 @@ async function acquireInferenceAdmission({
   workloadGeneration = null,
   runtimeOptions = null,
   keepAlive,
+  hostIdle = false,
   ttlMs = DEFAULT_TTL_MS,
   signal: externalSignal
 } = {}, onSettled = () => {}) {
@@ -67,6 +68,7 @@ async function acquireInferenceAdmission({
     workloadGeneration,
     runtimeOptions,
     ...(keepAlive !== undefined && { keepAlive }),
+    ...(hostIdle && { hostIdle: true }),
     ttl: duration
   });
   if (acquired?.acquired !== true) {

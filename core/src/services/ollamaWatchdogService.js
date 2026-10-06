@@ -274,6 +274,11 @@ async function probeHost(host, model = null, executor = getWatchdogExecutor(), c
       principal: 'core-watchdog',
       runtimeOptions,
       keepAlive: -1,
+      // A probe queued behind a slow call on a one-slot host hits its deadline
+      // and quarantines a host that was answering. The in-process gate cannot
+      // see a call that Core has admitted but not yet dispatched; coordination
+      // can, and refuses the probe while anything else is admitted here.
+      hostIdle: true,
       ttlMs: Math.max(30_000, PROBE_TIMEOUT_MS * 2)
     });
     admission.assertActive();

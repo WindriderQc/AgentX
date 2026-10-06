@@ -850,6 +850,50 @@ describe('runtime maintenance and benchmark workload coordination', () => {
     expect(await service.hostHasActiveInferences('http://host-a:11434')).toBe(false);
   });
 
+  describe('an admission that requires an idle host (#471)', () => {
+    const HOST = 'http://host-a:11434';
+    const call = { principal: 'core-service', requestId: 'slow-call', host: HOST, model: 'model-a',
+      kind: 'inference-automated', runtimeOptions: { num_ctx: 8192 }, keepAlive: -1 };
+    const probe = { principal: 'core-watchdog', requestId: 'probe', host: HOST, model: 'model-a',
+      kind: 'watchdog-probe', runtimeOptions: { num_ctx: 8192 }, keepAlive: -1, hostIdle: true };
+
+    test('is refused beside a call of the same residency, and admitted once it has ended', async () => {
+      const slow = await service.acquireInference(call);
+      expect(slow.acquired).toBe(true);
+      // Without the requirement the two share the host: that is the queue the probe timed out in.
+      await expect(service.acquireInference({ ...probe, requestId: 'probe-shared', hostIdle: false }))
+        .resolves.toMatchObject({ acquired: true });
+      await service.releaseInference({ id: (await RuntimeCoordination.findById('runtime').lean())
+        .inferences.find(i => i.requestId === 'probe-shared').admissionId,
+        generation: (await RuntimeCoordination.findById('runtime').lean())
+          .inferences.find(i => i.requestId === 'probe-shared').generation, principal: 'core-watchdog' });
+
+      await expect(service.acquireInference(probe)).resolves.toMatchObject({ acquired: false });
+      await service.releaseInference({ id: slow.admissionId, generation: slow.generation, principal: 'core-service' });
+      await expect(service.acquireInference(probe)).resolves.toMatchObject({ acquired: true });
+    });
+
+    test('does not keep a later call out, and ignores another host', async () => {
+      await expect(service.acquireInference({ ...call, requestId: 'elsewhere', host: 'http://host-b:11434' }))
+        .resolves.toMatchObject({ acquired: true });
+      await expect(service.acquireInference(probe)).resolves.toMatchObject({ acquired: true });
+      await expect(service.acquireInference(call)).resolves.toMatchObject({ acquired: true });
+    });
+
+    test('is refused beside a workload call on a host the workload shares', async () => {
+      const workload = await service.acquireWorkload({ principal: 'benchmark-service', requestId: 'batch',
+        workloadId: 'batch-a', kind: 'benchmark', hosts: ['http://host-b:11434', HOST], sharedHosts: [HOST], ttl: 60000 });
+      await expect(service.acquireInference(probe)).resolves.toMatchObject({ acquired: true });
+      const doc = await RuntimeCoordination.findById('runtime').lean();
+      const held = doc.inferences.find(i => i.requestId === 'probe');
+      await service.releaseInference({ id: held.admissionId, generation: held.generation, principal: 'core-watchdog' });
+      await expect(service.acquireInference({ ...call, principal: 'benchmark-service', requestId: 'judge-call',
+        kind: 'inference-direct', workloadAdmissionId: workload.admissionId, workloadGeneration: workload.generation }))
+        .resolves.toMatchObject({ acquired: true });
+      await expect(service.acquireInference({ ...probe, requestId: 'probe-2' })).resolves.toMatchObject({ acquired: false });
+    });
+  });
+
   test('shared inference of one model coexists only under the same canonical host and residency key', async () => {
     const first = await service.acquireInference({
       principal: 'core-service', requestId: 'shared-a', host: 'HTTP://HOST-A:11434/',

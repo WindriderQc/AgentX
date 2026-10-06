@@ -38,6 +38,7 @@ async function acquireInference({
   workloadGeneration = null,
   runtimeOptions = null,
   keepAlive,
+  hostIdle = false,
   ttl
 } = {}) {
   principal = clean(principal);
@@ -117,6 +118,9 @@ async function acquireInference({
       ] }
     ]
   };
+  // A caller that must not queue behind anything (a health probe on a host
+  // that serves one request at a time) is admitted only beside nothing.
+  const otherInference = hostIdle ? [{ host }] : [];
   // A workload's shared host keeps admitting shared inference; another
   // endpoint on the same device does not.
   const resourceWorkload = resourceIds.length ? [{ resourceIds: { $in: resourceIds },
@@ -129,7 +133,8 @@ async function acquireInference({
     inferences: { $not: { $elemMatch: {
       $or: [
         { requestId, principal },
-        incompatibleInference
+        incompatibleInference,
+        ...otherInference
       ]
     } } },
     workloads: { $not: { $elemMatch: { $or: [
@@ -145,7 +150,8 @@ async function acquireInference({
     inferences: { $not: { $elemMatch: {
       $or: [
         { requestId, principal },
-        incompatibleInference
+        incompatibleInference,
+        ...otherInference
       ]
     } } },
     workloads: { $elemMatch: {
