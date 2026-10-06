@@ -91,7 +91,7 @@ function buildArm(rows) {
         unjudgedRows,
         prompts,
         // Mean spread of a prompt's score across its repeats: how much a
-        // re-run moves one answer. Seeds are fixed, so this is nondeterminism.
+        // re-run moves one answer under the campaign's frozen seed policy.
         repeatSpread: repeatSpreads.length ? round1(mean(repeatSpreads)) : null,
         promptsWithRepeats: repeatSpreads.length
     };

@@ -34,10 +34,9 @@ const DEFAULT_EXECUTION_CONFIG = {
     top_k: 40,
     repeat_penalty: 1.1,
     seed: 42,
-    // Repeat each (model, host, prompt) N times. With seed pinned, low variance
-    // = stable model+host pair; high variance with seed pinned = model ignores
-    // seed (some quants do). Without repeats, single-sample noise is mistaken
-    // for hardware/model signal. Default 1 = legacy single-shot.
+    seed_policy: 'repeat_index_v1', // base seed + zero-based repeat index
+    // Repeat each (model, host, prompt) N times with reproducible independent
+    // seeds. An explicit fixed policy still measures same-seed nondeterminism.
     repeats: 1,
     // Per-test abort timeout in ms. 180s was too short for large models (27B+).
     per_test_timeout_ms: 600000,
@@ -167,6 +166,7 @@ function normalizeExecutionConfig(config = {}) {
             merged.seed = Number.isFinite(seedN) ? Math.round(seedN) : DEFAULT_EXECUTION_CONFIG.seed;
         }
     }
+    merged.seed_policy = merged.seed_policy === 'fixed' ? 'fixed' : 'repeat_index_v1';
     merged.repeats = Math.round(toNumber(
         merged.repeats,
         DEFAULT_EXECUTION_CONFIG.repeats,
@@ -278,6 +278,13 @@ function normalizeExecutionConfig(config = {}) {
     }
     merged.custom_hint = merged.custom_hint.trim();
     return merged;
+}
+
+function seedForRepeat(config, repeatIndex = 0) {
+    if (!Number.isFinite(config?.seed)) return null;
+    if (config.seed_policy !== 'repeat_index_v1') return config.seed;
+    if (!Number.isSafeInteger(repeatIndex) || repeatIndex < 0) throw new Error('Invalid repeat index');
+    return ((config.seed >>> 0) + repeatIndex) >>> 0;
 }
 
 function renderTokenTemplate(template, values) {
@@ -421,6 +428,7 @@ function applyLengthHint(promptText, expectedTokens, numPredict, config) {
 
 module.exports = {
     DEFAULT_EXECUTION_CONFIG,
+    seedForRepeat,
     RESPONSE_BUDGET_RULE,
     normalizeExecutionConfig,
     applyLengthHint,

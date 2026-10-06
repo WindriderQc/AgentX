@@ -35,6 +35,7 @@ const {
     getActiveBatchRequestCount
 } = require('./batchRequestRegistry');
 const { createPromptExecutor } = require('./batchPromptExecutor');
+const { cohortFingerprintForBatch } = require('./qualityCohort');
 const { createHarnessTargetRunner } = require('./batchHarnessTargetRunner');
 const { createHostBatchRunner } = require('./batchHostExecution');
 
@@ -207,7 +208,7 @@ async function runBatchOrchestrator({
         setBatchPhase,
         handleGracefulStop,
         spendGrant,
-        qualityCohortFingerprint,
+        get qualityCohortFingerprint() { return qualityCohortFingerprint; },
         batchContractFingerprint,
         batchCancellationController,
         claimIdentityFor,
@@ -423,6 +424,12 @@ async function runBatchOrchestrator({
                 executionConfig,
                 recordBatchTimelineEvent
             });
+        }
+        if (inferenceContractCampaign) {
+            qualityCohortFingerprint = await cohortFingerprintForBatch({ execution_config: executionConfig,
+                inference_contract_campaign: inferenceContractCampaign,
+                campaign_kind: targets?.some(target => target.mode === 'native_agent') ? 'native_agent' : 'model' }, judgeConfig);
+            await BenchmarkBatch.updateOne({ _id: batchId }, { $set: { quality_cohort_fingerprint: qualityCohortFingerprint } });
         }
         const hostTasks = executionHostGroups
             .map(([hostUrl, hostModels]) => async () => runHostBatch(hostUrl, hostModels));

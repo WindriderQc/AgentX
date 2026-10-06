@@ -1,5 +1,6 @@
 const {
     normalizeExecutionConfig,
+    seedForRepeat,
     buildPromptHints,
     applyLengthHint
 } = require('../../../src/services/benchmark/config');
@@ -166,5 +167,22 @@ describe('benchmark execution config prompt hints', () => {
             applied: false,
             mode: 'off'
         });
+    });
+});
+
+
+describe('repeat seed policy', () => {
+    test('new controlled batches derive reproducible seeds across repeat indices', () => {
+        const config = normalizeExecutionConfig({ seed: 42, repeats: 3 });
+        expect([0, 1, 2].map(index => seedForRepeat(config, index))).toEqual([42, 43, 44]);
+        expect(seedForRepeat(normalizeExecutionConfig(config), 1)).toBe(43);
+        expect(seedForRepeat({ seed: 4294967295, seed_policy: 'repeat_index_v1' }, 1)).toBe(0);
+        expect(() => seedForRepeat(config, -1)).toThrow('Invalid repeat index');
+    });
+    test('legacy and explicit fixed sampling retain one seed; production omits it', () => {
+        expect(seedForRepeat({ seed: 42 }, 2)).toBe(42);
+        expect(seedForRepeat(normalizeExecutionConfig({ seed_policy: 'fixed' }), 2)).toBe(42);
+        expect(seedForRepeat(normalizeExecutionConfig({ sampling_profile: 'production' }), 2)).toBeNull();
+        expect(seedForRepeat(normalizeExecutionConfig({ seed: null }), 2)).toBeNull();
     });
 });

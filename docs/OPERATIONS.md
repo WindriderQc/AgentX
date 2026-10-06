@@ -1284,7 +1284,15 @@ default 2000; `seed`, default 1).
 
 - **Pairing.** Results pair on the catalog prompt they ran. When both rows carry
   a prompt fingerprint, it must match, so an edited prompt never pairs. The
-  repeats of a prompt are averaged inside an arm.
+  repeats of a prompt are averaged inside an arm. Controlled sampling defaults
+  to `seed_policy: repeat_index_v1`: repeat zero uses the base seed, then each
+  repeat increments it modulo 2^32. Both contenders use the same index policy.
+  `fixed` retains same-seed diagnostics; production sampling omits seed overrides.
+  The policy and base seed enter the cohort, while the repeat index does not.
+  A campaign freezes the complete candidate set, including each digest, runtime
+  and effective context/output budget. Both arms in that campaign share its
+  cohort; replacing a tag's installed artifact or changing its context creates
+  another cohort. Unrelated contender sets are reported as non-authoritative.
 - **Overall and per category.** The response gives `B − A` in points (0–100)
   with a paired t interval and a seeded bootstrap interval; `significant` means
   the bootstrap interval excludes zero. `minimumDetectableDelta` is the smallest

@@ -280,7 +280,7 @@ function setRunnableBatchLookup() {
 }
 
 describe('runBatchOrchestrator claim lifecycle', () => {
-    async function runSameModelOnTwoHosts({ completedPairs = [], legacyResults = [] } = {}) {
+    async function runSameModelOnTwoHosts({ completedPairs = [], legacyResults = [], sampling = {} } = {}) {
         mockDrain.mockResolvedValue({ completed: 4, failed: 0, timedOut: false });
         const { buildOllamaTarget } = require('../../../../shared/benchmarkTargetContract');
         const targets = ['http://exec-a:11434', 'http://exec-b:11434'].map(host => buildOllamaTarget(host, 'same-model'));
@@ -294,7 +294,7 @@ describe('runBatchOrchestrator claim lifecycle', () => {
             batchId: 'same-model-hosts', defaultHost: targets[0].host, models: targets.map(target => target.model), targets,
             prompts: [{ _id: 'prompt-1', name: 'Prompt 1', prompt: 'Say hello', level: 1, category: 'reasoning' }],
             judgeConfig: { model: 'judge-1', concurrency: 1 },
-            executionConfig: { repeats: 2, per_test_timeout_ms: 60000, judge_drain_timeout_ms: 120000, judge_stall_timeout_ms: 30000 },
+            executionConfig: { repeats: 2, per_test_timeout_ms: 60000, judge_drain_timeout_ms: 120000, judge_stall_timeout_ms: 30000, ...sampling },
             executionMode: 'latency', recordBatchTimelineEvent: jest.fn(async () => {}),
             queueBatchProgress: jest.fn(), flushBatchProgress: jest.fn(async () => {}), setBatchPhase: jest.fn(async () => {})
         });
@@ -306,6 +306,16 @@ describe('runBatchOrchestrator claim lifecycle', () => {
         expect(persisted).toHaveLength(4);
         expect(new Set(persisted.map(result => result.repeatGroupId)).size).toBe(2);
         expect(new Set(mockUpdateOne.mock.calls.map(call => call[1]?.$addToSet?.['checkpoint.completed_pairs']).filter(Boolean)).size).toBe(4);
+    });
+
+    it('forwards matching derived repeat seeds to both hosts and persists the actual seed', async () => {
+        await runSameModelOnTwoHosts({ sampling: { seed: 42, seed_policy: 'repeat_index_v1' } });
+        const requests = mockBenchmarkFetch.mock.calls.map(call => JSON.parse(call[1].body));
+        expect(requests.map(request => request.options.seed)).toEqual([42, 43, 42, 43]);
+        expect(mockPersistSuccessfulResult.mock.calls.map(call => call[0].executionSettings.seed)).toEqual([42, 43, 42, 43]);
+        const cohorts = mockPersistSuccessfulResult.mock.calls.map(call => call[0].qualityCohortFingerprint);
+        expect(new Set(cohorts).size).toBe(1);
+        expect(cohorts[0]).toMatch(/^[a-f0-9]{64}$/);
     });
 
     it('preserves Core HTTP errors instead of inventing an empty-model diagnosis', async () => {
