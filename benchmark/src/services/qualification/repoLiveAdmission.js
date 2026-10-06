@@ -46,9 +46,11 @@ async function withRepoAdmission(args, operation, overrides = {}) {
       async assertActive() {
         workload.assertActive();
         heartbeat.assertActive();
-        const claims = await deps.getBenchmarkClaims();
-        if (!claims.some(row => row.hostUrl === args.host && row.batchId === workloadId
-          && row.claimGeneration === claim.claimGeneration)) {
+        // Public claim discovery deliberately omits capability generations.
+        // Renew our owned proof and require Core's exact heartbeat receipt.
+        const receipt = await deps.heartbeatBenchmarkClaim(args.host, workloadId, ttlMs);
+        if (receipt?.heartbeat !== true || receipt.batchId !== workloadId
+          || receipt.claimGeneration !== claim.claimGeneration) {
           throw Object.assign(new Error('Exact repository campaign claim was lost'), { retainAdmission: true });
         }
       }

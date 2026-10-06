@@ -8,10 +8,6 @@ const { ACTION_CATEGORIES } = require('./email-action');
 const llmx = require('./llmx-conversation');
 const replyChannels = require('./reply-channels');
 
-function cleanText(value, max = 4000) {
-  return String(value || '').trim().slice(0, max);
-}
-
 function createModels(mongoose) {
   const { Schema } = mongoose;
   const get = (name, schema, collection) => mongoose.models[name] || mongoose.model(name, schema, collection);
@@ -172,22 +168,21 @@ function historyWindow(pack = {}, turnCount = 0) {
 // turns) the block window above applies; without it, the newest turns that fit.
 function sessionHistoryMessages(rows = [], pack = {}, { turnCount } = {}) {
   const maximumMessages = Math.max(0, Number(pack.historyTurns) || 0);
-  const maximumCharacters = Math.max(1, Number(pack.historyMessageCharacters) || 1000);
   if (maximumMessages === 0) return [];
   const visibleTurns = Number.isInteger(turnCount)
     ? historyWindow(pack, Math.max(turnCount, rows.length)).visible : Math.ceil(maximumMessages / 2);
   return rows.slice(0, visibleTurns).reverse().flatMap((row) => {
     const audit = publicAudit(row);
-    const input = cleanText(audit.inputText, maximumCharacters);
+    const input = String(audit.inputText || '');
     // A team member's direct answer is labelled, so the conversation agent never takes it for its own.
-    const said = cleanText(replyChannels.historyText(audit.replyText, audit.display), maximumCharacters);
+    const said = String(replyChannels.historyText(audit.replyText, audit.display) || '');
     const reply = (said && audit.speakerAgentId ? `[Answered directly by team member ${audit.speakerAgentId}] ` : '') + said
       + (audit.interrupted ? '\n[The user interrupted this reply during playback and may not have heard all of it.]' : '')
       + (audit.origin === 'application_opening' && ['cancelled', 'failed'].includes(audit.outcome)
         ? `\n[This application opening ${audit.outcome}; delivery to the visitor was not confirmed.]` : '');
     return [
-      ...(input ? [{ role: 'user', content: input, ...(audit.attachments?.length ? { attachments: audit.attachments } : {}) }] : []),
-      ...(reply ? [{ role: 'assistant', content: reply }] : [])
+      ...(input.trim() ? [{ role: 'user', content: input, ...(audit.attachments?.length ? { attachments: audit.attachments } : {}) }] : []),
+      ...(reply.trim() ? [{ role: 'assistant', content: reply }] : [])
     ];
   }).slice(-maximumMessages);
 }

@@ -68,7 +68,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   voice; a requested voice does not establish what the device heard.
 - **Conversation paths.** Household keeps stable contracts in system/native
   instructions and variable context beside the current request. Canonical user
-  text stays unchanged. New family sessions can opt into direct Core inference;
+  text stays unchanged. Selected history messages retain their full text;
+  the pack API declares the recent block window and its maximum message count.
+  New family sessions can opt into direct Core inference;
   existing sessions keep their backend. Direct inference composes Core's family
   features but has no native tool loop. The personal fast lane's delegation
   definition and conversation replay are available for offline qualification;
