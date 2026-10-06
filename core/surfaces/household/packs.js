@@ -85,7 +85,6 @@ const PACKS = Object.freeze([
     temperature: 0.35,
     maxTokens: 800,
     historyTurns: 8,
-    historyMessageCharacters: 3000,
     childSafe: false
   }),
   Object.freeze({
@@ -132,7 +131,6 @@ const PACKS = Object.freeze([
     temperature: 0.35,
     maxTokens: 600,
     historyTurns: 4,
-    historyMessageCharacters: 1500,
     childSafe: true
   }),
   Object.freeze({
@@ -148,7 +146,6 @@ const PACKS = Object.freeze([
     temperature: 0.2,
     maxTokens: 600,
     historyTurns: 2,
-    historyMessageCharacters: 1000,
     childSafe: true
   })
 ]);
@@ -184,6 +181,7 @@ function packSummary(pack) {
     taskType: pack.taskType,
     defaultMode: pack.defaultMode,
     defaultScopeId: pack.defaultScopeId,
+    history: { maximumMessages: pack.historyTurns, selection: 'recent_block_window', messageContent: 'full' },
     modes: pack.modes.map(modeSummary),
     safety: { enabled: true, childSafe: pack.childSafe, support: SAFETY_SUPPORT }
   };

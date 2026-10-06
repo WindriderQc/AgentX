@@ -6,7 +6,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { PACKS } = require('../packs');
+const { PACKS, packSummary } = require('../packs');
 const { historyWindow, sessionHistoryMessages } = require('../persona-records');
 
 // The newest-first rows a conversation of `count` turns returns, as loadSessionAuditRows does.
@@ -77,4 +77,26 @@ test('without a turn count the newest turns that fit are returned, as session re
   assert.equal(sliding[0].content, 'question 5');
   // A count lower than the rows actually read never hides them.
   assert.equal(sessionHistoryMessages(rowsOf(3, 4), pack, { turnCount: 0 }).length, 6);
+});
+
+test('every pack preserves the whole selected exchange, attachments and speaker attribution', () => {
+  const inputText = `  ${'question '.repeat(600)}The final constraint is 17.  `;
+  const replyText = `${'answer '.repeat(800)}The final result is 23.`;
+  const attachments = [{ attachmentId: 'synthetic-image', kind: 'image' }];
+  const newest = { inputText, replyText, attachments, speakerAgentId: 'synthetic-teammate', interrupted: true };
+  for (const pack of PACKS) {
+    const rows = [newest, ...rowsOf(20, 20)];
+    const messages = sessionHistoryMessages(rows, pack);
+    assert.equal(messages.length, pack.historyTurns);
+    assert.equal(messages.at(-2).content, inputText);
+    assert.deepEqual(messages.at(-2).attachments, attachments);
+    assert.equal(messages.at(-1).content, `[Answered directly by team member synthetic-teammate] ${replyText}\n[The user interrupted this reply during playback and may not have heard all of it.]`);
+    assert.deepEqual(packSummary(pack).history, {
+      maximumMessages: pack.historyTurns, selection: 'recent_block_window', messageContent: 'full'
+    });
+    const blockMessages = sessionHistoryMessages(rows, pack, { turnCount: 21 });
+    assert.equal(blockMessages.at(-2).content, inputText);
+    assert.equal(blockMessages.at(-1).content, messages.at(-1).content);
+    assert.ok(blockMessages.length <= pack.historyTurns);
+  }
 });
