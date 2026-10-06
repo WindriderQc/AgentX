@@ -96,28 +96,15 @@ Instance configuration, data and deployment receipts remain outside Git.
   model-call waits of each attempt; startup is not yet measured. A read-only diagnosis explains stalled
   tasks and gives a stable escalation key without repairing them. See
   [operational screens](OPERATOR_UI.md).
-  Coding execution profiles configure the worker turn timeout within the task
-  budget and opt into one original-base worktree per task. A bounded OpenClaw
-  verification tool and file hook give the worker real sandbox receipts while
-  restricting file access to its task. The outer dispatcher and host unit cover baseline verification,
-  execution and final evidence collection. Missing energy telemetry remains
-  unknown without invalidating verified work. Unproven remote completion or a
-  lost verification receipt retains an unknown request and prevents a new
-  launch; only Core's verified completion of that exact attempt resolves it.
-  Attributed coding launches persist their selected model, artifact, runtime
-  and host before claiming a task. Occupied capacity leaves a visible queued
-  wait with no attempt consumed. An existing host tick can resume that same
-  request; an inactive wait can be cancelled from the Coding Team panel.
-  A local consultative review reads the original task authority and exact
-  independently verified patch. Its private advice and usage receipt grants
-  no task acceptance or merge authority.
+  **Run one task** hands a queued, unowned, non-private ticket to the local
+  coding worker: a fresh clone on its own branch, a shell and the tests inside a
+  sandbox, then a draft pull request. Review of that pull request and its CI is
+  the gate; nothing merges or deploys by itself. See
+  [the coding worker](../integrations/coding/README.md).
 - **Planning.** The page is a frozen historical reference. Its idea inbox is
   live: Nestor and family captures wait there until the parent reviews them.
   Coding workers receive bounded context from linked Planning objectives;
   private item content stays out, while omitted links appear by reference only.
-  Coding-task preparation passes that supplied text, the full task discussion
-  and the permitted file inventory without additional cuts. Its coverage is
-  recorded on the ticket; a planner input refusal preserves the request.
 - **PsyX source coverage.** Dream portraits distinguish source items collected
   from text supplied to the model. Collection limits, stalled pagination and
   unknown task totals appear in the prompt and saved portrait coverage.

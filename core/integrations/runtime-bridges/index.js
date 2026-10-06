@@ -110,10 +110,8 @@ function register(api) {
     })
   });
   const codingDispatchControl = new CodingDispatchControl({ inferenceStatus: () => pipelineAttribution.status().active });
-  const codingPreparation = runtimeServices.pipeline ? new CodingTaskPreparation({
-    pipeline: runtimeServices.pipeline, inference: runtimeServices.inference,
-    catalog: () => codingDispatchControl.call(`/usr/bin/python3 ${codingDispatchControl.root}/integrations/coding/coding_dispatch_control.py catalog`, { timeoutMs: 45000 })
-  }) : null;
+  const codingPreparation = runtimeServices.pipeline
+    ? new CodingTaskPreparation({ pipeline: runtimeServices.pipeline }) : null;
   const codingDeliveryControl = new CodingDeliveryControl({
     taskReader: async () => {
       const db = mongoose?.connection?.db;

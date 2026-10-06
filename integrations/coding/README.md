@@ -1,89 +1,69 @@
-# Native coding team
+# Local coding worker
 
-**DSH Studio integration is deferred.** Its
-launcher reserves the inference host for the whole web-server lifetime. Keep
-the code and private workspaces, but do not enable permanent Studio startup.
-See [the decision, preserved state and resumption checks](../../docs/DSH_RESUMPTION.md).
+**DSH Studio integration is deferred.** Its launcher reserves the inference
+host for the whole web-server lifetime. Keep the code and private workspaces,
+but do not enable permanent Studio startup. See
+[the decision, preserved state and resumption checks](../../docs/DSH_RESUMPTION.md).
 
-Core Pipeline remains the task authority. One native worker executes a bounded
-task in its own checkout; an independent command verifies the result, then the
-existing review flow can publish the accepted snapshot as a draft PR. There is no
-separate scheduler or deployment workflow.
+Core Pipeline is the task queue. One local worker takes one task, writes the
+change and opens a draft pull request. Reviewing that pull request, with its
+normal CI, is the gate. Nothing here merges or deploys.
 
-The Linux DSH Studio and headless worker wrappers use the existing Core claim
-protocol through `with-agentx-claim.js`. Claims are held through child termination,
-heartbeat and release/restore verification. Both wrappers keep one host-wide lock;
-the headless worker always uses Bubblewrap and the existing no-fanout patch.
-
-These are optional native processes, not another AgentX deployment. Install DSH
-and its account-free local model settings outside Git. Set:
-
-- `DSH_AGENTX_CLAIM_HOST`: the exact inference origin being reserved.
-- `AGENTX_CORE_URL`: the canonical Core URL (default loopback port 3180).
-- `DSH_MODEL`: headless expected model from external DSH settings.
-- `AGENTX_MODEL_LIFECYCLE_LOCK_FILE`: the same lock used by other clients of that
-  inference host.
-- `AGENTX_NODE_BIN`, `AGENTX_CLAIM_WRAPPER`: optional executable/path overrides.
-
-DSH remains under `$HOME/dsh`, settings under `$HOME/.dsh/settings.yaml`, and
-workspaces/receipts outside Git under `$HOME/dsh-workspaces`. Configure the local
-Ollama provider to use `OLLAMA_AGENTX_API_KEY` when it requires a placeholder key;
-`local-no-auth` is not an external service credential. Model fields in wrapper
-receipts describe configuration, not independent observed-model proof.
-
-Studio binds loopback only. Configure its reverse proxy and same-host secure
-access check with Core's explicit `DSH_STUDIO_*` settings. No service, schedule,
-model, host or remote worker is installed by this repository's launcher.
-
-## Dispatcher and draft PRs
-
-The existing native dispatcher, request receipts, worker helper, scratch contract
-checks, verification and PR publication live alongside these wrappers.
-Repository selection is `agentx`; the source revision comes from the clean canonical checkout. There is
-no Product pin or second repository to synchronize. Task scopes and policy
-fingerprints created for the archived repositories must be retargeted explicitly
-before execution.
-
-Worker prompts retain complete verifier output, operator/coding-team discussion
-and supplied Planning text. The dispatcher does not shorten these inputs;
-inference admission and the existing task scope, tools and turn budgets still
-apply. Dispatcher reports stay separate from the discussion, and Planning remains
-untrusted reference data that grants no permission.
-
-Copy `config.example.json` outside Git to
-`~/.config/agentx/coding-dispatcher.json`, or set `AGENTX_CODING_CONFIG`. Configure
-the actual native SSH target, worker checkout under its OpenClaw workspace,
-canonical `sourceRepo`, worker helper, model alias, existing verification command
-and measurement host there. Keep native files and credentials outside Git.
-`AGENTX_CODING_CA_FILE` is optional when an instance needs a private CA; otherwise
-normal system trust is used. No repository-bundled certificate is required.
-When using `AGENTX_INSTANCE_ROOT`, the default is its
-`config/coding-dispatcher.json`. Mount that same external file read-only for Core's
-native model-policy projection; `AGENTX_CODING_CONFIG` can select the mounted path.
-The native launcher and Core must read one instance configuration, not two copies.
-
-Inspect admission without launching anything:
+## One run
 
 ```bash
-python3 integrations/coding/coding-dispatcher.py --config /external/coding-dispatcher.json --mode shadow
+AGENTX_CODING_MODEL=<model Core serves> GH_TOKEN=<token> \
+  python3 integrations/coding/coding_run.py 0903
 ```
 
-The existing Core dispatch control uses `coding_dispatch_control.py`, which
-reuses a transient systemd user unit and host flock for the one-shot wrapper.
-Duplicate requests keep the same receipt; a lost HTTP reply is not a new run.
-Its wrapper accepts one task ID or selects the first admissible task. Private
-personal/family tasks remain excluded. Automatic execution and publication are
-disabled in the generic example. No native process is installed by Compose.
+`coding_run.py` claims the task in Core, clones the repository into
+`~/dsh-workspaces/task-<id>` on branch `agentx/coding-task-<id>`, and starts DSH
+there inside Bubblewrap with the ticket, its discussion and its Planning context.
+The worker has a shell: it reads and edits any file of the clone, installs
+dependencies and runs the tests. When it stops, the runner commits what changed,
+pushes the branch, opens the draft pull request and records the result on the
+ticket (`review`, or `blocked` when nothing changed or the worker stopped
+early). Running the same task again
+continues in its existing workspace, so an answer on the ticket becomes a
+follow-up.
 
-When Core refuses an autonomous claim because the coding slot is occupied, the
-ticket stays queued with the capacity reason and consumes no attempt. The feedback
-is conditional on the observed queued version, so it cannot overwrite a newer
-claim. Retrying after capacity becomes available is explicit; this adds no
-scheduler. A lost claim response is not automatically replayed.
+The runner uses three protections:
 
-`coding_team_promotion.py --config /external/coding-dispatcher.json --task-id 0000`
-publishes only an accepted, independently verified snapshot when publication is
-configured. It requires the instance's GitHub credential and creates a draft PR.
-Normal `pull_request` CI runs the existing five jobs; the helper does not dispatch
-an obsolete workflow or report CI as passed. Merge and deployment retain separate
-receipts, using the same `agentx` launcher.
+- The sandbox shows the worker its own clone and nothing else of the host: no
+  live checkout, no instance files, no credentials.
+- The GitHub token stays with the runner outside the sandbox. The worker cannot
+  push; the runner only pushes the task branch and opens a draft pull request.
+- The worker reaches the model through Core's OpenAI-compatible endpoint, so
+  Core admits each inference with the rest of the household's traffic. It uses
+  the patient route (`/api/hermes-openai/patient/v1`), which waits up to eight
+  minutes for a busy host instead of refusing. If the worker still stops, the
+  runner waits two minutes and continues in the same workspace.
+
+There is no file allowlist, plan approval, attempt budget or separate verifier.
+
+## Settings
+
+Install DSH under `$HOME/dsh` (`AGENTX_DSH_ROOT` overrides). Runner settings
+live outside Git, by default in `~/.config/agentx/coding.env`
+(`AGENTX_CODING_ENV_FILE` overrides):
+
+- `AGENTX_CODING_MODEL`: required, a model Core serves.
+- `GH_TOKEN`: pushes the branch and opens the pull request. Unset: the commit
+  stays on the local branch and the ticket says so.
+- `AGENTX_CODING_REPOSITORY`, `AGENTX_CODING_BASE_BRANCH`: default
+  `WindriderQc/AgentX` and `main`.
+- `AGENTX_CORE_URL`: default loopback port 3180.
+
+## Run one task from the Pipeline page
+
+Core calls `coding_dispatch_control.py` over SSH (`CODING_DISPATCHER_SSH_TARGET`,
+`CODING_DISPATCHER_REMOTE_ROOT`). `status` lists the queued, unowned, non-private
+tasks; `launch` starts `coding_run.py` for one of them as the transient user
+unit `agentx-coding-run`. One task runs at a time. A repeated request id returns
+its first receipt instead of starting a second run. A lost launch reply stays
+unknown and blocks another launch until the operator reconciles the host unit.
+
+## DSH wrappers
+
+`dsh-studio.sh` and `dsh-headless.sh` are the older Studio and Nestor-tool
+wrappers around `with-agentx-claim.js`. The coding worker does not use them.

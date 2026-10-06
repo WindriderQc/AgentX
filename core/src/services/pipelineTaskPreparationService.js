@@ -23,7 +23,8 @@ async function read(pipelineId) {
 async function apply({ pipelineId, expectedUpdatedAt, automation, question, answer, plan, contextNotice }) {
   const task = await load(pipelineId);
   if (!['queued', 'blocked'].includes(task.status) || task.automationLease?.leaseId) throw conflict('The task is already running or awaiting review.');
-  if (task.assignee && !(task.status === 'blocked' && task.automation?.mode === 'review_only')) throw conflict('Another worker owns this task.');
+  // A ticket the coding worker left blocked returns to the queue with the operator's answer.
+  if (task.assignee && !(task.status === 'blocked' && (task.automation?.mode === 'review_only' || task.assignee === 'coding-team'))) throw conflict('Another worker owns this task.');
   if (String(new Date(task.updatedAt).toISOString()) !== expectedUpdatedAt) throw conflict('The task changed while the team prepared it. Your answer has not been discarded; try again.');
   if (['personal', 'family', 'household', 'secretary'].includes(String(task.service).toLowerCase())) throw conflict('This task belongs to its personal or household workflow.');
   const at = new Date();
