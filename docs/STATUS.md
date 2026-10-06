@@ -177,6 +177,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   the `comptable` agent's tools read it. See [finance](FINANCE.md).
 - **Data.** A native GPU collector samples `nvidia-smi` into Data; the Nerve
   Center and the Profiler label stale or missing samples as such.
+  Advisory storage triage records the metadata sample it receives, including
+  action and file-entry coverage. Maintenance JSON reports retain all received
+  proposals; their Markdown overview names the displayed subset.
 - **Alerts.** A native operations relay posts selected Core alerts to a
   Telegram forum topic and records the delivery in Core. Its configured quiet
   hours defer noncritical alerts; resolution notices report when a delivered

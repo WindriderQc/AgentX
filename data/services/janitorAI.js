@@ -45,6 +45,7 @@ function buildPrompt(action, context = {}) {
   switch (action) {
     case 'triage':
       prompt = `Analyze these files and classify them:\n\n${JSON.stringify(context.files || [], null, 2)}\n\nOverall stats: ${JSON.stringify(context.stats || {})}`;
+      if (context.coverage) prompt += `\n\nSample coverage: ${JSON.stringify(context.coverage)}\nClassify only the supplied metadata. Unsampled actions and files have not been reviewed.`;
       break;
     case 'resolve_duplicates':
       prompt = `These files are duplicates (same SHA256 hash). Which copy should we keep?\n\n${JSON.stringify(context.duplicates || [], null, 2)}`;
