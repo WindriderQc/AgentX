@@ -95,7 +95,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   tasks and gives a stable escalation key without repairing them. See
   [operational screens](OPERATOR_UI.md).
   Coding execution profiles configure the worker turn timeout within the task
-  budget. The outer dispatcher and host unit cover baseline verification,
+  budget and opt into one original-base worktree per task. A bounded OpenClaw
+  verification tool and file hook give the worker real sandbox receipts while
+  restricting file access to its task. The outer dispatcher and host unit cover baseline verification,
   execution and final evidence collection. Missing energy telemetry remains
   unknown without invalidating verified work. Unproven remote completion or a
   lost verification receipt retains an unknown request and prevents a new

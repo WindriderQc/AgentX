@@ -176,6 +176,7 @@ def run_claimed_dispatch(
         agent=args.agent,
         worker_helper=args.worker_helper,
         repair_context=repair_context,
+        worker_verification_calls=getattr(args, "worker_verification_calls", 0),
     )
     session_key = args.session_key or f"{args.session_prefix}-{args.task_id}-{stamp}"
 
@@ -192,6 +193,7 @@ def run_claimed_dispatch(
         return (f"cd {shlex.quote(args.remote_repo)} && "
                 + " ".join(shlex.quote(part) for part in openclaw_cmd))
 
+    dispatch_remote.prepare_worker_verification(args, task, session_key)
     remote_cmd = worker_command(message, args.timeout)
     request_id = f"guarded-dispatch:{args.task_id}:{stamp}"
     sampler = None
@@ -286,6 +288,7 @@ def run_claimed_dispatch(
                 cost_mode=cost_mode,
                 local_energy=local_energy,
                 attribution_lease=attribution_lease,
+            repository=getattr(args, "repository_evidence", None),
                 inference=(attribution_lease or {}).get("inference"),
             ),
         )
@@ -383,6 +386,7 @@ def run_claimed_dispatch(
                 task, api_base=args.api_base, remote_repo=args.remote_repo,
                 agent=args.agent, worker_helper=args.worker_helper,
                 repair_context=verification_text,
+                worker_verification_calls=getattr(args, "worker_verification_calls", 0),
             )
             repair_args = argparse.Namespace(**{**vars(args), "timeout": repair_timeout})
             repair_sampler = None
@@ -606,6 +610,7 @@ def run_claimed_dispatch(
                     cost_mode=cost_mode,
                     local_energy=local_energy,
                     attribution_lease=attribution_lease,
+                    repository=getattr(args, "repository_evidence", None),
                     inference=(attribution_lease or {}).get("inference"),
                 ),
                 timeout=30,
@@ -643,6 +648,7 @@ def run_claimed_dispatch(
             worker_receipt_fingerprint=worker_receipt_fingerprint,
             routing_evidence=routing_evidence,
             attribution_lease=attribution_lease,
+            repository=getattr(args, "repository_evidence", None),
             inference=(attribution_lease or {}).get("inference"),
         ),
     )

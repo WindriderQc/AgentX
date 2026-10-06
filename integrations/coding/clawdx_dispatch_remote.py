@@ -13,12 +13,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 try:
+    from integrations.coding.coding_verification_sandbox import sandbox_arguments
     from integrations.coding.coding_dispatch_evidence import (
         PipelineApiError,
         repository_snapshot_validation_errors,
         worker_workspace,
     )
 except ModuleNotFoundError:  # direct execution from the scripts directory
+    from coding_verification_sandbox import sandbox_arguments
     from coding_dispatch_evidence import (  # type: ignore
         PipelineApiError,
         repository_snapshot_validation_errors,
@@ -405,25 +407,7 @@ def run_independent_verification(
     # read-only, a disposable /tmp, no network, and no host home or instance
     # mounts. A missing bwrap fails verification instead of falling back.
     node_verifier = command.lstrip().startswith("/node/node ")
-    sandbox = [
-        "/usr/bin/bwrap", "--die-with-parent", "--unshare-net", "--unshare-pid",
-        "--ro-bind", "/usr", "/usr",
-        "--ro-bind-try", "/lib", "/lib",
-        "--ro-bind-try", "/lib64", "/lib64",
-        "--symlink", "usr/bin", "/bin",
-        "--symlink", "usr/sbin", "/sbin",
-        "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
-        "--dir", "/workspace", "--ro-bind", remote_repo, "/workspace",
-        "--chdir", "/workspace", "--clearenv",
-        "--setenv", "PATH", "/usr/bin:/bin",
-        "--setenv", "HOME", "/tmp",
-        "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
-    ]
-    if node_verifier:
-        # Bind only the resolved executable. The host's /usr/local/bin/node is
-        # a symlink into the operator's home, which must not enter the sandbox.
-        sandbox.extend(["--dir", "/node", "--ro-bind", "__HOST_NODE_BIN__", "/node/node"])
-    sandbox.extend(["/usr/bin/bash", "-e", "-c", command])
+    sandbox = sandbox_arguments(remote_repo, command, "__HOST_NODE_BIN__" if node_verifier else None)
     sandbox_command = " ".join(
         '"$node_bin"' if part == "__HOST_NODE_BIN__" else shlex.quote(part)
         for part in sandbox
@@ -455,6 +439,57 @@ def run_independent_verification(
             handle.write(output)
         print(f"verification_output={output_path}")
     return proc.returncode, output
+
+
+def prepare_worker_verification(args, task, session_key):
+    if not getattr(args, "worker_verification_calls", 0):
+        if getattr(args, "task_worktrees", False):
+            raise PipelineApiError("task worktrees require the scoped worker verification plugin")
+        return
+    import base64
+    import json
+    import time
+    from datetime import datetime
+    expires = datetime.fromisoformat(task["automationLease"]["expiresAt"].replace("Z", "+00:00")).timestamp()
+    grant = {
+        "agent": args.agent, "repository": args.remote_repo, "apiBase": args.api_base,
+        "pipelineId": args.task_id, "attempt": task["automationLease"]["attempt"],
+        "leaseId": task["automationLease"]["leaseId"], "sessionKey": session_key,
+        "baseRevision": args.source_revision, "scope": list(args.allowed_path or []),
+        "sourceFiles": list((task.get("automation") or {}).get("sourceFiles") or []),
+        "feedbackPath": str(worker_workspace(args.remote_repo, args.agent) / f".agentx-feedback-{args.task_id}.md"),
+        "command": args.independent_verification_command,
+        "timeoutSeconds": min(900, args.independent_verification_timeout),
+        "maxCalls": args.worker_verification_calls,
+        "deadlineEpoch": min(expires, time.time() + min(900, (task.get("automation") or {}).get("budgets", {}).get("maxDurationMs", args.timeout * 1000) / 1000)),
+        "maxChangedFiles": args.max_changed_files, "maxChangedBytes": args.max_changed_bytes,
+    }
+    encoded = base64.b64encode(json.dumps(grant).encode()).decode()
+    helper = str(PurePosixPath(getattr(args, "source_repo", DEFAULT_REMOTE_SOURCE_REPO)) / "integrations/coding/coding_worker_verification.py")
+    root = getattr(args, "worker_grant_root", None)
+    command = f"/usr/bin/python3 {shlex.quote(helper)} prepare --grant-base64 {shlex.quote(encoded)}"
+    if root:
+        command += f" --grant-root {shlex.quote(root)}"
+    proc = ssh_run(args.host, command, timeout=30)
+    if proc.returncode:
+        raise PipelineApiError("worker verification grant was not prepared")
+
+
+def validate_worker_verification_preflight(args, cli_json):
+    if not getattr(args, "worker_verification_calls", 0):
+        if getattr(args, "task_worktrees", False):
+            raise PipelineApiError("task worktrees require the scoped verification plugin")
+        return
+    import json
+    if not getattr(args, "automated_lease", False):
+        raise PipelineApiError("worker verification requires a server-issued automated task lease")
+    result = cli_json(args.host, ["gateway", "call", "agentx.coding-verification.status", "--json",
+        "--params", json.dumps({"agentId": args.agent})], label="worker verification")
+    expected = str(PurePosixPath(getattr(args, "source_repo", DEFAULT_REMOTE_SOURCE_REPO)) / "integrations/coding/coding_worker_verification.py")
+    if result.get("schema") != "agentx.coding-verification-readiness/v1" or result.get("ready") is not True \
+            or result.get("fileScopeHook") is not True or result.get("helperPath") != expected:
+        raise PipelineApiError("worker verification plugin, file scope hook or exact helper is not active on Gateway")
+    args.worker_grant_root = result["grantRoot"]
 
 
 def validate_independent_verification_baseline(

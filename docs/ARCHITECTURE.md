@@ -732,6 +732,15 @@ after a lost POST response. If both the POST outcome and its follow-up read are
 unknown, it leaves the task in progress for recovery; a definitively missing or
 unverified deliverable blocks the attempt instead of marking it review-ready.
 
+Opt-in task worktrees preserve the original base revision and scoped patch for
+each coding task; repairs and accepted-result promotion use that recorded base.
+The optional OpenClaw coding-verification plugin binds file access and its
+argument-free verifier to the exact task lease and worker session. It refuses
+out-of-scope files, ignored dependencies, symlinks and other tools. The worker
+can inspect real sandbox test receipts in its turn; mandatory independent final
+verification remains the acceptance gate. See the
+[plugin contract](../integrations/openclaw/coding-verification/README.md).
+
 Nerve Center reads `live.gpuHealth` from the existing host-preference endpoint;
 HTTP reachability stays separate from pin GPU residency. Benchmark's bounded
 `GET /api/profiler/recovery` projects existing HostProfile journals without

@@ -70,6 +70,7 @@ def build_message(
     agent: str,
     worker_helper: str,
     repair_context: str | None = None,
+    worker_verification_calls: int = 0,
 ) -> str:
     task_id = str(task.get("pipelineId") or "")
     title = str(task.get("title") or "")
@@ -100,11 +101,14 @@ def build_message(
             ),
             (
                 f"3. The repository is inside your file-tool sandbox at {remote_repo}. "
-                "Use read, edit, write, or apply_patch with absolute paths under it."
+                + ("Use read, edit, or write with absolute paths under it." if worker_verification_calls
+                   else "Use read, edit, write, or apply_patch with absolute paths under it.")
             ),
             (
                 "4. Do not call exec: unattended exec approvals are intentionally "
-                "disabled. The dispatcher runs all independent verification after you stop."
+                "disabled. " + (f"Use agentx_coding_verify with no arguments, at most {worker_verification_calls} calls, "
+                "to test and correct scoped files in this turn. Final independent verification follows after you stop."
+                if worker_verification_calls else "The dispatcher runs all independent verification after you stop.")
             ),
             "5. Follow the live task spec exactly and stay within its file scope.",
             (
@@ -113,7 +117,8 @@ def build_message(
             ),
             (
                 "6. Do not commit or push. Do not emit raw tool XML. Do not claim that "
-                "tests passed; report them as pending independent verification."
+                + ("tests passed without a real verification receipt; final independent verification remains pending."
+                   if worker_verification_calls else "tests passed; report them as pending independent verification.")
             ),
             (
                 f"7. Use the write tool to create {feedback_file}. Include files "
@@ -134,7 +139,7 @@ def build_message(
             "",
             "Correction attempt:",
             "This is a new dispatcher-authorized turn. The prior instruction to stop",
-            "using tools ended the previous turn; use only the permitted file tools",
+            "using tools ended the previous turn; use only the permitted file and verification tools",
             "for this correction and then stop again.",
             "The prior patch failed independent verification. Preserve correct work,",
             "fix the failures below, and update the structured feedback file.",

@@ -1,0 +1,18 @@
+{
+  "id": "agentx-coding-verification",
+  "name": "AgentX Coding Verification",
+  "version": "1.0.0",
+  "activation": { "onStartup": true, "onAgentHarnesses": ["openclaw"] },
+  "contracts": { "tools": ["agentx_coding_verify"] },
+  "toolMetadata": { "agentx_coding_verify": { "optional": true } },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "helperPath": { "type": "string" },
+      "grantRoot": { "type": "string" },
+      "agentIds": { "type": "array", "items": { "type": "string" } }
+    },
+    "additionalProperties": false,
+    "required": ["helperPath", "agentIds"]
+  }
+}
