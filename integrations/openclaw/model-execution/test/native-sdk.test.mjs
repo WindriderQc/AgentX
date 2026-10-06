@@ -28,8 +28,11 @@ test('installed native SDK projects its registry and sends a single isolated req
       agents: { defaults: { workspace: '/synthetic', model: { primary: 'openrouter/fixture/model' },
         models: { 'openrouter/fixture/model': { params: { privateNativeValue: 'private-config-must-stay-native', provider: { only: ['fixture'], allow_fallbacks: false } } } } } } };
     const storage = sdk.AuthStorage.inMemory({ openrouter: { type: 'api_key', key: 'synthetic' } });
+    const nativeRequest = { headers: { 'x-native-auth-fixture': 'private-native-auth-transport' } };
+    const transports = [];
+    const { getModelProviderRequestTransport } = await import('openclaw/plugin-sdk/agent-harness-runtime');
     const backend = createNativeBackend({ config: cfg, pluginConfig: { agentIds: ['main'] } }, { loadSdk: async () => ({ ...sdk,
-      AuthStorage: { forAgent: () => storage }, getRuntimeAuthForModel: async () => ({ apiKey: 'synthetic' }),
+      AuthStorage: { forAgent: () => storage }, getRuntimeAuthForModel: async () => ({ apiKey: 'synthetic', request: nativeRequest }),
       ModelRegistry: class extends sdk.ModelRegistry { constructor(auth, path, options) { super(auth, path, { ...options, includePluginCatalogs: false }); } } }) });
     // Initialize OpenClaw's native transport host with an unconditional
     // pre-dispatch rejection, then replace its actual fetch port.
@@ -38,7 +41,10 @@ test('installed native SDK projects its registry and sends a single isolated req
       { onPayload: () => { throw new Error('TEST_NO_EGRESS'); } })) assert.equal(event.type, 'error');
     ai = await import(new URL('../../node_modules/@openclaw/ai/dist/index.mjs', import.meta.resolve('openclaw/plugin-sdk/llm')));
     originalHost = ai.getAiTransportHost();
-    ai.configureAiTransportHost({ ...originalHost, buildModelFetch: () => globalThis.fetch });
+    ai.configureAiTransportHost({ ...originalHost, buildModelFetch: model => {
+      transports.push(getModelProviderRequestTransport(model));
+      return globalThis.fetch;
+    } });
     const service = createExecutionService({ backend });
     const catalog = await service.catalogue();
     assert.equal(catalog.models.length, 1); assert.equal(catalog.models[0].origin, 'cloud');
@@ -52,6 +58,8 @@ test('installed native SDK projects its registry and sends a single isolated req
     assert.equal(requests[0].payload.tools, undefined); assert.equal(requests[0].payload.provider.allow_fallbacks, false);
     assert.deepEqual(requests[0].payload.provider.only, ['fixture']);
     assert.equal(result.text, 'answer'); assert.equal(result.receipt.usage.total, 12);
+    assert.deepEqual(transports[0], nativeRequest, 'the SDK transport receives native authentication settings');
+    assert.ok(!JSON.stringify(result.receipt).includes('private-native-auth-transport'));
     assert.equal(result.receipt.isolation.modelCalls, 1);
     assert.ok(!JSON.stringify(result.receipt).includes('private-config-must-stay-native'));
     assert.ok(!JSON.stringify(result.receipt).includes('privateNativeValue'));
