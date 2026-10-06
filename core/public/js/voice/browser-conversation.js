@@ -177,6 +177,9 @@
   // A turn ends after one second of silence, so a spoken hesitation ("euh…")
   // does not cut the sentence; a barge-in over Nestor still ends quickly.
   const TURN_END_SILENCE_MS = 1000, INTERRUPTION_END_SILENCE_MS = 250;
+  // Recognition starts halfway through that second, on what was said so far. If the
+  // silence holds, its text is ready when the turn ends; if the person goes on, it is dropped.
+  const EARLY_RECOGNITION_SILENCE_MS = 500;
   // Recognition measured warm for about a minute after it last ran, and slower after that.
   const RECOGNITION_WARM_INTERVAL_MS = 45000;
   class Endpoint {
@@ -187,7 +190,11 @@
       this.onsetGap = 0;
       this.speaking = false;
       this.level = 0;
+      this.earlyId = null; this.earlyTaken = false; this.events = [];
     }
+    // What happened since the last call: `{ type: 'early', id, samples }` when a pause is
+    // long enough to start recognition, `{ type: 'resumed', id }` when speech went on after it.
+    drain() { const events = this.events; this.events = []; return events; }
     push(samples) {
       const energy = Math.sqrt(samples.reduce((sum, n) => sum + n * n, 0) / samples.length);
       this.level = energy;
@@ -211,11 +218,26 @@
       }
       this.frames.push(samples); this.total += samples.length;
       this.silenceSamples = voiced ? 0 : this.silenceSamples + samples.length;
-      if (this.silenceSamples < this.rate * this.endSilenceMs / 1000 && this.total < this.rate * 20) return null;
-      const result = new Float32Array(this.total);
-      let offset = 0;
-      for (const frame of this.frames) { result.set(frame, offset); offset += frame.length; }
+      if (voiced && this.earlyId !== null) { this.events.push({ type: 'resumed', id: this.earlyId }); this.earlyId = null; }
+      const join = () => {
+        const joined = new Float32Array(this.total);
+        let offset = 0;
+        for (const frame of this.frames) { joined.set(frame, offset); offset += frame.length; }
+        return joined;
+      };
+      if (this.silenceSamples < this.rate * this.endSilenceMs / 1000 && this.total < this.rate * 20) {
+        if (this.earlySilenceMs && this.earlyId === null && !voiced && this.earlySilenceMs < this.endSilenceMs
+            && this.silenceSamples >= this.rate * this.earlySilenceMs / 1000) {
+          this.earlyId = this.earlySeq = (this.earlySeq || 0) + 1;
+          this.events.push({ type: 'early', id: this.earlyId, samples: join() });
+        }
+        return null;
+      }
+      const result = join();
+      // The pause that started recognition ran to the end of the turn: that text is the turn's.
+      const completedEarlyId = this.earlyId, pending = this.events, sequence = this.earlySeq;
       this.reset();
+      this.completedEarlyId = completedEarlyId; this.events = pending; this.earlySeq = sequence;
       return result;
     }
   }
@@ -343,7 +365,7 @@
         this.cancelWakeAck();
         this.captureFollowup = this.wake.active();
         if (this.current(epoch)) this.show('hearing');
-      });
+      }, { onEarly: (blob, info) => this.recognizeEarly(blob, epoch, info), onEarlyCancel: id => this.dropEarly(id) });
     }
     cancelWakeAck() {
       const ack = this.wakeAck;
@@ -451,6 +473,23 @@
         .catch(error => { this.fail(error, turn.epoch); throw error; });
       turn.interruption.catch(() => {}); // handled when the captured utterance arrives
     }
+    // Recognition of a pause that may be the end of the turn (see EARLY_RECOGNITION_SILENCE_MS).
+    // Only a surface that offers `transcribeEarly` takes part; its failure is never the turn's.
+    recognizeEarly(blob, epoch, { id } = {}) {
+      this.dropEarly();
+      if (typeof this.io.transcribeEarly !== 'function' || !this.current(epoch) || !['listening', 'hearing'].includes(this.state)) return;
+      const abort = new AbortController(), cancel = () => abort.abort();
+      this.abort.signal.addEventListener('abort', cancel, { once: true });
+      let request;
+      try { request = this.io.transcribeEarly(blob, this.selection.language, abort.signal); } catch { request = null; }
+      if (!request) { this.abort.signal.removeEventListener('abort', cancel); return; }
+      this.early = { id, abort, result: Promise.resolve(request).then(value => ({ value }), () => null)
+        .finally(() => this.abort.signal.removeEventListener('abort', cancel)) };
+    }
+    dropEarly(id) {
+      if (!this.early || (id !== undefined && this.early.id !== id)) return;
+      this.early.abort.abort(); this.early = null;
+    }
     async exchange(blob, epoch, capture = {}) {
       if (!this.current(epoch) || !['listening', 'hearing'].includes(this.state)) return;
       this.cancelWakeAck();
@@ -472,7 +511,11 @@
       try {
         // Transcription may run while the explicit interruption settles, but
         // another model turn must wait for the acknowledgement.
-        const result = await this.io.transcribe(blob, this.selection.language, this.abort.signal);
+        // The pause that ended the turn already had its recognition started: use it.
+        const early = this.early && capture.earlyId != null && this.early.id === capture.earlyId ? this.early : null;
+        if (!early) this.dropEarly();
+        this.early = null;
+        const result = (early && (await early.result)?.value) || await this.io.transcribe(blob, this.selection.language, this.abort.signal);
         let text = typeof result === 'string' ? result : String(result?.text || '');
         const stopControl = result?.control === 'stop';
         if (!this.current(epoch)) return;
@@ -891,11 +934,12 @@
           try { await play(await wav(last.samples, context.sampleRate).arrayBuffer(), abort.signal, true); await settle(abort.signal); }
           finally { playSignal.removeEventListener('abort', cancel); if (replayAbort === abort) replayAbort = null; }
         },
-        listen(onUtterance, onSpeech, { interruptible = false } = {}) {
+        listen(onUtterance, onSpeech, { interruptible = false, onEarly = null, onEarlyCancel = null } = {}) {
           if (closed) return;
           history.breakCapture();
           endpoint.reset(); echo.reset(); endpoint.minimumVoiceMs = interruptible ? 100 : 160;
           endpoint.endSilenceMs = interruptible ? INTERRUPTION_END_SILENCE_MS : TURN_END_SILENCE_MS;
+          endpoint.earlySilenceMs = !interruptible && onEarly ? EARLY_RECOGNITION_SILENCE_MS : 0;
           const expected = ++captureEpoch;
           node.port.onmessage = ({ data }) => {
             if (closed || data.epoch !== expected || expected !== captureEpoch) return;
@@ -904,9 +948,14 @@
             history.push(data.samples, data.time === undefined ? Date.now() : data.time * 1000, rejectedEcho);
             const utterance = endpoint.push(rejectedEcho ? new Float32Array(data.samples.length) : data.samples);
             if (!prior && endpoint.speaking) onSpeech();
+            for (const event of endpoint.drain()) {
+              if (event.type === 'early') onEarly?.(wav(event.samples, context.sampleRate), { id: event.id });
+              else onEarlyCancel?.(event.id);
+            }
             if (utterance) {
               freeze('utterance', utterance.length); quiet();
-              onUtterance(wav(utterance, context.sampleRate), { audioMs: utterance.length / context.sampleRate * 1000, silenceMs: endpoint.endSilenceMs });
+              onUtterance(wav(utterance, context.sampleRate), { audioMs: utterance.length / context.sampleRate * 1000, silenceMs: endpoint.endSilenceMs,
+                earlyId: endpoint.completedEarlyId ?? null });
             }
           };
           node.port.postMessage({ epoch: expected });

@@ -377,6 +377,16 @@ while the person is still talking. It is best effort, sent at most once per
 warm period, to the primary speech service only, and an unreachable or older
 speech service is not an error.
 
+A turn ends after one second of silence, so a spoken hesitation does not cut
+the sentence. Recognition does not wait for that second: after half a second
+of silence the shared voice loop offers what was said so far to a surface that
+implements `transcribeEarly`, and uses that text when the same pause ends the
+turn. If the person goes on, the request is cancelled and the whole clip is
+transcribed as before; a failed or declined early request is never the turn's
+failure. Household offers it on its local transcriber only, never on the
+browser's own recognizer. The turn-taking rule is unchanged: recognition
+overlaps the wait instead of following it.
+
 The shared speech boundary removes code fences, images, links, table markup,
 HTML and presentation symbols from spoken text while preserving prose and
 emergency phone numbers. The browser, synthesis proxies and native voice reply

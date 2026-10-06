@@ -8,9 +8,9 @@ const deferred = () => { let resolve; const promise = new Promise((r) => { resol
 
 function harness(overrides = {}) {
   const calls = [], messages = [], phases = [];
-  let utterance, speech;
+  let utterance, speech, listening = {};
   const audio = {
-    listen(callback, onSpeech) { calls.push('listen'); utterance = callback; speech = onSpeech; },
+    listen(callback, onSpeech, options = {}) { calls.push('listen'); utterance = callback; speech = onSpeech; listening = options; },
     holdPlayback() { calls.push('holdPlayback'); }, resumePlayback() { calls.push('resumePlayback'); },
     quiet() { calls.push('quiet'); }, close() { calls.push('close'); },
     async play() { calls.push('play'); }
@@ -25,7 +25,8 @@ function harness(overrides = {}) {
     message(role, text) { messages.push({ role, text }); }, ...overrides
   };
   const conversation = new Conversation(io, (state) => phases.push(state));
-  return { conversation, audio, calls, messages, phases, beginSpeech: () => speech(), say: () => utterance(new Blob(['sample'])) };
+  return { conversation, audio, calls, messages, phases, beginSpeech: () => speech(), say: capture => utterance(new Blob(['sample']), capture),
+    pause: id => listening.onEarly?.(new Blob(['so far']), { id }), resume: id => listening.onEarlyCancel?.(id) };
 }
 
 for (const wakeWord of [false, true]) {
@@ -369,6 +370,46 @@ test('a spoken hesitation does not end the turn; one second of silence does', ()
   speak(500);
   for (let i = 0; i < 9; i++) assert.equal(endpoint.push(new Float32Array(100)), null);
   assert.ok(endpoint.push(new Float32Array(100)).length > 0, 'one second of silence ends the turn');
+});
+
+test('a half-second pause offers what was said so far, and says whether it ended the turn', () => {
+  const endpoint = new Endpoint(1000);
+  endpoint.earlySilenceMs = 500;
+  const voice = ms => { for (let i = 0; i < ms / 100; i++) assert.equal(endpoint.push(new Float32Array(100).fill(0.1)), null); };
+  const quiet = ms => { let last = null; for (let i = 0; i < ms / 100; i++) last = endpoint.push(new Float32Array(100)); return last; };
+  voice(500);
+  assert.equal(quiet(400), null);
+  assert.deepEqual(endpoint.drain(), [], 'nothing before half a second of silence');
+  quiet(100);
+  const [first] = endpoint.drain();
+  assert.equal(first.type, 'early'); assert.equal(first.samples.length, 1000);
+  quiet(300);
+  assert.deepEqual(endpoint.drain(), [], 'one offer per pause');
+  voice(300); // the person goes on: that offer no longer stands
+  assert.deepEqual(endpoint.drain(), [{ type: 'resumed', id: first.id }]);
+  quiet(500);
+  const [second] = endpoint.drain();
+  assert.equal(second.type, 'early'); assert.notEqual(second.id, first.id);
+  assert.equal(second.samples.length, 2100);
+  const utterance = quiet(500);
+  assert.equal(utterance.length, 2600);
+  assert.equal(endpoint.completedEarlyId, second.id, 'the pause that ended the turn names its offer');
+  assert.deepEqual(Array.from(utterance.subarray(0, 2100)), Array.from(second.samples), 'the turn is that offer plus silence');
+});
+
+test('no early offer without the setting, in an interruption, or when sound runs to the cap', () => {
+  const plain = new Endpoint(1000);
+  for (let i = 0; i < 5; i++) plain.push(new Float32Array(100).fill(0.1));
+  for (let i = 0; i < 9; i++) plain.push(new Float32Array(100));
+  assert.deepEqual(plain.drain(), []);
+  assert.ok(plain.push(new Float32Array(100)).length > 0);
+  assert.equal(plain.completedEarlyId, null);
+  const interruption = new Endpoint(1000, 100, 250);
+  interruption.earlySilenceMs = 500;
+  for (let i = 0; i < 5; i++) interruption.push(new Float32Array(100).fill(0.1));
+  for (let i = 0; i < 2; i++) interruption.push(new Float32Array(100));
+  assert.ok(interruption.push(new Float32Array(100)).length > 0);
+  assert.deepEqual(interruption.drain(), []);
 });
 
 test('endpoint caps uninterrupted sound at twenty seconds', () => {
@@ -1358,4 +1399,53 @@ test('a holding phrase whose voice fails never fails the answer', async () => {
   assert.deepEqual(played, ['Voici la réponse.']);
   assert.equal(h.conversation.state, 'listening');
   h.conversation.stop();
+});
+
+test('recognition started during the pause that ends the turn is the turn\'s transcription', async () => {
+  const early = deferred(); let whole = 0; const heard = [];
+  const h = harness({ transcribeEarly: () => early.promise, transcribe: async () => { whole++; return 'Unused'; },
+    turn: async (_session, text) => { heard.push(text); return { text: 'Salut', language: 'fr' }; } });
+  await h.conversation.start({ language: 'fr' });
+  h.beginSpeech(); h.pause(7);
+  const turn = h.say({ earlyId: 7, silenceMs: 1000, audioMs: 1500 });
+  early.resolve({ text: 'Quel temps fait-il ?', sttMs: 300 });
+  await turn;
+  assert.deepEqual(heard, ['Quel temps fait-il ?']);
+  assert.equal(whole, 0, 'the whole clip is not transcribed a second time');
+  h.conversation.stop();
+});
+
+test('an early recognition is dropped when the person goes on, and a failed one never fails the turn', async () => {
+  const signals = []; let whole = 0; const heard = [];
+  const h = harness({
+    transcribeEarly: (_blob, _language, signal) => { signals.push(signal); return signals.length === 3 ? Promise.reject(new Error('busy')) : new Promise(() => {}); },
+    transcribe: async () => { whole++; return 'Phrase complète'; },
+    turn: async (_session, text) => { heard.push(text); return { text: 'Salut', language: 'fr' }; } });
+  await h.conversation.start({ language: 'fr' });
+  h.beginSpeech(); h.pause(1); h.resume(1);
+  assert.equal(signals[0].aborted, true, 'speech resumed: that request is cancelled');
+  h.pause(2);
+  await h.say({ earlyId: null }); // the turn ended without a standing offer (the sound cap)
+  assert.equal(signals[1].aborted, true);
+  assert.equal(whole, 1);
+  h.beginSpeech(); h.pause(3);
+  await h.say({ earlyId: 3 });
+  assert.equal(whole, 2, 'the failed early request falls back to the whole clip');
+  assert.deepEqual(heard, ['Phrase complète', 'Phrase complète']);
+  h.conversation.stop();
+  assert.equal(signals[2].aborted, false);
+});
+
+test('a surface without early recognition, or one that declines it, transcribes the whole clip as before', async () => {
+  let whole = 0;
+  const plain = harness({ transcribe: async () => { whole++; return 'Bonjour'; } });
+  await plain.conversation.start({ language: 'fr' });
+  plain.beginSpeech(); plain.pause(1);
+  await plain.say({ earlyId: 1 });
+  const declining = harness({ transcribeEarly: () => null, transcribe: async () => { whole++; return 'Bonjour'; } });
+  await declining.conversation.start({ language: 'fr' });
+  declining.beginSpeech(); declining.pause(1);
+  await declining.say({ earlyId: 1 });
+  assert.equal(whole, 2);
+  plain.conversation.stop(); declining.conversation.stop();
 });
