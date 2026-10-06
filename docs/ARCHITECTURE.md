@@ -362,6 +362,13 @@ turn (`POST …/sessions/:sessionId/voice-timings`, by the browser's turn id,
 within the session's own space) and the parent journal shows the main delays.
 PsyX provides no store, so nothing is measured or sent there.
 
+The server side of a Household turn is kept the same way (`serverTimings`,
+`turn-phases.js`): how long the turn took to prepare its context and to get
+its answer, and for a native agent run when the gateway accepted the request,
+the run was created, generation or a tool started, the stream ended and the
+final answer was read. With the inference log's model phases, this shows what
+the agent path costs outside the model.
+
 Speech recognition is slower on its first request after a pause. When a
 conversation starts and whenever someone starts speaking after such a pause,
 the loop asks its surface to wake recognition (`POST /api/voix/warm` for
