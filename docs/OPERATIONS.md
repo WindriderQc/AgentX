@@ -1295,7 +1295,7 @@ resolved `judge_config`; a full default run retains that snapshot in its
 qualification record. Identity drift or workload cancellation stops the run.
 
 For a small diagnostic, pass `case_ids` from `benchmark/data/judge-calibration-set.json`.
-The same request accepts `num_predict`, `timeout` (milliseconds) and `think`
+The same request accepts `num_ctx`, `num_predict`, `timeout` (milliseconds) and `think`
 with the batch judge validation and warnings. Selected cases or explicit operator
 settings produce `diagnostic: true`, `valid: false` and a skipped
 `qualification_record`. They never publish or withdraw judge qualification,

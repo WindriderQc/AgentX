@@ -23,7 +23,7 @@ function diagnosticInput(body, referenceSet) {
     // Qualification readers currently match host/model, not operator settings.
     // A targeted or explicitly configured diagnostic must never replace that record.
     const diagnostic = case_ids !== undefined
-        || ['num_predict', 'timeout', 'think'].some(key => Object.hasOwn(body, key));
+        || ['num_ctx', 'num_predict', 'timeout', 'think'].some(key => Object.hasOwn(body, key));
     return { cases, diagnostic, warnings: limits.warnings,
         options: { num_ctx, num_predict, timeout, think: normalizeJudgeThink(think) } };
 }
