@@ -90,7 +90,7 @@ describe('TokenCounterService', () => {
     });
     it('keeps missing native usage and cost unknown even when text is present', () => {
       const analysis = tokenCounter.analyzeConversation({ model: 'openclaw:agent:main', messages: [
-        { role: 'assistant', content: '1234', metadata: { executionReceipt: { source: 'openclaw', usage: null, cost: null } } }
+        { role: 'assistant', content: '1234', stats: { usage: { promptTokens: 1, completionTokens: 1 } }, metadata: { executionReceipt: { source: 'openclaw', usage: null, cost: null } } }
       ] });
       expect(analysis).toMatchObject({ promptTokens: null, completionTokens: null, totalTokens: null, cost: null });
     });

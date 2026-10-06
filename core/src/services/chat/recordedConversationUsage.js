@@ -14,10 +14,10 @@ function recordedConversationUsage(conversation) {
   for (const message of turns) {
     const receipt = message.metadata?.executionReceipt;
     const usage = receipt?.usage;
-    const input = usage?.input != null
-      ? usage.input + (usage.cacheRead || 0) + (usage.cacheWrite || 0)
-      : usage?.input_tokens ?? message.stats?.usage?.promptTokens;
-    const output = usage?.output ?? usage?.output_tokens ?? message.stats?.usage?.completionTokens;
+    const input = receipt ? (usage?.input != null
+      ? usage.input + (usage.cacheRead || 0) + (usage.cacheWrite || 0) : usage?.input_tokens)
+      : message.stats?.usage?.promptTokens;
+    const output = receipt ? usage?.output ?? usage?.output_tokens : message.stats?.usage?.completionTokens;
     if (count(input) && count(output)) { promptTokens += input; completionTokens += output; }
     else tokensKnown = false;
     const value = receipt ? (usd(receipt.cost?.nanodollars) && receipt.cost.currency === 'USD' ? receipt.cost.nanodollars / 1e9 : null)
