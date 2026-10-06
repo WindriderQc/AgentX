@@ -22,7 +22,10 @@ LEGACY_RECEIPTS = STATE / "coding-dispatch-requests"
 # Model, GitHub token and other settings of the run; they stay outside Git.
 ENV_FILE = Path(os.environ.get("AGENTX_CODING_ENV_FILE", Path.home() / ".config/agentx/coding.env"))
 UNIT = "agentx-coding-run"
-PRIVATE_SERVICES = {"personal", "family", "household", "secretary"}
+# Mirror of core/src/helpers/workerTaskScope.js: the canonical private task lane
+# boundary. Keep it in sync with the Core helper.
+PRIVATE_SERVICE = re.compile(r"^\s*(personal|family|household|secretary)\s*$", re.IGNORECASE)
+PRIVATE_SOURCE = re.compile(r"^\s*(idea-drop\s*$|household-)", re.IGNORECASE)
 REQUEST_ID = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
 
 
@@ -37,9 +40,15 @@ def queued_tasks() -> list[dict]:
         return json.load(response)["data"]["tasks"]
 
 
+def is_private_task(task: dict) -> bool:
+    # The Core service rule is anchored at both ends, the source rule only at the start.
+    return bool(PRIVATE_SERVICE.fullmatch(str(task.get("service") or ""))
+                or PRIVATE_SOURCE.match(str(task.get("source") or "")))
+
+
 def can_start(task: dict) -> bool:
     return (task.get("status") == "queued" and not task.get("assignee")
-            and str(task.get("service") or "").lower() not in PRIVATE_SERVICES)
+            and not is_private_task(task))
 
 
 def unit_active() -> bool:
@@ -79,7 +88,7 @@ def status(key: str | None = None) -> dict:
         "contractVersion": 2, "available": True, "busy": busy,
         "observedAt": datetime.now(timezone.utc).isoformat(),
         "summary": {"queuedTasks": len(tasks), "eligibleTasks": sum(map(can_start, tasks)),
-                    "privateQueuedTasks": sum(str(task.get("service") or "").lower() in PRIVATE_SERVICES for task in tasks)},
+                    "privateQueuedTasks": sum(map(is_private_task, tasks))},
         "candidates": [{"pipelineId": task["pipelineId"], "title": task.get("title", ""),
                         "expectedAttemptCount": int(task.get("automationAttemptCount") or 0)}
                        for task in tasks if can_start(task)],
