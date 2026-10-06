@@ -27,7 +27,7 @@ async function run(response, item) {
 
 describeLocal('authored fixtures, executed locally', () => {
     test('each calibration reference answer passes its own tests', async () => {
-        for (const item of calibration.filter((entry) => entry.category === 'coding')) {
+        for (const item of calibration.filter((entry) => entry.reference_tests)) {
             const execution = await run(item.expected_answer, item);
             expect({ id: item.id, status: execution.status, correctness: execution.correctness })
                 .toEqual({ id: item.id, status: 'passed', correctness: 10 });
@@ -36,7 +36,7 @@ describeLocal('authored fixtures, executed locally', () => {
 
     test('the calibration responses score what the plan expects: 0.2 / 10 / 10 / 10', async () => {
         const expected = { 'cal-bad-03': 0.2, 'cal-med-02': 10, 'cal-good-02': 10, 'cal-exc-01': 10 };
-        for (const item of calibration.filter((entry) => entry.category === 'coding')) {
+        for (const item of calibration.filter((entry) => entry.reference_tests)) {
             const execution = await run(item.response, item);
             expect({ id: item.id, correctness: execution.correctness })
                 .toEqual({ id: item.id, correctness: expected[item.id] });
