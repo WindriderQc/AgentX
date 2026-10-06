@@ -21,6 +21,10 @@ describe('queryExpansion', () => {
   });
 
   describe('expandQuery', () => {
+    it.each([{ done: false }, { done: true, done_reason: 'length' }])('keeps the original query when expansions are incomplete: %j', async completion => {
+      fetchWithTimeout.mockResolvedValue({ ok: true, json: async () => ({ response: 'half a related query', ...completion }) });
+      expect(await expandQuery('original query')).toEqual([]);
+    });
     it('should generate related queries from LLM response', async () => {
       fetchWithTimeout.mockResolvedValue({
         ok: true,

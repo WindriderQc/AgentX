@@ -118,7 +118,7 @@ describe('ragCompression', () => {
       expect(fetchWithTimeout).toHaveBeenCalledTimes(2);
     });
 
-    it('should use sha1 hash for cache key when no identifiers present', async () => {
+    it('should use content hash for cache key when no identifiers present', async () => {
       fetchWithTimeout.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ response: 'Compressed output' })
@@ -240,6 +240,15 @@ describe('ragCompression', () => {
   });
 
   describe('cache management', () => {
+    it('does not reuse a compression after content or selection policy changes', async () => {
+      fetchWithTimeout.mockResolvedValue({ ok: true, json: async () => ({ response: 'NO_RELEVANT_CONTENT' }) });
+      const chunk = { id: 'same-id', text: 'The deadline is 17 October.' };
+      await service.compressChunks('deadline', [chunk]);
+      await service.compressChunks('deadline', [{ ...chunk, text: 'The deadline is 23 October.' }]);
+      await service.compressChunks('deadline', [chunk], { maxSentencesPerChunk: 2 });
+      await service.compressChunks('deadline', [chunk], { minRelevanceScore: 0.8 });
+      expect(fetchWithTimeout).toHaveBeenCalledTimes(4);
+    });
     it('clearCache should empty the cache', async () => {
       fetchWithTimeout.mockResolvedValue({
         ok: true,
@@ -286,6 +295,43 @@ describe('ragCompression', () => {
       // Second call — cache expired, should re-fetch
       await service.compressChunks('query', chunks);
       expect(fetchWithTimeout).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('source fidelity', () => {
+    const source = 'The deadline is 17 October. The deposit is 230 dollars. Late changes require approval.';
+    it.each([
+      { response: 'The deadline is 23 October.' },
+      { response: 'The deadline is 17' },
+      { response: 'The deposit is 230 dollars.\nThe deadline is 17 October.' },
+      { response: '' },
+      { response: 'The deadline is 17 October.', done: false },
+      { response: 'The deadline is 17 October.', done: true, done_reason: 'length' },
+      { response: 'NO_RELEVANT_CONTENT', done: true, done_reason: 'length' },
+    ])('keeps the complete source when output is not a completed literal extract: %j', async data => {
+      fetchWithTimeout.mockResolvedValue({ ok: true, json: async () => data });
+      const [result] = await service.compressChunks('deadline and changes', [{ text: source, metadata: { documentId: 'fixture' } }]);
+      expect(result).toMatchObject({ compressedText: source, originalText: source, wasCompressed: false,
+        metadata: { documentId: 'fixture' }, compressionError: expect.any(String) });
+    });
+    it('accepts complete literal sentences in source order within the sentence budget', async () => {
+      fetchWithTimeout.mockResolvedValue({ ok: true, json: async () => ({ response:
+        'The deadline is 17 October.\nLate changes require approval.', done: true, done_reason: 'stop' }) });
+      const [result] = await service.compressChunks('deadline and changes', [{ text: source }]);
+      expect(result).toMatchObject({ wasCompressed: true, compressedText:
+        'The deadline is 17 October.\nLate changes require approval.' });
+    });
+    it('retains a short source sentence and a literal mention of the sentinel', async () => {
+      for (const text of ['Due 17.', 'NO_RELEVANT_CONTENT is a reserved value.']) {
+        fetchWithTimeout.mockResolvedValue({ ok: true, json: async () => ({ response: text }) });
+        const [result] = await service.compressChunks('meaning', [{ text }]);
+        expect(result).toMatchObject({ wasCompressed: true, compressedText: text });
+      }
+    });
+    it('keeps the source if an extraction exceeds the requested sentence count', async () => {
+      fetchWithTimeout.mockResolvedValue({ ok: true, json: async () => ({ response: source }) });
+      const [result] = await service.compressChunks('deadline', [{ text: source }], { maxSentencesPerChunk: 1 });
+      expect(result).toMatchObject({ wasCompressed: false, compressedText: source });
     });
   });
 });
