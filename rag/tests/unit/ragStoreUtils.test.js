@@ -154,14 +154,14 @@ describe('splitIntoChunks — sentence boundary', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('splitIntoChunks — MAX_CHUNKS limit', () => {
-  it('stops at 10,000 chunks even if text has more', () => {
+  it('refuses an oversized document rather than returning only its first 10,000 chunks', () => {
     // With chunkSize=100, overlap=0: minAdvance=max(50,10)=50, overlap=min(0,50)=0
     // nextStart = end - 0 = end, so each step advances by 100.
     // 1,000,100 chars / 100 = 10,001 chunks without the limit.
     const text = 'x'.repeat(1_000_100);
-    const chunks = splitIntoChunks(text, 100, 0);
-
-    expect(chunks.length).toBe(10_000);
+    expect(() => splitIntoChunks(text, 100, 0)).toThrow(expect.objectContaining({
+      code: 'RAG_CHUNK_LIMIT_EXCEEDED', statusCode: 413
+    }));
   });
 });
 

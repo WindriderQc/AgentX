@@ -20,7 +20,7 @@ async function read(pipelineId) {
 }
 
 // The deployment owns planning; Core owns every write to the canonical task.
-async function apply({ pipelineId, expectedUpdatedAt, automation, question, answer, plan }) {
+async function apply({ pipelineId, expectedUpdatedAt, automation, question, answer, plan, contextNotice }) {
   const task = await load(pipelineId);
   if (!['queued', 'blocked'].includes(task.status) || task.automationLease?.leaseId) throw conflict('The task is already running or awaiting review.');
   if (task.assignee && !(task.status === 'blocked' && task.automation?.mode === 'review_only')) throw conflict('Another worker owns this task.');
@@ -28,6 +28,7 @@ async function apply({ pipelineId, expectedUpdatedAt, automation, question, answ
   if (['personal', 'family', 'household', 'secretary'].includes(String(task.service).toLowerCase())) throw conflict('This task belongs to its personal or household workflow.');
   const at = new Date();
   const feedback = [];
+  if (contextNotice) feedback.push({ by: 'coding-team', text: String(contextNotice), at });
   const previous = (task.feedback || []).at(-1);
   if (answer && !(previous?.by === 'operator' && previous.text === String(answer))) feedback.push({ by: 'operator', text: String(answer).slice(0, 3000), at });
   if (question) feedback.push({ by: 'coding-team', text: String(question).slice(0, 3000), at });

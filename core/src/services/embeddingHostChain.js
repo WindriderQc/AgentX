@@ -13,6 +13,13 @@
 const fetch = require('node-fetch');
 const alertService = require('./alertService');
 const { resolveHostKey } = require('./modelRouter');
+const { protectContext } = require('./routing/contextIntegrityPolicy');
+
+// /api/embed supports overflow refusal; the legacy endpoint silently cuts.
+function prepareEmbeddingPayload(hostUrl, model, input, keepAlive, signal) {
+    return protectContext({ hostUrl, mode: 'embed', signal,
+        payload: { model, input, ...(keepAlive !== undefined && { keep_alive: keepAlive }) } });
+}
 
 // Split liveness from the long embed budget: cold loads can be slow, while a
 // black-holed host should be skipped after a short probe.
@@ -65,6 +72,7 @@ function isModelMissingResponse(response) {
 
 module.exports = {
     EMBED_TIMEOUT_MS,
+    prepareEmbeddingPayload,
     isEmbedHostLive,
     emitEmbedHostFailure,
     isModelMissingResponse,

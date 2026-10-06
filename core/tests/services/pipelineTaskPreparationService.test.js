@@ -34,6 +34,15 @@ test('prepared local intent is normalized by Core with review and merge decision
   expect(prepared.automation.fingerprint).toMatch(/^[a-f0-9]{64}$/);
   expect(prepared.automation.humanGates).toEqual(['merge', 'review']);
 });
+test('preparation coverage is visible on the ticket without changing its request or attempt budget', async () => {
+  const task = await create();
+  const contextNotice = 'Preparation context sent: 9/9 discussion entries; 112/112 permitted candidate files; Planning upstream reduction reported.';
+  const prepared = await apply(task, { contextNotice, question: 'Narrow the linked context.' });
+  expect(prepared.feedback.map(entry => entry.text)).toEqual([contextNotice, 'Narrow the linked context.']);
+  expect(prepared.spec).toBe(task.spec);
+  expect(prepared.automationAttemptCount).toBe(task.automationAttemptCount);
+  expect(prepared.automation).toBeUndefined();
+});
 test('concurrent preparation cannot overwrite a new question or operator edit', async () => {
   const task = await create();
   const results = await Promise.allSettled([apply(task, { question: 'A?' }), apply(task, { question: 'B?' })]);

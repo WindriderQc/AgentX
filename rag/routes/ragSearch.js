@@ -106,7 +106,7 @@ async function handleSearch(req, res) {
     const classified = classifyRagAvailabilityError(err);
     if (classified) {
       logger.warn(`Search blocked: ${classified.code} — ${err.message}`);
-      return sendError(res, classified.status, classified.code, classified.detail);
+      return sendError(res, classified.status, classified.code, classified.detail, classified.meta);
     }
     logger.error('Search error:', err);
     sendError(res, 500, 'Search failed', err.message);

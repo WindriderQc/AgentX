@@ -78,7 +78,9 @@ function splitIntoChunks(text, chunkSize, chunkOverlap) {
       logger.error('Chunking safety limit reached', {
         chunkCount: chunks.length, chunkSize, chunkOverlap, textLength: text.length
       });
-      break;
+      throw Object.assign(new Error('Document exceeds the chunking safety limit; no partial document was indexed. Split the source and retry.'), {
+        code: 'RAG_CHUNK_LIMIT_EXCEEDED', statusCode: 413, limit: MAX_CHUNKS
+      });
     }
 
     let end = Math.min(start + chunkSize, text.length);
