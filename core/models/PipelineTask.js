@@ -108,6 +108,7 @@ const AutomationAttemptEvidenceSchema = new mongoose.Schema({
     costStatus: { type: String, enum: ['complete', 'partial', 'unknown'], default: undefined },
     localEnergy: { type: LocalEnergyEvidenceSchema, default: undefined },
   },
+  repository: { type: mongoose.Schema.Types.Mixed, default: undefined },
   routing: { type: mongoose.Schema.Types.Mixed, default: undefined },
   inference: { type: mongoose.Schema.Types.Mixed, default: undefined },
   // This subdocument must retain the public field named `schema`. Mongoose's
