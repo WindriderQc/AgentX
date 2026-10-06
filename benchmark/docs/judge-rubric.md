@@ -57,6 +57,26 @@ answer correctness for math, constraint compliance for instruction and
 relevance for creative. The result records `primary_cap` with the uncapped
 score.
 
+A **secondary bound** then holds the overall score to a dimension the task's
+quality rests on, plus a margin. Without it, a correct answer that was
+inefficient, thin or flat kept about 8: its primary dimension was full and its
+weakness sat in a dimension weighted 0.15 to 0.20. The bounds are:
+
+- **Coding efficiency + 4.** Efficiency is judged against the expected
+  answer's level, so it binds only where the task sets one. A correct but
+  O(n) prime test scores 6, not 8.
+- **Creative originality + 4 and engagement + 4.** A well-formed but flat
+  piece scores 4, not 6.6.
+- **Instruction completeness + 1,** like a primary dimension: content the
+  instruction requires is as much the task as its constraints. A one-line
+  summary that drops two of three key points scores 6.3, not 8.5.
+
+At a margin of 4, a dimension at 0 holds the answer at 4 and a dimension at 6
+or more never binds. A dimension with no applicable question sets no bound.
+The result records `secondary_bounds` with each dimension, its margin and
+whether it bound. The reference scorer has no dimensions, so no bound applies
+there.
+
 ## Category gates
 
 A gate is one yes/no question a response must pass before its grade means

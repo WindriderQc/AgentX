@@ -15,6 +15,15 @@ const DEFAULT_SCORING_CATEGORY = 'knowledge';
 // correct answers while making correctness a precondition for a high score.
 const PRIMARY_DIMENSION_CAP_MARGIN = 1;
 
+// A secondary bound holds the overall score to a dimension the task's quality
+// rests on plus a margin (#446). With the primary dimension full, a correct
+// answer that is inefficient, thin or flat kept about 8 because its weakness
+// sat in a dimension weighted 0.15 to 0.20. At this margin a dimension at 0
+// holds the answer at 4, a mediocre grade, and from 6 up it never binds.
+// Instruction completeness binds like a primary dimension instead: content
+// the instruction requires is as much the task as its constraints.
+const QUALITY_BOUND_MARGIN = 4;
+
 function normalizeScoringCategory(rawCategory, fallback = null) {
     return normalizeBenchmarkCategory(rawCategory, fallback);
 }
@@ -23,6 +32,8 @@ const ENHANCED_SCORING_CONFIGS = {
     coding: {
         description: 'Code generation, debugging, and refactoring',
         primary_dimension: 'correctness',
+        // Efficiency is judged against the expected answer's level, so it binds only where the task sets one.
+        secondary_bounds: [{ dimension: 'efficiency', margin: QUALITY_BOUND_MARGIN }],
         core_dimensions: [
             { name: 'correctness', weight: 0.45, desc: 'Does the code work correctly?' },
             { name: 'clarity', weight: 0.15, desc: 'Is the code readable and well-structured?' },
@@ -63,6 +74,7 @@ const ENHANCED_SCORING_CONFIGS = {
     instruction: {
         description: 'Constraint compliance, format adherence, and summarization',
         primary_dimension: 'constraint_compliance',
+        secondary_bounds: [{ dimension: 'completeness', margin: PRIMARY_DIMENSION_CAP_MARGIN }],
         core_dimensions: [
             { name: 'instruction_adherence', weight: 0.25, desc: 'Follows instructions precisely?' },
             { name: 'constraint_compliance', weight: 0.30, desc: 'Respects all constraints?' },
@@ -83,6 +95,10 @@ const ENHANCED_SCORING_CONFIGS = {
         // The creative reweight kept relevance strong so dialog / clarifying-question
         // replies are not penalized for lacking narrative structure.
         primary_dimension: 'form',
+        secondary_bounds: [
+            { dimension: 'originality', margin: QUALITY_BOUND_MARGIN },
+            { dimension: 'engagement', margin: QUALITY_BOUND_MARGIN }
+        ],
         core_dimensions: [
             { name: 'form', weight: 0.30, desc: 'In the requested form and shape?' },
             { name: 'relevance', weight: 0.25, desc: 'Addresses the prompt and its scenario?' },
@@ -150,6 +166,11 @@ function validateWeights() {
             }
             if (!config.core_dimensions.some(dim => dim.name === config.primary_dimension)) {
                 errors.push(`${category}: primary_dimension ${config.primary_dimension} is not a core dimension`);
+            }
+            for (const bound of config.secondary_bounds || []) {
+                if (!config.core_dimensions.some(dim => dim.name === bound.dimension) || !(bound.margin >= 0)) {
+                    errors.push(`${category}: secondary bound on ${bound.dimension} is not a core dimension with a margin`);
+                }
             }
         }
     }
@@ -245,6 +266,7 @@ function getScoringDimensions(prompt) {
 
 module.exports = {
     PRIMARY_DIMENSION_CAP_MARGIN,
+    QUALITY_BOUND_MARGIN,
     DEFAULT_SCORING_CATEGORY,
     ENHANCED_SCORING_CONFIGS,
     CATEGORY_COMPOSITE_PROFILES,

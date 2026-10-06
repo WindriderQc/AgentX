@@ -245,7 +245,24 @@ function suppliedDimensionResult(score) {
     };
 }
 
+/**
+ * The overall score held to the category's secondary bounds (scoringConfigs.js,
+ * #446): each bound is a dimension score plus its margin. A dimension that was
+ * not scored (every question not applicable) sets no bound.
+ * @returns {{ score: number, bounds: Array<{dimension, score, margin, applied}> }}
+ */
+function applySecondaryBounds(score, dimensionScores, bounds = []) {
+    const limits = bounds.map(({ dimension, margin }) => {
+        const dimensionScore = typeof dimensionScores[dimension] === 'number' ? dimensionScores[dimension] : null;
+        const limit = dimensionScore === null ? null : Math.round((dimensionScore + margin) * 10) / 10;
+        return { dimension, score: dimensionScore, margin, applied: limit !== null && limit < score, limit };
+    });
+    const bounded = Math.min(score, ...limits.filter(bound => bound.applied).map(bound => bound.limit));
+    return { score: bounded, bounds: limits.map(({ limit, ...bound }) => bound) };
+}
+
 module.exports = {
+    applySecondaryBounds,
     resolveDimensionWeights,
     parseGradedAnswer,
     judgeAnswerSpec,
