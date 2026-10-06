@@ -33,7 +33,7 @@ describe('consultative coding review', () => {
     const infer = jest.fn(async () => { throw Object.assign(new Error('capacity or terminal proof missing'), { replay }); });
     const receipt = await review.run(argv, { open: async () => ({ infer, close: jest.fn() }) });
     expect(receipt.status).toBe(replay === 'busy' ? 'deferred_before_dispatch' : 'unknown');
-    expect(receipt.usage.modelCalls).toBeNull();
+    expect(receipt.usage.modelCalls).toBe(replay === 'busy' ? 0 : null);
     expect(infer).toHaveBeenCalledTimes(1);
   });
 

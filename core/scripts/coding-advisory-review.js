@@ -79,6 +79,7 @@ async function run(argv, overrides = {}) {
     receipt.status = body.done_reason === 'length' ? 'output_budget_exhausted' : receipt.review.trim() ? 'completed' : 'no_visible_review';
   } catch (error) {
     receipt.status = error.replay === 'busy' ? 'deferred_before_dispatch' : adapter ? 'unknown' : 'refused_before_dispatch';
+    if (!adapter || error.replay === 'busy') receipt.usage.modelCalls = 0;
     receipt.error = error.message;
     if (error.body) receipt.usage = { effectiveModel: error.body.model || null, modelCalls: null,
       inputTokens: observed(error.body.prompt_eval_count), outputTokens: observed(error.body.eval_count) };
