@@ -8,7 +8,6 @@ const path = require('node:path');
 const test = require('node:test');
 
 const soundLibrary = require('../sound-library');
-const { voiceContract } = require('../voice-contract');
 
 const SOUNDS_DIR = path.join(__dirname, '..', 'public', 'sounds');
 
@@ -271,26 +270,6 @@ test('a partial pack only offers what it has', () => {
     fs.rmSync(partial, { recursive: true, force: true });
   }
 });
-
-test('the voice contract publishes the sound capability honestly', () => {
-  const contract = voiceContract({
-    soundStatus: { status: 'ready', available: 38, catalog: 39, missing: ['donkey'] }
-  });
-  assert.equal(contract.capabilities.sounds.status, 'available');
-  assert.equal(contract.capabilities.sounds.available, 38);
-  assert.equal(contract.capabilities.sounds.catalog, 39);
-  assert.deepEqual(contract.capabilities.sounds.missing, ['donkey']);
-  assert.equal(contract.capabilities.sounds.modelSelectsClip, false);
-  assert.equal(contract.capabilities.sounds.nativeVoixPlayback, false);
-  assert.equal(contract.capabilities.sounds.playsOnSafetyEscalation, false);
-  assert.equal(contract.capabilities.sounds.catalogRoute, '/api/voice-personas/sounds');
-  assert.equal(contract.capabilities.sounds.auditMeaning, 'clip-selected-for-browser-offer-not-playback-receipt');
-
-  const unavailable = voiceContract();
-  assert.equal(unavailable.capabilities.sounds.status, 'unavailable');
-  assert.equal(unavailable.capabilities.sounds.available, 0);
-});
-
 
 test('an external pack can retain an optional private animal without bundling it', () => {
   const external = fs.mkdtempSync(path.join(os.tmpdir(), 'household-private-sounds-'));

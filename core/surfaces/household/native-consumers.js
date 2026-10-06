@@ -1,32 +1,16 @@
 'use strict';
 
-// Native Nestor consumers of the Household surface: the Family voice
-// consumer and the LLMX profiles. They reuse the persona session and turn
-// handlers that Household's register() builds for its browser routes.
+// LLMX consumers of the Household surface. They reuse the persona session and
+// turn handlers that Household's register() builds for its browser routes.
 
 const crypto = require('crypto');
-const { conversationBackend, familyConversationBackend } = require('./conversation-executor');
 const llmx = require('./llmx-conversation');
 
 function registerNativeConsumers(app, {
   express, standardJsonParser, conversations, conversationEnv, activePersonaTurns,
-  createPersonaSession, createNativeFamilySession, handlePersonaTurn, registerBrowserSessionControls, openingPayload,
-  envelope, fail, cleanText, requireVoixMemoryConsumer,
-  VOIX_FAMILY_PACK_ID, VOIX_FAMILY_MODE_ID, VOIX_FAMILY_SCOPE_ID
+  createPersonaSession, handlePersonaTurn, registerBrowserSessionControls, openingPayload,
+  envelope, fail, cleanText
 }) {
-  const nativeFamilyConsumer = express.Router();
-  nativeFamilyConsumer.use(standardJsonParser);
-  nativeFamilyConsumer.get('/workshop-contract', (_req, res) => envelope(res, { schemaVersion: 1, context: 'kidx-workshop', actions: 'client-receipts-only', toolsEnabled: conversationBackend(familyConversationBackend(conversationEnv), conversationEnv) === 'openclaw', toolsScope: 'family-memory-only' }));
-  nativeFamilyConsumer.post('/sessions', requireVoixMemoryConsumer, createNativeFamilySession);
-  nativeFamilyConsumer.post('/sessions/:sessionId/turns/text', requireVoixMemoryConsumer, (req, res) => (
-    handlePersonaTurn(req, res, 'child', {
-      packId: VOIX_FAMILY_PACK_ID,
-      modeId: VOIX_FAMILY_MODE_ID,
-      scopeId: VOIX_FAMILY_SCOPE_ID
-    })
-  ));
-  app.use('/api/consumers/nestor/v1/household-family', nativeFamilyConsumer);
-
   const llmxConsumer = express.Router();
   llmxConsumer.use(standardJsonParser);
   function registerLlmXProfile(prefix, profile) {

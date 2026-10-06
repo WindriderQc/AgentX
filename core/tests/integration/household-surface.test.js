@@ -403,73 +403,6 @@ describe('built-in Household surface on Core', () => {
     expect(record.messages.at(-1).content).toContain('🦉');
     expect(record.messages.at(-1).content).toContain('911 et 811');
   });
-  test('native voice delivery retries preserve one canonical transcript and one turn count', async () => {
-    const previous = process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN;
-    process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = 'synthetic-voice-consumer';
-    const sessionId = 's'.repeat(120), turnId = 't'.repeat(120);
-    const payload = { schemaVersion: 1, sessionId, turnId, eventId: `voix:${sessionId}:${turnId}`, sequence: 1,
-      userText: ' Synthetic native voice input é 🦉 '.repeat(250), assistantText: ' Synthetic native voice reply 🦉 '.repeat(300), completedAt: new Date().toISOString() };
-    try {
-      await request(app).post('/api/voix/memory/turns').send(payload).expect(401);
-      const send = () => request(app).post('/api/voix/memory/turns').set('Authorization', 'Bearer synthetic-voice-consumer').send(payload);
-      const first = await send();
-      expect(first.status).toBe(201);
-      expect(first.body.data).toMatchObject({ captured: true, duplicate: false });
-      const replay = await send();
-      expect(replay.body.data).toMatchObject({ captured: true, duplicate: true });
-      const row = await Conversation.findOne({ 'surfaceSession.sessionId': sessionId }).lean();
-      expect(row.surfaceSession.turnCount).toBe(1);
-      expect(row.messages.map(message => message.content)).toEqual([payload.userText, payload.assistantText]);
-      for (const change of [{ userText: payload.userText + 'changed' }, { assistantText: payload.assistantText + 'changed' },
-        { sequence: 2 }, { completedAt: '2026-01-01T00:00:00.000Z' }]) {
-        const conflict = await request(app).post('/api/voix/memory/turns')
-          .set('Authorization', 'Bearer synthetic-voice-consumer').send({ ...payload, ...change }).expect(409);
-        expect(conflict.body.code).toBe('VOIX_MEMORY_TURN_CONFLICT');
-      }
-      const unchanged = await Conversation.findById(row._id).lean();
-      expect(unchanged.messages.map(message => message.content)).toEqual([payload.userText, payload.assistantText]);
-      expect(unchanged.surfaceSession.turnCount).toBe(1);
-      const beforeRefusal = await Conversation.countDocuments({});
-      for (const change of [{ userText: 'x'.repeat(16001) }, { assistantText: 'x'.repeat(16001) },
-        { sessionId: sessionId + 's' }, { turnId: turnId + 't' }]) {
-        const refused = await request(app).post('/api/voix/memory/turns')
-          .set('Authorization', 'Bearer synthetic-voice-consumer').send({ ...payload, ...change });
-        expect(refused.status).toBe(change.userText || change.assistantText ? 413 : 400);
-      }
-      expect(await Conversation.countDocuments({})).toBe(beforeRefusal);
-      // Wait for the real asynchronous capture worker before the suite closes Mongo.
-      const service = require('../../src/services/surfaceConversationService').forSurface('household');
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        if ((await service.getTurn({ traceId: payload.eventId }))?.memoryState === 'processed') break;
-        await new Promise(resolve => setTimeout(resolve, 10));
-      }
-      expect((await service.getTurn({ traceId: payload.eventId })).memoryState).toBe('processed');
-    } finally {
-      if (previous === undefined) delete process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN;
-      else process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = previous;
-    }
-  });
-
-  test('native Family consumer requires its bearer and the exact Family contract', async () => {
-    const previous = process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN;
-    process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = 'synthetic-family-consumer';
-    const base = '/api/consumers/nestor/v1/household-family';
-    const contract = { packId: 'kidx_nestor', modeId: 'family', scopeId: 'family' };
-    try {
-      const workshop = await request(app).get(`${base}/workshop-contract`).expect(200);
-      expect(workshop.body.data).toMatchObject({ schemaVersion: 1, context: 'kidx-workshop', toolsScope: 'family-memory-only' });
-      await request(app).post(`${base}/sessions`).send(contract).expect(401);
-      const bearer = { Authorization: 'Bearer synthetic-family-consumer' };
-      const wrong = await request(app).post(`${base}/sessions`).set(bearer).send({ ...contract, scopeId: 'personal' }).expect(400);
-      expect(wrong.body.code).toBe('VOIX_FAMILY_CONTRACT_REQUIRED');
-      const created = await request(app).post(`${base}/sessions`).set(bearer).send(contract).expect(201);
-      expect(created.body.data.session.sessionId).toBeTruthy();
-    } finally {
-      if (previous === undefined) delete process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN;
-      else process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN = previous;
-    }
-  });
-
   test('a second LLMx opening request while the first is generating reports it pending', async () => {
     const base = '/api/consumers/nestor/v1/llmx';
     const id = (await request(app).post(`${base}/sessions`).send({ backend: 'agentx' }).expect(201)).body.data.session.sessionId;
@@ -547,7 +480,7 @@ describe('built-in Household surface on Core', () => {
     }
   });
 
-  test('Core, Nestor UI and native voice share notes without an OpenClaw dependency', async () => {
+  test('Core and Nestor UI share notes without an OpenClaw dependency', async () => {
     const base = '/api/voice-personas';
     const created = await request(app).post(`${base}/private/notes`).send({ operation: 'remember',
       text: 'Synthetic observatory preference', kind: 'preference' }).expect(200);
@@ -565,8 +498,6 @@ describe('built-in Household surface on Core', () => {
     const notesAfter = await request(app).post('/api/consumers/nestor/v1/memory/notes').send({ action: 'search', query: 'newsletter' }).expect(200);
     expect(notesAfter.body.data.notes).toEqual([]);
     await request(app).post(journal).send({ action: 'delete' }).expect(400);
-    const voice = await request(app).get('/api/voix/memory/active').expect(200);
-    expect(voice.body.data.memories).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
     const session = await request(app).post(`${base}/private/sessions`).send({ packId: 'personal_operator', backend: 'agentx' }).expect(201);
     // Selected context travels in the final user message; the system message is the same on every turn (#261).
     const sentMessages = () => executeForTest.mock.calls.at(-1)[0].messages;
@@ -615,7 +546,7 @@ describe('built-in Household surface on Core', () => {
       expect(selected()).toContain('Synthetic Alex (âge scolaire)');
       expect(sentMessages()[0].content).toBe(personalSystem);
     } finally { await HouseholdProfile.deleteMany({ profileId: { $in: ['synthetic-a', 'synthetic-b'] } }); }
-    await request(app).post('/api/voix/memory/' + id + '/forget').send({}).expect(200);
+    await request(app).post(`${base}/private/notes`).send({ operation: 'forget', id }).expect(200);
     expect((await request(app).post(`${base}/private/notes`).send({ operation: 'list' })).body.data.notes.some(note => note.id === id)).toBe(false);
   });
 

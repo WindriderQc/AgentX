@@ -60,7 +60,6 @@ function productSpaces(link) {
       item('data-toolbox', 'Data Toolbox', '/data-toolbox', 'fa-database'),
       { section: 'Appareils et voix' },
       item('device-check', 'Vérifier un appareil', '/device-check', 'fa-mobile-screen'),
-      item('voice-native', 'Diagnostic audio', '/voice/native', 'fa-microphone'),
       item('voice-personas-debug', 'Voice personas', '/voice-personas/debug', 'fa-user-gear'),
       { label: 'Keyboard Shortcuts', icon: 'fa-keyboard', id: 'keyboard-shortcuts', action: 'show-shortcuts' }
     ] }
