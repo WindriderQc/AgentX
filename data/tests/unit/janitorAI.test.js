@@ -47,6 +47,13 @@ describe('buildPrompt', () => {
     expect(result.system).toContain('KEEP');
   });
 
+  test('triage tells the model which actions and file entries were omitted', () => {
+    const coverage = { actions: { included: 50, available: 70 }, fileEntries: { included: 250, available: 700 } };
+    const result = buildPrompt('triage', { files: [], coverage });
+    expect(result.prompt).toContain(JSON.stringify(coverage));
+    expect(result.prompt).toContain('Unsampled actions and files have not been reviewed');
+  });
+
   test('resolve_duplicates includes duplicate paths', () => {
     const context = {
       duplicates: [
