@@ -21,6 +21,7 @@ const {
 const { calibrationPrompt, evaluateCalibrationCase, summarizeAccuracyCalibration } = require('../../src/services/benchmark/judgeCalibration');
 const { buildAccuracyCalibrationReport, recordAccuracyCalibration } = require('../../src/services/benchmark/judgeQualification');
 const { freezeJudgeConfig } = require('../../src/services/benchmark/judgeExecutionContract');
+const { buildJudgeQualificationContract } = require('../../src/services/benchmark/judgeQualificationContract');
 const { diagnosticInput, reportedJudgeConfig } = require('../../src/services/benchmark/judgeCalibrationDiagnostic');
 const { rethrowIfJudgeCancelled } = require('../../src/services/scoring/judgeCall');
 const {
@@ -259,6 +260,7 @@ router.post('/judge/calibrate-accuracy', withManagedWorkloadRoute('judge-accurac
         const summary = summarizeAccuracyCalibration(results, input.cases.length);
         const report = buildAccuracyCalibrationReport({ host: judgeHost, model: judgeModel, numCtx: num_ctx, summary, results, calibrationSet });
         report.judge_config = reportedJudgeConfig(judgeConfig);
+        report.qualification_contract = buildJudgeQualificationContract(judgeConfig);
         report.reference_total = calibrationSet.length;
         report.selected_case_ids = input.cases.map(item => item.id);
         report.diagnostic = input.diagnostic;

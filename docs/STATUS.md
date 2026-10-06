@@ -140,8 +140,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   `shared/benchmarkCategories.js`; the agent category scores background agent
   work (triage, review, diagnosis, watch reports, tool use) against planted
   findings. A leaderboard rank is authoritative only when every judge
-  behind it holds a recorded qualification for the row's scorer version;
-  otherwise it is provisional and says why. Ranked rows share one quality
+  behind it holds a recorded qualification for the row's exact artifact, runtime,
+  context, scoring settings, scorer version and current reference set; otherwise
+  it is provisional and says why. Old verdicts without a complete saved judge
+  contract remain provisional. Complete accuracy calibrations may qualify their
+  explicit settings; partial case selections remain diagnostic. Ranked rows share one quality
   cohort (judge, scorer version, generation settings) and compare only
   results on prompts as the catalog holds them today: adding a prompt keeps
   earlier results comparable, editing one takes only its results out, and

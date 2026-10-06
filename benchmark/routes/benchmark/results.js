@@ -11,6 +11,7 @@ const { judgeResult } = require('../../src/services/benchmark/judging');
 const { validateObjectId } = require('../../src/helpers/objectIdValidator');
 const { buildResultQualificationCard, judgeUsed } = require('../../src/services/benchmark/qualificationCard');
 const { assessResult } = require('../../src/services/benchmark/judgeQualification');
+const { freezeJudgeConfig } = require('../../src/services/benchmark/judgeExecutionContract');
 const BenchmarkResult = require('../../models/BenchmarkResult');
 const JudgeGroundTruth = require('../../models/JudgeGroundTruth');
 const { calculateCompositeScore } = require('../../src/services/scoring/compositeScorer');
@@ -624,10 +625,7 @@ router.get('/results/:id', async (req, res) => {
     }
 });
 
-/**
- * POST /api/benchmark/results/:id/rejudge
- * Re-run judging on a single result that has pending/failed scoring
- */
+// Re-run judging on a single result with pending/failed scoring.
 router.post('/results/:id/rejudge', async (req, res) => {
     try {
         if (!validateObjectId(req.params.id, res, 'Result ID')) return;
@@ -659,7 +657,10 @@ router.post('/results/:id/rejudge', async (req, res) => {
             kind: 'judge',
             batchId: existingResult.batch_id ? String(existingResult.batch_id) : null,
             hosts: [judgeConfig.host]
-        }, ({ signal }) => judgeResult(req.params.id, { ...judgeConfig, cancelSignal: signal }));
+        }, async ({ signal }) => {
+            const frozen = await freezeJudgeConfig(judgeConfig, { signal });
+            return judgeResult(req.params.id, { ...frozen, cancelSignal: signal });
+        });
 
         res.json({
             status: 'success',
@@ -674,10 +675,7 @@ router.post('/results/:id/rejudge', async (req, res) => {
     }
 });
 
-/**
- * DELETE /api/benchmark/results
- * Clear all results (requires confirmation)
- */
+// Clear all results (requires confirmation).
 router.delete('/results', async (req, res) => {
     try {
         if (req.body?.confirm !== 'DELETE_ALL') {

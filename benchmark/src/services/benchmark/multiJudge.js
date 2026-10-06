@@ -16,6 +16,8 @@
 
 const logger = require('../../../config/logger');
 const { scoreResponse } = require('../qualityScorer');
+const { resolveJudgeConfig } = require('../scoring/resolveJudgeConfig');
+const { buildJudgeQualificationContract, qualificationContractFingerprint } = require('./judgeQualificationContract');
 const {
     rethrowIfJudgeCancelled,
     throwIfJudgeCancelled
@@ -84,6 +86,7 @@ async function multiJudgeScore({
     tiebreakerJudge = null,
     _batchHardwareSnapshot = null,
     seedJudgeResult = null,
+    escalationPolicy = null,
     cancelSignal = null,
     signal = null
 }) {
@@ -102,6 +105,7 @@ async function multiJudgeScore({
             judge_model: seedJudgeResult.judge_model,
             judge_host: seedJudgeResult.judge_host,
             execution_contract: seedJudgeResult.execution_contract || null,
+            qualification_contract: seedJudgeResult.qualification_contract || null,
             quality_score: seedJudgeResult.quality_score,
             explanation: seedJudgeResult.explanation,
             scoring_time_ms: seedJudgeResult.scoring_time_ms || 0,
@@ -109,10 +113,14 @@ async function multiJudgeScore({
             success: !!seedJudgeResult.success
         });
 
-        const duplicateJudgeIndex = effectiveJudges.findIndex((judgeConfig) =>
-            judgeConfig.model === seedJudgeResult.judge_model
-            && judgeConfig.host === seedJudgeResult.judge_host
-        );
+        const seedFingerprint = qualificationContractFingerprint(seedJudgeResult.qualification_contract);
+        const duplicateJudgeIndex = effectiveJudges.findIndex(judgeConfig => {
+            const judgeFingerprint = qualificationContractFingerprint(buildJudgeQualificationContract(
+                resolveJudgeConfig(judgeConfig), { escalation: escalationPolicy }));
+            return judgeConfig.model === seedJudgeResult.judge_model
+                && judgeConfig.host === seedJudgeResult.judge_host
+                && seedFingerprint === judgeFingerprint;
+        });
         if (duplicateJudgeIndex >= 0) {
             effectiveJudges.splice(duplicateJudgeIndex, 1);
         }
@@ -122,7 +130,7 @@ async function multiJudgeScore({
     const judgePromises = effectiveJudges.map(async (judgeConfig, idx) => {
         const start = Date.now();
         const effectiveJudgeConfig = {
-            ...judgeConfig,
+            ...resolveJudgeConfig(judgeConfig),
             ...(sharedCancelSignal ? { cancelSignal: sharedCancelSignal } : {})
         };
         try {
@@ -139,6 +147,7 @@ async function multiJudgeScore({
                 judge_model: judgeConfig.model,
                 judge_host: judgeConfig.host,
                 execution_contract: judgeConfig.execution_contract || null,
+                qualification_contract: buildJudgeQualificationContract(effectiveJudgeConfig, { escalation: escalationPolicy }),
                 quality_score: scores.quality_score,
                 explanation: scores.explanation,
                 scoring_time_ms: Date.now() - start,
@@ -156,6 +165,7 @@ async function multiJudgeScore({
                 judge_model: judgeConfig.model,
                 judge_host: judgeConfig.host,
                 execution_contract: judgeConfig.execution_contract || null,
+                qualification_contract: buildJudgeQualificationContract(effectiveJudgeConfig, { escalation: escalationPolicy }),
                 quality_score: null,
                 explanation: `Judge failed: ${err.message}`,
                 scoring_time_ms: Date.now() - start,
@@ -204,7 +214,7 @@ async function multiJudgeScore({
     if (divergent && tiebreakerJudge) {
         const start = Date.now();
         const effectiveTiebreakerConfig = {
-            ...tiebreakerJudge,
+            ...resolveJudgeConfig(tiebreakerJudge),
             ...(sharedCancelSignal ? { cancelSignal: sharedCancelSignal } : {})
         };
         try {
@@ -227,6 +237,7 @@ async function multiJudgeScore({
                 judge_model: tiebreakerJudge.model,
                 judge_host: tiebreakerJudge.host,
                 execution_contract: tiebreakerJudge.execution_contract || null,
+                qualification_contract: buildJudgeQualificationContract(effectiveTiebreakerConfig, { escalation: escalationPolicy }),
                 quality_score: tbScores.quality_score,
                 explanation: tbScores.explanation,
                 scoring_time_ms: Date.now() - start,
@@ -247,6 +258,7 @@ async function multiJudgeScore({
                 judge_model: tiebreakerJudge.model,
                 judge_host: tiebreakerJudge.host,
                 execution_contract: tiebreakerJudge.execution_contract || null,
+                qualification_contract: buildJudgeQualificationContract(effectiveTiebreakerConfig, { escalation: escalationPolicy }),
                 quality_score: null,
                 explanation: `Tiebreaker failed: ${err.message}`,
                 scoring_time_ms: Date.now() - start,
