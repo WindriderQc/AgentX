@@ -23,6 +23,7 @@ class ControlTest(unittest.TestCase):
         self.state = tempfile.TemporaryDirectory()
         self.addCleanup(self.state.cleanup)
         for name, value in (("STATE", Path(self.state.name)), ("RECEIPTS", Path(self.state.name) / "requests"),
+                            ("LEGACY_RECEIPTS", Path(self.state.name) / "legacy"),
                             ("queued_tasks", lambda: TASKS), ("unit_active", lambda: False)):
             patcher = mock.patch.object(control, name, value)
             patcher.start()
@@ -67,6 +68,20 @@ class ControlTest(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertEqual((replay["replayed"], control.status(KEY)["run"]["phase"], unknown.exception.code),
                          (True, "unknown", "CODING_DISPATCH_OUTCOME_UNKNOWN"))
+
+    def test_guarded_unknown_receipt_is_preserved_and_cannot_launch_the_new_worker(self):
+        control.LEGACY_RECEIPTS.mkdir()
+        original = {"requestId": KEY, "pipelineId": "0001", "phase": "unknown", "expectedAttemptCount": 0}
+        path = control.LEGACY_RECEIPTS / f"{KEY}.json"
+        path.write_text(json.dumps(original))
+        with mock.patch.object(control.subprocess, "run") as run:
+            observed = control.status(KEY)["run"]
+            with self.assertRaises(control.ControlError) as retired:
+                control.launch("0001", KEY, 0)
+        self.assertEqual((observed["phase"], observed["retired"], observed["canRetry"]), ("unknown", True, False))
+        self.assertEqual(retired.exception.code, "CODING_DISPATCH_RETIRED_REQUEST")
+        self.assertEqual(json.loads(path.read_text()), original)
+        run.assert_not_called()
 
 
 if __name__ == "__main__":

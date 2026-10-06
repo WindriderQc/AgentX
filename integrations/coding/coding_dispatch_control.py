@@ -17,7 +17,8 @@ from urllib.request import urlopen
 HERE = Path(__file__).resolve().parent
 CORE = os.environ.get("AGENTX_CORE_URL", "http://127.0.0.1:3180").rstrip("/")
 STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "agentx"
-RECEIPTS = STATE / "coding-dispatch-requests"
+RECEIPTS = STATE / "coding-run-requests"
+LEGACY_RECEIPTS = STATE / "coding-dispatch-requests"
 # Model, GitHub token and other settings of the run; they stay outside Git.
 ENV_FILE = Path(os.environ.get("AGENTX_CODING_ENV_FILE", Path.home() / ".config/agentx/coding.env"))
 UNIT = "agentx-coding-run"
@@ -70,7 +71,10 @@ def status(key: str | None = None) -> dict:
         run["phase"] = "running" if busy else "unknown"
         run["message"] = "Read the task and host unit to reconcile this launch; it will not be started again."
     if key and not run:
-        run = {"requestId": key, "phase": "not_received", "message": "No receipt for this request."}
+        legacy = LEGACY_RECEIPTS / f"{key}.json"
+        run = ({**json.loads(legacy.read_text()), "retired": True, "canRetry": False, "canCancel": False,
+                "message": "This guarded request is retained for observation; the simple worker cannot resume it."}
+               if legacy.exists() else {"requestId": key, "phase": "not_received", "message": "No receipt for this request."})
     return {
         "contractVersion": 2, "available": True, "busy": busy,
         "observedAt": datetime.now(timezone.utc).isoformat(),
@@ -92,6 +96,8 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int) -> dict:
             if previous["pipelineId"] != pipeline_id:
                 raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "This request id belongs to a different selection.")
             return {"accepted": True, "replayed": True, "pipelineId": pipeline_id, "run": previous}
+        if (LEGACY_RECEIPTS / f"{key}.json").exists():
+            raise ControlError("CODING_DISPATCH_RETIRED_REQUEST", "This request belongs to the retired guarded worker; inspect its preserved result.")
         if unit_active():
             raise ControlError("CODING_DISPATCH_BUSY", "The coding worker is already running a task.")
         latest = RECEIPTS / "latest"

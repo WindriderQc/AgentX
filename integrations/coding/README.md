@@ -62,6 +62,9 @@ tasks; `launch` starts `coding_run.py` for one of them as the transient user
 unit `agentx-coding-run`. One task runs at a time. A repeated request id returns
 its first receipt instead of starting a second run. A lost launch reply stays
 unknown and blocks another launch until the operator reconciles the host unit.
+New requests use `~/.local/state/agentx/coding-run-requests`. Guarded receipts
+remain in `coding-dispatch-requests`, keep their original outcomes and cannot
+launch the replacement worker with the same request id.
 
 ## DSH wrappers
 
