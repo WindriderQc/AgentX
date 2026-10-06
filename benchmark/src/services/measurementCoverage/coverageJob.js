@@ -40,7 +40,11 @@ async function activeProfiles(fetchImpl = fetch) {
 const cellKey = cell => `${hostKey(cell.hostUrl)}::${modelKey(cell.model)}`;
 const progressOf = cell => `${cell.profile.state}:${cell.catalog.covered}`;
 
-/** Cells that still need something, the ones without a current profile first, then the least covered. */
+/**
+ * Cells that still need something: the ones a supervisor asked for first (by
+ * priority, then age), then those without a current profile, then the least
+ * covered.
+ */
 function orderCells(cells, state, now) {
   return cells
     .filter(cell => cell.next && cell.hostId)
@@ -50,9 +54,24 @@ function orderCells(cells, state, now) {
       if (record.refusedAt && now - Date.parse(record.refusedAt) < REFUSAL_COOLDOWN_MS) return false;
       return !(record.failures >= MAX_FAILURES) || now - Date.parse(record.lastAttemptAt) > RETRY_AFTER_MS;
     })
-    .sort((a, b) => (a.next === b.next ? 0 : a.next === 'profile' ? -1 : 1)
+    .sort((a, b) => requestRank(state, b) - requestRank(state, a)
+      || requestAge(state, a) - requestAge(state, b)
+      || (a.next === b.next ? 0 : a.next === 'profile' ? -1 : 1)
       || a.catalog.covered / (a.catalog.total || 1) - b.catalog.covered / (b.catalog.total || 1)
       || cellKey(a).localeCompare(cellKey(b)));
+}
+
+const requestRank = (state, cell) => state.requests?.[cellKey(cell)]?.priority || 0;
+const requestAge = (state, cell) => Date.parse(state.requests?.[cellKey(cell)]?.at || 0) || 0;
+
+/** A request is served once its pair is complete or left the scope. */
+function clearServedRequests(state, cells) {
+  let cleared = false;
+  for (const key of Object.keys(state.requests || {})) {
+    const cell = cells.find(item => cellKey(item) === key);
+    if (!cell || !cell.next) { delete state.requests[key]; cleared = true; }
+  }
+  return cleared;
 }
 
 /** Compare the last bite with the matrix: did its cell move forward? */
@@ -96,7 +115,7 @@ function createCoverageJob(deps = {}) {
       if (!idle.idle) return lastCheck;
 
       const [coverage, state] = await Promise.all([build(), store.getState()]);
-      const settled = settle(state, coverage.cells, now());
+      const settled = [settle(state, coverage.cells, now()), clearServedRequests(state, coverage.cells)].some(Boolean);
       const cell = orderCells(coverage.cells, state, now())[0];
       if (!cell) {
         if (settled) await store.saveState(state);

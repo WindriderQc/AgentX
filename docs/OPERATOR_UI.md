@@ -175,6 +175,9 @@ measurements end three times without progress is left alone for a day.
 Conversations held through an external agent harness cannot be told apart from
 that harness's scheduled jobs and do not count as activity: choose quiet hours
 accordingly. A measurement in progress still yields to a household turn.
+**requested first by** under a pair's **Next** means an operator or a lead
+agent asked for it to be measured before the others; hover it for the reason.
+It still waits for the quiet hours.
 
 | Operation label | Meaning |
 |---|---|

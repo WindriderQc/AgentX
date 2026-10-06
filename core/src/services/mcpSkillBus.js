@@ -11,6 +11,7 @@ const { getRagServiceClient } = require('./ragServiceClient');
 const { createTaskInMongo } = require('./pipelineTaskService');
 const { createVaultInbox } = require('./vaultInboxService');
 const { MEMORY_TOOLS, MEMORY_TOOL_HANDLERS } = require('./mcpMemoryTools');
+const { COVERAGE_TOOLS, COVERAGE_TOOL_HANDLERS } = require('./mcpCoverageTools');
 
 const PROTOCOL_VERSION = '2025-06-18';
 const SERVER_INFO = { name: 'agentx-core-skill-bus', title: 'AgentX Core Skill Bus', version: '0.1.0' };
@@ -110,6 +111,7 @@ const TOOLS = [
     annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
   },
   ...MEMORY_TOOLS,
+  ...COVERAGE_TOOLS,
 ];
 
 function jsonRpcResult(id, result) {
@@ -326,6 +328,7 @@ const TOOL_HANDLERS = {
   create_todo: createTodoTool,
   write_vault_note: writeVaultNoteTool,
   ...MEMORY_TOOL_HANDLERS,
+  ...COVERAGE_TOOL_HANDLERS,
 };
 
 async function callTool(params, deps = {}) {
