@@ -59,3 +59,37 @@ test('a named agent keeps its native auth reference but cannot retain personal f
   delete profile.agents.entries.cloudx;
   assert.throws(() => invocationConfig(profile, selected), /selected agent/);
 });
+
+test('native execution stages a pinned fixture and verifies the resulting edit', async () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { PassThrough } = require('node:stream'), { EventEmitter } = require('node:events');
+  const { execute } = require('../executors/openclaw-executor');
+  const task = require('../../../benchmark/src/services/qualification/repoTaskFixtures').loadRepoTasks().find(item => item.id === 'sum-sign');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentx-native-executor-')), previous = process.cwd();
+  const oldVersion = process.env.OPENCLAW_RUNTIME_VERSION;
+  try {
+    process.chdir(dir); process.env.OPENCLAW_RUNTIME_VERSION = 'fixture-runtime';
+    fs.writeFileSync('profile.json', JSON.stringify({ models: { providers: { ollama: { models: [{ id: 'qwen' }] } } }, agents: { defaults: {} } }));
+    const invocation = { ...input, target: { ...input.target, harness: { version: 'fixture-runtime' } },
+      input: { prompt: task.instructions }, parameters: { ...input.parameters, timeoutMs: 30000 },
+      envelope: { ...input.envelope, selection: { model: { constraints: [`repo-fixture:${task.id}:${task.fixtureFingerprint}`] } } } };
+    const spawn = (_command, argv) => {
+      const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough();
+      child.stdin.on('finish', () => {
+        const work = argv[argv.indexOf('--cwd') + 1];
+        assert.equal(fs.existsSync(path.join(work, 'test/hidden.js')), false);
+        assert.match(fs.readFileSync(path.join(work, 'src/sum.js'), 'utf8'), /a - b/);
+        fs.writeFileSync(path.join(work, 'src/sum.js'), 'module.exports = (a, b) => a + b;\n');
+        child.stdout.write(JSON.stringify(result())); child.stdout.end(); child.emit('close', 0);
+      });
+      return child;
+    };
+    const receipt = await execute(invocation, { config: path.join(dir, 'profile.json'), openclaw: 'synthetic' }, spawn);
+    assert.equal(receipt.contractSatisfied, true); assert.equal(receipt.evidence.tests[0].status, 'passed');
+    assert.equal(receipt.evidence.artifacts[0].digest, task.fixtureFingerprint); assert.equal(receipt.usage.toolCalls, 2);
+  } finally {
+    process.chdir(previous);
+    if (oldVersion === undefined) delete process.env.OPENCLAW_RUNTIME_VERSION; else process.env.OPENCLAW_RUNTIME_VERSION = oldVersion;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
