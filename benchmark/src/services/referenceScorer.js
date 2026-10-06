@@ -14,6 +14,7 @@ const { judgeRequestIdentity } = require('./scoring/judgeRequestIdentity');
 const { GATE_BOUND, assessGates, boundByGates, failedGates, gatesAnswered } = require('./scoring/categoryGates');
 const { prepareJudgeResponse, assertJudgeInputUnmodified, assertJudgeOutputComplete, beginJudgeCallEvidence, finishJudgeCallEvidence, judgeCallEvidenceFields } = require('./scoring/judgeInput');
 const {
+    fetchWhenJudgeHostFree,
     openJudgeCall,
     rethrowIfJudgeCancelled,
     throwIfJudgeCancelled
@@ -126,7 +127,7 @@ Give one brief sentence of evidence for this criterion, then end with a separate
             signal: abortContext.signal
         });
 
-        const res = await fetch(url, fetchOptions);
+        const res = await fetchWhenJudgeHostFree(() => fetch(url, fetchOptions), judgeConfig);
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
@@ -197,7 +198,7 @@ Give one brief sentence identifying a specific contradiction, or explaining why 
             signal: abortContext.signal
         });
 
-        const res = await fetch(url, fetchOptions);
+        const res = await fetchWhenJudgeHostFree(() => fetch(url, fetchOptions), judgeConfig);
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
@@ -269,7 +270,7 @@ Give one brief sentence identifying any missing required behavior, or stating th
             signal: abortContext.signal
         });
 
-        const res = await fetch(url, fetchOptions);
+        const res = await fetchWhenJudgeHostFree(() => fetch(url, fetchOptions), judgeConfig);
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
