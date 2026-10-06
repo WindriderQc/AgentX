@@ -186,8 +186,23 @@ async function assertWorkloadAdmission({ id, generation, principal, workloadId, 
   };
 }
 
+// True when this live workload holds the host as shared: other callers keep
+// using the models resident there while the workload runs.
+async function workloadSharesHost({ id, generation, host } = {}) {
+  id = clean(id);
+  generation = clean(generation);
+  host = canonicalHost(host);
+  if (!id || !generation || !host) return false;
+  const state = await RuntimeCoordination.findOne({
+    _id: 'runtime',
+    workloads: { $elemMatch: { admissionId: id, generation, sharedHosts: host, expiresAt: { $gt: new Date() } } }
+  }).select('_id').lean();
+  return Boolean(state);
+}
+
 module.exports = {
   acquireWorkload,
   isWorkloadRecoveryRequired,
-  assertWorkloadAdmission
+  assertWorkloadAdmission,
+  workloadSharesHost
 };

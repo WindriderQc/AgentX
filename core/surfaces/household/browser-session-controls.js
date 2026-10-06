@@ -13,7 +13,7 @@ const { normalizeVoiceTimings } = require('../../src/services/voice/timeline');
 
 function createBrowserSessionControls({
   personas, conversations, envelope, cleanText, fail, activePersonaTurns,
-  validClientTurnId, nestorClient
+  validClientTurnId, nestorClient, memberWork = null
 }) {
   function registerBrowserSessionControls(prefix, packId, scopeId, router = personas, consumer = null) {
     const sessionScope = consumer === 'llmx' ? llmx.sessionScope(scopeId === 'family' ? 'family' : 'personal')
@@ -98,12 +98,14 @@ function createBrowserSessionControls({
       if (!validClientTurnId(clientTurnId)) return fail(res, 400, 'A valid turnId is required', 'VOICE_INTERRUPTION_INVALID');
       const entry = activePersonaTurns.get(req.params.sessionId);
       let timer;
+      // A stop reaches the team members still working in the background as well.
+      if (req.body?.stop === true) memberWork?.cancel(req.params.sessionId);
       try {
         if (entry) {
           if (entry.clientTurnId !== clientTurnId) {
             return fail(res, 409, 'This is not the current browser turn', 'VOICE_INTERRUPTION_MISMATCH');
           }
-          let wrongScope = false;
+          let wrongScope = false, detached = false;
           const settlement = (async () => {
             // Admission owns the turn synchronously, before Mongo resolves its
             // session. A correlated interruption waits for that validation;
@@ -113,6 +115,8 @@ function createBrowserSessionControls({
                 || (consumer === 'llmx' && (!entry.llmx || snapshot.modeId !== sessionScope.modeId))) {
               wrongScope = true; return true;
             }
+            // Speaking over a team member does not cancel it; only an explicit stop does.
+            if (req.body?.stop !== true && entry.detach?.()) { detached = true; return true; }
             entry.interrupted = true;
             entry.abort.abort();
             await entry.finished;
@@ -123,6 +127,7 @@ function createBrowserSessionControls({
           })]);
           if (!settled) return envelope(res, { interrupted: false, pending: true, turnId: clientTurnId }, 202);
           if (wrongScope) return fail(res, 404, 'Conversation not found in this space', 'VOICE_PERSONA_SESSION_NOT_FOUND');
+          if (detached) return envelope(res, { interrupted: false, detached: true, turnId: clientTurnId });
           if (entry.error && !entry.executionSettled) throw entry.error;
         }
         if (consumer === 'llmx' && !await conversations.getSession({ sessionId: cleanText(req.params.sessionId, 64),
