@@ -23,6 +23,10 @@ from typing import Any
 from urllib.parse import urlencode, urljoin, urlparse
 from urllib.request import Request, urlopen
 
+try:
+    from integrations.coding import coding_dispatch_budget as dispatch_budget
+except ModuleNotFoundError:
+    import coding_dispatch_budget as dispatch_budget
 
 CONFIG_SCHEMA = "agentx.coding-dispatcher-config/v1"
 AUTOMATION_SCHEMA = "agentx.pipeline-automation/v1"
@@ -558,6 +562,8 @@ class ClawdXGuardedAdapter(WorkerAdapter):
             str(self.verification["command"]),
             "--independent-verification-timeout",
             str(self.verification["timeoutSeconds"]),
+            "--timeout",
+            str(dispatch_budget.worker_timeout(self.execution, automation)),
             "--automated-lease",
             "--lease-duration-ms",
             str(automation["budgets"]["maxDurationMs"]),
@@ -627,10 +633,12 @@ class ClawdXGuardedAdapter(WorkerAdapter):
         return command
 
     def run(self, task: dict[str, Any], automation: dict[str, Any]) -> DispatchResult:
-        command = self.command(task, automation)
-        timeout = int(automation["budgets"]["maxDurationMs"] / 1000) + 180
-        completed = subprocess.run(command, shell=False, timeout=timeout, check=False)
-        return DispatchResult(adapter=self.name, exit_code=completed.returncode)
+        try:
+            timeout = dispatch_budget.dispatcher_timeout(self.execution, self.verification, automation)
+            exit_code = dispatch_budget.run_guard(self.command(task, automation), timeout)
+            return DispatchResult(adapter=self.name, exit_code=exit_code)
+        except ValueError as exc:
+            raise DispatcherError(str(exc)) from exc
 
 
 def build_adapter(
@@ -783,16 +791,10 @@ def main() -> int:
             "taskId": selected_task_id,
             "adapter": result.adapter,
             "exitCode": result.exit_code,
-            "stoppedAt": (
-                "review"
-                if result.exit_code == 0
-                else "deferred"
-                if result.exit_code == 4
-                else "blocked_or_failed"
-            ),
+            "stoppedAt": dispatch_budget.stopped_at(result.exit_code),
         }
         print(json.dumps(report, indent=2, sort_keys=True))
-        return 0 if result.exit_code in {0, 4} else 3
+        return 0 if result.exit_code in {0, dispatch_budget.DEFERRED_EXIT} else result.exit_code if result.exit_code == dispatch_budget.UNKNOWN_EXIT else 3
     except DispatcherError as exc:
         print(json.dumps({"schema": REPORT_SCHEMA, "ok": False, "error": str(exc)}, sort_keys=True))
         return 2

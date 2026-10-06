@@ -90,7 +90,7 @@ class HostControl:
                     ("AGENTX_CODING_CONFIG", "AGENTX_INSTANCE_ROOT", "AGENTX_CODING_CA_FILE", "AGENTX_CODING_SOURCE_REPO")
                     if os.environ.get(key)]
         subprocess.run(["/usr/bin/systemd-run", "--user", "--collect", "--quiet", "--unit=" + UNIT,
-                        "--property=Type=exec", "--property=RuntimeMaxSec=45m", *settings, "/usr/bin/python3",
+                        "--property=Type=exec", f"--property=RuntimeMaxSec={run.get('envelopeSeconds', 2700) + 60}", *settings, "/usr/bin/python3",
                         str(self.root / "integrations/coding/coding_dispatch_control.py"), "execute", run["requestId"]],
                        check=True, capture_output=True, text=True, timeout=10)
 
@@ -149,8 +149,18 @@ class HostControl:
         result = dict(run)
         task = next((task for task in tasks if task.get("pipelineId") == run["pipelineId"]), None)
         result["task"] = {key: task.get(key) for key in ("pipelineId", "status", "automationAttemptCount")} if task else None
+        if run["phase"] == "unknown" and not busy and task and not task.get("automationLease"):
+            completed = next((row for row in task.get("automationAttempts", [])
+                              if row.get("dispatchRequestId") == run["requestId"]
+                              and row.get("attempt") == run["expectedAttemptCount"] + 1
+                              and row.get("completedAt") and row.get("finalState") == "review"
+                              and row.get("evidence", {}).get("workerReceiptFingerprint")
+                              and row.get("evidence", {}).get("verification", {}).get("status") == "passed"), None)
+            if completed:
+                result.update(phase="finished", message="Core records the verified completion of this exact request and attempt.")
         if run["phase"] in {"accepted", "running"} and unit.get("ActiveState") not in ACTIVE and not busy:
-            result.update(phase="stopped", message="The host run stopped. Read the task result; no automatic retry was made.")
+            result.update(phase="unknown" if run.get("startedAt") else "stopped",
+                          message="The host run stopped. Read the task result; remote completion is unproven and no automatic retry was made.")
         return result
 
     def status(self, key=None):
@@ -162,9 +172,14 @@ class HostControl:
         host_busy = unit.get("ActiveState") in ACTIVE or self.work_busy()
         busy = host_busy
         latest = self._latest()
+        if latest:
+            recovered = self._observe(latest, tasks, unit, host_busy)
+            if recovered["phase"] != latest["phase"]:
+                latest = recovered
+                self._save(latest)
         # A transport failure may have occurred after systemd accepted the unit.
         # Keep that observation uncertain rather than inventing a failed task.
-        busy = busy or bool(latest and latest["phase"] in {"submitting", "uncertain"})
+        busy = busy or bool(latest and latest["phase"] in {"submitting", "uncertain", "unknown"})
         run = self._read(key) if key else latest
         observed = self._observe(run, tasks, unit, busy)
         if observed:
@@ -211,6 +226,10 @@ class HostControl:
                 run.update(phase="rejected", code=code, message="The selected task cannot start. Refresh the host admission and task state.")
                 self._save(run)
                 return self._reply(run)
+            task = next(task for task in self.read_tasks() if task.get("pipelineId") == pipeline_id)
+            adapter = admission.build_adapter(config=self.config, automation=admission.normalize_automation(task["automation"]))
+            run["envelopeSeconds"] = admission.dispatch_budget.dispatcher_timeout(
+                adapter.execution, adapter.verification, task["automation"])
             self._save(run)
             latest = self.receipts / "latest"
             latest.with_suffix(".tmp").write_text(key)
@@ -254,8 +273,11 @@ class HostControl:
         except Exception:
             exit_code = -1
         with self.lock_factory():
-            run.update(phase="finished", exitCode=exit_code, finishedAt=admission.isoformat(admission.utc_now()),
-                       message="The host dispatcher finished. Read the task status and dossier for its outcome.")
+            unknown = exit_code == admission.dispatch_budget.UNKNOWN_EXIT or exit_code < 0
+            run.update(phase="unknown" if unknown else "finished", exitCode=exit_code,
+                       finishedAt=admission.isoformat(admission.utc_now()),
+                       message="Execution completion is unproven. Recover this request and task before another launch."
+                       if unknown else "The host dispatcher finished. Read the task status and dossier for its outcome.")
             self._save(run)
         return exit_code
 

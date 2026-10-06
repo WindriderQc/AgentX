@@ -269,7 +269,13 @@ def run_dispatch(
             feedback_path,
             repair_context,
         )
-    except (PipelineApiError, subprocess.TimeoutExpired) as exc:
+    except (subprocess.TimeoutExpired, dispatch_openclaw.WorkerCompletionUnknown) as exc:
+        # SSH/verifier transport termination is not proof of remote completion.
+        # Do not clear the task lease or permit a second attempt on that basis.
+        print("guarded_dispatch=unknown")
+        print(f"reason=post_claim_timeout_completion_unproven:{exc}")
+        return 5
+    except PipelineApiError as exc:
         failure = f"post_claim_dispatch_error:{type(exc).__name__}:{exc}"
         block_error: str | None = None
         blocked_task: dict[str, Any] | None = None
