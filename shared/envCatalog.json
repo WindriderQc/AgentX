@@ -72,16 +72,6 @@
       "secret": false,
       "description": "Core default output reserve when a caller supplies none. Positive integer, additionally bounded to one quarter of the resolved context window with a 256-token minimum. Explicit caller budgets take priority. Invalid values warn in the contract and use 4096."
     },
-    "AGENTX_EXTERNAL_CONSUMER_TOKEN": {
-      "services": [
-        "core"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "security",
-      "secret": true,
-      "description": "Token required from the VoiX voice-memory consumer. Unset: that consumer answers 503 not configured."
-    },
     "AGENTX_HOST_HOME_LABEL": {
       "services": [
         "core"

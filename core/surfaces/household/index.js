@@ -26,7 +26,6 @@ const { createVoiceWarmup } = require('./voice-warmup');
 const { registerSecretaryMcp } = require('./secretary-mcp');
 const { secretaryMailControl } = require('./secretary-mail-routes');
 const { householdActivation } = require('./readiness');
-const { voiceContract } = require('./voice-contract');
 const { avatarModuleUrl, createScriptRelay } = require('./asset-relay');
 const {
   detectSpeechLanguage,
@@ -37,10 +36,7 @@ const deviceAcceptance = require('./device-acceptance');
 const nestorKnowledge = require('./nestor-knowledge');
 const soundLibrary = require('./sound-library');
 const { openClawCrew } = require('./panel-status');
-const {
-  fetchWithTimeout, publicVoixConfig, publicVoixConversation, publicVoixEvent, publicVoixMediaClip,
-  publicVoixMediaVault, publicVoixMetrics, publicVoixSession
-} = require('./voix-client');
+const { fetchWithTimeout } = require('./voix-client');
 const { registerVoixRoutes } = require('./voix-routes');
 const { registerNativeConsumers } = require('./native-consumers');
 const { createPersonaTurnHandler } = require('./persona-turn');
@@ -59,8 +55,7 @@ const {
   childBoundaryReply
 } = require('./persona-prompt');
 const {
-  VOIX_MEMORY_SCHEMA_VERSION, VOIX_MEMORY_SCOPE_ID, explicitMemoryStatement, forgetMemoryStatement, normalizeVoixMemoryTurn,
-  inferredMemoryCandidate, normalizeVoixTranscriptionMultipart
+  explicitMemoryStatement, forgetMemoryStatement, inferredMemoryCandidate, normalizeVoixTranscriptionMultipart
 } = require('./voice-memory-turns');
 const {
   createModels, publicSession, publicAudit, sessionHistoryMessages, loadSessionAuditRows
@@ -71,7 +66,6 @@ const {
 const { registerPanelRoutes } = require('./panel-routes');
 const { registerSecretaryRoutes } = require('./secretary-routes');
 const { registerDeviceAcceptanceRoutes } = require('./device-routes');
-const { createVoixMemoryAuditWorker } = require('./voice-memory-audit');
 const { createBrowserSessionControls } = require('./browser-session-controls');
 
 const CORE_SELF_URL = () => String(process.env.CORE_INTERNAL_URL || 'http://127.0.0.1:3080').replace(/\/+$/, '');
@@ -86,9 +80,6 @@ const EXTENSION_CAPABILITIES = Object.freeze([
   'voice-personas',
   'llmx-conversation',
   'voice-transport',
-  'voice-contract',
-  'voice-memory',
-  'voice-improvement-media-vault',
   'ecosystem-crew',
   'kids-room',
   'kids-sound-library',
@@ -126,15 +117,6 @@ function bearerToken(req) {
   const header = String(req.get?.('authorization') || req.headers?.authorization || '');
   const match = header.match(/^Bearer\s+(.+)$/i);
   return match ? match[1].trim() : '';
-}
-
-function requireVoixMemoryConsumer(req, res, next) {
-  const expected = String(process.env.AGENTX_EXTERNAL_CONSUMER_TOKEN || '').trim();
-  if (!expected) return fail(res, 503, 'Voice memory consumer authentication is not configured', 'VOIX_MEMORY_AUTH_UNCONFIGURED');
-  if (!secureTokenEqual(bearerToken(req), expected)) {
-    return fail(res, 401, 'Voice memory consumer token is invalid', 'VOIX_MEMORY_AUTH_INVALID');
-  }
-  return next();
 }
 
 function cleanScope(value, fallback = 'default') {
@@ -225,10 +207,6 @@ function register(api) {
     loadTurns: session => loadSessionAuditRows(conversations, session, { historyTurns: 12 }).then(rows => rows.slice().reverse().map(publicAudit)) });
 
 
-  const { drainVoixMemoryAudits } = createVoixMemoryAuditWorker({
-    conversations, personalNotes, models, cleanText, logger
-  });
-
   for (const name of ['browser-conversation', 'speech-language', 'playback-hold', 'voice-capture-worklet']) {
     app.get(`/assets/household/${name}.js`, (_req, res) => res.sendFile(path.join(__dirname, '../../public/js/voice', `${name}.js`)));
   }
@@ -236,16 +214,12 @@ function register(api) {
   app.get('/dad/nestor', (_req, res) => res.redirect(302, '/voice'));
   app.get([
     '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/family', '/voice-personas/debug', '/kids', '/kids/sounds', '/lecture', '/lecture/parents', '/lecture/parents.html',
-    '/voice', '/voice/native', '/voice.html', '/voix', '/voice-personas', '/voice-personas.html', '/device-check'
+    '/voice', '/voice.html', '/voix', '/voice-personas', '/voice-personas.html', '/device-check'
   ], require('../../src/ui/productShell').householdPage(app, path.join(publicRoot, 'index.html')));
   app.get('/api/household/avatar/llmx-face.js', createScriptRelay({ resolveUrl: avatarModuleUrl, fetchWithTimeout,
     unavailable: (res, error) => fail(res, error.status || 503, error.message, error.code || 'AVATAR_UNAVAILABLE') }));
 
-  registerVoixRoutes(app, {
-    express, logger, models, conversations, personalNotes, runtimeServices, sounds, standardJsonParser, ensureCatalog, drainVoixMemoryAudits,
-    envelope, fail, cleanText, assessSafety, detectMemoryRequest, normalizeVoixMemoryTurn, normalizeVoixTranscriptionMultipart, requireVoixMemoryConsumer,
-    MEMORY_BLOCK_MAX_CHARS, MEMORY_RECALL_LIMIT, VOIX_MEMORY_SCHEMA_VERSION, VOIX_MEMORY_SCOPE_ID
-  });
+  registerVoixRoutes(app, { express, standardJsonParser, envelope, fail, cleanText, normalizeVoixTranscriptionMultipart });
 
   const personas = express.Router();
   personas.use(standardJsonParser);
@@ -442,8 +416,7 @@ function register(api) {
   registerNativeConsumers(app, {
     express, standardJsonParser, conversations, conversationEnv, activePersonaTurns,
     createPersonaSession, createNativeFamilySession, handlePersonaTurn, registerBrowserSessionControls, openingPayload,
-    envelope, fail, cleanText, requireVoixMemoryConsumer,
-    VOIX_FAMILY_PACK_ID, VOIX_FAMILY_MODE_ID, VOIX_FAMILY_SCOPE_ID
+    envelope, fail, cleanText
   });
 
   personas.get('/audit/recent', async (req, res) => {
@@ -589,12 +562,10 @@ module.exports = {
   normalizeSpeechLanguage,
   speechProfile,
   systemPromptFor,
-  voiceContract,
   detectMemoryRequest,
   explicitMemoryStatement,
   forgetMemoryStatement,
   inferredMemoryCandidate,
-  normalizeVoixMemoryTurn,
   packIdsSharingMemory,
   memoryBlock,
   HOUSEHOLD_CONSUMER_CONTRACT,
@@ -609,13 +580,6 @@ module.exports = {
   deviceAcceptance,
   publicAudit,
   publicSession,
-  publicVoixEvent,
-  publicVoixConfig,
-  publicVoixConversation,
-  publicVoixMediaClip,
-  publicVoixMediaVault,
-  publicVoixMetrics,
-  publicVoixSession,
   publicTask,
   sessionHistoryMessages,
   sortedPersonalTasks
