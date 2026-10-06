@@ -37,7 +37,7 @@ async function resolveScope(deps = {}) {
     if (!cells.has(key)) {
       cells.set(key, {
         hostUrl: host.url, hostName: host.name || host.id || host.url, residency: host.residency || 'gpu',
-        model: name, pinned: false, tasks: []
+        model: name, pinned: false, pinContext: 0, tasks: []
       });
     }
     return cells.get(key);
@@ -46,7 +46,10 @@ async function resolveScope(deps = {}) {
   for (const preference of preferences || []) {
     for (const pin of preference.pinnedModels || []) {
       const entry = cell(preference.hostUrl || preference.host, typeof pin === 'string' ? pin : pin?.model);
-      if (entry) entry.pinned = true;
+      if (entry) {
+        entry.pinned = true;
+        entry.pinContext = Number(pin?.contextSize) > 0 ? Number(pin.contextSize) : 0;
+      }
     }
   }
   for (const [task, route] of Object.entries(routing?.taskModels || {})) {

@@ -50,6 +50,15 @@ function householdTurnActive(now = Date.now()) {
   return state.activeTurns > 0 || now - state.lastTurnEndedAt < TURN_GRACE_MS;
 }
 
+// How long the household has been quiet, for work that waits for a calm
+// moment before it starts (Benchmark's coverage job). A process that has seen
+// no turn yet counts as quiet since it started.
+const startedAt = Date.now();
+function householdIdle(now = Date.now()) {
+  const since = state.activeTurns > 0 ? now : state.lastTurnEndedAt || startedAt;
+  return { activeTurns: state.activeTurns, lastTurnEndedAt: state.lastTurnEndedAt || null, idleMs: Math.max(0, now - since) };
+}
+
 function noteBusy(now = Date.now()) {
   state.lastBusyAt = now;
 }
@@ -131,6 +140,7 @@ module.exports = {
   TURN_GRACE_MS,
   beginHouseholdTurn,
   householdTurnActive,
+  householdIdle,
   noteBusy,
   noteWaiting,
   onWaiting,

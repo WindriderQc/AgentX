@@ -53,7 +53,8 @@
   function render(target, data) {
     var summary = data.summary;
     if (!data.cells.length) {
-      target.innerHTML = '<p class="mp-coverage-empty">No model is pinned or routed on a known host yet.</p>';
+      target.innerHTML = '<p class="mp-coverage-empty">No model is pinned or routed on a known host yet.</p>' + jobPanel(data.job);
+      bindSettings(target);
       return;
     }
     target.innerHTML =
@@ -61,7 +62,59 @@
       summary.profilesCurrent + ' of ' + summary.cells + ' profiles current · ' + summary.complete + ' of ' + summary.cells +
       ' host and model pairs complete <small>scorer ' + escapeHtml(data.scorerVersion) + '</small></p>' +
       '<table class="mp-coverage-table"><thead><tr><th>Host</th><th>Model</th><th>Profile</th><th>Catalog</th><th>Next</th></tr></thead>' +
-      '<tbody>' + data.cells.map(row).join('') + '</tbody></table>';
+      '<tbody>' + data.cells.map(row).join('') + '</tbody></table>' + jobPanel(data.job);
+    bindSettings(target);
+  }
+
+  function bindSettings(target) {
+    var form = target.querySelector('.mp-coverage-settings');
+    if (form) form.addEventListener('submit', function (event) { event.preventDefault(); save(form); });
+  }
+
+  function lastLine(job) {
+    var last = job.last;
+    if (!last) return 'No measurement started yet.';
+    var what = (last.kind === 'profile' ? 'Profile' : (last.prompts || '') + ' prompts') + ' for ' + last.model + ' on ' + last.hostName;
+    var outcome = { advanced: 'done', no_progress: 'ended without progress', not_started: 'not started: ' + (last.error || '') }[last.outcome] || 'started';
+    return 'Last: ' + what + ', ' + new Date(last.at).toLocaleString() + ', ' + outcome + '.';
+  }
+
+  function jobPanel(job) {
+    if (!job) return '';
+    var s = job.settings;
+    var check = job.lastCheck;
+    var state = !s.enabled ? 'Off' : check && check.idle ? 'Measuring when a pair needs it'
+      : check ? 'Waiting: ' + check.reasons.join('; ') : 'On, first check within a minute';
+    return '<form class="mp-coverage-settings">' +
+      '<p class="mp-coverage-job"><strong>Automatic measurement</strong> ' + escapeHtml(state) + '. ' + escapeHtml(lastLine(job)) + '</p>' +
+      '<label><input type="checkbox" name="enabled"' + (s.enabled ? ' checked' : '') + '> Measure in quiet hours</label>' +
+      '<label>From <input type="time" name="quietStart" required value="' + escapeHtml(s.quietStart) + '"></label>' +
+      '<label>to <input type="time" name="quietEnd" required value="' + escapeHtml(s.quietEnd) + '"></label>' +
+      '<label>Time zone <input name="timeZone" required size="18" value="' + escapeHtml(s.timeZone) + '"></label>' +
+      '<label>Household quiet for <input type="number" name="idleMinutes" min="0" max="240" required value="' + s.idleMinutes + '"> min</label>' +
+      '<label>Prompts per measurement <input type="number" name="bitePrompts" min="1" max="50" required value="' + s.bitePrompts + '"></label>' +
+      '<button type="submit">Save</button><span class="mp-coverage-save" role="status" aria-live="polite"></span></form>';
+  }
+
+  async function save(form) {
+    var status = form.querySelector('.mp-coverage-save');
+    status.textContent = 'Saving…';
+    try {
+      var response = await fetch('/api/benchmark/coverage/settings', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: form.elements.enabled.checked,
+          quietStart: form.elements.quietStart.value, quietEnd: form.elements.quietEnd.value,
+          timeZone: form.elements.timeZone.value.trim(),
+          idleMinutes: Number(form.elements.idleMinutes.value), bitePrompts: Number(form.elements.bitePrompts.value)
+        })
+      });
+      var body = await response.json().catch(function () { return {}; });
+      if (!response.ok) throw new Error(body.message || 'Request failed (' + response.status + ')');
+      await load();
+    } catch (error) {
+      status.textContent = error.message;
+    }
   }
 
   async function load() {
