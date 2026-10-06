@@ -112,11 +112,13 @@ async function persistConversation(params) {
             });
         }
         const turnMetadata = clientTurnId ? { clientTurnId } : {};
+        const unansweredReceipt = metadata.executionReceipt && !assistantContent?.trim()
+            ? { executionReceipt: metadata.executionReceipt, partial: true } : {};
 
         if (message && message.trim()) {
             conversation.messages.push({
                 role: 'user', content: message.trim(),
-                ...(clientTurnId ? { metadata: turnMetadata } : {})
+                ...((clientTurnId || metadata.executionReceipt) ? { metadata: { ...turnMetadata, ...unansweredReceipt } } : {})
             });
         }
 

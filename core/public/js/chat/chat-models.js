@@ -55,7 +55,10 @@ export async function fetchModels(ctx, showStatus = true) {
       orderedModels.forEach((model) => {
         const opt = document.createElement('option');
         opt.value = model.name;
-        if (model.execution) opt.dataset.parameterSupport = JSON.stringify(model.parameterSupport || {});
+        if (model.execution) {
+          opt.dataset.parameterSupport = JSON.stringify(model.parameterSupport || {});
+          if (model.capabilities?.maxContext) opt.dataset.contextWindow = model.capabilities.maxContext;
+        }
         if (readinessUi) {
           readinessUi.applyOptionState(opt, model, requireProfiledModels);
         } else {

@@ -193,17 +193,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const tokenLimit = document.getElementById('tokenLimit');
         const contextPercentage = document.getElementById('contextPercentage');
         const contextProgressFill = document.getElementById('contextProgressFill');
-        const currentTokens = conversation.usage.totalTokens || 0;
-        // Authoritative limit comes from the Modelfile (via chat-context-indicator).
-        // Fall back to local config only if the indicator hasn't loaded yet.
-        const maxTokens = window.__chatContextLimit
+        const currentTokens = Number.isFinite(conversation.usage.totalTokens) ? conversation.usage.totalTokens : null;
+        // Native limits come from the selected catalogue entry; execution token
+        // totals do not measure current context occupancy. Local estimates keep
+        // the existing Modelfile and configuration limit.
+        const maxTokens = elements.hostInput.value === 'openclaw' ? Number(elements.modelSelect.selectedOptions[0]?.dataset.contextWindow) || null : window.__chatContextLimit
           || readOptionalContextOverride()
           || state.config?.options?.num_ctx
           || null;
-        const percentage = maxTokens
+        const percentage = elements.hostInput.value !== 'openclaw' && maxTokens && currentTokens !== null
           ? Math.min(100, Math.round((currentTokens / maxTokens) * 100))
           : null;
-        if (tokenCount) tokenCount.textContent = currentTokens.toLocaleString();
+        if (tokenCount) tokenCount.textContent = currentTokens === null ? '—' : currentTokens.toLocaleString();
         if (tokenLimit) tokenLimit.textContent = maxTokens ? maxTokens.toLocaleString() : '—';
         if (contextPercentage) contextPercentage.textContent = percentage == null ? 'unresolved' : `${percentage}%`;
         if (contextProgressFill) {
@@ -216,7 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (costEl) {
         costEl.style.display = 'inline-flex';
         const costAmount = document.getElementById('costAmount');
-        if (costAmount) costAmount.textContent = '$' + (conversation.usage.estimatedCost || 0).toFixed(4);
+        if (costAmount) costAmount.textContent = Number.isFinite(conversation.usage.estimatedCost) ? '$' + conversation.usage.estimatedCost.toFixed(4) : '—';
       }
     } else {
       const tokensEl = document.getElementById('conversationTokens');
