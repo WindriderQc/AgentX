@@ -201,6 +201,9 @@ describe('judge validation per prompt category (#397)', () => {
         { id: 'c3', category: 'creative', gold_score: 5, judge_score: 8, abs_diff: 3 },
         { id: 'c4', category: 'reasoning', gold_score: 10, judge_score: 10, abs_diff: 0, identity_case: true, identity_full_marks: true,
             attention_check: { passed: false } },
+        // Settled without the judge: they neither validate nor fail it.
+        { id: 'c5', category: 'math', gold_score: 10, judge_score: 10, abs_diff: 0, scoring_method: 'quick' },
+        { id: 'c6', category: 'knowledge', gold_score: 0, judge_score: 6, abs_diff: 6, scoring_method: 'deterministic' },
     ];
     const calibration = (overrides = {}) => {
         const set = require('../../../data/judge-calibration-set.json');
@@ -210,10 +213,18 @@ describe('judge validation per prompt category (#397)', () => {
     test('a qualified judge is validated where its calibration cases agree, and named where they do not', async () => {
         await recordAccuracyCalibration(calibration());
         const categories = await assessJudgeCategories(JUDGE, ['math', 'creative', 'reasoning', 'translation']);
-        expect(categories.math).toMatchObject({ status: 'validated', cases: 2, mae: 1, causes: [] });
+        expect(categories.math).toMatchObject({ status: 'validated', cases: 2, settled: 1, mae: 1, causes: [] });
         expect(categories.creative).toMatchObject({ status: 'failed', cases: 1, mae: 3, causes: ['category_mae_above_1.5'] });
         expect(categories.reasoning).toMatchObject({ status: 'failed', causes: ['attention_failed'] });
         expect(categories.translation).toMatchObject({ status: 'no_reference_cases', cases: 0 });
+    });
+
+    test('a category whose cases were all settled without the judge has no judged case', async () => {
+        await recordAccuracyCalibration(calibration());
+        const { knowledge } = await assessJudgeCategories(JUDGE, ['knowledge']);
+        expect(knowledge).toMatchObject({ status: 'no_reference_cases', cases: 0, settled: 1, mae: null });
+        const record = await getQualificationRecord((await listQualifications()).records[0].id);
+        expect(record.cases.find(item => item.id === 'c5')).toMatchObject({ scoring_method: 'quick' });
     });
 
     test('a judge without a qualifying calibration is unvalidated everywhere', async () => {

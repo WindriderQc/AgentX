@@ -20,6 +20,7 @@ const CaseSchema = new mongoose.Schema({
     gold_score: { type: Number, default: null },
     judge_score: { type: Number, default: null },
     abs_diff: { type: Number, default: null },
+    scoring_method: { type: String, default: null },
     identity_case: { type: Boolean, default: null },
     identity_full_marks: { type: Boolean, default: null },
     attention_passed: { type: Boolean, default: null },
