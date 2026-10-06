@@ -89,6 +89,9 @@ class CodingDispatchControl {
     this.launching.set(requestId, { pipelineId, expectedAttemptCount, promise });
     try { return await promise; } finally { this.launching.delete(requestId); }
   }
+  async cancel(input = {}) {
+    return this.call(`/usr/bin/python3 ${this.root}/integrations/coding/coding_dispatch_control.py cancel-waiting ${exactRequestId(input.requestId)}`);
+  }
 }
 function sendError(res, error, logger) {
   const statusCode = Number(error?.statusCode) || 500;
@@ -111,6 +114,10 @@ function registerCodingDispatchControlRoutes({ express, control, preparation, lo
   });
   router.post('/runs', async (req, res) => {
     try { return res.status(202).json({ status: 'success', data: await control.launch(req.body || {}) }); }
+    catch (error) { return sendError(res, error, logger); }
+  });
+  router.post('/runs/:requestId/cancel', async (req, res) => {
+    try { return res.json({ status: 'success', data: await control.cancel(req.params) }); }
     catch (error) { return sendError(res, error, logger); }
   });
   return router;

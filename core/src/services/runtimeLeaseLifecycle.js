@@ -122,7 +122,7 @@ async function release(kind, { id, generation, principal } = {}) {
       'maintenance.state': { $in: ['ACTIVE', null] },
       'maintenance.expiresAt': { $gt: releasedAt }
     }
-    : { _id: 'runtime', workloads: { $elemMatch: {
+    : { _id: 'runtime', inferences: { $not: { $elemMatch: { workloadAdmissionId: id, workloadGeneration: generation } } }, workloads: { $elemMatch: {
       admissionId: id, generation, principal, expiresAt: { $gt: releasedAt }
     } } };
   const update = {

@@ -8,7 +8,7 @@ const { TIMELINE_TRANSITIONS, transitionLog } = require('./pipelineTaskTransitio
 const { planView } = require('./pipelineTaskPlans');
 const SUMMARY_FIELD_LIST = [
   'pipelineId title service status assignee heartbeatAt epic source priority dependsOn notBefore dueAt risk',
-  'automation automationAttemptCount automationLease.expiresAt planningItemIds scheduleEntryIds createdAt updatedAt resolution',
+  'automation automationAttemptCount automationLease.expiresAt codingCapacity planningItemIds scheduleEntryIds createdAt updatedAt resolution',
   'automationAttempts.attempt automationAttempts.acquiredAt automationAttempts.completedAt automationAttempts.finalState',
   'automationAttempts.reviewedAt automationAttempts.reviewOutcome automationAttempts.evidence.schema',
   'automationAttempts.evidence.failureCodes automationAttempts.evidence.verification.status',
@@ -30,6 +30,10 @@ function redactTaskLeaseIds(task) {
   const row = typeof task?.toObject === 'function' ? task.toObject({ depopulate: true }) : task;
   return {
     ...row,
+    ...(row.codingCapacity ? { codingCapacity: (() => {
+      const { admissionId, generation, workloadId, ...visible } = row.codingCapacity;
+      return visible;
+    })() } : {}),
     ...(row.automationLease ? { automationLease: withoutLeaseId(row.automationLease) } : {}),
     ...(Array.isArray(row.automationAttempts)
       ? { automationAttempts: row.automationAttempts.map(withoutLeaseId) } : {}),

@@ -27,6 +27,72 @@ def process_launch(directory, key, results):
 
 
 class HostControlTests(unittest.TestCase):
+    def test_capacity_wait_survives_restart_and_resumes_the_same_request(self):
+        def deferred(run):
+            self.active = False
+            return 4
+        control = self.new_control(executor=deferred)
+        control.launch("0700", FIRST, 0)
+        self.assertEqual(control.execute(FIRST), 4)
+        restarted = self.new_control(executor=self.execute)
+        observed = restarted.status(FIRST)
+        self.assertEqual(observed["run"]["phase"], "waiting")
+        self.assertTrue(observed["busy"])
+        self.assertTrue(observed["run"]["canCancel"])
+        self.assertNotIn("startedAt", restarted._read(FIRST))
+        self.assertEqual(self.tasks[0].get("automationAttemptCount", 0), 0)
+        with self.assertRaises(ControlError):
+            restarted.launch("0700", SECOND, 0)
+        self.assertTrue(restarted.resume_waiting(FIRST)["resumed"])
+        self.assertFalse(restarted.resume_waiting(FIRST)["resumed"])
+        self.assertEqual(restarted.execute(FIRST), 3)
+        self.assertEqual(restarted.execute(FIRST), 0)
+        self.assertEqual(self.starts, [FIRST, FIRST])
+        self.assertEqual(self.executions, [FIRST])
+
+    def test_cancelled_wait_cannot_resume_and_keeps_the_task(self):
+        def deferred(run):
+            self.active = False
+            return 4
+        control = self.new_control(executor=deferred)
+        control.launch("0700", FIRST, 0)
+        control.execute(FIRST)
+        self.assertTrue(control.cancel_waiting(FIRST)["cancelled"])
+        restarted = self.new_control(executor=self.execute)
+        self.assertFalse(restarted.resume_waiting(FIRST)["resumed"])
+        self.assertEqual(restarted.execute(FIRST), 0)
+        self.assertEqual(self.tasks[0]["status"], "queued")
+        self.assertFalse(self.executions)
+        self.assertFalse(restarted.status(FIRST)["busy"])
+
+    def test_cancel_wait_releases_only_the_matching_core_capacity_request(self):
+        from unittest.mock import patch
+        def deferred(run):
+            self.active = False
+            return 4
+        control = self.new_control(executor=deferred)
+        control.launch("0700", FIRST, 0)
+        control.execute(FIRST)
+        self.tasks[0]["codingCapacity"] = {"requestId": FIRST}
+        with patch('integrations.coding.clawdx_dispatch_api.api_json') as call:
+            control.cancel_waiting(FIRST)
+            self.assertEqual(call.call_args.kwargs['payload'], {"requestId": FIRST})
+            self.assertEqual(call.call_args.kwargs['retries'], 0)
+            self.assertTrue(call.call_args.args[1].endswith('/0700/capacity/cancel'))
+
+    def test_wait_rechecks_task_and_attempt_before_execution(self):
+        def deferred(run):
+            self.active = False
+            return 4
+        control = self.new_control(executor=deferred)
+        control.launch("0700", FIRST, 0)
+        control.execute(FIRST)
+        self.tasks[0].update(status="review", automationAttemptCount=1)
+        control.resume_waiting(FIRST)
+        self.assertEqual(control.execute(FIRST), 0)
+        self.assertEqual(control._read(FIRST)["phase"], "rejected")
+        self.assertFalse(self.executions)
+
     def test_unknown_worker_outcome_survives_restart_and_refuses_a_new_request(self):
         def unknown(run):
             self.executions.append(run["requestId"])

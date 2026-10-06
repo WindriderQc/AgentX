@@ -12,6 +12,7 @@ const { observePromptPrefix } = require('../services/routing/promptPrefixFingerp
 const { publicDegradedMarker, servedRungMarker } = require('../services/routing/taskFallbackLadder');
 const { buildEffectiveRoutingSnapshot } = require('../services/routing/effectiveRoutingSnapshot');
 const { frozenCopy } = require('../helpers/frozenCopy');
+const { buildLocalPayload } = require('../services/routing/trustedRuntimePayload');
 
 const DEFAULT_TIMEOUT_MS = 600_000;
 const MIN_TIMEOUT_MS = 1_000;
@@ -121,40 +122,6 @@ function createAbortBridge(signal, timeoutMs) {
       clearTimeout(timer);
       signal?.removeEventListener?.('abort', abortFromCaller);
     }
-  };
-}
-
-function buildLocalPayload(request, model, options, keepAlive) {
-  const common = {
-    model,
-    stream: request.stream === true,
-    ...(Object.keys(options).length > 0 && { options }),
-    ...(keepAlive !== undefined && { keep_alive: keepAlive })
-  };
-  if (request.mode === 'embed') {
-    return {
-      model,
-      input: request.input,
-      ...(request.truncate !== undefined && { truncate: request.truncate }),
-      ...(Object.keys(options).length > 0 && { options }),
-      ...(keepAlive !== undefined && { keep_alive: keepAlive })
-    };
-  }
-  if (request.mode === 'chat') {
-    return {
-      ...common,
-      messages: request.messages,
-      ...(Array.isArray(request.tools) && { tools: request.tools }),
-      ...(request.format !== undefined && { format: request.format }),
-      ...(request.think !== undefined && { think: request.think })
-    };
-  }
-  return {
-    ...common,
-    prompt: request.prompt,
-    ...(request.system !== undefined && { system: request.system }),
-    ...(request.format !== undefined && { format: request.format }),
-    ...(request.think !== undefined && { think: request.think })
   };
 }
 
@@ -383,6 +350,7 @@ async function executeRoutedInference(deps, request, options = {}) {
   const runtime = await prepareInferenceRuntime({
     ...payload, host: hostUrl,
     options: runtimeOptions, keepAlive, think: request.think,
+    ...(options.codingCapacity && { includeArtifactIdentity: true }),
   }, request.mode === 'embed' ? 'embed' : 'extension', deps);
   ({ options: runtimeOptions, keepAlive, numCtxSource, inferenceContract } = runtime);
   payload = buildLocalPayload(request, model, runtimeOptions, keepAlive);
@@ -412,6 +380,8 @@ async function executeRoutedInference(deps, request, options = {}) {
     const execute = request.stream === true ? executeAdmittedOllamaStream : executeAdmittedOllamaAttempt;
     const attempt = await withInferenceRetry(async () => {
       await assertClaim();
+      const capacity = await require('../services/pipelineCodingCapacity').authorizeInference(options.codingCapacity,
+        { model, hostUrl, inferenceContract, numCtx: runtimeOptions.num_ctx });
       return execute({
       hostUrl, model, payload, mode: request.mode,
       useChat: request.mode === 'chat', stream: request.stream === true,
@@ -422,6 +392,7 @@ async function executeRoutedInference(deps, request, options = {}) {
       ...(request.stream === true && { onDispatch: () => abortBridge.detachCaller() }),
       admissionKind: request.stream === true ? 'trusted-runtime-stream' : 'trusted-runtime', cacheLabels: { consumerContract, taskType },
       principal: benchmarkClaim ? 'benchmark-service' : 'core-trusted-runtime',
+      ...(capacity || {}),
       ...(benchmarkClaim && {
         workloadAdmissionId: benchmarkClaim.workloadAdmissionId,
         workloadGeneration: benchmarkClaim.workloadGeneration
@@ -430,6 +401,8 @@ async function executeRoutedInference(deps, request, options = {}) {
         // Recheck the same Core-owned reservation after admission, just as
         // direct Benchmark inference does. No discovery or reacquisition here.
         if (benchmarkClaim) await assertClaim();
+        if (capacity) await require('../services/pipelineCodingCapacity').authorizeInference(options.codingCapacity,
+          { model, hostUrl, inferenceContract, numCtx: runtimeOptions.num_ctx });
         options.signal?.throwIfAborted();
         // Compared once, in admission order: the order Ollama receives prompts.
         if (observePrefix) promptPrefix ??= observePrefix({ hostUrl, model, messages: request.messages, tools: request.tools });

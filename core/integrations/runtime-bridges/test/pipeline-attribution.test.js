@@ -32,6 +32,24 @@ function activeTask(overrides = {}) {
   };
 }
 
+test('a capacity-backed task carries its frozen host and exact lease into native inference', async () => {
+  const target = { model: 'reference-model', hostUrl: 'http://model.test:11434', contextSize: 32768, keepAlive: -1,
+    inferenceContract: { qualification: { qualified: true }, artifact: { digest: 'digest', runtimeFingerprint: 'runtime' } } };
+  const task = activeTask({ automationLease: { attempt: 1, leaseId: 'task-lease' }, codingCapacity: {
+    model: target.model, host: target.hostUrl, numCtx: 32768, keepAlive: -1, digest: 'digest', runtimeFingerprint: 'runtime',
+  } });
+  const manager = new PipelineAttributionLeaseManager({ taskReader: async () => task,
+    snapshotProvider: async () => ({ tasks: { code_generation: target } }) });
+  await manager.open({ pipelineId: '0401', assignee: 'clawdx-coder', requestId: 'capacity-run' });
+  const inference = await manager.authorizeAlias(PIPELINE_MODEL_ALIAS);
+  assert.deepEqual(inference.codingCapacity, { pipelineId: '0401', leaseId: 'task-lease' });
+  assert.equal(inference.hostUrl, target.hostUrl);
+  assert.equal(inference.numCtx, 32768);
+  assert.equal(manager.status().active.codingCapacity, undefined);
+  target.hostUrl = 'http://different.test:11434';
+  await assert.rejects(manager.revalidate(inference.attribution.correlationId), error => error.code === 'CODING_CAPACITY_CHANGED');
+});
+
 test('inference backoff revalidates one logical call, preserves progress and refuses replay after restart', async () => {
   let task = activeTask();
   const options = { taskReader: async () => task, snapshotProvider: async () => qualifiedSnapshot(),

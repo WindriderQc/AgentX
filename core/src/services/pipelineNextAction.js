@@ -64,6 +64,11 @@ function taskNextAction(task, { now = new Date(), dependencyStatuses = new Map()
       'The earliest claim time has not arrived.', 'Wait for the recorded not-before time; claim revalidates the task.');
     if (reasons.some(reason => reason.code === 'dependencies_incomplete')) return action('inspect_dependencies', 'human', 'Dependencies incomplete or unavailable',
       'The scoped dependency records do not all show done.', 'Inspect the dependencies in the task dossier.', { attention: true, rank: 5 });
+    if (task.codingCapacity) return action('wait_coding_capacity', 'worker', 'Waiting for coding model capacity',
+      task.codingCapacity.reason || 'The selected model host is being reserved.',
+      'Resume the same launch request when capacity is available, or cancel its wait.',
+      { capacity: { model: task.codingCapacity.model, host: task.codingCapacity.host,
+        waitingSince: task.codingCapacity.waitingSince, requestId: task.codingCapacity.requestId } });
   }
   if (task.status !== 'done' && timestamp(task.dueAt) && timestamp(task.dueAt) < now) return action('review_due_date', 'human', 'Past due',
     'The recorded due date has passed.', 'Review priority and the due date deliberately.', { attention: true, rank: 4, icon: 'fa-hourglass-end' });

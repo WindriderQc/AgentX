@@ -68,6 +68,20 @@ async function drain(stream) {
 }
 
 describe('trusted runtime services', () => {
+  test('coding inference borrows only the exact task reservation and checks it again after admission', async () => {
+    const capacity = require('../../src/services/pipelineCodingCapacity');
+    const proof = { principal: 'core-trusted-runtime', workloadAdmissionId: 'coding-admission', workloadGeneration: 'coding-generation' };
+    const authorize = jest.spyOn(capacity, 'authorizeInference').mockResolvedValue(proof);
+    const deps = inferenceDeps();
+    try {
+      await executeRoutedInference(deps, { mode: 'generate', model: 'model-a', prompt: 'Make the permitted patch' },
+        { hostUrl: 'http://ollama.test:11434', codingCapacity: { pipelineId: '0800', leaseId: 'task-lease' } });
+      expect(authorize).toHaveBeenCalledTimes(2);
+      expect(authorize.mock.calls[0][1]).toMatchObject({ model: 'model-a', hostUrl: 'http://ollama.test:11434', numCtx: 32768 });
+      expect(deps.beginInferenceAdmission).toHaveBeenCalledWith(expect.objectContaining(proof));
+      expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.anything(), { includeArtifactIdentity: true });
+    } finally { authorize.mockRestore(); }
+  });
   test('accounts for the same tools and tool-call messages sent to the native chat wire', async () => {
     const deps = inferenceDeps();
     const messages = [{ role: 'assistant', content: '',
