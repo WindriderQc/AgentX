@@ -28,6 +28,7 @@ const {
     normalizeScoringCategory
 } = require('./scoring/scoringConfigs');
 const {
+    applySecondaryBounds,
     resolveDimensionWeights,
     parseGradedAnswer,
     buildExplanation,
@@ -381,6 +382,10 @@ async function score(response, prompt, judgeConfig) {
         uncapped_score: uncappedScore
     };
 
+    // A weak dimension the task's quality rests on bounds the grade too (#446).
+    const secondary = applySecondaryBounds(overallScore, dimensionScores, ENHANCED_SCORING_CONFIGS[category]?.secondary_bounds);
+    overallScore = secondary.score;
+
     // A failed category gate (categoryGates.js) bounds the grade whatever the dimensions say.
     const gates = await assessGates(category, question => askBinaryQuestion(response, question, judgeConfig, taskContext));
     overallScore = boundByGates(overallScore, gates);
@@ -436,6 +441,7 @@ async function score(response, prompt, judgeConfig) {
         breakdown: dimensionScores,
         decomposed_breakdown: dimensionBreakdowns,
         primary_cap: primaryCap,
+        ...(secondary.bounds.length ? { secondary_bounds: secondary.bounds } : {}),
         not_applicable_dimensions: notApplicableDimensions,
         supplied_dimensions: Object.keys(suppliedDimensions),
         attention_check: attention,
@@ -443,6 +449,7 @@ async function score(response, prompt, judgeConfig) {
         explanation: judgeReliable
             ? buildExplanation(overallScore, category, dimensionScores, dimensionBreakdowns)
                 + (capApplies ? ` Capped at ${primaryDimension.replace(/_/g, ' ')} + ${PRIMARY_DIMENSION_CAP_MARGIN} (uncapped ${uncappedScore}).` : '')
+                + secondary.bounds.filter(bound => bound.applied).map(bound => ` Bounded at ${bound.dimension.replace(/_/g, ' ')} + ${bound.margin}.`).join('')
                 + (failedGates(gates).length ? ` Bounded at ${GATE_BOUND}: ${failedGates(gates).map(gate => gate.key).join(', ')} not met.` : '')
             : 'Judge evaluation failed; no quality grade was assigned',
         scoring_time_ms: scoringTimeMs,

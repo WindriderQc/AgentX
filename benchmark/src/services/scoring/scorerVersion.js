@@ -25,7 +25,11 @@
 // 2.19.0: a translation not written in the requested language is bounded at
 // 1 on both the decomposed and the reference path (category gates). Translation
 // grades are not comparable with 2.18.x rows.
-const SCORER_VERSION = '2.19.0';
+// 2.20.0: secondary bounds: a weak dimension a category's quality rests on
+// (coding efficiency, instruction completeness, creative originality and
+// engagement) holds the overall score. Coding, instruction and creative grades
+// are not comparable with 2.19.x rows.
+const SCORER_VERSION = '2.20.0';
 
 const SCORER_COMPONENTS = Object.freeze({
     routing: 5,
@@ -35,7 +39,7 @@ const SCORER_COMPONENTS = Object.freeze({
     confidence: 6,
     judges: 4,
     deterministic: 6,
-    composite: 3
+    composite: 4
 });
 
 function versionsComparable(a, b) {
