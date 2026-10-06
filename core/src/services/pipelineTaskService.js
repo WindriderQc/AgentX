@@ -510,16 +510,7 @@ async function claimEligibleTask(pipelineId, assignee, now = new Date(), options
 
   const claimUpdate = automatedUpdate?.update || { $set: { assignee, status: 'in_progress', heartbeatAt: now } };
   const lease = automatedUpdate?.lease;
-  recordTransition(claimQuery, claimUpdate, current, buildTransition(current, {
-    to: 'in_progress',
-    kind: 'claimed',
-    channel: lease ? 'automation_lease' : 'worker_api',
-    declaredActor: assignee,
-    attempt: lease?.attempt,
-    leaseId: lease?.leaseId,
-    dispatchRequestId: lease?.dispatchRequestId,
-    at: now,
-  }));
+
 
   if (automatedUpdate) {
     await acquireAutomationSlot({
@@ -546,7 +537,23 @@ async function claimEligibleTask(pipelineId, assignee, now = new Date(), options
       claimQuery.updatedAt = reservedCapacity.observedUpdatedAt;
       delete reservedCapacity.observedUpdatedAt;
       claimUpdate.$set.codingCapacity = reservedCapacity;
+      const acquiredAt = new Date();
+      const expiresAt = new Date(acquiredAt.getTime() + lease.durationMs);
+      await extendAutomationSlot({ leaseId: lease.leaseId, pipelineId, assignee, now: acquiredAt, expiresAt });
+      Object.assign(lease, { acquiredAt, heartbeatAt: acquiredAt, expiresAt });
+      Object.assign(claimUpdate.$push.automationAttempts, { acquiredAt, heartbeatAt: acquiredAt, expiresAt });
+      claimUpdate.$set.heartbeatAt = acquiredAt;
     }
+  recordTransition(claimQuery, claimUpdate, current, buildTransition(current, {
+    to: 'in_progress',
+    kind: 'claimed',
+    channel: lease ? 'automation_lease' : 'worker_api',
+    declaredActor: assignee,
+    attempt: lease?.attempt,
+    leaseId: lease?.leaseId,
+    dispatchRequestId: lease?.dispatchRequestId,
+    at: lease?.acquiredAt || now,
+  }));
     task = await PipelineTask.findOneAndUpdate(
       claimQuery,
       claimUpdate,
