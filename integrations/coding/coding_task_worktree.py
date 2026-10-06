@@ -89,3 +89,26 @@ def promotion_workspace(profile, task, attempt, error_type=ValueError):
             or not re.fullmatch(r"[a-f0-9]{40}", repository.get("baseRevision", "")):
         raise error_type("accepted task worktree receipt is invalid")
     return task_workspace(seed, str(task["pipelineId"]))
+
+
+def promotion_profiles(config, task, attempt, error_type=ValueError):
+    automation = task.get("automation") or {}
+    profile = config.get("executionProfiles", {}).get(automation.get("executionProfile", "clawdx-file-tools/v1"))
+    verification = config.get("verificationProfiles", {}).get(automation.get("verificationProfile", "agentx-dispatcher-tests/v1"))
+    if not isinstance(profile, dict) or not isinstance(verification, dict):
+        raise error_type("accepted execution or verification profile is unavailable")
+    seed = PurePosixPath(str(profile.get("remoteRepo") or ""))
+    if not any(parent.name == "workspace-" + str(profile.get("agent") or "")
+               and parent.parent.name == ".openclaw" for parent in seed.parents):
+        raise error_type("worker repository is outside the reviewed workspace")
+    repository = attempt.get("evidence", {}).get("repository")
+    if repository:
+        try:
+            args = argparse.Namespace(independent_verification_command=verification["command"],
+                independent_verification_timeout=verification["timeoutSeconds"], allowed_path=automation["scope"],
+                max_changed_files=verification["maxChangedFiles"], max_changed_bytes=verification["maxChangedBytes"])
+        except KeyError as error:
+            raise error_type("accepted verification profile is incomplete") from error
+        if repository.get("verificationProfileFingerprint") != profile_fingerprint(args, task):
+            raise error_type("accepted task or verification profile changed")
+    return profile, verification
