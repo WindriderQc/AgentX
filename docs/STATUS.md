@@ -162,8 +162,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   context, scoring settings, scorer version and current reference set; otherwise
   it is provisional and says why. Old verdicts without a complete saved judge
   contract remain provisional. Complete accuracy calibrations may qualify their
-  explicit settings; partial case selections remain diagnostic. Ranked rows share one quality
-  cohort (judge, scorer version, generation settings) and compare only
+  explicit settings; partial case selections remain diagnostic.
+  Candidate output requests above the declared 50000-token limit are refused;
+  API and stored configuration share the same timeout limits. Batches can set
+  `execution_config.early_stop_enabled: false` for complete prompt coverage.
+  Ranked rows share one quality cohort (judge, scorer version, generation settings) and compare only
   results on prompts as the catalog holds them today: adding a prompt keeps
   earlier results comparable, editing one takes only its results out, and
   each row says which prompts it shares with the board and the leader. Each

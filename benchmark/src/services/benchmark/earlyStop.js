@@ -14,10 +14,12 @@ const logger = require('../../../config/logger');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 
-const MIN_JUDGED = 5;
-const THRESHOLD = 2.0; // quality_score is 0–10; <2 = clearly broken
+const { EARLY_STOP_POLICY } = require('./executionPolicy');
+const MIN_JUDGED = EARLY_STOP_POLICY.minJudged;
+const THRESHOLD = EARLY_STOP_POLICY.threshold; // quality_score is 0–10; <2 = clearly broken
 
-async function evaluateAndPersistEarlyStop({ batchId, model, hostUrl, recordBatchTimelineEvent }) {
+async function evaluateAndPersistEarlyStop({ batchId, model, hostUrl, executionConfig = {}, recordBatchTimelineEvent }) {
+    if (executionConfig.early_stop_enabled === false) return false;
     const judgedResults = await BenchmarkResult.find({
         batch_id: batchId,
         model,

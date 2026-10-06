@@ -222,7 +222,7 @@ function createHostBatchRunner(context, executePrompt) {
                     // is low enough to halt remaining prompts for this model only.
                     if (!earlyStopped && promptsCompletedForModel >= EARLY_STOP_MIN_JUDGED) {
                         earlyStopped = await evaluateAndPersistEarlyStop({
-                            batchId, model, hostUrl, recordBatchTimelineEvent
+                            batchId, model, hostUrl, executionConfig, recordBatchTimelineEvent
                         });
                         if (earlyStopped) break;
                     }

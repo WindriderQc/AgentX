@@ -4,10 +4,13 @@
  * Default settings and normalization functions for benchmark execution
  */
 
+const { RESPONSE_TOKEN_LIMIT, EXECUTION_TIMEOUT_LIMITS, EARLY_STOP_POLICY, validateResponseBudgets,
+    DEFAULT_RESPONSE_MIN_TOKENS, DEFAULT_RESPONSE_MAX_TOKENS } = require('./executionPolicy');
+
 const DEFAULT_EXECUTION_CONFIG = {
     // Simple config: just set a high limit and let models finish naturally
-    response_max_tokens: 32000,  // High enough for any response including <think> reasoning
-    response_min_tokens: 100,
+    response_max_tokens: DEFAULT_RESPONSE_MAX_TOKENS,
+    response_min_tokens: DEFAULT_RESPONSE_MIN_TOKENS,
     response_tokens_multiplier: 1,  // No multiplier games - just use the max
     // Null preserves the resident Ollama/Modelfile context. Campaign contracts
     // materialize the actual host/model window; operators may still request an
@@ -70,7 +73,9 @@ const DEFAULT_EXECUTION_CONFIG = {
     warmup_timeout_loaded: 90000,
     // Judge queue drain timeouts. drain = max total wait; stall = max idle gap.
     judge_drain_timeout_ms: 1800000,
-    judge_stall_timeout_ms: 120000
+    judge_stall_timeout_ms: 120000,
+    // Disable for complete coverage even when the first judged prompts are weak.
+    early_stop_enabled: EARLY_STOP_POLICY.enabledByDefault
 };
 
 /**
@@ -81,6 +86,7 @@ const DEFAULT_EXECUTION_CONFIG = {
 const RESPONSE_BUDGET_RULE = 'documented_default_half_window_v1';
 
 function normalizeExecutionConfig(config = {}) {
+    validateResponseBudgets(config || {});
     const responseMaxTokensExplicit = config?.response_max_tokens_source
         ? config.response_max_tokens_source === 'caller'
         : Object.prototype.hasOwnProperty.call(config || {}, 'response_max_tokens');
@@ -104,13 +110,13 @@ function normalizeExecutionConfig(config = {}) {
         merged.response_min_tokens,
         DEFAULT_EXECUTION_CONFIG.response_min_tokens,
         1,
-        50000
+        RESPONSE_TOKEN_LIMIT
     ));
     merged.response_max_tokens = Math.round(toNumber(
         merged.response_max_tokens,
         DEFAULT_EXECUTION_CONFIG.response_max_tokens,
         merged.response_min_tokens,
-        50000
+        RESPONSE_TOKEN_LIMIT
     ));
     if (merged.response_max_tokens < merged.response_min_tokens) {
         merged.response_max_tokens = merged.response_min_tokens;
@@ -170,8 +176,7 @@ function normalizeExecutionConfig(config = {}) {
     merged.per_test_timeout_ms = Math.round(toNumber(
         merged.per_test_timeout_ms,
         DEFAULT_EXECUTION_CONFIG.per_test_timeout_ms,
-        30000,
-        3600000
+        ...EXECUTION_TIMEOUT_LIMITS.per_test_timeout_ms
     ));
     const thinkingModeRequested = String(merged.think ?? '').trim().toLowerCase() === 'best_qualified';
     if (merged.think === true || merged.think === false) {
@@ -247,26 +252,22 @@ function normalizeExecutionConfig(config = {}) {
     merged.warmup_timeout_cold = Math.round(toNumber(
         merged.warmup_timeout_cold,
         DEFAULT_EXECUTION_CONFIG.warmup_timeout_cold,
-        30000,
-        600000
+        ...EXECUTION_TIMEOUT_LIMITS.warmup_timeout_cold
     ));
     merged.warmup_timeout_loaded = Math.round(toNumber(
         merged.warmup_timeout_loaded,
         DEFAULT_EXECUTION_CONFIG.warmup_timeout_loaded,
-        10000,
-        180000
+        ...EXECUTION_TIMEOUT_LIMITS.warmup_timeout_loaded
     ));
     merged.judge_drain_timeout_ms = Math.round(toNumber(
         merged.judge_drain_timeout_ms,
         DEFAULT_EXECUTION_CONFIG.judge_drain_timeout_ms,
-        300000,
-        3600000
+        ...EXECUTION_TIMEOUT_LIMITS.judge_drain_timeout_ms
     ));
     merged.judge_stall_timeout_ms = Math.round(toNumber(
         merged.judge_stall_timeout_ms,
         DEFAULT_EXECUTION_CONFIG.judge_stall_timeout_ms,
-        30000,
-        600000
+        ...EXECUTION_TIMEOUT_LIMITS.judge_stall_timeout_ms
     ));
     if (typeof merged.length_hint_template !== 'string' || !merged.length_hint_template.trim()) {
         merged.length_hint_template = DEFAULT_EXECUTION_CONFIG.length_hint_template;
