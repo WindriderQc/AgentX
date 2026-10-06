@@ -162,7 +162,19 @@ async function recordAccuracyCalibration(report, { digest = null } = {}) {
             identity_case: item.identity_case ?? null,
             identity_full_marks: item.identity_full_marks ?? null,
             attention_passed: typeof item.attention_check?.passed === 'boolean' ? item.attention_check.passed : null,
-            error: item.error ?? null
+            error: item.error ?? null,
+            diagnostics: {
+                explanation: item.explanation ?? null,
+                breakdown: item.breakdown ?? null,
+                decomposed_breakdown: item.decomposed_breakdown ?? null,
+                judge_prompt: item.judge_prompt ?? null,
+                judge_raw_response: item.judge_raw_response ?? null,
+                attention_check: item.attention_check ?? null,
+                primary_cap: item.primary_cap ?? null,
+                secondary_bounds: item.secondary_bounds ?? null,
+                gates: item.gates ?? null,
+                needs_review: item.needs_review === true
+            }
         }))
     });
     return summarizeRecord(record.toObject());

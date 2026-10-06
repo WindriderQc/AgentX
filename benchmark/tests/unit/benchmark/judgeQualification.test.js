@@ -95,6 +95,24 @@ describe('judge qualification records', () => {
         expect(report().valid).toBe(true);
     });
 
+    test('case diagnostics survive the completed HTTP response and are returned only on detail reads', async () => {
+        const input = report();
+        const diagnostics = { judge_prompt: '[synthetic question]', judge_raw_response: 'YES',
+            breakdown: { accuracy: 5.1 }, decomposed_breakdown: { accuracy: { answers: [false, 1, true] } },
+            primary_cap: { dimension: 'accuracy', applied: true }, secondary_bounds: [],
+            gates: [{ key: 'target_language', answer: true }], attention_check: { passed: true },
+            explanation: 'One omission', needs_review: false };
+        Object.assign(input.results[0], diagnostics);
+        const saved = await recordAccuracyCalibration(input);
+        expect(saved).not.toHaveProperty('cases');
+        const detail = await getQualificationRecord(saved.id);
+        expect(detail.cases[0].diagnostics).toEqual(diagnostics);
+        expect(detail.qualification_contract_fingerprint).toBe(saved.qualification_contract_fingerprint);
+        expect((await listQualifications()).records[0]).not.toHaveProperty('cases');
+        const legacy = new JudgeQualification({ cases: [{ id: 'old' }] }).toObject();
+        expect(legacy.cases[0].diagnostics).toBeNull();
+    });
+
     test('a passing record qualifies the exact judge, host and scorer version only', async () => {
         const config = judgeConfig();
         const saved = await recordAccuracyCalibration({ ...report(), judge_config: config }, { digest: 'sha256:abc' });

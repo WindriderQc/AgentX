@@ -24,7 +24,10 @@ const CaseSchema = new mongoose.Schema({
     identity_case: { type: Boolean, default: null },
     identity_full_marks: { type: Boolean, default: null },
     attention_passed: { type: Boolean, default: null },
-    error: { type: String, default: null }
+    error: { type: String, default: null },
+    // The HTTP response can be lost while a completed qualification is saved.
+    // Keep the judge answers and grade derivation with the durable record.
+    diagnostics: { type: mongoose.Schema.Types.Mixed, default: null }
 }, { _id: false });
 
 const JudgeQualificationSchema = new mongoose.Schema({
