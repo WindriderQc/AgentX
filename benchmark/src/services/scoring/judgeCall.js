@@ -526,7 +526,33 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
     }
 }
 
+const HOST_BUSY_WAIT_MS = 60000; // below the batch judge stall timeout (120 s by default)
+const HOST_BUSY_RETRY_MS = 2000;
+
+/**
+ * A judge request that waits out a busy judge host. Core answers 503 before
+ * dispatch when the host is taken, so nothing ran and the same request can be
+ * sent again. The wait is bounded and stops with the batch.
+ */
+async function fetchWhenJudgeHostFree(send, judgeConfig = {}) {
+    const budgetMs = Number.isFinite(judgeConfig.host_busy_wait_ms) ? judgeConfig.host_busy_wait_ms : HOST_BUSY_WAIT_MS;
+    const retryMs = Number.isFinite(judgeConfig.host_busy_retry_ms) ? judgeConfig.host_busy_retry_ms : HOST_BUSY_RETRY_MS;
+    const deadline = Date.now() + budgetMs;
+    let refusals = 0;
+    for (;;) {
+        const res = await send();
+        if (res.status !== 503 || Date.now() + retryMs > deadline) {
+            if (refusals > 0 && res.status !== 503) logger.info('Judge host free again', { host: judgeConfig.host, refusals });
+            return res;
+        }
+        refusals += 1;
+        if (refusals === 1) logger.warn('Judge host busy, waiting', { host: judgeConfig.host, budgetMs });
+        await waitForJudgeRetry(retryMs, judgeConfig);
+    }
+}
+
 module.exports = {
+    fetchWhenJudgeHostFree,
     JUDGE_CONFIG,
     callJudge,
     buildDynamicJudgePrompt,
