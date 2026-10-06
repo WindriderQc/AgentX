@@ -104,11 +104,17 @@ category with authored responses and reference grades. A case scores on the
 path of the catalog prompts it mirrors through the fields it carries:
 `reference_tests` run the code, a `reference_answer` selects the reference
 scorer, and `judge_criteria` become the decomposed judge's specific criteria.
-Translation has cases on both of its paths (with and without a reference
-answer); agent cases are judged against their planted findings. Both have an
-identity case (the reference answer as the response) and the three tiers.
-Changing the set changes its fingerprint, so every judge has to be calibrated
-again before its grades qualify.
+Every case carries catalog-style criteria, and every category has the three
+tiers. Knowledge, reasoning, coding and translation have cases on the
+reference path, as some of their catalog prompts do. Translation also has
+cases without a reference answer and a faithful translation into the wrong
+language on each path. Agent cases are judged against their planted findings.
+Math cases the judge grades answer in a form the numeric extractor does not
+settle, as such answers reach the judge in production. A case settled without
+the judge (a deterministic check, a quick match or executed tests) still counts
+in the run's overall figures but not in the judge's validation for its
+category. Changing the set changes its fingerprint, so every judge has to be
+calibrated again before its grades qualify.
 
 A judge **qualifies** on ordering, because the product ranks models: ordering
 with ties at half ≥ 85 %, MAE ≤ 1.5, every reference answer at full marks, and
