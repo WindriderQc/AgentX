@@ -76,7 +76,7 @@
         this.error = null;
         const run = this.control.run;
         if (!this.pending && run?.requestId && run.pipelineId && Number.isSafeInteger(run.expectedAttemptCount)
-          && ['submitting', 'uncertain', 'accepted', 'running'].includes(run.phase)) {
+          && ['submitting', 'uncertain', 'accepted', 'running', 'unknown'].includes(run.phase)) {
           this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount };
           this.persist();
         }

@@ -27,6 +27,34 @@ def process_launch(directory, key, results):
 
 
 class HostControlTests(unittest.TestCase):
+    def test_unknown_worker_outcome_survives_restart_and_refuses_a_new_request(self):
+        def unknown(run):
+            self.executions.append(run["requestId"])
+            self.active = False
+            return 5
+        control = self.new_control(executor=unknown)
+        control.launch("0700", FIRST, 0)
+        self.assertEqual(control.execute(FIRST), 5)
+        restarted = self.new_control(executor=unknown)
+        observed = restarted.status(FIRST)
+        self.assertEqual(observed["run"]["phase"], "unknown")
+        self.assertTrue(observed["busy"])
+        self.assertFalse(observed["run"]["canRetry"])
+        restarted.launch("0700", FIRST, 0)
+        restarted.execute(FIRST)
+        with self.assertRaises(ControlError):
+            restarted.launch("0700", SECOND, 0)
+        self.assertEqual(self.executions, [FIRST])
+        # A queued or blocked task alone does not prove remote completion.
+        self.tasks[0].update(status="blocked", automationAttemptCount=1)
+        self.assertEqual(restarted.status(FIRST)["run"]["phase"], "unknown")
+        self.tasks[0].update(status="review", automationAttempts=[{
+            "dispatchRequestId": FIRST, "attempt": 1, "completedAt": "2026-10-06T12:00:00Z",
+            "finalState": "review", "evidence": {"workerReceiptFingerprint": "a" * 64,
+                                                   "verification": {"status": "passed"}},
+        }])
+        self.assertEqual(restarted.status(FIRST)["run"]["phase"], "finished")
+        self.assertFalse(restarted.status(FIRST)["busy"])
     def test_catalog_reads_deployed_revision_without_moving_worker_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "source"
