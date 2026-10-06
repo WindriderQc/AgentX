@@ -26,6 +26,17 @@ describe('Pipeline launch reconciliation', () => {
   afterEach(() => { controllers.forEach(c => c.dispose()); jest.clearAllTimers(); jest.useRealTimers(); });
   const posts = () => request.mock.calls.filter(([, options]) => options.method === 'POST');
 
+  test('a guarded browser request is retained without resuming it through the replacement worker', async () => {
+    const original = JSON.stringify(selection);
+    storage.setItem('agentx.pipeline.launchRequest.v1', original);
+    const controller = make();
+    await controller.refresh();
+    expect(controller.pending).toBeNull();
+    expect(controller.canRetry()).toBe(false);
+    expect(posts()).toHaveLength(0);
+    expect(storage.getItem('agentx.pipeline.launchRequest.v1')).toBe(original);
+  });
+
   test('a reloaded capacity wait keeps its identity and cancels once without launching another task', async () => {
     request.mockResolvedValue(snapshot(run('waiting', 'queued', { canCancel: true }), true));
     const controller = make();
@@ -119,7 +130,7 @@ describe('Pipeline launch reconciliation', () => {
   });
 
   test('a missing receipt is retried only explicitly with its original request identity', async () => {
-    storage.setItem('agentx.pipeline.launchRequest.v1', JSON.stringify(selection));
+    storage.setItem('agentx.pipeline.simpleWorkerRequest.v1', JSON.stringify(selection));
     request.mockResolvedValue(snapshot(run('not_received')));
     const controller = make();
     await controller.refresh();
@@ -158,7 +169,7 @@ describe('Pipeline launch reconciliation', () => {
   });
 
   test('disposal cancels read reconciliation without another POST', async () => {
-    storage.setItem('agentx.pipeline.launchRequest.v1', JSON.stringify(selection));
+    storage.setItem('agentx.pipeline.simpleWorkerRequest.v1', JSON.stringify(selection));
     const controller = make();
     await controller.refresh();
     const count = request.mock.calls.length;
