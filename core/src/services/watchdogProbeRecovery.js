@@ -32,6 +32,9 @@
  * window applies, as for a probe. Core's own deadline abort has the same
  * recovery evidence and a distinct origin. Under a draining Benchmark parent,
  * both aborts always require the full settle window before exact restoration.
+ * On a host a Benchmark workload holds as shared (a judge-only host), its own
+ * aborts follow the ordinary caller-abort rule instead: the host has no claim
+ * to drain, and the models resident there serve other callers.
  */
 
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
@@ -102,15 +105,23 @@ async function recoverSettledWatchdogProbes(hostUrl, {
   if (probes.length !== onHost.length) return { recovered: false, reason: 'other inference on host' };
   if (state.maintenance) return { recovered: false, reason: 'maintenance lease present' };
   const hasWorkload = (state.workloads || []).some(w => (w.hosts || []).includes(hostUrl));
-  const parent = hasWorkload && probes.every(isCallerAbort)
-    ? exactParentForHost(state, hostUrl, probes, { draining: true }) : null;
+  const ownedAborts = hasWorkload && probes.every(isCallerAbort);
+  const drainingParent = ownedAborts ? exactParentForHost(state, hostUrl, probes, { draining: true }) : null;
+  // A host the batch only shares (its judge host) carries no claim, so nothing
+  // ever closes dispatch on it: without this it stays fenced until the whole
+  // workload ends, and its resident models stop serving everyone else.
+  const sharedParent = ownedAborts && !drainingParent
+    ? exactParentForHost(state, hostUrl, probes, { shared: true }) : null;
+  const parent = drainingParent || sharedParent;
   if (hasWorkload && !parent) {
     return { recovered: false, reason: 'workload covers host' };
   }
   const quarantinedFor = p => (p.unknownAt ? now() - new Date(p.unknownAt).getTime() : -1);
-  // A batch can also issue direct runtime warmups. Its drained Core callers
-  // therefore always use the full loading/cancellation window, even resident.
-  const minimumWindow = p => (isProbe(p) || parent ? settleMs : Math.min(settleMs, abortSettleMs));
+  // A batch can also issue direct runtime warmups on a host it reserves. Its
+  // drained Core callers there always use the full loading/cancellation
+  // window, even resident. On a shared host every batch call goes through
+  // Core, so an abort there follows the ordinary caller-abort rule.
+  const minimumWindow = p => (isProbe(p) || drainingParent ? settleMs : Math.min(settleMs, abortSettleMs));
   if (probes.some(p => quarantinedFor(p) < minimumWindow(p))) {
     return { recovered: false, reason: 'settle window not elapsed' };
   }
@@ -144,14 +155,15 @@ async function recoverSettledWatchdogProbes(hostUrl, {
     acquiredAt: p.acquiredAt, unknownAt: p.unknownAt, unknownReason: p.unknownReason,
     evidence, releasedAt,
     ...(parent && { parentWorkload: { admissionId: parent.admissionId,
-      generation: parent.generation, workloadId: parent.workloadId } }),
+      generation: parent.generation, workloadId: parent.workloadId, ...(sharedParent && { sharedHost: true }) } }),
   }));
   const updated = await RuntimeCoordination.findOneAndUpdate(
     {
       _id: 'runtime',
       maintenance: null,
       workloads: parent
-        ? { $elemMatch: { ...parentPredicate(parent, hostUrl), drainingHosts: hostUrl } }
+        ? { $elemMatch: { ...parentPredicate(parent, hostUrl),
+          ...(sharedParent ? { sharedHosts: hostUrl } : { drainingHosts: hostUrl }) } }
         : { $not: { $elemMatch: { hosts: hostUrl } } },
       $and: [
         ...(parent ? [{ workloads: { $not: { $elemMatch: {

@@ -191,6 +191,70 @@ describe('caller-aborted inference recovery without a runtime restart (#35)', ()
     expect(await inferences()).toHaveLength(1);
   });
 
+  describe('under a Benchmark workload', () => {
+    const RESERVED = 'http://host-b:11434';
+    let workload;
+    async function judgeAbort({ sharedHosts = [HOST], origin = 'caller-abort' } = {}) {
+      workload = await service.acquireWorkload({ principal: 'benchmark-service', requestId: 'batch-request',
+        workloadId: 'batch-a', kind: 'benchmark', hosts: [RESERVED, HOST], sharedHosts, ttl: 30 * 60_000 });
+      expect(workload.acquired).toBe(true);
+      const call = await service.acquireInference({ principal: 'benchmark-service', requestId: 'judge-call', host: HOST,
+        model: 'model-a', kind: 'inference-direct', runtimeOptions: { num_ctx: 8192 },
+        workloadAdmissionId: workload.admissionId, workloadGeneration: workload.generation });
+      expect(call.acquired).toBe(true);
+      await service.markInferenceUnknown({ id: call.admissionId, generation: call.generation,
+        principal: 'benchmark-service', reason: 'The batch was stopped.', origin });
+      return call;
+    }
+
+    test('an abort on a host the workload shares is released after the short window, workload still held', async () => {
+      const call = await judgeAbort();
+      const readPs = jest.fn().mockResolvedValue(residentAt(8192));
+
+      await expect(recoverSettledWatchdogProbes(HOST, { readPs, sleep: noSleep }))
+        .resolves.toEqual({ recovered: false, reason: 'settle window not elapsed' });
+      const result = await recoverSettledWatchdogProbes(HOST, { readPs, sleep: noSleep, now: AFTER_ABORT_WINDOW });
+
+      expect(result).toMatchObject({ recovered: true });
+      expect(await inferences()).toEqual([]);
+      const doc = await RuntimeCoordination.findById('runtime').select('+releaseReceipts').lean();
+      expect(doc.workloads).toHaveLength(1);
+      expect(doc.releaseReceipts.at(-1)).toMatchObject({
+        contract: 'agentx.caller-abort-recovery/v1', admissionId: call.admissionId, residentAtRequest: true,
+        parentWorkload: { admissionId: workload.admissionId, workloadId: 'batch-a', sharedHost: true }
+      });
+      // The resident model serves another caller again.
+      await expect(service.acquireInference({ principal: 'core-trusted-runtime', requestId: 'household-turn', host: HOST,
+        model: 'model-a', runtimeOptions: { num_ctx: 8192 } })).resolves.toMatchObject({ acquired: true });
+    });
+
+    test('on a shared host a model that may still be loading waits for the full window', async () => {
+      await judgeAbort();
+      const absent = jest.fn().mockResolvedValue([]);
+      await expect(recoverSettledWatchdogProbes(HOST, { readPs: absent, sleep: noSleep, now: AFTER_ABORT_WINDOW }))
+        .resolves.toEqual({ recovered: false, reason: 'settle window not elapsed' });
+      await expect(recoverSettledWatchdogProbes(HOST, { readPs: absent, sleep: noSleep, now: LATER }))
+        .resolves.toMatchObject({ recovered: true });
+    });
+
+    test('an abort on a host the workload reserves is not released this way', async () => {
+      await judgeAbort({ sharedHosts: [] });
+      const readPs = jest.fn().mockResolvedValue(residentAt(8192));
+      await expect(recoverSettledWatchdogProbes(HOST, { readPs, sleep: noSleep, now: LATER }))
+        .resolves.toEqual({ recovered: false, reason: 'workload covers host' });
+      expect(await inferences()).toHaveLength(1);
+    });
+
+    test('an inference of another owner on the shared host keeps the quarantine', async () => {
+      await judgeAbort();
+      await RuntimeCoordination.updateOne({ _id: 'runtime' },
+        { $set: { 'inferences.0.workloadAdmissionId': 'another-workload' } });
+      const readPs = jest.fn().mockResolvedValue(residentAt(8192));
+      await expect(recoverSettledWatchdogProbes(HOST, { readPs, sleep: noSleep, now: LATER }))
+        .resolves.toEqual({ recovered: false, reason: 'workload covers host' });
+    });
+  });
+
   test('never releases an UNKNOWN inference without the caller-abort origin', async () => {
     await quarantine({ kind: 'trusted-runtime', principal: 'core-trusted-runtime', requestId: 'lost-1',
       reason: 'socket hang up' });

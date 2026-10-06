@@ -1874,6 +1874,15 @@ normal finalizer restore and verify the pre-claim snapshot, before releasing
 the parent workload. An invalid receipt or elapsed wait retains ownership for
 recovery. Profiler workloads and unrelated inferences do not qualify.
 
+A host the workload holds as shared (a judge-only host) has no claim to
+release, so no dispatch is closed there. Its own caller and deadline aborts
+follow the ordinary rule above instead: released after
+`CALLER_ABORT_RECOVERY_SETTLE_MS` when the model is resident at the request's
+context, after the full window otherwise, while the workload stays held. The
+models resident on that host then serve other callers again without waiting
+for the execution host. The receipt names the parent workload with
+`sharedHost: true`.
+
 A lost heartbeat, a socket hang-up or a runtime bridge quarantine
 still needs the restart attestation below.
 
