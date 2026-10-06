@@ -48,7 +48,7 @@ async function handleOpenClawChat(request, client = createOpenClawExecutionClien
     toolExecution: { status: selection.mode === 'agent' ? 'native' : 'not_supported', receipts: [],
       coverage: selection.mode === 'agent' ? 'not-observed-by-responses-api' : 'no-runtime-tools' } };
   const saved = request.persist === false ? { persistence: { saved: false } } : await persistConversation({
-    userId: request.userId, conversationId: request.conversationId, model, effectiveSystemPrompt,
+    userId: request.userId, conversationId: request.conversationId, clientTurnId: request.clientTurnId, model, effectiveSystemPrompt,
     message: request.message, assistantContent: result.text, activePrompt, metadata,
     stats: body.stats, ragUsed: context.ragUsed, useRag: ragRequested, ragSources: context.ragSources });
   if (failure) { request.onError?.(failure); if (!streaming) throw failure; return; }

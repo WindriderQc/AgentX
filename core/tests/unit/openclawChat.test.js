@@ -7,7 +7,7 @@ jest.mock('../../src/services/chat/conversationPersistence', () => ({ persistCon
 const { handleOpenClawChat, withOpenClawChat } = require('../../src/services/chat/openclawChat');
 const { persistConversation } = require('../../src/services/chat/conversationPersistence');
 const { prepareChatOrchestration } = require('../../src/services/chat/chatOrchestrationPrelude');
-const request = () => ({ model: 'openclaw:model:fixture/model', message: 'Current turn', messages: [{ role: 'user', content: 'Canonical earlier turn' }], conversationId: 'core-conversation', userId: 'owner', options: { num_predict: 64 } });
+const request = () => ({ model: 'openclaw:model:fixture/model', message: 'Current turn', messages: [{ role: 'user', content: 'Canonical earlier turn' }], conversationId: 'core-conversation', clientTurnId: 'core-turn', userId: 'owner', options: { num_predict: 64 } });
 beforeEach(() => jest.clearAllMocks());
 
 test('Core supplies and persists canonical context while OpenClaw executes only the selected source', async () => {
@@ -17,7 +17,7 @@ test('Core supplies and persists canonical context while OpenClaw executes only 
     expect(client.execute.mock.calls[0][0]).toMatchObject({ execution: { source: 'openclaw', mode: 'model', model: 'fixture/model' },
         sessionId: 'core-conversation', messages: [{ role: 'system', content: 'Core persona and RAG' }, { role: 'user', content: 'Canonical earlier turn' }, { role: 'user', content: 'Current turn' }] });
     expect(prepareChatOrchestration.mock.calls[0][0]).not.toHaveProperty('target');
-    expect(persistConversation.mock.calls[0][0]).toMatchObject({ conversationId: 'core-conversation', assistantContent: 'answer', metadata: { executionReceipt: receipt } });
+    expect(persistConversation.mock.calls[0][0]).toMatchObject({ conversationId: 'core-conversation', clientTurnId: 'core-turn', assistantContent: 'answer', metadata: { executionReceipt: receipt } });
     expect(result.stats.usage.promptTokens).toBe(10);
     expect(require('../../src/services/routing/inferenceTelemetry').recordInference).toHaveBeenCalledWith(expect.objectContaining({ executionSource: 'openclaw', executionMode: 'model', tokensIn: 10, tokensOut: 2 }));
 });
