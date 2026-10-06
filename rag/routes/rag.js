@@ -168,7 +168,7 @@ async function handleIngest(req, res) {
     const classified = classifyRagAvailabilityError(err);
     if (classified) {
       logger.warn(`Ingest blocked: ${classified.code} — ${err.message}`);
-      return sendError(res, classified.status, classified.code, classified.detail);
+      return sendError(res, classified.status, classified.code, classified.detail, classified.meta);
     }
     logger.error('Ingest error:', err);
     if (err.code === 'MEMORY_CLASSIFICATION_CONFLICT') {
@@ -233,12 +233,13 @@ router.post('/ingest/batch', async (req, res) => {
         // Abort early on availability errors from the first document
         if (index === 0) {
           const classified = classifyRagAvailabilityError(err);
-          if (classified) {
+          if (classified?.status === 503) {
             logger.warn(`Batch ingest aborted: ${classified.code} — ${err.message}`);
             return sendError(res, classified.status, classified.code, classified.detail);
           }
         }
-        results.push({ index, status: 'error', error: err.message });
+        results.push({ index, status: 'error', error: err.message,
+          ...(err.code && { code: err.code }), ...(err.statusCode && { statusCode: err.statusCode }) });
         failed++;
       }
     }

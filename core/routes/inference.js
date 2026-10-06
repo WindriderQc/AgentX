@@ -40,7 +40,7 @@ const { telemetryContextFromRequest } = require('../src/helpers/llmTelemetryCont
 const { beginInferenceAdmission } = require('../src/services/inferenceAdmissionService');
 const { trustedNestorConsumer } = require('../src/services/nestorConsumerAttribution');
 const alertService = require('../src/services/alertService');
-const { EMBED_TIMEOUT_MS, isEmbedHostLive, emitEmbedHostFailure, isModelMissingResponse, _resetEmbedLiveness } = require('../src/services/embeddingHostChain');
+const { EMBED_TIMEOUT_MS, prepareEmbeddingPayload, isEmbedHostLive, emitEmbedHostFailure, isModelMissingResponse, _resetEmbedLiveness } = require('../src/services/embeddingHostChain');
 
 const ragStore = getRagServiceClient();
 
@@ -133,10 +133,10 @@ router.post('/inference/embed', async (req, res) => {
     const startedAt = Date.now();
     const body = req.body || {};
     const model = typeof body.model === 'string' ? body.model.trim() : '';
-    const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+    const prompt = typeof body.prompt === 'string' ? body.prompt : '';
     const ollamaHostOverride = typeof body.ollamaHost === 'string' ? body.ollamaHost.trim() : '';
 
-    if (!model || !prompt) {
+    if (!model || !prompt.trim()) {
         return res.status(400).json({
             status: 'error',
             message: 'model and prompt are required and must be non-empty strings'
@@ -319,15 +319,12 @@ router.post('/inference/embed', async (req, res) => {
                     ...(keepAlive !== undefined && { keepAlive }),
                     signal: controller.signal
                 });
+                const payload = await prepareEmbeddingPayload(candidate, model, prompt, keepAlive, embedAdmission.signal);
                 embedAdmission.markDispatched();
-                response = await fetch(`${candidate}/api/embeddings`, {
+                response = await fetch(`${candidate}/api/embed`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model,
-                        prompt,
-                        ...(keepAlive !== undefined && { keep_alive: keepAlive })
-                    }),
+                    body: JSON.stringify(payload),
                     signal: embedAdmission.signal
                 });
             } catch (err) {
@@ -440,11 +437,12 @@ router.post('/inference/embed', async (req, res) => {
 
             return res.status(response.status).json({
                 status: 'error',
+                ...([400, 413].includes(response.status) && { code: 'EMBEDDING_INPUT_REJECTED' }),
                 message: data?.error || raw || response.statusText || 'Embedding request failed'
             });
         }
 
-        if (!data || !Array.isArray(data.embedding)) {
+        if (!data || data.embeddings?.length !== 1 || !Array.isArray(data.embeddings[0])) {
             recordInference({
                 host: target,
                 model,
@@ -463,6 +461,7 @@ router.post('/inference/embed', async (req, res) => {
             });
         }
 
+        data.embedding = data.embeddings[0];
         recordInference({
             host: target,
             routedHostUrl: routedTarget,

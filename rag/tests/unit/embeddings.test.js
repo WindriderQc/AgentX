@@ -56,4 +56,17 @@ describe('Embeddings provider boundary', () => {
     expect(() => createEmbeddingsProvider({ embeddingProvider: 'unknown' }))
       .toThrow('Unsupported embedding provider: unknown');
   });
+
+  it('refuses oversized text even when a legacy truncated vector is cached', async () => {
+    const { getEmbeddingsService } = require('../../src/services/embeddings');
+    const { getEmbeddingCache } = require('../../src/services/embeddingCache');
+    const fetch = require('../../src/utils/fetchWithTimeout');
+    const service = getEmbeddingsService({ dimension: 3, maxTextLength: 8 });
+    const text = 'too long for this provider';
+    getEmbeddingCache().set(text, service.model, [1, 2, 3]);
+    await expect(service.embed(text)).rejects.toMatchObject({ code: 'EMBEDDING_INPUT_TOO_LARGE' });
+    await expect(service.embedBatch(['short', text])).rejects.toMatchObject({ code: 'EMBEDDING_INPUT_TOO_LARGE' });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(service.getCachedConnectionStatus()).toBeNull();
+  });
 });

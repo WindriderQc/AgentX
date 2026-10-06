@@ -83,7 +83,7 @@ describe('POST /api/inference/embed — dead-host failover', () => {
       return Promise.resolve({
         ok: true,
         status: 200,
-        text: () => Promise.resolve(JSON.stringify({ embedding: [0.1, 0.2, 0.3] }))
+        text: () => Promise.resolve(JSON.stringify({ embeddings: [[0.1, 0.2, 0.3]] }))
       });
     });
 
@@ -130,7 +130,7 @@ describe('POST /api/inference/embed — dead-host failover', () => {
 
   it('raises no host-unreachable incident when Core itself refuses admission on a host', async () => {
     fetch.mockImplementation(url => Promise.resolve(url.includes('/api/tags') ? { ok: true, status: 200 }
-      : { ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ embedding: [0.4] })) }));
+      : { ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ embeddings: [[0.4]] })) }));
     beginInferenceAdmission.mockImplementationOnce(async () => {
       throw Object.assign(new Error('incompatible residency blocks inference on this host'),
         { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', statusCode: 503 });
@@ -150,7 +150,7 @@ describe('POST /api/inference/embed — dead-host failover', () => {
     fetch.mockImplementation(url => {
       if (url.includes('/api/tags')) return Promise.resolve({ ok: true, status: 200 });
       if (url.includes('secondary')) return Promise.reject(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
-      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ embedding: [0.4] })) });
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ embeddings: [[0.4]] })) });
     });
 
     await request(app).post('/api/inference/embed').send({ model: 'nomic-embed-text:v1.5', prompt: 'probe' }).expect(200);
@@ -222,7 +222,7 @@ describe('POST /api/inference/embed — dead-host failover', () => {
   describe('a host without the model', () => {
     const { setRegisteredHosts } = require('../../src/helpers/ollamaHostConfig');
     afterEach(() => setRegisteredHosts([]));
-    const embedOk = { ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ embedding: [0.7] })) };
+    const embedOk = { ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ embeddings: [[0.7]] })) };
     const missing = { ok: false, status: 404, statusText: 'Not Found',
       text: () => Promise.resolve(JSON.stringify({ error: 'model "nomic-embed-text:v1.5" not found, try pulling it first' })) };
 
@@ -268,7 +268,7 @@ describe('POST /api/inference/embed — dead-host failover', () => {
         .send({ model: 'nomic-embed-text:v1.5', prompt: 'probe' }).expect(404);
 
       expect(response.body.message).toMatch(/not found/);
-      const hosts = [...new Set(fetch.mock.calls.filter(([url]) => url.endsWith('/api/embeddings')).map(([url]) => new URL(url).host))];
+      const hosts = [...new Set(fetch.mock.calls.filter(([url]) => url.endsWith('/api/embed')).map(([url]) => new URL(url).host))];
       expect(hosts).toEqual(['secondary:11434', 'primary:11434']);
     });
   });
@@ -283,7 +283,7 @@ describe('POST /api/inference/embed — dead-host failover', () => {
         setTimeout(() => resolve({
           ok: true,
           status: 200,
-          text: () => Promise.resolve(JSON.stringify({ embedding: [0.9] }))
+          text: () => Promise.resolve(JSON.stringify({ embeddings: [[0.9]] }))
         }), 400); // > EMBED_PROBE_TIMEOUT_MS (200), < EMBED_TIMEOUT_MS (600)
       });
     });

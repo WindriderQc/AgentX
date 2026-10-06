@@ -94,6 +94,14 @@ Instance configuration, data and deployment receipts remain outside Git.
   live: Nestor and family captures wait there until the parent reviews them.
   Coding workers receive bounded context from linked Planning objectives;
   private item content stays out, while omitted links appear by reference only.
+  Coding-task preparation passes that supplied text, the full task discussion
+  and the permitted file inventory without additional cuts. Its coverage is
+  recorded on the ticket; a planner input refusal preserves the request.
+- **Retrieval input.** Reranking passes complete passages to Core. Embedding
+  inputs are sent whole or refused: the provider declares its character limit,
+  Core requests native context refusal, and ingestion does not index a partial
+  document after an embedding or chunk-limit failure. Batch results account
+  for refused documents individually.
 - **Team.** Agent Ops (`/agent-ops`) projects who does what and whether it
   runs from read-only runtime evidence, when the instance provides it. Its Team
   tab shows each agent with the persona that presents it, edits a member's

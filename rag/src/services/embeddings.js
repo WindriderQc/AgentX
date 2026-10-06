@@ -146,6 +146,7 @@ class EmbeddingsService {
   }
 
   async embed(text, preferredHost = null) {
+    this.provider.validateText(text);
     const cache = getEmbeddingCache();
     const cached = cache.get(text, this.model);
     if (cached) return cached;
@@ -159,6 +160,7 @@ class EmbeddingsService {
   }
 
   async embedBatch(texts, preferredHost = null) {
+    this.provider.validateTexts(texts);
     const cache = getEmbeddingCache();
     const results = new Array(texts.length);
     const uncachedIndices = [];

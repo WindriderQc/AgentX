@@ -3,6 +3,9 @@ const request = require('supertest');
 const fetch = require('node-fetch');
 
 jest.mock('node-fetch');
+jest.mock('../../src/services/routing/ollamaRuntimeVersion', () => ({
+  readRuntimeVersion: jest.fn(async () => '0.30.10'),
+}));
 
 jest.mock('../../src/services/modelRouter', () => ({
   getRoutingStatus: jest.fn(),
@@ -87,6 +90,8 @@ describe('POST /api/inference/embed', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    require('../../routes/inference')._resetEmbedLivenessForTests();
+    require('../../src/services/routing/ollamaRuntimeVersion').readRuntimeVersion.mockResolvedValue('0.30.10');
     delete process.env.REQUIRE_PROFILED_MODELS;
   });
 
@@ -104,7 +109,7 @@ describe('POST /api/inference/embed', () => {
   it('proxies embeddings to the routed Ollama host', async () => {
     fetch.mockResolvedValue({
       ok: true,
-      text: () => Promise.resolve(JSON.stringify({ embedding: [0.12, 0.34, 0.56] }))
+      text: () => Promise.resolve(JSON.stringify({ embeddings: [[0.12, 0.34, 0.56]] }))
     });
 
     const response = await request(app)
@@ -118,13 +123,13 @@ describe('POST /api/inference/embed', () => {
     expect(response.body.embedding).toEqual([0.12, 0.34, 0.56]);
     expect(getTargetForModel).toHaveBeenCalledWith('nomic-embed-text:v1.5');
     expect(fetch).toHaveBeenCalledWith(
-      'http://primary:11434/api/embeddings',
+      'http://primary:11434/api/embed',
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'nomic-embed-text:v1.5',
-          prompt: 'hello world'
+          input: 'hello world', truncate: false
         })
       })
     );
@@ -136,6 +141,33 @@ describe('POST /api/inference/embed', () => {
     }));
   });
 
+  it('keeps the exact input and requests native overflow refusal', async () => {
+    fetch.mockResolvedValue({ ok: true, text: async () => JSON.stringify({ embeddings: [[0.1]] }) });
+    const prompt = '  ' + 'x'.repeat(9000) + ' Important tail.\n';
+    await request(app).post('/api/inference/embed').send({ model: 'nomic-embed-text:v1.5', prompt }).expect(200);
+    const body = JSON.parse(fetch.mock.calls.find(([url]) => url.endsWith('/api/embed'))[1].body);
+    expect(body).toMatchObject({ input: prompt, truncate: false });
+  });
+
+  it('returns a native context refusal without trying another host', async () => {
+    fetch.mockImplementation(async url => url.endsWith('/api/tags') ? { ok: true }
+      : { ok: false, status: 400, text: async () => JSON.stringify({ error: 'input length exceeds context length' }) });
+    const response = await request(app).post('/api/inference/embed').send({ model: 'nomic-embed-text:v1.5', prompt: 'Full input' }).expect(400);
+    expect(response.body).toMatchObject({ code: 'EMBEDDING_INPUT_REJECTED', message: 'input length exceeds context length' });
+    expect(fetch.mock.calls.filter(([url]) => url.endsWith('/api/embed'))).toHaveLength(1);
+    const admission = await require('../../src/services/inferenceAdmissionService').beginInferenceAdmission.mock.results[0].value;
+    expect(admission.complete).toHaveBeenCalledTimes(1);
+    expect(admission.abandon).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unqualified runtime before dispatching an embedding', async () => {
+    require('../../src/services/routing/ollamaRuntimeVersion').readRuntimeVersion.mockResolvedValue('0.30.9');
+    fetch.mockResolvedValue({ ok: true });
+    const response = await request(app).post('/api/inference/embed').send({ model: 'nomic-embed-text:v1.5', prompt: 'Full input' }).expect(502);
+    expect(response.body.message).toContain('cannot enforce context overflow refusal');
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/api/embed'))).toBe(false);
+  });
+
   it('propagates a matching app-managed pin keep-alive to Ollama', async () => {
     hostPreferenceService.getByHost.mockResolvedValue({
       pinnedModels: [{ model: 'nomic-embed-text:v1.5', keepAlive: -1 }]
@@ -143,7 +175,7 @@ describe('POST /api/inference/embed', () => {
     hostPreferenceService.resolvePinnedRuntimeOptions.mockReturnValue({ options: {}, keepAlive: -1 });
     fetch.mockResolvedValue({
       ok: true,
-      text: () => Promise.resolve(JSON.stringify({ embedding: [0.12, 0.34] }))
+      text: () => Promise.resolve(JSON.stringify({ embeddings: [[0.12, 0.34]] }))
     });
 
     await request(app)
@@ -151,10 +183,10 @@ describe('POST /api/inference/embed', () => {
       .send({ model: 'nomic-embed-text:v1.5', prompt: 'keep me warm' })
       .expect(200);
 
-    const embedCall = fetch.mock.calls.find(([url]) => url.endsWith('/api/embeddings'));
+    const embedCall = fetch.mock.calls.find(([url]) => url.endsWith('/api/embed'));
     expect(JSON.parse(embedCall[1].body)).toEqual({
       model: 'nomic-embed-text:v1.5',
-      prompt: 'keep me warm',
+      input: 'keep me warm', truncate: false,
       keep_alive: -1
     });
   });
@@ -162,7 +194,7 @@ describe('POST /api/inference/embed', () => {
   it('normalizes wildcard ollamaHost overrides before proxying', async () => {
     fetch.mockResolvedValue({
       ok: true,
-      text: () => Promise.resolve(JSON.stringify({ embedding: [1, 2, 3] }))
+      text: () => Promise.resolve(JSON.stringify({ embeddings: [[1, 2, 3]] }))
     });
 
     const response = await request(app)
@@ -176,7 +208,7 @@ describe('POST /api/inference/embed', () => {
 
     expect(response.body.embedding).toEqual([1, 2, 3]);
     expect(fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:11434/api/embeddings',
+      'http://127.0.0.1:11434/api/embed',
       expect.any(Object)
     );
   });
@@ -199,7 +231,7 @@ describe('RouteDecision attribution on the embed path', () => {
     // a shape-only assertion is what let the original gap ship.
     fetch.mockResolvedValue({
       ok: true,
-      text: () => Promise.resolve(JSON.stringify({ embedding: [0.1, 0.2] }))
+      text: () => Promise.resolve(JSON.stringify({ embeddings: [[0.1, 0.2]] }))
     });
 
     await request(app)
@@ -249,7 +281,7 @@ describe('RouteDecision attribution on the embed path', () => {
       }
       return Promise.resolve({
         ok: true,
-        text: () => Promise.resolve(JSON.stringify({ embedding: [0.3, 0.4] }))
+        text: () => Promise.resolve(JSON.stringify({ embeddings: [[0.3, 0.4]] }))
       });
     });
 
