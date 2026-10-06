@@ -54,9 +54,7 @@ const {
   replyLanguageDirective, spokenReplyLanguage, systemPromptFor, assessSafety, escalationReply,
   childBoundaryReply
 } = require('./persona-prompt');
-const {
-  explicitMemoryStatement, forgetMemoryStatement, inferredMemoryCandidate, normalizeVoixTranscriptionMultipart
-} = require('./voice-memory-turns');
+const { forgetMemoryStatement, normalizeVoixTranscriptionMultipart } = require('./voice-requests');
 const {
   createModels, publicSession, publicAudit, sessionHistoryMessages, loadSessionAuditRows
 } = require('./persona-records');
@@ -563,9 +561,7 @@ module.exports = {
   speechProfile,
   systemPromptFor,
   detectMemoryRequest,
-  explicitMemoryStatement,
   forgetMemoryStatement,
-  inferredMemoryCandidate,
   packIdsSharingMemory,
   memoryBlock,
   HOUSEHOLD_CONSUMER_CONTRACT,

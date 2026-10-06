@@ -19,7 +19,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { reportDirectory } = require('../src/helpers/offlineReportDirectory');
 const lane = require('../surfaces/household/voice-lane');
 const { detectMemoryRequest } = require('../surfaces/household/persona-prompt');
-const { forgetMemoryStatement } = require('../surfaces/household/voice-memory-turns');
+const { forgetMemoryStatement } = require('../surfaces/household/voice-requests');
 
 const SCOPE_ID = 'personal';
 const CALLER = 'voice-lane-replay';
