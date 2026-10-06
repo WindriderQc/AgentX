@@ -2,8 +2,11 @@
 
 This optional adapter adds a bounded command recognizer to the existing VoiX
 process. Vosk checks the complete mono PCM WAV for a standalone Stop/silence
-command before general transcription. Unknown words and mixed requests retain
-Whisper, its language choice and its existing native decoder. Core remains the
+command while general transcription already runs, so an ordinary request waits
+for the longer of the two passes, not their sum; a recognized command answers
+at once and the transcription started beside it is dropped unread. Unknown
+words and mixed requests retain Whisper, its language choice and its existing
+native decoder. Core remains the
 conversation and memory owner. No audio or transcript is stored by this adapter.
 
 Install `requirements-controls.txt` into the existing VoiX Python environment.
