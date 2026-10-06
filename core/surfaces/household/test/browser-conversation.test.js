@@ -806,9 +806,10 @@ test('interruption after generation completes still marks the same session and c
 
 for (const text of ['Stop, stop, stop.', 'Nestor, arrête de parler !', 'Arrête-toi.', 'Stop talking, Nestor.', { text: '', control: 'stop' }]) {
   test(`a confirmed stop-only interruption resumes listening without another model reply: ${text}`, async () => {
-    let transcriptions = 0, turns = 0, stopped = 0;
+    let transcriptions = 0, turns = 0, stopped = 0; const reasons = [];
     const h = harness({ transcribe: async () => ++transcriptions === 1 ? 'Bonjour' : text,
-      turn: async () => { turns++; return { text: 'Une longue réponse.' }; }, interrupt: async () => ({}) });
+      turn: async () => { turns++; return { text: 'Une longue réponse.' }; },
+      interrupt: async (_session, _turnId, _signal, options) => { reasons.push(options); return {}; } });
     h.audio.canInterrupt = true;
     h.audio.play = (_bytes, signal) => new Promise(resolve => signal.addEventListener('abort', () => { stopped++; resolve(); }, { once: true }));
     await h.conversation.start({}); const first = h.say(); await tick();
@@ -817,6 +818,7 @@ for (const text of ['Stop, stop, stop.', 'Nestor, arrête de parler !', 'Arrête
     await h.say(); await first;
     assert.equal(stopped, 1, 'a confirmed Stop cancels the held playback');
     assert.equal(turns, 1, 'do not invoke the model just to acknowledge Stop');
+    assert.deepEqual(reasons, [{ stop: true }], 'the surface learns this was a stop, not just new speech');
     assert.equal(h.conversation.state, 'listening');
     assert.equal(h.conversation.session.sessionId, 'private-1');
     h.conversation.stop();
@@ -826,7 +828,8 @@ for (const text of ['Stop, stop, stop.', 'Nestor, arrête de parler !', 'Arrête
 test('an interruption with a new question retains the entire request for the same native conversation', async () => {
   let transcriptions = 0; const submitted = [];
   const h = harness({ transcribe: async () => ++transcriptions === 1 ? 'Bonjour' : 'Stop, explique le budget.',
-    turn: async (_session, text) => { submitted.push(text); return { text: 'Voici le budget.' }; }, interrupt: async () => ({}) });
+    turn: async (_session, text) => { submitted.push(text); return { text: 'Voici le budget.' }; },
+    interrupt: async (_session, _turnId, _signal, options) => { assert.deepEqual(options, { stop: false }); return {}; } });
   h.audio.canInterrupt = true;
   h.audio.play = (_bytes, signal) => submitted.length > 1 ? Promise.resolve()
     : new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));

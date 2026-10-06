@@ -37,7 +37,7 @@ const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null,
   familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-  sounds, visuals, brain, activePersonaTurns, validClientTurnId,
+  sounds, visuals, brain, memberWork, activePersonaTurns, validClientTurnId,
   envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
   packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
   sessionHistoryMessages, loadSessionAuditRows,
@@ -61,11 +61,12 @@ function createPersonaTurnHandler({
     entry.ready = new Promise(resolve => { entry.markReady = resolve; });
     entry.finished = new Promise(resolve => { entry.finish = resolve; });
     activePersonaTurns.set(req.params.sessionId, entry); brain.cancel(req.params.sessionId);
-    const disconnected = () => { if (!res.writableEnded) abort.abort(); };
+    // A detached member turn (member-work.js) keeps running without its request.
+    const disconnected = () => { if (!res.writableEnded && !entry.detached) abort.abort(); };
     res.on?.('close', disconnected);
     const streaming = req.body?.stream === true;
     const event = (type, data) => {
-      if (!streaming || abort.signal.aborted) return;
+      if (!streaming || abort.signal.aborted || entry.detached) return;
       if (!res.headersSent) res.status(200).set({ 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
       res.write(JSON.stringify({ type, ...data }) + '\n');
     };
@@ -168,11 +169,24 @@ function createPersonaTurnHandler({
         // #41: a turn that names another team member runs in that member's own session.
         member = backend === 'openclaw' && !pack.childSafe && !isLlmX
           ? teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session)) : null;
+        // That member is still on an earlier question: the conversation's agent answers and says so.
+        if (member && memberWork?.active(session.sessionId).some(job => job.agentId === member.agentId)) member = null;
         memberPersona = member ? await teamPersona(member.agentId, runtimeServices.personas) : null;
         const turnSession = member ? teamAddress.memberSession(session, member, memberPersona) : session;
         if (member) {
           speaker = { agentId: member.agentId, name: memberPersona?.name || member.agentId, personaId: memberPersona?.id || null };
           event('speaker', { speaker });
+          // Speaking again does not cancel a member: its turn detaches and its reply is said later.
+          if (clientTurnId && streaming && memberWork) entry.detach = () => {
+            if (entry.detached || entry.executionSettled || abort.signal.aborted) return false;
+            memberWork.start(session.sessionId, clientTurnId, { agentId: member.agentId, name: speaker.name, question: userText,
+              cancel: () => { entry.interrupted = true; abort.abort(); } });
+            event('detached', { speaker });
+            entry.detached = true;
+            if (activePersonaTurns.get(req.params.sessionId) === entry) activePersonaTurns.delete(req.params.sessionId);
+            if (!res.writableEnded) res.end();
+            return true;
+          };
           // Heard at once: the member's first words can be many seconds away.
           event('status', { phase: 'activity', activity: { kind: 'member_addressed', agentId: member.agentId } });
         }
@@ -237,7 +251,7 @@ function createPersonaTurnHandler({
         // members, knowledge, chores, saves, the sound note, the reply language, a team
         // member's last exchange and the reviewer's advice) goes last, beside the request.
         const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }),
-          member ? '' : teamAddress.exchangeContext(session.teamExchange),
+          member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || '',
           isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId)].join('').trim();
         const nativeInstructions = agentInstructions(turnSession, turnSession.persona,
           pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode,
@@ -369,6 +383,11 @@ function createPersonaTurnHandler({
       if (member) await conversations.updateSession({ sessionId: session.sessionId },
         { $set: { teamExchange: teamAddress.exchangeRecord(member, speaker.name, userText, replyText) } });
       else if (session.teamExchange) await conversations.updateSession({ sessionId: session.sessionId }, { $unset: { teamExchange: '' } });
+      if (entry.detached) {
+        memberWork.finish(session.sessionId, clientTurnId, { traceId, text: speechText(replyText),
+          language: spokenReplyLanguage(replyText, userText), speaker: audit.speaker, speech: audit.replySpeech });
+        return undefined;
+      }
       const updated = await conversations.getSession({ sessionId: session.sessionId });
       const resultPayload = {
         traceId, speaker: audit.speaker,
@@ -415,6 +434,11 @@ function createPersonaTurnHandler({
       return envelope(res, resultPayload);
     } catch (error) {
       entry.error = abort.signal.aborted && !entry.dispatched ? null : error;
+      if (entry.detached) {
+        logger?.error?.('Household detached member turn failed', { error: error.message });
+        memberWork.fail(req.params.sessionId, clientTurnId, error.message);
+        return;
+      }
       if (abort.signal.aborted) return;
       if (res.headersSent) { event('error', { message: error.message }); return res.end(); }
       logger?.error?.('Household persona turn failed', { error: error.message, ...(error.detail ? { detail: error.detail } : {}) });
@@ -444,7 +468,9 @@ function createPersonaTurnHandler({
       } catch (error) { entry.error = error; }
       finally {
         entry.markReady(null);
-        activePersonaTurns.delete(req.params.sessionId);
+        // A detached turn already gave its place to the next turn.
+        if (activePersonaTurns.get(req.params.sessionId) === entry) activePersonaTurns.delete(req.params.sessionId);
+        if (entry.detached && abort.signal.aborted) memberWork.fail(req.params.sessionId, clientTurnId, 'cancelled');
         res.removeListener?.('close', disconnected);
         if (entry.interrupted && !res.writableEnded) res.end?.();
         entry.finish();
