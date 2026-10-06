@@ -1848,6 +1848,11 @@ needs the restart attestation below. A request that cannot carry the proof (a
 model still loading at the deadline, a streamed or Core-routed request) keeps
 the client deadline and stays UNKNOWN when it expires.
 
+A watchdog probe is admitted only on a host where Core has admitted nothing
+else: on a host that serves one request at a time it would otherwise queue
+behind a slow call, hit its own deadline and quarantine a host that was
+answering. A refused probe is skipped until the next cycle.
+
 An UNKNOWN inference (not a workload) is released by the watchdog without a
 runtime restart for a watchdog probe or a connection Core closed itself.
 A watchdog probe is released after
