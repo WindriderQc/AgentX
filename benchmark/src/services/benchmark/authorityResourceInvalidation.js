@@ -20,6 +20,7 @@ const ModelContextProbeSnapshot = require('../../../models/ModelContextProbeSnap
 const {
   objectId,
   authorityInvalidationFields,
+  batchInvalidationUpdate,
   resourceModel,
   matchedExactlyOne
 } = require('./authorityReconciliationShared');
@@ -28,12 +29,11 @@ async function invalidateResource(record, options = {}) {
   options.assertActive?.();
   if (record.kind === 'workload_invalidation') {
     const batchId = record.batchId || null;
-    const fields = authorityInvalidationFields(record);
     const [batch, results, matrices, governance, groundTruth] = await Promise.all([
       batchId
         ? BenchmarkBatch.findOneAndUpdate(
           { _id: objectId(batchId) },
-          { $set: fields, $inc: { __v: 1 } },
+          batchInvalidationUpdate(record),
           { new: true, ...(options.signal ? { signal: options.signal } : {}) }
         ).lean()
         : null,
@@ -306,7 +306,9 @@ async function invalidateResource(record, options = {}) {
   const Model = resourceModel(record);
   if (!Model) throw new Error(`Unsupported authority reconciliation kind: ${record.kind}`);
   const id = objectId(record.resultId);
-  const update = { $set: authorityInvalidationFields(record), $inc: { __v: 1 } };
+  const update = Model === BenchmarkBatch
+    ? batchInvalidationUpdate(record)
+    : { $set: authorityInvalidationFields(record), $inc: { __v: 1 } };
   const query = Model.findOneAndUpdate(
     { _id: id },
     update,
@@ -317,7 +319,7 @@ async function invalidateResource(record, options = {}) {
   if (record.kind === 'result_invalidation' && record.batchId) {
     await BenchmarkBatch.updateOne(
       { _id: record.batchId },
-      { $set: authorityInvalidationFields({ ...record, kind: 'batch_invalidation' }), $inc: { __v: 1 } },
+      batchInvalidationUpdate({ ...record, kind: 'batch_invalidation' }),
       options.signal ? { signal: options.signal } : undefined
     );
   }

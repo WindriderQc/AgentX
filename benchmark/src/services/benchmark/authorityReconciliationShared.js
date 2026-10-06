@@ -70,6 +70,24 @@ function authorityInvalidationFields(record) {
   return { authority_state: 'authority_invalidated', authority_reconciliation_reason: reason };
 }
 
+// A batch its own code already invalidated keeps the diagnosis it recorded
+// (execution_crash, a lost lock acknowledgement); reconciliation gives a reason
+// only to a batch without one. A pipeline makes the choice and the write one
+// atomic step, upsert included.
+function batchInvalidationUpdate(record) {
+  const { authority_reconciliation_reason: reason, ...fields } = authorityInvalidationFields(record);
+  const literals = Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, { $literal: value }]));
+  return [{ $set: {
+    ...literals,
+    authority_reconciliation_reason: { $cond: [
+      { $eq: ['$authority_state', 'authority_invalidated'] },
+      { $ifNull: ['$authority_reconciliation_reason', { $literal: reason }] },
+      { $literal: reason }
+    ] },
+    __v: { $add: [{ $ifNull: ['$__v', 0] }, 1] }
+  } }];
+}
+
 function resourceModel(record) {
   return {
     workload_invalidation: BenchmarkBatch,
@@ -103,6 +121,7 @@ module.exports = {
   objectId,
   resourceTypeForKind,
   authorityInvalidationFields,
+  batchInvalidationUpdate,
   resourceModel,
   isProfilerAuthorityKind,
   matchedExactlyOne

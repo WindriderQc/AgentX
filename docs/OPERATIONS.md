@@ -1928,7 +1928,10 @@ For an UNKNOWN workload, use this operator sequence:
    itself, at startup and every five minutes in the full profile: once the
    batch is terminal and the original owner is no longer live, Core reads the
    exact recovery identity back to the principal that armed it and the
-   ordinary worker lifts the quarantine. Any other orphan without a durable
+   ordinary worker lifts the quarantine. A reconciled batch keeps the
+   `authority_reconciliation_reason` its own code recorded, such as
+   `execution_crash`; the worker writes its reason only on a batch without
+   one. Any other orphan without a durable
    journal requires owner-led reconstruction of the exact admission proof;
    the worker does not invent it from a host label.
 
