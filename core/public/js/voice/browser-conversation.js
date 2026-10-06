@@ -177,6 +177,8 @@
   // A turn ends after one second of silence, so a spoken hesitation ("euh…")
   // does not cut the sentence; a barge-in over Nestor still ends quickly.
   const TURN_END_SILENCE_MS = 1000, INTERRUPTION_END_SILENCE_MS = 250;
+  // Recognition measured warm for about a minute after it last ran, and slower after that.
+  const RECOGNITION_WARM_INTERVAL_MS = 45000;
   class Endpoint {
     constructor(rate, minimumVoiceMs = 160, endSilenceMs = TURN_END_SILENCE_MS) { this.rate = rate; this.minimumVoiceMs = minimumVoiceMs; this.endSilenceMs = endSilenceMs; this.reset(); }
     reset() {
@@ -296,6 +298,7 @@
         if (!this.current(epoch)) return;
         this.session = session; this.selection = selection;
         this.wake.arm();
+        this.warmRecognition(); // the greeting leaves it time to finish before the first utterance
         if (fresh && this.io.greet) await this.greet(epoch);
         this.listen(epoch);
       } catch (error) { this.fail(error, epoch); }
@@ -322,11 +325,21 @@
       if (this.state === 'listening') { this.audio.quiet(); this.listen(this.epoch); }
       return true;
     }
+    // Someone starts speaking: a surface that can do so wakes speech recognition now,
+    // while the utterance is still being said, so it is not transcribed as the first
+    // inference after a pause. Never more often than recognition itself goes cold.
+    warmRecognition() {
+      const now = this.io.now ? this.io.now() : Date.now();
+      if (typeof this.io.warm !== 'function' || now - (this.recognitionWarmAt ?? -Infinity) < RECOGNITION_WARM_INTERVAL_MS) return;
+      this.recognitionWarmAt = now;
+      Promise.resolve().then(() => this.io.warm()).catch(() => {}); // best effort: never delays or fails a turn
+    }
     listen(epoch) {
       if (!this.current(epoch)) return;
       this.show('listening');
       this.captureFollowup = this.wake.active();
       this.audio.listen((blob, capture) => this.exchange(blob, epoch, capture), () => {
+        this.warmRecognition();
         this.cancelWakeAck();
         this.captureFollowup = this.wake.active();
         if (this.current(epoch)) this.show('hearing');
@@ -390,6 +403,7 @@
       if (turn.monitoring || !this.audio.canInterrupt || this.selection.interruption === false || !this.io.interrupt) return;
       turn.monitoring = true;
       this.audio.listen((blob, capture) => this.exchange(blob, turn.epoch, capture), () => {
+        this.warmRecognition();
         this.captureFollowup = true;
         // Standalone consumers can adopt the optional hold asset separately.
         if (this.state === 'speaking' && !this.audio.holdPlayback) { this.interrupt(turn); return; }
@@ -463,6 +477,7 @@
         const stopControl = result?.control === 'stop';
         if (!this.current(epoch)) return;
         transcribed = true; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
+        this.recognitionWarmAt = this.io.now ? this.io.now() : Date.now(); // it just ran
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text, typeof result === 'object' && result ? result : {});
         if (isTranscriptHallucination(text)) text = '';
         if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) text = '';

@@ -107,10 +107,12 @@ function registerVoixRoutes(app, {
       return fail(res, error.status || 503, error.message, error.code || 'VOIX_UNAVAILABLE');
     }
   });
-  require('../../src/services/voice/voix-transcription').registerTranscriptionProxy(voix, {
+  const speechRecognition = require('../../src/services/voice/voix-transcription');
+  speechRecognition.registerTranscriptionProxy(voix, {
     express, normalizeMultipart: normalizeVoixTranscriptionMultipart, upstream: voixUpstream,
     fetchWithTimeout, timeoutMs: VOIX_LONG_TIMEOUT_MS, fail
   });
+  speechRecognition.registerRecognitionWarmProxy(voix, { upstream: voixUpstream, fetchWithTimeout });
   voix.use(standardJsonParser);
   voix.get('/media-vault/status', async (_req, res) => {
     try {

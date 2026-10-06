@@ -79,6 +79,8 @@ function createPsyXVoiceSession() {
     // The browser loop keeps only an ephemeral handle; Core creates a canonical
     // PsyX conversation on the first completed turn, just as for typed messages.
     createSession: async () => ({ surface: 'psyx' }),
+    // The person starts speaking: wake speech recognition while they talk (best effort).
+    warm: () => voiceSessionFetch('warm', { method: 'POST' }),
     transcribe: async (blob, language, signal) => {
       let response;
       try {

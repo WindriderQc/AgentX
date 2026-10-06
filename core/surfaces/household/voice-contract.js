@@ -20,6 +20,7 @@ const CURRENT_PROXY_ROUTES = Object.freeze([
   'POST /api/voix/sessions/stop',
   'POST /api/voix/sessions/cancel',
   'POST /api/voix/transcribe',
+  'POST /api/voix/warm',
   'POST /api/voix/synthesize'
 ]);
 

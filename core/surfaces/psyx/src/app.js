@@ -301,6 +301,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
       else throw error;
     } finally { res.off('close', close); }
   }));
+  api.post('/voice/warm', asyncRoute(async (_req, res) => responseData(res, await voiceClient.warm())));
   api.post('/voice/transcribe', express.raw({ type: 'audio/*', limit: config.voice?.maxAudioBytes || 25 * 1024 * 1024 }), asyncRoute(async (req, res) => {
     const contentType = String(req.headers['content-type'] || '').split(';')[0].toLowerCase();
     if (!contentType.startsWith('audio/')) return res.status(415).json({ ok: false, status: 'error', code: 'PSYX_VOICE_AUDIO_TYPE_REQUIRED', message: 'An audio content type is required.' });

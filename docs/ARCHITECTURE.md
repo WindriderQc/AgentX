@@ -362,6 +362,14 @@ turn (`POST …/sessions/:sessionId/voice-timings`, by the browser's turn id,
 within the session's own space) and the parent journal shows the main delays.
 PsyX provides no store, so nothing is measured or sent there.
 
+Speech recognition is slower on its first request after a pause. When a
+conversation starts and whenever someone starts speaking after such a pause,
+the loop asks its surface to wake recognition (`POST /api/voix/warm` for
+Household, `POST /api/psyx/voice/warm` for PsyX), so the model runs once
+while the person is still talking. It is best effort, sent at most once per
+warm period, to the primary speech service only, and an unreachable or older
+speech service is not an error.
+
 The shared speech boundary removes code fences, images, links, table markup,
 HTML and presentation symbols from spoken text while preserving prose and
 emergency phone numbers. The browser, synthesis proxies and native voice reply
