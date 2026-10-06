@@ -60,8 +60,13 @@
     const timings = entry?.voiceTimings;
     if (!timings || typeof timings !== 'object') return '';
     const seconds = value => (Number.isFinite(value) && value >= 0 ? (value / 1000).toFixed(1) + ' s' : '');
-    const parts = [['transcribed', timings.sttDone], ['first words', timings.firstDelta], ['first sound', timings.firstAudio]]
-      .filter(([, value]) => seconds(value)).map(([label, value]) => `${label} ${seconds(value)}`);
+    // What explains the transcription: its recognition share (the rest is upload and transport) and the clip length.
+    const recognition = [seconds(timings.sttServer) && `recognition ${seconds(timings.sttServer)}`, seconds(timings.audioMs) && `clip ${seconds(timings.audioMs)}`]
+      .filter(Boolean).join(', ');
+    const parts = [['transcribed', timings.sttDone, recognition], ['first words', timings.firstDelta], ['first sound', timings.firstAudio]]
+      .filter(([, value]) => seconds(value)).map(([label, value, detail]) => `${label} ${seconds(value)}${detail ? ` (${detail})` : ''}`);
+    // The marks start once the end of speech is decided: the silence waited before comes on top.
+    if (parts.length && seconds(timings.silenceMs)) parts.unshift(`after ${seconds(timings.silenceMs)} of silence`);
     if (seconds(timings.holdingPhrase)) parts.push(`holding phrase ${seconds(timings.holdingPhrase)}`);
     if (timings.interrupted === true) parts.push('interrupted');
     return parts.length ? ` · voice: ${parts.join(', ')}` : '';

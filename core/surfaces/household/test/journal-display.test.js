@@ -67,6 +67,11 @@ test('a spoken turn shows its main delays compactly; a turn without a timeline s
   // An interrupted turn that never spoke: only what happened is listed, and stored text is never trusted as markup.
   assert.equal(voiceTimings({ voiceTimings: { sttDone: 500, requestSent: 510, interrupted: true } }), ' · voice: transcribed 0.5 s, interrupted');
   assert.equal(voiceTimings({ voiceTimings: { sttDone: '<b>640</b>', firstAudio: -4 } }), '');
+  // What explains the delays: the silence waited before the marks start, then recognition and clip length.
+  assert.equal(voiceTimings({ voiceTimings: { sttDone: 1900, firstAudio: 5140, silenceMs: 1000, audioMs: 7000, sttServer: 800 } }),
+    ' · voice: after 1.0 s of silence, transcribed 1.9 s (recognition 0.8 s, clip 7.0 s), first sound 5.1 s');
+  assert.equal(voiceTimings({ voiceTimings: { firstAudio: 5140, sttServer: 800 } }), ' · voice: first sound 5.1 s');
+  assert.equal(voiceTimings({ voiceTimings: { silenceMs: 1000 } }), '');
 });
 
 test('the page loads the journal view before the app that renders it', () => {
