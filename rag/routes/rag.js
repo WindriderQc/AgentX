@@ -235,7 +235,19 @@ router.post('/ingest/batch', async (req, res) => {
           const classified = classifyRagAvailabilityError(err);
           if (classified?.status === 503) {
             logger.warn(`Batch ingest aborted: ${classified.code} — ${err.message}`);
-            return sendError(res, classified.status, classified.code, classified.detail);
+            return res.status(classified.status).json({
+              ok: false, error: classified.code,
+              data: {
+                total: documents.length, succeeded: 0, failed: 1,
+                notAttempted: documents.length - 1,
+                results: documents.map((_, documentIndex) => ({
+                  index: documentIndex,
+                  status: documentIndex === 0 ? 'error' : 'not_attempted',
+                  code: classified.code,
+                  ...(documentIndex === 0 ? { error: err.message } : { reason: 'batch_aborted' })
+                }))
+              }
+            });
           }
         }
         results.push({ index, status: 'error', error: err.message,

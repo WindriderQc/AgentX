@@ -347,6 +347,11 @@ describe('POST /api/rag/ingest/batch', () => {
     expect(res.status).toBe(503);
     expect(res.body.ok).toBe(false);
     expect(res.body.error).toBe('EMBEDDING_SERVICE_UNAVAILABLE');
+    expect(res.body.data).toMatchObject({ total: 2, succeeded: 0, failed: 1, notAttempted: 1 });
+    expect(res.body.data.results).toEqual([
+      { index: 0, status: 'error', code: 'EMBEDDING_SERVICE_UNAVAILABLE', error: 'Embedding service returned 503' },
+      { index: 1, status: 'not_attempted', code: 'EMBEDDING_SERVICE_UNAVAILABLE', reason: 'batch_aborted' }
+    ]);
     // Second document should never be attempted
     expect(mockUpsert).toHaveBeenCalledTimes(1);
   });
@@ -366,8 +371,26 @@ describe('POST /api/rag/ingest/batch', () => {
     expect(res.status).toBe(503);
     expect(res.body.ok).toBe(false);
     expect(res.body.error).toBe('VECTOR_STORE_UNAVAILABLE');
+    expect(res.body.data.results.map(row => row.status)).toEqual(['error', 'not_attempted']);
     expect(mockUpsert).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['EMBEDDING_INPUT_TOO_LARGE', 'EMBEDDING_INPUT_REJECTED', 'RAG_CHUNK_LIMIT_EXCEEDED'])(
+    'accounts for every document after an explicit %s refusal', async (code) => {
+      mockUpsert
+        .mockRejectedValueOnce(Object.assign(new Error('Synthetic input refused'), { code, statusCode: 413 }))
+        .mockResolvedValueOnce({ documentId: 'accepted', chunkCount: 1 });
+      const res = await http.request.post('/api/rag/ingest/batch').send({
+        documents: [{ text: 'Refused synthetic document' }, { text: 'Accepted synthetic document' }]
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ total: 2, succeeded: 1, failed: 1 });
+      expect(res.body.data.results).toEqual([
+        { index: 0, status: 'error', error: 'Synthetic input refused', code, statusCode: 413 },
+        { index: 1, documentId: 'accepted', status: 'ok', chunkCount: 1 }
+      ]);
+    }
+  );
 
   it('does NOT abort batch when non-first document hits availability error', async () => {
     mockUpsert
