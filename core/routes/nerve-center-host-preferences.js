@@ -402,6 +402,19 @@ router.post('/workload-admissions/:admissionId/recovery', async (req, res) => {
   }
 });
 
+router.post('/workload-recoveries/lookup', async (req, res) => {
+  try {
+    const result = await runtimeCoordinationService.lookupWorkloadRecovery({
+      workloadId: req.body?.workloadId,
+      principal: requestPrincipal(req),
+      recoveryRequestId: req.body?.recoveryRequestId
+    });
+    return res.status(result.found ? 200 : 409).json({ status: result.found ? 'success' : 'error', data: result });
+  } catch (error) {
+    return res.status(500).json({ status: 'error', code: 'WORKLOAD_RECOVERY_LOOKUP_FAILED', message: error.message });
+  }
+});
+
 router.post('/workload-recoveries/:recoveryId/adopt', async (req, res) => {
   try {
     const result = await runtimeCoordinationService.adoptWorkloadRecovery({

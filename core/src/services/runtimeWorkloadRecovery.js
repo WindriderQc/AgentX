@@ -92,6 +92,40 @@ async function armWorkloadRecovery({ id, generation, principal, recoveryRequestI
   };
 }
 
+// The identity a restarted owner needs to journal a quarantine it no longer
+// remembers. It answers the principal that armed the recovery, for the exact
+// recovery request, once the original owner is no longer live. It changes
+// nothing: adoption and its fences still decide who may release.
+async function lookupWorkloadRecovery({ workloadId, principal, recoveryRequestId } = {}) {
+  workloadId = clean(workloadId);
+  principal = clean(principal);
+  recoveryRequestId = clean(recoveryRequestId);
+  if (!workloadId || !principal || !recoveryRequestId) {
+    return { found: false, reason: 'workloadId, principal, and recoveryRequestId required' };
+  }
+  const current = await RuntimeCoordination.findById('runtime').lean();
+  const existing = (current?.workloads || []).find(item =>
+    item.workloadId === workloadId && item.recoveryRequired === true);
+  if (!existing || existing.principal !== principal || existing.recoveryRequestId !== recoveryRequestId) {
+    return { found: false, reason: 'recovery identity no longer owns coordination state' };
+  }
+  if (new Date(existing.expiresAt).getTime() > Date.now()) {
+    return { found: false, retryable: true, reason: 'original workload owner remains live' };
+  }
+  return {
+    found: true,
+    admissionId: existing.admissionId,
+    generation: existing.generation,
+    principal: existing.principal,
+    workloadId: existing.workloadId,
+    kind: existing.kind,
+    batchId: existing.batchId,
+    recoveryId: existing.recoveryId,
+    recoveryRequestId: existing.recoveryRequestId,
+    recoveryState: existing.recoveryState
+  };
+}
+
 async function adoptWorkloadRecovery({ recoveryId, principal, recoveryRequestId, ownerId, ttl } = {}) {
   recoveryId = clean(recoveryId);
   principal = clean(principal);
@@ -448,6 +482,7 @@ async function resolveWorkloadRecovery({ recoveryId, recoveryGeneration, princip
 
 module.exports = {
   armWorkloadRecovery,
+  lookupWorkloadRecovery,
   adoptWorkloadRecovery,
   heartbeatWorkloadRecovery,
   assertWorkloadRecovery,

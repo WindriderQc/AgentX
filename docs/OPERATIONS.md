@@ -1905,8 +1905,13 @@ For an UNKNOWN workload, use this operator sequence:
    its own attestation. This is a restart receipt, not a request to restart.
 4. Verify the recovery receipt, cleared exact host claims, workload release and
    live resident/GPU state independently. Do not infer conversation or device
-   acceptance from a cleared journal. Pre-upgrade orphans without a durable
-   journal require owner-led reconstruction of the exact admission proof;
+   acceptance from a cleared journal. A batch quarantine with no journal
+   record (its owner died before writing one) is journaled by Benchmark
+   itself, at startup and every five minutes in the full profile: once the
+   batch is terminal and the original owner is no longer live, Core reads the
+   exact recovery identity back to the principal that armed it and the
+   ordinary worker lifts the quarantine. Any other orphan without a durable
+   journal requires owner-led reconstruction of the exact admission proof;
    the worker does not invent it from a host label.
 
 Profiler context recommendations describe their measured workload. A result

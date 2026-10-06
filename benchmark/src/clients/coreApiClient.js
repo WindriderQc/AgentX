@@ -40,6 +40,7 @@ const {
 const {
   getWorkloadRecoveryIdentity,
   transitionWorkloadRecovery,
+  lookupWorkloadRecovery,
   adoptWorkloadRecovery,
   heartbeatWorkloadRecovery,
   assertWorkloadRecovery,
@@ -66,6 +67,7 @@ module.exports = {
   heartbeatWorkloadAdmission,
   releaseWorkloadAdmission,
   getWorkloadRecoveryIdentity,
+  lookupWorkloadRecovery,
   adoptWorkloadRecovery,
   heartbeatWorkloadRecovery,
   assertWorkloadRecovery,

@@ -544,6 +544,45 @@ describe('runtime maintenance and benchmark workload coordination', () => {
     })).resolves.toMatchObject({ released: false, reason: expect.stringContaining('no longer owns') });
   });
 
+  test('recovery lookup returns the adoptable identity only to its principal once the owner expired', async () => {
+    const admission = await service.acquireWorkload({
+      principal: 'benchmark-service',
+      requestId: 'lookup-request',
+      workloadId: 'lookup-workload'
+    });
+    const lookup = extra => service.lookupWorkloadRecovery({
+      workloadId: 'lookup-workload',
+      principal: 'benchmark-service',
+      recoveryRequestId: 'recovery:lookup-request',
+      ...extra
+    });
+    await expect(lookup()).resolves.toMatchObject({ found: false, retryable: true });
+    await RuntimeCoordination.updateOne(
+      { _id: 'runtime', 'workloads.admissionId': admission.admissionId },
+      { $set: { 'workloads.$.expiresAt': new Date(Date.now() - 1_000) } }
+    );
+    await expect(lookup({ principal: 'operator' })).resolves.toMatchObject({ found: false });
+    await expect(lookup({ recoveryRequestId: 'recovery:other-request' })).resolves.toMatchObject({ found: false });
+    await expect(lookup({ workloadId: 'other-workload' })).resolves.toMatchObject({ found: false });
+
+    const found = await lookup();
+    expect(found).toMatchObject({
+      found: true,
+      admissionId: admission.admissionId,
+      generation: admission.generation,
+      principal: 'benchmark-service',
+      workloadId: 'lookup-workload',
+      recoveryId: admission.recoveryId,
+      recoveryRequestId: 'recovery:lookup-request'
+    });
+    await expect(service.adoptWorkloadRecovery({
+      recoveryId: found.recoveryId,
+      principal: found.principal,
+      recoveryRequestId: found.recoveryRequestId,
+      ownerId: 'restarted-worker'
+    })).resolves.toMatchObject({ adopted: true, admissionId: found.admissionId });
+  });
+
   test('recovery adoption is single-writer and old generations cannot write after restart', async () => {
     const admission = await service.acquireWorkload({
       principal: 'benchmark-service',

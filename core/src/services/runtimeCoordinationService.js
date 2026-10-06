@@ -28,6 +28,7 @@ const {
 } = require('./runtimeWorkloadAdmission');
 const {
   armWorkloadRecovery,
+  lookupWorkloadRecovery,
   adoptWorkloadRecovery,
   heartbeatWorkloadRecovery,
   assertWorkloadRecovery,
@@ -50,6 +51,7 @@ module.exports = {
   recoverMaintenanceAfterOperatorReconciliation,
   hostHasActiveInferences,
   armWorkloadRecovery,
+  lookupWorkloadRecovery,
   adoptWorkloadRecovery,
   heartbeatWorkloadRecovery,
   assertWorkloadRecovery,

@@ -51,6 +51,20 @@ function retainAdmissionHeartbeat(heartbeat, ttlMs, context = {}) {
     // it; the workload itself remains fenced until a verified restore receipt.
     const workloadId = String(context.workloadId || '');
     Promise.resolve()
+        // The journal record goes first, while this process still holds the
+        // recovery identity. A restart loses that identity, and a quarantine
+        // handed over without a record is one no worker can adopt.
+        .then(() => workloadId ? authorityReconciliation.enqueueAuthorityInvalidation({
+            kind: 'batch_invalidation',
+            resultId: workloadId,
+            batchId: workloadId,
+            workloadId,
+            phase: context.phase || 'retained admission',
+            reason: `workload admission retained for recovery (${context.phase || 'unspecified phase'})`
+        }).catch(error => logger.error('Retained batch admission could not be journaled; the restart sweep rebuilds the record from Core', {
+            ...context,
+            error: error.message
+        })) : null)
         .then(() => workloadId ? transitionWorkloadRecovery(workloadId, 'UNKNOWN', {
             receipt: {
                 contract: 'agentx.workload-recovery/v1',

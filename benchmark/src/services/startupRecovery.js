@@ -38,6 +38,9 @@ function startStartupRecovery(profile) {
     require('./registeredHostSync').startRegisteredHostSync();
     // Coverage reads the Nerve Center too; it stays idle until switched on.
     require('./measurementCoverage/coverageJob').getCoverageJob().start();
+    // A quarantine whose owner died before journaling it gets its record back
+    // from Core. It reads Core's coordination state, which the demo profile lacks.
+    require('./benchmark/recordlessQuarantineRecovery').startRecordlessQuarantineRecovery();
   } else {
     logger.info('[RegisteredHostSync] Disabled by the demo product profile');
   }
