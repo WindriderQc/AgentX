@@ -794,7 +794,7 @@ def main() -> int:
             "stoppedAt": dispatch_budget.stopped_at(result.exit_code),
         }
         print(json.dumps(report, indent=2, sort_keys=True))
-        return 0 if result.exit_code in {0, dispatch_budget.DEFERRED_EXIT} else result.exit_code if result.exit_code == dispatch_budget.UNKNOWN_EXIT else 3
+        return result.exit_code if result.exit_code in {0, dispatch_budget.DEFERRED_EXIT, dispatch_budget.UNKNOWN_EXIT} else 3
     except DispatcherError as exc:
         print(json.dumps({"schema": REPORT_SCHEMA, "ok": False, "error": str(exc)}, sort_keys=True))
         return 2

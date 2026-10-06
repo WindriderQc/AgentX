@@ -368,9 +368,16 @@ router.post('/tasks/:id/claim', async (req, res) => {
         automated: true,
         leaseDurationMs: body.leaseDurationMs,
         dispatchRequestId: body.dispatchRequestId,
+        capacityTaskType: body.capacityTaskType,
       })
       : await claimEligibleTask(req.params.id, assignee);
     return envelope.success(res, { task });
+  } catch (err) { return envelope.error(res, err.status || 500, err.message, err.code); }
+});
+
+router.post('/tasks/:id/capacity/cancel', async (req, res) => {
+  try {
+    return envelope.success(res, await require('../src/services/pipelineCodingCapacity').cancel(req.params.id, req.body?.requestId));
   } catch (err) { return envelope.error(res, err.status || 500, err.message, err.code); }
 });
 

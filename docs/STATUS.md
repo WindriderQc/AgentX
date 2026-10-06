@@ -100,6 +100,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   unknown without invalidating verified work. Unproven remote completion or a
   lost verification receipt retains an unknown request and prevents a new
   launch; only Core's verified completion of that exact attempt resolves it.
+  Attributed coding launches persist their selected model, artifact, runtime
+  and host before claiming a task. Occupied capacity leaves a visible queued
+  wait with no attempt consumed. An existing host tick can resume that same
+  request; an inactive wait can be cancelled from the Coding Team panel.
 - **Planning.** The page is a frozen historical reference. Its idea inbox is
   live: Nestor and family captures wait there until the parent reviews them.
   Coding workers receive bounded context from linked Planning objectives;

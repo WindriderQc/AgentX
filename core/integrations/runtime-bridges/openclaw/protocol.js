@@ -169,6 +169,7 @@ function registerOpenClawProtocol({
         tools: effectiveBody.tools,
         ...(conversationTarget && { exclusiveHost: conversationTarget.exclusiveHost !== false }),
         ...(conversationTarget?.numCtx && { options: { ...options, num_ctx: conversationTarget.numCtx } }),
+        ...(pipeline?.numCtx && { options: { ...options, num_ctx: pipeline.numCtx } }),
         callerDetail: pipeline ? 'openclaw-pipeline-runtime-bridge' : 'openclaw-runtime-bridge',
         timeoutMs: Number(process.env.OPENCLAW_AGENTX_TIMEOUT_MS || 0) || undefined,
         ...(mode === 'chat' && { messages: effectiveBody.messages }),
@@ -195,6 +196,7 @@ function registerOpenClawProtocol({
         ...(!pipeline && wantsBusyReply(req, mode) && { retry: { interactive: true,
           interactiveWaitMs: fallbackTask ? PRIMARY_WAIT_WITH_FALLBACK_MS : 45000 } }),
         ...(pipeline && { attribution: pipeline.attribution,
+          ...(pipeline.codingCapacity && { codingCapacity: pipeline.codingCapacity, hostUrl: pipeline.hostUrl }),
           retry: { enabled: true, maxAttempts: 6, maxElapsedMs: Math.min(120000, request.timeoutMs) },
           beforeAttempt: () => pipelineAttribution.revalidate(leaseId),
           onProgress: progress => pipelineAttribution.progress(leaseId, progress) })

@@ -576,7 +576,7 @@ class CodingDispatcherTests(unittest.TestCase):
                 build_adapter.return_value.run.return_value = dispatcher.DispatchResult(
                     adapter="test", exit_code=4
                 )
-                self.assertEqual(dispatcher.main(), 0)
+                self.assertEqual(dispatcher.main(), 4)
 
     def test_canary_rejects_ambiguous_exact_and_scheduled_selection(self):
         with tempfile.TemporaryDirectory() as directory:

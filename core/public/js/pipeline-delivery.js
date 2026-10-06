@@ -249,6 +249,15 @@
       retry.hidden = !pending || !(run?.phase === 'not_received' || run?.canRetry === true);
       retry.disabled = !controller?.canRetry();
     }
+    let cancel = $('pipelineTeamLaunchCancel');
+    if (!cancel && retry) {
+      cancel = document.createElement('button');
+      cancel.id = 'pipelineTeamLaunchCancel'; cancel.type = 'button'; cancel.className = 'pipeline-btn compact';
+      cancel.textContent = 'Cancel capacity wait';
+      cancel.addEventListener('click', () => state.launchController?.cancel());
+      retry.after(cancel);
+    }
+    if (cancel) { cancel.hidden = run?.phase !== 'waiting'; cancel.disabled = !controller?.canCancel(); }
     const reasons = $('pipelineTeamEligibilityReasons');
     if (reasons) reasons.innerHTML = (control?.excluded || []).map(task => `<div class="pipeline-launch-exclusion"><button type="button" class="pipeline-btn compact" data-pipeline-task="${escapeHtml(task.pipelineId)}">${escapeHtml(task.pipelineId)} · ${escapeHtml(task.title)}</button><p>${(task.reasons || []).map(reason => escapeHtml(reason.detail || reason.code)).join(' · ')}</p></div>`).join('') || '<p>No additional non-private queue exclusions in the current observation.</p>';
   }

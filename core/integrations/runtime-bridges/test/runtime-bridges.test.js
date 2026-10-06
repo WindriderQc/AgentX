@@ -320,6 +320,8 @@ test('Pipeline attribution requests exact artifact identity from Product routing
     status: 1,
     assignee: 1,
     automationAttemptCount: 1,
+    codingCapacity: 1,
+    'automationLease.leaseId': 1,
     'automationLease.attempt': 1,
     'automationLease.expiresAt': 1,
     'automationAttempts.attempt': 1,

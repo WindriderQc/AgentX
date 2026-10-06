@@ -225,6 +225,9 @@ function queued(task, { now, dependencies, slot }) {
       summary: `Coding automation cannot admit this task: ${human.join(', ').replace(/_/g, ' ')}.`,
       action: 'Correct the automation policy, budget or scope, or run it as a manual task.', missingEvidence: [] };
   }
+  if (task.codingCapacity) return { ...base, category: 'planned_wait', code: 'coding_capacity_wait', owner: 'worker',
+    summary: task.codingCapacity.reason || 'Waiting for the selected coding model host.',
+    action: 'Resume the same launch request when capacity is available, or cancel its wait.', missingEvidence: [] };
   if (codes.some(code => WAIT_ADMISSION.has(code))) {
     return { ...base, category: 'planned_wait', code: codes.find(code => WAIT_ADMISSION.has(code)), owner: 'worker',
       summary: 'Waiting for a shared resource or the automation slot held by another attempt.',
