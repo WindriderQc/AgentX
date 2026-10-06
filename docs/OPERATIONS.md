@@ -1289,6 +1289,20 @@ Each unmet requirement is one line of `warnings`, naming the categories.
 These are warnings: they never block a launch, and the catalog is not
 lowered for a judge that does not meet them.
 
+`POST /api/benchmark/judge/calibrate-accuracy` freezes the judge's automatic
+context and exact installed identity before scoring. The response reports its
+resolved `judge_config`; a full default run retains that snapshot in its
+qualification record. Identity drift or workload cancellation stops the run.
+
+For a small diagnostic, pass `case_ids` from `benchmark/data/judge-calibration-set.json`.
+The same request accepts `num_predict`, `timeout` (milliseconds) and `think`
+with the batch judge validation and warnings. Selected cases or explicit operator
+settings produce `diagnostic: true`, `valid: false` and a skipped
+`qualification_record`. They never publish or withdraw judge qualification,
+even if every selected case passes. Qualification readers currently match the
+host/model rather than the operator settings; this diagnostic makes no broader
+claim. Omit these diagnostic fields to run the full default qualification.
+
 Batches launched before this rule ran under Core's default output reserve
 (at most 4,096 tokens), which cut long reasoning. They keep their own quality
 cohort, so the leaderboard does not mix the two.

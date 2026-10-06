@@ -101,6 +101,7 @@ function summarizeRecord(record) {
         reference_fingerprint: record.reference_fingerprint,
         reference_count: record.reference_count || 0,
         requested_num_ctx: record.requested_num_ctx ?? null,
+        judge_config: record.judge_config || null,
         qualified: record.qualified === true,
         failed: [...(record.failed || [])],
         metrics: record.metrics || null
@@ -108,10 +109,11 @@ function summarizeRecord(record) {
 }
 
 /**
- * Persist one calibration report. The judge digest is provenance only: result
- * rows do not record the judge artifact, so readers match on model and host.
+ * Persist a complete default calibration report. Readers currently match on
+ * model and host; operator-configured diagnostics must not publish qualification.
  */
 async function recordAccuracyCalibration(report, { digest = null } = {}) {
+    if (report.diagnostic === true) throw new Error('Diagnostic calibration cannot publish qualification');
     // Fail fast instead of buffering the write until the driver times out.
     if (mongoose.connection.readyState !== 1) throw new Error('database unavailable; qualification not recorded');
     const record = await JudgeQualification.create({
@@ -125,6 +127,7 @@ async function recordAccuracyCalibration(report, { digest = null } = {}) {
         reference_fingerprint: report.reference_fingerprint,
         reference_count: report.total || 0,
         requested_num_ctx: report.requested_num_ctx ?? null,
+        judge_config: report.judge_config || null,
         qualified: report.valid === true,
         failed: report.qualification?.failed || [],
         criteria: report.qualification?.criteria || null,

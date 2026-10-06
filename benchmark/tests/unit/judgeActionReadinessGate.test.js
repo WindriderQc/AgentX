@@ -1,9 +1,18 @@
 const express = require('express');
 const request = require('supertest');
 
-jest.mock('../../src/services/scoring/judgeCall', () => ({ callJudge: jest.fn() }));
+jest.mock('../../src/services/scoring/judgeCall', () => ({
+    ...jest.requireActual('../../src/services/scoring/judgeCall'), callJudge: jest.fn()
+}));
 const { callJudge } = require('../../src/services/scoring/judgeCall');
 
+jest.mock('../../src/services/benchmark/judgeExecutionContract', () => ({
+    freezeJudgeConfig: jest.fn(async config => ({
+        ...config, num_ctx: config.num_ctx ?? 32768,
+        execution_contract: { num_ctx: config.num_ctx ?? 32768, artifact: { digest: 'resolved-digest' } }
+    }))
+}));
+const { freezeJudgeConfig } = require('../../src/services/benchmark/judgeExecutionContract');
 jest.mock('../../src/services/benchmark/judgeReadiness', () => {
     const actual = jest.requireActual('../../src/services/benchmark/judgeReadiness');
     return {
@@ -101,12 +110,76 @@ describe('judge-required API action gates', () => {
             const response = await request(app).post('/api/benchmark/judge/calibrate-accuracy').send({ num_ctx: 8192 });
             expect(response.status).toBe(200);
             expect(response.body.data.requested_num_ctx).toBe(8192);
+            expect(response.body.data.judge_config.execution_contract.artifact.digest).toBe('resolved-digest');
             expect(scorer.mock.calls.every(([input]) => input.judgeConfig.num_ctx === 8192)).toBe(true);
             expect(response.body.data.results[0]).toMatchObject({ judge_score: 0,
                 explanation: 'Missing behavior', judge_prompt: '["criterion"]', judge_raw_response: '{"calls":[]}' });
             // Without a database the report is still returned; the missing record is stated.
             expect(response.body.data.valid).toBe(false);
             expect(response.body.data.qualification_record).toEqual({ error: expect.stringMatching(/not recorded/) });
+        } finally { scorer.mockRestore(); }
+    });
+
+    test('diagnoses only selected cases with the chosen settings without publishing qualification', async () => {
+        readinessService.resolveReadyJudgeTarget.mockResolvedValue({
+            ready: true, target: { host: 'http://judge:11434', model: 'judge:14b' }
+        });
+        const scorer = jest.spyOn(require('../../src/services/qualityScorer'), 'scoreResponse').mockResolvedValue({
+            quality_score: 10, scoring_method: 'decomposed', attention_check: { passed: true }
+        });
+        try {
+            const response = await request(app).post('/api/benchmark/judge/calibrate-accuracy').send({
+                case_ids: ['cal-bad-01', 'cal-bad-01'], num_predict: 65536, timeout: 7200000, think: true
+            });
+            expect(response.status).toBe(200);
+            expect(scorer).toHaveBeenCalledTimes(1);
+            expect(scorer.mock.calls[0][0]).toMatchObject({
+                response: 'The capital of France is Berlin.',
+                judgeConfig: { num_predict: 65536, timeout: 7200000, think: true, num_ctx: 32768,
+                    execution_contract: { artifact: { digest: 'resolved-digest' } } }
+            });
+            expect(response.body.data).toMatchObject({ diagnostic: true, valid: false, total: 1,
+                selected_case_ids: ['cal-bad-01'], qualification_record: { skipped: true, reason: 'diagnostic_run' } });
+            expect(response.body.data.reference_total).toBeGreaterThan(1);
+            expect(response.body.data.warnings.length).toBeGreaterThanOrEqual(3);
+        } finally { scorer.mockRestore(); }
+    });
+
+    test.each([{ case_ids: [] }, { case_ids: ['unknown-case'] }])('rejects invalid diagnostic selection $case_ids before scoring', async ({ case_ids }) => {
+        const response = await request(app).post('/api/benchmark/judge/calibrate-accuracy').send({ case_ids });
+        expect(response.status).toBe(case_ids.length ? 422 : 400);
+        expect(readinessService.resolveReadyJudgeTarget).not.toHaveBeenCalled();
+        expect(freezeJudgeConfig).not.toHaveBeenCalled();
+    });
+
+    test('refuses an unresolved contract before scoring a calibration case', async () => {
+        readinessService.resolveReadyJudgeTarget.mockResolvedValue({
+            ready: true, target: { host: 'http://judge:11434', model: 'judge:14b' }
+        });
+        freezeJudgeConfig.mockRejectedValueOnce(Object.assign(new Error('Unresolved'), {
+            statusCode: 422, code: 'JUDGE_EXECUTION_CONTRACT_UNRESOLVED'
+        }));
+        const scorer = jest.spyOn(require('../../src/services/qualityScorer'), 'scoreResponse');
+        try {
+            const response = await request(app).post('/api/benchmark/judge/calibrate-accuracy').send({ case_ids: ['cal-bad-01'] });
+            expect(response.status).toBe(422);
+            expect(response.body.code).toBe('JUDGE_EXECUTION_CONTRACT_UNRESOLVED');
+            expect(scorer).not.toHaveBeenCalled();
+        } finally { scorer.mockRestore(); }
+    });
+
+    test('stops calibration on contract drift without proceeding to another case', async () => {
+        readinessService.resolveReadyJudgeTarget.mockResolvedValue({
+            ready: true, target: { host: 'http://judge:11434', model: 'judge:14b' }
+        });
+        const scorer = jest.spyOn(require('../../src/services/qualityScorer'), 'scoreResponse')
+            .mockRejectedValue(Object.assign(new Error('Artifact changed'), { code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' }));
+        try {
+            const response = await request(app).post('/api/benchmark/judge/calibrate-accuracy')
+                .send({ case_ids: ['cal-bad-01', 'cal-bad-02'] });
+            expect(response.status).toBe(500);
+            expect(response.body.code).toBe('JUDGE_EXECUTION_CONTRACT_MISMATCH');
+            expect(scorer).toHaveBeenCalledTimes(1);
         } finally { scorer.mockRestore(); }
     });
 

@@ -38,6 +38,7 @@ const JudgeQualificationSchema = new mongoose.Schema({
     reference_fingerprint: { type: String, required: true },
     reference_count: { type: Number, default: 0 },
     requested_num_ctx: { type: Number, default: null },
+    judge_config: { type: mongoose.Schema.Types.Mixed, default: null },
     qualified: { type: Boolean, required: true },
     failed: { type: [String], default: [] },
     criteria: { type: mongoose.Schema.Types.Mixed, default: null },

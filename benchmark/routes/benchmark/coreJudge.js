@@ -20,7 +20,9 @@ const {
 } = require('../../src/services/benchmark/quickJudgeCalibration');
 const { evaluateCalibrationCase, summarizeAccuracyCalibration } = require('../../src/services/benchmark/judgeCalibration');
 const { buildAccuracyCalibrationReport, recordAccuracyCalibration } = require('../../src/services/benchmark/judgeQualification');
-const { getModelDigest } = require('../../src/services/benchmark/modelDigestService');
+const { freezeJudgeConfig } = require('../../src/services/benchmark/judgeExecutionContract');
+const { diagnosticInput, reportedJudgeConfig } = require('../../src/services/benchmark/judgeCalibrationDiagnostic');
+const { rethrowIfJudgeCancelled } = require('../../src/services/scoring/judgeCall');
 const {
     judgeWorkloadOptions,
     judgeValidationAdmissionFailure
@@ -183,8 +185,12 @@ router.post('/judge/calibrate', withManagedWorkloadRoute('judge-calibration', ju
  */
 router.post('/judge/calibrate-accuracy', withManagedWorkloadRoute('judge-accuracy-calibration', judgeWorkloadOptions, async (req, res) => {
     const { host, model, num_ctx } = req.body || {};
-    if (num_ctx !== undefined && (!Number.isInteger(num_ctx) || num_ctx < 512)) {
-        return res.status(400).json({ status: 'error', error: 'num_ctx must be an integer of at least 512' });
+    const calibrationSet = require('../../data/judge-calibration-set.json');
+    let input;
+    try {
+        input = diagnosticInput(req.body || {}, calibrationSet);
+    } catch (err) {
+        return res.status(err.statusCode || 400).json({ status: 'error', error: err.message });
     }
     const readiness = await resolveReadyJudgeTarget({ host, model });
     if (!readiness.ready) {
@@ -194,11 +200,13 @@ router.post('/judge/calibrate-accuracy', withManagedWorkloadRoute('judge-accurac
     const judgeModel = readiness.target.model;
 
     try {
-        const calibrationSet = require('../../data/judge-calibration-set.json');
         const { scoreResponse } = require('../../src/services/qualityScorer');
         const results = [];
+        const judgeConfig = await freezeJudgeConfig({ host: judgeHost, model: judgeModel, ...input.options },
+            { signal: req.workloadAdmissionSignal });
+        judgeConfig.cancelSignal = req.workloadAdmissionSignal;
 
-        for (const item of calibrationSet) {
+        for (const item of input.cases) {
             const start = Date.now();
             try {
                 const scores = await scoreResponse({
@@ -209,8 +217,7 @@ router.post('/judge/calibrate-accuracy', withManagedWorkloadRoute('judge-accurac
                         expected_answer: item.expected_answer,
                         reference_tests: item.reference_tests
                     },
-                    judgeConfig: { host: judgeHost, model: judgeModel,
-                        ...(num_ctx !== undefined && { num_ctx }), cancelSignal: req.workloadAdmissionSignal }
+                    judgeConfig
                 });
 
                 const grade = evaluateCalibrationCase({ ...item, expert_scores: { overall: item.gold_score } }, scores);
@@ -238,6 +245,7 @@ router.post('/judge/calibrate-accuracy', withManagedWorkloadRoute('judge-accurac
                     error: grade.judge_score === null ? (scores.error || 'Scoring returned no valid grade') : null
                 });
             } catch (err) {
+                rethrowIfJudgeCancelled(err, judgeConfig);
                 results.push({
                     id: item.id,
                     category: item.category,
@@ -253,15 +261,26 @@ router.post('/judge/calibrate-accuracy', withManagedWorkloadRoute('judge-accurac
             }
         }
 
-        const summary = summarizeAccuracyCalibration(results, calibrationSet.length);
+        const summary = summarizeAccuracyCalibration(results, input.cases.length);
         const report = buildAccuracyCalibrationReport({ host: judgeHost, model: judgeModel, numCtx: num_ctx, summary, results, calibrationSet });
+        report.judge_config = reportedJudgeConfig(judgeConfig);
+        report.reference_total = calibrationSet.length;
+        report.selected_case_ids = input.cases.map(item => item.id);
+        report.diagnostic = input.diagnostic;
+        report.warnings = input.warnings;
+        if (input.diagnostic) {
+            report.valid = false;
+            report.qualification.failed.push('diagnostic_run');
+            return res.json({ status: 'success', data: { ...report,
+                qualification_record: { skipped: true, reason: 'diagnostic_run' } } });
+        }
         // The record is what qualifies judged rankings; a failed write is reported, never hidden.
-        const digest = await getModelDigest(judgeHost, judgeModel).catch(() => null);
+        const digest = judgeConfig.execution_contract.artifact.digest;
         const record = await recordAccuracyCalibration(report, { digest }).catch((error) => ({ error: error.message }));
         return res.json({ status: 'success', data: { ...report, qualification_record: record } });
     } catch (err) {
         logger.error('Judge accuracy calibration failed', { error: err.message, host: judgeHost, model: judgeModel });
-        return res.status(500).json({ status: 'error', error: err.message });
+        return res.status(err.statusCode || 500).json({ status: 'error', code: err.code, error: err.message });
     }
 }));
 
