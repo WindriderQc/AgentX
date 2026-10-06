@@ -22,7 +22,8 @@ const CATEGORY_GATES = Object.freeze({
     translation: Object.freeze([
         Object.freeze({
             key: 'target_language',
-            q: 'Is the translation written in the language the task asks for? Names, code, placeholders and terms the task keeps unchanged do not count against it.'
+            // "The language only" keeps an incomplete translation from failing it (a 4B judge did).
+            q: 'Is the response written in the language the task asks the text to be translated into? Judge the language only, not accuracy or completeness. Names, code, placeholders and terms the task keeps unchanged do not count against it.'
         })
     ])
 });
