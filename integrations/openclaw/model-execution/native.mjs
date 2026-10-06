@@ -145,8 +145,7 @@ export function createNativeBackend(api, { loadSdk = loadNativeSdk } = {}) {
     const keyAndHeaders = await scope.registry.getApiKeyAndHeaders(model);
     if (!keyAndHeaders.ok) throw new Error('OPENCLAW_AUTH_UNAVAILABLE');
     if (auth.baseUrl && auth.baseUrl !== model.baseUrl) throw new Error('OPENCLAW_AUTH_ROUTE_UNSUPPORTED');
-    const selected = model;
-    if (auth.request) sdk.attachModelProviderRequestTransport(selected, auth.request);
+    const selected = sdk.attachModelProviderRequestTransport(model, auth.request);
     const streamHost = { streamFn: sdk.streamSimple };
     const thinkingLevel = parameters.thinking === false ? 'off' : parameters.thinkingLevel || (parameters.thinking ? 'low' : undefined);
     const pureConfig = { ...cfg, tools: { ...cfg.tools, allow: [], deny: ['*'] } };
