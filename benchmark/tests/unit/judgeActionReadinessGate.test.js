@@ -98,7 +98,7 @@ describe('judge-required API action gates', () => {
         expect(callJudge.mock.calls.every(([, config]) => config.num_ctx === 8192)).toBe(true);
     });
 
-    test('retains accuracy judge evidence and the requested context', async () => {
+    test.each([{}, { num_ctx: 8192 }])('retains accuracy judge evidence under $num_ctx context', async input => {
         readinessService.resolveReadyJudgeTarget.mockResolvedValue({
             ready: true, target: { host: 'http://judge:11434', model: 'judge:14b' }
         });
@@ -107,16 +107,21 @@ describe('judge-required API action gates', () => {
             breakdown: { correctness: 0 }, judge_prompt: '["criterion"]', judge_raw_response: '{"calls":[]}'
         });
         try {
-            const response = await request(app).post('/api/benchmark/judge/calibrate-accuracy').send({ num_ctx: 8192 });
+            const response = await request(app).post('/api/benchmark/judge/calibrate-accuracy').send(input);
             expect(response.status).toBe(200);
-            expect(response.body.data.requested_num_ctx).toBe(8192);
+            expect(response.body.data.requested_num_ctx).toBe(input.num_ctx ?? null);
             expect(response.body.data.judge_config.execution_contract.artifact.digest).toBe('resolved-digest');
-            expect(scorer.mock.calls.every(([input]) => input.judgeConfig.num_ctx === 8192)).toBe(true);
+            expect(scorer.mock.calls.every(([call]) => call.judgeConfig.num_ctx === (input.num_ctx ?? 32768))).toBe(true);
             expect(response.body.data.results[0]).toMatchObject({ judge_score: 0,
                 explanation: 'Missing behavior', judge_prompt: '["criterion"]', judge_raw_response: '{"calls":[]}' });
-            // Without a database the report is still returned; the missing record is stated.
             expect(response.body.data.valid).toBe(false);
-            expect(response.body.data.qualification_record).toEqual({ error: expect.stringMatching(/not recorded/) });
+            expect(response.body.data.diagnostic).toBe(input.num_ctx !== undefined);
+            if (input.num_ctx !== undefined) {
+                expect(response.body.data.qualification_record).toEqual({ skipped: true, reason: 'diagnostic_run' });
+            } else {
+                // A default run attempts to record qualification; unavailable storage stays visible.
+                expect(response.body.data.qualification_record).toEqual({ error: expect.stringMatching(/not recorded/) });
+            }
         } finally { scorer.mockRestore(); }
     });
 
