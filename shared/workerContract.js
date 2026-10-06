@@ -529,6 +529,7 @@ function normalizeWorkerReceipt(rawValue = {}, options = {}) {
     violations: normalizeCountedEntries(raw.violations, 'violations', ['category', 'code']),
     result,
   };
+  if (raw.execution) normalized.execution = require('./executionEvidence').normalizeExecutionEvidence(raw.execution);
   return {
     ...normalized,
     fingerprint: verifyFingerprint(raw.fingerprint, fingerprint(normalized), 'receipt.fingerprint', 'RECEIPT_FINGERPRINT_MISMATCH'),
@@ -541,6 +542,7 @@ function projectWorkerReceiptPublic(rawValue, options = {}) {
     schema: receipt.schema,
     schemaVersion: receipt.schemaVersion,
     executionProfile: receipt.executionProfile,
+    ...(receipt.execution ? { execution: receipt.execution } : {}),
     identity: {
       harness: receipt.identity.harness,
       adapter: receipt.identity.adapter,
