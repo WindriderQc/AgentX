@@ -86,6 +86,7 @@ function verifyWireContext(payload, context, model) {
 
 function verifyPayload(payload, parameters, context, model) {
   if (!payload || typeof payload !== 'object') reject('OPENCLAW_PAYLOAD_UNOBSERVED', 502);
+  if (payload.n != null && payload.n !== 1) reject('OPENCLAW_MULTIPLE_COMPLETIONS_FORBIDDEN', 422);
   verifyWireContext(payload, context, model);
   const allowedTools = new Set((context.tools || []).map(tool => tool.name));
   for (const tool of payload.tools || payload.config?.tools || []) {
