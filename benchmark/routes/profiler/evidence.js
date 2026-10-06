@@ -85,7 +85,7 @@ router.get('/host', async (req, res) => {
       return res.status(400).json({ status: 'error', error: 'hostUrl is required' });
     }
     const hostProfile = await HostProfile.findOne({ hostUrl })
-      .select('hostId hostUrl displayName gpu ollama cpu')
+      .select('hostId hostUrl displayName gpu gpus ollama cpu')
       .lean();
     return res.json({ status: 'success', data: { hostProfile: hostProfile || null } });
   } catch (err) {
