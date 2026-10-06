@@ -149,6 +149,13 @@ async function persistConversation(params) {
                 assistantMsg.ragSources = buildRagSourceEntries(ragSources);
             }
 
+            if (metadata.executionReceipt) {
+                if (metadata.executionReceipt.usage == null) assistantMsg.stats = null;
+                const nativeCost = metadata.executionReceipt.cost;
+                assistantMsg.cost = { totalCost: nativeCost ? nativeCost.nanodollars / 1e9 : null,
+                    currency: nativeCost?.currency || 'USD', pricingSource: { source: nativeCost ? 'openclaw' : 'unconfigured' } };
+            }
+
             if (stats) {
                 assistantMsg.stats = stats;
                 assistantMsg.stats.parameters = metadata.options || {};
@@ -159,7 +166,12 @@ async function persistConversation(params) {
                 };
 
                 try {
-                    const cost = await calculateMessageCost(model, stats);
+                    const nativeCost = metadata.executionReceipt?.cost;
+                    const cost = metadata.executionReceipt ? {
+                        totalCost: nativeCost ? nativeCost.nanodollars / 1e9 : null,
+                        currency: nativeCost?.currency || 'USD',
+                        pricingSource: { source: nativeCost ? 'openclaw' : 'unconfigured' }
+                    } : await calculateMessageCost(model, stats);
                     assistantMsg.cost = cost;
                     logger.debug('Message cost calculated', {
                         model, totalCost: cost.totalCost, source: cost.pricingSource?.source

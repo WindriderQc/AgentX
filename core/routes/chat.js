@@ -40,7 +40,7 @@ function resolveAllowlistedTarget(target) {
 
 function sendChatInputError(res, error) {
   const isContractError = error instanceof TurnActionProvenanceError
-    || error.code === 'CHAT_REQUEST_INVALID' || error.code === 'CONVERSATION_NOT_FOUND';
+    || ['CHAT_REQUEST_INVALID', 'EXECUTION_SOURCE_INVALID', 'CONVERSATION_NOT_FOUND'].includes(error.code);
   const statusCode = isContractError ? error.statusCode : 500;
   if (!isContractError) {
     logger.error('Turn action provenance validation failed', {
@@ -80,6 +80,7 @@ async function projectChatError(error, options = {}) {
 // CHAT: Delegated to chatService
 async function resolveChatRequest(payload, userId) {
   const {
+    execution, parameters, budget, reasoningMaxTokens,
     target,
     model,
     message,
@@ -108,7 +109,8 @@ async function resolveChatRequest(payload, userId) {
   const invalid = (message) => {
     throw Object.assign(new Error(message), { statusCode: 400, code: 'CHAT_REQUEST_INVALID' });
   };
-  if (!model && !autoRoute && !taskType) invalid('Model is required (or enable autoRoute/taskType)');
+  const selection = require('../../shared/executionSource').parseExecutionSource(payload);
+  if (!model && !selection && !autoRoute && !taskType) invalid('Model is required (or enable autoRoute/taskType)');
   if (typeof message !== 'string' || !message.trim()) invalid('Message is required and must be a non-empty string');
   if (!Array.isArray(messages) || messages.some((entry) => !entry
       || !['system', 'user', 'assistant', 'tool'].includes(entry.role)
@@ -123,7 +125,7 @@ async function resolveChatRequest(payload, userId) {
   }
 
   // Omitted target stays omitted so the router can choose the host.
-  const allowlistedTarget = resolveAllowlistedTarget(target);
+  const allowlistedTarget = selection?.source === 'openclaw' ? { ok: true, target: undefined } : resolveAllowlistedTarget(target);
   if (!allowlistedTarget.ok) invalid(allowlistedTarget.message);
   // Refuse an unknown or archived conversation before inference: its save would be refused.
   if (conversationId && !(await findConversationForUpdate({ conversationId, userId }))) {
@@ -131,7 +133,7 @@ async function resolveChatRequest(payload, userId) {
   }
 
   return {
-    model, message, messages, system, persona, promptVersion, conversationId,
+    execution, parameters, budget, reasoningMaxTokens, model, message, messages, system, persona, promptVersion, conversationId,
     clientTurnId: clientTurnId || null,
     useRag, ragEnabled, ragTopK, ragFilters, autoRoute, taskType, enableWebSearch, think,
     options: { ...options, ...(ragCompress !== undefined ? { ragCompress: ragCompress === true } : {}) },

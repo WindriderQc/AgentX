@@ -1,6 +1,12 @@
 const readinessUi = require('../../public/js/chat/chat-model-readiness.js');
 
 describe('chat model readiness helper', () => {
+  it('uses native source billing admission without implying an Ollama profile or benchmark qualification', () => {
+    const model = { execution: { source: 'openclaw', mode: 'model' }, chatAllowed: true, origin: 'cloud', billing: { kind: 'free' } };
+    expect(readinessUi.getReadinessMeta(model, true)).toMatchObject({ ready: true, blocked: false, label: 'Model' });
+    expect(readinessUi.getReadinessMeta({ ...model, chatAllowed: false, billing: { kind: 'unknown' } }, false))
+      .toMatchObject({ ready: false, blocked: true });
+  });
   it('builds labels that distinguish profiled and unprofiled models', () => {
     expect(readinessUi.buildOptionLabel({
       name: 'fast-model',

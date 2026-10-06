@@ -75,7 +75,7 @@ function buildPayload(
 ) {
   const ragOpts = getRagOptions(elements);
   const routerMode = isRouterMode(elements, state);
-  const forceThinking = elements.thinkingToggle?.checked === true;
+  const forceThinking = elements.thinkingToggle?.checked === true && !elements.thinkingToggle.disabled && !elements.modelSelect.value.startsWith('openclaw:agent:');
   // Standard classifies each turn. Quick/Deep use fixed task lanes and Manual
   // sends the explicit model+host.
   const taskType = routerMode ? sessionTaskType(elements, state) : null;

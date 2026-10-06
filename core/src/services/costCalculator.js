@@ -318,7 +318,7 @@ function calculateConversationCost(messages) {
   });
 
   return {
-    sum: parseFloat(totalCost.toFixed(6)),
+    sum: messages.some(msg => msg.metadata?.executionReceipt && msg.metadata.executionReceipt.cost == null) ? null : parseFloat(totalCost.toFixed(6)),
     currency: process.env.COST_CURRENCY || 'USD',
     breakdown: {
       promptTokens: parseFloat(promptTokenCost.toFixed(6)),

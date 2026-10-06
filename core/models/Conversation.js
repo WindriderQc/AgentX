@@ -40,7 +40,7 @@ const MessageSchema = new mongoose.Schema({
       modelName: String,
       promptCostPer1M: Number,
       completionCostPer1M: Number,
-      source: { type: String, enum: ['environment', 'database', 'default', 'unconfigured'] }
+      source: { type: String, enum: ['environment', 'database', 'default', 'unconfigured', 'openclaw'] }
     },
     calculatedAt: Date
   },

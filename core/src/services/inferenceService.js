@@ -695,4 +695,4 @@ async function executeInferenceOnce(body = {}, {
     }
 }
 
-module.exports = { executeInference };
+module.exports = { executeInference: require('./execution/openclawInference').withExecutionSource(executeInference, undefined, { aggregateStreams: true }) };

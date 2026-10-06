@@ -740,6 +740,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     elements.modelSelect.addEventListener('change', () => {
+      updateRoutingModeUi(elements, state, defaults);
       state.requestedRuntime = null;
       state.settings.model = elements.modelSelect.value;
       helpers.persistSettings();
@@ -747,7 +748,7 @@ document.addEventListener('DOMContentLoaded', () => {
       applyChatAvailability();
       // Refresh the Modelfile-derived context indicator (badge + limit pill)
       if (typeof ChatContextIndicator !== 'undefined') {
-        if (!isRouterMode(elements, state) && elements.modelSelect.value) {
+        if (elements.hostInput.value !== 'openclaw' && !isRouterMode(elements, state) && elements.modelSelect.value) {
           ChatContextIndicator.refresh({
             model: elements.modelSelect.value,
             host: targetHost(elements, defaults, { includeRouter: true }) || state.settings?.host
@@ -761,6 +762,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (elements.routingModeSelect) {
       elements.routingModeSelect.addEventListener('change', () => {
+        if (elements.routingModeSelect.value !== 'manual' && elements.hostInput.value === 'openclaw') {
+          elements.hostInput.value = state.ollamaHosts?.find(host => host.available)?.url || '';
+        }
         void queueRoutingModeSelection().catch((err) => {
           if (state.manualRecoveryPending) return;
           helpers.setStatus('Route update failed', 'error');
@@ -785,6 +789,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.ragCompress) elements.ragCompress.addEventListener('change', () => helpers.persistSettings());
 
     elements.hostInput.addEventListener('change', async () => {
+      if (elements.hostInput.value === 'openclaw') elements.routingModeSelect.value = 'manual';
+      updateRoutingModeUi(elements, state, defaults);
       state.requestedRuntime = null;
       helpers.persistSettings();
       await loadHostPreferences(state);
