@@ -111,6 +111,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   Coding-task preparation passes that supplied text, the full task discussion
   and the permitted file inventory without additional cuts. Its coverage is
   recorded on the ticket; a planner input refusal preserves the request.
+- **Inference health.** Nerve Center shows per-host watchdog success counts and
+  the last probe or skip reason. Unusable, skipped and control-plane-only probes
+  leave resident worker health unknown; only a completed resident inference
+  establishes it. These counters cover the current Core process.
 - **Retrieval input.** Reranking passes complete passages to Core. Embedding
   inputs are sent whole or refused: the provider declares its character limit,
   Core requests native context refusal, and ingestion does not index a partial

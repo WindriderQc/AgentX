@@ -383,10 +383,48 @@ describe('probeCycle (integration)', () => {
     watchdog._setFetch(makeMockFetch({
       '/api/ps': () => ({ ok: true, json: async () => ({ models: [] }) })
     }));
-    const before = watchdog.getStats().probesFailed;
+    const before = watchdog.getStats();
     await watchdog.runNow();
-    expect(watchdog.getStats().probesFailed).toBe(before);
+    expect(watchdog.getStats().probesFailed).toBe(before.probesFailed);
+    expect(watchdog.getStats().probesSent).toBe(before.probesSent);
+    expect(watchdog.getStats().hosts[0]).toMatchObject({ health: 'unknown', reason: 'coordination_busy' });
     expect(runRuntimeMutation).not.toHaveBeenCalled();
+  });
+
+  it('exposes repeated unusable probes per host without declaring a jam or healthy worker', async () => {
+    const host = { ...MOCK_HOST, url: 'http://192.0.2.101:11434' };
+    getConfiguredHosts.mockReturnValue([host]);
+    watchdog._setFetch(makeMockFetch({
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'missing-model', context_length: 8192 }] }) }),
+      '/api/generate': () => ({ ok: false, status: 404, json: async () => ({ error: 'model not found' }) })
+    }));
+    for (let i = 0; i < 3; i++) await watchdog.runNow();
+    expect(watchdog.getStats().hosts).toEqual([expect.objectContaining({
+      hostUrl: host.url, health: 'unknown', reason: 'model_error', lastStatus: 404,
+      probesSent: 3, probesOk: 0, probesFailed: 3,
+      lastResult: { ok: false, mode: 'loaded-model', status: 404, reason: 'model_error', model: 'missing-model' }
+    })]);
+    expect(runRuntimeMutation).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes control-plane reachability from a successful resident inference', async () => {
+    const host = { ...MOCK_HOST, url: 'http://192.0.2.102:11434' };
+    getConfiguredHosts.mockReturnValue([host]);
+    watchdog._setFetch(makeMockFetch({
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [] }) }),
+      '/api/generate': () => ({ ok: false, status: 404, json: async () => ({ error: 'model not found' }) })
+    }));
+    await watchdog.runNow();
+    expect(watchdog.getStats().hosts[0]).toMatchObject({ health: 'unknown', reason: 'control_plane_only', probesOk: 1 });
+    watchdog._setFetch(makeMockFetch({
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'resident', context_length: 8192 }] }) }),
+      '/api/generate': () => ({ ok: true, json: async () => ({ done: true, response: 'ok' }) })
+    }));
+    await watchdog.runNow();
+    expect(watchdog.getStats().hosts[0]).toMatchObject({ health: 'ok', reason: 'probe_ok', probesSent: 2, probesOk: 2 });
+    watchdog._setFetch(makeMockFetch({ '/api/ps': () => ({ ok: false, status: 503 }) }));
+    await watchdog.runNow();
+    expect(watchdog.getStats().hosts[0]).toMatchObject({ health: 'unknown', reason: 'metadata_unreachable', lastStatus: null, probesSent: 2 });
   });
 
   it('recovers repeated terminal model errors only after their admissions complete', async () => {
