@@ -719,7 +719,7 @@ rejected synthesis request advances to the next rung. A failure after the stream
 starts permits one clause retry below the failed voice, at most once per turn.
 Interruption never starts that retry. The reply can remain unspoken if every
 voice fails. Server replies
-and native voice sessions do not use browser `speechSynthesis`. PsyX uses its
+do not use browser `speechSynthesis`. PsyX uses its
 protected chosen-voice route without a device voice fallback. See
 [shared speech behavior](AGENTS_AND_VOICE.md#shared-speech-behavior).
 
@@ -781,8 +781,7 @@ uses the backup while the probe fails. A primary network error or 502/503/504 is
 once on the backup; a 4xx is not. Answers carry `X-Voix-Upstream: primary|fallback`,
 `GET /api/voix/upstream` reports the active upstream, and the conversation page
 shows "Voix de secours (serveur principal indisponible) : réponses plus lentes."
-while the backup answers. Native sessions, the media vault and configuration
-stay on the primary. Caller disconnects cancel transcription and synthesis;
+while the backup answers. Caller disconnects cancel transcription and synthesis;
 no backup starts after cancellation. Deadlines cover body reads; both surfaces
 reject a synthesis error event before streaming audio.
 The optional [spoken-controls adapter](../integrations/voix/README.md) adds local
