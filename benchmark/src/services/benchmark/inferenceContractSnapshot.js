@@ -249,7 +249,8 @@ function buildCandidate(snapshot, request, executionConfig) {
                 top_p: executionConfig.top_p ?? null,
                 top_k: executionConfig.top_k ?? null,
                 repeat_penalty: executionConfig.repeat_penalty ?? null,
-                seed: executionConfig.seed ?? null
+                seed: executionConfig.seed ?? null,
+                seed_policy: executionConfig.seed_policy || 'fixed'
             }
         },
         contract: snapshot
@@ -295,6 +296,7 @@ function campaignRequest(hostGroups, executionConfig) {
             top_k: executionConfig.top_k ?? null,
             repeat_penalty: executionConfig.repeat_penalty ?? null,
             seed: executionConfig.seed ?? null,
+            ...(executionConfig.seed_policy ? { seed_policy: executionConfig.seed_policy } : {}),
             api_mode: executionConfig.api_mode || 'chat',
             repeats: Number(executionConfig.repeats) || 1,
             answer_contract_mode: executionConfig.answer_contract_mode || 'auto',
@@ -503,6 +505,7 @@ function getFrozenModelExecutionConfig(campaign, model, host, baseConfig = {}) {
         top_k: candidate.execution.sampling.top_k,
         repeat_penalty: candidate.execution.sampling.repeat_penalty,
         seed: candidate.execution.sampling.seed,
+        seed_policy: candidate.execution.sampling.seed_policy || fixed.seed_policy || 'fixed',
         api_mode: fixed.api_mode || baseConfig.api_mode,
         repeats: fixed.repeats || baseConfig.repeats,
         answer_contract_mode: fixed.answer_contract_mode || baseConfig.answer_contract_mode,

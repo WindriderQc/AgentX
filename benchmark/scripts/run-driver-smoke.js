@@ -9,6 +9,7 @@ require('../../shared/testing/runJest').run(path.resolve(__dirname, '..'), [
   '--runInBand',
   'tests/unit/executionDrivers.local.test.js',
   'tests/unit/calibrationFixtures.local.test.js',
+  'tests/unit/pairedCatalog.local.test.js',
   'tests/unit/codeRunnerClient.test.js'
 ])
   .then(code => { process.exitCode = code; })

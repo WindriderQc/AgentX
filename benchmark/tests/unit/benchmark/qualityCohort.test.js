@@ -135,3 +135,22 @@ describe('quality cohort', () => {
         expect(await recoverPromptFingerprints(batchId)).toEqual({ recovered: 0, unrecovered: 2 });
     });
 });
+
+
+test('a campaign pins all candidate digests and effective contexts without splitting repeats', async () => {
+    const candidates = ['a', 'b'].map(model => ({ model, host: 'http://exec:11434', artifactDigest: `${model}-digest`,
+        contract: { artifact: { runtimeFingerprint: 'runtime-a' } }, execution: { num_ctx: 8192, num_predict: 4096 },
+        mode: { think: false, sendThink: true } }));
+    const batch = { execution_config: { ...EXEC, seed_policy: 'repeat_index_v1' },
+        inference_contract_campaign: { candidates }, campaign_kind: 'model' };
+    const base = await cohortFingerprintForBatch(batch, QWEN);
+    const withCandidates = entries => ({ ...batch, inference_contract_campaign: { candidates: entries } });
+    expect(await cohortFingerprintForBatch(withCandidates([...candidates].reverse()), QWEN)).toBe(base);
+    for (const change of [{ artifactDigest: 'new-digest' }, { execution: { num_ctx: 16384, num_predict: 4096 } },
+        { contract: { artifact: { runtimeFingerprint: 'new-runtime' } } }]) {
+        expect(await cohortFingerprintForBatch(withCandidates([{ ...candidates[0], ...change }, candidates[1]]), QWEN)).not.toBe(base);
+    }
+    expect(await cohortFingerprintForBatch({ ...batch, execution_config: { ...batch.execution_config, repeats: 5 } }, QWEN)).toBe(base);
+    expect(await cohortFingerprintForBatch({ ...batch, execution_config: { ...batch.execution_config, seed_policy: 'fixed' } }, QWEN)).not.toBe(base);
+    expect(await cohortFingerprintForBatch({ ...batch, execution_config: { ...batch.execution_config, num_ctx: 16384 } }, QWEN)).not.toBe(base);
+});

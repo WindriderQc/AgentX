@@ -4,7 +4,7 @@
  */
 
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
-const { buildPromptHints } = require('./config');
+const { buildPromptHints, seedForRepeat } = require('./config');
 const { persistSuccessfulResult, persistFailedResult } = require('./batchResultPersistence');
 const { executionHost } = require('../../../../shared/benchmarkTargetContract');
 const { executeHarnessTarget, resolveHarnessTarget } = require('./harnessBrokerClient');
@@ -92,7 +92,7 @@ function createHarnessTargetRunner(context) {
                             parameters: {
                                 temperature: executionConfig.temperature,
                                 topP: executionConfig.top_p,
-                                seed: executionConfig.seed,
+                                seed: seedForRepeat(executionConfig, repeatIndex),
                                 maxTokens: numPredict,
                                 timeoutMs: executionConfig.per_test_timeout_ms || 600000,
                                 thinking: executionConfig.think === true
@@ -146,7 +146,7 @@ function createHarnessTargetRunner(context) {
                                 think_mode: executionConfig.think_mode || (executionConfig.think === true ? 'on' : 'off'),
                                 temperature: executionConfig.temperature ?? null,
                                 top_p: executionConfig.top_p ?? null,
-                                seed: executionConfig.seed ?? null,
+                                seed: seedForRepeat(executionConfig, repeatIndex),
                                 rankable_mode: target.mode === 'isolated_model',
                                 inference_contract_fingerprint: target.profile.fingerprint,
                                 artifact_digest: execution.receipt.identity.model.digest || null
