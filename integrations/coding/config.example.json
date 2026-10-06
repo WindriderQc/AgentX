@@ -52,6 +52,7 @@
   "executionProfiles": {
     "clawdx-file-tools/v1": {
       "adapter": "clawdx-guarded",
+      "taskWorktree": true,
       "pipelineApiBase": "http://127.0.0.1:3180",
       "host": "operator@worker.example.invalid",
       "remoteRepo": "/home/operator/.openclaw/workspace-coding-worker/AgentX",

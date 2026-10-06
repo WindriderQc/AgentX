@@ -790,9 +790,7 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
     if not isinstance(profile, dict) or not isinstance(verification, dict):
         raise PromotionError("reviewed worker or verification profile is unavailable")
     worker_repo = Path(profile.get("remoteRepo") or "").resolve()
-    expected_name = "workspace-" + str(profile.get("agent") or "")
-    if not any(parent.name == expected_name and parent.parent.name == ".openclaw" for parent in worker_repo.parents):
-        raise PromotionError("worker repository is outside the reviewed workspace")
+    clawdx_dispatch_remote.task_worktrees.reviewed_profile({**profile, "remoteRepo": str(worker_repo)}, PromotionError)
     tasks = list_tasks(config["apiBase"], ca_file=args.ca_file)
     candidates = eligible_candidates(tasks)
     if args.task_id:
@@ -810,10 +808,11 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
             pending.append((task, attempt, path, existing_receipt))
     if not pending:
         return {"schema": PROMOTION_SCHEMA, "status": "no_eligible_accepted_result"}
-    if len(pending) > promotion["maxPerRun"]:
-        raise PromotionError("multiple accepted results await one shared worker checkout")
+    if len(pending) > promotion["maxPerRun"]: raise PromotionError("multiple accepted results exceed the reviewed promotion limit")
     task, attempt, receipt_file, prepared_receipt = pending[0]
     pipeline_id = str(task["pipelineId"])
+    if profile.get("taskWorktree") is True:
+        worker_repo = Path(clawdx_dispatch_remote.task_worktrees.task_worktree_path(str(worker_repo), pipeline_id))
     attempt_number = int(attempt["attempt"])
     branch = f"{promotion['branchPrefix']}{pipeline_id}-attempt-{attempt_number}"
     token = os.environ.get(args.github_token_env, "").strip()

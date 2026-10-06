@@ -348,6 +348,7 @@ class CodingDispatcherTests(unittest.TestCase):
 
         self.assertIn("--automated-lease", command)
         self.assertIn("--allow-dispatch", command)
+
         self.assertIn("--attest-attribution", command)
         self.assertEqual(command[command.index("--cost-evidence-mode") + 1], "local-zero")
         self.assertEqual(command[command.index("--attribution-attempt") + 1], "1")
@@ -368,6 +369,15 @@ class CodingDispatcherTests(unittest.TestCase):
             command[command.index("--telegram-ui-base") + 1],
             "https://agentx.example/pipeline",
         )
+
+    def test_reviewed_task_worktree_option_reaches_the_guard(self):
+        settings = config()
+        settings['executionProfiles']['clawdx-file-tools/v1']['taskWorktree'] = True
+        adapter = dispatcher.build_adapter(config=settings, automation=automation())
+        self.assertIn('--task-worktree', adapter.command(task(), automation()))
+        adapter.execution['taskWorktree'] = 'true'
+        with self.assertRaises(dispatcher.DispatcherError):
+            adapter.command(task(), automation())
 
     def test_verifier_repair_turn_requires_explicit_bounded_profile_setting(self):
         deployed = config()

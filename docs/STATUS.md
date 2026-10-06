@@ -104,6 +104,8 @@ Instance configuration, data and deployment receipts remain outside Git.
   and host before claiming a task. Occupied capacity leaves a visible queued
   wait with no attempt consumed. An existing host tick can resume that same
   request; an inactive wait can be cancelled from the Coding Team panel.
+  Reviewed execution profiles can use a worktree per task. Repair preserves its
+  patch, and promotion reads the same accepted snapshot with the existing gates.
 - **Planning.** The page is a frozen historical reference. Its idea inbox is
   live: Nestor and family captures wait there until the parent reviews them.
   Coding workers receive bounded context from linked Planning objectives;

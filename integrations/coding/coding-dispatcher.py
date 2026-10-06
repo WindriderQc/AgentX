@@ -24,9 +24,10 @@ from urllib.parse import urlencode, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from integrations.coding import coding_dispatch_budget as dispatch_budget
+    from integrations.coding import coding_dispatch_budget as dispatch_budget, coding_task_worktrees as task_worktrees
 except ModuleNotFoundError:
     import coding_dispatch_budget as dispatch_budget
+    import coding_task_worktrees as task_worktrees
 
 CONFIG_SCHEMA = "agentx.coding-dispatcher-config/v1"
 AUTOMATION_SCHEMA = "agentx.pipeline-automation/v1"
@@ -533,11 +534,7 @@ class ClawdXGuardedAdapter(WorkerAdapter):
         missing_execution = sorted(required_execution - set(self.execution))
         if missing_execution:
             raise DispatcherError("execution profile missing: " + ",".join(missing_execution))
-        remote_repo = str(self.execution["remoteRepo"])
-        agent = str(self.execution["agent"])
-        expected_workspace = f"/.openclaw/workspace-{agent}/"
-        if expected_workspace not in remote_repo.replace("\\", "/"):
-            raise DispatcherError("remoteRepo must remain inside the selected worker file-tool workspace")
+        remote_repo, agent = task_worktrees.reviewed_profile(self.execution, DispatcherError)
 
         command = [
             sys.executable,
@@ -570,6 +567,7 @@ class ClawdXGuardedAdapter(WorkerAdapter):
             "--cost-evidence-mode",
             str(self.execution["costEvidenceMode"]),
             "--allow-dispatch",
+            *(["--task-worktree"] if self.execution.get("taskWorktree") else []),
         ]
         repair_turns = self.verification.get("repairTurns", 0)
         if type(repair_turns) is not int or repair_turns not in (0, 1):

@@ -55,6 +55,25 @@ def policy_config():
 
 
 class CodingTeamPromotionTests(unittest.TestCase):
+    def test_task_worktree_promotion_reads_the_accepted_tasks_checkout(self):
+        from argparse import Namespace
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / '.openclaw/workspace-clawdx-worker/repo'
+            settings = {
+                'apiBase': 'http://synthetic.invalid',
+                'promotion': {'repository': 'example/project', 'receiptRoot': tmp, 'maxPerRun': 1, 'branchPrefix': 'codex/'},
+                'executionProfiles': {'clawdx-file-tools/v1': {'remoteRepo': str(base), 'agent': 'clawdx-worker', 'taskWorktree': True}},
+                'verificationProfiles': {'agentx-dispatcher-tests/v1': {}}
+            }
+            args = Namespace(config=Path(tmp) / 'config.json', repository=None, ca_file=None,
+                task_id='0599', github_token_env='SYNTHETIC_UNUSED_TOKEN')
+            with patch.object(promotion, 'load_config', return_value=settings), \
+                    patch.object(promotion, 'list_tasks', return_value=[accepted_task()]), \
+                    patch.object(promotion, 'git_output', return_value='') as inspect:
+                with self.assertRaisesRegex(promotion.PromotionError, 'snapshot is unavailable'):
+                    promotion.promote(args)
+            self.assertEqual(inspect.call_args.args[0], base.parent / 'coding-tasks/repo-task-0599')
+
     def test_promotion_rechecks_accepted_patch_in_the_same_sandbox(self):
         with patch.object(promotion.clawdx_dispatch_remote, "run_independent_verification",
                           return_value=(0, "158 tests passed")) as verify:

@@ -87,3 +87,17 @@ configured. It requires the instance's GitHub credential and creates a draft PR.
 Normal `pull_request` CI runs the existing five jobs; the helper does not dispatch
 an obsolete workflow or report CI as passed. Merge and deployment retain separate
 receipts, using the same `agentx` launcher.
+
+### Task worktrees
+
+A reviewed execution profile can set `taskWorktree: true`. The guarded dispatcher
+creates a detached worktree for the exact pipeline id and source revision under
+`coding-tasks/`, beside the configured worker checkout and inside its existing
+file-tool workspace. Waiting and repair reuse this path without resetting its
+patch. Foreign paths, symlinks and a changed base refuse before dispatch.
+Promotion reads the accepted task's worktree and keeps the existing snapshot,
+verification and human review gates. Worktrees are retained as evidence.
+
+The Core Node verifier mounts the operator installation read-only after matching
+the tracked dependency locks; it does not execute worker-written dependencies.
+The execution profile flag is opt-in and does not enable unattended dispatch.

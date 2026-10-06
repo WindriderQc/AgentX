@@ -369,6 +369,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Actually dispatch after the contract matrix passes",
     )
+    parser.add_argument("--task-worktree", action="store_true", help="Use a task-bound worktree inside the reviewed worker workspace")
     parser.add_argument("--matrix-remote-root")
     parser.add_argument("--matrix-json-output")
     parser.add_argument("--json-output")
@@ -484,6 +485,9 @@ def main() -> int:
         if not args.repair_attempt:
             dispatch_remote.synchronize_remote_checkout(args.host, args.remote_repo, revision,
                                         source_repo=getattr(args, "source_repo", DEFAULT_REMOTE_SOURCE_REPO))
+        if getattr(args, "task_worktree", False):
+            args.remote_repo = dispatch_remote.task_worktrees.prepare_remote_worktree(
+                dispatch_remote.ssh_run, args.host, args.remote_repo, args.task_id, revision, args.agent)
         dispatch_remote.validate_remote_project_checkout(args.host, args.remote_repo, revision)
         args.source_revision = revision
         source_files = dispatch_message.authority_source_files(task)

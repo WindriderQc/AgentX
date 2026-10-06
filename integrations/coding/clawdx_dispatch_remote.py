@@ -13,12 +13,14 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 try:
+    from integrations.coding import coding_task_worktrees as task_worktrees
     from integrations.coding.coding_dispatch_evidence import (
         PipelineApiError,
         repository_snapshot_validation_errors,
         worker_workspace,
     )
 except ModuleNotFoundError:  # direct execution from the scripts directory
+    import coding_task_worktrees as task_worktrees
     from coding_dispatch_evidence import (  # type: ignore
         PipelineApiError,
         repository_snapshot_validation_errors,
@@ -419,6 +421,8 @@ def run_independent_verification(
         "--setenv", "HOME", "/tmp",
         "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
     ]
+    dependency_prefix, dependency_mount = task_worktrees.node_dependency_mount(remote_repo) if node_verifier else ("", [])
+    sandbox.extend(dependency_mount)
     if node_verifier:
         # Bind only the resolved executable. The host's /usr/local/bin/node is
         # a symlink into the operator's home, which must not enter the sandbox.
@@ -436,7 +440,7 @@ def run_independent_verification(
             f'repository_root="$(git -C {repository} rev-parse --show-toplevel 2>/dev/null)" && '
             f'test "$repository_root" = {repository} && '
             f'test "$(git -C "$repository_root" rev-parse HEAD 2>/dev/null)" = {revision} && '
-            f'{node_prefix}{sandbox_command}'
+            f'{node_prefix}{dependency_prefix}{sandbox_command}'
         ),
         text=True,
         encoding="utf-8",
