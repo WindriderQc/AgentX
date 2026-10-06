@@ -10,8 +10,8 @@
  * and the leaderboard compares results only on prompts whose fingerprint
  * matches the current catalog. Adding a prompt leaves every existing result
  * comparable; editing one makes only the results on that prompt
- * non-comparable. A campaign split into batches (one per level or per host)
- * is one cohort; another judge or other generation settings start a new one.
+ * non-comparable. Batches share a cohort when their frozen contender sets,
+ * judge and generation contracts match; prompt levels and repeats do not split it.
  */
 
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
@@ -48,6 +48,7 @@ async function cohortFingerprintForBatch(batch, judgeConfig, { scorerVersion = S
         judgeThink: judgeConfig?.think,
         judgeConfig: resolvedJudge,
         executionConfig: batch.execution_config || {},
+        candidateContracts: batch.inference_contract_campaign?.candidates || null,
         profileContract: profileContractFor(batch.campaign_kind)
     });
 }

@@ -14,7 +14,8 @@ const FIXTURED_PROMPTS = [
     'Dependency Injection Refactor',
     'Count Words Function',
     'Arithmetic Expression Evaluator',
-    'Build Order With Cycle Detection'
+    'Build Order With Cycle Detection',
+    ...Object.keys(require('../fixtures/pairedCatalogSolutions.json'))
 ];
 
 describe('authored reference tests', () => {

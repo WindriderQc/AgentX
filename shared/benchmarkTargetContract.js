@@ -323,7 +323,7 @@ function multiJudgeCohortSettings(config) {
   } : null;
 }
 
-function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink = false, judgeConfig = null, executionConfig, profileContract = 'isolated-model-v1' }) {
+function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink = false, judgeConfig = null, executionConfig, candidateContracts = null, profileContract = 'isolated-model-v1' }) {
   const normalizedJudge = judgeTarget
     ? normalizeBenchmarkTarget(judgeTarget, { allowMissingCatalogFingerprint: judgeTarget.executionKind === 'ollama' })
     : null;
@@ -339,7 +339,7 @@ function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink 
     api: normalizedJudge.api,
   } : null;
   return fingerprint({
-    schema: 'agentx.benchmark-quality-cohort/v4',
+    schema: 'agentx.benchmark-quality-cohort/v5',
     scorerVersion: String(scorerVersion || ''),
     judgeIdentity,
     // A reasoning judge scores differently; judges without it keep their cohort.
@@ -349,10 +349,26 @@ function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink 
     judgeSettings: judgeCohortSettings(judgeConfig),
     judgeExecutionContract: judgeConfig?.execution_contract ?? null,
     multiJudge: multiJudgeCohortSettings(judgeConfig?.multi_judge),
+    // Freeze the complete contender set: both arms in one campaign share this
+    // identity, while a replaced artifact or changed effective context cannot
+    // be pooled with historical measurements of the same tag.
+    candidates: candidateContracts?.map(candidate => ({
+      model: candidate.model, host: candidate.host, digest: candidate.artifactDigest,
+      runtimeFingerprint: candidate.contract?.artifact?.runtimeFingerprint ?? null,
+      numCtx: candidate.execution?.num_ctx ?? null, numPredict: candidate.execution?.num_predict ?? null,
+      think: candidate.mode?.think ?? null, sendThink: candidate.mode?.sendThink ?? null,
+    })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))) ?? null,
     generation: {
       responseMaxTokens: Number(executionConfig?.response_max_tokens) || null,
-      temperature: Number.isFinite(Number(executionConfig?.temperature)) ? Number(executionConfig.temperature) : null,
-      topP: Number.isFinite(Number(executionConfig?.top_p)) ? Number(executionConfig.top_p) : null,
+      numCtx: executionConfig?.num_ctx ?? null,
+      forceNumCtx: executionConfig?.force_num_ctx ?? null,
+      seedPolicy: executionConfig?.seed_policy || 'fixed',
+      temperature: executionConfig?.temperature == null ? null : Number.isFinite(Number(executionConfig.temperature)) ? Number(executionConfig.temperature) : null,
+      topP: executionConfig?.top_p == null ? null : Number.isFinite(Number(executionConfig.top_p)) ? Number(executionConfig.top_p) : null,
+      topK: executionConfig?.top_k ?? null,
+      repeatPenalty: executionConfig?.repeat_penalty ?? null,
+      samplingProfile: executionConfig?.sampling_profile || 'controlled',
+      apiMode: executionConfig?.api_mode || 'chat',
       seed: executionConfig?.seed == null ? null
         : Number.isFinite(Number(executionConfig.seed)) ? Number(executionConfig.seed) : null,
       think: executionConfig?.think ?? null,

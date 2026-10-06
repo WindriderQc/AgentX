@@ -16,7 +16,7 @@ const { withBenchmarkServiceAuth } = require('../../helpers/coreServiceAuth');
 // telemetry; verified end-to-end on 2026-04-30 (p50 68.63 tok/s on
 // gemma4:26b L1, 14/14 telemetry rows landed).
 const CORE_URL = process.env.CORE_URL || 'http://localhost:3080';
-const { buildPromptHints } = require('./config');
+const { buildPromptHints, seedForRepeat } = require('./config');
 const { classifyBenchmarkError } = require('./errorClassifier');
 const { extractThinkingBlocks } = require('../../helpers/ollamaResponseHandler');
 const { benchmarkFetch: fetch } = require('./http');
@@ -108,7 +108,8 @@ function createPromptExecutor(context) {
             if (Number.isFinite(modelExecConfig.top_p)) ollamaOptions.top_p = modelExecConfig.top_p;
             if (Number.isFinite(modelExecConfig.top_k)) ollamaOptions.top_k = modelExecConfig.top_k;
             if (Number.isFinite(modelExecConfig.repeat_penalty)) ollamaOptions.repeat_penalty = modelExecConfig.repeat_penalty;
-            if (Number.isFinite(modelExecConfig.seed)) ollamaOptions.seed = modelExecConfig.seed;
+            const repeatSeed = seedForRepeat(modelExecConfig, repeatIndex);
+            if (repeatSeed !== null) ollamaOptions.seed = repeatSeed;
 
             const useChat = modelExecConfig.api_mode !== 'generate';
             const sendThink = modelExecConfig.send_think !== false;
