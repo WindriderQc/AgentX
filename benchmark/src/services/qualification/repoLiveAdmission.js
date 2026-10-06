@@ -105,6 +105,7 @@ function buildAdmittedCallModel({ host, modelConfigs, timeoutMs, session, genera
       }
       if (Number.isFinite(seed)) options.seed = seed;
       const raw = await generate(session.workloadId, { model, host, stream: false, rawResponse: true,
+        callerDetail: `benchmark-batch-${session.workloadId}`,
         messages: [{ role: 'user', content: prompt }], options,
         ...(config.send_think !== false ? { think: config.think === true } : {}) }, { signal });
       if (raw?.done !== true || raw.error || !exactModelNamesMatch(model, raw.model)) {
