@@ -150,3 +150,53 @@ test('a member turn nobody interrupts still answers on its own request', async (
   assert.equal(first.events.at(-1).data.reply.text, 'Trois courriels attendent une réponse.');
   assert.equal(await h.memberWork.wait(sessionId, 'turn-member'), null);
 });
+
+test('the conversation agent consults a member by itself: the request is never spoken and the member answers in its own turn', async () => {
+  const h = harness();
+  const first = h.speak('Est-ce que j’ai des courriels urgents ?', 'turn-consult');
+  while (!h.requests.length) await tick();
+  assert.equal(h.requests[0].agentId, 'main');
+  assert.match(h.requests[0].request.instructions, /you may consult one team member.*Members: secretary \(secretaire\)/s);
+  h.requests[0].answer('Je demande à la Secrétaire. <show kind="consult" title="secretary">Quels courriels urgents attendent une réponse ?</show>');
+  await first.finished;
+
+  const done = first.events.find(event => event.type === 'done').data;
+  assert.equal(done.reply.text, 'Je demande à la Secrétaire.');
+  assert.equal(first.events.filter(event => event.type === 'delta').map(event => event.delta).join('').includes('consult'), false, 'the request is not spoken');
+  assert.equal(done.display, undefined, 'the request is not displayed');
+  assert.deepEqual(done.consult.speaker, { agentId: 'secretary', name: 'Secretary' });
+  assert.equal(h.activePersonaTurns.has(sessionId), false, 'the conversation is free while the member works');
+  assert.deepEqual(h.memberWork.publicJob(await h.memberWork.wait(sessionId, done.consult.turnId, { timeoutMs: 20 })),
+    { turnId: done.consult.turnId, pending: true, speaker: { agentId: 'secretary', name: 'Secretary' } });
+
+  // The member's own turn: its session, its instruction, the agent's question.
+  while (h.requests.length < 2) await tick();
+  const member = h.requests[1];
+  assert.equal(member.agentId, 'secretary');
+  assert.equal(member.request.text, 'Quels courriels urgents attendent une réponse ?');
+  assert.match(member.request.instructions, /Nestor, consults you \(Secretary\)/);
+  assert.doesNotMatch(member.request.instructions, /you may consult one team member/, 'a consulted member does not consult in turn');
+  member.answer('Deux courriels attendent une réponse. <show kind="consult" title="main">Et toi ?</show>');
+  const job = h.memberWork.publicJob(await h.memberWork.wait(sessionId, done.consult.turnId, { timeoutMs: 2000 }));
+  assert.equal(job.status, 'answered');
+  assert.equal(job.reply.text, 'Deux courriels attendent une réponse.');
+  assert.equal(h.requests.length, 2, 'no consultation in chain');
+  assert.deepEqual(h.turns.map(turn => [turn.speakerAgentId, turn.replyText]),
+    [['secretary', 'Deux courriels attendent une réponse.'], ['', 'Je demande à la Secrétaire.']]);
+  // The agent reads the exchange once, on its next turn.
+  assert.deepEqual({ agentId: h.session.teamExchange.agentId, consulted: h.session.teamExchange.consulted, answer: h.session.teamExchange.answer },
+    { agentId: 'secretary', consulted: true, answer: 'Deux courriels attendent une réponse.' });
+});
+
+test('a consultation names a known other member, once; anything else is ignored', async () => {
+  const h = harness();
+  const first = h.speak('Peux-tu vérifier ça ?', 'turn-unknown');
+  while (!h.requests.length) await tick();
+  h.requests[0].answer('Voyons. <show kind="consult" title="stranger">Une question ?</show><show kind="consult" title="main">À moi-même ?</show>');
+  await first.finished;
+  const done = first.events.find(event => event.type === 'done').data;
+  assert.equal(done.consult, undefined);
+  assert.equal(done.reply.text, 'Voyons.');
+  await tick();
+  assert.equal(h.requests.length, 1);
+});

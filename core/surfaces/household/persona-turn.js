@@ -43,24 +43,28 @@ function createPersonaTurnHandler({
   sessionHistoryMessages, loadSessionAuditRows,
   MEMORY_RECALL_LIMIT, PERSONAL_OPERATOR_SURFACE_CONTRACT, VOIX_FAMILY_PACK_ID
 }) {
-  return async (req, res, access, requiredSession = null) => {
+  const handle = async (req, res, access, requiredSession = null) => {
+    // Set only by this handler when the conversation's agent consults a member (#41): never a request field.
+    const consult = req.consult || null;
     const isLlmX = Boolean(req.llmx), isOpening = req.llmx?.opening === true;
     const sceneEnabled = isLlmX && !isOpening && llmx.sceneCapable(req.llmx.sceneContext);
-    const userText = isOpening ? '' : String(req.body?.text || '').trim();
+    const userText = consult ? consult.question : isOpening ? '' : String(req.body?.text || '').trim();
     if (userText.length > 4000) {
       return fail(res, 413, 'Le texte dépasse la limite de 4 000 caractères. Rien n’a été raccourci ni envoyé au modèle.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
     }
     if (!userText && !isOpening) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
-    if (activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
-    const clientTurnId = (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice' && req.body?.stream === true))
+    if (!consult && activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
+    const clientTurnId = consult ? consult.turnId : (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice' && req.body?.stream === true))
       && validClientTurnId(req.body?.turnId) ? req.body.turnId : '';
     const startedAt = Date.now();
     const abort = new AbortController();
-    const entry = { abort, clientTurnId, generated: '', interrupted: false, auditWritten: false,
+    // A consulted member works like a detached member turn: nothing is streamed, its reply goes to member-work.
+    const entry = { abort, clientTurnId, generated: '', interrupted: false, auditWritten: false, detached: Boolean(consult),
       llmx: isLlmX, profile: req.llmx?.profile || 'personal', opening: isOpening, dispatched: false };
     entry.ready = new Promise(resolve => { entry.markReady = resolve; });
     entry.finished = new Promise(resolve => { entry.finish = resolve; });
-    activePersonaTurns.set(req.params.sessionId, entry); brain.cancel(req.params.sessionId);
+    if (consult) consult.cancel = () => { entry.interrupted = true; abort.abort(); };
+    else { activePersonaTurns.set(req.params.sessionId, entry); brain.cancel(req.params.sessionId); }
     // A detached member turn (member-work.js) keeps running without its request.
     const disconnected = () => { if (!res.writableEnded && !entry.detached) abort.abort(); };
     res.on?.('close', disconnected);
@@ -140,7 +144,7 @@ function createPersonaTurnHandler({
       // listen and then produce silence.
       let sound = null;
       // Set when the turn addresses another team member (#41): who answers, and with which voice.
-      let member = null, memberPersona = null, speaker = null;
+      let member = null, memberPersona = null, speaker = null, consultRequest = null;
       let continuity = { status: 'not-required', source: 'session-audit', messageCount: 0 };
       let toolEvidence = null;
       let metadata = { model: '', hostKey: '', routingSource: 'deterministic' };
@@ -167,10 +171,10 @@ function createPersonaTurnHandler({
         // pack; its selected backend stays fixed for this conversation.
         const backend = conversationBackend(session.backend, conversationEnv);
         // #41: a turn that names another team member runs in that member's own session.
-        member = backend === 'openclaw' && !pack.childSafe && !isLlmX
-          ? teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session)) : null;
+        const team = backend === 'openclaw' && !pack.childSafe && !isLlmX ? teamAddress.teamMembers(conversationEnv) : [];
+        member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session));
         // That member is still on an earlier question: the conversation's agent answers and says so.
-        if (member && memberWork?.active(session.sessionId).some(job => job.agentId === member.agentId)) member = null;
+        if (member && !consult && memberWork?.active(session.sessionId).some(job => job.agentId === member.agentId)) member = null;
         memberPersona = member ? await teamPersona(member.agentId, runtimeServices.personas) : null;
         const turnSession = member ? teamAddress.memberSession(session, member, memberPersona) : session;
         if (member) {
@@ -256,7 +260,8 @@ function createPersonaTurnHandler({
         const nativeInstructions = agentInstructions(turnSession, turnSession.persona,
           pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode,
           { soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected, channel: req.body?.channel })
-          + (member ? teamAddress.memberInstruction(speaker.name) : '') + workshopPrompt(workshop)
+          + (member ? (consult ? teamAddress.consultInstruction : teamAddress.memberInstruction)(speaker.name)
+            : memberWork ? teamAddress.consultContract(team, agentIdFor(session)) : '') + workshopPrompt(workshop)
           + sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : '') + (isLlmX ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, imageSources: visuals.sources({ family: pack.childSafe }) }));
         // Child presentation follows the selected adult personality on both
         // transports. Adult conversations keep their normal style overlay order.
@@ -269,7 +274,9 @@ function createPersonaTurnHandler({
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ allowSecrets: !pack.childSafe, language: replyLanguage,
-          onSay: delta => { if (!res.writableEnded) event('delta', { delta }); }, onShow: block => visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage })
+          onSay: delta => { if (!res.writableEnded) event('delta', { delta }); },
+          // One consultation per reply, and a member does not consult in turn.
+          onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage })
             .then(shown => { if (!res.writableEnded) event('show', { block: shown }); })) });
         const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history: features.historyContext === false ? [] : history, streaming, channel: req.body?.channel,
@@ -381,16 +388,31 @@ function createPersonaTurnHandler({
       entry.replyText = replyText;
       // The conversation's agent hears about a member's answer once, on its next turn.
       if (member) await conversations.updateSession({ sessionId: session.sessionId },
-        { $set: { teamExchange: teamAddress.exchangeRecord(member, speaker.name, userText, replyText) } });
+        { $set: { teamExchange: teamAddress.exchangeRecord(member, speaker.name, userText, replyText, { consulted: Boolean(consult) }) } });
       else if (session.teamExchange) await conversations.updateSession({ sessionId: session.sessionId }, { $unset: { teamExchange: '' } });
       if (entry.detached) {
         memberWork.finish(session.sessionId, clientTurnId, { traceId, text: speechText(replyText),
           language: spokenReplyLanguage(replyText, userText), speaker: audit.speaker, speech: audit.replySpeech });
         return undefined;
       }
+      // #41: the conversation's agent asked for a member. Its turn starts once this one has ended;
+      // the page collects the reply like a detached member turn and says it in the member's voice.
+      let consulted = null;
+      if (consultRequest && memberWork && !memberWork.active(session.sessionId).some(job => job.agentId === consultRequest.member.agentId)) {
+        const persona = await teamPersona(consultRequest.member.agentId, runtimeServices.personas);
+        const handoff = { ...consultRequest, turnId: crypto.randomUUID(), cancel: null };
+        consulted = { turnId: handoff.turnId, speaker: { agentId: handoff.member.agentId, name: persona?.name || handoff.member.agentId } };
+        memberWork.start(session.sessionId, handoff.turnId, { agentId: handoff.member.agentId, name: consulted.speaker.name,
+          question: handoff.question, cancel: () => handoff.cancel?.() });
+        const quiet = { on() {}, removeListener() {}, end() {}, write() {}, status() { return quiet; }, set() { return quiet; }, json() { return quiet; }, writableEnded: false, headersSent: false };
+        void entry.finished.then(() => handle({ params: req.params, body: { channel: req.body?.channel }, consult: handoff }, quiet, access, requiredSession))
+          .catch(error => logger?.error?.('Household consulted member turn failed', { error: error.message }))
+          // A turn refused before it started settles here, so the page is not left waiting.
+          .finally(() => memberWork.fail(session.sessionId, handoff.turnId, 'The consulted member did not answer.'));
+      }
       const updated = await conversations.getSession({ sessionId: session.sessionId });
       const resultPayload = {
-        traceId, speaker: audit.speaker,
+        traceId, speaker: audit.speaker, ...(consulted ? { consult: consulted } : {}),
         ...(isLlmX ? { origin: isOpening ? 'application_opening' : 'human', turnId: clientTurnId } : {}),
         ...(sceneProposal ? { sceneProposal } : {}), ...(display.length ? { display } : {}),
         session: publicSession(updated || session),
@@ -477,6 +499,7 @@ function createPersonaTurnHandler({
       }
     }
   };
+  return handle;
 }
 
 module.exports = { createPersonaTurnHandler, FAMILY_SURFACE_CONTRACT };
