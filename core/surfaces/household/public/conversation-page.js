@@ -367,17 +367,18 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const avatar = window.AvatarDock?.mount({ space: family ? 'family' : 'personal' });
   // Browser speech recognition only with the instance gate and this browser's consent (per space).
   let renderSpeechFallback = () => {};
+  async function transcribeLocal(blob, lang, signal) {
+    const body = new FormData(); body.append('file', blob, 'speech.wav');
+    body.append('language', NestorSpeech.transcriptionLanguage(lang));
+    const result = await api('/api/voix/transcribe', { method: 'POST', body, signal });
+    refreshUpstream();
+    return result;
+  }
   const speechFallback = NestorSpeechFallback.createSpeechFallback({ space, storage, allowed: runtime?.browserSpeechFallback?.[family ? 'family' : 'personal'] === true,
     Recognition: window.SpeechRecognition || window.webkitSpeechRecognition, onChange: state => renderSpeechFallback(state),
     listening: () => ['listening', 'hearing', 'transcribing', 'waiting', 'thinking', 'preparing', 'speaking'].includes(conversation.state),
     language: () => conversation.selection?.language || language.value,
-    async transcribeLocal(blob, lang, signal) {
-      const body = new FormData(); body.append('file', blob, 'speech.wav');
-      body.append('language', NestorSpeech.transcriptionLanguage(lang));
-      const result = await api('/api/voix/transcribe', { method: 'POST', body, signal });
-      refreshUpstream();
-      return result;
-    } });
+    transcribeLocal });
   // The reply of a member whose turn went on in the background (member-work.js on Core).
   async function followMember(session, turnId, speaker) {
     const name = speaker?.name || 'L’autre agent';
@@ -427,6 +428,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       partial = null;
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
+    // Recognition started during a pause uses the local transcriber only: the browser's own
+    // recognizer hands its text over once, and an early failure must not switch engines.
+    transcribeEarly: (blob, lang, signal) => (speechFallback.state().active ? null : transcribeLocal(blob, lang, signal)),
     // The person starts speaking: wake speech recognition while they talk (best effort).
     warm: () => fetch('/api/voix/warm', { method: 'POST' }),
     // The voice loop's timeline of a spoken turn, kept by Core on that recorded turn.
