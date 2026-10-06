@@ -376,16 +376,46 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       refreshUpstream();
       return result;
     } });
+  // The reply of a member whose turn went on in the background (member-work.js on Core).
+  async function followMember(session, turnId, speaker) {
+    const name = speaker?.name || 'L’autre agent';
+    const url = `${sessionBase}/${encodeURIComponent(session.sessionId)}/member-reply?turn=${encodeURIComponent(turnId)}`;
+    const here = () => conversation.session?.sessionId === session.sessionId;
+    el('conversationStatus').textContent = `${name} continue en arrière-plan. Sa réponse sera dite dès qu’elle est prête.`;
+    for (let round = 0; round < 20 && here(); round += 1) {
+      let work;
+      try { work = (await api(url))?.work; } catch { return; }
+      if (!work || !here()) return;
+      if (work.pending) continue;
+      transcript.querySelector('.empty')?.remove();
+      const row = document.createElement('div');
+      if (work.status !== 'answered' || !work.reply?.text) {
+        row.className = 'conversation-message activity'; row.textContent = `${name} n’a pas pu terminer sa réponse.`;
+        transcript.append(row); row.scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      row.className = 'conversation-message assistant'; row.dataset.speaker = name; row.dataset.spoken = 'false';
+      row.textContent = work.reply.text; transcript.append(row); row.scrollIntoView({ block: 'nearest' });
+      // Said at the first pause; the text is already on screen and in the history.
+      for (let attempt = 0; attempt < 90 && here(); attempt += 1) {
+        if (await conversation.interject(work.reply)) { row.dataset.spoken = 'true'; return; }
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      return;
+    }
+  }
   const conversation = new NestorConversation.Conversation({
     readyToSpeak: () => avatar?.ready,
     openAudio: (signal, onError, options) => NestorConversation.openAudio(signal, onError, { ...options, observeSpeech: true,
       onPlaybackMetrics: metrics => { el('voiceDescription').title = `Last segment: ${metrics.first_scheduled_ms} ms to schedule; ${metrics.buffer_gaps} buffer gaps (${metrics.buffer_gap_ms} ms). Browser timing, not acoustic measurement.`; } }).then(audio => speechFallback.wrapAudio(audio)), createSession, message, turn: streamedTurn,
-    async interrupt(session, turnId, signal) {
+    async interrupt(session, turnId, signal, { stop = false } = {}) {
       let result;
       do {
         result = await api(sessionBase + '/' + encodeURIComponent(session.sessionId) + '/interrupt',
-          { method: 'POST', signal, body: JSON.stringify({ turnId }) });
+          { method: 'POST', signal, body: JSON.stringify({ turnId, ...(stop ? { stop: true } : {}) }) });
       } while (result.pending && !signal.aborted);
+      // A team member keeps working when the person speaks again; its reply is said at the next pause.
+      if (result.detached) void followMember(session, turnId, turnSpeaker);
       return result;
     },
     interrupted() {
@@ -402,7 +432,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       // The voice loop chose one language for the whole turn; a clause is never re-scored.
       const lang = NestorSpeech.normalizeSpeechLanguage(reply.language) || 'fr';
       // A member who answers directly speaks with its own personality's voice, not the session's choices.
-      const member = turnSpeaker && personas.find(p => p.id === turnSpeaker.personaId);
+      const speaker = reply.speaker?.personaId ? reply.speaker : turnSpeaker;
+      const member = speaker && personas.find(p => p.id === speaker.personaId);
       const persona = member || conversation.session?.persona || selected();
       return synthesize(reply.text, lang, persona, member ? {} : conversation.session?.voice || {}, signal, 'Conversation', reply.after);
     },

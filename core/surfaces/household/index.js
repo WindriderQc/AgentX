@@ -21,6 +21,7 @@ const {
 } = require('../../src/domains/household/family');
 const { registerFamilyRoutes } = require('./family-routes');
 const { plainReply } = require('./reply-channels'), { createVisuals } = require('./visuals'), { createBrain } = require('./brain');
+const { createMemberWork } = require('./member-work');
 const { registerSecretaryMcp } = require('./secretary-mcp');
 const { secretaryMailControl } = require('./secretary-mail-routes');
 const { householdActivation } = require('./readiness');
@@ -155,6 +156,7 @@ function register(api) {
   const { app, express, mongoose, standardJsonParser, runtimeServices, extensionRoot, logger } = api;
   const models = createModels(mongoose);
   const conversations = require('./turn-attribution').attributedConversations(runtimeServices.conversations.forSurface('household'));
+  const memberWork = createMemberWork({ conversations });
   const personalTasks = runtimeServices.tasks.personal;
   const familyTasks = runtimeServices.tasks.family;
   const ownerMemory = runtimeServices.memory.forAudience('owner');
@@ -393,9 +395,9 @@ function register(api) {
   const validClientTurnId = value => typeof value === 'string' && /^[a-zA-Z0-9-]{16,80}$/.test(value);
   const registerBrowserSessionControls = createBrowserSessionControls({
     personas, conversations, envelope, cleanText, fail, activePersonaTurns,
-    validClientTurnId, nestorClient
+    validClientTurnId, nestorClient, memberWork
   });
-  registerBrowserSessionControls('/private', 'personal_operator'); visuals.register(personas); brain.register(personas);
+  registerBrowserSessionControls('/private', 'personal_operator'); visuals.register(personas); brain.register(personas); memberWork.register(personas);
   registerBrowserSessionControls('/family', 'kidx_nestor', 'family');
   const personalAttachments = sessionId => runtimeServices.attachments.forConversation({
     surface: 'household', sessionId, packId: 'personal_operator', scopeId: 'personal'
@@ -421,7 +423,7 @@ function register(api) {
   const handlePersonaTurn = createPersonaTurnHandler({
     logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-    sounds, visuals, brain, activePersonaTurns, validClientTurnId,
+    sounds, visuals, brain, memberWork, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
     packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
     sessionHistoryMessages, loadSessionAuditRows,

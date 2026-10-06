@@ -725,6 +725,17 @@ on the reply and speaks with the catalog personality that declares the agent.
 The next turn returns to the conversation's agent, which receives that exchange
 once as reference data. Family turns never use it.
 
+In a spoken conversation the page says the handoff at once ("Je passe ta
+question à …"). Speaking again while the member works does not cancel it: the
+member's turn detaches, the conversation's agent takes the new turn and is told
+the member is still working, and the member's reply is recorded as usual and
+said at the next pause (`GET /private/sessions/:id/member-reply`). A member
+already working is not asked a second question; the conversation's agent
+answers and says so. Only a stop (the spoken stop or the stop control) cancels
+a member, in flight or in the background. Detached work lives in Core's memory:
+a page that never collects the reply still finds it in the history, and the
+conversation's agent receives it as reference data on its next turn.
+
 Live voice transcribes through VoiX. `HOUSEHOLD_BROWSER_STT_FALLBACK` optionally
 lets Super Dad (`personal`) or both spaces (`true`) fall back to the browser's own
 speech recognition when VoiX is unreachable (transcription 502/503/504, a network

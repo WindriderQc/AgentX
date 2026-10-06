@@ -421,7 +421,9 @@
       this.show(wasSpeaking ? 'speaking' : 'thinking'); this.monitor(turn);
       this.releaseCandidate(turn);
     }
-    interrupt(turn = this.activeTurn) {
+    // `stop` marks the spoken or pressed stop control: only that cancels work a
+    // surface lets continue in the background (a team member's turn).
+    interrupt(turn = this.activeTurn, { stop = false } = {}) {
       if (!turn || !this.owns(turn)) return;
       turn.interrupted = true;
       turn.speech.abort(); // Stop sound now; keep the microphone and session.
@@ -430,7 +432,7 @@
       this.show('hearing');
       // The server acknowledges only after the old turn's audit/lock settle.
       // Do not abort its HTTP stream first: that would look like a lost page.
-      turn.interruption = Promise.resolve().then(() => this.io.interrupt(this.session, turn.id, this.abort.signal))
+      turn.interruption = Promise.resolve().then(() => this.io.interrupt(this.session, turn.id, this.abort.signal, { stop }))
         .then(() => { turn.interruptionSettled = true; turn.request.abort(); if (this.activeTurn === turn) this.turnPending = false; })
         .catch(error => { this.fail(error, turn.epoch); throw error; });
       turn.interruption.catch(() => {}); // handled when the captured utterance arrives
@@ -465,7 +467,7 @@
         if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) text = '';
         if (previous?.candidate && this.owns(previous)) {
           if (!text.trim() && !stopControl) { this.resumeCandidate(previous); return; }
-          this.interrupt(previous);
+          this.interrupt(previous, { stop: stopControl || isStopControl(text) });
           this.releaseCandidate(previous);
         }
         if (previous?.interruption) {
