@@ -27,11 +27,15 @@ const OPENING_DIRECTIVE = 'This is not a request and needs no tool. Reply with t
 function createVoiceWarmup({ conversations, executeConversation, conversationBackend, conversationEnv, packById, instructions, requireNativeAgent = async () => {},
   agentIdFor, logger = null, deadlineMs = LIMITS.deadlineMs }) {
   const running = new Map(); // sessionId -> promise that never rejects
+  // Off unless the instance turns it on: its first real use was followed by a turn that
+  // produced no deliverable text, and that link is not ruled out yet.
+  const enabled = () => String(conversationEnv?.HOUSEHOLD_VOICE_WARMUP || '').trim().toLowerCase() === 'true';
 
   /** Settles when no warm-up runs in this conversation's native session. */
   const settled = sessionId => running.get(sessionId) || Promise.resolve();
 
   function start(session, greeting) {
+    if (!enabled()) return { started: false, reason: 'disabled' };
     const pack = packById(session.packId);
     const selectedMode = pack?.modes.find(mode => mode.id === session.modeId);
     const text = String(greeting || '').replace(/\s+/g, ' ').trim().slice(0, LIMITS.greeting);

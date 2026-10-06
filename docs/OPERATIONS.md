@@ -736,7 +736,9 @@ a member, in flight or in the background. Detached work lives in Core's memory:
 a page that never collects the reply still finds it in the history, and the
 conversation's agent receives it as reference data on its next turn.
 
-A new spoken personal conversation warms its own prompt while the page speaks
+With `HOUSEHOLD_VOICE_WARMUP=true` (off by default: its first real use was
+followed by a turn that produced no deliverable text, and that link is not
+ruled out), a new spoken personal conversation warms its own prompt while the page speaks
 its greeting (`POST /private/sessions/:id/warm`). A model with sliding-window
 attention resumes its prompt cache only near the end of the previous prompt,
 and a new native session changes a late section of the agent's system prompt,

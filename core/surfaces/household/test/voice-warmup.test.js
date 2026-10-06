@@ -16,7 +16,7 @@ const records = require('../persona-records');
 const sessionId = 'synthetic-session';
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 
-function harness({ backend = 'openclaw', sessionFields = {}, conversationImages } = {}) {
+function harness({ backend = 'openclaw', sessionFields = {}, conversationImages, env = {} } = {}) {
   const pack = packs.packById('personal_operator');
   const session = { sessionId, status: 'active', packId: pack.id, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: 'main', turnCount: 0,
@@ -36,7 +36,7 @@ function harness({ backend = 'openclaw', sessionFields = {}, conversationImages 
     requests.push(run);
     return Promise.resolve(request.onStarted?.('agent:main:synthetic', 'run-1')).then(() => run.done);
   };
-  const conversationEnv = { HOUSEHOLD_TEAM_MEMBERS: JSON.stringify({ secretary: ['secrétaire'] }) };
+  const conversationEnv = { HOUSEHOLD_TEAM_MEMBERS: JSON.stringify({ secretary: ['secrétaire'] }), HOUSEHOLD_VOICE_WARMUP: 'true', ...env };
   const { conversationBackend } = require('../conversation-executor');
   const { agentIdFor } = require('../conversation-agent');
   const warnings = [];
@@ -157,4 +157,13 @@ test('the warm route answers only for an active personal conversation', async ()
   assert.deepEqual(started, { code: 202, data: { ok: true, status: 'success', data: { started: true } } });
   assert.equal((await call({ greeting: 'Bonjour.' })).code, 200);
   h.requests[0]?.answer('Prêt');
+});
+
+test('the warm-up stays off unless the instance turns it on', async () => {
+  for (const value of [undefined, '', 'false', '1']) {
+    const h = harness({ env: { HOUSEHOLD_VOICE_WARMUP: value } });
+    assert.deepEqual(h.warmup.start({ ...h.session }, 'Bonjour.'), { started: false, reason: 'disabled' });
+    assert.equal(h.requests.length, 0);
+    await h.warmup.settled(sessionId);
+  }
 });

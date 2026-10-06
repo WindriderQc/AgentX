@@ -1548,6 +1548,17 @@
       "description": "Optional JSON mapping an OpenClaw agent id to the names the owner uses to address it directly in Super Dad (\"Secretary, ...\", \"ask the secretary ...\"). That turn goes to the agent's own session and voice. Unset: every turn stays with the conversation's agent.",
       "fallback": "no direct addressing"
     },
+    "HOUSEHOLD_VOICE_WARMUP": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Set to true to warm a new spoken personal conversation's prompt while its greeting plays (one small unrecorded turn in the conversation's native session). Unset: no warm-up; the first spoken turn reads its whole prompt.",
+      "fallback": "no warm-up"
+    },
     "HOUSEHOLD_VOICE_MODEL": {
       "services": [
         "core"
