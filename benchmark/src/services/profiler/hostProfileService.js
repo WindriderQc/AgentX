@@ -8,7 +8,8 @@ const logger = require('../../../config/logger');
 
 const STATUS_TIMEOUT_MS = 4000;
 const METADATA_FIELDS = new Set([
-  'hostId', 'hostUrl', 'displayName', 'gpu', 'ollama', 'status', 'lastSeenAt', 'cpu', 'modelCount'
+  'hostId', 'hostUrl', 'displayName', 'gpu', 'gpus', 'gpusObservedAt', 'gpusSource',
+  'ollama', 'status', 'lastSeenAt', 'cpu', 'modelCount'
 ]);
 const AUTHORITY_FIELDS = new Set(['baseline', 'dedicated', 'reconciliation']);
 const AUTHORITY_SERVICES = new Set([

@@ -10,6 +10,19 @@ const HostProfileSchema = new mongoose.Schema({
     computeCapability: String,
     driver: String
   },
+  // Complete collector inventory, separate from the legacy aggregate gpu.
+  // Ollama settings.visibleDevices describes the endpoint's selection.
+  gpus: { type: [new mongoose.Schema({
+    index: Number,
+    uuid: String,
+    busId: String,
+    model: String,
+    vramTotalMiB: Number,
+    computeCapability: String,
+    driver: String
+  }, { _id: false })], default: undefined },
+  gpusObservedAt: Date,
+  gpusSource: String,
   ollama: {
     version: String,
     backend: {

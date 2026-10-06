@@ -13,6 +13,7 @@
 const HostProfile = require('../../../models/HostProfile');
 const logger = require('../../../config/logger');
 const { readHostHardware } = require('./hardwareCollectorClient');
+const { normalizeGpuInventory } = require('../../../../shared/gpuInventory');
 const {
   normalizeRuntimeSettings,
   runtimeSettingsFromObservation,
@@ -32,26 +33,34 @@ async function syncHostRuntimeSettings({ hostId, hostUrl } = {}, {
 
   const hardware = await readHardware(hostUrl).catch(() => null);
   const environment = hardware?.ollamaEnvironment || null;
-  if (environment?.needDaemonReload === true) return { synced: false, reason: 'daemon_reload_pending' };
-  const observed = runtimeSettingsFromObservation({ environment, gpuCount: hardware?.knownGpuCount });
-  if (!observed) return { synced: false, reason: 'not_observed' };
+  const reloadPending = environment?.needDaemonReload === true;
+  const observed = reloadPending ? null : runtimeSettingsFromObservation({ environment, gpuCount: hardware?.knownGpuCount });
+  const gpus = hardware?.status === 'observed' ? normalizeGpuInventory(hardware.gpus) : null;
+  if (!observed && !gpus) return { synced: false, reason: reloadPending ? 'daemon_reload_pending' : 'not_observed' };
 
-  const current = await model.findOne({ hostId }).select('ollama.settings').lean();
+  const current = await model.findOne({ hostId }).select('ollama.settings gpus').lean();
   if (!current) return { synced: false, reason: 'no_host_profile' };
   const previous = normalizeRuntimeSettings(current.ollama?.settings);
   // A GPU count the collector cannot give now keeps the last known one.
-  const settings = { ...observed, gpuCount: observed.gpuCount ?? previous?.gpuCount ?? null };
-  if (previous && sameRuntimeSettings(previous, settings)) return { synced: false, reason: 'unchanged', settings };
-
-  await model.updateOne({ hostId }, { $set: {
+  const settings = observed ? { ...observed, gpuCount: observed.gpuCount ?? previous?.gpuCount ?? null } : previous;
+  const settingsChanged = observed && !sameRuntimeSettings(previous, settings);
+  const previousGpus = normalizeGpuInventory(current.gpus);
+  const gpusChanged = gpus && JSON.stringify(gpus) !== JSON.stringify(previousGpus);
+  if (!settingsChanged && !gpusChanged) return { synced: false, reason: 'unchanged', settings };
+  const update = {};
+  if (settingsChanged) Object.assign(update, {
     'ollama.settings': settings,
     'ollama.settingsObservedAt': new Date(environment.observedAt),
     'ollama.settingsSource': environment.source
-  } });
-  logger.info('Host Ollama settings recorded; profiles under other settings are no longer current', {
-    hostId, previous, settings
   });
-  return { synced: true, changed: Boolean(previous), settings };
+  if (gpusChanged) Object.assign(update, {
+    gpus, gpusObservedAt: new Date(hardware.sampledAt), gpusSource: hardware.source
+  });
+  await model.updateOne({ hostId }, { $set: update });
+  logger.info('Host Ollama settings recorded; profiles under other settings are no longer current', {
+    hostId, previous, settings, gpusChanged: Boolean(gpusChanged)
+  });
+  return { synced: true, changed: Boolean((settingsChanged && previous) || (gpusChanged && previousGpus)), settings };
 }
 
 module.exports = {
