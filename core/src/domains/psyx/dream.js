@@ -80,8 +80,10 @@ function prepareDreamRequest({ state, conversations, sources = [], kind = 'night
   const portrait = !fresh && state.portrait?.sections?.length ? { sections: state.portrait.sections, updatedAt: state.portrait.updatedAt } : null;
   const selectedSources = sources.filter(source => source?.text).map(source => ({ ...source, selected: clean(source.text, sourceCharacters) }));
   const sourceCoverage = selectedSources.map(source => ({ key: source.key || '', includedCharacters: source.selected.length,
-    availableCharacters: String(source.text).trim().length, complete: source.selected.length === String(source.text).trim().length }));
-  const sourceText = selectedSources.map(source => `### ${source.title}\n${source.selected}`).join('\n\n');
+    availableCharacters: String(source.text).trim().length, complete: source.selected.length === String(source.text).trim().length,
+    ...(source.collection && { collection: source.collection }) }));
+  const sourceText = selectedSources.map(source => `### ${source.title}${source.collection
+    ? ` (collected ${source.collection.collectedItems}/${source.collection.availableItems ?? 'unknown'} items; collection ${source.collection.complete === true ? 'complete' : 'not established complete'}${source.collection.reason ? `: ${source.collection.reason}` : ''})` : ''}\n${source.selected}`).join('\n\n');
   const head = [
     `Now: ${now.toISOString()}. Kind of reflection: ${kind}.`,
     `His own profile:\n${JSON.stringify(state.profile || {})}`,
