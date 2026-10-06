@@ -6,6 +6,23 @@ const {
 } = require('../../src/services/pipelineAutomationPerformanceService');
 
 describe('pipeline automation performance service', () => {
+  test('groups successful and failed attempts by actual model with a separate unknown bucket', () => {
+    const tasks = [{ pipelineId: '0700', automationAttempts: [
+      { acquiredAt: '2026-09-01', finalState: 'done', evidence: { usage: { effectiveModel: 'model-a', inputTokens: 10, outputTokens: 2, totalTokens: 12, modelCalls: 1 } } },
+      { acquiredAt: '2026-09-01', finalState: 'blocked', evidence: { usage: { effectiveModel: 'model-a', inputTokens: 20, outputTokens: 4, totalTokens: 24, modelCalls: 1 } } },
+      { acquiredAt: '2026-09-01', finalState: 'blocked', evidence: { routing: { effectiveModel: 'model-b' }, usage: {} } },
+      { acquiredAt: '2026-09-01', finalState: 'expired' },
+    ] }];
+    const before = JSON.stringify(tasks);
+    const report = buildPipelineAutomationPerformance(tasks, { now: '2026-09-02', groupBy: 'model' });
+    expect(report.counts.attempts).toBe(4);
+    expect(report.usage.tokens.totalTokens).toEqual({ observedAttempts: 2, observed: 36, total: null });
+    expect(report.groups.find(group => group.model === 'model-a').performance.counts).toMatchObject({ attempts: 2, accepted: 1, blocked: 1 });
+    expect(report.groups.find(group => group.model === 'model-a').performance.usage.tokens.totalTokens.total).toBe(36);
+    expect(report.groups.find(group => group.model === null).performance.counts.attempts).toBe(1);
+    expect(JSON.stringify(tasks)).toBe(before);
+  });
+
   test('projects worker and terminal inference diagnostics without changing stored codes or cost evidence', () => {
     const evidence = { failureCodes: ['worker_process_failed', 'future_policy_failure'],
       verification: { status: 'failed' }, usage: { costNanodollars: null },
@@ -138,6 +155,7 @@ describe('pipeline automation performance service', () => {
       bytesChanged: 3000,
     });
     expect(performance.coverage).toEqual({
+      effectiveModel: 0,
       attemptEvidence: 2,
       verification: 2,
       changes: 1,

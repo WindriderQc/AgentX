@@ -22,6 +22,7 @@ try:
         append_dispatcher_verification,
         attested_execution_validation_errors,
         build_attempt_evidence,
+        attempt_usage,
         coding_attempt_number,
         cost_evidence_failures,
         cost_evidence_source,
@@ -55,6 +56,7 @@ except ModuleNotFoundError:  # direct execution from the scripts directory
         append_dispatcher_verification,
         attested_execution_validation_errors,
         build_attempt_evidence,
+        attempt_usage,
         coding_attempt_number,
         cost_evidence_failures,
         cost_evidence_source,
@@ -265,6 +267,7 @@ def run_claimed_dispatch(
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(proc.stdout or "", encoding="utf-8")
         print(f"dispatch_json={output}")
+    args.observed_attempt_usage = attempt_usage(cost_observation, attribution=attribution_lease)
     if proc.returncode != 0:
         failures = [
             f"worker_process_failed:exit={proc.returncode}",
@@ -282,6 +285,7 @@ def run_claimed_dispatch(
                 cost_observation=cost_observation,
                 cost_mode=cost_mode,
                 local_energy=local_energy,
+                attribution_lease=attribution_lease,
                 inference=(attribution_lease or {}).get("inference"),
             ),
         )
@@ -596,10 +600,12 @@ def run_claimed_dispatch(
                     ),
                     verification_duration_ms=verification_duration_ms,
                     changes=change_metrics,
+                    routing_evidence=routing_evidence,
                     failures=failures,
                     cost_observation=cost_observation,
                     cost_mode=cost_mode,
                     local_energy=local_energy,
+                    attribution_lease=attribution_lease,
                     inference=(attribution_lease or {}).get("inference"),
                 ),
                 timeout=30,
@@ -636,6 +642,7 @@ def run_claimed_dispatch(
             local_energy=local_energy,
             worker_receipt_fingerprint=worker_receipt_fingerprint,
             routing_evidence=routing_evidence,
+            attribution_lease=attribution_lease,
             inference=(attribution_lease or {}).get("inference"),
         ),
     )

@@ -276,6 +276,16 @@ describe('GET /api/pipeline/performance', () => {
       .toMatchObject({ status: 'missing', reason: 'inference_waits_not_read' });
   });
 
+  test('accepts model grouping and rejects unsupported dimensions before querying tasks', async () => {
+    PipelineTask.find.mockReturnValue(createFindQuery([]));
+    const response = await request(createApp()).get('/api/pipeline/performance?groupBy=model').expect(200);
+    expect(response.body.data.performance).toMatchObject({ groupBy: 'model', groups: [] });
+    jest.clearAllMocks();
+    const refused = await request(createApp()).get('/api/pipeline/performance?groupBy=host').expect(400);
+    expect(refused.body.code).toBe('INVALID_PERFORMANCE_GROUP');
+    expect(PipelineTask.find).not.toHaveBeenCalled();
+  });
+
   test('rejects unbounded performance windows', async () => {
     const response = await request(createApp())
       .get('/api/pipeline/performance?window=365d')

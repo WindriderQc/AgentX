@@ -3,6 +3,9 @@
 const { describePipelineFailures } = require('../../../shared/failureDiagnostics');
 const { attemptPhases, summarizePhases } = require('./pipelineAttemptPhases');
 
+const TOKEN_FIELDS = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'totalTokens', 'modelCalls'];
+const effectiveModel = attempt => attempt.evidence?.usage?.effectiveModel || attempt.evidence?.routing?.effectiveModel || null;
+
 const PERFORMANCE_SCHEMA = 'agentx.pipeline-automation-performance/v1';
 const COST_SOURCES_BY_KIND = Object.freeze({
   'provider-spend': 'openclaw-local-provider-spend/v1',
@@ -151,6 +154,9 @@ function buildPipelineAutomationPerformance(tasks = [], options = {}) {
         },
         changes: { filesChanged, bytesChanged },
         usage: {
+          effectiveModel: effectiveModel(attempt),
+          tokenStatus: usage.tokenStatus || null,
+          ...Object.fromEntries(TOKEN_FIELDS.map(key => [key, observedInteger(usage[key])])),
           durationMs: observedInteger(usage.durationMs) ?? executionMs,
           costNanodollars,
           costKind,
@@ -236,8 +242,16 @@ function buildPipelineAutomationPerformance(tasks = [], options = {}) {
   }, new Map()).values()].sort((left, right) => left.currency.localeCompare(right.currency));
   const uniqueTasks = new Set(rows.map((row) => row.pipelineId));
 
+  const byModel = options.groupBy === 'model' ? [...new Set(rows.map(row => row.usage.effectiveModel))]
+    .sort((a, b) => String(a).localeCompare(String(b))).map(model => ({
+      model,
+      performance: buildPipelineAutomationPerformance(tasks.map(task => ({ ...task,
+        automationAttempts: (task.automationAttempts || []).filter(attempt => effectiveModel(attempt) === model)
+      })), { ...options, now, groupBy: undefined }),
+    })) : undefined;
   return {
     schema: PERFORMANCE_SCHEMA,
+    ...(byModel && { groupBy: 'model', groups: byModel }),
     authority: 'core.pipeline',
     generatedAt: now.toISOString(),
     window: { days: windowDays, from: from.toISOString(), to: now.toISOString() },
@@ -277,6 +291,13 @@ function buildPipelineAutomationPerformance(tasks = [], options = {}) {
     },
     phaseDurations: summarizePhases(rows),
     usage: {
+      tokens: Object.fromEntries(TOKEN_FIELDS.map(key => {
+        const observed = rows.filter(row => row.usage[key] != null);
+        const complete = observed.filter(row => key === 'modelCalls' || (row.usage.tokenStatus !== 'partial' && row.usage.tokenStatus !== 'unknown'));
+        return [key, { observedAttempts: observed.length,
+          observed: observed.length ? observed.reduce((sum, row) => sum + row.usage[key], 0) : null,
+          total: rows.length && complete.length === rows.length ? complete.reduce((sum, row) => sum + row.usage[key], 0) : null }];
+      })),
       costAggregateKind,
       observedCostNanodollars: providerSpendCosts.length
         ? observedProviderSpendNanodollars
@@ -304,6 +325,7 @@ function buildPipelineAutomationPerformance(tasks = [], options = {}) {
         : null,
     },
     coverage: {
+      effectiveModel: rows.filter(row => row.usage.effectiveModel != null).length,
       attemptEvidence: rows.filter((row) => row.evidenceObserved).length,
       verification: verificationPassed + verificationFailed,
       changes: knownChanges.length,
