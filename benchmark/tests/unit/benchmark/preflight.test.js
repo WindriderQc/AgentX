@@ -69,7 +69,7 @@ jest.mock('../../../models/ModelProfile', () => ({
 
 // Response budgets resolve contracts through Core; preflightBudgets.test.js covers them.
 jest.mock('../../../src/services/benchmark/preflightBudgets', () => ({
-    checkResponseBudgets: jest.fn(async () => ({ candidates: [], judge: null, warnings: [] }))
+    checkResponseBudgets: jest.fn(async () => ({ candidates: [], judge: null, warnings: [], blockers: [] }))
 }));
 
 jest.mock('../../../models/HostProfile', () => ({
@@ -472,7 +472,8 @@ describe('benchmark preflight', () => {
             candidates: [{ host: 'http://exec-host:11434', model: 'model-a', num_ctx: 65536, num_predict: 32000,
                 num_predict_source: 'documented_default_half_window_v1' }],
             judge: { host: 'http://judge-host:11434', model: 'judge-model', num_ctx: 16384, fits: false },
-            warnings: ['Judge judge-model reads a 16384-token window, but a candidate may answer up to 32000 tokens']
+            warnings: ['Judge judge-model reads a 16384-token window, but a candidate may answer up to 32000 tokens'],
+            blockers: []
         });
         const result = await runPreflight({
             targets: [{ host: 'http://exec-host:11434', model: 'model-a' }],
@@ -489,6 +490,31 @@ describe('benchmark preflight', () => {
         expect(result.checks.budgets.candidates[0]).toMatchObject({ num_ctx: 65536, num_predict: 32000 });
         expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/16384-token window/)]));
         expect(result.issues.join(' ')).not.toMatch(/16384/);
+    });
+
+    it('refuses a candidate window that the launch would refuse at contract freeze', async () => {
+        const { checkResponseBudgets } = require('../../../src/services/benchmark/preflightBudgets');
+        BenchmarkPrompt.find.mockReturnValue(chainResolved([
+            { _id: 'aaaaaaaaaaaaaaaaaaaaaaaa', name: 'Prompt', category: 'reasoning', level: 5, expected_tokens: 500 }
+        ]));
+        const refusal = 'Context 32768 is not verified for judge-model:latest on http://exec-host:11434. Profile this model and choose a context within its verified range.';
+        const budgets = { candidates: [], judge: null, warnings: [] };
+        const options = {
+            targets: [{ host: 'http://exec-host:11434', model: 'judge-model:latest' }],
+            judgeConfig: { host: 'http://judge-host:11434', model: 'judge-model:latest' },
+            levels: [5],
+            prompt_ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
+            executionConfig: { response_max_tokens: 4096 }
+        };
+
+        checkResponseBudgets.mockResolvedValueOnce({ ...budgets, blockers: [] });
+        expect(await runPreflight(options)).toMatchObject({ ready: true, issues: [] });
+
+        checkResponseBudgets.mockResolvedValueOnce({ ...budgets, blockers: [refusal] });
+        const result = await runPreflight(options);
+        expect(result.ready).toBe(false);
+        expect(result.issues).toEqual([refusal]);
+        expect(result.warnings.join(' ')).not.toMatch(/not verified/);
     });
 
     it('uses exact prompt_ids for preflight prompt coverage and budget alignment', async () => {

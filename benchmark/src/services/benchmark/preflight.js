@@ -655,16 +655,13 @@ async function runPreflight(options = {}) {
             num_ctx: judgeConfig?.num_ctx ?? JUDGE_CONFIG.num_ctx, num_predict: judgeConfig?.num_predict || JUDGE_CONFIG.num_predict },
             { levels, promptIds: promptIds || prompt_ids })
     ]);
+    const harnessJudgeOk = judgeConfig?.target?.mode === 'isolated_model'
+        && judgeConfig.target.capabilities?.judge === true
+        && judgeConfig.target.available !== false;
     const judgeResult = judgeConfig?.target?.executionKind === 'harness'
         ? {
-            ok: judgeConfig.target.mode === 'isolated_model'
-                && judgeConfig.target.capabilities?.judge === true
-                && judgeConfig.target.available !== false,
-            blockers: judgeConfig.target.mode === 'isolated_model'
-                && judgeConfig.target.capabilities?.judge === true
-                && judgeConfig.target.available !== false
-                ? []
-                : ['Harness judge is not an available isolated-model target'],
+            ok: harnessJudgeOk,
+            blockers: harnessJudgeOk ? [] : ['Harness judge is not an available isolated-model target'],
             target: judgeConfig.target,
             source: 'benchmark-target-v1'
         }
@@ -682,7 +679,8 @@ async function runPreflight(options = {}) {
     const promptsOk = checks.prompts.ok;
     const batchesOk = checks.batches.ok;
 
-    const ready = allHostsOk && judgeOk && promptsOk && batchesOk;
+    // A window no profile verifies is refused when the launch freezes its contract.
+    const ready = allHostsOk && judgeOk && promptsOk && batchesOk && budgetResult.blockers.length === 0;
 
     const issues = [];
     const warnings = [];
@@ -695,6 +693,7 @@ async function runPreflight(options = {}) {
     if (!judgeOk) issues.push(...checks.judge.blockers);
     if (!promptsOk) issues.push(...checks.prompts.blockers);
     if (!batchesOk) issues.push(`${checks.batches.orphanedBatches.length} orphaned batch(es) detected`);
+    issues.push(...budgetResult.blockers);
     warnings.push(...dedicationResult.warnings, ...budgetResult.warnings);
 
     logger.info('Pre-flight check completed', { ready, issues, warnings });

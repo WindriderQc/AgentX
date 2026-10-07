@@ -13,6 +13,7 @@ const CORE_URL = process.env.CORE_URL || 'http://localhost:3080';
 const CAMPAIGN_SCHEMA_VERSION = 1;
 const CONTRACT_VERSION = 'agentx.inference-contract.v1';
 const MIN_FROZEN_INPUT_TOKENS = 2048;
+const CONTEXT_NOT_VERIFIED = 'CONTEXT_NOT_VERIFIED';
 const MODES = Object.freeze({
     FINAL_ONLY: 'final_only',
     NATIVE: 'native',
@@ -151,9 +152,10 @@ function validateSnapshot(snapshot, requested) {
     }
     if (!Number.isInteger(validatedWindowTokens) || validatedWindowTokens <= 0
         || windowTokens > validatedWindowTokens) {
-        throw new Error(
+        // A property of the artifact and its profile, not of the moment: preflight refuses on this code.
+        throw Object.assign(new Error(
             `Context ${windowTokens} is not verified for ${requested.model} on ${requested.host}. Profile this model and choose a context within its verified range. Run a Full profile for automatic context recommendations.`
-        );
+        ), { code: CONTEXT_NOT_VERIFIED });
     }
 }
 
@@ -550,6 +552,7 @@ async function assertFrozenArtifactDigest(campaign, model, host, deps = {}) {
 
 module.exports = {
     CAMPAIGN_SCHEMA_VERSION,
+    CONTEXT_NOT_VERIFIED,
     MIN_FROZEN_INPUT_TOKENS,
     MODES,
     assertFrozenArtifactDigest,

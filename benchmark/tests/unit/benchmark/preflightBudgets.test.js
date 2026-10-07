@@ -90,6 +90,38 @@ describe('preflight response budgets', () => {
         ]);
     });
 
+    test('a candidate window no profile verifies blocks, in the words of the launch refusal', async () => {
+        const { resolveCandidateContract } = require('../../../src/services/benchmark/inferenceContractSnapshot');
+        // Core serves the pin (32768) while the current profile verifies 16384.
+        const contract = {
+            version: 'agentx.inference-contract.v1',
+            snapshot: { fingerprint: 'a'.repeat(64) },
+            artifact: { digest: 'sha256:abc', runtimeFingerprint: 'rt', identityQualified: true, registryQualified: true,
+                model: 'cpu-model', host: 'http://cpu-a:11434' },
+            qualification: { qualified: true, exactArtifact: true },
+            contextBudget: { windowTokens: 32768, validatedWindowTokens: 16384, source: 'pin', output: { reservedTokens: 4096 } },
+        };
+        const fetchImpl = async () => ({ ok: true, json: async () => contract });
+        const result = await checkResponseBudgets([{ host: 'http://cpu-a:11434', model: 'cpu-model' }, targets[0]], {},
+            { target: { executionKind: 'harness' } },
+            { ...seams, resolveCandidate: (model, host, config) => (model === 'cpu-model'
+                ? resolveCandidateContract(model, host, config, { fetchImpl, coreUrl: 'http://core' })
+                : resolveCandidate(model, host, config)) });
+        const refusal = 'Context 32768 is not verified for cpu-model on http://cpu-a:11434. Profile this model and choose a context within its verified range. Run a Full profile for automatic context recommendations.';
+        expect(result.blockers).toEqual([refusal]);
+        expect(result.candidates[0]).toMatchObject({ model: 'cpu-model', error: refusal, error_code: 'CONTEXT_NOT_VERIFIED' });
+        expect(result.candidates[1]).toMatchObject({ model: 'big-model', error: null, error_code: null });
+        expect(result.warnings).toEqual([]);
+    });
+
+    test('a contract that cannot be read stays a warning: the launch may still resolve it', async () => {
+        const result = await checkResponseBudgets([{ host: 'http://cpu-a:11434', model: 'cpu-model' }], {},
+            { target: { executionKind: 'harness' } },
+            { ...seams, resolveCandidate: async () => { throw new Error('Core unreachable'); } });
+        expect(result.blockers).toEqual([]);
+        expect(result.warnings).toEqual(['Response budget of cpu-model on http://cpu-a:11434 is unresolved: Core unreachable']);
+    });
+
     test('a harness judge has no Ollama window to check', async () => {
         const result = await checkResponseBudgets(targets, {}, { target: { executionKind: 'harness' } }, seams);
         expect(result.judge).toBeNull();
