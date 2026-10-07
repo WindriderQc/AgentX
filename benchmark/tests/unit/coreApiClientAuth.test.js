@@ -484,6 +484,15 @@ describe('Core API client scoped outbound execution', () => {
       .rejects.toMatchObject({ code: 'WORKLOAD_ADMISSION_REJECTED' });
   });
 
+  test('reports a Core refusal to admit as a coded conflict, without asking again', async () => {
+    const refused = { status: 'error', data: { acquired: false, reason: 'a conflicting workload blocks workload admission' } };
+    fetch.mockImplementationOnce(async url => response(url, { status: 409, body: JSON.stringify(refused) }));
+    await expect(acquireWorkloadAdmission('batch-refused', { hosts: ['http://ollama:11434'] })).rejects.toMatchObject({
+      code: 'WORKLOAD_ADMISSION_REJECTED', statusCode: 409, message: 'a conflicting workload blocks workload admission'
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   test('enforces the claim request cap before dispatch', async () => {
     queueWorkloadAcquire('batch-1', ['http://ollama:11434']);
     await acquireWorkloadAdmission('batch-1', { hosts: ['http://ollama:11434'] });

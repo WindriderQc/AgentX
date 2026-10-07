@@ -10,6 +10,19 @@ const { workloadAdmissionById } = require('./coreProofState');
 const { getBenchmarkClaimIdentity } = require('./coreBenchmarkClaims');
 const { transitionWorkloadRecovery } = require('./coreWorkloadRecoveries');
 
+/**
+ * Core's explicit refusal to admit a workload (HTTP 409, `acquired: false`),
+ * as the coded error callers and the batch action recognise; null otherwise.
+ */
+function coreRefusal(error) {
+  if (error?.status !== 409) return null;
+  let answer;
+  try { answer = JSON.parse(error.body); } catch { return null; }
+  if (answer?.data?.acquired !== false) return null;
+  return Object.assign(new Error(answer.data.reason || 'Core refused the workload admission'),
+    { code: 'WORKLOAD_ADMISSION_REJECTED', statusCode: 409 });
+}
+
 async function acquireWorkloadAdmission(workloadId, options = {}) {
   const key = String(workloadId || '');
   if (!key) throw new Error('workloadId is required');
@@ -65,6 +78,9 @@ async function acquireWorkloadAdmission(workloadId, options = {}) {
   try {
     data = await request();
   } catch (error) {
+    // Core answers 409 when it grants nothing: a refusal, not a lost response.
+    const refusal = coreRefusal(error);
+    if (refusal) throw refusal;
     // A lost response after Core's atomic acquire is ambiguous. Retry the same
     // idempotency key once; Core returns the same Core-minted proof.
     try {
