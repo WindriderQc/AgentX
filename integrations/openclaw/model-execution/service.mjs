@@ -42,6 +42,10 @@ function parametersFor(raw = {}, descriptor) {
   if (raw.thinkingLevel && !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(raw.thinkingLevel)) reject('OPENCLAW_THINKING_INVALID');
   if (raw.reasoningMaxTokens != null && (!Number.isSafeInteger(raw.reasoningMaxTokens) || raw.reasoningMaxTokens < 1 || raw.reasoningMaxTokens >= maxTokens)) reject('OPENCLAW_REASONING_BUDGET_INVALID');
   if (raw.responseFormat != null && !['text', 'json'].includes(raw.responseFormat)) reject('OPENCLAW_RESPONSE_FORMAT_UNSUPPORTED');
+  // A parameter the qualified transport is known to drop is refused before any dispatch.
+  const support = descriptor.parameterSupport || {};
+  if ((raw.seed != null && support.seed === false) || (raw.topP != null && support.topP === false)) reject('OPENCLAW_PARAMETER_UNSUPPORTED', 422);
+  if (raw.responseFormat === 'json' && support.jsonResponseFormat === false) reject('OPENCLAW_RESPONSE_FORMAT_UNSUPPORTED', 422);
   return { ...raw, maxTokens };
 }
 
@@ -66,19 +70,30 @@ function findParameter(payload, keys) {
   }
 }
 
+// Where each qualified native API carries the submitted context on the wire.
+const wireContext = {
+  'openai-completions': payload => payload.messages,
+  'anthropic-messages': payload => Array.isArray(payload.messages) ? [...(payload.system != null ? [{ role: 'system', content: payload.system }] : []), ...payload.messages] : null,
+  'openai-responses': payload => Array.isArray(payload.input) ? [...(payload.instructions != null ? [{ role: 'system', content: payload.instructions }] : []), ...payload.input] : null
+};
+// Provider-held state, replay or fallback would add context or calls outside the request.
+const nativeStateKeys = ['previous_response_id', 'conversation', 'prompt', 'background', 'fallbacks', 'context_management', 'mcp_servers', 'container'];
+
 function verifyWireContext(payload, context, model) {
-  if (model.api !== 'openai-completions') reject('OPENCLAW_CONTEXT_TRANSPORT_UNQUALIFIED', 502);
+  if (!wireContext[model.api]) reject('OPENCLAW_CONTEXT_TRANSPORT_UNQUALIFIED', 502);
+  if (nativeStateKeys.some(key => payload[key] != null) || payload.store === true) reject('OPENCLAW_NATIVE_STATE_FORBIDDEN', 502);
   const textOf = content => {
     if (typeof content === 'string') return content;
-    if (!Array.isArray(content) || content.some(block => block.type !== 'text' || typeof block.text !== 'string')) reject('OPENCLAW_CONTEXT_UNVERIFIED', 502);
+    if (!Array.isArray(content) || content.some(block => !['text', 'input_text', 'output_text'].includes(block.type) || typeof block.text !== 'string')) reject('OPENCLAW_CONTEXT_UNVERIFIED', 502);
     return content.map(block => block.text).join('');
   };
   const expected = [
     ...(context.systemPrompt ? [{ role: 'system', content: context.systemPrompt }] : []),
     ...context.messages.map(message => ({ role: message.role, content: textOf(message.content) }))
   ];
-  if (!Array.isArray(payload.messages)) reject('OPENCLAW_CONTEXT_UNVERIFIED', 502);
-  const observed = payload.messages.map(message => ({
+  const wire = wireContext[model.api](payload);
+  if (!Array.isArray(wire) || wire.some(message => message.type != null && message.type !== 'message')) reject('OPENCLAW_CONTEXT_UNVERIFIED', 502);
+  const observed = wire.map(message => ({
     role: message.role === 'developer' ? 'system' : message.role, content: textOf(message.content)
   }));
   if (JSON.stringify(observed) !== JSON.stringify(expected)) reject('OPENCLAW_CONTEXT_DRIFT', 502);
@@ -149,7 +164,7 @@ export function createExecutionService({ backend, now = () => Date.now(), catalo
           try { verifyPayload(value, parameters, context, native.model); } catch (error) { payloadError = error; throw error; }
           payload = structuredClone(value);
         },
-        onResponse: response => { responseId = response.headers?.get?.('x-request-id') || response.headers?.['x-request-id'] || null; }
+        onResponse: response => { responseId = response.headers?.get?.('x-request-id') || response.headers?.get?.('request-id') || response.headers?.['x-request-id'] || response.headers?.['request-id'] || null; }
       });
       for await (const event of stream) {
         if (event.type === 'text_delta') { partialText += event.delta; await emit({ type: 'text_delta', delta: event.delta }); }
