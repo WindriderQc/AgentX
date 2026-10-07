@@ -217,6 +217,8 @@ each plan is one file under its `benchmark-batch/` directory.
   or 503 error is a refusal with `verdict: not-admitted`. The exact pre-insert
   errors `WORKLOAD_ADMISSION_REJECTED`, `WORKLOAD_ADMISSION_CONFLICT` and
   `WORKLOAD_RECOVERY_ARM_REJECTED` are also refusals, even when returned as 500.
+  Core's own refusal to admit the workload (another workload or a maintenance
+  lease holds a host) is a 409 with `WORKLOAD_ADMISSION_REJECTED`.
   These verdicts carry Benchmark's
   answer. The plan can be started again only when Benchmark also lists no batch
   for it (`planStartable: true`).
