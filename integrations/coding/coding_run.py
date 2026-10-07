@@ -3,15 +3,18 @@
 
 The worker (DSH) gets a fresh clone on its own branch, a shell and the test
 tools inside a Bubblewrap sandbox: it sees that clone and nothing else of the
-host, no credentials, and it cannot push. It reaches the model through Core, so
-Core admits each inference like any other. Review of the draft PR and its CI is
-the gate.
+host, no credentials, and it cannot push. It has no network: its only way out
+is one relay to Core's model route, so Core admits each inference like any
+other. Dependencies are installed before it starts. Review of the draft PR and
+its CI is the gate.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -19,7 +22,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -37,11 +39,23 @@ NODE_ROOT = Path(os.environ.get("AGENTX_NODE_BIN") or shutil.which("node") or "/
 TASK_ID = re.compile(r"^[0-9]{4}$")
 WORKER = "coding-team"
 RETRY_WAIT_SECONDS = 120
+RELAY_PORT = 8377
+PACKAGE_DIRS = ("core", "benchmark", "rag", "data")
+INSTALL_TIMEOUT_SECONDS = 1800
+
+_spec = importlib.util.spec_from_file_location("model_relay", HERE / "model_relay.py")
+model_relay = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(model_relay)
 AUTHOR = ["-c", "user.name=AgentX Coding Team", "-c", "user.email=coding-team@agentx.invalid"]
 
 PROMPT = """You are the AgentX coding worker. /workspace is a fresh clone of {repository}
-on branch {branch}. You have a shell: read the code, edit any file the task needs,
-install dependencies and run the relevant tests until they pass.
+on branch {branch}. You have a shell: read the code, edit any file the task needs
+and run the relevant tests until they pass.
+
+You have no network. The dependencies of core, benchmark, rag and data are already
+installed, and the test database is ready. Do not try to download anything. If the
+task needs a new package, add it to the right package.json, explain why in your
+summary and stop: the owner approves the installation, then you continue.
 
 Read AGENTS.md first and follow it. Do not commit or push; that happens after you
 finish. End with a short summary: what you changed, the exact test commands you ran
@@ -91,29 +105,88 @@ agent-default-model:
 """
 
 
+def sandbox(workspace: Path, home: Path, command: list[str], *, network: bool, timeout_seconds: int) -> list[str]:
+    return [
+        "timeout", "-k", "30", str(timeout_seconds),
+        "bwrap", "--unshare-all", *(["--share-net"] if network else []),
+        "--die-with-parent", "--new-session", "--clearenv",
+        "--setenv", "HOME", "/home/agent", "--setenv", "USER", "agent",
+        "--setenv", "PATH", "/opt/node/bin:/usr/bin:/bin", "--setenv", "LANG", "C.UTF-8",
+        "--setenv", "DSH_HOME", "/home/agent/.dsh", "--setenv", "DSH_PERMISSION_MODE", "workspace-write",
+        "--setenv", "DSH_TELEMETRY_MODE", "DISABLED", "--setenv", "AGENTX_CORE_API_KEY", "local-no-auth",
+        "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib", "--ro-bind", "/lib64", "/lib64",
+        "--symlink", "usr/bin", "/bin", "--dir", "/etc",
+        *(arg for name in ("hosts", "resolv.conf", "nsswitch.conf", "ssl", "passwd", "group")
+          for arg in ("--ro-bind", f"/etc/{name}", f"/etc/{name}")),
+        "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--dir", "/home",
+        "--bind", str(home), "/home/agent", "--ro-bind", str(NODE_ROOT), "/opt/node",
+        "--ro-bind", str(DSH_ROOT), "/opt/dsh", "--ro-bind", str(HERE), "/opt/coding",
+        "--ro-bind", str(HERE.parent.parent / "shared/testing/prepareMongo.js"), "/opt/prepareMongo.js",
+        "--bind", str(workspace), "/workspace", "--ro-bind", str(workspace / ".git"), "/workspace/.git",
+        "--chdir", "/workspace", *command,
+    ]
+
+
+def worker_home(workspace: Path) -> Path:
+    # Kept between runs of a task: package and test-database caches live there.
+    home = workspace.parent / f".home-{workspace.name}"
+    home.mkdir(mode=0o700, exist_ok=True)
+    return home
+
+
+def dependency_state(workspace: Path) -> str:
+    digest = hashlib.sha256()
+    for name in PACKAGE_DIRS:
+        for file in ("package.json", "package-lock.json"):
+            path = workspace / name / file
+            digest.update(f"{name}/{file}\0".encode() + (path.read_bytes() if path.is_file() else b"") + b"\0")
+    return digest.hexdigest()
+
+
+def installed_state(workspace: Path) -> str:
+    marker = worker_home(workspace) / "dependencies.sha256"
+    return marker.read_text().strip() if marker.is_file() else ""
+
+
+def install_dependencies(workspace: Path) -> None:
+    """Install what the package files ask for, with network and without the worker.
+
+    Package install scripts are skipped, and the test database is prepared with
+    the runner's own script, so nothing the worker wrote runs while the network
+    is open. A changed package file reaches this point only when the owner hands
+    the task back, which is the approval.
+    """
+    state = dependency_state(workspace)
+    if state == installed_state(workspace):
+        return
+    script = "set -e\n" + "".join(
+        f"if [ -f {name}/package.json ]; then (cd {name} && "
+        "if [ -f package-lock.json ]; then npm ci --ignore-scripts --no-audit --no-fund || "
+        "npm install --ignore-scripts --no-audit --no-fund; "
+        "else npm install --ignore-scripts --no-audit --no-fund; fi); fi\n" for name in PACKAGE_DIRS
+    ) + "".join(
+        f"if [ -d {name}/node_modules/mongodb-memory-server ]; then (cd {name} && node /opt/prepareMongo.js); fi\n"
+        for name in PACKAGE_DIRS)
+    home = worker_home(workspace)
+    subprocess.run(sandbox(workspace, home, ["bash", "-c", script], network=True,
+                           timeout_seconds=INSTALL_TIMEOUT_SECONDS), check=True, text=True, capture_output=True)
+    # npm install may have completed the lock file; that result is the installed state.
+    (home / "dependencies.sha256").write_text(dependency_state(workspace) + "\n")
+
+
 def run_worker(workspace: Path, prompt: str, timeout_seconds: int) -> subprocess.CompletedProcess:
-    with tempfile.TemporaryDirectory(prefix="agentx-coding-home-") as home:
-        (Path(home) / ".dsh").mkdir()
-        (Path(home) / ".dsh/settings.yaml").write_text(SETTINGS.format(url=MODEL_URL, model=MODEL))
-        sandbox = [
-            "timeout", "-k", "30", str(timeout_seconds),
-            "bwrap", "--unshare-all", "--share-net", "--die-with-parent", "--new-session", "--clearenv",
-            "--setenv", "HOME", "/home/agent", "--setenv", "USER", "agent",
-            "--setenv", "PATH", "/opt/node/bin:/usr/bin:/bin", "--setenv", "LANG", "C.UTF-8",
-            "--setenv", "DSH_HOME", "/home/agent/.dsh", "--setenv", "DSH_PERMISSION_MODE", "workspace-write",
-            "--setenv", "DSH_TELEMETRY_MODE", "DISABLED", "--setenv", "AGENTX_CORE_API_KEY", "local-no-auth",
-            "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib", "--ro-bind", "/lib64", "/lib64",
-            "--symlink", "usr/bin", "/bin", "--dir", "/etc",
-            *(arg for name in ("hosts", "resolv.conf", "nsswitch.conf", "ssl", "passwd", "group")
-              for arg in ("--ro-bind", f"/etc/{name}", f"/etc/{name}")),
-            "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--dir", "/home",
-            "--bind", home, "/home/agent", "--ro-bind", str(NODE_ROOT), "/opt/node",
-            "--ro-bind", str(DSH_ROOT), "/opt/dsh", "--ro-bind", str(HERE / "guard.patch.yml"), "/opt/guard.patch.yml",
-            "--bind", str(workspace), "/workspace", "--ro-bind", str(workspace / ".git"), "/workspace/.git",
-            "--chdir", "/workspace",
-            "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/opt/guard.patch.yml", "--", prompt,
-        ]
-        return subprocess.run(sandbox, text=True, capture_output=True)
+    home = worker_home(workspace)
+    (home / ".dsh").mkdir(exist_ok=True)
+    (home / ".dsh/settings.yaml").write_text(SETTINGS.format(url=f"http://127.0.0.1:{RELAY_PORT}/v1", model=MODEL))
+    relay = model_relay.serve(str(home / "model.sock"), MODEL_URL)
+    try:
+        return subprocess.run(sandbox(workspace, home, [
+            "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
+            "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/opt/coding/guard.patch.yml", "--", prompt,
+        ], network=False, timeout_seconds=timeout_seconds), text=True, capture_output=True)
+    finally:
+        relay.shutdown()
+        relay.server_close()
 
 
 def git(workspace: Path, *args: str, env: dict | None = None) -> str:
@@ -176,6 +249,14 @@ def main() -> int:
                         f"https://github.com/{REPOSITORY}.git", str(workspace)], check=True)
         git(workspace, "checkout", "--quiet", "-b", branch)
 
+    try:
+        install_dependencies(workspace)
+        installed = dependency_state(workspace)
+    except subprocess.CalledProcessError as error:
+        feedback(args.task_id, "Dependencies could not be installed before the worker started.\n\n"
+                               f"{(error.stderr or error.stdout or '')[-3000:]}", "blocked")
+        return 1
+
     discussion = "\n\n".join(f"{entry.get('by', 'someone')}: {entry.get('text', '')}"
                              for entry in (task.get("feedback") or []))
     prompt = PROMPT.format(repository=REPOSITORY, branch=branch, task_id=args.task_id, title=task.get("title", ""),
@@ -206,6 +287,14 @@ def main() -> int:
         print(summary)
         return 1
 
+    if dependency_state(workspace) != installed:
+        # The worker asked for packages it could not download. Handing the task back approves installing them.
+        feedback(args.task_id, "The coding worker changed package files and needs them installed before it can "
+                               "finish. Review the change on local branch "
+                               f"{branch} in {workspace}; hand the task back to the team to approve the "
+                               f"installation and let it continue.\n\n{summary[-4000:]}", "blocked")
+        print(summary)
+        return 1
     if run.returncode != 0:
         # Unfinished work stays on the local branch for the next run; it is not offered for review.
         feedback(args.task_id, f"Coding worker stopped before finishing (exit {run.returncode}). Its partial work is "
