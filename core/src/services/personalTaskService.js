@@ -32,8 +32,35 @@ function parseDate(value, field, code) {
   return date;
 }
 
+// #287 — dueAt accepts a date (YYYY-MM-DD) or a full ISO datetime.
+// A full ISO datetime keeps its explicit instant, offset or Z included. A
+// date-only value names the household calendar day in the configured
+// household time zone (PLANNING_TIME_ZONE, default America/Toronto): it means
+// the end of that day, 23:59:59.999 local — never midnight of the UTC day,
+// which lands on the previous household evening when the household is west of
+// UTC.
+//
+// The date is validated, not trusted: '2026-10-04' parses, but '2026-13-40'
+// or '2026-10-04extra' do not.
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 function parseDueAt(value) {
-  return parseDate(value, 'dueAt', 'SECRETARY_BAD_DUE_DATE');
+  if (value === undefined || value === null || value === '') return null;
+  const text = String(value).trim();
+  const dateOnly = DATE_ONLY_PATTERN.exec(text);
+  if (dateOnly) {
+    const { endOfHouseholdDay, familyTimeZone } = require('../domains/household/family');
+    const year = Number(dateOnly[1]);
+    const month = Number(dateOnly[2]);
+    const day = Number(dateOnly[3]);
+    if (month < 1 || month > 12 || day < 1 || day > 31
+      || new Date(Date.UTC(year, month - 1, day)).getUTCMonth() !== month - 1
+      || new Date(Date.UTC(year, month - 1, day)).getUTCDate() !== day) {
+      throw new PersonalTaskError('dueAt date is not a real calendar day', { code: 'SECRETARY_BAD_DUE_DATE' });
+    }
+    return endOfHouseholdDay(text, familyTimeZone());
+  }
+  return parseDate(text, 'dueAt', 'SECRETARY_BAD_DUE_DATE');
 }
 
 function parseRelevantUntil(value) {

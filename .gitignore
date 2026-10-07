@@ -21,6 +21,7 @@ reports/
 
 # Runtime data and caches
 .agentx/
+.npm-cache/
 /backups/
 agentx-recovery-v1-*/
 .agentx-recovery-partial-*/

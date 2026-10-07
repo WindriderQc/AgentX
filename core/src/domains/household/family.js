@@ -42,6 +42,42 @@ function calendarDayKey(value, timeZone = familyTimeZone()) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+// Zone offset of one instant, in milliseconds (wall time minus UTC time). The
+// fractional seconds are recovered from the instant itself: Intl formats only
+// whole seconds, and Date.UTC would drop the milliseconds.
+function zoneOffsetMs(instant, timeZone) {
+  const parsed = instant instanceof Date ? new Date(instant.getTime()) : new Date(instant);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: familyTimeZone(timeZone),
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).formatToParts(parsed).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+  const wall = Date.UTC(+parts.year, +parts.month - 1, +parts.day,
+    parts.hour === '24' ? 0 : +parts.hour, +parts.minute, +parts.second)
+    + parsed.getMilliseconds();
+  return wall - parsed.getTime();
+}
+
+// #287 — the instant that ends one household calendar day: 23:59:59.999 local.
+// Solves utc = wall − offset(utc) by fixed point; the offset is constant within
+// a day except across the 00:00 edge, so it converges in at most three steps,
+// spring-forward and fall-back days included.
+function endOfHouseholdDay(yearMonthDay, timeZone) {
+  const target = Date.UTC(+yearMonthDay.slice(0, 4), +yearMonthDay.slice(5, 7) - 1, +yearMonthDay.slice(8, 10)) + 86399999;
+  let candidate = target - zoneOffsetMs(target, timeZone);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const next = target - zoneOffsetMs(candidate, timeZone);
+    if (next === candidate) break;
+    candidate = next;
+  }
+  return new Date(candidate);
+}
+
 function cleanProfileId(value) {
   return boundedText(value, 80).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'kid';
@@ -186,6 +222,7 @@ module.exports = {
   FamilyInputError,
   calendarDayKey,
   cleanProfileId,
+  endOfHouseholdDay,
   familyChore,
   familyLaunchInput,
   familyProfile,
