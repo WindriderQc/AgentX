@@ -4,7 +4,7 @@ jest.mock('../../src/clients/coreModelHostApi', () => ({ getDedicationStatuses: 
 jest.mock('../../src/clients/coreCoverageReads', () => ({ getRoutingConfig: jest.fn() }));
 
 const { resolveScope } = require('../../src/services/measurementCoverage/coverageScope');
-const { computeCoverage, profileState } = require('../../src/services/measurementCoverage/coverageState');
+const { computeCoverage, loadProfileRefusals, profileState } = require('../../src/services/measurementCoverage/coverageState');
 
 const GPU = 'http://gpu-a:11434';
 const CPU = 'http://cpu-a:11435';
@@ -105,5 +105,40 @@ describe('coverage matrix', () => {
     expect(coverage.cells[0]).toMatchObject({ complete: true, next: null, missingPromptIds: [] });
     expect(coverage.summary).toMatchObject({ complete: 1, percent: 100 });
     expect(computeCoverage({ scope: [], catalog, hostIds, readiness: new Map(), answers: new Map() }).summary.percent).toBe(0);
+  });
+
+  it('asks for a profile when a launch would refuse the stored one', () => {
+    const refusal = 'Model "small:26b" has no current benchmark-qualified profile on host \'cpu-a\'';
+    const coverage = computeCoverage({
+      scope: [scope[0]], catalog, hostIds,
+      readiness: new Map([['cpu-a::small:26b', current('aaa')]]),
+      answers: new Map([['http://cpu-a:11435::small:26b', new Map([['fp-1', ['aaa']], ['fp-2', ['aaa']], ['fp-3', ['aaa']]])]]),
+      refusals: new Map([['http://cpu-a:11435::small:26b', refusal]])
+    });
+    expect(coverage.cells[0]).toMatchObject({ complete: false, next: 'profile', profile: { state: 'stale', reason: refusal } });
+    expect(coverage.summary.profilesCurrent).toBe(0);
+  });
+
+  it('confirms with the launch gate only the profiles stored as current, and keeps only its profile verdict', async () => {
+    const readiness = new Map([
+      ['cpu-a::small:26b', current('aaa')],
+      ['primary::big:27b', current('bbb')],
+      ['primary::old:7b', { ...current('ccc'), stale: true }]
+    ]);
+    const pairs = [scope[0], scope[1], { ...scope[1], model: 'old:7b' }, { ...scope[1], model: 'other:3b' }];
+    const check = jest.fn(async model => (model === 'small:26b'
+      ? { ok: false, source: 'profile-gate', reason: 'the served artifact changed' }
+      : { ok: false, source: 'request', reason: 'another kind of refusal' }));
+
+    const refusals = await loadProfileRefusals(pairs, hostIds, readiness, check);
+
+    expect(check.mock.calls.map(call => call[0]).sort()).toEqual(['big:27b', 'small:26b']);
+    expect([...refusals]).toEqual([['http://cpu-a:11435::small:26b', 'the served artifact changed']]);
+  });
+
+  it('an unreadable gate verdict leaves the stored profile state alone', async () => {
+    const readiness = new Map([['cpu-a::small:26b', current('aaa')]]);
+    const refusals = await loadProfileRefusals([scope[0]], hostIds, readiness, async () => { throw new Error('gate unavailable'); });
+    expect(refusals.size).toBe(0);
   });
 });

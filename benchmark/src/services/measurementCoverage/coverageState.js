@@ -8,6 +8,11 @@
  * for the prompt as the catalog holds it today, by the artifact the profile
  * describes. A new artifact, a new scorer version or an edited prompt
  * therefore re-opens the cells it affects without any bookkeeping.
+ *
+ * A profile is current only if a launch would accept it: the stored readiness
+ * is confirmed by the gate every benchmark launch passes, which checks the
+ * artifact the host serves now. Otherwise the matrix would say "benchmark"
+ * for a pair every launch refuses, and the job would never move it forward.
  */
 
 const BenchmarkResult = require('../../../models/BenchmarkResult');
@@ -17,6 +22,7 @@ const { loadCatalogPrompts } = require('../benchmark/promptComparison');
 const { SCORER_VERSION } = require('../scoring/scorerVersion');
 const { normalizeModelTag } = require('../../../../shared/modelNames');
 const { resolveScope, hostKey, modelKey } = require('./coverageScope');
+const { checkBenchmarkTargetEligibility } = require('../benchmark/preflight');
 
 const digestKey = value => String(value || '').trim().toLowerCase().replace(/^sha256:/, '');
 
@@ -43,12 +49,15 @@ function profileState(readiness) {
  * @param {Map} input.hostIds      hostKey(url) -> hostId
  * @param {Map} input.readiness    `${hostId}::${modelKey}` -> readiness entry
  * @param {Map} input.answers      `${hostKey}::${modelKey}` -> Map(fingerprint -> [digest])
+ * @param {Map} [input.refusals]   `${hostKey}::${modelKey}` -> why a launch refuses the stored profile
  */
-function computeCoverage({ scope, catalog, hostIds, readiness, answers }) {
+function computeCoverage({ scope, catalog, hostIds, readiness, answers, refusals = new Map() }) {
   const cells = scope.map(entry => {
     const hostId = hostIds.get(hostKey(entry.hostUrl)) || null;
     const ready = hostId ? readiness.get(`${hostId}::${modelKey(entry.model)}`) : null;
-    const profile = profileState(ready);
+    const stored = profileState(ready);
+    const refusal = refusals.get(`${hostKey(entry.hostUrl)}::${modelKey(entry.model)}`);
+    const profile = stored.state === 'current' && refusal ? { ...stored, state: 'stale', reason: refusal } : stored;
     const artifact = digestKey(ready?.artifact?.digest);
     const scored = answers.get(`${hostKey(entry.hostUrl)}::${modelKey(entry.model)}`) || new Map();
     const byCategory = {};
@@ -120,17 +129,36 @@ async function loadAnswers(scope, catalog) {
   return answers;
 }
 
+/**
+ * Why a launch would refuse the profile of each pair whose stored readiness
+ * reads current. Only the profile verdict counts here; a busy or unreachable
+ * target is the launch's business, not a reason to profile again.
+ */
+async function loadProfileRefusals(scope, hostIds, readiness, check = checkBenchmarkTargetEligibility) {
+  const refusals = new Map();
+  await Promise.all(scope.map(async entry => {
+    const hostId = hostIds.get(hostKey(entry.hostUrl));
+    if (!hostId || profileState(readiness.get(`${hostId}::${modelKey(entry.model)}`)).state !== 'current') return;
+    const verdict = await check(entry.model, entry.hostUrl).catch(() => null);
+    if (verdict && verdict.ok === false && verdict.source === 'profile-gate') {
+      refusals.set(`${hostKey(entry.hostUrl)}::${modelKey(entry.model)}`, verdict.reason);
+    }
+  }));
+  return refusals;
+}
+
 async function buildCoverage(deps = {}) {
   const scope = await (deps.resolveScope || resolveScope)();
   const catalog = await (deps.loadCatalogPrompts || loadCatalogPrompts)();
   const hosts = await HostProfile.find({}).select('hostId hostUrl').lean();
+  const hostIds = new Map(hosts.map(host => [hostKey(host.hostUrl), host.hostId]));
+  const readiness = await loadReadiness(scope);
   const coverage = computeCoverage({
-    scope, catalog,
-    hostIds: new Map(hosts.map(host => [hostKey(host.hostUrl), host.hostId])),
-    readiness: await loadReadiness(scope),
-    answers: await loadAnswers(scope, catalog)
+    scope, catalog, hostIds, readiness,
+    answers: await loadAnswers(scope, catalog),
+    refusals: await loadProfileRefusals(scope, hostIds, readiness, deps.checkEligibility)
   });
   return { generatedAt: new Date().toISOString(), scorerVersion: SCORER_VERSION, ...coverage };
 }
 
-module.exports = { buildCoverage, computeCoverage, profileState };
+module.exports = { buildCoverage, computeCoverage, loadProfileRefusals, profileState };
