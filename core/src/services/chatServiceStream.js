@@ -22,6 +22,7 @@ const {
     hasQualifiedThinkingCapability
 } = require('./inferenceContractService');
 const { persistConversation } = require('./chat/conversationPersistence');
+const { resolveContextMessages } = require('./chat/conversationHistory');
 const { prepareChatOrchestration } = require('./chat/chatOrchestrationPrelude');
 const { finalizeRouteDecision } = require('./routing/routeDecision');
 const { publicDegradedMarker, fallbackReasonCode } = require('./routing/taskFallbackLadder');
@@ -165,9 +166,15 @@ const handleChatRequestStream = async ({
 
         const effectiveSystemPrompt = buildSystemPrompt(activePrompt.systemPrompt, userProfile, ragContext);
 
+        // Explicit caller turns always win; an id-based continuation without
+        // them rehydrates the stored transcript so earlier turns reach the model.
+        const contextMessages = await resolveContextMessages({
+            messages, conversationId, userId,
+            historyContext: conversationFeatures.historyContext
+        });
         const formattedMessages = [
             { role: 'system', content: effectiveSystemPrompt },
-            ...(conversationFeatures.historyContext === false ? [] : messages).map(m => ({ role: m.role, content: m.content })),
+            ...contextMessages,
             { role: 'user', content: message.trim() }
         ];
 

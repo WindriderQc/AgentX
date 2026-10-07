@@ -4,6 +4,7 @@ const mockGetActivePrompt = jest.fn();
 const mockBuildSystemPrompt = jest.fn();
 const mockGetOrCreateProfile = jest.fn();
 const mockPersistConversation = jest.fn();
+const mockFindConversationForUpdate = jest.fn();
 const mockGetHostPreference = jest.fn();
 
 jest.mock('node-fetch', () => mockFetch);
@@ -76,7 +77,8 @@ jest.mock('../../src/services/chat/ragContextBuilder', () => ({
   buildRagContext: jest.fn()
 }));
 jest.mock('../../src/services/chat/conversationPersistence', () => ({
-  persistConversation: mockPersistConversation
+  persistConversation: mockPersistConversation,
+  findConversationForUpdate: mockFindConversationForUpdate
 }));
 jest.mock('../../src/services/ragServiceClient', () => ({
   getRagServiceClient: jest.fn()
@@ -109,6 +111,7 @@ describe('chatServiceStream', () => {
       assistantMessageId: 'msg-1'
     });
     mockGetHostPreference.mockResolvedValue(null);
+    mockFindConversationForUpdate.mockResolvedValue(null);
   });
 
   it('surfaces Ollama error details without masking them in finally cleanup', async () => {
@@ -468,6 +471,48 @@ describe('chatServiceStream', () => {
         { role: 'user', content: 'Stream this' }
       ]
     }));
+  });
+
+  it('rehydrates stored prior turns into the model context for a conversationId continuation', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({ message: { content: 'Looking at it' }, done: false }) + '\n');
+        yield Buffer.from(JSON.stringify({ done: true, eval_count: 1, prompt_eval_count: 1 }) + '\n');
+      })()
+    });
+    // Stored earlier turns from the first call of this conversation (#530).
+    mockFindConversationForUpdate.mockResolvedValue({
+      messages: [
+        { role: 'user', content: 'Show me the module' },
+        { role: 'assistant', content: 'Here is the module: 150 lines of code' }
+      ]
+    });
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'qwen3:14b',
+      message: 'Which line has the bug?',
+      conversationId: '507f1f77bcf86cd799439011',
+      target: 'http://192.0.2.66:11434',
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete: jest.fn(),
+      onError: jest.fn()
+    });
+
+    expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [
+        { role: 'system', content: 'You are helpful.' },
+        { role: 'user', content: 'Show me the module' },
+        { role: 'assistant', content: 'Here is the module: 150 lines of code' },
+        { role: 'user', content: 'Which line has the bug?' }
+      ]
+    }));
+    expect(mockFindConversationForUpdate).toHaveBeenCalledWith({
+      conversationId: '507f1f77bcf86cd799439011',
+      userId: 'user-1'
+    });
   });
 
   it('uses the matching pin context and keep-alive for streaming chat', async () => {
