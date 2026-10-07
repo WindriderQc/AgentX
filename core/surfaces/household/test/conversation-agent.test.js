@@ -228,6 +228,14 @@ test('personal voice does not deliver a final tool promise without a current res
     { native: 'Je regarde tes tâches: tu en as deux en cours.', expected: 'Je regarde tes tâches: tu en as deux en cours.', receipts: [] },
     { native: 'Je regarde tes tâches, tu en as deux en cours.', expected: 'Je regarde tes tâches, tu en as deux en cours.', receipts: [] },
     { native: 'Je vais te raconter une histoire.', expected: 'Je vais te raconter une histoire.', receipts: [] },
+    { native: 'Voici les deux approches possibles. '.repeat(12) + '\n\nJe vais faire une petite recherche sur la documentation. Je te reviens avec les résultats.\n\nAttends deux secondes.',
+      expected: 'Je n’ai pas pu terminer cette vérification. Réessaie ta demande.', receipts: [] },
+    { native: 'There are several ways to compare these options. '.repeat(12) + '\n\nI will search the documentation. Please wait a moment.',
+      expected: 'I could not complete that check. Please try again.', receipts: [] },
+    { native: 'Je vais chercher dans la documentation. Attends un instant. Voici le résultat vérifié: deux options.',
+      expected: 'Je vais chercher dans la documentation. Attends un instant. Voici le résultat vérifié: deux options.', receipts: [] },
+    { native: 'La documentation confirme deux possibilités. Souhaites-tu que je fasse une recherche supplémentaire?',
+      expected: 'La documentation confirme deux possibilités. Souhaites-tu que je fasse une recherche supplémentaire?', receipts: [] },
     { native: 'Je regarde tes tâches.', expected: 'Je n’ai pas pu terminer cette vérification. Réessaie ta demande.',
       receipts: [{ runId, observed: true, status: 'verified', tool: 'agentx__list_personal_tasks' }] }
   ];
