@@ -6,7 +6,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createVoiceWarmup, openingEvent, OPENING_DIRECTIVE } = require('../voice-warmup');
+const { createVoiceWarmup, openingEvent, openingDirective } = require('../voice-warmup');
 const { createPersonaTurnHandler } = require('../persona-turn');
 const { createMemberWork } = require('../member-work');
 const packs = require('../packs');
@@ -81,11 +81,13 @@ test('the warm-up sends the instructions of the first spoken turn, in the same n
     contract: (_session, backend) => `Image creation through ${backend}: create once, then end this turn.`,
     contextFor: async () => 'Current Core image receipt: ready=true.', complete: async () => {}
   } });
-  assert.deepEqual(h.warmup.start({ ...h.session }, '  Bonjour Yanik,\nje t’écoute. '), { started: true });
+  assert.deepEqual(h.warmup.start({ ...h.session }, '  Bonjour,\nje t’écoute. '), { started: true });
   while (!h.requests.length) await tick();
   const warm = h.requests[0].request;
-  assert.equal(warm.text, openingEvent('Bonjour Yanik, je t’écoute.'));
-  assert.equal(warm.turnDirective, OPENING_DIRECTIVE);
+  assert.equal(warm.text, openingEvent());
+  assert.equal(warm.turnDirective, openingDirective('Bonjour, je t’écoute.'));
+  assert.match(warm.turnDirective, /«Bonjour, je t’écoute\.»/);
+  assert.match(warm.turnDirective, /never answer with a silent-reply marker/);
   assert.equal(warm.channel, 'voice');
   assert.match(warm.instructions, /Image creation through openclaw: create once/);
   assert.ok(!warm.instructions.includes('ready=true'), 'Current image readiness is not part of the cached prompt prefix');
@@ -96,7 +98,7 @@ test('the warm-up sends the instructions of the first spoken turn, in the same n
   const first = h.speak('Quel temps fait-il ?');
   await tick(); await tick();
   assert.equal(h.requests.length, 1, 'no second run in the same native session while the warm-up runs');
-  h.requests[0].answer('Prêt');
+  h.requests[0].answer('Bonjour, je t’écoute.');
   while (h.requests.length < 2) await tick();
   assert.equal(h.requests[1].request.instructions, warm.instructions);
   assert.equal(h.requests[1].request.channel, 'voice');
@@ -119,7 +121,7 @@ test('the warm-up never runs once someone has spoken, twice at once, or outside 
   assert.equal(h.warmup.start({ ...h.session }, 'Bonjour.').started, true);
   assert.deepEqual(h.warmup.start({ ...h.session }, 'Bonjour.'), { started: false, reason: 'running' });
   while (!h.requests.length) await tick();
-  h.requests[0].answer('Prêt');
+  h.requests[0].answer('Bonjour, je t’écoute.');
   await h.warmup.settled(sessionId);
   assert.equal(h.requests.length, 1);
 });
@@ -156,7 +158,7 @@ test('the warm route answers only for an active personal conversation', async ()
   const started = await call({ greeting: 'Bonjour.' }, { packId: 'personal_operator', scopeId: 'personal' });
   assert.deepEqual(started, { code: 202, data: { ok: true, status: 'success', data: { started: true } } });
   assert.equal((await call({ greeting: 'Bonjour.' })).code, 200);
-  h.requests[0]?.answer('Prêt');
+  h.requests[0]?.answer('Bonjour, je t’écoute.');
 });
 
 test('the warm-up stays off unless the instance turns it on', async () => {
