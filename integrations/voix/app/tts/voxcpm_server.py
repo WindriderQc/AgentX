@@ -55,11 +55,12 @@ def soften_ending(audio: np.ndarray) -> np.ndarray:
 
 
 class Worker:
-    def __init__(self, generate, voice: str, voices: dict[str, str] | None = None):
+    def __init__(self, generate, voice: str, voices: dict[str, str] | None = None, *, soften_final: bool = True):
         """``voice`` is the default id; ``voices`` maps every served id to its display name."""
         self.generate = generate
         self.voice = voice
         self.voices = voices or {voice: voice}
+        self.soften_final = soften_final
         self.ready = False
         self.pending = queue.Queue()
         self.active = {}
@@ -129,7 +130,8 @@ class Worker:
                     return
                 pending = audio
             if pending is not None and not job.cancelled.is_set():
-                if not emit(soften_ending(pending)) or not emit(np.zeros(TAIL_SILENCE, dtype="<f4")):
+                final = soften_ending(pending) if self.soften_final else pending
+                if not emit(final) or not emit(np.zeros(TAIL_SILENCE, dtype="<f4")):
                     return
             if frames and not job.cancelled.is_set():
                 self.send(job, dict(type="done", frames=frames, samples=int(total)))
@@ -205,14 +207,15 @@ def handler_for(worker):
     return Handler
 
 
-def reference_options(reference_path: str, prompt_text: str = "") -> dict:
-    """Clone from the reference; with its transcript, continue it instead.
+def reference_options(reference_path: str, prompt_text: str = "", *, continuation: bool = True) -> dict:
+    """Clone from the reference; with its transcript, combine reference and continuation.
 
-    Continuation (reference audio plus its exact words) carried the owner's
-    Québécois accent best in the 2026-10-01 blind listening comparison.
+    Continuation (reference audio plus its exact words) can preserve an accent,
+    while reference-only cloning may avoid unstable sentence endings. Compare
+    both modes by listening to the affected voice.
     """
     options = {"reference_wav_path": reference_path}
-    if prompt_text.strip():
+    if continuation and prompt_text.strip():
         options.update(prompt_wav_path=reference_path, prompt_text=prompt_text.strip())
     return options
 
@@ -220,7 +223,7 @@ def reference_options(reference_path: str, prompt_text: str = "") -> dict:
 VOICE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
-def load_voices(directory) -> dict[str, dict]:
+def load_voices(directory, *, continuation: bool = True) -> dict[str, dict]:
     """Read named references from a directory: ``<id>.wav`` with an optional exact
     transcript ``<id>.txt`` (continuation cloning) and display name ``<id>.name``."""
     voices = {}
@@ -232,7 +235,9 @@ def load_voices(directory) -> dict[str, dict]:
         name = label.read_text(encoding="utf-8").strip()[:80] if label.exists() else ""
         voices[wav.stem] = {
             "name": name or wav.stem,
-            "options": reference_options(str(wav), transcript.read_text(encoding="utf-8") if transcript.exists() else ""),
+            "options": reference_options(str(wav), transcript.read_text(encoding="utf-8")
+                                         if continuation and transcript.exists() else "",
+                                         continuation=continuation),
         }
     return voices
 
@@ -249,15 +254,29 @@ def main():
     parser.add_argument("--voice", default="nestor-a", help="voice id (the default when several are served)")
     parser.add_argument("--bind", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8092)
+    parser.add_argument("--no-optimize", action="store_true",
+                        help="diagnostic: skip torch.compile optimization")
+    parser.add_argument("--reference-only", action="store_true",
+                        help="clone from the reference without transcript continuation")
+    parser.add_argument("--no-end-fade", action="store_true",
+                        help="diagnostic: send the last generated chunk without softening")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="generation seed (default: 42)")
+    parser.add_argument("--min-len", type=int, default=2,
+                        help="minimum generated patches before the stop decision (default: 2)")
     args = parser.parse_args()
+    if not 0 <= args.seed <= 2**32 - 1 or not 1 <= args.min_len <= 128:
+        parser.error("--seed must be 0..4294967295 and --min-len must be 1..128")
     if args.voices_dir:
-        references = load_voices(args.voices_dir)
+        references = load_voices(args.voices_dir, continuation=not args.reference_only)
         if not references:
             parser.error("--voices-dir holds no <id>.wav reference")
         default = args.voice if args.voice in references else next(iter(references))
     elif args.reference_path:
-        prompt_text = open(args.prompt_text_path, encoding="utf-8").read() if args.prompt_text_path else ""
-        references = {args.voice: {"name": args.voice, "options": reference_options(args.reference_path, prompt_text)}}
+        prompt_text = (Path(args.prompt_text_path).read_text(encoding="utf-8")
+                       if args.prompt_text_path and not args.reference_only else "")
+        references = {args.voice: {"name": args.voice, "options": reference_options(
+            args.reference_path, prompt_text, continuation=not args.reference_only)}}
         default = args.voice
     else:
         parser.error("--reference-path or --voices-dir is required")
@@ -265,16 +284,19 @@ def main():
     from voxcpm import VoxCPM
     torch.set_num_threads(4)
     model = VoxCPM.from_pretrained(args.model_path, load_denoiser=False, optimize=False, device="cuda")
-    model.tts_model.optimize()
+    if not args.no_optimize:
+        model.tts_model.optimize()
 
     def generate(text, voice=default):
-        torch.manual_seed(42)
-        np.random.seed(42)
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
         yield from model.generate_streaming(text=text, **references[voice]["options"],
-                                            cfg_value=2.0, inference_timesteps=10, max_len=768,
+                                            cfg_value=2.0, inference_timesteps=10, min_len=args.min_len,
+                                            max_len=768,
                                             normalize=False, denoise=False, retry_badcase=False)
 
-    worker = Worker(generate, default, {key: value["name"] for key, value in references.items()})
+    worker = Worker(generate, default, {key: value["name"] for key, value in references.items()},
+                    soften_final=not args.no_end_fade)
     server = ThreadingHTTPServer((args.bind, args.port), handler_for(worker))
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)

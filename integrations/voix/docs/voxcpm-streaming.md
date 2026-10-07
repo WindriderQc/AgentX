@@ -20,6 +20,35 @@ python -m app.tts.voxcpm_server --model-path /path/to/VoxCPM2 \
   --bind LAN_ADDRESS --port 8092
 ```
 
+### Diagnose clipped or added sentence endings
+
+The defaults remain compiled inference, combined reference and transcript
+continuation, seed 42, `min_len=2`, and a softened final chunk. The worker
+accepts one opt-in change at a time: `--reference-only` removes transcript
+continuation, `--no-end-fade` sends the last chunk unsoftened,
+`--no-optimize` skips compilation, and `--seed` / `--min-len` change generation
+parameters. These are startup flags; restart a managed worker to apply them.
+`--reference-only` affects every voice served by that worker, so use separate
+workers when voices need different cloning modes. Do not pad punctuation to
+force extra audio: it can make the model add words.
+
+From this directory, compare a fixed set of 53 synthetic French sentences
+through the speech service's consumer route:
+
+```sh
+python scripts/voxcpm_ending_acceptance.py --base-url http://127.0.0.1:8091 \
+  --voice VOICE_ID --label baseline --report /path/outside/repo/baseline.json
+```
+
+The checker validates every streamed PCM frame and its completion counts,
+transcribes an in-memory WAV, and writes text and timing only. It does not save
+waveforms. `--only 1,2,29,30` repeats selected cases. Keep reports outside
+Git. ASR mismatches select clips for listening; they do not prove a missing
+syllable. Check short replies and long clauses by ear, compare first-signal
+latency with the baseline, and test a real conversation through the page before
+adopting a mode. A duration-only automatic retry is unreliable for variable
+speaking rates and cannot retract audio already streamed to a listener.
+
 One worker can serve several voices with one loaded model: `--voices-dir DIR`
 reads every `<id>.wav` reference there, with an optional exact transcript
 `<id>.txt` (continuation) and display label `<id>.name`; `--voice` then names
@@ -30,8 +59,9 @@ and restarting the worker, which warms every reference before reporting ready.
 when its reference has no `.name`.
 
 `--prompt-text-path` points to a file holding the reference's exact words. With
-it the worker continues the reference instead of only cloning its timbre; this
-kept a speaker's accent best in a blind listening comparison. Keep the
+it the worker continues the reference instead of only cloning its timbre.
+Reference-only cloning may improve unstable endings while changing accent or
+pacing, so qualify the choice by listening to matched clips. Keep the
 transcript next to the reference, outside the repository.
 
 WSL2 on a Windows voice host is a supported Linux environment: the worker
