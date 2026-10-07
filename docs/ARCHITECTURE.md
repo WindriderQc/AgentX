@@ -159,6 +159,18 @@ Canonical conversations store immutable BSON pages and complete binary payloads
 behind an atomic reference in `Conversation`. Model reads hydrate the complete
 messages; embedded legacy histories move to pages on their next content write.
 Message IDs, feedback, attachments and audit evidence retain their contracts.
+
+A `conversationId` is a continuation handle for the Playground chat endpoints
+(`POST /api/chat` and `POST /api/chat/stream`). Core stores every accepted turn
+under that id, and on a later call it rehydrates the stored user/assistant turns
+into the model context when the caller does not send its own `messages`. An
+explicit `messages` array always wins over the stored transcript, so the
+Playground browser — which tracks history in memory and resends it — is
+unaffected. Rehydration is read-only and owner-scoped: an unknown, archived, or
+foreign `conversationId` loads nothing, and the route still refuses such an id
+before inference. A connector that posts only the id and the new message still
+reaches the earlier turns in the model context, so a stored id stays a real
+continuation rather than a storage-only reference.
 One durable owner fence spans content writes and canonical publication, including
 session counters and conditional review updates in the same root command.
 Final writes retain the caller's scope and version predicates; stale saves refuse.

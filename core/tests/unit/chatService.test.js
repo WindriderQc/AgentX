@@ -332,6 +332,41 @@ describe('chatService', () => {
             expect(mockExistingConvInstance.save).toHaveBeenCalled();
         });
 
+        it('rehydrates stored prior turns into the model context for a conversationId continuation', async () => {
+            const priorTurns = [
+                { role: 'user', content: 'Show me the module' },
+                { role: 'assistant', content: 'Here is the module: 150 lines of code' }
+            ];
+            const existing = {
+                _id: '64b7f0c2a1b2c3d4e5f60720',
+                userId: 'user123',
+                messages: [...priorTurns],
+                save: jest.fn().mockResolvedValue(true)
+            };
+            existing.messages.create = jest.fn((msg) => ({ ...msg, _id: 'newmsg', metadata: {} }));
+            existing.messages.push = jest.fn((item) => Array.prototype.push.call(existing.messages, item));
+            Conversation.findOne.mockResolvedValue(existing);
+
+            // The connector sends only the conversationId and the follow-up;
+            // it does not resend the earlier turns (issue #530).
+            const result = await handleChatRequest({
+                userId: 'user123',
+                model: 'llama2',
+                message: 'Which line has the bug?',
+                conversationId: '64b7f0c2a1b2c3d4e5f60720'
+            });
+
+            expect(result.conversationId).toBe('64b7f0c2a1b2c3d4e5f60720');
+            expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({
+                messages: [
+                    { role: 'system', content: expect.stringContaining('You are a helpful assistant.') },
+                    { role: 'user', content: 'Show me the module' },
+                    { role: 'assistant', content: 'Here is the module: 150 lines of code' },
+                    { role: 'user', content: 'Which line has the bug?' }
+                ]
+            }));
+        });
+
         it('refuses a conversation ID outside the caller scope instead of forking', async () => {
             const request = {
                 userId: 'user123',
