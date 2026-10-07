@@ -23,7 +23,7 @@ async function fakeBenchmark() {
   const state = {
     hosts: [{ hostUrl: HOST }, { hostUrl: JUDGE_HOST }], preferred: { host: JUDGE_HOST, model: 'judge-model:7b' },
     prompts: [...PROMPTS], preflight: () => ({ ready: true, issues: [], warnings: ['pinned model unloads'], checks: {} }),
-    launch: 'accept', batches: [], posts: [], preflights: [], listFails: false,
+    launch: 'accept', batches: [], posts: [], preflights: [], listFails: false, coverage: null,
     inventory: [{ name: 'candidate:7b' }, { name: 'judge-model:7b' }],
   };
   const create = body => {
@@ -44,6 +44,10 @@ async function fakeBenchmark() {
       if (url.pathname === '/api/benchmark/judge/readiness') return ok({ hosts: state.hosts, preferred_target: state.preferred, blockers: ['no judge selected'] });
       if (url.pathname === '/api/benchmark/prompts') return ok({ prompts: state.prompts });
       if (url.pathname === '/api/benchmark/preflight') { state.preflights.push(body); return ok(state.preflight(body)); }
+      if (url.pathname === '/api/benchmark/coverage/execution-config') {
+        return state.coverage ? ok({ host: url.searchParams.get('host'), model: url.searchParams.get('model'), ...state.coverage })
+          : send(404, { status: 'error', code: 'COVERAGE_PAIR_UNKNOWN', message: 'not in the coverage scope' });
+      }
       if (url.pathname === '/api/benchmark/batches') {
         if (state.listFails) return send(500, { status: 'error', error: 'database unavailable' });
         const batches = state.batches.filter(batch => batch.tags.includes(url.searchParams.get('tag')));
@@ -148,9 +152,53 @@ test('preparing refuses what Benchmark would not run, and keeps no plan', () => 
   });
   fake.state.preflight = () => ({ ready: false, issues: ['1 orphaned batch(es) detected'], checks: { judge: { ok: true }, hosts: [] } });
   await refused({ 'judge-host': JUDGE_HOST, 'judge-model': 'judge-model:7b' }, 'PREFLIGHT_NOT_READY');
+  // A pin wider than the profiled context: the launch would refuse it, so no plan is written.
+  const unverified = `Context 32768 is not verified for candidate:7b on ${HOST}. Profile this model and choose a context within its verified range.`;
+  fake.state.preflight = body => ({ ready: false, issues: [unverified], warnings: [], checks: { judge: { ok: true }, hosts: [{ ...body.targets[0], ok: true }] } });
+  await assert.rejects(fake.prepare({ 'judge-host': JUDGE_HOST, 'judge-model': 'judge-model:7b' }), error => {
+    assert.deepEqual([error.outcome, error.details.code, error.details.issues], ['refused', 'PREFLIGHT_NOT_READY', [unverified]]);
+    return true;
+  });
   assert.equal(fake.state.posts.length, 0);
   assert.equal(fs.existsSync(path.join(fake.receiptsDir, 'benchmark-batch')), false);
   await assert.rejects(ACTIONS['benchmark-batch-prepare']({ ...fake.ctx({ host: HOST, model: 'm', categories: 'coding' }), receiptsDir: null }), { exitCode: 2 });
+}));
+
+test('a pin wider than the verified context is planned at that context, with the coverage job\'s settings', () => withBenchmark(async fake => {
+  const unverified = `Context 32768 is not verified for candidate:7b on ${HOST}. Profile this model and choose a context within its verified range.`;
+  // Benchmark refuses the pinned window and accepts the verified one, as its launch does.
+  fake.state.preflight = body => (body.execution_config.force_num_ctx
+    ? { ready: true, issues: [], warnings: ['pinned model unloads'], checks: {} }
+    : { ready: false, issues: [unverified], warnings: [], checks: { judge: { ok: true }, hosts: [{ ...body.targets[0], ok: true }],
+      budgets: { candidates: [{ ...body.targets[0], error: unverified, error_code: 'CONTEXT_NOT_VERIFIED' }] } } });
+  const settings = { think: false, force_num_ctx: 16384, response_max_tokens: 4096, per_test_timeout_ms: 1200000 };
+  fake.state.coverage = { pin_context: 32768, execution_config: settings };
+
+  const prepared = await fake.prepare();
+  assert.deepEqual(prepared.launch.execution_config, { repeats: 3, ...settings });
+  assert.deepEqual(prepared.context, { pinned: 32768, verified: 16384, settings: 'coverage' });
+  assert.match(prepared.warnings[0], /^candidate:7b is pinned at context 32768, which its profile does not verify: this batch runs at the verified context 16384 /);
+  assert.equal(prepared.warnings[1], 'pinned model unloads');
+  assert.deepEqual(fake.state.preflights.map(body => body.execution_config), [{ repeats: 3 }, { repeats: 3, ...settings }]);
+  const file = JSON.parse(fs.readFileSync(path.join(fake.receiptsDir, 'benchmark-batch', `${prepared.plan.split('-')[1]}.json`), 'utf8'));
+  assert.deepEqual(file.context, prepared.context);
+
+  // A profile that verifies another context since the plan makes it stale; nothing is posted.
+  fake.state.coverage = { pin_context: 32768, execution_config: { ...settings, force_num_ctx: 8192 } };
+  await assert.rejects(fake.start({ plan: prepared.plan }), error => error.outcome === 'refused' && error.details.code === 'PLAN_STALE');
+  assert.equal(fake.state.posts.length, 0);
+  fake.state.coverage = { pin_context: 32768, execution_config: settings };
+  await fake.start({ plan: prepared.plan });
+  assert.deepEqual(fake.state.posts[0].execution_config, { repeats: 3, ...settings });
+
+  // Without a verified context to run at, the refusal stays Benchmark's own.
+  for (const coverage of [null, { pin_context: 32768, execution_config: { think: false } }]) {
+    fake.state.coverage = coverage;
+    await assert.rejects(fake.prepare(), error => {
+      assert.deepEqual([error.outcome, error.details.code, error.details.issues], ['refused', 'PREFLIGHT_NOT_READY', [unverified]]);
+      return true;
+    });
+  }
 }));
 
 test('a cloud default judge is refused before preflight can probe or spend', () => withBenchmark(async fake => {

@@ -189,7 +189,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   rows show their host's residency. `./agentx action` and the OpenClaw
   maintenance plugin prepare, start and read a bounded batch (one model, one
   registered local host, chosen categories): a start names a prepared plan,
-  passes the runtime approval hook in the plugin and is never sent twice. Its
+  passes the runtime approval hook in the plugin and is never sent twice.
+  Preflight refuses a candidate window that no profile verifies; the action
+  then plans that model at its verified context, as the coverage job does. Its
   tests use a stand-in for Benchmark; an installed OpenClaw runtime and a
   messaging channel have not exercised the approval.
 - **Finance.** A personal ledger in Core accepts only statements that reconcile

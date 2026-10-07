@@ -6,7 +6,7 @@ jest.mock('../../src/clients/coreCoverageReads', () => ({
   getRoutingConfig: jest.fn(), getRuntimeActive: jest.fn(), getHouseholdIdle: jest.fn()
 }));
 
-const { requestMeasurement, cancelRequest, recentResults, cellKey } = require('../../src/services/measurementCoverage/coverageRequests');
+const { requestMeasurement, cancelRequest, recentResults, executionSettings, cellKey } = require('../../src/services/measurementCoverage/coverageRequests');
 const { orderCells } = require('../../src/services/measurementCoverage/coverageJob');
 
 const cell = (over = {}) => ({
@@ -81,5 +81,17 @@ describe('coverage requests', () => {
       error: null, tokens: 100, tokensPerSec: 11.5, seconds: 9, at: 't1', scorerVersion: '9', excluded: false });
     expect(data.results[1]).toMatchObject({ scored: false, score: null, error: 'Decomposed judge calls failed' });
     expect(JSON.stringify(data)).not.toContain('secret text');
+  });
+
+  it('gives the execution settings the job would launch a pair with, without queuing anything', async () => {
+    const { deps, store } = harness([cell({ pinContext: 32768, artifact: { digest: 'aaa', runtimeFingerprint: 'rt' } })]);
+    const findContextProfile = jest.fn(async () => ({ maxVerifiedContext: 16384 }));
+    await expect(executionSettings({ host: 'http://cpu-a:11435', model: 'small:26b' }, { ...deps, findContextProfile })).resolves.toEqual({
+      host: 'http://cpu-a:11435', model: 'small:26b', pin_context: 32768,
+      execution_config: { think: false, force_num_ctx: 16384, response_max_tokens: 4096, per_test_timeout_ms: 1200000 }
+    });
+    expect(findContextProfile).toHaveBeenCalledWith('small:26b', 'http://cpu-a:11435', { digest: 'aaa', runtimeFingerprint: 'rt' });
+    expect(store.saveState).not.toHaveBeenCalled();
+    await expect(executionSettings({ host: 'Nowhere', model: 'small:26b' }, deps)).rejects.toMatchObject({ code: 'COVERAGE_PAIR_UNKNOWN', statusCode: 404 });
   });
 });

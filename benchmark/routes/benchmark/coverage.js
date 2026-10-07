@@ -9,6 +9,8 @@
  * POST/DELETE /api/benchmark/coverage/requests — ask for a pair to be measured
  *                                          first; it still waits for quiet hours
  * GET /api/benchmark/coverage/results   — recent scores of one pair
+ * GET /api/benchmark/coverage/execution-config — the execution settings the job
+ *                                          gives one pair (verified context)
  * POST /api/benchmark/coverage/carry-over — carry stored grades over to the
  *                                          current scorer version (dryRun reports)
  */
@@ -68,6 +70,9 @@ router.post('/coverage/carry-over', (req, res) => carryOverStoredGrades({ dryRun
     .then(data => res.json({ status: 'success', data })).catch(err => fail(res, err)));
 
 router.get('/coverage/results', (req, res) => requests.recentResults(req.query || {})
+    .then(data => res.json({ status: 'success', data })).catch(err => fail(res, err)));
+
+router.get('/coverage/execution-config', (req, res) => requests.executionSettings(req.query || {})
     .then(data => res.json({ status: 'success', data })).catch(err => fail(res, err)));
 
 module.exports = router;
