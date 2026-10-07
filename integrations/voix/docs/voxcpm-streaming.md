@@ -77,6 +77,37 @@ several minutes. `/health` reports `ready:false` until warmup completes; text
 and audio are not saved. The worker serializes requests and bounds each output
 queue to two frames, stopping generation when a client cancels or disconnects.
 
+## Pocket TTS worker (processor)
+
+Pocket TTS serves the same worker protocol on the processor, with no graphics
+memory. The speech service reaches it through the same `VOXCPM_BASE_URL`, and
+callers keep selecting `tts_provider:"voxcpm"`: that id names the cloned-voice
+lane, whichever engine the worker runs. Run one worker or the other on a port.
+
+Install `requirements-pocket.txt` in its own environment. Cloning from a
+reference needs the gated weights: accept the terms on the model's page and log
+in on the worker's host (`hf auth login`); these are two separate steps. Start
+it from this directory, at the same revision as the speech service:
+
+```sh
+python -m app.tts.pocket_server --voices-dir /path/to/voices --voice nestor-a \
+  --bind LAN_ADDRESS --port 8092
+```
+
+It reads the same voices directory (`<id>.wav`, optional `<id>.name`); a
+transcript beside a reference is ignored, because this engine clones from the
+audio alone. Reading a reference takes about ten seconds per voice at startup;
+`/health` reports `ready:false` until every voice has spoken once.
+
+`--eos-threshold` defaults to 0. The model's own default (-4) ended about one
+sentence in three early with cloned voices on the qualifying host; lower values
+cut more. A cloned voice copies the rhythm of its reference: build references
+from continuous speech, with pauses shortened, or the voice pauses the same way.
+Very short replies are this engine's weak case; check them by ear.
+
+Measured on one processor thread of a desktop host: first audio in about
+0.2 s and about 1.7 times real time. Qualify each host and voice separately.
+
 ## Cloning a voice
 
 1. Record two to five minutes of natural, conversational speech from the
@@ -144,7 +175,8 @@ that fails after a ready answer still ends the stream with an `error` event.
 ## Stream and interruption
 
 Worker `POST /v1/stream` accepts `id`, `text`, and `voice`. The NDJSON response
-has `meta` (`voix-pcm-v1`, mono 48 kHz `f32le`), numbered base64 PCM `audio`
+has `meta` (`voix-pcm-v1`, mono `f32le` at the rate the worker declares: 48 kHz
+for VoxCPM2, 24 kHz for Pocket TTS), numbered base64 PCM `audio`
 frames, then `done` with exact frame/sample totals or `error`. Missing
 completion, reordered frames, wrong format or voice, and nonfinite samples fail
 the request. Audio is never stored.

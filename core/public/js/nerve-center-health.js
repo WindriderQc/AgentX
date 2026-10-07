@@ -3,7 +3,7 @@
 
     const shared = window.NerveCenterShared;
 
-    // Speech engines: Nestor's cloned voice (VoxCPM2 worker) and the Kokoro catalog voices.
+    // Speech engines: the cloned-voice worker (VoxCPM2 or Pocket TTS) and the Kokoro catalog voices.
     function renderVoices(voix) {
         if (!voix) return '';
         const engines = voix.engines || {};
@@ -19,7 +19,7 @@
         const down = voix.status !== 'ok' || engines.voxcpm?.ready === false;
         return `<div class="nc-host-card" role="status" style="margin-bottom:10px;padding:10px;border-left:3px solid ${down ? '#f59e0b' : '#4ade80'}">
             <strong>Voices</strong> <span class="nc-muted">VoiX ${voix.status === 'ok' ? 'up' : 'down'}</span>
-            ${line("Nestor's voice (VoxCPM2 · Gazz)", engines.voxcpm)}${line('Catalog voices (Kokoro)', engines.kokoro)}
+            ${line('Cloned voice (worker)', engines.voxcpm)}${line('Catalog voices (Kokoro)', engines.kokoro)}
         </div>`;
     }
 

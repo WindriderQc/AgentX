@@ -3,6 +3,10 @@
 Run with the optional requirements-voxcpm.txt environment. The worker loads the
 model once and serves one or more configured references (named voices); audio
 and request text are never written to disk.
+
+``Worker``, ``handler_for`` and ``load_voices`` are the cloned-voice worker
+protocol itself: another engine serves it by supplying its own generator,
+sample rate and model name (see ``pocket_server``).
 """
 from __future__ import annotations
 
@@ -32,13 +36,19 @@ class Job:
 FADE_SAMPLES = 1920      # 40 ms at 48 kHz
 TAIL_SILENCE = 5760      # 120 ms at 48 kHz
 LEAD_SILENCE = 3840      # 80 ms at 48 kHz, like Kokoro's pad: players start late on a fresh output
+REFERENCE_RATE = 48000   # the durations above are counted at this rate
 
 
-def soften_ending(audio: np.ndarray) -> np.ndarray:
+def at_rate(samples: int, rate: int) -> int:
+    """The same duration at another sample rate."""
+    return samples * rate // REFERENCE_RATE
+
+
+def soften_ending(audio: np.ndarray, rate: int = REFERENCE_RATE) -> np.ndarray:
     """Fade the 40 ms before the last audible sample: the compiled model sometimes stops
     mid-syllable at full level, and the chunk may already end with silence after the cut."""
     audio = audio.copy()
-    window = 240  # 5 ms envelope; low noise after the cut is not speech
+    window = max(1, at_rate(240, rate))  # 5 ms envelope; low noise after the cut is not speech
     usable = audio.size // window * window
     if usable:
         rms = np.sqrt(np.mean(audio[:usable].reshape(-1, window) ** 2, axis=1))
@@ -48,19 +58,25 @@ def soften_ending(audio: np.ndarray) -> np.ndarray:
         end = (int(loud[-1]) + 1) * window
     else:
         end = audio.size
-    size = min(FADE_SAMPLES, end)
+    size = min(at_rate(FADE_SAMPLES, rate), end)
     audio[end - size:end] *= (0.5 + 0.5 * np.cos(np.linspace(0, np.pi, size))).astype(audio.dtype)
     audio[end:] = 0
     return audio
 
 
 class Worker:
-    def __init__(self, generate, voice: str, voices: dict[str, str] | None = None, *, soften_final: bool = True):
-        """``voice`` is the default id; ``voices`` maps every served id to its display name."""
+    def __init__(self, generate, voice: str, voices: dict[str, str] | None = None, *, soften_final: bool = True,
+                 sample_rate: int = REFERENCE_RATE, model: str = "openbmb/VoxCPM2", tag: str = "voxcpm"):
+        """``voice`` is the default id; ``voices`` maps every served id to its display name.
+        ``sample_rate`` is the rate of the audio ``generate`` yields; ``model`` and ``tag``
+        name the engine in ``/health`` and in the log."""
         self.generate = generate
         self.voice = voice
         self.voices = voices or {voice: voice}
         self.soften_final = soften_final
+        self.sample_rate = sample_rate
+        self.model = model
+        self.tag = tag
         self.ready = False
         self.pending = queue.Queue()
         self.active = {}
@@ -101,7 +117,7 @@ class Worker:
         stream = None
         frames, total = 0, 0
         try:
-            if not self.send(job, dict(type="meta", protocol="voix-pcm-v1", sample_rate=48000,
+            if not self.send(job, dict(type="meta", protocol="voix-pcm-v1", sample_rate=self.sample_rate,
                                        encoding="f32le", channels=1, voice=job.voice)):
                 return
             def emit(audio):
@@ -113,7 +129,7 @@ class Worker:
 
             # Lead-in silence first: a player that has just resumed its output clipped the
             # first syllable (a greeting is often the first audio of a session).
-            if not emit(np.zeros(LEAD_SILENCE, dtype="<f4")):
+            if not emit(np.zeros(at_rate(LEAD_SILENCE, self.sample_rate), dtype="<f4")):
                 return
             stream = self.generate(job.text, job.voice)
             # Hold one chunk back so the final one can end softly; this delays first audio by one chunk.
@@ -130,8 +146,8 @@ class Worker:
                     return
                 pending = audio
             if pending is not None and not job.cancelled.is_set():
-                final = soften_ending(pending) if self.soften_final else pending
-                if not emit(final) or not emit(np.zeros(TAIL_SILENCE, dtype="<f4")):
+                final = soften_ending(pending, self.sample_rate) if self.soften_final else pending
+                if not emit(final) or not emit(np.zeros(at_rate(TAIL_SILENCE, self.sample_rate), dtype="<f4")):
                     return
             if frames and not job.cancelled.is_set():
                 self.send(job, dict(type="done", frames=frames, samples=int(total)))
@@ -139,7 +155,7 @@ class Worker:
                 self.send(job, dict(type="error", message="No audio generated"))
         except Exception as exc:
             # Log only the error class; model errors can contain private text.
-            print(f"[voxcpm] synthesis failed: {type(exc).__name__}", flush=True)
+            print(f"[{self.tag}] synthesis failed: {type(exc).__name__}", flush=True)
             self.send(job, dict(type="error", message="Synthesis failed"))
         finally:
             if stream is not None:
@@ -164,9 +180,9 @@ def handler_for(worker):
         def do_GET(self):
             if self.path != "/health":
                 return self.respond(404, {"error": "Not found"})
-            self.respond(200, dict(ready=worker.ready, model="openbmb/VoxCPM2", voice=worker.voice,
+            self.respond(200, dict(ready=worker.ready, model=worker.model, voice=worker.voice,
                                    voices=[{"id": key, "name": name} for key, name in worker.voices.items()],
-                                   sample_rate=48000, streaming=True))
+                                   sample_rate=worker.sample_rate, streaming=True))
 
         def do_DELETE(self):
             prefix = "/v1/requests/"

@@ -25,7 +25,7 @@
     ttsVoice: '',
     inputDeviceId: ''
   });
-  const PROVIDER_LABELS = Object.freeze({ kokoro: 'Kokoro', windows_sapi: 'Windows SAPI', voxcpm: 'VoxCPM2' });
+  const PROVIDER_LABELS = Object.freeze({ kokoro: 'Kokoro', windows_sapi: 'Windows SAPI', voxcpm: 'Cloned voice' });
   const LANGUAGE_LABELS = Object.freeze({ fr: 'Français', en: 'Anglais' });
 
   function lower(value) {
