@@ -28,6 +28,8 @@ const CONFLICT = [409, 423];
 const NOT_ADMITTED = [400, 422, 503];
 // These exact Benchmark errors occur before its durable batch insert.
 // Other 500 errors can occur after insertion and remain ambiguous.
+// Preflight's code for a candidate window that no profile verifies.
+const CONTEXT_NOT_VERIFIED = 'CONTEXT_NOT_VERIFIED';
 const PRE_INSERT_REFUSALS = ['WORKLOAD_ADMISSION_REJECTED', 'WORKLOAD_ADMISSION_CONFLICT', 'WORKLOAD_RECOVERY_ARM_REJECTED'];
 const OPTIONS = Object.freeze({ host: 'host', model: 'model', categories: 'categories', levels: 'levels', repeats: 'repeats',
   'judge-host': 'judgeHost', 'judge-model': 'judgeModel', name: 'name', tag: 'tag' });
@@ -111,6 +113,19 @@ async function ask(ctx, route, options) {
 }
 
 /**
+ * A pin wider than the context its profile verifies cannot launch as pinned:
+ * preflight refuses it. The coverage job measures such a model at the verified
+ * context; Benchmark gives its settings here, so both measure it the same way.
+ * Null when preflight refused for another reason or no verified context exists.
+ */
+async function coverageSettings(ctx, host, model, preflight) {
+  if (!(preflight.checks?.budgets?.candidates || []).some(row => row.error_code === CONTEXT_NOT_VERIFIED)) return null;
+  const route = `/api/benchmark/coverage/execution-config?host=${encodeURIComponent(host)}&model=${encodeURIComponent(model)}`;
+  const settings = await ask(ctx, route, { timeoutMs: 60_000 }).catch(() => null);
+  return Number.isInteger(settings?.execution_config?.force_num_ctx) ? settings : null;
+}
+
+/**
  * The launch body and projection for a request, from Benchmark's current
  * answers; refuses with what Benchmark reported when the batch could not start.
  */
@@ -151,16 +166,25 @@ async function observe(ctx, request) {
     judge_config: { host: judge.host, model: judge.model }, execution_config: { repeats: request.repeats },
     multi_judge: 'off', tags: request.tag ? [request.tag] : [],
   };
-  const preflight = await ask(ctx, '/api/benchmark/preflight', { method: 'POST', timeoutMs: 60_000, body: {
+  const check = () => ask(ctx, '/api/benchmark/preflight', { method: 'POST', timeoutMs: 60_000, body: {
     targets: [{ host, model: request.model }], judge_config: body.judge_config, levels: body.levels,
     prompt_ids: body.prompt_ids, execution_config: body.execution_config } });
+  let preflight = await check();
+  const coverage = preflight.ready === true ? null : await coverageSettings(ctx, host, request.model, preflight);
+  if (coverage) {
+    body.execution_config = { repeats: request.repeats, ...coverage.execution_config };
+    preflight = await check();
+  }
   if (preflight.ready !== true) {
     const hosts = (preflight.checks?.hosts || []).map(check => ({ host: check.host, model: check.model, ok: check.ok, error: check.error || check.benchmark_blocked_reason || null }));
     const code = preflight.checks?.judge?.ok === false ? 'JUDGE_NOT_READY'
       : hosts.some(check => !check.ok) ? 'EXECUTION_TARGET_NOT_READY' : 'PREFLIGHT_NOT_READY';
     throw refuse(ctx, 'Benchmark preflight does not allow this batch', { code, issues: preflight.issues || [], hosts });
   }
-  return { body, judge, warnings: preflight.warnings || [],
+  const context = coverage ? { pinned: coverage.pin_context ?? null, verified: coverage.execution_config.force_num_ctx, settings: 'coverage' } : null;
+  const notice = context ? [`${request.model} is pinned at context ${context.pinned ?? 'unknown'}, which its profile does not verify: `
+    + `this batch runs at the verified context ${context.verified} with the coverage job's settings (see launch.execution_config)`] : [];
+  return { body, judge, context, warnings: [...notice, ...(preflight.warnings || [])],
     projection: { prompts: selected.length, repeats: request.repeats, tests: selected.length * request.repeats, categories } };
 }
 
@@ -176,9 +200,9 @@ async function prepare(ctx) {
   const ref = newPlanRef(request);
   const body = { ...observed.body, tags: [planTag(planId(ref)), ...observed.body.tags] };
   const plan = { contract: PLAN_CONTRACT, ref, preparedAt: new Date().toISOString(), preparedBy: ctx.options.actor,
-    request, judgeSource: observed.judge.source, body, projection: observed.projection, launch: null };
+    request, judgeSource: observed.judge.source, body, context: observed.context, projection: observed.projection, launch: null };
   writePlan(ctx, plan);
-  return { plan: ref, started: false, request, judgeSource: plan.judgeSource, projection: plan.projection, warnings: observed.warnings,
+  return { plan: ref, started: false, request, judgeSource: plan.judgeSource, context: plan.context, projection: plan.projection, warnings: observed.warnings,
     launch: body, start: { action: 'benchmark-batch-start', plan: ref, ...request } };
 }
 

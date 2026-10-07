@@ -11,11 +11,13 @@
  * holds the longest prompt, the longest candidate answer and its verdict (a
  * judge input Core has to truncate leaves that row unscored), reasoning where
  * the questions verify a derivation, and a calibration that covers the
- * category. Informational: nothing here blocks a launch.
+ * category. Informational, with one exception: a candidate window that no
+ * profile verifies is a blocker, because the launch refuses it when it freezes
+ * the contract. Preflight says so first, in the launch's own words.
  */
 
 const { normalizeExecutionConfig } = require('./config');
-const { resolveCandidateContract, resolveContractNumCtx } = require('./inferenceContractSnapshot');
+const { resolveCandidateContract, resolveContractNumCtx, CONTEXT_NOT_VERIFIED } = require('./inferenceContractSnapshot');
 const { normalizeJudgeNumCtx } = require('../scoring/judgeRuntimeConfig');
 const { assessJudgeRequirements, categoryPromptSizes } = require('../scoring/judgeRequirements');
 
@@ -47,10 +49,11 @@ async function candidateBudget({ host, model }, config, resolve) {
             num_predict_source: execution.num_predict_source,
             input_tokens: execution.num_ctx - execution.num_predict,
             error: null,
+            error_code: null,
         };
     } catch (error) {
         return { host, model, num_ctx: null, num_ctx_source: null, num_predict: null, num_predict_source: null,
-            input_tokens: null, error: error.message };
+            input_tokens: null, error: error.message, error_code: error.code || null };
     }
 }
 
@@ -69,7 +72,7 @@ async function judgeWindow(judgeConfig, resolveNumCtx) {
  * @param {object|null} executionConfig - the launch's execution_config
  * @param {object} judgeConfig - { host, model, num_ctx?, num_predict?, think?, target? }
  * @param {object} [options] - { levels, promptIds } of the launch, and test seams
- * @returns {Promise<{ candidates: object[], judge: object|null, warnings: string[] }>}
+ * @returns {Promise<{ candidates: object[], judge: object|null, warnings: string[], blockers: string[] }>}
  */
 async function checkResponseBudgets(targets, executionConfig, judgeConfig = {}, {
     levels, promptIds,
@@ -82,14 +85,16 @@ async function checkResponseBudgets(targets, executionConfig, judgeConfig = {}, 
     try {
         config = normalizeExecutionConfig(executionConfig || {});
     } catch (error) {
-        return { candidates: [], judge: null, warnings: [`Response budgets are unresolved: ${error.message}`] };
+        return { candidates: [], judge: null, warnings: [`Response budgets are unresolved: ${error.message}`], blockers: [] };
     }
     const candidates = await Promise.all((targets || []).map(target => candidateBudget(target, config, resolveCandidate)));
-    const warnings = candidates.filter(row => row.error)
+    const blocking = row => row.error_code === CONTEXT_NOT_VERIFIED;
+    const blockers = candidates.filter(blocking).map(row => row.error);
+    const warnings = candidates.filter(row => row.error && !blocking(row))
         .map(row => `Response budget of ${row.model} on ${row.host} is unresolved: ${row.error}`);
 
     const harnessJudge = judgeConfig?.target?.executionKind === 'harness';
-    if (harnessJudge || !judgeConfig?.host || !judgeConfig?.model) return { candidates, judge: null, warnings };
+    if (harnessJudge || !judgeConfig?.host || !judgeConfig?.model) return { candidates, judge: null, warnings, blockers };
 
     const window = await judgeWindow(judgeConfig, resolveJudgeNumCtx);
     const judgeNumPredict = Number(judgeConfig.num_predict) > 0 ? Number(judgeConfig.num_predict) : DEFAULT_JUDGE_NUM_PREDICT;
@@ -124,7 +129,7 @@ async function checkResponseBudgets(targets, executionConfig, judgeConfig = {}, 
         categories: requirements.categories,
     };
     warnings.push(...requirements.warnings);
-    return { candidates, judge, warnings };
+    return { candidates, judge, warnings, blockers };
 }
 
 module.exports = { checkResponseBudgets };

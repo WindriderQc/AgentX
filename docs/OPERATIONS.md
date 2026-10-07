@@ -194,7 +194,15 @@ each plan is one file under its `benchmark-batch/` directory.
   installed model, the judge and the prompts. Its warnings also name the
   pinned models the batch affects: an execution host's are unloaded and
   restored after it; a separate judge host's keep serving, since the batch
-  holds that host as shared and takes no claim on it. The receipt carries the plan
+  holds that host as shared and takes no claim on it. A candidate pinned at a
+  context wider than its profile verifies is refused by preflight with the
+  launch's own message (`Context <n> is not verified ...`). The action then
+  reads `GET /api/benchmark/coverage/execution-config` and prepares the batch
+  with the coverage job's settings for that pair: the verified context
+  (`force_num_ctx`), no thinking, the answer budget and the per-test timeout
+  the job would use. The plan says so in `context` (`pinned`, `verified`) and
+  in its first warning. A pair outside the coverage scope, or without a
+  verified context, keeps the refusal. The receipt carries the plan
   reference, the exact launch body, the projection (prompts, repeats, tests,
   prompts per category) and the `start` object that names the plan.
 - **Plan identity.** A reference is `bp-<id>-<digest>`; the digest covers the
@@ -1333,7 +1341,10 @@ launch's own preflight) lists the same per candidate before the launch, in
 `checks.budgets.candidates`: the window (`num_ctx`), the budget
 (`num_predict`), its source and the room left for the prompt
 (`input_tokens`), resolved from Core's contract as the launch resolves them. A
-candidate whose contract does not resolve is listed with its error.
+candidate whose contract does not resolve is listed with its error and
+`error_code`, as a warning. One case is an issue that blocks instead: a window
+no profile verifies (`CONTEXT_NOT_VERIFIED`), which the launch refuses when it
+freezes the contract; preflight gives the same message first.
 `checks.budgets.judge` gives the window the judge reads (`num_ctx`: the
 launch's `judge_config.num_ctx`, else the judge model's frozen window) and,
 under `categories`, what each selected prompt category requires of it:

@@ -12,6 +12,7 @@ const BenchmarkResult = require('../../../models/BenchmarkResult');
 const { buildCoverage } = require('./coverageState');
 const settingsStore = require('./coverageSettings');
 const { hostKey, modelKey } = require('./coverageScope');
+const { executionConfigFor } = require('./coverageLauncher');
 const { normalizeModelTag } = require('../../../../shared/modelNames');
 
 const cellKey = cell => `${hostKey(cell.hostUrl)}::${modelKey(cell.model)}`;
@@ -59,6 +60,18 @@ async function cancelRequest(input = {}, deps = {}) {
   return { host: cell.hostName, model: cell.model, cancelled: existed };
 }
 
+/**
+ * The execution settings the coverage job gives one pair, for a launch that
+ * wants to measure it the same way (the batch action, when the pin is wider
+ * than the verified context). Read-only: it starts and queues nothing.
+ */
+async function executionSettings(input = {}, deps = {}) {
+  const coverage = await (deps.buildCoverage || buildCoverage)();
+  const cell = findCell(coverage.cells, input.host, input.model);
+  return { host: cell.hostUrl, model: cell.model, pin_context: Number(cell.pinContext) || null,
+    execution_config: await executionConfigFor(cell, deps) };
+}
+
 /** Recent answers of one pair: scores and speed only, never the answer text. */
 async function recentResults(input = {}, deps = {}) {
   const coverage = await (deps.buildCoverage || buildCoverage)();
@@ -90,4 +103,4 @@ async function recentResults(input = {}, deps = {}) {
   };
 }
 
-module.exports = { requestMeasurement, cancelRequest, recentResults, findCell, cellKey };
+module.exports = { requestMeasurement, cancelRequest, recentResults, executionSettings, findCell, cellKey };
