@@ -93,6 +93,9 @@
   });
   // Silence before a reply's first words after which Nestor says one holding phrase.
   const HOLDING_DELAY_MS = 3000;
+  // A click, a tap or a thud is over within a quarter second: the reply keeps playing
+  // over a sound that short. One that goes on is probably a person, and the reply is held.
+  const INTERRUPTION_HOLD_DELAY_MS = 400;
   function holdingPhrase(language, index = 0) {
     const phrases = HOLDING[language === 'en' ? 'en' : 'fr'];
     return phrases[index % phrases.length];
@@ -441,8 +444,12 @@
           if (!turn.candidate) {
             let resolve;
             const promise = new Promise(done => { resolve = done; });
-            turn.candidate = { promise, resolve, wasSpeaking: this.state === 'speaking' };
-            if (turn.candidate.wasSpeaking) this.audio.holdPlayback?.();
+            const candidate = turn.candidate = { promise, resolve, wasSpeaking: this.state === 'speaking' };
+            if (candidate.wasSpeaking) {
+              const hold = () => { if (turn.candidate === candidate && this.owns(turn)) this.audio.holdPlayback?.(); };
+              const delay = this.io.interruptionHoldDelayMs ?? INTERRUPTION_HOLD_DELAY_MS;
+              if (delay > 0) { candidate.holdTimer = setTimeout(hold, delay); candidate.holdTimer.unref?.(); } else hold();
+            }
           }
           this.show('hearing');
         }
@@ -451,6 +458,7 @@
     releaseCandidate(turn) {
       const candidate = turn?.candidate;
       if (turn) turn.candidate = null;
+      clearTimeout(candidate?.holdTimer);
       candidate?.resolve();
     }
     async awaitCandidate(turn) {
@@ -501,6 +509,9 @@
       this.cancelWakeAck();
       const wakeFollowup = this.captureFollowup;
       const previous = this.activeTurn;
+      // The sound over the reply has ended before the hold: recognition decides what it
+      // was while the reply keeps playing.
+      clearTimeout(previous?.candidate?.holdTimer);
       this.audio.quiet();
       this.show('transcribing');
       const turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(), interrupted: false };
@@ -990,7 +1001,7 @@
     return response.arrayBuffer();
   }
 
-  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isTranscriptHallucination, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
+  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isTranscriptHallucination, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, INTERRUPTION_HOLD_DELAY_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else { root.AgentXVoice = api; root.NestorConversation = api; }
 })(typeof window === 'undefined' ? globalThis : window);

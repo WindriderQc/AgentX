@@ -16,7 +16,7 @@ function harness(overrides = {}) {
     async play() { calls.push('play'); }
   };
   const io = {
-    wakeAckDelayMs: 0, holdingDelayMs: null,
+    wakeAckDelayMs: 0, holdingDelayMs: null, interruptionHoldDelayMs: 0,
     async openAudio() { return audio; },
     async createSession(selection) { calls.push(selection); return { sessionId: 'private-1' }; },
     async transcribe() { return 'Bonjour'; },
@@ -1489,4 +1489,28 @@ test('a surface without early recognition, or one that declines it, transcribes 
   await declining.say({ earlyId: 1 });
   assert.equal(whole, 2);
   plain.conversation.stop(); declining.conversation.stop();
+});
+
+test('a reply keeps playing over a short noise and is held only when the sound goes on', async () => {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const playing = deferred(); let transcriptions = 0;
+  const h = harness({ interruptionHoldDelayMs: 40,
+    transcribe: async () => (++transcriptions === 1 ? 'Bonjour' : ''),
+    turn: async () => ({ text: 'Une réponse à terminer.' }),
+    interrupt: () => assert.fail('a noise must not cancel the reply') });
+  h.audio.canInterrupt = true; h.audio.play = () => playing.promise;
+  await h.conversation.start({}); const first = h.say(); await tick();
+  // A tap: the microphone hears it, and it is over before the hold delay.
+  h.beginSpeech();
+  assert.ok(!h.calls.includes('holdPlayback'), 'nothing pauses at the first sound');
+  await h.say(); await wait(60);
+  assert.ok(!h.calls.includes('holdPlayback'), 'a sound that ended in time never paused the reply');
+  assert.equal(h.conversation.state, 'speaking');
+  // A sound that goes on: the reply is held once the delay has passed, and resumes when it was not speech.
+  h.beginSpeech(); await wait(60);
+  assert.ok(h.calls.includes('holdPlayback'), 'a sound that goes on holds the reply');
+  await h.say();
+  assert.ok(h.calls.includes('resumePlayback'));
+  playing.resolve(); await first;
+  assert.equal(h.conversation.state, 'listening');
 });
