@@ -51,6 +51,13 @@ jobs:
         run: npm run setup:integrations
       - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
         run: python3 -m unittest discover -s integrations/voix -p 'test_*.py'
+      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/voix-venv"
+          "$RUNNER_TEMP/voix-venv/bin/python" -m pip install --quiet -r requirements-test.txt
+          "$RUNNER_TEMP/voix-venv/bin/python" -m pytest -q
+          node --test tests/voice-audio.test.cjs
+        working-directory: integrations/voix
       # The image worker fsyncs its state directory through a POSIX-only flag,
       # so its test runs here and not with the cross-platform native tests.
       - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
