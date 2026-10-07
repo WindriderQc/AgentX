@@ -128,10 +128,11 @@ function verifyPayload(payload, parameters, context, model) {
   if (parameters.responseFormat === 'json' && !['json_object', 'json_schema'].includes(format?.type) && payload.generationConfig?.responseMimeType !== 'application/json' && payload.config?.responseMimeType !== 'application/json') reject('OPENCLAW_RESPONSE_FORMAT_UNAPPLIED', 422);
 }
 
-export function createExecutionService({ backend, now = () => Date.now(), catalogTtlSeconds = 300, maxRequestCostNanodollars = 0 } = {}) {
+export function createExecutionService({ backend, now = () => Date.now(), catalogTtlSeconds = 300, maxRequestCostNanodollars = 0, ledger = null } = {}) {
   async function catalogue() {
     const value = await backend.catalogue();
     return { schema: 'agentx.openclaw-execution-catalog/v1', ...value, policy: { maxRequestCostNanodollars },
+      spend: ledger ? await ledger.read().catch(() => null) : null,
       observedAt: new Date(now()).toISOString(), expiresAt: new Date(now() + catalogTtlSeconds * 1000).toISOString() };
   }
 
@@ -147,11 +148,13 @@ export function createExecutionService({ backend, now = () => Date.now(), catalo
       maxCostNanodollars: Math.min(request.budget.maxCostNanodollars, maxRequestCostNanodollars) }
       : { maxCalls: 1, maxCostNanodollars: maxRequestCostNanodollars };
     const reservation = reserveCost(descriptor, parameters, budget);
+    // A paid call that could not be added to the running total is not dispatched.
+    if (reservation && ledger) await ledger.read();
     const native = await backend.prepare(request.model, parameters);
     if (native.descriptor.fingerprint !== descriptor.fingerprint) reject('OPENCLAW_TARGET_DRIFT', 409);
     const context = nativeContext(request.messages, native.model, request.tools || []);
     const id = request.requestId || randomUUID(), startedAt = now();
-    let payload, payloadError, calls = 0, responseId = null, result, partialText = '', partialThinking = '';
+    let payload, payloadError, recorded = false, calls = 0, responseId = null, result, partialText = '', partialThinking = '';
     const deadline = AbortSignal.timeout(Math.max(1, Math.min(600000, parameters.timeoutMs || 600000)));
     const boundedSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
     boundedSignal.throwIfAborted();
@@ -199,12 +202,15 @@ export function createExecutionService({ backend, now = () => Date.now(), catalo
         contextFingerprint: fingerprint(context), payloadFingerprint: fingerprint(payload), configuredParameters: native.effectiveParameters,
         observedParameters: { maxTokens: findParameter(payload, aliasesForMaxTokens), temperature: findParameter(payload, ['temperature']) ?? null,
           topP: findParameter(payload, ['top_p', 'topP']) ?? null, seed: findParameter(payload, ['seed']) ?? null } };
+      if (reservation && ledger) { recorded = true; await ledger.record(cost?.nanodollars ?? null); }
       const value = { schema: 'agentx.openclaw-model-result/v1', requestId: id, model: request.model, text, thinking, toolCalls, finishReason, receipt };
       await emit({ type: 'completed', result: value });
       return value;
     } catch (error) {
       // Provider diagnostics are deliberately not returned to AgentX.
       const code = /^OPENCLAW_[A-Z_]{1,80}$/.test(error.code || '') ? error.code : 'OPENCLAW_NATIVE_MODEL_FAILED';
+      // A dispatched paid call may be billed even though no cost was observed.
+      if (reservation && ledger && calls && !recorded) await ledger.record(null);
       throw Object.assign(new Error(code), { code,
         statusCode: error.statusCode || 502, partialResponse: partialText, partialThinking,
         reservation, executionState: calls ? 'unknown' : 'not-dispatched' });

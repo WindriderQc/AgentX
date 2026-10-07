@@ -53,7 +53,7 @@ export async function loadNativeSdk() {
   const resolveExtraParams = Object.values(module).find(value => typeof value === 'function' && value.name === 'resolveExtraParams');
   if (!resolveExtraParams) throw new Error('OPENCLAW_PARAMETER_API_UNAVAILABLE');
   const pluginFingerprint = createHash('sha256').update(Buffer.concat(await Promise.all(
-    ['native.mjs', 'service.mjs', 'index.mjs', 'openclaw.plugin.json'].map(file => readFile(new URL(file, import.meta.url)))
+    ['native.mjs', 'service.mjs', 'index.mjs', 'openclaw.plugin.json', 'ledger.mjs'].map(file => readFile(new URL(file, import.meta.url)))
   ))).digest('hex');
   const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
   return { ...sessions, ...agents, ...llm, ...auth, ...modelInfo, attachModelProviderRequestTransport: harness.attachModelProviderRequestTransport, applyExtraParams, resolveExtraParams,
