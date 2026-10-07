@@ -125,7 +125,8 @@ function createOpenClawExecutionClient({ env = process.env, fetchImpl = fetch } 
         headers: { 'x-openclaw-session-key': `agent:${selection.agentId}:agentx:${input.sessionId || 'turn'}:${id}`,
           ...(selection.model ? { 'x-openclaw-model': selection.model } : {}) },
         body: JSON.stringify({ model: `openclaw/${selection.agentId}`, stream: true, instructions,
-          input: messages.filter(message => message.role !== 'system') }) });
+          // The native Responses schema is strict: every input item declares its type.
+          input: messages.filter(message => message.role !== 'system').map(({ role, content }) => ({ type: 'message', role, content })) }) });
       await readEvents(response, event => {
         if (event.type === 'response.completed') { result = event.response; terminal = true; }
         if (['response.failed', 'response.error', 'error'].includes(event.type)) throw failure('OPENCLAW_AGENT_FAILED', 'OpenClaw agent execution failed.');
