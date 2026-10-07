@@ -2,6 +2,7 @@
   "id": "agentx-model-execution",
   "name": "AgentX model execution",
   "description": "Native model-only execution and an expurgated model/agent catalogue. Provider transports and credentials stay in OpenClaw.",
+  "activation": { "onStartup": true },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
