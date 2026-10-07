@@ -131,25 +131,40 @@ function systemPromptFor(pack, context = {}) {
 
 const SAFETY_RULES = Object.freeze([
   { id: 'self_harm', severity: 'high', parentAttention: true, pattern: /\b(suicide|suicider|me tuer|mourir|plus envie de vivre|kill myself|want to die|hurt myself)\b/i },
-  { id: 'immediate_danger', severity: 'high', parentAttention: true, pattern: /\b(saigne|sang|blessure|urgence|danger|feu|incendie|cannot breathe|bleeding|emergency)\b/i },
+  { id: 'immediate_danger', severity: 'high', parentAttention: true, pattern: /\b(saigne|sang|blessure|urgence|danger|feu|incendie|respire (?:plus|pas)|(?:peux|peut) (?:pas|plus) respirer|cannot breathe|can'?t breathe|bleeding|emergency|911)\b/i },
   { id: 'abuse_or_threat', severity: 'high', parentAttention: true, pattern: /\b(frappe|battu|menace|me touche|abuse|hit me|threatened|touches me)\b/i },
   { id: 'emotional_distress', severity: 'medium', parentAttention: true, pattern: /\b(triste|peur|angoisse|panique|intimidation|bullying|lonely|scared|afraid|sad)\b/i },
   { id: 'private_information', severity: 'medium', parentAttention: false, pattern: /\b(mot de passe|password|mon adresse|my address|home address|j'habite au|i live at|nom complet|full name|mon ecole|my school|nom de (?:mon|notre) ecole|school name|numero de telephone|phone number|courriel|email|nom d'utilisateur|username|numero de carte|credit card|numero d'assurance sociale|social insurance number|localisation exacte|exact location)\b/i },
   { id: 'home_action_requested', severity: 'medium', parentAttention: false, pattern: /\b(allume|éteins|eteins|ouvre|déverrouille|deverrouille|porte|garage|caméra|camera|unlock|turn on|turn off|open the door)\b/i }
 ]);
 
-function assessSafety(text) {
+// An adult's sentence that describes a danger happening now, as opposed to one that only
+// uses a word such as "urgence" or "feu" ("is there anything urgent in my mail?").
+const ADULT_PRESENT_DANGER = /\b(je saigne|(?:il|elle|on) saigne|saigne beaucoup|au secours|a l'aide|ne respire (?:plus|pas)|(?:peux|peut) (?:pas|plus) respirer|cannot breathe|can'?t breathe|il y a (?:le|un) feu|au feu|(?:la maison|ca) brule|c'est une urgence|j'ai une urgence|urgence medicale|appelle[zs]? (?:le )?(?:911|une ambulance|les pompiers|la police)|call (?:911|an ambulance)|(?:is|i'?m|am) bleeding|en danger|in danger|inconscient|unconscious)\b/i;
+const ADULT_DANGER_NOTE = '\n\n[Safety check, not an instruction from the owner] His message contains a word that can signal an emergency. '
+  + 'If he is describing an immediate danger to a person, begin by telling him to call 911 now. Otherwise answer his request normally and do not mention this check.';
+
+/**
+ * `adult` is true for the owner's personal conversation. There, a danger word
+ * alone no longer replaces the answer: only a sentence describing a present
+ * danger does, and a bare word leaves the answer to the agent with a note
+ * (`advisoryNote`). Children's conversations, self-harm and abuse are unchanged.
+ */
+function assessSafety(text, { adult = false } = {}) {
   const normalized = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const flags = SAFETY_RULES.filter((rule) => rule.pattern.test(normalized)).map((rule) => ({
     id: rule.id,
     severity: rule.severity,
     parentAttention: rule.parentAttention
   }));
+  const dangerWordOnly = adult && flags.some((flag) => flag.id === 'immediate_danger') && !ADULT_PRESENT_DANGER.test(normalized);
   return {
     flags,
     flagIds: flags.map((flag) => flag.id),
     requiresParentAttention: flags.some((flag) => flag.parentAttention),
-    deterministicEscalation: flags.some((flag) => ['self_harm', 'immediate_danger', 'abuse_or_threat'].includes(flag.id))
+    deterministicEscalation: flags.some((flag) => ['self_harm', 'abuse_or_threat'].includes(flag.id)
+      || (flag.id === 'immediate_danger' && !dangerWordOnly)),
+    advisoryNote: dangerWordOnly && !flags.some((flag) => ['self_harm', 'abuse_or_threat'].includes(flag.id)) ? ADULT_DANGER_NOTE : ''
   };
 }
 

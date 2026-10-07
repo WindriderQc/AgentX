@@ -150,7 +150,7 @@ function createPersonaTurnHandler({
         }
       }
       const workshop = workshopContext(req.body?.workshop, session);
-      const safety = assessSafety(userText);
+      const safety = assessSafety(userText, { adult: !pack.childSafe });
       const childBoundary = childBoundaryReply(pack, safety, userText), mathTurn = pack.childSafe && !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathTurnFor(userText) : null;
       let replyText, sceneProposal = null, display = [];
       // Only browser child-safe turns offer clips, and never over a safety
@@ -273,7 +273,7 @@ function createPersonaTurnHandler({
         const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }),
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || '',
           isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId),
-          isLlmX || member ? '' : await conversationImages?.contextFor?.(session)].join('').trim();
+          isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('').trim();
         const nativeInstructions = nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
           soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
           addressed: member ? (consult ? teamAddress.consultInstruction : teamAddress.memberInstruction)(speaker.name)
