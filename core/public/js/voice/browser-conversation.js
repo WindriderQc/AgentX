@@ -93,9 +93,10 @@
   });
   // Silence before a reply's first words after which Nestor says one holding phrase.
   const HOLDING_DELAY_MS = 3000;
-  // A click, a tap or a thud is over within a quarter second: the reply keeps playing
-  // over a sound that short. One that goes on is probably a person, and the reply is held.
-  const INTERRUPTION_HOLD_DELAY_MS = 400;
+  // Energy is not speech: a click, a keyboard or a door must not pause a reply. A sound
+  // heard over a reply is recognized once it has gone on this long, and again when it
+  // ends; only words hold the reply or interrupt it.
+  const INTERRUPTION_PROBE_MS = 800;
   function holdingPhrase(language, index = 0) {
     const phrases = HOLDING[language === 'en' ? 'en' : 'fr'];
     return phrases[index % phrases.length];
@@ -197,6 +198,7 @@
       this.speaking = false;
       this.level = 0;
       this.earlyId = null; this.earlyTaken = false; this.events = [];
+      this.heard = 0; this.probed = false;
     }
     // What happened since the last call: `{ type: 'early', id, samples }` when a pause is
     // long enough to start recognition, `{ type: 'resumed', id }` when speech went on after it.
@@ -225,7 +227,7 @@
       if (this.total + samples.length > this.maxSamples) {
         throw new Error('La prise de parole dépasse la taille acceptée. Fais une pause entre tes idées, puis réactive le micro. Aucun message partiel n’a été envoyé.');
       }
-      this.frames.push(samples); this.total += samples.length;
+      this.frames.push(samples); this.total += samples.length; this.heard += samples.length;
       this.silenceSamples = voiced ? 0 : this.silenceSamples + samples.length;
       if (voiced && this.earlyId !== null) { this.events.push({ type: 'resumed', id: this.earlyId }); this.earlyId = null; }
       const join = () => {
@@ -234,6 +236,10 @@
         for (const frame of this.frames) { joined.set(frame, offset); offset += frame.length; }
         return joined;
       };
+      // `{ type: 'probe', samples }` once, when the sound has gone on for `probeMs`.
+      if (this.probeMs && !this.probed && this.heard >= this.rate * this.probeMs / 1000) {
+        this.probed = true; this.events.push({ type: 'probe', samples: join() });
+      }
       if (this.silenceSamples < this.rate * this.endSilenceMs / 1000) {
         if (this.earlySilenceMs && this.earlyId === null && !voiced && this.earlySilenceMs < this.endSilenceMs
             && this.silenceSamples >= this.rate * this.earlySilenceMs / 1000) {
@@ -439,36 +445,52 @@
         // Standalone consumers can adopt the optional hold asset separately.
         if (this.state === 'speaking' && !this.audio.holdPlayback) { this.interrupt(turn); return; }
         if (this.owns(turn)) {
-          // Energy alone is not speech. Hold ongoing/arriving audio reversibly;
-          // only confirmed speech or a control can cancel the native turn.
+          // Energy alone is not speech: the sound is a candidate and the reply goes on.
+          // Words found in it hold the reply; only confirmed speech or a control cancels it.
           if (!turn.candidate) {
             let resolve;
             const promise = new Promise(done => { resolve = done; });
-            const candidate = turn.candidate = { promise, resolve, wasSpeaking: this.state === 'speaking' };
-            if (candidate.wasSpeaking) {
-              const hold = () => { if (turn.candidate === candidate && this.owns(turn)) this.audio.holdPlayback?.(); };
-              const delay = this.io.interruptionHoldDelayMs ?? INTERRUPTION_HOLD_DELAY_MS;
-              if (delay > 0) { candidate.holdTimer = setTimeout(hold, delay); candidate.holdTimer.unref?.(); } else hold();
-            }
+            turn.candidate = { promise, resolve, held: false, wasSpeaking: false };
           }
-          this.show('hearing');
+          if (!turn.replyStarted) this.show('hearing');
         }
-      }, { interruptible: true });
+      }, { interruptible: true, onProbe: blob => this.probeCandidate(turn, blob) });
+    }
+    // The candidate has gone on long enough to hold words: recognize what was heard so
+    // far. Words hold the reply, reversibly, until the whole utterance is recognized.
+    async probeCandidate(turn, blob) {
+      const candidate = turn.candidate;
+      if (!candidate || candidate.held || !this.owns(turn)) return;
+      let result = null;
+      try { result = await this.io.transcribe(blob, this.selection.language, this.abort.signal); } catch { /* the whole sound is still recognized when it ends */ }
+      let text = typeof result === 'string' ? result : String(result?.text || '');
+      if (isTranscriptHallucination(text) || isSpokenEcho(text, turn.spoken)) text = '';
+      if (turn.candidate !== candidate || !this.owns(turn)) return;
+      if (!(text.trim() || result?.control === 'stop')) {
+        // No words so far: a reply that was waiting for this sound may start.
+        candidate.cleared = true; candidate.resolve(); return;
+      }
+      candidate.held = true; candidate.wasSpeaking = this.state === 'speaking';
+      this.audio.holdPlayback?.();
+      this.show('hearing');
     }
     releaseCandidate(turn) {
       const candidate = turn?.candidate;
       if (turn) turn.candidate = null;
-      clearTimeout(candidate?.holdTimer);
       candidate?.resolve();
     }
+    // A reply never starts over a sound that may still be a person: it waits until that
+    // sound is recognized, a moment. Once the reply is under way, only words make it wait.
     async awaitCandidate(turn) {
-      while (turn.candidate && this.owns(turn)) await turn.candidate.promise;
+      const waits = candidate => candidate && (candidate.held || !(candidate.cleared || turn.replyStarted));
+      while (waits(turn.candidate) && this.owns(turn)) await turn.candidate.promise;
     }
     resumeCandidate(turn) {
-      const wasSpeaking = turn.candidate?.wasSpeaking;
-      if (wasSpeaking) this.audio.resumePlayback?.();
+      const candidate = turn.candidate;
+      if (candidate?.held) { this.audio.resumePlayback?.(); this.show(candidate.wasSpeaking ? 'speaking' : 'thinking'); }
+      else if (!turn.replyStarted) this.show('thinking');
       turn.monitoring = false;
-      this.show(wasSpeaking ? 'speaking' : 'thinking'); this.monitor(turn);
+      this.monitor(turn);
       this.releaseCandidate(turn);
     }
     // `stop` marks the spoken or pressed stop control: only that cancels work a
@@ -505,15 +527,14 @@
       this.early.abort.abort(); this.early = null;
     }
     async exchange(blob, epoch, capture = {}) {
-      if (!this.current(epoch) || !['listening', 'hearing'].includes(this.state)) return;
+      const previous = this.activeTurn;
+      // A sound heard over a reply that kept playing is still recognized when it ends.
+      const overReply = !!previous?.candidate && !previous.candidate.held && !!previous.replyStarted;
+      if (!this.current(epoch) || !(overReply || ['listening', 'hearing'].includes(this.state))) return;
       this.cancelWakeAck();
       const wakeFollowup = this.captureFollowup;
-      const previous = this.activeTurn;
-      // The sound over the reply has ended before the hold: recognition decides what it
-      // was while the reply keeps playing.
-      clearTimeout(previous?.candidate?.holdTimer);
       this.audio.quiet();
-      this.show('transcribing');
+      if (!overReply) this.show('transcribing');
       const turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(), interrupted: false };
       // The end of the person's speech has just been decided: a surface that keeps
       // voice timings gets this turn's timeline from that moment.
@@ -647,7 +668,7 @@
             if (!this.owns(turn)) return;
           }
           this.monitor(turn);
-          this.show('speaking');
+          this.show('speaking'); turn.replyStarted = true;
           if (!notice) { turn.timeline?.mark('firstAudio'); this.reportTimeline(turn); }
           try { await this.audio.play(bytes, turn.speech.signal); }
           catch (error) {
@@ -958,12 +979,13 @@
           try { await play(await wav(last.samples, context.sampleRate).arrayBuffer(), abort.signal, true); await settle(abort.signal); }
           finally { playSignal.removeEventListener('abort', cancel); if (replayAbort === abort) replayAbort = null; }
         },
-        listen(onUtterance, onSpeech, { interruptible = false, onEarly = null, onEarlyCancel = null } = {}) {
+        listen(onUtterance, onSpeech, { interruptible = false, onEarly = null, onEarlyCancel = null, onProbe = null } = {}) {
           if (closed) return;
           history.breakCapture();
           endpoint.reset(); echo.reset(); endpoint.minimumVoiceMs = interruptible ? 100 : 160;
           endpoint.endSilenceMs = interruptible ? INTERRUPTION_END_SILENCE_MS : TURN_END_SILENCE_MS;
           endpoint.earlySilenceMs = !interruptible && onEarly ? EARLY_RECOGNITION_SILENCE_MS : 0;
+          endpoint.probeMs = interruptible && onProbe ? INTERRUPTION_PROBE_MS : 0;
           const expected = ++captureEpoch;
           node.port.onmessage = ({ data }) => {
             if (closed || data.epoch !== expected || expected !== captureEpoch) return;
@@ -976,6 +998,7 @@
             if (!prior && endpoint.speaking) onSpeech();
             for (const event of endpoint.drain()) {
               if (event.type === 'early') onEarly?.(wav(event.samples, context.sampleRate), { id: event.id });
+              else if (event.type === 'probe') onProbe?.(wav(event.samples, context.sampleRate));
               else onEarlyCancel?.(event.id);
             }
             if (utterance) {
@@ -1001,7 +1024,7 @@
     return response.arrayBuffer();
   }
 
-  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isTranscriptHallucination, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, INTERRUPTION_HOLD_DELAY_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
+  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isTranscriptHallucination, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, INTERRUPTION_PROBE_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else { root.AgentXVoice = api; root.NestorConversation = api; }
 })(typeof window === 'undefined' ? globalThis : window);

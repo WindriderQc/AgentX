@@ -16,7 +16,7 @@ function harness(overrides = {}) {
     async play() { calls.push('play'); }
   };
   const io = {
-    wakeAckDelayMs: 0, holdingDelayMs: null, interruptionHoldDelayMs: 0,
+    wakeAckDelayMs: 0, holdingDelayMs: null,
     async openAudio() { return audio; },
     async createSession(selection) { calls.push(selection); return { sessionId: 'private-1' }; },
     async transcribe() { return 'Bonjour'; },
@@ -26,7 +26,9 @@ function harness(overrides = {}) {
   };
   const conversation = new Conversation(io, (state) => phases.push(state));
   return { conversation, audio, calls, messages, phases, beginSpeech: () => speech(), say: capture => utterance(new Blob(['sample']), capture),
-    pause: id => listening.onEarly?.(new Blob(['so far']), { id }), resume: id => listening.onEarlyCancel?.(id) };
+    pause: id => listening.onEarly?.(new Blob(['so far']), { id }), resume: id => listening.onEarlyCancel?.(id),
+    // The sound over a reply has gone on: what was heard so far is recognized.
+    probe: () => listening.onProbe?.(new Blob(['so far'])) };
 }
 
 for (const wakeWord of [false, true]) {
@@ -113,9 +115,9 @@ for (const kind of ['empty', 'hallucinated', 'digit', 'failed', 'echo']) {
     interrupt: () => assert.fail('noise must not cancel playback or native history') });
     h.audio.canInterrupt = true; h.audio.play = () => playing.promise;
     await h.conversation.start({}); const first = h.say(); await tick();
-    h.beginSpeech(); assert.ok(h.calls.includes('holdPlayback'));
+    h.beginSpeech(); await h.probe();
     await h.say();
-    assert.ok(h.calls.includes('resumePlayback'));
+    assert.ok(!h.calls.includes('holdPlayback'), 'a sound without words never pauses the reply');
     assert.equal(h.conversation.state, 'speaking');
     assert.equal(turns, 1); assert.equal(syntheses, 1);
     playing.resolve(); await first;
@@ -849,11 +851,13 @@ test('spoken interruption preserves a captured correction while Core drains long
   delta('Here is a sufficiently long first sentence. '); await tick();
   assert.equal(h.conversation.state, 'speaking');
   h.beginSpeech();
-  assert.equal(speechStopped, 0, 'energy holds playback without irreversible cancellation');
+  assert.ok(!h.calls.includes('holdPlayback'), 'energy alone holds nothing');
+  await h.probe();
+  assert.equal(speechStopped, 0, 'words hold playback without irreversible cancellation');
   assert.ok(h.calls.includes('holdPlayback'));
   const second = h.say(); await tick();
   assert.equal(speechStopped, 1, 'confirmed speech cancels the previous playback');
-  assert.equal(transcriptions, 2);
+  assert.equal(transcriptions, 3, 'recognized while it went on, then whole');
   assert.equal(turnCount, 1, 'no overlapping model call before server acknowledgement');
   t.mock.timers.enable({ apis: ['setTimeout'] });
   t.mock.timers.tick(11000);
@@ -895,7 +899,8 @@ for (const text of ['Stop, stop, stop.', 'Nestor, arrête de parler !', 'Arrête
     h.audio.canInterrupt = true;
     h.audio.play = (_bytes, signal) => new Promise(resolve => signal.addEventListener('abort', () => { stopped++; resolve(); }, { once: true }));
     await h.conversation.start({}); const first = h.say(); await tick();
-    h.beginSpeech(); assert.equal(stopped, 0, 'hold sound before confirmation without discarding the reply');
+    h.beginSpeech(); await h.probe();
+    assert.equal(stopped, 0, 'hold sound before confirmation without discarding the reply');
     assert.ok(h.calls.includes('holdPlayback'));
     await h.say(); await first;
     assert.equal(stopped, 1, 'a confirmed Stop cancels the held playback');
@@ -1491,26 +1496,76 @@ test('a surface without early recognition, or one that declines it, transcribes 
   plain.conversation.stop(); declining.conversation.stop();
 });
 
-test('a reply keeps playing over a short noise and is held only when the sound goes on', async () => {
-  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+test('a reply keeps playing over a sound without words, however long it lasts', async () => {
   const playing = deferred(); let transcriptions = 0;
-  const h = harness({ interruptionHoldDelayMs: 40,
-    transcribe: async () => (++transcriptions === 1 ? 'Bonjour' : ''),
+  const h = harness({ transcribe: async () => (++transcriptions === 1 ? 'Bonjour' : ''),
     turn: async () => ({ text: 'Une réponse à terminer.' }),
     interrupt: () => assert.fail('a noise must not cancel the reply') });
   h.audio.canInterrupt = true; h.audio.play = () => playing.promise;
   await h.conversation.start({}); const first = h.say(); await tick();
-  // A tap: the microphone hears it, and it is over before the hold delay.
   h.beginSpeech();
-  assert.ok(!h.calls.includes('holdPlayback'), 'nothing pauses at the first sound');
-  await h.say(); await wait(60);
-  assert.ok(!h.calls.includes('holdPlayback'), 'a sound that ended in time never paused the reply');
-  assert.equal(h.conversation.state, 'speaking');
-  // A sound that goes on: the reply is held once the delay has passed, and resumes when it was not speech.
-  h.beginSpeech(); await wait(60);
-  assert.ok(h.calls.includes('holdPlayback'), 'a sound that goes on holds the reply');
+  assert.equal(h.conversation.state, 'speaking', 'the reply is still shown as speaking');
+  await h.probe();
   await h.say();
-  assert.ok(h.calls.includes('resumePlayback'));
+  assert.ok(!h.calls.includes('holdPlayback'), 'nothing paused the reply');
+  assert.equal(h.conversation.state, 'speaking');
   playing.resolve(); await first;
   assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('words heard over a reply hold it, and it resumes when the whole sound was not speech', async () => {
+  const playing = deferred(); let transcriptions = 0;
+  const h = harness({ transcribe: async () => ['Bonjour', 'Attends', ''][transcriptions++],
+    turn: async () => ({ text: 'Une réponse à terminer.' }),
+    interrupt: () => assert.fail('an utterance without words must not cancel the reply') });
+  h.audio.canInterrupt = true; h.audio.play = () => playing.promise;
+  await h.conversation.start({}); const first = h.say(); await tick();
+  h.beginSpeech(); await h.probe();
+  assert.ok(h.calls.includes('holdPlayback'), 'words hold the reply');
+  assert.equal(h.conversation.state, 'hearing');
+  await h.say();
+  assert.ok(h.calls.includes('resumePlayback'));
+  assert.equal(h.conversation.state, 'speaking');
+  playing.resolve(); await first;
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('a reply waits a moment for a sound to be recognized, then starts even if the sound goes on', async () => {
+  const reply = deferred(), playing = deferred(); let transcriptions = 0;
+  const h = harness({ transcribe: async () => (++transcriptions === 1 ? 'Bonjour' : ''),
+    turn: () => reply.promise, interrupt: () => assert.fail('a noise must not cancel the turn') });
+  h.audio.canInterrupt = true; h.audio.play = () => { h.calls.push('play'); return playing.promise; };
+  await h.conversation.start({}); const first = h.say(); await tick();
+  assert.equal(h.conversation.state, 'thinking');
+  h.beginSpeech();                       // a keyboard, a door: it goes on and never ends
+  reply.resolve({ text: 'La réponse est prête.', language: 'fr' });
+  for (let i = 0; i < 5; i++) await tick();
+  assert.ok(!h.calls.includes('play'), 'the sound may be a person: the reply does not start over it');
+  await h.probe();                       // no words in what was heard so far
+  for (let i = 0; i < 5; i++) await tick();
+  assert.ok(h.calls.includes('play'), 'the reply does not wait for the sound to end');
+  assert.equal(h.conversation.state, 'speaking');
+  playing.resolve(); await first;
+  h.conversation.stop();
+});
+
+test('a sound that goes on is offered once for recognition, a short one never', () => {
+  const voiced = () => new Float32Array(100).fill(0.1), silent = () => new Float32Array(100);
+  const long = new Endpoint(1000, 100, 250); long.probeMs = 800;
+  long.push(voiced());                                   // the onset
+  for (let i = 0; i < 7; i++) long.push(voiced());
+  assert.deepEqual(long.drain(), [], 'not yet: 700 ms after the onset');
+  long.push(voiced());
+  const events = long.drain();
+  assert.deepEqual(events.map(event => event.type), ['probe']);
+  assert.equal(events[0].samples.length, 900, 'the lead-in and what was heard since');
+  for (let i = 0; i < 10; i++) long.push(voiced());
+  assert.deepEqual(long.drain(), [], 'once per sound');
+  const short = new Endpoint(1000, 100, 250); short.probeMs = 800;
+  short.push(voiced()); short.push(voiced());
+  let utterance; for (let i = 0; i < 3 && !utterance; i++) utterance = short.push(silent());
+  assert.ok(utterance, 'a short sound ends by itself');
+  assert.deepEqual(short.drain(), []);
 });
