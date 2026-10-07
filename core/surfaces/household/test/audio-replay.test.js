@@ -37,20 +37,26 @@ test('capture gaps cannot splice old audio into a new window and long frames rem
   assert.equal(clip.samples.at(-1), 24999);
 });
 
-test('one worklet-block allowance preserves a complete maximum utterance at actual browser sample rates', t => {
+test('long utterances retain every submitted sample while review stays bounded at browser sample rates', t => {
   for (const rate of [16000, 44100, 48000]) {
     const history = new AudioHistory(rate, () => 0, 1024), endpoint = new Endpoint(rate);
     t.after(() => history.clear());
     let result, frame = 0;
-    while (!result) {
+    while (frame * 1024 < rate * 25) {
       const samples = new Float32Array(1024).fill(.1);
+      history.push(samples, ++frame * 1024 / rate * 1000);
+      assert.equal(endpoint.push(samples), null);
+    }
+    while (!result) {
+      const samples = new Float32Array(1024);
       history.push(samples, ++frame * 1024 / rate * 1000);
       result = endpoint.push(samples);
     }
-    const clip = history.freeze('utterance', () => {}, result.length);
-    assert.equal(clip.samples.length, result.length);
-    assert.ok(result.length >= rate * 20 && result.length < rate * 20 + 1024);
-    assert.equal(history.freeze('microphone', () => {}, rate * 20).samples.length, rate * 20);
+    const clip = history.freeze('utterance', () => {}, rate * 20);
+    assert.equal(clip.samples.length, rate * 20);
+    assert.ok(result.length >= rate * 26 && result.length < rate * 26 + 2048);
+    assert.ok(result[0] > .09, 'the first words stay in the submitted audio');
+    assert.ok(result[Math.floor(rate * 24)] > .09, 'speech after the old cap stays in the same utterance');
   }
 });
 
@@ -162,6 +168,26 @@ function fakeBrowser(t) {
     nodes[0].port.onmessage?.({ data: { samples: new Float32Array(count).fill(value), epoch: nodes[0].port.epoch, time } });
   } };
 }
+
+test('the real capture adapter keeps the microphone live through long speech and sends one full WAV on pause', async t => {
+  const browser = fakeBrowser(t), lifetime = new AbortController(), phrases = [], errors = [];
+  const audio = await openAudio(lifetime.signal, error => errors.push(error));
+  t.after(() => audio.close());
+  audio.listen((blob, capture) => phrases.push({ blob, capture }), () => {});
+  for (let i = 0; i < 450; i++) browser.send(i < 200 ? .1 : .2);
+  assert.equal(browser.track.enabled, true);
+  assert.equal(phrases.length, 0);
+  for (let i = 0; i < 10; i++) browser.send();
+  assert.equal(phrases.length, 1);
+  assert.equal(phrases[0].capture.audioMs, 46000);
+  const wav = new DataView(await phrases[0].blob.arrayBuffer());
+  assert.equal(wav.getUint32(40, true), 46000 * 2);
+  assert.equal(wav.getInt16(44, true), 3276);
+  assert.equal(wav.getInt16(44 + 20000 * 2, true), 6553);
+  assert.equal(audio.reviewStatus().seconds, 20);
+  assert.equal(browser.track.enabled, false, 'capture pauses only after the natural end of speech');
+  assert.deepEqual(errors, []);
+});
 
 test('a short spoken interruption cuts on onset and reaches STT promptly, while impulses and ordinary pauses remain distinct', async t => {
   const h = fakeBrowser(t), controller = new AbortController();

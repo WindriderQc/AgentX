@@ -100,14 +100,14 @@ test('ordinary short corrections and English speech keep their original transcri
   assert.deepEqual(submitted, ['Orion.', "Let's go.", 'Numéro 6', 'Stop, explique le budget.']);
 });
 
-for (const kind of ['empty', 'hallucinated', 'digit', 'failed', 'echo']) {
+for (const kind of ['empty', 'hallucinated', 'url', 'digit', 'failed', 'echo']) {
   test(`a ${kind} noise candidate during playback resumes the same response without cancelling history`, async () => {
     const playing = deferred(); let transcriptions = 0, turns = 0, syntheses = 0;
     const h = harness({ transcribe: async () => {
       if (++transcriptions === 1) return 'Bonjour';
       if (kind === 'failed') throw new Error('STT unavailable');
       if (kind === 'echo') return 'Réponse à terminer';
-      return kind === 'empty' ? '' : kind === 'digit' ? '6.' : 'Thanks for watching.';
+      return kind === 'empty' ? '' : kind === 'digit' ? '6.' : kind === 'url' ? 'www.youtube.com' : 'Thanks for watching.';
     }, turn: async () => { turns++; return { text: 'Une réponse à terminer.' }; },
     synthesize: async () => { syntheses++; return new ArrayBuffer(10); },
     interrupt: () => assert.fail('noise must not cancel playback or native history') });
@@ -412,11 +412,52 @@ test('no early offer without the setting, in an interruption, or when sound runs
   assert.deepEqual(interruption.drain(), []);
 });
 
-test('endpoint caps uninterrupted sound at twenty seconds', () => {
+test('a long utterance ends at the pause and retains its words across twenty seconds', () => {
   const endpoint = new Endpoint(1000);
-  let result;
-  for (let i = 0; i < 200; i++) result = endpoint.push(new Float32Array(100).fill(0.1));
-  assert.equal(result.length, 20000);
+  for (let i = 0; i < 450; i++) assert.equal(endpoint.push(new Float32Array(100).fill(i < 200 ? 0.1 : 0.2)), null);
+  assert.equal(endpoint.speaking, true);
+  for (let i = 0; i < 9; i++) assert.equal(endpoint.push(new Float32Array(100)), null);
+  const result = endpoint.push(new Float32Array(100));
+  assert.equal(result.length, 46000);
+  assert.ok(result[0] > 0.09 && result[19999] > 0.09);
+  assert.ok(result[20000] > 0.19 && result[44999] > 0.19);
+});
+
+test('the upload ceiling fails explicitly instead of submitting a partial turn', () => {
+  const { MAX_CAPTURE_BYTES } = require('../public/browser-conversation');
+  assert.ok(MAX_CAPTURE_BYTES + 65536 <= 32 * 1024 * 1024);
+  const endpoint = new Endpoint(1000);
+  endpoint.maxSamples = 1000;
+  for (let i = 0; i < 10; i++) assert.equal(endpoint.push(new Float32Array(100).fill(0.1)), null);
+  assert.throws(() => endpoint.push(new Float32Array(100).fill(0.1)), /Aucun message partiel/);
+  assert.equal(endpoint.total, 1000);
+});
+
+test('the reported bare URL artifact is silent, while a request containing that URL stays intact', async () => {
+  const heard = [];
+  for (const text of ['www.youtube.com', 'https://www.youtube.com.', 'YouTube.com', 'Ouvre www.youtube.com pour moi.']) {
+    const h = harness({ transcribe: async () => ({ text, detectedLanguage: 'en' }),
+      turn: async (_session, value) => { heard.push(value); return { text: 'Compris.' }; } });
+    await h.conversation.start({ language: 'auto' }); await h.say(); h.conversation.stop();
+  }
+  assert.deepEqual(heard, ['Ouvre www.youtube.com pour moi.']);
+});
+
+test('automatic reply speech follows the answer despite an incorrect STT language, then stays stable', async () => {
+  for (const [heard, chunks, expected] of [
+    [{ text: 'Explique les nuages.', detectedLanguage: 'en' },
+      ['Les nuages contiennent des gouttelettes d’eau. ', 'The title is just a label. ', 'Elles restent dans le ciel. '], 'fr'],
+    [{ text: 'Can you help me?', detectedLanguage: 'fr' },
+      ['Here is the answer you asked for. ', 'Voilà le titre en français. '], 'en']
+  ]) {
+    const spoken = [];
+    const h = harness({ transcribe: async () => heard,
+      turn: async (_session, _text, _signal, delta) => { for (const text of chunks) delta(text); return { text: chunks.join('') }; },
+      synthesize: async reply => { spoken.push(reply.language); return new ArrayBuffer(4); } });
+    await h.conversation.start({ language: 'auto' }); await h.say(); h.conversation.stop();
+    assert.ok(spoken.length >= 2);
+    assert.ok(spoken.every(language => language === expected));
+  }
 });
 
 test('two automatic turns use one selected private session and wait for playback', async () => {
