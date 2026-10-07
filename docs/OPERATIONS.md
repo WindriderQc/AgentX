@@ -798,9 +798,15 @@ The optional [spoken-controls adapter](../integrations/voix/README.md) adds loca
 Stop/silence recognition on the same VoiX process before Whisper transcription.
 `VOIX_SPOKEN_CONTROLS_ENABLED=true` selects that shared upload endpoint for Household and PsyX only after the
 instance installs and qualifies its model. False preserves ordinary transcription.
-In Nestor browser replies, microphone energy holds playback while transcription
-checks the candidate. Empty or failed transcription resumes the remaining audio;
-confirmed speech or a Stop control cancels the old turn before another starts.
+In Nestor browser replies, energy is not speech: a sound the microphone hears
+over a reply is a candidate, and the reply keeps playing. A candidate that goes
+on for 0.8 s is recognized as far as it was heard, and every candidate is
+recognized when it ends. Words hold the reply, reversibly, until the whole
+utterance is recognized; confirmed speech or a Stop control then cancels the old
+turn before another starts, and anything else resumes the remaining audio. A
+click, a keyboard or a door never pauses a reply. A reply that has not started
+yet waits for a candidate to be recognized, a moment, so it does not begin over
+a person who is speaking.
 When no reply text has arrived 3 s after a voice turn starts, Nestor says one short
 holding phrase (« Un instant… ») and shows that it is still thinking; hearing that
 phrase back is echo, not an interruption. Cancelling an OpenClaw turn before it
