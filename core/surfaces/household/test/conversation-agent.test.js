@@ -222,6 +222,7 @@ test('personal voice does not deliver a final tool promise without a current res
   const voice = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' };
   const cases = [
     { native: "I'll check your personal tasks and search for urgent items right now.", expected: 'I could not complete that check. Please try again.', receipts: [] },
+    { native: 'Let me check.', expected: 'I could not complete that check. Please try again.', receipts: [] },
     { native: 'Je regarde tes tâches.', expected: 'Je n’ai pas pu terminer cette vérification. Réessaie ta demande.', receipts: [] },
     { native: 'Je vais vérifier tes tâches.', expected: 'Je n’ai pas pu terminer cette vérification. Réessaie ta demande.',
       receipts: [{ runId, observed: true, status: 'failed', tool: 'agentx__list_personal_tasks' }] },
