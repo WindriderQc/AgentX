@@ -456,10 +456,14 @@ async function getLeaderboardEntryStats(matchQuery = {}) {
                         $cond: [{
                             $and: [
                                 { $eq: ['$execution_target.executionKind', 'harness'] },
-                                { $eq: ['$execution_target.mode', 'isolated_model'] },
+                                // A bare model proves a portable single call; an agent proves its
+                                // native run inside the tool and turn policy of its catalogue entry.
+                                { $or: [
+                                    { $and: [{ $eq: ['$execution_target.mode', 'isolated_model'] }, { $eq: ['$execution_receipt.executionProfile', 'portable'] }] },
+                                    { $and: [{ $eq: ['$execution_target.mode', 'native_agent'] }, { $eq: ['$execution_receipt.executionProfile', 'native-ceiling'] }] }
+                                ] },
                                 { $eq: ['$execution_target.available', true] },
                                 { $eq: ['$execution_receipt.schema', 'agentx.worker-receipt/v1'] },
-                                { $eq: ['$execution_receipt.executionProfile', 'portable'] },
                                 { $eq: ['$execution_receipt.finalState', 'succeeded'] },
                                 { $eq: ['$execution_receipt.result.contractSatisfied', true] },
                                 { $eq: [{ $type: '$execution_receipt.fingerprint' }, 'string'] },

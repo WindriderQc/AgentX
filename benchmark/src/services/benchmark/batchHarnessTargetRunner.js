@@ -152,7 +152,7 @@ function createHarnessTargetRunner(context) {
                                 temperature: executionConfig.temperature ?? null,
                                 top_p: executionConfig.top_p ?? null,
                                 seed: seedForRepeat(executionConfig, repeatIndex),
-                                rankable_mode: target.mode === 'isolated_model',
+                                rankable_mode: true,
                                 inference_contract_fingerprint: target.profile.fingerprint,
                                 artifact_digest: execution.receipt.identity.model.digest || null
                             },
@@ -191,7 +191,7 @@ function createHarnessTargetRunner(context) {
                                 sampling_source: executionConfig.sampling_source || 'controlled_override',
                                 think: executionConfig.think === true,
                                 think_mode: executionConfig.think_mode || (executionConfig.think === true ? 'on' : 'off'),
-                                rankable_mode: target.mode === 'isolated_model',
+                                rankable_mode: true,
                                 inference_contract_fingerprint: target.profile.fingerprint
                             },
                             executionTarget: target,

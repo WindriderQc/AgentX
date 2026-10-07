@@ -263,7 +263,10 @@ function normalizeBatchTargets({ host, models, targets } = {}) {
 }
 
 function executionHost(target) {
-  return target.executionKind === 'ollama' ? target.host : `harness:${target.harness.name}`;
+  if (target.executionKind === 'ollama') return target.host;
+  // An agent is its own leaderboard entry: two agents on one model, or an agent
+  // and the bare model behind it, never share a row.
+  return target.mode === 'native_agent' ? `harness:${target.harness.name}:${target.id}` : `harness:${target.harness.name}`;
 }
 
 /**

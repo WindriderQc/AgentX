@@ -135,7 +135,18 @@ models. Raw targets publish judge eligibility only after the native JSON format
 and the existing judge seed contract are supported. The qualified
 2026.9.4 completions transport forwards both through the native parameter wrapper. Paid native agent benchmark targets stay unavailable until a native
 spend/turn boundary can be qualified before execution; model mode has a single
-invocation ceiling. Existing comparison cohorts remain separated by execution identity.
+invocation ceiling.
+
+A native agent ranks on the same leaderboard as bare models. The campaign kind
+does not split the quality cohort: results share one when scorer, judge and
+generation settings match. The execution identity stays distinct. An agent is
+its own entry (`harness:<harness>:<target id>` as its host), labelled as an
+agent with its context window and tool count, so two agents on one model, or an
+agent and the bare model behind it, never share a row. Its context and tools are
+part of what is measured, not a comparability defect. An agent row is rankable
+on a complete `native-ceiling` worker receipt, a bare harness model on a
+`portable` one; the other exclusions (truncation, infrastructure failure,
+executable verification) apply to both.
 
 SDK identity proves the native selected route and requested model alias. It
 does not observe the served model revision or the upstream provider behind a

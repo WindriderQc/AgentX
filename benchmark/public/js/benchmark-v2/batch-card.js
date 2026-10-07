@@ -226,7 +226,7 @@ function _resolveHost(batch) {
     const targets = batch.targets || batch.plan?.targets;
     const targetHosts = Array.isArray(targets) ? [...new Set(targets.map(target =>
         target.executionKind === 'harness' && target.harness?.name
-            ? `harness:${target.harness.name}` : target.host
+            ? `harness:${target.harness.name}${target.mode === 'native_agent' ? `:${target.id}` : ''}` : target.host
     ).filter(Boolean))] : [];
     if (targetHosts.length > 1) {
         return { name: targetHosts.map(_shortUrl).join(' · '), gpu: '' };
