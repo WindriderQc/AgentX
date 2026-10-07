@@ -207,3 +207,19 @@ def test_low_noise_after_the_cut_does_not_move_the_fade():
     cut = np.concatenate([np.full(4800, 0.5, dtype=np.float32), np.full(960, 0.002, dtype=np.float32)])
     soft = soften_ending(cut)
     assert abs(soft[4799]) < 0.01 and soft[2000] == np.float32(0.5) and not soft[4800:].any()
+
+
+def test_diagnostic_no_end_fade_preserves_a_quiet_final_chunk():
+    quiet_tail = np.concatenate([np.full(4800, 0.5, dtype=np.float32),
+                                 np.full(960, 0.002, dtype=np.float32)])
+    def generate(text, voice):
+        yield quiet_tail
+    worker = Worker(generate, "narrator", soften_final=False)
+    job = worker.submit(dict(id="raw", text="Bonjour.", voice="narrator"))
+    thread = threading.Thread(target=worker.execute, args=(job,))
+    thread.start()
+    events = [job.output.get(timeout=1) for _ in range(5)]
+    thread.join(timeout=1)
+    final = np.frombuffer(base64.b64decode(events[2]["pcm"]), dtype="<f4")
+    assert np.array_equal(final, quiet_tail)
+    assert events[-1]["type"] == "done"
