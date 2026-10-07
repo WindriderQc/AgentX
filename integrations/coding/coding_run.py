@@ -155,7 +155,8 @@ def push_and_open_pr(workspace: Path, branch: str, task_id: str, title: str, sum
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("task_id")
-    parser.add_argument("--timeout-seconds", type=int, default=3600)
+    # A local model needs well over an hour to read the code, fix and test a Core change.
+    parser.add_argument("--timeout-seconds", type=int, default=7200)
     args = parser.parse_args()
     if not TASK_ID.fullmatch(args.task_id):
         parser.error("task id is four digits")

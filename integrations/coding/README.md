@@ -55,6 +55,10 @@ live outside Git, by default in `~/.config/agentx/coding.env`
   `WindriderQc/AgentX` and `main`.
 - `AGENTX_CORE_URL`: default loopback port 3180.
 
+A run has two hours by default; `--timeout-seconds` changes it. Continuous
+integration tests the worker's draft pull requests like ready ones, because
+its branches are named `agentx/coding-task-<id>`.
+
 ## Run one task from the Pipeline page
 
 Core calls `coding_dispatch_control.py` over SSH (`CODING_DISPATCHER_SSH_TARGET`,
