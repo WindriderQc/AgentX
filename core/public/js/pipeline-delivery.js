@@ -227,12 +227,12 @@
       stateEl.textContent = run ? `Request ${run.pipelineId || pending?.pipelineId || ''} · ${formatStatus(run.phase)}` : `Submitting request for ${pending?.pipelineId || 'one task'}…`;
     } else {
       stateEl.dataset.tone = 'ready';
-      stateEl.textContent = 'Host observed · one local worker · provider spend ceiling $0';
+      stateEl.textContent = 'Host observed · one local coding worker';
     }
     const summary = control?.summary;
     detail.textContent = summary
-      ? `${summary.eligibleTasks} of ${summary.queuedTasks} queued tasks eligible for this worker · ${summary.privateQueuedTasks} personal/household tasks outside its scope. Only unassigned, low-risk, review-only coding tasks with declared authority sources, permitted scope, available budgets and completed dependencies can start. Board filters do not change this list.`
-      : 'Eligibility comes from the host dispatcher. Task status, dependencies, automation scope and budgets are rechecked before execution.';
+      ? `${summary.eligibleTasks} of ${summary.queuedTasks} queued tasks eligible for this worker · ${summary.privateQueuedTasks} personal/household tasks outside its scope. Only unassigned, non-private agentx-coding tasks can start. Board filters do not change this list.`
+      : 'The host checks task status, ownership, coding service and private lane before launch.';
     if (control?.inference && !controller?.error && !controller?.checking && control.available) {
       stateEl.textContent = `Task ${control.inference.pipelineId} · ${inferenceSummary(control.inference)}`;
       detail.textContent = `Task attempt ${control.inference.attempt} · ${control.inference.requestCount} model call(s). Inference retries keep this attempt and never replay worker tools.`;

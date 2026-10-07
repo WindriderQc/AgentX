@@ -100,8 +100,8 @@ describe('Pipeline open-work experience', () => {
     expect(view).toContain('Starts one bounded local worker');
     expect(view).toContain('scheduling, merge, and deploy stay off');
     expect(script).toContain('window.PipelineLaunchController');
-    expect(script).toContain('provider spend ceiling $0');
-    expect(script).toContain('declared authority sources');
+    expect(script).toContain('one local coding worker');
+    expect(script).toContain('Only unassigned, non-private agentx-coding tasks can start');
     expect(view).toContain('id="pipelineTeamEligibilityReasons"');
     expect(view).toContain('id="pipelineTeamLaunchRetry"');
   });
