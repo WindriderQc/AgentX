@@ -162,6 +162,25 @@ test('Core-only retains the launcher refusal when the bounded retry expires', as
   assert.ok(now() < 35_000);
 });
 
+test('a recreated service that does not answer yet is read again until it serves the revision', async () => {
+  const { now, pause } = clock();
+  const readings = [{ benchmark: null }, { benchmark: null }, { benchmark: 'new' }];
+  const result = await actions.awaitServed({ read: async () => readings.shift(), revision: 'new', deadline: 60_000, now, pause });
+  assert.deepEqual(result, { served: { benchmark: 'new' }, mismatched: [] });
+  assert.equal(readings.length, 0);
+  assert.equal(now(), 4_000);
+});
+
+test('a service still on another revision, or silent, when the wait ends is reported with its last reading', async () => {
+  const { now, pause } = clock();
+  let reads = 0;
+  const result = await actions.awaitServed({ read: async () => { reads += 1; return { core: 'new', benchmark: 'old', rag: null }; },
+    revision: 'new', deadline: 7_000, now, pause });
+  assert.deepEqual(result, { served: { core: 'new', benchmark: 'old', rag: null }, mismatched: ['benchmark', 'rag'] });
+  assert.equal(reads, 4);
+  assert.ok(now() <= 7_000);
+});
+
 for (const services of [['core', 'rag'], ['benchmark'], ['rag']]) {
   test(`${services.join(',')} still waits for idle before a recreate`, async () => {
     let called = false;
