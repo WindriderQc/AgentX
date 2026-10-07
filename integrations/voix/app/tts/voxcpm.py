@@ -1,4 +1,8 @@
-"""Cancellable LAN streaming client for a warmed VoxCPM2 worker."""
+"""Cancellable LAN streaming client for a warmed cloned-voice worker.
+
+The worker speaks ``voix-pcm-v1`` and declares its own sample rate: the VoxCPM2
+worker streams 48 kHz, the Pocket TTS worker 24 kHz.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -15,6 +19,9 @@ import certifi
 import numpy as np
 
 from app.config import settings
+
+
+SAMPLE_RATES = (16000, 22050, 24000, 44100, 48000)
 
 
 def _url() -> str:
@@ -57,10 +64,10 @@ class Decoder:
         if kind == "meta":
             if self.rate is not None or event.get("protocol") != "voix-pcm-v1":
                 raise ValueError("Invalid audio stream metadata")
-            if (event.get("sample_rate") != 48000 or event.get("encoding") != "f32le"
+            if (event.get("sample_rate") not in SAMPLE_RATES or event.get("encoding") != "f32le"
                     or event.get("channels") != 1 or event.get("voice") != self.voice):
                 raise ValueError("Unexpected audio format or voice")
-            self.rate = 48000
+            self.rate = event["sample_rate"]
         elif kind == "audio":
             if self.rate is None or event.get("sequence") != self.frames + 1:
                 raise ValueError("Missing or reordered audio frame")

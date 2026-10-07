@@ -40,7 +40,7 @@ changing the threshold on an instance.
 
 A synthesis request names its own `tts_provider`, `language` and `voice`; the
 applied choice comes back in `X-Voix-Provider`, `X-Voix-Voice` and
-`X-Voix-Language`. An unavailable VoxCPM2 worker answers `503` before any audio:
+`X-Voix-Language`. An unavailable cloned-voice worker answers `503` before any audio:
 the caller chooses another voice, the service never substitutes one
 ([docs/voxcpm-streaming.md](docs/voxcpm-streaming.md)).
 
@@ -86,7 +86,7 @@ python -m pytest -q
 
 These tests need no speech model and no GPU: engines are replaced by fakes, so
 they cover the HTTP contract, request validation, the voice catalog, the stream
-protocol and the VoxCPM2 worker logic. `node --test tests/voice-audio.test.cjs`
+protocol and the cloned-voice worker logic. `node --test tests/voice-audio.test.cjs`
 covers the browser player. Neither proves that a host transcribes or speaks:
 qualify recognition, each engine and audible playback on the real voice host.
 

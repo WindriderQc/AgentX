@@ -5,7 +5,7 @@
   // (name, voice, colour, personality) through the prompt library's persona
   // routes; it never touches the agent's runtime, tools or permissions.
 
-  const PROVIDERS = [['kokoro', 'Kokoro'], ['voxcpm', 'VoxCPM (cloned voice)'], ['windows_sapi', 'Windows speech']];
+  const PROVIDERS = [['kokoro', 'Kokoro'], ['voxcpm', 'Cloned voice'], ['windows_sapi', 'Windows speech']];
   const STYLES = [['', 'Default avatar'], ['initials', 'Initials'], ['orb', 'Orb']];
 
   function create({ esc, reload, fetchImpl = window.fetch.bind(window) }) {
