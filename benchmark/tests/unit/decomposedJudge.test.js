@@ -180,6 +180,21 @@ describe('Default voting (single call, voting_count=1)', () => {
         expect(await askBinaryQuestion('Paris', 'How many?', JUDGE_CONFIG, {}, { graded })).toBe('2 or more');
         expect(JSON.parse(mockFetchFn.mock.calls[1][1].body).format.enum).toEqual(['0', '1', '2 or more']);
     });
+    test('a reply that is not an answer is asked again, constrained to the answers', async () => {
+        // A judge that redid the task instead of judging it.
+        mockFetchFn.mockImplementation(() => mockFetchResponse('NO'));
+        mockFetchFn.mockResolvedValueOnce({ ok: true, json: async () => ({ response: '- Rhythm\n- System\n- Trust\n- Unity' }) });
+        expect(await askBinaryQuestion('- Rhythm', 'Does it satisfy the constraints?', JUDGE_CONFIG)).toBe(false);
+        const [first, retry] = mockFetchFn.mock.calls.map(call => JSON.parse(call[1].body));
+        expect(mockFetchFn).toHaveBeenCalledTimes(2);
+        expect(first.format).toBeUndefined();
+        expect(retry.format).toEqual({ type: 'string', enum: ['YES', 'NO'] });
+    });
+    test('a judge that never answers is asked twice, then the question stays unanswered', async () => {
+        mockFetchFn.mockImplementation(() => mockFetchResponse('undecidable'));
+        expect(await askBinaryQuestion('Paris', 'Correct?', JUDGE_CONFIG)).toBeNull();
+        expect(mockFetchFn).toHaveBeenCalledTimes(2);
+    });
     test('carries the standalone calibration workload into binary judging', async () => {
         const controller = new AbortController();
         Object.defineProperty(controller.signal, 'workloadId', { value: 'calibration:binary' });
@@ -270,7 +285,8 @@ describe('Default voting (single call, voting_count=1)', () => {
         mockFetchSequence(['Based on the analysis, YES']);
         const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
         expect(result).toBeNull();
-        expect(mockFetchFn).toHaveBeenCalledTimes(1);
+        // Asked once more, constrained to the answers; the same prose is still not one.
+        expect(mockFetchFn).toHaveBeenCalledTimes(2);
     });
 });
 
@@ -630,6 +646,9 @@ describe('graded (counted) questions', () => {
         expect(parseGradedAnswer(reasoned, MISSING_COUNT).credit).toBe(0.66);
         expect(parseGradedAnswer('checked every requirement.\n**0**', MISSING_COUNT).credit).toBe(1);
         expect(parseGradedAnswer('several problems.\nanswer: 3 or more', MISSING_COUNT).answer).toBe('3 or more');
+        // As a judge answered on 2026-10-07: its count, then the listed option copied with its quotes.
+        expect(parseGradedAnswer('all 5 key points are missing.\n\ncount: 5\n\n"3 or more"', MISSING_COUNT).answer).toBe('3 or more');
+        expect(parseGradedAnswer('nothing is missing.\n\u201c0\u201d', MISSING_COUNT).credit).toBe(1);
     });
 
     test('does not take a number buried in the last line of prose', () => {
