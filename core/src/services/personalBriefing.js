@@ -32,7 +32,15 @@ function example(tasks) {
 /**
  * @param {object[]} tasks public personal tasks (personalTaskView.publicTask)
  */
-function composePersonalBriefing(tasks = [], now = new Date(), { timeZone = 'America/Toronto' } = {}) {
+function defaultBriefingTimeZone() {
+  // Lazy require: the household domain owns the configured calendar zone and
+  // imports this module's view layer, so resolve it at call time, not load time.
+  const { familyTimeZone } = require('../domains/household/family');
+  return familyTimeZone();
+}
+
+function composePersonalBriefing(tasks = [], now = new Date(), options = {}) {
+  const timeZone = options.timeZone || defaultBriefingTimeZone();
   const open = tasks.filter((task) => task && !['done', 'cancelled'].includes(task.status) && task.lane !== 'done');
   const byDue = (left, right) => new Date(left.dueAt) - new Date(right.dueAt) || left.priority - right.priority;
   const overdue = open.filter((task) => task.overdue).sort(byDue);
