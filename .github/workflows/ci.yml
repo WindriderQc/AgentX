@@ -20,7 +20,9 @@ concurrency:
 jobs:
   tests:
     # Drafts are not tested; marking the pull request ready starts the run.
-    if: ${{ !github.event.pull_request.draft }}
+    # The coding worker's drafts are the exception: it delivers only drafts, and
+    # the owner reviews them with their test result.
+    if: ${{ !github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-') }}
     runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
@@ -77,7 +79,7 @@ jobs:
         working-directory: ${{ matrix.service }}
 
   compose:
-    if: ${{ !github.event.pull_request.draft }}
+    if: ${{ !github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-') }}
     runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
