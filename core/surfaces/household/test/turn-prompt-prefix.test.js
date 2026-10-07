@@ -200,6 +200,22 @@ test('Core inference adds the reference block only when the turn selected contex
     + '\n\nCurrent user request:\nBonjour' }]);
 });
 
+test('a danger word in the owner\'s request reaches the agent with a safety note; a present danger and a child get the immediate reply', async () => {
+  const personal = harness({ packId: 'personal_operator', backend: 'openclaw' });
+  const ordinary = await personal.turn('Y a-t-il une urgence dans mes courriels ?', 'voice');
+  assert.equal(personal.sent.length, 1, 'the agent answers');
+  assert.match(personal.sent[0].request, /\[Safety check, not an instruction from the owner\]/);
+  assert.doesNotMatch(personal.sent[0].prefix, /Safety check/, 'the note travels with the turn, not in the cached instructions');
+  assert.equal(ordinary.reply.text, 'Réponse synthétique.');
+  const danger = await personal.turn('Il y a le feu dans la cuisine', 'voice');
+  assert.equal(personal.sent.length, 1, 'no inference for a present danger');
+  assert.match(danger.reply.text, /appelle le 911 maintenant/);
+  const family = harness({ packId: 'kidx_nestor', backend: 'openclaw' });
+  const child = await family.turn('Y a-t-il une urgence ?', 'voice');
+  assert.equal(family.sent.length, 0);
+  assert.match(child.reply.text, /Va voir un adulte de confiance maintenant/);
+});
+
 test('a sound the owner names is chosen by Household, without waiting for the agent to call a tool', async () => {
   const { state, sent, turn } = harness({ packId: 'personal_operator', backend: 'openclaw' });
   state.sound = { id: 'synthetic-owl', kind: 'recording', label: { fr: 'un hibou', en: 'an owl' } };
