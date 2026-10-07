@@ -110,7 +110,19 @@ def _run(model, audio: np.ndarray | str | BinaryIO, language: str, *, vad_filter
         initial_prompt=(settings.whisper_initial_prompt if language == "fr" else settings.whisper_hotwords) or None,
         condition_on_previous_text=False,
     )
+    if vad_filter:
+        # Require confident speech to start; retain weaker consonants once it
+        # starts. Notification chimes must not become a language-model input.
+        options["vad_parameters"] = dict(
+            threshold=settings.whisper_vad_threshold,
+            neg_threshold=min(0.35, max(settings.whisper_vad_threshold - 0.15, 0.01)),
+            min_speech_duration_ms=100,
+            min_silence_duration_ms=200,
+            speech_pad_ms=400,
+        )
     segments, info = model.transcribe(audio, **options)
+    if vad_filter and getattr(info, "duration_after_vad", None) == 0:
+        return _transcript("", None)
     if bilingual and info.language not in {"fr", "en"}:
         # faster-whisper detects language eagerly but decodes segments lazily.
         # Choose between the two languages advertised by the caller before any

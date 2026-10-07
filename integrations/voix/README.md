@@ -31,6 +31,12 @@ Core reaches the service through `VOIX_BASE_URL` (and `VOIX_FALLBACK_URL`).
 `/health` answers `status`, `version`, `warmup` and a constant `running: false`
 kept for callers written for the earlier service. Uploaded audio is decoded in
 memory and never stored; logs carry sizes and timings, never text.
+Uploaded transcription requires confident speech before decoding words; audio
+with no detected speech returns empty text. `WHISPER_VAD_THRESHOLD` tunes that
+probability threshold. Weaker phonemes remain accepted after speech starts, and
+400 ms of padding preserves word boundaries. Recognized words are not rejected
+for naming a website. Qualify noise and short/quiet speech together before
+changing the threshold on an instance.
 
 A synthesis request names its own `tts_provider`, `language` and `voice`; the
 applied choice comes back in `X-Voix-Provider`, `X-Voix-Voice` and

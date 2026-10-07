@@ -74,6 +74,7 @@ def static_settings() -> dict:
         "whisper_model": settings.whisper_model,
         "whisper_device": settings.whisper_device,
         "whisper_compute_type": settings.whisper_compute_type,
+        "whisper_vad_threshold": settings.whisper_vad_threshold,
         "whisper_hotwords": settings.whisper_hotwords,
         "whisper_initial_prompt": settings.whisper_initial_prompt,
         "tts_provider_default": settings.tts_provider,

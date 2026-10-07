@@ -9,6 +9,26 @@ from app.stt import whisper
 from app.stt.whisper import _run
 
 
+def test_uploaded_speech_threshold_can_be_calibrated_by_the_instance(monkeypatch):
+    from dataclasses import replace
+    calibrated = replace(whisper.settings, whisper_vad_threshold=0.7)
+    monkeypatch.setattr(whisper, "settings", calibrated)
+    class FakeModel:
+        def transcribe(self, audio, **options):
+            assert options["vad_parameters"]["threshold"] == 0.7
+            assert options["vad_parameters"]["neg_threshold"] == 0.35
+            return iter([SimpleNamespace(text="Oui.")]), SimpleNamespace(language="fr", duration_after_vad=0.2)
+    assert _run(FakeModel(), "speech.wav", "fr", vad_filter=True) == "Oui."
+
+
+@pytest.mark.parametrize("value", ["0", "1", "-0.1", "nan", "inf"])
+def test_invalid_speech_threshold_is_rejected_at_startup(monkeypatch, value):
+    from app.config import load_settings
+    monkeypatch.setenv("WHISPER_VAD_THRESHOLD", value)
+    with pytest.raises(ValueError, match="WHISPER_VAD_THRESHOLD"):
+        load_settings()
+
+
 def test_run_uses_quality_beam_and_requested_language():
     class FakeModel:
         kwargs = None
@@ -76,6 +96,24 @@ def test_uploaded_audio_keeps_speech_detection_on_cpu_fallback(monkeypatch, cuda
     assert [device for device, _, _ in calls] == (["cuda", "cpu"] if cuda_failure else ["cuda"])
     assert all(audio == "browser.wav" and opts["vad_filter"] is True for _, audio, opts in calls)
     assert all(opts["language"] == "fr" for _, _, opts in calls)
+    assert all(opts["vad_parameters"] == {
+        "threshold": 0.85, "neg_threshold": 0.35,
+        "min_speech_duration_ms": 100, "min_silence_duration_ms": 200, "speech_pad_ms": 400,
+    } for _, _, opts in calls)
+
+
+def test_uploaded_noise_with_no_detected_speech_never_decodes_or_retries_a_language():
+    calls = []
+    def no_words():
+        raise AssertionError("audio without speech must not decode words")
+        yield
+    class FakeModel:
+        def transcribe(self, audio, **options):
+            calls.append(options)
+            return no_words(), SimpleNamespace(language="ja", all_language_probs=None, duration_after_vad=0)
+    text = _run(FakeModel(), "notification.wav", "fr-en", vad_filter=True)
+    assert text == "" and text.language == ""
+    assert len(calls) == 1
 
 
 def test_real_subtitle_words_are_not_blacklisted():

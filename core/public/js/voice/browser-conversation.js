@@ -74,9 +74,7 @@
   const TRANSCRIPT_HALLUCINATIONS = new Set(['thank you', 'thank you very much', 'thank you so much', 'thanks for watching',
     'thank you for watching', 'thanks for watching and see you next time', 'please subscribe', 'you', 'bye',
     'merci d avoir regarde', 'merci d avoir regarde cette video', 'sous titres realises par la communaute d amara org',
-    'sous titrage st 501', 'sous titrage societe radio canada', 'sous titres par amara org',
-    'www youtube com', 'youtube com', 'https www youtube com', 'https youtube com',
-    'http www youtube com', 'http youtube com']);
+    'sous titrage st 501', 'sous titrage societe radio canada', 'sous titres par amara org']);
   function isTranscriptHallucination(text) {
     const value = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
       .replace(/[^a-z0-9]+/g, ' ').trim();
