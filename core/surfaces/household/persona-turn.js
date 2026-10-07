@@ -21,6 +21,7 @@ const { voiceRecallOptions } = require('./voice-note-recall');
 const teamAddress = require('./team-address');
 const { serverTimingsOf } = require('./turn-phases');
 const { turnDirective } = require('./persona-prompt');
+const { interruptedRequestContext } = require('./persona-records');
 
 // A team member's own personality: the active catalog persona naming that agent, so an
 // edit made on the Team page applies; the shared definition when the catalog is unreadable.
@@ -211,10 +212,15 @@ function createPersonaTurnHandler({
           event('status', { phase: 'activity', activity: { kind: 'member_addressed', agentId: member.agentId } });
         }
         if (backend === 'openclaw') await requireNativeAgent(agentIdFor(turnSession));
-        let history = [];
-        if (features.historyContext !== false && (backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore)) {
+        let history = [], interruptedContext = '';
+        const recoverInterrupted = backend === 'openclaw' && !member && personalVoice(turnSession, 'voice');
+        if (features.historyContext !== false && (backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore || recoverInterrupted)) {
           // Core inference reads a block window, so its history start (and the cached prefix) moves rarely.
-          try { history = sessionHistoryMessages(await loadSessionAuditRows(conversations, session, pack), pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {}); }
+          try {
+            const rows = await loadSessionAuditRows(conversations, session, pack);
+            history = sessionHistoryMessages(rows, pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {});
+            if (recoverInterrupted) interruptedContext = interruptedRequestContext(rows);
+          }
           catch { return fail(res, 503, 'Conversation history is unavailable; no out-of-context answer was generated.', 'VOICE_PERSONA_HISTORY_UNAVAILABLE'); }
         }
         if (!session.backend) {
@@ -270,7 +276,7 @@ function createPersonaTurnHandler({
         // model's prompt cache keeps them. Everything selected for this turn (notes,
         // members, knowledge, chores, saves, the sound note, the reply language, a team
         // member's last exchange and the reviewer's advice) goes last, beside the request.
-        const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }),
+        const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || '',
           isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId),
           isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('').trim();

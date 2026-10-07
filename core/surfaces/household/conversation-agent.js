@@ -11,6 +11,8 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 // had already streamed, which an append-only stream cannot express.
 const REPLACED_STREAM = /cannot be represented as an append-only response stream/i;
 const TOOL_PREAMBLE = /^(?:(?:i(?:'ll| will| am going to)|let me)\s+(?:check|search|look(?:\s+up|\s+into)?|consult|review|read|fetch|find|verify|inspect)|(?:je vais|laisse-moi)\s+(?:regarder|v[eé]rifier|chercher|consulter|lire|ouvrir|voir|faire une recherche)|je\s+(?:regarde|v[eé]rifie|cherche|consulte))\b/i;
+const LOOKUP_PROMISE = /\b(?:(?:i(?:'ll| will| am going to)|let me)\s+(?:check|search|look(?:\s+up|\s+into)?|consult|review|fetch|find|verify)|(?:je vais|laisse-moi)\s+(?:regarder|v[eé]rifier|chercher|consulter|faire\s+(?:une|la|cette)\s+(?:petite\s+)?recherche))\b/i;
+const WAIT_PROMISE = /\b(?:attends?\b|patiente\b|je\s+(?:te|vous)\s+reviens\b|(?:please\s+)?wait\b|hold on\b|i(?:'ll| will)\s+(?:get back|be back)\b)[^.!?\n]*[.!…]?\s*$/i;
 
 // OpenClaw opens a Responses stream with lifecycle rows and an empty message
 // scaffold while its agent is still preparing context. Only content, a tool call
@@ -29,8 +31,9 @@ function unfinishedToolPreamble(answer) {
   const text = String(answer || '').trim();
   // A progress line is not a final answer even if a tool ran. Its actual
   // receipts remain in evidence; the model did not deliver the checked result.
-  return text.length <= 220 && TOOL_PREAMBLE.test(text) && !/[,;:\n]/.test(text)
-    && !/[.!?]\s+\S/.test(text.replace(/[.!?…\s]+$/, ''));
+  return (text.length <= 220 && TOOL_PREAMBLE.test(text) && !/[,;:\n]/.test(text)
+    && !/[.!?]\s+\S/.test(text.replace(/[.!?…\s]+$/, '')))
+    || (LOOKUP_PROMISE.test(text) && WAIT_PROMISE.test(text.split(/\n\s*\n/).at(-1)));
 }
 
 // What changes from turn to turn (selected notes, approved knowledge, saves,
@@ -259,7 +262,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       if (!browserCall) {
         answer = evidence.answer.text;
         if (personalVoice(session, channel) && unfinishedToolPreamble(answer)) {
-          answer = /^(?:i|let me)\b/i.test(answer) ? 'I could not complete that check. Please try again.'
+          answer = scoreSpeechLanguage(answer).language === 'en' ? 'I could not complete that check. Please try again.'
             : 'Je n’ai pas pu terminer cette vérification. Réessaie ta demande.';
         }
         if (browserReply) {

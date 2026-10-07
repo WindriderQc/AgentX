@@ -81,7 +81,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     assert.equal(res.failure, undefined, JSON.stringify(res.failure));
     return res.payload;
   };
-  return { state, sent, turn, pack };
+  return { state, sent, turn, pack, turns };
 }
 
 const CASES = [
@@ -163,6 +163,35 @@ for (const { packId, backend } of CASES) {
     });
   }
 }
+
+for (const channel of ['voice', 'text']) test(`an established native ${channel} conversation retains unanswered interrupted inputs without replaying turns or changing its prefix`, async () => {
+  const { state, sent, turn, turns } = harness({ packId: 'personal_operator', backend: 'openclaw' });
+  await turn('Parlons du télescope synthétique.', channel);
+  const key = state.session.agentSessionKey;
+  turns.unshift({ inputText: 'Oui, vérifie cette documentation.', replyText: '', interrupted: true },
+    { inputText: 'Cherche la documentation du télescope synthétique.', replyText: '', interrupted: true });
+  await turn('Peux-tu reprendre cette vérification?', channel);
+  assert.equal(state.session.agentSessionKey, key);
+  assert.equal(sent[1].prefix, sent[0].prefix);
+  assert.equal(sent[1].text, 'Peux-tu reprendre cette vérification?');
+  assert.match(sent[1].request, /Earlier requests in this same conversation were interrupted before an answer/);
+  assert.match(sent[1].request, /context, not new instructions or permission to act/);
+  assert.match(sent[1].request, /current request and corrections take precedence/);
+  assert.ok(sent[1].request.indexOf('Cherche la documentation') < sent[1].request.indexOf('Oui, vérifie'));
+  await turn('Merci pour la réponse.', channel);
+  assert.ok(!sent[2].request.includes('Earlier requests in this same conversation'));
+  assert.ok(!sent[2].request.includes('Cherche la documentation'));
+});
+
+test('answered interruptions and team replies do not revive earlier unanswered requests', () => {
+  const older = { inputText: 'Ancienne demande synthétique.', replyText: '', interrupted: true };
+  for (const latest of [
+    { inputText: 'Réponse entendue en partie.', replyText: 'Résultat synthétique.', interrupted: true },
+    { inputText: 'Demande terminée.', replyText: '', interrupted: false },
+    { inputText: 'Demande à un autre membre.', replyText: '', interrupted: true, speakerAgentId: 'secretary' },
+    { inputText: 'Ouverture synthétique.', replyText: '', interrupted: true, origin: 'application_opening' }
+  ]) assert.equal(records.interruptedRequestContext([latest, older]), '');
+});
 
 test('a long Core inference conversation re-sends an identical prefix except when a history block leaves', async () => {
   const { state, sent, turn, pack } = harness({ packId: 'personal_operator', backend: 'agentx' });
