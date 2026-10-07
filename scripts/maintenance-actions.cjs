@@ -294,6 +294,21 @@ async function servedRevisions(config, services) {
   return served;
 }
 
+const SERVED_WAIT_MS = 60_000;
+const SERVED_RETRY_MS = 2_000;
+
+// A recreated container takes a moment to answer /health. The served revisions
+// are read until every service reports the wanted one or the wait runs out;
+// the last reading is the one the deploy reports.
+async function awaitServed({ read, revision, deadline, now = Date.now, pause = sleep, retryMs = SERVED_RETRY_MS }) {
+  for (;;) {
+    const served = await read();
+    const mismatched = Object.keys(served).filter(service => served[service] !== revision);
+    if (!mismatched.length || now() + retryMs > deadline) return { served, mismatched };
+    await pause(retryMs);
+  }
+}
+
 function containerCreatedAt(config, service) {
   const id = run('docker', [...composeArgs(config), 'ps', '-q', service], { allowFailure: true, timeoutMs: 20_000 }).output.trim().split('\n').pop();
   if (!id) return NaN;
@@ -420,9 +435,11 @@ async function deploy(config, options, takeLead) {
     throw new ActionError(`The launcher did not recreate ${services.join(', ')} (exit ${launched.status}, ${attempts} attempt${attempts === 1 ? '' : 's'})`,
       { exitCode: launched.status === 4 ? 4 : 1, outcome: launched.status === 4 ? 'refused' : 'failed', details: { revision, before, built: true, attempts, tail: launched.output.slice(-2000) } });
   }
-  const served = await servedRevisions(config, services);
-  const mismatched = Object.entries(served).filter(([, value]) => value !== revision).map(([service]) => service);
-  if (mismatched.length) throw new ActionError(`Not serving ${revision.slice(0, 9)}: ${mismatched.join(', ')}`, { details: { served } });
+  const { served, mismatched } = await awaitServed({ read: () => servedRevisions(config, services), revision, deadline: Date.now() + SERVED_WAIT_MS });
+  if (mismatched.length) {
+    const state = mismatched.map(service => `${service} ${served[service] ? `serves ${served[service].slice(0, 9)}` : 'does not answer /health'}`);
+    throw new ActionError(`Not serving ${revision.slice(0, 9)}: ${state.join(', ')}`, { details: { served } });
+  }
   return { revision, before, services, served, attempts };
 }
 
@@ -535,4 +552,4 @@ async function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) main().then(code => { process.exitCode = code; });
 
-module.exports = { main, parseArgs, parseServices, waitMinutes, queueMinutes, recreateWhenIdle, deployTurn, alreadyServed, imageSources, readLead, acquireLead, releaseLead, instance, launcherEnv, http, ActionError, DEPLOYABLE, ACTIONS };
+module.exports = { main, parseArgs, parseServices, waitMinutes, queueMinutes, recreateWhenIdle, awaitServed, deployTurn, alreadyServed, imageSources, readLead, acquireLead, releaseLead, instance, launcherEnv, http, ActionError, DEPLOYABLE, ACTIONS };
