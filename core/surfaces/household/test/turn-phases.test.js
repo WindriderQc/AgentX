@@ -14,7 +14,7 @@ test('a turn keeps where its server time went as bounded whole milliseconds', ()
   assert.deepEqual(serverTimingsOf(), {});
   // Anything that is not a plausible duration is dropped, never stored.
   assert.deepEqual(serverTimingsOf({ prepared: -1, executed: '900', agent: { accepted: NaN, answer: 16 * 60 * 1000, streamEnd: { $gt: 0 } } }), {});
-  assert.deepEqual(AGENT_PHASES, ['accepted', 'runCreated', 'generating', 'streamEnd', 'answer']);
+  assert.deepEqual(AGENT_PHASES, ['accepted', 'runCreated', 'generating', 'streamEnd', 'streamOverdue', 'answer']);
 });
 
 test('the native agent client reports the steps of its run in order', async () => {
