@@ -306,7 +306,7 @@ function createPersonaTurnHandler({
               .then(shown => { if (!res.writableEnded) event('show', { block: shown }); }));
           } });
         // The opening warm-up shares this native session: its run ends before the first real turn starts.
-        if (!member) await warmup?.settled(session.sessionId);
+        if (!member) { warmup?.noteTurn(session); await warmup?.settled(session.sessionId); }
 
         serverPhases.prepared = Date.now() - startedAt;
         const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
