@@ -52,14 +52,19 @@ test('truncated streaming preserves partial text, unknown usage and never retrie
 });
 
 test('agent requests use separate sessions, expose unknown model/cost and refuse unsupported overrides', async () => {
-  const sessions = [];
+  const sessions = [], bodies = [];
   const client = createOpenClawExecutionClient({ env, fetchImpl: async (_url, options) => {
-    sessions.push(options.headers['x-openclaw-session-key']);
+    sessions.push(options.headers['x-openclaw-session-key']); bodies.push(JSON.parse(options.body));
     return new Response('data: {"type":"response.completed","response":{"id":"agent-run","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"final"}]}]}}\n\n',
       { headers: { 'content-type': 'text/event-stream' } });
   } });
-  const agent = { model: 'openclaw:agent:main', sessionId: 'core-conversation' };
+  const agent = { model: 'openclaw:agent:main', sessionId: 'core-conversation', messages: [{ role: 'system', content: 'Core persona.' },
+    { role: 'user', content: 'Earlier.' }, { role: 'assistant', content: 'Reply.' }, { role: 'user', content: 'Now.', extra: 'dropped' }] };
   const first = await client.execute(agent), second = await client.execute(agent);
+  // OpenClaw rejects an input item without its type or with an unknown key.
+  assert.deepEqual(bodies[0], { model: 'openclaw/main', stream: true, instructions: 'Core persona.', input: [
+    { type: 'message', role: 'user', content: 'Earlier.' }, { type: 'message', role: 'assistant', content: 'Reply.' },
+    { type: 'message', role: 'user', content: 'Now.' }] });
   assert.notEqual(sessions[0], sessions[1]); assert.equal(first.receipt.observed, null); assert.equal(second.receipt.cost, null);
   await assert.rejects(client.execute({ ...agent, parameters: { seed: 42 } }), { code: 'OPENCLAW_AGENT_PARAMETERS_UNSUPPORTED' });
   assert.equal(sessions.length, 2);
