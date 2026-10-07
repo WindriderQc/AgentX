@@ -848,6 +848,10 @@ only the fact that a secret was shown.
 Opening Super Dad on any device offers to resume its latest conversation when
 the last exchange is less than 24 hours old; the conversation, its history and
 attachments come from Core, not from the browser. Famille does not offer it.
+Opening a saved conversation, from that offer or from the recent list, starts
+listening again by itself on a device whose microphone is already granted, in
+standby when the wake word is required; elsewhere the conversation opens with
+the microphone off and Reprendre asks for it.
 Famille keeps the Nestor personality but replaces its adult temperament with a
 playful, curious tone for children (`FAMILY_TONE` in
 `core/surfaces/household/family-context.js`), sent with the family surface
