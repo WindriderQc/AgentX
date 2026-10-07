@@ -6,6 +6,16 @@ import { createExecutionService } from '../service.mjs';
 let installed = true;
 try { import.meta.resolve('openclaw/plugin-sdk/llm'); } catch { installed = false; }
 
+test('installed gateway startup planner activates the HTTP execution plugin', { skip: !installed }, async () => {
+  const { readFile, readdir } = await import('node:fs/promises');
+  const dist = new URL('../', import.meta.resolve('openclaw/plugin-sdk/llm'));
+  const filename = (await readdir(dist)).find(name => name.startsWith('installed-plugin-index-scope-lookup-') && name.endsWith('.mjs'));
+  const planner = Object.values(await import(new URL(filename, dist))).find(value => typeof value === 'function' && value.name === 'shouldConsiderForGatewayStartup');
+  const manifest = JSON.parse(await readFile(new URL('../openclaw.plugin.json', import.meta.url), 'utf8'));
+  assert.equal(planner({ manifest, plugin: { pluginId: manifest.id, startup: { memory: false } }, startupDreamingPluginIds: new Set() }), true,
+    'gateway boot must register the HTTP routes before the first catalogue request');
+});
+
 test('installed native SDK projects its registry and sends a single isolated request through its own transport', { skip: !installed }, async () => {
   const originalFetch = globalThis.fetch, requests = [];
   let ai, originalHost, failFetch = false;
