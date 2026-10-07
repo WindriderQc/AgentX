@@ -57,6 +57,55 @@ describe('personal tasks in the canonical Core store', () => {
     expect(saved.feedback).toHaveLength(1);
   });
 
+  describe('the date-only deadline contract (#287)', () => {
+    const previousZone = process.env.PLANNING_TIME_ZONE;
+    afterEach(() => {
+      if (previousZone === undefined) delete process.env.PLANNING_TIME_ZONE;
+      else process.env.PLANNING_TIME_ZONE = previousZone;
+    });
+
+    test('date-only create and update store the end of the household day in America/Toronto', async () => {
+      process.env.PLANNING_TIME_ZONE = 'America/Toronto';
+      const created = await personal.create({ title: 'Synthetic date-only', dueAt: '2026-10-04' });
+      // Sunday October 4, 23:59:59.999 EDT — the household day, not the UTC day.
+      expect(created.dueAt).toBe('2026-10-05T03:59:59.999Z');
+      const stored = (await PipelineTask.findOne({ pipelineId: created.id }).lean()).dueAt;
+      expect(stored.toISOString()).toBe('2026-10-05T03:59:59.999Z');
+      const moved = await personal.update({ ref: created.id, dueAt: '2026-11-01' });
+      expect(moved.dueAt).toBe('2026-11-02T04:59:59.999Z'); // 23:59:59.999 EST.
+      const spring = await personal.update({ ref: created.id, dueAt: '2026-03-08' });
+      expect(spring.dueAt).toBe('2026-03-09T03:59:59.999Z'); // spring-forward day.
+    });
+
+    test('the same date-only input keeps its local day when the household zone is UTC', async () => {
+      process.env.PLANNING_TIME_ZONE = 'UTC';
+      const created = await personal.create({ title: 'Synthetic UTC zone', dueAt: '2026-10-04' });
+      expect(created.dueAt).toBe('2026-10-04T23:59:59.999Z');
+    });
+
+    test('a full ISO datetime with an explicit offset keeps its exact instant through create and update', async () => {
+      process.env.PLANNING_TIME_ZONE = 'America/Toronto';
+      const created = await personal.create({ title: 'Synthetic offset', dueAt: '2026-10-03T23:59:00-04:00' });
+      expect(created.dueAt).toBe('2026-10-04T03:59:00.000Z');
+      const moved = await personal.update({ ref: created.id, dueAt: '2026-10-04T03:59:00.000Z' });
+      expect(moved.dueAt).toBe('2026-10-04T03:59:00.000Z');
+    });
+
+    test('an invalid date is rejected with SECRETARY_BAD_DUE_DATE and stores nothing', async () => {
+      process.env.PLANNING_TIME_ZONE = 'America/Toronto';
+      for (const value of ['2026-13-40', '2026-02-30', '2026-10-04extra']) {
+        await expect(personal.create({ title: 'Synthetic bad date', dueAt: value }))
+          .rejects.toMatchObject({ code: 'SECRETARY_BAD_DUE_DATE' });
+      }
+      const valid = await personal.create({ title: 'Synthetic anchor', dueAt: '2026-10-04' });
+      await expect(personal.update({ ref: valid.id, dueAt: 'soon' }))
+        .rejects.toMatchObject({ code: 'SECRETARY_BAD_DUE_DATE' });
+      // The rejection left the original deadline untouched.
+      expect((await PipelineTask.findOne({ pipelineId: valid.id }).lean()).dueAt.toISOString())
+        .toBe('2026-10-05T03:59:59.999Z');
+    });
+  });
+
   test('stores the activity date, lets Dad move or clear it, and composes the brief from every open task', async () => {
     const past = await personal.create({ title: 'Synthetic lunch', dueAt: '2026-06-05', relevantUntil: '2026-06-05' });
     expect(past).toMatchObject({ lane: 'expired', relevantUntil: '2026-06-05T00:00:00.000Z' });

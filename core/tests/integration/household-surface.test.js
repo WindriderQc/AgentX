@@ -605,6 +605,56 @@ describe('built-in Household surface on Core', () => {
     expect((await PipelineTask.findOne({ pipelineId: chore.id })).status).toBe('done');
   });
 
+  test('a date-only deadline stays on its household day through HTTP and MCP (#287)', async () => {
+    const previousZone = process.env.PLANNING_TIME_ZONE;
+    process.env.PLANNING_TIME_ZONE = 'America/Toronto';
+    const mcp = (id, name, args) => request(app).post('/mcp').send({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }).expect(200);
+    const createdIds = [];
+    try {
+      // Date-only create through HTTP: stored as the end of the household day,
+      // not midnight of the UTC day.
+      const created = await request(app).post('/api/secretary/tasks').send({ title: 'Synthetic date-only', dueAt: '2026-10-04' }).expect(201);
+      const httpTask = created.body.data.task;
+      createdIds.push(httpTask.id);
+      expect(httpTask.dueAt).toBe('2026-10-05T03:59:59.999Z'); // 23:59:59.999 EDT.
+      // Date-only create through MCP: the same instant, with the local weekday.
+      const mcpCreated = await mcp(1, 'add_personal_task', { title: 'Synthetic mcp date-only', dueAt: '2026-10-04' });
+      const mcpTaskId = mcpCreated.body.result.structuredContent.id;
+      createdIds.push(mcpTaskId);
+      expect(mcpCreated.body.result.structuredContent.dueAt).toBe('2026-10-05T03:59:59.999Z');
+      const listed = (await mcp(2, 'list_personal_tasks', { limit: 100 })).body.result.structuredContent;
+      const mcpRow = listed.tasks.find(item => item.id === mcpTaskId);
+      expect(mcpRow.dueLocal).toBe('dimanche 4 octobre');
+      // Date-only update through HTTP moves the same task to another household day.
+      const updated = await request(app).post('/api/secretary/tasks/update').send({ ref: httpTask.id, dueAt: '2026-11-01' }).expect(200);
+      expect(updated.body.data.task.dueAt).toBe('2026-11-02T04:59:59.999Z'); // 23:59:59.999 EST.
+      // Date-only update through MCP lands on the spring-forward boundary day.
+      const mcpUpdated = await mcp(3, 'update_personal_task', { ref: mcpTaskId, dueAt: '2026-03-08' });
+      expect(mcpUpdated.body.result.structuredContent.dueAt).toBe('2026-03-09T03:59:59.999Z');
+      // A full ISO datetime with an explicit offset keeps its exact instant.
+      const offsetTask = (await request(app).post('/api/secretary/tasks').send({ title: 'Synthetic offset', dueAt: '2026-10-03T23:59:00-04:00' }).expect(201)).body.data.task;
+      createdIds.push(offsetTask.id);
+      expect(offsetTask.dueAt).toBe('2026-10-04T03:59:00.000Z');
+      const offsetMcp = await mcp(4, 'update_personal_task', { ref: offsetTask.id, dueAt: '2026-10-04T05:00:00.000Z' });
+      expect(offsetMcp.body.result.structuredContent.dueAt).toBe('2026-10-04T05:00:00.000Z');
+      // An invalid date-only deadline is rejected on both paths, never stored.
+      const badHttp = await request(app).post('/api/secretary/tasks').send({ title: 'Synthetic bad date', dueAt: '2026-13-40' }).expect(400);
+      expect(badHttp.body.code).toBe('SECRETARY_BAD_DUE_DATE');
+      const badMcp = await mcp(5, 'add_personal_task', { title: 'Synthetic bad date mcp', dueAt: '2026-13-40' });
+      expect(badMcp.body.result.isError).toBe(true);
+      expect(badMcp.body.result.structuredContent.error).toBe('SECRETARY_BAD_DUE_DATE');
+      const badUpdate = await request(app).post('/api/secretary/tasks/update').send({ ref: httpTask.id, dueAt: 'soon' }).expect(400);
+      expect(badUpdate.body.code).toBe('SECRETARY_BAD_DUE_DATE');
+      // The date-only deadline still projects onto its own household day in the list.
+      const relisted = (await mcp(6, 'list_personal_tasks', { limit: 100 })).body.result.structuredContent;
+      expect(relisted.tasks.find(item => item.id === httpTask.id).dueLocal).toBe('dimanche 1 novembre');
+    } finally {
+      if (previousZone === undefined) delete process.env.PLANNING_TIME_ZONE;
+      else process.env.PLANNING_TIME_ZONE = previousZone;
+      await PipelineTask.deleteMany({ pipelineId: { $in: createdIds } });
+    }
+  });
+
   test('persists and resumes a personal conversation without exposing it through child routes', async () => {
     const base = '/api/voice-personas';
     const created = await request(app).post(`${base}/private/sessions`).send({

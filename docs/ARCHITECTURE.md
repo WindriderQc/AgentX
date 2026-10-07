@@ -88,6 +88,29 @@ consumers receive bounded operations, never models or an ID allocator:
   parent-approval rules. Family fields are optional in `PipelineTask`, so other
   task lanes keep their shape.
 
+Personal-task deadlines follow one contract on every write path (the
+Household `POST /api/secretary/tasks` and `POST /api/secretary/tasks/update`
+routes and the Secretary MCP `add_personal_task` / `update_personal_task`
+tools, which share `personalTaskService.parseDueAt`). `dueAt` accepts a date
+(`YYYY-MM-DD`) or a full ISO datetime:
+
+- A date names the household calendar day in the configured household time
+  zone (`PLANNING_TIME_ZONE`, default `America/Toronto`) and is stored as the
+  end of that day — 23:59:59.999 local (`endOfHouseholdDay` in the household
+  domain). It is never midnight of the UTC day: for a household west of UTC
+  that instant is still the previous local evening, so a task due
+  "Sunday, October 4" would otherwise be due Saturday.
+- A full ISO datetime, with an explicit offset or `Z`, keeps its exact
+  instant unchanged. The lane and overdue projections read that instant as
+  stored.
+- Date strings are validated as real calendar days before conversion;
+  unparseable values are rejected, not silently stored.
+
+`relevantUntil` stays distinct: it dates the activity the task serves and
+closes the task once that household day begins; it is never a deadline and
+keeps its midnight instant. Day lanes (due today, overdue, briefing) remain
+computed in the same household zone as the stored deadline (#292).
+
 Coding-worker selection (`/tasks/next`), the exact worker read
 (`/tasks/:id/worker`) and the atomic claim share one scope
 (`core/src/helpers/workerTaskScope.js`): the `personal`, `family`, `household`
