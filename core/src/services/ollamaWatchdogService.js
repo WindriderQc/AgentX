@@ -33,7 +33,7 @@ const { runRuntimeMutation } = require('./runtimeMutationLeaseService');
 const { beginInferenceAdmission } = require('./inferenceAdmissionService');
 const runtimeCoordination = require('./runtimeCoordinationService');
 const { collectRecoveryRequired } = require('./watchdogProbeRecovery'), { isSpillOnlyRestore } = require('./hostPinPrimitives');
-const { probePayload, probeTarget, restorePayload } = require('./watchdogRuntimePayload');
+const { probePayload, probeTarget, residentsOf, restorePayload } = require('./watchdogRuntimePayload');
 
 let _fetch = nodeFetch;
 let _outboundExecutor = null;
@@ -248,7 +248,7 @@ const { stats: _stats, recordEvent, observeHost, hostSnapshots } = require('./ol
 /**
  * Probe a single host by sending a minimal generate request. When `model` is
  * supplied this exercises the resident worker; the invalid sentinel is only a
- * control-plane check for hosts with nothing loaded.
+ * control-plane check for hosts with no resident that is there to stay.
  * Returns { ok: true } or { ok: false, reason: string }.
  */
 async function probeHost(host, model = null, executor = getWatchdogExecutor(), contextLength = null) {
@@ -354,11 +354,7 @@ async function checkMeta(host, executor = getWatchdogExecutor()) {
       return { ok: false, models: [] };
     }
     const data = await readBoundedJson(res);
-    const residentModels = (data.models || []).map(m => ({
-      model: m.name || m.model,
-      contextLength: Number.isSafeInteger(m.context_length) && m.context_length > 0
-        ? m.context_length : null
-    }));
+    const residentModels = residentsOf(data.models || []);
     return { ok: true, models: residentModels.map(m => m.model), residentModels, rawModels: data.models || [] };
   } catch {
     return { ok: false, models: [] };

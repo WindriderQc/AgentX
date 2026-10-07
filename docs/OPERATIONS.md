@@ -1961,6 +1961,12 @@ else: on a host that serves one request at a time it would otherwise queue
 behind a slow call, hit its own deadline and quarantine a host that was
 answering. A refused probe is skipped until the next cycle.
 
+A probe exercises only a resident that is there to stay (`keep_alive` -1). A
+model loaded for a while, by a judge or a one-off call, is left to expire: the
+probe carries `keep_alive` -1 and would otherwise keep it on the host forever.
+With no such resident the watchdog checks that the runtime answers, without
+loading or touching a model.
+
 An UNKNOWN inference (not a workload) is released by the watchdog without a
 runtime restart for a watchdog probe or a connection Core closed itself.
 A watchdog probe is released after
