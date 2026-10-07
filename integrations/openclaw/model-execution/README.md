@@ -16,8 +16,10 @@ agent Responses endpoint retains its existing agent mode and continuity path.
 
 Run `npm test` here. The installed-SDK test is skipped when the native package is
 unavailable. It uses the actual SDK registry, payload policy and streaming parser
-with an injected native fetch port; it opens no provider socket. Qualify each
-runtime update before refreshing benchmark pins.
+with an injected native fetch port; it opens no provider socket. Model mode is
+open only for the runtime version and APIs listed in `QUALIFIED_MODEL_APIS`
+(`native.mjs`). Qualify each runtime update or new API with the same transport
+tests before adding it there or refreshing benchmark pins.
 
 See [execution sources](../../../docs/EXECUTION_SOURCES.md) for the API,
 ownership, budgets, benchmark isolation and observable limitations.

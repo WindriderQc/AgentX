@@ -85,13 +85,28 @@ The first model API accepts text context. Image content and replayed tool messag
 require an explicit contract extension; the existing local and Household paths retain
 their attachment contracts.
 
-Model-only admission currently qualifies the native `openai-completions` API
-on OpenClaw 2026.9.4. A different runtime version is unavailable in model mode
-until its transport is qualified and the admission gate is updated.
-Other SDK APIs stay visible but unavailable for model execution until a single
-HTTP attempt is proven; the installed Google SDK defaults to five attempts.
-Their configured native agents remain accessible. This is a runtime capability
-gate, with no AgentX provider client.
+Model-only admission is a table of runtime version and native API. On OpenClaw
+2026.9.4 it qualifies `openai-completions`, `anthropic-messages` and
+`openai-responses`. A different runtime version is unavailable in model mode
+until its transports are qualified and the table is updated. For each qualified
+API an installed-SDK test proves one HTTP attempt on success, 429, 503, a refused
+connection, a broken stream and a cancellation, with the partial answer kept.
+The plugin compares the final payload with the submitted context on each call,
+and refuses provider-held state, server-side model fallback and any prompt the
+SDK adds, such as the agent identity sent with an Anthropic subscription token.
+
+| Native API | Applied | Refused before dispatch |
+| --- | --- | --- |
+| `openai-completions` | output limit, temperature, seed, topP, JSON, thinking | numeric reasoning budget when unapplied |
+| `anthropic-messages` | output limit, thinking on/off and level, temperature where the model accepts it | seed, topP, JSON, numeric reasoning budget |
+| `openai-responses` | output limit, thinking on/off and level, temperature where the model accepts it | seed, topP, JSON, numeric reasoning budget |
+
+A target without JSON and seed cannot be a judge. `openai-chatgpt-responses`
+(subscription) stays unavailable in model mode: its native payload carries no
+output limit, so the requested bound cannot be applied. The Google SDK defaults
+to five attempts and has no configured provider to qualify. Configured native
+agents on these APIs remain accessible. This is a runtime capability gate, with
+no AgentX provider client.
 
 The SDK parameter wrapper is currently an internal generic OpenClaw function.
 The loader checks its named export and records its file fingerprint. Missing

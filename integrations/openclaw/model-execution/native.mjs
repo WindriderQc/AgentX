@@ -24,6 +24,16 @@ function publicParameters(params) {
   return exposed;
 }
 
+// Model mode opens per runtime version and API, after the installed-SDK test
+// proves one HTTP attempt and an exactly verified payload. `true` is applied,
+// `false` is refused before dispatch, `null` is checked on each final payload.
+const QUALIFIED_MODEL_APIS = { '2026.9.4': {
+  'openai-completions': { temperature: true, seed: true, topP: true, jsonResponseFormat: true },
+  'anthropic-messages': { temperature: null, seed: false, topP: false, jsonResponseFormat: false },
+  'openai-responses': { temperature: null, seed: false, topP: false, jsonResponseFormat: false }
+} };
+export const qualifiedModelApi = (version, api) => QUALIFIED_MODEL_APIS[version]?.[api] || null;
+
 export async function loadNativeSdk() {
   const llmUrl = import.meta.resolve('openclaw/plugin-sdk/llm');
   const root = resolve(dirname(fileURLToPath(llmUrl)), '../..');
@@ -112,14 +122,15 @@ export function createNativeBackend(api, { loadSdk = loadNativeSdk } = {}) {
         const providerParams = cfg.models?.providers?.[model.provider]?.params || {};
         const routing = params.provider || providerParams.provider || model.compat?.openRouterRouting || null;
         const local = localModel(model, sdk, configured);
+        const qualified = qualifiedModelApi(sdk.version, model.api);
         const billing = local ? { kind: 'local', source: 'native-local-model', rates: null } : billingFor(model, configured);
         models.set(ref, {
           model: ref, name: model.name || model.id, contextWindow: model.contextWindow, maxTokens: model.maxTokens,
           input: model.input || ['text'], reasoning: Boolean(model.reasoning),
-          parameterSupport: { jsonResponseFormat: model.api === 'openai-completions' ? true : null, thinking: Boolean(model.reasoning), temperature: model.api === 'openai-completions' ? true : null, seed: model.api === 'openai-completions' ? true : null, topP: model.api === 'openai-completions' ? true : null }, origin: local ? 'local' : 'cloud', billing,
+          parameterSupport: { jsonResponseFormat: qualified?.jsonResponseFormat ?? null, thinking: Boolean(model.reasoning), temperature: qualified?.temperature ?? null, seed: qualified?.seed ?? null, topP: qualified?.topP ?? null }, origin: local ? 'local' : 'cloud', billing,
           // The native catalogue describes an alias, not proof of a served revision.
           modelVersion: 'unknown', modelVersionSource: 'not-observed', authScope: agentId,
-          isolation: { singleCallQualified: sdk.version === '2026.9.4' && model.api === 'openai-completions', noMemory: true, noAgentPrompt: true, noTools: true, noRuntimeFallback: true,
+          isolation: { singleCallQualified: Boolean(qualified), noMemory: true, noAgentPrompt: true, noTools: true, noRuntimeFallback: true,
             providerRouting: model.provider === 'openrouter' ? Boolean(routing?.allow_fallbacks === false && Array.isArray(routing?.only) && routing.only.length === 1 && typeof routing.only[0] === 'string' && routing.only[0].trim().length > 0) : true },
           fingerprint: fingerprint(withoutSecrets({ model, params, providerParams, runtimeVersion: sdk.version, parameterApi: sdk.parameterApiFingerprint, plugin: sdk.pluginFingerprint }))
         });
