@@ -2834,6 +2834,40 @@ describe('Benchmark System - Integration Tests', () => {
             expect(row.evidenceStatus).toBe('partial_scope');
         });
 
+        it('ranks a native agent beside the bare model, each as its own entry', async () => {
+            await BenchmarkPrompt.create({ name: 'Agent proof prompt', prompt: 'Explain the proof boundary', level: 4, category: 'reasoning' });
+            const { executionHost } = require("../../../shared/benchmarkTargetContract");
+            const cohort = "e".repeat(64);
+            const agentTarget = (id, fingerprint) => ({
+                id, label: `Agent ${id}`, executionKind: 'harness', mode: 'native_agent', tier: 'local', provider: 'ollama',
+                model: 'shared-local-model', available: true, contextWindow: 65536, fingerprint, catalogFingerprint: 'b'.repeat(64),
+                harness: { name: 'openclaw', version: '1.0.0' }
+            });
+            const receipt = executionProfile => ({ schema: 'agentx.worker-receipt/v1', schemaVersion: 1, executionProfile,
+                finalState: 'succeeded', result: { contractSatisfied: true }, fingerprint: 'c'.repeat(64) });
+            const base = { model: 'shared-local-model', prompt: 'Explain the proof boundary', prompt_name: 'Agent proof prompt',
+                prompt_category: 'reasoning', prompt_level: 4, quality_cohort_fingerprint: cohort, success: true };
+            const first = agentTarget('agent-one', '1'.repeat(64)), second = agentTarget('agent-two', '2'.repeat(64));
+            await BenchmarkResult.create([
+                { ...base, host: 'http://model-host:11434', quality_score: 6 },
+                { ...base, host: executionHost(first), quality_score: 9, execution_target: first, execution_receipt: receipt('native-ceiling') },
+                // A portable receipt does not prove a native agent run.
+                { ...base, host: executionHost(second), quality_score: 9, execution_target: second, execution_receipt: receipt('portable') }
+            ]);
+
+            const response = await api.get('/api/benchmark/generalist-leaderboard?axis=quality&includeUnavailableModels=true&includeCloud=true');
+
+            expect(response.status).toBe(200);
+            const rows = response.body.data.leaderboard.filter((row) => row.model === 'shared-local-model');
+            const byHost = host => rows.find((row) => row.host === host);
+            expect(rows).toHaveLength(3);
+            expect(byHost('http://model-host:11434')).toMatchObject({ rankable: true, executionTarget: null });
+            expect(byHost('harness:openclaw:agent-one')).toMatchObject({ rankable: true, qualityCohortFingerprint: cohort,
+                executionTarget: { mode: 'native_agent', contextWindow: 65536 }, harnessEvidence: { rankable: true, completeExecutionRows: 1 } });
+            expect(byHost('harness:openclaw:agent-two')).toMatchObject({ rankable: false, filterReason: 'incomplete_harness_execution_receipt' });
+            expect(rows.indexOf(byHost('harness:openclaw:agent-one'))).toBeLessThan(rows.indexOf(byHost('http://model-host:11434')));
+        });
+
         it('keeps incomplete or mixed harness evidence visible but unranked and unqualified', async () => {
             await BenchmarkPrompt.create({
                 name: 'Cloud proof prompt',

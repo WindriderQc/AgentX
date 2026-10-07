@@ -442,6 +442,12 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
     ? `<span class="cb-unavailable-badge" title="${esc(verdictReasons(entry).map(humanizeReason).join(' ') || 'Visible evidence only; excluded from rank')}">NOT RANKED</span>`
     : '';
   const harnessLabel = entry.harness?.name ? ` · ${entry.harness.name} ${entry.harness.version || ''}` : '';
+  // An agent ranks beside bare models; its context and tools are part of what was measured.
+  const agentTarget = entry.executionTarget?.mode === 'native_agent' ? entry.executionTarget : null;
+  const agentTools = agentTarget?.nativePolicy?.tools?.length ?? null;
+  const agentConfig = agentTarget ? [agentTarget.label, agentTarget.contextWindow ? `context ${agentTarget.contextWindow}` : null,
+    agentTools != null ? `${agentTools} tool${agentTools === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ') : '';
+  const agentBadge = agentTarget ? `<span class="cb-use-model-proof" title="${esc(`Agent with its own prompt, context and tools: ${agentConfig}`)}">AGENT</span>` : '';
   const tierLabel = entry.tier === 'paid_cloud' ? 'paid cloud' : entry.tier === 'free_cloud' ? 'free cloud' : entry.residency === 'cpu' ? 'local · CPU' : 'local';
   const pricingLabel = entry.pricing?.kind && entry.pricing.kind !== 'free'
     ? ` · manual estimate · ${entry.pricing.source || 'declared price'}`
@@ -483,7 +489,7 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
     <span class="cb-rank">${rank}</span>
     <span class="cb-summary-id">
       <span class="cb-summary-model">${esc(model)}${readinessBadge}</span>
-      <span class="cb-summary-source"><i class="fas fa-${isLocal ? 'server' : 'cloud'}" aria-hidden="true"></i> ${esc(entry.provider || 'ollama')} · ${esc(tierLabel)} · ${esc(hostName)}</span>
+      <span class="cb-summary-source"><i class="fas fa-${isLocal ? 'server' : 'cloud'}" aria-hidden="true"></i> ${agentTarget ? 'agent · ' : ''}${esc(entry.provider || 'ollama')} · ${esc(tierLabel)} · ${esc(hostName)}</span>
       <span class="cb-summary-state" data-evidence-level="${esc(evidenceLevel)}" data-comparable="${comparable}" data-partial="${comparable && isPartialCoverage(entry)}">${esc(rowState(entry, comparable))}</span>
     </span>
     <span class="cb-summary-score" style="--score-pct:${scorePct}%" title="${parts ? esc(scorePartsText(entry)) : 'No comparable score'}">
@@ -506,7 +512,7 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
       <div class="cb-detail-identity">
         <p class="cb-detail-kicker">Complete model evidence</p>
         <h3 id="cb-model-dialog-title">${esc(model)}</h3>
-        <div class="cb-detail-badges">${readinessBadge}${unavailableBadge}${nonComparableBadge}<span class="cb-use-model-proof" data-evidence-level="${esc(evidenceLevel)}">${esc(evidenceProof)}</span></div>
+        <div class="cb-detail-badges">${agentBadge}${readinessBadge}${unavailableBadge}${nonComparableBadge}<span class="cb-use-model-proof" data-evidence-level="${esc(evidenceLevel)}">${esc(evidenceProof)}</span></div>
       </div>
       <div class="cb-detail-score" style="--score-pct:${scorePct}%">
         ${renderTrend(entry.trend)}
@@ -517,7 +523,7 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
 
     <section class="cb-detail-provenance" aria-label="Execution provenance">
       <div><span>Host</span><strong>${esc(hostName)}</strong><small>${esc(entry.host || 'Host identity unavailable')}</small></div>
-      <div><span>Source</span><strong>${esc(entry.provider || 'ollama')} · ${esc(tierLabel)}</strong><small>${esc(`${harnessLabel ? harnessLabel.replace(/^ · /, '') : 'direct model'}${pricingLabel}`)}</small></div>
+      <div><span>Source</span><strong>${esc(entry.provider || 'ollama')} · ${esc(tierLabel)}</strong><small>${esc(`${agentTarget ? `agent · ${agentConfig}` : harnessLabel ? harnessLabel.replace(/^ · /, '') : 'direct model'}${pricingLabel}`)}</small></div>
       <div><span>Judge</span><strong>${esc(judgeModel || '—')}</strong><small>${judgeModel ? 'Observed judge target' : 'Judge identity unavailable'}</small></div>
       <div><span>Evidence</span><strong>${esc(evidenceProof)}</strong><small>${esc(entry.qualityCohortFingerprint || 'Cohort fingerprint unavailable')}</small></div>
     </section>

@@ -28,9 +28,10 @@ const {
 
 const missingPromptFingerprint = () => [{ prompt_fingerprint: null }, { prompt_fingerprint: { $exists: false } }];
 
-function profileContractFor(campaignKind) {
-    return campaignKind === 'native_agent' ? 'native-agent-v1' : 'isolated-model-v1';
-}
+// Agents and bare models are compared on one board: the campaign kind does not
+// split the cohort. The value is the one model campaigns have always carried,
+// so existing cohort fingerprints are unchanged.
+const PROFILE_CONTRACT = 'isolated-model-v1';
 
 function judgeTargetFor(judgeConfig = {}) {
     if (judgeConfig.target) return judgeConfig.target;
@@ -49,7 +50,7 @@ async function cohortFingerprintForBatch(batch, judgeConfig, { scorerVersion = S
         judgeConfig: resolvedJudge,
         executionConfig: batch.execution_config || {},
         candidateContracts: batch.inference_contract_campaign?.candidates || null,
-        profileContract: profileContractFor(batch.campaign_kind)
+        profileContract: PROFILE_CONTRACT
     });
 }
 
@@ -159,7 +160,7 @@ module.exports = {
     selectComparisonCohort,
     cohortFingerprintForBatch,
     judgeTargetFor,
-    profileContractFor,
+    PROFILE_CONTRACT,
     recoverPromptFingerprints,
     snapshotMatchesPrompt
 };

@@ -25,6 +25,7 @@ const {
     normalizeBenchmarkTarget
 } = require('../../../../shared/benchmarkTargetContract');
 const { createSpendGrant } = require('./harnessBrokerClient');
+const { PROFILE_CONTRACT } = require('./qualityCohort');
 const { fingerprint } = require('../../../../shared/workerContract');
 const { markReconciliationPending, retainAdmissionHeartbeat } = require('./batchAuthorityRecovery');
 const { executeBatch } = require('./batchExecutionRun');
@@ -146,7 +147,7 @@ async function startBatch({
         judgeThink: judge_config.think,
         judgeConfig: judge_config,
         executionConfig: normalizedExecutionConfig,
-        profileContract: campaign_kind === 'native_agent' ? 'native-agent-v1' : 'isolated-model-v1'
+        profileContract: PROFILE_CONTRACT
     });
     const batchContractFingerprint = fingerprint({
         schema: 'agentx.benchmark-batch-contract/v1',
