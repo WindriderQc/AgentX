@@ -22,6 +22,7 @@ LEGACY_RECEIPTS = STATE / "coding-dispatch-requests"
 # Model, GitHub token and other settings of the run; they stay outside Git.
 ENV_FILE = Path(os.environ.get("AGENTX_CODING_ENV_FILE", Path.home() / ".config/agentx/coding.env"))
 UNIT = "agentx-coding-run"
+CODING_SERVICE = "agentx-coding"
 # Mirror of core/src/helpers/workerTaskScope.js: the canonical private task lane
 # boundary. Keep it in sync with the Core helper.
 PRIVATE_SERVICE = re.compile(r"^\s*(personal|family|household|secretary)\s*$", re.IGNORECASE)
@@ -48,6 +49,7 @@ def is_private_task(task: dict) -> bool:
 
 def can_start(task: dict) -> bool:
     return (task.get("status") == "queued" and not task.get("assignee")
+            and task.get("service") == CODING_SERVICE
             and not is_private_task(task))
 
 
@@ -114,7 +116,7 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int) -> dict:
         if pending and pending["phase"] == "uncertain":
             raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "Reconcile the previous launch before starting another task.")
         if not any(task["pipelineId"] == pipeline_id and can_start(task) for task in queued_tasks()):
-            raise ControlError("CODING_DISPATCH_INELIGIBLE", "This task is not queued, is owned, or is a private task.")
+            raise ControlError("CODING_DISPATCH_INELIGIBLE", "Only unowned, queued, non-private agentx-coding tasks can start.")
         run = {"requestId": key, "pipelineId": pipeline_id, "expectedAttemptCount": expected_attempt_count,
                "submittedAt": datetime.now(timezone.utc).isoformat(), "unitName": UNIT, "phase": "uncertain",
                "message": "The host is starting the coding worker."}

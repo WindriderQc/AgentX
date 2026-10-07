@@ -62,8 +62,10 @@ its branches are named `agentx/coding-task-<id>`.
 ## Run one task from the Pipeline page
 
 Core calls `coding_dispatch_control.py` over SSH (`CODING_DISPATCHER_SSH_TARGET`,
-`CODING_DISPATCHER_REMOTE_ROOT`). `status` lists the queued, unowned, non-private
-tasks; `launch` starts `coding_run.py` for one of them as the transient user
+`CODING_DISPATCHER_REMOTE_ROOT`). `status` lists queued, unowned, non-private
+tasks explicitly routed with `service: agentx-coding`; ordinary Core and other
+Pipeline tickets remain available for their own workflows. `launch` starts
+`coding_run.py` for one of the listed tasks as the transient user
 unit `agentx-coding-run`. One task runs at a time. A repeated request id returns
 its first receipt instead of starting a second run. A lost launch reply stays
 unknown and blocks another launch until the operator reconciles the host unit.
