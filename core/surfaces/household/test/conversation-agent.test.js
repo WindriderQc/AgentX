@@ -487,3 +487,75 @@ for (const [label, started] of [
     assert.deepEqual(settled, [], 'an unconfirmed stop never releases the turn');
   });
 }
+
+test('a tool turn whose stream stays open is delivered from the run\'s final answer', async () => {
+  const activity = []; let reads = 0, upstream;
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 20,
+    continuity: async () => (++reads < 3 ? { progress: [{ id: 'call-1', tool: 'agentx__list_personal_tasks' }] }
+      : { run: { model: 'native' }, answer: answer('Tu as trois tâches.'), progress: [{ id: 'call-1', tool: 'agentx__list_personal_tasks' }] }),
+    fetchImpl: async (_url, options) => { upstream = options.signal; return { ok: true, body: (async function* () {
+      yield created;
+      await new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(new Error('closed')), { once: true }));
+    })() }; } });
+  const settled = [];
+  const result = await client({ session, text: 'Regarde ma liste.', onActivity: item => activity.push(item), onSettled: async (_key, id) => settled.push(id) });
+  assert.equal(result.text, 'Tu as trois tâches.');
+  assert.equal(result.interrupted, undefined);
+  assert.deepEqual(activity, [{ kind: 'tool', tool: 'agentx__list_personal_tasks' }]);
+  assert.equal(typeof result.metadata.phases.streamAbandoned, 'number');
+  assert.equal(upstream.aborted, true, 'The idle upstream request is closed');
+  assert.deepEqual(settled, [runId]);
+});
+
+test('an open stream is never cut before the run has its final answer', async () => {
+  let reads = 0, release;
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 5,
+    continuity: async () => { if (++reads === 6) release(); return reads <= 6
+      ? { run: null, answer: { status: 'unavailable' }, progress: [{ id: 'call-1', tool: 'web_search' }] }
+      : { run: { model: 'native' }, answer: answer('Résultat de la recherche.') }; },
+    fetchImpl: async () => ({ ok: true, body: (async function* () {
+      yield created;
+      await new Promise(resolve => { release = resolve; });
+      yield completed;
+    })() }) });
+  const result = await client({ session, text: 'Cherche.' });
+  assert.equal(result.text, 'Résultat de la recherche.');
+  assert.equal(result.metadata.phases.streamAbandoned, undefined);
+});
+
+test('an evidence read that stalls after a tool call does not hold the turn', async () => {
+  const activity = []; let reads = 0;
+  const client = createAgentClient({ env, settleMs: 3000, progressMs: 5, evidenceMs: 30,
+    continuity: async () => {
+      reads += 1;
+      if (reads === 1) return { progress: [{ id: 'call-1', tool: 'agentx__list_personal_tasks' }] };
+      if (reads === 2) return new Promise(() => {});
+      return { run: { model: 'native' }, answer: answer('Tu as trois tâches.') };
+    },
+    fetchImpl: async () => ({ ok: true, body: (async function* () {
+      yield created;
+      while (reads < 2) await new Promise(resolve => setTimeout(resolve, 5));
+      yield completed;
+    })() }) });
+  const started = Date.now();
+  const result = await client({ session, text: 'Regarde ma liste.', onActivity: item => activity.push(item) });
+  assert.equal(result.text, 'Tu as trois tâches.');
+  assert.deepEqual(activity, [{ kind: 'tool', tool: 'agentx__list_personal_tasks' }]);
+  assert.ok(Date.now() - started < 2500);
+});
+
+test('evidence that never returns ends the turn with a plain failure, within its bound', async () => {
+  const settled = []; let reads = 0;
+  const client = createAgentClient({ env, settleMs: 200, progressMs: 5, evidenceMs: 30,
+    continuity: async () => (++reads === 1 ? { progress: [{ id: 'call-1', tool: 'agentx__list_personal_tasks' }] } : new Promise(() => {})),
+    fetchImpl: async () => ({ ok: true, body: (async function* () {
+      yield created;
+      while (reads < 2) await new Promise(resolve => setTimeout(resolve, 5));
+      yield completed;
+    })() }) });
+  const started = Date.now();
+  await assert.rejects(client({ session, text: 'Regarde ma liste.', onSettled: async (_key, id) => settled.push(id) }),
+    /Nestor n’a pas donné de réponse finale/);
+  assert.ok(Date.now() - started < 2500);
+  assert.deepEqual(settled, [runId]);
+});

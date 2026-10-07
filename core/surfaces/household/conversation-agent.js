@@ -7,6 +7,13 @@ const { scoreSpeechLanguage } = require('../../public/js/voice/speech-language')
 const agentIdFor = session => ['kidx_nestor', 'kidx_reader'].includes(session.packId) ? 'family' : session.agentId || 'main';
 const sessionKeyFor = session => `agent:${agentIdFor(session)}:household:direct:${session.sessionId}`;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+// The promise's own outcome if it settles within `ms`; otherwise `late()`.
+const within = (promise, ms, late = () => undefined) => {
+  let timer;
+  return Promise.race([promise, new Promise((resolve, reject) => {
+    timer = setTimeout(() => { try { resolve(late()); } catch (error) { reject(error); } }, ms);
+  })]).finally(() => clearTimeout(timer));
+};
 // OpenClaw /v1/responses: the run finished, but its final text rewrote text it
 // had already streamed, which an append-only stream cannot express.
 const REPLACED_STREAM = /cannot be represented as an append-only response stream/i;
@@ -82,7 +89,7 @@ function agentInstructions(session, persona, surface, mode, { soundPlayback = fa
   ].filter(Boolean).join('\n\n');
 }
 
-function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000 } = {}) {
+function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000, evidenceMs = 5000, streamGraceMs = 5000 } = {}) {
   return async ({ session, text, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
@@ -103,7 +110,10 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     const abort = () => controller.abort(signal.reason);
     signal?.addEventListener('abort', abort, { once: true });
     let runId, terminal = false, generating = false, answer = '', evidence, browserCall, replacedStream = false, delegated = false;
-    const readEvidence = () => continuity({ operation: 'turn', sessionKey, runId });
+    // One read of the run's evidence never holds the turn: a read that does not
+    // return is a failed read, and every caller already handles a failed read.
+    const readEvidence = () => within(continuity({ operation: 'turn', sessionKey, runId }, AbortSignal.timeout(evidenceMs)), evidenceMs,
+      () => { throw new Error('Native turn evidence timed out.'); });
     const language = scoreSpeechLanguage(text);
     const imageReply = () => browserReply ? Promise.resolve(null) : acceptedImageReply({ session, evidence,
       sessionKey, runId, language: language.decided ? language.language : 'fr', readOperation: readImageOperation });
@@ -126,6 +136,12 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     // Report each native tool call once, so Household can say what Nestor does.
     const reported = new Set();
     let consulted, lastTool, watching = false, wake;
+    // The run's final answer can be readable while the gateway still holds the
+    // HTTP stream open. Once seen, the stream gets a short grace to end by itself.
+    let nativeEnd, nativeEndTimer;
+    const nativeEnded = new Promise(resolve => { nativeEnd = resolve; });
+    const finalAnswerReady = projected => projected?.answer?.status === 'ready' && projected.answer.runId === runId
+      && Boolean(projected.answer.text?.trim());
     const report = async projected => {
       for (const item of Array.isArray(projected?.progress) ? projected.progress : []) {
         if (!item?.id || reported.has(item.id)) continue;
@@ -140,7 +156,11 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       while (watching && !controller.signal.aborted) {
         await new Promise(resolve => { wake = resolve; setTimeout(resolve, progressMs); });
         if (!watching) break;
-        try { await report(await readEvidence()); } catch { /* progress is best effort */ }
+        try {
+          const projected = await readEvidence();
+          await report(projected);
+          if (!browserReply && finalAnswerReady(projected)) nativeEndTimer ??= setTimeout(nativeEnd, streamGraceMs);
+        } catch { /* progress is best effort */ }
       }
     };
     let watcher = Promise.resolve();
@@ -217,17 +237,32 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           }
         }
       };
-      for await (const chunk of response.body) {
-        pending += decoder.decode(chunk, { stream: true });
+      const body = (response.body[Symbol.asyncIterator] || response.body[Symbol.iterator]).call(response.body);
+      let streamAbandoned = false;
+      while (true) {
+        const read = body.next();
+        const next = await Promise.race([read, nativeEnded]);
+        if (!next) {
+          // The native run has its final answer and the stream stayed open past
+          // the grace: stop reading and deliver from the run's own evidence.
+          read.catch(() => {});
+          streamAbandoned = terminal = true; phase('streamAbandoned');
+          controller.abort();
+          break;
+        }
+        if (next.done) break;
+        pending += decoder.decode(next.value, { stream: true });
         let newline;
         while ((newline = pending.indexOf('\n')) >= 0) {
           await consume(pending.slice(0, newline).trimEnd()); pending = pending.slice(newline + 1);
         }
       }
-      pending += decoder.decode();
-      if (pending.trim()) await consume(pending.trimEnd());
+      if (!streamAbandoned) {
+        pending += decoder.decode();
+        if (pending.trim()) await consume(pending.trimEnd());
+      }
       phase('streamEnd');
-      watching = false; wake?.(); await watcher;
+      watching = false; wake?.(); await within(watcher, 1000);
       if (!terminal) throw new Error('La connexion avec Nestor s’est coupée avant sa réponse. Réessaie ta demande.');
       // Native hooks carry the run identity; historical/global receipts never
       // count as evidence for this turn. Their absence is visible, not empty.
@@ -237,7 +272,9 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       const earliest = Date.now() + Math.min(settleMs, 300);
       let until = Date.now() + Math.min(settleMs, 3000);
       do {
-        try { evidence = await readEvidence(); } catch { evidence = null; break; }
+        // A failed read is retried inside the same bound: one slow read must not
+        // cost a final answer that the run has.
+        try { evidence = await readEvidence(); } catch { evidence = null; await pause(100); continue; }
         await report(evidence).catch(() => {});
         const imageDelivery = await imageReply();
         signal?.throwIfAborted();
@@ -291,8 +328,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       } while (true);
       throw error;
     } finally {
-      clearTimeout(deadline); signal?.removeEventListener('abort', abort);
-      watching = false; wake?.(); await watcher;
+      clearTimeout(deadline); clearTimeout(nativeEndTimer); signal?.removeEventListener('abort', abort);
+      watching = false; wake?.(); await within(watcher, 1000);
       let settled = terminal;
       try {
         if (runId && !terminal) {
