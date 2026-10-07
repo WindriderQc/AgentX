@@ -222,10 +222,12 @@ the timeline's marks do not.
 
 **Resources the voice needs**
 
-- The speech host keeps recognition and both synthesis engines in video memory,
-  with headroom, and holds no resident language model. A model that shares that
-  memory pushes the idle speech processes out, and the first utterance after a
-  pause pays for their return.
+- The speech host keeps recognition and its synthesis engines in video memory.
+  Whatever else is resident on that card, a language model included, fits
+  beside them with headroom: once the memory is oversubscribed, the idle speech
+  processes are pushed out and the first utterance after a pause pays for their
+  return. A model shares that card only when it is pinned there; one loaded for
+  a short job leaves on its own.
 - The spoken lane's model is resident and fully in video memory on the host
   configured for it. `voice_persona_chat` stays on that host: it never follows
   its model to another host, the speech host included. Another caller on the
