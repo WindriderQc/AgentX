@@ -161,7 +161,10 @@ profile and how many catalog prompts have a scored answer. A prompt counts when
 the answer was scored with the current scorer version, for the prompt as the
 catalog holds it today, by the artifact the profile describes: a new artifact,
 a new scorer version or an edited prompt re-opens what it affects. **Next**
-says what the pair still needs, a profile first, then the benchmark.
+says what the pair still needs, a profile first, then the benchmark. A stored
+profile counts as current only when the gate every benchmark launch passes
+accepts it for the artifact the host serves now; otherwise the pair shows the
+gate's reason and needs a profile again.
 `GET /api/benchmark/coverage` returns the same matrix.
 
 A new scorer version declares, per prompt category, whether stored grades keep

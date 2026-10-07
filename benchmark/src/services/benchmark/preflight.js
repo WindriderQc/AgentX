@@ -710,7 +710,7 @@ async function runPreflight(options = {}) {
 module.exports = {
     MIN_PROMPTS_PER_CATEGORY,
     WARN_PROMPTS_PER_CATEGORY,
-    checkHostModel,
+    checkHostModel, checkBenchmarkTargetEligibility,
     checkPromptCoverage,
     checkJudgeConfiguration,
     checkOrphanedBatches,
