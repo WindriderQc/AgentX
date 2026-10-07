@@ -49,6 +49,8 @@ const watchdog = require('../../src/services/ollamaWatchdogService');
 const hostGate = require('../../src/services/hostGate');
 
 const MOCK_HOST = { id: 'primary', name: 'Host Gamma', url: 'http://192.0.2.99:11434', priority: 1 };
+// How Ollama reports a resident loaded with keep_alive -1: it is there to stay.
+const STAYS = { expires_at: '2318-01-01T00:00:00Z' };
 
 function headers(values = {}) {
   const normalized = new Map(Object.entries(values)
@@ -220,7 +222,7 @@ describe('checkMeta', () => {
     watchdog._setFetch(makeMockFetch({
       '/api/ps': () => ({
         ok: true,
-        json: async () => ({ models: [{ name: 'gemma4:26b', context_length: 65536 }, { name: 'qwen3:14b' }] })
+        json: async () => ({ models: [{ name: 'gemma4:26b', context_length: 65536, ...STAYS }, { name: 'qwen3:14b' }] })
       })
     }));
 
@@ -228,8 +230,8 @@ describe('checkMeta', () => {
     expect(result.ok).toBe(true);
     expect(result.models).toEqual(['gemma4:26b', 'qwen3:14b']);
     expect(result.residentModels).toEqual([
-      { model: 'gemma4:26b', contextLength: 65536 },
-      { model: 'qwen3:14b', contextLength: null }
+      { model: 'gemma4:26b', contextLength: 65536, permanent: true },
+      { model: 'qwen3:14b', contextLength: null, permanent: false }
     ]);
   });
 
@@ -250,7 +252,7 @@ describe('probeCycle (integration)', () => {
         requestBody = JSON.parse(opts.body);
         return { ok: true, status: 200, json: async () => ({ done: true }) };
       },
-      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'gemma4:26b', context_length: 65536 }] }) })
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'gemma4:26b', context_length: 65536, ...STAYS }] }) })
     });
     watchdog._setFetch(mockFetch);
 
@@ -272,7 +274,7 @@ describe('probeCycle (integration)', () => {
       const generate = jest.fn();
       watchdog._setFetch(makeMockFetch({
         '/api/ps': () => ({ ok: true, json: async () => ({
-          models: [{ name: 'resident-model', context_length: contextLength }]
+          models: [{ name: 'resident-model', context_length: contextLength, ...STAYS }]
         }) }),
         '/api/generate': generate
       }));
@@ -291,7 +293,7 @@ describe('probeCycle (integration)', () => {
     const generate = jest.fn(() => ({ ok: true, status: 200 }));
     watchdog._setFetch(makeMockFetch({
       '/api/generate': generate,
-      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'gemma4:26b', context_length: 65536 }] }) })
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'gemma4:26b', context_length: 65536, ...STAYS }] }) })
     }));
 
     try {
@@ -308,7 +310,7 @@ describe('probeCycle (integration)', () => {
     const generate = jest.fn(() => ({ ok: true, status: 200 }));
     watchdog._setFetch(makeMockFetch({
       '/api/generate': generate,
-      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'resident-model' }] }) })
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'resident-model', ...STAYS }] }) })
     }));
 
     try {
@@ -324,7 +326,7 @@ describe('probeCycle (integration)', () => {
     watchdog._setFetch(makeMockFetch({
       '/api/ps': () => ({
         ok: true,
-        json: async () => ({ models: [{ name: 'gemma4:26b', context_length: 65536 }] })
+        json: async () => ({ models: [{ name: 'gemma4:26b', context_length: 65536, ...STAYS }] })
       }),
       '/api/generate': (_url, opts) => {
         // Simulate timeout on probe
@@ -365,7 +367,7 @@ describe('probeCycle (integration)', () => {
       inferences: [{ host: MOCK_HOST.url, model: 'gemma4:26b', quarantined: true }], maintenance: null
     });
     watchdog._setFetch(makeMockFetch({
-      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'gemma4:26b', context_length: 65536 }] }) }),
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'gemma4:26b', context_length: 65536, ...STAYS }] }) }),
       '/api/generate': () => ({ ok: true, json: async () => ({ done: true }) })
     }));
     await watchdog.runNow();
@@ -395,7 +397,7 @@ describe('probeCycle (integration)', () => {
     const host = { ...MOCK_HOST, url: 'http://192.0.2.101:11434' };
     getConfiguredHosts.mockReturnValue([host]);
     watchdog._setFetch(makeMockFetch({
-      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'missing-model', context_length: 8192 }] }) }),
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'missing-model', context_length: 8192, ...STAYS }] }) }),
       '/api/generate': () => ({ ok: false, status: 404, json: async () => ({ error: 'model not found' }) })
     }));
     for (let i = 0; i < 3; i++) await watchdog.runNow();
@@ -417,7 +419,7 @@ describe('probeCycle (integration)', () => {
     await watchdog.runNow();
     expect(watchdog.getStats().hosts[0]).toMatchObject({ health: 'unknown', reason: 'control_plane_only', probesOk: 1 });
     watchdog._setFetch(makeMockFetch({
-      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'resident', context_length: 8192 }] }) }),
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'resident', context_length: 8192, ...STAYS }] }) }),
       '/api/generate': () => ({ ok: true, json: async () => ({ done: true, response: 'ok' }) })
     }));
     await watchdog.runNow();
@@ -432,7 +434,7 @@ describe('probeCycle (integration)', () => {
     getConfiguredHosts.mockReturnValue([host]);
     const generateBodies = [];
     watchdog._setFetch(makeMockFetch({
-      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'failed-model', context_length: 8192 }] }) }),
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'failed-model', context_length: 8192, ...STAYS }] }) }),
       '/api/generate': (_url, opts) => {
         const body = JSON.parse(opts.body);
         generateBodies.push(body);
@@ -460,7 +462,7 @@ describe('probeCycle (integration)', () => {
     getConfiguredHosts.mockReturnValue([host]);
     const bodies = [];
     watchdog._setFetch(makeMockFetch({
-      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'refusing-model', context_length: 8192 }] }) }),
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'refusing-model', context_length: 8192, ...STAYS }] }) }),
       '/api/generate': (_url, opts) => {
         bodies.push(JSON.parse(opts.body));
         return { ok: false, status, json: async () => ({ error: 'model cannot generate' }) };
@@ -481,8 +483,8 @@ describe('probeCycle (integration)', () => {
     const bodies = [];
     watchdog._setFetch(makeMockFetch({
       '/api/ps': () => ({ ok: true, json: async () => ({ models: [
-        { name: 'qllama/bge-m3:f16', context_length: 4096 },
-        { name: 'gemma4:12b-it-qat', context_length: 114688 }
+        { name: 'qllama/bge-m3:f16', context_length: 4096, ...STAYS },
+        { name: 'gemma4:12b-it-qat', context_length: 114688, ...STAYS }
       ] }) }),
       '/api/generate': (_url, opts) => {
         bodies.push(JSON.parse(opts.body));
@@ -497,12 +499,36 @@ describe('probeCycle (integration)', () => {
     expect(watchdog.getStats().probesFailed).toBe(before.probesFailed);
   });
 
+  it('leaves a model loaded for a while to expire instead of making it permanent', async () => {
+    const host = { ...MOCK_HOST, url: 'http://192.0.2.104:11434' };
+    getConfiguredHosts.mockReturnValue([host]);
+    const bodies = [];
+    const leavesAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    watchdog._setFetch(makeMockFetch({
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [
+        { name: 'judge-model', context_length: 32768, expires_at: leavesAt }
+      ] }) }),
+      '/api/generate': (_url, opts) => {
+        bodies.push(JSON.parse(opts.body));
+        return { ok: false, status: 404, json: async () => ({ error: 'model not found' }) };
+      }
+    }));
+    const before = watchdog.getStats();
+    await watchdog.runNow();
+    // Only the control-plane check ran: nothing named the model, so nothing extended its stay.
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0].model).toBe('_');
+    expect(mockBeginInferenceAdmission).not.toHaveBeenCalledWith(expect.objectContaining({ model: 'judge-model' }));
+    expect(watchdog.getStats().probesFailed).toBe(before.probesFailed);
+    expect(watchdog.getStats().jamsDetected).toBe(before.jamsDetected);
+  });
+
   it('checks only the control plane when the sole resident is an embedding model', async () => {
     const host = { ...MOCK_HOST, url: 'http://192.0.2.103:11434' };
     getConfiguredHosts.mockReturnValue([host]);
     const bodies = [];
     watchdog._setFetch(makeMockFetch({
-      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'qllama/bge-m3:f16', context_length: 4096 }] }) }),
+      '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'qllama/bge-m3:f16', context_length: 4096, ...STAYS }] }) }),
       '/api/generate': (_url, opts) => {
         bodies.push(JSON.parse(opts.body));
         return { ok: false, status: 404, json: async () => ({ error: 'model not found' }) };

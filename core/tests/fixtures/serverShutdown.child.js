@@ -57,7 +57,7 @@ watchdog._setFetch(async (url) => {
   } else event('metadata');
   const payload = generate
     ? (phase === 'missing-terminal' ? {} : { done: true })
-    : { models: [{ name: 'fixture-model', context_length: 8192 }] };
+    : { models: [{ name: 'fixture-model', context_length: 8192, expires_at: '2318-01-01T00:00:00Z' }] };
   return {
     status: 200, ok: true, url,
     headers: { get: name => name.toLowerCase() === 'content-type' ? 'application/json' : null },
