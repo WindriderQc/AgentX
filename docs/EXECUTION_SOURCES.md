@@ -76,6 +76,17 @@ The reservation conservatively prices the native context window and output
 limit. Paid campaign admission uses the same bound before allowing a call. It is an estimate from the native catalogue, not an invoice guarantee.
 Provider-account spending limits remain configured with OpenClaw and the provider.
 
+An instance that wants no per-request ceiling sets `maxRequestCostNanodollars`
+to the largest safe integer; the reservation is still computed and recorded.
+The plugin keeps a running total of dispatched paid model-mode calls in
+`paid-spend.json` under its OpenClaw state directory and publishes it as
+`spend` in the catalogue: paid calls, estimated nanodollars, and the number of
+calls whose cost was not observed (a dispatched call that failed is counted
+there, never priced). A paid call is refused before dispatch when that total
+cannot be read. Core raises the `openclaw-paid-spend-step` alert each time the
+total crosses another 10 USD. The total is a runtime estimate from native
+catalogue rates, not an invoice, and it does not include native agent runs.
+
 Model mode streams text and thinking and propagates cancellation. It accepts
 only bounded generation parameters and refuses requested parameters that are
 absent from the final native payload. No agent session, delivery, fan-out or

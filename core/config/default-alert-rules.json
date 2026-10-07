@@ -104,6 +104,19 @@
         "description": "Evidence-backed truncation, incomplete response, or no-visible-final outcome."
     },
     {
+        "id": "openclaw-paid-spend-step",
+        "name": "Paid model spend crossed another 10 USD",
+        "enabled": true,
+        "severity": "warning",
+        "title": "Paid model spend reached {{stepUsd}} USD",
+        "message": "Estimated total {{totalUsd}} USD over {{paidCalls}} paid model calls since {{since}}; {{unknownCostCalls}} calls have no observed cost.",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "openclaw_paid_spend_step" }
+        ]},
+        "channels": ["local_log", "telegram"],
+        "description": "One alert per 10 USD step of the native running total of paid OpenClaw model-mode calls. The total is an estimate from catalogue rates, not an invoice."
+    },
+    {
         "id": "benchmark-claim-release-failure",
         "name": "Benchmark claim release failure",
         "enabled": true,

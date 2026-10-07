@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createExecutionService } from '../service.mjs';
 import { billingFor } from '../native.mjs';
+import { createSpendLedger } from '../ledger.mjs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const model = { provider: 'fixture', id: 'model', api: 'openai-completions' };
 const descriptor = { model: 'fixture/model', maxTokens: 1024, contextWindow: 8192, fingerprint: 'fixed',
@@ -97,4 +101,32 @@ test('native zero rate defaults remain unknown until free or included billing is
   assert.equal(billingFor(value, { params: { billingKind: 'free' } }).kind, 'free');
   assert.equal(billingFor(value, { params: { billingKind: 'included' } }).kind, 'included');
   assert.equal(billingFor({ ...value, cost: { ...value.cost, output: 1 } }).kind, 'paid');
+});
+
+test('paid calls are added to the running total, an unobserved cost is counted and an unreadable total blocks dispatch', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'agentx-spend-')), file = join(dir, 'state', 'paid-spend.json');
+  const paidDescriptor = { ...descriptor, billing: { kind: 'paid', rates: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 } } };
+  const backendFor = stream => ({ catalogue: async () => ({ runtimeVersion: 'fixture', models: [paidDescriptor, descriptor], agents: [] }),
+    prepare: async name => ({ model, descriptor: name === 'fixture/free' ? descriptor : paidDescriptor, runtimeVersion: 'fixture', effectiveParameters: {}, stream }) });
+  const priced = (context, options) => (async function* () {
+    await options.onPayload({ messages: context.messages, max_tokens: options.maxTokens, temperature: options.temperature });
+    yield { type: 'done', message: { ...answer(), usage: { ...answer().usage, cost: { total: 0.004 } } } };
+  })();
+  const broken = (context, options) => (async function* () {
+    await options.onPayload({ messages: context.messages, max_tokens: options.maxTokens, temperature: options.temperature });
+    yield { type: 'error' };
+  })();
+  const service = stream => createExecutionService({ backend: backendFor(stream), maxRequestCostNanodollars: Number.MAX_SAFE_INTEGER, ledger: createSpendLedger({ file }) });
+  await service(priced).execute(request());
+  await assert.rejects(service(broken).execute(request()), { code: 'OPENCLAW_NATIVE_MODEL_FAILED' });
+  // A new ledger instance reads the same file: the total survives a gateway restart.
+  const spend = (await service(priced).catalogue()).spend;
+  assert.deepEqual([spend.paidCalls, spend.nanodollars, spend.unknownCostCalls, spend.saved], [2, 4_000_000, 1, true]);
+  assert.equal(spend.costSource, 'runtime-estimate');
+  await writeFile(file, 'not json');
+  let dispatched = 0;
+  const blocked = service((context, options) => { dispatched += 1; return priced(context, options); });
+  await assert.rejects(blocked.execute(request()), { code: 'OPENCLAW_SPEND_LEDGER_UNAVAILABLE' });
+  assert.equal(dispatched, 0); assert.equal((await blocked.catalogue()).spend, null);
+  await rm(dir, { recursive: true });
 });

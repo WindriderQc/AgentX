@@ -513,6 +513,17 @@ async function startServer() {
     console.log(`   ⚠ Lane Observability: ${err.message}`);
   }
 
+  // Paid OpenClaw model spend: one alert per 10 USD step of the native running total.
+  try {
+    require('../shared/openclawExecutionClient').connection(process.env);
+    const spendWatch = require('./src/services/execution/openclawSpendWatch').createOpenClawSpendWatch();
+    await startCoreSingletonDaemon({ name: 'openclaw-paid-spend-watch', label: 'OpenClaw Paid Spend Watch',
+      start: async () => { spendWatch.start(); console.log('   ✓ OpenClaw Paid Spend Watch: Active (10 USD steps)'); },
+      stop: async () => spendWatch.stop() });
+  } catch (err) {
+    console.log(`   ⚠ OpenClaw Paid Spend Watch: ${err.message}`);
+  }
+
   // Opt-in: alert once per unknown device the Data network collector reports.
   const networkWatchMs = require('./src/services/networkDeviceWatch').watchIntervalMs();
   if (networkWatchMs) {
