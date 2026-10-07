@@ -44,6 +44,7 @@ class Settings:
     whisper_model: str
     whisper_device: str
     whisper_compute_type: str
+    whisper_vad_threshold: float
     whisper_hotwords: str
     whisper_initial_prompt: str
     # Instance-provided transcript corrections (a JSON file outside the repository).
@@ -65,6 +66,8 @@ class Settings:
     voxcpm_timeout_seconds: float = 60.0
 
     def validate(self) -> None:
+        if not 0 < self.whisper_vad_threshold < 1:
+            raise ValueError("WHISPER_VAD_THRESHOLD must be between 0 and 1")
         if self.tts_provider not in TTS_PROVIDERS:
             raise ValueError(f"TTS_PROVIDER must be one of {sorted(TTS_PROVIDERS)}")
         if self.tts_output_rate <= 0:
@@ -80,6 +83,7 @@ def load_settings() -> Settings:
         whisper_model=os.getenv("WHISPER_MODEL", "large-v3-turbo"),
         whisper_device=os.getenv("WHISPER_DEVICE", "cuda"),
         whisper_compute_type=os.getenv("WHISPER_COMPUTE_TYPE", "float16"),
+        whisper_vad_threshold=_get_float("WHISPER_VAD_THRESHOLD", 0.85),
         # Product names only. An instance adds its own names (people, places)
         # through its external environment, never in this repository.
         whisper_hotwords=os.getenv("WHISPER_HOTWORDS", "Nestor, AgentX, OpenClaw, VoiX").strip(),

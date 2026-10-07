@@ -100,14 +100,14 @@ test('ordinary short corrections and English speech keep their original transcri
   assert.deepEqual(submitted, ['Orion.', "Let's go.", 'Numéro 6', 'Stop, explique le budget.']);
 });
 
-for (const kind of ['empty', 'hallucinated', 'url', 'digit', 'failed', 'echo']) {
+for (const kind of ['empty', 'hallucinated', 'digit', 'failed', 'echo']) {
   test(`a ${kind} noise candidate during playback resumes the same response without cancelling history`, async () => {
     const playing = deferred(); let transcriptions = 0, turns = 0, syntheses = 0;
     const h = harness({ transcribe: async () => {
       if (++transcriptions === 1) return 'Bonjour';
       if (kind === 'failed') throw new Error('STT unavailable');
       if (kind === 'echo') return 'Réponse à terminer';
-      return kind === 'empty' ? '' : kind === 'digit' ? '6.' : kind === 'url' ? 'www.youtube.com' : 'Thanks for watching.';
+      return kind === 'empty' ? '' : kind === 'digit' ? '6.' : 'Thanks for watching.';
     }, turn: async () => { turns++; return { text: 'Une réponse à terminer.' }; },
     synthesize: async () => { syntheses++; return new ArrayBuffer(10); },
     interrupt: () => assert.fail('noise must not cancel playback or native history') });
@@ -433,14 +433,14 @@ test('the upload ceiling fails explicitly instead of submitting a partial turn',
   assert.equal(endpoint.total, 1000);
 });
 
-test('the reported bare URL artifact is silent, while a request containing that URL stays intact', async () => {
+test('a recognized URL remains legitimate conversation content, including when it stands alone', async () => {
   const heard = [];
   for (const text of ['www.youtube.com', 'https://www.youtube.com.', 'YouTube.com', 'Ouvre www.youtube.com pour moi.']) {
     const h = harness({ transcribe: async () => ({ text, detectedLanguage: 'en' }),
       turn: async (_session, value) => { heard.push(value); return { text: 'Compris.' }; } });
     await h.conversation.start({ language: 'auto' }); await h.say(); h.conversation.stop();
   }
-  assert.deepEqual(heard, ['Ouvre www.youtube.com pour moi.']);
+  assert.deepEqual(heard, ['www.youtube.com', 'https://www.youtube.com.', 'YouTube.com', 'Ouvre www.youtube.com pour moi.']);
 });
 
 test('automatic reply speech follows the answer despite an incorrect STT language, then stays stable', async () => {
