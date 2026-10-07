@@ -74,7 +74,9 @@
   const TRANSCRIPT_HALLUCINATIONS = new Set(['thank you', 'thank you very much', 'thank you so much', 'thanks for watching',
     'thank you for watching', 'thanks for watching and see you next time', 'please subscribe', 'you', 'bye',
     'merci d avoir regarde', 'merci d avoir regarde cette video', 'sous titres realises par la communaute d amara org',
-    'sous titrage st 501', 'sous titrage societe radio canada', 'sous titres par amara org']);
+    'sous titrage st 501', 'sous titrage societe radio canada', 'sous titres par amara org',
+    'www youtube com', 'youtube com', 'https www youtube com', 'https youtube com',
+    'http www youtube com', 'http youtube com']);
   function isTranscriptHallucination(text) {
     const value = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
       .replace(/[^a-z0-9]+/g, ' ').trim();
@@ -182,8 +184,11 @@
   const EARLY_RECOGNITION_SILENCE_MS = 500;
   // Recognition measured warm for about a minute after it last ran, and slower after that.
   const RECOGNITION_WARM_INTERVAL_MS = 45000;
+  // Match the transcription upload ceiling (32 MiB), leaving room for WAV
+  // and multipart headers. Reaching it is an explicit error, never a partial turn.
+  const MAX_CAPTURE_BYTES = 32 * 1024 * 1024 - 64 * 1024;
   class Endpoint {
-    constructor(rate, minimumVoiceMs = 160, endSilenceMs = TURN_END_SILENCE_MS) { this.rate = rate; this.minimumVoiceMs = minimumVoiceMs; this.endSilenceMs = endSilenceMs; this.reset(); }
+    constructor(rate, minimumVoiceMs = 160, endSilenceMs = TURN_END_SILENCE_MS) { this.rate = rate; this.minimumVoiceMs = minimumVoiceMs; this.endSilenceMs = endSilenceMs; this.maxSamples = MAX_CAPTURE_BYTES / 2; this.reset(); }
     reset() {
       this.frames = []; this.preRoll = []; this.preSamples = 0;
       this.voiceSamples = 0; this.silenceSamples = 0; this.total = 0;
@@ -216,6 +221,9 @@
         this.preRoll = []; this.preSamples = 0;
         return null;
       }
+      if (this.total + samples.length > this.maxSamples) {
+        throw new Error('La prise de parole dépasse la taille acceptée. Fais une pause entre tes idées, puis réactive le micro. Aucun message partiel n’a été envoyé.');
+      }
       this.frames.push(samples); this.total += samples.length;
       this.silenceSamples = voiced ? 0 : this.silenceSamples + samples.length;
       if (voiced && this.earlyId !== null) { this.events.push({ type: 'resumed', id: this.earlyId }); this.earlyId = null; }
@@ -225,7 +233,7 @@
         for (const frame of this.frames) { joined.set(frame, offset); offset += frame.length; }
         return joined;
       };
-      if (this.silenceSamples < this.rate * this.endSilenceMs / 1000 && this.total < this.rate * 20) {
+      if (this.silenceSamples < this.rate * this.endSilenceMs / 1000) {
         if (this.earlySilenceMs && this.earlyId === null && !voiced && this.earlySilenceMs < this.endSilenceMs
             && this.silenceSamples >= this.rate * this.earlySilenceMs / 1000) {
           this.earlyId = this.earlySeq = (this.earlySeq || 0) + 1;
@@ -587,11 +595,18 @@
       let pending = '', streamed = false, firstChunk = true, speechError = null, playback = Promise.resolve();
       let synthesis = Promise.resolve(), prefetchSlot = Promise.resolve();
       let spokenLanguage = speechLanguage.turnSpeechLanguage(text, detectedLanguage, this.selection.language);
+      let replyLanguageChosen = !!speechLanguage.explicitSpeechLanguage(this.selection.language);
       // `notice` marks words that are not the reply (a waiting notice): the
       // timeline's first audio is the reply's own first clause.
       const speak = (text, notice = false) => {
         text = (this.io.speechText || speechLanguage.speechText)(text);
         if (!text.trim() || !this.owns(turn)) return false;
+        // In automatic mode the reply's own words choose its voice once. A
+        // mistaken STT language must not read a French answer in English.
+        if (!notice && !replyLanguageChosen) {
+          spokenLanguage = speechLanguage.replySpeechLanguage(text, spokenLanguage);
+          replyLanguageChosen = speechLanguage.scoreSpeechLanguage(text).decided;
+        }
         turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
         const language = spokenLanguage;
         const previousPlayback = playback, availableSlot = prefetchSlot;
@@ -800,9 +815,9 @@
     }
     const context = new Context();
     const playbackHold = PlaybackHold ? new PlaybackHold(context) : null;
-    // Endpoint.total includes pre-roll and trailing silence already. It may
-    // overshoot twenty seconds by less than one 1024-sample worklet block.
-    const history = new AudioHistory(context.sampleRate, () => Date.now(), 1024);
+    // Replay retains twenty seconds; the submitted utterance is independent
+    // and continues until the person pauses, including longer speech.
+    const history = new AudioHistory(context.sampleRate, () => Date.now());
     let replayAbort;
     let stream, node, source, activePlay, activeSpeech, analyser, wave, spectrum, closed = false, captureEpoch = 0;
     const readSpeechSample = () => {
@@ -946,14 +961,16 @@
             const prior = endpoint.speaking;
             const rejectedEcho = echo.isEcho(data.samples, data.reference);
             history.push(data.samples, data.time === undefined ? Date.now() : data.time * 1000, rejectedEcho);
-            const utterance = endpoint.push(rejectedEcho ? new Float32Array(data.samples.length) : data.samples);
+            let utterance;
+            try { utterance = endpoint.push(rejectedEcho ? new Float32Array(data.samples.length) : data.samples); }
+            catch (error) { quiet(); onError(error); return; }
             if (!prior && endpoint.speaking) onSpeech();
             for (const event of endpoint.drain()) {
               if (event.type === 'early') onEarly?.(wav(event.samples, context.sampleRate), { id: event.id });
               else onEarlyCancel?.(event.id);
             }
             if (utterance) {
-              freeze('utterance', utterance.length); quiet();
+              freeze('utterance', Math.min(utterance.length, context.sampleRate * 20)); quiet();
               onUtterance(wav(utterance, context.sampleRate), { audioMs: utterance.length / context.sampleRate * 1000, silenceMs: endpoint.endSilenceMs,
                 earlyId: endpoint.completedEarlyId ?? null });
             }
@@ -975,7 +992,7 @@
     return response.arrayBuffer();
   }
 
-  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isTranscriptHallucination, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, nextSpeechChunkLength };
+  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isTranscriptHallucination, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else { root.AgentXVoice = api; root.NestorConversation = api; }
 })(typeof window === 'undefined' ? globalThis : window);
