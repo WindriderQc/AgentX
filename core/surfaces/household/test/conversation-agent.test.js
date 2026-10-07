@@ -416,6 +416,46 @@ test('tool progress is reported while the native run is still streaming', async 
   assert.deepEqual(activity, [{ kind: 'tool', tool: 'personal_memory' }]);
 });
 
+test('a final answer is delivered when the gateway keeps a finished run\'s stream open', async () => {
+  let closeStream, reads = 0, aborted = false;
+  const open = () => ({ ok: true, body: (async function* () {
+    yield created;
+    await new Promise(resolve => { closeStream = resolve; });
+  })() });
+  const evidence = { run: { model: 'native' }, answer: answer('Trois tâches.'), progress: [{ id: 'call-1', tool: 'list_personal_tasks' }] };
+  const activity = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 20, streamDrainMs: 40,
+    // The first reads fall while the tool still runs: no final answer yet.
+    continuity: async () => (++reads < 3 ? { progress: evidence.progress, answer: { status: 'unavailable', runId } } : evidence),
+    fetchImpl: async (_url, options) => { options.signal.addEventListener('abort', () => { aborted = true; closeStream(); }); return open(); } });
+  let settled = 0;
+  const result = await client({ session, text: 'Mes tâches ?', onActivity: item => activity.push(item), onSettled: () => { settled += 1; } });
+  assert.equal(result.text, 'Trois tâches.');
+  assert.equal(result.tools.status, 'observed');
+  assert.equal(result.interrupted, undefined);
+  assert.equal(settled, 1);
+  assert.deepEqual(activity, [{ kind: 'tool', tool: 'list_personal_tasks' }]);
+  assert.ok(result.metadata.phases.streamOverdue >= 20 && result.metadata.phases.streamEnd === undefined);
+  assert.equal(aborted, false, 'The gateway keeps a bounded time to finish behind the run');
+  await new Promise(resolve => setTimeout(resolve, 80));
+  assert.equal(aborted, true, 'A request the gateway never closes is closed for it');
+});
+
+test('a stream that ends within the grace is never abandoned, and a browser reply always waits for it', async () => {
+  const evidence = { run: { model: 'native' }, answer: answer('Voilà.') };
+  const slow = () => ({ ok: true, body: (async function* () {
+    yield created;
+    await new Promise(resolve => setTimeout(resolve, 60));
+    yield completed;
+  })() });
+  const graced = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 500, continuity: async () => evidence, fetchImpl: async () => slow() });
+  const first = await graced({ session, text: 'Alors ?' });
+  assert.ok(first.metadata.phases.streamEnd >= 60 && first.metadata.phases.streamOverdue === undefined);
+  const scene = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 5, continuity: async () => evidence, fetchImpl: async () => slow() });
+  const second = await scene({ session, text: 'Alors ?', browserReply: { context: {} } });
+  assert.ok(second.metadata.phases.streamEnd >= 60 && second.metadata.phases.streamOverdue === undefined);
+});
+
 test('a delegated turn that never settles fails plainly after its bound', async () => {
   const client = createAgentClient({ env, settleMs: 0, delegateMs: 0,
     continuity: async () => ({ run: { model: 'native' }, answer: { status: 'yielded', runId } }),
