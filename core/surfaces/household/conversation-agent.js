@@ -262,7 +262,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       if (!browserCall) {
         answer = evidence.answer.text;
         if (personalVoice(session, channel) && unfinishedToolPreamble(answer)) {
-          answer = scoreSpeechLanguage(answer).language === 'en' ? 'I could not complete that check. Please try again.'
+          answer = /^(?:i|let me)\b/i.test(answer) || scoreSpeechLanguage(answer).language === 'en'
+            ? 'I could not complete that check. Please try again.'
             : 'Je n’ai pas pu terminer cette vérification. Réessaie ta demande.';
         }
         if (browserReply) {
