@@ -47,7 +47,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <label class="conversation-toggle"><input id="conversationWake" type="checkbox" ${family ? "checked" : ""}> Exiger « Hey Nestor »</label><p class="muted">Avec réveil vocal, Nestor revient en veille après 30 secondes sans intervention ou dès « Merci Nestor ». En conversation ouverte, il répond aux paroles tant que le micro est actif. Les phrases sont transcrites sur le réseau local avant la détection du nom ; seules les phrases adressées à Nestor entrent dans la conversation.</p><div id="conversationBrowserSttSettings" hidden></div>${family ? '' : '<a href="/device-check" class="conversation-native">Vérifier le micro et le haut-parleur</a>'}</details>
       <details id="conversationAudio" class="conversation-audio"><summary>Audio & transcription</summary>
         <p id="conversationDevice" class="muted">Microphone et haut-parleurs de cet appareil</p>
-        <p class="muted">Réécoute jusqu’à 20 secondes de ce microphone, ou la fin de ta dernière prise de parole. Un extrait reste dans cet onglet pendant au plus 2 minutes. Pause, Arrêter ou quitter la page l’efface.</p>
+        <p class="muted">Réécoute jusqu’à 20 secondes de ce microphone, ou la fin de ta dernière prise de parole. Un extrait reste dans cet onglet pendant au plus 2 minutes. Pause, Nouvel échange ou quitter la page l’efface.</p>
         <div class="conversation-audio-actions"><button id="conversationInspectMic" class="button" type="button" disabled>Réécouter le micro récent</button><button id="conversationInspectPhrase" class="button" type="button" disabled>Réécouter la fin de la prise</button></div>
         <p id="conversationAudioStatus" class="muted">Start a conversation to capture audio.</p>
         <div id="conversationAudioExcerpt" hidden><p id="conversationAudioCapture" class="muted"></p><p id="conversationAudioTranscript" class="conversation-audio-transcript"></p>
@@ -58,7 +58,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <div class="conversation-live"><div id="conversationPresence" class="conversation-presence" data-state="idle" aria-hidden="true"><span id="conversationInitial">N</span></div>
       <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Préparation de Nestor…</p><p id="conversationVoiceNotice" class="muted" role="status" hidden></p>
       <p id="conversationBrowserSttIndicator" class="conversation-browser-stt" hidden></p><section id="conversationBrowserSttNotice" class="conversation-audio" aria-label="Reconnaissance du navigateur" role="alert" hidden></section>
-      <div class="conversation-actions"><button id="conversationStart" type="button" class="button primary" hidden disabled>Activer Nestor</button><button id="conversationPause" type="button" class="button" disabled>Pause</button><button id="conversationEnd" type="button" class="button danger" disabled>Arrêter</button></div></div>
+      <div class="conversation-actions"><button id="conversationStart" type="button" class="button primary" hidden disabled>Activer Nestor</button></div></div>
       <section id="conversationVisual" class="conversation-board conversation-visual" aria-label="Images" hidden></section>
       <div id="conversationResume" class="conversation-resume" role="region" aria-label="Reprendre" hidden></div>
       <div id="conversationTranscript" class="conversation-transcript" role="log" aria-label="Transcript" aria-live="polite"><p class="empty">Nos échanges apparaîtront ici.</p></div>
@@ -311,7 +311,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       return { ...result.reply, sound: result.sound };
     } finally { await reader.cancel().catch(() => {}); }
   }
-  const labels = { idle: 'Prêt à écouter.', starting: 'Activation du microphone…', listening: 'Je t’écoute…', hearing: 'Je t’écoute…', transcribing: 'Un instant…', waiting: 'Je termine la réponse précédente…', thinking: 'Je réfléchis…', preparing: 'Je prépare la réponse…', speaking: 'Nestor répond…', paused: 'Micro coupé. Active Nestor pour reprendre.', error: 'Conversation en pause.', reviewing: 'Micro coupé pour la réécoute. Active Nestor pour reprendre.', resuming: 'Reprise après la lecture…' };
+  const labels = { idle: 'Prêt à écouter.', starting: 'Activation du microphone…', listening: 'Je t’écoute…', hearing: 'Je t’écoute…', transcribing: 'Un instant…', waiting: 'Je termine la réponse précédente…', thinking: 'Je réfléchis…', preparing: 'Je prépare la réponse…', speaking: 'Nestor répond…', paused: 'Micro coupé.', error: 'Conversation en pause.', reviewing: 'Micro coupé pour la réécoute.', resuming: 'Reprise après la lecture…' };
   // The voice ladder and the VoiX backup (X-Voix-Upstream) share one notice.
   let ladderNotice = '', voixUpstream = '';
   const renderVoiceNotice = () => { const text = NestorVoixUpstream.composeNotice(ladderNotice, voixUpstream), node = el('conversationVoiceNotice'); node.hidden = !text; node.textContent = text; };
@@ -472,11 +472,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     const reviewing = state === 'reviewing';
     const active = !['idle', 'paused', 'error', 'reviewing'].includes(state);
     holdScreen(active || textBusy);
-    el('conversationStart').disabled = active || textBusy;
-    el('conversationStart').hidden = active || enteringSpace;
-    el('conversationStart').textContent = conversation.session ? 'Reprendre' : 'Activer Nestor';
-    el('conversationPause').disabled = !active && !reviewing;
-    el('conversationEnd').disabled = !active && !conversation.session;
+    el('conversationStart').disabled = textBusy && !active;
+    el('conversationStart').hidden = enteringSpace && !active;
+    el('conversationStart').textContent = active ? 'Pause' : conversation.session ? 'Reprendre' : 'Activer Nestor';
     const lockReason = renderTeam(active || textBusy);
     [backendPicker, agentPicker, picker, open, language, interruption].forEach(node => {
       node.disabled = active || !!conversation.session || textBusy || (node === agentPicker && (family || !agentCatalog || backendPicker.value !== 'openclaw'));
@@ -639,9 +637,12 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   };
   restoreProfile(); describe();
   open.onchange = () => { if (open.checked) void openHold.start(); else void releaseOpen(); };
-  el('conversationStart').onclick = () => { stopPreview(); preferences.lastVoice = chosenVoice(); savePreferences(); if (open.checked) void openHold.start(); return conversation.start(selection()); };
-  el('conversationPause').onclick = () => { conversation.stop(true); };
-  el('conversationEnd').onclick = () => { stopPreview(); conversation.stop(); void releaseOpen(); restoreProfile(); describe(); showTools(null); void recap?.refresh(); };
+  el('conversationStart').onclick = () => {
+    if (!['idle', 'paused', 'error', 'reviewing'].includes(conversation.state)) { conversation.stop(true); return; }
+    stopPreview(); preferences.lastVoice = chosenVoice(); savePreferences();
+    if (open.checked) void openHold.start();
+    return conversation.start(selection());
+  };
   el('conversationNew').onclick = () => {
     recap?.clear();
     el('conversationResume').hidden = true; setHistoryOpen(false); stopPreview(); conversation.stop(); void releaseOpen(); partial = null;
