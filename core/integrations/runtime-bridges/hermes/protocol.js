@@ -149,10 +149,12 @@ class OllamaToOpenAiSse extends Transform {
 }
 
 // A coding worker loses its whole conversation when one request is refused, so
-// the patient route waits for the host instead. Admission is refused before
-// anything is dispatched, which makes trying again safe.
+// the patient route waits for the host instead: behind another workload, and
+// behind a benchmark that reserved the host. Both are refused before anything
+// is dispatched, which makes trying again safe.
 const PATIENT_WAIT_MS = 8 * 60 * 1000;
 const PATIENT_RETRY_MS = 3000;
+const HOST_BUSY_CODES = new Set(['RUNTIME_INFERENCE_ADMISSION_DENIED', 'BENCHMARK_CLAIM_ACTIVE']);
 
 async function whenAdmitted(run, { waitMs = 0, retryMs = PATIENT_RETRY_MS, signal } = {}) {
   const deadline = Date.now() + waitMs;
@@ -160,7 +162,7 @@ async function whenAdmitted(run, { waitMs = 0, retryMs = PATIENT_RETRY_MS, signa
     try {
       return await run();
     } catch (error) {
-      if (error?.code !== 'RUNTIME_INFERENCE_ADMISSION_DENIED' || signal?.aborted || Date.now() + retryMs > deadline) throw error;
+      if (!HOST_BUSY_CODES.has(error?.code) || signal?.aborted || Date.now() + retryMs > deadline) throw error;
       await delay(retryMs, undefined, { signal });
     }
   }
