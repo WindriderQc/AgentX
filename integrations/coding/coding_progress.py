@@ -21,7 +21,7 @@ STAGES = {"preparing", "dependencies", "model_wait", "model_generation", "tool",
 PHASES = {"preparing", "running", "delivering", "finished"}
 REASONS = {"hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit",
            "worker_exit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
-           "tests_failed", "generated_artifacts", "ineligible_task",
+           "tests_failed", "generated_artifacts", "ineligible_task", "runtime_unavailable", "runtime_changed",
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
 RESULTS = {"blocked", "review", "local_only"}
 TEST_NAMES = {"pytest", "unittest", "jest", "npm_test", "node_test"}

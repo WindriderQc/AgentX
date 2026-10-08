@@ -80,7 +80,10 @@ the network and no worker. Install scripts are skipped (`--ignore-scripts`) and
 the test database is prepared with the runner's own script, so nothing the
 worker wrote runs while the network is open. Preparation is cached against the
 package files and the validated Node/npm distribution, including Node version
-and ABI and hashes of the Node executable and complete npm bundle. A runtime
+and ABI and hashes of the Node executable and npm's bundled files and symlink
+targets within the mounted distribution. External system libraries and global
+Node modules are outside this artifact identity; use a self-contained Node/npm
+distribution for dependency preparation. A runtime
 change invalidates the cache; old package-only markers require preparation.
 Network-free probes validate the selected distribution before a cache hit or
 installation. Node and npm are called explicitly from that distribution, with

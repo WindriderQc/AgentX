@@ -185,6 +185,7 @@ class CodingRunTest(unittest.TestCase):
             publish.assert_not_called()
             value = json.loads((self.workspace.parent / "receipts" / f"{key}.progress.json").read_text())
             self.assertEqual((value["phase"], value["result"], value["stopReason"]), ("finished", "blocked", reason))
+            self.assertEqual(runner.coding_progress.safe_progress(value, key, "0001")["stopReason"], reason)
 
     def test_preclaim_rejection_records_a_terminal_receipt_without_task_feedback(self):
         import json
