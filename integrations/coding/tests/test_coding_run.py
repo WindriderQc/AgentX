@@ -69,6 +69,27 @@ class CodingRunTest(unittest.TestCase):
         self.assertEqual(runner.git(self.workspace, "status", "--porcelain"), "")
         self.assertTrue((self.workspace / "result.txt").exists())
 
+    def test_failed_observed_test_keeps_a_successful_worker_turn_local(self):
+        self.exit_code = 0
+        def worker(workspace, prompt, timeout, progress):
+            progress.last_test = {"name": "jest", "outcome": "failed"}
+            return self.worker(workspace, prompt, timeout, progress)
+        with mock.patch.object(runner, "run_worker", worker), \
+                mock.patch.object(runner, "push_and_open_pr") as publish, mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        publish.assert_not_called()
+        self.assertEqual(self.feedback.call_args.args[-1], "blocked")
+
+    def test_a_controlled_stop_cannot_publish_even_if_the_child_returns_zero(self):
+        self.exit_code = 0
+        def worker(workspace, prompt, timeout, progress):
+            progress.stop_reason = "hard_budget"
+            return self.worker(workspace, prompt, timeout, progress)
+        with mock.patch.object(runner, "run_worker", worker), \
+                mock.patch.object(runner, "push_and_open_pr") as publish, mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        publish.assert_not_called()
+
     def test_nonzero_exit_is_not_retried_and_terminal_receipt_keeps_checkpoint(self):
         self.exit_code = 7
         key = "11111111-2222-4333-8444-555555555555"
@@ -211,6 +232,32 @@ print(json.dumps({
             "chat": [200, '{"choices":[{"message":{"content":"pong"}}]}'],
             "other_path": 403, "other_method": 403, "host_service": "unreachable"}, run.stderr)
         self.assertEqual(self.seen, [("/v1/chat/completions", b'{"messages":[]}')])
+
+    def test_stopping_the_relay_closes_a_request_waiting_for_model_headers(self):
+        import socket
+        import threading
+        waiting, closed = threading.Event(), threading.Event()
+        listener = socket.create_server(("127.0.0.1", 0))
+        self.addCleanup(listener.close)
+        def upstream():
+            connection, _ = listener.accept()
+            with connection:
+                connection.settimeout(3)
+                connection.recv(65536)
+                waiting.set()
+                while connection.recv(65536):
+                    pass
+                closed.set()
+        threading.Thread(target=upstream, daemon=True).start()
+        path = str(self.home / "cancel.sock")
+        relay = runner.model_relay.serve(path, f"http://127.0.0.1:{listener.getsockname()[1]}/v1")
+        self.addCleanup(relay.server_close)
+        with socket.socket(socket.AF_UNIX) as client:
+            client.connect(path)
+            client.sendall(b"POST /v1/chat/completions HTTP/1.0\r\nContent-Length: 2\r\n\r\n{}")
+            self.assertTrue(waiting.wait(2))
+            relay.shutdown()
+            self.assertTrue(closed.wait(2), "Core's model request must close when its worker stops")
 
 
 if __name__ == "__main__":

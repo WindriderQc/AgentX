@@ -212,7 +212,7 @@ def supervise(command: list[str], progress=None, home=None, workspace=None) -> s
                 if process.poll() is None:
                     terminate(process)
         if progress and home and workspace:
-            progress.scan(home, workspace)
+            progress.observe(home, workspace)
         return subprocess.CompletedProcess(command, process.wait(), tail(stdout), tail(stderr))
 
 
@@ -373,7 +373,7 @@ def execute(args, progress) -> int:
         progress.finish("blocked", "dependencies_changed", progress.checkpoint)
         print(summary)
         return 1
-    if run.returncode != 0:
+    if run.returncode != 0 or progress.stop_reason:
         # Unfinished work stays on the local branch for the next run; it is not offered for review.
         feedback(args.task_id, f"Coding worker stopped before finishing (exit {run.returncode}). Its partial work is "
                                f"committed on local branch {branch} in {workspace}.\n\n{summary[-4000:]}", "blocked")

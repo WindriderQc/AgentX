@@ -134,7 +134,9 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int) -> dict:
             raise ControlError("CODING_DISPATCH_BUSY", "The coding worker is already running a task.")
         latest = RECEIPTS / "latest"
         pending = read_receipt(latest.read_text().strip()) if latest.exists() else None
-        if pending and pending["phase"] == "uncertain":
+        terminal = read_progress(pending) if pending else None
+        if pending and (pending["phase"] == "uncertain" or
+                        pending["phase"] == "accepted" and not (terminal and terminal["phase"] == "finished")):
             raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "Reconcile the previous launch before starting another task.")
         if not any(task["pipelineId"] == pipeline_id and can_start(task) for task in queued_tasks()):
             raise ControlError("CODING_DISPATCH_INELIGIBLE", "Only unowned, queued, non-private agentx-coding tasks can start.")

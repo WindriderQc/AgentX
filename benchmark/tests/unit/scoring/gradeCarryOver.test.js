@@ -18,6 +18,14 @@ const coding = (overrides = {}) => ({
 });
 
 describe('carry-over chain', () => {
+    test('an old coding failure needs fresh scoring, while agent grades carry unchanged', () => {
+        expect(carryGrade({ scorer_version: '2.20.0', prompt_category: 'coding',
+            scoring_method: 'executable', quality_score: 1 }))
+            .toEqual({ carried: false, reason: expect.stringContaining('requires fresh scoring') });
+        expect(carryGrade({ scorer_version: '2.20.0', prompt_category: 'agent', quality_score: 4.5 }))
+            .toEqual({ carried: true, quality_score: 4.5, changed: false, rules: [] });
+    });
+
     test('the declared chain leads every named version to the current one', () => {
         expect(carriableVersions()).toEqual(SCORER_CARRY_OVER.map(step => step.from));
         expect(SCORER_CARRY_OVER.at(-1).to).toBe(SCORER_VERSION);

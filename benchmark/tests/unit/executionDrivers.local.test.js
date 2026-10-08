@@ -281,4 +281,28 @@ describeLocal('generated drivers, executed locally', () => {
         expect(reporting).toMatchObject({ status: 'failed', passed: 1, failed: 1, correctness: 0.5 });
         expect(reporting.cases.map((c) => [c.id, c.passed])).toEqual([['seven', true], ['eight', false]]);
     });
+
+    test('test_file: CommonJS examples do not turn valid modules into execution failures', () => {
+        const fixture = { language: 'javascript', harness: 'test_file', files: {
+            'test_main.js': lines("const assert = require('assert');", "const { increment } = require('./solution');",
+                'assert.strictEqual(increment(2), 3);', 'assert.strictEqual(increment(-1), 0);')
+        } };
+        const solution = 'const increment = n => n + 1;\nmodule.exports = { increment };';
+        const fenced = lines(FENCE + 'js', solution, FENCE);
+        const examples = [
+            lines('Usage:', FENCE + 'js', "const { increment } = require('./counter');", 'increment(2);', FENCE),
+            lines('Example production wiring:', FENCE + 'js', "require('illustrated-client');", FENCE)
+        ];
+        for (const response of [solution, fenced, ...examples.map(example => lines(fenced, example))]) {
+            expect(execute(fixture, response)).toMatchObject({ status: 'passed', correctness: 10 });
+        }
+        expect(execute(fixture, lines(fenced.replace('n + 1', 'n + 2'), examples[0])))
+            .toMatchObject({ status: 'failed', correctness: 0 });
+        expect(execute(fixture, lines(fenced, FENCE + 'js', "require('missing-module');", FENCE)))
+            .toMatchObject({ status: 'failed', correctness: 0 });
+        expect(execute(fixture, lines(FENCE + 'js', 'exports.increment = n => helper(n);', FENCE,
+            'Required helper for the example module:', FENCE + 'js',
+            'function helper(n) { return n + 1; }', FENCE)))
+            .toMatchObject({ status: 'passed', correctness: 10 });
+    });
 });

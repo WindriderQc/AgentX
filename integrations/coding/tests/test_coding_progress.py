@@ -130,6 +130,11 @@ class ProgressTest(unittest.TestCase):
         self.assertIsNone(safe["checkpoint"])
         self.assertIsNone(module.safe_progress(value, KEY, "0002"))
         self.assertEqual(self.progress.path.stat().st_mode & 0o777, 0o600)
+        value.update(stopReason={}, currentTest=[])
+        value["lastTest"] = {"name": [], "outcome": {}}
+        self.assertIsNone(module.safe_progress(value, KEY, "0001")["lastTest"])
+        value["stage"] = []
+        self.assertIsNone(module.safe_progress(value, KEY, "0001"))
 
     def test_echoing_test_names_is_not_test_evidence(self):
         self.assertIsNone(module.test_kind("echo pytest"))

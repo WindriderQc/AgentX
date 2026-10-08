@@ -115,7 +115,10 @@ def safe_progress(value: object, request_id: str, task_id: str) -> dict | None:
     """Whitelist the receipt at the read boundary, including all nested fields."""
     if not isinstance(value, dict) or value.get("requestId") != request_id or value.get("pipelineId") != task_id:
         return None
-    if value.get("phase") not in PHASES or value.get("stage") not in STAGES:
+    def allowed(item, choices):
+        return item if isinstance(item, str) and item in choices else None
+
+    if not allowed(value.get("phase"), PHASES) or not allowed(value.get("stage"), STAGES):
         return None
     result = {"requestId": request_id, "pipelineId": task_id, "phase": value["phase"], "stage": value["stage"]}
     for field in ["heartbeatAt", "progressAt", "activityAt", "startedAt"]:
@@ -128,12 +131,12 @@ def safe_progress(value: object, request_id: str, task_id: str) -> dict | None:
     for field in ["softRemainingSeconds", "hardRemainingSeconds", "modelCalls", "extensions"]:
         item = value.get(field)
         result[field] = item if type(item) is int and 0 <= item <= 86400 else None
-    result["stopReason"] = value.get("stopReason") if value.get("stopReason") in REASONS else None
-    result["result"] = value.get("result") if value.get("result") in RESULTS else None
-    result["currentTest"] = value.get("currentTest") if value.get("currentTest") in TEST_NAMES else None
+    result["stopReason"] = allowed(value.get("stopReason"), REASONS)
+    result["result"] = allowed(value.get("result"), RESULTS)
+    result["currentTest"] = allowed(value.get("currentTest"), TEST_NAMES)
     last = value.get("lastTest")
     result["lastTest"] = ({"name": last["name"], "outcome": last["outcome"]}
-                          if isinstance(last, dict) and last.get("name") in TEST_NAMES and last.get("outcome") in TEST_OUTCOMES else None)
+                          if isinstance(last, dict) and allowed(last.get("name"), TEST_NAMES) and allowed(last.get("outcome"), TEST_OUTCOMES) else None)
     checkpoint = value.get("checkpoint")
     result["checkpoint"] = checkpoint if isinstance(checkpoint, str) and re.fullmatch(r"[a-f0-9]{40}", checkpoint) else None
     return result
@@ -268,13 +271,16 @@ class Progress:
                         continue
             self.offsets[path] = offset
 
-    def tick(self, home: Path | None = None, workspace: Path | None = None):
+    def observe(self, home: Path | None = None, workspace: Path | None = None):
         while not self.model_events.empty():
             if self.model_events.get() == "model_request":
                 self.model_calls += 1
                 self.set_stage("model_wait")
         if home and workspace:
             self.scan(home, workspace)
+
+    def tick(self, home: Path | None = None, workspace: Path | None = None):
+        self.observe(home, workspace)
         current = self.now()
         if self.last_heartbeat is None or current - self.last_heartbeat >= 20:
             if self.heartbeat:
