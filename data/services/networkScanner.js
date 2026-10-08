@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const xml2js = require('xml2js');
+const { isIPv4 } = require('../utils/networkInput');
 const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true });
 const NMAP_MISSING_MESSAGE = 'nmap is not installed on the host. Install nmap to use network scanning.';
 
@@ -23,9 +24,15 @@ class NetworkScanner {
     return err;
   }
 
+  // Resolves the hosts that are up; an empty array means a valid scan that saw
+  // no host. Rejects (NMAP_XML_INVALID) when the text is not a readable nmap
+  // report, so a broken result is never mistaken for an empty network.
   async parseNmapOutput(xmlData) {
     try {
       const result = await parser.parseStringPromise(xmlData);
+      if (!result || !Object.prototype.hasOwnProperty.call(result, 'nmaprun')) {
+        throw new Error('no nmaprun element');
+      }
       if (!result.nmaprun || !result.nmaprun.host) return [];
 
       const hosts = Array.isArray(result.nmaprun.host) ? result.nmaprun.host : [result.nmaprun.host];
@@ -51,7 +58,10 @@ class NetworkScanner {
         return { ip, mac, vendor, hostname, status: 'online', lastSeen: new Date() };
       }).filter(Boolean);
     } catch (error) {
-      return [];
+      const parseError = new Error(`Invalid nmap XML: ${String(error.message).split('\n')[0]}`);
+      parseError.code = 'NMAP_XML_INVALID';
+      parseError.cause = error;
+      throw parseError;
     }
   }
 
@@ -88,6 +98,13 @@ class NetworkScanner {
 
   enrichDevice(ip) {
     return new Promise((resolve, reject) => {
+      // The address comes from the device store, which agents write: anything
+      // but a plain IPv4 address (a leading `-` is an nmap option) is refused.
+      if (!isIPv4(ip)) {
+        const targetError = new Error('Device has no valid IPv4 address to enrich');
+        targetError.code = 'INVALID_TARGET';
+        return reject(targetError);
+      }
       const nmap = spawn('nmap', ['-O', '-sV', '--top-ports', '100', '-oX', '-', ip]);
       let xmlOutput = '';
 

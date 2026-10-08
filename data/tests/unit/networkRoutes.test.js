@@ -85,6 +85,28 @@ describe('POST /api/v1/network/scan', () => {
     expect(networkScanner.scanNetwork).not.toHaveBeenCalled();
   });
 
+  test.each([
+    '0.0.0.0/0', '10.0.0.0/8', '192.0.2.0/15', '192.0.2.0/33', '999.1.1.1/24', '192.0.2.256', '192.0.2.0/24/24'
+  ])('returns 400 for out-of-range target %s without queueing or scanning', async (target) => {
+    const db = buildDb({
+      network_scanners: { findOne: jest.fn().mockResolvedValue(activeScannerDoc()) }
+    });
+
+    const res = await request(buildApp(db)).post('/api/v1/network/scan').send({ target });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/Invalid target format/);
+    expect(networkScanner.scanNetwork).not.toHaveBeenCalled();
+    expect(db.coll('network_scan_requests').insertOne).not.toHaveBeenCalled();
+  });
+
+  test.each(['192.0.2.0/16', '192.0.2.7/32', '192.0.2.7'])('accepts target %s', async (target) => {
+    networkScanner.scanNetwork.mockResolvedValue([]);
+    const res = await request(buildApp(buildDb())).post('/api/v1/network/scan').send({ target });
+    expect(res.status).toBe(200);
+    expect(networkScanner.scanNetwork).toHaveBeenCalledWith(target);
+  });
+
   test('in-container fallback returns scan totals when no agent is active', async () => {
     const db = buildDb();
     networkScanner.scanNetwork.mockResolvedValue([
@@ -192,6 +214,113 @@ describe('POST /api/v1/network/scan-results (agent ingest)', () => {
     // The MAC-bearing device is still keyed by its MAC.
     const withMac = ops.find((o) => o.updateOne.update.$set.mac === '11:22:33:44:55:66');
     expect(withMac.updateOne.filter).toEqual({ mac: '11:22:33:44:55:66' });
+  });
+
+  test('drops and counts entries whose ip, mac, hostname or vendor is not a plain valid value', async () => {
+    const db = buildDb();
+    const res = await request(buildApp(db))
+      .post('/api/v1/network/scan-results')
+      .send({
+        scannerId: 'windows-node', scanSource: 'windows-node', format: 'devices',
+        devices: [
+          { ip: '192.0.2.20', mac: '11:22:33:44:55:66', hostname: 'nas', vendor: 'Synology' },
+          { ip: '192.0.2.21', mac: { $ne: '' } },          // operator object as mac
+          { ip: { $gt: '' }, mac: '' },                    // operator object as ip
+          { ip: '-iL /etc/hosts' },                        // nmap option as ip
+          { ip: '192.0.2.300' },                           // octet out of range
+          { ip: '192.0.2.22', mac: 'not-a-mac' },
+          { ip: '192.0.2.23', hostname: { $where: '1' } },
+          { ip: '192.0.2.24', vendor: ['x'] },
+          null,
+          'device'
+        ]
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ discovered: 1, updated: 1, rejected: 9 });
+    const ops = db.coll('network_devices').bulkWrite.mock.calls[0][0];
+    expect(ops).toHaveLength(1);
+    expect(ops[0].updateOne.filter).toEqual({ mac: '11:22:33:44:55:66' });
+  });
+
+  test('keeps a MAC as posted and cuts an over-long hostname or vendor', async () => {
+    const db = buildDb();
+    const res = await request(buildApp(db))
+      .post('/api/v1/network/scan-results')
+      .send({
+        scannerId: 'x', scanSource: 'x', format: 'devices',
+        devices: [{ ip: '192.0.2.20', mac: 'aa-bb-cc-dd-ee-ff', hostname: 'h'.repeat(400), vendor: 'v'.repeat(400) }]
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.rejected).toBe(0);
+    const { filter, update } = db.coll('network_devices').bulkWrite.mock.calls[0][0][0].updateOne;
+    expect(filter).toEqual({ mac: 'aa-bb-cc-dd-ee-ff' });
+    expect(update.$set.hostname).toHaveLength(253);
+    expect(update.$set.vendor).toHaveLength(128);
+  });
+
+  test('pruneMissing marks offline only this source\'s devices missing from a non-empty result', async () => {
+    const db = buildDb({
+      network_devices: {
+        find: jest.fn(() => makeCursor([
+          { _id: 'seen', ip: '192.0.2.20', status: 'online', scanSource: 'x' },
+          { _id: 'gone', ip: '192.0.2.99', status: 'online', scanSource: 'x' }
+        ]))
+      }
+    });
+    const res = await request(buildApp(db))
+      .post('/api/v1/network/scan-results')
+      .send({ scannerId: 'x', scanSource: 'x', format: 'devices', pruneMissing: true, devices: [{ ip: '192.0.2.20' }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.markedOffline).toBe(1);
+    expect(res.body.data.pruneSkipped).toBeUndefined();
+    const coll = db.coll('network_devices');
+    expect(coll.find).toHaveBeenCalledWith({ status: 'online', scanSource: 'x' });
+    expect(coll.bulkWrite.mock.calls[1][0]).toEqual([
+      { updateOne: { filter: { _id: 'gone' }, update: { $set: { status: 'offline' } } } }
+    ]);
+  });
+
+  test.each([
+    ['an empty result', []],
+    ['a result with only invalid entries', [{ ip: { $gt: '' } }]]
+  ])('pruneMissing leaves every device untouched on %s', async (_label, devices) => {
+    const db = buildDb({
+      network_devices: {
+        find: jest.fn(() => makeCursor([{ _id: 'd1', ip: '192.0.2.20', status: 'online', scanSource: 'x' }]))
+      }
+    });
+    const res = await request(buildApp(db))
+      .post('/api/v1/network/scan-results')
+      .send({ scannerId: 'x', scanSource: 'x', format: 'devices', pruneMissing: true, devices });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ discovered: 0, markedOffline: 0, pruneSkipped: 'no valid device reported' });
+    expect(db.coll('network_devices').bulkWrite).not.toHaveBeenCalled();
+    expect(db.coll('network_devices').find).not.toHaveBeenCalled();
+  });
+
+  test('400 on nmap XML that does not parse, leaving devices, heartbeat and the request untouched', async () => {
+    const db = buildDb();
+    const parseError = new Error('Invalid nmap XML: Unclosed root tag');
+    parseError.code = 'NMAP_XML_INVALID';
+    networkScanner.parseNmapOutput.mockRejectedValue(parseError);
+
+    const res = await request(buildApp(db))
+      .post('/api/v1/network/scan-results')
+      .send({
+        scannerId: 'linux-node', scanSource: 'linux-node', format: 'nmap-xml', xml: '<nmaprun><host>',
+        pruneMissing: true, requestId: new ObjectId().toString()
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/Invalid nmap XML/);
+    expect(db.coll('network_devices').bulkWrite).not.toHaveBeenCalled();
+    expect(db.coll('network_devices').find).not.toHaveBeenCalled();
+    expect(db.coll('network_scanners').updateOne).not.toHaveBeenCalled();
+    expect(db.coll('network_scan_requests').updateOne).not.toHaveBeenCalled();
   });
 
   test('parses agent-posted nmap XML (reusing parseNmapOutput)', async () => {
@@ -321,6 +450,23 @@ describe('POST /api/v1/network/devices/:id/enrich', () => {
     expect(res.status).toBe(503);
     expect(res.body.message).toMatch(/Enrichment unavailable/);
     expect(res.body.message).toMatch(/nmap is not installed/);
+  });
+
+  test('returns 400 when the stored address is not an IPv4 address', async () => {
+    const db = buildDb({
+      network_devices: {
+        findOne: jest.fn().mockResolvedValue({ _id: 'device-1', mac: 'AA:BB:CC:DD:EE:FF', ip: '-iL', status: 'online' })
+      }
+    });
+    const targetError = new Error('Device has no valid IPv4 address to enrich');
+    targetError.code = 'INVALID_TARGET';
+    networkScanner.enrichDevice.mockRejectedValue(targetError);
+
+    const res = await request(buildApp(db)).post('/api/v1/network/devices/AA:BB:CC:DD:EE:FF/enrich');
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/no valid IPv4 address/);
+    expect(db.coll('network_devices').updateOne).not.toHaveBeenCalled();
   });
 });
 

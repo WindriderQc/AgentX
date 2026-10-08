@@ -13,6 +13,7 @@
  *   network_scanners       — registered scanner agents + last-seen heartbeat
  */
 const { ObjectId } = require('mongodb');
+const { sanitizeDevice } = require('../utils/networkInput');
 
 // A scanner whose heartbeat is within this window is considered "active".
 const ACTIVE_WINDOW_MS = 90_000;       // 90s — ~18 missed 5s polls of slack
@@ -29,11 +30,18 @@ const SCANNERS = 'network_scanners';
  * fallback scan and the agent-ingest path. Tags each device with `scanSource`
  * (which scanner/vantage reported it) and stamps `lastScanAt`.
  *
+ * Entries that are not a plain IPv4 `ip` with an optional MAC and string
+ * hostname/vendor are dropped and counted in `rejected`.
+ *
  * `pruneMissing` is scoped to the SAME scanSource so one vantage never marks
- * another vantage's exclusively-seen devices offline.
+ * another vantage's exclusively-seen devices offline. A result with no valid
+ * device prunes nothing (`pruneSkipped`): a scanner that sees not even itself
+ * has observed nothing, and must not turn its whole inventory offline.
  */
 async function applyScanResults(db, devices, { scanSource = 'unknown', pruneMissing = false } = {}) {
-  const list = Array.isArray(devices) ? devices.filter(d => d && d.ip) : [];
+  const reported = Array.isArray(devices) ? devices : [];
+  const list = reported.map(sanitizeDevice).filter(Boolean);
+  const rejected = reported.length - list.length;
   const now = new Date();
 
   const bulkOps = list.map(device => ({
@@ -42,9 +50,9 @@ async function applyScanResults(db, devices, { scanSource = 'unknown', pruneMiss
       update: {
         $set: {
           ip: device.ip,
-          mac: device.mac || '',
-          hostname: device.hostname || '',
-          vendor: device.vendor || '',
+          mac: device.mac,
+          hostname: device.hostname,
+          vendor: device.vendor,
           status: 'online',
           lastSeen: now,
           scanSource,
@@ -61,7 +69,8 @@ async function applyScanResults(db, devices, { scanSource = 'unknown', pruneMiss
   }
 
   let markedOffline = 0;
-  if (pruneMissing === true) {
+  const pruneSkipped = pruneMissing === true && list.length === 0;
+  if (pruneMissing === true && !pruneSkipped) {
     const discoveredIps = new Set(list.map(d => d.ip));
     // Only prune devices THIS scanner previously reported — never another vantage's.
     const ownOnline = await db.collection(DEVICES)
@@ -76,7 +85,9 @@ async function applyScanResults(db, devices, { scanSource = 'unknown', pruneMiss
     }
   }
 
-  return { discovered: list.length, updated: bulkOps.length, markedOffline };
+  const summary = { discovered: list.length, updated: bulkOps.length, markedOffline, rejected };
+  if (pruneSkipped) summary.pruneSkipped = 'no valid device reported';
+  return summary;
 }
 
 /** Upsert a scanner heartbeat. Called on every agent poll and every result post. */
