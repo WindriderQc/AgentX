@@ -52,6 +52,9 @@ The runner writes a private progress receipt for each launch request. Pipeline
 shows the lifecycle and current stage, heartbeat, last useful progress, soft
 and hard budgets, current/last test outcome, stop reason and source checkpoint.
 It exposes no prompts, command lines, session transcripts or raw tool output.
+The worker prompt includes its remaining budgets. Automatic model-generated
+session titles are disabled: Pipeline already owns the task title, and that
+background request would compete with the coding turn.
 An inactive host unit without a terminal receipt remains `unknown`; it is not
 evidence that the task completed.
 
