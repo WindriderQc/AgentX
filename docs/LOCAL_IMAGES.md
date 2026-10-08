@@ -37,6 +37,14 @@ step count. A different historical worker never inherits the current GPU label.
 lists the installed recipes and gives prompting advice. Its host, GPU and recipe
 facts come from `GET /api/images/workshop`; the page source names no machine or
 model, so it stays true when the worker or the profiles change.
+
+`/images/labo` serves the workshop's trial site read-only: comparisons with a
+side-by-side viewer, the hosts and measured setups, recipes, the plan, and the
+older gallery, journal and manual. Its pages, scripts and styles are in
+`core/public/image-lab`; its images, evidence files and frozen API answers are
+read from `<IMAGE_ARCHIVE_DIR>/atelier-site`. Only host occupancy is computed
+live, from runtime coordination. The site is produced on the development host
+by its own exporter; nothing in it starts a generation or a reservation.
 Neither read endpoint initializes recovery, starts a worker or takes a GPU claim.
 The current worker's optional external `presentation` object provides
 `hostLabel`, `gpuLabel` and `vramGiB`; these are configured inventory, not live
