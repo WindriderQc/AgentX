@@ -358,6 +358,18 @@
         await this.audio.settle?.(this.abort.signal);
       } catch { /* listening starts regardless */ }
     }
+    // The language of recognition and of the spoken reply, and whether speech may
+    // interrupt a reply, are read at each turn: they can change while the
+    // conversation runs, and take effect at the next sentence.
+    setLanguage(language) {
+      if (!['auto', 'fr', 'en'].includes(language)) return false;
+      if (this.selection) this.selection = { ...this.selection, language };
+      return true;
+    }
+    setInterruption(enabled) {
+      if (this.selection) this.selection = { ...this.selection, interruption: !!enabled };
+      return true;
+    }
     setWakeWord(enabled) {
       if (!['idle', 'paused', 'error', 'listening'].includes(this.state)) return false;
       if (this.selection) this.selection = { ...this.selection, wakeWord: !!enabled };
