@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="L’atelier image AgentX : rendus comparés, recettes HQ, parc GPU, preuves et prochaines étapes.">
+  <meta name="theme-color" content="#13243b">
+  <title>AgentX · L’atelier image</title>
+  <link rel="icon" href="/images/labo/lab-resources/ui/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/images/labo/lab-resources/ui/lab.css">
+  <link rel="stylesheet" href="/images/labo/lab-resources/ready/ready.css">
+  <script src="/images/labo/lab-resources/ready/ready.js" defer></script>
+  <script src="/images/labo/lab-resources/ui/lab.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#content">Aller au contenu</a>
+  <aside class="sidebar" aria-label="Navigation principale">
+    <a class="brand" href="/images/labo/campaign#overview" aria-label="AgentX — vue d’ensemble"><span class="brand-symbol">A<span>✦</span></span><span>AgentX<small>ATELIER IMAGE</small></span></a>
+    <p class="sidebar-intro">Créer, comparer<br>et comprendre.</p>
+    <nav class="main-nav">
+      <a href="#overview" data-view="overview"><span class="nav-num">01</span><span>Vue d’ensemble</span><span class="nav-arrow">↗</span></a>
+      <a href="#compare" data-view="compare"><span class="nav-num">02</span><span>Comparer les images</span><span class="nav-arrow">↗</span></a>
+      <a href="#machines" data-view="machines"><span class="nav-num">03</span><span>Parc & architecture</span><span class="nav-arrow">↗</span></a>
+      <a href="#roadmap" data-view="roadmap"><span class="nav-num">04</span><span>La suite du chantier</span><span class="nav-arrow">↗</span></a>
+      <a href="#files" data-view="files"><span class="nav-num">05</span><span>Fichiers & preuves</span><span class="nav-arrow">↗</span></a>
+      <a href="#recipes" data-view="recipes"><span class="nav-num">06</span><span>Workflows & recettes</span><span class="nav-arrow">↗</span></a>
+      <a href="#plan" data-view="plan"><span class="nav-num">07</span><span>Plan à jour · sans GPU</span><span class="nav-arrow">↗</span></a>
+    </nav>
+    <div class="sidebar-bottom"><p class="local-label"><span class="dot"></span> Notre atelier local</p><a href="/images/labo/gallery">Galerie historique ↗</a><a href="/images/labo/campaign/archive">Journal détaillé ↗</a><a href="/images/labo/manual">Manuel de l’écosystème ↗</a></div>
+  </aside>
+  <div class="app">
+    <header class="topbar">
+      <div class="breadcrumb">AGENTX <span>/</span> <b id="current-title">Vue d’ensemble</b></div>
+      <div class="topbar-right"><span id="updated" class="updated" aria-live="polite">Lecture des preuves…</span><button id="refresh" class="icon-button" aria-label="Actualiser les données" title="Actualiser les données">↻</button></div>
+    </header>
+    <main id="content" tabindex="-1">
+      <div id="connection-note" class="connection-note" hidden role="status"></div>
+      <div id="view"><div class="loading"><span class="loading-mark">A✦</span><h1>L’atelier se met en place.</h1><p>Lecture des rendus, des livrables et de l’état du parc.</p></div></div>
+      <noscript><p>Active JavaScript pour les filtres et comparaisons. Les <a href="/images/labo/campaign/archive">preuves historiques</a> et le <a href="/images/labo/manual">manuel</a> restent accessibles.</p></noscript>
+    </main>
+    <footer class="footer"><span>AgentX · atelier privé</span><span>Mesuré ≠ reçu ≠ intégré.</span><a href="/images/labo/campaign/archive">Les originaux et l’historique restent consultables ↗</a></footer>
+  </div>
+  <dialog id="viewer" aria-labelledby="viewer-title">
+    <header class="viewer-head"><div><span class="eyebrow">COMPARAISON DES FICHIERS</span><h2 id="viewer-title"></h2></div><button class="icon-button" id="viewer-close" aria-label="Fermer la comparaison">×</button></header>
+    <div class="viewer-toolbar"><div class="segmented"><button id="mode-side" aria-pressed="true">Côte à côte</button><button id="mode-wipe" aria-pressed="false">Superposer</button></div><div class="zoom-control"><label for="zoom">Zoom</label><input id="zoom" type="range" min="10" max="200" value="100" step="5"><output id="zoom-label">100 %</output><button class="small-button" id="zoom-fit">Adapter</button><button class="small-button" id="zoom-native">100 % natif</button></div><label class="background-select">Fond <select id="viewer-background"><option value="paper">Clair</option><option value="dark">Sombre</option><option value="checker">Damier</option></select></label></div>
+    <p id="viewer-note" class="viewer-note"></p>
+    <div id="viewer-panels" class="viewer-panels"></div>
+    <div id="wipe-controls" class="wipe-controls" hidden><label for="wipe">Position de la séparation</label><input id="wipe" type="range" min="0" max="100" value="50"><output id="wipe-label">50 %</output></div>
+    <div class="viewer-foot">Les images de cette vue proviennent des fichiers originaux. Le défilement côte à côte est synchronisé.</div>
+  </dialog>
+  <div id="toast" role="status" class="toast" hidden></div>
+</body>
+</html>

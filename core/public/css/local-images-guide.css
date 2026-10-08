@@ -7,7 +7,8 @@
 }
 .studio-guide-link {
   color:var(--studio-accent);
-  white-space:nowrap
+  white-space:nowrap;
+  margin-right:14px
 }
 .guide-section {
   margin-top:48px
