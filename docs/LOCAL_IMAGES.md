@@ -143,7 +143,8 @@ quality; upload originals remain the conversation attachment capability's job.
 
 `POST /api/images/operations` requires `actionKey`, `prompt`, optional `profile`,
 `width`, `height`, `seed` and a `references` array of at most two base64 images.
-Dimensions must be multiples of 32, 256–2048, under the profile's pixel limit.
+Dimensions must be multiples of 32, from 256 up to the family's widest edge
+(2048 for `klein`, 2752 for `qwen21`), under the profile's pixel limit.
 Use a fresh action key for an explicit new variation. Replaying the same key
 and input returns its existing operation; changed input returns 409.
 
@@ -259,8 +260,13 @@ service code and supervisor already enforce:
   large INT8 activations need room beyond the model-loading estimate and
   staging weights in RAM preserves precision. Before each operation, Core also
   refuses to compute when free VRAM falls below 75% of total VRAM.
-- **Pixel:** each profile bounds its pixel budget — 262 144 to 4 194 304
-  pixels per profile, with dimensions 256–2048 in steps of 32; the reference
+- **Pixel:** each profile bounds its pixel budget, from 262 144 pixels up to
+  its family's ceiling, in steps of 32. `klein` stops at 4 194 304 pixels and
+  2048 per edge (Black Forest Labs publishes a 4 MP limit, no size list).
+  `qwen21` stops at 4 300 800 pixels and 2752 per edge, the envelope of the
+  seven sizes its publisher recommends: 2048 × 2048, 2400 × 1792, 1792 × 2400,
+  2528 × 1696, 1696 × 2528, 2752 × 1536 and 1536 × 2752. The workshop offers
+  those seven for a `qwen21` profile, 2048 × 2048 first; the reference
   editing budget is explicit and a large source photo does not silently create
   a 12 MP render.
 - **References:** at most two PNG/JPEG references per request, each decoded and
