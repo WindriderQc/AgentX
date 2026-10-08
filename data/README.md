@@ -36,6 +36,20 @@ routed to a slow CPU-resident host, raise `JANITOR_AI_TIMEOUT_MS` (up to
 1200000); above two minutes a timed-out request is not retried, so a second
 long request never queues behind the first.
 
+Live feeds (ISS position, earthquakes, barometric pressure, satellite elements,
+air quality, MQTT sensors) are all off until the master switch and each feed are
+turned on with `POST /api/v1/livedata/config`. That call answers 409 when Data
+runs without `DATA_BACKGROUND_JOBS_ENABLED=true`, since a stored switch would
+start nothing. Pressure and air quality are read per location: locations live in
+`weatherLocations`, seeded once from `LIVEDATA_LOCATIONS_JSON`
+(`[{"name":"Home","lat":46.81,"lon":-71.21}]`) when that collection is empty.
+Pressure comes from keyless Open-Meteo every 15 minutes, or from OpenWeather
+when `WEATHER_API_KEY` is set. A feed that cannot run (missing key, no location,
+upstream error) reports the reason as `lastError` in `GET /api/v1/livedata/feeds`.
+`MQTT_BROKER_URL` (with optional `MQTT_USERNAME`, `MQTT_PASSWORD`) republishes
+ISS and pressure points and feeds the `sensors` feed from the topics in
+`LIVEDATA_MQTT_TOPICS`; unset, MQTT is skipped.
+
 A duplicate report keeps its summary in `dedup_reports` and its groups in
 chunked `dedup_report_details` documents, so a large inventory cannot exceed
 MongoDB's 16 MB document limit. `GET /api/v1/janitor/dedup-report` returns one

@@ -38,6 +38,15 @@ async function openWeather(res, ctx = {}) {
   return [{ pressure: data.main.pressure, timeStamp: new Date(), lat: loc.lat, lon: loc.lon }];
 }
 
+// Open-Meteo forecast (keyless) — same pressure doc as openWeather.
+async function openMeteoPressure(res, ctx = {}) {
+  const data = await res.json();
+  const pressure = Number(data.current?.pressure_msl);
+  if (!Number.isFinite(pressure)) return [];
+  const loc = ctx.location || {};
+  return [{ pressure, timeStamp: new Date(), lat: loc.lat, lon: loc.lon }];
+}
+
 // ── new feeds ────────────────────────────────────────────────────
 
 // CelesTrak GP in TLE format → one livedata_point per satellite
@@ -86,4 +95,4 @@ async function mqttSensor(input = {}) {
   return [doc];
 }
 
-module.exports = { iss, quakesCsv, openWeather, celestrakTle, openMeteoAqi, mqttSensor };
+module.exports = { iss, quakesCsv, openWeather, openMeteoPressure, celestrakTle, openMeteoAqi, mqttSensor };

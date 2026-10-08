@@ -139,6 +139,41 @@ describe('parsers.iss', () => {
   });
 });
 
+describe('weather feed provider', () => {
+  const saved = process.env.WEATHER_API_KEY;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.WEATHER_API_KEY;
+    else process.env.WEATHER_API_KEY = saved;
+  });
+
+  test('uses keyless Open-Meteo when no OpenWeather key is configured', () => {
+    delete process.env.WEATHER_API_KEY;
+    const weather = registry.getSeedFeeds().find(f => f.id === 'weather');
+    expect(weather).toMatchObject({ parser: 'openMeteoPressure', fanout: 'weatherLocations' });
+    expect(weather.apiKeyEnv).toBeUndefined();
+    expect(weather.urlTemplate).toMatch(/pressure_msl/);
+  });
+
+  test('keeps OpenWeather when a key is configured', () => {
+    process.env.WEATHER_API_KEY = 'test-key';
+    const weather = registry.getSeedFeeds().find(f => f.id === 'weather');
+    expect(weather).toMatchObject({ parser: 'openWeather', apiKeyEnv: 'WEATHER_API_KEY' });
+  });
+});
+
+describe('parsers.openMeteoPressure', () => {
+  test('maps the current sea-level pressure to the pressure doc shape', async () => {
+    const res = { json: async () => ({ current: { time: '2026-10-08T21:30', pressure_msl: 1013.4 } }) };
+    const out = await parsers.openMeteoPressure(res, { location: { lat: 46.81, lon: -71.21 } });
+    expect(out).toEqual([{ pressure: 1013.4, timeStamp: expect.any(Date), lat: 46.81, lon: -71.21 }]);
+  });
+
+  test('stores nothing when the response carries no pressure', async () => {
+    const res = { json: async () => ({ current: {} }) };
+    expect(await parsers.openMeteoPressure(res, {})).toEqual([]);
+  });
+});
+
 describe('parsers.openWeather', () => {
   test('builds a pressure doc for the location', async () => {
     const res = { json: async () => ({ main: { pressure: 1013 } }) };
