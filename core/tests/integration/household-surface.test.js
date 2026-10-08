@@ -732,6 +732,46 @@ describe('built-in Household surface on Core', () => {
     } finally { releases.forEach(release => release()); }
   });
 
+  test('a previously observed answer persists through HTTP when the final native observation fails', async () => {
+    const { createAgentClient } = jest.requireActual('../../surfaces/household/conversation-agent');
+    const runId = 'resp_44444444-4444-4444-8444-444444444444';
+    const reply = 'Trois tâches reçues.';
+    let reads = 0, requests = 0, release;
+    const native = createAgentClient({
+      env: { OPENCLAW_GATEWAY_URL: 'http://openclaw.example.test', OPENCLAW_GATEWAY_TOKEN: 'synthetic-token' },
+      settleMs: 0, progressMs: 5, streamGraceMs: 20, streamDrainMs: 20,
+      continuity: async () => {
+        if (++reads > 1) throw new Error('Synthetic continuity unavailable');
+        return { answer: { status: 'ready', runId, text: reply },
+          run: { runId, model: 'old-attempt', provider: 'old-provider' },
+          receipts: [{ tool: 'list_personal_tasks', observed: true }] };
+      },
+      fetchImpl: async (_url, options) => {
+        requests++;
+        return { ok: true, body: (async function* () {
+          yield Buffer.from('data: ' + JSON.stringify({ type: 'response.created', response: { id: runId } }) + '\n\n');
+          await new Promise(resolve => { release = resolve; options.signal.addEventListener('abort', resolve, { once: true }); });
+        })() };
+      }
+    });
+    agentForTest.mockImplementationOnce(native);
+    try {
+      const base = '/api/voice-personas/private/sessions';
+      const id = (await request(app).post(base).send({ packId: 'personal_operator', backend: 'openclaw' }).expect(201)).body.data.session.sessionId;
+      const turn = (await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Regarde mes tâches.' }).expect(200)).body.data;
+      expect(turn.reply.text).toBe(reply);
+      expect(turn.tools).toMatchObject({ status: 'unavailable', run: null, receipts: [] });
+      expect(turn.model).toEqual({ model: '', hostKey: '' });
+      const canonical = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
+      expect(canonical.messages[1].turn.model).toBe('');
+      const history = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+      expect(history.history.map(message => message.content)).toEqual(['Regarde mes tâches.', reply]);
+      expect(history.session.turnCount).toBe(1);
+      expect(reads).toBeGreaterThanOrEqual(2);
+      expect(requests).toBe(1);
+    } finally { release?.(); }
+  });
+
   test('persists and resumes a personal conversation without exposing it through child routes', async () => {
     const base = '/api/voice-personas';
     const created = await request(app).post(`${base}/private/sessions`).send({

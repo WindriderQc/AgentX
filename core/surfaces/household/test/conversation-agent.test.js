@@ -10,6 +10,25 @@ const created = row({ type: 'response.created', response: { id: runId } });
 const completed = row({ type: 'response.completed', response: { id: runId } });
 const answer = text => ({ status: 'ready', runId, text, source: 'openclaw/sessions.get' });
 
+function heldNativeStream(rows = [created]) {
+  let release;
+  let requests = 0;
+  return {
+    fetch: async (_url, options) => {
+      requests++;
+      return { ok: true, body: (async function* () {
+        for (const item of rows) yield item;
+        await new Promise(resolve => {
+          release = resolve;
+          options.signal.addEventListener('abort', resolve, { once: true });
+        });
+      })() };
+    },
+    close: () => release?.(),
+    requests: () => requests
+  };
+}
+
 test('native opening uses the existing message shape with explicit application origin and the same native session', async () => {
   let body;
   const applicationEvent = { type: 'environment_ready', origin: 'application_opening', openingVersion: 1, language: 'fr', environment: null };
@@ -455,6 +474,246 @@ test('a stream that ends within the grace is never abandoned, and a browser repl
   const second = await scene({ session, text: 'Alors ?', browserReply: { context: {} } });
   assert.ok(second.metadata.phases.streamEnd > 0 && second.metadata.phases.streamOverdue === undefined);
 });
+
+test('an observed final answer survives a failed final read without claiming an old fallback provider', async () => {
+  const stream = heldNativeStream();
+  let reads = 0, settled = 0;
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 20, streamDrainMs: 20,
+    continuity: async () => {
+      if (++reads > 1) throw new Error('Continuity unavailable');
+      return { answer: answer('Trois tâches.'), run: { model: 'first-attempt', provider: 'old-provider' },
+        receipts: [{ tool: 'list_personal_tasks', observed: true }] };
+    }, fetchImpl: stream.fetch });
+  try {
+    const result = await client({ session, text: 'Mes tâches ?', onDelta: text => deltas.push(text), onSettled: () => { settled++; } });
+    assert.equal(result.text, 'Trois tâches.');
+    assert.equal(result.metadata.model, '');
+    assert.equal(result.metadata.provider, '');
+    assert.equal(result.tools.status, 'unavailable');
+    assert.equal(result.tools.run, null);
+    assert.deepEqual(result.tools.receipts, []);
+    assert.deepEqual(deltas, ['Trois tâches.']);
+    assert.equal(settled, 1);
+    assert.equal(stream.requests(), 1);
+    assert.ok(reads >= 2);
+  } finally { stream.close(); }
+});
+
+test('a final answer seen during settlement survives the next failed observation', async () => {
+  let reads = 0;
+  const client = createAgentClient({ env, settleMs: 400,
+    continuity: async () => {
+      if (++reads > 1) throw new Error('Continuity unavailable');
+      return { answer: answer('Réponse reçue.'), run: { model: 'first-attempt', provider: 'old-provider' } };
+    }, fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
+  const result = await client({ session, text: 'Et ensuite ?' });
+  assert.equal(result.text, 'Réponse reçue.');
+  assert.equal(result.metadata.model, '');
+  assert.equal(result.metadata.provider, '');
+  assert.equal(reads, 2);
+});
+
+test('GraphysX dialogue never substitutes a watcher answer when its final read is unavailable', async () => {
+  const stream = heldNativeStream([created, completed]);
+  let reads = 0;
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 15, streamDrainMs: 20,
+    continuity: async () => {
+      if (++reads === 1) return { answer: answer('Ne pas substituer.') };
+      throw new Error('Continuity unavailable');
+    }, fetchImpl: stream.fetch });
+  try {
+    await assert.rejects(client({ session, text: 'Bonjour.', browserReply: { context: {} },
+      onDelta: text => deltas.push(text) }), /pas donné de réponse finale/);
+    assert.deepEqual(deltas, []);
+    assert.ok(reads >= 2);
+    assert.equal(stream.requests(), 1);
+  } finally { stream.close(); }
+});
+
+for (const [name, invalid] of [
+  ['yielded', { answer: { status: 'yielded', runId } }],
+  ['unavailable', { answer: { status: 'unavailable', runId } }],
+  ['another run', { answer: { ...answer('Autre tour.'), runId: 'another-run' } }],
+  ['blank text', { answer: answer('   ') }],
+  ['non-string text', { answer: { ...answer('Unused'), text: 42 } }],
+  ['missing answer', null]
+]) {
+  test(`a successful ${name} observation invalidates a previously ready answer`, async () => {
+    const stream = heldNativeStream();
+    let reads = 0;
+    const deltas = [];
+    const client = createAgentClient({ env, settleMs: 0, delegateMs: 0, progressMs: 3, streamGraceMs: 25, streamDrainMs: 20,
+      continuity: async () => {
+        reads++;
+        if (reads === 1) return { answer: answer('Ancienne réponse.') };
+        if (reads === 2) return invalid;
+        throw new Error('Continuity unavailable');
+      }, fetchImpl: stream.fetch });
+    try {
+      await assert.rejects(client({ session, text: 'Suite ?', onDelta: text => deltas.push(text) }), /pas donné de réponse finale/);
+      assert.ok(reads >= 3);
+      assert.deepEqual(deltas, []);
+      assert.equal(stream.requests(), 1);
+    } finally { stream.close(); }
+  });
+}
+
+test('the latest observed ready answer replaces an earlier one before an observation failure', async () => {
+  const stream = heldNativeStream();
+  let reads = 0;
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 25, streamDrainMs: 20,
+    continuity: async () => {
+      if (++reads > 2) throw new Error('Continuity unavailable');
+      return { answer: answer(reads === 1 ? 'Première réponse.' : 'Réponse corrigée.') };
+    }, fetchImpl: stream.fetch });
+  try {
+    assert.equal((await client({ session, text: 'Suite ?' })).text, 'Réponse corrigée.');
+    assert.equal(stream.requests(), 1);
+  } finally { stream.close(); }
+});
+
+test('a stopped watcher cannot restore a ready answer after a newer invalidation', async () => {
+  const stream = heldNativeStream();
+  let reads = 0, resolveWatcher;
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 1000, progressMs: 3, streamGraceMs: 15, streamDrainMs: 20,
+    continuity: async () => {
+      reads++;
+      if (reads === 1) return { answer: answer('Réponse ancienne.') };
+      if (reads === 2) return new Promise(resolve => { resolveWatcher = resolve; });
+      if (reads === 3) {
+        setTimeout(() => resolveWatcher({ answer: answer('Réponse ancienne.') }), 5);
+        return { answer: { status: 'unavailable', runId } };
+      }
+      throw new Error('Continuity unavailable');
+    }, fetchImpl: stream.fetch });
+  try {
+    await assert.rejects(client({ session, text: 'Suite ?', onDelta: text => deltas.push(text) }), /pas donné de réponse finale/);
+    assert.deepEqual(deltas, []);
+    assert.equal(stream.requests(), 1);
+  } finally { resolveWatcher?.(null); stream.close(); }
+});
+
+test('caller cancellation still rejects when a ready answer has already been observed', async () => {
+  const abort = new AbortController();
+  const stream = heldNativeStream([created, completed]);
+  const deltas = [];
+  let settled = 0;
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 30,
+    continuity: async () => {
+      setTimeout(() => abort.abort(new Error('Caller stopped')), 5);
+      return { answer: answer('Ne pas livrer.') };
+    }, fetchImpl: stream.fetch });
+  try {
+    await assert.rejects(client({ session, text: 'Suite ?', signal: abort.signal,
+      onDelta: text => deltas.push(text), onSettled: () => { settled++; } }), /Caller stopped/);
+    assert.deepEqual(deltas, []);
+    assert.equal(stream.requests(), 1);
+    assert.equal(settled, 1);
+  } finally { stream.close(); }
+});
+
+test('a native terminal failure never becomes a cached answer success', async () => {
+  let observed, reads = 0;
+  const firstRead = new Promise(resolve => { observed = resolve; });
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 30,
+    continuity: async () => {
+      if (++reads > 1) throw new Error('Continuity unavailable');
+      observed();
+      return { answer: answer('Ne pas livrer.') };
+    }, fetchImpl: async () => ({ ok: true, body: (async function* () {
+      yield created;
+      await firstRead;
+      yield row({ type: 'response.failed', response: { id: runId, error: { message: 'Native failure' } } });
+    })() }) });
+  await assert.rejects(client({ session, text: 'Suite ?', onDelta: text => deltas.push(text) }), /pas pu finir sa réponse/);
+  assert.deepEqual(deltas, []);
+});
+
+for (const [name, failed, expected, afterAbort] of [
+  ['native failure', row({ type: 'response.failed', response: { id: runId, error: { message: 'Native failure' } } }), /pas pu finir sa réponse/],
+  ['native failure after drain abort', row({ type: 'response.failed', response: { id: runId, error: { message: 'Native failure' } } }), /pas pu finir sa réponse/, true],
+  ['wrong-run failure', row({ type: 'response.failed', response: { id: 'another-run' } }), /does not match/],
+  ['malformed event', Buffer.from('data: {invalid-json}\n\n'), SyntaxError]
+]) {
+  test(`a late ${name} during drain prevents cached answer delivery`, async () => {
+    let reads = 0, startSettlement, releaseFinal;
+    const settling = new Promise(resolve => { startSettlement = resolve; });
+    const lastRead = new Promise(resolve => { releaseFinal = resolve; });
+    const deltas = [];
+    const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 1, streamDrainMs: afterAbort ? 20 : 1000,
+      continuity: async () => {
+        if (++reads === 1) return { answer: answer('Ne pas livrer.') };
+        startSettlement();
+        await lastRead;
+        throw new Error('Continuity unavailable');
+      }, fetchImpl: async (_url, options) => ({ ok: true, body: (async function* () {
+        yield created;
+        await settling;
+        if (afterAbort) await new Promise(resolve => options.signal.aborted ? resolve()
+          : options.signal.addEventListener('abort', resolve, { once: true }));
+        try { yield failed; }
+        finally { setTimeout(releaseFinal, 10); }
+      })() }) });
+    await assert.rejects(client({ session, text: 'Suite ?', onDelta: text => deltas.push(text) }), expected);
+    assert.deepEqual(deltas, []);
+  });
+}
+
+test('a parsed native failure prevents cached delivery while iterator closure is still pending', async () => {
+  let reads = 0, startSettlement, releaseFinal, finishClosing;
+  const settling = new Promise(resolve => { startSettlement = resolve; });
+  const lastRead = new Promise(resolve => { releaseFinal = resolve; });
+  const closing = new Promise(resolve => { finishClosing = resolve; });
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 1, streamDrainMs: 1000,
+    continuity: async () => {
+      if (++reads === 1) return { answer: answer('Ne pas livrer.') };
+      startSettlement();
+      await lastRead;
+      throw new Error('Continuity unavailable');
+    }, fetchImpl: async () => ({ ok: true, body: (async function* () {
+      try {
+        yield created;
+        await settling;
+        yield row({ type: 'response.failed', response: { id: runId, error: { message: 'Native failure' } } });
+      } finally {
+        releaseFinal();
+        await closing;
+      }
+    })() }) });
+  try {
+    await assert.rejects(client({ session, text: 'Suite ?', onDelta: text => deltas.push(text) }), /pas pu finir sa réponse/);
+    assert.deepEqual(deltas, []);
+  } finally { finishClosing(); }
+});
+
+for (const finalReadFails of [false, true]) {
+  test(`a transport reset during drain preserves ${finalReadFails ? 'retained' : 'fresh'} same-run answer evidence`, async () => {
+    let reads = 0, startSettlement, releaseFinal;
+    const settling = new Promise(resolve => { startSettlement = resolve; });
+    const lastRead = new Promise(resolve => { releaseFinal = resolve; });
+    const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 1, streamDrainMs: 1000,
+      continuity: async () => {
+        if (++reads === 1) return { answer: answer('Réponse reçue.') };
+        startSettlement();
+        await lastRead;
+        if (finalReadFails) throw new Error('Continuity unavailable');
+        return { answer: answer('Réponse reçue.'), run: { model: 'final-model' } };
+      }, fetchImpl: async () => ({ ok: true, body: (async function* () {
+        yield created;
+        await settling;
+        try { throw new Error('Synthetic HTTP reset'); }
+        finally { releaseFinal(); }
+      })() }) });
+    const result = await client({ session, text: 'Suite ?' });
+    assert.equal(result.text, 'Réponse reçue.');
+    assert.equal(result.metadata.model, finalReadFails ? '' : 'final-model');
+  });
+}
 
 test('a delegated turn that never settles fails plainly after its bound', async () => {
   const client = createAgentClient({ env, settleMs: 0, delegateMs: 0,

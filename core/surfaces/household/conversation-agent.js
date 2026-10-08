@@ -132,10 +132,18 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     // end, then the turn stops waiting for it. A client tool call exists only in
     // the stream's last row, so a browser reply waits for its completion row.
     // Once a matching completion is received, HTTP EOF cannot hold the turn.
-    let answerSeen, stopWaitingForStream;
+    let answerSeen, stopWaitingForStream, observedAnswer, streamFailure, localImageObserved = false;
     const streamOverdue = new Promise(resolve => { stopWaitingForStream = resolve; });
     const answered = projected => !browserReply && projected?.answer?.status === 'ready'
-      && projected.answer.runId === runId && Boolean(projected.answer.text?.trim());
+      && projected.answer.runId === runId && typeof projected.answer.text === 'string' && Boolean(projected.answer.text.trim());
+    // Retain only the verified answer, never an earlier fallback attempt's
+    // model or receipts. A successful newer observation replaces or invalidates
+    // it; an unavailable observation cannot erase text already read for this run.
+    const rememberAnswer = projected => {
+      for (const kind of ['progress', 'receipts']) localImageObserved ||= Array.isArray(projected?.[kind])
+        && projected[kind].some(item => item?.tool === 'local_image');
+      observedAnswer = answered(projected) ? { ...projected.answer } : null;
+    };
     const report = async projected => {
       for (const item of Array.isArray(projected?.progress) ? projected.progress : []) {
         if (!item?.id || reported.has(item.id)) continue;
@@ -153,6 +161,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         try {
           const projected = await readEvidence();
           if (!watching) break;
+          rememberAnswer(projected);
           await report(projected);
           if (answered(projected)) answerSeen ||= setTimeout(stopWaitingForStream, streamGraceMs);
         } catch { /* progress is best effort */ }
@@ -235,16 +244,21 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           }
         }
       };
+      const consumeChecked = async line => {
+        // Record a row error before iterator closure, which can itself stall.
+        try { await consume(line); }
+        catch (error) { streamFailure = error; throw error; }
+      };
       const stream = (async () => {
         for await (const chunk of response.body) {
           pending += decoder.decode(chunk, { stream: true });
           let newline;
           while ((newline = pending.indexOf('\n')) >= 0) {
-            await consume(pending.slice(0, newline).trimEnd()); pending = pending.slice(newline + 1);
+            await consumeChecked(pending.slice(0, newline).trimEnd()); pending = pending.slice(newline + 1);
           }
         }
         pending += decoder.decode();
-        if (pending.trim()) await consume(pending.trimEnd());
+        if (pending.trim()) await consumeChecked(pending.trimEnd());
       })();
       if (await Promise.race([stream.then(() => true), streamOverdue.then(() => false)])) phase('streamEnd');
       else {
@@ -266,7 +280,15 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       const earliest = Date.now() + Math.min(settleMs, 300);
       let until = Date.now() + Math.min(settleMs, 3000);
       do {
-        try { evidence = await readEvidence(); } catch { evidence = null; break; }
+        try {
+          evidence = await readEvidence();
+          rememberAnswer(evidence);
+        } catch {
+          // An accepted Core image keeps its existing receipt recovery path;
+          // cached model prose cannot override that action's current state.
+          evidence = !localImageObserved && answered({ answer: observedAnswer }) ? { answer: observedAnswer } : null;
+          break;
+        }
         await report(evidence).catch(() => {});
         const imageDelivery = await imageReply();
         signal?.throwIfAborted();
@@ -282,6 +304,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         await pause(delegated ? 1000 : 100);
       } while (Date.now() < until && !signal?.aborted);
       signal?.throwIfAborted();
+      if (streamFailure) throw streamFailure;
       if (!browserCall && (evidence?.answer?.status !== 'ready' || evidence.answer.runId !== runId || !evidence.answer.text?.trim())) {
         if (replacedStream) throw new Error('Nestor a réécrit sa réponse et je n’ai pas pu la récupérer. Réessaie ta demande.');
         if (delegated === 'image') throw new Error('L’image n’était pas prête après 5 minutes. Redemande-la plus tard.');
