@@ -212,7 +212,7 @@ def supervise(command: list[str], progress=None, home=None, workspace=None) -> s
                 if process.poll() is None:
                     terminate(process)
         if progress and home and workspace:
-            progress.scan(home, workspace)
+            progress.observe(home, workspace)
         return subprocess.CompletedProcess(command, process.wait(), tail(stdout), tail(stderr))
 
 
@@ -351,7 +351,7 @@ def execute(args, progress) -> int:
     progress.set_stage("checkpoint")
     # Generated session and cache files stay on disk for diagnosis, outside
     # the product checkpoint and every eventual public branch.
-    exclusions = [f":(exclude)**/{name}/**" for name in coding_progress.ARTIFACT_DIRS if name != ".git"]
+    exclusions = [f":(exclude,glob)**/{name}/**" for name in coding_progress.ARTIFACT_DIRS if name != ".git"]
     git(workspace, "add", "-A", "--", ".", *exclusions,
         ":(exclude)**/session.jsonl", ":(exclude)**/session.jsonl.zstd")
     if git(workspace, "diff", "--cached", "--name-only"):
@@ -373,12 +373,23 @@ def execute(args, progress) -> int:
         progress.finish("blocked", "dependencies_changed", progress.checkpoint)
         print(summary)
         return 1
-    if run.returncode != 0:
+    if run.returncode != 0 or progress.stop_reason:
         # Unfinished work stays on the local branch for the next run; it is not offered for review.
         feedback(args.task_id, f"Coding worker stopped before finishing (exit {run.returncode}). Its partial work is "
                                f"committed on local branch {branch} in {workspace}.\n\n{summary[-4000:]}", "blocked")
         progress.finish("blocked", progress.stop_reason or "worker_exit", progress.checkpoint)
         print(summary)
+        return 1
+    if progress.last_test and progress.last_test["outcome"] != "passed":
+        feedback(args.task_id, "The last observed test did not pass. The checkpoint stays local; "
+                               "correct the failure and rerun the tests before publishing.", "blocked")
+        progress.finish("blocked", "tests_failed", progress.checkpoint)
+        return 1
+    introduced = git(workspace, "diff", "--name-only", f"origin/{BASE_BRANCH}", "HEAD").splitlines()
+    if any(coding_progress.artifact(name) for name in introduced):
+        feedback(args.task_id, "The branch contains generated runtime artifacts from a previous checkpoint. "
+                               "Preserve that checkpoint privately and transfer the source patch to a clean branch.", "blocked")
+        progress.finish("blocked", "generated_artifacts", progress.checkpoint)
         return 1
     token = os.environ.get("GH_TOKEN", "").strip()
     progress.set_stage("publishing")

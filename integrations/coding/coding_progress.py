@@ -21,6 +21,7 @@ STAGES = {"preparing", "dependencies", "model_wait", "model_generation", "tool",
 PHASES = {"preparing", "running", "delivering", "finished"}
 REASONS = {"hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit",
            "worker_exit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
+           "tests_failed", "generated_artifacts",
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
 RESULTS = {"blocked", "review", "local_only"}
 TEST_NAMES = {"pytest", "unittest", "jest", "npm_test", "node_test"}
@@ -114,7 +115,10 @@ def safe_progress(value: object, request_id: str, task_id: str) -> dict | None:
     """Whitelist the receipt at the read boundary, including all nested fields."""
     if not isinstance(value, dict) or value.get("requestId") != request_id or value.get("pipelineId") != task_id:
         return None
-    if value.get("phase") not in PHASES or value.get("stage") not in STAGES:
+    def allowed(item, choices):
+        return item if isinstance(item, str) and item in choices else None
+
+    if not allowed(value.get("phase"), PHASES) or not allowed(value.get("stage"), STAGES):
         return None
     result = {"requestId": request_id, "pipelineId": task_id, "phase": value["phase"], "stage": value["stage"]}
     for field in ["heartbeatAt", "progressAt", "activityAt", "startedAt"]:
@@ -127,12 +131,12 @@ def safe_progress(value: object, request_id: str, task_id: str) -> dict | None:
     for field in ["softRemainingSeconds", "hardRemainingSeconds", "modelCalls", "extensions"]:
         item = value.get(field)
         result[field] = item if type(item) is int and 0 <= item <= 86400 else None
-    result["stopReason"] = value.get("stopReason") if value.get("stopReason") in REASONS else None
-    result["result"] = value.get("result") if value.get("result") in RESULTS else None
-    result["currentTest"] = value.get("currentTest") if value.get("currentTest") in TEST_NAMES else None
+    result["stopReason"] = allowed(value.get("stopReason"), REASONS)
+    result["result"] = allowed(value.get("result"), RESULTS)
+    result["currentTest"] = allowed(value.get("currentTest"), TEST_NAMES)
     last = value.get("lastTest")
     result["lastTest"] = ({"name": last["name"], "outcome": last["outcome"]}
-                          if isinstance(last, dict) and last.get("name") in TEST_NAMES and last.get("outcome") in TEST_OUTCOMES else None)
+                          if isinstance(last, dict) and allowed(last.get("name"), TEST_NAMES) and allowed(last.get("outcome"), TEST_OUTCOMES) else None)
     checkpoint = value.get("checkpoint")
     result["checkpoint"] = checkpoint if isinstance(checkpoint, str) and re.fullmatch(r"[a-f0-9]{40}", checkpoint) else None
     return result
@@ -156,7 +160,8 @@ class Progress:
         self.model_calls = self.extensions = 0
         self.offsets, self.pending_tests = {}, {}
         self.model_events = queue.SimpleQueue()
-        self.seen_states, self.seen_tests, self.seen_calls = set(), set(), set()
+        self.seen_states, self.seen_tests = set(), set()
+        self.source_signature = None
         self.write()
 
     def write(self):
@@ -204,9 +209,9 @@ class Progress:
             name = test_kind(str(args.get("command", ""))) if isinstance(args, dict) and data.get("name") == "bash" else None
             call_id = data.get("callId")
             if isinstance(call_id, str) and name:
-                self.pending_tests[(session, call_id)] = (name, hashlib.sha256(str(args).encode()).hexdigest())
-            self.current_test = name
-            self.set_stage("test" if name else "tool")
+                self.pending_tests[(session, call_id)] = (name, hashlib.sha256(str(args.get("command", "")).encode()).hexdigest())
+            self.current_test = next(iter(self.pending_tests.values()))[0] if self.pending_tests else None
+            self.set_stage("test" if self.current_test else "tool")
         elif kind == "tool/result":
             message = data.get("message") or {}
             if not isinstance(message, dict):
@@ -222,21 +227,26 @@ class Progress:
                 outcome = ("unknown" if re.search(r"\[(?:timed out|killed by signal)", content)
                            else "failed" if errored or re.search(r"\[exit code: [1-9]\d*\]", content)
                            else "passed")
-                signature = (pending[1], outcome, hashlib.sha256(content.encode()).hexdigest())
+                signature = (pending[1], outcome, self.source_signature)
                 if outcome != "unknown" and signature not in self.seen_tests:
                     self.seen_tests.add(signature)
                     self.useful()
                 self.last_test = {"name": pending[0], "outcome": outcome}
-            self.current_test = None
-            self.set_stage("model_wait")
+            self.current_test = next(iter(self.pending_tests.values()))[0] if self.pending_tests else None
+            self.set_stage("test" if self.current_test else "model_wait")
 
     def baseline(self, home: Path, workspace: Path):
         for path in (home / ".dsh/progress-sessions").glob("**/session.jsonl"):
             if path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(home.resolve()):
                 self.offsets[path] = path.stat().st_size
-        self.seen_states.add(source_state(workspace))
+        self.source_signature = source_state(workspace)
+        self.seen_states.add(self.source_signature)
 
     def scan(self, home: Path, workspace: Path):
+        self.source_signature = source_state(workspace)
+        if self.source_signature not in self.seen_states:
+            self.seen_states.add(self.source_signature)
+            self.useful()
         for path in (home / ".dsh/progress-sessions").glob("**/session.jsonl"):
             if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(home.resolve()):
                 continue
@@ -260,18 +270,17 @@ class Progress:
                     except (ValueError, UnicodeDecodeError):
                         continue
             self.offsets[path] = offset
-        state = source_state(workspace)
-        if state not in self.seen_states:
-            self.seen_states.add(state)
-            self.useful()
 
-    def tick(self, home: Path | None = None, workspace: Path | None = None):
+    def observe(self, home: Path | None = None, workspace: Path | None = None):
         while not self.model_events.empty():
             if self.model_events.get() == "model_request":
                 self.model_calls += 1
                 self.set_stage("model_wait")
         if home and workspace:
             self.scan(home, workspace)
+
+    def tick(self, home: Path | None = None, workspace: Path | None = None):
+        self.observe(home, workspace)
         current = self.now()
         if self.last_heartbeat is None or current - self.last_heartbeat >= 20:
             if self.heartbeat:
@@ -292,7 +301,7 @@ class Progress:
                 self.stop_reason = "soft_budget_no_progress"
             elif self.model_calls >= 128:
                 self.stop_reason = "model_call_limit"
-            elif current - self.stage_since >= STAGE_LIMITS.get(self.stage, 1800):
+            elif self.stage in STAGE_LIMITS and current - self.stage_since >= STAGE_LIMITS[self.stage]:
                 self.stop_reason = f"{self.stage}_inactive"
             elif self.stage not in {"model_wait", "test"} and current - self.last_useful >= 45 * 60:
                 self.stop_reason = "no_useful_progress"

@@ -60,9 +60,38 @@ class ControlTest(unittest.TestCase):
             first = control.launch("0001", KEY, 0)
             again = control.launch("0001", KEY, 0)
         self.assertEqual(run.call_count, 1)
-        self.assertEqual(run.call_args.args[0][-2:], [str(control.HERE / "coding_run.py"), "0001"])
+        self.assertEqual(run.call_args.args[0][-4:], [str(control.HERE / "coding_run.py"), "0001", "--request-id", KEY])
         self.assertEqual((first["run"]["phase"], first["replayed"], again["replayed"]), ("accepted", False, True))
-        self.assertEqual(control.status(KEY)["run"]["phase"], "finished")
+        self.assertEqual(control.status(KEY)["run"]["phase"], "unknown")
+
+    def test_terminal_receipt_distinguishes_stopped_blocked_from_success(self):
+        control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted"})
+        value = {"requestId": KEY, "pipelineId": "0001", "phase": "finished", "stage": "checkpoint",
+                 "result": "blocked", "stopReason": "soft_budget_no_progress", "checkpoint": "a" * 40,
+                 "command": "private-fixture", "rawOutput": "private-fixture",
+                 "lastTest": {"name": "jest", "outcome": "failed", "output": "private-fixture"}}
+        path = control.RECEIPTS / f"{KEY}.progress.json"
+        path.write_text(json.dumps(value))
+        observed = control.status(KEY)["run"]
+        self.assertEqual((observed["phase"], observed["progress"]["result"]), ("finished", "blocked"))
+        self.assertNotIn("private-fixture", json.dumps(observed))
+        value["pipelineId"] = "0002"
+        path.write_text(json.dumps(value))
+        self.assertEqual(control.status(KEY)["run"]["phase"], "unknown")
+
+    def test_inactive_accepted_launch_blocks_new_work_until_a_terminal_receipt(self):
+        control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted"})
+        fresh = "22222222-2222-4333-8444-555555555555"
+        with mock.patch.object(control.subprocess, "run") as run:
+            with self.assertRaises(control.ControlError) as unknown:
+                control.launch("0001", fresh, 0)
+            self.assertEqual(unknown.exception.code, "CODING_DISPATCH_OUTCOME_UNKNOWN")
+            run.assert_not_called()
+            value = {"requestId": KEY, "pipelineId": "0001", "phase": "finished", "stage": "checkpoint",
+                     "result": "blocked", "stopReason": "hard_budget"}
+            (control.RECEIPTS / f"{KEY}.progress.json").write_text(json.dumps(value))
+            self.assertFalse(control.launch("0001", fresh, 0)["replayed"])
+        self.assertEqual(run.call_count, 1)
 
     def test_launch_refuses_a_busy_worker_and_a_private_task(self):
         with mock.patch.object(control.subprocess, "run") as run:

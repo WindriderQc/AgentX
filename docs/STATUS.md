@@ -105,7 +105,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   **Run one task** hands a queued, unowned, non-private `agentx-coding` ticket
   to the local coding worker: a fresh clone on its own branch, a shell and the tests inside a
   sandbox without network (its one way out is the model route), then a draft
-  pull request. Review of that pull request and its CI is
+  pull request. Pipeline shows the host heartbeat separately from useful source
+  or test progress, remaining budgets, test outcomes and the stop checkpoint.
+  A controlled stop preserves source changes locally without an automatic retry;
+  an inactive host without a terminal receipt stays unknown and blocks new work.
+  Review of that pull request and its CI is
   the gate; nothing merges or deploys by itself. See
   [the coding worker](../integrations/coding/README.md).
 - **Planning.** The page is a frozen historical reference. Its idea inbox is
