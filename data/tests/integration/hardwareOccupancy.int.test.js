@@ -67,8 +67,12 @@ describe('GPU occupancy (integration, real Mongo)', () => {
     }
     for (let k = 1; k <= 20; k += 1) {
       await cycle(50 * MIN + k * 30_000, [
-        gpu(0, { utilizationPct: 0, memoryUsedMiB: 1_000, powerDrawW: 50 }),
-        gpu(1, { utilizationPct: 0, memoryUsedMiB: 1_000, powerDrawW: 50 }),
+        // At rest the driver still raises the power cap on GPU 0: not throttling.
+        // GPU 1 is at rest but thermally limited for 2 minutes: that counts.
+        gpu(0, { utilizationPct: 0, memoryUsedMiB: 1_000, powerDrawW: 50,
+          throttleReasonsActive: '0x0000000000000004', throttleReasons: ['sw_power_cap'] }),
+        gpu(1, { utilizationPct: 0, memoryUsedMiB: 1_000, powerDrawW: 50,
+          ...(k <= 4 && { throttleReasonsActive: '0x0000000000000020', throttleReasons: ['sw_thermal'] }) }),
       ]);
     }
   });
@@ -97,13 +101,13 @@ describe('GPU occupancy (integration, real Mongo)', () => {
       memoryUsedMiB: { max: 20_000 },
       memoryTotalMiB: 24576,
       powerW: { mean: 237.5, max: 300, limit: 350 },
-      throttled: { observedMs: 40 * MIN, ms: 0, share: 0 },
+      throttled: { observedMs: 40 * MIN, ms: 0, share: 0, powerCapMs: 0 },
     });
     expect(gpu0.memoryUsedMiB.p95).toBeGreaterThan(19_000);
 
     expect(gpu1).toMatchObject({
       index: 1, samples: 80, busy: { ms: 30 * MIN, share: 0.75 }, utilizationPct: { mean: 37.5 },
-      throttled: { ms: 5 * MIN, share: 0.125, powerCapMs: 5 * MIN, thermalMs: 0, hardwareMs: 0 },
+      throttled: { ms: 7 * MIN, share: 0.175, powerCapMs: 5 * MIN, thermalMs: 2 * MIN, hardwareMs: 0 },
     });
 
     // Known but unsampled in the window: zero coverage, no values.

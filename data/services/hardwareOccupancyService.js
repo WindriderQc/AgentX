@@ -20,7 +20,9 @@ const MAX_WINDOW_MS = 90 * 24 * 3600_000;
 const DEFAULT_BUSY_AT_PCT = 10;
 const PERCENTILES = [0.5, 0.95];
 // Names decoded by the collector from clocks_throttle_reasons.active. Idle,
-// application and display clocks are not throttling.
+// application and display clocks are not throttling. The driver also reports
+// the power cap on a card at rest (0 % utilization, idle power), where it slows
+// nothing down: the power cap counts only while the GPU is busy.
 const THROTTLE_CLASSES = Object.freeze({
   powerCap: ['sw_power_cap', 'hw_power_brake'],
   thermal: ['sw_thermal', 'hw_thermal'],
@@ -67,7 +69,12 @@ function intervalExpression(intervals) {
 }
 
 function buildOccupancyPipeline({ from, to, busyAtPct, hostId }, intervals = new Map()) {
-  const anyThrottle = Object.values(THROTTLE_CLASSES).flat();
+  const busy = { $and: [isNumber('$utilizationPct'), { $gte: ['$utilizationPct', busyAtPct] }] };
+  const throttled = {
+    powerCap: { $and: [throttledBy(THROTTLE_CLASSES.powerCap), busy] },
+    thermal: throttledBy(THROTTLE_CLASSES.thermal),
+    hardware: throttledBy(THROTTLE_CLASSES.hardware),
+  };
   return [
     { $match: { sampledAt: { $gte: from, $lte: to }, ...(hostId && { hostId }) } },
     { $set: {
@@ -89,7 +96,7 @@ function buildOccupancyPipeline({ from, to, busyAtPct, hostId }, intervals = new
       lastSampleAt: { $max: '$sampledAt' },
       observedMs: { $sum: '$coveredMs' },
       utilizationMs: coveredWhen(isNumber('$utilizationPct')),
-      busyMs: coveredWhen({ $and: [isNumber('$utilizationPct'), { $gte: ['$utilizationPct', busyAtPct] }] }),
+      busyMs: coveredWhen(busy),
       utilizationWeighted: weighted('$utilizationPct'),
       utilizationPct: { $percentile: { input: '$utilizationPct', p: PERCENTILES, method: 'approximate' } },
       memoryUsedMiB: { $percentile: { input: '$memoryUsedMiB', p: PERCENTILES, method: 'approximate' } },
@@ -101,9 +108,9 @@ function buildOccupancyPipeline({ from, to, busyAtPct, hostId }, intervals = new
       powerMaxW: { $max: '$powerDrawW' },
       powerLimitW: { $max: '$powerLimitW' },
       throttleMs: coveredWhen({ $gt: [{ $strLenCP: { $ifNull: ['$throttleReasonsActive', ''] } }, 0] }),
-      throttledMs: coveredWhen(throttledBy(anyThrottle)),
-      ...Object.fromEntries(Object.entries(THROTTLE_CLASSES)
-        .map(([name, reasons]) => [`throttle_${name}Ms`, coveredWhen(throttledBy(reasons))])),
+      throttledMs: coveredWhen({ $or: Object.values(throttled) }),
+      ...Object.fromEntries(Object.entries(throttled)
+        .map(([name, condition]) => [`throttle_${name}Ms`, coveredWhen(condition)])),
     } },
   ];
 }
