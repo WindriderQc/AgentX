@@ -37,6 +37,21 @@ in-container scanner also keeps existing rows when a directory could not be read
 or a batch failed. A root that was really emptied keeps its last rows until a
 scan indexes at least one file there.
 
+Two scans never run on overlapping roots, since the first to finish would remove
+the rows the other one stamped. `POST /storage/scan` answers 409 with the id of
+the scan already queued or running there. `POST /storage/agent-scans` returns
+that scan's id with `coalesced: true` when it is an external scan of the same
+source, so a nightly job waits on it, and 409 when an in-container scan holds
+the root. An external scan ends `failed`, with the reason in `last_error` and
+no index row removed, after 10 minutes running without a collector heartbeat or
+batch, or 6 hours queued without a claim; this is checked at startup and each
+time scans are requested, claimed, listed or read. A finished external scan is
+not reopened: a late batch or completion gets 409. A batch is accepted only for
+a running external scan; entries outside its roots and malformed `sha256`
+values are dropped and counted in `counts.rejected` and `counts.hashes_rejected`.
+`POST /storage/scan` takes `batch_size` from 1 to 10000 and extension lists of
+at most 200 strings.
+
 GPU telemetry lives under `/api/v1/hardware`. The native `gpu-agent` collector
 posts one cycle per interval to `POST /samples` (and `POST /collector/heartbeat`
 at start), unauthenticated like the network and storage collectors because Data

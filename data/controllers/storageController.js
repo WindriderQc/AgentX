@@ -33,15 +33,40 @@ function validHashExpression() {
   };
 }
 
+const MAX_SCAN_BATCH_SIZE = 10000;
+const MAX_SCAN_EXTENSIONS = 200;
+const MAX_SCANS_PAGE = 100000;
+const UPDATE_STATUSES = new Set(['running', 'hashing', 'complete', 'completed', 'partial', 'failed', 'stopped']);
+const TERMINAL_STATUSES = new Set(['complete', 'partial', 'failed', 'stopped']);
+const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
+
+function isExtensionList(value) {
+  return value == null || (
+    Array.isArray(value) && value.length <= MAX_SCAN_EXTENSIONS &&
+    value.every(item => typeof item === 'string' && item.length > 0 && item.length <= 32)
+  );
+}
+
+function boundedInt(value, fallback, maximum) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(maximum, parsed);
+}
+
 // Cleanup stale "running" scans on server restart
 async function cleanupStaleScans(db) {
   try {
+    // An in-container scan cannot survive a restart, whichever phase it was in.
     const result = await db.collection('nas_scans').updateMany(
-      { status: 'running', 'config.external': { $ne: true } },
+      { status: { $in: ['running', 'hashing'] }, 'config.external': { $ne: true } },
       { $set: { status: 'stopped', finished_at: new Date() } }
     );
     if (result.modifiedCount > 0) {
       log(`[Storage] Cleaned up ${result.modifiedCount} stale running scan(s)`);
+    }
+    const expired = await storageAgentService.expireStaleScans(db);
+    if (expired.running + expired.queued > 0) {
+      log(`[Storage] Marked ${expired.running} silent and ${expired.queued} unclaimed external scan(s) failed`);
     }
   } catch (error) {
     log(`[Storage] Error cleaning up stale scans: ${error.message}`, 'error');
@@ -70,6 +95,20 @@ const scan = async (req, res) => {
       });
     }
 
+    const batchSize = batch_size == null ? 1000 : Number(batch_size);
+    if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > MAX_SCAN_BATCH_SIZE) {
+      return res.status(400).json({
+        status: 'error',
+        message: `batch_size must be an integer between 1 and ${MAX_SCAN_BATCH_SIZE}`
+      });
+    }
+    if (!isExtensionList(extensions) || !isExtensionList(exclude_extensions)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `extensions and exclude_extensions must be arrays of at most ${MAX_SCAN_EXTENSIONS} strings`
+      });
+    }
+
     const safeRoots = [];
     for (const root of requestedRoots) {
       const safePath = await resolveAllowedPath(root, { mustExist: true, type: 'directory' });
@@ -80,15 +119,25 @@ const scan = async (req, res) => {
       safeRoots.push(safePath.realPath);
     }
 
+    await storageAgentService.expireStaleScans(db);
+    const overlapping = await storageAgentService.findOverlappingScan(db, safeRoots);
+    if (overlapping) {
+      return res.status(409).json({
+        status: 'error',
+        message: `Scan ${overlapping._id} is already ${overlapping.status} on an overlapping root`,
+        data: { scan_id: overlapping._id }
+      });
+    }
+
     const scanner = new Scanner(db);
     runningScans.set(scan_id, scanner);
     scanner.on('done', () => runningScans.delete(scan_id));
 
     scanner.run({
       roots: safeRoots,
-      includeExt: extensions,
-      excludeExt: exclude_extensions,
-      batchSize: batch_size || 1000,
+      includeExt: extensions || [],
+      excludeExt: exclude_extensions || [],
+      batchSize,
       scanId: scan_id,
       computeHashes: compute_hashes === true,
       hashMode: requestedHashMode,
@@ -96,9 +145,18 @@ const scan = async (req, res) => {
       hashMaxFiles: hash_max_files,
       hashMaxBytes: hash_max_bytes,
       hashMinSize: hash_min_size
-    }).catch(err => {
+    }).catch(async err => {
       log(`[Storage] Scan ${scan_id} failed: ${err.message}`, 'error');
       runningScans.delete(scan_id);
+      // A crashed scan left "running" would block every later scan of its roots.
+      try {
+        await db.collection('nas_scans').updateOne(
+          { _id: scan_id, status: { $in: ['running', 'hashing'] } },
+          { $set: { status: 'failed', finished_at: new Date(), last_error: String(err && err.message || err) } }
+        );
+      } catch (updateError) {
+        log(`[Storage] Could not mark scan ${scan_id} failed: ${updateError.message}`, 'error');
+      }
     });
 
     res.json({
@@ -109,7 +167,7 @@ const scan = async (req, res) => {
         roots: safeRoots,
         extensions,
         exclude_extensions,
-        batch_size: batch_size || 1000,
+        batch_size: batchSize,
         hash_mode: requestedHashMode
       }
     });
@@ -125,6 +183,8 @@ const getStatus = async (req, res) => {
     if (!scan_id) return res.status(400).json({ status: 'error', message: 'Missing scan_id' });
 
     const db = req.app.locals.db;
+    // A waiting client must see a dead external scan end even when no collector polls.
+    await storageAgentService.expireStaleScans(db);
     const scanDoc = await db.collection('nas_scans').findOne({ _id: scan_id });
     if (!scanDoc) return res.status(404).json({ status: 'error', message: `Scan not found: ${scan_id}` });
     res.json({
@@ -169,16 +229,20 @@ const enqueueAgentScan = async (req, res, next) => {
       hashMaxBytes: req.body?.hash_max_bytes
     });
     if (!result.ok) {
-      return res.status(result.unavailable ? 503 : 400).json({ status: 'error', message: result.error });
+      return res.status(result.unavailable ? 503 : (result.conflict ? 409 : 400))
+        .json({ status: 'error', message: result.error });
     }
     res.status(202).json({
       status: 'success',
-      message: 'Storage scan queued to native agent',
+      message: result.coalesced
+        ? `Storage scan already ${result.scan.status} for this source; joined it`
+        : 'Storage scan queued to native agent',
       data: {
         scan_id: result.scan._id,
         source: result.scan.config.source,
         root: result.scan.config.roots[0],
-        hash_mode: result.scan.config.hash_mode
+        hash_mode: result.scan.config.hash_mode,
+        coalesced: result.coalesced === true
       }
     });
   } catch (error) { next(error); }
@@ -186,17 +250,19 @@ const enqueueAgentScan = async (req, res, next) => {
 
 const heartbeatAgent = async (req, res, next) => {
   try {
-    const { scannerId, hostname, platform, agentVersion, sources = '' } = req.body || {};
+    const { scannerId, hostname, platform, agentVersion, sources = '', scanId } = req.body || {};
     if (!String(scannerId || '').trim()) {
       return res.status(400).json({ status: 'error', message: 'scannerId body field required' });
     }
     const registeredId = await storageAgentService.registerScanner(req.app.locals.db, {
       scannerId, hostname, platform, agentVersion, sources
     });
-    res.json({
-      status: 'success',
-      data: { scanner_id: registeredId, heartbeat_at: new Date().toISOString() }
-    });
+    const data = { scanner_id: registeredId, heartbeat_at: new Date().toISOString() };
+    // false tells the collector its scan is no longer running (finished or reaped).
+    if (scanId != null) {
+      data.scan_refreshed = await storageAgentService.touchScanHeartbeat(req.app.locals.db, scanId);
+    }
+    res.json({ status: 'success', data });
   } catch (error) { next(error); }
 };
 
@@ -251,9 +317,10 @@ const listScans = async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     const db = req.app.locals.db;
-    const parsedPage = Math.max(1, parseInt(page));
-    const parsedLimit = Math.max(1, Math.min(100, parseInt(limit)));
+    const parsedPage = boundedInt(page, 1, MAX_SCANS_PAGE);
+    const parsedLimit = boundedInt(limit, 10, 100);
     const skip = (parsedPage - 1) * parsedLimit;
+    await storageAgentService.expireStaleScans(db);
 
     const col = db.collection('nas_scans');
     const [total, scans] = await Promise.all([
@@ -299,7 +366,14 @@ const insertBatch = async (req, res) => {
     const db = req.app.locals.db;
     const scanDoc = await db.collection('nas_scans').findOne({ _id: scan_id });
     if (!scanDoc) return res.status(404).json({ status: 'error', message: `Scan not found: ${scan_id}` });
+    if (scanDoc.config?.external !== true || scanDoc.status !== 'running') {
+      return res.status(409).json({
+        status: 'error',
+        message: `Scan ${scan_id} does not accept batches: only a running external scan does`
+      });
+    }
 
+    const scanRoots = (scanDoc.config.roots || []).map(root => String(root).replace(/\/+$/, ''));
     const filesCollection = db.collection('nas_files');
     const now = new Date();
     const nowSeconds = Math.floor(now.getTime() / 1000);
@@ -310,9 +384,23 @@ const insertBatch = async (req, res) => {
       }
     }
 
-    const bulkOps = files.map(file => {
+    // Entries outside the scan's roots are dropped and counted, never stored:
+    // they would escape this scan's pruning and pollute another root's index.
+    let rejected = 0;
+    let hashesRejected = 0;
+    const accepted = [];
+    for (const file of files) {
       const normalizedPath = file.path.replace(/\/+$/, '').trim();
-      const pathParts = normalizedPath?.split('/') || [];
+      const sourceRoot = scanRoots.find(root => normalizedPath.startsWith(`${root}/`));
+      if (!sourceRoot || normalizedPath.split('/').some(part => part === '.' || part === '..')) {
+        rejected++;
+        continue;
+      }
+      accepted.push({ file, normalizedPath, sourceRoot });
+    }
+
+    const bulkOps = accepted.map(({ file, normalizedPath, sourceRoot }) => {
+      const pathParts = normalizedPath.split('/');
       const filename = pathParts.pop() || '';
       const dirname = pathParts.join('/') || '';
       const dotIdx = filename.lastIndexOf('.');
@@ -323,10 +411,9 @@ const insertBatch = async (req, res) => {
         ? 'native-magic-v1'
         : null;
       const contentType = contentProbeSource ? normalizeContentType(file) : null;
-      const sourceRoot = file.source_root || scanDoc.config?.roots?.[0] || '';
-      const relativePath = file.relative_path || (sourceRoot && normalizedPath.startsWith(sourceRoot)
-        ? normalizedPath.slice(sourceRoot.length).replace(/^\/+/, '')
-        : filename);
+      const relativePath = typeof file.relative_path === 'string' && file.relative_path
+        ? file.relative_path
+        : normalizedPath.slice(sourceRoot.length).replace(/^\/+/, '');
       const relativeParts = relativePath.split('/').filter(Boolean);
       const classification = classifyFileMetadata({
         path: normalizedPath,
@@ -370,8 +457,12 @@ const insertBatch = async (req, res) => {
           unset.content_type_source = '';
         }
       }
-      if (file.sha256) {
-        set.sha256 = file.sha256;
+      // A malformed hash is dropped, the metadata row is kept: an unstamped
+      // row would be pruned as stale when the scan completes.
+      if (file.sha256 && !(typeof file.sha256 === 'string' && SHA256_PATTERN.test(file.sha256))) {
+        hashesRejected++;
+      } else if (file.sha256) {
+        set.sha256 = file.sha256.toLowerCase();
         set.hash_fingerprint = `${size}:${mtime}`;
         set.hashed_at = now;
         set.hash_strategy = file.hash_strategy || 'external-agent';
@@ -390,26 +481,37 @@ const insertBatch = async (req, res) => {
       };
     });
 
-    const result = await filesCollection.bulkWrite(bulkOps, { ordered: false });
+    const result = bulkOps.length
+      ? await filesCollection.bulkWrite(bulkOps, { ordered: false })
+      : {};
 
-    await db.collection('nas_scans').updateOne(
-      { _id: scan_id },
-      {
-        $inc: {
-          'counts.files_processed': files.length,
-          'counts.inserted': result.upsertedCount || 0,
-          'counts.updated': result.modifiedCount || 0
-        },
-        $set: { last_batch_at: now }
-      }
-    );
+    const increments = {
+      'counts.files_processed': accepted.length,
+      'counts.inserted': result.upsertedCount || 0,
+      'counts.updated': result.modifiedCount || 0
+    };
+    const scanPatch = { last_batch_at: now };
+    if (rejected > 0) increments['counts.rejected'] = rejected;
+    if (hashesRejected > 0) increments['counts.hashes_rejected'] = hashesRejected;
+    if (rejected > 0 || hashesRejected > 0) {
+      scanPatch.last_error = `Batch dropped ${rejected} file(s) outside the scan roots and ${hashesRejected} malformed sha256 value(s)`;
+      log(`[Storage] Scan ${scan_id}: ${scanPatch.last_error}`, 'warn');
+    }
+    await db.collection('nas_scans').updateOne({ _id: scan_id }, { $inc: increments, $set: scanPatch });
 
     res.json({
       status: 'success',
-      message: `Processed ${files.length} files`,
+      message: `Processed ${accepted.length} of ${files.length} files`,
       data: {
         scan_id,
-        batch: { received: files.length, inserted: result.upsertedCount || 0, updated: result.modifiedCount || 0 },
+        batch: {
+          received: files.length,
+          accepted: accepted.length,
+          rejected,
+          hashes_rejected: hashesRejected,
+          inserted: result.upsertedCount || 0,
+          updated: result.modifiedCount || 0
+        },
         meta: meta || {}
       }
     });
@@ -422,16 +524,33 @@ const insertBatch = async (req, res) => {
 const updateScan = async (req, res) => {
   try {
     const { scan_id } = req.params;
-    const { status, stats, completedAt } = req.body;
+    const { status, stats, completedAt } = req.body || {};
     if (!scan_id) return res.status(400).json({ status: 'error', message: 'Missing scan_id' });
+
+    if (status != null && !(typeof status === 'string' && UPDATE_STATUSES.has(status))) {
+      return res.status(400).json({
+        status: 'error',
+        message: `status must be one of: ${[...UPDATE_STATUSES].join(', ')}`
+      });
+    }
+    let finishedAt = null;
+    if (completedAt != null) {
+      finishedAt = typeof completedAt === 'string' || typeof completedAt === 'number' ? new Date(completedAt) : null;
+      if (!finishedAt || Number.isNaN(finishedAt.getTime())) {
+        return res.status(400).json({ status: 'error', message: 'completedAt must be a valid date' });
+      }
+    }
+    if (stats != null && (typeof stats !== 'object' || Array.isArray(stats))) {
+      return res.status(400).json({ status: 'error', message: 'stats must be an object' });
+    }
 
     const db = req.app.locals.db;
     const updateFields = {};
     const normalizedStatus = status === 'completed' ? 'complete' : status;
 
     if (status) updateFields.status = normalizedStatus;
-    if (status === 'complete' || status === 'completed' || completedAt) {
-      updateFields.finished_at = completedAt ? new Date(completedAt) : new Date();
+    if (status === 'complete' || status === 'completed' || finishedAt) {
+      updateFields.finished_at = finishedAt || new Date();
     }
     if (stats) {
       const allowedStats = [
@@ -445,21 +564,27 @@ const updateScan = async (req, res) => {
         'metadata_errors', 'hash_errors', 'content_probed',
         'content_probe_matched', 'content_probe_errors'
       ];
-      Object.entries(stats).forEach(([key, value]) => {
-        if (allowedStats.includes(key)) updateFields[`counts.${key}`] = value;
-      });
+      for (const [key, value] of Object.entries(stats)) {
+        if (!allowedStats.includes(key)) continue;
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+          return res.status(400).json({
+            status: 'error',
+            message: `stats.${key} must be a finite non-negative number`
+          });
+        }
+        updateFields[`counts.${key}`] = value;
+      }
     }
 
     const scans = db.collection('nas_scans');
     const scanDoc = await scans.findOne({ _id: scan_id });
     if (!scanDoc) return res.status(404).json({ status: 'error', message: `Scan not found: ${scan_id}` });
 
-    const terminalStatuses = new Set(['complete', 'partial', 'failed', 'stopped']);
     const existingStatus = scanDoc.status === 'completed' ? 'complete' : scanDoc.status;
     if (
       scanDoc.config?.external === true &&
       scanDoc.finished_at &&
-      terminalStatuses.has(normalizedStatus) &&
+      TERMINAL_STATUSES.has(normalizedStatus) &&
       normalizedStatus === existingStatus
     ) {
       return res.json({
@@ -470,6 +595,15 @@ const updateScan = async (req, res) => {
           already_finalized: true,
           updated: { status: existingStatus, finished_at: scanDoc.finished_at }
         }
+      });
+    }
+
+    // A finished external scan (for instance one failed for lack of heartbeat)
+    // is not reopened: a late completion must not prune on its behalf.
+    if (scanDoc.config?.external === true && TERMINAL_STATUSES.has(existingStatus)) {
+      return res.status(409).json({
+        status: 'error',
+        message: `Scan ${scan_id} already ended as ${existingStatus}`
       });
     }
 

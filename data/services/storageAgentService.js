@@ -8,6 +8,12 @@ const ACTIVE_WINDOW_MS = 90_000;
 const MAX_HASH_FILES = 20_000;
 const MAX_HASH_BYTES = 250 * 1024 * 1024 * 1024;
 const MAX_METADATA_PROBE_PATHS = 1_000;
+const ACTIVE_SCAN_STATUSES = Object.freeze(['queued', 'running', 'hashing']);
+// The collector heartbeats a running scan every 30 s (60 s at most) and polls
+// for queued work every 15 s. The queued bound exceeds the nightly job's 4 h
+// wait, since one collector serves its queued scans one after the other.
+const RUNNING_STALE_MS = 10 * 60 * 1000;
+const QUEUED_STALE_MS = 6 * 60 * 60 * 1000;
 
 const DEFAULT_SOURCES = Object.freeze({
   media: Object.freeze({ canonicalRoot: '/mnt/media', executionCapable: false }),
@@ -107,6 +113,72 @@ async function hasActiveSource(db, source) {
   return !!(await db.collection(SCANNERS).findOne({ lastSeen: { $gt: cutoff }, sources: source }));
 }
 
+function normalizeRoot(root) {
+  return String(root || '').replace(/[\\/]+$/, '');
+}
+
+function rootsOverlap(left, right) {
+  const a = normalizeRoot(left);
+  const b = normalizeRoot(right);
+  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+}
+
+// A scan that completes removes the rows under its roots that it did not stamp,
+// so two scans may never be active on overlapping roots at the same time.
+async function findOverlappingScan(db, roots = []) {
+  const active = await db.collection(SCANS).find({ status: { $in: ACTIVE_SCAN_STATUSES } }).toArray();
+  return active.find(doc => {
+    const existing = doc.config?.roots || doc.roots;
+    return Array.isArray(existing) && existing.some(root => roots.some(wanted => rootsOverlap(root, wanted)));
+  }) || null;
+}
+
+// Fails external scans whose collector went silent, and queued scans nobody
+// claimed. It only changes the scan record: the index rows are never pruned here.
+async function expireStaleScans(db, now = new Date()) {
+  const scans = db.collection(SCANS);
+  const runningCutoff = new Date(now.getTime() - RUNNING_STALE_MS);
+  const queuedCutoff = new Date(now.getTime() - QUEUED_STALE_MS);
+  const running = await scans.updateMany(
+    {
+      status: 'running',
+      'config.external': true,
+      $nor: [
+        { last_heartbeat_at: { $gte: runningCutoff } },
+        { last_batch_at: { $gte: runningCutoff } },
+        { started_at: { $gte: runningCutoff } }
+      ]
+    },
+    {
+      $set: {
+        status: 'failed',
+        finished_at: now,
+        last_error: `No heartbeat or batch from the storage agent for ${RUNNING_STALE_MS / 60000} minutes; scan marked failed, index rows kept`
+      }
+    }
+  );
+  const queued = await scans.updateMany(
+    { status: 'queued', 'config.external': true, requested_at: { $lt: queuedCutoff } },
+    {
+      $set: {
+        status: 'failed',
+        finished_at: now,
+        last_error: `No storage agent claimed the scan within ${QUEUED_STALE_MS / 3600000} hours; scan marked failed`
+      }
+    }
+  );
+  return { running: running?.modifiedCount || 0, queued: queued?.modifiedCount || 0 };
+}
+
+async function touchScanHeartbeat(db, scanId) {
+  if (typeof scanId !== 'string' || !scanId) return false;
+  const result = await db.collection(SCANS).updateOne(
+    { _id: scanId, status: 'running', 'config.external': true },
+    { $set: { last_heartbeat_at: new Date() } }
+  );
+  return (result?.matchedCount || 0) > 0;
+}
+
 async function enqueueScan(db, input = {}) {
   const registry = sourceRegistry();
   const source = String(input.source || '').trim();
@@ -114,6 +186,21 @@ async function enqueueScan(db, input = {}) {
   if (!sourceConfig?.canonicalRoot) return { ok: false, error: `unknown storage source: ${source}` };
   if (!(await hasActiveSource(db, source))) {
     return { ok: false, unavailable: true, error: `no active storage agent for source: ${source}` };
+  }
+
+  await expireStaleScans(db);
+  const overlapping = await findOverlappingScan(db, [sourceConfig.canonicalRoot]);
+  if (overlapping) {
+    // The nightly job only needs a scan id to wait on: join the scan already
+    // queued or running for this source instead of starting a second one.
+    if (overlapping.config?.external === true && overlapping.config.source === source) {
+      return { ok: true, coalesced: true, scan: overlapping };
+    }
+    return {
+      ok: false,
+      conflict: true,
+      error: `scan ${overlapping._id} is already ${overlapping.status} on an overlapping root`
+    };
   }
 
   const scanId = new ObjectId().toHexString();
@@ -144,6 +231,7 @@ async function enqueueScan(db, input = {}) {
 async function claimNextScan(db, scannerId, sources = []) {
   const accepted = sources.filter(source => sourceRegistry()[source]);
   if (accepted.length === 0) return null;
+  await expireStaleScans(db);
   const now = new Date();
   const result = await db.collection(SCANS).findOneAndUpdate(
     {
@@ -170,11 +258,17 @@ module.exports = {
   MAX_HASH_FILES,
   MAX_HASH_BYTES,
   MAX_METADATA_PROBE_PATHS,
+  ACTIVE_SCAN_STATUSES,
+  RUNNING_STALE_MS,
+  QUEUED_STALE_MS,
   sourceRegistry,
   listMetadataProbePaths,
   registerScanner,
   listScanners,
   hasActiveSource,
+  findOverlappingScan,
+  expireStaleScans,
+  touchScanHeartbeat,
   enqueueScan,
   claimNextScan
 };
