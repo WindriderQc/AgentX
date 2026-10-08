@@ -1538,17 +1538,6 @@
       "description": "Optional JSON mapping an OpenClaw agent id to the names the owner uses to address it directly in Super Dad (\"Secretary, ...\", \"ask the secretary ...\"). That turn goes to the agent's own session and voice. Unset: every turn stays with the conversation's agent.",
       "fallback": "no direct addressing"
     },
-    "HOUSEHOLD_VOICE_WARMUP": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Set to true to warm a new spoken personal conversation's prompt while its greeting plays (one small unrecorded turn in the conversation's native session). Unset: no warm-up; the first spoken turn reads its whole prompt.",
-      "fallback": "no warm-up"
-    },
     "HOUSEHOLD_VOICE_MODEL": {
       "services": [
         "core"
@@ -1568,6 +1557,17 @@
       "category": "household",
       "secret": false,
       "description": "Router task of a spoken Household turn on Core inference (agentx engine), in any pack; typed turns and LLMx scenes keep their pack task. Unset or invalid: voice_persona_chat."
+    },
+    "HOUSEHOLD_VOICE_WARMUP": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Set to true to warm a new spoken personal conversation's prompt while its greeting plays (one small unrecorded turn in the conversation's native session). Unset: no warm-up; the first spoken turn reads its whole prompt.",
+      "fallback": "no warm-up"
     },
     "IDENTIFIER_VAULT_KEY": {
       "services": [
@@ -1788,6 +1788,16 @@
       "category": "bridges",
       "secret": false,
       "description": "Leantime URL for household email actions and agent-ops links. Unset: email actions answer 503."
+    },
+    "LIVEDATA_LOCATIONS_JSON": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "JSON array of {name, lat, lon} seeding the locations of Data's per-location live feeds (pressure, air quality) once, when none is stored. Unset: no seeding."
     },
     "LOCAL_IMAGES_CONFIG": {
       "services": [
@@ -3061,6 +3071,16 @@
       "category": "observability",
       "secret": false,
       "description": "false stops the watchdog reloading a model after an unjam. Unset: on."
+    },
+    "WEATHER_API_KEY": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "network",
+      "secret": true,
+      "description": "OpenWeather key for Data's barometric pressure feed. Unset: the feed reads keyless Open-Meteo."
     },
     "WEATHER_API_URL": {
       "services": [

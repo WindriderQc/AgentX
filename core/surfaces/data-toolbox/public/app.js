@@ -321,7 +321,7 @@ async function overview() {
       <article class="card"><h3>Automation visibility</h3>
         <div class="metric-row"><span>Live feeds</span><strong>${sources.liveData?.ok ? `${feeds.filter((feed) => feed.enabled).length}/${feeds.length} enabled` : '—'}</strong></div>
         <div class="metric-row"><span>Janitor profiles</span><strong>${sources.janitor?.ok ? number(profiles.length) : '—'}</strong></div>
-        <div class="metric-row"><span>Mutation routes</span><strong class="good">0 exposed</strong></div>
+        <div class="metric-row"><span>Write routes</span><strong>1 · device name and known flag</strong></div>
         <div class="metric-row"><span>Projection authority</span><strong>AgentX Data</strong></div>
       </article>
     </div>`;
