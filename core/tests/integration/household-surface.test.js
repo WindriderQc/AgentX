@@ -744,7 +744,7 @@ describe('built-in Household surface on Core', () => {
         if (++reads > 1) throw new Error('Synthetic continuity unavailable');
         return { answer: { status: 'ready', runId, text: reply },
           run: { runId, model: 'old-attempt', provider: 'old-provider' },
-          receipts: [{ tool: 'list_personal_tasks', observed: true }] };
+          receipts: [{ runId, tool: 'list_personal_tasks', status: 'verified', observed: true }] };
       },
       fetchImpl: async (_url, options) => {
         requests++;

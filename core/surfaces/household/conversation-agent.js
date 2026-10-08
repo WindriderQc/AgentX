@@ -118,7 +118,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       } finally { clearTimeout(timer); }
     };
     const language = scoreSpeechLanguage(text);
-    let guardFailure, verificationFailure, stopChecked = false;
+    let guardFailure, verificationFailure, taskObservedRun, stopChecked = false;
     const imageReply = () => browserReply ? Promise.resolve(null) : acceptedImageReply({ session, evidence,
       sessionKey, runId, language: language.decided ? language.language : 'fr', readOperation: readImageOperation });
     // When each step of the native run happened, in ms from this request: what the
@@ -161,6 +161,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       observedAnswer = answered(projected) ? { ...projected.answer } : null;
     };
     const report = async projected => {
+      if (taskCheckObserved(projected, runId)) taskObservedRun = runId;
       const loop = confirmedLoop(projected, runId);
       if (loop) {
         evidence = projected;
@@ -341,7 +342,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         answer = evidence.answer.text;
         if (agentIdFor(session) === 'main' && session.packId === 'personal_operator' && session.scopeId === 'personal'
             && !session.llmx && session.source !== 'graphysx-llmx'
-            && requestsTaskCheck(text) && !taskCheckObserved(evidence, runId)) {
+            && requestsTaskCheck(text) && taskObservedRun !== runId) {
           verificationFailure = 'task_check_missing';
           answer = checkFailure(language.decided ? language.language : 'fr');
         }

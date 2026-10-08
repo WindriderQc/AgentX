@@ -901,6 +901,27 @@ test('an explicit personal task check refuses an unsupported count without repla
   }
 });
 
+test('retained task answers still require successful task evidence observed in their own run', async () => {
+  for (const verified of [true, false]) {
+    const stream = heldNativeStream(); let reads = 0;
+    const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 15, streamDrainMs: 20,
+      continuity: async () => {
+        if (++reads > 1) throw new Error('Continuity unavailable');
+        return { answer: answer('Trois tâches.'), run: { model: 'old-attempt' }, toolChecks: { status: 'observed', runId,
+          completedTools: verified ? ['list_personal_tasks'] : ['agents_list'], loop: null } };
+      }, fetchImpl: stream.fetch });
+    try {
+      const result = await client({ session: { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' }, text: 'Regarde mes tâches.' });
+      assert.equal(result.text.includes('Trois tâches.'), verified);
+      if (!verified) assert.equal(result.tools.verification.reason, 'task_check_missing');
+      assert.equal(result.tools.status, 'unavailable');
+      assert.equal(result.metadata.model, '');
+      assert.deepEqual(result.tools.receipts, []);
+      assert.equal(stream.requests(), 1);
+    } finally { stream.close(); }
+  }
+});
+
 test('specialist and scene dialogue keep their own task response contract', async () => {
   for (const change of [{ agentId: 'secretary' }, { llmx: { scene: 'example' } }, { source: 'graphysx-llmx' }]) {
     const client = createAgentClient({ env, settleMs: 0,

@@ -832,7 +832,8 @@ excluded. Core reports an unsuccessful verification after confirmed termination,
 or pauses while the stop remains unconfirmed. An explicit request to personal
 Nestor on `main` to read or count tasks requires a successful task-list or personal-briefing result
 from that run before Core delivers the answer. This check does not validate
-every fact in general conversation and never replays the inference.
+every fact in general conversation and never replays the inference. Same-run
+task proof survives a failed later read without restoring old model/run receipts.
 The Super Dad and Famille avatar dock loads GraphysX's `<llmx-face>` module from
 `HOUSEHOLD_AVATAR_MODULE_URL` (a GraphysX build's `/embed/llmx-face.js`). Core
 relays it at `/api/household/avatar/llmx-face.js`, like the VoiX player, so the
