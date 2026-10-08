@@ -2,8 +2,21 @@
  * Dedup Scanner — analyzes nas_files for duplicate groups by SHA256 hash,
  * and persists reports to dedup_reports.
  */
+const { ObjectId } = require('mongodb');
 const { log } = require('../utils/logger');
 const { formatFileSize } = require('../utils/file-operations');
+
+// A report's groups live in chunked detail documents, like the strategy
+// reports (janitorStrategyReportStore): one document holding every group and
+// file breaks at MongoDB's 16 MB document limit on a large inventory.
+const REPORT_COLLECTION = 'dedup_reports';
+const REPORT_DETAIL_COLLECTION = 'dedup_report_details';
+const REPORT_DETAIL_SCHEMA_VERSION = 1;
+const REPORT_DETAIL_MAX_GROUPS = 100;
+const REPORT_DETAIL_MAX_BYTES = 4 * 1024 * 1024;
+// Groups returned by one getReport call (largest first).
+const REPORT_GROUPS_DEFAULT_LIMIT = 100;
+const REPORT_GROUPS_MAX_LIMIT = 1000;
 
 /**
  * Single SHA256-group dedup aggregation engine.
@@ -14,6 +27,9 @@ const { formatFileSize } = require('../utils/file-operations');
  * `janitorStrategy` — flow through here so the grouping logic can never drift
  * apart. Each caller passes the options it needs and formats the raw groups into
  * its own response/report shape.
+ *
+ * Zero-byte files are never grouped: they all share one SHA256, so they would
+ * form a single giant group, and removing them reclaims no space.
  *
  * @param {import('mongodb').Db} db - MongoDB database handle
  * @param {Object} [opts]
@@ -42,7 +58,7 @@ async function aggregateDuplicateGroups(db, opts = {}) {
   } = opts;
 
   const files = db.collection('nas_files');
-  const matchStage = { sha256: { $exists: true, $ne: null } };
+  const matchStage = { sha256: { $exists: true, $ne: null }, size: { $gt: 0 } };
 
   if (currentHashesOnly) {
     matchStage.$expr = {
@@ -184,31 +200,131 @@ async function buildDedupReport(db, opts = {}) {
   return report;
 }
 
-/**
- * Persist a dedup report to MongoDB.
- */
-async function saveReport(db, report) {
-  const col = db.collection('dedup_reports');
-  const result = await col.insertOne(report);
-  return result.insertedId;
+function chunkGroups(reportId, groups = []) {
+  const chunks = [];
+  let current = [];
+  let currentBytes = 0;
+  let first = 0;
+
+  const flush = () => {
+    if (!current.length) return;
+    chunks.push({
+      reportId,
+      schemaVersion: REPORT_DETAIL_SCHEMA_VERSION,
+      ordinal: chunks.length,
+      first,
+      last: first + current.length - 1,
+      groups: current
+    });
+    first += current.length;
+    current = [];
+    currentBytes = 0;
+  };
+
+  for (const group of groups) {
+    const groupBytes = Buffer.byteLength(JSON.stringify(group), 'utf8');
+    if (current.length && (
+      current.length >= REPORT_DETAIL_MAX_GROUPS
+      || currentBytes + groupBytes > REPORT_DETAIL_MAX_BYTES
+    )) flush();
+    current.push(group);
+    currentBytes += groupBytes;
+  }
+  flush();
+  return chunks;
 }
 
 /**
- * Get the latest dedup report, or a specific one by ID.
+ * Persist a dedup report to MongoDB. The report document keeps its summary;
+ * its groups go to chunked detail documents and are read back by getReport.
  */
-async function getReport(db, reportId) {
-  const col = db.collection('dedup_reports');
+async function saveReport(db, report) {
+  const reportId = new ObjectId();
+  const groups = Array.isArray(report?.groups) ? report.groups : [];
+  const detailDocs = chunkGroups(reportId, groups);
+  const persistedReport = {
+    ...report,
+    _id: reportId,
+    groups: [],
+    detailStorage: {
+      schemaVersion: REPORT_DETAIL_SCHEMA_VERSION,
+      collection: REPORT_DETAIL_COLLECTION,
+      chunks: detailDocs.length,
+      groups: groups.length
+    }
+  };
+
+  try {
+    if (detailDocs.length) {
+      await db.collection(REPORT_DETAIL_COLLECTION).insertMany(detailDocs, { ordered: true });
+    }
+    await db.collection(REPORT_COLLECTION).insertOne(persistedReport);
+    return reportId;
+  } catch (error) {
+    if (detailDocs.length) {
+      await db.collection(REPORT_DETAIL_COLLECTION).deleteMany({ reportId }).catch(() => {});
+    }
+    throw error;
+  }
+}
+
+function boundedInt(value, fallback, min, max) {
+  const parsed = parseInt(value, 10);
+  return Math.min(max, Math.max(min, Number.isFinite(parsed) ? parsed : fallback));
+}
+
+/**
+ * Get the latest dedup report, or a specific one by ID, with one page of its
+ * groups. `groups_page` says which groups were returned and how many exist.
+ * A report saved before chunking still carries its groups inline.
+ * @param {Object} [opts]
+ * @param {number} [opts.groupOffset=0] - first group to return
+ * @param {number} [opts.groupLimit=100] - groups to return, at most 1000
+ */
+async function getReport(db, reportId, opts = {}) {
+  const col = db.collection(REPORT_COLLECTION);
+  let report;
   if (reportId) {
-    const { ObjectId } = require('mongodb');
     // Guard against malformed ids — new ObjectId(bad) throws and would surface
     // as a 500; treat an invalid id as "not found" (→ 404) instead.
     if (!ObjectId.isValid(reportId)) return null;
-    return col.findOne({ _id: new ObjectId(reportId) });
+    report = await col.findOne({ _id: new ObjectId(reportId) });
+  } else {
+    report = await col.findOne({}, { sort: { created_at: -1 } });
   }
-  return col.findOne({}, { sort: { created_at: -1 } });
+  if (!report) return report;
+
+  const offset = boundedInt(opts.groupOffset, 0, 0, Number.MAX_SAFE_INTEGER);
+  const limit = boundedInt(opts.groupLimit, REPORT_GROUPS_DEFAULT_LIMIT, 1, REPORT_GROUPS_MAX_LIMIT);
+  let groups;
+  let total;
+  if (report.detailStorage?.schemaVersion === REPORT_DETAIL_SCHEMA_VERSION) {
+    total = Math.max(0, Number(report.detailStorage.groups || 0));
+    const detailDocs = offset < total
+      ? await db.collection(REPORT_DETAIL_COLLECTION)
+        .find({ reportId: report._id, first: { $lt: offset + limit }, last: { $gte: offset } })
+        .sort({ ordinal: 1 })
+        .toArray()
+      : [];
+    groups = detailDocs.flatMap(doc => (Array.isArray(doc.groups) ? doc.groups : [])
+      .filter((_group, idx) => doc.first + idx >= offset && doc.first + idx < offset + limit));
+    if (groups.length !== Math.max(0, Math.min(limit, total - offset))) {
+      throw new Error(
+        `Dedup report groups are incomplete: expected ${Math.max(0, Math.min(limit, total - offset))}, found ${groups.length}`
+      );
+    }
+  } else {
+    const inline = Array.isArray(report.groups) ? report.groups : [];
+    total = inline.length;
+    groups = inline.slice(offset, offset + limit);
+  }
+
+  return { ...report, groups, groups_page: { offset, limit, returned: groups.length, total } };
 }
 
 module.exports = {
+  REPORT_DETAIL_COLLECTION,
+  REPORT_GROUPS_MAX_LIMIT,
   aggregateDuplicateGroups,
   buildDedupReport,
   saveReport,
