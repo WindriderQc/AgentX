@@ -169,3 +169,29 @@ test('the warm-up stays off unless the instance turns it on', async () => {
     await h.warmup.settled(sessionId);
   }
 });
+
+test('the warm-up yields to another conversation of the same agent that is still in use', async () => {
+  const pack = packs.packById('personal_operator');
+  let clock = 1000000;
+  const requests = [];
+  const warmup = createVoiceWarmup({ conversations: { updateSession: async () => ({}) },
+    executeConversation: async request => { requests.push(request); return { text: 'Bonjour.' }; },
+    conversationBackend: () => 'openclaw', conversationEnv: { HOUSEHOLD_VOICE_WARMUP: 'true' }, packById: packs.packById,
+    agentIdFor: session => session.agentId, instructions: () => 'synthetic instructions', now: () => clock });
+  const conversation = (id, agentId = 'main') => ({ sessionId: id, packId: pack.id, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
+    backend: 'openclaw', agentId, turnCount: 0 });
+
+  warmup.noteTurn({ ...conversation('in-use'), turnCount: 3 });
+  clock += 60000;
+  assert.deepEqual(warmup.start(conversation('just-opened'), 'Bonjour.'), { started: false, reason: 'other_conversation_live' });
+  // Another agent has its own model and prompt: its opening is still warmed.
+  assert.equal(warmup.start(conversation('other-agent', 'secretary'), 'Bonjour.').started, true);
+  // Once the first conversation has gone quiet, the cache place is free again.
+  clock += 600000;
+  assert.equal(warmup.start(conversation('just-opened'), 'Bonjour.').started, true);
+  await warmup.settled('just-opened'); await warmup.settled('other-agent');
+  assert.equal(requests.length, 2);
+  // A conversation never yields to its own turns.
+  warmup.noteTurn(conversation('alone'));
+  assert.notEqual(warmup.start(conversation('alone'), 'Bonjour.').reason, 'other_conversation_live');
+});

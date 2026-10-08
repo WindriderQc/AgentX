@@ -1,8 +1,9 @@
 'use strict';
 const express = require('express');
 const service = require('../src/services/images/imageService');
+const presentation = require('../src/services/images/workshopPresentation');
 
-function createRouter(images = service) {
+function createRouter(images = service, workshop = presentation) {
   const router = express.Router();
   const wrap = handler => async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
@@ -13,10 +14,12 @@ function createRouter(images = service) {
     }
   };
   router.get('/status', wrap(async (_req, res) => res.json({ ok: true, ...images.status() })));
+  router.get('/workshop', wrap(async (_req, res) => res.json({ ok: true, ...await workshop.overview() })));
   router.get('/operations', wrap(async (_req, res) => res.json({ ok: true, operations: await images.list() })));
   router.post('/operations', wrap(async (req, res) => res.status(202).json({ ok: true, operation: await images.accept(req.body) })));
   router.get('/operations/:id', wrap(async (req, res) => res.json({ ok: true, operation: await images.get(req.params.id) })));
   router.get('/operations/:id/draft', wrap(async (req, res) => res.json({ ok: true, draft: await images.draft(req.params.id) })));
+  router.get('/operations/:id/details', wrap(async (req, res) => res.json({ ok: true, details: await workshop.details(req.params.id) })));
   router.post('/operations/:id/cancel', wrap(async (req, res) => res.json({ ok: true, operation: await images.cancel(req.params.id) })));
   router.post('/operations/:id/archive', wrap(async (req, res) => res.json({ ok: true, operation: await images.retryArchive(req.params.id) })));
   router.post('/operations/:id/recover', wrap(async (req, res) => res.json({ ok: true, operation: await images.recover(req.params.id) })));

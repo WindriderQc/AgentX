@@ -629,6 +629,7 @@ app.get('/models', (req, res) => {
       '<script src="/js/utils/playground-link.js"></script>',
       '<script src="/js/models-unified.js"></script>',
       '<script src="/js/models-unified-popouts.js"></script>',
+      '<script src="/js/models-stats-strip.js"></script>',
       '<script src="/js/models-management.js"></script>',
       '<script src="/js/models-comparison.js"></script>',
       '<script src="/js/models-execution-config.js"></script>',
@@ -654,7 +655,10 @@ app.get('/cluster-schedule', (req, res) => {
       '<script src="/js/cluster-schedule-upcoming.js"></script>',
       '<script src="/js/cluster-schedule-headline.js"></script>',
       '<script src="/js/cluster-schedule.js"></script>',
-      '<script src="/js/cluster-schedule-services.js"></script>'
+        '<script src="/js/cluster-schedule-actual.js"></script>',
+        '<script src="/js/cluster-schedule-services.js"></script>',
+        '<script src="/js/cluster-schedule-queue.js"></script>',
+        '<script src="/js/cluster-schedule-controls.js"></script>'
     ].join('\n')
   });
 });

@@ -100,7 +100,8 @@ function parseGradedAnswer(text, options) {
     const lines = String(text || '').trim().split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     const last = (lines[lines.length - 1] || '').toLowerCase()
         .replace(/^(?:final\s+)?(?:answer|count|total)\s*[:=]\s*/, '')
-        .replace(/[*_`.\s]+$/, '').replace(/^[*_`\s]+/, '');
+        // Quotes too: the prompt lists the options quoted and a judge copies them so.
+        .replace(/[*_`"'\u201c\u201d.\s]+$/, '').replace(/^[*_`"'\u201c\u201d\s]+/, '');
     if (lines.length < 2 || !/^(\d+(\s*or more|\+)?|[a-z]+)$/.test(last)) return null;
     return parseGradedHead(last, options);
 }

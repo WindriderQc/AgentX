@@ -18,6 +18,9 @@ COPY scripts/bounded-response.js /scripts/bounded-response.js
 
 COPY core/views/layouts /core/views/layouts
 COPY core/views/partials /core/views/partials
+COPY core/public/favicon.svg /core/public/favicon.svg
+COPY core/public/img/favicon.ico /core/public/img/favicon.ico
+COPY core/public/img/apple-touch-icon.png /core/public/img/apple-touch-icon.png
 RUN mkdir -p /core/public/dist
 COPY core/src/frontend/shared-tokens.css /core/public/dist/shared-tokens.css
 COPY core/src/frontend/shared-utils.js /core/public/dist/shared-utils.js

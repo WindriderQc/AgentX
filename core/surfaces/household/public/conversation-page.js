@@ -476,7 +476,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationStart').hidden = enteringSpace && !active;
     el('conversationStart').textContent = active ? 'Pause' : conversation.session ? 'Reprendre' : 'Activer Nestor';
     const lockReason = renderTeam(active || textBusy);
-    [backendPicker, agentPicker, picker, open, language, interruption].forEach(node => {
+    // Language and interruption are read at each turn, so they stay changeable while the conversation runs.
+    for (const node of [language, interruption]) { node.disabled = false; node.title = ''; }
+    [backendPicker, agentPicker, picker, open].forEach(node => {
       node.disabled = active || !!conversation.session || textBusy || (node === agentPicker && (family || !agentCatalog || backendPicker.value !== 'openclaw'));
       node.title = node.disabled && lockReason ? lockReason : '';
     });
@@ -611,6 +613,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   agentPicker.onchange = () => { stopPreview(); savePreferences(); describe(); };
   picker.onchange = () => { stopPreview(); restoreProfile(); savePreferences(); describe(); };
   for (const field of [language, interruption]) field.onchange = () => { stopPreview(); savePreferences(); describe(); };
+  language.addEventListener('change', () => conversation.setLanguage(language.value));
+  interruption.addEventListener('change', () => conversation.setInterruption(interruption.checked));
   el('conversationPreview').onclick = async () => {
     if (previewAbort) { stopPreview(); return; }
     const abort = new AbortController(); previewAbort = abort;
@@ -637,11 +641,15 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   };
   restoreProfile(); describe();
   open.onchange = () => { if (open.checked) void openHold.start(); else void releaseOpen(); };
-  el('conversationStart').onclick = () => {
-    if (!['idle', 'paused', 'error', 'reviewing'].includes(conversation.state)) { conversation.stop(true); return; }
+  // What a press on Activer Nestor or Reprendre starts; opening a saved conversation starts it too.
+  const startVoice = options => {
     stopPreview(); preferences.lastVoice = chosenVoice(); savePreferences();
     if (open.checked) void openHold.start();
-    return conversation.start(selection());
+    return conversation.start(selection(), options);
+  };
+  el('conversationStart').onclick = () => {
+    if (!['idle', 'paused', 'error', 'reviewing'].includes(conversation.state)) { conversation.stop(true); return; }
+    return startVoice();
   };
   el('conversationNew').onclick = () => {
     recap?.clear();
@@ -758,11 +766,15 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         board.restore(turn.display);
       });
       void ConversationImages.resume(`${sessionBase}/${encodeURIComponent(data.session.sessionId)}`, block => { if (!board.has(`image:${block.operation.id}`)) board.add(block); },
-        { current: () => epoch === conversation.epoch && conversation.session?.sessionId === data.session.sessionId });
+        { current: () => conversation.session?.sessionId === data.session.sessionId }); // starting voice moves the epoch
       personalNotes.show(data.turns?.at(-1)?.personalContinuity);
       showTools(data.turns?.at(-1)?.toolEvidence);
       void recap?.refresh();
       describe(); conversation.show('paused'); setHistoryOpen(false); el('conversationStart').focus();
+      // Opening a conversation resumes it: no second press on Reprendre. As on arrival, voice starts
+      // by itself only where the microphone is already granted; elsewhere that press asks for it.
+      const permission = await navigator.permissions?.query({ name: 'microphone' }).catch(() => null);
+      if (permission?.state === 'granted' && epoch === conversation.epoch) void startVoice({ automatic: true });
     } catch (error) { if (epoch === conversation.epoch) el('conversationStatus').textContent = error.message; }
     finally { button.disabled = false; }
   }

@@ -28,7 +28,8 @@ class CodingRunTest(unittest.TestCase):
                      "planningContext": {"text": "Reference only. " + "x" * 5000 + " Final fact."}}
         self.feedback = mock.Mock()
         for name, value in (("WORKSPACES", Path(root.name)), ("MODEL", "fixture-model"),
-                            ("feedback", self.feedback), ("request", self.request)):
+                            ("feedback", self.feedback), ("request", self.request),
+                            ("install_dependencies", lambda workspace: None)):
             patch = mock.patch.object(runner, name, value)
             patch.start()
             self.addCleanup(patch.stop)
@@ -97,6 +98,91 @@ class CodingRunTest(unittest.TestCase):
             runner.git(self.workspace, *runner.AUTHOR, "commit", "--quiet", "-m", "Fixture")
         self.assertFalse(marker.exists())
         self.assertEqual(runner.git(self.workspace, "show", "HEAD:result.txt"), "Preserve the worker's file")
+
+
+    def test_changed_package_files_wait_for_the_owner_instead_of_a_pr(self):
+        self.exit_code = 0
+
+        def worker(workspace, prompt, timeout):
+            (workspace / "core").mkdir()
+            (workspace / "core/package.json").write_text('{"dependencies":{"left-pad":"1.3.0"}}\n')
+            return subprocess.CompletedProcess([], 0, stdout="Needs left-pad installed.", stderr="")
+
+        with mock.patch.object(runner, "run_worker", worker), \
+                mock.patch.object(runner, "push_and_open_pr") as publish, \
+                mock.patch.dict(os.environ, {"GH_TOKEN": "fixture-token"}), mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        self.assertEqual(self.feedback.call_args.args[-1], "blocked")
+        self.assertIn("approve the installation", self.feedback.call_args.args[1])
+        self.assertEqual(publish.call_count, 0)
+
+
+class ModelRelayTest(unittest.TestCase):
+    """The worker's sandbox has no network and one relay, which forwards chat completions only."""
+
+    def setUp(self):
+        import http.server
+        import threading
+        seen = self.seen = []
+
+        class Upstream(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                seen.append((self.path, self.rfile.read(int(self.headers["Content-Length"]))))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"choices":[{"message":{"content":"pong"}}]}')
+
+            def log_message(self, *args):
+                pass
+
+        self.upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
+        threading.Thread(target=self.upstream.serve_forever, daemon=True).start()
+        self.addCleanup(self.upstream.server_close)
+        self.addCleanup(self.upstream.shutdown)
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        self.home = Path(root.name) / "home"
+        self.workspace = Path(root.name) / "task-0001"
+        (self.workspace / ".git").mkdir(parents=True)
+        self.home.mkdir()
+        self.port = self.upstream.server_address[1]
+        relay = runner.model_relay.serve(str(self.home / "model.sock"), f"http://127.0.0.1:{self.port}/v1")
+        self.addCleanup(relay.server_close)
+        self.addCleanup(relay.shutdown)
+
+    PROBE = """
+import json, socket, sys, urllib.error, urllib.request
+def call(method, url, body=None):
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, data=body, method=method), timeout=10) as reply:
+            return reply.status, reply.read().decode()
+    except urllib.error.HTTPError as error:
+        return error.code, ""
+    except OSError as error:
+        return "unreachable", type(error).__name__
+relay = "http://127.0.0.1:8377"
+print(json.dumps({
+    "chat": call("POST", relay + "/v1/chat/completions", b'{"messages":[]}'),
+    "other_path": call("POST", relay + "/api/pipeline/tasks", b"{}")[0],
+    "other_method": call("GET", relay + "/v1/chat/completions")[0],
+    "host_service": call("POST", "http://127.0.0.1:%s/v1/chat/completions" % sys.argv[1], b"{}")[0],
+}))
+"""
+
+    def test_the_sandboxed_worker_reaches_the_model_route_and_nothing_else(self):
+        with mock.patch.object(runner, "DSH_ROOT", self.home):
+            command = runner.sandbox(self.workspace, self.home, [
+                "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", "8377", "--",
+                "python3", "-c", self.PROBE, str(self.port)], network=False, timeout_seconds=60)
+        run = subprocess.run(command, text=True, capture_output=True)
+        if run.returncode != 0 and "bwrap" in run.stderr:
+            self.skipTest("Bubblewrap cannot create a sandbox on this machine")
+        import json
+        self.assertEqual(json.loads(run.stdout), {
+            "chat": [200, '{"choices":[{"message":{"content":"pong"}}]}'],
+            "other_path": 403, "other_method": 403, "host_service": "unreachable"}, run.stderr)
+        self.assertEqual(self.seen, [("/v1/chat/completions", b'{"messages":[]}')])
 
 
 if __name__ == "__main__":

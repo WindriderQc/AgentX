@@ -9,7 +9,7 @@ const logger = require('../../config/logger');
 const ClusterScheduleEntry = require('../../models/ClusterScheduleEntry');
 const ClusterScheduleClaim = require('../../models/ClusterScheduleClaim');
 const { randomUUID } = require('crypto');
-const { defaultPlanningTimeZone } = require('./planningDateService');
+const { defaultPlanningTimeZone, zonedDayBounds } = require('./planningDateService');
 
 function normalizeRoutedModelName(modelName) {
   return String(modelName || '').trim().toLowerCase().replace(/:latest$/i, '');
@@ -37,17 +37,14 @@ async function getAllEntries(filters = {}) {
 
 /**
  * Resolve all enabled entries into time slots for a given date.
- * Note: day boundaries use UTC (00:00Z–23:59Z). Cron expressions are resolved
- * in the requested timezone. Late-night local tasks may fall outside the UTC day
- * window — a known limitation for v1.
+ * Day boundaries and cron occurrences use the same requested time zone.
  * @param {string} dateStr - ISO date string (YYYY-MM-DD)
  * @param {string} timezone - IANA timezone
  * @returns {Promise<Array>} - Array of { entry, slots: [{ start, end }] }
  */
 async function getTimeline(dateStr, timezone = defaultPlanningTimeZone()) {
   const entries = await ClusterScheduleEntry.find({ enabled: true }).lean();
-  const dayStart = new Date(`${dateStr}T00:00:00Z`);
-  const dayEnd = new Date(`${dateStr}T23:59:59Z`);
+  const { start: dayStart, end: dayEnd } = zonedDayBounds(dateStr, timezone);
   const timeline = [];
 
   for (const entry of entries) {
@@ -66,6 +63,7 @@ async function getTimeline(dateStr, timezone = defaultPlanningTimeZone()) {
         estimatedDurationMs: entry.estimatedDurationMs,
         vramMb: entry.vramMb,
         scheduleType: entry.schedule?.type || null,
+        lastRun: entry.lastRun || null,
         metadata: entry.metadata || {},
         slots
       });
@@ -91,7 +89,11 @@ function resolveSlots(entry, dayStart, dayEnd, timezone) {
       return [{ start: dayStart.toISOString(), end: dayEnd.toISOString(), continuous: true }];
     }
     const slots = [];
-    let cursor = new Date(dayStart);
+    const sourceNext = Number(entry.metadata?.nextRunAtMs);
+    const lastRun = entry.lastRun ? new Date(entry.lastRun).getTime() : NaN;
+    const anchor = sourceNext > 0 ? sourceNext
+      : (Number.isFinite(lastRun) ? lastRun + intervalMs : dayStart.getTime());
+    let cursor = new Date(anchor + Math.ceil((dayStart.getTime() - anchor) / intervalMs) * intervalMs);
     while (cursor < dayEnd) {
       const end = new Date(cursor.getTime() + (entry.estimatedDurationMs || intervalMs));
       slots.push({
@@ -106,9 +108,9 @@ function resolveSlots(entry, dayStart, dayEnd, timezone) {
   if (schedType === 'cron' && entry.schedule.cron) {
     try {
       const options = {
-        currentDate: dayStart,
-        endDate: dayEnd,
-        tz: timezone || entry.schedule.timezone || defaultPlanningTimeZone()
+        currentDate: new Date(dayStart.getTime() - 1),
+        endDate: new Date(dayEnd.getTime() - 1),
+        tz: entry.schedule.timezone || timezone || defaultPlanningTimeZone()
       };
       const interval = CronExpressionParser.parse(entry.schedule.cron, options);
       const slots = [];
@@ -116,6 +118,7 @@ function resolveSlots(entry, dayStart, dayEnd, timezone) {
         try {
           const next = interval.next();
           const start = next.toDate ? next.toDate() : new Date(next);
+          if (start >= dayEnd) break;
           const durationMs = entry.estimatedDurationMs || 300000; // default 5 min
           const end = new Date(start.getTime() + durationMs);
           slots.push({
@@ -220,6 +223,8 @@ function getNextOccurrence(entry, now) {
   }
 
   if (entry.schedule?.type === 'interval' && entry.schedule.intervalMs) {
+    const sourceNext = Number(entry.metadata?.nextRunAtMs);
+    if (sourceNext > now.getTime()) return new Date(sourceNext);
     const lastRun = entry.lastRun ? new Date(entry.lastRun) : now;
     const next = new Date(lastRun.getTime() + entry.schedule.intervalMs);
     return next > now ? next : new Date(now.getTime() + entry.schedule.intervalMs);

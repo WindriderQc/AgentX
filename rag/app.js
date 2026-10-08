@@ -68,7 +68,7 @@ app.use(express.json({ limit: '10mb' }));
 registerLocalStyleVendorAssets(app, path.join(__dirname, 'node_modules'));
 
 app.get('/favicon.ico', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'favicon.svg'));
+  res.sendFile(path.join(__dirname, '..', 'core', 'public', 'img', 'favicon.ico'));
 });
 
 // The shared-utils source is copied into /dist by the RAG image and its

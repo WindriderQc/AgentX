@@ -27,7 +27,7 @@ const HOST_COLORS = ['#7cf0ff', '#f97316', '#22c55e', '#a78bfa', '#f59e0b'];
 
 const SOURCE_META = {
   agentx: { label: 'AgentX', color: '#38bdf8' },
-  'agentx-system': { label: 'System Cron', color: '#f59e0b' },
+  'agentx-system': { label: 'External scheduler', color: '#f59e0b' },
   'ollama-persistent': { label: 'Persistent GPU', color: '#22c55e' }
 };
 
@@ -83,8 +83,9 @@ function updateDateLabel() {
 function shiftDate(delta) {
   currentDate = SCHEDULE_DATE.addCalendarDays(currentDate, delta);
   updateDateLabel(); loadTimeline(); loadConflicts();
+  if (actualView === 'avp') loadActualVsPlanned();
 }
-function goToday() { currentDate = SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE); updateDateLabel(); loadTimeline(); loadConflicts(); }
+function goToday() { currentDate = SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE); updateDateLabel(); loadTimeline(); loadConflicts(); if (actualView === 'avp') loadActualVsPlanned(); }
 function setViewMode(mode) {
   viewMode = mode;
   document.getElementById('viewTask').classList.toggle('active', mode === 'task');
@@ -93,6 +94,11 @@ function setViewMode(mode) {
   loadTimeline(); loadConflicts();
 }
 function isToday() { return SCHEDULE_DATE.isToday(currentDate, new Date(), OPERATOR_TIME_ZONE); }
+function calendarQuery() {
+  const params = new URLSearchParams({ date: currentDate });
+  if (OPERATOR_TIME_ZONE) params.set('timezone', OPERATOR_TIME_ZONE);
+  return params.toString();
+}
 
 // ── Live Host Cards (enriched) ──────────────────────────────
 
@@ -179,7 +185,7 @@ function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true }
     let stateBadgeClass, stateBadgeLabel;
     if (!isOnline)     { stateBadgeClass = 'down';    stateBadgeLabel = 'OFFLINE'; }
     else if (hasModels){ stateBadgeClass = 'ok';      stateBadgeLabel = 'ACTIVE'; }
-    else               { stateBadgeClass = 'idle';    stateBadgeLabel = 'IDLE'; }
+    else               { stateBadgeClass = 'idle';    stateBadgeLabel = 'NO MODEL'; }
 
     const gpuLine = h.gpu?.model || h.gpuModel || '';
 
@@ -231,7 +237,7 @@ function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true }
         footerHtml += `<div class="cs-host-next-gpu"><i class="fas fa-microchip"></i> Next GPU run: ${esc(nextGpuJob.model)} in ${formatCountdown(nextGpuJob.msFromNow)}</div>`;
       }
     } else {
-      footerHtml = `<div class="cs-host-next" style="font-style:italic">No scheduled jobs today</div><div class="cs-host-standby-note">Host is online and ready for queued work.</div>`;
+      footerHtml = '<div class="cs-host-next" style="font-style:italic">No host-assigned scheduled job in this view</div><div class="cs-host-standby-note">See the separate heavy-work queue for operator batches.</div>';
     }
 
     const cardClass = !isOnline ? ' down' : hasModels ? ' active' : '';
@@ -304,7 +310,7 @@ async function loadTimeline() {
   const container = document.getElementById('heatmapContainer');
   try {
     if (viewMode === 'host') {
-      const data = await fetchJSON(`${API_BASE}/schedule/timeline-by-host?date=${currentDate}`);
+      const data = await fetchJSON(`${API_BASE}/schedule/timeline-by-host?${calendarQuery()}`);
       document.getElementById('servicesStrip').style.display = 'none';
       upcomingTimelineEntries = data.hosts.flatMap(host => host.tasks || []);
       const hosts = data.hosts.map(host => ({
@@ -315,7 +321,7 @@ async function loadTimeline() {
       renderHostHeatmap(container, hosts);
       renderLegendFromHosts(hosts);
     } else {
-      const data = await fetchJSON(`${API_BASE}/schedule/timeline?date=${currentDate}`);
+      const data = await fetchJSON(`${API_BASE}/schedule/timeline?${calendarQuery()}`);
       const { persistent, scheduled } = splitTimeline(data.timeline);
       const continuousServices = persistent.filter(entry => entry.source !== 'ollama-persistent');
       persistentServicesData = persistent;
@@ -423,7 +429,7 @@ function renderGroupedHeatmap(container, timeline) {
     const countLabel = gpuCount > 0
       ? `${gpuCount} AI job${gpuCount !== 1 ? 's' : ''}${infraCount > 0 ? `, ${infraCount} sys` : ''}`
       : `${infraCount} sys job${infraCount !== 1 ? 's' : ''}`;
-    html += `<div class="cs-group-header" onclick="toggleGroup('${groupKey}')">
+    html += `<div class="cs-group-header" role="button" tabindex="0" data-group-key="${esc(groupKey)}">
       <i class="fas fa-caret-down toggle ${toggleIcon}"></i>
       <span style="color:${color}">${(groupKey).toUpperCase()}</span>
       <span class="cs-group-count">${countLabel}</span>
@@ -577,8 +583,11 @@ function getHostMeta(hostId) {
   return { id: hostId, label: live?.name || hostId, color: HOST_COLORS[index] };
 }
 
-function getSourceMeta(sourceId) {
+function getSourceMeta(sourceId, metadata) {
   if (!sourceId) return { label: 'Unknown', color: '#64748b' };
+  if (sourceId === 'agentx-system' && metadata?.scheduler === 'openclaw') {
+    return { label: 'OpenClaw mirror', color: '#f59e0b' };
+  }
   return SOURCE_META[sourceId] || { label: sourceId, color: '#64748b' };
 }
 
@@ -588,7 +597,7 @@ async function loadConflicts() {
   const banner = document.getElementById('conflictBanner');
   const text = document.getElementById('conflictText');
   try {
-    const data = await fetchJSON(`${API_BASE}/schedule/conflicts?date=${currentDate}`);
+    const data = await fetchJSON(`${API_BASE}/schedule/conflicts?${calendarQuery()}`);
     conflictsData = data.conflicts || [];
     if (conflictsData.length > 0) {
       const summaries = conflictsData.map(c => `${c.taskA.name} + ${c.taskB.name} on ${c.hostId}`);
@@ -775,7 +784,7 @@ function renderNextTasks(container) {
 
   if (scheduledTasks.length > 0) {
     html += `<div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;padding:2px 0 6px">Scheduled Jobs <span style="font-weight:400;color:#64748b">${scheduledTasks.length}</span></div>`;
-    html += scheduledTasks.map((task, i) => renderNextItem(task, i)).join('');
+    html += scheduledTasks.map(task => renderNextItem(task, nextTasksData.indexOf(task))).join('');
   }
 
   if (sysTasks.length > 0) {
@@ -788,14 +797,14 @@ function renderNextTasks(container) {
       ${due > 0 ? `<span style="color:#94a3b8;font-weight:400;font-size:9px"> · ${due} due now</span>` : ''}
       ${dueSoon > 0 ? `<span style="color:#94a3b8;font-weight:400;font-size:9px"> · ${dueSoon} in &lt;5m</span>` : ''}
     </div>`;
-    html += sysTasks.map((task, i) => renderNextItem(task, scheduledTasks.length + i)).join('');
+    html += sysTasks.map(task => renderNextItem(task, nextTasksData.indexOf(task))).join('');
   }
 
   container.innerHTML = html || '<div class="cs-empty">No upcoming tasks</div>';
 }
 
 function renderNextItem(task, i) {
-  const sourceMeta = getSourceMeta(task.source);
+  const sourceMeta = getSourceMeta(task.source, task.metadata);
   const sourceClass = task.source || 'agentx';
   const hostLabel = task.host ? getHostMeta(task.host).label : '';
   const cadenceLabel = isServiceTick(task) ? `every ${formatInterval(task.intervalMs)}` : '';
@@ -806,7 +815,7 @@ function renderNextItem(task, i) {
         <div class="cs-next-meta">
           <span class="cs-task-badge ${task.taskType}">${task.taskType}</span>
           ${hostLabel ? `<span style="font-size:10px"><i class="fas fa-server" style="font-size:8px;margin-right:2px"></i>${esc(hostLabel)}</span>` : ''}
-          <span class="cs-source-chip ${sourceClass}">${esc(sourceMeta.label)}</span>
+          <span class="cs-source-chip ${sourceClass}" title="${esc(task.lastRun ? `Last run ${task.metadata?.lastStatus || 'unknown'} ${formatEvidenceTime(task.lastRun)}` : 'Next run is a schedule projection; no execution receipt is available here')}">${esc(sourceMeta.label)}</span>
           ${cadenceLabel ? `<span class="cs-source-chip cadence">${esc(cadenceLabel)}</span>` : ''}
           ${task.occurrenceLabel ? `<span class="cs-source-chip cadence">${esc(task.occurrenceLabel)}</span>` : ''}
         </div>
@@ -931,224 +940,6 @@ function isServiceTick(task) {
   return false;
 }
 
-// ── Actual Utilization ──────────────────────────────────────
-
-function setActualView(mode) {
-  actualView = mode;
-  document.getElementById('btnHeatmap').classList.toggle('active', mode === 'heatmap');
-  document.getElementById('btnAvp').classList.toggle('active', mode === 'avp');
-  if (mode === 'heatmap') loadActualHeatmap();
-  else loadActualVsPlanned();
-}
-
-function actualViewChanged() {
-  if (actualView === 'heatmap') loadActualHeatmap();
-  else loadActualVsPlanned();
-}
-
-// Utilization colour ramp: 0% → dim, 1-20% → green, 20-50% → lime, 50-75% → amber, 75-90% → orange, 90%+ → red
-function utilColor(pct) {
-  if (pct <= 0) return 'rgba(255,255,255,0.04)';
-  if (pct < 20)  return '#22c55e';
-  if (pct < 50)  return '#84cc16';
-  if (pct < 75)  return '#f59e0b';
-  if (pct < 90)  return '#f97316';
-  return '#ef4444';
-}
-
-function renderUtilLegend() {
-  const bar = document.getElementById('utilLegendBar');
-  if (!bar) return;
-  const legend = document.getElementById('utilLegend');
-  legend.style.display = 'flex';
-  const stops = [0, 10, 25, 45, 65, 80, 95];
-  bar.innerHTML = stops.map(p => {
-    const c = utilColor(p);
-    const op = p === 0 ? 0.15 : 0.2 + (p / 100) * 0.8;
-    return `<div class="cs-util-swatch" style="background:${c};opacity:${op.toFixed(2)}" title="${p}%"></div>`;
-  }).join('');
-}
-
-async function loadActualHeatmap() {
-  const days = parseInt(document.getElementById('heatmapDays')?.value || '7', 10);
-  const container = document.getElementById('actualContent');
-  container.innerHTML = '<div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading heatmap...</div>';
-  try {
-    const res = await fetch(`${API_BASE}/schedule/heatmap?days=${days}`);
-    const json = await res.json();
-    if (json.status !== 'success') throw new Error(json.error || 'API error');
-    const hasObservedEvidence = renderUtilHeatmap(container, json.data);
-    if (hasObservedEvidence) renderUtilLegend();
-    else document.getElementById('utilLegend').style.display = 'none';
-  } catch (err) {
-    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
-    document.getElementById('utilLegend').style.display = 'none';
-  }
-}
-
-function renderUtilHeatmap(container, data) {
-  // data: { hosts: string[], days: string[], grid: { [host]: number[][] } }
-  const { hosts = [], days = [], grid = {} } = data;
-  if (!hosts.length || !days.length) {
-    container.innerHTML = '<div class="cs-empty">No utilization evidence observed yet. Inference calls will populate this view after telemetry is recorded.</div>';
-    return false;
-  }
-
-  const hasObservedEvidence = hosts.some(host => (grid[host] || []).some(day =>
-    Array.isArray(day) && day.some(value => Number.isFinite(value))
-  ));
-  if (!hasObservedEvidence) {
-    container.innerHTML = '<div class="cs-empty">No utilization evidence observed yet. Configured hosts are not treated as zero-utilization measurements.</div>';
-    return false;
-  }
-
-  let html = '';
-  for (const host of hosts) {
-    const rows = grid[host] || [];
-    const hostHasEvidence = rows.some(day =>
-      Array.isArray(day) && day.some(value => Number.isFinite(value))
-    );
-    if (!hostHasEvidence) continue;
-
-    // grid is days-major, hours-minor: rows[dayIdx][hourIdx]
-    html += `<div style="margin-bottom:20px">
-      <div style="font-size:12px;font-weight:600;color:#fff;margin-bottom:8px">
-        <i class="fas fa-server" style="color:#7cf0ff;margin-right:6px;font-size:10px"></i>${esc(host)}
-      </div>
-      <div style="overflow-x:auto">
-        <div class="cs-util-grid" style="grid-template-columns:70px repeat(24,1fr);min-width:640px;gap:2px">`;
-
-    // Header: hour labels
-    html += '<div class="cs-util-h-label"></div>';
-    for (let h = 0; h < 24; h++) {
-      html += `<div class="cs-util-h-label">${String(h).padStart(2, '0')}</div>`;
-    }
-
-    // Rows: one per day
-    for (let di = 0; di < days.length; di++) {
-      const dateLabel = SCHEDULE_DATE.formatCalendarDate(days[di], {
-        locale: 'en-US',
-        format: { month: 'short', day: 'numeric' }
-      });
-      html += `<div class="cs-util-label-cell">${dateLabel}</div>`;
-      const hourRow = rows[di] || new Array(24).fill(null);
-      for (let h = 0; h < 24; h++) {
-        const rawPct = hourRow[h];
-        const observed = Number.isFinite(rawPct);
-        const pct = observed ? rawPct : 0;
-        const color = utilColor(pct);
-        const opacity = !observed ? 0.025 : pct <= 0 ? 0.06 : Math.max(0.2, pct / 100);
-        html += `<div class="cs-util-cell" style="background:${color};opacity:${opacity.toFixed(2)}"
-          title="${dateLabel} ${String(h).padStart(2, '0')}:00 — ${observed ? `${pct.toFixed(0)}% utilization` : 'utilization evidence not observed'}"></div>`;
-      }
-    }
-
-    html += '</div></div></div>';
-  }
-
-  container.innerHTML = html || '<div class="cs-empty">No utilization evidence observed yet.</div>';
-  return Boolean(html);
-}
-
-async function loadActualVsPlanned() {
-  const container = document.getElementById('actualContent');
-  document.getElementById('utilLegend').style.display = 'none';
-  container.innerHTML = '<div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading actual vs planned...</div>';
-  try {
-    const res = await fetch(`${API_BASE}/schedule/actual-vs-planned?date=${currentDate}`);
-    const json = await res.json();
-    if (json.status !== 'success') throw new Error(json.error || 'API error');
-    renderActualVsPlanned(container, json.data);
-  } catch (err) {
-    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
-  }
-}
-
-function renderActualVsPlanned(container, data) {
-  const { planned = [], actualByHost = {} } = data;
-  const hasActualEvidence = Object.values(actualByHost).some(rows =>
-    (rows || []).some(row => Number.isFinite(row?.utilizationPct))
-  );
-
-  if (!planned.length && !hasActualEvidence) {
-    container.innerHTML = '<div class="cs-empty">No planned-run or utilization evidence observed for this date.</div>';
-    return;
-  }
-
-  let html = '';
-  const HOUR_PCT = (1 / 24 * 100).toFixed(3);
-
-  const renderTrack = (hostName, tasks, actualRows) => {
-    const actualMap = {};
-    for (const r of (actualRows || [])) actualMap[r.hour] = r;
-
-    html += `<div class="cs-avp-host">
-      <div class="cs-avp-host-label">
-        <i class="fas fa-server" style="color:#7cf0ff;font-size:10px"></i>
-        ${esc(hostName)}
-        ${tasks.length ? `<span style="font-size:10px;color:#475569;font-weight:400">${tasks.length} planned task${tasks.length > 1 ? 's' : ''}</span>` : '<span style="font-size:10px;color:#f59e0b;font-weight:400">actual only</span>'}
-      </div>
-      <div class="cs-avp-track">`;
-
-    // Grid lines at 0, 6, 12, 18, 24h
-    for (let h = 0; h <= 24; h += 6) {
-      const left = (h / 24 * 100).toFixed(2);
-      html += `<div class="cs-avp-gridline" style="left:${left}%"></div>`;
-      if (h < 24) html += `<div class="cs-avp-hour-label" style="left:calc(${left}% + 2px)">${String(h).padStart(2, '0')}</div>`;
-    }
-
-    // Actual utilization bars — bottom 50%, per-hour
-    for (let h = 0; h < 24; h++) {
-      const a = actualMap[h];
-      if (!a || !Number.isFinite(a.utilizationPct)) continue;
-      const left = (h / 24 * 100).toFixed(3);
-      const color = utilColor(a.utilizationPct);
-      const heightPct = Math.max(5, a.utilizationPct / 2); // max 50% of track height
-      html += `<div class="cs-avp-actual" style="left:${left}%;width:${HOUR_PCT}%;height:${heightPct.toFixed(1)}%;background:${color};opacity:0.4"
-        title="${String(h).padStart(2, '0')}:00 actual ${a.utilizationPct.toFixed(0)}% (${a.totalCalls || 0} call${a.totalCalls === 1 ? '' : 's'})"></div>`;
-    }
-
-    // Planned task slots — top area
-    for (const task of tasks) {
-      for (const slot of (task.slots || [])) {
-        const s = new Date(slot.start);
-        const e = new Date(slot.end);
-        const startHour = s.getHours() + s.getMinutes() / 60;
-        const endHour   = e.getHours() + e.getMinutes() / 60;
-        const left  = (startHour / 24 * 100).toFixed(2);
-        const width = Math.max((endHour - startHour) / 24 * 100, 0.4).toFixed(2);
-        const color = TASK_COLORS[task.taskType] || '#666';
-        html += `<div class="cs-avp-planned" style="left:${left}%;width:${width}%;top:6px;height:36%;background:${color}"
-          title="${esc(task.name)} ${formatTime(s)}–${formatTime(e)}"></div>`;
-      }
-    }
-
-    html += '</div></div>';
-  };
-
-  // Render planned hosts
-  const plannedHostNames = new Set();
-  for (const host of planned) {
-    plannedHostNames.add(host.hostName);
-    renderTrack(host.hostName, host.tasks || [], actualByHost[host.hostName] || []);
-  }
-
-  // Render actual-only hosts
-  for (const [hostName, rows] of Object.entries(actualByHost)) {
-    if (plannedHostNames.has(hostName)) continue;
-    if (!rows.some(r => Number.isFinite(r?.utilizationPct))) continue;
-    renderTrack(hostName, [], rows);
-  }
-
-  // Legend
-  html += `<div class="cs-avp-legend">
-    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:#7cf0ff;opacity:0.7"></div>Planned slot</div>
-    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:#22c55e;opacity:0.5"></div>Actual utilization</div>
-  </div>`;
-
-  container.innerHTML = html || '<div class="cs-empty">No planned-run or utilization evidence observed for this date.</div>';
-}
-
 // ── Init / Refresh ──────────────────────────────────────────
 
 async function refreshAll() {
@@ -1157,7 +948,7 @@ async function refreshAll() {
   icon.classList.add('spinning');
   try {
     await Promise.all([
-      loadLiveState(), loadTimeline(), loadConflicts(), loadClaims(),
+      loadLiveState(), loadTimeline(), loadConflicts(), loadClaims(), loadHeavyQueue(),
       actualView === 'heatmap' ? loadActualHeatmap() : loadActualVsPlanned()
     ]);
   } finally { icon.classList.remove('spinning'); }
@@ -1168,6 +959,7 @@ function startLivePolling() {
   livePollTimer = setInterval(() => {
     loadLiveState();
     loadClaims();
+    loadHeavyQueue();
   }, LIVE_POLL_MS);
 }
 

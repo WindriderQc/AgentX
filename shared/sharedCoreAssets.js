@@ -7,6 +7,9 @@ const path = require('node:path');
 // these files (docker/benchmark.Dockerfile, docker/rag.Dockerfile); a test
 // keeps both lists equal.
 const SHARED_CORE_ASSETS = Object.freeze([
+  'favicon.svg',
+  'img/favicon.ico',
+  'img/apple-touch-icon.png',
   'dist/shared-tokens.css',
   'dist/shared-utils.js',
   'css/local-fonts.css',

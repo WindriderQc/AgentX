@@ -1,6 +1,7 @@
 """Installed local voices. Discovery never loads or downloads a model."""
 from __future__ import annotations
 
+import threading
 import time
 import subprocess
 import zipfile
@@ -13,6 +14,11 @@ from app.tts import provider, windows_sapi
 
 LOCALES = {"a": "en-US", "b": "en-GB", "f": "fr-FR", "e": "es-ES", "h": "hi-IN", "i": "it-IT", "j": "ja-JP", "p": "pt-BR", "z": "zh-CN"}
 _worker_health = (0.0, False, "Not checked", {})
+_worker_probe = threading.Lock()
+
+
+def _beside_request(task) -> None:
+    threading.Thread(target=task, daemon=True).start()
 
 
 def _served_voices(data: dict) -> dict[str, str]:
@@ -33,6 +39,23 @@ def worker_ready() -> tuple[bool, str]:
     # Reuse a ready answer for 10 s; retry a failure after 2 s so recovery is noticed quickly.
     if time.monotonic() - _worker_health[0] < (10 if _worker_health[1] else 2):
         return _worker_health[1:3]
+    # A worker already known to be down is probed beside the request: a stopped
+    # worker can take the whole timeout to refuse, and speech must not wait for it
+    # before taking another voice. The next request sees the recovery.
+    if _worker_health[0] and not _worker_health[1]:
+        if _worker_probe.acquire(blocking=False):
+            def probe():
+                try:
+                    _probe_worker()
+                finally:
+                    _worker_probe.release()
+            _beside_request(probe)
+        return _worker_health[1:3]
+    return _probe_worker()
+
+
+def _probe_worker() -> tuple[bool, str]:
+    global _worker_health
     voices = {}
     try:
         response = httpx.get(settings.voxcpm_base_url + "/health", timeout=2, trust_env=False)

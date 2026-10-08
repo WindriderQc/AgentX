@@ -38,3 +38,11 @@ test('the ordinary route, an exhausted wait, a gone client and other failures ar
   await assert.rejects(whenAdmitted(async () => { calls += 1; throw new Error('upstream failed'); }, { waitMs: 1000, retryMs: 1 }), /upstream failed/);
   assert.equal(calls, 4);
 });
+
+test('the patient route also waits while a benchmark holds the host', async () => {
+  let calls = 0;
+  const reserved = () => Object.assign(new Error('reserved'), { code: 'BENCHMARK_CLAIM_ACTIVE', statusCode: 503 });
+  const result = await whenAdmitted(async () => { if (++calls < 3) throw reserved(); return 'answer'; }, { waitMs: 1000, retryMs: 1 });
+  assert.deepEqual([result, calls], ['answer', 3]);
+  await assert.rejects(whenAdmitted(async () => { throw reserved(); }), /reserved/);
+});

@@ -426,71 +426,8 @@ class UnifiedModels {
         );
     }
 
-    /* ── Stats ──────────────────────────────────────────── */
-    updateStats() {
-        const active = this.getActiveModels();
-        const gone = this.getGoneModels();
-        const activeLogical = this.uniqueLogicalModels(active);
-        const goneLogical = this.uniqueLogicalModels(gone);
-        const totalEl = document.getElementById('statTotal');
-        if (totalEl) totalEl.innerText = goneLogical.length
-            ? `${activeLogical.length} + ${goneLogical.length}`
-            : String(activeLogical.length);
-
-        const size = active.reduce((acc, m) => acc + (m.size || 0), 0);
-        document.getElementById('statStorage').innerText = this.formatBytes(size);
-
-        const s = this.sources || {};
-        const inferredHosts = new Set(active.filter(m => m?.provider === 'ollama').map(m => m?.source?.url).filter(Boolean));
-        const hostCount = Array.isArray(s?.ollama?.hosts) && s.ollama.hosts.length ? s.ollama.hosts.length : inferredHosts.size;
-        const customCount = Number(s?.custom?.count || 0) || active.filter(m => m?.provider === 'custom').length;
-
-        const hostsEl = document.getElementById('statHosts');
-        const subEl = document.getElementById('statHostsSub');
-        if (hostsEl) hostsEl.innerText = String(hostCount);
-        if (subEl) {
-            const parts = [];
-            if (customCount) parts.push(`${customCount} custom`);
-            subEl.innerText = parts.length ? `Extras: ${parts.join(' · ')}` : 'Ollama hosts';
-        }
-
-        // Storage sub-text: per host
-        const byHost = new Map();
-        for (const m of active) {
-            if (m.provider !== 'ollama') continue;
-            const hname = m.source?.hostName || 'Unknown';
-            byHost.set(hname, (byHost.get(hname) || 0) + (m.size || 0));
-        }
-        const storageSub = document.getElementById('statStorageSub');
-        if (storageSub && byHost.size > 0) {
-            storageSub.innerText = [...byHost.entries()]
-                .sort((a, b) => b[1] - a[1])
-                .map(([h, s]) => `${h}: ${this.formatBytes(s, true)}`)
-                .join(' · ');
-        }
-
-        // Total sub-text
-        const totalSub = document.getElementById('statTotalSub');
-        if (totalSub) {
-            const ollamaInstalls = active.filter(m => m.provider === 'ollama').length;
-            const ollamaModels = this.uniqueLogicalModels(active.filter(m => m.provider === 'ollama')).length;
-            const parts = [`${ollamaModels} Ollama models · ${ollamaInstalls} host installs`];
-            const custom = activeLogical.filter(m => m.provider === 'custom').length;
-            if (custom) parts.push(`${custom} custom`);
-            if (goneLogical.length) parts.push(`${goneLogical.length} gone`);
-            totalSub.innerText = parts.join(' · ');
-        }
-
-        // Benchmarked — count all (guest book models keep their stats)
-        const benchmarked = this.uniqueLogicalModels(this.allModels.filter(m => m.benchmarkStats?.avgCompositeScore > 0));
-        const benchEl = document.getElementById('statBenchmarked');
-        const avgEl = document.getElementById('statAvgScore');
-        if (benchEl) benchEl.innerText = benchmarked.length;
-        if (avgEl && benchmarked.length > 0) {
-            const avg = benchmarked.reduce((s, m) => s + m.benchmarkStats.avgCompositeScore, 0) / benchmarked.length;
-            avgEl.innerText = `Avg: ${avg.toFixed(1)}`;
-        }
-    }
+    /* ── Stats (rendered by models-stats-strip.js) ─────── */
+    updateStats() { renderStatsStrip(this); }
 
     /* ── Live state (loaded models) ────────────────────── */
     async fetchLiveState() {
@@ -514,8 +451,9 @@ class UnifiedModels {
                 }
                 this.loadedModels.set(h.url, set);
             }
-            // Re-render table to show status indicators
+            // Re-render table and host card to show live status
             this.renderTable();
+            this.updateStats();
         } catch (e) {
             // Graceful degradation — live state is optional
         }

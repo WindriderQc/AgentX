@@ -103,8 +103,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   tasks and gives a stable escalation key without repairing them. See
   [operational screens](OPERATOR_UI.md).
   **Run one task** hands a queued, unowned, non-private `agentx-coding` ticket
-  to the local coding worker: a fresh clone on its own branch, a shell and tests
-  inside a sandbox, then a draft pull request. Review of that pull request and its CI is
+  to the local coding worker: a fresh clone on its own branch, a shell and the tests inside a
+  sandbox without network (its one way out is the model route), then a draft
+  pull request. Review of that pull request and its CI is
   the gate; nothing merges or deploys by itself. See
   [the coding worker](../integrations/coding/README.md).
 - **Planning.** The page is a frozen historical reference. Its idea inbox is

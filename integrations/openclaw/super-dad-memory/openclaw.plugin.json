@@ -1,7 +1,7 @@
 {
   "id": "super-dad-memory",
   "name": "Nestor Personal Harness",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Native OpenClaw tools and receipts backed by canonical AgentX Core notes and tasks.",
   "activation": {
     "onStartup": true,
@@ -13,6 +13,7 @@
     "tools": [
       "personal_memory",
       "mail_journal",
+      "team_brief",
       "personal_identifier",
       "vault_note",
       "nestor_context",
@@ -26,6 +27,9 @@
       "optional": true
     },
     "mail_journal": {
+      "optional": true
+    },
+    "team_brief": {
       "optional": true
     },
     "personal_identifier": {

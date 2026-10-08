@@ -71,7 +71,7 @@ describe('GET /favicon.ico', () => {
   it('serves the shared favicon asset', async () => {
     const res = await api.get('/favicon.ico');
     expect(res.status).toBe(200);
-    expect(res.headers['content-type']).toContain('image/svg+xml');
+    expect(res.headers['content-type']).toContain('image/x-icon');
     expect(Number(res.headers['content-length'])).toBeGreaterThan(0);
   });
 });

@@ -4,7 +4,8 @@
  * One question to the judge, answered YES, NO, NA or a listed count: the
  * call the decomposed judge and the category gates are built on. It goes
  * through Core's inference proxy, waits out a busy judge host, retries once
- * (constrained to the answers when a reply ran out of tokens), and with
+ * (constrained to the answers when a reply ran out of tokens or was not an
+ * answer), and with
  * `voting_count` takes the majority of several calls.
  *
  * Moved out of decomposedJudge.js unchanged, which re-exports it.
@@ -212,7 +213,8 @@ async function askBinaryQuestion(response, question, judgeConfig, taskContext = 
     // had at least one binary call fail without retry; retry recovers most.
     if (votingCount <= 1) {
         try {
-            return await binaryCallWhenHostFree(response, question, judgeConfig, taskContext, options);
+            const first = await binaryCallWhenHostFree(response, question, judgeConfig, taskContext, options);
+            if (first !== null) return first;
         } catch (err) {
             rethrowIfJudgeCancelled(err, judgeConfig);
             logger.warn('Binary call failed, retrying once', { question: question.substring(0, 80), error: err.message });
@@ -224,6 +226,18 @@ async function askBinaryQuestion(response, question, judgeConfig, taskContext = 
                 logger.error('Binary call failed after retry', { question, firstError: err.message, retryError: retryErr.message });
                 return null; // null = error, distinct from false = judge said NO
             }
+        }
+        // The judge replied with something that is not an answer (it redid the
+        // task, or wrapped its count in prose). At a fixed seed it would say the
+        // same again, and one unread question leaves the whole response without
+        // a grade. It had its free-form attempt: ask once more, constrained to
+        // the answers themselves.
+        try {
+            return await binaryCallWhenHostFree(response, question, judgeConfig, taskContext, { ...options, constrained: true });
+        } catch (retryErr) {
+            rethrowIfJudgeCancelled(retryErr, judgeConfig);
+            logger.error('Constrained retry of an unreadable judge answer failed', { question, retryError: retryErr.message });
+            return null;
         }
     }
 

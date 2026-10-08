@@ -16,29 +16,48 @@ AGENTX_CODING_MODEL=<model Core serves> GH_TOKEN=<token> \
   python3 integrations/coding/coding_run.py 0903
 ```
 
-`coding_run.py` claims the task in Core, clones the repository into
-`~/dsh-workspaces/task-<id>` on branch `agentx/coding-task-<id>`, and starts DSH
-there inside Bubblewrap with the ticket, its discussion and its Planning context.
-The worker has a shell: it reads and edits any file of the clone, installs
-dependencies and runs the tests. When it stops, the runner commits what changed,
-pushes the branch, opens the draft pull request and records the result on the
-ticket (`review`, or `blocked` when nothing changed or the worker stopped
-early). Running the same task again
-continues in its existing workspace, so an answer on the ticket becomes a
-follow-up.
+`coding_run.py` claims the task in Core and clones the repository into
+`~/dsh-workspaces/task-<id>` on branch `agentx/coding-task-<id>`. It installs the
+dependencies of `core`, `benchmark`, `rag` and `data` and prepares the test
+database, then starts DSH there inside Bubblewrap with the ticket, its
+discussion and its Planning context. The worker has a shell: it reads and edits
+any file of the clone and runs the tests. When it stops, the runner commits what
+changed, pushes the branch, opens the draft pull request and records the result
+on the ticket (`review`, or `blocked` when nothing changed or the worker stopped
+early). Running the same task again continues in its existing workspace, so an
+answer on the ticket becomes a follow-up.
 
-The runner uses three protections:
+The runner uses four protections:
 
 - The sandbox shows the worker its own clone and nothing else of the host: no
   live checkout, no instance files, no credentials. Git metadata stays read-only
   during the turn; delivery ignores Git hooks and owner filters.
+- The worker has no network. It cannot reach Core's other routes, other
+  services of the host, the local network or the Internet, whatever a ticket, a
+  web page or a package tells it. Its one way out is `model_relay.py`: a socket
+  in its home that forwards `POST /v1/chat/completions` to Core and refuses
+  everything else.
 - The GitHub token stays with the runner outside the sandbox. The worker cannot
   push; the runner only pushes the task branch and opens a draft pull request.
-- The worker reaches the model through Core's OpenAI-compatible endpoint, so
-  Core admits each inference with the rest of the household's traffic. It uses
-  the patient route (`/api/hermes-openai/patient/v1`), which waits up to eight
-  minutes for a busy host instead of refusing. If the worker still stops, the
-  runner waits two minutes and continues in the same workspace.
+- Core admits each inference with the rest of the household's traffic. The relay
+  targets the patient route (`/api/hermes-openai/patient/v1`), which waits up to
+  eight minutes for a busy host instead of refusing. If the worker still stops,
+  the runner waits two minutes and continues in the same workspace.
+
+## Dependencies
+
+Packages are installed before the worker starts, in a second sandbox that has
+the network and no worker. Install scripts are skipped (`--ignore-scripts`) and
+the test database is prepared with the runner's own script, so nothing the
+worker wrote runs while the network is open. The step is skipped while the
+package files are unchanged.
+
+A worker that needs a new package adds it to `package.json` and stops. The
+runner then leaves the ticket `blocked`, with the change on the local branch and
+no pull request. Handing the task back to the team is the owner's approval: the
+next run installs the package and the worker continues. That install step still
+has the whole network, including the host's own services; it runs registry
+packages without their scripts, never the worker.
 
 There is no file allowlist, plan approval, attempt budget or separate verifier.
 

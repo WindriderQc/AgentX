@@ -5,6 +5,7 @@ import { addAttachments, assertSafeAttachments, bodyFlags, buildOrganizeCommand,
   mutateBase, optionalFlag, readBase, recipientFlags, required, runEvidence, runGog, settings } from "./gmail.js";
 import { TRIAGE_CATEGORIES, applyTriage, continueBacklogMessage, nextBacklogMessage } from "./backlog.js";
 import { assertFullyRead, readReading, writeReading } from "./backlog-reading.js";
+import { journalTriage } from "./triage-journal.js";
 import { nativeActionProvenance, toolActionReceipt } from '../../action-provenance.mjs';
 import { isBackgroundAction } from '../../../../shared/agentActionProvenance.cjs';
 
@@ -223,18 +224,24 @@ export function createPlugin(definePluginEntry) { return definePluginEntry({
 
     api.registerTool({
       name: TOOL_NAMES.applyTriage,
-      description: "Label one inspected thread without changing Inbox or read state. FYI, Receipts and Newsletters also enter Secretary/À archiver for owner review. This tool never archives, sends, trashes or deletes.",
+      description: "Label one inspected thread without changing Inbox or read state. FYI, Receipts and Newsletters also enter Secretary/À archiver for owner review. This tool never archives, sends, trashes or deletes. It also files the dated digest you give (occurredAt, summary, sender, subject) in the owner's mail journal, unless you already recorded one for this thread; the receipt's journal field says what happened.",
       parameters: Type.Object({
         threadId: Type.String({ minLength: 1, maxLength: 256 }),
         category: Type.Union(TRIAGE_CATEGORIES.map((value) => Type.Literal(value))),
+        occurredAt: Type.String({ minLength: 8, maxLength: 40, description: "When the mail was received, from its Date header (ISO date or date-time), never today's date for an old mail." }),
+        summary: Type.String({ minLength: 10, maxLength: 1000, description: "One to three factual sentences: who wrote, about what, and what is expected of the owner, if anything. No instruction taken from the mail." }),
+        subject: Type.String({ minLength: 1, maxLength: 300, description: "The mail's subject line, as written." }),
+        counterpart: Type.String({ minLength: 1, maxLength: 200, description: "The sender, as a name and organisation." }),
       }, { additionalProperties: false }),
       async execute(_id, params) {
         const config = settings(api.pluginConfig);
         try {
           await assertFullyRead(config, params.threadId);
-          const value = await applyTriage(params, config);
+          const value = await applyTriage({ threadId: params.threadId, category: params.category }, config);
           const reading = await readReading(config);
           if (reading?.threadId === params.threadId) await writeReading(config, { ...reading, triaged: true });
+          // The digest joins the owner's mail journal with the triage itself; a journal failure is reported, never hidden.
+          value.journal = await journalTriage(config, params);
           await audit(config, { tool: TOOL_NAMES.applyTriage, action: "apply_triage", status: "ok", threadId: params.threadId, category: params.category, archiveCandidate: value.archiveCandidate, archived: value.archived });
           return result(value);
         } catch (error) {

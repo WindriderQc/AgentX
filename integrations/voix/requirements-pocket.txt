@@ -1,0 +1,3 @@
+# Optional processor worker (Pocket TTS); install separately from the speech service environment.
+# Cloning from a reference needs the gated weights: accept the terms on the model page and log in.
+pocket-tts==3.3.0

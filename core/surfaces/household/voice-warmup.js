@@ -19,8 +19,14 @@
 // The warm-up is not a turn of the conversation: nothing is recorded, spoken
 // or shown, and it never runs once someone has spoken. A warm-up that fails or
 // is skipped costs nothing but the old first-turn delay.
+//
+// The model keeps one prompt in its cache. A warm-up for a newly opened
+// conversation would take that place from a conversation someone is still
+// having with the same agent, whose next turn would then read its whole prompt
+// again. So the warm-up yields: it is skipped while another conversation of the
+// same agent has had a turn within LIMITS.liveMs.
 
-const LIMITS = Object.freeze({ greeting: 300, deadlineMs: 60000 });
+const LIMITS = Object.freeze({ greeting: 300, deadlineMs: 60000, liveMs: 180000 });
 const PRIVATE_SCOPE = Object.freeze({ packId: 'personal_operator', scopeId: 'personal' });
 
 function openingEvent() {
@@ -32,14 +38,20 @@ const openingDirective = greeting => 'This needs no tool and no other words. You
   + `«${greeting}». It is the sentence the owner is hearing from you right now; never answer with a silent-reply marker.`;
 
 function createVoiceWarmup({ conversations, executeConversation, conversationBackend, conversationEnv, packById, instructions, requireNativeAgent = async () => {},
-  agentIdFor, logger = null, deadlineMs = LIMITS.deadlineMs }) {
+  agentIdFor, logger = null, deadlineMs = LIMITS.deadlineMs, now = () => Date.now() }) {
   const running = new Map(); // sessionId -> promise that never rejects
+  const lastTurn = new Map(); // agentId -> { sessionId, at } of its latest real turn; in memory, a restart only costs one misplaced warm-up
   // Off unless the instance turns it on: its first real use was followed by a turn that
   // produced no deliverable text, and that link is not ruled out yet.
   const enabled = () => String(conversationEnv?.HOUSEHOLD_VOICE_WARMUP || '').trim().toLowerCase() === 'true';
 
   /** Settles when no warm-up runs in this conversation's native session. */
   const settled = sessionId => running.get(sessionId) || Promise.resolve();
+
+  /** A real turn is starting in this conversation: its prompt is the one worth keeping in the cache. */
+  function noteTurn(session) {
+    lastTurn.set(agentIdFor(session), { sessionId: session.sessionId, at: now() });
+  }
 
   function start(session, greeting) {
     if (!enabled()) return { started: false, reason: 'disabled' };
@@ -50,6 +62,8 @@ function createVoiceWarmup({ conversations, executeConversation, conversationBac
     if (session.turnCount > 0 || session.agentSessionKey) return { started: false, reason: 'already_started' };
     if (running.has(session.sessionId)) return { started: false, reason: 'running' };
     if (conversationBackend(session.backend, conversationEnv) !== 'openclaw') return { started: false, reason: 'not_native' };
+    const live = lastTurn.get(agentIdFor(session));
+    if (live && live.sessionId !== session.sessionId && now() - live.at < LIMITS.liveMs) return { started: false, reason: 'other_conversation_live' };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error('Opening warm-up timed out.')), deadlineMs);
     const run = (async () => {
@@ -77,7 +91,7 @@ function createVoiceWarmup({ conversations, executeConversation, conversationBac
     });
   }
 
-  return { start, settled, register };
+  return { start, settled, noteTurn, register };
 }
 
 module.exports = { createVoiceWarmup, openingEvent, openingDirective, LIMITS };

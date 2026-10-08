@@ -74,6 +74,7 @@ function loadClusterScheduleContext() {
     clearInterval: jest.fn()
   });
   vm.runInContext(read('public/js/cluster-schedule.js'), context);
+  vm.runInContext(read('public/js/cluster-schedule-actual.js'), context);
   vm.runInContext(read('public/js/cluster-schedule-services.js'), context);
   return { context, elements };
 }
@@ -206,12 +207,42 @@ describe('Cluster Schedule evidence presentation', () => {
     expect(container.innerHTML).toContain('00:00 — utilization evidence not observed');
   });
 
+  test('reads measured hours from the host identity keys returned by the API', () => {
+    const { context } = loadClusterScheduleContext();
+    const container = { innerHTML: '' };
+    const values = new Array(24).fill(null);
+    values[4] = 37;
+    const render = vm.runInContext('renderUtilHeatmap', context);
+    expect(render(container, {
+      hosts: [{ key: 'primary', displayName: 'Host A' }],
+      days: ['2026-08-28'],
+      grid: { primary: [values] }
+    })).toBe(true);
+    expect(container.innerHTML).toContain('Host A');
+    expect(container.innerHTML).toContain('04:00 — 37% utilization');
+  });
+
+  test('keeps countdown element ids attached to their tasks after section grouping', () => {
+    const { context } = loadClusterScheduleContext();
+    context.testTasks = [
+      { name: 'Tick', source: 'agentx-system', taskType: 'monitoring',
+        scheduleType: 'interval', intervalMs: 15 * 60_000, msFromNow: 60_000 },
+      { name: 'Daily review', source: 'agentx-system', taskType: 'maintenance',
+        scheduleType: 'cron', dailyCount: 1, msFromNow: 3_600_000 }
+    ];
+    vm.runInContext('nextTasksData = testTasks', context);
+    const container = { innerHTML: '' };
+    vm.runInContext('renderNextTasks', context)(container);
+    expect(container.innerHTML).toMatch(/Daily review[\s\S]*countdown-1/);
+    expect(container.innerHTML).toMatch(/Tick[\s\S]*countdown-0/);
+  });
+
   test('uses an evidence-empty state for actual-vs-planned and retains measured zero', () => {
     const { context } = loadClusterScheduleContext();
     const render = vm.runInContext('renderActualVsPlanned', context);
     const emptyContainer = { innerHTML: '' };
     render(emptyContainer, { planned: [], actualByHost: { 'gpu-a': [] } });
-    expect(emptyContainer.innerHTML).toContain('No planned-run or utilization evidence observed');
+    expect(emptyContainer.innerHTML).toContain('No host-assigned GPU plan or utilization evidence observed');
 
     const measuredContainer = { innerHTML: '' };
     render(measuredContainer, {
