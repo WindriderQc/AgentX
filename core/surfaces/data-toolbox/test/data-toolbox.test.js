@@ -170,7 +170,8 @@ function registeredSurface() {
       const router = {
         routes,
         get(routePath, handler) { routes.push({ method: 'get', path: routePath, handler }); },
-        patch(routePath, handler) { routes.push({ method: 'patch', path: routePath, handler }); }
+        patch(routePath, handler) { routes.push({ method: 'patch', path: routePath, handler }); },
+        post(routePath, handler) { routes.push({ method: 'post', path: routePath, handler }); }
       };
       routers.push(router);
       return router;
@@ -184,10 +185,10 @@ function registeredSurface() {
   return { mounts, routers };
 }
 
-test('manifest identifies the AIOps Data Toolbox contract and its one acknowledgement write', () => {
+test('manifest identifies the AIOps Data Toolbox contract and its two writes', () => {
   assert.equal(toolbox.id, 'aio-ops-data-toolbox');
-  assert.equal(toolbox.version, '1.4.0');
-  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-acknowledge']);
+  assert.equal(toolbox.version, '1.5.0');
+  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-acknowledge', 'mqtt-publish']);
   assert.throws(() => toolbox.register({ contractVersion: 1 }), /contract v2/);
 });
 
@@ -204,7 +205,7 @@ test('query projection keeps only allowlisted, bounded values', () => {
   assert.throws(() => toolbox.safeName('../private', 'collection'), /Invalid collection/);
 });
 
-test('registration mounts the cockpit, GET proxy families and only the device acknowledgement write', () => {
+test('registration mounts the cockpit, GET proxy families and exactly two writes', () => {
   const { mounts, routers } = registeredSurface();
   const appPaths = mounts.map((entry) => entry.path);
   assert.ok(appPaths.includes('/assets/data-toolbox'));
@@ -215,11 +216,12 @@ test('registration mounts the cockpit, GET proxy families and only the device ac
   const routes = routers.flatMap((router) => router.routes);
   assert.ok(routes.length >= 20);
   assert.deepEqual(routes.filter((route) => route.method !== 'get').map((route) => `${route.method} ${route.path}`),
-    ['patch /network/devices/:mac'], 'the only mutation is naming or acknowledging a network device');
+    ['patch /network/devices/:mac', 'post /mqtt/publish'],
+    'the only mutations are naming or acknowledging a network device and publishing an MQTT message');
   for (const route of [
     '/status', '/storage/summary', '/storage/files', '/network/devices',
     '/hardware/collectors', '/hardware/latest', '/hardware/history', '/hardware/occupancy',
-    '/databases/collections', '/live-data/feeds', '/janitor/profiles', '/janitor/dedup-report',
+    '/databases/collections', '/live-data/feeds', '/mqtt/status', '/mqtt/messages', '/janitor/profiles', '/janitor/dedup-report',
     '/janitor/profiles/:id/runs', '/janitor/runs/:id', '/janitor/strategy/latest', '/janitor/strategy/latest/raw'
   ]) assert.ok(routes.some((entry) => entry.path === route), `missing GET ${route}`);
 });
@@ -281,7 +283,7 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
   const css = fs.readFileSync(path.join(root, 'app.css'), 'utf8');
-  for (const tab of ['overview', 'storage', 'files', 'network', 'gpu', 'databases', 'live-data', 'janitor']) {
+  for (const tab of ['overview', 'storage', 'files', 'network', 'gpu', 'databases', 'live-data', 'mqtt', 'janitor']) {
     assert.match(html, new RegExp(`data-tab=["']${tab}["']`));
   }
   assert.match(html, /Filesystem-safe review console/);
@@ -316,9 +318,18 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   assert.match(app, /draft\.authorizesFilesystemMutation === false/);
   assert.match(app, /clearJanitorReviewDraft\(\)/);
   assert.match(app, /saved in this browser across refreshes, tab changes, and portfolio regenerations/);
-  // The only mutation the bundle sends is naming or acknowledging a device.
+  // The bundle sends two mutations: naming or acknowledging a device (app.js)
+  // and publishing an MQTT message (mqtt.js). The page says so in both places.
   assert.equal(app.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi)?.length, 1);
   assert.match(app, /network\/devices\/\$\{encodeURIComponent\(mac\)\}`, \{ method: 'PATCH'/);
+  const mqtt = fs.readFileSync(path.join(root, 'mqtt.js'), 'utf8');
+  assert.equal(mqtt.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi)?.length, 1);
+  assert.match(mqtt, /api\('\/mqtt\/publish', \{ method: 'POST'/);
+  assert.equal(fs.readFileSync(path.join(root, 'gpu.js'), 'utf8').match(/method:/g), null);
+  assert.match(html, /<strong>No filesystem actions\.<\/strong>/);
+  assert.match(html, /This page sends two changes to Data: a network device's name or its known flag, and an MQTT message published by hand/);
+  assert.doesNotMatch(html, /The only change this page sends/);
+  assert.match(app, /Write routes<\/span><strong>2 · device name and known flag, MQTT publish/);
   assert.match(css, /@media \(max-width: 620px\)/);
 });
 

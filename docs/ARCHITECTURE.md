@@ -643,7 +643,7 @@ pages and APIs retain the parental gateway guard.
   native consumers keep a separate access token.
 - `core/surfaces/data-toolbox`: UI served by Core, consuming the optional
   Data process over HTTP. It is read-only except for naming a network device
-  or marking it known. Collectors are host-native adapters under
+  or marking it known, and publishing one MQTT message by hand. Collectors are host-native adapters under
   `integrations/data-collectors`; paths, network targets and supervisor
   placement are external configuration.
 

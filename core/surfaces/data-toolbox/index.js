@@ -2,6 +2,7 @@
 
 const path = require('path');
 const { dataBaseUrl, fetchData: fetchDataService } = require('../../src/services/dataServiceClient');
+const { validatePublish } = require('../../../shared/mqttTopicRules');
 
 const REQUEST_TIMEOUT_MS = () => Math.max(1000, Math.min(30000, Number(process.env.DATA_TOOLBOX_TIMEOUT_MS) || 10000));
 const SAFE_NAME = /^[a-z0-9_.-]{1,120}$/i;
@@ -326,11 +327,13 @@ async function buildStatus() {
   const healthy = Object.values(sources).filter((source) => source.ok).length;
   return {
     extension: 'aio-ops-data-toolbox',
-    version: '1.4.0',
+    version: '1.5.0',
     owner: 'agentx',
-    // One write is relayed: PATCH /network/devices/:mac (alias and known flag).
+    // Two writes are relayed: PATCH /network/devices/:mac (alias and known
+    // flag) and POST /mqtt/publish (one MQTT message sent by hand).
     readOnly: false,
     mutationsExposed: true,
+    writes: ['network-device-acknowledge', 'mqtt-publish'],
     filesystemMutationsExposed: false,
     dataService: { baseUrl: dataBaseUrl(), healthy, total: entries.length },
     collectorPlacement: collectorPlacement(),
@@ -387,8 +390,8 @@ function register(api) {
   router.get('/network/devices', relay(() => '/api/v1/network/devices'));
   router.get('/network/agents', relay(() => '/api/v1/network/agents'));
   router.get('/network/capability', relay(() => '/api/v1/network/capability'));
-  // The one write: name a device or mark it known, which acknowledges it as
-  // not new. These existing controls follow private LAN human access.
+  // First of the two writes: name a device or mark it known, which acknowledges
+  // it as not new. These existing controls follow private LAN human access.
   router.patch('/network/devices/:mac', async (req, res) => {
     const mac = String(req.params.mac || '').toUpperCase();
     const { alias, known } = req.body || {};
@@ -432,6 +435,34 @@ function register(api) {
   router.get('/live-data/:feed/history', relay((req) => `/api/v1/livedata/${safeName(req.params.feed, 'feed')}/history`, {
     from: { maxLength: 80 }, to: { maxLength: 80 }, order: { values: ['asc', 'desc'] }, limit: { type: 'int', fallback: 100, min: 1, max: 500 }
   }));
+
+  // The broker monitor Data keeps in memory. `topic` is an MQTT filter that
+  // Data validates and applies; a publish topic is at most 256 bytes.
+  router.get('/mqtt/status', relay(() => '/api/v1/mqtt/status'));
+  router.get('/mqtt/messages', relay(() => '/api/v1/mqtt/messages', {
+    since: { type: 'int', fallback: 0, min: 0, max: Number.MAX_SAFE_INTEGER },
+    limit: { type: 'int', fallback: 100, min: 1, max: 500 },
+    topic: { maxLength: 256 }
+  }));
+  // Second of the two writes: one MQTT message published by hand, on any topic
+  // (the owner's choice). The body is checked here with Data's own rules, and
+  // only topic, payload and retain are forwarded. Data refuses when the broker
+  // is not connected instead of queueing, and answers after the write.
+  router.post('/mqtt/publish', async (req, res) => {
+    let message;
+    try { message = validatePublish(req.body); }
+    catch (error) {
+      return res.status(400).json({ ok: false, status: 'error', code: 'INVALID_MQTT_PUBLISH', message: error.message });
+    }
+    try {
+      const { response, body } = await fetchData('/api/v1/mqtt/publish', { method: 'POST', payload: message });
+      return res.status(response.status).json(body);
+    } catch (error) {
+      const timedOut = error.name === 'TimeoutError';
+      return res.status(502).json({ ok: false, status: 'error', code: timedOut ? 'DATA_TIMEOUT' : 'DATA_UNAVAILABLE',
+        message: timedOut ? 'Data did not answer in time: the message may or may not have been sent' : error.message });
+    }
+  });
 
   router.get('/databases/collections', relay(() => '/api/v1/databases/collections'));
   router.get('/databases/collections/:name/stats', relay((req) => `/api/v1/databases/collections/${safeName(req.params.name, 'collection')}/stats`));
@@ -478,8 +509,8 @@ function register(api) {
 
 module.exports = {
   id: 'aio-ops-data-toolbox',
-  version: '1.4.0',
-  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-acknowledge'],
+  version: '1.5.0',
+  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-acknowledge', 'mqtt-publish'],
   register,
   boundedInt,
   pickQuery,

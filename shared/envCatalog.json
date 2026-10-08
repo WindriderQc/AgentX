@@ -1971,7 +1971,7 @@
       "default": null,
       "category": "network",
       "secret": false,
-      "description": "MQTT broker for Data live feeds. Unset: MQTT is skipped."
+      "description": "MQTT broker for Data live feeds and the Toolbox MQTT monitor. Unset: MQTT is skipped."
     },
     "MQTT_ISS_TOPIC": {
       "services": [

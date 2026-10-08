@@ -138,6 +138,24 @@ tr:last-child th.row-head { border-bottom: 0; }
 .sparkline polyline { fill: none; stroke: var(--cyan); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .sparkline circle { fill: var(--cyan); }
 .sparkline .axis { stroke: var(--line); stroke-width: 1; }
+.mqtt-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mqtt-filter label, .mqtt-send > label { color: var(--muted); font-size: 12px; }
+.mqtt-filter input, .mqtt-send input:not([type="checkbox"]), .mqtt-send textarea { color: var(--text); background: #101923; border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; outline: none; font-size: 12px; }
+.mqtt-filter input { flex: 1 1 220px; min-width: 0; }
+.mqtt-filter input:focus, .mqtt-send input:focus, .mqtt-send textarea:focus { border-color: var(--cyan); }
+.mqtt-filter .button.mono { padding: 7px 10px; }
+.mqtt-help { margin: 8px 0 12px; font-size: 12px; }
+.mqtt-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12px; }
+.mqtt-stream { max-height: 560px; }
+.mqtt-stream td:first-child, .mqtt-stream td:nth-child(4) { white-space: nowrap; }
+.mqtt-stream td:nth-child(2) { max-width: 320px; }
+.mqtt-payload { margin: 0; max-height: 320px; overflow: auto; color: #b9e6de; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.mqtt-stream details .mqtt-payload { margin-top: 8px; }
+.mqtt-stream summary { overflow-wrap: anywhere; }
+.mqtt-send { display: grid; gap: 8px; max-width: 760px; }
+.mqtt-send textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.mqtt-send .mqtt-retain { display: block; color: var(--text); font-size: 12px; line-height: 1.5; }
+.mqtt-retain input { accent-color: var(--cyan); margin-right: 4px; }
 .clickable { cursor: pointer; }
 .clickable:hover { border-color: #4d6885; }
 .json { max-height: 430px; overflow: auto; margin: 12px 0 0; padding: 15px; color: #b9e6de; background: #080d13; border: 1px solid #202c3b; border-radius: 10px; white-space: pre-wrap; font: 11px/1.55 ui-monospace, monospace; }

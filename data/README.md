@@ -4,11 +4,13 @@ Optional AgentX service for storage/file inventory, network observations, GPU
 telemetry, live feeds, database inspection, exports, events, integrations and
 supervised janitor operations. Source, tests and distribution belong to this repository.
 
-Core's full profile hosts `/data-toolbox`, a read-only UI backed by Data HTTP
-APIs. Its tabs are Overview, Storage, Files, Network, GPU, Databases, Live Data
-and Janitor; the GPU tab reads the four `GET /api/v1/hardware` routes described
-below. The original mutation APIs remain inside Data with their existing domain
-checks. Mount shared storage read-only unless a specific maintenance operation
+Core's full profile hosts `/data-toolbox`, a UI backed by Data HTTP APIs. Its
+tabs are Overview, Storage, Files, Network, GPU, Databases, Live Data, MQTT and
+Janitor; the GPU tab reads the four `GET /api/v1/hardware` routes and the MQTT
+tab the three `/api/v1/mqtt` routes described below. The Toolbox reads, with
+two writes: a network device's name or known flag, and an MQTT message
+published by hand. The original mutation APIs remain inside Data with their
+existing domain checks. Mount shared storage read-only unless a specific maintenance operation
 requires an explicitly approved writable mount. No disk mount is shipped by default.
 
 Enable Compose profile `data` when needed. Data does not read `AGENTX_PROFILE`:
@@ -51,6 +53,34 @@ upstream error) reports the reason as `lastError` in `GET /api/v1/livedata/feeds
 `MQTT_BROKER_URL` (with optional `MQTT_USERNAME`, `MQTT_PASSWORD`) republishes
 ISS and pressure points and feeds the `sensors` feed from the topics in
 `LIVEDATA_MQTT_TOPICS`; unset, MQTT is skipped.
+
+The MQTT monitor lives under `/api/v1/mqtt`. When `MQTT_BROKER_URL` is set,
+Data opens a second broker connection for it at startup, with or without
+`DATA_BACKGROUND_JOBS_ENABLED`, subscribes to `#` and keeps the last 500
+messages in memory; nothing is stored and a restart empties the list. The
+broker's own `$SYS` topics are not part of `#`. `GET /status` returns
+`configured`, `connected`, `broker` (host and port only, never the URL or the
+account), `since`, `received`, `lastMessageAt` and `lastError`. `GET /messages`
+returns messages oldest first, each with `seq`, `ts`, `topic`, `payload`,
+`bytes`, `truncated`, `binary`, `retained` and `qos`: `payload` is UTF-8 text
+cut at 4 KiB, or a hex preview of the first 64 bytes when the bytes are not
+UTF-8, and `bytes` is the real size. `since=<seq>` returns what came after that
+sequence number, and without it the newest `limit` messages (default 100, at
+most 500); `topic` is an MQTT filter with `+` and `#`, refused with 400 when a
+wildcard is misplaced. The answer carries `latestSeq`, `nextSince` (what to ask
+next), `more`, `dropped` with `droppedCount` when the buffer no longer holds
+everything after `since`, and `epoch`, which changes when the monitor restarts
+and its sequence numbers start again. `POST /publish` takes `{ topic, payload,
+retain }` and publishes one message at QoS 0 on any topic: `topic` is a
+non-empty string of at most 256 bytes without `#`, `+`, NUL or a leading `$`,
+`payload` a string of at most 4 KiB (it may be empty), `retain` an optional
+boolean, and any other field is refused. It answers 400 for an invalid body,
+503 when no broker is configured or connected (the message is never queued for
+later), 504 when the write is not confirmed within 5 s, and otherwise only
+after the client has written the message. Data logs the topic and size of a
+published message, never its payload. Like the rest of Data, these routes have
+no login of their own: whoever reaches Data, or the Toolbox in front of it, can
+publish to every device on the broker.
 
 A duplicate report keeps its summary in `dedup_reports` and its groups in
 chunked `dedup_report_details` documents, so a large inventory cannot exceed

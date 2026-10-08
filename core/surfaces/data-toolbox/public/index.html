@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>AgentX Data Toolbox</title>
-  <link rel="stylesheet" href="/assets/data-toolbox/app.css?v=gpu-tab-20261008">
+  <link rel="stylesheet" href="/assets/data-toolbox/app.css?v=mqtt-tab-20261008">
 </head>
 <body>
   <!-- product-navigation -->
@@ -14,7 +14,7 @@
       <div>
         <p class="eyebrow">AgentX operations</p>
         <h1>Your data estate, visible again.</h1>
-        <p class="lede">Storage evidence, file inventory, network devices, GPU telemetry, MongoDB collections, live feeds, and janitor proposals—one bounded console.</p>
+        <p class="lede">Storage evidence, file inventory, network devices, GPU telemetry, MongoDB collections, live feeds, the MQTT stream, and janitor proposals—one bounded console.</p>
       </div>
       <aside class="contract">
         <span class="pulse" aria-hidden="true"></span>
@@ -24,7 +24,7 @@
 
     <section class="guardrail" role="note">
       <strong>No filesystem actions.</strong>
-      <span>Survivor choices and accept/reject decisions stay in a local draft. Scan, preview, apply, move and delete endpoints are not exposed here. The only change this page sends to Data is a network device's name or its known flag.</span>
+      <span>Survivor choices and accept/reject decisions stay in a local draft. Scan, preview, apply, move and delete endpoints are not exposed here. This page sends two changes to Data: a network device's name or its known flag, and an MQTT message published by hand from the MQTT tab, which reaches the devices on the broker.</span>
     </section>
 
     <nav class="tabs" aria-label="Data Toolbox sections">
@@ -35,6 +35,7 @@
       <a href="#gpu" data-tab="gpu">GPU</a>
       <a href="#databases" data-tab="databases">Databases</a>
       <a href="#live-data" data-tab="live-data">Live Data</a>
+      <a href="#mqtt" data-tab="mqtt">MQTT</a>
       <a href="#janitor" data-tab="janitor">Janitor</a>
     </nav>
 
@@ -47,7 +48,8 @@
     <span>AgentX Data Toolbox</span>
     <span>Inventory and maintenance review</span>
   </footer>
-  <script src="/assets/data-toolbox/gpu.js?v=gpu-tab-20261008" defer></script>
-  <script src="/assets/data-toolbox/app.js?v=gpu-tab-20261008" defer></script>
+  <script src="/assets/data-toolbox/gpu.js?v=mqtt-tab-20261008" defer></script>
+  <script src="/assets/data-toolbox/mqtt.js?v=mqtt-tab-20261008" defer></script>
+  <script src="/assets/data-toolbox/app.js?v=mqtt-tab-20261008" defer></script>
 </body>
 </html>

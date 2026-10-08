@@ -11,6 +11,7 @@ const responseEnvelope = require('./middleware/responseEnvelope');
 const { createRequestLog } = require('./middleware/requestLog');
 const storageController = require('./controllers/storageController');
 const liveData = require('./services/liveData');
+const mqttMonitor = require('./services/mqttMonitor');
 const janitorScheduler = require('./services/janitorScheduler');
 const janitorRunner = require('./services/janitorRunner');
 const { backgroundJobsEnabled } = require('./utils/backgroundJobs');
@@ -46,6 +47,7 @@ app.use('/api/v1/network', require('./routes/network.routes'));
 app.use('/api/v1/hardware', require('./routes/hardware.routes'));
 app.use('/api/v1/events', require('./routes/events.routes'));
 app.use('/api/v1/livedata', require('./routes/livedata.routes'));
+app.use('/api/v1/mqtt', require('./routes/mqtt.routes'));
 app.use('/api/v1/databases', require('./routes/databases.routes'));
 app.use('/api/v1/exports', require('./routes/exports.routes'));
 app.use('/api/v1/janitor', require('./routes/janitor.routes'));
@@ -96,6 +98,11 @@ async function start() {
   });
   log(`agentx-data listening on port ${server.address().port}`);
 
+  // The broker monitor serves a manual API: it connects whenever a broker is
+  // configured, with or without background jobs, and never in a test process.
+  try { mqttMonitor.init(); }
+  catch (e) { log(`[MQTT monitor] Init failed: ${e.message}`, 'warn'); }
+
   // Background work is an explicit instance choice, never a test side effect.
   if (backgroundJobsEnabled()) {
     try { await liveData.init(db); }
@@ -110,6 +117,7 @@ async function shutdown() {
   log('Shutting down agentx-data...');
   try { eventController.drainSSE(); } catch (e) { log(`[shutdown] drainSSE error: ${e.message}`, 'warn'); }
   try { liveDataController.drainSSE(); } catch (e) { log(`[shutdown] livedata drainSSE error: ${e.message}`, 'warn'); }
+  try { await mqttMonitor.close(); } catch (e) { log(`[shutdown] mqttMonitor.close error: ${e.message}`, 'warn'); }
   try { await liveData.close(); } catch (e) { log(`[shutdown] liveData.close error: ${e.message}`, 'warn'); }
   try { await janitorScheduler.close(); } catch (e) { log(`[shutdown] janitorScheduler.close error: ${e.message}`, 'warn'); }
   if (server) {
