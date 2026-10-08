@@ -527,3 +527,96 @@ for (const [label, started] of [
     assert.deepEqual(settled, [], 'an unconfirmed stop never releases the turn');
   });
 }
+
+
+// The gateway can announce completion without closing HTTP. The test guard
+// only releases the fixture on the old path; it must never be the client bound.
+for (const browser of [false, true]) {
+  test(`a confirmed completion bounds an open body with unavailable evidence (${browser ? 'GraphysX' : 'Nestor'})`, async () => {
+    const guard = new AbortController();
+    let closeStream, requests = 0, settled = 0;
+    const deltas = [];
+    const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 10, streamDrainMs: 30,
+      continuity: async () => { throw new Error('Evidence unavailable'); },
+      fetchImpl: async (_url, options) => {
+        requests++;
+        options.signal.addEventListener('abort', () => closeStream?.(), { once: true });
+        return { ok: true, body: (async function* () {
+          yield created;
+          yield browser ? browserCompleted([browserItem({ reply: 'Bonjour.' })]) : completed;
+          await new Promise(resolve => { closeStream = resolve; });
+          options.signal.throwIfAborted();
+        })() };
+      } });
+    const timeout = setTimeout(() => guard.abort(new Error('Test deadline reached')), 250);
+    try {
+      const turn = client({ session, text: 'Alors ?', signal: guard.signal,
+        ...(browser ? { browserReply: { context: browserContext } } : {}),
+        onDelta: text => deltas.push(text), onSettled: () => { settled++; } });
+      if (browser) {
+        const result = await turn;
+        assert.equal(result.text, 'Bonjour.');
+        assert.equal(result.tools.status, 'unavailable');
+        assert.equal(result.tools.browserReply.callId, 'call_scene_1');
+        assert.deepEqual(deltas, ['Bonjour.']);
+      } else {
+        await assert.rejects(turn, /Nestor n’a pas donné de réponse finale/);
+        assert.deepEqual(deltas, []);
+      }
+      assert.equal(guard.signal.aborted, false, 'the test guard must not finish the turn');
+      assert.equal(settled, 1);
+      assert.equal(requests, 1, 'observation never replays the native request');
+      await new Promise(resolve => setTimeout(resolve, 45));
+      assert.equal(settled, 1, 'drain does not settle the turn again');
+      assert.equal(deltas.length, browser ? 1 : 0, 'drain never delivers a second answer');
+    } finally { clearTimeout(timeout); closeStream?.(); }
+  });
+}
+
+
+test('caller interruption during completion grace never delivers the browser action', async () => {
+  const caller = new AbortController();
+  let closeStream, settled = 0;
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 50,
+    continuity: async () => { throw new Error('Evidence unavailable'); },
+    fetchImpl: async (_url, options) => {
+      options.signal.addEventListener('abort', () => closeStream?.(), { once: true });
+      return { ok: true, body: (async function* () {
+        yield created;
+        yield browserCompleted([browserItem({ reply: 'Bonjour.' })]);
+        await new Promise(resolve => { closeStream = resolve; setTimeout(() => caller.abort(), 5); });
+        options.signal.throwIfAborted();
+      })() };
+    } });
+  await assert.rejects(client({ session, text: 'Alors ?', signal: caller.signal,
+    browserReply: { context: browserContext }, onDelta: text => deltas.push(text), onSettled: () => { settled++; } }),
+  error => error.name === 'AbortError');
+  assert.deepEqual(deltas, []);
+  assert.equal(settled, 1, 'the completion already confirmed native termination');
+});
+
+test('GraphysX dialogue delivers verified same-run text after completion with open HTTP', async () => {
+  let release, settled = 0;
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 25, streamGraceMs: 5, streamDrainMs: 20,
+    continuity: async () => ({ run: { model: 'native' }, answer: answer('Bonjour.') }),
+    fetchImpl: async (_url, options) => ({ ok: true, body: (async function* () {
+      yield created;
+      yield browserCompleted([]);
+      await new Promise(resolve => {
+        release = resolve;
+        options.signal.addEventListener('abort', resolve, { once: true });
+      });
+    })() }) });
+  try {
+    const result = await client({ session, text: 'Salut', browserReply: { context: browserContext },
+      onDelta: text => deltas.push(text), onSettled: () => { settled++; } });
+    assert.equal(result.text, 'Bonjour.');
+    assert.equal(result.tools.browserReply, undefined);
+    assert.equal(typeof result.metadata.phases.streamOverdue, 'number');
+    assert.equal(result.metadata.phases.streamEnd, undefined);
+    assert.deepEqual(deltas, ['Bonjour.']);
+    assert.equal(settled, 1);
+  } finally { release?.(); }
+});

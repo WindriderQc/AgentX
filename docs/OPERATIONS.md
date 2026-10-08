@@ -812,6 +812,12 @@ holding phrase (« Un instant… ») and shows that it is still thinking; hearin
 phrase back is echo, not an interruption. Cancelling an OpenClaw turn before it
 streamed content, a tool call or reasoning settles at once; after that, Core waits
 for the run's native end and otherwise pauses the conversation with a French notice.
+A native stream has 3 s to close after its matching completion row or after
+Core reads its verified final answer. Core then delivers that answer or reports
+that it could not retrieve it; the gateway has another 30 s to close HTTP.
+GraphysX waits for its completion row, which carries the browser tool call,
+before this grace applies. Silence without completion or readable final evidence
+keeps the existing run deadline and does not establish native termination.
 The Super Dad and Famille avatar dock loads GraphysX's `<llmx-face>` module from
 `HOUSEHOLD_AVATAR_MODULE_URL` (a GraphysX build's `/embed/llmx-face.js`). Core
 relays it at `/api/household/avatar/llmx-face.js`, like the VoiX player, so the
