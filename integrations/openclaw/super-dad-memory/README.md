@@ -37,6 +37,12 @@ into the owner's vault inbox (Core's `VAULT_INBOX_PATH`); only the owner context
 receives it, and an invalid receipt is reported as not saved.
 The gateway continuity endpoint only projects agent catalogs and exact native
 run evidence. It does not read or write personal notes.
+When the transcript read throws, the turn projection keeps its fresh run/tool
+capsule and returns an explicit `answerObservation` with `reason: read_failed`,
+source, session key and run ID. The answer itself remains unavailable. Core may
+retain text already verified in that same call, with final provider attribution
+unknown. A missing reader or a successful invalid/non-final history emits no
+read-failure mark; the projection never exposes the raw error or transcript.
 Its existing tool and run receipt capsules include session provenance from the
 host context, never the model's arguments or returned provenance. `unknown`
 keeps missing legacy context explicit. Provenance grants no action authority;
