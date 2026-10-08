@@ -62,6 +62,13 @@ Make the smallest complete change requested. A failed probe is evidence to
 investigate, not a reason to repeat the same experiment. Check git diff before
 finishing and report the test results, including failures.
 
+Your remaining soft budget is {soft_seconds} seconds; the remaining hard ceiling
+is {hard_seconds} seconds. Reading and model activity alone do not extend this
+budget. Investigate the relevant path, make the smallest source edit, and run its
+focused tests before expanding your investigation. New source or test progress
+can extend the soft budget; the hard ceiling never moves. If you cannot finish,
+explain the remaining work and stop with a useful source checkpoint.
+
 You have no network. The dependencies of core, benchmark, rag and data are already
 installed, and the test database is ready. Do not try to download anything. If the
 task needs a new package, add it to the right package.json, explain why in your
@@ -340,7 +347,9 @@ def execute(args, progress) -> int:
                              for entry in (task.get("feedback") or []))
     prompt = PROMPT.format(repository=REPOSITORY, branch=branch, task_id=args.task_id, title=task.get("title", ""),
                            spec=task.get("spec", ""), discussion=discussion or "(none)",
-                           planning=(task.get("planningContext") or {}).get("text") or "(none)")
+                           planning=(task.get("planningContext") or {}).get("text") or "(none)",
+                           soft_seconds=max(0, int(progress.soft_deadline - progress.now())),
+                           hard_seconds=max(0, int(progress.hard_deadline - progress.now())))
     # Core's patient route owns capacity waiting. A nonzero worker exit stops
     # this attempt; a later explicit handoff continues its existing workspace.
     progress.phase = "running"

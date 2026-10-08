@@ -13,6 +13,10 @@
   disabled: true
 - id: tool-workflow
   disabled: true
+# Pipeline already owns the task title. Avoid a background model request
+# competing with the coding turn on the same local inference capacity.
+- id: session-title-llm
+  disabled: true
 # Raw events stay in the isolated worker home. The host projects safe enums,
 # timestamps and test outcomes into the run receipt; Pipeline never reads them.
 - id: session-persistence-jsonl
