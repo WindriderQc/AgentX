@@ -158,10 +158,16 @@ def test_worker_health_reuses_success_for_ten_seconds_and_failure_for_two(monkey
     clock[0] += 1.9
     assert catalog.worker_ready()[0] is False and len(probes) == 1, "a failure is reused briefly"
     clock[0] += 0.2
+    beside = []
+    monkeypatch.setattr(catalog, "_beside_request", beside.append)
+    assert catalog.worker_ready()[0] is False and len(probes) == 1, "a known failure never waits for its probe"
+    assert catalog.worker_ready()[0] is False and len(beside) == 1, "one probe at a time"
+    beside.pop()()
     assert catalog.worker_ready() == (True, "") and len(probes) == 2, "recovery is noticed after 2 s"
     worker["up"] = False
     clock[0] += 9.9
     assert catalog.worker_ready() == (True, "") and len(probes) == 2, "success is reused for 10 s"
     clock[0] += 0.2
-    assert catalog.worker_ready()[0] is False and len(probes) == 3
+    assert catalog.worker_ready()[0] is False and len(probes) == 3, "a worker that was ready is probed by the request"
+    assert beside == []
     assert probes == [url + "/health"] * 3
