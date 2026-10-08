@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>PsyX</title>
-  <link rel="stylesheet" href="/psyx/assets/app.css?v=2.12.0">
+  <link rel="stylesheet" href="/psyx/assets/app.css?v=settings-1">
   <link rel="stylesheet" href="/psyx/assets/hardening.css?v=2.12.0">
   <link rel="stylesheet" href="/psyx/assets/voice-session.css?v=2.12.0">
   <link rel="stylesheet" href="/psyx/assets/review.css?v=2.12.0">
@@ -30,9 +30,14 @@
         <button id="sessionsToggle" class="icon-btn adaptive-toggle" type="button" aria-controls="sessionsPanel" aria-expanded="false">Séances</button>
         <button id="insightsToggle" class="icon-btn adaptive-toggle" type="button" aria-controls="insightsPanel" aria-expanded="false">Mémoire</button>
         <button id="voiceSessionOpen" class="primary-small" type="button">Séance vocale</button>
-        <button id="voiceSettings" class="icon-btn" type="button">Voix</button>
-        <button id="performancePsyx" class="icon-btn" type="button">Contexte et performance</button>
-        <button id="settingsPsyx" class="icon-btn" type="button">Données</button>
+        <details id="psyxSettings" class="settings-menu">
+          <summary class="icon-btn">Réglages</summary>
+          <div class="settings-options">
+            <button id="voiceSettings" class="icon-btn" type="button">Voix et langue</button>
+            <button id="performancePsyx" class="icon-btn" type="button">Contexte et performance</button>
+            <button id="settingsPsyx" class="icon-btn" type="button">Données personnelles</button>
+          </div>
+        </details>
         <div class="status-wrap" role="status" aria-live="polite">
           <span id="statusDot" class="status-dot"></span>
           <span id="statusText">Démarrage de PsyX…</span>
