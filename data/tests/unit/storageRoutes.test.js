@@ -19,7 +19,9 @@ jest.mock('../../services/scanner', () => ({
     run: jest.fn().mockResolvedValue(),
     stop: jest.fn()
   })),
-  rebuildDirectoryRollups: jest.fn().mockResolvedValue(1)
+  rebuildDirectoryRollups: jest.fn().mockResolvedValue(1),
+  pruneStaleFiles: jest.requireActual('../../services/scanner').pruneStaleFiles,
+  pruneSkippedMessage: jest.requireActual('../../services/scanner').pruneSkippedMessage
 }));
 
 jest.mock('../../services/storageAgentService', () => ({
@@ -539,6 +541,31 @@ describe('Storage Scanner Routes', () => {
         .send({ status: 'completed', stats: { files_seen: 10 } }).expect(200);
       expect(rebuildDirectoryRollups).toHaveBeenCalledWith(
         expect.any(Object), expect.any(Object), ['/mnt/media']);
+    });
+
+    test('external completion prunes rows the scan did not see', async () => {
+      const app = buildApp({ scanDoc: { _id: 'scan-external',
+        config: { external: true, roots: ['/mnt/media'] } } });
+      const files = app.locals.db.collection('nas_files');
+      files.countDocuments.mockResolvedValue(1);
+      files.deleteMany.mockResolvedValue({ deletedCount: 3 });
+      const res = await request(app).patch('/api/v1/storage/scan/scan-external')
+        .send({ status: 'completed', stats: { files_seen: 10 } }).expect(200);
+      expect(files.deleteMany).toHaveBeenCalledWith(expect.objectContaining({ scan_id: { $ne: 'scan-external' } }));
+      expect(res.body.data.updated).toMatchObject({ status: 'complete', 'counts.stale_removed': 3 });
+    });
+
+    test('external completion keeps the index of a root where the scan indexed nothing', async () => {
+      const app = buildApp({ scanDoc: { _id: 'scan-external',
+        config: { external: true, roots: ['/mnt/media'] } } });
+      const files = app.locals.db.collection('nas_files');
+      // Nothing stamped by this scan, yet earlier rows exist: an empty mountpoint.
+      files.countDocuments.mockImplementation(async filter => (filter.scan_id ? 0 : 1));
+      const res = await request(app).patch('/api/v1/storage/scan/scan-external')
+        .send({ status: 'completed', stats: { files_seen: 0 } }).expect(200);
+      expect(files.deleteMany).not.toHaveBeenCalled();
+      expect(res.body.data.updated).toMatchObject({ status: 'partial', 'counts.stale_removed': 0 });
+      expect(res.body.data.updated.last_error).toMatch(/\/mnt\/media/);
     });
 
     test('repeated terminal update is idempotent after finalization', async () => {

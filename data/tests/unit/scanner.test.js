@@ -2,7 +2,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 
-const { Scanner, rebuildDirectoryRollups } = require('../../services/scanner');
+const { Scanner, rebuildDirectoryRollups, pruneStaleFiles } = require('../../services/scanner');
 const candidateHasher = require('../../services/candidateHasher');
 
 function asyncCursor(items) {
@@ -144,6 +144,7 @@ describe('scanner directory rollups', () => {
     const collections = {
       nas_files: {
         bulkWrite: jest.fn().mockResolvedValue({ upsertedCount: 1, modifiedCount: 0 }),
+        countDocuments: jest.fn().mockResolvedValue(1),
         deleteMany: jest.fn(async () => {
           operations.push('prune');
           return { deletedCount: 1 };
@@ -182,5 +183,59 @@ describe('scanner directory rollups', () => {
       hasher.mockRestore();
       await fs.rm(tmpRoot, { recursive: true, force: true });
     }
+  });
+
+  function scanCollections(files) {
+    const collections = {
+      nas_files: {
+        bulkWrite: jest.fn().mockResolvedValue({ upsertedCount: 1, modifiedCount: 0 }),
+        deleteMany: jest.fn().mockResolvedValue({ deletedCount: 5 }),
+        aggregate: jest.fn(() => asyncCursor([])),
+        ...files
+      },
+      nas_directories: {
+        deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 }),
+        bulkWrite: jest.fn().mockResolvedValue({ upsertedCount: 0, modifiedCount: 0 })
+      },
+      nas_scans: { updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }) }
+    };
+    return { collections, db: { collection: jest.fn(name => collections[name]) } };
+  }
+
+  function finalScanUpdate(collections) {
+    return collections.nas_scans.updateOne.mock.calls.at(-1)[1].$set;
+  }
+
+  test('Scanner.run keeps the index of an empty root and reports the scan partial', async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'agentx-scan-empty-'));
+    const { collections, db } = scanCollections({
+      countDocuments: jest.fn(async filter => (filter.scan_id ? 0 : 1))
+    });
+    try {
+      await new Scanner(db).run({ roots: [tmpRoot], scanId: 'scan-empty', hashMode: 'none' });
+
+      expect(collections.nas_files.deleteMany).not.toHaveBeenCalled();
+      expect(finalScanUpdate(collections)).toMatchObject({ status: 'partial' });
+      expect(finalScanUpdate(collections).counts.stale_removed).toBe(0);
+    } finally {
+      await fs.rm(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('Scanner.run keeps existing rows when a directory could not be read', async () => {
+    const missingRoot = path.join(os.tmpdir(), `agentx-scan-missing-${process.pid}-${Date.now()}`);
+    const { collections, db } = scanCollections({ countDocuments: jest.fn().mockResolvedValue(1) });
+
+    await new Scanner(db).run({ roots: [missingRoot], scanId: 'scan-missing', hashMode: 'none' });
+
+    expect(collections.nas_files.deleteMany).not.toHaveBeenCalled();
+    expect(finalScanUpdate(collections)).toMatchObject({ status: 'partial' });
+  });
+
+  test('pruneStaleFiles has nothing to keep or remove on a root never indexed', async () => {
+    const filesCol = { countDocuments: jest.fn().mockResolvedValue(0), deleteMany: jest.fn() };
+
+    await expect(pruneStaleFiles(filesCol, ['/mnt/new'], 'scan-1')).resolves.toEqual({ removed: 0, skippedRoots: [] });
+    expect(filesCol.deleteMany).not.toHaveBeenCalled();
   });
 });
