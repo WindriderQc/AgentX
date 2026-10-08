@@ -326,10 +326,12 @@ async function buildStatus() {
   const healthy = Object.values(sources).filter((source) => source.ok).length;
   return {
     extension: 'aio-ops-data-toolbox',
-    version: '1.3.2',
+    version: '1.4.0',
     owner: 'agentx',
-    readOnly: true,
-    mutationsExposed: false,
+    // One write is relayed: PATCH /network/devices/:mac (alias and known flag).
+    readOnly: false,
+    mutationsExposed: true,
+    filesystemMutationsExposed: false,
     dataService: { baseUrl: dataBaseUrl(), healthy, total: entries.length },
     collectorPlacement: collectorPlacement(),
     sources
