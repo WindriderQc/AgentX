@@ -29,6 +29,16 @@ configuration. Storage sources map explicit host roots to stable canonical paths
 for example `media` to `/mnt/media`, excluding a nested `Datalake` root counted
 separately as `/mnt/datalake`. No personal physical root is inferred.
 
+A scan target is an IPv4 address or an IPv4 CIDR from `/16` to `/32`; Data
+refuses anything else, and the network collector checks a queued target again
+before it runs `nmap` (its own `SCAN_CIDR` may be wider). Posted scan results
+keep only devices with an IPv4 `ip`, an empty or well-formed `mac` and text
+`hostname`/`vendor`; the response counts the others in `rejected`. nmap XML
+that does not parse is refused with HTTP 400 and changes no device. With
+`pruneMissing`, a result without any valid device marks nothing offline and
+says so in `pruneSkipped`. The collector gives up on a Data request after
+`NETWORK_AGENT_HTTP_TIMEOUT_MS` (default 15000).
+
 A finished scan removes the index rows it did not see, one root at a time. A
 root where the scan indexed no file keeps its rows and the scan ends `partial`
 with the reason in `last_error`: an unmounted or emptied mountpoint walks as a

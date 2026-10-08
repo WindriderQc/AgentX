@@ -3,11 +3,12 @@ const { ObjectId } = require('mongodb');
 const networkScanner = require('../services/networkScanner');
 const networkAgentService = require('../services/networkAgentService');
 const { classifyDevices } = require('../services/networkObservation');
+const { isScanTarget, MIN_SCAN_PREFIX } = require('../utils/networkInput');
 
 // Default scan target — local subnet
 const DEFAULT_TARGET = process.env.NETWORK_SCAN_CIDR || '';
-// CIDR / IPv4 validation — prevents nmap flag injection via the target field.
-const CIDR_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d{1,2})?$/;
+// The target is validated by isScanTarget (octets 0-255, prefix /16 to /32):
+// it prevents nmap flag injection and a sweep wider than a home LAN.
 
 function isMissingDependencyError(error, dependency) {
   return error?.code === 'DEPENDENCY_MISSING' && (!dependency || error.dependency === dependency);
@@ -67,8 +68,11 @@ exports.scanNetwork = async (req, res, next) => {
     const { target, pruneMissing, source } = req.body || {};
     const scanTarget = target || DEFAULT_TARGET;
 
-    if (!CIDR_RE.test(scanTarget)) {
-      return res.status(400).json({ status: 'error', message: 'Invalid target format. Use CIDR notation: x.x.x.x/xx' });
+    if (!isScanTarget(scanTarget)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Invalid target format. Use an IPv4 address or CIDR notation x.x.x.x/xx with a prefix from /${MIN_SCAN_PREFIX} to /32`
+      });
     }
 
     // Prefer the native-agent path when a scanner is reporting.
@@ -99,10 +103,11 @@ exports.scanNetwork = async (req, res, next) => {
 };
 
 /**
- * POST /scan-results — a native scanner agent posts discovered devices. Token-
- * available on the trusted LAN. Accepts raw nmap XML (parsed here,
- * reusing networkScanner.parseNmapOutput — no nmap binary needed to parse) or a
- * pre-parsed devices[] array.
+ * POST /scan-results — a native scanner agent posts discovered devices.
+ * Unauthenticated: Data publishes on loopback only. Accepts raw nmap XML
+ * (parsed here, reusing networkScanner.parseNmapOutput — no nmap binary needed
+ * to parse) or a pre-parsed devices[] array. XML that does not parse is
+ * rejected (400) before any device is written or marked offline.
  */
 exports.ingestScanResults = async (req, res, next) => {
   try {
@@ -120,7 +125,12 @@ exports.ingestScanResults = async (req, res, next) => {
       if (typeof xml !== 'string' || !xml.trim()) {
         return res.status(400).json({ status: 'error', message: 'format=nmap-xml requires a non-empty xml string' });
       }
-      deviceList = await networkScanner.parseNmapOutput(xml);
+      try {
+        deviceList = await networkScanner.parseNmapOutput(xml);
+      } catch (error) {
+        if (error?.code !== 'NMAP_XML_INVALID') throw error;
+        return res.status(400).json({ status: 'error', message: error.message });
+      }
     } else {
       if (!Array.isArray(devices)) {
         return res.status(400).json({ status: 'error', message: 'devices[] required (or format=nmap-xml + xml)' });
@@ -149,7 +159,7 @@ exports.ingestScanResults = async (req, res, next) => {
 
 /**
  * GET /scan-requests — a scanner agent polls for pending jobs. This doubles as
- * the scanner heartbeat (registers the agent from query params). Token-gated.
+ * the scanner heartbeat (registers the agent from query params).
  */
 exports.getScanRequests = async (req, res, next) => {
   try {
@@ -249,6 +259,9 @@ exports.enrichDevice = async (req, res, next) => {
   } catch (error) {
     if (isMissingDependencyError(error, 'nmap')) {
       return res.status(503).json({ status: 'error', message: 'Enrichment unavailable: ' + error.message });
+    }
+    if (error?.code === 'INVALID_TARGET') {
+      return res.status(400).json({ status: 'error', message: error.message });
     }
 
     next(error);
