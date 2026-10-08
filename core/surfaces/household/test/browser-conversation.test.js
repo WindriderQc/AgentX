@@ -1316,6 +1316,25 @@ test('reply text that arrives before the holding phrase plays drops it, so the a
   h.conversation.stop();
 });
 
+test('a holding phrase whose voice is ready too late is not played', async () => {
+  const slow = deferred(), holdingVoice = deferred(), played = [];
+  let cancelled = 0;
+  const h = harness({ holdingDelayMs: 5, holdingLateMs: 20, turn: () => slow.promise,
+    synthesize: reply => (played.length || reply.text === 'Voici la réponse.' ? Promise.resolve(reply.text) : holdingVoice.promise) });
+  h.audio.play = async bytes => { played.push(bytes); };
+  await h.conversation.start({ language: 'fr' }); const exchange = h.say();
+  await nextTimer(); await nextTimer();
+  await new Promise(resolve => setTimeout(resolve, 40));
+  holdingVoice.resolve({ body: { cancel: async () => { cancelled += 1; } } });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(played, [], 'the late phrase is dropped');
+  assert.equal(cancelled, 1, 'its accepted speech stream is closed');
+  assert.equal(h.conversation.activeTurn.spoken, undefined, 'a phrase that did not play cannot be heard back as echo');
+  slow.resolve({ text: 'Voici la réponse.' }); await exchange;
+  assert.deepEqual(played, ['Voici la réponse.']);
+  h.conversation.stop();
+});
+
 test('a holding phrase already playing finishes while the first clause is prepared to follow it', async () => {
   const slow = deferred(), holdingPlayback = deferred(), synthesized = [], played = [];
   let delta;
