@@ -293,6 +293,12 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
     envelope.success(res, await require('../src/services/mailJournalService').operate(req.body || {}));
   }));
 
+  // The standing brief of one collaborator of the main agent: one envelope for all of them, read-only.
+  router.post('/team-brief', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    envelope.success(res, await require('../src/services/teamBriefService').brief(req.body || {}));
+  }));
+
   // Sensitive identifiers: labels for listing, a value only on request.
   router.post('/identifiers', asyncRoute(async (req, res) => {
     res.set('Cache-Control', 'no-store');

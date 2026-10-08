@@ -8,6 +8,7 @@ import { resolveAgentWorkspaceDir, resolveAgentEffectiveModelPrimary } from "ope
 import { createCoreNotesClient, configuredJobContext } from "./core-notes.js";
 import { createCoreVaultClient } from "./core-vault.js";
 import { createCoreJournalClient } from "./core-journal.js";
+import { createCoreBriefClient } from "./core-brief.js";
 import { createCoreIdentifiersClient, householdOwnerSession } from "./core-identifiers.js";
 import { registerLocalImages } from "./local-images.js";
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
@@ -22,6 +23,7 @@ export default definePluginEntry({
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const writeVaultNote = createCoreVaultClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const mailJournal = createCoreJournalClient({ baseUrl: api.pluginConfig?.agentxUrl });
+    const teamBrief = createCoreBriefClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const identifiers = createCoreIdentifiersClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const secretaryContext = context => configuredJobContext(context, api.pluginConfig?.secretarySessionKeys);
     const morningContext = context => configuredJobContext(context, api.pluginConfig?.briefingSessionKeys);
@@ -84,6 +86,19 @@ export default definePluginEntry({
         async execute(_id, params) { return receipt(await mailJournal(params)); },
       };
     }, { name: "mail_journal", optional: true });
+
+    api.registerTool(context => {
+      if (!privateOwnerContext(context, api.config)) return null;
+      return {
+        name: "team_brief", label: "Team Brief",
+        description: "The standing brief a collaborator keeps up to date for you, computed by Core, read-only. Read it before consulting the collaborator. secretary: dated digests of the mail she has processed, newest first (days = how far back, default 2). comptable: latest balance per account with its date, in/out/net of the recent months, pending alerts, statements to review. Every brief has the same shape: covers (what it holds), sections (the data) and beyond (what still needs the collaborator). Answer only from the sections, say it comes from that collaborator's brief, quote *Display amounts as given and never add or convert amounts. A section marked unavailable was not read: say so.",
+        parameters: { type: "object", properties: {
+          member: { type: "string", enum: ["secretary", "comptable"] },
+          days: { type: "integer", minimum: 1, maximum: 366 },
+        }, required: ["member"], additionalProperties: false },
+        async execute(_id, params) { return receipt(await teamBrief(params)); },
+      };
+    }, { name: "team_brief", optional: true });
 
     api.registerTool(context => {
       if (!privateOwnerContext(context, api.config)) return null;
