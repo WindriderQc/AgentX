@@ -218,6 +218,7 @@ test('registration mounts the cockpit, GET proxy families and only the device ac
     ['patch /network/devices/:mac'], 'the only mutation is naming or acknowledging a network device');
   for (const route of [
     '/status', '/storage/summary', '/storage/files', '/network/devices',
+    '/hardware/collectors', '/hardware/latest', '/hardware/history', '/hardware/occupancy',
     '/databases/collections', '/live-data/feeds', '/janitor/profiles', '/janitor/dedup-report',
     '/janitor/profiles/:id/runs', '/janitor/runs/:id', '/janitor/strategy/latest', '/janitor/strategy/latest/raw'
   ]) assert.ok(routes.some((entry) => entry.path === route), `missing GET ${route}`);
@@ -280,7 +281,7 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
   const css = fs.readFileSync(path.join(root, 'app.css'), 'utf8');
-  for (const tab of ['overview', 'storage', 'files', 'network', 'databases', 'live-data', 'janitor']) {
+  for (const tab of ['overview', 'storage', 'files', 'network', 'gpu', 'databases', 'live-data', 'janitor']) {
     assert.match(html, new RegExp(`data-tab=["']${tab}["']`));
   }
   assert.match(html, /Filesystem-safe review console/);

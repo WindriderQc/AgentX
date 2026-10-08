@@ -5,7 +5,9 @@ telemetry, live feeds, database inspection, exports, events, integrations and
 supervised janitor operations. Source, tests and distribution belong to this repository.
 
 Core's full profile hosts `/data-toolbox`, a read-only UI backed by Data HTTP
-APIs. The original mutation APIs remain inside Data with their existing domain
+APIs. Its tabs are Overview, Storage, Files, Network, GPU, Databases, Live Data
+and Janitor; the GPU tab reads the four `GET /api/v1/hardware` routes described
+below. The original mutation APIs remain inside Data with their existing domain
 checks. Mount shared storage read-only unless a specific maintenance operation
 requires an explicitly approved writable mount. No disk mount is shipped by default.
 

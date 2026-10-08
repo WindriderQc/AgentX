@@ -410,6 +410,19 @@ function register(api) {
   });
   router.get('/hardware/collectors', relay(() => '/api/v1/hardware/collectors'));
   router.get('/hardware/latest', relay(() => '/api/v1/hardware/latest', { hostId: { maxLength: 128 } }));
+  // Data's own bounds: at most 2 000 samples per read, a non-negative GPU index,
+  // a busy threshold in (0, 100]. Data validates the dates and the host id.
+  router.get('/hardware/history', relay(() => '/api/v1/hardware/history', {
+    hostId: { maxLength: 128 },
+    gpuIndex: { type: 'int', fallback: 0, min: 0, max: 255 },
+    from: { maxLength: 80 }, to: { maxLength: 80 },
+    limit: { type: 'int', fallback: 500, min: 1, max: 2000 }
+  }));
+  router.get('/hardware/occupancy', relay(() => '/api/v1/hardware/occupancy', {
+    hostId: { maxLength: 128 },
+    from: { maxLength: 80 }, to: { maxLength: 80 },
+    busyAtPct: { type: 'int', fallback: 10, min: 1, max: 100 }
+  }));
 
   router.get('/live-data/feeds', relay(() => '/api/v1/livedata/feeds'));
   router.get('/live-data/state', relay(() => '/api/v1/livedata/state'));

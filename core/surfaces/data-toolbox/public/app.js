@@ -11,7 +11,8 @@ const state = {
   janitorReportGeneratedAt: null,
   janitorReviewLoadedFor: null,
   janitorReviewLoaded: false,
-  janitorReviewDraftFrom: null
+  janitorReviewDraftFrom: null,
+  renderSeq: 0
 };
 const JANITOR_CURRENT_RUN_MS = 24 * 60 * 60 * 1000;
 const JANITOR_REVIEW_STORAGE_KEY = 'agentx.data-toolbox.janitor-review-draft.v1';
@@ -838,17 +839,21 @@ async function janitor() {
 }
 
 const renderers = { overview, storage, files, network, databases, 'live-data': liveData, janitor };
+// The GPU tab lives in gpu.js, which the page loads before this file.
+if (typeof gpu === 'function') renderers.gpu = gpu;
 
 async function render(force = false) {
   const tab = location.hash.slice(1) || 'overview';
   state.tab = renderers[tab] ? tab : 'overview';
+  // A render that is no longer the latest one must not report on the page.
+  const seq = ++state.renderSeq;
   document.querySelectorAll('[data-tab]').forEach((link) => link.classList.toggle('active', link.dataset.tab === state.tab));
   loading();
   try {
     if (force) state.status = null;
     await renderers[state.tab]();
-    updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
-  } catch (error) { errorView(error); }
+    if (seq === state.renderSeq) updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
+  } catch (error) { if (seq === state.renderSeq) errorView(error); }
 }
 
 document.addEventListener('click', async (event) => {
