@@ -78,8 +78,17 @@ one draft PR and reuses it on subsequent handoffs.
 Packages are installed before the worker starts, in a second sandbox that has
 the network and no worker. Install scripts are skipped (`--ignore-scripts`) and
 the test database is prepared with the runner's own script, so nothing the
-worker wrote runs while the network is open. The step is skipped while the
-package files are unchanged.
+worker wrote runs while the network is open. Preparation is cached against the
+package files and the validated Node/npm distribution, including Node version
+and ABI and hashes of the Node executable and npm's bundled files and symlink
+targets within the mounted distribution. External system libraries and global
+Node modules are outside this artifact identity; use a self-contained Node/npm
+distribution for dependency preparation. A runtime
+change invalidates the cache; old package-only markers require preparation.
+Network-free probes validate the selected distribution before a cache hit or
+installation. Node and npm are called explicitly from that distribution, with
+no fallback. Failed preparation or runtime drift cannot publish a valid marker.
+The worker's package-change guard remains separate from this preparation key.
 
 A worker that needs a new package adds it to `package.json` and stops. The
 runner then leaves the ticket `blocked`, with the change on the local branch and
@@ -103,6 +112,9 @@ live outside Git, by default in `~/.config/agentx/coding.env`
 - `AGENTX_CODING_REPOSITORY`, `AGENTX_CODING_BASE_BRANCH`: default
   `WindriderQc/AgentX` and `main`.
 - `AGENTX_CORE_URL`: default loopback port 3180.
+- `AGENTX_NODE_BIN`: optional path to the Node executable in a complete Node/npm
+  distribution. It is selected before the runner imports; the same distribution
+  is mounted read-only in both sandboxes. Invalid selections block preparation.
 
 `--timeout-seconds` changes the soft budget; the hard ceiling is twice that
 value. Continuous
