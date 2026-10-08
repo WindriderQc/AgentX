@@ -359,15 +359,24 @@ async function storage() {
     <div class="grid two">${agents.length ? agents.map((agent) => collectorCard(agent, 'storage')).join('') : '<div class="empty">No storage collectors registered.</div>'}</div>
     ${heading('Recent scan receipts', 'Existing scan state only.')}
     <div class="table-wrap"><table><thead><tr><th>Scan</th><th>Root / source</th><th>Status</th><th>Files</th><th>Started</th></tr></thead><tbody>
-      ${scans.length ? scans.map((scan) => `<tr><td class="mono">${e(scan.scan_id || scan.scanId || scan._id)}</td><td class="mono">${e(scan.root || scan.source || scan.hostname)}</td><td>${statusPill(['completed','done','success'].includes(scan.status), scan.status, scan.status)}</td><td>${number(scan.file_count ?? scan.fileCount ?? scan.files)}</td><td>${date(scan.started_at || scan.startedAt || scan.created_at)}</td></tr>`).join('') : noRows(5)}
+      ${scans.length ? scans.map((scan) => `<tr><td class="mono">${e(scan.scan_id || scan.scanId || scan._id)}</td><td class="mono">${e(scanSource(scan))}</td><td>${statusPill(['complete','completed','done','success'].includes(scan.status), scan.status, scan.status)}</td><td>${number(scan.counts?.files_seen ?? scan.counts?.files_processed ?? scan.file_count ?? scan.fileCount ?? scan.files)}</td><td>${date(scan.started_at || scan.startedAt || scan.created_at)}</td></tr>`).join('') : noRows(5)}
     </tbody></table></div>`;
 }
+
+// Data keeps a scan's source and roots under `config` and its totals under `counts`.
+function scanSource(scan) {
+  const roots = array(scan.config?.roots).join(', ');
+  return scan.config?.source ? [scan.config.source, roots].filter(Boolean).join(' · ') : roots || scan.root || scan.source || scan.hostname;
+}
+
+// The category names Data classifies files into (data/utils/categories.js).
+const FILE_CATEGORIES = ['document', 'media', 'archive', 'code', 'config', 'playlist', 'checksum', 'media_project', 'log', 'firmware', 'resource', 'certificate', 'backup', 'shortcut', 'engineering', 'model', 'disk_image', 'three_d', 'binary', 'data', 'database', 'game', 'font', 'localization', 'repository', 'cache', 'unclassified'];
 
 function fileToolbar() {
   return `<form id="fileFilters" class="toolbar">
     <input name="search" placeholder="Filename contains…" aria-label="Filename search">
     <input name="root" placeholder="Root path scope…" aria-label="Root path">
-    <select name="category" aria-label="File category"><option value="">All categories</option><option>document</option><option>image</option><option>video</option><option>audio</option><option>archive</option><option>code</option><option>unclassified</option></select>
+    <select name="category" aria-label="File category"><option value="">All categories</option>${FILE_CATEGORIES.map((category) => `<option>${e(category)}</option>`).join('')}</select>
     <button class="button">Apply filters</button>
   </form>`;
 }
@@ -376,7 +385,15 @@ async function files(params = new URLSearchParams(state.filesQuery)) {
   state.filesQuery = params.toString();
   params.set('limit', '50');
   params.set('page', String(state.filesPage));
-  const result = await api(`/storage/files?${params}`);
+  let result;
+  try { result = await api(`/storage/files?${params}`); }
+  catch (error) {
+    // Keep the filter form so a refused query can be corrected in place.
+    content.innerHTML = `${heading('File inventory', 'Bounded, read-only file metadata from the latest storage evidence.')}${fileToolbar()}
+      <div class="notice">These filters could not be applied: ${e(error.message)}</div>`;
+    restoreFileFilters(params);
+    return;
+  }
   const files = array(result.files);
   const paging = result.pagination || {};
   content.innerHTML = `${heading('File inventory', 'Bounded, read-only file metadata from the latest storage evidence.')}${fileToolbar()}
@@ -389,6 +406,10 @@ async function files(params = new URLSearchParams(state.filesQuery)) {
       <button class="button" data-action="files-previous" ${state.filesPage <= 1 ? 'disabled' : ''}>Previous page</button>
       <button class="button" data-action="files-next" ${state.filesPage >= (paging.pages || 1) ? 'disabled' : ''}>Next page</button>
     </nav>`;
+  restoreFileFilters(params);
+}
+
+function restoreFileFilters(params) {
   const form = document.querySelector('#fileFilters');
   for (const [key, value] of params) if (form.elements[key] && !['limit','page'].includes(key)) form.elements[key].value = value;
 }
@@ -431,7 +452,7 @@ async function network() {
       ${metric(summary ? number(summary.recent) : '—', 'recently seen')}
       ${metric(summary ? number(summary.historical + summary.never_confirmed) : '—', 'historical / never confirmed')}
       ${metric(`${agents.filter((agent) => agent.active === true).length}/${agents.length}`, 'active / registered collectors')}
-      ${metric(capability.nmap?.available || capability.nmapAvailable ? 'ready' : 'bounded', 'native scan capability')}
+      ${metric(capability.nmap === true || capability.nmap?.available || capability.nmapAvailable || agents.some((agent) => agent.active === true && agent.capabilities?.nmap) ? 'ready' : 'bounded', 'native scan capability')}
     </div>
     <p class="muted" id="networkObservationRules">${e(referenceLine)}</p>
     ${heading('Where network collection runs', 'Current supervisors are explicit. An inactive unmapped row is retained history, not a configured runtime.')}
@@ -703,7 +724,8 @@ async function janitor() {
   const reviewCounts = janitorReviewCounts();
   const actions = `<div class="actions"><a class="button" href="/api/data-toolbox/janitor/strategy/latest/raw" target="_blank" rel="noopener">Open full JSON</a><a class="button" href="/api/data-toolbox/janitor/strategy/latest/raw" download="shared-drive-janitor-latest.json">Download full JSON</a><button class="button" data-action="refresh">Refresh</button></div>`;
   content.innerHTML = `${heading('Shared-drive Janitor', `Portfolio report ${report.status || 'unavailable'} · generated ${date(report.generatedAt)}.`, actions)}
-    <div class="notice success"><strong>Portfolio evidence ready for policy review.</strong> This is not an executable deletion plan. Exact candidates come from a current profile run and still require a separate SHA-256 preview; this dashboard is read-only.</div>
+    ${report.available === false ? '<div class="notice"><strong>No strategy report yet.</strong> The scheduled shared-drive assessment generates it; profiles and their latest runs are listed below.</div>' : ''}
+    <div class="notice success"${report.available === false ? ' hidden' : ''}><strong>Portfolio evidence ready for policy review.</strong> This is not an executable deletion plan. Exact candidates come from a current profile run and still require a separate SHA-256 preview; this dashboard is read-only.</div>
     ${heading('Execution boundary', 'Pinned near the top so the current safety state is always easy to verify.')}
     <div class="grid">
       ${metric(number(report.safety?.sharedDriveMutations), 'shared-drive mutations')}
