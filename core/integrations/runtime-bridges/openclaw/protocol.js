@@ -154,6 +154,15 @@ function registerOpenClawProtocol({
       const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
       const conversationTarget = !pipeline && await resolveConversationTarget?.(String(body.model || '').trim());
       if (!conversationTarget) enforceEffectiveModel(snapshot, effectiveBody);
+      // One model serves several uses; each declares its own reasoning in the
+      // headers of its gateway provider (`x-agentx-think: off` for a spoken lane).
+      const declared = String(req.get('x-agentx-think') || '').trim().toLowerCase();
+      if (declared && !['on', 'off'].includes(declared)) {
+        const error = new Error('x-agentx-think must be on or off');
+        error.statusCode = 400;
+        error.code = 'OPENCLAW_THINK_HEADER_INVALID';
+        throw error;
+      }
       const options = { ...(effectiveBody.options || {}) };
       delete options.num_ctx;
       delete options.attribution;
@@ -163,8 +172,10 @@ function registerOpenClawProtocol({
         stream: effectiveBody.stream === true,
         options,
         keepAlive: effectiveBody.keep_alive,
-        // The operator's no-reasoning list wins over the level the agent asked for.
-        think: !pipeline && noThinkModels.has(String(body.model || '').trim()) ? false : effectiveBody.think,
+        // What the lane declared wins, then the operator's no-reasoning list,
+        // over the level the agent asked for. Pipeline turns keep their level.
+        think: pipeline ? effectiveBody.think : declared ? declared === 'on'
+          : noThinkModels.has(String(body.model || '').trim()) ? false : effectiveBody.think,
         format: effectiveBody.format,
         tools: effectiveBody.tools,
         ...(conversationTarget && { exclusiveHost: conversationTarget.exclusiveHost !== false }),

@@ -537,6 +537,30 @@ test('a conversation model on the no-reasoning list answers without thinking, ot
   assert.equal(await turn('model-a', undefined), undefined);
 });
 
+test('a lane declares its own reasoning for a model other lanes use with theirs', async () => {
+  let captured;
+  const router = registerOpenClawProtocol({ express: fakeExpress(), logger: {},
+    noThinkModels: parseNoThinkModels('model-a'),
+    runtimeServices: runtimeServices(async (request) => {
+      captured = request;
+      return { ok: true, status: 200, body: { done: true }, metadata: {} };
+    }) });
+  const turn = async (headers, think, model = 'model-a') => {
+    const res = new Response();
+    captured = null;
+    await route(router, 'post', '/api/chat').handlers[0](new Request({ headers, body: { model, stream: false,
+      ...(think !== undefined && { think }), messages: [{ role: 'user', content: 'hello' }] } }), res);
+    return { status: res.statusCode, think: captured?.think };
+  };
+  assert.deepEqual(await turn({ 'x-agentx-think': 'off' }, 'high'), { status: 200, think: false });
+  assert.deepEqual(await turn({ 'x-agentx-think': ' OFF ' }, undefined), { status: 200, think: false });
+  assert.deepEqual(await turn({}, 'high'), { status: 200, think: false }, 'without a declaration the list still decides');
+  assert.deepEqual(await turn({ 'x-agentx-think': 'on' }, undefined), { status: 200, think: true }, 'the lane wins over the list');
+  const refused = await turn({ 'x-agentx-think': 'maybe' }, 'high');
+  assert.equal(refused.status, 400);
+  assert.equal(refused.think, undefined, 'an unreadable declaration never reaches inference');
+});
+
 test('the no-reasoning list rejects malformed entries', () => {
   assert.equal(parseNoThinkModels('').size, 0);
   assert.deepEqual([...parseNoThinkModels('a:1b,, b ')], ['a:1b', 'b']);
