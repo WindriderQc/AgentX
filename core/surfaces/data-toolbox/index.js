@@ -433,7 +433,10 @@ function register(api) {
     page: { type: 'int', fallback: 1, min: 1, max: 100000 }, limit: { type: 'int', fallback: 20, min: 1, max: 100 }
   }));
   router.get('/janitor/runs/:id', relay((req) => `/api/v1/janitor/profiles/runs/${safeName(req.params.id, 'run id')}`));
-  router.get('/janitor/dedup-report', relay(() => '/api/v1/janitor/dedup-report'));
+  router.get('/janitor/dedup-report', relay(() => '/api/v1/janitor/dedup-report', {
+    group_offset: { type: 'int', fallback: 0, min: 0, max: Number.MAX_SAFE_INTEGER },
+    group_limit: { type: 'int', fallback: 100, min: 1, max: 1000 }
+  }));
   router.get('/janitor/policies', relay(() => '/api/v1/janitor/policies'));
   router.get('/janitor/strategy/latest', async (_req, res) => {
     try {

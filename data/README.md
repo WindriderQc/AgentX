@@ -50,6 +50,20 @@ upstream error) reports the reason as `lastError` in `GET /api/v1/livedata/feeds
 ISS and pressure points and feeds the `sensors` feed from the topics in
 `LIVEDATA_MQTT_TOPICS`; unset, MQTT is skipped.
 
+A duplicate report keeps its summary in `dedup_reports` and its groups in
+chunked `dedup_report_details` documents, so a large inventory cannot exceed
+MongoDB's 16 MB document limit. `GET /api/v1/janitor/dedup-report` returns one
+page of `groups`, largest first: `group_offset` (default 0) and `group_limit`
+(default 100, at most 1 000), with `groups_page` giving `offset`, `limit`,
+`returned` and `total`. Zero-byte files are never grouped as duplicates. A
+profile run stores at most 2 000 proposed actions (and 8 MiB of them) in its
+`janitor_runs` document; the rest is counted in `proposed_actions_omitted` and
+only appears in a later run, once the stored duplicates have been removed. `GET /api/v1/storage/files/duplicates` bounds
+`limit` to 1–500. Queued network scan requests expire one day after they were
+requested (TTL index). New indexes on `nas_files`, `livedata_points`,
+`dedup_report_details` and `network_scan_requests` are built at the first start
+after an upgrade.
+
 Native collectors live in `integrations/data-collectors`. Set `DATA_URL`,
 `SCAN_CIDR` (network) and `STORAGE_SOURCES_JSON` (storage) in external instance
 configuration. Storage sources map explicit host roots to stable canonical paths,

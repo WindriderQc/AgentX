@@ -297,7 +297,7 @@ class FileBrowserController {
     try {
       const db = req.app.locals.db;
       const files = db.collection('nas_files');
-      const limit = parseInt(req.query.limit) || 100;
+      const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
       const method = req.query.method || 'auto';
       const root = String(req.query.root || '').trim();
       const scope = pathScope(root);

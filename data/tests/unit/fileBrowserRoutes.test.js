@@ -284,6 +284,15 @@ describe('File Browser Routes', () => {
       expect(res.body.data.duplicates).toBeDefined();
     });
 
+    test('bounds the limit: a negative, zero or huge value never reaches the pipeline', async () => {
+      for (const [given, expected] of [['-5', 1], ['0', 100], ['abc', 100], ['999999', 500], ['25', 25]]) {
+        const app = buildApp({ count: 0, aggregate: [] });
+        await request(app).get(`/api/v1/storage/files/duplicates?limit=${given}`).expect(200);
+        const pipeline = app.locals.db.collection('nas_files').aggregate.mock.calls.at(-1)[0];
+        expect(pipeline.at(-1)).toEqual({ $limit: expected });
+      }
+    });
+
     test('forces hash method with method=hash', async () => {
       const res = await request(buildApp({ count: 100, aggregate: [] }))
         .get('/api/v1/storage/files/duplicates?method=hash')
