@@ -237,6 +237,24 @@
       stateEl.textContent = `Task ${control.inference.pipelineId} · ${inferenceSummary(control.inference)}`;
       detail.textContent = `Task attempt ${control.inference.attempt} · ${control.inference.requestCount} model call(s). Inference retries keep this attempt and never replay worker tools.`;
     }
+    const progress = run?.progress;
+    if (progress && !controller?.error && !controller?.checking && control.available) {
+      const stages = { preparing: 'Preparing workspace', dependencies: 'Installing dependencies', model_wait: 'Waiting for model capacity or response',
+        model_generation: 'Model generating', tool: 'Worker tool running', test: 'Tests running', checkpoint: 'Saving checkpoint', publishing: 'Publishing draft PR' };
+      const results = { blocked: 'Blocked', review: 'Draft PR ready for review', local_only: 'Local work awaits publication' };
+      const seconds = value => Number.isSafeInteger(value) && value >= 0 ? `${Math.ceil(value / 60)} min` : 'unknown';
+      const time = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? formatDate(value) : 'unknown';
+      const testNames = { pytest: 'pytest', unittest: 'unittest', jest: 'Jest', npm_test: 'npm test', node_test: 'Node tests' };
+      const outcomes = { passed: 'passed', failed: 'failed', unknown: 'unknown' };
+      const test = progress.lastTest;
+      stateEl.dataset.tone = progress.result === 'blocked' || run.phase === 'unknown' ? 'attention' : control.busy ? 'loading' : 'ready';
+      stateEl.textContent = `Task ${run.pipelineId} · ${run.phase === 'unknown' ? 'Host outcome unknown' : results[progress.result] || stages[progress.stage] || 'Progress unknown'}`;
+      detail.textContent = `Host heartbeat: ${time(progress.heartbeatAt)} · Last useful progress: ${time(progress.progressAt)} · Soft budget: ${seconds(progress.softRemainingSeconds)} · Hard budget: ${seconds(progress.hardRemainingSeconds)}`
+        + (testNames[progress.currentTest] ? ` · Running: ${testNames[progress.currentTest]}` : '')
+        + (test && testNames[test.name] ? ` · Last test: ${testNames[test.name]} ${outcomes[test.outcome] || 'unknown'}` : '')
+        + (typeof progress.stopReason === 'string' && /^[a-z_]{1,40}$/.test(progress.stopReason) ? ` · Stop: ${progress.stopReason.replaceAll('_', ' ')}` : '')
+        + (typeof progress.checkpoint === 'string' && /^[a-f0-9]{40}$/.test(progress.checkpoint) ? ` · Local checkpoint: ${progress.checkpoint.slice(0, 12)}` : '');
+    }
     const result = $('pipelineTeamLaunchResult');
     if (result) {
       result.hidden = !run && !pending;

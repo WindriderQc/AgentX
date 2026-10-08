@@ -29,7 +29,7 @@ class CodingRunTest(unittest.TestCase):
         self.feedback = mock.Mock()
         for name, value in (("WORKSPACES", Path(root.name)), ("MODEL", "fixture-model"),
                             ("feedback", self.feedback), ("request", self.request),
-                            ("install_dependencies", lambda workspace: None)):
+                            ("install_dependencies", lambda workspace, progress=None: None)):
             patch = mock.patch.object(runner, name, value)
             patch.start()
             self.addCleanup(patch.stop)
@@ -40,7 +40,7 @@ class CodingRunTest(unittest.TestCase):
     def request(self, url, body=None, token=""):
         return {"data": {"task": self.task}} if "/worker?" in url else {}
 
-    def worker(self, workspace, prompt, timeout):
+    def worker(self, workspace, prompt, timeout, progress=None):
         self.prompt = prompt
         (workspace / "result.txt").write_text("Synthetic result\n")
         return subprocess.CompletedProcess([], self.exit_code, stdout="Ran fixture verification.", stderr="")
@@ -68,6 +68,55 @@ class CodingRunTest(unittest.TestCase):
         publish.assert_not_called()
         self.assertEqual(runner.git(self.workspace, "status", "--porcelain"), "")
         self.assertTrue((self.workspace / "result.txt").exists())
+
+    def test_failed_observed_test_keeps_a_successful_worker_turn_local(self):
+        self.exit_code = 0
+        def worker(workspace, prompt, timeout, progress):
+            progress.last_test = {"name": "jest", "outcome": "failed"}
+            return self.worker(workspace, prompt, timeout, progress)
+        with mock.patch.object(runner, "run_worker", worker), \
+                mock.patch.object(runner, "push_and_open_pr") as publish, mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        publish.assert_not_called()
+        self.assertEqual(self.feedback.call_args.args[-1], "blocked")
+
+    def test_a_controlled_stop_cannot_publish_even_if_the_child_returns_zero(self):
+        self.exit_code = 0
+        def worker(workspace, prompt, timeout, progress):
+            progress.stop_reason = "hard_budget"
+            return self.worker(workspace, prompt, timeout, progress)
+        with mock.patch.object(runner, "run_worker", worker), \
+                mock.patch.object(runner, "push_and_open_pr") as publish, mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        publish.assert_not_called()
+
+    def test_nonzero_exit_is_not_retried_and_terminal_receipt_keeps_checkpoint(self):
+        self.exit_code = 7
+        key = "11111111-2222-4333-8444-555555555555"
+        import json
+        with mock.patch.object(sys, "argv", ["coding_run", "0001", "--request-id", key]), \
+                mock.patch.object(runner, "RECEIPTS", self.workspace.parent / "receipts"), \
+                mock.patch.object(runner, "run_worker", side_effect=self.worker) as worker, \
+                mock.patch.object(runner, "push_and_open_pr") as publish, mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        self.assertEqual(worker.call_count, 1)
+        publish.assert_not_called()
+        value = json.loads((self.workspace.parent / "receipts" / f"{key}.progress.json").read_text())
+        self.assertEqual((value["phase"], value["result"], value["stopReason"]), ("finished", "blocked", "worker_exit"))
+        self.assertEqual(value["checkpoint"], runner.git(self.workspace, "rev-parse", "HEAD"))
+
+    def test_checkpoint_excludes_generated_caches_and_transcripts(self):
+        self.exit_code = 124
+        def worker(workspace, prompt, timeout, progress):
+            for name in [".lab/probe.txt", ".npmcache/cache", "nested/session.jsonl", "core/result.js"]:
+                path = workspace / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("Synthetic fixture")
+            return subprocess.CompletedProcess([], 124, stdout="", stderr="")
+        with mock.patch.object(runner, "run_worker", worker), mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        self.assertEqual(runner.git(self.workspace, "diff", "--name-only", "HEAD^", "HEAD"), "core/result.js")
+        self.assertTrue((self.workspace / ".lab/probe.txt").exists())
 
     def test_no_change_is_blocked_without_publishing(self):
         run = subprocess.CompletedProcess([], 0, stdout="No change needed.", stderr="")
@@ -103,7 +152,7 @@ class CodingRunTest(unittest.TestCase):
     def test_changed_package_files_wait_for_the_owner_instead_of_a_pr(self):
         self.exit_code = 0
 
-        def worker(workspace, prompt, timeout):
+        def worker(workspace, prompt, timeout, progress=None):
             (workspace / "core").mkdir()
             (workspace / "core/package.json").write_text('{"dependencies":{"left-pad":"1.3.0"}}\n')
             return subprocess.CompletedProcess([], 0, stdout="Needs left-pad installed.", stderr="")
@@ -183,6 +232,32 @@ print(json.dumps({
             "chat": [200, '{"choices":[{"message":{"content":"pong"}}]}'],
             "other_path": 403, "other_method": 403, "host_service": "unreachable"}, run.stderr)
         self.assertEqual(self.seen, [("/v1/chat/completions", b'{"messages":[]}')])
+
+    def test_stopping_the_relay_closes_a_request_waiting_for_model_headers(self):
+        import socket
+        import threading
+        waiting, closed = threading.Event(), threading.Event()
+        listener = socket.create_server(("127.0.0.1", 0))
+        self.addCleanup(listener.close)
+        def upstream():
+            connection, _ = listener.accept()
+            with connection:
+                connection.settimeout(3)
+                connection.recv(65536)
+                waiting.set()
+                while connection.recv(65536):
+                    pass
+                closed.set()
+        threading.Thread(target=upstream, daemon=True).start()
+        path = str(self.home / "cancel.sock")
+        relay = runner.model_relay.serve(path, f"http://127.0.0.1:{listener.getsockname()[1]}/v1")
+        self.addCleanup(relay.server_close)
+        with socket.socket(socket.AF_UNIX) as client:
+            client.connect(path)
+            client.sendall(b"POST /v1/chat/completions HTTP/1.0\r\nContent-Length: 2\r\n\r\n{}")
+            self.assertTrue(waiting.wait(2))
+            relay.shutdown()
+            self.assertTrue(closed.wait(2), "Core's model request must close when its worker stops")
 
 
 if __name__ == "__main__":

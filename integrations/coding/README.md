@@ -21,8 +21,9 @@ AGENTX_CODING_MODEL=<model Core serves> GH_TOKEN=<token> \
 dependencies of `core`, `benchmark`, `rag` and `data` and prepares the test
 database, then starts DSH there inside Bubblewrap with the ticket, its
 discussion and its Planning context. The worker has a shell: it reads and edits
-any file of the clone and runs the tests. When it stops, the runner commits what
-changed, pushes the branch, opens the draft pull request and records the result
+any file of the clone and runs the tests. When it stops, the runner commits the
+source changes, excluding generated caches and session transcripts. A completed
+turn pushes the branch, opens the draft pull request and records the result
 on the ticket (`review`, or `blocked` when nothing changed or the worker stopped
 early). Running the same task again continues in its existing workspace, so an
 answer on the ticket becomes a follow-up.
@@ -41,8 +42,33 @@ The runner uses four protections:
   push; the runner only pushes the task branch and opens a draft pull request.
 - Core admits each inference with the rest of the household's traffic. The relay
   targets the patient route (`/api/hermes-openai/patient/v1`), which waits up to
-  eight minutes for a busy host instead of refusing. If the worker still stops,
-  the runner waits two minutes and continues in the same workspace.
+  eight minutes for a busy host instead of refusing. A nonzero exit or a budget
+  stop ends the attempt without an automatic retry. An explicit handoff can
+  resume its local source checkpoint.
+
+## Progress and stop decisions
+
+The runner writes a private progress receipt for each launch request. Pipeline
+shows the lifecycle and current stage, heartbeat, last useful progress, soft
+and hard budgets, current/last test outcome, stop reason and source checkpoint.
+It exposes no prompts, command lines, session transcripts or raw tool output.
+An inactive host unit without a terminal receipt remains `unknown`; it is not
+evidence that the task completed.
+
+A run has a two-hour soft budget by default. New source content or a new test
+result against that content can extend it by 30 minutes, up to a four-hour
+hard ceiling. Cache churn, touching files, repeated source states, repeated
+identical test outcomes and model activity do not extend it. The runner also
+bounds model requests (128), model waiting (22 minutes), generation (30 minutes),
+tools (15 minutes) and tests (40 minutes), with a 45-minute useful-progress
+limit outside model waiting and tests. Heartbeats continue during those waits.
+
+On a controlled stop, the child process group and its in-flight model relay are
+closed, source changes are committed locally and the task is blocked. A failed
+or unknown last observed test, changed dependency files, or a previous checkpoint
+containing generated runtime artifacts prevents publication. An abrupt host
+failure stays unknown for an operator to reconcile. Successful delivery opens
+one draft PR and reuses it on subsequent handoffs.
 
 ## Dependencies
 
@@ -59,7 +85,8 @@ next run installs the package and the worker continues. That install step still
 has the whole network, including the host's own services; it runs registry
 packages without their scripts, never the worker.
 
-There is no file allowlist, plan approval, attempt budget or separate verifier.
+The worker can edit the whole source tree. CI and human review remain the
+verification gate for its draft pull request.
 
 ## Settings
 
@@ -74,7 +101,8 @@ live outside Git, by default in `~/.config/agentx/coding.env`
   `WindriderQc/AgentX` and `main`.
 - `AGENTX_CORE_URL`: default loopback port 3180.
 
-A run has two hours by default; `--timeout-seconds` changes it. Continuous
+`--timeout-seconds` changes the soft budget; the hard ceiling is twice that
+value. Continuous
 integration tests the worker's draft pull requests like ready ones, because
 its branches are named `agentx/coding-task-<id>`.
 

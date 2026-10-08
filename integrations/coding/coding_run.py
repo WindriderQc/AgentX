@@ -20,8 +20,10 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -38,7 +40,7 @@ DSH_ROOT = Path(os.environ.get("AGENTX_DSH_ROOT", str(Path.home() / "dsh")))
 NODE_ROOT = Path(os.environ.get("AGENTX_NODE_BIN") or shutil.which("node") or "/usr/local/bin/node").resolve().parents[1]
 TASK_ID = re.compile(r"^[0-9]{4}$")
 WORKER = "coding-team"
-RETRY_WAIT_SECONDS = 120
+RECEIPTS = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "agentx/coding-run-requests"
 RELAY_PORT = 8377
 PACKAGE_DIRS = ("core", "benchmark", "rag", "data")
 INSTALL_TIMEOUT_SECONDS = 1800
@@ -46,11 +48,19 @@ INSTALL_TIMEOUT_SECONDS = 1800
 _spec = importlib.util.spec_from_file_location("model_relay", HERE / "model_relay.py")
 model_relay = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(model_relay)
+_spec = importlib.util.spec_from_file_location("coding_progress", HERE / "coding_progress.py")
+coding_progress = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_progress)
 AUTHOR = ["-c", "user.name=AgentX Coding Team", "-c", "user.email=coding-team@agentx.invalid"]
 
 PROMPT = """You are the AgentX coding worker. /workspace is a fresh clone of {repository}
 on branch {branch}. You have a shell: read the code, edit any file the task needs
 and run the relevant tests until they pass.
+
+Keep experiments, logs and caches in /tmp or your home, outside /workspace.
+Make the smallest complete change requested. A failed probe is evidence to
+investigate, not a reason to repeat the same experiment. Check git diff before
+finishing and report the test results, including failures.
 
 You have no network. The dependencies of core, benchmark, rag and data are already
 installed, and the test database is ready. Do not try to download anything. If the
@@ -148,7 +158,7 @@ def installed_state(workspace: Path) -> str:
     return marker.read_text().strip() if marker.is_file() else ""
 
 
-def install_dependencies(workspace: Path) -> None:
+def install_dependencies(workspace: Path, progress=None) -> None:
     """Install what the package files ask for, with network and without the worker.
 
     Package install scripts are skipped, and the test database is prepared with
@@ -168,22 +178,70 @@ def install_dependencies(workspace: Path) -> None:
         f"if [ -d {name}/node_modules/mongodb-memory-server ]; then (cd {name} && node /opt/prepareMongo.js); fi\n"
         for name in PACKAGE_DIRS)
     home = worker_home(workspace)
-    subprocess.run(sandbox(workspace, home, ["bash", "-c", script], network=True,
-                           timeout_seconds=INSTALL_TIMEOUT_SECONDS), check=True, text=True, capture_output=True)
+    if progress:
+        progress.set_stage("dependencies")
+    command = sandbox(workspace, home, ["bash", "-c", script], network=True,
+                      timeout_seconds=INSTALL_TIMEOUT_SECONDS)
+    run = supervise(command, progress)
+    if run.returncode:
+        raise subprocess.CalledProcessError(run.returncode, command, output=run.stdout, stderr=run.stderr)
     # npm install may have completed the lock file; that result is the installed state.
     (home / "dependencies.sha256").write_text(dependency_state(workspace) + "\n")
 
 
-def run_worker(workspace: Path, prompt: str, timeout_seconds: int) -> subprocess.CompletedProcess:
+def tail(path: Path, size: int = 6000) -> str:
+    with path.open("rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        stream.seek(max(0, stream.tell() - size))
+        return stream.read().decode(errors="replace")
+
+
+def supervise(command: list[str], progress=None, home=None, workspace=None) -> subprocess.CompletedProcess:
+    """Poll the child while retaining raw stdout/stderr outside the repository."""
+    with tempfile.TemporaryDirectory(prefix="agentx-coding-output-") as directory:
+        stdout, stderr = Path(directory) / "stdout", Path(directory) / "stderr"
+        with stdout.open("wb") as out, stderr.open("wb") as err:
+            process = subprocess.Popen(command, stdout=out, stderr=err, start_new_session=True)
+            try:
+                while process.poll() is None:
+                    if progress and progress.tick(home, workspace):
+                        terminate(process)
+                        break
+                    time.sleep(2)
+            finally:
+                if process.poll() is None:
+                    terminate(process)
+        if progress and home and workspace:
+            progress.observe(home, workspace)
+        return subprocess.CompletedProcess(command, process.wait(), tail(stdout), tail(stderr))
+
+
+def terminate(process):
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+
+
+def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None) -> subprocess.CompletedProcess:
     home = worker_home(workspace)
     (home / ".dsh").mkdir(exist_ok=True)
     (home / ".dsh/settings.yaml").write_text(SETTINGS.format(url=f"http://127.0.0.1:{RELAY_PORT}/v1", model=MODEL))
-    relay = model_relay.serve(str(home / "model.sock"), MODEL_URL)
+    if progress:
+        progress.baseline(home, workspace)
+        progress.set_stage("model_wait")
+    relay = model_relay.serve(str(home / "model.sock"), MODEL_URL,
+                             progress.model_events.put if progress else None)
     try:
-        return subprocess.run(sandbox(workspace, home, [
+        return supervise(sandbox(workspace, home, [
             "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
             "/opt/dsh/node_modules/.bin/dsh", "--profile", "headless", "--patch", "/opt/coding/guard.patch.yml", "--", prompt,
-        ], network=False, timeout_seconds=timeout_seconds), text=True, capture_output=True)
+        ], network=False, timeout_seconds=timeout_seconds), progress, home, workspace)
     finally:
         relay.shutdown()
         relay.server_close()
@@ -230,11 +288,30 @@ def main() -> int:
     parser.add_argument("task_id")
     # A local model needs well over an hour to read the code, fix and test a Core change.
     parser.add_argument("--timeout-seconds", type=int, default=7200)
+    parser.add_argument("--request-id", default="")
     args = parser.parse_args()
     if not TASK_ID.fullmatch(args.task_id):
         parser.error("task id is four digits")
     if not MODEL:
         parser.error("set AGENTX_CODING_MODEL to a model Core serves")
+    if args.request_id and not coding_progress.REQUEST_ID.fullmatch(args.request_id):
+        parser.error("request id must be a UUID")
+    if not 1 <= args.timeout_seconds <= 43200:
+        parser.error("timeout must be between 1 and 43200 seconds")
+
+    progress = coding_progress.Progress(args.task_id, args.request_id, args.timeout_seconds, receipts=RECEIPTS,
+        heartbeat=lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
+    try:
+        return execute(args, progress)
+    except Exception as error:
+        progress.finish("blocked", "runner_error", progress.checkpoint)
+        feedback(args.task_id, f"Coding runner failed ({type(error).__name__}). Inspect the local workspace and host unit; "
+                               "no automatic retry was started.", "blocked")
+        print(f"coding runner failed: {type(error).__name__}", file=sys.stderr)
+        return 1
+
+
+def execute(args, progress) -> int:
 
     # The claim makes the task visibly in progress and refuses a second worker.
     request(f"{CORE}/api/pipeline/tasks/{args.task_id}/claim", {"assignee": WORKER})
@@ -250,11 +327,13 @@ def main() -> int:
         git(workspace, "checkout", "--quiet", "-b", branch)
 
     try:
-        install_dependencies(workspace)
+        progress.tick()
+        install_dependencies(workspace, progress)
         installed = dependency_state(workspace)
     except subprocess.CalledProcessError as error:
         feedback(args.task_id, "Dependencies could not be installed before the worker started.\n\n"
                                f"{(error.stderr or error.stdout or '')[-3000:]}", "blocked")
+        progress.finish("blocked", "dependencies_failed")
         return 1
 
     discussion = "\n\n".join(f"{entry.get('by', 'someone')}: {entry.get('text', '')}"
@@ -262,28 +341,26 @@ def main() -> int:
     prompt = PROMPT.format(repository=REPOSITORY, branch=branch, task_id=args.task_id, title=task.get("title", ""),
                            spec=task.get("spec", ""), discussion=discussion or "(none)",
                            planning=(task.get("planningContext") or {}).get("text") or "(none)")
-    # The worker stops when Core refuses its inference, for example while another
-    # workload holds the model host. Wait and continue in the same workspace
-    # instead of giving the task up.
-    deadline = time.monotonic() + args.timeout_seconds
-    while True:
-        run = run_worker(workspace, prompt, max(60, int(deadline - time.monotonic())))
-        if run.returncode == 0 or deadline - time.monotonic() < RETRY_WAIT_SECONDS + 120:
-            break
-        print(f"worker stopped (exit {run.returncode}); continuing in {RETRY_WAIT_SECONDS}s", file=sys.stderr, flush=True)
-        time.sleep(RETRY_WAIT_SECONDS)
-        prompt = PROMPT.format(repository=REPOSITORY, branch=branch, task_id=args.task_id, title=task.get("title", ""),
-                               spec=task.get("spec", ""), discussion=discussion or "(none)",
-                               planning=(task.get("planningContext") or {}).get("text") or "(none)") + (
-            "\n# You were interrupted\n\nAn earlier run on this task stopped before finishing. Files it changed are "
-            f"still in /workspace: inspect `git status` and continue from there. Its last words:\n\n{run.stdout.strip()[-1500:]}\n")
+    # Core's patient route owns capacity waiting. A nonzero worker exit stops
+    # this attempt; a later explicit handoff continues its existing workspace.
+    progress.phase = "running"
+    run = run_worker(workspace, prompt, max(1, int(progress.hard_deadline - progress.now())), progress)
     summary = run.stdout.strip() or run.stderr.strip()[-2000:] or "(the worker printed nothing)"
 
-    git(workspace, "add", "-A")
-    if git(workspace, "status", "--porcelain"):
+    progress.phase = "delivering"
+    progress.set_stage("checkpoint")
+    # Generated session and cache files stay on disk for diagnosis, outside
+    # the product checkpoint and every eventual public branch.
+    exclusions = [f":(exclude,glob)**/{name}/**" for name in coding_progress.ARTIFACT_DIRS if name != ".git"]
+    git(workspace, "add", "-A", "--", ".", *exclusions,
+        ":(exclude)**/session.jsonl", ":(exclude)**/session.jsonl.zstd")
+    if git(workspace, "diff", "--cached", "--name-only"):
         git(workspace, *AUTHOR, "commit", "--quiet", "-m", f"{task.get('title', 'Coding task')} (task {args.task_id})")
+    progress.checkpoint = git(workspace, "rev-parse", "HEAD")
+    progress.write()
     if git(workspace, "rev-parse", "HEAD") == git(workspace, "rev-parse", f"origin/{BASE_BRANCH}"):
         feedback(args.task_id, f"Coding worker changed nothing (exit {run.returncode}).\n\n{summary[-4000:]}", "blocked")
+        progress.finish("blocked", progress.stop_reason or "no_changes", progress.checkpoint)
         print(summary)
         return 1
 
@@ -293,20 +370,35 @@ def main() -> int:
                                "finish. Review the change on local branch "
                                f"{branch} in {workspace}; hand the task back to the team to approve the "
                                f"installation and let it continue.\n\n{summary[-4000:]}", "blocked")
+        progress.finish("blocked", "dependencies_changed", progress.checkpoint)
         print(summary)
         return 1
-    if run.returncode != 0:
+    if run.returncode != 0 or progress.stop_reason:
         # Unfinished work stays on the local branch for the next run; it is not offered for review.
         feedback(args.task_id, f"Coding worker stopped before finishing (exit {run.returncode}). Its partial work is "
                                f"committed on local branch {branch} in {workspace}.\n\n{summary[-4000:]}", "blocked")
+        progress.finish("blocked", progress.stop_reason or "worker_exit", progress.checkpoint)
         print(summary)
         return 1
+    if progress.last_test and progress.last_test["outcome"] != "passed":
+        feedback(args.task_id, "The last observed test did not pass. The checkpoint stays local; "
+                               "correct the failure and rerun the tests before publishing.", "blocked")
+        progress.finish("blocked", "tests_failed", progress.checkpoint)
+        return 1
+    introduced = git(workspace, "diff", "--name-only", f"origin/{BASE_BRANCH}", "HEAD").splitlines()
+    if any(coding_progress.artifact(name) for name in introduced):
+        feedback(args.task_id, "The branch contains generated runtime artifacts from a previous checkpoint. "
+                               "Preserve that checkpoint privately and transfer the source patch to a clean branch.", "blocked")
+        progress.finish("blocked", "generated_artifacts", progress.checkpoint)
+        return 1
     token = os.environ.get("GH_TOKEN", "").strip()
+    progress.set_stage("publishing")
     if token:
         where = push_and_open_pr(workspace, branch, args.task_id, task.get("title", "Coding task"), summary, token)
     else:
         where = f"local branch {branch} in {workspace} (no GH_TOKEN: not pushed)"
-    feedback(args.task_id, f"Coding worker finished. Result: {where}\n\n{summary[-4000:]}", "done")
+    feedback(args.task_id, f"Coding worker finished. Result: {where}\n\n{summary[-4000:]}", "done" if token else "blocked")
+    progress.finish("review" if token else "local_only", checkpoint=progress.checkpoint)
     print(summary)
     print(where)
     return 0
