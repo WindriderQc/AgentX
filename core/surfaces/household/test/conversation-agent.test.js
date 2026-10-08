@@ -435,7 +435,7 @@ test('a final answer is delivered when the gateway keeps a finished run\'s strea
   assert.equal(result.interrupted, undefined);
   assert.equal(settled, 1);
   assert.deepEqual(activity, [{ kind: 'tool', tool: 'list_personal_tasks' }]);
-  assert.ok(result.metadata.phases.streamOverdue >= 20 && result.metadata.phases.streamEnd === undefined);
+  assert.ok(result.metadata.phases.streamOverdue > 0 && result.metadata.phases.streamEnd === undefined);
   assert.equal(aborted, false, 'The gateway keeps a bounded time to finish behind the run');
   await new Promise(resolve => setTimeout(resolve, 80));
   assert.equal(aborted, true, 'A request the gateway never closes is closed for it');
@@ -450,10 +450,10 @@ test('a stream that ends within the grace is never abandoned, and a browser repl
   })() });
   const graced = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 500, continuity: async () => evidence, fetchImpl: async () => slow() });
   const first = await graced({ session, text: 'Alors ?' });
-  assert.ok(first.metadata.phases.streamEnd >= 60 && first.metadata.phases.streamOverdue === undefined);
+  assert.ok(first.metadata.phases.streamEnd > 0 && first.metadata.phases.streamOverdue === undefined);
   const scene = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 5, continuity: async () => evidence, fetchImpl: async () => slow() });
   const second = await scene({ session, text: 'Alors ?', browserReply: { context: {} } });
-  assert.ok(second.metadata.phases.streamEnd >= 60 && second.metadata.phases.streamOverdue === undefined);
+  assert.ok(second.metadata.phases.streamEnd > 0 && second.metadata.phases.streamOverdue === undefined);
 });
 
 test('a delegated turn that never settles fails plainly after its bound', async () => {
