@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const net = require('node:net');
+const { limits } = require('./sizes');
 
 function localUrl(value) {
   const u = new URL(value);
@@ -27,7 +28,7 @@ function loadConfig() {
       if (!/^[a-zA-Z0-9_.-]+\.safetensors$/.test(p[key] || '')) throw new Error('Invalid image model filename');
     }
     if (!Number.isInteger(p.steps) || p.steps < 1 || p.steps > 50) throw new Error('Invalid image step count');
-    if (!Number.isInteger(p.maxPixels) || p.maxPixels < 262144 || p.maxPixels > 4194304) throw new Error('Invalid image pixel budget');
+    if (!Number.isInteger(p.maxPixels) || p.maxPixels < 262144 || p.maxPixels > limits(p.family).maxPixels) throw new Error('Invalid image pixel budget');
   }
   c.timeoutMs = Math.max(60000, Math.min(1800000, Number(c.timeoutMs) || 900000));
   c.drainMs = Math.max(0, Math.min(90000, Number(c.drainMs) || 60000));

@@ -9,6 +9,7 @@ const { loadConfig } = require('./config');
 const { createComfyClient } = require('./comfyClient');
 const { reserve } = require('./gpuReservation');
 const { workflow } = require('./workflows');
+const { qualified, MAX_OUTPUT_PIXELS } = require('./sizes');
 const logger = require('../../../config/logger');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
@@ -51,7 +52,7 @@ function validate(body, config) {
   const profile = config.profiles[id];
   if (!profile) throw fail('Profil image inconnu.');
   const width = Number(body.width || 1024), height = Number(body.height || 1024);
-  if (![width, height].every(x => Number.isInteger(x) && x >= 256 && x <= 2048 && x % 32 === 0) || width * height > profile.maxPixels) throw fail('Résolution non qualifiée pour ce profil.');
+  if (!qualified(profile, width, height)) throw fail('Résolution non qualifiée pour ce profil.');
   const seed = body.seed === undefined ? crypto.randomInt(0, 2 ** 48 - 1) : Number(body.seed);
   if (!Number.isSafeInteger(seed) || seed < 0) throw fail('Graine invalide.');
   if (body.references !== undefined && (!Array.isArray(body.references) || body.references.length > 2)) throw fail('Deux références au maximum.');
@@ -105,7 +106,7 @@ async function accept(body, { conversation, signal } = {}) {
 }
 async function archive(id, client, output) {
   const bytes = await client.read(output);
-  const decoded = decode(bytes, 4194304);
+  const decoded = decode(bytes, MAX_OUTPUT_PIXELS);
   const receipt = await defaultArchive().store({ bytes, name: `${id}.png`, origin: 'generated', context: {} });
   if (!receipt) throw new Error('Image archive is disabled');
   return { ...receipt, width: decoded.width, height: decoded.height };

@@ -13,6 +13,10 @@ test('the overview reports declared models, steps and limits without leaking the
   const view = describe(config);
   expect(view.worker).toMatchObject({ label: 'Workshop PC', gpu: 'Configured GPU', source: 'current-worker-configuration' });
   expect(view.profiles[0]).toMatchObject({ diffusion: 'model_int8.safetensors', steps: 25, maxPixels: 4194304, editingFraming: 'first-reference' });
+  expect(view.profiles[0]).toMatchObject({ maxEdge: 2752, sizes: [{ ratio: '1:1', width: 2048, height: 2048 }] });
+  expect(view.dimensions).toEqual({ minEdge: 256, maxEdge: 2752, multiple: 32 });
+  expect(describe({ ...config, profiles: { quality: { ...profile, maxPixels: 4300800 } } }).profiles[0].sizes).toHaveLength(7);
+  expect(describe({ ...config, profiles: { quick: { ...profile, family: 'klein' } } })).toMatchObject({ profiles: [{ sizes: null, maxEdge: 2048 }], dimensions: { maxEdge: 2048 } });
   expect(JSON.stringify(view)).not.toContain('never-return'); expect(view.ollamaHosts).toBeUndefined();
   expect(describe(null)).toMatchObject({ worker: null, profiles: [] });
 });

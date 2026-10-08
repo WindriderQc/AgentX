@@ -14,6 +14,8 @@
   const duration = ms => { const seconds = Math.round(ms / 1000); return seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`; };
   const locked = () => pendingSubmit || ACTIVE.includes(operation?.state) || operation?.state === 'unknown';
   const currentRecipe = () => workshop?.profiles.find(p => p.id === $('image-profile').value) || config?.profiles.find(p => p.id === $('image-profile').value);
+  const genericSizes = [...$('image-size').options].map(option => [option.value, option.textContent]);
+  const shape = (w, h) => w === h ? 'Carré' : w > h ? 'Paysage' : 'Portrait';
   const referenceCount = () => (selectedReference ? 1 : 0) + $('image-references').files.length;
   function node(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }
   function facts(target, entries) {
@@ -54,8 +56,13 @@
     limits.append(node('span', `Surface maximale : ${mp(p.maxPixels)}`), node('span', p.precision || 'Précision non renseignée'));
     $('image-recipe-summary').append(heading, summary, limits);
     facts($('image-components'), [['Diffusion', p.diffusion], ['Encodeur', p.encoder], ['VAE', p.vae]]);
-    for (const option of $('image-size').options) { const [w, h] = option.value.split(',').map(Number); option.disabled = w * h > p.maxPixels; }
-    if ($('image-size').selectedOptions[0]?.disabled) $('image-size').value = [...$('image-size').options].find(option => !option.disabled)?.value || '';
+    // A model with published sizes offers exactly those; the others keep the generic list.
+    const previous = $('image-size').value, sizes = p.sizes?.length
+      ? p.sizes.map(s => [`${s.width},${s.height}`, `${shape(s.width, s.height)} ${s.ratio} · ${s.width} × ${s.height} · ${mp(s.width * s.height)}`]) : genericSizes;
+    $('image-size').replaceChildren(...sizes.map(([value, label]) => { const option = node('option', label); option.value = value;
+      const [w, h] = value.split(',').map(Number); option.disabled = w * h > p.maxPixels; return option; }));
+    const enabled = [...$('image-size').options].filter(option => !option.disabled);
+    $('image-size').value = (enabled.find(option => option.value === previous) || enabled[0])?.value || '';
     updateFormMode();
   }
   function renderResultFacts() {
@@ -112,7 +119,7 @@
       if (!config.profiles.some(p => p.id === draft.profile)) throw new Error('Cette ancienne recette n’est plus disponible. Son brief reste consultable sous l’image.');
       $('image-prompt').value = draft.prompt; $('image-seed').value = draft.seed ?? ''; $('image-profile').value = draft.profile; renderRecipe();
       const size = `${draft.width},${draft.height}`, p = currentRecipe();
-      if (![...$('image-size').options].some(o => o.value === size) && [draft.width, draft.height].every(x => Number.isInteger(x) && x >= 256 && x <= 2048 && x % 32 === 0) && draft.width * draft.height <= p.maxPixels) {
+      if (![...$('image-size').options].some(o => o.value === size) && [draft.width, draft.height].every(x => Number.isInteger(x) && x >= 256 && x <= (p.maxEdge || 2048) && x % 32 === 0) && draft.width * draft.height <= p.maxPixels) {
         const option = node('option', `Format précédent · ${dimensions(draft.width, draft.height)}`); option.value = size; $('image-size').append(option);
       }
       if ([...$('image-size').options].some(o => o.value === size && !o.disabled)) $('image-size').value = size;
