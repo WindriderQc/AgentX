@@ -28,6 +28,7 @@ UPSTREAM_TIMEOUT_SECONDS = 3600
 class ModelOnly(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"  # The reply ends when the connection closes, which also carries a stream.
     model_url = ""
+    observer = staticmethod(lambda _event: None)
 
     def refuse(self) -> None:
         body = b'{"error":{"message":"The coding worker can reach the model route only.","type":"invalid_request_error"}}'
@@ -44,6 +45,7 @@ class ModelOnly(BaseHTTPRequestHandler):
             return
         call = Request(f"{self.model_url}/chat/completions", data=self.rfile.read(length), method="POST",
                        headers={"Content-Type": "application/json", "x-service-caller": "coding-run"})
+        self.observer("model_request")
         try:
             upstream = urlopen(call, timeout=UPSTREAM_TIMEOUT_SECONDS)
         except HTTPError as error:
@@ -72,11 +74,12 @@ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
 
 
-def serve(socket_path: str, model_url: str) -> UnixServer:
+def serve(socket_path: str, model_url: str, observer=None) -> UnixServer:
     """Start the runner-side relay; the caller shuts it down."""
     if os.path.exists(socket_path):
         os.unlink(socket_path)
-    handler = type("Handler", (ModelOnly,), {"model_url": model_url.rstrip("/")})
+    handler = type("Handler", (ModelOnly,), {"model_url": model_url.rstrip("/"),
+                    "observer": staticmethod(observer or (lambda _event: None))})
     server = UnixServer(socket_path, handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

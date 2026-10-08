@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import fcntl
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,10 @@ LEGACY_RECEIPTS = STATE / "coding-dispatch-requests"
 # Model, GitHub token and other settings of the run; they stay outside Git.
 ENV_FILE = Path(os.environ.get("AGENTX_CODING_ENV_FILE", Path.home() / ".config/agentx/coding.env"))
 UNIT = "agentx-coding-run"
+CODING_SERVICE = "agentx-coding"
+_spec = importlib.util.spec_from_file_location("coding_progress", HERE / "coding_progress.py")
+progress_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(progress_module)
 # Mirror of core/src/helpers/workerTaskScope.js: the canonical private task lane
 # boundary. Keep it in sync with the Core helper.
 PRIVATE_SERVICE = re.compile(r"^\s*(personal|family|household|secretary)\s*$", re.IGNORECASE)
@@ -48,6 +53,7 @@ def is_private_task(task: dict) -> bool:
 
 def can_start(task: dict) -> bool:
     return (task.get("status") == "queued" and not task.get("assignee")
+            and task.get("service") == CODING_SERVICE
             and not is_private_task(task))
 
 
@@ -67,15 +73,30 @@ def save_receipt(run: dict) -> None:
     (RECEIPTS / "latest").write_text(run["requestId"])
 
 
+def read_progress(run: dict) -> dict | None:
+    key = run.get("requestId", "")
+    if not REQUEST_ID.fullmatch(key):
+        return None
+    try:
+        path = RECEIPTS / f"{key}.progress.json"
+        if path.stat().st_size > 65536:
+            return None
+        return progress_module.safe_progress(json.loads(path.read_text()), key, run["pipelineId"])
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 def status(key: str | None = None) -> dict:
     tasks = queued_tasks()
     busy = unit_active()
     latest = RECEIPTS / "latest"
     run = read_receipt(key or (latest.read_text().strip() if latest.exists() else ""))
+    progress = read_progress(run) if run else None
     if run and run["phase"] == "accepted":
-        run["phase"] = "running" if busy else "finished"
+        run["phase"] = "running" if busy else "finished" if progress and progress["phase"] == "finished" else "unknown"
         run["message"] = ("The coding worker is running." if busy
-                          else "The coding worker stopped. Read the task for its result.")
+                          else "The coding worker stopped. Read its recorded result." if run["phase"] == "finished"
+                          else "The host unit stopped without a terminal receipt. Inspect the task and checkpoint.")
     elif run and run["phase"] == "uncertain":
         run["phase"] = "running" if busy else "unknown"
         run["message"] = "Read the task and host unit to reconcile this launch; it will not be started again."
@@ -84,6 +105,8 @@ def status(key: str | None = None) -> dict:
         run = ({**json.loads(legacy.read_text()), "retired": True, "canRetry": False, "canCancel": False,
                 "message": "This guarded request is retained for observation; the simple worker cannot resume it."}
                if legacy.exists() else {"requestId": key, "phase": "not_received", "message": "No receipt for this request."})
+    if run and progress:
+        run["progress"] = progress
     return {
         "contractVersion": 2, "available": True, "busy": busy,
         "observedAt": datetime.now(timezone.utc).isoformat(),
@@ -114,7 +137,7 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int) -> dict:
         if pending and pending["phase"] == "uncertain":
             raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "Reconcile the previous launch before starting another task.")
         if not any(task["pipelineId"] == pipeline_id and can_start(task) for task in queued_tasks()):
-            raise ControlError("CODING_DISPATCH_INELIGIBLE", "This task is not queued, is owned, or is a private task.")
+            raise ControlError("CODING_DISPATCH_INELIGIBLE", "Only unowned, queued, non-private agentx-coding tasks can start.")
         run = {"requestId": key, "pipelineId": pipeline_id, "expectedAttemptCount": expected_attempt_count,
                "submittedAt": datetime.now(timezone.utc).isoformat(), "unitName": UNIT, "phase": "uncertain",
                "message": "The host is starting the coding worker."}
@@ -122,7 +145,7 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int) -> dict:
         subprocess.run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={UNIT}",
                         f"--property=EnvironmentFile=-{ENV_FILE}", f"--setenv=AGENTX_CORE_URL={CORE}",
                         f"--setenv=PATH={os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')}",
-                        sys.executable, str(HERE / "coding_run.py"), pipeline_id],
+                        sys.executable, str(HERE / "coding_run.py"), pipeline_id, "--request-id", key],
                        check=True, capture_output=True, text=True, timeout=10)
         run.update(phase="accepted", message="The coding worker started on this task.")
         save_receipt(run)
