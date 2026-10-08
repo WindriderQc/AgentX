@@ -202,7 +202,58 @@ describe('extracting a program from a model response', () => {
         expect(extractCode('fn main() {}', { language: 'rust', entry: 'main' }).status).toBe('no_code');
     });
 
-    test('works without an entry point, concatenating every code block', () => {
+    test('omits a CommonJS usage example that redeclares the module exports', () => {
+        const solution = 'const increment = n => n + 1;\nmodule.exports = { increment };';
+        const response = lines(FENCE + 'js', solution, FENCE, '**Usage:**', FENCE + 'js',
+            "const { increment } = require('./counter');", 'console.log(increment(2));', FENCE);
+        expect(extractCode(response, { language: 'javascript' }))
+            .toMatchObject({ status: 'ok', code: solution, blocks: 1 });
+    });
+
+    test.each([
+        'Example production wiring:',
+        'Callers (or tests) inject real or mock implementations:',
+        'A thin adapter can wrap the HTTP client:',
+        'In tests you simply pass stubs:',
+        'You can now write tests like:'
+    ])('keeps wiring and test examples outside the submitted module: %s', context => {
+        const solution = 'class Service {}\nmodule.exports = { Service };';
+        const response = lines(FENCE + 'js', solution, FENCE, context, FENCE + 'js',
+            "const client = require('illustrated-client');", 'new Service({ client });', FENCE);
+        expect(extractCode(response, { language: 'javascript' }).code).toBe(solution);
+    });
+
+    test('preserves helpers before and after an export, and subsequent export assignments', () => {
+        const fragments = [
+            'const offset = 1;',
+            'exports.increment = n => helper(n);',
+            'function helper(n) { return n + offset; }',
+            'module.exports.decrement = n => n - offset;'
+        ];
+        const response = fragments.map(code => lines(FENCE + 'js', code, FENCE)).join('\n\n');
+        expect(extractCode(response, { language: 'javascript' }))
+            .toMatchObject({ code: fragments.join('\n\n'), blocks: 4 });
+    });
+
+    test('does not remove an unlabelled fragment or a later exported solution', () => {
+        const first = 'module.exports = { increment: n => n + 1 };';
+        const second = 'module.exports = { increment: n => n + 2 };';
+        const unlabelled = "require('missing-module');";
+        const response = lines(FENCE + 'js', first, FENCE, 'An alternative example implementation:',
+            FENCE + 'js', second, FENCE, FENCE + 'js', unlabelled, FENCE);
+        expect(extractCode(response, { language: 'javascript' }).code)
+            .toBe(lines(first, '', second, '', unlabelled));
+    });
+
+    test('does not infer an export from a comment or a string', () => {
+        for (const code of ['// module.exports = {}', "const message = 'module.exports = {}';",
+            '/*\nmodule.exports = {};\n*/', 'const message = `\nmodule.exports = {};\n`;']) {
+            const response = lines(FENCE + 'js', code, FENCE, 'Usage:', FENCE + 'js', 'console.log(1);', FENCE);
+            expect(extractCode(response, { language: 'javascript' }).blocks).toBe(2);
+        }
+    });
+
+    test('works without an entry point or a CommonJS module, concatenating code blocks', () => {
         const response = lines(
             FENCE + 'python',
             'import math',
@@ -214,6 +265,8 @@ describe('extracting a program from a model response', () => {
         const result = extractCode(response, { language: 'python' });
         expect(result.blocks).toBe(2);
         expect(result.code).toBe(lines('import math', '', 'print(math.pi)'));
+        const script = lines(FENCE + 'js', 'const n = 2;', FENCE, 'Usage:', FENCE + 'js', 'console.log(n);', FENCE);
+        expect(extractCode(script, { language: 'javascript' }).code).toBe('const n = 2;\n\nconsole.log(n);');
     });
 });
 

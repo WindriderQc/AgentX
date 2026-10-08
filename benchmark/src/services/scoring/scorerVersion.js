@@ -31,7 +31,10 @@
 // (coding efficiency, instruction completeness, creative originality and
 // engagement) holds the overall score. Coding, instruction and creative grades
 // are not comparable with 2.19.x rows.
-const SCORER_VERSION = '2.20.0';
+// 2.21.0: CommonJS module extraction excludes separately introduced usage and
+// wiring examples for test-file fixtures. Coding grades need fresh scoring;
+// an old execution failure cannot be corrected from its stored grade alone.
+const SCORER_VERSION = '2.21.0';
 
 // What a stored grade needs to stay valid across each version step (#461).
 // A category a step does not name kept its meaning: its grades carry over
@@ -40,12 +43,15 @@ const SCORER_VERSION = '2.20.0';
 //                       (scoring/gradeCarryOver.js); no judge is called;
 //   'judge'             the step asks the judge something new, so the answer
 //                       must be scored again.
+//   'rescore'           execution or extraction changed; score the saved answer
+//                       again rather than carrying its old grade.
 // A step with no entry here breaks the chain: every grade before it re-opens.
 const SCORER_CARRY_OVER = Object.freeze([
     Object.freeze({ from: '2.18.0', to: '2.19.0', categories: Object.freeze({ translation: 'judge' }) }),
     Object.freeze({ from: '2.19.0', to: '2.20.0', categories: Object.freeze({
         coding: 'secondary_bounds', instruction: 'secondary_bounds', creative: 'secondary_bounds'
-    }) })
+    }) }),
+    Object.freeze({ from: '2.20.0', to: '2.21.0', categories: Object.freeze({ coding: 'rescore' }) })
 ]);
 
 const SCORER_COMPONENTS = Object.freeze({
@@ -55,7 +61,7 @@ const SCORER_COMPONENTS = Object.freeze({
     judge_parsing: 9,
     confidence: 6,
     judges: 4,
-    deterministic: 6,
+    deterministic: 7,
     composite: 4
 });
 

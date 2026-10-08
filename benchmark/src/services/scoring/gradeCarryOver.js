@@ -74,6 +74,7 @@ function carryGrade(result, { target = SCORER_VERSION, chain = SCORER_CARRY_OVER
         const rule = step.categories[category];
         if (!rule) continue;
         if (rule === 'judge') return refused(`${step.to} asks the judge something new for ${category}`);
+        if (rule === 'rescore') return refused(`${step.to} requires fresh scoring for ${category}`);
         if (rule !== 'secondary_bounds') return refused(`unknown carry-over rule ${rule}`);
         // Only the decomposed path assembles a grade from dimensions; the
         // other paths never applied these bounds and keep their grade.

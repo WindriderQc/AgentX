@@ -21,8 +21,8 @@ const { computeCoverage } = require('../../src/services/measurementCoverage/cove
 const { carryOverStoredGrades } = require('../../src/services/measurementCoverage/gradeCarryOverPass');
 const { SCORER_VERSION, SCORER_CARRY_OVER } = require('../../src/services/scoring/scorerVersion');
 
-// The last declared step: 2.19.0 -> 2.20.0 binds coding, instruction and creative.
-const PREVIOUS = SCORER_CARRY_OVER.at(-1).from;
+// The bounds step remains valid for instruction, through the extraction step.
+const PREVIOUS = '2.19.0';
 const HOST = 'http://host-a:11434';
 const MODEL = 'model-a:7b';
 const JUDGE = { host: 'http://judge-a:11434', model: 'judge-a:12b' };
@@ -69,7 +69,7 @@ afterAll(async () => {
 beforeEach(async () => {
     await Promise.all([BenchmarkBatch.deleteMany({}), BenchmarkPrompt.deleteMany({}), BenchmarkResult.deleteMany({})]);
     prompts = {};
-    for (const category of ['math', 'coding', 'translation']) {
+    for (const category of ['math', 'coding', 'instruction', 'translation']) {
         prompts[category] = (await BenchmarkPrompt.create({ name: `${category}-1`, prompt: `A ${category} task`, level: 1, category })).toObject();
     }
     batch = (await BenchmarkBatch.create({
@@ -82,8 +82,8 @@ beforeEach(async () => {
 describe('carrying stored grades over to the current scorer version', () => {
     test('re-opens only what the scorer change affects, in the matrix and in the cohort alike', async () => {
         const untouched = await answer('math');
-        const bounded = await answer('coding', { scoring_method: 'decomposed', quality_score: 8, subjective_score: 8,
-            quality_breakdown: { correctness: 10, clarity: 10, efficiency: 0, robustness: 10 }, quality_explanation: 'Correct.' });
+        const bounded = await answer('instruction', { scoring_method: 'decomposed', quality_score: 8.5, subjective_score: 8.5,
+            quality_breakdown: { instruction_adherence: 10, constraint_compliance: 10, format_accuracy: 10, completeness: 0 }, quality_explanation: 'Correct.' });
         expect(await coveredPrompts()).toBe(0);
 
         const summary = await carryOverStoredGrades();
@@ -98,11 +98,11 @@ describe('carrying stored grades over to the current scorer version', () => {
         });
         const rewritten = await stored(bounded._id);
         expect(rewritten).toMatchObject({
-            scorer_version: SCORER_VERSION, quality_score: 4, subjective_score: 4, quality_cohort_fingerprint: currentCohort,
-            scorer_history: [{ scorer_version: PREVIOUS, quality_score: 8, composite_score: 9 }]
+            scorer_version: SCORER_VERSION, quality_score: 1, subjective_score: 1, quality_cohort_fingerprint: currentCohort,
+            scorer_history: [{ scorer_version: PREVIOUS, quality_score: 8.5, composite_score: 9 }]
         });
         expect(rewritten.composite_score).not.toBe(9);
-        expect(rewritten.quality_explanation).toBe(`Correct. Bounded at efficiency + 4. Carried over from scorer ${PREVIOUS} (was 8).`);
+        expect(rewritten.quality_explanation).toBe(`Correct. Bounded at completeness + 1. Carried over from scorer ${PREVIOUS} (was 8.5).`);
     });
 
     test('is idempotent', async () => {
@@ -126,8 +126,8 @@ describe('carrying stored grades over to the current scorer version', () => {
         const excluded = await answer('math', { excluded_from_leaderboard: true });
         const editedPrompt = await answer('math', { prompt_fingerprint: 'an-earlier-wording' });
         const ungraded = await answer('math', { quality_score: null });
-        const unreproduced = await answer('coding', { scoring_method: 'decomposed', quality_score: 7.3,
-            quality_breakdown: { correctness: 10, clarity: 10, efficiency: 0, robustness: 10 } });
+        const unreproduced = await answer('instruction', { scoring_method: 'decomposed', quality_score: 7.3,
+            quality_breakdown: { instruction_adherence: 10, constraint_compliance: 10, format_accuracy: 10, completeness: 0 } });
 
         const summary = await carryOverStoredGrades();
 
@@ -149,5 +149,16 @@ describe('carrying stored grades over to the current scorer version', () => {
         const row = await answer('math', { quality_cohort_fingerprint: null });
         await carryOverStoredGrades();
         expect(await stored(row._id)).toMatchObject({ scorer_version: SCORER_VERSION, quality_cohort_fingerprint: null });
+    });
+
+    test('leaves a pre-fix coding failure and its cohort intact for explicit rescoring', async () => {
+        const version = '2.20.0';
+        const row = await answer('coding', { scorer_version: version, quality_score: 1,
+            quality_cohort_fingerprint: await cohortFingerprintForBatch(batch, batch.judge_config, { scorerVersion: version }) });
+        const before = await stored(row._id);
+        await expect(carryOverStoredGrades()).resolves.toMatchObject({ examined: 1, carried: 0, left: 1,
+            reasons: { [`${SCORER_VERSION} requires fresh scoring for coding`]: 1 } });
+        expect(await stored(row._id)).toEqual(before);
+        expect(await coveredPrompts()).toBe(0);
     });
 });

@@ -130,13 +130,14 @@ function fencedBlocks(text) {
     const lines = String(text).split(/\r?\n/);
     const blocks = [];
     let open = null;
+    let context = [];
 
     for (const line of lines) {
         const fence = FENCE.exec(line);
         if (open) {
             const closes = fence && line.trim().startsWith(open.marker[0].repeat(3)) && !fence[2];
             if (closes) {
-                blocks.push({ tag: open.tag, code: open.lines.join('\n') });
+                blocks.push({ tag: open.tag, code: open.lines.join('\n'), context: open.context });
                 open = null;
             } else {
                 open.lines.push(line);
@@ -144,10 +145,13 @@ function fencedBlocks(text) {
             continue;
         }
         if (fence) {
-            open = { marker: fence[1], tag: (fence[2] || '').trim().toLowerCase(), lines: [] };
+            open = { marker: fence[1], tag: (fence[2] || '').trim().toLowerCase(), lines: [], context: context.join('\n') };
+            context = [];
+        } else {
+            context.push(line);
         }
     }
-    if (open) blocks.push({ tag: open.tag, code: open.lines.join('\n') });
+    if (open) blocks.push({ tag: open.tag, code: open.lines.join('\n'), context: open.context });
 
     return blocks.filter((block) => block.code.trim() !== '');
 }
@@ -164,6 +168,24 @@ function candidateBlocks(blocks, language) {
     if (preferred.length > 0) return preferred;
     return blocks.filter((block) => !NON_CODE_TAGS.includes(block.tag)
         && !Object.values(LANGUAGE_ALIASES).flat().includes(block.tag));
+}
+
+/**
+ * Test-file fixtures do not name an entry point. A CommonJS export identifies
+ * a submitted module, but does not end it: helpers may follow the export.
+ * Only omit subsequent blocks explicitly introduced as separate usage,
+ * wiring, adapter or test examples. Unlabelled fragments stay in the program;
+ * guessing that they are examples could hide a genuine candidate failure.
+ */
+function commonJsModuleBlocks(blocks) {
+    const exportsModule = /(^|\n)\s*(?:module\s*\.\s*exports(?:\s*\.\s*[\w$]+)?|exports\s*\.\s*[\w$]+)\s*=(?!=)/;
+    const commentsAndStrings = /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g;
+    const hasExport = block => exportsModule.test(block.code.replace(commentsAndStrings, ''));
+    const exampleContext = /\b(?:usage|examples?|wiring)\b|\bcallers?\s*(?:\([^)]*\)\s*)?(?:inject|use|pass)\b|\b(?:in\s+tests|tests?\s+like|pass\s+stubs|adapter\s+can\s+wrap)\b/i;
+    const moduleIndex = blocks.findIndex(hasExport);
+    if (moduleIndex === -1) return blocks;
+    return blocks.filter((block, index) => index <= moduleIndex
+        || hasExport(block) || !exampleContext.test(block.context));
 }
 
 /**
@@ -225,7 +247,8 @@ function extractCode(text, { language, entry = null } = {}) {
         for (let index = 0; index < candidates.length; index += 1) {
             if (definesEntry(candidates[index].code, language, entry)) lastEntry = index;
         }
-        const kept = lastEntry === -1 ? candidates : candidates.slice(0, lastEntry + 1);
+        const kept = lastEntry !== -1 ? candidates.slice(0, lastEntry + 1)
+            : !entry && language === 'javascript' ? commonJsModuleBlocks(candidates) : candidates;
         const code = kept.map((block) => block.code.replace(/\s+$/, '')).join('\n\n').trim();
         if (code !== '') {
             return { status: 'ok', code, source: 'fenced', blocks: kept.length };
