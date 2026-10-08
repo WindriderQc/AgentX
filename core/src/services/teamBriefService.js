@@ -65,10 +65,19 @@ const BRIEFS = Object.freeze({
   },
   comptable: {
     title: 'Finance brief',
-    covers: 'Latest closing balance per account with its date, in/out/net of the recent months without transfers between the owner\'s accounts, pending alerts and statements waiting for review.',
+    covers: 'How far the ledger goes (freshness), latest closing balance per account with its date, in/out/net of the recent months without transfers between the owner\'s accounts, pending alerts and statements waiting for review.',
     beyond: 'A merchant, a category, a year, advice, the plan or a correction: consult the accountant.',
     defaultDays: 90,
-    sections: ({ sources, since }) => ({
+    sections: ({ sources, since, now }) => ({
+      // How far the ledger goes: a balance or a month is only as recent as the statements Core has read.
+      freshness: async () => {
+        const { rows = [] } = await sources.financeQuery.transactions({ limit: 1 });
+        const latestTransactionDate = rows[0]?.date || null;
+        const currentMonth = now.toISOString().slice(0, 7);
+        return { latestTransactionDate, currentMonth,
+          currentMonthHasData: Boolean(latestTransactionDate && latestTransactionDate.slice(0, 7) === currentMonth),
+          note: 'Say this date with any figure. Each balance carries its own date. A month after latestTransactionDate has no data yet: say so instead of answering with another month.' };
+      },
       balances: () => sources.financeQuery.balances({}),
       recentMonths: () => sources.financeQuery.monthly({ from: `${since.toISOString().slice(0, 7)}-01`, excludeCategory: 'Virements internes' }),
       pendingAlerts: () => sources.financeAlerts.list({}),

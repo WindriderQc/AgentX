@@ -8,6 +8,7 @@ function sources(overrides = {}) {
     mailJournal: { search: async input => { calls.push(['mail', input]); return { ok: true, entries: [{ threadId: 't1', subject: 'Synthetic subject', summary: 'Synthetic digest.' }], total: 1, truncated: false }; } },
     financeQuery: {
       balances: async () => ({ accounts: [{ code: 'EOP', balanceCents: 123456, asOf: '2026-03-10' }] }),
+      transactions: async input => { calls.push(['transactions', input]); return { rows: [{ date: '2026-02-27', description: 'Synthetic row', flowCents: -1200 }], totals: {} }; },
       monthly: async input => { calls.push(['monthly', input]); return { months: [{ month: '2026-03', inCents: 500000, outCents: -420050, netCents: 79950 }] }; },
       statements: async input => { calls.push(['statements', input]); return { statements: [] }; }
     },
@@ -46,6 +47,10 @@ describe('the standing brief of a collaborator', () => {
     expect(s.calls).toContainEqual(['monthly', { from: '2025-12-01', excludeCategory: 'Virements internes' }]);
     expect(s.calls).toContainEqual(['statements', { status: 'needs_review' }]);
     expect(sections.pendingAlerts).toEqual({ alerts: [] });
+    // The ledger stops in February: March, the current month, has no data, and no transaction row leaks into the brief.
+    expect(sections.freshness).toMatchObject({ latestTransactionDate: '2026-02-27', currentMonth: '2026-03', currentMonthHasData: false });
+    expect(JSON.stringify(sections.freshness)).not.toContain('Synthetic row');
+    expect(s.calls).toContainEqual(['transactions', { limit: 1 }]);
   });
 
   test('a part Core cannot read is marked unavailable and the others still answer', async () => {
