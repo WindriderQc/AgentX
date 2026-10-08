@@ -11,6 +11,30 @@ beforeEach(() => {
   resolveAllowedPath.mockResolvedValue({ ok: true, realPath: '/mnt/datalake/test' });
 });
 
+describe('janitorProfiles.checkRoots', () => {
+  test('requires every root to be an existing directory', async () => {
+    await expect(janitorProfiles.checkRoots(['/mnt/datalake/a', '/mnt/datalake/b'])).resolves.toEqual({ ok: true });
+    expect(resolveAllowedPath).toHaveBeenCalledTimes(2);
+    expect(resolveAllowedPath).toHaveBeenCalledWith('/mnt/datalake/a', { mustExist: true, type: 'directory' });
+  });
+
+  test('names each root that is missing or not a directory', async () => {
+    resolveAllowedPath
+      .mockResolvedValueOnce({ ok: false, reason: 'Path not found' })
+      .mockResolvedValueOnce({ ok: true, realPath: '/mnt/datalake/b' })
+      .mockResolvedValueOnce({ ok: false, reason: 'Path must be a directory' });
+    await expect(janitorProfiles.checkRoots(['/mnt/datalake/a', '/mnt/datalake/b', '/mnt/datalake/c'])).resolves.toEqual({
+      ok: false,
+      errors: ['root "/mnt/datalake/a": Path not found', 'root "/mnt/datalake/c": Path must be a directory']
+    });
+  });
+
+  test('a profile without roots cannot run', async () => {
+    await expect(janitorProfiles.checkRoots([])).resolves.toEqual({ ok: false, errors: ['profile has no root'] });
+    await expect(janitorProfiles.checkRoots(undefined)).resolves.toEqual({ ok: false, errors: ['profile has no root'] });
+  });
+});
+
 describe('janitorProfiles.validate', () => {
   const valid = () => ({
     name: 'Media Cleanup',

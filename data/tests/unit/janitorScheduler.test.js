@@ -8,10 +8,12 @@ jest.mock('../../services/janitorRunner', () => ({
 jest.mock('../../utils/logger', () => ({
   log: jest.fn()
 }));
+jest.mock('../../utils/backgroundJobs', () => ({ backgroundJobsEnabled: jest.fn(() => true) }));
 
 const janitorProfiles = require('../../services/janitorProfiles');
 const janitorRunner = require('../../services/janitorRunner');
 const { log } = require('../../utils/logger');
+const { backgroundJobsEnabled } = require('../../utils/backgroundJobs');
 const janitorScheduler = require('../../services/janitorScheduler');
 
 const mockDb = { collection: jest.fn() };
@@ -19,6 +21,7 @@ const mockDb = { collection: jest.fn() };
 beforeEach(async () => {
   jest.clearAllMocks();
   jest.clearAllTimers();
+  backgroundJobsEnabled.mockReturnValue(true);
   await janitorScheduler.close();
 });
 
@@ -37,10 +40,10 @@ describe('janitorScheduler.init', () => {
     expect(janitorScheduler._activeProfileIds()).toEqual(['a']);
   });
 
-  test('sweeps stale runs on init', async () => {
+  test('leaves the stale-run sweep to server startup', async () => {
     janitorProfiles.list.mockResolvedValue([]);
     await janitorScheduler.init(mockDb);
-    expect(janitorRunner.sweepStaleRuns).toHaveBeenCalledWith(mockDb);
+    expect(janitorRunner.sweepStaleRuns).not.toHaveBeenCalled();
   });
 
   test('a bad profile does not crash init', async () => {
@@ -88,6 +91,30 @@ describe('janitorScheduler.reload', () => {
     janitorProfiles.get.mockResolvedValue(null);
     await janitorScheduler.reload(mockDb, 'x');
     expect(janitorScheduler._activeProfileIds()).toEqual([]);
+  });
+});
+
+describe('janitorScheduler with background jobs disabled', () => {
+  const scheduled = { _id: 'x', name: 'X', schedule: { enabled: true, intervalMinutes: 10 } };
+
+  beforeEach(() => backgroundJobsEnabled.mockReturnValue(false));
+
+  test('init arms no timer', async () => {
+    janitorProfiles.list.mockResolvedValue([scheduled]);
+    await janitorScheduler.init(mockDb);
+    expect(janitorScheduler._activeProfileIds()).toEqual([]);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('reload after a profile create or update arms no timer and never runs the profile', async () => {
+    janitorProfiles.get.mockResolvedValue(scheduled);
+    await janitorScheduler.reload(mockDb, 'x');
+
+    expect(janitorScheduler._activeProfileIds()).toEqual([]);
+    expect(jest.getTimerCount()).toBe(0);
+    jest.advanceTimersByTime(60 * 60 * 1000);
+    expect(janitorRunner.runProfile).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('Background jobs disabled'));
   });
 });
 

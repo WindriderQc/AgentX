@@ -17,6 +17,16 @@ defaults to loopback. Background feeds and existing janitor schedules start only
 with `DATA_BACKGROUND_JOBS_ENABLED=true`; manual APIs remain available. Network
 scan defaults require `NETWORK_SCAN_CIDR` or an explicit request target.
 
+Without that setting no janitor profile timer is ever armed: a profile created
+or updated with a schedule keeps it in the database and starts at the next
+start with background jobs enabled. Every start, whatever the setting, repairs
+what a crash left in progress: a `running` janitor run becomes `stopped`, and a
+profile action left `executing` returns to `pending` with its preview
+invalidated, `execution_interrupted_at` and a note. Nothing is approved or
+executed by that repair; the action needs a new preview, which re-verifies
+every file. A profile run fails at once, with the root named in its `error`,
+when a root is missing or is not a directory.
+
 Janitor AI advice (triage, duplicate resolution, path analysis) asks Core's
 `janitor_ai` task and waits 60 seconds, with one retry. When that task is
 routed to a slow CPU-resident host, raise `JANITOR_AI_TIMEOUT_MS` (up to

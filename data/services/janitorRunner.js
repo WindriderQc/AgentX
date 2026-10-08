@@ -183,6 +183,14 @@ async function _prepareRun(db, profileId) {
 async function _executePreparedRun(db, prepared) {
   const { profile, key, runDoc } = prepared;
   try {
+    // Step 0: a root that is missing or not a directory fails the run here.
+    const roots = await janitorProfiles.checkRoots(profile.roots);
+    if (!roots.ok) {
+      const error = `roots: ${roots.errors.join('; ')}`;
+      await _patchRun(db, runDoc._id, { status: 'failed', error, finished_at: new Date() });
+      return { ok: false, run_id: runDoc._id, error };
+    }
+
     // Step 1: scan
     let scanResult;
     try {
@@ -637,14 +645,38 @@ async function rejectAction(db, runId, actionIdx) {
   return { ok: true, action: updatedAction };
 }
 
+// Startup repair: nothing is in progress in a process that has just started.
 async function sweepStaleRuns(db) {
+  const now = new Date();
   const result = await db.collection(COLLECTION).updateMany(
     { status: 'running' },
-    { $set: { status: 'stopped', finished_at: new Date() } }
+    { $set: { status: 'stopped', finished_at: now } }
   );
   if (result.modifiedCount > 0) {
     log(`[janitorRunner] Swept ${result.modifiedCount} stale running run(s)`);
   }
+
+  // An action a crash left `executing` has an unknown outcome. It returns to
+  // `pending` with its preview invalidated: nothing is approved or executed
+  // here, and a new preview must re-verify every file before any apply.
+  const stuck = await db.collection(COLLECTION).find({ 'proposed_actions.status': 'executing' }).toArray();
+  let actions = 0;
+  for (const run of stuck) {
+    for (const [idx, action] of (run.proposed_actions || []).entries()) {
+      if (action?.status !== 'executing') continue;
+      const at = `proposed_actions.${idx}`;
+      const write = await db.collection(COLLECTION).updateOne({ _id: run._id, [`${at}.status`]: 'executing' }, { $set: {
+        [`${at}.status`]: 'pending',
+        [`${at}.execution_authorized`]: false,
+        [`${at}.execution_interrupted_at`]: now,
+        [`${at}.approval_preview.status`]: 'invalidated',
+        [`${at}.approval_preview.invalidated_at`]: now,
+        [`${at}.result`]: { note: 'Execution was interrupted by a restart; some targets may already be deleted. Generate a new preview.' }
+      } });
+      if (_modified(write)) actions += 1;
+    }
+  }
+  if (actions > 0) log(`[janitorRunner] Returned ${actions} interrupted action(s) to pending; a new preview is required`, 'warn');
   return result.modifiedCount;
 }
 
