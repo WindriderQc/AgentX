@@ -20,6 +20,27 @@ cette image comme référence** explicitly puts a reduced copy first in the
 editing references; the original archive remains intact. A new model or prompt
 does not guarantee preservation of the previous composition.
 
+The workshop separates composing, inspecting a result and browsing the recent
+library. Opening a library image changes only the preview. Reusing its brief
+and attaching it as an editing reference are explicit, independent actions.
+Conversation continuation links still restore the saved draft, with its origin
+shown. A plain visit starts with an empty preview; an active or uncertain
+operation resumes observation instead of starting another calculation.
+
+Read-only `GET /api/images/workshop` reports the configured worker, model
+components, step count and pixel budgets. `GET /api/images/operations/:id/details`
+reports that operation's saved recipe and request, actual archived dimensions
+and recorded total time. Historical recipes do not inherit the current profile's
+step count. A different historical worker never inherits the current GPU label.
+Neither read endpoint initializes recovery, starts a worker or takes a GPU claim.
+The current worker's optional external `presentation` object provides
+`hostLabel`, `gpuLabel` and `vramGiB`; these are configured inventory, not live
+telemetry. Profiles may provide `presentation.description`. No speed or quality
+ranking is inferred from a label or a step count. The operation's total time
+includes preparation, computation, archiving and restoration; its receipt does
+not measure these phases separately. The library currently reads the latest
+30 operations, rather than the complete external photo archive.
+
 ## Configure a worker
 
 Run a qualified ComfyUI version outside the AgentX checkout. The client uses

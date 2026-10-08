@@ -1,160 +1,242 @@
 'use strict';
 (() => {
   const $ = id => document.getElementById(id);
-  let config, operation, pollTimer, request, selectedReference = null, draftEpoch = 0;
-  const statuses = { accepted: 'Demande enregistrée.', reserving: 'Préparation du GPU. Nestor peut attendre pendant ce temps.',
-    generating: 'Ton image prend forme…', archiving: 'Conservation de l’original…', restoring: 'Restauration des services habituels…',
-    completed: 'Image prête et conservée dans les photos.', cancelled: 'Génération annulée.', failed: 'La génération a échoué.',
-    unknown: 'État incertain. Une récupération est nécessaire ; cette image ne sera pas relancée automatiquement.',
-    archive_failed: 'Image calculée ; son archivage doit être repris.' };
+  const ACTIVE = ['accepted', 'reserving', 'generating', 'archiving', 'restoring'];
+  const statuses = { accepted: 'Demande enregistrée.', reserving: 'Préparation du GPU et des services qui le partagent.',
+    generating: 'Génération en cours…', archiving: 'Archivage de l’original…', restoring: 'Restitution des ressources aux services habituels…',
+    completed: 'Image prête, original archivé et ressources restituées.', cancelled: 'Génération annulée.', failed: 'La génération a échoué.',
+    unknown: 'État incertain : récupère cette opération avant une nouvelle demande.', archive_failed: 'Image calculée ; son archivage doit être repris.' };
+  let config, workshop, operation, origin = 'generation', pollTimer, request, selectedReference = null;
+  let draftEpoch = 0, referenceEpoch = 0, pendingSubmit = false, history = [], shownDetails = null;
+  const detailsCache = new Map();
+  const mp = pixels => `${new Intl.NumberFormat('fr-CA', { maximumFractionDigits: 2 }).format(pixels / 1e6)} MP`;
+  const dimensions = (w, h) => `${w} × ${h} px · ${mp(w * h)}`;
+  const duration = ms => { const seconds = Math.round(ms / 1000); return seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`; };
+  const locked = () => pendingSubmit || ACTIVE.includes(operation?.state) || operation?.state === 'unknown';
+  const currentRecipe = () => workshop?.profiles.find(p => p.id === $('image-profile').value) || config?.profiles.find(p => p.id === $('image-profile').value);
+  const referenceCount = () => (selectedReference ? 1 : 0) + $('image-references').files.length;
+  function node(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }
+  function facts(target, entries) {
+    target.replaceChildren();
+    for (const [label, value] of entries) { if (value === undefined || value === null || value === '') continue;
+      const row = node('div'); row.append(node('dt', label), node('dd', String(value))); target.append(row); }
+  }
   async function api(route, body) {
     const r = await fetch(`/api/images${route}`, { method: body === undefined ? 'GET' : 'POST',
       ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
-    const result = await r.json();
-    if (!r.ok || !result.ok) throw new Error(result.message || 'Service indisponible.');
-    return result;
+    const result = await r.json(); if (!r.ok || !result.ok) throw new Error(result.message || 'Service indisponible.'); return result;
   }
-  function show(op) {
-    operation = op;
-    const busy = ['accepted', 'reserving', 'generating', 'archiving', 'restoring'].includes(op.state);
-    $('image-create').disabled = busy || op.state === 'unknown' || !config?.configured;
-    for (const button of $('image-gallery').querySelectorAll('button')) button.disabled = busy || op.state === 'unknown';
-    $('image-cancel').hidden = !busy;
-    $('image-recover').hidden = !['unknown', 'archive_failed'].includes(op.state);
-    $('image-status').textContent = `${statuses[op.state] || op.state}${op.error ? ' ' + op.error : ''}${op.timings?.totalMs ? ` (${Math.round(op.timings.totalMs / 1000)} s)` : ''}`;
-    const ready = op.state === 'completed' && op.runtimeRestored === true && op.artifact;
-    $('image-use-reference').hidden = !ready;
-    if (ready) {
-      $('image-output').src = op.artifact.url; $('image-output').hidden = false;
-      $('image-placeholder').hidden = true; $('image-download').href = op.artifact.url; $('image-download').hidden = false;
-    } else { $('image-output').hidden = true; $('image-download').hidden = true; $('image-placeholder').hidden = false; }
+  function controls() {
+    const block = locked();
+    $('image-create').disabled = block || !config?.configured || referenceCount() > 2;
+    $('image-new').disabled = block || !config; $('image-use-reference').disabled = block; $('image-reuse-brief').disabled = block;
+    for (const button of $('image-gallery').querySelectorAll('button')) button.disabled = block;
+  }
+  function updateFormMode() {
+    const count = referenceCount();
+    $('image-compose-title').textContent = count ? 'Retouche avec référence' : 'Nouvelle création';
+    $('image-create-label').textContent = count ? 'Appliquer la retouche' : 'Créer une nouvelle image';
+    $('image-reference-help').textContent = count > 2 ? 'Deux références au maximum : retire une image avant l’envoi.'
+      : count ? `${count} référence${count > 1 ? 's' : ''} jointe${count > 1 ? 's' : ''}. Décris les changements et les éléments à préserver. La retouche peut aussi modifier des zones non demandées.`
+      : 'Sans référence jointe, le modèle crée une nouvelle composition.';
+    const [w, h] = $('image-size').value.split(',').map(Number);
+    $('image-format-help').textContent = count && currentRecipe()?.editingFraming === 'first-reference'
+      ? `Qwen reprend le cadrage de la première référence, avec une surface cible de ${mp(w * h)}. Les dimensions réelles seront indiquées au résultat.`
+      : `Format demandé : ${dimensions(w, h)}. Les dimensions réelles apparaissent sous l’image produite.`;
+    controls();
+  }
+  function renderRecipe() {
+    const p = currentRecipe(); if (!p) return;
+    $('image-recipe-summary').replaceChildren();
+    const heading = node('div', undefined, 'recipe-top'); heading.append(node('strong', p.label), node('span', p.steps ? `${p.steps} étapes` : 'Étapes non renseignées', 'recipe-pill'));
+    const summary = node('p', p.description || (p.steps <= 8 ? 'Recette à peu d’étapes pour explorer une idée ou préparer une retouche.' : 'Recette avec davantage d’étapes pour travailler une proposition. La cohérence des objets reste à examiner.'));
+    const limits = node('div', undefined, 'recipe-limits');
+    limits.append(node('span', `Surface maximale : ${mp(p.maxPixels)}`), node('span', p.precision || 'Précision non renseignée'));
+    $('image-recipe-summary').append(heading, summary, limits);
+    facts($('image-components'), [['Diffusion', p.diffusion], ['Encodeur', p.encoder], ['VAE', p.vae]]);
+    for (const option of $('image-size').options) { const [w, h] = option.value.split(',').map(Number); option.disabled = w * h > p.maxPixels; }
+    if ($('image-size').selectedOptions[0]?.disabled) $('image-size').value = [...$('image-size').options].find(option => !option.disabled)?.value || '';
+    updateFormMode();
+  }
+  function renderResultFacts() {
+    if (!operation) return;
+    const d = shownDetails, a = operation.artifact;
+    facts($('image-result-facts'), [['Modèle / recette', d?.recipe.label || operation.label || operation.profile],
+      ['Dimensions réelles', a ? dimensions(a.width, a.height) : null], ['Étapes', d?.recipe.steps],
+      ['Hôte enregistré', d?.worker?.label], ['GPU associé actuellement', d?.worker?.gpu],
+      ['Durée totale de l’opération', operation.timings?.totalMs != null ? duration(operation.timings.totalMs) : null]]);
+    $('image-result-facts').hidden = !a;
+    if (!d) return;
+    $('image-saved-prompt').textContent = d.request.prompt || 'Brief non disponible.';
+    facts($('image-saved-recipe'), [['Format demandé', d.request.width && d.request.height ? dimensions(d.request.width, d.request.height) : null],
+      ['Graine', d.request.seed], ['Diffusion', d.recipe.diffusion], ['Encodeur', d.recipe.encoder], ['VAE', d.recipe.vae],
+      ['Précision', d.recipe.precision], ['Archive', d.archivePath]]);
+    $('image-result-details').hidden = false;
+    $('image-result-note').textContent = 'La durée totale inclut la préparation, le calcul, l’archivage et la restitution ; ces temps ne sont pas détaillés séparément dans ce reçu. Le matériel affiché vient de la configuration actuelle associée à l’hôte enregistré.';
+    $('image-result-note').hidden = false;
+  }
+  async function loadDetails(op) {
+    const cached = detailsCache.get(op.id);
+    if (cached?.stamp === op.updatedAt) return cached.data;
+    const result = await api(`/operations/${encodeURIComponent(op.id)}/details`);
+    detailsCache.set(op.id, { stamp: op.updatedAt, data: result.details }); return result.details;
+  }
+  function show(op, source = origin) {
+    operation = op; origin = source;
+    const busy = ACTIVE.includes(op.state), ready = op.state === 'completed' && op.runtimeRestored === true && op.artifact;
+    $('image-result-title').textContent = busy ? 'Ton image prend forme' : source === 'library' ? 'Image de la bibliothèque' : 'Résultat de la demande';
+    $('image-result-origin').textContent = source === 'library' ? 'BIBLIOTHÈQUE' : source === 'continuation' ? 'DEPUIS LA CONVERSATION' : 'CETTE DEMANDE';
+    $('image-result-origin').hidden = false;
+    $('image-preview-help').textContent = source === 'library' ? 'Consultation d’une image conservée. Ton brief et tes références restent inchangés.' : 'Le résultat est disponible après archivage et restitution des ressources.';
+    if (source !== 'library' || busy || op.state === 'unknown') $('image-status').textContent = `${statuses[op.state] || op.state}${op.error ? ' ' + op.error : ''}`;
+    $('image-cancel').hidden = !busy; $('image-recover').hidden = !['unknown', 'archive_failed'].includes(op.state);
+    $('image-stages').hidden = !busy;
+    const stage = { accepted: 0, reserving: 0, generating: 1, archiving: 2, restoring: 3 }[op.state];
+    [...$('image-stages').children].forEach((el, i) => { el.className = i === stage ? 'current' : i < stage ? 'done' : ''; if (i === stage) el.setAttribute('aria-current', 'step'); else el.removeAttribute('aria-current'); });
+    $('image-use-reference').hidden = !ready; $('image-reuse-brief').hidden = !ready;
+    $('image-output').hidden = !ready; $('image-download').hidden = !ready; $('image-placeholder').hidden = Boolean(ready);
+    if (ready) { $('image-output').src = op.artifact.url; $('image-download').href = op.artifact.url; }
+    shownDetails = null; $('image-result-details').hidden = true; $('image-result-note').hidden = true; renderResultFacts(); controls();
+    for (const button of $('image-gallery').querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.operation === op.id));
     clearTimeout(pollTimer);
-    if (busy) pollTimer = setTimeout(poll, 1500); else loadHistory();
+    if (busy) pollTimer = setTimeout(poll, 1500);
+    else { void loadHistory(); if (ready) void loadDetails(op).then(d => { if (operation?.id !== op.id) return; shownDetails = d; renderResultFacts(); }).catch(() => {
+      if (operation?.id !== op.id) return; $('image-result-note').textContent = 'La recette enregistrée ne peut pas être chargée pour le moment.'; $('image-result-note').hidden = false;
+    }); }
+  }
+  async function applyDraft(op) {
+    const epoch = ++draftEpoch;
+    try {
+      const { draft } = await api(`/operations/${encodeURIComponent(op.id)}/draft`);
+      if (epoch !== draftEpoch || operation?.id !== op.id) return;
+      if (!config.profiles.some(p => p.id === draft.profile)) throw new Error('Cette ancienne recette n’est plus disponible. Son brief reste consultable sous l’image.');
+      $('image-prompt').value = draft.prompt; $('image-seed').value = draft.seed ?? ''; $('image-profile').value = draft.profile; renderRecipe();
+      const size = `${draft.width},${draft.height}`, p = currentRecipe();
+      if (![...$('image-size').options].some(o => o.value === size) && [draft.width, draft.height].every(x => Number.isInteger(x) && x >= 256 && x <= 2048 && x % 32 === 0) && draft.width * draft.height <= p.maxPixels) {
+        const option = node('option', `Format précédent · ${dimensions(draft.width, draft.height)}`); option.value = size; $('image-size').append(option);
+      }
+      if ([...$('image-size').options].some(o => o.value === size && !o.disabled)) $('image-size').value = size;
+      $('image-draft-source').textContent = `Brief et réglages repris depuis la création du ${new Date(op.createdAt).toLocaleDateString('fr-CA')}. L’image consultée devient une référence seulement avec le bouton « Joindre cette image ». Les références déjà jointes restent en place.`;
+      $('image-draft-source').hidden = false; request = null; updateFormMode();
+    } catch (error) { if (epoch === draftEpoch) $('image-status').textContent = error.message; }
   }
   async function select(op) {
-    const epoch = ++draftEpoch;
-    if (selectedReference && selectedReference.id !== op.id) { selectedReference = null; $('image-selected-reference').hidden = true; }
-    show(op);
-    try {
-      const { draft } = await api(`/operations/${op.id}/draft`);
-      if (epoch !== draftEpoch || operation.id !== op.id) return;
-      $('image-prompt').value = draft.prompt;
-      $('image-seed').value = draft.seed ?? '';
-      if (config.profiles.some(profile => profile.id === draft.profile)) {
-        $('image-profile').value = draft.profile; $('image-profile').dispatchEvent(new Event('change'));
-        const size = `${draft.width},${draft.height}`;
-        const profile = config.profiles.find(item => item.id === draft.profile);
-        if (![...$('image-size').options].some(option => option.value === size)
-          && [draft.width, draft.height].every(value => Number.isInteger(value) && value >= 256 && value <= 2048 && value % 32 === 0)
-          && draft.width * draft.height <= profile.maxPixels) {
-          const option = document.createElement('option'); option.value = size; option.textContent = `Format précédent · ${draft.width} × ${draft.height}`; $('image-size').append(option);
-        }
-        if ([...$('image-size').options].some(option => option.value === size && !option.disabled)) $('image-size').value = size;
-      }
-    } catch { $('image-status').textContent += ' Le brief précédent ne peut pas être chargé.'; }
+    if (locked()) return;
+    ++draftEpoch; show(op, 'library');
   }
   async function poll() {
-    const id = operation.id;
-    try { const result = await api(`/operations/${id}`); if (operation.id === id) show(result.operation); }
-    catch { if (operation.id !== id) return; $('image-status').textContent = 'Connexion interrompue. La demande enregistrée continue ; vérification en cours…'; pollTimer = setTimeout(poll, 5000); }
+    const id = operation?.id; if (!id) return;
+    try { const result = await api(`/operations/${encodeURIComponent(id)}`); if (operation?.id === id) show(result.operation); }
+    catch { if (operation?.id !== id) return; $('image-status').textContent = 'Connexion interrompue. Vérification de la demande enregistrée…'; pollTimer = setTimeout(poll, 5000); }
   }
-  $('image-form').addEventListener('input', () => { draftEpoch += 1; });
+  function renderHistory() {
+    const query = $('image-search').value.trim().toLocaleLowerCase('fr-CA');
+    const visible = history.filter(op => [op.label, op.profile, op.artifact.width, op.artifact.height, new Date(op.createdAt).toLocaleDateString('fr-CA')].join(' ').toLocaleLowerCase('fr-CA').includes(query));
+    $('image-gallery').replaceChildren();
+    $('image-gallery-count').textContent = `${visible.length} image${visible.length > 1 ? 's' : ''} affichée${visible.length > 1 ? 's' : ''} · les 30 dernières opérations sont consultées.`;
+    for (const op of visible) {
+      const button = node('button'), img = node('img'), caption = node('div', undefined, 'gallery-caption');
+      button.type = 'button'; button.dataset.operation = op.id; button.setAttribute('aria-pressed', String(operation?.id === op.id));
+      button.setAttribute('aria-label', `Consulter ${op.label || op.profile}, ${op.artifact.width} par ${op.artifact.height} pixels, ${new Date(op.createdAt).toLocaleDateString('fr-CA')}`);
+      img.src = op.artifact.url; img.alt = 'Création conservée'; img.loading = 'lazy';
+      caption.append(node('strong', op.label || op.profile), node('span', dimensions(op.artifact.width, op.artifact.height)),
+        node('span', `${new Date(op.createdAt).toLocaleDateString('fr-CA')} · ${op.runtimeRestored && op.state === 'completed' ? 'Prête' : statuses[op.state] || op.state}`), node('span', 'Ouvrir l’aperçu ↗', 'gallery-open'));
+      button.append(img, caption); button.addEventListener('click', () => { void select(op); }); $('image-gallery').append(button);
+    }
+    if (!visible.length) $('image-gallery').append(node('p', query ? 'Aucune création ne correspond à ce filtre.' : 'Tes créations archivées apparaîtront ici.', 'gallery-empty'));
+    controls();
+  }
   async function loadHistory() {
-    try {
-      const result = await api('/operations');
-      $('image-gallery').replaceChildren();
-      for (const op of result.operations.filter(x => x.artifact)) {
-        const button = document.createElement('button'), img = document.createElement('img'), caption = document.createElement('p');
-        img.src = op.artifact.url; img.alt = 'Création locale'; img.loading = 'lazy';
-        caption.textContent = `${op.label || op.profile} · ${new Date(op.createdAt).toLocaleDateString('fr-CA')}`;
-        button.append(img, caption); button.addEventListener('click', () => { void select(op); }); $('image-gallery').append(button);
-      }
-      return result.operations;
-    } catch { return []; }
+    try { const result = await api('/operations'); history = result.operations.filter(x => x.artifact); renderHistory(); return result.operations; }
+    catch { $('image-gallery-count').textContent = 'La bibliothèque ne peut pas être chargée pour le moment.'; return []; }
   }
   async function fileBytes(file) {
     if (!['image/png', 'image/jpeg'].includes(file.type)) throw new Error('Choisis une image PNG ou JPEG.');
     const url = URL.createObjectURL(file);
-    try {
-      const img = new Image(); img.src = url; await img.decode();
-      const ratio = Math.min(1, 1536 / Math.max(img.width, img.height));
+    try { const img = new Image(); img.src = url; await img.decode(); const ratio = Math.min(1, 1536 / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas'); canvas.width = Math.round(img.width * ratio); canvas.height = Math.round(img.height * ratio);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height); return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
     } finally { URL.revokeObjectURL(url); }
   }
-  $('image-references').addEventListener('change', async () => {
-    $('image-reference-previews').replaceChildren();
-    for (const file of [...$('image-references').files].slice(0, 2)) {
-      const img = document.createElement('img'); img.src = URL.createObjectURL(file); img.alt = file.name;
-      img.onload = () => URL.revokeObjectURL(img.src); $('image-reference-previews').append(img);
-    }
+  $('image-form').addEventListener('input', () => { ++draftEpoch; });
+  $('image-search').addEventListener('input', renderHistory);
+  $('image-size').addEventListener('change', updateFormMode);
+  $('image-profile').addEventListener('change', renderRecipe);
+  $('image-reuse-brief').addEventListener('click', () => { if (!locked() && operation) void applyDraft(operation); });
+  $('image-new').addEventListener('click', () => {
+    if (locked()) return;
+    ++draftEpoch; ++referenceEpoch; selectedReference = null; request = null; operation = null; shownDetails = null;
+    $('image-form').reset(); $('image-profile').value = config.defaultProfile;
+    for (const id of ['image-draft-source', 'image-selected-reference', 'image-result-origin', 'image-output', 'image-download', 'image-use-reference', 'image-reuse-brief', 'image-result-details', 'image-result-facts', 'image-result-note', 'image-cancel', 'image-recover', 'image-stages']) $(id).hidden = true;
+    $('image-reference-previews').replaceChildren(); $('image-placeholder').hidden = false;
+    $('image-result-title').textContent = 'Ton prochain résultat'; $('image-preview-help').textContent = 'Une image sélectionnée dans la bibliothèque s’affiche ici.';
+    $('image-status').textContent = 'Nouveau brief. Choisis une recette et un format.'; renderRecipe(); renderHistory(); $('image-prompt').focus();
+  });
+  $('image-references').addEventListener('change', () => {
+    ++referenceEpoch; $('image-reference-previews').replaceChildren();
+    const files = [...$('image-references').files];
+    files.slice(0, 2).forEach((file, i) => { const item = node('div', undefined, 'reference-preview'), img = node('img');
+      const url = URL.createObjectURL(file); img.src = url; img.alt = file.name; img.onload = img.onerror = () => URL.revokeObjectURL(url);
+      item.append(img, node('span', `Image ${i + (selectedReference ? 2 : 1)} · ${file.name}`)); $('image-reference-previews').append(item);
+    });
+    if (files.length) { const remove = node('button', 'Retirer les fichiers joints', 'quiet-button'); remove.type = 'button'; remove.addEventListener('click', () => { $('image-references').value = ''; $('image-references').dispatchEvent(new Event('change')); }); $('image-reference-previews').append(remove); }
+    updateFormMode();
   });
   $('image-use-reference').addEventListener('click', async () => {
-    const selected = operation;
+    if (locked() || !operation) return;
+    const selected = operation, epoch = ++referenceEpoch;
     try {
-      const img = $('image-output'); await img.decode();
-      if (operation.id !== selected.id || img.hidden) return;
-      const ratio = Math.min(1, 1536 / Math.max(img.naturalWidth, img.naturalHeight));
-      const canvas = document.createElement('canvas'); canvas.width = Math.round(img.naturalWidth * ratio); canvas.height = Math.round(img.naturalHeight * ratio);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      if ($('image-references').files.length >= 2) throw new Error('Retire un fichier joint pour ajouter cette création aux références.');
+      const img = $('image-output'); await img.decode(); if (operation?.id !== selected.id || img.hidden || epoch !== referenceEpoch) return;
+      const ratio = Math.min(1, 1536 / Math.max(img.naturalWidth, img.naturalHeight)), canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.naturalWidth * ratio); canvas.height = Math.round(img.naturalHeight * ratio); canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       selectedReference = { id: selected.id, bytes: canvas.toDataURL('image/jpeg', 0.9).split(',')[1] };
-      $('image-selected-reference').hidden = false;
-      $('image-selected-reference').replaceChildren();
-      const label = document.createElement('span'), remove = document.createElement('button');
-      label.textContent = 'Cette création est image 1. Décris les changements et ce qui doit rester.';
-      remove.type = 'button'; remove.textContent = 'Retirer la référence';
-      remove.addEventListener('click', () => { selectedReference = null; $('image-selected-reference').hidden = true; });
-      $('image-selected-reference').append(label, remove);
-      $('image-prompt').focus();
-    } catch { $('image-status').textContent = 'Cette image ne peut pas être reprise comme référence.'; }
+      $('image-selected-reference').replaceChildren(); const thumb = node('img'), copy = node('div'), remove = node('button', 'Retirer', 'quiet-button');
+      thumb.src = selected.artifact.url; thumb.alt = 'Image 1 jointe comme référence'; copy.append(node('strong', 'Image 1 · création choisie'), node('p', 'Copie de travail pour cette retouche. L’original reste conservé.'));
+      remove.type = 'button'; remove.addEventListener('click', () => { ++referenceEpoch; selectedReference = null; $('image-selected-reference').hidden = true; $('image-references').dispatchEvent(new Event('change')); });
+      $('image-selected-reference').append(thumb, copy, remove); $('image-selected-reference').hidden = false;
+      $('image-references').dispatchEvent(new Event('change')); $('image-prompt').focus();
+    } catch (error) { $('image-status').textContent = error.message; }
   });
   $('image-form').addEventListener('submit', async event => {
-    event.preventDefault(); $('image-create').disabled = true;
+    event.preventDefault(); if (locked() || !config?.configured) return;
+    pendingSubmit = true; controls(); ++draftEpoch;
     try {
-      const files = [...$('image-references').files]; if (files.length + (selectedReference ? 1 : 0) > 2) throw new Error('Deux références au maximum, y compris l’image choisie.');
+      const files = [...$('image-references').files], ref = selectedReference;
+      if (files.length + (ref ? 1 : 0) > 2) throw new Error('Deux références au maximum, y compris la création choisie.');
       const [width, height] = $('image-size').value.split(',').map(Number);
       const payload = { prompt: $('image-prompt').value, profile: $('image-profile').value, width, height,
-        ...($('image-seed').value !== '' && { seed: Number($('image-seed').value) }),
-        references: [...(selectedReference ? [selectedReference.bytes] : []), ...await Promise.all(files.map(fileBytes))] };
+        ...($('image-seed').value !== '' && { seed: Number($('image-seed').value) }) };
+      payload.references = [...(ref ? [ref.bytes] : []), ...await Promise.all(files.map(fileBytes))];
       const signature = JSON.stringify(payload);
-      // A network retry retains its identity. An explicit next creation gets a new identity.
+      // A network retry retains its identity; an explicit next creation gets a new one.
       if (!request || request.signature !== signature) request = { signature, payload: { ...payload, actionKey: crypto.randomUUID() } };
       const result = await api('/operations', request.payload);
-      localStorage.setItem('agentx-image-operation', result.operation.id); request = null; show(result.operation);
-    } catch (error) { $('image-status').textContent = error.message; $('image-create').disabled = false; }
+      localStorage.setItem('agentx-image-operation', result.operation.id); request = null; show(result.operation, 'generation');
+    } catch (error) { $('image-status').textContent = error.message; }
+    finally { pendingSubmit = false; controls(); }
   });
-  $('image-cancel').addEventListener('click', async () => {
-    try { show((await api(`/operations/${operation.id}/cancel`, {})).operation); }
-    catch (error) { $('image-status').textContent = error.message; }
-  });
+  $('image-cancel').addEventListener('click', async () => { try { show((await api(`/operations/${operation.id}/cancel`, {})).operation); } catch (error) { $('image-status').textContent = error.message; } });
   $('image-recover').addEventListener('click', async () => {
     $('image-recover').disabled = true;
     try { show((await api(`/operations/${operation.id}/${operation.state === 'archive_failed' ? 'archive' : 'recover'}`, {})).operation); }
-    catch (error) { $('image-status').textContent = error.message; }
-    finally { $('image-recover').disabled = false; }
-  });
-  $('image-profile').addEventListener('change', () => {
-    const profile = config.profiles.find(p => p.id === $('image-profile').value);
-    for (const option of $('image-size').options) {
-      const [w, h] = option.value.split(',').map(Number); option.disabled = w * h > profile.maxPixels;
-    }
-    if ($('image-size').selectedOptions[0]?.disabled) $('image-size').value = [...$('image-size').options].find(option => !option.disabled)?.value || '';
+    catch (error) { $('image-status').textContent = error.message; } finally { $('image-recover').disabled = false; }
   });
   (async () => {
     try {
       config = await api('/status');
-      for (const p of config.profiles) { const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.label; $('image-profile').append(opt); }
+      try { workshop = await api('/workshop'); } catch { workshop = { profiles: [], worker: null }; }
+      for (const p of config.profiles) { const recipe = workshop.profiles.find(item => item.id === p.id);
+        const option = node('option', `${p.label}${recipe?.steps ? ` · ${recipe.steps} étapes` : ''} · max ${mp(p.maxPixels)}`);
+        option.value = p.id; $('image-profile').append(option); }
       $('image-profile').value = config.defaultProfile;
-      if (config.profiles.length) $('image-profile').dispatchEvent(new Event('change'));
-      $('image-create').disabled = !config.configured;
-      $('image-status').textContent = config.configured ? 'Prêt. Une seule création à la fois.' : 'Le service d’images locales n’est pas encore configuré.';
-      const ops = await loadHistory();
-      const current = ops.find(x => ['accepted', 'reserving', 'generating', 'archiving', 'restoring', 'unknown'].includes(x.state));
-      const lastId = new URLSearchParams(location.search).get('operation') || localStorage.getItem('agentx-image-operation');
-      if (lastId) await select((await api(`/operations/${encodeURIComponent(lastId)}`)).operation);
-      else if (current) await select(current);
-      else if (ops[0]?.artifact) await select(ops[0]);
+      $('image-host').textContent = workshop.worker?.label || 'Hôte non renseigné';
+      $('image-gpu').textContent = workshop.worker?.gpu ? `${workshop.worker.gpu}${workshop.worker.vramGiB ? ` · ${workshop.worker.vramGiB} Go VRAM` : ''} · matériel configuré` : 'Matériel non renseigné';
+      if (config.profiles.length) renderRecipe(); controls();
+      $('image-status').textContent = config.configured ? 'Prêt. Une seule demande à la fois. La bibliothèque sert à consulter tes créations.' : 'Le service d’images locales n’est pas configuré.';
+      const ops = await loadHistory(), requestedId = new URLSearchParams(location.search).get('operation');
+      if (requestedId) { const op = (await api(`/operations/${encodeURIComponent(requestedId)}`)).operation; show(op, 'continuation'); await applyDraft(op); }
+      else { const current = ops.find(x => ACTIVE.includes(x.state) || x.state === 'unknown'); if (current) show(current, 'generation'); }
     } catch (error) { $('image-status').textContent = error.message; }
   })();
 })();
