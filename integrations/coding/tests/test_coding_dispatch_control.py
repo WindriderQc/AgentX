@@ -36,11 +36,11 @@ class ControlTest(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
 
-    def test_any_queued_unowned_non_private_task_can_start(self):
+    def test_only_explicit_coding_tasks_can_start(self):
         status = control.status()
-        self.assertEqual([item["pipelineId"] for item in status["candidates"]], ["0001", "0009", "0010"])
+        self.assertEqual([item["pipelineId"] for item in status["candidates"]], ["0001", "0009"])
         self.assertEqual((status["contractVersion"], status["busy"], status["run"]), (2, False, None))
-        self.assertEqual(status["summary"], {"queuedTasks": 10, "eligibleTasks": 3, "privateQueuedTasks": 6})
+        self.assertEqual(status["summary"], {"queuedTasks": 10, "eligibleTasks": 2, "privateQueuedTasks": 6})
 
     def test_private_lane_follows_the_core_scope_boundary(self):
         by_id = {item["pipelineId"]: item for item in TASKS}
@@ -50,7 +50,9 @@ class ControlTest(unittest.TestCase):
             self.assertFalse(control.can_start(by_id[pipeline_id]))
         for pipeline_id in ("0001", "0009", "0010"):
             self.assertFalse(control.is_private_task(by_id[pipeline_id]))
+        for pipeline_id in ("0001", "0009"):
             self.assertTrue(control.can_start(by_id[pipeline_id]))
+        self.assertFalse(control.can_start(by_id["0010"]))  # Core work needs explicit routing.
         self.assertFalse(control.can_start(by_id["0003"]))  # Owned tasks stay excluded.
 
     def test_launch_starts_the_runner_once_per_request(self):
@@ -68,10 +70,14 @@ class ControlTest(unittest.TestCase):
                 control.launch("0002", KEY, 0)
             with self.assertRaises(control.ControlError) as source_private:
                 control.launch("0007", KEY, 0)
+            with self.assertRaises(control.ControlError) as other_service:
+                control.launch("0010", KEY, 0)
             with mock.patch.object(control, "unit_active", lambda: True), self.assertRaises(control.ControlError) as busy:
                 control.launch("0001", KEY, 0)
-        self.assertEqual((private.exception.code, source_private.exception.code, busy.exception.code, run.call_count),
-                         ("CODING_DISPATCH_INELIGIBLE", "CODING_DISPATCH_INELIGIBLE", "CODING_DISPATCH_BUSY", 0))
+        self.assertEqual((private.exception.code, source_private.exception.code, other_service.exception.code,
+                          busy.exception.code, run.call_count),
+                         ("CODING_DISPATCH_INELIGIBLE", "CODING_DISPATCH_INELIGIBLE",
+                          "CODING_DISPATCH_INELIGIBLE", "CODING_DISPATCH_BUSY", 0))
 
     def test_command_line_always_answers_with_an_envelope(self):
         with mock.patch.object(sys, "argv", ["control", "launch", "0001", "not-a-request-id", "0"]), \
