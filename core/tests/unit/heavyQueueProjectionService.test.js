@@ -9,14 +9,15 @@ test('projects running and waiting jobs without session identifiers or notes', (
 ## Waiting
 | Priority | Job | Owner (session) | Hosts | Estimated | Not before | Notes |
 |---|---|---|---|---|---|---|
-| 1 | Benchmark run | another-private-id | Host B | 2 h | 02:00 | secret note |
+| 1 | \`Benchmark\` run | another-private-id | Host B | about 3 h to 3 h 30 with the 27B down (estimate); **the 27B must answer again by 2026-10-08 07:00** | 02:00 | secret note |
 ## Done
 | 1 | Completed job | session | Host B | 1 h | 01:00 | private note |
 `;
   const projection = parseHeavyQueue(markdown);
   expect(projection).toEqual({
     running: [{ priority: 3, job: 'Image batch', hosts: 'Host A', estimated: '30 min', timing: '00:48' }],
-    waiting: [{ priority: 1, job: 'Benchmark run', hosts: 'Host B', estimated: '2 h', timing: '02:00' }]
+    waiting: [{ priority: 1, job: 'Benchmark run', hosts: 'Host B',
+      estimated: 'about 3 h to 3 h 30 with the 27B down (estimate); the 27B must answer again by 2026-10-08 07:00', timing: '02:00' }]
   });
   expect(JSON.stringify(projection)).not.toMatch(/private|session|secret|Completed/);
 });

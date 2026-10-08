@@ -5,6 +5,11 @@ const fs = require('fs/promises');
 // Optional read-only instance mount. The file is never copied into Product.
 const QUEUE_FILE = '/instance/config/QUEUE.md';
 
+function displayCell(value, limit) {
+  const plain = value.replace(/\*\*|`/g, '').replace(/\s+/g, ' ').trim();
+  return plain.length <= limit ? plain : `${plain.slice(0, limit - 1).trimEnd()}…`;
+}
+
 function parseHeavyQueue(markdown) {
   const sections = { Running: [], Waiting: [] };
   let section = null;
@@ -19,10 +24,10 @@ function parseHeavyQueue(markdown) {
     if (cells.length < 6 || !/^\d+$/.test(cells[0])) continue;
     sections[section].push({
       priority: Number(cells[0]),
-      job: cells[1].slice(0, 240),
-      hosts: cells[3].slice(0, 160),
-      estimated: cells[4].slice(0, 80),
-      timing: cells[5].slice(0, 160)
+      job: displayCell(cells[1], 240),
+      hosts: displayCell(cells[3], 160),
+      estimated: displayCell(cells[4], 240),
+      timing: displayCell(cells[5], 160)
     });
   }
   return { running: sections.Running, waiting: sections.Waiting };
