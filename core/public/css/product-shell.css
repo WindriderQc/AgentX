@@ -24,11 +24,9 @@
   letter-spacing: -.7px; padding: 0; background: none;
 }
 #nav-container.product-shell .product-mark {
-  position: relative; display: grid; place-items: center; width: 34px; height: 34px;
-  border: 1px solid #558a91; border-radius: 10px; font-size: 22px; color: var(--ax-cyan);
-  background: linear-gradient(145deg, #173b44, #15252e); transform: rotate(-5deg);
+  display: block; width: 44px; height: 44px; flex-shrink: 0;
+  border: 0; border-radius: 0; background: transparent; object-fit: contain;
 }
-#nav-container.product-shell .product-mark span { position: absolute; right: -5px; bottom: -7px; color: var(--ax-ember); font-size: 24px; }
 #nav-container.product-shell .product-brand-x { color: var(--ax-cyan); }
 #nav-container.product-shell .nav-right { display: flex; gap: 6px; flex: 1; overflow: visible !important; height: auto; min-width: 0; padding: 0; }
 #nav-container.product-shell .nav-item { position: relative; flex-shrink: 0; }
