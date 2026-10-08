@@ -764,6 +764,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         if (turn.replyText) message('assistant', turn.replyText, turn.interrupted, null, [], turn.speakerAgentId ? ConversationTeam.memberName(team, agents, turn.speakerAgentId) : '');
         board.restore(turn.display);
       });
+      if (data.turns?.length >= data.policy?.maximumDisplayedTurns && saved.turnCount > data.turns.length) {
+        const earlier = document.createElement('p'); earlier.className = 'conversation-earlier';
+        earlier.textContent = `Les ${data.turns.length} échanges les plus récents sont affichés; les plus anciens restent enregistrés.`;
+        transcript.prepend(earlier);
+      }
       void ConversationImages.resume(`${sessionBase}/${encodeURIComponent(data.session.sessionId)}`, block => { if (!board.has(`image:${block.operation.id}`)) board.add(block); },
         { current: () => conversation.session?.sessionId === data.session.sessionId }); // starting voice moves the epoch
       personalNotes.show(data.turns?.at(-1)?.personalContinuity);

@@ -187,8 +187,10 @@ function sessionHistoryMessages(rows = [], pack = {}, { turnCount } = {}) {
   }).slice(-maximumMessages);
 }
 
-async function loadSessionAuditRows(conversations, session, pack) {
-  const rowLimit = Math.max(1, Math.ceil((Number(pack?.historyTurns) || 0) / 2));
+// The newest turns first. Without `limit`, only as many as the pack lets the model
+// see; a page that shows the saved conversation asks for more.
+async function loadSessionAuditRows(conversations, session, pack, { limit } = {}) {
+  const rowLimit = limit || Math.max(1, Math.ceil((Number(pack?.historyTurns) || 0) / 2));
   return conversations.listTurns({
     sessionId: session.sessionId,
     packId: session.packId,

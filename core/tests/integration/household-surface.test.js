@@ -892,6 +892,18 @@ describe('built-in Household surface on Core', () => {
     } finally { released = true; finish(); await turn; }
   });
 
+  test('an opened personal conversation shows every saved turn, not only the model window', async () => {
+    const base = '/api/voice-personas';
+    const created = await request(app).post(`${base}/private/sessions`).send({ packId: 'personal_operator', backend: 'agentx' }).expect(201);
+    const id = created.body.data.session.sessionId;
+    const inputs = Array.from({ length: 6 }, (_, index) => `Synthetic input ${index + 1}`);
+    for (const text of inputs) await request(app).post(`${base}/private/sessions/${id}/turns/text`).send({ text }).expect(200);
+    const { data } = (await request(app).get(`${base}/private/sessions/${id}/history`).expect(200)).body;
+    expect(data.turns.map(turn => turn.inputText)).toEqual(inputs);
+    expect(data.history.filter(message => message.role === 'user').map(message => message.content)).toEqual(inputs.slice(-4));
+    expect(data.policy).toMatchObject({ maximumMessages: 8, maximumDisplayedTurns: 500 });
+  });
+
   test('persists and resumes a personal conversation without exposing it through child routes', async () => {
     const base = '/api/voice-personas';
     const created = await request(app).post(`${base}/private/sessions`).send({
