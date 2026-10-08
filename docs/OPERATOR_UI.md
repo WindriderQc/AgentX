@@ -227,6 +227,26 @@ Saved measurements are retained independently from runtime recovery. A compariso
 readiness summary does not override an unresolved journal. For measured context,
 capacity and recall distinctions, see [context profiles](PROFILER_CONTEXT.md).
 
+## Data Toolbox: GPU
+
+Open `/data-toolbox#gpu` (full profile, with the optional Data service). The
+tab is read-only and has four sections, each read separately: one that cannot
+be read shows a notice in its place and the others stay on screen.
+
+- **Now**: the last sample of each GPU host with its age. Only a **fresh** host
+  shows current values. A **stale** host shows the last values received, their
+  age and the collector's last error; **no data** means no sample ever arrived.
+  A dash is a value the collector did not read, never a zero. This section
+  refreshes every 30 seconds while the tab is open and the page visible.
+- **Occupancy**: per physical GPU over 24 hours, 7 days or 30 days. Read
+  **Coverage** first: it is the share of the window Data has samples for. Busy,
+  utilisation and throttled figures describe that observed time only, so a GPU
+  with low coverage is mostly unknown, not idle. History older than Data's
+  retention (`DATA_HARDWARE_HISTORY_TTL_DAYS`) lowers the coverage of a long window.
+- **Recent trend**: utilisation over the last six hours as five-minute means,
+  with the mean, minimum, maximum and latest value in text.
+- **Collector**: the native gpu-agent's registration and last heartbeat.
+
 ## Interaction and verification
 
 The diagnostic panels wrap long identifiers, expose textual status and reveal
