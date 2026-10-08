@@ -21,7 +21,7 @@ STAGES = {"preparing", "dependencies", "model_wait", "model_generation", "tool",
 PHASES = {"preparing", "running", "delivering", "finished"}
 REASONS = {"hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit",
            "worker_exit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
-           "tests_failed", "generated_artifacts",
+           "tests_failed", "generated_artifacts", "ineligible_task",
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
 RESULTS = {"blocked", "review", "local_only"}
 TEST_NAMES = {"pytest", "unittest", "jest", "npm_test", "node_test"}
@@ -109,6 +109,20 @@ def message_text(message: dict) -> str:
         return "\n".join(message_text(item) if item.get("type") == "tool-result" else item.get("text", "")
                          for item in content if isinstance(item, dict))
     return ""
+
+
+def test_outcome(content: str, errored: bool, reliable_exit: bool) -> str:
+    """A successful output filter does not prove the test before it passed."""
+    content = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", content)
+    if re.search(r"\[(?:timed out|killed by signal)", content):
+        return "unknown"
+    failures = (r"(?m)^\s*(?:FAILED\b|FAIL(?:\s|$)|"
+                r"(?:Test Suites|Tests):[^\n]*\b[1-9]\d* failed\b|"
+                r"# fail [1-9]\d*\b|=+[^\n]*\b[1-9]\d* failed\b)")
+    if errored or re.search(r"\[exit code: [1-9]\d*\]", content) or re.search(failures, content):
+        return "failed"
+    success = r"(?m)^\s*(?:OK\b|Test Suites:[^\n]*\b[1-9]\d* passed\b|# fail 0\b|=+[^\n]*\b[1-9]\d* passed\b)"
+    return "passed" if reliable_exit or re.search(success, content) else "unknown"
 
 
 def safe_progress(value: object, request_id: str, task_id: str) -> dict | None:
@@ -209,7 +223,10 @@ class Progress:
             name = test_kind(str(args.get("command", ""))) if isinstance(args, dict) and data.get("name") == "bash" else None
             call_id = data.get("callId")
             if isinstance(call_id, str) and name:
-                self.pending_tests[(session, call_id)] = (name, hashlib.sha256(str(args.get("command", "")).encode()).hexdigest())
+                command = str(args.get("command", ""))
+                # Shell pipelines and fallbacks can mask the test's exit code.
+                reliable = not re.search(r"[|;]", command)
+                self.pending_tests[(session, call_id)] = (name, hashlib.sha256(command.encode()).hexdigest(), reliable)
             self.current_test = next(iter(self.pending_tests.values()))[0] if self.pending_tests else None
             self.set_stage("test" if self.current_test else "tool")
         elif kind == "tool/result":
@@ -224,9 +241,7 @@ class Progress:
                 blocks = message.get("content", [])
                 errored = message.get("isError") or (isinstance(blocks, list) and any(
                     isinstance(block, dict) and block.get("isError") for block in blocks))
-                outcome = ("unknown" if re.search(r"\[(?:timed out|killed by signal)", content)
-                           else "failed" if errored or re.search(r"\[exit code: [1-9]\d*\]", content)
-                           else "passed")
+                outcome = test_outcome(content, bool(errored), pending[2])
                 signature = (pending[1], outcome, self.source_signature)
                 if outcome != "unknown" and signature not in self.seen_tests:
                     self.seen_tests.add(signature)

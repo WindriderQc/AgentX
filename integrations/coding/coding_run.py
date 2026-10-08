@@ -327,8 +327,16 @@ def execute(args, progress) -> int:
     # The same eligibility rule as the Pipeline launch control: a direct task id
     # may not start a task the dispatch boundary would refuse, and an ineligible
     # task must stay untouched (no claim, clone, dependency install or worker run).
-    task = request(f"{CORE}/api/pipeline/tasks/{args.task_id}")["data"]["task"]
+    try:
+        task = request(f"{CORE}/api/pipeline/tasks/{args.task_id}")["data"]["task"]
+        if not isinstance(task, dict):
+            raise ValueError("Malformed task detail")
+    except (OSError, RuntimeError, KeyError, TypeError, ValueError):
+        progress.finish("blocked", "runner_error")
+        print("Task eligibility could not be read; no task was claimed or changed.", file=sys.stderr)
+        return 2
     if not coding_dispatch_control.can_start(task):
+        progress.finish("blocked", "ineligible_task")
         print(f"task {args.task_id} is not a queued, unowned, non-private agentx-coding task; not started", file=sys.stderr)
         return 2
 

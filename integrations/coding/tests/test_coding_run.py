@@ -168,6 +168,34 @@ class CodingRunTest(unittest.TestCase):
         self.assertIn("approve the installation", self.feedback.call_args.args[1])
         self.assertEqual(publish.call_count, 0)
 
+    def test_preclaim_rejection_records_a_terminal_receipt_without_task_feedback(self):
+        import json
+        key = "11111111-2222-4333-8444-555555555555"
+        self.task["service"] = "core"
+        receipts = self.workspace.parent / "receipts"
+        with mock.patch.object(sys, "argv", ["coding_run", "0001", "--request-id", key]), \
+                mock.patch.object(runner, "RECEIPTS", receipts), mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 2)
+        value = json.loads((receipts / f"{key}.progress.json").read_text())
+        self.assertEqual((value["phase"], value["result"], value["stopReason"]), ("finished", "blocked", "ineligible_task"))
+        self.feedback.assert_not_called()
+
+    def test_failed_preclaim_read_does_not_modify_the_task(self):
+        with mock.patch.object(runner, "request", side_effect=RuntimeError("Core unavailable")), \
+                mock.patch.object(runner, "run_worker") as worker, mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 2)
+        self.feedback.assert_not_called()
+        worker.assert_not_called()
+
+    def test_malformed_preclaim_response_does_not_modify_the_task(self):
+        for task in (None, []):
+            with self.subTest(task=task), \
+                    mock.patch.object(runner, "request", return_value={"data": {"task": task}}), \
+                    mock.patch.object(runner, "run_worker") as worker, mock.patch("builtins.print"):
+                self.assertEqual(runner.main(), 2)
+                self.feedback.assert_not_called()
+                worker.assert_not_called()
+
     def test_ineligible_task_is_refused_before_claim_clone_dependencies_and_model(self):
         self.urls = []
         def request(url, body=None, token=""):
