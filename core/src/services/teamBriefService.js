@@ -31,8 +31,20 @@ function withDisplay(value) {
   return out;
 }
 
+// What the Secretary flagged for the owner: one action per mail thread, written by her triage.
+const emailActions = {
+  async recent({ since, now }) {
+    const rows = await require('mongoose').connection.collection('emailactions')
+      .find({ $or: [{ createdAt: { $gte: since } }, { dueAt: { $gte: now } }] })
+      .sort({ createdAt: -1 }).limit(20)
+      .project({ _id: 0, gmailThreadId: 1, category: 1, action: 1, subject: 1, sender: 1, dueAt: 1, createdAt: 1 }).toArray();
+    return { actions: rows.map(({ gmailThreadId, ...row }) => ({ threadId: gmailThreadId, ...row })) };
+  }
+};
+
 function defaultSources() {
   return {
+    emailActions,
     mailJournal: require('./mailJournalService'),
     financeQuery: require('./finance/financeQueryService'),
     financeAlerts: require('./finance/financeAlerts')
@@ -42,10 +54,11 @@ function defaultSources() {
 const BRIEFS = Object.freeze({
   secretary: {
     title: 'Mail journal',
-    covers: 'Dated digests of the mail threads the Secretary has processed, newest first. Promotional mail and the last few minutes may be missing.',
+    covers: 'What the Secretary flagged for the owner (a reply, something urgent, a deadline), and dated digests of the mail threads she has processed, newest first. Mail of the last few minutes may be missing.',
     beyond: 'The exact text of a mail, the very latest message received, a draft, a reply, sorting or sending: consult the Secretary.',
     defaultDays: 2,
-    sections: ({ sources, since }) => ({
+    sections: ({ sources, since, now }) => ({
+      flaggedForOwner: () => sources.emailActions.recent({ since, now }),
       mail: () => sources.mailJournal.search({ since: since.toISOString(), limit: 20 })
         .then(({ entries, total, truncated }) => ({ entries, total, truncated }))
     })
@@ -75,7 +88,7 @@ async function brief(input = {}, { sources = defaultSources(), now = () => new D
   const asOf = now();
   const since = new Date(asOf.getTime() - days * DAY_MS);
   const sections = {};
-  await Promise.all(Object.entries(definition.sections({ sources, since })).map(async ([name, read]) => {
+  await Promise.all(Object.entries(definition.sections({ sources, since, now: asOf })).map(async ([name, read]) => {
     try { sections[name] = withDisplay(await read()); }
     catch (cause) { sections[name] = { unavailable: String(cause?.message || 'unavailable').slice(0, 200) }; }
   }));

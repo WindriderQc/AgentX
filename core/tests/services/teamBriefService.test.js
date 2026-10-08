@@ -12,6 +12,7 @@ function sources(overrides = {}) {
       statements: async input => { calls.push(['statements', input]); return { statements: [] }; }
     },
     financeAlerts: { list: async () => ({ alerts: [] }) },
+    emailActions: { recent: async input => { calls.push(['actions', input]); return { actions: [{ threadId: 't9', category: 'Needs Reply', action: 'Synthetic action.', sender: 'Synthetic sender' }] }; } },
     ...overrides };
 }
 
@@ -29,10 +30,12 @@ describe('the standing brief of a collaborator', () => {
   test('the Secretary shares her recent mail journal, newest first by default over two days', async () => {
     const s = sources();
     const result = await brief({ member: 'Secretary' }, { sources: s, now });
-    expect(s.calls).toEqual([['mail', { since: '2026-03-13T12:00:00.000Z', limit: 20 }]]);
+    expect(s.calls).toContainEqual(['mail', { since: '2026-03-13T12:00:00.000Z', limit: 20 }]);
+    expect(s.calls).toContainEqual(['actions', { since: new Date('2026-03-13T12:00:00.000Z'), now: new Date('2026-03-15T12:00:00.000Z') }]);
+    expect(result.sections.flaggedForOwner.actions[0]).toMatchObject({ threadId: 't9', category: 'Needs Reply' });
     expect(result.sections.mail).toEqual({ entries: [{ threadId: 't1', subject: 'Synthetic subject', summary: 'Synthetic digest.' }], total: 1, truncated: false });
     await brief({ member: 'secretary', days: 7 }, { sources: s, now });
-    expect(s.calls.at(-1)[1].since).toBe('2026-03-08T12:00:00.000Z');
+    expect(s.calls.filter(call => call[0] === 'mail').at(-1)[1].since).toBe('2026-03-08T12:00:00.000Z');
   });
 
   test('the accountant shares balances, recent months, alerts and statements to review, with display amounts', async () => {
