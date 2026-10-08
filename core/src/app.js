@@ -629,6 +629,7 @@ app.get('/models', (req, res) => {
       '<script src="/js/utils/playground-link.js"></script>',
       '<script src="/js/models-unified.js"></script>',
       '<script src="/js/models-unified-popouts.js"></script>',
+      '<script src="/js/models-stats-strip.js"></script>',
       '<script src="/js/models-management.js"></script>',
       '<script src="/js/models-comparison.js"></script>',
       '<script src="/js/models-execution-config.js"></script>',

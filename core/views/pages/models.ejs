@@ -38,43 +38,38 @@
             </summary>
 
           <div class="models-cockpit-surface">
-        <!-- Stats Strip -->
+        <!-- Stats Strip (rendered by models-stats-strip.js) -->
         <div class="stats-row">
-            <div class="stat-card clickable" id="statTotalCard">
-                <div class="icon-box blue"><i class="fas fa-cubes"></i></div>
-                <div class="stat-info">
-                    <h3>Unique model tags</h3>
-                    <div class="number" id="statTotal">--</div>
-                    <div class="sub-text" id="statTotalSub"></div>
-                </div>
-            </div>
-            <div class="stat-card clickable" id="statStorageCard">
-                <div class="icon-box purple"><i class="fas fa-hdd"></i></div>
-                <div class="stat-info">
-                    <h3>Storage</h3>
-                    <div class="number" id="statStorage">--</div>
-                    <div class="sub-text" id="statStorageSub"></div>
-                </div>
-            </div>
-            <div class="stat-card clickable" id="statHostsCard">
-                <div class="icon-box orange"><i class="fas fa-server"></i></div>
-                <div class="stat-info">
-                    <h3>Hosts</h3>
-                    <div class="number" id="statHosts">--</div>
-                    <div class="sub-text" id="statHostsSub"></div>
-                </div>
-            </div>
-            <div class="stat-card clickable" id="statBenchmarkedCard">
-                <div class="icon-box cyan"><i class="fas fa-flask-vial"></i></div>
-                <div class="stat-info">
-                    <h3>Benchmarked</h3>
-                    <div class="number" id="statBenchmarked">--</div>
-                    <div class="sub-text" id="statAvgScore">--</div>
-                </div>
-            </div>
+            <button type="button" class="stat-card clickable" id="statTotalCard">
+                <span class="stat-head"><span class="icon-box blue"><i class="fas fa-cubes"></i></span><h3>Unique model tags</h3></span>
+                <span class="stat-figure"><span class="number" id="statTotal">--</span><span class="stat-chips" id="statTotalChips"></span></span>
+                <span class="sub-text" id="statTotalSub"></span>
+                <span class="strip-bar" id="statTotalBar"></span>
+                <span class="strip-legend" id="statTotalLegend"></span>
+            </button>
+            <button type="button" class="stat-card clickable" id="statStorageCard">
+                <span class="stat-head"><span class="icon-box purple"><i class="fas fa-hdd"></i></span><h3>Storage on disk</h3></span>
+                <span class="stat-figure"><span class="number" id="statStorage">--</span></span>
+                <span class="sub-text" id="statStorageSub"></span>
+                <span class="strip-bar" id="statStorageBar"></span>
+                <span class="strip-legend" id="statStorageLegend"></span>
+            </button>
+            <button type="button" class="stat-card clickable" id="statHostsCard">
+                <span class="stat-head"><span class="icon-box orange"><i class="fas fa-server"></i></span><h3>Runtime hosts</h3></span>
+                <span class="stat-figure"><span class="number" id="statHosts">--</span><span class="strip-status" id="statHostsOnline" hidden></span></span>
+                <span class="sub-text" id="statHostsSub"></span>
+                <span class="strip-hosts" id="statHostsList"></span>
+            </button>
+            <button type="button" class="stat-card clickable" id="statBenchmarkedCard">
+                <span class="stat-head"><span class="icon-box cyan"><i class="fas fa-flask-vial"></i></span><h3>Benchmark coverage</h3></span>
+                <span class="stat-figure"><span class="number" id="statBenchmarked">--</span><span class="stat-of" id="statBenchmarkedOf"></span></span>
+                <span class="sub-text" id="statAvgScore"></span>
+                <span class="strip-bar" id="statBenchmarkBar"></span>
+                <span class="strip-best" id="statBenchmarkBest"></span>
+            </button>
         </div>
         <p class="models-count-scope" id="modelsCountScope">
-            Inventory scope: unique active model tags across configured Ollama hosts and custom providers. Host installs are counted separately; “Benchmarked” means unique tags with recorded positive-score evidence.
+            Inventory scope: unique active model tags across configured Ollama hosts and custom providers. Host installs are counted separately; storage counts a file shared by two endpoints of one machine once; “Benchmark coverage” means active unique tags with recorded positive-score evidence.
         </p>
 
         <!-- Category Pill Strip -->
