@@ -112,6 +112,21 @@
 }
 
 /* ── Sidebar: Upcoming Tasks ─────────────────────────────────── */
+.cs-queue-note {
+  padding: 8px 12px;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.cs-queue-group {
+  padding: 8px 12px 4px;
+  color: #7cf0ff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.cs-queue-group span { color: #94a3b8; font-weight: 400; }
+.cs-queue-item .cs-next-name { white-space: normal; overflow-wrap: anywhere; }
+.cs-actual-note { color: #94a3b8; font-size: 11px; padding: 4px 0 12px; }
 
 .cs-next-list {
     padding: 8px 12px;

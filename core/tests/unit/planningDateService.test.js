@@ -2,6 +2,7 @@ const {
   defaultPlanningTimeZone,
   dateOnlyKey,
   zonedDateOnly,
+  zonedDayBounds,
   isDateOnlyOverdue
 } = require('../../src/services/planningDateService');
 
@@ -32,5 +33,20 @@ describe('planningDateService date-only semantics', () => {
       new Date('2026-07-17T04:01:00.000Z'),
       'America/Toronto'
     )).toBe(true);
+  });
+
+  test('uses the complete local day, including daylight-saving transitions', () => {
+    expect(zonedDayBounds('2026-10-08', 'America/Toronto')).toEqual({
+      start: new Date('2026-10-08T04:00:00.000Z'),
+      end: new Date('2026-10-09T04:00:00.000Z')
+    });
+    expect(zonedDayBounds('2026-03-08', 'America/Toronto')).toEqual({
+      start: new Date('2026-03-08T05:00:00.000Z'),
+      end: new Date('2026-03-09T04:00:00.000Z')
+    });
+    expect(zonedDayBounds('2026-11-01', 'America/Toronto')).toEqual({
+      start: new Date('2026-11-01T04:00:00.000Z'),
+      end: new Date('2026-11-02T05:00:00.000Z')
+    });
   });
 });

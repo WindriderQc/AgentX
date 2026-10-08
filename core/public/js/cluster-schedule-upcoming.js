@@ -89,6 +89,8 @@
           host: entry.host,
           model: entry.model,
           priority: entry.priority,
+          lastRun: entry.lastRun || null,
+          metadata: entry.metadata || {},
           scheduleType: entry.scheduleType || (dailyCount > 1 ? 'cron' : null),
           intervalMs,
           dailyCount,
