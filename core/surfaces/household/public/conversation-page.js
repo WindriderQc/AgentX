@@ -262,6 +262,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (event.type === 'tools') { showTools(event.evidence); activity('tools', { count: event.evidence?.receipts?.length || 1 }); }
       if (event.type === 'scene' && !interruptedTurns.has(turnId)) activity('scene', { scene: event.scene });
       if (event.type === 'show' && !interruptedTurns.has(turnId)) board.add(event.block);
+      if (event.type === 'status' && event.phase === 'activity') voiceHealth.activity();
       if (!interruptedTurns.has(turnId) && event.type === 'status' && event.phase === 'activity') {
         // Nestor says what it is doing (tools, another agent) once per line.
         const line = AgentActivity.describe(event.activity, agentName);
@@ -314,7 +315,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const labels = { idle: 'Prêt à écouter.', starting: 'Activation du microphone…', listening: 'Je t’écoute…', hearing: 'Je t’écoute…', transcribing: 'Un instant…', waiting: 'Je termine la réponse précédente…', thinking: 'Je réfléchis…', preparing: 'Je prépare la réponse…', speaking: 'Nestor répond…', paused: 'Micro coupé.', error: 'Conversation en pause.', reviewing: 'Micro coupé pour la réécoute.', resuming: 'Reprise après la lecture…' };
   // The voice ladder and the VoiX backup (X-Voix-Upstream) share one notice.
   let ladderNotice = '', voixUpstream = '';
-  const renderVoiceNotice = () => { const text = NestorVoixUpstream.composeNotice(ladderNotice, voixUpstream), node = el('conversationVoiceNotice'); node.hidden = !text; node.textContent = text; };
+  // What the page measured on the last turn: slow recognition, a slow answer, choppy speech.
+  const voiceHealth = new AgentXVoiceHealth.VoiceHealth();
+  const renderVoiceNotice = () => { const text = [NestorVoixUpstream.composeNotice(ladderNotice, voixUpstream), voiceHealth.notice()].filter(Boolean).join(' '), node = el('conversationVoiceNotice'); node.hidden = !text; node.textContent = text; };
   const voiceNotice = text => { ladderNotice = text || ''; renderVoiceNotice(); };
   const noteUpstream = state => { const active = typeof state === 'string' ? state : state?.active; if (active) { voixUpstream = active; renderVoiceNotice(); } };
   const refreshUpstream = () => api('/api/voix/upstream').then(noteUpstream, () => {});
@@ -410,7 +413,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const conversation = new NestorConversation.Conversation({
     readyToSpeak: () => avatar?.ready,
     openAudio: (signal, onError, options) => NestorConversation.openAudio(signal, onError, { ...options, observeSpeech: true,
-      onPlaybackMetrics: metrics => { el('voiceDescription').title = `Last segment: ${metrics.first_scheduled_ms} ms to schedule; ${metrics.buffer_gaps} buffer gaps (${metrics.buffer_gap_ms} ms). Browser timing, not acoustic measurement.`; } }).then(audio => speechFallback.wrapAudio(audio)), createSession, message, turn: streamedTurn,
+      onPlaybackMetrics: metrics => { voiceHealth.segment(metrics); renderVoiceNotice(); el('voiceDescription').title = `Last segment: ${metrics.first_scheduled_ms} ms to schedule; ${metrics.buffer_gaps} buffer gaps (${metrics.buffer_gap_ms} ms). Browser timing, not acoustic measurement.`; } }).then(audio => speechFallback.wrapAudio(audio)), createSession, message, turn: streamedTurn,
     async interrupt(session, turnId, signal, { stop = false } = {}) {
       let result;
       do {
@@ -434,8 +437,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     // The person starts speaking: wake speech recognition while they talk (best effort).
     warm: () => fetch('/api/voix/warm', { method: 'POST' }),
     // The voice loop's timeline of a spoken turn, kept by Core on that recorded turn.
-    timings: (session, turnId, timings) => api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/voice-timings`,
-      { method: 'POST', keepalive: true, body: JSON.stringify({ turnId, timings }) }),
+    timings: (session, turnId, timings) => { voiceHealth.turn(turnId, timings); renderVoiceNotice(); return api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/voice-timings`,
+      { method: 'POST', keepalive: true, body: JSON.stringify({ turnId, timings }) }); },
     async synthesize(reply, signal) {
       // The voice loop chose one language for the whole turn; a clause is never re-scored.
       const lang = NestorSpeech.normalizeSpeechLanguage(reply.language) || 'fr';
