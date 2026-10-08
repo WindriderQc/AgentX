@@ -50,9 +50,29 @@ async function openClawPanelStatus(evidence, timeoutMs = OPENCLAW_STATUS_TIMEOUT
   }
 }
 
+// Required services decide whether AgentX is down. An optional service (Data,
+// Compose profile `data`) that is stopped or not deployed only degrades the
+// tile, and the detail names it.
+function agentxCrew(services = []) {
+  const required = services.filter(service => !service.optional);
+  const ready = required.filter(service => service.status === 'ok').length;
+  const unavailable = services.filter(service => service.optional && service.status !== 'ok');
+  const detail = `${ready}/${required.length} platform services ready`;
+  return {
+    id: 'agentx',
+    name: 'AgentX',
+    role: 'Router · RAG · shared memory authority',
+    status: ready !== required.length ? 'down' : unavailable.length ? 'degraded' : 'ok',
+    detail: unavailable.length
+      ? `${detail} · optional ${unavailable.map(service => service.name).join(', ')} unavailable`
+      : detail,
+    href: '/agent-ops'
+  };
+}
+
 function panelCrewReady(crew, fleet) {
   return crew.every(member => member.status === 'ok' || (member.id === 'openclaw' && member.status === 'unknown'))
     && fleet.status === 'ok';
 }
 
-module.exports = { openClawCrew, openClawPanelStatus, panelCrewReady };
+module.exports = { agentxCrew, openClawCrew, openClawPanelStatus, panelCrewReady };

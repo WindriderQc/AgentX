@@ -12,7 +12,10 @@ requires an explicitly approved writable mount. No disk mount is shipped by defa
 Enable Compose profile `data` when needed. Data does not read `AGENTX_PROFILE`:
 it starts in either profile and reads only its own collections of the shared
 database, and its database browser lists only its allowlisted collections. Core uses `DATAAPI_BASE_URL`; the
-optional service defaults to internal `http://data:3083`. Direct native Data
+optional service defaults to internal `http://data:3083`. When Data is stopped
+or not deployed, the Household panel and Agent Ops service health show its own
+row `down` and marked `optional`; AgentX and the service summary are then
+`degraded` ("optional Data unavailable"), never `down`. Direct native Data
 defaults to loopback. Background feeds and existing janitor schedules start only
 with `DATA_BACKGROUND_JOBS_ENABLED=true`; manual APIs remain available. Network
 scan defaults require `NETWORK_SCAN_CIDR` or an explicit request target.
