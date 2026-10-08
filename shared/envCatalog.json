@@ -3081,6 +3081,26 @@
       "category": "operations",
       "secret": false,
       "description": "Poll interval of the Data weather feed. Unset: 60000 ms."
+    },
+    "LIVEDATA_LOCATIONS_JSON": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Optional JSON array of named latitude/longitude locations used to seed Data weatherLocations only when empty. Unset: no location seed. Supply through an external Data environment override; instance locations stay outside public Git."
+    },
+    "WEATHER_API_KEY": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": true,
+      "description": "Optional OpenWeather API credential for Data weather feeds. Unset: use keyless Open-Meteo. Supply through an external Data environment override; keep the credential outside Git."
     }
   }
 }
