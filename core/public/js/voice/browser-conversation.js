@@ -93,6 +93,9 @@
   });
   // Silence before a reply's first words after which Nestor says one holding phrase.
   const HOLDING_DELAY_MS = 3000;
+  // A holding phrase whose voice is not ready this long after it was due is dropped:
+  // said that late, it only stands between the person and the answer.
+  const HOLDING_LATE_MS = 1000;
   // Energy is not speech: a click, a keyboard or a door must not pause a reply. A sound
   // heard over a reply is recognized once it has gone on this long, and again when it
   // ends; only words hold the reply or interrupt it.
@@ -713,6 +716,7 @@
         if (streamed || !this.owns(turn) || turn.interrupted) return;
         const phrase = (this.io.speechText || speechLanguage.speechText)(holdingPhrase(spokenLanguage, this.holdingIndex = (this.holdingIndex || 0) + 1));
         const hold = holdingSpeech = { abort: new AbortController(), playing: false };
+        const clock = () => (this.io.now ? this.io.now() : Date.now()), due = clock();
         const cancel = () => hold.abort.abort();
         turn.speech.signal.addEventListener('abort', cancel, { once: true });
         const prepared = Promise.resolve().then(() => this.io.synthesize({ text: phrase, language: spokenLanguage }, hold.abort.signal));
@@ -721,6 +725,7 @@
           const bytes = await prepared;
           await this.awaitCandidate(turn);
           if (hold.abort.signal.aborted || !this.owns(turn) || speechError) return;
+          if (clock() - due > (this.io.holdingLateMs ?? HOLDING_LATE_MS)) { discardSpeech(bytes); return; }
           hold.playing = true; turn.timeline?.mark('holdingPhrase');
           this.monitor(turn); this.show('speaking');
           turn.spoken = ((turn.spoken || '') + ' ' + phrase).slice(-800); // only a phrase that plays can be heard back
