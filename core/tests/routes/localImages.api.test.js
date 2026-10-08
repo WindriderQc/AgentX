@@ -27,3 +27,15 @@ test('the atelier reads the stored draft without submitting a generation', async
   expect(result.body.draft).toMatchObject({ prompt: 'Two robots', seed: 42 });
   expect(accept).not.toHaveBeenCalled();
 });
+test('workshop disclosures read their presentation provider without generating or recovering', async () => {
+  const images = { accept: jest.fn(), recover: jest.fn() };
+  const workshop = { overview: jest.fn(() => ({ worker: { label: 'Synthetic host' }, profiles: [] })),
+    details: jest.fn(async id => ({ id, recipe: { steps: 40 } })) };
+  const app = express(); app.use('/api/images', createRouter(images, workshop));
+  const overview = await request(app).get('/api/images/workshop').expect(200);
+  expect(overview.headers['cache-control']).toBe('private, no-store');
+  const receipt = await request(app).get('/api/images/operations/synthetic/details').expect(200);
+  expect(receipt.body.details.recipe.steps).toBe(40);
+  expect(workshop.details).toHaveBeenCalledWith('synthetic');
+  expect(images.accept).not.toHaveBeenCalled(); expect(images.recover).not.toHaveBeenCalled();
+});
