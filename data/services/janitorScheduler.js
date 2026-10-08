@@ -1,15 +1,19 @@
 /**
  * janitorScheduler.js — per-profile interval timers.
  *
- * init(db)         — sweep stale runs, then arm a setInterval for each
- *                    enabled profile.
+ * init(db)         — arm a setInterval for each enabled profile.
  * reload(db, id)   — re-read one profile and (re)arm or clear its timer.
  *                    Called from CRUD endpoints; idempotent.
  * close()          — clear all timers (called from server shutdown).
+ *
+ * No timer is ever armed unless background jobs are enabled
+ * (utils/backgroundJobs): init and reload then only clear. Stale runs are
+ * swept by server startup, which does not depend on that setting.
  */
 const janitorProfiles = require('./janitorProfiles');
 const janitorRunner = require('./janitorRunner');
 const { log } = require('../utils/logger');
+const { backgroundJobsEnabled } = require('../utils/backgroundJobs');
 
 const { MIN_INTERVAL_MINUTES } = janitorProfiles;
 
@@ -41,6 +45,12 @@ function _armTimer(db, profile) {
   // Clear first: reload() may race if two CRUD calls yield concurrently;
   // _armTimer always wins because the last write to the Map wins.
   _clearTimer(key);
+  // Single gate for every caller: a profile saved while background jobs are
+  // off keeps its schedule in the database and starts with the next enabled start.
+  if (!backgroundJobsEnabled()) {
+    log(`[janitorScheduler] Background jobs disabled — profile "${profile.name}" schedule not armed`);
+    return;
+  }
   const intervalMs = Math.max(MIN_INTERVAL_MS, profile.schedule.intervalMinutes * 60 * 1000);
   const handle = setInterval(() => {
     janitorRunner.runProfile(db, key)
@@ -53,10 +63,9 @@ function _armTimer(db, profile) {
 }
 
 async function init(db) {
-  try {
-    await janitorRunner.sweepStaleRuns(db);
-  } catch (err) {
-    log(`[janitorScheduler] sweepStaleRuns failed: ${err.message}`, 'warn');
+  if (!backgroundJobsEnabled()) {
+    log('[janitorScheduler] Background jobs disabled — no profile timer armed');
+    return;
   }
 
   let profiles;

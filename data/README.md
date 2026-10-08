@@ -12,10 +12,23 @@ requires an explicitly approved writable mount. No disk mount is shipped by defa
 Enable Compose profile `data` when needed. Data does not read `AGENTX_PROFILE`:
 it starts in either profile and reads only its own collections of the shared
 database, and its database browser lists only its allowlisted collections. Core uses `DATAAPI_BASE_URL`; the
-optional service defaults to internal `http://data:3083`. Direct native Data
+optional service defaults to internal `http://data:3083`. When Data is stopped
+or not deployed, the Household panel and Agent Ops service health show its own
+row `down` and marked `optional`; AgentX and the service summary are then
+`degraded` ("optional Data unavailable"), never `down`. Direct native Data
 defaults to loopback. Background feeds and existing janitor schedules start only
 with `DATA_BACKGROUND_JOBS_ENABLED=true`; manual APIs remain available. Network
 scan defaults require `NETWORK_SCAN_CIDR` or an explicit request target.
+
+Without that setting no janitor profile timer is ever armed: a profile created
+or updated with a schedule keeps it in the database and starts at the next
+start with background jobs enabled. Every start, whatever the setting, repairs
+what a crash left in progress: a `running` janitor run becomes `stopped`, and a
+profile action left `executing` returns to `pending` with its preview
+invalidated, `execution_interrupted_at` and a note. Nothing is approved or
+executed by that repair; the action needs a new preview, which re-verifies
+every file. A profile run fails at once, with the root named in its `error`,
+when a root is missing or is not a directory.
 
 Janitor AI advice (triage, duplicate resolution, path analysis) asks Core's
 `janitor_ai` task and waits 60 seconds, with one retry. When that task is
@@ -43,6 +56,16 @@ configuration. Storage sources map explicit host roots to stable canonical paths
 for example `media` to `/mnt/media`, excluding a nested `Datalake` root counted
 separately as `/mnt/datalake`. No personal physical root is inferred.
 
+A scan target is an IPv4 address or an IPv4 CIDR from `/16` to `/32`; Data
+refuses anything else, and the network collector checks a queued target again
+before it runs `nmap` (its own `SCAN_CIDR` may be wider). Posted scan results
+keep only devices with an IPv4 `ip`, an empty or well-formed `mac` and text
+`hostname`/`vendor`; the response counts the others in `rejected`. nmap XML
+that does not parse is refused with HTTP 400 and changes no device. With
+`pruneMissing`, a result without any valid device marks nothing offline and
+says so in `pruneSkipped`. The collector gives up on a Data request after
+`NETWORK_AGENT_HTTP_TIMEOUT_MS` (default 15000).
+
 A finished scan removes the index rows it did not see, one root at a time. A
 root where the scan indexed no file keeps its rows and the scan ends `partial`
 with the reason in `last_error`: an unmounted or emptied mountpoint walks as a
@@ -50,6 +73,21 @@ clean, empty directory and must not erase the inventory and its hashes. The
 in-container scanner also keeps existing rows when a directory could not be read
 or a batch failed. A root that was really emptied keeps its last rows until a
 scan indexes at least one file there.
+
+Two scans never run on overlapping roots, since the first to finish would remove
+the rows the other one stamped. `POST /storage/scan` answers 409 with the id of
+the scan already queued or running there. `POST /storage/agent-scans` returns
+that scan's id with `coalesced: true` when it is an external scan of the same
+source, so a nightly job waits on it, and 409 when an in-container scan holds
+the root. An external scan ends `failed`, with the reason in `last_error` and
+no index row removed, after 10 minutes running without a collector heartbeat or
+batch, or 6 hours queued without a claim; this is checked at startup and each
+time scans are requested, claimed, listed or read. A finished external scan is
+not reopened: a late batch or completion gets 409. A batch is accepted only for
+a running external scan; entries outside its roots and malformed `sha256`
+values are dropped and counted in `counts.rejected` and `counts.hashes_rejected`.
+`POST /storage/scan` takes `batch_size` from 1 to 10000 and extension lists of
+at most 200 strings.
 
 GPU telemetry lives under `/api/v1/hardware`. The native `gpu-agent` collector
 posts one cycle per interval to `POST /samples` (and `POST /collector/heartbeat`

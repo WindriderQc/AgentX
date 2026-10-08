@@ -12,6 +12,8 @@ const { createRequestLog } = require('./middleware/requestLog');
 const storageController = require('./controllers/storageController');
 const liveData = require('./services/liveData');
 const janitorScheduler = require('./services/janitorScheduler');
+const janitorRunner = require('./services/janitorRunner');
+const { backgroundJobsEnabled } = require('./utils/backgroundJobs');
 const eventController = require('./controllers/eventController');
 const liveDataController = require('./controllers/liveDataController');
 const pjson = require('./package.json');
@@ -83,6 +85,10 @@ async function start() {
 
   // Cleanup stale scans from previous session
   await storageController.cleanupStaleScans(db);
+  // Same repair for janitor runs and actions a crash left in progress. It is
+  // not a background job: it runs whether or not background jobs are enabled.
+  try { await janitorRunner.sweepStaleRuns(db); }
+  catch (e) { log(`[janitorRunner] sweepStaleRuns failed: ${e.message}`, 'warn'); }
 
   await new Promise((resolve, reject) => {
     server = app.listen(PORT, HOST, resolve);
@@ -91,7 +97,7 @@ async function start() {
   log(`agentx-data listening on port ${server.address().port}`);
 
   // Background work is an explicit instance choice, never a test side effect.
-  if (process.env.NODE_ENV !== 'test' && process.env.DATA_BACKGROUND_JOBS_ENABLED === 'true') {
+  if (backgroundJobsEnabled()) {
     try { await liveData.init(db); }
     catch (e) { log(`[liveData] Init failed: ${e.message}`, 'warn'); }
     try { await janitorScheduler.init(db); }

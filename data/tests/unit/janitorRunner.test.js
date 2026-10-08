@@ -3,6 +3,7 @@ const { ObjectId } = require('mongodb');
 
 jest.mock('../../services/janitorProfiles', () => ({
   get: jest.fn(),
+  checkRoots: jest.fn(),
   COLLECTION: 'janitor_profiles'
 }));
 jest.mock('../../services/scanner', () => {
@@ -129,6 +130,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   scannerMod._instances.length = 0;
   janitorRunner._reset(); // clear in-memory concurrency guard
+  janitorProfiles.checkRoots.mockResolvedValue({ ok: true });
   janitorApprovalEvidence.verifyDuplicateAction.mockResolvedValue(previewEvidence());
   janitorStrategy.getPolicy.mockResolvedValue({
     version: 1,
@@ -368,6 +370,27 @@ describe('janitorRunner.runProfile', () => {
     const run = db._collections['janitor_runs'].docs[0];
     expect(run.status).toBe('complete');
     expect(run.dedup_error).toBe('agg failed');
+  });
+
+  test('a missing root fails the run before any scan, dedup or proposal', async () => {
+    janitorProfiles.get.mockResolvedValue(profileFixture);
+    janitorProfiles.checkRoots.mockResolvedValue({ ok: false, errors: ['root "/mnt/datalake/test": Path not found'] });
+    const db = makeMockDb();
+
+    const result = await janitorRunner.runProfile(db, String(profileFixture._id));
+
+    expect(janitorProfiles.checkRoots).toHaveBeenCalledWith(profileFixture.roots);
+    expect(result).toMatchObject({ ok: false, error: 'roots: root "/mnt/datalake/test": Path not found' });
+    const run = db._collections.janitor_runs.docs[0];
+    expect(run).toMatchObject({ status: 'failed', error: result.error, scan_id: null, proposed_actions: [] });
+    expect(run.finished_at).toBeInstanceOf(Date);
+    expect(scannerMod._instances).toHaveLength(0);
+    expect(dedupScanner.buildDedupReport).not.toHaveBeenCalled();
+    // The concurrency guard is released: the next run is not "already running".
+    janitorProfiles.checkRoots.mockResolvedValue({ ok: true });
+    dedupScanner.buildDedupReport.mockResolvedValue({ groups: [], summary: {} });
+    dedupScanner.saveReport.mockResolvedValue(new ObjectId());
+    expect((await janitorRunner.runProfile(db, String(profileFixture._id))).ok).toBe(true);
   });
 
   test('scanner failure marks run as failed', async () => {
@@ -735,5 +758,95 @@ describe('janitorRunner profile action preview/apply safety', () => {
     expect(replay.ok).toBe(false);
     expect(replay.error).toMatch(/action is executed/i);
     expect(execute).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('janitorRunner.sweepStaleRuns', () => {
+  // The sweep reads with find() and an array-field filter the shared mock does not model.
+  function sweepDb(docs) {
+    const db = makeMockDb();
+    const coll = db.collection(janitorRunner.COLLECTION);
+    coll.docs.push(...docs);
+    coll.updateMany = jest.fn(async (filter, update) => {
+      const hit = coll.docs.filter(doc => matches(doc, filter));
+      hit.forEach(doc => Object.entries(update.$set).forEach(([key, value]) => setPath(doc, key, value)));
+      return { modifiedCount: hit.length };
+    });
+    coll.find = jest.fn((filter) => ({
+      toArray: async () => coll.docs
+        .filter(doc => (doc.proposed_actions || []).some(action => action.status === filter['proposed_actions.status']))
+        .map(cloneRun)
+    }));
+    return { db, coll };
+  }
+
+  test('stops runs left running and leaves finished runs alone', async () => {
+    const { db, coll } = sweepDb([
+      { _id: new ObjectId(), status: 'running', finished_at: null, proposed_actions: [] },
+      { _id: new ObjectId(), status: 'complete', finished_at: new Date(0), proposed_actions: [] }
+    ]);
+
+    await expect(janitorRunner.sweepStaleRuns(db)).resolves.toBe(1);
+
+    expect(coll.docs[0].status).toBe('stopped');
+    expect(coll.docs[0].finished_at).toBeInstanceOf(Date);
+    expect(coll.docs[1]).toMatchObject({ status: 'complete', finished_at: new Date(0) });
+  });
+
+  test('returns an action stuck in executing to pending with its preview invalidated, without executing anything', async () => {
+    const executeCleanup = jest.spyOn(janitorService, 'executeCleanup');
+    const startedAt = new Date('2026-07-18T12:00:00.000Z');
+    const { db, coll } = sweepDb([{
+      _id: new ObjectId(),
+      status: 'complete',
+      proposed_actions: [
+        { status: 'executed', files: ['/mnt/datalake/a.txt'], approval_preview: { id: 'p0', status: 'consumed' } },
+        {
+          status: 'executing', files: ['/mnt/datalake/dup.txt'], execution_authorized: true,
+          execution_started_at: startedAt, approval_preview: { id: 'p1', status: 'ready' }
+        },
+        { status: 'pending', files: ['/mnt/datalake/b.txt'], approval_preview: { id: 'p2', status: 'ready' } }
+      ]
+    }]);
+
+    await janitorRunner.sweepStaleRuns(db);
+
+    const [executed, interrupted, pending] = coll.docs[0].proposed_actions;
+    expect(interrupted).toMatchObject({
+      status: 'pending',
+      execution_authorized: false,
+      execution_started_at: startedAt,
+      approval_preview: { id: 'p1', status: 'invalidated' },
+      result: { note: expect.stringMatching(/interrupted by a restart.*Generate a new preview/) }
+    });
+    expect(interrupted.execution_interrupted_at).toBeInstanceOf(Date);
+    expect(interrupted.approval_preview.invalidated_at).toBeInstanceOf(Date);
+    expect(executed).toEqual({ status: 'executed', files: ['/mnt/datalake/a.txt'], approval_preview: { id: 'p0', status: 'consumed' } });
+    expect(pending.approval_preview.status).toBe('ready');
+    expect(executeCleanup).not.toHaveBeenCalled();
+  });
+
+  test('a swept action cannot be applied with its old preview', async () => {
+    process.env.JANITOR_EXECUTION_ENABLED = 'true';
+    const executeCleanup = jest.spyOn(janitorService, 'executeCleanup');
+    const runId = new ObjectId();
+    const { db } = sweepDb([{
+      _id: runId,
+      status: 'complete',
+      proposed_actions: [{
+        status: 'executing', files: ['/mnt/datalake/dup.txt'],
+        approval_preview: { id: 'p1', status: 'ready', expires_at: new Date(Date.now() + 60000) }
+      }]
+    }]);
+    await janitorRunner.sweepStaleRuns(db);
+
+    const result = await janitorRunner.approveAction(db, String(runId), 0, {
+      confirm: true, dryRun: false, previewId: 'p1',
+      applyConfirmation: janitorRunner.PROFILE_APPLY_CONFIRMATION,
+      restoreConfirmation: janitorRunner.RESTORE_SOURCE_CONFIRMATION
+    });
+
+    expect(result).toMatchObject({ ok: false, error: 'a recorded dry-run preview is required before live apply' });
+    expect(executeCleanup).not.toHaveBeenCalled();
   });
 });

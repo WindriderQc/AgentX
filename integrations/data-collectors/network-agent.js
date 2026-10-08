@@ -25,7 +25,7 @@ const os = require('os');
 const fs = require('fs');
 const { execFile } = require('child_process');
 
-const VERSION = 'net-1.0.0';
+const VERSION = 'net-1.1.0';
 
 // Resolve the nmap binary. On Windows the Nmap installer often does NOT add
 // itself to PATH, so `execFile('nmap')` would ENOENT even with nmap installed.
@@ -48,7 +48,21 @@ const SCAN_CIDR = process.env.SCAN_CIDR || '';
 const POLL_MS = Math.max(2000, Number.parseInt(process.env.NETWORK_AGENT_POLL_MS || '5000', 10));
 const SWEEP_MS = Math.max(0, Number.parseInt(process.env.NETWORK_AGENT_SWEEP_MS || '900000', 10)); // 15m; 0 = off
 const NMAP_TIMEOUT_MS = Math.max(10000, Number.parseInt(process.env.NMAP_TIMEOUT_MS || '120000', 10));
+const HTTP_TIMEOUT_MS = Math.max(1000, Number.parseInt(process.env.NETWORK_AGENT_HTTP_TIMEOUT_MS || '15000', 10));
 const PRUNE = process.env.NETWORK_AGENT_PRUNE === '1' || process.env.NETWORK_AGENT_PRUNE === 'true';
+// A queued target sweeps at most a /16. Mirrors data/utils/networkInput.js
+// (this collector is self-contained); keep them in sync.
+const MIN_SCAN_PREFIX = 16;
+
+/** An IPv4 address or IPv4 CIDR with octets 0-255 and a prefix from minPrefix to /32. */
+function isScanTarget(value, minPrefix = MIN_SCAN_PREFIX) {
+  if (typeof value !== 'string') return false;
+  const [address, prefix, ...rest] = value.split('/');
+  if (rest.length > 0 || !/^\d{1,3}(\.\d{1,3}){3}$/.test(address)) return false;
+  if (!address.split('.').every(octet => Number(octet) <= 255)) return false;
+  if (prefix === undefined) return true;
+  return /^\d{1,2}$/.test(prefix) && Number(prefix) >= minPrefix && Number(prefix) <= 32;
+}
 
 const ts = () => new Date().toISOString();
 
@@ -149,7 +163,8 @@ async function postResults({ requestId, xml, devices, note, pruneMissing }) {
   const res = await fetch(`${DATA_URL}/api/v1/network/scan-results`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS)
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.message || `HTTP ${res.status}`);
@@ -160,6 +175,12 @@ async function postResults({ requestId, xml, devices, note, pruneMissing }) {
 async function serviceRequest(req) {
   return runScan(async () => {
     const target = req.target || SCAN_CIDR;
+    // Data validates a target before queueing it, but the queue is reachable
+    // without authentication: never hand nmap a target this collector did not check.
+    if (!isScanTarget(target)) {
+      console.error(`[${ts()}] request ${req.requestId} refused: invalid scan target ${JSON.stringify(target)}`);
+      return;
+    }
     console.log(`[${ts()}] servicing request ${req.requestId} target=${target}`);
     try {
       const xml = await runDiscovery(target);
@@ -172,8 +193,23 @@ async function serviceRequest(req) {
   });
 }
 
-/** Poll for pending scan requests (this also heartbeats the scanner registry). */
+/**
+ * Poll for pending scan requests (this also heartbeats the scanner registry).
+ * A poll still waiting on Data or on a scan makes the next tick a no-op.
+ */
+let pollRunning = false;
 async function poll() {
+  if (pollRunning) return false;
+  pollRunning = true;
+  try {
+    await pollOnce();
+    return true;
+  } finally {
+    pollRunning = false;
+  }
+}
+
+async function pollOnce() {
   const qs = new URLSearchParams({
     scannerId: SCANNER_ID,
     hostname: HOSTNAME,
@@ -186,7 +222,10 @@ async function poll() {
 
   let requests = [];
   try {
-    const res = await fetch(`${DATA_URL}/api/v1/network/scan-requests?${qs.toString()}`, { headers });
+    const res = await fetch(`${DATA_URL}/api/v1/network/scan-requests?${qs.toString()}`, {
+      headers,
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS)
+    });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.message || `HTTP ${res.status}`);
     requests = json.data?.requests || [];
@@ -217,6 +256,8 @@ async function sweep() {
 
 function start() {
   if (!SCAN_CIDR) throw new Error('Set SCAN_CIDR to the network this collector should observe.');
+  // The operator's own network may be wider than a queued target, but it must be an IPv4 CIDR.
+  if (!isScanTarget(SCAN_CIDR, 0)) throw new Error(`SCAN_CIDR is not an IPv4 address or CIDR: ${SCAN_CIDR}`);
   console.log(`AgentX network-agent ${VERSION} starting`, {
     DATA_URL, SCANNER_ID, SCAN_CIDR, POLL_MS, SWEEP_MS, NMAP_BIN, elevated: isElevated()
   });
@@ -246,4 +287,4 @@ function start() {
 
 if (require.main === module) start();
 
-module.exports = { localIp, runDiscovery, runScan };
+module.exports = { localIp, runDiscovery, runScan, isScanTarget, serviceRequest, poll };

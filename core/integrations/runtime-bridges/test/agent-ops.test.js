@@ -553,7 +553,7 @@ test('Agent Ops API router exposes GET only', () => {
   assert.deepEqual(routes, [['get', '/service-health'], ['get', '/']]);
 });
 
-test('service health combines three Product services with AIOps Data', async () => {
+test('service health combines three Product services with optional Data', async () => {
   const data = await buildServiceHealth({
     getProduct: async () => ({ ok: true, body: { services: [{ id: 'core', label: 'AgentX Core', port: 3080, status: 'ok' }, { id: 'benchmark', label: 'Benchmark', port: 3081, status: 'ok', latency_ms: 2 }, { id: 'rag', label: 'RAG', port: 3082, status: 'ok', latency_ms: 7 }] } }),
     getData: async () => ({ ok: true, durationMs: 3, body: { ok: true, status: 'success' } }),
@@ -563,6 +563,23 @@ test('service health combines three Product services with AIOps Data', async () 
   assert.equal(data.summary.healthy, 4);
   assert.equal(data.services.find((service) => service.id === 'core').href, '/playground');
   assert.equal(data.services.find((service) => service.id === 'data').status, 'ok');
+  assert.equal(data.summary.status, 'ok');
+  assert.equal(data.summary.optionalDown, 0);
+});
+
+test('optional Data down degrades the service summary; a required service down keeps it down', async () => {
+  const product = (ragStatus) => async () => ({ ok: true, body: { services: [{ id: 'core', status: 'ok' }, { id: 'benchmark', status: 'ok' }, { id: 'rag', status: ragStatus }] } });
+  const getData = async () => ({ ok: false, error: 'fetch failed' });
+  const degraded = await buildServiceHealth({ getProduct: product('ok'), getData });
+  assert.deepEqual(degraded.services.find((service) => service.id === 'data'), {
+    id: 'data', name: 'Data', owner: 'AgentX Product', port: 3083, optional: true,
+    status: 'down', latencyMs: 0, issues: ['fetch failed'], href: null,
+  });
+  assert.deepEqual(degraded.summary, { status: 'degraded', total: 4, healthy: 3, degraded: 0, down: 1, optionalDown: 1 });
+  assert.equal(degraded.services.filter((service) => service.id !== 'data').every((service) => service.status === 'ok' && !service.optional), true);
+
+  const down = await buildServiceHealth({ getProduct: product('down'), getData });
+  assert.deepEqual(down.summary, { status: 'down', total: 4, healthy: 2, degraded: 0, down: 2, optionalDown: 1 });
 });
 
 test('automation health requires an observed terminal result and retains a running job', () => {
