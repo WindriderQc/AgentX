@@ -130,7 +130,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     // that work stalls, the run's final answer is already in the native transcript:
     // once the progress watcher reads it there, the stream gets a short grace to
     // end, then the turn stops waiting for it. A client tool call exists only in
-    // the stream's last row, so a browser reply always waits for the stream.
+    // the stream's last row, so a browser reply waits for its completion row.
+    // Once a matching completion is received, HTTP EOF cannot hold the turn.
     let answerSeen, stopWaitingForStream;
     const streamOverdue = new Promise(resolve => { stopWaitingForStream = resolve; });
     const answered = projected => !browserReply && projected?.answer?.status === 'ready'
@@ -214,6 +215,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         if (row.type === 'response.completed') {
           if (row.response?.id !== runId) throw new Error('Nestor completion does not match this turn.');
           terminal = true;
+          answerSeen ||= setTimeout(stopWaitingForStream, streamGraceMs);
           if (browserReply) {
             const calls = row.response.output?.filter(item => item.type === 'function_call') || [];
             // A native conversational answer needs no browser action. Keep it on
@@ -246,8 +248,9 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       })();
       if (await Promise.race([stream.then(() => true), streamOverdue.then(() => false)])) phase('streamEnd');
       else {
-        // The run is over natively. Leave the gateway a bounded time to finish
-        // behind it, then close the request so it cannot hold the session.
+        // Same-run final evidence or a matching completion proves the run ended.
+        // Leave the gateway a bounded time to finish behind it, then close the
+        // request so it cannot hold the session.
         terminal = true; phase('streamOverdue');
         const close = setTimeout(() => controller.abort(new Error('The gateway kept a finished run open.')), streamDrainMs);
         close.unref?.();
