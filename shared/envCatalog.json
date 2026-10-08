@@ -1795,9 +1795,9 @@
       ],
       "forwarded": false,
       "default": null,
-      "category": "operations",
+      "category": "other",
       "secret": false,
-      "description": "JSON array of {name, lat, lon} seeding the locations of Data's per-location live feeds (pressure, air quality) once, when none is stored. Unset: no seeding."
+      "description": "Optional JSON array of named latitude/longitude locations used to seed Data weatherLocations only when empty. Unset: no location seed. Supply through an external Data environment override; instance locations stay outside public Git."
     },
     "LOCAL_IMAGES_CONFIG": {
       "services": [
@@ -3078,9 +3078,9 @@
       ],
       "forwarded": false,
       "default": null,
-      "category": "network",
+      "category": "other",
       "secret": true,
-      "description": "OpenWeather key for Data's barometric pressure feed. Unset: the feed reads keyless Open-Meteo."
+      "description": "Optional OpenWeather API credential for Data weather feeds. Unset: use keyless Open-Meteo. Supply through an external Data environment override; keep the credential outside Git."
     },
     "WEATHER_API_URL": {
       "services": [
@@ -3101,26 +3101,6 @@
       "category": "operations",
       "secret": false,
       "description": "Poll interval of the Data weather feed. Unset: 60000 ms."
-    },
-    "LIVEDATA_LOCATIONS_JSON": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "other",
-      "secret": false,
-      "description": "Optional JSON array of named latitude/longitude locations used to seed Data weatherLocations only when empty. Unset: no location seed. Supply through an external Data environment override; instance locations stay outside public Git."
-    },
-    "WEATHER_API_KEY": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "other",
-      "secret": true,
-      "description": "Optional OpenWeather API credential for Data weather feeds. Unset: use keyless Open-Meteo. Supply through an external Data environment override; keep the credential outside Git."
     }
   }
 }
