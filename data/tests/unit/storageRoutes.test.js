@@ -30,6 +30,9 @@ jest.mock('../../services/storageAgentService', () => ({
   enqueueScan: jest.fn(),
   registerScanner: jest.fn().mockResolvedValue('scanner-1'),
   claimNextScan: jest.fn().mockResolvedValue(null),
+  findOverlappingScan: jest.fn().mockResolvedValue(null),
+  expireStaleScans: jest.fn().mockResolvedValue({ running: 0, queued: 0 }),
+  touchScanHeartbeat: jest.fn().mockResolvedValue(true),
   listMetadataProbePaths: jest.fn().mockResolvedValue([])
 }));
 
@@ -39,7 +42,7 @@ jest.mock('../../utils/file-operations', () => ({
 
 const storageRoutes = require('../../routes/storage.routes');
 const { resolveAllowedPath } = require('../../services/janitorService');
-const { rebuildDirectoryRollups } = require('../../services/scanner');
+const { Scanner, rebuildDirectoryRollups } = require('../../services/scanner');
 const storageAgentService = require('../../services/storageAgentService');
 const errorHandler = require('../../middleware/errorHandler');
 
@@ -84,7 +87,11 @@ function buildApp(overrides = {}) {
 }
 
 describe('Storage Scanner Routes', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    storageAgentService.findOverlappingScan.mockResolvedValue(null);
+    storageAgentService.touchScanHeartbeat.mockResolvedValue(true);
+  });
 
   // ── POST /scan ──
 
@@ -129,6 +136,83 @@ describe('Storage Scanner Routes', () => {
       expect(res.body.status).toBe('success');
       expect(res.body.data.scan_id).toBeTruthy();
       expect(res.body.data.roots).toEqual(['/mnt/datalake/media']);
+      expect(res.body.data.batch_size).toBe(1000);
+    });
+
+    test('refuses a scan whose root overlaps a queued or running scan', async () => {
+      resolveAllowedPath.mockResolvedValue({ ok: true, realPath: '/mnt/media/Videos' });
+      storageAgentService.findOverlappingScan.mockResolvedValue({ _id: 'scan-media', status: 'running' });
+      const res = await request(buildApp())
+        .post('/api/v1/storage/scan')
+        .send({ roots: ['/mnt/media/Videos'] });
+      expect(res.status).toBe(409);
+      expect(res.body.data.scan_id).toBe('scan-media');
+      expect(storageAgentService.findOverlappingScan).toHaveBeenCalledWith(expect.any(Object), ['/mnt/media/Videos']);
+      expect(Scanner).not.toHaveBeenCalled();
+    });
+
+    test.each([['abc'], [0], [-5], [1.5], [10001], [{}]])('rejects batch_size %p', async batchSize => {
+      resolveAllowedPath.mockResolvedValue({ ok: true, realPath: '/mnt/datalake/media' });
+      const res = await request(buildApp())
+        .post('/api/v1/storage/scan')
+        .send({ roots: ['/mnt/datalake/media'], batch_size: batchSize });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/batch_size/);
+      expect(Scanner).not.toHaveBeenCalled();
+    });
+
+    test.each([
+      [{ extensions: 'mp4' }],
+      [{ exclude_extensions: [1, 2] }],
+      [{ extensions: [''] }],
+      [{ extensions: Array.from({ length: 201 }, (_, index) => `e${index}`) }]
+    ])('rejects malformed extension filters %#', async filters => {
+      resolveAllowedPath.mockResolvedValue({ ok: true, realPath: '/mnt/datalake/media' });
+      const res = await request(buildApp())
+        .post('/api/v1/storage/scan')
+        .send({ roots: ['/mnt/datalake/media'], ...filters });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/extensions/);
+      expect(Scanner).not.toHaveBeenCalled();
+    });
+
+    test('passes a validated batch size and extension lists to the scanner', async () => {
+      resolveAllowedPath.mockResolvedValue({ ok: true, realPath: '/mnt/datalake/media' });
+      await request(buildApp())
+        .post('/api/v1/storage/scan')
+        .send({ roots: ['/mnt/datalake/media'], batch_size: '250', extensions: ['mp4'] })
+        .expect(200);
+      const run = Scanner.mock.results[0].value.run;
+      expect(run).toHaveBeenCalledWith(expect.objectContaining({
+        batchSize: 250, includeExt: ['mp4'], excludeExt: []
+      }));
+    });
+
+    test('marks a crashed in-container scan failed so its roots are not blocked', async () => {
+      resolveAllowedPath.mockResolvedValue({ ok: true, realPath: '/mnt/datalake/media' });
+      Scanner.mockImplementationOnce(() => ({
+        on: jest.fn(), stop: jest.fn(), run: jest.fn().mockRejectedValue(new Error('disk gone'))
+      }));
+      const app = buildApp();
+      await request(app).post('/api/v1/storage/scan').send({ roots: ['/mnt/datalake/media'] }).expect(200);
+      await new Promise(resolve => setImmediate(resolve));
+      expect(app.locals.db._collections.nas_scans.updateOne).toHaveBeenCalledWith(
+        expect.objectContaining({ status: { $in: ['running', 'hashing'] } }),
+        { $set: expect.objectContaining({ status: 'failed', last_error: 'disk gone' }) }
+      );
+    });
+  });
+
+  describe('cleanupStaleScans', () => {
+    test('stops in-container scans in any phase and expires silent external scans', async () => {
+      const app = buildApp();
+      storageAgentService.expireStaleScans.mockResolvedValueOnce({ running: 1, queued: 0 });
+      await require('../../controllers/storageController').cleanupStaleScans(app.locals.db);
+      expect(app.locals.db._collections.nas_scans.updateMany).toHaveBeenCalledWith(
+        { status: { $in: ['running', 'hashing'] }, 'config.external': { $ne: true } },
+        { $set: expect.objectContaining({ status: 'stopped' }) }
+      );
+      expect(storageAgentService.expireStaleScans).toHaveBeenCalledWith(app.locals.db);
     });
   });
 
@@ -150,6 +234,28 @@ describe('Storage Scanner Routes', () => {
       const app = buildApp();
       await request(app).get('/api/v1/storage/scans?limit=5&skip=10').expect(200);
       expect(app.locals.db.collection).toHaveBeenCalledWith('nas_scans');
+    });
+
+    test.each([
+      ['page=abc&limit=xyz', 1, 10, 0],
+      ['page=-3&limit=0', 1, 10, 0],
+      ['page=3&limit=5000', 3, 100, 200],
+      ['page=999999999&limit=10', 100000, 10, 999990]
+    ])('defaults and bounds paging for %s', async (query, page, limit, skip) => {
+      const app = buildApp();
+      const col = app.locals.db.collection('nas_scans');
+      const limitFn = jest.fn(() => ({ toArray: jest.fn().mockResolvedValue([]) }));
+      const skipFn = jest.fn(() => ({ limit: limitFn }));
+      col.find = jest.fn(() => ({ sort: jest.fn(() => ({ skip: skipFn })) }));
+      const res = await request(app).get(`/api/v1/storage/scans?${query}`).expect(200);
+      expect(skipFn).toHaveBeenCalledWith(skip);
+      expect(limitFn).toHaveBeenCalledWith(limit);
+      expect(res.body.data.pagination).toMatchObject({ page, limit });
+    });
+
+    test('expires silent external scans before listing', async () => {
+      await request(buildApp()).get('/api/v1/storage/scans').expect(200);
+      expect(storageAgentService.expireStaleScans).toHaveBeenCalled();
     });
   });
 
@@ -284,7 +390,52 @@ describe('Storage Scanner Routes', () => {
         .post('/api/v1/storage/agent-scans')
         .send({ source: 'media', hash_mode: 'candidates' })
         .expect(202);
-      expect(res.body.data).toMatchObject({ scan_id: 'scan-media', root: '/mnt/media' });
+      expect(res.body.data).toMatchObject({ scan_id: 'scan-media', root: '/mnt/media', coalesced: false });
+    });
+
+    test('joins the scan already active for the source instead of queueing a second one', async () => {
+      storageAgentService.enqueueScan.mockResolvedValue({
+        ok: true,
+        coalesced: true,
+        scan: {
+          _id: 'scan-running', status: 'running',
+          config: { source: 'media', roots: ['/mnt/media'], hash_mode: 'candidates' }
+        }
+      });
+      const res = await request(buildApp())
+        .post('/api/v1/storage/agent-scans')
+        .send({ source: 'media' })
+        .expect(202);
+      expect(res.body.data).toMatchObject({ scan_id: 'scan-running', coalesced: true });
+    });
+
+    test('answers 409 when another kind of scan holds an overlapping root', async () => {
+      storageAgentService.enqueueScan.mockResolvedValue({
+        ok: false, conflict: true, error: 'scan scan-local is already running on an overlapping root'
+      });
+      const res = await request(buildApp())
+        .post('/api/v1/storage/agent-scans')
+        .send({ source: 'media' })
+        .expect(409);
+      expect(res.body.message).toMatch(/overlapping root/);
+    });
+
+    test('heartbeat refreshes the scan it names', async () => {
+      const res = await request(buildApp())
+        .post('/api/v1/storage/agent/heartbeat')
+        .send({ scannerId: 'linux-node-storage', sources: 'media', scanId: 'scan-live' })
+        .expect(200);
+      expect(storageAgentService.touchScanHeartbeat).toHaveBeenCalledWith(expect.any(Object), 'scan-live');
+      expect(res.body.data.scan_refreshed).toBe(true);
+    });
+
+    test('heartbeat reports a scan that is no longer running', async () => {
+      storageAgentService.touchScanHeartbeat.mockResolvedValue(false);
+      const res = await request(buildApp())
+        .post('/api/v1/storage/agent/heartbeat')
+        .send({ scannerId: 'linux-node-storage', scanId: 'scan-reaped' })
+        .expect(200);
+      expect(res.body.data.scan_refreshed).toBe(false);
     });
 
     test('agent poll heartbeats and returns a claimed scan', async () => {
@@ -328,6 +479,8 @@ describe('Storage Scanner Routes', () => {
           agentVersion: 'storage-1.3.0', sources: 'media,datalake' })
         .expect(200);
       expect(res.body.data.scanner_id).toBe('scanner-1');
+      expect(res.body.data.scan_refreshed).toBeUndefined();
+      expect(storageAgentService.touchScanHeartbeat).not.toHaveBeenCalled();
       expect(storageAgentService.registerScanner).toHaveBeenCalledWith(
         expect.any(Object), expect.objectContaining({ scannerId: 'linux-node-storage',
           agentVersion: 'storage-1.3.0', sources: 'media,datalake' }));
@@ -359,6 +512,10 @@ describe('Storage Scanner Routes', () => {
   // ── POST /scan/:scan_id/batch ──
 
   describe('POST /api/v1/storage/scan/:scan_id/batch', () => {
+    const runningMediaScan = {
+      _id: 'scan-media', status: 'running', config: { external: true, roots: ['/mnt/media'] }
+    };
+
     test('returns 400 when files is missing', async () => {
       const res = await request(buildApp({ scanDoc: { _id: 'x' } }))
         .post('/api/v1/storage/scan/x/batch')
@@ -375,7 +532,7 @@ describe('Storage Scanner Routes', () => {
     });
 
     test('inserts batch for valid scan', async () => {
-      const app = buildApp({ scanDoc: { _id: 'scan1', config: { roots: ['/mnt/datalake'] } } });
+      const app = buildApp({ scanDoc: { _id: 'scan1', status: 'running', config: { external: true, roots: ['/mnt/datalake'] } } });
       const res = await request(app)
         .post('/api/v1/storage/scan/scan1/batch')
         .send({
@@ -401,7 +558,7 @@ describe('Storage Scanner Routes', () => {
     });
 
     test('passes native-agent file size into semantic classification', async () => {
-      const app = buildApp({ scanDoc: { _id: 'scan-media', config: { roots: ['/mnt/media'] } } });
+      const app = buildApp({ scanDoc: runningMediaScan });
       const res = await request(app)
         .post('/api/v1/storage/scan/scan-media/batch')
         .send({
@@ -435,7 +592,7 @@ describe('Storage Scanner Routes', () => {
     });
 
     test('persists allowlisted native content-signature evidence and provenance', async () => {
-      const app = buildApp({ scanDoc: { _id: 'scan-media', config: { roots: ['/mnt/media'] } } });
+      const app = buildApp({ scanDoc: runningMediaScan });
       const res = await request(app)
         .post('/api/v1/storage/scan/scan-media/batch')
         .send({
@@ -488,7 +645,7 @@ describe('Storage Scanner Routes', () => {
     });
 
     test('does not classify or retain unsupported probe output', async () => {
-      const app = buildApp({ scanDoc: { _id: 'scan-media', config: { roots: ['/mnt/media'] } } });
+      const app = buildApp({ scanDoc: runningMediaScan });
       await request(app)
         .post('/api/v1/storage/scan/scan-media/batch')
         .send({
@@ -516,10 +673,81 @@ describe('Storage Scanner Routes', () => {
     });
 
     test('rejects file with empty path', async () => {
-      const res = await request(buildApp({ scanDoc: { _id: 'scan1' } }))
-        .post('/api/v1/storage/scan/scan1/batch')
+      const res = await request(buildApp({ scanDoc: runningMediaScan }))
+        .post('/api/v1/storage/scan/scan-media/batch')
         .send({ files: [{ path: '', size: 100 }] });
       expect(res.status).toBe(400);
+    });
+
+    test.each([
+      ['an in-container scan', { _id: 'scan-media', status: 'running', config: { roots: ['/mnt/media'] } }],
+      ['a queued scan', { ...runningMediaScan, status: 'queued' }],
+      ['a finished scan', { ...runningMediaScan, status: 'failed' }]
+    ])('refuses a batch for %s', async (_label, scanDoc) => {
+      const app = buildApp({ scanDoc });
+      const res = await request(app)
+        .post('/api/v1/storage/scan/scan-media/batch')
+        .send({ files: [{ path: '/mnt/media/a.txt', size: 1, mtime: 1700000000 }] });
+      expect(res.status).toBe(409);
+      expect(app.locals.db._collections.nas_files).toBeUndefined();
+    });
+
+    test('drops and counts entries outside the scan roots', async () => {
+      const app = buildApp({ scanDoc: runningMediaScan });
+      const res = await request(app)
+        .post('/api/v1/storage/scan/scan-media/batch')
+        .send({
+          files: [
+            { path: '/mnt/media/keep.txt', size: 1, mtime: 1700000000, source_root: '/mnt/other' },
+            { path: '/mnt/media-old/sibling.txt', size: 1, mtime: 1700000000 },
+            { path: '/mnt/datalake/other-root.txt', size: 1, mtime: 1700000000 },
+            { path: '/mnt/media/../datalake/escape.txt', size: 1, mtime: 1700000000 },
+            { path: '/mnt/media', size: 1, mtime: 1700000000 }
+          ]
+        })
+        .expect(200);
+      expect(res.body.data.batch).toMatchObject({ received: 5, accepted: 1, rejected: 4, hashes_rejected: 0 });
+      const operations = app.locals.db._collections.nas_files.bulkWrite.mock.calls[0][0];
+      expect(operations).toHaveLength(1);
+      expect(operations[0].updateOne.update.$set).toMatchObject({
+        path: '/mnt/media/keep.txt', source_root: '/mnt/media', relative_path: 'keep.txt'
+      });
+      const [, scanUpdate] = app.locals.db._collections.nas_scans.updateOne.mock.calls[0];
+      expect(scanUpdate.$inc).toMatchObject({ 'counts.files_processed': 1, 'counts.rejected': 4 });
+      expect(scanUpdate.$set.last_error).toMatch(/4 file\(s\) outside the scan roots/);
+    });
+
+    test('writes nothing when every entry is outside the scan roots', async () => {
+      const app = buildApp({ scanDoc: runningMediaScan });
+      const res = await request(app)
+        .post('/api/v1/storage/scan/scan-media/batch')
+        .send({ files: [{ path: '/etc/passwd', size: 1 }] })
+        .expect(200);
+      expect(res.body.data.batch).toMatchObject({ accepted: 0, rejected: 1 });
+      expect(app.locals.db._collections.nas_files.bulkWrite).not.toHaveBeenCalled();
+    });
+
+    test('keeps the row but drops and counts a malformed sha256', async () => {
+      const app = buildApp({ scanDoc: runningMediaScan });
+      const valid = 'AB'.repeat(32);
+      const res = await request(app)
+        .post('/api/v1/storage/scan/scan-media/batch')
+        .send({
+          files: [
+            { path: '/mnt/media/good.bin', size: 5, mtime: 1700000000, sha256: valid },
+            { path: '/mnt/media/short.bin', size: 5, mtime: 1700000000, sha256: 'abc123' },
+            { path: '/mnt/media/object.bin', size: 5, mtime: 1700000000, sha256: { $ne: null } }
+          ]
+        })
+        .expect(200);
+      expect(res.body.data.batch).toMatchObject({ accepted: 3, rejected: 0, hashes_rejected: 2 });
+      const operations = app.locals.db._collections.nas_files.bulkWrite.mock.calls[0][0];
+      expect(operations[0].updateOne.update.$set.sha256).toBe(valid.toLowerCase());
+      expect(operations[1].updateOne.update.$set.sha256).toBeUndefined();
+      expect(operations[1].updateOne.update.$set.hash_fingerprint).toBeUndefined();
+      expect(operations[2].updateOne.update.$set.sha256).toBeUndefined();
+      const [, scanUpdate] = app.locals.db._collections.nas_scans.updateOne.mock.calls[0];
+      expect(scanUpdate.$inc['counts.hashes_rejected']).toBe(2);
     });
   });
 
@@ -594,6 +822,48 @@ describe('Storage Scanner Routes', () => {
         expect(rebuildDirectoryRollups).toHaveBeenCalled();
         expect(app.locals.db._collections.nas_scans.updateOne).toHaveBeenCalled();
       } finally { process.env.NODE_ENV = previous; }
+    });
+
+    test.each([
+      [{ status: 'done' }, /status/],
+      [{ status: 'queued' }, /status/],
+      [{ status: { $ne: null } }, /status/],
+      [{ status: 'completed', completedAt: 'not-a-date' }, /completedAt/],
+      [{ status: 'completed', completedAt: { $date: 1 } }, /completedAt/],
+      [{ status: 'completed', stats: 'many' }, /stats/],
+      [{ status: 'completed', stats: { files_seen: -1 } }, /files_seen/],
+      [{ status: 'completed', stats: { files_seen: '12' } }, /files_seen/],
+      [{ status: 'completed', stats: { hashed: null } }, /hashed/]
+    ])('rejects malformed update %#', async (body, message) => {
+      const app = buildApp({ scanDoc: { _id: 'scan-external', status: 'running',
+        config: { external: true, roots: ['/mnt/media'] } } });
+      const res = await request(app).patch('/api/v1/storage/scan/scan-external').send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(message);
+      expect(app.locals.db._collections.nas_scans).toBeUndefined();
+      expect(app.locals.db._collections.nas_files).toBeUndefined();
+    });
+
+    test('stores a valid completion date and allowlisted stats', async () => {
+      const app = buildApp({ scanDoc: { _id: 'scan1', status: 'running', config: {} } });
+      const res = await request(app).patch('/api/v1/storage/scan/scan1')
+        .send({ status: 'partial', completedAt: '2026-07-18T00:30:00.000Z', stats: { files_seen: 4, unknown: 'x' } })
+        .expect(200);
+      expect(res.body.data.updated).toEqual({
+        status: 'partial', finished_at: '2026-07-18T00:30:00.000Z', 'counts.files_seen': 4
+      });
+    });
+
+    test('a late completion never reopens or prunes a scan already failed', async () => {
+      const app = buildApp({ scanDoc: { _id: 'scan-reaped', status: 'failed',
+        finished_at: new Date('2026-07-18T00:30:00.000Z'),
+        config: { external: true, roots: ['/mnt/media'] } } });
+      const res = await request(app).patch('/api/v1/storage/scan/scan-reaped')
+        .send({ status: 'completed', stats: { files_seen: 10 } });
+      expect(res.status).toBe(409);
+      expect(app.locals.db._collections.nas_files).toBeUndefined();
+      expect(rebuildDirectoryRollups).not.toHaveBeenCalled();
+      expect(app.locals.db._collections.nas_scans.updateOne).not.toHaveBeenCalled();
     });
 
     test('returns 404 for unknown scan', async () => {
