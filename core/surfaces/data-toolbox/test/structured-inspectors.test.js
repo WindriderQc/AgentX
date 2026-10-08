@@ -32,7 +32,7 @@ test('Live Data inspect shows readable timestamps, ages and feed-specific fields
   assert.match(app, /<th>Observed<\/th><th>Age<\/th>/);
   assert.match(app, /function ageLabel\(value\)/);
   assert.match(app, /timestamp field/);
-  assert.match(app, /Map rendering is intentionally omitted from this read-only console\./);
+  assert.match(app, /It is drawn on the world map above\./);
 });
 
 test('the inspectors stay read-only and bounded', () => {

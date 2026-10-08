@@ -54,6 +54,15 @@ upstream error) reports the reason as `lastError` in `GET /api/v1/livedata/feeds
 ISS and pressure points and feeds the `sensors` feed from the topics in
 `LIVEDATA_MQTT_TOPICS`; unset, MQTT is skipped.
 
+The Toolbox Live Data tab draws these feeds on a world map with the existing
+`GET` routes only (`/latest` for ISS, pressure, air quality and sensors,
+`/history` for the earthquake list); Data has no map route. The ISS, the
+earthquakes, the stored locations and the sensor points that carry `lat` and
+`lon` are drawn; satellite elements have no position and are not. The country
+outlines are a static file of the Toolbox
+([credits](../core/surfaces/data-toolbox/public/geo/CREDITS.md)), so the map
+needs no internet access. See [the operator guide](../docs/OPERATOR_UI.md#data-toolbox-live-data-map).
+
 The MQTT monitor lives under `/api/v1/mqtt`. When `MQTT_BROKER_URL` is set,
 Data opens a second broker connection for it at startup, with or without
 `DATA_BACKGROUND_JOBS_ENABLED`, subscribes to `#` and keeps the last 500
