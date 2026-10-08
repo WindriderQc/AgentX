@@ -58,6 +58,37 @@ test('a later observation returns the same verified artifact and genuinely cance
   }
 });
 
+for (const source of ['watcher progress', 'watcher receipt', 'settlement progress']) {
+  test(`a failed final observation preserves Core image recovery after ${source}`, async () => {
+    let reads = 0, calls = 0, release;
+    const fromWatcher = source.startsWith('watcher');
+    const evidence = { answer: { status: 'ready', runId, text: 'The image was cancelled.' },
+      ...(source.endsWith('receipt') ? { receipts: [receipt] } : { progress: [{ id: 'image-call', tool: 'local_image' }] }) };
+    const client = createAgentClient({ env, settleMs: fromWatcher ? 0 : 400, progressMs: 3, streamGraceMs: 1, streamDrainMs: 20,
+      continuity: async () => {
+        if (++reads === 1) return evidence;
+        if (reads === 2) throw new Error('Continuity unavailable');
+        return { run: { model: 'native' }, receipts: [receipt] };
+      }, readImageOperation: async () => operation,
+      fetchImpl: async (_url, options) => {
+        calls++;
+        return { ok: true, body: fromWatcher ? (async function* () {
+          yield created;
+          await new Promise(resolve => { release = resolve; options.signal.addEventListener('abort', resolve, { once: true }); });
+        })() : [created, row({ type: 'response.completed', response: { id: runId } })] };
+      } });
+    try {
+      const result = await client({ session, text: 'Une image synthétique.' });
+      assert.match(result.text, /demande image est acceptée/);
+      assert.ok(!result.text.includes('cancelled'));
+      assert.equal(result.tools.imageDelivery.operations[0].id, id);
+      assert.equal(result.metadata.provider, 'agentx.core.images');
+      assert.equal(calls, 1);
+      assert.equal(reads, 3);
+    } finally { release?.(); }
+  });
+}
+
 test('the receipt keeps the request language and does not replace a caller interruption with successful delivery', async () => {
   const english = await acceptedImageReply({ session, evidence: { receipts: [receipt] }, sessionKey, runId,
     language: 'en', readOperation: async () => operation });

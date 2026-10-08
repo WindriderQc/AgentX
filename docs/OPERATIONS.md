@@ -818,6 +818,12 @@ that it could not retrieve it; the gateway has another 30 s to close HTTP.
 GraphysX waits for its completion row, which carries the browser tool call,
 before this grace applies. Silence without completion or readable final evidence
 keeps the existing run deadline and does not establish native termination.
+If the continuity endpoint cannot be read, Core retains final text already
+verified for this run, with model/provider and tool evidence unavailable. A successful newer
+observation invalidates or replaces that text; cancellation and late stream
+row errors still prevent delivery. A successful projection with an unavailable
+answer invalidates the retained text. Core image actions keep their receipt
+recovery path; GraphysX continues to require its completion row.
 The Super Dad and Famille avatar dock loads GraphysX's `<llmx-face>` module from
 `HOUSEHOLD_AVATAR_MODULE_URL` (a GraphysX build's `/embed/llmx-face.js`). Core
 relays it at `/api/household/avatar/llmx-face.js`, like the VoiX player, so the
