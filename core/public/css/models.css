@@ -1,4 +1,5 @@
-/* models.css: its rules live in 2 parts, imported here in their original
+/* models.css: its rules live in 3 parts, imported here in their original
    order so the cascade is unchanged; pages link only this file. */
 @import url("models/1-models-page-agentx.css");
 @import url("models/2-benchmark-recommendations-widget.css");
+@import url("models/3-stats-strip.css");
