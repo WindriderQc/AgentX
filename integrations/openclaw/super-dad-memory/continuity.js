@@ -1,4 +1,5 @@
 import { readState } from "./store.js";
+import { nativeToolChecks } from './tool-evidence.js';
 
 const invalid = message => Object.assign(new Error(message), { statusCode: 400 });
 const householdKey = /^agent:([a-z0-9][a-z0-9_-]*):household:direct:[a-f0-9-]{36}$/;
@@ -111,6 +112,7 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
       try { history = await readHistory?.(request.sessionKey); } catch { /* unavailable, not aggregate SSE text */ }
       result.answer = nativeTurnAnswer(history, request.sessionKey, request.runId);
       result.progress = nativeTurnProgress(history, request.sessionKey, request.runId);
+      result.toolChecks = nativeToolChecks(history, request.sessionKey, request.runId);
     } else throw invalid("Choose agents or turn; notes belong to AgentX Core");
     return { ok: true, authority: "openclaw.nestor", operation, ...result };
   };

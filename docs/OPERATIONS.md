@@ -824,6 +824,15 @@ observation invalidates or replaces that text; cancellation and late stream
 row errors still prevent delivery. A successful projection with an unavailable
 answer invalidates the retained text. Core image actions keep their receipt
 recovery path; GraphysX continues to require its completion row.
+Each native continuity read has a 10 s timeout. The native adapter compares
+tool arguments and results internally and projects only successful tool names
+and confirmed repetitions for the same run. Four consecutive identical calls
+with identical results stop the turn; native process and session waits are
+excluded. Core reports an unsuccessful verification after confirmed termination,
+or pauses while the stop remains unconfirmed. An explicit request to read or
+count personal tasks requires a successful task-list or personal-briefing result
+from that run before Core delivers the answer. This check does not validate
+every fact in general conversation and never replays the inference.
 The Super Dad and Famille avatar dock loads GraphysX's `<llmx-face>` module from
 `HOUSEHOLD_AVATAR_MODULE_URL` (a GraphysX build's `/embed/llmx-face.js`). Core
 relays it at `/api/household/avatar/llmx-face.js`, like the VoiX player, so the
