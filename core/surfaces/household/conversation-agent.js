@@ -149,7 +149,18 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     // the stream's last row, so a browser reply waits for its completion row.
     // Once a matching completion is received, HTTP EOF cannot hold the turn.
     let answerSeen, stopWaitingForStream, observedAnswer, streamFailure, localImageObserved = false;
-    const streamOverdue = new Promise(resolve => { stopWaitingForStream = resolve; });
+    let completedStream = false, graceElapsed = false, graceVersion = 0;
+    const streamChange = () => new Promise(resolve => { stopWaitingForStream = resolve; });
+    let streamChanged = streamChange();
+    const armStreamGrace = () => {
+      if (answerSeen) return;
+      const version = ++graceVersion;
+      answerSeen = setTimeout(() => {
+        if (version !== graceVersion || (!completedStream && !observedAnswer)) return;
+        graceElapsed = true;
+        stopWaitingForStream();
+      }, streamGraceMs);
+    };
     const answered = projected => !browserReply && projected?.answer?.status === 'ready'
       && projected.answer.runId === runId && typeof projected.answer.text === 'string' && Boolean(projected.answer.text.trim());
     // Retain only the verified answer, never an earlier fallback attempt's
@@ -159,6 +170,11 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       for (const kind of ['progress', 'receipts']) localImageObserved ||= Array.isArray(projected?.[kind])
         && projected[kind].some(item => item?.tool === 'local_image');
       observedAnswer = answered(projected) ? { ...projected.answer } : null;
+      if (!completedStream && !observedAnswer && answerSeen) {
+        clearTimeout(answerSeen); answerSeen = undefined;
+        graceVersion++; graceElapsed = false;
+        stopWaitingForStream();
+      } else if (watching && observedAnswer) armStreamGrace();
     };
     const report = async projected => {
       if (taskCheckObserved(projected, runId)) taskObservedRun = runId;
@@ -189,7 +205,6 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           if (!watching) break;
           rememberAnswer(projected);
           await report(projected);
-          if (answered(projected)) answerSeen ||= setTimeout(stopWaitingForStream, streamGraceMs);
         } catch { /* progress is best effort */ }
       }
     };
@@ -250,7 +265,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         if (row.type === 'response.completed') {
           if (row.response?.id !== runId) throw new Error('Nestor completion does not match this turn.');
           terminal = true;
-          answerSeen ||= setTimeout(stopWaitingForStream, streamGraceMs);
+          completedStream = true;
+          armStreamGrace();
           if (browserReply) {
             const calls = row.response.output?.filter(item => item.type === 'function_call') || [];
             // A native conversational answer needs no browser action. Keep it on
@@ -273,7 +289,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       const consumeChecked = async line => {
         // Record a row error before iterator closure, which can itself stall.
         try { await consume(line); }
-        catch (error) { streamFailure = error; throw error; }
+        catch (error) { streamFailure = error; stopWaitingForStream(); throw error; }
       };
       const stream = (async () => {
         for await (const chunk of response.body) {
@@ -286,8 +302,20 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         pending += decoder.decode();
         if (pending.trim()) await consumeChecked(pending.trimEnd());
       })();
-      if (await Promise.race([stream.then(() => true), streamOverdue.then(() => false), stopped])) phase('streamEnd');
-      else {
+      const streamEnded = stream.then(() => true);
+      while (true) {
+        const ended = await Promise.race([streamEnded, streamChanged.then(() => false), stopped]);
+        streamChanged = streamChange();
+        if (streamFailure) {
+          // Iterator closure may still be pending. A terminal error must not
+          // leave HTTP open after finally removes the request's deadline.
+          controller.abort(streamFailure);
+          throw streamFailure;
+        }
+        if (ended) { phase('streamEnd'); break; }
+        // A resolved notification can precede a newer observation in the same
+        // turn of the event loop. Recheck the proof before confirming a finish.
+        if (!graceElapsed || (!completedStream && !observedAnswer)) continue;
         // Same-run final evidence or a matching completion proves the run ended.
         // Leave the gateway a bounded time to finish behind it, then close the
         // request so it cannot hold the session.
@@ -295,6 +323,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         const close = setTimeout(() => controller.abort(new Error('The gateway kept a finished run open.')), streamDrainMs);
         close.unref?.();
         stream.catch(() => {}).finally(() => clearTimeout(close));
+        break;
       }
       await stopWatching();
       if (!terminal) throw new Error('La connexion avec Nestor s’est coupée avant sa réponse. Réessaie ta demande.');
