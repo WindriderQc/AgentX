@@ -33,9 +33,16 @@ async function readAdmittedInferenceStream(result, { signal, onToken = () => {},
     pending += decoder.decode();
     if (pending.trim()) consume(pending);
   } catch (error) { readError = error; }
-  await result.completion;
-  if (readError) throw readError;
+  let completion;
+  try { completion = await result.completion; }
+  catch (error) { error.partialResponse = content; throw error; }
+  if (readError) { readError.partialResponse = content; throw readError; }
   if (signal?.aborted) throw Object.assign(new Error('Inference cancelled'), { name: 'AbortError' });
+  if (completion?.completed !== true || completion?.terminalComplete !== true) {
+    throw Object.assign(new Error('Inference completion could not be verified; the received response is partial.'), {
+      code: 'INFERENCE_COMPLETION_UNVERIFIED', partialResponse: content
+    });
+  }
   if (!terminal) throw new Error('Inference stream ended before completion');
   return { content, thinkingObserved, stats: terminal, model: terminal.model || result.metadata?.model || null };
 }

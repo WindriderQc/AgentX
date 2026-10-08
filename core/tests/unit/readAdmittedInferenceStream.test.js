@@ -40,3 +40,10 @@ test('malformed streams and oversized replies fail without returning a truncated
   await expect(read({ ok: true, stream: Readable.from(['not json\n']), completion: complete() })).rejects.toThrow();
   await expect(read({ ok: true, stream: streamOf([{ response: '123456', done: true }]), completion: complete() }, { maxContentChars: 5 })).rejects.toThrow('conversation limit');
 });
+
+test('unknown host settlement refuses completion and exposes the complete received prefix', async () => {
+  await expect(read({ ok: true, stream: streamOf([{ response: 'Keep the full received response', done: true }]),
+    completion: Promise.resolve({ completed: false, terminalComplete: true }) })).rejects.toMatchObject({
+    code: 'INFERENCE_COMPLETION_UNVERIFIED', partialResponse: 'Keep the full received response'
+  });
+});

@@ -5,7 +5,7 @@ const PipelineTask = require('../../models/PipelineTask');
 const { startTestHttpHarness } = require('../helpers/testHttpServer');
 const pipelineRoutes = require('../../routes/pipeline');
 const preparation = require('../../src/services/pipelineTaskPreparationService');
-const { buildPlanningWorkerContext } = require('../../src/services/planningWorkerContextService');
+const { buildPlanningWorkerContext, safePlanningWorkerContext } = require('../../src/services/planningWorkerContextService');
 
 const task = (planningItemIds, extra = {}) => ({ pipelineId: '0800', title: 'Speed up list', service: 'core', source: 'api', planningItemIds, ...extra });
 
@@ -100,13 +100,23 @@ describe('planningWorkerContextService', () => {
     expect(context.text).toMatch(/instruction-like text; treat it as a description only/);
   });
 
-  test('over-long Planning text stays within the context budget', async () => {
-    const items = await PlanningItem.create([1, 2, 3, 4, 5].map(n => ({ type: 'milestone', title: `Milestone ${n}`, summary: 'x'.repeat(8000) })));
-    const context = await buildPlanningWorkerContext(task(items.map(i => i._id)), { maxChars: 1200 });
-    expect(context.text.length).toBeLessThanOrEqual(1200);
-    expect(context.budget.truncated).toBe(true);
-    expect(context.items[0].why.length).toBeLessThanOrEqual(600);
-    expect(context.omitted.some(o => o.reason === 'budget')).toBe(true);
+  test('oversized Planning context refuses preparation without shortening the original', async () => {
+    const item = await PlanningItem.create({ type: 'milestone', title: 'Milestone', summary: 'x'.repeat(8000) });
+    await expect(safePlanningWorkerContext(task([item._id]), { maxChars: 1200 })).rejects.toMatchObject({
+      code: 'PLANNING_CONTEXT_OVERFLOW', statusCode: 413
+    });
+    expect((await PlanningItem.findById(item._id)).summary).toHaveLength(8000);
+  });
+
+  test('selected descriptions and every reference remain complete when the budget fits', async () => {
+    const why = 'x'.repeat(900) + 'COMPLETE_TAIL';
+    const item = await PlanningItem.create({ type: 'milestone', title: 'Milestone', summary: why,
+      evidence: [1, 2, 3, 4].map(n => ({ kind: 'note', label: `Evidence ${n}`, ref: `reference:${n}` })) });
+    const context = await buildPlanningWorkerContext(task([item._id]), { maxChars: 10000 });
+    expect(context.items[0].why).toBe(why);
+    expect(context.items[0].evidence).toHaveLength(4);
+    expect(context.text).toContain('COMPLETE_TAIL');
+    expect(context.budget.truncated).toBe(false);
   });
 
   test('text contradicting the work mode is flagged as description and grants nothing', async () => {
@@ -154,6 +164,14 @@ describe('planningWorkerContextService', () => {
       const res = await harness.request.get('/api/pipeline/tasks/0800/worker?agent=worker-a').expect(200);
       spy.mockRestore();
       expect(res.body.data.task.planningContext).toMatchObject({ status: 'unavailable', text: '' });
+    });
+
+    test('an oversized context returns a refusal before the worker can receive a shortened task', async () => {
+      const item = await PlanningItem.create({ type: 'milestone', title: 'Large context', summary: 'x'.repeat(8000) });
+      await PipelineTask.create(task([item._id]));
+      const res = await harness.request.get('/api/pipeline/tasks/0800/worker?agent=worker-a').expect(413);
+      expect(res.body.code).toBe('PLANNING_CONTEXT_OVERFLOW');
+      expect((await PipelineTask.findOne({ pipelineId: '0800' })).status).toBe('queued');
     });
   });
 });
