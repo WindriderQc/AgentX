@@ -169,8 +169,11 @@ answers `503` with a short JSON `error` before any audio or stream starts, so
 the caller can choose another voice; the service never substitutes one. The
 check reads the worker's `/health` with a 2 s timeout, shared with
 `/api/voices`. A ready answer is reused for 10 s, so most requests add no probe;
-a failure is reused for 2 s, so a recovered worker is noticed quickly. A worker
-that fails after a ready answer still ends the stream with an `error` event.
+a failure is reused for 2 s, then probed again beside the next request, which
+still answers `503` at once: a stopped worker can take the whole timeout to
+refuse, and the caller's other voice must not wait for it. The request after a
+recovered probe gets the worker. A worker that fails after a ready answer still
+ends the stream with an `error` event.
 
 ## Stream and interruption
 
