@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import signal
 import subprocess
 import sys
@@ -37,7 +38,8 @@ MODEL = os.environ.get("AGENTX_CODING_MODEL", "")
 MODEL_URL = os.environ.get("AGENTX_CODING_MODEL_URL", f"{CORE}/api/hermes-openai/patient/v1")
 WORKSPACES = Path.home() / "dsh-workspaces"
 DSH_ROOT = Path(os.environ.get("AGENTX_DSH_ROOT", str(Path.home() / "dsh")))
-NODE_ROOT = Path(os.environ.get("AGENTX_NODE_BIN") or shutil.which("node") or "/usr/local/bin/node").resolve().parents[1]
+NODE_BINARY = Path(os.environ.get("AGENTX_NODE_BIN") or shutil.which("node") or "/usr/local/bin/node")
+NODE_ROOT = NODE_BINARY.resolve().parents[1]
 TASK_ID = re.compile(r"^[0-9]{4}$")
 WORKER = "coding-team"
 RECEIPTS = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "agentx/coding-run-requests"
@@ -56,6 +58,9 @@ _spec.loader.exec_module(coding_progress)
 _spec = importlib.util.spec_from_file_location("coding_dispatch_control", HERE / "coding_dispatch_control.py")
 coding_dispatch_control = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_dispatch_control)
+_spec = importlib.util.spec_from_file_location("coding_runtime", HERE / "coding_runtime.py")
+coding_runtime = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_runtime)
 AUTHOR = ["-c", "user.name=AgentX Coding Team", "-c", "user.email=coding-team@agentx.invalid"]
 
 PROMPT = """You are the AgentX coding worker. /workspace is a fresh clone of {repository}
@@ -166,8 +171,38 @@ def dependency_state(workspace: Path) -> str:
 
 
 def installed_state(workspace: Path) -> str:
-    marker = worker_home(workspace) / "dependencies.sha256"
-    return marker.read_text().strip() if marker.is_file() else ""
+    try:
+        value = json.loads((worker_home(workspace) / "dependencies-v2.json").read_text())
+        if type(value.get("schemaVersion")) is int and value["schemaVersion"] == 2 and re.fullmatch(r"[a-f0-9]{64}", value.get("fingerprint", "")):
+            return value["fingerprint"]
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return ""
+
+
+def runtime_identity(workspace: Path) -> dict:
+    def probe(npm_cli):
+        home = worker_home(workspace)
+        script = 'console.log(JSON.stringify({nodeVersion:process.version,modules:process.versions.modules,platform:process.platform,arch:process.arch}))'
+        commands = [["/opt/node/bin/node", "-e", script],
+                    ["/opt/node/bin/node", "/opt/node/" + npm_cli, "--version"]]
+        try:
+            outputs = []
+            for command in commands:
+                result = subprocess.run(sandbox(workspace, home, command, network=False, timeout_seconds=10),
+                                        check=True, capture_output=True, text=True, timeout=45)
+                outputs.append(result.stdout.strip())
+            observed = json.loads(outputs[0])
+            observed["npmVersion"] = outputs[1]
+            return observed
+        except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
+            raise coding_runtime.RuntimeUnavailable("Network-free runtime probe failed") from error
+    return coding_runtime.identity(NODE_ROOT, NODE_BINARY, probe)
+
+
+def preparation_state(workspace: Path, runtime: dict) -> str:
+    value = {"schemaVersion": 2, "packages": dependency_state(workspace), "runtime": runtime}
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def install_dependencies(workspace: Path, progress=None) -> None:
@@ -178,18 +213,23 @@ def install_dependencies(workspace: Path, progress=None) -> None:
     is open. A changed package file reaches this point only when the owner hands
     the task back, which is the approval.
     """
-    state = dependency_state(workspace)
+    runtime = runtime_identity(workspace)
+    state = preparation_state(workspace, runtime)
     if state == installed_state(workspace):
         return
+    home = worker_home(workspace)
+    marker = home / "dependencies-v2.json"
+    # A failed preparation may already have modified node_modules.
+    marker.unlink(missing_ok=True)
+    npm = "/opt/node/bin/node " + shlex.quote("/opt/node/" + runtime["npmCli"])
     script = "set -e\n" + "".join(
         f"if [ -f {name}/package.json ]; then (cd {name} && "
-        "if [ -f package-lock.json ]; then npm ci --ignore-scripts --no-audit --no-fund || "
-        "npm install --ignore-scripts --no-audit --no-fund; "
-        "else npm install --ignore-scripts --no-audit --no-fund; fi); fi\n" for name in PACKAGE_DIRS
+        f"if [ -f package-lock.json ]; then {npm} ci --ignore-scripts --no-audit --no-fund || "
+        f"{npm} install --ignore-scripts --no-audit --no-fund; "
+        f"else {npm} install --ignore-scripts --no-audit --no-fund; fi); fi\n" for name in PACKAGE_DIRS
     ) + "".join(
-        f"if [ -d {name}/node_modules/mongodb-memory-server ]; then (cd {name} && node /opt/prepareMongo.js); fi\n"
+        f"if [ -d {name}/node_modules/mongodb-memory-server ]; then (cd {name} && /opt/node/bin/node /opt/prepareMongo.js); fi\n"
         for name in PACKAGE_DIRS)
-    home = worker_home(workspace)
     if progress:
         progress.set_stage("dependencies")
     command = sandbox(workspace, home, ["bash", "-c", script], network=True,
@@ -197,8 +237,18 @@ def install_dependencies(workspace: Path, progress=None) -> None:
     run = supervise(command, progress)
     if run.returncode:
         raise subprocess.CalledProcessError(run.returncode, command, output=run.stdout, stderr=run.stderr)
-    # npm install may have completed the lock file; that result is the installed state.
-    (home / "dependencies.sha256").write_text(dependency_state(workspace) + "\n")
+    if runtime_identity(workspace) != runtime:
+        raise coding_runtime.RuntimeChanged("Runtime changed during dependency preparation")
+    # npm may have finalized a lock. Publish the final key atomically, after success.
+    value = {"schemaVersion": 2, "fingerprint": preparation_state(workspace, runtime)}
+    with tempfile.NamedTemporaryFile(mode="w", dir=home, prefix=".dependencies-", delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            stream.write(json.dumps(value) + "\n")
+            stream.flush()
+            os.replace(temporary, marker)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def tail(path: Path, size: int = 6000) -> str:
@@ -361,6 +411,12 @@ def execute(args, progress) -> int:
         feedback(args.task_id, "Dependencies could not be installed before the worker started.\n\n"
                                f"{(error.stderr or error.stdout or '')[-3000:]}", "blocked")
         progress.finish("blocked", "dependencies_failed")
+        return 1
+    except (coding_runtime.RuntimeUnavailable, coding_runtime.RuntimeChanged) as error:
+        feedback(args.task_id, "The selected Node/npm runtime could not be validated for dependency preparation. "
+                               "Inspect the operator runtime selection; no fallback or worker was started.", "blocked")
+        reason = "runtime_changed" if isinstance(error, coding_runtime.RuntimeChanged) else "runtime_unavailable"
+        progress.finish("blocked", reason)
         return 1
 
     discussion = "\n\n".join(f"{entry.get('by', 'someone')}: {entry.get('text', '')}"

@@ -168,6 +168,24 @@ class CodingRunTest(unittest.TestCase):
         self.assertIn("approve the installation", self.feedback.call_args.args[1])
         self.assertEqual(publish.call_count, 0)
 
+    def test_invalid_or_changed_runtime_blocks_without_worker_or_publication(self):
+        import json
+        key = "11111111-2222-4333-8444-555555555555"
+        for error, reason in [(runner.coding_runtime.RuntimeUnavailable("fixture"), "runtime_unavailable"),
+                              (runner.coding_runtime.RuntimeChanged("fixture"), "runtime_changed")]:
+            with self.subTest(reason=reason), \
+                    mock.patch.object(sys, "argv", ["coding_run", "0001", "--request-id", key]), \
+                    mock.patch.object(runner, "RECEIPTS", self.workspace.parent / "receipts"), \
+                    mock.patch.object(runner, "install_dependencies", side_effect=error) as install, \
+                    mock.patch.object(runner, "run_worker") as worker, \
+                    mock.patch.object(runner, "push_and_open_pr") as publish, mock.patch("builtins.print"):
+                self.assertEqual(runner.main(), 1)
+            install.assert_called_once()
+            worker.assert_not_called()
+            publish.assert_not_called()
+            value = json.loads((self.workspace.parent / "receipts" / f"{key}.progress.json").read_text())
+            self.assertEqual((value["phase"], value["result"], value["stopReason"]), ("finished", "blocked", reason))
+
     def test_preclaim_rejection_records_a_terminal_receipt_without_task_feedback(self):
         import json
         key = "11111111-2222-4333-8444-555555555555"
