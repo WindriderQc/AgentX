@@ -1,7 +1,8 @@
 'use strict';
 // The image lab: the trial site built by the workshop sessions, served read-only under /images/labo.
 // Its code lives in core/public/image-lab; its images, evidence files and frozen API answers live
-// on the shared image drive (<IMAGE_ARCHIVE_DIR>/atelier-site). Only the hosts' occupancy is live.
+// on the shared image drive (<IMAGE_ARCHIVE_DIR>/atelier-site). Lots deposited under atelier-tests
+// and the hosts' occupancy are read at each request.
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -13,6 +14,7 @@ const options = { extensions: ['html', 'json'], dotfiles: 'deny', redirect: fals
     response.set('Cache-Control', 'no-store').set('X-Content-Type-Options', 'nosniff');
     if (/\.(md|csv|sh|ps1)$/.test(file)) response.set('Content-Type', 'text/plain; charset=utf-8');
   } };
+const lotsRoot = () => process.env.IMAGE_ARCHIVE_DIR ? path.join(path.resolve(process.env.IMAGE_ARCHIVE_DIR), 'atelier-tests') : null;
 const liveSources = () => ({ listActive: require('../src/services/runtimeCoordinationService').listActive,
   hosts: require('../src/helpers/ollamaHostConfig').getConfiguredHosts });
 
@@ -30,14 +32,54 @@ async function occupancy({ listActive, hosts }) {
   } catch { return { available: false, observedAt, reason: 'Relevé Core indisponible ; admission à vérifier' }; }
 }
 
-function createRouter({ code = CODE, data = dataRoot, sources = liveSources } = {}) {
+// A workshop session deposits a lot on the shared drive as a folder holding its images and a
+// lot.json record. Each trial of each lot becomes one comparison of the lab, without any edit here.
+function lotGroups(dir) {
+  const groups = [];
+  if (!dir || !fs.existsSync(dir)) return groups;
+  for (const folder of fs.readdirSync(dir).sort()) {
+    let record;
+    try { record = JSON.parse(fs.readFileSync(path.join(dir, folder, 'lot.json'), 'utf8')); } catch { continue; }
+    if (record.schema !== 'agentx-image-lot-record-v1' || !/^[a-zA-Z0-9._-]+$/.test(folder)) continue;
+    const address = file => `/images/labo/lots/${folder}/${file}`;
+    const words = (record.humanReceptions || []).flatMap(r => r.userWords || []);
+    const trials = new Map();
+    for (const image of record.images || []) {
+      if (!image.file || !image.dimensions) continue;
+      const key = `${image.trial}-${image.case}`, [width, height] = image.dimensions, m = image.measurements || {};
+      if (!trials.has(key)) trials.set(key, { image, items: [] });
+      trials.get(key).items.push({ id: `${folder}-${image.arm}-${image.pass}`, title: image.recipe, src: address(image.file), original: address(image.file),
+        width, height, previewWidth: Math.min(width, 960), previewHeight: Math.round(height * Math.min(width, 960) / width), sha256: image.sha256,
+        kind: 'master', seed: image.seed, seconds: image.generationSeconds, timeScope: 'Génération observée', status: 'Proposition',
+        note: m.outsidePercentPixelsOver8 !== undefined ? `${String(m.outsidePercentPixelsOver8).replace('.', ',')} % des pixels modifiés hors de la zone demandée.` : image.components?.diffusion });
+    }
+    for (const [key, { image, items }] of trials) {
+      const reference = image.references?.[0];
+      groups.push({ id: `lot-${folder}-${key}`.toLowerCase(), title: `${record.trialTitles?.[image.trial] || image.trial} · ${image.case}`, category: record.category || 'edition',
+        description: `${record.title} Dossier ${folder}.`, items, defaultPair: [0, Math.min(1, items.length - 1)], brief: image.brief,
+        scope: [record.scope, words.length ? `Avis reçus : « ${words.join(' » « ')} »` : null].filter(Boolean).join(' '),
+        evidence: address('lot.json'),
+        ...(reference && { reference: { ...items[0], id: `${folder}-reference`, title: 'Image de départ', src: address(reference), original: address(reference), sha256: undefined } }) });
+    }
+  }
+  return groups;
+}
+
+function createRouter({ code = CODE, data = dataRoot, lots = lotsRoot, sources = liveSources } = {}) {
   const router = express.Router();
   router.get('/api/lab', async (_req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
       const snapshot = JSON.parse(fs.readFileSync(path.join(data(), 'api', 'lab.json'), 'utf8'));
-      res.json({ ...snapshot, servedAt: new Date().toISOString(), core: await occupancy(sources()) });
+      const deposited = lotGroups(lots());
+      res.json({ ...snapshot, groups: [...snapshot.groups, ...deposited], revision: `${snapshot.revision}-${deposited.length}`,
+        servedAt: new Date().toISOString(), core: await occupancy(sources()) });
     } catch { res.status(503).json({ error: 'status_unavailable' }); }
+  });
+  router.use('/lots', (req, res, next) => {
+    const dir = lots();
+    if (!dir || !['GET', 'HEAD'].includes(req.method)) return res.status(404).end();
+    express.static(dir, { ...options, extensions: false, index: false })(req, res, () => res.status(404).end());
   });
   router.use((req, res, next) => {
     const roots = [code, data()].filter(Boolean);
@@ -52,4 +94,4 @@ function createRouter({ code = CODE, data = dataRoot, sources = liveSources } = 
   return router;
 }
 function mount(app) { app.use('/images/labo', createRouter()); }
-module.exports = { mount, createRouter, occupancy };
+module.exports = { mount, createRouter, occupancy, lotGroups };

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const request = require('supertest');
-const { createRouter, occupancy } = require('../../routes/image-lab');
+const { createRouter, occupancy, lotGroups } = require('../../routes/image-lab');
 
 let dir, code;
 const put = (root, name, text) => { fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true }); fs.writeFileSync(path.join(root, name), text); };
@@ -12,7 +12,7 @@ const write = (name, text) => put(dir, name, text);
 const hosts = () => [{ url: 'http://10.0.0.1:11434', name: 'Bench' }, { url: 'http://10.0.0.1:11435', name: 'Bench CPU' }, { url: 'http://10.0.0.2:11434', name: 'Desk' }];
 const idle = async () => ({ maintenance: null, workloads: [], inferences: [] });
 function app(sources = () => ({ listActive: idle, hosts }), data = () => dir) {
-  const instance = express(); instance.use('/images/labo', createRouter({ code, data, sources })); return instance;
+  const instance = express(); instance.use('/images/labo', createRouter({ code, data, lots: () => path.join(dir, 'lots'), sources })); return instance;
 }
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'image-lab-')); code = fs.mkdtempSync(path.join(os.tmpdir(), 'image-lab-code-'));
@@ -54,4 +54,26 @@ test('without the shared drive the pages still load and the data answers plainly
   await request(app(undefined, () => null)).get('/images/labo/').expect(200);
   await request(app(undefined, () => null)).get('/images/labo/docs/report.md').expect(404);
   await request(app(undefined, () => null)).get('/images/labo/api/lab').expect(503);
+});
+test('a lot deposited on the shared drive becomes a comparison without any edit', async () => {
+  const record = { schema: 'agentx-image-lot-record-v1', title: 'Trial lot.', scope: 'One seed.', trialTitles: { P3: 'Consistency' },
+    humanReceptions: [{ userWords: ['the jar is good'] }],
+    images: [{ trial: 'P3', case: 'E01', arm: 'with', pass: 1, recipe: 'With adapter', file: 'a.png', dimensions: [1216, 896], sha256: 'aa', seed: 7,
+      generationSeconds: 55.3, brief: 'Change the jar.', references: ['references/start.png'], measurements: { outsidePercentPixelsOver8: 12.1 } },
+    { trial: 'P3', case: 'E01', arm: 'without', pass: 1, recipe: 'Without', file: 'b.png', dimensions: [1216, 896], sha256: 'bb', seed: 7 },
+    { trial: 'P2', case: 'M01', arm: 'oom', pass: 1, recipe: 'Never rendered', state: 'failed' }] };
+  write('lots/2026-10-08-trial/lot.json', JSON.stringify(record)); write('lots/2026-10-08-trial/a.png', 'png'); write('lots/2026-10-08-trial/.hidden', 'no');
+  write('lots/not-a-lot/readme.txt', 'x'); write('lots/broken/lot.json', '{');
+  const { body } = await request(app()).get('/images/labo/api/lab').expect(200);
+  expect(body.groups).toHaveLength(2); expect(body.revision).toMatch(/-1$/);
+  const group = body.groups[1];
+  expect(group).toMatchObject({ id: 'lot-2026-10-08-trial-p3-e01', title: 'Consistency · E01', category: 'edition', brief: 'Change the jar.', defaultPair: [0, 1] });
+  expect(group.items.map(i => i.title)).toEqual(['With adapter', 'Without']);
+  expect(group.items[0]).toMatchObject({ original: '/images/labo/lots/2026-10-08-trial/a.png', width: 1216, previewWidth: 960, previewHeight: 707, seconds: 55.3 });
+  expect(group.items[0].note).toContain('12,1 %'); expect(group.scope).toContain('the jar is good');
+  expect(group.reference.original).toBe('/images/labo/lots/2026-10-08-trial/references/start.png');
+  expect((await request(app()).get('/images/labo/lots/2026-10-08-trial/a.png').expect(200)).body.toString()).toBe('png');
+  await request(app()).get('/images/labo/lots/2026-10-08-trial/.hidden').expect(404);
+  await request(app()).get('/images/labo/lots/..%2Fapi%2Flab.json').expect(404);
+  expect(lotGroups(null)).toEqual([]);
 });

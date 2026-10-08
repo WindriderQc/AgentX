@@ -42,9 +42,15 @@ model, so it stays true when the worker or the profiles change.
 side-by-side viewer, the hosts and measured setups, recipes, the plan, and the
 older gallery, journal and manual. Its pages, scripts and styles are in
 `core/public/image-lab`; its images, evidence files and frozen API answers are
-read from `<IMAGE_ARCHIVE_DIR>/atelier-site`. Only host occupancy is computed
-live, from runtime coordination. The site is produced on the development host
-by its own exporter; nothing in it starts a generation or a reservation.
+read from `<IMAGE_ARCHIVE_DIR>/atelier-site`. Host occupancy is computed live
+from runtime coordination. Nothing in it starts a generation or a reservation.
+
+New trial results reach the lab through the shared drive, not through a
+development host: a session deposits a folder under
+`<IMAGE_ARCHIVE_DIR>/atelier-tests/` with its images and a `lot.json` record
+(schema `agentx-image-lot-record-v1`: per image the file, hash, dimensions,
+brief, recipe, seed, timings, measurements, and the owner's words when given).
+Each trial of each lot appears as a comparison at the next request.
 Neither read endpoint initializes recovery, starts a worker or takes a GPU claim.
 The current worker's optional external `presentation` object provides
 `hostLabel`, `gpuLabel` and `vramGiB`; these are configured inventory, not live
