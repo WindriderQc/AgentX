@@ -88,6 +88,26 @@ class SynthesisTests(unittest.TestCase):
             with self.assertRaisesRegex(synthesis.SynthesisError, "AgentX inference unavailable"):
                 synthesis.http_chat_completion("http://stub", {})
 
+    def _proxy_response(self, finish_reason):
+        body = json.dumps({"choices": [{
+            "finish_reason": finish_reason,
+            "message": {"content": '{"candidates": ['},
+        }]}).encode()
+        response = io.BytesIO(body)
+        response.__enter__ = lambda *_: response
+        response.__exit__ = lambda *_: None
+        return response
+
+    def test_output_cut_at_the_token_cap_is_refused_not_repaired(self):
+        with patch.object(synthesis, "urlopen", return_value=self._proxy_response("length")):
+            with self.assertRaisesRegex(synthesis.SynthesisError, "cut at max_tokens=3000"):
+                synthesis.http_chat_completion("http://stub", {"max_tokens": 3000})
+
+    def test_complete_output_is_returned(self):
+        with patch.object(synthesis, "urlopen", return_value=self._proxy_response("stop")):
+            self.assertEqual(
+                synthesis.http_chat_completion("http://stub", {}), '{"candidates": [')
+
     def _run(self, transport, input_=None):
         return synthesis.synthesize(
             input_ or make_input(),
