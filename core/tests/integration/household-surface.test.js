@@ -114,6 +114,38 @@ describe('built-in Household surface on Core', () => {
       else process.env.VOIX_BASE_URL = previousVoixUrl;
     }
   });
+  test('optional Data down degrades AgentX without marking AgentX or Nestor down', async () => {
+    const previous = { voix: process.env.VOIX_BASE_URL, data: process.env.DATAAPI_BASE_URL };
+    process.env.VOIX_BASE_URL = 'http://voix.example.test';
+    process.env.DATAAPI_BASE_URL = 'http://data.example.test';
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async url => {
+      const { hostname, pathname } = new URL(String(url));
+      if (hostname === 'data.example.test') throw new Error('fetch failed');
+      if (pathname === '/api/nerve-center/ecosystem') {
+        return new Response(JSON.stringify({ data: { health: { status: 'ok', configuredHosts: 1, onlineHosts: 1 },
+          cluster: [{ hostKey: 'primary', status: 'online' }], operationalAttention: { issues: [] } } }),
+        { headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ status: 'ok' }), { headers: { 'Content-Type': 'application/json' } });
+    });
+    try {
+      const { data } = (await request(app).get('/api/panel/status').expect(200)).body;
+      expect(data.services.map(service => [service.id, service.status, service.optional === true])).toEqual([
+        ['core', 'ok', false], ['benchmark', 'ok', false], ['rag', 'ok', false], ['data', 'down', true]
+      ]);
+      expect(data.crew.find(member => member.id === 'agentx')).toMatchObject({
+        status: 'degraded', detail: '3/3 platform services ready · optional Data unavailable'
+      });
+      expect(data.crew.find(member => member.id === 'nestor').status).toBe('ok');
+      expect(data.status).toBe('degraded');
+    } finally {
+      fetchMock.mockRestore();
+      for (const [name, value] of [['VOIX_BASE_URL', previous.voix], ['DATAAPI_BASE_URL', previous.data]]) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
   test('personal native turns carry the selected Core notes as turn context, spoken or typed, never in the instructions', async () => {
     const note = 'Synthetic observatory voice context remains available.';
     await request(app).post('/api/voice-personas/private/notes').send({ operation: 'remember', text: note, kind: 'preference' }).expect(200);

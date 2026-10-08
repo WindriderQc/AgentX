@@ -5,7 +5,7 @@
 
 const { serviceHealth, projectedJson, fleetSummary } = require('./panel-sources');
 const { upstreamJson } = require('./voix-client');
-const { openClawPanelStatus, panelCrewReady } = require('./panel-status');
+const { agentxCrew, openClawPanelStatus, panelCrewReady } = require('./panel-status');
 const { createVoiceStatus, voiceLine } = require('./voice-status');
 
 function registerPanelRoutes(app, {
@@ -20,7 +20,9 @@ function registerPanelRoutes(app, {
         serviceHealth('Core', `${CORE_SELF_URL()}/health`),
         serviceHealth('Benchmark', String(process.env.BENCHMARK_SERVICE_URL || 'http://benchmark:3081').replace(/\/+$/, '') + '/health'),
         serviceHealth('RAG', String(process.env.RAG_SERVICE_URL || 'http://rag:3082').replace(/\/+$/, '') + '/health'),
-        ...(process.env.DATAAPI_BASE_URL ? [serviceHealth('Data', String(process.env.DATAAPI_BASE_URL).replace(/\/+$/, '') + '/health')] : [])
+        // Data is optional: its row shows its real state, marked optional.
+        ...(process.env.DATAAPI_BASE_URL ? [serviceHealth('Data', String(process.env.DATAAPI_BASE_URL).replace(/\/+$/, '') + '/health')
+          .then((service) => ({ ...service, optional: true }))] : [])
       ]),
       upstreamJson('/health')
         .then((health) => ({ status: health?.status === 'ok' ? 'ok' : 'down', health }))
@@ -33,20 +35,12 @@ function registerPanelRoutes(app, {
       ),
       voiceStatus()
     ]);
-    const serviceCount = services.filter((service) => service.status === 'ok').length;
-    const agentx = {
-      id: 'agentx',
-      name: 'AgentX',
-      role: 'Router · RAG · shared memory authority',
-      status: serviceCount === services.length ? 'ok' : 'down',
-      detail: `${serviceCount}/${services.length} platform services ready`,
-      href: '/agent-ops'
-    };
+    const agentx = agentxCrew(services);
     const nestor = {
       id: 'nestor',
       name: 'Nestor',
       role: 'Family front door',
-      status: agentx.status === 'ok' && fleet.status === 'ok' ? 'ok' : 'down',
+      status: agentx.status !== 'down' && fleet.status === 'ok' ? 'ok' : 'down',
       detail: knowledgeState.status.enabled
         ? `${knowledgeState.status.documentCount} approved knowledge document(s)`
         : 'child-safe lane · approved knowledge waiting',

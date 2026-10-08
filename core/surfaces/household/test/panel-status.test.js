@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { openClawPanelStatus, panelCrewReady } = require('../panel-status');
+const { agentxCrew, openClawPanelStatus, panelCrewReady } = require('../panel-status');
 
 test('a slow OpenClaw inventory cannot hold the Household panel response', async () => {
   let settle;
@@ -41,4 +41,25 @@ test('invalid or failed evidence is unknown, not a verified outage', async () =>
     assert.equal(crew.status, 'unknown');
     assert.ok(crew.error);
   }
+});
+
+test('optional Data down degrades the AgentX tile and names it; a required service down is down', () => {
+  const required = ['Core', 'Benchmark', 'RAG'].map(name => ({ id: name.toLowerCase(), name, status: 'ok' }));
+  const data = status => ({ id: 'data', name: 'Data', status, optional: true });
+
+  assert.deepEqual(agentxCrew(required), {
+    id: 'agentx', name: 'AgentX', role: 'Router · RAG · shared memory authority',
+    status: 'ok', detail: '3/3 platform services ready', href: '/agent-ops'
+  });
+  assert.equal(agentxCrew([...required, data('ok')]).status, 'ok');
+  assert.equal(agentxCrew([...required, data('ok')]).detail, '3/3 platform services ready');
+
+  const degraded = agentxCrew([...required, data('down')]);
+  assert.equal(degraded.status, 'degraded');
+  assert.equal(degraded.detail, '3/3 platform services ready · optional Data unavailable');
+  assert.equal(panelCrewReady([degraded], { status: 'ok' }), false);
+
+  const down = agentxCrew([{ ...required[0], status: 'down' }, required[1], required[2], data('ok')]);
+  assert.equal(down.status, 'down');
+  assert.equal(down.detail, '2/3 platform services ready');
 });
