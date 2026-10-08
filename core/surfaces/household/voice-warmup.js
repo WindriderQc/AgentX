@@ -26,7 +26,7 @@
 // again. So the warm-up yields: it is skipped while another conversation of the
 // same agent has had a turn within LIMITS.liveMs.
 
-const LIMITS = Object.freeze({ greeting: 300, deadlineMs: 60000, liveMs: 600000 });
+const LIMITS = Object.freeze({ greeting: 300, deadlineMs: 60000, liveMs: 180000 });
 const PRIVATE_SCOPE = Object.freeze({ packId: 'personal_operator', scopeId: 'personal' });
 
 function openingEvent() {
