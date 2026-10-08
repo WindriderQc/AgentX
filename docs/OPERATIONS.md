@@ -829,8 +829,8 @@ tool arguments and results internally and projects only successful tool names
 and confirmed repetitions for the same run. Four consecutive identical calls
 with identical results stop the turn; native process and session waits are
 excluded. Core reports an unsuccessful verification after confirmed termination,
-or pauses while the stop remains unconfirmed. An explicit request to read or
-count personal tasks requires a successful task-list or personal-briefing result
+or pauses while the stop remains unconfirmed. An explicit request to personal
+Nestor on `main` to read or count tasks requires a successful task-list or personal-briefing result
 from that run before Core delivers the answer. This check does not validate
 every fact in general conversation and never replays the inference.
 The Super Dad and Famille avatar dock loads GraphysX's `<llmx-face>` module from

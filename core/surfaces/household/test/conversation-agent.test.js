@@ -901,6 +901,17 @@ test('an explicit personal task check refuses an unsupported count without repla
   }
 });
 
+test('specialist and scene dialogue keep their own task response contract', async () => {
+  for (const change of [{ agentId: 'secretary' }, { llmx: { scene: 'example' } }, { source: 'graphysx-llmx' }]) {
+    const client = createAgentClient({ env, settleMs: 0,
+      continuity: async () => ({ run: { model: 'native' }, answer: answer('La liste de cet espace contient deux tâches.') }),
+      fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
+    const result = await client({ session: { ...session, packId: 'personal_operator', scopeId: 'personal', ...change }, text: 'Regarde mes tâches.' });
+    assert.equal(result.text, 'La liste de cet espace contient deux tâches.');
+    assert.equal(result.tools.verification, undefined);
+  }
+});
+
 test('a confirmed repeated-tool loop stops the native run before delivering a plain failure', async () => {
   let aborted = false, closeStream, requests = 0, settled = 0;
   const deltas = [];

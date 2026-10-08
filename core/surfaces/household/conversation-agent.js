@@ -339,7 +339,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       }
       if (!browserCall) {
         answer = evidence.answer.text;
-        if (session.packId === 'personal_operator' && session.scopeId === 'personal'
+        if (agentIdFor(session) === 'main' && session.packId === 'personal_operator' && session.scopeId === 'personal'
+            && !session.llmx && session.source !== 'graphysx-llmx'
             && requestsTaskCheck(text) && !taskCheckObserved(evidence, runId)) {
           verificationFailure = 'task_check_missing';
           answer = checkFailure(language.decided ? language.language : 'fr');
