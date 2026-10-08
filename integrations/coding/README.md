@@ -41,8 +41,8 @@ The runner uses four protections:
   push; the runner only pushes the task branch and opens a draft pull request.
 - Core admits each inference with the rest of the household's traffic. The relay
   targets the patient route (`/api/hermes-openai/patient/v1`), which waits up to
-  eight minutes for a busy host instead of refusing. If the worker still stops,
-  the runner waits two minutes and continues in the same workspace.
+  eight minutes for a busy host instead of refusing. A stopped worker keeps its
+  checkpoint locally; an explicit handoff continues the same workspace.
 
 ## Dependencies
 
@@ -59,7 +59,9 @@ next run installs the package and the worker continues. That install step still
 has the whole network, including the host's own services; it runs registry
 packages without their scripts, never the worker.
 
-There is no file allowlist, plan approval, attempt budget or separate verifier.
+There is no file allowlist, plan approval or separate verifier. Generated caches
+and sessions stay outside delivered checkpoints. An observed failing or unknown
+test result keeps the checkpoint local until the worker runs a passing test.
 
 ## Settings
 
@@ -74,7 +76,11 @@ live outside Git, by default in `~/.config/agentx/coding.env`
   `WindriderQc/AgentX` and `main`.
 - `AGENTX_CORE_URL`: default loopback port 3180.
 
-A run has two hours by default; `--timeout-seconds` changes it. Continuous
+A run has a two-hour soft budget by default; `--timeout-seconds` changes it.
+New source changes or new test outcomes can extend that budget in thirty-minute
+steps, up to twice the configured duration. Repeated output, cache writes and
+unchanged experiments do not extend it. Stage limits and a 128-call ceiling
+also stop stalled attempts. Continuous
 integration tests the worker's draft pull requests like ready ones, because
 its branches are named `agentx/coding-task-<id>`.
 
@@ -91,6 +97,11 @@ unknown and blocks another launch until the operator reconciles the host unit.
 New requests use `~/.local/state/agentx/coding-run-requests`. Guarded receipts
 remain in `coding-dispatch-requests`, keep their original outcomes and cannot
 launch the replacement worker with the same request id.
+
+Pipeline displays the worker's stage, heartbeat, useful progress, remaining
+budget, test outcome and checkpoint hash. The receipt excludes session text,
+commands, paths and model output. A vanished host unit without a terminal
+receipt remains unknown and requires reconciliation before another launch.
 
 ## DSH wrappers
 

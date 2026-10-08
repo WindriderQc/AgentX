@@ -13,3 +13,10 @@
   disabled: true
 - id: tool-workflow
   disabled: true
+# Raw events stay in the isolated worker home. The host projects safe enums,
+# timestamps and test outcomes into the run receipt; Pipeline never reads them.
+- id: session-persistence-jsonl
+  config:
+    root: /home/agent/.dsh/progress-sessions
+    compression: none
+    packChunks: false

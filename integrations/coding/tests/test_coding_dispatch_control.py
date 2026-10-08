@@ -60,9 +60,24 @@ class ControlTest(unittest.TestCase):
             first = control.launch("0001", KEY, 0)
             again = control.launch("0001", KEY, 0)
         self.assertEqual(run.call_count, 1)
-        self.assertEqual(run.call_args.args[0][-2:], [str(control.HERE / "coding_run.py"), "0001"])
+        self.assertEqual(run.call_args.args[0][-4:], [str(control.HERE / "coding_run.py"), "0001", "--request-id", KEY])
         self.assertEqual((first["run"]["phase"], first["replayed"], again["replayed"]), ("accepted", False, True))
-        self.assertEqual(control.status(KEY)["run"]["phase"], "finished")
+        self.assertEqual(control.status(KEY)["run"]["phase"], "unknown")
+
+    def test_terminal_receipt_distinguishes_stopped_blocked_from_success(self):
+        control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted"})
+        value = {"requestId": KEY, "pipelineId": "0001", "phase": "finished", "stage": "checkpoint",
+                 "result": "blocked", "stopReason": "soft_budget_no_progress", "checkpoint": "a" * 40,
+                 "command": "private-fixture", "rawOutput": "private-fixture",
+                 "lastTest": {"name": "jest", "outcome": "failed", "output": "private-fixture"}}
+        path = control.RECEIPTS / f"{KEY}.progress.json"
+        path.write_text(json.dumps(value))
+        observed = control.status(KEY)["run"]
+        self.assertEqual((observed["phase"], observed["progress"]["result"]), ("finished", "blocked"))
+        self.assertNotIn("private-fixture", json.dumps(observed))
+        value["pipelineId"] = "0002"
+        path.write_text(json.dumps(value))
+        self.assertEqual(control.status(KEY)["run"]["phase"], "unknown")
 
     def test_launch_refuses_a_busy_worker_and_a_private_task(self):
         with mock.patch.object(control.subprocess, "run") as run:
