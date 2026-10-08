@@ -698,7 +698,7 @@ describe('built-in Household surface on Core', () => {
       settleMs: 0, progressMs: 25, streamGraceMs: 5, streamDrainMs: 20,
       continuity: async ({ runId }) => ({
         answer: { status: 'ready', runId, text: replies[runIds.indexOf(runId)] },
-        run: { runId, model: 'synthetic-native' }, receipts: [{ tool: 'list_personal_tasks', observed: true }]
+        run: { runId, model: 'synthetic-native' }, receipts: [{ runId, tool: 'list_personal_tasks', status: 'verified', observed: true }]
       }),
       fetchImpl: async (_url, options) => {
         const runId = runIds[requests.length];
@@ -719,7 +719,7 @@ describe('built-in Household surface on Core', () => {
       const id = (await request(app).post(base).send({ packId: 'personal_operator', backend: 'openclaw' }).expect(201)).body.data.session.sessionId;
       const first = (await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Regarde mes tâches.' }).expect(200)).body.data;
       expect(first.reply.text).toBe(replies[0]);
-      expect(first.tools.receipts).toEqual([{ tool: 'list_personal_tasks', observed: true }]);
+      expect(first.tools.receipts).toEqual([{ runId: runIds[0], tool: 'list_personal_tasks', status: 'verified', observed: true }]);
       const history = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
       expect(history.history.map(message => message.content)).toEqual(['Regarde mes tâches.', replies[0]]);
       expect(requests).toHaveLength(1);
@@ -744,7 +744,7 @@ describe('built-in Household surface on Core', () => {
         if (++reads > 1) throw new Error('Synthetic continuity unavailable');
         return { answer: { status: 'ready', runId, text: reply },
           run: { runId, model: 'old-attempt', provider: 'old-provider' },
-          receipts: [{ tool: 'list_personal_tasks', observed: true }] };
+          receipts: [{ runId, tool: 'list_personal_tasks', status: 'verified', observed: true }] };
       },
       fetchImpl: async (_url, options) => {
         requests++;
@@ -784,7 +784,8 @@ describe('built-in Household surface on Core', () => {
       env: { OPENCLAW_GATEWAY_URL: 'http://openclaw.example.test', OPENCLAW_GATEWAY_TOKEN: 'synthetic-token' },
       settleMs: 0, progressMs: 3, streamGraceMs: 30, streamDrainMs: 20,
       continuity: async () => {
-        if (released) return { answer: { status: 'ready', runId, text: reply }, run: { runId, model: 'synthetic-native' } };
+        if (released) return { answer: { status: 'ready', runId, text: reply }, run: { runId, model: 'synthetic-native' },
+          receipts: [{ runId, tool: 'list_personal_tasks', status: 'verified', observed: true }] };
         if (++reads === 1) return { answer: { status: 'ready', runId, text: 'Réponse périmée.' } };
         invalidated();
         return { answer: { status: 'unavailable', runId } };

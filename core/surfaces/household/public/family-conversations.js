@@ -1,7 +1,5 @@
-/* Parent-only erase of Family Nestor conversations, on the family follow-up
-   page (/dad/family). The Family page cannot offer it: opening it locks the
-   adult space, and children must not erase what a parent can review. Core
-   owns the conversations; this card only lists and calls its routes. */
+/* Family conversation management lives on the family follow-up page.
+   Core owns the conversations; this card lists and calls its routes. */
 (function () {
   const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
   const base = '/api/voice-personas/family/sessions';
@@ -17,11 +15,11 @@
 
   function mount(host) {
     host.dataset.mounted = 'true';
-    host.innerHTML = `<div class="row"><div class="grow"><p class="card-kicker">Nestor Famille · parent</p><h2>Conversations Famille</h2>
-      <p class="muted">Des plus récentes aux plus anciennes. Effacer retire la conversation, ses échanges et ses pièces jointes d'AgentX, et du journal ci-dessus. Les copies gardées par OpenClaw ne sont pas touchées.</p></div>
+    host.innerHTML = `<details class="family-disclosure"><summary>Gérer les conversations Famille</summary><div class="row"><div class="grow">
+      <p class="muted">Effacer retire les échanges et leurs pièces jointes d’AgentX et du journal. Les copies OpenClaw restent conservées.</p></div>
       <button type="button" class="compact" data-family-refresh>Actualiser</button></div>
       <p data-family-status class="muted" role="status"></p><div data-family-list class="stack"></div>
-      <button type="button" class="compact" data-family-more hidden>Voir plus</button>`;
+      <button type="button" class="compact" data-family-more hidden>Voir plus</button></details>`;
     const list = host.querySelector('[data-family-list]');
     const status = (message) => { host.querySelector('[data-family-status]').textContent = message; };
     const row = (session) => {

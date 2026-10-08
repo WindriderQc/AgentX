@@ -182,7 +182,7 @@ describe('a date-only deadline lands in its household day and morning briefing (
     const deadline = withHouseholdZone('America/Toronto', () => parseDueAt('2026-10-04'));
     // The activity date reads as the start of its day — the opposite boundary
     // of the deadline, which holds until the end of its day.
-    const activity = new Date('2026-10-04T00:00:00.000Z');
+    const activity = new Date('2026-10-04T04:00:00.000Z'); // Midnight in Toronto, the household zone.
     expect(deadline.getTime()).not.toBe(activity.getTime());
     // On the activity day itself the task is still in the today lane; once the
     // activity day has passed it is expired, not overdue.

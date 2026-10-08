@@ -414,3 +414,14 @@ body:not(.psyx-locked) .app-shell { flex: 1; min-height: 0; }
   .workspace > .side-panel { z-index: 1101; }
 }
 html { overflow-x: hidden; }
+
+/* Secondary settings share one native disclosure; modal triggers stay reachable. */
+.settings-menu { position: relative; }
+.settings-menu > summary { list-style: none; cursor: pointer; }
+.settings-menu > summary::-webkit-details-marker { display: none; }
+.settings-menu > summary::after { content: '⌄'; margin-left: .5rem; color: #e99360; }
+.settings-menu[open] > summary { border-color: #c96d3c; }
+.settings-menu > summary:focus-visible { outline: 2px solid #e99360; outline-offset: 3px; }
+.settings-options { position: absolute; right: 0; top: calc(100% + .5rem); z-index: 30; display: grid; gap: .4rem; width: min(260px, calc(100vw - 48px)); padding: .65rem; border: 1px solid var(--border); border-top: 2px solid #c96d3c; border-radius: 12px; background: var(--panel); box-shadow: 0 16px 40px #0008; }
+.settings-options > button { width: 100%; text-align: left; min-height: 44px; }
+@media (max-width: 680px) { .settings-options { left: 0; right: auto; } }

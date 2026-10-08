@@ -874,3 +874,29 @@ a.service { text-decoration: none; }
 .shopping-items li { align-items: center; padding: .35rem 0; border-bottom: 1px solid var(--line); }
 .kids-shopping { margin-top: 1rem; }
 .dad-triage input[type="date"] { max-width: 11rem; padding: .4rem .55rem; font-size: .82rem; }
+
+/* Family review keeps validation visible and setup within reach. */
+.family-overview { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.2rem; }
+.family-overview h1 { max-width: none; font-size: clamp(1.8rem, 4vw, 2.8rem); line-height: 1.1; }
+.family-overview p { margin: .4rem 0 0; }
+.family-tasks { border-top: 2px solid #c96d3c; }
+.family-tasks h2 { margin: 0; }
+.family-tasks > .row { margin-bottom: .9rem; }
+.family-attention { color: #ffc49f; background: #c96d3c20; border-color: #c96d3c75; }
+.family-disclosure > summary { display: flex; align-items: center; gap: .6rem; cursor: pointer; list-style: none; font-weight: 750; min-height: 2rem; }
+.family-disclosure > summary::-webkit-details-marker { display: none; }
+.family-disclosure > summary::before { content: '›'; color: #e99360; font-size: 1.3rem; transition: transform .15s; }
+.family-disclosure[open] > summary::before { transform: rotate(90deg); }
+.family-disclosure > summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; border-radius: 4px; }
+.family-disclosure[open] > summary { margin-bottom: 1rem; }
+.family-tasks > .family-disclosure, #profileCreate { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+.family-disclosure .pill { margin-left: auto; }
+.family-tasks .parent-chore.warning { border-color: #c96d3c70; background: linear-gradient(110deg, #c96d3c15, #09151e); }
+@media (max-width: 700px) {
+  .family-overview { gap: .7rem; }
+  .family-overview > .row { width: 100%; justify-content: space-between; }
+  .family-tasks .parent-chore { align-items: stretch; flex-direction: column; flex-wrap: nowrap; }
+  .family-tasks .parent-chore > .grow { min-width: 0; overflow-wrap: anywhere; }
+  .family-tasks .chore-action { min-height: 44px; }
+  .family-disclosure > summary { min-height: 44px; }
+}

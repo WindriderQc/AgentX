@@ -1050,3 +1050,96 @@ test('GraphysX dialogue delivers verified same-run text after completion with op
     assert.equal(settled, 1);
   } finally { release?.(); }
 });
+
+test('an explicit personal task check refuses an unsupported count without replaying the native request', async () => {
+  const voice = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' };
+  for (const channel of ['voice', 'text']) {
+    for (const tools of [['agents_list'], ['list_personal_tasks']]) {
+      const deltas = []; let requests = 0;
+      const client = createAgentClient({ env, settleMs: 0,
+        continuity: async () => ({ answer: answer('Tu as neuf tâches ouvertes.'), run: { model: 'native' },
+          toolChecks: { status: 'observed', runId, completedTools: tools, loop: null } }),
+        fetchImpl: async () => { requests++; return { ok: true, body: [created, completed] }; } });
+      const result = await client({ session: voice, channel, text: 'Regarde mes tâches et dis-moi combien sont ouvertes.', onDelta: text => deltas.push(text) });
+      assert.equal(requests, 1);
+      assert.deepEqual(deltas, [result.text]);
+      if (tools[0] === 'agents_list') {
+        assert.match(result.text, /vérification n’a pas abouti/);
+        assert.doesNotMatch(result.text, /neuf/);
+        assert.equal(result.tools.verification.reason, 'task_check_missing');
+      } else assert.equal(result.text, 'Tu as neuf tâches ouvertes.');
+    }
+  }
+});
+
+test('retained task answers still require successful task evidence observed in their own run', async () => {
+  for (const verified of [true, false]) {
+    const stream = heldNativeStream(); let reads = 0;
+    const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 15, streamDrainMs: 20,
+      continuity: async () => {
+        if (++reads > 1) throw new Error('Continuity unavailable');
+        return { answer: answer('Trois tâches.'), run: { model: 'old-attempt' }, toolChecks: { status: 'observed', runId,
+          completedTools: verified ? ['list_personal_tasks'] : ['agents_list'], loop: null } };
+      }, fetchImpl: stream.fetch });
+    try {
+      const result = await client({ session: { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' }, text: 'Regarde mes tâches.' });
+      assert.equal(result.text.includes('Trois tâches.'), verified);
+      if (!verified) assert.equal(result.tools.verification.reason, 'task_check_missing');
+      assert.equal(result.tools.status, 'unavailable');
+      assert.equal(result.metadata.model, '');
+      assert.deepEqual(result.tools.receipts, []);
+      assert.equal(stream.requests(), 1);
+    } finally { stream.close(); }
+  }
+});
+
+test('specialist and scene dialogue keep their own task response contract', async () => {
+  for (const change of [{ agentId: 'secretary' }, { llmx: { scene: 'example' } }, { source: 'graphysx-llmx' }]) {
+    const client = createAgentClient({ env, settleMs: 0,
+      continuity: async () => ({ run: { model: 'native' }, answer: answer('La liste de cet espace contient deux tâches.') }),
+      fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
+    const result = await client({ session: { ...session, packId: 'personal_operator', scopeId: 'personal', ...change }, text: 'Regarde mes tâches.' });
+    assert.equal(result.text, 'La liste de cet espace contient deux tâches.');
+    assert.equal(result.tools.verification, undefined);
+  }
+});
+
+test('a confirmed repeated-tool loop stops the native run before delivering a plain failure', async () => {
+  let aborted = false, closeStream, requests = 0, settled = 0;
+  const deltas = [];
+  const checks = { status: 'observed', runId, completedTools: ['agents_list'], loop: { tool: 'agents_list', repetitions: 4 } };
+  const client = createAgentClient({ env, settleMs: 100, progressMs: 2,
+    continuity: async () => ({ toolChecks: checks, ...(aborted ? { run: { model: 'native' } } : {}) }),
+    fetchImpl: async (_url, options) => {
+      requests++;
+      options.signal.addEventListener('abort', () => { aborted = true; closeStream?.(); });
+      return { ok: true, body: (async function* () { yield created; await new Promise(resolve => { closeStream = resolve; }); })() };
+    } });
+  const result = await client({ session, text: 'Vérifie cette demande', onDelta: text => { assert.equal(aborted, true); deltas.push(text); }, onSettled: () => { settled++; } });
+  assert.equal(requests, 1); assert.equal(settled, 1);
+  assert.match(result.text, /vérification n’a pas abouti/);
+  assert.equal(result.tools.verification.reason, 'repeated_tool_call');
+  assert.deepEqual(deltas, [result.text]);
+});
+
+test('an unconfirmed loop stop pauses the conversation without delivering an answer or claiming settlement', async () => {
+  const deltas = []; let closeStream, settled = 0;
+  const client = createAgentClient({ env, settleMs: 20, progressMs: 2,
+    continuity: async () => ({ toolChecks: { status: 'observed', runId, completedTools: [], loop: { tool: 'agents_list', repetitions: 4 } } }),
+    fetchImpl: async (_url, options) => {
+      options.signal.addEventListener('abort', () => closeStream?.());
+      return { ok: true, body: (async function* () { yield created; await new Promise(resolve => { closeStream = resolve; }); })() };
+    } });
+  await assert.rejects(client({ session, text: 'Check', onDelta: text => deltas.push(text), onSettled: () => settled++ }), /arrêt de Nestor n’est pas encore confirmé/);
+  assert.equal(settled, 0); assert.deepEqual(deltas, []);
+});
+
+test('a stalled continuity read after native completion fails within its evidence deadline', async () => {
+  let readAborted = false, settled = 0;
+  const started = Date.now();
+  const client = createAgentClient({ env, settleMs: 0, evidenceReadMs: 15,
+    continuity: async (_request, signal) => { signal.addEventListener('abort', () => { readAborted = true; }); await new Promise(() => {}); },
+    fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
+  await assert.rejects(client({ session, text: 'Check', onSettled: () => settled++ }), /pas donné de réponse finale/);
+  assert.ok(Date.now() - started < 500); assert.equal(readAborted, true); assert.equal(settled, 1);
+});
