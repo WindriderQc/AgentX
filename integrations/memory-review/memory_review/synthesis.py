@@ -25,8 +25,10 @@ from . import PROMPT_VERSION
 from . import sanitizer, schema
 
 DEFAULT_MODEL = os.environ.get("AGENTX_MEMORY_REVIEW_MODEL", "").strip()
-DEFAULT_MAX_TOKENS = 3000
-DEFAULT_TIMEOUT_S = 180
+# The model's reasoning counts against max_tokens: at 3000 a nine-candidate
+# answer was cut mid-string after the reasoning had used two thirds of it.
+DEFAULT_MAX_TOKENS = 16000
+DEFAULT_TIMEOUT_S = 600
 MAX_EVIDENCE_PAYLOAD_CHARS = 60000
 
 SYSTEM_PROMPT = f"""You are the deterministic candidate-synthesis stage of the AgentX Ecosystem \
@@ -128,9 +130,18 @@ def http_chat_completion(
         raise SynthesisError(f"AgentX inference unavailable: {exc}") from exc
     try:
         data = json.loads(raw)
-        return str(data["choices"][0]["message"]["content"])
+        choice = data["choices"][0]
+        content = str(choice["message"]["content"])
     except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
         raise SynthesisError("Hermes proxy response did not contain assistant content") from exc
+    if choice.get("finish_reason") == "length":
+        # A cut answer is not a format error: the repair call sees no
+        # observations and would invent the missing end.
+        raise SynthesisError(
+            f"model output was cut at max_tokens={payload.get('max_tokens')}; "
+            "raise --max-tokens. No candidate was submitted."
+        )
+    return content
 
 
 def _parse_json_output(content: str) -> Any:
