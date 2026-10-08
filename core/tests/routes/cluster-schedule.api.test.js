@@ -9,6 +9,7 @@ jest.mock('../../config/logger', () => ({
 }));
 
 const ClusterScheduleClaim = require('../../models/ClusterScheduleClaim');
+const HostUsageLedger = require('../../models/HostUsageLedger');
 const clusterScheduleRoutes = require('../../routes/cluster-schedule');
 const clusterScheduleService = require('../../src/services/clusterScheduleService');
 
@@ -81,6 +82,17 @@ describe('cluster schedule evidence routes', () => {
     jest.restoreAllMocks();
   });
 
+  it('marks the private queue projection as non-cacheable', async () => {
+    const response = await request(buildApp())
+      .get('/api/cluster/schedule/heavy-queue')
+      .expect(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body.data).toMatchObject({
+      available: false,
+      running: [], waiting: []
+    });
+  });
+
   it('labels the upcoming assignment projection with its own observation scope', async () => {
     jest.spyOn(clusterScheduleService, 'getNextTasks').mockResolvedValue([{
       id: 'next-task',
@@ -102,6 +114,31 @@ describe('cluster schedule evidence routes', () => {
       }
     });
     expect(Number.isNaN(Date.parse(response.body.data.evidence.observedAt))).toBe(false);
+  });
+
+  it('aligns measured host identity and hour with the selected Toronto day', async () => {
+    const previousHost = process.env.OLLAMA_HOST;
+    process.env.OLLAMA_HOST = 'http://192.0.2.10:11434';
+    try {
+      await HostUsageLedger.create({
+        host: process.env.OLLAMA_HOST,
+        hostKey: 'primary',
+        hostLabel: '192.0.2.10',
+        hour: new Date('2026-10-09T03:00:00.000Z'),
+        utilizationPct: 42,
+        totalCalls: 1
+      });
+      const response = await request(buildApp())
+        .get('/api/cluster/schedule/actual-vs-planned?date=2026-10-08&timezone=America%2FToronto')
+        .expect(200);
+      expect(response.body.data.actualByHost['Local Ollama']).toEqual([
+        expect.objectContaining({ hour: 23, utilizationPct: 42, totalCalls: 1 })
+      ]);
+    } finally {
+      await HostUsageLedger.deleteMany({});
+      if (previousHost === undefined) delete process.env.OLLAMA_HOST;
+      else process.env.OLLAMA_HOST = previousHost;
+    }
   });
 });
 

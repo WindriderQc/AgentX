@@ -654,7 +654,10 @@ app.get('/cluster-schedule', (req, res) => {
       '<script src="/js/cluster-schedule-upcoming.js"></script>',
       '<script src="/js/cluster-schedule-headline.js"></script>',
       '<script src="/js/cluster-schedule.js"></script>',
-      '<script src="/js/cluster-schedule-services.js"></script>'
+        '<script src="/js/cluster-schedule-actual.js"></script>',
+        '<script src="/js/cluster-schedule-services.js"></script>',
+        '<script src="/js/cluster-schedule-queue.js"></script>',
+        '<script src="/js/cluster-schedule-controls.js"></script>'
     ].join('\n')
   });
 });

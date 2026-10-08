@@ -71,6 +71,41 @@ describe('clusterScheduleService', () => {
   // ── getTimeline ─────────────────────────────────────────────
 
   describe('getTimeline', () => {
+    it('includes midnight and late-evening occurrences on the selected Toronto day', async () => {
+      await ClusterScheduleEntry.create([
+        { source: 'agentx', sourceId: 'midnight', name: 'Midnight',
+          taskType: 'maintenance', schedule: { type: 'cron', cron: '0 0 * * *', timezone: 'America/Toronto' } },
+        { source: 'agentx', sourceId: 'late', name: 'Late',
+          taskType: 'maintenance', schedule: { type: 'cron', cron: '0 23 * * *', timezone: 'America/Toronto' } }
+      ]);
+      const timeline = await clusterScheduleService.getTimeline('2026-10-08', 'America/Toronto');
+      expect(timeline.find(entry => entry.name === 'Midnight').slots[0].start)
+        .toBe('2026-10-08T04:00:00.000Z');
+      expect(timeline.find(entry => entry.name === 'Late').slots[0].start)
+        .toBe('2026-10-09T03:00:00.000Z');
+    });
+
+    it('keeps the cron source timezone while projecting a Toronto calendar day', async () => {
+      await ClusterScheduleEntry.create({
+        source: 'agentx-system', sourceId: 'utc-job', name: 'UTC Job',
+        taskType: 'maintenance',
+        schedule: { type: 'cron', cron: '0 9 * * *', timezone: 'UTC' }
+      });
+      const timeline = await clusterScheduleService.getTimeline('2026-10-08', 'America/Toronto');
+      expect(timeline[0].slots[0].start).toBe('2026-10-08T09:00:00.000Z');
+    });
+
+    it('anchors interval projections on the source scheduler next run', async () => {
+      await ClusterScheduleEntry.create({
+        source: 'agentx-system', sourceId: 'every-15m', name: 'Every 15 minutes',
+        taskType: 'monitoring',
+        schedule: { type: 'interval', intervalMs: 15 * 60_000, timezone: 'UTC' },
+        metadata: { nextRunAtMs: Date.parse('2026-10-08T04:02:00.000Z') }
+      });
+      const timeline = await clusterScheduleService.getTimeline('2026-10-08', 'America/Toronto');
+      expect(timeline[0].slots[0].start).toBe('2026-10-08T04:02:00.000Z');
+    });
+
     it('resolves cron entries into time slots', async () => {
       await ClusterScheduleEntry.create({
         source: 'agentx', sourceId: 'cron1', name: 'Hourly Task',
@@ -125,6 +160,18 @@ describe('clusterScheduleService', () => {
   // ── getNextTasks ────────────────────────────────────────────
 
   describe('getNextTasks', () => {
+    it('uses an external interval scheduler next-run receipt when available', async () => {
+      const nextRun = Date.now() + 12 * 60_000;
+      await ClusterScheduleEntry.create({
+        source: 'agentx-system', sourceId: 'next-tick', name: 'Next tick',
+        taskType: 'monitoring',
+        schedule: { type: 'interval', intervalMs: 15 * 60_000 },
+        metadata: { nextRunAtMs: nextRun }
+      });
+      const tasks = await clusterScheduleService.getNextTasks(1);
+      expect(tasks[0].nextRun).toBe(new Date(nextRun).toISOString());
+    });
+
     it('returns next occurrences sorted by time', async () => {
       await ClusterScheduleEntry.create([
         {
