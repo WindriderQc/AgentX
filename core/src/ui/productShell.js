@@ -27,11 +27,12 @@ function registerProductHome(app) {
 function surfacePage(app, file, { activePage, householdControls = false } = {}) {
   return async (_req, res, next) => {
     try {
-      const [source, nav] = await Promise.all([
+      const [source, nav, icons] = await Promise.all([
         fs.readFile(file, 'utf8'),
-        ejs.renderFile(path.join(views, 'partials/nav.ejs'), navigationLocals(app, res, { activePage, householdControls }))
+        ejs.renderFile(path.join(views, 'partials/nav.ejs'), navigationLocals(app, res, { activePage, householdControls })),
+        ejs.renderFile(path.join(views, 'partials/app-icons.ejs'))
       ]);
-      const assets = '<link rel="stylesheet" href="/css/local-fonts.css">'
+      const assets = icons + '<link rel="stylesheet" href="/css/local-fonts.css">'
         + '<link rel="stylesheet" href="/vendor/fontawesome/6.4.0/css/all.min.css">'
         + '<link rel="stylesheet" href="/css/product-shell.css">';
       res.type('html').send(source.replace('<!-- product-navigation -->', nav).replace('</head>', assets + '</head>'));

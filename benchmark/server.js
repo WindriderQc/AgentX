@@ -144,7 +144,7 @@ app.use(async (req, res, next) => {
 });
 
 app.get('/favicon.ico', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'favicon.svg'));
+  res.sendFile(path.join(__dirname, '..', 'core', 'public', 'img', 'favicon.ico'));
 });
 
 // ── Page routes (EJS) ────────────────────────────────────────────────────────
