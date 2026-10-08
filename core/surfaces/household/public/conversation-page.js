@@ -476,7 +476,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationStart').hidden = enteringSpace && !active;
     el('conversationStart').textContent = active ? 'Pause' : conversation.session ? 'Reprendre' : 'Activer Nestor';
     const lockReason = renderTeam(active || textBusy);
-    [backendPicker, agentPicker, picker, open, language, interruption].forEach(node => {
+    // Language and interruption are read at each turn, so they stay changeable while the conversation runs.
+    for (const node of [language, interruption]) { node.disabled = false; node.title = ''; }
+    [backendPicker, agentPicker, picker, open].forEach(node => {
       node.disabled = active || !!conversation.session || textBusy || (node === agentPicker && (family || !agentCatalog || backendPicker.value !== 'openclaw'));
       node.title = node.disabled && lockReason ? lockReason : '';
     });
@@ -611,6 +613,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   agentPicker.onchange = () => { stopPreview(); savePreferences(); describe(); };
   picker.onchange = () => { stopPreview(); restoreProfile(); savePreferences(); describe(); };
   for (const field of [language, interruption]) field.onchange = () => { stopPreview(); savePreferences(); describe(); };
+  language.addEventListener('change', () => conversation.setLanguage(language.value));
+  interruption.addEventListener('change', () => conversation.setInterruption(interruption.checked));
   el('conversationPreview').onclick = async () => {
     if (previewAbort) { stopPreview(); return; }
     const abort = new AbortController(); previewAbort = abort;

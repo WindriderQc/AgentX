@@ -1569,3 +1569,19 @@ test('a sound that goes on is offered once for recognition, a short one never', 
   assert.ok(utterance, 'a short sound ends by itself');
   assert.deepEqual(short.drain(), []);
 });
+
+test('the language can change while the conversation runs and applies to the next sentence', async () => {
+  const heard = [];
+  const h = harness({ transcribe: async (_blob, language) => { heard.push(language); return 'Bonjour.'; }, turn: async () => ({ text: 'Bonjour.' }) });
+  await h.conversation.start({ wakeWord: false, language: 'auto' });
+  const session = h.conversation.session;
+  h.beginSpeech(); await h.say();
+  assert.equal(h.conversation.setLanguage('fr'), true);
+  h.beginSpeech(); await h.say();
+  assert.equal(h.conversation.setLanguage('klingon'), false);
+  h.conversation.setInterruption(false);
+  assert.equal(h.conversation.selection.interruption, false);
+  assert.deepEqual([heard[0], heard.at(-1)], ['auto', 'fr']);
+  assert.equal(h.conversation.session, session, 'the conversation is not replaced');
+  h.conversation.stop();
+});
