@@ -24,6 +24,7 @@ class CodingRunTest(unittest.TestCase):
         runner.git(self.workspace, *runner.AUTHOR, "commit", "--quiet", "-m", "Initial")
         runner.git(self.workspace, "update-ref", "refs/remotes/origin/main", "HEAD")
         self.task = {"title": "Fix a synthetic fixture", "spec": "Keep the full request.",
+                      "status": "queued", "service": "agentx-coding",
                      "feedback": [{"by": "operator", "text": f"Fact {i}."} for i in range(20)],
                      "planningContext": {"text": "Reference only. " + "x" * 5000 + " Final fact."}}
         self.feedback = mock.Mock()
@@ -38,7 +39,9 @@ class CodingRunTest(unittest.TestCase):
         self.addCleanup(patch.stop)
 
     def request(self, url, body=None, token=""):
-        return {"data": {"task": self.task}} if "/worker?" in url else {}
+        if "/worker?" in url or url.endswith("/tasks/0001"):
+            return {"data": {"task": self.task}}
+        return {}
 
     def worker(self, workspace, prompt, timeout, progress=None):
         self.prompt = prompt
@@ -164,6 +167,64 @@ class CodingRunTest(unittest.TestCase):
         self.assertEqual(self.feedback.call_args.args[-1], "blocked")
         self.assertIn("approve the installation", self.feedback.call_args.args[1])
         self.assertEqual(publish.call_count, 0)
+
+    def test_preclaim_rejection_records_a_terminal_receipt_without_task_feedback(self):
+        import json
+        key = "11111111-2222-4333-8444-555555555555"
+        self.task["service"] = "core"
+        receipts = self.workspace.parent / "receipts"
+        with mock.patch.object(sys, "argv", ["coding_run", "0001", "--request-id", key]), \
+                mock.patch.object(runner, "RECEIPTS", receipts), mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 2)
+        value = json.loads((receipts / f"{key}.progress.json").read_text())
+        self.assertEqual((value["phase"], value["result"], value["stopReason"]), ("finished", "blocked", "ineligible_task"))
+        self.feedback.assert_not_called()
+
+    def test_failed_preclaim_read_does_not_modify_the_task(self):
+        with mock.patch.object(runner, "request", side_effect=RuntimeError("Core unavailable")), \
+                mock.patch.object(runner, "run_worker") as worker, mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 2)
+        self.feedback.assert_not_called()
+        worker.assert_not_called()
+
+    def test_malformed_preclaim_response_does_not_modify_the_task(self):
+        for task in (None, []):
+            with self.subTest(task=task), \
+                    mock.patch.object(runner, "request", return_value={"data": {"task": task}}), \
+                    mock.patch.object(runner, "run_worker") as worker, mock.patch("builtins.print"):
+                self.assertEqual(runner.main(), 2)
+                self.feedback.assert_not_called()
+                worker.assert_not_called()
+
+    def test_ineligible_task_is_refused_before_claim_clone_dependencies_and_model(self):
+        self.urls = []
+        def request(url, body=None, token=""):
+            self.urls.append(url)
+            if "/worker?" in url or url.endswith("/tasks/0001"):
+                return {"data": {"task": self.task}}
+            return {}
+        base = {key: value for key, value in self.task.items()
+                if key not in ("status", "service", "source", "assignee")}
+        cases = (
+            {**base, "status": "queued", "service": "core"},
+            {**base, "status": "queued"},
+            {**base, "status": "queued", "service": "agentx-coding", "source": "idea-drop"},
+            {**base, "status": "queued", "service": "agentx-coding", "assignee": "someone"},
+        )
+        with mock.patch.object(runner, "request", request), \
+                mock.patch.object(runner, "run_worker") as worker, \
+                mock.patch.object(runner, "install_dependencies") as install, \
+                mock.patch.object(runner, "push_and_open_pr") as publish, \
+                mock.patch("builtins.print"):
+            for task in cases:
+                with mock.patch.object(self, "task", task, create=False):
+                    self.assertEqual(runner.main(), 2)
+        self.assertEqual(self.urls.count(f"http://127.0.0.1:3180/api/pipeline/tasks/0001/claim"), 0)
+        worker.assert_not_called()
+        install.assert_not_called()
+        publish.assert_not_called()
+        self.feedback.assert_not_called()  # The ineligible task stays untouched in Core.
+        self.assertEqual(runner.git(self.workspace, "status", "--porcelain"), "")
 
 
 class ModelRelayTest(unittest.TestCase):

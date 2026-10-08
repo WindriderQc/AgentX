@@ -140,6 +140,23 @@ class ProgressTest(unittest.TestCase):
         self.assertIsNone(module.test_kind("echo pytest"))
         self.assertEqual(module.test_kind("cd core && node scripts/run-jest.js fixture.test.js"), "jest")
 
+    def test_a_piped_failure_is_not_a_pass_from_tail_exit_zero(self):
+        self.call(command="python3 -m unittest discover -v 2>&1 | tail -40")
+        self.result(content="Ran 31 tests in 2.9s\n\nFAILED (failures=1)", error=False)
+        self.assertEqual(self.progress.last_test["outcome"], "failed")
+        for summary in ["Test Suites: 1 failed, 2 passed, 3 total", "Tests: 1 failed, 2 passed, 3 total",
+                        "=== 1 failed, 2 passed in 1s ===", "# fail 1"]:
+            self.assertEqual(module.test_outcome(summary, False, False), "failed")
+
+    def test_a_filtered_test_needs_an_observed_summary(self):
+        self.call(command="python3 -m unittest discover -v 2>&1 | head -2")
+        self.result(content="test_fixture ...")
+        self.assertEqual(self.progress.last_test["outcome"], "unknown")
+        self.assertIsNone(self.progress.progress_at)
+        self.call("2", "python3 -m unittest discover -v 2>&1 | tail -40")
+        self.result("2", "Ran 31 tests in 2.9s\n\nOK")
+        self.assertEqual(self.progress.last_test["outcome"], "passed")
+
 
 if __name__ == "__main__":
     unittest.main()
