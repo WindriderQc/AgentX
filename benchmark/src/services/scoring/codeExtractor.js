@@ -181,7 +181,7 @@ function commonJsModuleBlocks(blocks) {
     const exportsModule = /(^|\n)\s*(?:module\s*\.\s*exports(?:\s*\.\s*[\w$]+)?|exports\s*\.\s*[\w$]+)\s*=(?!=)/;
     const commentsAndStrings = /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g;
     const hasExport = block => exportsModule.test(block.code.replace(commentsAndStrings, ''));
-    const exampleContext = /\b(?:usage|examples?|wiring)\b|\bcallers?\s*(?:\([^)]*\)\s*)?(?:inject|use|pass)\b|\b(?:in\s+tests|tests?\s+like|pass\s+stubs|adapter\s+can\s+wrap)\b/i;
+    const exampleContext = /(?:^|\n)\s*(?:[#>*-]\s*)*(?:examples?\s+)?(?:usage|(?:production\s+)?wiring)\b|\bcallers?\s*(?:\([^)]*\)\s*)?(?:inject|use|pass)\b|\b(?:in\s+tests|tests?\s+like|pass\s+stubs|adapter\s+can\s+wrap)\b/i;
     const moduleIndex = blocks.findIndex(hasExport);
     if (moduleIndex === -1) return blocks;
     return blocks.filter((block, index) => index <= moduleIndex

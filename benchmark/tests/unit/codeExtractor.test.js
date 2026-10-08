@@ -230,7 +230,8 @@ describe('extracting a program from a model response', () => {
             'function helper(n) { return n + offset; }',
             'module.exports.decrement = n => n - offset;'
         ];
-        const response = fragments.map(code => lines(FENCE + 'js', code, FENCE)).join('\n\n');
+        const response = fragments.map((code, index) => lines(
+            index === 2 ? 'Required helper for the example module:' : '', FENCE + 'js', code, FENCE)).join('\n\n');
         expect(extractCode(response, { language: 'javascript' }))
             .toMatchObject({ code: fragments.join('\n\n'), blocks: 4 });
     });

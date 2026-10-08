@@ -300,5 +300,9 @@ describeLocal('generated drivers, executed locally', () => {
             .toMatchObject({ status: 'failed', correctness: 0 });
         expect(execute(fixture, lines(fenced, FENCE + 'js', "require('missing-module');", FENCE)))
             .toMatchObject({ status: 'failed', correctness: 0 });
+        expect(execute(fixture, lines(FENCE + 'js', 'exports.increment = n => helper(n);', FENCE,
+            'Required helper for the example module:', FENCE + 'js',
+            'function helper(n) { return n + 1; }', FENCE)))
+            .toMatchObject({ status: 'passed', correctness: 10 });
     });
 });
