@@ -12,6 +12,7 @@ from memory_review import schema  # noqa: E402
 from memory_review.collectors import (  # noqa: E402
     CollectorResult,
     classify_memory_intent,
+    build_observation,
     explicit_memory_claim,
     claude,
     codex,
@@ -43,6 +44,17 @@ class RuntimeBoundaryTests(unittest.TestCase):
         payload = observation.to_payload()
         self.assertEqual(payload["runtime"], "external")
         self.assertEqual(payload["agentOrProfile"], "main")
+
+    def test_oversized_observation_is_refused_without_centralizing_a_prefix(self):
+        original = "Remember that " + "synthetic preference " * 100
+        result = CollectorResult(runtime="openclaw", host="native-host")
+        build_observation(result, text=original, trust="explicit_memory_request", session_id="synthetic",
+                          event_id="synthetic", observed_at="2026-10-02T00:00:00Z", source_ref="synthetic")
+        self.assertEqual(result.observations, [])
+        self.assertEqual(result.rejectionCounts["oversize"], 1)
+        with self.assertRaisesRegex(ValueError, "no evidence was shortened"):
+            schema.Observation(runtime="openclaw", host="native-host", text=original,
+                               trust="explicit_memory_request")
 
     def test_product_runtime_local_targets_use_public_vocabulary(self):
         self.assertIn("external", schema.RUNTIMES)

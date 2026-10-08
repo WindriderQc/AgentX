@@ -135,7 +135,7 @@ def build_observation(
         reject(result, "unknown_kind")
         return
 
-    if len(result.observations) >= schema.MAX_OBSERVATIONS_PER_COLLECTOR:
+    if len(value.strip()) > schema.OBSERVATION_TEXT_MAX or len(result.observations) >= schema.MAX_OBSERVATIONS_PER_COLLECTOR:
         reject(result, "oversize")
         return
 

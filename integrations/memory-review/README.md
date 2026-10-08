@@ -6,6 +6,9 @@ policy, application and receipts. Runtime-local targets are proposals for their
 owning runtime; this collector never edits native memory databases or selected
 note stores.
 
+An observation exceeding the text bound is rejected as oversized. The original
+source remains untouched; a shortened prefix is never submitted as evidence.
+
 From this directory, `python -m memory_review --help` lists the existing collect,
 run, report, digest and watermarks commands. Start with an explicit source and
 `collect --dry-run`. Nothing installs a scheduler. The default Core target is

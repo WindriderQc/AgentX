@@ -3,7 +3,7 @@ const PipelineTask = require('../../models/PipelineTask');
 const { startTestHttpHarness } = require('../helpers/testHttpServer');
 const routes = require('../../routes/pipeline');
 const preparation = require('../../src/services/pipelineTaskPreparationService');
-const { MAX_PLAN_CHARS, MAX_REVISIONS } = require('../../src/services/pipelineTaskPlans');
+const { MAX_PLAN_CHARS } = require('../../src/services/pipelineTaskPlans');
 
 let harness;
 beforeAll(async () => {
@@ -176,30 +176,37 @@ test('requesting changes returns a queued task to preparation with a recorded tr
   expect((await detail(id)).plan).toMatchObject({ state: 'undecided', revision: 2, priorDecision: { outcome: 'changes_requested' } });
 });
 
-test('long plans are refused by the API and shortened visibly from preparation', async () => {
+test('long plans are refused for both the API and preparation without modifying the task', async () => {
   const id = await create();
   const refused = await submit(id, { expectedRevision: 0, text: 'x'.repeat(MAX_PLAN_CHARS + 1) }).expect(413);
   expect(refused.body.code).toBe('PLAN_TOO_LONG');
   await submit(id, { expectedRevision: 0, text: 'ok', steps: Array.from({ length: 31 }, () => 'step') }).expect(413);
-  expect((await raw(id)).planRevisions).toBeUndefined();
-
-  const long = `${'Detailed step. '.repeat(1500)}END`;
-  const prepared = await prepare(id, { automation: AUTOMATION, plan: long });
-  expect(prepared.feedback.at(-1).text.length).toBeLessThanOrEqual('Execution plan: '.length + 2800);
-  const current = (await detail(id)).plan.current;
-  expect(current).toMatchObject({ truncated: true, originalLength: long.length });
-  expect(current.text).toHaveLength(MAX_PLAN_CHARS);
-  expect(current.text.endsWith('END')).toBe(false);
+  const before = await raw(id);
+  await expect(prepare(id, { automation: AUTOMATION, plan: 'x'.repeat(MAX_PLAN_CHARS + 1) }))
+    .rejects.toMatchObject({ code: 'PLAN_TOO_LONG', statusCode: 413 });
+  const after = await raw(id);
+  expect(after.planRevisions).toBeUndefined();
+  expect(after.feedback).toEqual(before.feedback);
 });
 
-test('retained revisions are bounded while the revision counter keeps counting', async () => {
+test('preparation retains the complete question, answer and accepted plan', async () => {
   const id = await create();
-  for (let revision = 0; revision < MAX_REVISIONS + 2; revision += 1) {
+  const answer = 'x'.repeat(3500) + 'ANSWER_TAIL';
+  const plan = 'p'.repeat(3500) + 'PLAN_TAIL';
+  const prepared = await prepare(id, { answer, automation: AUTOMATION, plan });
+  expect(prepared.feedback.find(entry => entry.by === 'operator').text).toBe(answer);
+  expect(prepared.feedback.at(-1).text).toBe(`Execution plan: ${plan}`);
+  expect((await detail(id)).plan.current.text).toBe(plan);
+});
+
+test('all revisions remain readable while the revision counter keeps counting', async () => {
+  const id = await create();
+  for (let revision = 0; revision < 12; revision += 1) {
     await submit(id, { expectedRevision: revision, text: `Plan ${revision + 1}` }).expect(201);
   }
   const view = (await detail(id)).plan;
-  expect(view).toMatchObject({ revision: MAX_REVISIONS + 2, retained: MAX_REVISIONS });
-  expect(view.history[0].revision).toBe(3);
+  expect(view).toMatchObject({ revision: 12, retained: 12 });
+  expect(view.history[0].revision).toBe(1);
 });
 
 test('plans stay out of private lanes and running work', async () => {

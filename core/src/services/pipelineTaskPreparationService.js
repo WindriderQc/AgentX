@@ -31,9 +31,9 @@ async function apply({ pipelineId, expectedUpdatedAt, automation, question, answ
   const feedback = [];
   if (contextNotice) feedback.push({ by: 'coding-team', text: String(contextNotice), at });
   const previous = (task.feedback || []).at(-1);
-  if (answer && !(previous?.by === 'operator' && previous.text === String(answer))) feedback.push({ by: 'operator', text: String(answer).slice(0, 3000), at });
-  if (question) feedback.push({ by: 'coding-team', text: String(question).slice(0, 3000), at });
-  if (plan) feedback.push({ by: 'coding-team', text: `Execution plan: ${String(plan).slice(0, 2800)}`, at });
+  if (answer && !(previous?.by === 'operator' && previous.text === String(answer))) feedback.push({ by: 'operator', text: String(answer), at });
+  if (question) feedback.push({ by: 'coding-team', text: String(question), at });
+  if (plan) feedback.push({ by: 'coding-team', text: `Execution plan: ${String(plan)}`, at });
   const changes = question ? { status: 'blocked' } : { status: 'queued', assignee: null, heartbeatAt: null };
   if (automation) {
     if (task.automationAttemptCount > 0) throw conflict('An existing attempt must resume its original scope.');
@@ -53,7 +53,7 @@ async function apply({ pipelineId, expectedUpdatedAt, automation, question, answ
   // The plan becomes a new, undecided revision bound to the scope written here.
   // It authorizes nothing: the operator's explicit launch still starts the work.
   if (plan && String(plan).trim()) recordPlanRevision(query, update, task, buildRevision(task, { text: plan, channel: 'task_preparation',
-    declaredActor: 'coding-team', automation: changes.automation || task.automation, truncate: true, at }));
+    declaredActor: 'coding-team', automation: changes.automation || task.automation, at }));
   const updated = await PipelineTask.findOneAndUpdate(query, update, options).lean();
   if (!updated) throw conflict('The task changed while saving. Try again with the current ticket.');
   return updated;

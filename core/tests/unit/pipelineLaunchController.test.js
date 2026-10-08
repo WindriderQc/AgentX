@@ -26,6 +26,21 @@ describe('Pipeline launch reconciliation', () => {
   afterEach(() => { controllers.forEach(c => c.dispose()); jest.clearAllTimers(); jest.useRealTimers(); });
   const posts = () => request.mock.calls.filter(([, options]) => options.method === 'POST');
 
+  test('an unknown execution is recovered after reload and cannot be retried', async () => {
+    request.mockResolvedValue(snapshot(run('unknown', 'in_progress', { canRetry: false }), true));
+    const controller = make();
+    await controller.refresh();
+    expect(controller.pending).toEqual(selection);
+    expect(controller.canLaunch('0700')).toBe(false);
+    expect(controller.canRetry()).toBe(false);
+    controller.dispose();
+    const reloaded = make();
+    await reloaded.refresh();
+    await jest.advanceTimersByTimeAsync(8000);
+    expect(reloaded.pending).toEqual(selection);
+    expect(posts()).toHaveLength(0);
+  });
+
   test('a guarded browser request is retained without resuming it through the replacement worker', async () => {
     const original = JSON.stringify(selection);
     storage.setItem('agentx.pipeline.launchRequest.v1', original);
