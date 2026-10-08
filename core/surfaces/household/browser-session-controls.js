@@ -11,6 +11,9 @@ const { publicSession, loadSessionAuditRows, publicAudit, sessionHistoryMessages
 const { spokenReplyLanguage } = require('./persona-prompt');
 const { normalizeVoiceTimings } = require('../../src/services/voice/timeline');
 
+// The most turns one opened conversation shows; the conversation service reads no more at once.
+const DISPLAYED_TURNS = 500;
+
 function createBrowserSessionControls({
   personas, conversations, envelope, cleanText, fail, activePersonaTurns,
   validClientTurnId, nestorClient, memberWork = null
@@ -65,7 +68,8 @@ function createBrowserSessionControls({
         if (!pack.modes.some((mode) => mode.id === session.modeId)) {
           return fail(res, 409, 'This session uses a retired mode and cannot be resumed.', 'VOICE_PERSONA_SESSION_MODE_UNAVAILABLE');
         }
-        const rows = await loadSessionAuditRows(conversations, session, pack);
+        // `turns` is what the page shows: the saved conversation, not the model window that bounds `history`.
+        const rows = await loadSessionAuditRows(conversations, session, pack, { limit: DISPLAYED_TURNS });
         let lastReply = null;
         if (consumer === 'llmx') {
           const [completed] = await conversations.listTurns({ sessionId: session.sessionId, packId, scopeId: session.scopeId,
@@ -85,7 +89,8 @@ function createBrowserSessionControls({
             historyAuthority: 'agentx.core.conversations',
             automaticResume: consumer === 'llmx' ? 'exact-client-stored-session-only' : false,
             childResume: packId === 'kidx_nestor',
-            maximumMessages: pack.historyTurns
+            maximumMessages: pack.historyTurns,
+            maximumDisplayedTurns: DISPLAYED_TURNS
           }
         });
       } catch (error) {

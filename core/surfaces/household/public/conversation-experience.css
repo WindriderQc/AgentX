@@ -22,6 +22,7 @@ body.household-product.avatar-docked .conversation-live { grid-template-columns:
 .household-product .conversation-actions { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .household-product .conversation-actions .button { min-height: 44px; padding: 8px 14px; font-size: 12px; }
 .household-product .conversation-transcript { min-height: 144px; max-height: 38vh; padding: 16px 0; }
+.household-product .conversation-transcript .conversation-earlier,
 .household-product .conversation-transcript .empty { padding: 10px 0; margin: 0; border: 0; background: transparent; text-align: left; font-size: 13px; color: var(--ax-muted, #a4b5c0); }
 .household-product .conversation-text { padding-top: 14px; }
 .household-product .conversation-text textarea { min-height: 58px; padding: 14px; background: #0a1821; border: 1px solid #395b69; border-radius: 12px; font-size: 14px; }
