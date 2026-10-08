@@ -718,8 +718,13 @@ test('a ready expiry invalidated before the waiting continuation cannot confirm 
     t.mock.timers.tick(10); await flush(); // ready A, grace due at 40
     t.mock.timers.tick(10); await flush(); // a newer observation is pending
     assert.equal(reads, 2);
-    t.mock.timers.tick(20); // resolve the grace notification, without running its continuation
-    resolveObservation({ answer: { status: 'unavailable', runId } });
+    // Expire ready A while its newer observation is being consumed, so the
+    // invalidation is recorded before the waiting continuation can run.
+    let expired = false;
+    resolveObservation({ get answer() {
+      if (!expired) { expired = true; t.mock.timers.tick(20); }
+      return { status: 'unavailable', runId };
+    } });
     await flush();
     t.mock.timers.tick(100); await flush();
     assert.equal(outcome, undefined, 'a resolved notification is not a terminal proof');
