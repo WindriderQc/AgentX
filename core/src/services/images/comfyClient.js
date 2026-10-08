@@ -1,6 +1,7 @@
 'use strict';
 const fetch = require('node-fetch');
 const { decode } = require('./codec');
+const { MAX_OUTPUT_PIXELS } = require('./sizes');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function createComfyClient(base, fetchImpl = fetch) {
@@ -68,7 +69,7 @@ function createComfyClient(base, fetchImpl = fetch) {
     const query = new URLSearchParams({ filename: output.filename, subfolder: output.subfolder, type: 'output' });
     const r = await fetchImpl(`${base}/view?${query}`, { timeout: 30000, size: 50 * 1024 * 1024 });
     if (!r.ok) throw new Error('Image output is unavailable');
-    const bytes = await r.buffer(); decode(bytes, 4194304); return bytes;
+    const bytes = await r.buffer(); decode(bytes, MAX_OUTPUT_PIXELS); return bytes;
   }
   async function free(assertOwned, requireEmptyGpu = true) {
     await assertOwned();

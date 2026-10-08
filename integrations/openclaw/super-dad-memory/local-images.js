@@ -43,8 +43,8 @@ export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
         prompt: { type: 'string', minLength: 1, maxLength: 8000 },
         profile: { type: 'string', maxLength: 50 },
         operationId: { type: 'string', format: 'uuid' },
-        width: { type: 'integer', minimum: 256, maximum: 2048 },
-        height: { type: 'integer', minimum: 256, maximum: 2048 },
+        width: { type: 'integer', minimum: 256, maximum: 2752 },
+        height: { type: 'integer', minimum: 256, maximum: 2752 },
         referencePaths: { type: 'array', maxItems: 2, items: { type: 'string', maxLength: 500 } }
       }, required: ['action'], additionalProperties: false },
       async execute(id, params) {

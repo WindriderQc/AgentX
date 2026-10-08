@@ -2,6 +2,7 @@
 // Read-only disclosures: no worker initialization, recovery or runtime claim.
 const ImageOperation = require('../../../models/ImageOperation');
 const { loadConfig } = require('./config');
+const { MIN_EDGE, MULTIPLE, limits, recommended } = require('./sizes');
 const text = value => typeof value === 'string' ? value.trim().slice(0,240) : null;
 function workerInfo(workerUrl, config) {
   let address;
@@ -17,13 +18,14 @@ function recipeInfo(id, profile = {}) {
   return { id, label: profile.label || id, family: profile.family || null,
     diffusion: profile.diffusion || null, encoder: profile.encoder || null, vae: profile.vae || null,
     precision, steps: profile.steps ?? null, maxPixels: profile.maxPixels ?? null,
+    maxEdge: limits(profile.family).maxEdge, sizes: recommended(profile),
     description: text(profile.presentation?.description),
     editingFraming: profile.family === 'qwen21' ? 'first-reference' : 'requested-format' };
 }
 function describe(config) {
-  return { worker: config ? workerInfo(config.workerUrl, config) : null,
-    profiles: Object.entries(config?.profiles || {}).map(([id, profile]) => recipeInfo(id, profile)),
-    dimensions: { minEdge: 256, maxEdge: 2048, multiple: 32 }, maxReferences: 2 };
+  const profiles = Object.entries(config?.profiles || {}).map(([id, profile]) => recipeInfo(id, profile));
+  return { worker: config ? workerInfo(config.workerUrl, config) : null, profiles,
+    dimensions: { minEdge: MIN_EDGE, maxEdge: Math.max(limits().maxEdge, ...profiles.map(p => p.maxEdge)), multiple: MULTIPLE }, maxReferences: 2 };
 }
 function overview() { return describe(loadConfig()); }
 async function details(id) {
