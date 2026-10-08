@@ -1063,7 +1063,10 @@ rung answers, the busy reply remains.
 
 `OPENCLAW_CONVERSATION_NO_THINK_MODELS` lists conversation models that answer
 without reasoning whatever thinking level the agent asks for, for example the
-model of a spoken lane; the other models keep the level they were sent.
+model of a spoken lane; the other models keep the level they were sent. When
+several uses share one model, each use sets its own reasoning instead: a gateway
+provider sending `x-agentx-think: off` or `on` decides for all its turns, over
+that list (see `core/integrations/runtime-bridges/README.md`).
 
 ## Routing snapshot cache
 
