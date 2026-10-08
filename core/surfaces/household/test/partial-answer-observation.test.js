@@ -93,6 +93,9 @@ test('old, mismatched, unknown and contradictory partial markers cannot retain a
     { answer: { ...partial().answer, text: 'unproven text' } },
     { run: { runId: 'another-run', sessionKey } },
     { run: { runId, sessionKey: 'another-session' } },
+    { run: false },
+    { run: 0 },
+    { run: '' },
     { answer: ready('Contradictory purported answer.') },
     { answer: { ...ready('Unused'), text: 42 } },
     { answer: null }

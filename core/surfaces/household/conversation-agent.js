@@ -135,8 +135,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           ...(verificationFailure ? { verification: { status: 'failed', reason: verificationFailure,
             ...(guardFailure ? { tool: guardFailure.tool, repetitions: guardFailure.repetitions } : {}) } } : {}),
           ...(evidence?.answer?.deliveredBy ? { deliveredBy: evidence.answer.deliveredBy } : {}), ...(browserCall ? { browserReply: browserCall } : {}) },
-        metadata: { model: imageDelivery ? '' : evidence?.run?.model || '',
-          provider: imageDelivery ? imageDelivery.authority : evidence?.run?.provider || '',
+        metadata: { model: imageDelivery || retainedAnswer ? '' : evidence?.run?.model || '',
+          provider: imageDelivery ? imageDelivery.authority : retainedAnswer ? '' : evidence?.run?.provider || '',
           routingSource: imageDelivery ? imageDelivery.authority : `openclaw/${agentIdFor(session)}`, runId, phases: { ...phases } } };
     };
     // Report each native tool call once, so Household can say what Nestor does.
@@ -149,6 +149,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     // the stream's last row, so a browser reply waits for its completion row.
     // Once a matching completion is received, HTTP EOF cannot hold the turn.
     let answerSeen, stopWaitingForStream, observedAnswer, streamFailure, localImageObserved = false;
+    let retainedAnswer = false;
     let completedStream = false, graceElapsed = false, graceVersion = 0;
     const streamChange = () => new Promise(resolve => { stopWaitingForStream = resolve; });
     let streamChanged = streamChange();
@@ -162,14 +163,32 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       }, streamGraceMs);
     };
     const answered = projected => !browserReply && projected?.answer?.status === 'ready'
+      && projected.answerObservation === undefined
       && projected.answer.runId === runId && typeof projected.answer.text === 'string' && Boolean(projected.answer.text.trim());
+    const failedTranscriptRead = projected => {
+      const observation = projected?.answerObservation;
+      return !browserReply && projected?.ok === true && projected.authority === 'openclaw.nestor'
+        && projected.operation === 'turn' && observation?.status === 'unavailable'
+        && observation.reason === 'read_failed' && observation.source === 'openclaw/sessions.get'
+        && observation.runId === runId && observation.sessionKey === sessionKey
+        && projected.answer?.status === 'unavailable' && projected.answer.source === observation.source
+        && projected.answer.runId === runId && projected.answer.text === undefined
+        && (projected.run == null || (projected.run.runId === runId && projected.run.sessionKey === sessionKey));
+    };
     // Retain only the verified answer, never an earlier fallback attempt's
     // model or receipts. A successful newer observation replaces or invalidates
-    // it; an unavailable observation cannot erase text already read for this run.
+    // it. Only an explicit same-run transcript read failure preserves it; that
+    // mark neither proves an answer nor identifies the final model/provider.
     const rememberAnswer = projected => {
       for (const kind of ['progress', 'receipts']) localImageObserved ||= Array.isArray(projected?.[kind])
         && projected[kind].some(item => item?.tool === 'local_image');
-      observedAnswer = answered(projected) ? { ...projected.answer } : null;
+      if (failedTranscriptRead(projected)) {
+        if (localImageObserved) observedAnswer = null;
+        retainedAnswer = Boolean(observedAnswer);
+      } else {
+        retainedAnswer = false;
+        observedAnswer = answered(projected) ? { ...projected.answer } : null;
+      }
       if (!completedStream && !observedAnswer && answerSeen) {
         clearTimeout(answerSeen); answerSeen = undefined;
         graceVersion++; graceElapsed = false;
@@ -336,8 +355,11 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       let until = Date.now() + Math.min(settleMs, 3000);
       do {
         try {
-          evidence = await readEvidence();
-          rememberAnswer(evidence);
+          const projected = await readEvidence();
+          rememberAnswer(projected);
+          // Only the answer is retained. Fresh receipts/run remain independent
+          // evidence; their last hook need not identify this answer's provider.
+          evidence = retainedAnswer ? { ...projected, answer: observedAnswer } : projected;
         } catch {
           // An accepted Core image keeps its existing receipt recovery path;
           // cached model prose cannot override that action's current state.
@@ -361,7 +383,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       } while (Date.now() < until && !signal?.aborted);
       signal?.throwIfAborted();
       if (streamFailure) throw streamFailure;
-      if (!browserCall && (evidence?.answer?.status !== 'ready' || evidence.answer.runId !== runId || !evidence.answer.text?.trim())) {
+      if (!browserCall && (evidence?.answer?.status !== 'ready' || evidence.answer.runId !== runId || !evidence.answer.text?.trim()
+          || (evidence.answerObservation !== undefined && !retainedAnswer))) {
         if (replacedStream) throw new Error('Nestor a réécrit sa réponse et je n’ai pas pu la récupérer. Réessaie ta demande.');
         if (delegated === 'image') throw new Error('L’image n’était pas prête après 5 minutes. Redemande-la plus tard.');
         if (delegated) throw new Error('L’autre agent n’a pas répondu après 5 minutes. Redemande plus tard.');

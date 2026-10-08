@@ -109,7 +109,13 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
       // into the receipt capsule. Responses SSE merges tool preambles and final
       // text, so only a completed native assistant message is safe to deliver.
       let history;
-      try { history = await readHistory?.(request.sessionKey); } catch { /* unavailable, not aggregate SSE text */ }
+      try { if (typeof readHistory === 'function') history = await readHistory(request.sessionKey); }
+      catch {
+        // Preserve the fresh run/tool capsule while distinguishing a failed
+        // transcript read from a successful non-final or invalid observation.
+        result.answerObservation = { status: 'unavailable', reason: 'read_failed',
+          source: 'openclaw/sessions.get', runId: request.runId, sessionKey: request.sessionKey };
+      }
       result.answer = nativeTurnAnswer(history, request.sessionKey, request.runId);
       result.progress = nativeTurnProgress(history, request.sessionKey, request.runId);
       result.toolChecks = nativeToolChecks(history, request.sessionKey, request.runId);

@@ -28,7 +28,8 @@ const PlanningItem = require('../../models/PlanningItem');
 const { executeForTest } = require('../../src/extensions/trustedRuntimeServices');
 const { agentForTest } = require('../../surfaces/household/conversation-agent');
 const { createServer } = require('node:http');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
+const { once } = require('node:events');
 const { promisify } = require('node:util');
 const { pathToFileURL } = require('node:url');
 const path = require('node:path');
@@ -770,6 +771,74 @@ describe('built-in Household surface on Core', () => {
       expect(reads).toBeGreaterThanOrEqual(2);
       expect(requests).toBe(1);
     } finally { release?.(); }
+  });
+
+  test('a real partial native projection preserves verified text and fresh capsules through HTTP and Mongo', async () => {
+    const { createAgentClient } = jest.requireActual('../../surfaces/household/conversation-agent');
+    const { createNestorClient } = jest.requireActual('../../surfaces/household/personal-continuity');
+    const fixture = spawn(process.execPath, [path.resolve(__dirname, '../helpers/native-continuity-server.mjs')],
+      { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    let release, stderr = '';
+    fixture.stderr.on('data', chunk => { stderr += chunk; });
+    try {
+      const port = await new Promise((resolve, reject) => {
+        let output = '';
+        const timer = setTimeout(() => reject(new Error('Native fixture did not start: ' + stderr)), 5000);
+        fixture.once('exit', code => { clearTimeout(timer); reject(new Error(`Native fixture exited ${code}: ${stderr}`)); });
+        fixture.stdout.on('data', chunk => {
+          output += chunk;
+          if (output.includes('\n')) { clearTimeout(timer); resolve(JSON.parse(output.split('\n')[0]).port); }
+        });
+      });
+      const env = { OPENCLAW_GATEWAY_URL: `http://127.0.0.1:${port}`, OPENCLAW_GATEWAY_TOKEN: 'synthetic-token' };
+      const read = createNestorClient({ env });
+      const projections = [];
+      let requests = 0;
+      const runId = 'resp_66666666-6666-4666-8666-666666666666';
+      const native = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 120, streamDrainMs: 30,
+        continuity: async (...args) => { const projection = await read(...args); projections.push(projection); return projection; },
+        fetchImpl: async (_url, options) => {
+          requests++;
+          return { ok: true, body: (async function* () {
+            yield Buffer.from('data: ' + JSON.stringify({ type: 'response.created', response: { id: runId } }) + '\n\n');
+            // The fallback bounds a deliberately held stream even on the red baseline.
+            await new Promise(resolve => {
+              const timer = setTimeout(resolve, 500);
+              release = () => { clearTimeout(timer); resolve(); };
+              options.signal.addEventListener('abort', release, { once: true });
+            });
+            yield Buffer.from('data: ' + JSON.stringify({ type: 'response.completed', response: { id: runId } }) + '\n\n');
+          })() };
+        }
+      });
+      agentForTest.mockImplementationOnce(native);
+      const base = '/api/voice-personas/private/sessions';
+      const id = (await request(app).post(base).send({ packId: 'personal_operator', backend: 'openclaw' }).expect(201)).body.data.session.sessionId;
+      const response = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Regarde mes tâches.' }).expect(200);
+      const turn = response.body.data;
+      expect(turn.reply.text).toBe('Trois tâches vérifiées.');
+      expect(turn.model).toEqual({ model: '', hostKey: '' });
+      expect(turn.tools.status).toBe('observed');
+      expect(turn.tools.run).toEqual(projections.at(-1).run);
+      expect(turn.tools.receipts).toEqual(projections.at(-1).receipts);
+      expect(turn.tools.receipts[0].tool).toBe('personal_memory');
+      expect(projections[0].answer.status).toBe('ready');
+      expect(projections.at(-1).answerObservation).toMatchObject({ reason: 'read_failed', runId });
+      expect(projections.at(-1).answer.status).toBe('unavailable');
+      const history = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+      expect(history.history.map(message => message.content)).toEqual(['Regarde mes tâches.', 'Trois tâches vérifiées.']);
+      expect(history.session.turnCount).toBe(1);
+      const canonical = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
+      expect(canonical.messages).toHaveLength(2);
+      expect(canonical.messages[1].turn.model).toBe('');
+      expect(requests).toBe(1);
+      expect(projections.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      release?.();
+      if (fixture.exitCode === null) {
+        const exited = once(fixture, 'exit'); fixture.kill('SIGTERM'); await exited;
+      }
+    }
   });
 
   test('an invalidated final-answer grace keeps the HTTP turn open until real completion', async () => {

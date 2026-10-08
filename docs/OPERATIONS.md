@@ -826,8 +826,14 @@ the stream or withdraw its drain.
 If the continuity endpoint cannot be read, Core retains final text already
 verified for this run, with model/provider and tool evidence unavailable. A successful newer
 observation invalidates or replaces that text; cancellation and late stream
-row errors still prevent delivery. A successful projection with an unavailable
-answer invalidates the retained text. Core image actions keep their receipt
+row errors still prevent delivery. A partial native projection explicitly marked
+`answerObservation.reason: read_failed` for the same session/run also preserves
+only that verified text and its existing grace. Fresh run/tool receipts remain
+visible, while the final model/provider stays unknown until a new verified answer
+is read. The adapter emits this mark only when reading the transcript throws;
+missing readers, malformed histories and successful non-final observations do
+not qualify. Older projections or incompatible marks invalidate the retained
+text. Core image actions keep their receipt
 recovery path; GraphysX continues to require its completion row.
 Each native continuity read has a 10 s timeout. The native adapter compares
 tool arguments and results internally and projects only successful tool names
