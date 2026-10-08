@@ -132,14 +132,14 @@ describe('GET /api/v1/janitor/dedup-report', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data._id).toBe('r1');
-    expect(dedupScanner.getReport).toHaveBeenCalledWith(mockDb, null);
+    expect(dedupScanner.getReport).toHaveBeenCalledWith(mockDb, null, { groupOffset: undefined, groupLimit: undefined });
   });
 
   test('returns specific report by ID', async () => {
     dedupScanner.getReport.mockResolvedValue({ _id: 'r5' });
     const app = buildApp(mockDb);
-    await request(app).get('/api/v1/janitor/dedup-report?report_id=r5');
-    expect(dedupScanner.getReport).toHaveBeenCalledWith(mockDb, 'r5');
+    await request(app).get('/api/v1/janitor/dedup-report?report_id=r5&group_offset=200&group_limit=50');
+    expect(dedupScanner.getReport).toHaveBeenCalledWith(mockDb, 'r5', { groupOffset: '200', groupLimit: '50' });
   });
 
   test('returns an empty success when no report exists', async () => {

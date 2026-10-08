@@ -223,6 +223,44 @@ function previewResult(file = '/mnt/datalake/dup.txt') {
 }
 
 describe('janitorRunner.runProfile', () => {
+  test('stores a bounded prefix of the proposed actions and counts the rest', async () => {
+    janitorProfiles.get.mockResolvedValue({ ...profileFixture });
+    const total = janitorRunner.MAX_PROPOSED_ACTIONS + 3;
+    const groups = Array.from({ length: total }, (_, group) => ({
+      hash: `group-${group}`, count: 2, file_size: 100,
+      files: [0, 1].map(copy => ({ path: `/mnt/datalake/test/group-${group}-copy-${copy}.txt`, mtime: copy + 1, size: 100 }))
+    }));
+    dedupScanner.buildDedupReport.mockResolvedValue({ groups, summary: {} });
+    dedupScanner.saveReport.mockResolvedValue(new ObjectId());
+    const db = makeMockDb();
+    await janitorRunner.runProfile(db, String(profileFixture._id));
+    const run = db._collections.janitor_runs.docs[0];
+    expect(run.status).toBe('complete');
+    expect(run.proposed_actions).toHaveLength(janitorRunner.MAX_PROPOSED_ACTIONS);
+    expect(run.proposed_actions_omitted).toBe(3);
+    // The stored actions are the first ones, so approval indexes stay stable.
+    expect(run.proposed_actions[0].sha256).toBe('group-0');
+    expect(run.proposed_actions.at(-1).sha256).toBe(`group-${janitorRunner.MAX_PROPOSED_ACTIONS - 1}`);
+  });
+
+  test('stops storing proposed actions at the byte budget', async () => {
+    janitorProfiles.get.mockResolvedValue({ ...profileFixture });
+    const longName = 'x'.repeat(512 * 1024);
+    const groups = Array.from({ length: 9 }, (_, group) => ({
+      hash: `group-${group}`, count: 2, file_size: 100,
+      files: [0, 1].map(copy => ({ path: `/mnt/datalake/test/${longName}-${group}-${copy}`, mtime: copy + 1, size: 100 }))
+    }));
+    dedupScanner.buildDedupReport.mockResolvedValue({ groups, summary: {} });
+    dedupScanner.saveReport.mockResolvedValue(new ObjectId());
+    const db = makeMockDb();
+    await janitorRunner.runProfile(db, String(profileFixture._id));
+    const run = db._collections.janitor_runs.docs[0];
+    expect(run.proposed_actions.length).toBeGreaterThan(0);
+    expect(run.proposed_actions_omitted).toBeGreaterThan(0);
+    expect(run.proposed_actions.length + run.proposed_actions_omitted).toBe(9);
+    expect(Buffer.byteLength(JSON.stringify(run.proposed_actions))).toBeLessThanOrEqual(janitorRunner.MAX_PROPOSED_ACTIONS_BYTES);
+  });
+
   test('triage declares both sample limits while preserving every proposal and file for review', async () => {
     janitorProfiles.get.mockResolvedValue({ ...profileFixture, aiTriage: true });
     const groups = Array.from({ length: 70 }, (_, group) => ({
@@ -238,6 +276,7 @@ describe('janitorRunner.runProfile', () => {
     await janitorRunner.runProfile(db, String(profileFixture._id));
     const run = db._collections.janitor_runs.docs[0];
     expect(run.proposed_actions).toHaveLength(70);
+    expect(run.proposed_actions_omitted).toBe(0);
     expect(run.proposed_actions.every(action => action.files.length === 10)).toBe(true);
     expect(run.proposed_actions.flatMap(action => action.files)).toContain('/mnt/datalake/test/group-69-copy-9.txt');
     expect(run.ai_triage.coverage).toMatchObject({ complete: false,

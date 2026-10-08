@@ -28,6 +28,13 @@ const AI_SAMPLE_SIZE = 50;
 const PROFILE_APPLY_CONFIRMATION = 'DELETE_APPROVED_FILES';
 const RESTORE_SOURCE_CONFIRMATION = 'VERIFIED_SURVIVOR_IS_RESTORE_SOURCE';
 const DEFAULT_PREVIEW_TTL_MS = 15 * 60 * 1000;
+// Proposed actions stay inside the run document, where approval addresses them
+// by index, so a run stores a bounded prefix: at most this many actions and
+// this many serialized bytes, well under MongoDB's 16 MB document limit. The
+// rest is counted in `proposed_actions_omitted` and only appears in a later
+// run, once the duplicates of the stored actions have been removed.
+const MAX_PROPOSED_ACTIONS = 2000;
+const MAX_PROPOSED_ACTIONS_BYTES = 8 * 1024 * 1024;
 
 // In-memory concurrency guard: profile ids currently running
 const running = new Set();
@@ -49,6 +56,7 @@ async function _createRunDoc(db, profile) {
     strategy_status: null,
     decisions_required: [],
     proposed_actions: [],
+    proposed_actions_omitted: 0,
     error: null
   };
   const result = await db.collection(COLLECTION).insertOne(doc);
@@ -136,6 +144,18 @@ function _buildProposedActions(profile, dedupMerged, sharedDrivePolicy) {
   };
 }
 
+function _boundProposedActions(actions) {
+  let bytes = 0;
+  let kept = 0;
+  for (const action of actions) {
+    if (kept >= MAX_PROPOSED_ACTIONS) break;
+    bytes += Buffer.byteLength(JSON.stringify(action), 'utf8');
+    if (bytes > MAX_PROPOSED_ACTIONS_BYTES) break;
+    kept += 1;
+  }
+  return { actions: actions.slice(0, kept), omitted: actions.length - kept };
+}
+
 async function _runAiTriage(profile, runDoc, proposedActions, scanCounts) {
   const sample = proposedActions.slice(0, AI_SAMPLE_SIZE).map(a => ({
     policy: a.policy,
@@ -214,7 +234,7 @@ async function _executePreparedRun(db, prepared) {
     // incomplete, so a fresh installation fails closed instead of keep-oldest.
     const sharedDrivePolicy = await janitorStrategy.getPolicy(db);
     const actionPlan = _buildProposedActions(profile, dedupMerged, sharedDrivePolicy);
-    const proposedActions = actionPlan.actions;
+    const { actions: proposedActions, omitted: proposedActionsOmitted } = _boundProposedActions(actionPlan.actions);
 
     // Step 4: AI triage (best-effort)
     let aiTriage = null;
@@ -227,6 +247,7 @@ async function _executePreparedRun(db, prepared) {
       status: 'complete',
       finished_at: new Date(),
       proposed_actions: proposedActions,
+      proposed_actions_omitted: proposedActionsOmitted,
       strategy_status: actionPlan.status,
       decisions_required: actionPlan.decisions_required,
       strategy_policy: janitorStrategy.publicPolicy(sharedDrivePolicy),
@@ -654,6 +675,8 @@ module.exports = {
   PROFILE_APPLY_CONFIRMATION,
   RESTORE_SOURCE_CONFIRMATION,
   DEFAULT_PREVIEW_TTL_MS,
+  MAX_PROPOSED_ACTIONS,
+  MAX_PROPOSED_ACTIONS_BYTES,
   isLiveExecutionEnabled,
   runProfile,
   startProfileRun,

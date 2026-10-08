@@ -16,6 +16,11 @@ const INDEX_SPECS = [
   { collection: 'nas_files', key: { source_root: 1, size: -1 }, options: { name: 'source_size' } },
   { collection: 'nas_files', key: { source_root: 1, dirname: 1, size: -1, path: 1 }, options: { name: 'source_directory_rollup' } },
   { collection: 'nas_files', key: { size: -1 }, options: { name: 'size_candidates' } },
+  // File browser: default sort, and the category filter with that sort.
+  { collection: 'nas_files', key: { mtime: -1 }, options: { name: 'mtime_desc' } },
+  { collection: 'nas_files', key: { category: 1, mtime: -1 }, options: { name: 'category_mtime' } },
+  // Scan prune ({ path prefix, scan_id }) and the browser's scan_id filter.
+  { collection: 'nas_files', key: { scan_id: 1, path: 1 }, options: { name: 'scan_path' } },
   { collection: 'network_devices', key: { mac: 1 }, options: { name: 'mac_unique', unique: true, partialFilterExpression: MAC_UNIQUE_PARTIAL } },
   { collection: 'network_devices', key: { lastSeen: -1 }, options: { name: 'last_seen_desc' } },
   { collection: 'network_devices', key: { scanSource: 1 }, options: { name: 'scan_source' } },
@@ -37,11 +42,17 @@ const INDEX_SPECS = [
   { collection: 'janitor_runs', key: { status: 1 }, options: { name: 'status' } },
   { collection: 'janitor_strategy_reports', key: { generatedAt: -1 }, options: { name: 'generated_at_desc' } },
   { collection: 'janitor_strategy_report_details', key: { reportId: 1, ordinal: 1 }, options: { name: 'report_ordinal' } },
+  { collection: 'dedup_report_details', key: { reportId: 1, ordinal: 1 }, options: { name: 'report_ordinal' } },
+  // Every latest/history/count/prune query filters on the feed and orders by time.
+  { collection: 'livedata_points', key: { feedId: 1, ts: -1 }, options: { name: 'feed_ts_desc' } },
 
   // TTL indexes — automatic retention for high-growth collections
   { collection: 'appevents', key: { timestamp: 1 }, options: { name: 'ttl_30d', expireAfterSeconds: 2592000 } },
   { collection: 'pressures', key: { timeStamp: 1 }, options: { name: 'ttl_90d', expireAfterSeconds: 7776000 } },
-  { collection: 'integration_events', key: { at: 1 }, options: { name: 'ttl_90d', expireAfterSeconds: 7776000 } }
+  { collection: 'integration_events', key: { at: 1 }, options: { name: 'ttl_90d', expireAfterSeconds: 7776000 } },
+  // A scan request is offered to scanners for two minutes (REQUEST_TTL_MS in
+  // networkAgentService); a day keeps its status readable long after that.
+  { collection: 'network_scan_requests', key: { requestedAt: 1 }, options: { name: 'ttl_1d', expireAfterSeconds: 86400 } }
 ];
 
 /**
