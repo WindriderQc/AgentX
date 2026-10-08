@@ -772,6 +772,56 @@ describe('built-in Household surface on Core', () => {
     } finally { release?.(); }
   });
 
+  test('an invalidated final-answer grace keeps the HTTP turn open until real completion', async () => {
+    const { createAgentClient } = jest.requireActual('../../surfaces/household/conversation-agent');
+    const runId = 'resp_55555555-5555-4555-8555-555555555555';
+    const reply = 'Réponse finale vérifiée.';
+    let finish, invalidated, reads = 0, requests = 0, released = false, aborted = false;
+    const held = new Promise(resolve => { finish = resolve; });
+    const invalidSeen = new Promise(resolve => { invalidated = resolve; });
+    const row = data => Buffer.from('data: ' + JSON.stringify(data) + '\n\n');
+    const native = createAgentClient({
+      env: { OPENCLAW_GATEWAY_URL: 'http://openclaw.example.test', OPENCLAW_GATEWAY_TOKEN: 'synthetic-token' },
+      settleMs: 0, progressMs: 3, streamGraceMs: 30, streamDrainMs: 20,
+      continuity: async () => {
+        if (released) return { answer: { status: 'ready', runId, text: reply }, run: { runId, model: 'synthetic-native' } };
+        if (++reads === 1) return { answer: { status: 'ready', runId, text: 'Réponse périmée.' } };
+        invalidated();
+        return { answer: { status: 'unavailable', runId } };
+      },
+      fetchImpl: async (_url, options) => {
+        requests++;
+        options.signal.addEventListener('abort', () => { aborted = true; finish(); }, { once: true });
+        return { ok: true, body: (async function* () {
+          yield row({ type: 'response.created', response: { id: runId } });
+          await held;
+          yield row({ type: 'response.completed', response: { id: runId } });
+        })() };
+      }
+    });
+    agentForTest.mockImplementationOnce(native);
+    const base = '/api/voice-personas/private/sessions';
+    const id = (await request(app).post(base).send({ packId: 'personal_operator', backend: 'openclaw' }).expect(201)).body.data.session.sessionId;
+    let response;
+    const turn = request(app).post(`${base}/${id}/turns/text`).send({ text: 'Regarde mes tâches.' }).then(value => { response = value; });
+    try {
+      await invalidSeen;
+      await new Promise(resolve => setTimeout(resolve, 220));
+      expect(response).toBeUndefined();
+      expect(aborted).toBe(false);
+      released = true; finish(); await turn;
+      expect(response.status).toBe(200);
+      expect(response.body.data.reply.text).toBe(reply);
+      const history = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+      expect(history.history.map(message => message.content)).toEqual(['Regarde mes tâches.', reply]);
+      expect(history.session.turnCount).toBe(1);
+      expect(requests).toBe(1);
+      const canonical = await Conversation.findOne({ 'surfaceSession.sessionId': id }).lean();
+      expect(canonical.messages).toHaveLength(2);
+      expect(canonical.messages[1].content).toBe(reply);
+    } finally { released = true; finish(); await turn; }
+  });
+
   test('persists and resumes a personal conversation without exposing it through child routes', async () => {
     const base = '/api/voice-personas';
     const created = await request(app).post(`${base}/private/sessions`).send({

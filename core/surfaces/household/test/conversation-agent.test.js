@@ -541,7 +541,7 @@ for (const [name, invalid] of [
   ['missing answer', null]
 ]) {
   test(`a successful ${name} observation invalidates a previously ready answer`, async () => {
-    const stream = heldNativeStream();
+    const stream = heldNativeStream([created, completed]);
     let reads = 0;
     const deltas = [];
     const client = createAgentClient({ env, settleMs: 0, delegateMs: 0, progressMs: 3, streamGraceMs: 25, streamDrainMs: 20,
@@ -559,6 +559,104 @@ for (const [name, invalid] of [
     } finally { stream.close(); }
   });
 }
+
+// Invalidation must retract the evidence-based grace, not terminate a still
+// open run. The fixture releases only after checking beyond that old deadline.
+for (const [name, invalid] of [
+  ['yielded', { answer: { status: 'yielded', runId } }],
+  ['unavailable', { answer: { status: 'unavailable', runId } }],
+  ['another run', { answer: { ...answer('Autre tour.'), runId: 'another-run' } }],
+  ['blank text', { answer: answer('   ') }],
+  ['non-string text', { answer: { ...answer('Unused'), text: 42 } }],
+  ['missing answer', null]
+]) {
+  test(`a retracted ${name} ready grace keeps waiting for real native completion`, async () => {
+    let finish, invalidated, reads = 0, released = false, requests = 0, settled = 0, aborted = false;
+    const invalidSeen = new Promise(resolve => { invalidated = resolve; });
+    const held = new Promise(resolve => { finish = resolve; });
+    const deltas = [];
+    const client = createAgentClient({ env, settleMs: 0, delegateMs: 0, progressMs: 3, streamGraceMs: 30, streamDrainMs: 20,
+      continuity: async () => {
+        if (released) return { answer: answer('Réponse finale vérifiée.') };
+        if (++reads === 1) return { answer: answer('Réponse périmée.') };
+        invalidated();
+        return invalid;
+      }, fetchImpl: async (_url, options) => {
+        requests++;
+        options.signal.addEventListener('abort', () => { aborted = true; finish(); }, { once: true });
+        return { ok: true, body: (async function* () {
+          yield created;
+          await held;
+          yield completed;
+        })() };
+      } });
+    let outcome;
+    const turn = client({ session, text: 'Suite ?', onDelta: value => deltas.push(value), onSettled: () => { settled++; } })
+      .then(result => { outcome = { result }; }, error => { outcome = { error }; });
+    try {
+      await invalidSeen;
+      await new Promise(resolve => setTimeout(resolve, 90));
+      assert.equal(outcome, undefined, 'an invalidated answer cannot settle the open run');
+      assert.equal(settled, 0);
+      assert.equal(aborted, false, 'no drain is armed from invalidated evidence');
+      assert.deepEqual(deltas, []);
+      released = true; finish();
+      await turn;
+      assert.equal(outcome.error, undefined);
+      assert.equal(outcome.result.text, 'Réponse finale vérifiée.');
+      assert.equal(outcome.result.metadata.phases.streamOverdue, undefined);
+      assert.deepEqual(deltas, ['Réponse finale vérifiée.']);
+      assert.equal(settled, 1);
+      assert.equal(requests, 1);
+    } finally { released = true; finish(); await turn; }
+  });
+}
+
+test('a later ready answer receives a full grace after invalidation', async () => {
+  const stream = heldNativeStream();
+  let reads = 0, invalidated, current = null;
+  const invalidSeen = new Promise(resolve => { invalidated = resolve; });
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 100, streamDrainMs: 20,
+    continuity: async () => {
+      if (++reads === 1) return { answer: answer('Réponse périmée.') };
+      if (reads === 2) { invalidated(); return { answer: { status: 'unavailable', runId } }; }
+      return current;
+    }, fetchImpl: stream.fetch });
+  let outcome;
+  const turn = client({ session, text: 'Suite ?' }).then(result => { outcome = { result }; }, error => { outcome = { error }; });
+  try {
+    await invalidSeen;
+    await new Promise(resolve => setTimeout(resolve, 70));
+    const readyAt = Date.now();
+    current = { run: { model: 'native' }, answer: answer('Nouvelle réponse.') };
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(outcome, undefined, 'the first ready deadline cannot shorten the next grace');
+    await turn;
+    assert.equal(outcome.error, undefined);
+    assert.equal(outcome.result.text, 'Nouvelle réponse.');
+    assert.ok(Date.now() - readyAt >= 100, 'new evidence receives its own complete grace');
+    assert.equal(stream.requests(), 1);
+  } finally { current = { run: { model: 'native' }, answer: answer('Nouvelle réponse.') }; stream.close(); await turn; }
+});
+
+test('a slow progress callback cannot delay the verified ready grace', async () => {
+  const stream = heldNativeStream();
+  let releaseActivity;
+  const activityHeld = new Promise(resolve => { releaseActivity = resolve; });
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 20, streamDrainMs: 1000,
+    continuity: async () => ({ answer: answer('Réponse vérifiée.'), progress: [{ id: 'slow-activity', tool: 'list_personal_tasks' }] }),
+    fetchImpl: stream.fetch });
+  let outcome;
+  const turn = client({ session, text: 'Mes tâches ?', onActivity: () => activityHeld })
+    .then(result => { outcome = { result }; }, error => { outcome = { error }; });
+  try {
+    await new Promise(resolve => setTimeout(resolve, 700));
+    assert.ok(outcome, 'the bounded watcher waits cannot extend the grace indefinitely');
+    assert.equal(outcome.error, undefined);
+    assert.equal(outcome.result.text, 'Réponse vérifiée.');
+    assert.equal(stream.requests(), 1);
+  } finally { releaseActivity(); stream.close(); await turn; }
+});
 
 test('the latest observed ready answer replaces an earlier one before an observation failure', async () => {
   const stream = heldNativeStream();
@@ -595,6 +693,79 @@ test('a stopped watcher cannot restore a ready answer after a newer invalidation
     assert.equal(stream.requests(), 1);
   } finally { resolveWatcher?.(null); stream.close(); }
 });
+
+test('a ready expiry invalidated before the waiting continuation cannot confirm termination', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  let finish, resolveObservation, reads = 0, released = false, settled = 0, aborted = false;
+  const held = new Promise(resolve => { finish = resolve; });
+  const observation = new Promise(resolve => { resolveObservation = resolve; });
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 10, streamGraceMs: 30, streamDrainMs: 20,
+    continuity: () => {
+      if (released) return Promise.resolve({ run: { model: 'native' }, answer: answer('Réponse finale.') });
+      if (++reads === 1) return Promise.resolve({ answer: answer('Réponse périmée.') });
+      if (reads === 2) return observation;
+      return Promise.resolve({ answer: { status: 'unavailable', runId } });
+    }, fetchImpl: async (_url, options) => {
+      options.signal.addEventListener('abort', () => { aborted = true; finish(); }, { once: true });
+      return { ok: true, body: (async function* () { yield created; await held; yield completed; })() };
+    } });
+  let outcome;
+  const turn = client({ session, text: 'Suite ?', onSettled: () => { settled++; } })
+    .then(result => { outcome = { result }; }, error => { outcome = { error }; });
+  try {
+    await flush();
+    t.mock.timers.tick(10); await flush(); // ready A, grace due at 40
+    t.mock.timers.tick(10); await flush(); // a newer observation is pending
+    assert.equal(reads, 2);
+    t.mock.timers.tick(20); // resolve the grace notification, without running its continuation
+    resolveObservation({ answer: { status: 'unavailable', runId } });
+    await flush();
+    t.mock.timers.tick(100); await flush();
+    assert.equal(outcome, undefined, 'a resolved notification is not a terminal proof');
+    assert.equal(settled, 0);
+    assert.equal(aborted, false);
+    released = true; finish(); await turn;
+    assert.equal(outcome.error, undefined);
+    assert.equal(outcome.result.text, 'Réponse finale.');
+    assert.equal(outcome.result.metadata.phases.streamOverdue, undefined);
+    assert.equal(settled, 1);
+  } finally { released = true; finish(); resolveObservation(null); await flush(); t.mock.timers.tick(1000); await flush(); t.mock.timers.reset(); await turn; }
+});
+
+for (const browser of [false, true]) {
+  test(`a ${browser ? 'GraphysX validation error' : 'native failure'} after invalidation closes HTTP before suspended iterator closure`, async () => {
+  let finishClosing, invalidated, reads = 0, settled = 0, requestSignal;
+  const closing = new Promise(resolve => { finishClosing = resolve; });
+  const invalidSeen = new Promise(resolve => { invalidated = resolve; });
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 1000,
+    continuity: async () => {
+      if (++reads === 1) return { answer: answer('Réponse périmée.') };
+      invalidated();
+      return { answer: { status: 'unavailable', runId } };
+    }, fetchImpl: async (_url, options) => { requestSignal = options.signal; return { ok: true, body: (async function* () {
+      try {
+        yield created;
+        await invalidSeen;
+        yield browser ? browserCompleted([{ ...browserItem({ reply: 'Ne pas livrer.' }), name: 'another_tool' }])
+          : row({ type: 'response.failed', response: { id: runId, error: { message: 'Native failure' } } });
+      } finally { await closing; }
+    })() }; } });
+  let outcome;
+  const turn = client({ session, text: 'Suite ?', ...(browser ? { browserReply: { context: browserContext } } : {}), onDelta: value => deltas.push(value), onSettled: () => { settled++; } })
+    .then(result => { outcome = { result }; }, error => { outcome = { error }; });
+  try {
+    await invalidSeen;
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.ok(outcome, 'the known failure cannot wait for a removed grace or iterator closure');
+    assert.match(outcome.error.message, browser ? /GraphysX native browser reply/ : /pas pu finir sa réponse/);
+    assert.equal(requestSignal.aborted, true, 'the errored HTTP request is closed before the fixture releases its iterator');
+    assert.deepEqual(deltas, []);
+    assert.equal(settled, 1, 'native failure really is terminal');
+  } finally { finishClosing(); await turn; }
+});
+}
 
 test('caller cancellation still rejects when a ready answer has already been observed', async () => {
   const abort = new AbortController();
