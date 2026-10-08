@@ -3,6 +3,7 @@ const { conversationInput, browserReplyTool, sceneReply } = require('./llmx-conv
 const { nativePerformedBy } = require('./native-attribution');
 const { acceptedImageReply } = require('./accepted-images');
 const { scoreSpeechLanguage } = require('../../public/js/voice/speech-language');
+const { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure } = require('./tool-turn-guard');
 
 const agentIdFor = session => ['kidx_nestor', 'kidx_reader'].includes(session.packId) ? 'family' : session.agentId || 'main';
 const sessionKeyFor = session => `agent:${agentIdFor(session)}:household:direct:${session.sessionId}`;
@@ -82,7 +83,7 @@ function agentInstructions(session, persona, surface, mode, { soundPlayback = fa
   ].filter(Boolean).join('\n\n');
 }
 
-function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000, streamGraceMs = 3000, streamDrainMs = 30000 } = {}) {
+function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000, streamGraceMs = 3000, streamDrainMs = 30000, evidenceReadMs = 10000 } = {}) {
   return async ({ session, text, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
@@ -99,12 +100,25 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       ...(Array.isArray(content) ? content : [{ type: 'input_text', text: content }])
     ] : content;
     const controller = new AbortController();
+    const stopped = new Promise((_resolve, reject) => controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true }));
+    stopped.catch(() => {}); // Cancellation can precede the stream race.
     const deadline = setTimeout(() => controller.abort(new Error('Nestor agent timed out.')), 600000);
     const abort = () => controller.abort(signal.reason);
     signal?.addEventListener('abort', abort, { once: true });
     let runId, terminal = false, generating = false, answer = '', evidence, browserCall, replacedStream = false, delegated = false;
-    const readEvidence = () => continuity({ operation: 'turn', sessionKey, runId });
+    const readEvidence = async (budgetMs = evidenceReadMs) => {
+      const readAbort = new AbortController();
+      let timer;
+      try {
+        return await Promise.race([continuity({ operation: 'turn', sessionKey, runId }, readAbort.signal),
+          new Promise((_resolve, reject) => {
+            timer = setTimeout(() => { const error = new Error('Native turn evidence timed out.'); readAbort.abort(error); reject(error); }, Math.min(budgetMs, evidenceReadMs));
+            timer.unref?.();
+          })]);
+      } finally { clearTimeout(timer); }
+    };
     const language = scoreSpeechLanguage(text);
+    let guardFailure, verificationFailure, taskObservedRun, stopChecked = false;
     const imageReply = () => browserReply ? Promise.resolve(null) : acceptedImageReply({ session, evidence,
       sessionKey, runId, language: language.decided ? language.language : 'fr', readOperation: readImageOperation });
     // When each step of the native run happened, in ms from this request: what the
@@ -118,6 +132,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         tools: { status: evidence?.run || imageDelivery ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId,
           receipts: evidence?.receipts || [], run: evidence?.run || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId),
           ...(imageDelivery ? { imageDelivery } : {}),
+          ...(verificationFailure ? { verification: { status: 'failed', reason: verificationFailure,
+            ...(guardFailure ? { tool: guardFailure.tool, repetitions: guardFailure.repetitions } : {}) } } : {}),
           ...(evidence?.answer?.deliveredBy ? { deliveredBy: evidence.answer.deliveredBy } : {}), ...(browserCall ? { browserReply: browserCall } : {}) },
         metadata: { model: imageDelivery ? '' : evidence?.run?.model || '',
           provider: imageDelivery ? imageDelivery.authority : evidence?.run?.provider || '',
@@ -145,6 +161,16 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       observedAnswer = answered(projected) ? { ...projected.answer } : null;
     };
     const report = async projected => {
+      if (taskCheckObserved(projected, runId)) taskObservedRun = runId;
+      const loop = confirmedLoop(projected, runId);
+      if (loop) {
+        evidence = projected;
+        verificationFailure = 'repeated_tool_call';
+        guardFailure ||= Object.assign(new Error(checkFailure(language.decided ? language.language : 'fr')),
+          { code: 'NESTOR_TOOL_LOOP', tool: loop.tool, repetitions: loop.repetitions });
+        controller.abort(guardFailure);
+        throw guardFailure;
+      }
       for (const item of Array.isArray(projected?.progress) ? projected.progress : []) {
         if (!item?.id || reported.has(item.id)) continue;
         reported.add(item.id);
@@ -260,7 +286,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         pending += decoder.decode();
         if (pending.trim()) await consumeChecked(pending.trimEnd());
       })();
-      if (await Promise.race([stream.then(() => true), streamOverdue.then(() => false)])) phase('streamEnd');
+      if (await Promise.race([stream.then(() => true), streamOverdue.then(() => false), stopped])) phase('streamEnd');
       else {
         // Same-run final evidence or a matching completion proves the run ended.
         // Leave the gateway a bounded time to finish behind it, then close the
@@ -290,6 +316,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           break;
         }
         await report(evidence).catch(() => {});
+        if (guardFailure) throw guardFailure;
         const imageDelivery = await imageReply();
         signal?.throwIfAborted();
         if (imageDelivery) return deliver(imageDelivery.text, imageDelivery);
@@ -313,6 +340,12 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       }
       if (!browserCall) {
         answer = evidence.answer.text;
+        if (agentIdFor(session) === 'main' && session.packId === 'personal_operator' && session.scopeId === 'personal'
+            && !session.llmx && session.source !== 'graphysx-llmx'
+            && requestsTaskCheck(text) && taskObservedRun !== runId) {
+          verificationFailure = 'task_check_missing';
+          answer = checkFailure(language.decided ? language.language : 'fr');
+        }
         if (personalVoice(session, channel) && unfinishedToolPreamble(answer)) {
           answer = /^(?:i|let me)\b/i.test(answer) || scoreSpeechLanguage(answer).language === 'en'
             ? 'I could not complete that check. Please try again.'
@@ -326,6 +359,22 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       }
       return deliver(answer);
     } catch (error) {
+      if (guardFailure && !signal?.aborted) {
+        // Closing HTTP asks the native runtime to stop. The next browser turn
+        // is admitted only after its actual end receipt confirms settlement.
+        const until = Date.now() + settleMs;
+        while (!terminal && Date.now() < until) {
+          try { evidence = await readEvidence(Math.max(1, until - Date.now())); if (evidence?.run) terminal = true; } catch { /* observation only */ }
+          if (!terminal) await pause(100);
+        }
+        stopChecked = true;
+        if (terminal) {
+          const imageDelivery = await imageReply();
+          signal?.throwIfAborted();
+          return deliver(checkFailure(language.decided ? language.language : 'fr') + (imageDelivery ? '\n\n' + imageDelivery.text : ''), imageDelivery);
+        }
+        throw Object.assign(new Error('L’arrêt de Nestor n’est pas encore confirmé. La conversation est en pause.'), { code: 'NESTOR_TOOL_LOOP_UNCONFIRMED' });
+      }
       // A terminal native model failure does not cancel its accepted Core image.
       // Observe the same run; never send another request or acquire tools for a
       // fallback model. Caller interruption keeps its existing stop contract.
@@ -352,8 +401,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           // Closing HTTP requests cancels the native run. Wait for its actual
           // agent_end receipt before the browser may start another turn.
           const until = Date.now() + (generating || !signal?.aborted ? settleMs : Math.min(settleMs, 1500));
-          while (Date.now() < until) {
-            try { evidence = await readEvidence(); if (evidence.run) { settled = true; break; } } catch { /* retry observation only */ }
+          while (!stopChecked && Date.now() < until) {
+            try { evidence = await readEvidence(Math.max(1, until - Date.now())); if (evidence.run) { settled = true; break; } } catch { /* retry observation only */ }
             await pause(250);
           }
           // A run cancelled while the gateway was still preparing (no output, no tool) never

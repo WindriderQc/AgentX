@@ -15,6 +15,21 @@ const row = value => Buffer.from('data: ' + JSON.stringify(value) + '\n\n');
 const created = row({ type: 'response.created', response: { id: runId } });
 const env = { OPENCLAW_GATEWAY_URL: 'ws://gateway.test', OPENCLAW_GATEWAY_TOKEN: 'test-only' };
 
+test('a stopped native tool loop preserves the already accepted Core image without another action', async () => {
+  let calls = 0;
+  const client = createAgentClient({ env, settleMs: 0,
+    continuity: async () => ({ run: { status: 'completed' }, receipts: [receipt], toolChecks: { status: 'observed', runId,
+      completedTools: ['agents_list'], loop: { tool: 'agents_list', repetitions: 4 } } }),
+    readImageOperation: async () => operation,
+    fetchImpl: async () => { calls++; return { ok: true, body: [created, row({ type: 'response.completed', response: { id: runId } })] }; } });
+  const result = await client({ session, text: 'Une image synthétique.' });
+  assert.equal(calls, 1);
+  assert.match(result.text, /vérification n’a pas abouti/);
+  assert.match(result.text, /demande image est acceptée/);
+  assert.equal(result.tools.imageDelivery.operations[0].id, id);
+  assert.deepEqual(result.tools.verification, { status: 'failed', reason: 'repeated_tool_call', tool: 'agents_list', repetitions: 4 });
+});
+
 for (const failure of [false, true]) test(`accepted Core image survives ${failure ? 'both conversation brains refusing' : 'a light fallback denying tools'} in the final streamed reply`, async () => {
   let calls = 0, reads = 0, settled = 0;
   const delivered = [], show = [], speech = [];
