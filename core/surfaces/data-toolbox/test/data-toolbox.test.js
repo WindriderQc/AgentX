@@ -21,7 +21,7 @@ function browserEvidence(fetchImpl) {
     fetch: fetchImpl, URLSearchParams, console
   };
   const source = fs.readFileSync(path.join(__dirname, '../public/app.js'), 'utf8')
-    .replace(/\nrender\(\);\s*$/, '\nglobalThis.evidence = { api, overview, files, number, bytes, percent, signedNumber, signedBytes, trend };');
+    .replace(/\nrender\(\);\s*$/, '\nglobalThis.evidence = { api, overview, storage, files, number, bytes, percent, signedNumber, signedBytes, trend };');
   vm.runInNewContext(source, context);
   return { ...context.evidence, content, listeners, form };
 }
@@ -115,6 +115,49 @@ test('file pagination reaches later rows and keeps the selected filters', async 
   assert.equal(requests.at(-1).get('root'), '/mnt/media');
   assert.match(browser.content.innerHTML, /source-page-2/);
   assert.match(browser.content.innerHTML, /data-action="files-next" disabled/);
+});
+
+test('scan receipts read the source, file count and status Data actually returns', async () => {
+  const browser = browserEvidence(async (url) => {
+    const route = new URL(url, 'http://localhost').pathname;
+    const data = route.endsWith('/storage/scans') ? { scans: [{
+      _id: 'scan-1', type: 'external-storage-agent', status: 'complete', started_at: '2026-10-08T07:01:22.437Z',
+      config: { external: true, source: 'datalake', roots: ['/mnt/datalake'] }, counts: { files_seen: 221299 }
+    }] } : route.endsWith('/storage/agents') ? { scanners: [] } : {};
+    return { ok: true, status: 200, json: async () => ({ data }) };
+  });
+  await browser.storage();
+  const row = browser.content.innerHTML.match(/<tr><td class="mono">scan-1<\/td>.*?<\/tr>/)[0];
+  assert.match(row, /datalake · \/mnt\/datalake/);
+  assert.match(row, new RegExp(browser.number(221299)));
+  assert.match(row, /pill good">complete/);
+});
+
+test('a refused file filter keeps the form on screen and offers only Data categories', async () => {
+  const form = { elements: { search: {}, root: {}, category: {} } };
+  const browser = browserEvidence(async () => ({
+    ok: false, status: 400, json: async () => ({ status: 'error', message: 'Unknown file category: image' })
+  }));
+  Object.assign(browser.form.elements, form.elements);
+  await browser.files(new URLSearchParams({ category: 'image' }));
+  assert.match(browser.content.innerHTML, /id="fileFilters"/);
+  assert.match(browser.content.innerHTML, /Unknown file category: image/);
+  assert.match(browser.content.innerHTML, /<option>media<\/option>/);
+  assert.doesNotMatch(browser.content.innerHTML, /<option>(image|video|audio)<\/option>/);
+  assert.equal(browser.form.elements.category.value, 'image');
+});
+
+test('a missing strategy report is an empty Janitor state, not a failed tab', async (t) => {
+  const express = require('express');
+  const request = require('supertest');
+  const original = global.fetch;
+  t.after(() => { global.fetch = original; });
+  global.fetch = async () => ({ ok: false, status: 404, text: async () => JSON.stringify({ status: 'error', message: 'strategy report not found' }) });
+  const app = express();
+  toolbox.register({ contractVersion: 2, app, express });
+  const res = await request(app).get('/api/data-toolbox/janitor/strategy/latest').expect(200);
+  assert.equal(res.body.data.available, false);
+  assert.equal(res.body.data.status, 'unavailable');
 });
 
 function registeredSurface() {

@@ -359,7 +359,7 @@ function register(api) {
   router.get('/storage/summary', relay(() => '/api/v1/storage/summary', commonScope));
   router.get('/storage/scans', relay(() => '/api/v1/storage/scans', {
     limit: { type: 'int', fallback: 10, min: 1, max: 50 },
-    skip: { type: 'int', fallback: 0, min: 0, max: 10000 }
+    page: { type: 'int', fallback: 1, min: 1, max: 10000 }
   }));
   router.get('/storage/agents', relay(() => '/api/v1/storage/agents'));
   router.get('/storage/files', relay(() => '/api/v1/storage/files/browse', {
@@ -438,6 +438,10 @@ function register(api) {
   router.get('/janitor/strategy/latest', async (_req, res) => {
     try {
       const { response, body } = await fetchData('/api/v1/janitor/profiles/shared-drive/strategy/latest');
+      // No report generated yet is an empty state, not a failure of the tab.
+      if (response.status === 404) {
+        return res.json({ ok: true, status: 'success', data: { ...projectJanitorStrategy({}), available: false } });
+      }
       if (!response.ok) return res.status(response.status).json(body);
       return res.json({ ok: true, status: 'success', data: projectJanitorStrategy(body) });
     } catch (error) {
