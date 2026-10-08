@@ -32,6 +32,11 @@ components, step count and pixel budgets. `GET /api/images/operations/:id/detail
 reports that operation's saved recipe and request, actual archived dimensions
 and recorded total time. Historical recipes do not inherit the current profile's
 step count. A different historical worker never inherits the current GPU label.
+
+`/images/guide` (linked from the atelier header) explains the path of a request,
+lists the installed recipes and gives prompting advice. Its host, GPU and recipe
+facts come from `GET /api/images/workshop`; the page source names no machine or
+model, so it stays true when the worker or the profiles change.
 Neither read endpoint initializes recovery, starts a worker or takes a GPU claim.
 The current worker's optional external `presentation` object provides
 `hostLabel`, `gpuLabel` and `vramGiB`; these are configured inventory, not live

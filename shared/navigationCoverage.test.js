@@ -34,6 +34,9 @@ const ALIASES = {
 };
 // Pages entered from another page rather than a menu: [file holding the link, the link].
 const CONTEXTUAL = {
+  core: {
+    '/images/guide': ['core/views/pages/images.ejs', 'href="/images/guide"']
+  },
   benchmark: {
     '/setup': ['benchmark/public/js/benchmark-v2/experience.js', "'/setup'"]
   }
