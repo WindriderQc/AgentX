@@ -51,6 +51,11 @@ _spec.loader.exec_module(model_relay)
 _spec = importlib.util.spec_from_file_location("coding_progress", HERE / "coding_progress.py")
 coding_progress = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_progress)
+# Same eligibility rule as the Pipeline launch control, so a direct invocation
+# of this runner cannot start what the dispatch boundary would refuse.
+_spec = importlib.util.spec_from_file_location("coding_dispatch_control", HERE / "coding_dispatch_control.py")
+coding_dispatch_control = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_dispatch_control)
 AUTHOR = ["-c", "user.name=AgentX Coding Team", "-c", "user.email=coding-team@agentx.invalid"]
 
 PROMPT = """You are the AgentX coding worker. /workspace is a fresh clone of {repository}
@@ -312,6 +317,13 @@ def main() -> int:
 
 
 def execute(args, progress) -> int:
+    # The same eligibility rule as the Pipeline launch control: a direct task id
+    # may not start a task the dispatch boundary would refuse, and an ineligible
+    # task must stay untouched (no claim, clone, dependency install or worker run).
+    task = request(f"{CORE}/api/pipeline/tasks/{args.task_id}")["data"]["task"]
+    if not coding_dispatch_control.can_start(task):
+        print(f"task {args.task_id} is not a queued, unowned, non-private agentx-coding task; not started", file=sys.stderr)
+        return 2
 
     # The claim makes the task visibly in progress and refuses a second worker.
     request(f"{CORE}/api/pipeline/tasks/{args.task_id}/claim", {"assignee": WORKER})
