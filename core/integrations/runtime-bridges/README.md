@@ -38,6 +38,12 @@ listed conversation models answer without reasoning, whatever thinking level the
 agent or session asks for. It suits a spoken lane, where reasoning delays the
 first word; other models and Pipeline turns keep the level they were sent.
 
+A model that several uses share takes its reasoning from the use, not from its
+name: a gateway provider that sends `x-agentx-think: off` (or `on`) in its
+headers sets it for every turn of that provider, over the list above and over
+the level the agent asked for. Another provider of the same model keeps its
+own. Any other value is refused (400). Pipeline turns keep their level.
+
 The operations projection, protected OpenClaw/DSH launchers, runtime config
 export/validation and coding delivery inbox retain their existing HTTP contracts.
 Historical `aio-ops-*` wire identifiers and old Product release receipt readers
