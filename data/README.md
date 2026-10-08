@@ -29,6 +29,14 @@ configuration. Storage sources map explicit host roots to stable canonical paths
 for example `media` to `/mnt/media`, excluding a nested `Datalake` root counted
 separately as `/mnt/datalake`. No personal physical root is inferred.
 
+A finished scan removes the index rows it did not see, one root at a time. A
+root where the scan indexed no file keeps its rows and the scan ends `partial`
+with the reason in `last_error`: an unmounted or emptied mountpoint walks as a
+clean, empty directory and must not erase the inventory and its hashes. The
+in-container scanner also keeps existing rows when a directory could not be read
+or a batch failed. A root that was really emptied keeps its last rows until a
+scan indexes at least one file there.
+
 GPU telemetry lives under `/api/v1/hardware`. The native `gpu-agent` collector
 posts one cycle per interval to `POST /samples` (and `POST /collector/heartbeat`
 at start), unauthenticated like the network and storage collectors because Data

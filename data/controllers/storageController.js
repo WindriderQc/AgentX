@@ -1,4 +1,4 @@
-const { Scanner, rebuildDirectoryRollups } = require('../services/scanner');
+const { Scanner, rebuildDirectoryRollups, pruneStaleFiles, pruneSkippedMessage } = require('../services/scanner');
 const { CANDIDATE_QUEUE_ORDER } = require('../services/candidateHasher');
 const { ObjectId } = require('mongodb');
 const { resolveAllowedPath } = require('../services/janitorService');
@@ -475,12 +475,12 @@ const updateScan = async (req, res) => {
 
     if ((status === 'complete' || status === 'completed') && scanDoc.config?.external === true) {
       const files = db.collection('nas_files');
-      let staleRemoved = 0;
-      for (const root of scanDoc.config.roots || []) {
-        const stale = await files.deleteMany({ ...pathScope(root), scan_id: { $ne: scan_id } });
-        staleRemoved += stale.deletedCount || 0;
+      const pruned = await pruneStaleFiles(files, scanDoc.config.roots || [], scan_id);
+      updateFields['counts.stale_removed'] = pruned.removed;
+      if (pruned.skippedRoots.length) {
+        updateFields.status = 'partial';
+        updateFields.last_error = pruneSkippedMessage(pruned.skippedRoots);
       }
-      updateFields['counts.stale_removed'] = staleRemoved;
       updateFields['counts.directories'] = await rebuildDirectoryRollups(
         files,
         db.collection('nas_directories'),

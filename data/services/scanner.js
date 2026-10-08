@@ -28,6 +28,31 @@ function rootPathFilter(root) {
   return { path: { $regex: `^${escapeRegex(normalized)}(?:[\\/]|$)` } };
 }
 
+// Removes index rows a finished scan did not see, one root at a time. A root
+// where the scan indexed nothing keeps its rows: an unmounted or emptied
+// mountpoint walks as a clean, empty directory and must not erase the index
+// and the hashes accumulated for it.
+async function pruneStaleFiles(filesCol, roots, scanId) {
+  let removed = 0;
+  const skippedRoots = [];
+  for (const root of roots || []) {
+    const scope = rootPathFilter(root);
+    const indexedByScan = await filesCol.countDocuments({ ...scope, scan_id: scanId }, { limit: 1 });
+    if (indexedByScan === 0) {
+      const retained = await filesCol.countDocuments(scope, { limit: 1 });
+      if (retained > 0) skippedRoots.push(root);
+      continue;
+    }
+    const stale = await filesCol.deleteMany({ ...scope, scan_id: { $ne: scanId } });
+    removed += stale.deletedCount || 0;
+  }
+  return { removed, skippedRoots };
+}
+
+function pruneSkippedMessage(skippedRoots) {
+  return `Scan indexed no file under ${skippedRoots.join(', ')}; existing index rows were kept`;
+}
+
 async function rebuildDirectoryRollups(filesCol, dirsCol, roots = []) {
   const now = new Date();
   const normalizedRoots = roots.map(root => String(root).replace(/[\\/]+$/, '')).filter(Boolean);
@@ -278,14 +303,17 @@ class Scanner extends EventEmitter {
     }
 
     await flush();
+    let pruneWithheld = null;
     if (!this.stopFlag && includeExt.size === 0 && excludeExt.size === 0 && typeof filesCol.deleteMany === 'function') {
-      for (const root of opts.roots) {
-        const stale = await filesCol.deleteMany({
-          ...rootPathFilter(root),
-          scan_id: { $ne: opts.scanId }
-        });
-        counts.stale_removed += stale.deletedCount || 0;
+      if (counts.errors > 0) {
+        // An unreadable directory or a failed batch leaves real files unstamped.
+        pruneWithheld = `Scan had ${counts.errors} error(s); existing index rows were kept`;
+      } else {
+        const pruned = await pruneStaleFiles(filesCol, opts.roots, opts.scanId);
+        counts.stale_removed += pruned.removed;
+        if (pruned.skippedRoots.length) pruneWithheld = pruneSkippedMessage(pruned.skippedRoots);
       }
+      if (pruneWithheld) await updateScan({ counts, last_error: pruneWithheld });
     }
 
     if (!this.stopFlag && hashMode === 'candidates') {
@@ -337,7 +365,7 @@ class Scanner extends EventEmitter {
     }
 
     const end = new Date();
-    const status = this.stopFlag ? 'stopped' : 'complete';
+    const status = this.stopFlag ? 'stopped' : (pruneWithheld ? 'partial' : 'complete');
     try {
       counts.directories = await rebuildDirectoryRollups(filesCol, dirsCol, opts.roots);
     } catch (e) {
@@ -349,4 +377,4 @@ class Scanner extends EventEmitter {
   }
 }
 
-module.exports = { Scanner, computeFileHash, rebuildDirectoryRollups };
+module.exports = { Scanner, computeFileHash, rebuildDirectoryRollups, pruneStaleFiles, pruneSkippedMessage };
