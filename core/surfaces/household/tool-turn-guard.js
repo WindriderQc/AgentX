@@ -10,8 +10,8 @@ function requestsTaskCheck(text) {
   if (/\b(?:comment|how to|explain|explique|conseils?|advice|histoire|story)\b/.test(input)) return false;
   if (/\b(?:ne|don't|do not)\b[^.!?]{0,40}\b(?:pas|check|look|list|read)\b/.test(input)) return false;
   const topic = /\b(?:taches?|tasks?|to[ -]?do(?: list)?)\b/.test(input);
-  const read = /\b(?:regarde|verifie|consulte|liste|montre|combien|check|look|list|show|how many|read|count|review)\b/.test(input);
-  const personal = /\b(?:mes|nos|my|our|personal|personnelles?)\b/.test(input);
+  const read = /\b(?:regard(?:e|er|ez|ons)|verifi(?:e|er|ez|ons)|consult(?:e|er|ez|ons)|list(?:e|er|ez|ons)|montr(?:e|er|ez)|combien|check|look|list|show|how many|read|count|review)\b/.test(input);
+  const personal = /\b(?:mes|nos|ma|mon|my|our|personal|personnelles?)\b/.test(input);
   return topic && read && personal;
 }
 
