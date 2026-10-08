@@ -17,7 +17,8 @@ jest.mock('../../services/liveData', () => ({
     { id: 'quakes', legacyToggle: 'quakes' },
     { id: 'weather', legacyToggle: 'weather' }
   ]),
-  getFeedById: jest.fn(() => null)
+  getFeedById: jest.fn(() => null),
+  isRunning: jest.fn(() => true)
 }));
 
 const livedataRoutes = require('../../routes/livedata.routes');
@@ -33,6 +34,7 @@ function buildApp(overrides = {}) {
       sort: jest.fn(() => ({
         limit: jest.fn(() => ({ toArray: toArrayFn }))
       })),
+      limit: jest.fn(() => ({ toArray: toArrayFn })),
       toArray: toArrayFn
     })),
     updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 })
@@ -80,6 +82,25 @@ describe('Live Data Routes', () => {
         .expect(200);
       expect(res.body.status).toBe('success');
       expect(res.body.message).toMatch(/iss/);
+    });
+
+    test('returns 400 when enabled is not a boolean', async () => {
+      const res = await request(buildApp())
+        .post('/api/v1/livedata/config')
+        .send({ service: 'iss', enabled: 'false' });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/true or false/);
+    });
+
+    test('refuses a toggle when the feeds are not running instead of reporting success', async () => {
+      const liveData = require('../../services/liveData');
+      liveData.isRunning.mockReturnValueOnce(false);
+      const res = await request(buildApp())
+        .post('/api/v1/livedata/config')
+        .send({ service: 'iss', enabled: true });
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/DATA_BACKGROUND_JOBS_ENABLED/);
+      expect(liveData.reloadConfig).not.toHaveBeenCalled();
     });
 
     test('returns 400 for invalid service', async () => {
