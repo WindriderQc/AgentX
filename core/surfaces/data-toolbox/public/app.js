@@ -322,7 +322,7 @@ async function overview() {
       <article class="card"><h3>Automation visibility</h3>
         <div class="metric-row"><span>Live feeds</span><strong>${sources.liveData?.ok ? `${feeds.filter((feed) => feed.enabled).length}/${feeds.length} enabled` : '—'}</strong></div>
         <div class="metric-row"><span>Janitor profiles</span><strong>${sources.janitor?.ok ? number(profiles.length) : '—'}</strong></div>
-        <div class="metric-row"><span>Write routes</span><strong>1 · device name and known flag</strong></div>
+        <div class="metric-row"><span>Write routes</span><strong>2 · device name and known flag, MQTT publish</strong></div>
         <div class="metric-row"><span>Projection authority</span><strong>AgentX Data</strong></div>
       </article>
     </div>`;
@@ -841,6 +841,8 @@ async function janitor() {
 const renderers = { overview, storage, files, network, databases, 'live-data': liveData, janitor };
 // The GPU tab lives in gpu.js, which the page loads before this file.
 if (typeof gpu === 'function') renderers.gpu = gpu;
+// The MQTT tab lives in mqtt.js, loaded the same way.
+if (typeof mqttTab === 'function') renderers.mqtt = mqttTab;
 
 async function render(force = false) {
   const tab = location.hash.slice(1) || 'overview';

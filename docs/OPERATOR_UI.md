@@ -247,6 +247,30 @@ be read shows a notice in its place and the others stay on screen.
   with the mean, minimum, maximum and latest value in text.
 - **Collector**: the native gpu-agent's registration and last heartbeat.
 
+## Data Toolbox: MQTT
+
+Open `/data-toolbox#mqtt` (full profile, with the optional Data service). The
+tab shows what Data's broker monitor receives and publishes one message by
+hand. It needs `MQTT_BROKER_URL` on Data; without it the tab says so.
+
+- **Broker**: connected or not, the broker's host and port, the number of
+  messages received since Data started and the time of the last one. While the
+  broker is not connected nothing is received and Send is disabled.
+- **Stream**: the messages, newest first, read every 2 seconds while the tab is
+  open and the page visible. The topic filter takes MQTT wildcards (`+` one
+  level, `#` everything below) and is applied by Data. **Pause** stops the
+  reads, **Clear** empties the list on the page only. The page keeps 300
+  messages and Data 500, in memory: a notice says when messages passed between
+  two reads and are no longer available. A long payload opens on click; a
+  payload that is not text is shown as hex.
+- **Send**: a topic (pre-filled `esp32/`), a message and a **Retain** box. Any
+  topic is accepted and the message goes out at once, at QoS 0: it reaches real
+  devices and can switch an output or reboot one. A retained message is
+  delivered again to every device that subscribes later; to remove one, send an
+  empty retained message on the same topic. The outcome is shown under the
+  form, and the message then appears in the stream when the broker delivers it
+  back. Nothing is queued: when the broker is not connected the send is refused.
+
 ## Interaction and verification
 
 The diagnostic panels wrap long identifiers, expose textual status and reveal
