@@ -160,7 +160,8 @@ window. Per GPU it returns `samples`, the first and last sample times, `busy`
 read), time-weighted mean and p50/p95 utilization, VRAM used p50/p95/max and
 total, mean/p95/max power and the limit, and `throttled` time (power cap,
 thermal, hardware slowdown) with its share of the time throttle reasons were
-read. A GPU the host last reported with no sample in the window has coverage 0.
+read. The power cap counts only while the GPU is busy: the driver also raises
+that flag on a card at rest, where it limits nothing. A GPU the host last reported with no sample in the window has coverage 0.
 
 `DATA_COLLECTOR_PLACEMENT_JSON` may provide the Toolbox's operator display map:
 `{"network":{},"storage":{}}`, with rows keyed by configured collector ID and
