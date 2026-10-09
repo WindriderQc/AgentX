@@ -634,7 +634,10 @@ test('a later ready answer receives a full grace after invalidation', async () =
     await turn;
     assert.equal(outcome.error, undefined);
     assert.equal(outcome.result.text, 'Nouvelle réponse.');
-    assert.ok(Date.now() - readyAt >= 100, 'new evidence receives its own complete grace');
+    // A 100 ms timer can read as 99 ms on the wall clock: timers follow the
+    // loop's own millisecond clock, not Date.now(). The earlier grace would end
+    // near 30 ms, so a few milliseconds of tolerance still tell the two apart.
+    assert.ok(Date.now() - readyAt >= 95, 'new evidence receives its own complete grace');
     assert.equal(stream.requests(), 1);
   } finally { current = { run: { model: 'native' }, answer: answer('Nouvelle réponse.') }; stream.close(); await turn; }
 });
