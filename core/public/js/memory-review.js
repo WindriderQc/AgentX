@@ -25,6 +25,7 @@
     verified_git_or_test_outcome: 'A repository or test result independently verified it.',
     explicit_owner_instruction: 'This came from a direct owner instruction.',
     repeated_owner_preference: 'The same owner preference appeared in independent sessions.',
+    household_member_statement: 'Someone of the household said this on a family page. It is not the owner speaking and is never applied without review.',
   };
   const targetHelp = {
     shared_fact: ['AgentX shared memory', 'Becomes searchable shared knowledge after this one approved write.', 'Rollback removes the created memory document.'],

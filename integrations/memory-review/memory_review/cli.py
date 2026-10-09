@@ -46,6 +46,9 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
                         help="fnmatch pattern for allowed Codex session cwds (repeatable)")
     parser.add_argument("--openclaw-home", type=Path, default=None)
     parser.add_argument("--openclaw-agent", action="append", default=None)
+    parser.add_argument("--openclaw-member-agent", action="append", default=None,
+                        help="agent serving the household's family pages: its turns are "
+                             "household-member statements, never the owner's (repeatable)")
     parser.add_argument("--hermes-home", type=Path, default=None)
     parser.add_argument("--git-repo", action="append", type=Path, default=None,
                         help="repository whose accepted history is verified evidence (repeatable)")
@@ -72,6 +75,7 @@ def _collect_one(runtime: str, args: argparse.Namespace, store: WatermarkStore):
         return openclaw_collector.collect(
             home=args.openclaw_home, store=store,
             agents=tuple(args.openclaw_agent or ("main",)),
+            member_agents=tuple(args.openclaw_member_agent or ()),
             lookback_days=args.lookback_days, max_files=args.max_files,
         )
     if runtime == "git":

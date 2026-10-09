@@ -10,4 +10,4 @@ Usage: integrations/memory-review/README.md
 """
 
 COLLECTOR_VERSION = "memory-review-collector/0.2.0"
-PROMPT_VERSION = "memory-review-synthesis@2026-09-05-v2"
+PROMPT_VERSION = "memory-review-synthesis@2026-10-08-v3"

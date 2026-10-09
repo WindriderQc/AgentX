@@ -44,10 +44,16 @@ the history window is read from its latest messages, and the run says so when
 turns before the window were never seen. Core accepts 30 candidates per run;
 the run prints how many weaker ones were not submitted.
 
+`--openclaw-member-agent` names an agent that serves the household's family
+pages. Its turns are submitted as `household_member_statement`: evidence about
+someone of the household, never about the owner. The synthesis keeps them apart
+from owner statements, and Core sends every candidate resting on one to human
+review, whatever its type or confidence.
+
 Selected-note writes use Core `MemoryNote` through the native memory adapter; the
 CLI has no separate native-note writer.
 
-The 163 synthetic tests cover filtering of owner versus harness/tool content,
+The 164 synthetic tests cover filtering of owner versus harness/tool content,
 secret sanitation, bounded/resumable collection, API retries, idempotent watermarks,
 candidate validation and accepted Git evidence. No personal transcript or model
 is used. Native runtime formats, schedules and live acceptance are verified per

@@ -48,6 +48,7 @@ TRUST_ELIGIBLE = (
     "verified_runtime_evidence",
     "observed_project_event",
     "verified_git_or_test_outcome",
+    "household_member_statement",
 )
 TRUST_INELIGIBLE = (
     "assistant_claim",

@@ -44,11 +44,12 @@ class FakeGateway:
         return {"messages": self.histories[params["key"]]}
 
 
-def run(gateway, store=None, max_files=40):
+def run(gateway, store=None, max_files=40, agent="main", member_agent=False):
     result = CollectorResult(runtime="openclaw", host="test")
     collect_gateway(
-        home=Path("."), agent="main", store=store or FakeStore(), result=result,
+        home=Path("."), agent=agent, store=store or FakeStore(), result=result,
         lookback_days=14, max_files=max_files, allowed_owners=set(), rpc=gateway,
+        member_agent=member_agent,
     )
     return result
 
@@ -213,6 +214,16 @@ class OpenClawGatewayTests(unittest.TestCase):
         self.assertIn("were not read", result.errors[0])
         self.assertEqual(len(result.observations), 1)
         self.assertEqual(len(result.stagedWatermarks), 1)
+
+    def test_family_page_turns_are_member_statements_not_the_owners(self):
+        key = "agent:family:household:direct:abc"
+        gateway = FakeGateway([session(key)], {key: [
+            turn("e1", "Remember that I prefer the dinosaur story at bedtime."),
+        ]})
+        member = run(gateway, agent="family", member_agent=True)
+        self.assertEqual([o.trust for o in member.observations], ["household_member_statement"])
+        owner = run(gateway, agent="family")
+        self.assertEqual([o.trust for o in owner.observations], ["explicit_memory_request"])
 
 
 if __name__ == "__main__":
