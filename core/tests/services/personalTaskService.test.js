@@ -14,6 +14,36 @@ describe('personal tasks in the canonical Core store', () => {
     await Counter.deleteMany({ _id: 'pipelineTask' });
   });
 
+  test('selects current deadlines before limiting an older task backlog and reports complete counts', async () => {
+    const now = new Date('2030-01-02T16:00:00Z');
+    const rows = Array.from({ length: 30 }, (_, index) => ({
+      pipelineId: String(index + 1).padStart(4, '0'), service: 'personal',
+      title: 'Synthetic old reminder', status: 'queued', priority: 1,
+      dueAt: new Date('2029-11-01T20:00:00Z'), createdAt: new Date('2029-10-01T12:00:00Z')
+    }));
+    rows.push({ pipelineId: '0031', service: 'personal', title: 'Synthetic current deadline',
+      status: 'queued', priority: 3, dueAt: new Date('2030-01-02T22:00:00Z'), createdAt: new Date('2030-01-01T12:00:00Z') });
+    rows.push({ pipelineId: '0032', service: 'personal', title: 'Synthetic recent late task',
+      status: 'queued', priority: 3, dueAt: new Date('2030-01-01T22:00:00Z'), createdAt: new Date('2029-12-30T12:00:00Z') });
+    rows.push({ pipelineId: '0033', service: 'core', title: 'Synthetic unrelated lane', status: 'queued', priority: 1 });
+    rows.push(...Array.from({ length: 20 }, (_, index) => ({
+      pipelineId: String(index + 34).padStart(4, '0'), service: 'personal',
+      title: 'Synthetic recent overdue backlog', status: 'queued', priority: 1,
+      dueAt: new Date('2030-01-01T22:00:00Z'), createdAt: new Date('2029-12-30T12:00:00Z')
+    })));
+    await PipelineTask.insertMany(rows);
+    const page = await personal.list({ limit: 1 }, now);
+    expect(page).toMatchObject({ count: 1, totalCount: 52, hasMore: true,
+      overdueCount: 21, dueTodayCount: 1, tasks: [{ id: '0031', lane: 'today' }] });
+    const next = await personal.list({ limit: 12 }, now);
+    expect(next.tasks.slice(0, 2)).toMatchObject([{ id: '0031', lane: 'today', dueToday: true }, { id: '0032' }]);
+    expect(next.tasks).toHaveLength(12);
+    expect(next.tasks.slice(1).every(task => task.overdue)).toBe(true);
+    const full = await personal.list({ limit: 100 }, now);
+    expect(full).toMatchObject({ count: 52, totalCount: 52, hasMore: false });
+    expect(full.tasks.filter(task => task.recheck)).toHaveLength(30);
+  });
+
   test('shares the canonical sequence and preserves the personal create, list, update and complete journey', async () => {
     const work = await createTaskInMongo({ title: 'Synthetic coding task', service: 'core' });
     const created = await personal.create({ title: 'Synthetic reminder', note: 'Synthetic private note', priority: 2 });

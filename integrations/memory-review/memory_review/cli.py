@@ -137,6 +137,30 @@ def _window(args: argparse.Namespace) -> dict:
     }
 
 
+SYNTHESIS_EXCHANGES_KEPT = 40
+
+
+def _keep_synthesis_exchanges(state_dir: Path, run_id: str, exchanges: list) -> None:
+    """Keep what was asked and answered, beside the watermarks and as private
+    as they are. Without it a run that proposes nothing cannot be explained."""
+    if not exchanges:
+        return
+    try:
+        folder = Path(state_dir) / "synthesis"
+        folder.mkdir(parents=True, exist_ok=True)
+        os.chmod(folder, 0o700)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        path = folder / f"{run_id}-{stamp}.json"
+        with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as handle:
+            json.dump({"runId": run_id, "promptVersion": PROMPT_VERSION, "exchanges": exchanges},
+                      handle, ensure_ascii=False)
+        for old in sorted(folder.glob("*.json"), key=lambda item: item.stat().st_mtime)[:-SYNTHESIS_EXCHANGES_KEPT]:
+            old.unlink()
+        print(f"synthesis exchange kept: {path}")
+    except OSError as exc:
+        print(f"synthesis exchange not kept: {exc}")
+
+
 def _finish_run(client: MemoryReviewClient, run_id: str, state_dir: Path,
                 args: argparse.Namespace) -> int:
     """Idempotently finalize and synthesize one accepted run."""
@@ -154,15 +178,19 @@ def _finish_run(client: MemoryReviewClient, run_id: str, state_dir: Path,
         _write_local_report(client, run_id, state_dir)
         return 0
 
+    exchanges: list = []
     try:
         bundle = client.synthesis_input(run_id)
         synthesis_receipt: dict = {}
-        candidates = synthesis.synthesize(
-            bundle,
-            base_url=args.agentx_url, model=args.model,
-            max_tokens=args.max_tokens, timeout=args.inference_timeout,
-            receipt=synthesis_receipt,
-        )
+        try:
+            candidates = synthesis.synthesize(
+                bundle,
+                base_url=args.agentx_url, model=args.model,
+                max_tokens=args.max_tokens, timeout=args.inference_timeout,
+                receipt=synthesis_receipt, exchanges=exchanges,
+            )
+        finally:
+            _keep_synthesis_exchanges(state_dir, run_id, exchanges)
         if synthesis_receipt.get("notSubmitted"):
             print(f"candidate bound of {schema.MAX_CANDIDATES_PER_RUN} per run reached: "
                   f"{synthesis_receipt['notSubmitted']} weaker candidate(s) were not submitted")

@@ -79,13 +79,19 @@ function parsePriority(value, { fallback = 3, strict = false } = {}) {
 async function listPersonalTasks(input = {}, now = new Date()) {
   const query = { service: 'personal' };
   if (input.includeDone !== true && String(input.includeDone || '') !== 'true') query.status = { $in: OPEN_TASK_STATUSES };
-  const limit = Math.max(1, Math.min(Number(input.limit) || 25, 100));
-  const tasks = await PipelineTask.find(query).limit(limit).lean();
-  const items = sortedPersonalTasks(tasks, now);
+  const limit = Math.max(1, Math.min(Math.floor(Number(input.limit)) || 25, 100));
+  // Classify before paging: old imported reminders must not hide a newly
+  // captured deadline. Project only the fields needed by the public view.
+  const tasks = await PipelineTask.find(query).select('pipelineId title status priority spec dueAt relevantUntil origin source createdAt updatedAt').lean();
+  const attention = { today: 0, overdue: 1, upcoming: 2, inbox: 3, recheck: 4, expired: 5, done: 6 };
+  const all = sortedPersonalTasks(tasks, now).sort((a, b) => attention[a.lane] - attention[b.lane]);
+  const items = all.slice(0, limit);
   return {
     count: items.length,
-    overdueCount: items.filter((item) => item.overdue).length,
-    dueTodayCount: items.filter((item) => item.dueToday).length,
+    totalCount: all.length,
+    hasMore: all.length > items.length,
+    overdueCount: all.filter((item) => item.overdue).length,
+    dueTodayCount: all.filter((item) => item.dueToday).length,
     tasks: items
   };
 }

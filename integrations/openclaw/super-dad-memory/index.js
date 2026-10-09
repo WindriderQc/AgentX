@@ -30,7 +30,7 @@ export default definePluginEntry({
     const secretaryContext = context => configuredJobContext(context, api.pluginConfig?.secretarySessionKeys);
     const morningContext = context => configuredJobContext(context, api.pluginConfig?.briefingSessionKeys);
     const readTasks = () => agentxRead(api.pluginConfig?.agentxUrl,
-      "list_personal_tasks", { includeDone: false, includeNotes: false, limit: 100 });
+      "list_personal_tasks", { includeDone: false, includeNotes: false, limit: 12 });
     api.registerHttpRoute({ path: "/api/nestor/continuity", auth: "gateway", match: "exact",
       handler: continuityHttpHandler(continuityOperations({ workspace: workspaceFor(), config: api.config,
         resolveWorkspace, modelFor: id => resolveAgentEffectiveModelPrimary(api.config, id),
@@ -138,11 +138,11 @@ export default definePluginEntry({
       if (!privateOwnerContext(context, api.config)) return null;
       return {
         name: "nestor_context", label: "Nestor Context",
-        description: "Get relevant private notes, previous goal and actual tool receipts. Set includeTasks to consult current personal tasks. No actions, emails or financial writes. Missing calendar or ledger access remains explicit.",
+        description: "Get relevant private notes, previous goal and recent receipts from this session. Set includeTasks for up to 12 personal tasks ordered by attention, with total counts and local due-date labels. For a full task list use list_personal_tasks; for priorities alone use personal_briefing directly. No actions, emails or financial writes. Missing calendar or ledger access remains explicit.",
         parameters: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 2000 }, includeTasks: { type: "boolean" } }, required: ["query"], additionalProperties: false },
         async execute(_id, params) {
           const workspace = workspaceFor(context);
-          const evidence = await contextFor(workspace, params.query, { includeMemory: true, includeTasks: params.includeTasks === true, readTasks, readNotes });
+          const evidence = await contextFor(workspace, params.query, { includeMemory: true, includeTasks: params.includeTasks === true, sessionKey: context.sessionKey, readTasks, readNotes });
           await updateState(workspace, state => ({ ...state,
             goal: { text: params.query.slice(-800), at: nowIso() } }));
           return receipt(evidence);
