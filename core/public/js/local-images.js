@@ -10,6 +10,7 @@
   let draftEpoch = 0, referenceEpoch = 0, pendingSubmit = false, history = [], shownDetails = null;
   const detailsCache = new Map();
   let exportEpoch = 0;
+  let draftExpert = null;
   const mp = pixels => `${new Intl.NumberFormat('fr-CA', { maximumFractionDigits: 2 }).format(pixels / 1e6)} MP`;
   const dimensions = (w, h) => `${w} × ${h} px · ${mp(w * h)}`;
   const duration = ms => { const seconds = Math.round(ms / 1000); return seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`; };
@@ -18,10 +19,25 @@
   const genericSizes = [...$('image-size').options].map(option => [option.value, option.textContent]);
   const shape = (w, h) => w === h ? 'Carré' : w > h ? 'Paysage' : 'Portrait';
   const referenceCount = () => (selectedReference ? 1 : 0) + $('image-references').files.length;
+  const expert = globalThis.AgentXImageExpert?.mount({
+    getContext: () => {
+      const [width, height] = $('image-size').value.split(',').map(Number);
+      return { ready: !!config?.configured, locked: locked(), prompt: $('image-prompt').value,
+        profile: $('image-profile').value, width, height, referenceCount: referenceCount(),
+        seed: $('image-seed').value, referenceEpoch, worker: workshop?.worker || null };
+    },
+    apply: (prompt, source) => {
+      draftExpert = source;
+      ++draftEpoch; $('image-prompt').value = prompt; $('image-draft-source').hidden = true;
+      $('image-status').textContent = 'Brief préparé avec imageX · Hermes. Vérifie les références et lance la création.';
+      $('image-prompt').focus();
+    }
+  });
   const starters = globalThis.AgentXImageStarters?.mount({
     getContext: () => ({ locked: locked() || !config?.configured, referenceCount: referenceCount(),
       profiles: workshop?.profiles || [], hasPrompt: !!$('image-prompt').value.trim() }),
     apply: prompt => {
+      draftExpert = null;
       ++draftEpoch; $('image-prompt').value = prompt; $('image-draft-source').hidden = true;
       $('image-status').textContent = 'Canevas préparé. Remplace les passages entre crochets et vérifie les références avant de créer.';
       $('image-prompt').focus();
@@ -44,6 +60,7 @@
     $('image-new').disabled = block || !config; $('image-use-reference').disabled = block; $('image-reuse-brief').disabled = block;
     for (const button of $('image-gallery').querySelectorAll('button')) button.disabled = block;
     starters?.refresh();
+    expert?.refresh();
   }
   function updateFormMode() {
     const count = referenceCount();
@@ -101,6 +118,12 @@
       row.append(node('dt', 'Image parent enregistrée'), value); $('image-saved-recipe').append(row);
     }
     $('image-result-details').hidden = false;
+    if (d.expert) {
+      const row = node('div'), value = node('dd'), link = node('a', 'Brief préparé avec imageX · Hermes');
+      link.href = `/images?expertSession=${encodeURIComponent(d.expert.sessionId)}#imagex`;
+      value.append(link, node('span', d.expert.promptEdited ? ' · prompt ajusté après la proposition' : ' · prompt proposé par Hermes'));
+      row.append(node('dt', 'Collaboration'), value); $('image-saved-recipe').append(row);
+    }
     $('image-result-note').textContent = 'La durée totale inclut la préparation, le calcul, l’archivage et la restitution ; ces temps ne sont pas détaillés séparément dans ce reçu. Le matériel affiché vient de la configuration actuelle associée à l’hôte enregistré.';
     $('image-result-note').hidden = false;
   }
@@ -168,6 +191,7 @@
     try {
       const { draft } = await api(`/operations/${encodeURIComponent(op.id)}/draft`);
       if (epoch !== draftEpoch || operation?.id !== op.id) return;
+      draftExpert = op.expert ? { sessionId: op.expert.sessionId, turnId: op.expert.turnId } : null;
       if (!config.profiles.some(p => p.id === draft.profile)) throw new Error('Cette ancienne recette n’est plus disponible. Son brief reste consultable sous l’image.');
       $('image-prompt').value = draft.prompt; $('image-seed').value = draft.seed ?? ''; $('image-profile').value = draft.profile; renderRecipe();
       const size = `${draft.width},${draft.height}`, p = currentRecipe();
@@ -217,7 +241,7 @@
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height); return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
     } finally { URL.revokeObjectURL(url); }
   }
-  $('image-form').addEventListener('input', () => { ++draftEpoch; starters?.refresh(); });
+  $('image-form').addEventListener('input', () => { ++draftEpoch; starters?.refresh(); expert?.refresh(); });
   $('image-search').addEventListener('input', renderHistory);
   $('image-size').addEventListener('change', updateFormMode);
   $('image-profile').addEventListener('change', renderRecipe);
@@ -226,6 +250,7 @@
   $('image-new').addEventListener('click', () => {
     if (locked()) return;
     ++draftEpoch; ++referenceEpoch; selectedReference = null; request = null; operation = null; shownDetails = null;
+    draftExpert = null;
     resetExport(false);
     $('image-form').reset(); $('image-profile').value = config.defaultProfile;
     for (const id of ['image-draft-source', 'image-selected-reference', 'image-result-origin', 'image-output', 'image-download', 'image-use-reference', 'image-reuse-brief', 'image-result-details', 'image-result-facts', 'image-result-note', 'image-cancel', 'image-recover', 'image-stages']) $(id).hidden = true;
@@ -265,6 +290,7 @@
       if (files.length + (ref ? 1 : 0) > 2) throw new Error('Deux références au maximum, y compris la création choisie.');
       const [width, height] = $('image-size').value.split(',').map(Number);
       const payload = { prompt: $('image-prompt').value, profile: $('image-profile').value, width, height,
+        ...(draftExpert && { expert: draftExpert }),
         ...($('image-seed').value !== '' && { seed: Number($('image-seed').value) }) };
       const declared = workshop?.profiles.find(p => p.id === payload.profile)?.declaredIdentity;
       if (declared) { payload.recipeId = declared.id; payload.recipeVersion = declared.version; }

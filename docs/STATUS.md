@@ -96,6 +96,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   the selected operation with its brief and seed and can reuse its image as a
   reference. Operation observation never creates another image. Profiles and physical GPU placement require
   instance qualification; see [local images](LOCAL_IMAGES.md).
+  Atelier also embeds the optional Hermes imageX specialist: conversation,
+  editable prompt proposals, operational console, routing facts and read-only
+  profile documents. Core retains the conversations and verifies proposal links
+  on generated images. Applying a proposal precedes explicit local generation;
+  the specialist's text consultation receives no reference image bytes.
 - **Pipeline.** List, dossier and Planning references share Core's read-only
   next-action projection. **Needs attention** pages the engineering and
   private-lane queues separately, with an exact total or an explicit lower

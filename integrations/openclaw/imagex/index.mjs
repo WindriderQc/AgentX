@@ -1,6 +1,7 @@
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry';
 import { registerLocalImages } from '../super-dad-memory/local-images.js';
 import { runExpert, prepareImage } from './expert.mjs';
+import { registerStudioRoute } from './studio.mjs';
 
 export default definePluginEntry({
   id: 'agentx-imagex',
@@ -9,6 +10,7 @@ export default definePluginEntry({
   register(api) {
     const command = api.pluginConfig?.workerCommand;
     if (!command) return;
+    registerStudioRoute(api);
     registerLocalImages(api, {
       name: 'imagex',
       consultImage: (prompt, status) => runExpert(command, { action: 'consult', prompt, status }),

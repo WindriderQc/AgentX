@@ -12,6 +12,7 @@ const { reserve } = require('./gpuReservation');
 const { requestedRecipe, assertRecipe, buildExecution } = require('./recipeExecution');
 const { qualified, MAX_OUTPUT_PIXELS } = require('./sizes');
 const logger = require('../../../config/logger');
+const expertProvenance = require('./expertProvenance');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const ACTIVE = ['accepted', 'reserving', 'generating', 'archiving', 'restoring'];
@@ -39,6 +40,7 @@ function publicOperation(op) {
     studioPath, ...(studioUrl && { studioUrl }),
     createdAt: op.createdAt, updatedAt: op.updatedAt, runtimeRestored: op.runtimeRestored,
     cancelRequested: op.cancelRequested, error: op.error || null, timings: op.timings || null,
+    ...(op.expert && { expert: op.expert }),
     ...(op.artifact && { artifact: { sha256: op.artifact.sha256, mimeType: op.artifact.mimeType,
       width: op.artifact.width, height: op.artifact.height, url: `/api/images/operations/${op._id}/image` } }) };
 }
@@ -59,6 +61,7 @@ function validate(body, config) {
   const seed = body.seed === undefined ? crypto.randomInt(0, 2 ** 48 - 1) : Number(body.seed);
   if (!Number.isSafeInteger(seed) || seed < 0) throw fail('Graine invalide.');
   const recipe = requestedRecipe(body);
+  const expert = expertProvenance.validate(body.expert);
   const parent = validateParent(body.parent);
   if (body.references !== undefined && !Array.isArray(body.references)) throw fail('Références image invalides.');
   if ((body.references || []).length + (parent ? 1 : 0) > 2) throw fail('Deux références au maximum, parent compris.');
@@ -74,8 +77,8 @@ function validate(body, config) {
   const request = { prompt: body.prompt.trim(), width, height, seed };
   // Omitted seed remains omitted in the identity: a replay returns the original random seed.
   const requestHash = hash(JSON.stringify({ ...request, seed: body.seed ?? null, profile: id, references: originals.map(hash),
-    ...(parent && { parent: { ...parent, transform: TRANSFORM } }), ...(recipe && { recipe }) }));
-  return { profile: { ...profile, id }, request, requestHash, originals, parent, recipe };
+    ...(parent && { parent: { ...parent, transform: TRANSFORM } }), ...(recipe && { recipe }), ...(expert && { expert }) }));
+  return { profile: { ...profile, id }, request, requestHash, originals, parent, recipe, expert };
 }
 async function accept(body, { conversation, signal } = {}) {
   await initialize();
@@ -83,6 +86,7 @@ async function accept(body, { conversation, signal } = {}) {
   if (!config || !defaultArchive().enabled) throw fail('Le service d’images locales n’est pas configuré.', 503);
   const input = validate(body, config);
   if (conversation) {
+    if (input.expert) throw fail('Une proposition de l’Atelier ne peut pas être attachée à une autre surface.', 403);
     conversation = normalizeConversation(conversation);
     input.requestHash = hash(JSON.stringify([input.requestHash, conversation.surface, conversation.sessionId, conversation.packId, conversation.scopeId]));
   }
@@ -92,6 +96,7 @@ async function accept(body, { conversation, signal } = {}) {
     return publicOperation(prior);
   }
   assertRecipe(input.recipe, input.profile);
+  const expert = await expertProvenance.resolve(input.expert, input.request, input.profile.id);
   signal?.throwIfAborted();
   const prepared = await prepareReferences(input.originals, input.parent, conversation, image);
   const referenceStorage = await retainReferences(prepared);
@@ -104,6 +109,7 @@ async function accept(body, { conversation, signal } = {}) {
   try {
     op = await ImageOperation.create([{ _id: id, actionKey: body.actionKey, requestHash: input.requestHash,
       ...(conversation && { conversation }), workerSlot: config.workerUrl, workerUrl: config.workerUrl, state: 'accepted', profile: input.profile, request: input.request,
+      ...(expert && { expert }),
       ...(referenceStorage && { referenceStorage }), ...(prepared.lineage && { lineage: prepared.lineage }), jobId: id }], { writeConcern: { w: 1, j: true } });
     op = op[0].toObject();
     if (referenceStorage) op.referenceStorage = referenceStorage;

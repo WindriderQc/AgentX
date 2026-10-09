@@ -40,6 +40,32 @@ reuse the existing conversation scope, native identities and media delivery
 adapter. The specialist chooses only configured profiles and preserves explicit
 profile/dimension requests. The existing `local_image` path remains available.
 
+The Atelier embeds imageX chat, editable brief proposals, an operational console
+and a read-only profile document viewer. Hermes advises; AgentX owns canonical
+`image-workshop` conversations, idempotent turn acceptance and image operations;
+ComfyUI renders locally. Apply a proposal explicitly, then use the normal creation
+button. Applying preserves the recipe, format, seed and reference selections.
+Changed draft context blocks stale application. Images retain a server-verified
+link to the completed proposal, including whether its prompt was edited.
+
+Core uses its existing `OPENCLAW_GATEWAY_URL` and server-only
+`OPENCLAW_GATEWAY_TOKEN` to call the plugin's gateway-authenticated
+`POST /api/agentx/imagex/studio` route. The worker wrapper must forward `"$@"`;
+`--events` exposes bounded JSONL operational events while the default native
+tool protocol remains JSON. Only tool names and durations leave the worker;
+tool arguments, outputs and stderr are excluded. A restart marks an unfinished
+consultation interrupted and never repeats inference automatically.
+
+Read-only `describe` and `resource` actions disclose selected model configuration
+and five allowlisted documents: SOUL, the AgentX and ComfyUI skills, the capability
+notebook and specialist memory. They exclude credentials/config file contents,
+arbitrary paths, oversized files and links outside the profile. The dashboard
+distinguishes configured routing from the model declared at Hermes startup;
+that declaration does not attest an actual fallback. The consultation receives
+bounded successful conversation history and current recipe evidence, with no
+reference image bytes, private worker addresses or general owner conversations.
+Vision inspection and profile editing are not offered by this surface.
+
 Run `python3 -m unittest discover -s integrations/hermes/test` and
 `npm test --prefix integrations/openclaw/imagex`, along with the personal harness
 suite when changing its shared adapter. Installation, native tool availability,

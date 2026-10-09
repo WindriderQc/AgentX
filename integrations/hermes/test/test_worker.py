@@ -61,6 +61,37 @@ class WorkerTests(unittest.TestCase):
         self.assertFalse(result['ok'])
         self.assertFalse((self.home / 'workspace/count').exists())
 
+    def test_streamed_operations_preserve_result_and_exclude_tool_arguments_and_output(self):
+        binary = Path(self.env['HERMES_BIN'])
+        binary.write_text('#!/usr/bin/env python3\nimport json,sys\nsys.stdin.read()\n'
+                          'for e in [{"type":"system","subtype":"init","model":"fixture"},'
+                          '{"type":"tool_use","name":"skill_view","input":{"secret":"PRIVATE"}},'
+                          '{"type":"tool_result","name":"skill_view","output":"PRIVATE","duration_ms":3},'
+                          '{"type":"result","exit_code":0,"text":"Advice"}]:print(json.dumps(e),flush=True)\n')
+        process = subprocess.run([sys.executable, str(ROOT / 'worker.py'), '--events'],
+                                 input=json.dumps({'action': 'consult', 'prompt': 'A lake'}),
+                                 capture_output=True, text=True, env=self.env, timeout=10)
+        self.assertEqual(process.returncode, 0)
+        self.assertNotIn('PRIVATE', process.stdout)
+        events = [json.loads(line) for line in process.stdout.splitlines()]
+        self.assertEqual([row['type'] for row in events], ['started', 'tool_use', 'tool_result', 'result'])
+        self.assertEqual(events[-1]['result']['text'], 'Advice')
+
+    def test_profile_disclosures_allow_only_selected_fields_and_contained_files(self):
+        (self.home / 'config.yaml').write_text(json.dumps({'model': {'default': 'fixture:free', 'provider': 'openrouter',
+                                                                      'api_key': 'SECRET'}, 'auxiliary': {'free_only': True}}))
+        (self.home / 'SOUL.md').write_text('Image specialist')
+        code, result = self.call({'action': 'describe'})
+        self.assertEqual(code, 0)
+        self.assertEqual(result['routing']['model'], 'fixture:free')
+        self.assertNotIn('SECRET', json.dumps(result))
+        self.assertEqual(self.call({'action': 'resource', 'id': 'identity'})[1]['resource']['content'], 'Image specialist')
+        self.assertEqual(self.call({'action': 'resource', 'id': '../config.yaml'})[0], 1)
+        (self.home / 'SOUL.md').unlink()
+        (self.home / 'SOUL.md').symlink_to('/etc/hostname')
+        self.assertFalse(self.call({'action': 'resource', 'id': 'identity'})[1]['resource']['available'])
+        self.assertFalse((self.home / 'workspace/count').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from studio import describe, resource, communicate_events
 
 
 def query(payload):
@@ -34,14 +35,23 @@ def query(payload):
                 'ComfyUI nodes do not establish a Core capability. Core does not expose masks, denoise '
                 'controls, standalone upscaling, ControlNet, LoRA, arbitrary graphs or recipe import. '
                 'Do not claim these are live, or promise identical pixels from seed or export alone.')
-    return instruction + boundary + '\n\nRequest and current Core evidence:\n' + json.dumps(payload, ensure_ascii=False)
+    history = payload.get('history', [])
+    if not isinstance(history, list) or len(history) > 12 or any(
+            not isinstance(row, dict) or row.get('role') not in ('user', 'assistant')
+            or not isinstance(row.get('content'), str) or len(row['content']) > 8000 for row in history):
+        raise ValueError('Invalid bounded conversation history')
+    return instruction + boundary + ' Reply in French; image prompts may use English. Reference images are NOT supplied to you: never describe their visual content.' + '\n\nRequest and current Core evidence:\n' + json.dumps(payload, ensure_ascii=False)
 
 
-def run(payload):
+def run(payload, emit=None):
     profile = os.environ.get('IMAGEX_PROFILE', 'imagex')
     home = Path(os.environ.get('IMAGEX_HOME', str(Path.home() / '.hermes' / 'profiles' / profile)))
     if not (home / 'config.yaml').is_file():
         raise ValueError('Image expert profile is not configured')
+    if payload.get('action') == 'describe':
+        return describe(home)
+    if payload.get('action') == 'resource':
+        return {'ok': True, 'expert': 'hermes', 'resource': resource(home, payload.get('id'), True)}
     prompt = query(payload)
     key = payload.get('actionKey') if payload.get('action') == 'plan' else None
     if key is not None and (not isinstance(key, str) or not re.fullmatch('[a-f0-9]{64}', key)):
@@ -65,9 +75,12 @@ def run(payload):
         child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  text=True, cwd=home / 'workspace', start_new_session=True)
         try:
-            output, _ = child.communicate(prompt, timeout=150)
+            output, _ = communicate_events(child, prompt, emit) if emit else child.communicate(prompt, timeout=150)
         except BaseException:
             os.killpg(child.pid, signal.SIGTERM)
+            if emit:
+                # communicate() must not try to flush the already closed stdin.
+                child.stdin = None
             try:
                 child.communicate(timeout=5)
             except subprocess.TimeoutExpired:
@@ -114,7 +127,11 @@ if __name__ == '__main__':
         raw = sys.stdin.read(65537)
         if len(raw.encode()) > 65536:
             raise ValueError('Request too large')
-        print(json.dumps(run(json.loads(raw)), ensure_ascii=False))
+        streaming = '--events' in sys.argv
+        emit = (lambda event: print(json.dumps(event, ensure_ascii=False), flush=True)) if streaming else None
+        value = run(json.loads(raw), emit)
+        print(json.dumps({'type': 'result', 'result': value} if streaming else value, ensure_ascii=False), flush=True)
     except BaseException as error:
-        print(json.dumps({'ok': False, 'error': str(error) if isinstance(error, ValueError) else 'Image expert invocation failed'}))
+        value = {'ok': False, 'error': str(error) if isinstance(error, ValueError) else 'Image expert invocation failed'}
+        print(json.dumps({'type': 'result', 'result': value} if '--events' in sys.argv else value), flush=True)
         sys.exit(1)
