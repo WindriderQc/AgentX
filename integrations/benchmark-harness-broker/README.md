@@ -2,8 +2,8 @@
 
 This optional host process serves the existing AgentX Benchmark target catalog
 and WorkerEnvelope/WorkerReceipt contracts. It preserves isolated Ollama,
-Hermès execution and native OpenClaw benchmarks. Cloud models use OpenClaw
-model mode; agent profiles retain their distinct native agent mode.
+Hermès execution and, when qualified, native OpenClaw benchmarks. Cloud models
+use OpenClaw model mode; agent profiles retain their distinct native agent mode.
 It does not create another benchmark UI, model router or personal memory store.
 Historical broker wire identifiers remain compatible with existing receipts.
 
@@ -15,15 +15,25 @@ as an isolated judge. No model download or paid request occurs during installati
 
 ## Executable repository cells
 
-A native cell for an executable prompt pins a product repository fixture id and
-fingerprint in its WorkerEnvelope. OpenClaw receives the project in its per-cell
+When native agent execution is qualified, a cell for an executable prompt pins a
+product repository fixture id and fingerprint in its WorkerEnvelope. OpenClaw
+receives the project in its per-cell
 workspace with hidden tests withheld. After the turn, the adapter captures the
 edit and grades it against an independent original fixture snapshot, including
 public/hidden tests, regression checks and allowed edit paths. The receipt keeps
 patch and fixture digests, test status and whether the executable contract passed.
 A correct final explanation cannot replace a passing verifier. Native receipts
 remain distinct from isolated model quality rankings. Catalog materialization
-pins adapter version 2.3.0 and must be rerun after updating the executor.
+pins adapter version 2.3.1 and must be rerun after updating the executor.
+
+Native agent Benchmark targets are currently unavailable for every billing tier.
+The CLI adapter does not enforce the cell-wide turn, tool, token and spend
+ceilings before each native call. It rejects execution with
+`OPENCLAW_NATIVE_AGENT_BUDGET_UNQUALIFIED` before reading the profile, staging a
+workspace or starting OpenClaw. Catalog materialization preserves their metadata
+and pins with `available: false`. A timeout or a final usage check cannot qualify
+these limits. Reopening this route requires proof of native enforcement before
+the next call; request metadata and environment flags cannot enable it.
 
 ## Instance configuration
 
@@ -60,14 +70,23 @@ Cloud model targets are projected from the native execution catalogue:
 node materialize-openclaw-model-catalog.js /external/new-targets.json /external/existing-targets.json
 ```
 
+After updating the native executor to 2.3.1, regenerate the native CLI catalogue
+first, using `materialize-openclaw-catalog.js` and the accepted profiles. Pass
+that fresh catalogue as `/external/existing-targets.json` to the model
+materializer. It preserves native entries verbatim, so running only the model
+materializer leaves their previous availability and pins unchanged. Stale
+executor pins prevent the broker from loading the catalogue, including its
+isolated model entries.
+
 This command reads the private OpenClaw gateway, preserves existing local/native
 agent entries, and creates bounded, pinned model profiles outside Git. Fixed
 routing, native billing and a current observation window are required. It does
 not contact a provider or execute a model. Paid model execution retains the
 existing signed SpendGrant plus the native per-request ceiling. Paid native
-agent benchmarks stay unavailable until their native turn/spend boundary is
-qualified before execution. The agent materializer reads native catalogue
-billing for cloud profiles beyond local and included subscription profiles.
+agent benchmarks, along with local and included agents, stay unavailable until
+their native turn/spend boundary is qualified before execution. The agent
+materializer reads native catalogue billing for cloud profiles beyond local and
+included subscription profiles.
 
 Direct OpenRouter execution, its provider key and its model-specific materializer
 are retired. Historical results and their exact former provider/cost provenance
@@ -97,7 +116,9 @@ the installed-module catalog fixture. Windows skips the POSIX descendant-process
 termination check; the existing Linux Core CI job runs it through integration
 tests. These checks do not validate real GPU, native subscription or paid behavior.
 
-When installing a new broker source, keep the accepted runtime/catalog pins and
-the audit/spend ledgers, repin and validate the external catalog, then perform an
-authorized real cell. To back out, disable `BENCHMARK_HARNESS_ENABLED`, stop the
-broker and restore the accepted pins without deleting receipts or spend history.
+When installing a new broker source, keep the accepted runtime/profile settings
+and the audit/spend ledgers, repin and validate the external catalog in the order
+above, then receive the installed availability and pins. Native agent cells stay
+unavailable; real cells require a qualified route and its normal admission.
+To back out, disable `BENCHMARK_HARNESS_ENABLED`, stop the broker and restore the
+accepted pins without deleting receipts or spend history.

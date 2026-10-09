@@ -5,7 +5,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 const { fingerprint, normalizeTarget } = require('./contract');
-const { ADAPTER_VERSION } = require('./executors/openclaw-executor');
+const { ADAPTER_VERSION, NATIVE_AGENT_BUDGETS_QUALIFIED } = require('./executors/openclaw-executor');
 
 async function materialize({ openclaw, output, profilePath, additionalProfilePaths = [], nativeCatalogue = null }) {
   if (![openclaw, output, profilePath, ...additionalProfilePaths].every(value => typeof value === 'string' && path.isAbsolute(value))) {
@@ -80,7 +80,7 @@ async function materialize({ openclaw, output, profilePath, additionalProfilePat
       api: { name: 'openclaw-agent-exec', version: runtimeVersion }, contextWindow: model.contextWindow,
       capabilities: { candidate: true, judge: false },
       pricing,
-      available: billing !== 'paid', observedAt: null,
+      available: NATIVE_AGENT_BUDGETS_QUALIFIED && billing !== 'paid', observedAt: null,
       catalogFingerprint: fingerprint({ runtimeVersion, model, profile }),
       nativePolicy: {
         tools: tools.filter((tool) => allowed.includes(tool.name)).map((tool) => ({ name: tool.name, version: runtimeVersion, schemaFingerprint: fingerprint(tool.parameters) })),
