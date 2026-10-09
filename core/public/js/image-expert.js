@@ -131,7 +131,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply }) {
       || context.width !== original.width || context.height !== original.height || context.referenceCount !== original.referenceCount
       || baselines.has(proposalTurn.id) && baselines.get(proposalTurn.id) !== signature());
     $('imagex-apply').disabled = !proposalTurn || context.locked || changed || !$('imagex-proposal-prompt').value.trim();
-    $('imagex-apply-note').textContent = applied?.id === proposalTurn?.id && applied.signature === signature() ? 'Proposition appliquée. Le brief est prêt à être vérifié dans le formulaire de création.'
+    $('imagex-apply-note').textContent = applied && applied.id === proposalTurn?.id && applied.signature === signature() ? 'Proposition appliquée. Le brief est prêt à être vérifié dans le formulaire de création.'
       : context.locked ? 'Attends la fin de la génération pour modifier le brief.'
       : changed ? 'Le brief, les réglages ou les références ont changé. Demande une nouvelle proposition pour ce contexte.'
         : 'Appliquer remplace le texte du brief. La graine, la recette et les références restent celles du formulaire.';
