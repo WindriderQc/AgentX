@@ -333,12 +333,17 @@ describe('Cluster Schedule evidence presentation', () => {
     expect(html).not.toContain('>Host not declared<');
   });
 
-  test('lists each conflicting pair once with its run count, and no projection-only overdue', () => {
+  test('lists each overflowing job set once with its window count, and no projection-only overdue', () => {
     const { context, elements } = loadClusterScheduleContext();
     context.testConflicts = Array.from({ length: 6 }, (_, index) => ({
       hostId: 'gpu-b',
-      taskA: { name: index % 2 ? 'Doc re-embed' : 'RAG ingestion' },
-      taskB: { name: index % 2 ? 'RAG ingestion' : 'Doc re-embed' }
+      capacityVramMb: 24576,
+      requiredVramMb: 26624,
+      tasks: [
+        { name: 'Voice model', resident: true },
+        { name: index % 2 ? 'Doc re-embed' : 'RAG ingestion', resident: false },
+        { name: index % 2 ? 'RAG ingestion' : 'Doc re-embed', resident: false }
+      ]
     }));
     context.testHosts = [
       { id: 'gpu-a', name: 'GPU A', status: 'online' },
@@ -353,8 +358,8 @@ describe('Cluster Schedule evidence presentation', () => {
     vm.runInContext('renderAttention', context)();
     const html = elements.get('attentionList').innerHTML;
 
-    expect(html.match(/Schedule conflict/g)).toHaveLength(1);
-    expect(html).toContain('Doc re-embed overlaps RAG ingestion on GPU B (6 runs)');
+    expect(html.match(/VRAM overflow/g)).toHaveLength(1);
+    expect(html).toContain('Doc re-embed + RAG ingestion with resident Voice model need 26.0 GB of 24.0 GB on GPU B (6 windows)');
     expect(html).toContain('GPU B unreachable');
     expect(html).not.toContain('GPU A unreachable');
     expect(html).not.toContain('overdue');

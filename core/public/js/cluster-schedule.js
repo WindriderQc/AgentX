@@ -653,20 +653,13 @@ function getSourceMeta(sourceId, metadata) {
 // ── Conflicts ───────────────────────────────────────────────
 
 async function loadConflicts() {
-  const banner = document.getElementById('conflictBanner');
-  const text = document.getElementById('conflictText');
   try {
     const data = await fetchJSON(`${API_BASE}/schedule/conflicts?${calendarQuery()}`);
     conflictsData = data.conflicts || [];
-    if (conflictsData.length > 0) {
-      const unique = summarizeConflicts(conflictsData).map(c => `${c.nameA} + ${c.nameB} on ${c.hostLabel}`);
-      text.textContent = `${unique.length} overlapping pair${unique.length > 1 ? 's' : ''} (${data.count} run${data.count > 1 ? 's' : ''}): ${unique.slice(0, 3).join('; ')}${unique.length > 3 ? ` (+${unique.length - 3} more)` : ''}`;
-      banner.classList.remove('hidden');
-    } else {
-      banner.classList.add('hidden');
-    }
-    renderAttention();
-  } catch { banner.classList.add('hidden'); renderAttention(); }
+  } catch {
+    conflictsData = [];
+  }
+  renderAttention();
 }
 
 async function loadClaims() {
