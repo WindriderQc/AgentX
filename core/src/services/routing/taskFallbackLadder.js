@@ -47,6 +47,9 @@ const DEGRADABLE_TASKS = Object.freeze([
   'rag_reranking',
   'rag_compression',
   'janitor_ai',
+  // Advisory background review can use an explicitly configured CPU fallback.
+  // Deliberate reasoning (master_brain/deep_reasoning) remains strict.
+  'household_review',
 ]);
 
 const UNAVAILABLE_REASONS = Object.freeze({

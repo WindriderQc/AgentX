@@ -119,6 +119,33 @@ test('the route serves a review only within its own space', async () => {
   assert.equal((await call('/private/sessions/:sessionId/brain', 'unknown')).status, 404);
 });
 
+test('routed review delegates primary/fallback choice to Core and discards superseded admitted work', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; }), calls = [];
+  const routing = { degraded: true, reason: 'primary_busy', fallbackFrom: { model: 'gpu-review' }, fallbackTo: { model: 'cpu-review' } };
+  const brain = createBrain({ loadTurns: async () => TURNS, delayMs: 0,
+    env: { HOUSEHOLD_BRAIN_ENABLED: 'true', HOUSEHOLD_BRAIN_TASK: 'household_review',
+      HOUSEHOLD_BRAIN_MODEL: 'old-direct-model', HOUSEHOLD_BRAIN_HOST_URL: 'http://old.example.test:11434', HOUSEHOLD_BRAIN_EXCLUSIVE: 'true' },
+    inference: { execute: async (body, options) => {
+      calls.push({ body, options }); await gate;
+      return { ok: true, body: { response: REVIEW }, metadata: { model: 'cpu-review', routing } };
+    } } });
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'old' });
+  while (!calls.length) await new Promise(resolve => setTimeout(resolve, 1));
+  assert.equal(calls[0].body.taskType, 'household_review');
+  assert.equal(calls[0].body.model, undefined, 'explicit model would bypass the fallback ladder');
+  assert.equal(calls[0].options.hostUrl, undefined, 'explicit host would bypass the fallback ladder');
+  assert.equal(calls[0].body.exclusiveHost, undefined, 'reviews never evict the main model');
+  assert.equal(calls[0].options.signal, undefined, 'a new spoken turn must not quarantine the reasoning endpoints');
+  brain.cancel(SESSION.sessionId); release();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(brain.latest(SESSION.sessionId), null);
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'new' });
+  const result = await brain.wait(SESSION.sessionId, 'new');
+  assert.equal(result.model, 'cpu-review');
+  assert.deepEqual(result.routing, routing, 'the review records the actual fallback used');
+});
+
 test('a long shown list reaches the reviewer marked as shortened, never silently cut', () => {
   const steps = Array.from({ length: 10 }, (_, index) => `${index + 1}. **Étape ${index + 1}** : ${'détail '.repeat(40)}`).join('\n');
   const shown = transcript([{ inputText: 'Donne-moi 10 étapes', replyText: 'Voici 10 étapes.', display: [{ kind: 'list', body: steps }] }]);

@@ -119,21 +119,26 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     // discards its result: cancelling an admitted request leaves the runtime state
     // unknown and Core quarantines the host. Exclusive admission is opt-in because it
     // waits for an idle host, blocks other callers and unloads co-resident models.
-    const dedicatedHost = Boolean(env.HOUSEHOLD_BRAIN_HOST_URL);
+    // Opt-in routed reviews use Core's configured primary/fallback endpoints.
+    // They must be separate from the spoken model: a superseded result is
+    // discarded without aborting admitted GPU or CPU work.
+    const routedReview = env.HOUSEHOLD_BRAIN_TASK === 'household_review';
+    const dedicatedHost = !routedReview && Boolean(env.HOUSEHOLD_BRAIN_HOST_URL);
     const result = await inference.execute({
       mode: 'chat', taskType: env.HOUSEHOLD_BRAIN_TASK || 'master_brain',
-      ...(env.HOUSEHOLD_BRAIN_MODEL ? { model: String(env.HOUSEHOLD_BRAIN_MODEL).replace(/^ollama\//, '') } : {}),
+      ...(!routedReview && env.HOUSEHOLD_BRAIN_MODEL ? { model: String(env.HOUSEHOLD_BRAIN_MODEL).replace(/^ollama\//, '') } : {}),
       ...(dedicatedHost && env.HOUSEHOLD_BRAIN_EXCLUSIVE === 'true' ? { exclusiveHost: true } : {}),
       messages: [{ role: 'system', content: reviewerPrompt({ family }) }, { role: 'user', content: transcript(turns) }],
       stream: false, think: false, temperature: 0.2, max_tokens: 700,
       callerDetail: `agentx-household/brain/${family ? 'family' : 'private'}`, timeoutMs: LIMITS.reviewMs
-    }, { ...(dedicatedHost ? { hostUrl: String(env.HOUSEHOLD_BRAIN_HOST_URL) } : { signal }), consumerContract });
+    }, { ...(dedicatedHost ? { hostUrl: String(env.HOUSEHOLD_BRAIN_HOST_URL) } : routedReview ? {} : { signal }), consumerContract });
     if (signal.aborted) return;
     if (generation !== epochFor(family) || (preferencesFor && (await preferencesFor(family)).revision !== preferences.revision)) return;
     if (!result?.ok) throw new Error('Reviewer inference failed');
     const parsed = readReview(result.body?.message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '');
     if (!parsed) throw new Error('Reviewer returned no usable review');
-    settle(session.sessionId, { traceId, reviewedAt: new Date().toISOString(), model: result.metadata?.model || '', ...parsed });
+    settle(session.sessionId, { traceId, reviewedAt: new Date().toISOString(), model: result.metadata?.model || '',
+      ...(result.metadata?.routing && { routing: result.metadata.routing }), ...parsed });
   }
 
   // At most one review per conversation; a newer turn supersedes an older review.
