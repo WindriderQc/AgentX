@@ -1,0 +1,16 @@
+# Lean speech relay: Whisper recognition plus an external Pocket TTS CPU worker.
+# Kokoro and ONNX GPU synthesis are absent. ONNX CPU remains for Whisper's VAD.
+faster-whisper
+fastapi
+httpx
+certifi
+numpy
+nvidia-cublas-cu12
+nvidia-cuda-runtime-cu12
+nvidia-cudnn-cu12
+onnxruntime==1.24.4
+python-multipart
+python-dotenv
+requests
+soundfile
+uvicorn[standard]

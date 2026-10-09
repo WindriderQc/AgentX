@@ -9,6 +9,25 @@ from app.stt import whisper
 from app.stt.whisper import _run
 
 
+def test_windows_recognition_finds_cudnn_without_onnx_gpu(monkeypatch, tmp_path):
+    import os
+    cudnn = tmp_path / "Lib/site-packages/nvidia/cudnn/bin"
+    cudnn.mkdir(parents=True)
+    handles = []
+    monkeypatch.setattr(whisper.sys, "platform", "win32")
+    monkeypatch.setattr(whisper.sys, "prefix", str(tmp_path))
+    monkeypatch.setattr(whisper, "_dll_directories", handles)
+    monkeypatch.setenv("PATH", "")
+    opened = []
+    def add_directory(path):
+        opened.append(path)
+        return object()
+    monkeypatch.setattr(os, "add_dll_directory", add_directory, raising=False)
+    whisper._configure_windows_cuda_runtime()
+    assert str(cudnn) in os.environ["PATH"].split(os.pathsep)
+    assert opened == [str(cudnn)] and len(handles) == 1
+
+
 def test_uploaded_speech_threshold_can_be_calibrated_by_the_instance(monkeypatch):
     from dataclasses import replace
     calibrated = replace(whisper.settings, whisper_vad_threshold=0.7)

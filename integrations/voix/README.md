@@ -46,6 +46,34 @@ the caller chooses another voice, the service never substitutes one
 
 ## Install and start
 
+### One Pocket TTS engine
+
+A Pocket-only instance uses `requirements-speech.txt` for this relay and
+`requirements-pocket.txt` for its CPU worker. The relay keeps Whisper recognition
+and its CUDA libraries; it does not need Kokoro or ONNX GPU synthesis. ONNX CPU
+remains necessary for Whisper's speech detection.
+
+Set `TTS_PROVIDER=voxcpm`, `TTS_POCKET_ONLY=true` and `VOXCPM_BASE_URL` to the
+ready Pocket worker. The `voxcpm` id is the existing transport compatibility id;
+the catalogue names the worker Pocket TTS. Only its voices appear, startup warms
+that engine, and `/config` cannot reactivate a retired engine.
+
+Old browser selections can be migrated with `TTS_VOICE_ALIASES`, a JSON object
+such as `{"kokoro|ff_siwis":"helper"}`. A request naming a retired engine uses
+the mapped Pocket reference, or the default reference when no mapping exists.
+Applied response headers identify the actual engine and voice. This is a
+migration to one engine, not a fallback; a failed Pocket worker returns an error.
+Existing Pocket requests still require a configured reference. Instance voice
+assignments should also be updated so agent settings name their current voices.
+
+The worker loads one model and a voice state per `<id>.wav` reference, with an
+optional `<id>.name` label. Add references and restart the worker to discover
+them. Qualify ordinary short and longer utterances in each language actually
+used before retiring an instance's useful voice assignments. A configured French
+worker does not establish English quality merely because the catalogue lists it.
+
+### Other existing deployments
+
 Use Python 3.11 or newer on the voice host, from this directory:
 
 ```sh
