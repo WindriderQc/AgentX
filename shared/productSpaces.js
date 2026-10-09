@@ -52,8 +52,8 @@ function productSpaces(link) {
       item('nerve-center', 'Nerve Center', '/nerve-center', 'fa-brain'),
       item('agent-ops', 'Agent Ops', '/agent-ops', 'fa-users-gear'),
       item('cluster-schedule', 'Schedule', '/cluster-schedule', 'fa-calendar-alt'),
-      item('analytics', 'Activity', '/analytics', 'fa-chart-line'),
-      item('performance', 'Performance', '/performance', 'fa-tachometer-alt'),
+      item('analytics', 'AI activity', '/analytics', 'fa-chart-line'),
+      item('performance', 'Server performance', '/performance', 'fa-tachometer-alt'),
       item('backup', 'Backup', '/backup', 'fa-box-archive'),
       item('data-toolbox', 'Data Toolbox', '/data-toolbox', 'fa-database'),
       item('operator-skill', 'Skill opérateur (zip)', '/api/operator-skill/download', 'fa-file-zipper', 'core', {

@@ -124,8 +124,9 @@
                 const metrics = data.metrics_24h || {};
                 const trends = data.trends || {};
 
-                const avgTime = Number(metrics.avg_latency || 0);
-                document.getElementById('avgResponseTime').textContent = `${avgTime.toFixed(0)}ms`;
+                // null means no request was recorded: show unknown, not 0 ms or 100%.
+                const show = (value, format) => (value === null || value === undefined ? '—' : format(Number(value)));
+                document.getElementById('avgResponseTime').textContent = show(metrics.avg_latency, v => `${v.toFixed(0)}ms`);
                 this.updateTrend('responseTrend', trends.avg_latency_pct);
 
                 const throughput = Number(metrics.throughput_rps || 0);
@@ -134,15 +135,20 @@
 
                 const errorRate = Number(metrics.error_rate || 0);
                 const errorEl = document.getElementById('errorRate');
-                errorEl.textContent = `${errorRate.toFixed(2)}%`;
+                errorEl.textContent = show(metrics.error_rate, v => `${v.toFixed(2)}%`);
                 errorEl.style.color = errorRate > 5 ? '#ef4444' : errorRate > 1 ? '#fbbf24' : 'inherit';
                 this.updateTrend('errorTrend', trends.error_rate_pct);
 
-                const uptime = Number(metrics.uptime_percent || 0);
-                document.getElementById('uptime').textContent = `${uptime.toFixed(2)}%`;
+                document.getElementById('uptime').textContent = show(metrics.uptime_percent, v => `${v.toFixed(2)}%`);
+                document.getElementById('p95Latency').textContent = show(metrics.p95_latency, v => `${v.toFixed(0)}ms`);
 
-                const p95 = Number(metrics.p95_latency || 0);
-                document.getElementById('p95Latency').textContent = `${p95.toFixed(0)}ms`;
+                const modelBound = document.getElementById('modelBoundNote');
+                if (modelBound) {
+                    const count = Number(metrics.model_bound_requests || 0);
+                    modelBound.textContent = count > 0
+                        ? `${count} model-bound request${count === 1 ? '' : 's'} (chat, generation, embeddings, event streams) in this period are measured on AI activity, not here.`
+                        : 'Chat, generation, embedding and streaming requests are measured on AI activity, not here.';
+                }
                 this.updateTrend('p95Trend', trends.p95_latency_pct);
 
                 // Sources / provenance indicator

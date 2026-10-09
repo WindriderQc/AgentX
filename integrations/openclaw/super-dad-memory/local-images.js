@@ -8,18 +8,18 @@ export function imageActionKey(context, toolCallId) {
   if (!context?.sessionKey || !context.runId || !toolCallId) throw new Error('Native session, run and tool-call identities are required');
   return createHash('sha256').update(JSON.stringify([context.sessionKey, context.sessionId || '', context.runId, toolCallId])).digest('hex');
 }
-export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
+export function registerLocalImages(api, { fetchImpl = fetch, name = 'local_image', planImage, consultImage } = {}) {
   const nativeCalls = new Map();
   const callKey = (context, id) => `${context.sessionKey}:${id}`;
   api.on?.('before_tool_call', (event, context) => {
     const id = event.toolCallId || context.toolCallId;
     const runId = event.runId || context.runId;
-    if (event.toolName !== 'local_image' || !id || !runId || !context.sessionKey) return;
+    if (event.toolName !== name || !id || !runId || !context.sessionKey) return;
     nativeCalls.set(callKey(context, id), { ...context, runId });
     if (nativeCalls.size > 1000) nativeCalls.delete(nativeCalls.keys().next().value);
   });
   api.on?.('after_tool_call', (event, context) => {
-    if (event.toolName === 'local_image') nativeCalls.delete(callKey(context, event.toolCallId || context.toolCallId));
+    if (event.toolName === name) nativeCalls.delete(callKey(context, event.toolCallId || context.toolCallId));
   });
   api.registerTool(context => {
     if (!privateOwnerContext(context, api.config)) return null;
@@ -36,10 +36,11 @@ export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
       return result;
     };
     return {
-      name: 'local_image', label: 'Local Image',
-      description: 'Create or edit an image locally through AgentX Core. create returns a durable operation and a studio link. Household uses a quick conversation preset by default and shows progress and the image automatically. Once accepted, end this agent turn so its LLM GPU reservation can be released; do not poll in the same turn. Explain that the image is preparing. status in a later turn returns the verified state and the image when ready. Never invent success or resubmit an uncertain request. No cloud fallback. Optional referencePaths must be existing PNG/JPEG files under the native media directory; two maximum. Preserve image 1 and image 2 order in edit prompts.',
+      name, label: name === 'local_image' ? 'Local Image' : 'imageX · Hermes Image Specialist',
+      description: (planImage ? 'Delegate image work to the configured Hermes specialist. consult gives workflow and prompt advice without creating an image. create asks the specialist to prepare the prompt and select a configured profile, then submits locally through AgentX Core. ' : 'Create or edit an image locally through AgentX Core. ')
+        + 'create returns a durable operation and a studio link. Household uses a quick conversation preset by default and shows progress and the image automatically. Once accepted, end this agent turn so its LLM GPU reservation can be released; do not poll in the same turn. Explain that the image is preparing. status in a later turn returns the verified state and the image when ready. Never invent success or resubmit an uncertain request. No cloud rendering fallback. Optional referencePaths must be existing PNG/JPEG files under the native media directory; two maximum. Preserve image 1 and image 2 order in edit prompts.',
       parameters: { type: 'object', properties: {
-        action: { type: 'string', enum: ['create', 'status', 'cancel', 'profiles'] },
+        action: { type: 'string', enum: ['create', 'status', 'cancel', 'profiles', ...(consultImage ? ['consult'] : [])] },
         prompt: { type: 'string', minLength: 1, maxLength: 8000 },
         profile: { type: 'string', maxLength: 50 },
         operationId: { type: 'string', format: 'uuid' },
@@ -48,9 +49,14 @@ export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
         referencePaths: { type: 'array', maxItems: 2, items: { type: 'string', maxLength: 500 } }
       }, required: ['action'], additionalProperties: false },
       async execute(id, params) {
-        let result, actionKey;
+        let result, actionKey, expert;
         if (params.action === 'profiles') result = await call('/status');
+        else if (params.action === 'consult' && consultImage) {
+          expert = await consultImage(params.prompt, await call('/status'));
+          result = { ok: true, expert };
+        }
         else if (params.action === 'create') {
+          actionKey = imageActionKey({ ...context, ...nativeCalls.get(callKey(context, id)) }, id);
           const references = [];
           for (const name of params.referencePaths || []) {
             const root = await realpath(mediaRoot(process.env, api.pluginConfig?.mediaRoot));
@@ -58,15 +64,19 @@ export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
             if (!file.startsWith(root + path.sep) || (await stat(file)).size > 2.25 * 1024 * 1024) throw new Error('Reference outside media root or too large');
             references.push((await readFile(file)).toString('base64'));
           }
-          actionKey = imageActionKey({ ...context, ...nativeCalls.get(callKey(context, id)) }, id);
-          result = await call('/operations', { actionKey, prompt: params.prompt,
-            ...(params.profile && { profile: params.profile }), ...(params.width && { width: params.width }),
-            ...(params.height && { height: params.height }), references });
+          let request = { prompt: params.prompt, ...(params.profile && { profile: params.profile }),
+            ...(params.width && { width: params.width }), ...(params.height && { height: params.height }) };
+          if (planImage) {
+            const planned = await planImage({ ...request, referenceCount: references.length }, await call('/status'), actionKey);
+            request = planned.request; expert = planned.expert;
+          }
+          result = await call('/operations', { ...request, actionKey, references });
         } else {
           if (!/^[a-f0-9-]{36}$/.test(params.operationId || '')) throw new Error('An exact image operation id is required');
           result = await call(`/operations/${params.operationId}${params.action === 'cancel' ? '/cancel' : ''}`,
             params.action === 'cancel' ? {} : undefined);
         }
+        if (expert) result.expert = expert;
         if (result.operation) {
           if (actionKey) result.acceptedAction = { operationId: result.operation.id, actionKey };
           result.studioPath = result.operation.studioPath || `/images?operation=${result.operation.id}`;
@@ -91,5 +101,5 @@ export function registerLocalImages(api, { fetchImpl = fetch } = {}) {
         return { content, details: result };
       }
     };
-  }, { name: 'local_image', optional: true });
+  }, { name, optional: true });
 }

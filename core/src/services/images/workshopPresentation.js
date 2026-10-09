@@ -36,6 +36,7 @@ async function details(id) {
   const op = await ImageOperation.findById(id).select('+request +workerUrl +execution').lean();
   if (!op) throw Object.assign(new Error('Opération image inconnue.'), { statusCode: 404 });
   return { id: op._id, recipe: recipeInfo(op.profile.id, op.profile),
+    ...(op.expert && { expert: op.expert }),
     ...(op.lineage && { lineage: op.lineage }),
     ...(op.execution && { execution: executionDetails(op.execution) }),
     worker: workerInfo(op.workerUrl, loadConfig()),

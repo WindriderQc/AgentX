@@ -5,7 +5,8 @@
             <div>
                 <span class="analytics-experience-eyebrow">Agent X activity</span>
                 <h1 id="analytics-experience-title">Understand what Agent&nbsp;X has been doing.</h1>
-                <p>See the useful signals first—activity, reliability and knowledge use—then open the full observability workbench when you need attribution, costs or trends.</p>
+                <p>See the useful signals first—activity, reliability and knowledge use—then open the full workbench when you need attribution, costs or trends.</p>
+                <p class="analytics-experience-crosslink">Model calls are measured here. For how fast Core's pages and API respond, see <a href="/performance">Server performance</a>.</p>
             </div>
             <div id="analytics-experience-status" class="analytics-experience-status is-loading" role="status" aria-live="polite">
                 <span class="analytics-experience-icon" aria-hidden="true"><i class="fas fa-circle-notch fa-spin"></i></span>
@@ -45,7 +46,7 @@
             <div>
                 <div class="eyebrow">AgentX • Intelligence</div>
                 <h2><i class="fas fa-chart-line"></i><span class="title-separator"></span>Activity workbench</h2>
-                <p class="lede">Monitor product metrics, usage trends, and system health in one view.</p>
+                <p class="lede">Inference calls, models, costs, conversations and knowledge use.</p>
             </div>
             <div class="header-controls">
                 <select id="periodSelect">
@@ -264,46 +265,6 @@
                 <div class="value" id="ragUsage">—</div>
                 <div class="sub" id="ragUsageNote">Using retrieval</div>
             </div>
-        </div>
-
-        <!-- Hidden elements for JS compatibility -->
-        <div style="display: none;">
-            <span id="cacheSize"></span>
-            <span id="cacheMem"></span>
-            <span id="dbConversations"></span>
-            <span id="dbPrompts"></span>
-            <span id="dbUsers"></span>
-            <span id="dbIndexes"></span>
-            <span id="connWaiting"></span>
-            <span id="connPool"></span>
-            <span id="sysNode"></span>
-            <span id="sysUptime"></span>
-            <span id="sysPlatform"></span>
-            <span id="detailCacheTotal"></span>
-            <span id="detailCacheAvg"></span>
-            <span id="detailCacheEvict"></span>
-            <span id="detailDbName"></span>
-            <span id="detailDbHost"></span>
-            <span id="detailDbCollections"></span>
-            <span id="detailHeapUsed"></span>
-            <span id="detailHeapTotal"></span>
-            <span id="detailRss"></span>
-            <span id="cacheStatus"></span>
-            <span id="cacheHitRate"></span>
-            <span id="cacheBar"></span>
-            <span id="cacheHits"></span>
-            <span id="cacheMisses"></span>
-            <span id="dbTotalDocs"></span>
-            <span id="connStatus"></span>
-            <span id="connActive"></span>
-            <span id="connMax"></span>
-            <span id="connBar"></span>
-            <span id="connAvail"></span>
-            <span id="sysStatus"></span>
-            <span id="sysMem"></span>
-            <span id="sysBar"></span>
-            <span id="sysTotalMem"></span>
-            <span id="sysTimestamp"></span>
         </div>
 
         <!-- Cost Stats Cards -->
@@ -1008,7 +969,6 @@
         })();
         </script>
 
-        <!-- System Metrics Section moved to top -->
           </div>
         </details>
     </div>

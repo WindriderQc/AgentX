@@ -477,6 +477,15 @@ scope with each operation; Household's read routes verify all scope fields.
 Private native Household creates use the same binding. ComfyUI only executes
 bounded server-owned graphs; callers cannot submit arbitrary workflows.
 
+The Atelier's optional imageX surface delegates bounded text advice and planning
+to Hermes through a gateway-authenticated OpenClaw plugin route. Core stores
+sessions, transcript and operational evidence in its canonical Conversation
+capability under `image-workshop`; the harness is an execution adapter. The UI
+applies a validated proposal explicitly before normal image creation. Core
+resolves proposal provenance from the completed canonical turn. Read-only
+profile documents and configured routing are disclosed without credentials or
+arbitrary filesystem access. No unfinished consultation is replayed at restart.
+
 Browser cards read progress and verified completion without re-submitting a
 creation. Resume also reads scoped operations independently of the turn audit,
 so an accepted image remains discoverable after a lost reply. `/images` loads

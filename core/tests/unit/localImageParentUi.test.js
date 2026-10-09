@@ -3,6 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../../public/js/local-images.js'), 'utf8');
+const starterSource = fs.readFileSync(path.join(__dirname, '../../public/js/image-starters.js'), 'utf8');
+const starterData = JSON.parse(fs.readFileSync(path.join(__dirname, '../../public/data/image-starters.json'), 'utf8'));
 const parentId = '11111111-1111-4111-8111-111111111111';
 const childId = '22222222-2222-4222-8222-222222222222';
 const checksum = 'a'.repeat(64);
@@ -24,7 +26,7 @@ class Element {
   focus() {}
 }
 const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
-async function studio({ failFirst = false, lineage, requested = parentId, availableRecipe, historicalRecipe, execution, exportFailure, exportPending } = {}) {
+async function studio({ failFirst = false, lineage, requested = parentId, availableRecipe, historicalRecipe, execution, exportFailure, exportPending, starterFailure = false } = {}) {
   const elements = new Map();
   const get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const size = new Element('option'); size.value = '1024,1024'; size.textContent = 'Square';
@@ -36,6 +38,7 @@ async function studio({ failFirst = false, lineage, requested = parentId, availa
     request: { prompt: 'Edit the chosen scene', seed: 42, width: 1024, height: 1024 }, ...(lineage && { lineage }) });
   const fetch = jest.fn(async (url, options) => {
     let data;
+    if (url === '/data/image-starters.json') return { ok: !starterFailure, json: async () => starterData };
     if (options.method === 'POST') {
       post.push(JSON.parse(options.body));
       if (failFirst && post.length === 1) return { ok: false, json: async () => ({ ok: false, message: 'Fixture connection interrupted' }) };
@@ -45,14 +48,14 @@ async function studio({ failFirst = false, lineage, requested = parentId, availa
       if (exportFailure) return { ok: false, json: async () => ({ message: exportFailure }) };
       return { ok: true, json: async () => ({ schemaVersion: 1, parts: [{ name: 'graph.json' }, { name: 'reference-0-source.jpg' }, { name: 'output.png' }] }) };
     } else if (url.endsWith('/status')) data = { configured: true, defaultProfile: 'quality', profiles: [{ id: 'quality', label: 'Fixture', maxPixels: 4194304 }] };
-    else if (url.endsWith('/workshop')) data = { profiles: [{ id: 'quality', label: 'Fixture', steps: 4, maxPixels: 4194304, ...(availableRecipe && { declaredIdentity: availableRecipe }) }], worker: null };
+    else if (url.endsWith('/workshop')) data = { profiles: [{ id: 'quality', family: 'qwen21', label: 'Fixture', steps: 4, maxPixels: 4194304, ...(availableRecipe && { declaredIdentity: availableRecipe }) }], worker: null };
     else if (url.endsWith('/draft')) data = { draft: { profile: 'quality', prompt: 'Edit the chosen scene', width: 1024, height: 1024, seed: 42 } };
     else if (url.endsWith('/details')) data = { details: detail(requested) };
     else if (url.endsWith('/operations')) data = { operations: [archived(parentId)] };
     else data = { operation: archived(requested) };
     return { ok: true, json: async () => ({ ok: true, ...data }) };
   });
-  vm.runInNewContext(source, { document: { getElementById: get, createElement: tag => {
+  const context = vm.createContext({ document: { getElementById: get, createElement: tag => {
     const el = new Element(tag);
     if (tag === 'canvas') { canvas(); el.getContext = () => ({ drawImage() {} }); el.toDataURL = () => 'data:image/jpeg;base64,bWFudWFs'; }
     return el;
@@ -61,6 +64,7 @@ async function studio({ failFirst = false, lineage, requested = parentId, availa
   URL: { createObjectURL: () => 'blob:fixture', revokeObjectURL() {} },
   Image: class { constructor() { this.width = 2; this.height = 2; } async decode() { imageDecode(); } },
   Event: class { constructor(type) { this.type = type; } }, setTimeout: jest.fn(), clearTimeout: jest.fn() });
+  vm.runInContext(starterSource, context); vm.runInContext(source, context);
   await settle();
   const fire = async (id, type = 'click') => { await get(id).dispatchEvent({ type, preventDefault() {} }); await settle(); };
   return { get, fire, post, canvas, imageDecode, fetch };
@@ -71,6 +75,45 @@ test('the chosen archive sends its exact parent identity without converting the 
   expect(ui.post).toHaveLength(1);
   expect(ui.post[0]).toMatchObject({ parent: { operationId: parentId, sha256: checksum }, references: [] });
   expect(ui.canvas).not.toHaveBeenCalled(); expect(ui.imageDecode).not.toHaveBeenCalled();
+});
+
+test('choosing a starter is read-only and applying it preserves the parent and rendering settings', async () => {
+  const ui = await studio(); await ui.fire('image-use-reference');
+  ui.get('image-seed').value = '73';
+  const original = ui.get('image-prompt').value;
+  ui.get('image-starter').value = 'precise-edit'; await ui.fire('image-starter', 'change');
+  expect(ui.get('image-prompt').value).toBe(original); expect(ui.post).toHaveLength(0);
+  expect(ui.get('image-starter-references').textContent).toContain('Actuellement : 1');
+  expect(ui.get('image-starter-recipe').textContent).toContain('Fixture');
+  expect(ui.get('image-starter-replace').textContent).toContain('remplace le brief actuel');
+  await ui.fire('image-starter-apply');
+  expect(ui.get('image-prompt').value).toContain('[modification précise et emplacement]');
+  expect(ui.get('image-seed').value).toBe('73'); expect(ui.post).toHaveLength(0);
+  await ui.fire('image-form', 'submit');
+  expect(ui.post[0]).toMatchObject({ profile: 'quality', width: 1024, height: 1024, seed: 73,
+    parent: { operationId: parentId, sha256: checksum } });
+});
+test('starter reference guidance counts the chosen parent plus a separate upload', async () => {
+  const ui = await studio(); await ui.fire('image-use-reference');
+  ui.get('image-references').files = [{ type: 'image/png', name: 'scene.png' }];
+  await ui.fire('image-references', 'change');
+  ui.get('image-starter').value = 'two-image-composition'; await ui.fire('image-starter', 'change');
+  expect(ui.get('image-starter-references').textContent).toContain('2 références. Actuellement : 2');
+  expect(ui.post).toHaveLength(0);
+});
+test('a pending generation locks starter application and a missing catalogue leaves manual briefs usable', async () => {
+  const ui = await studio(); ui.get('image-starter').value = 'illustration';
+  await ui.fire('image-starter', 'change');
+  // Holding the POST tests the same admission lock used by other studio controls.
+  let release; const pending = new Promise(resolve => { release = resolve; });
+  ui.fetch.mockImplementationOnce(async () => { await pending; return { ok: false, json: async () => ({ message: 'Fixture interruption' }) }; });
+  const submitted = ui.fire('image-form', 'submit'); await settle();
+  expect(ui.get('image-starter-apply').disabled).toBe(true);
+  const prompt = ui.get('image-prompt').value; await ui.fire('image-starter-apply');
+  expect(ui.get('image-prompt').value).toBe(prompt); release(); await submitted;
+  const offline = await studio({ starterFailure: true });
+  expect(offline.get('image-starter-status').textContent).toContain('écrire ton brief directement');
+  await offline.fire('image-form', 'submit'); expect(offline.post).toHaveLength(1);
 });
 test('an interrupted POST retains the chosen parent and exact action identity on retry', async () => {
   const ui = await studio({ failFirst: true }); await ui.fire('image-use-reference');

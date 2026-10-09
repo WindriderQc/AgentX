@@ -71,4 +71,35 @@ describe('performance tracker path capture', () => {
       expect(paths).toContain('/api/widgets/report');
     });
   });
+
+  describe('model-bound requests', () => {
+    const { isModelBoundRequest } = require('../../src/services/modelBoundRequestPolicy');
+
+    test('classifies chat, inference and event streams as model-bound', () => {
+      expect(isModelBoundRequest({ path: '/api/chat/stream' })).toBe(true);
+      expect(isModelBoundRequest({ path: '/api/inference/generate' })).toBe(true);
+      expect(isModelBoundRequest({ path: '/api/consumers/nestor/v1/inference' })).toBe(true);
+      expect(isModelBoundRequest({ path: '/api/anything', contentType: 'text/event-stream; charset=utf-8' })).toBe(true);
+      expect(isModelBoundRequest({ path: '/api/chat/history' })).toBe(false);
+      expect(isModelBoundRequest({ path: '/api/performance/dashboard', contentType: 'application/json' })).toBe(false);
+    });
+
+    test('keeps model-bound requests out of the latency buffer', async () => {
+      await tracker.flushToDatabase().catch(() => {});
+      const app = express();
+      app.use(tracker.trackRequest);
+      app.post('/api/chat', (_req, res) => res.json({ ok: true }));
+      app.get('/api/events', (_req, res) => { res.type('text/event-stream'); res.end('data: x\n\n'); });
+      app.get('/api/widgets', (_req, res) => res.json({ ok: true }));
+
+      await request(app).post('/api/chat').send({});
+      await request(app).get('/api/events');
+      await request(app).get('/api/widgets');
+
+      const paths = tracker.peekBuffer().map((r) => r.path);
+      expect(paths).toContain('/api/widgets');
+      expect(paths).not.toContain('/api/chat');
+      expect(paths).not.toContain('/api/events');
+    });
+  });
 });

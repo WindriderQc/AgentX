@@ -7,7 +7,7 @@ import { registerLocalImages, imageActionKey } from '../local-images.js';
 import { recordTool, recordRun } from '../harness.js';
 import { continuityOperations } from '../continuity.js';
 
-test('an accepted create retains its exact Core action identity through a failed or fallback native run', async t => {
+for (const toolName of ['local_image', 'imagex']) test(`${toolName} retains its exact Core action identity through a failed or fallback native run`, async t => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-image-receipt-'));
   t.after(() => rm(workspace, { recursive: true }));
   const context = { agentId: 'main', sessionId: 'native-session', toolCallId: 'call-image',
@@ -16,13 +16,13 @@ test('an accepted create retains its exact Core action identity through a failed
   const id = '33333333-3333-4333-8333-333333333333';
   let factory, calls = 0;
   registerLocalImages({ config: {}, pluginConfig: { agentxUrl: 'http://core.test' }, registerTool(value) { factory = value; } },
-    { fetchImpl: async (_url, options) => {
+    { name: toolName, fetchImpl: async (_url, options) => {
       calls++;
       assert.equal(JSON.parse(options.body).actionKey, imageActionKey(context, context.toolCallId));
       return { ok: true, json: async () => ({ ok: true, operation: { id, state: 'accepted', studioPath: `/images?operation=${id}` } }) };
     } });
   const result = await factory(context).execute(context.toolCallId, { action: 'create', prompt: 'Synthetic landscape' });
-  await recordTool(workspace, { toolName: 'local_image', params: { action: 'create' }, result }, context);
+  await recordTool(workspace, { toolName, params: { action: 'create' }, result }, context);
   await recordRun(workspace, { success: false }, { ...context, modelId: 'light-fallback', modelProviderId: 'ollama' });
   const operate = continuityOperations({ workspace });
   const evidence = await operate({ operation: 'turn', sessionKey: context.sessionKey, runId: context.runId });
@@ -34,7 +34,7 @@ test('an accepted create retains its exact Core action identity through a failed
   assert.equal(evidence.receipts[0].observed, true);
   assert.equal(JSON.stringify(evidence).includes('Synthetic landscape'), false, 'Keep image prompts out of transient receipts');
   assert.equal(evidence.answer.status, 'unavailable');
-  await recordTool(workspace, { toolName: 'local_image', params: { action: 'cancel' }, result },
+  await recordTool(workspace, { toolName, params: { action: 'cancel' }, result },
     { ...context, toolCallId: 'call-cancel' });
   const after = await operate({ operation: 'turn', sessionKey: context.sessionKey, runId: context.runId });
   assert.equal(after.receipts.at(-1).imageOperation, undefined, 'Status/cancel must not masquerade as accepted creates');

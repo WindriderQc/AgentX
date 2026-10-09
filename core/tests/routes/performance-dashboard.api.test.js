@@ -126,7 +126,18 @@ describe('GET /api/performance/dashboard', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.metrics_24h.total_requests).toBe(0);
-    expect(res.body.data.metrics_24h.uptime_percent).toBe(100);
+    expect(res.body.data.metrics_24h.uptime_percent).toBeNull();
+    expect(res.body.data.metrics_24h.avg_latency).toBeNull();
+    expect(res.body.data.metrics_24h.error_rate).toBeNull();
+  });
+
+  test('reports how many model-bound requests were kept out of server latency', async () => {
+    wireSnapshots({ current: metrics({ model_bound_requests: 42 }), previous: null });
+    const res = await request(app()).get('/api/performance/dashboard?hours=24');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.metrics_24h.model_bound_requests).toBe(42);
+    expect(res.body.data.sources.tracking_scope).toContain('model-bound');
   });
 
   test('coalesces persisted nullish endpoint IDs without losing diagnostic volume', async () => {

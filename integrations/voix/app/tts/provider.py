@@ -41,6 +41,8 @@ def _selected(provider: str | None = None) -> str:
     value = (provider or settings.tts_provider).strip().lower().replace("-", "_")
     if value not in {"kokoro", "windows_sapi", "voxcpm"}:
         raise ValueError("tts_provider must be one of: kokoro, windows_sapi, voxcpm")
+    if settings.tts_pocket_only and value != settings.tts_provider:
+        raise ValueError("This synthesis provider is retired on this instance")
     return value
 
 

@@ -1,8 +1,9 @@
 """Speech service settings, read once from the environment (and a local .env)."""
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -64,6 +65,9 @@ class Settings:
     voxcpm_voice: str = "nestor-a"
     voxcpm_voice_name: str = "Voice A · VoxCPM2"
     voxcpm_timeout_seconds: float = 60.0
+    # One active synthesis engine; old client choices migrate without running another engine.
+    tts_pocket_only: bool = False
+    tts_voice_aliases: dict[str, str] = field(default_factory=dict)
 
     def validate(self) -> None:
         if not 0 < self.whisper_vad_threshold < 1:
@@ -74,6 +78,15 @@ class Settings:
             raise ValueError("TTS_OUTPUT_RATE must be positive")
         if self.voxcpm_timeout_seconds <= 0:
             raise ValueError("VOXCPM_TIMEOUT_SECONDS must be positive")
+        if not isinstance(self.tts_voice_aliases, dict) or any(
+            not isinstance(key, str) or key.split("|", 1)[0] not in TTS_PROVIDERS
+            or "|" not in key or not isinstance(value, str) or not value
+            or len(value) > 120 or any(ord(char) < 32 for char in key + value)
+            for key, value in self.tts_voice_aliases.items()
+        ):
+            raise ValueError("TTS_VOICE_ALIASES must map provider|old-voice to a new voice id")
+        if self.tts_pocket_only and (self.tts_provider != "voxcpm" or not self.voxcpm_base_url):
+            raise ValueError("Pocket-only synthesis requires TTS_PROVIDER=voxcpm and VOXCPM_BASE_URL")
 
 
 def load_settings() -> Settings:
@@ -107,6 +120,8 @@ def load_settings() -> Settings:
         voxcpm_voice=os.getenv("VOXCPM_VOICE", "nestor-a").strip(),
         voxcpm_voice_name=os.getenv("VOXCPM_VOICE_NAME", "").strip() or "Voice A · VoxCPM2",
         voxcpm_timeout_seconds=_get_float("VOXCPM_TIMEOUT_SECONDS", 60.0),
+        tts_pocket_only=_get_bool("TTS_POCKET_ONLY", False),
+        tts_voice_aliases=json.loads(os.getenv("TTS_VOICE_ALIASES", "{}")),
     )
     settings.validate()
     return settings

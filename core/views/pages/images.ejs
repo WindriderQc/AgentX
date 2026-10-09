@@ -4,11 +4,26 @@
       <p>Crée, explore tes propositions, puis retouche celle que tu choisis. <a class="studio-guide-link" href="/images/guide">Comment ça marche, et quelques conseils →</a> <a class="studio-guide-link" href="/images/labo/">Le labo : comparer et comprendre →</a></p></div>
     <div class="studio-host"><span class="studio-dot" aria-hidden="true"></span><div><span class="studio-host-label">Calcul local</span><strong id="image-host">Lecture de la configuration…</strong><span id="image-gpu"></span></div></div>
   </header>
+  <%- include('image-expert') %>
   <div class="image-layout">
     <section class="image-compose" aria-labelledby="image-compose-title">
       <div class="panel-heading"><div><p class="panel-step">01 · COMPOSER</p><h2 id="image-compose-title">Nouvelle création</h2></div><button id="image-new" type="button" class="quiet-button" disabled>Nouveau brief</button></div>
       <p id="image-draft-source" class="draft-source" hidden></p>
       <form id="image-form">
+        <details class="image-starters">
+          <summary>Un point de départ pour ton idée</summary>
+          <label for="image-starter">Choisir un canevas</label>
+          <select id="image-starter" disabled><option value="">Brief libre</option></select>
+          <p id="image-starter-status" class="image-help" role="status"></p>
+          <div id="image-starter-details" hidden>
+            <p id="image-starter-description"></p>
+            <p id="image-starter-references" class="image-help"></p>
+            <p id="image-starter-recipe" class="image-help"></p>
+            <ul id="image-starter-tips"></ul>
+            <button id="image-starter-apply" type="button" class="quiet-button" disabled>Préparer ce brief</button>
+            <p id="image-starter-replace" class="image-help" aria-live="polite"></p>
+          </div>
+        </details>
         <label for="image-prompt">Ton brief</label>
         <textarea id="image-prompt" maxlength="8000" required rows="6" placeholder="Décris le sujet, l’ambiance et les détails qui comptent. Pour une retouche, précise ce qui change et ce qui doit rester."></textarea>
         <div class="field-heading"><label for="image-profile">Recette de rendu</label><span>Configuration actuelle</span></div>

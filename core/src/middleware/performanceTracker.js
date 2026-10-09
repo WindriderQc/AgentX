@@ -1,6 +1,7 @@
 const logger = require('../../config/logger');
 const PerformanceSnapshot = require('../../models/PerformanceSnapshot');
 const { normalizeObservedPath } = require('../services/endpointPathPolicy');
+const { isModelBoundRequest } = require('../services/modelBoundRequestPolicy');
 
 /**
  * Performance Tracking Middleware
@@ -21,6 +22,8 @@ const { normalizeObservedPath } = require('../services/endpointPathPolicy');
 
 // In-memory buffer for request data (flushed every 60 seconds)
 const requestBuffer = [];
+// Model-bound requests are counted but kept out of server latency.
+let modelBoundBuffer = 0;
 
 // Paths to skip tracking (static files, health checks)
 const SKIP_PATHS = [
@@ -78,6 +81,11 @@ function trackRequest(req, res, next) {
     try {
       const latency = Date.now() - start;
 
+      if (isModelBoundRequest({ path: trackedPath, contentType: res.getHeader('content-type') })) {
+        modelBoundBuffer += 1;
+        return;
+      }
+
       requestBuffer.push({
         path: trackedPath,
         method: req.method,
@@ -117,7 +125,10 @@ function trackRequest(req, res, next) {
  * - Status code distribution
  */
 async function flushToDatabase() {
+  const modelBound = modelBoundBuffer;
+  modelBoundBuffer = 0;
   if (requestBuffer.length === 0) {
+    if (modelBound > 0) await flushModelBoundCount(modelBound);
     return;
   }
 
@@ -158,6 +169,7 @@ async function flushToDatabase() {
           requests_total: summary.requests_total,
           requests_successful: summary.requests_successful,
           requests_failed: summary.requests_failed,
+          model_bound_requests: modelBound,
           ...statusCodeIncs
         },
         $min: { 'latency.min': summary.latency.min || 999999 },
@@ -234,10 +246,26 @@ async function flushToDatabase() {
     if (requestBuffer.length === 0 && requests.length > 0) {
       requestBuffer.unshift(...requests);
     }
+    modelBoundBuffer += modelBound;
     logger.error('Performance snapshot flush failed', {
       error: err.message,
       buffer_size: requestBuffer.length
     });
+  }
+}
+
+async function flushModelBoundCount(count) {
+  const hour = new Date();
+  hour.setMinutes(0, 0, 0);
+  try {
+    await PerformanceSnapshot.updateOne(
+      { hour },
+      { $inc: { model_bound_requests: count }, $setOnInsert: { hour, by_endpoint: [] } },
+      { upsert: true }
+    );
+  } catch (err) {
+    modelBoundBuffer += count;
+    logger.error('Performance model-bound count flush failed', { error: err.message });
   }
 }
 

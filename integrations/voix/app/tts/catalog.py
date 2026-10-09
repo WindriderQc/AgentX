@@ -15,6 +15,7 @@ from app.tts import provider, windows_sapi
 LOCALES = {"a": "en-US", "b": "en-GB", "f": "fr-FR", "e": "es-ES", "h": "hi-IN", "i": "it-IT", "j": "ja-JP", "p": "pt-BR", "z": "zh-CN"}
 _worker_health = (0.0, False, "Not checked", {})
 _worker_probe = threading.Lock()
+_worker_model = ""
 
 
 def _beside_request(task) -> None:
@@ -55,15 +56,20 @@ def worker_ready() -> tuple[bool, str]:
 
 
 def _probe_worker() -> tuple[bool, str]:
-    global _worker_health
+    global _worker_health, _worker_model
     voices = {}
     try:
         response = httpx.get(settings.voxcpm_base_url + "/health", timeout=2, trust_env=False)
         response.raise_for_status()
-        voices = _served_voices(response.json())
-        ready = bool(response.json().get("ready") and settings.voxcpm_voice in voices)
+        data = response.json()
+        voices = _served_voices(data)
+        _worker_model = str(data.get("model") or "")
+        ready = bool(data.get("ready") and settings.voxcpm_voice in voices)
         reason = "" if ready else "VoxCPM2 is warming up or does not serve the configured voice"
+        if settings.tts_pocket_only and _worker_model != "kyutai/pocket-tts":
+            ready, reason = False, "Pocket-only synthesis requires a Pocket TTS worker"
     except (httpx.HTTPError, ValueError):
+        _worker_model = ""
         ready, reason = False, "VoxCPM2 worker is unavailable"
     _worker_health = (time.monotonic(), ready, reason, voices if ready else {})
     return ready, reason
@@ -76,6 +82,20 @@ def worker_voices() -> dict[str, str]:
 
 
 def catalog() -> dict:
+    if settings.tts_pocket_only and settings.tts_provider == "voxcpm":
+        # No Kokoro assets, SAPI process or retired engine is even inspected.
+        ready, reason = worker_ready()
+        voices = []
+        served = worker_voices() or {settings.voxcpm_voice: settings.voxcpm_voice}
+        for voice_id, label in served.items():
+            name = settings.voxcpm_voice_name if voice_id == settings.voxcpm_voice and label == voice_id else label
+            for language in ("fr", "en"):
+                voices.append({"id": voice_id, "provider": "voxcpm", "name": name, "locale": language,
+                               "language": language, "available": ready, "reason": reason})
+        return {"schema": 1, "streamProtocol": "voix-pcm-v1", "providers": [
+            {"id": "voxcpm", "name": "Pocket TTS",
+             "available": ready, "streaming": "frames", "reason": reason}],
+            "voices": voices, "defaults": {"provider": "voxcpm", "voxcpm": settings.voxcpm_voice}}
     model, path = get_kokoro_asset_paths()
     voices = []
     try:

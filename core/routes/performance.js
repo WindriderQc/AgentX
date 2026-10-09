@@ -371,9 +371,11 @@ router.get('/dashboard', async (req, res) => {
       : 0;
 
     // Calculate uptime (percentage of successful requests)
-    const uptimePercent = metrics && metrics.total_requests > 0
+    // No recorded request means unknown, not 0 ms latency or 100% success.
+    const hasRequests = Boolean(metrics && metrics.total_requests > 0);
+    const uptimePercent = hasRequests
       ? ((metrics.total_successful / metrics.total_requests) * 100).toFixed(2)
-      : 100;
+      : null;
 
     // Percent change vs the previous window. null when there is no comparable history,
     // so the UI can hide the arrow instead of implying a flat trend.
@@ -408,13 +410,14 @@ router.get('/dashboard', async (req, res) => {
         system_health: systemHealth,
         trends,
         metrics_24h: {
-          avg_latency: metrics?.avg_latency || 0,
-          p95_latency: metrics?.avg_p95 || 0,
-          p99_latency: metrics?.avg_p99 || 0,
-          error_rate: metrics?.error_rate || 0,
+          avg_latency: hasRequests ? metrics.avg_latency : null,
+          p95_latency: hasRequests ? metrics.avg_p95 : null,
+          p99_latency: hasRequests ? metrics.avg_p99 : null,
+          error_rate: hasRequests ? metrics.error_rate : null,
           total_requests: metrics?.total_requests || 0,
+          model_bound_requests: metrics?.model_bound_requests || 0,
           throughput_rps: parseFloat(avgRps.toFixed(2)),
-          uptime_percent: parseFloat(uptimePercent)
+          uptime_percent: hasRequests ? parseFloat(uptimePercent) : null
         },
         latest_load_test: latestLoadTest ? {
           name: latestLoadTest.name,
@@ -448,7 +451,7 @@ router.get('/dashboard', async (req, res) => {
           active_baseline: activeBaseline ? {
             name: activeBaseline.name
           } : null,
-          tracking_scope: 'Non-static, non-health HTTP requests (middleware-based)'
+          tracking_scope: 'Core HTTP requests except static files, health checks and model-bound requests (chat, generation, embeddings, classification, event streams)'
         }
     };
 
