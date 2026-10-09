@@ -130,7 +130,8 @@ See [execution sources](docs/EXECUTION_SOURCES.md) for local direct and OpenClaw
 
 AgentX runs locally or on your LAN. Keep runtime secrets, instance configuration
 and personal content outside Git. The code is [MIT licensed](LICENSE); bundled
-animal sounds retain their [individual licences](core/surfaces/household/public/sounds/CREDITS.md).
+animal sounds retain their [individual licences](core/surfaces/household/public/sounds/CREDITS.md),
+and the Data Toolbox world map geometry [its own](core/surfaces/data-toolbox/public/geo/CREDITS.md).
 
 [Status](docs/STATUS.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [Operations](docs/OPERATIONS.md) · [Decisions](docs/adr/0001-one-repository.md) ·

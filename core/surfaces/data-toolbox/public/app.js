@@ -631,6 +631,7 @@ async function liveData() {
   const [feedsBody, liveState] = await Promise.all([api('/live-data/feeds'), api('/live-data/state')]);
   const feeds = array(feedsBody);
   content.innerHTML = `${heading('Live Data', 'Feed health and latest retained observations. Configuration stays in the Data service.', '<button class="button" data-action="refresh">Refresh</button>')}
+    <section id="liveMap"></section>
     <div class="grid">
       ${metric(number(feeds.length), 'registered feeds')}
       ${metric(number(feeds.filter((feed) => feed.enabled).length), 'enabled feeds')}
@@ -640,6 +641,8 @@ async function liveData() {
     ${heading('Feed registry', 'Select a feed to inspect its five latest points.')}
     <div class="grid two">${feeds.map((feed) => `<article class="card clickable" data-feed="${e(feed.id)}"><h3>${e(feed.label || feed.id)} ${statusPill(feed.enabled, 'enabled', 'disabled')}</h3><div class="metric-row"><span>Category</span><strong>${e(feed.category || feed.kind)}</strong></div><div class="metric-row"><span>Records</span><strong>${number(feed.count)}</strong></div><div class="metric-row"><span>Last fetch</span><strong>${date(feed.lastFetchAt)}</strong></div><div class="metric-row"><span>Last error</span><strong class="${feed.lastError ? 'bad' : 'good'}">${e(feed.lastError || 'none')}</strong></div></article>`).join('') || '<div class="empty">No feeds registered.</div>'}</div>
     <section id="feedInspector"></section>`;
+  // The world map lives in live-map.js, which the page loads before this file.
+  if (typeof liveMapOpen === 'function') await liveMapOpen(feeds, liveState);
 }
 
 // Main fields per feed kind; anything else is discoverable per row.
@@ -676,7 +679,7 @@ async function inspectFeed(feed) {
     const { tsKey, columns } = feedColumns(feed, points);
     const newest = points.length && tsKey ? points[0]?.[tsKey] : null;
     const geo = String(feed).toLowerCase() === 'iss' && points[0] && Number.isFinite(Number(points[0].latitude)) && Number.isFinite(Number(points[0].longitude))
-      ? `<p class="muted">Latest position: <span class="mono">${e(Number(points[0].latitude).toFixed(3))}, ${e(Number(points[0].longitude).toFixed(3))}</span> (latitude, longitude). Map rendering is intentionally omitted from this read-only console.</p>`
+      ? `<p class="muted">Latest position: <span class="mono">${e(Number(points[0].latitude).toFixed(3))}, ${e(Number(points[0].longitude).toFixed(3))}</span> (latitude, longitude). It is drawn on the world map above.</p>`
       : '';
     target.innerHTML = `${heading(`${feed}: latest`, `${number(points.length)} most recent retained observation${points.length === 1 ? '' : 's'} · read-only`)}
       <div class="grid">

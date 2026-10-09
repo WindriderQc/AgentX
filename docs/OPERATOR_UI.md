@@ -247,6 +247,36 @@ be read shows a notice in its place and the others stay on screen.
   with the mean, minimum, maximum and latest value in text.
 - **Collector**: the native gpu-agent's registration and last heartbeat.
 
+## Data Toolbox: Live Data map
+
+Open `/data-toolbox#live-data` (full profile, with the optional Data service).
+The **World map** section sits above the feed registry. It is read-only and
+drawn in the page from the feeds Data stores and from country outlines shipped
+with AgentX (Natural Earth 1:110m): it works with the internet down. The
+projection is equirectangular and shows the whole globe. Two views:
+
+- **Live**: the ISS as a labelled marker with its track over the last 95
+  minutes (about one orbit), cut where it crosses the antimeridian and where
+  points are missing for more than five minutes; the earthquakes of the current
+  list as circles whose area doubles with each magnitude unit, the strongest on
+  top and the three strongest labelled; the stored locations with their latest
+  pressure and air quality; the MQTT sensors whose points carry coordinates.
+  Satellite elements have no position and are not drawn. The ISS is read again
+  every 60 seconds while the tab is open and the page visible; an ISS position
+  older than five minutes is drawn as the last known one and said so.
+- **By country**: countries shaded by the number of events of the earthquake
+  list inside their outline, in five ranges, with the count written on each
+  counted country. The outlines are coarse: an event just off a coast, or on an
+  island too small for that scale, is counted in the **Offshore / no country**
+  row and drawn as a small ring, never dropped.
+
+Each view lists what it draws in tables under the map (ISS position and time,
+locations and sensors, every earthquake with time, magnitude, place, depth and
+type; counts and strongest magnitude per country). A feed that is off, empty or
+unreadable has its own line above the map and the other layers stay drawn. If
+the outlines cannot be loaded, the Live view draws the points on a plain grid
+and the country view says it is unavailable.
+
 ## Data Toolbox: MQTT
 
 Open `/data-toolbox#mqtt` (full profile, with the optional Data service). The

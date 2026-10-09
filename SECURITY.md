@@ -9,7 +9,8 @@ for an internet-facing deployment.
 Keep credentials, personal data and operator configuration outside the source
 checkout. Use synthetic examples in public issues and pull requests. The
 repository's MIT licence applies to code; bundled audio retains the individual
-terms listed in its [credits](core/surfaces/household/public/sounds/CREDITS.md).
+terms listed in its [credits](core/surfaces/household/public/sounds/CREDITS.md),
+and the Data Toolbox map geometry those in [its own](core/surfaces/data-toolbox/public/geo/CREDITS.md).
 
 ## Reporting a vulnerability
 
