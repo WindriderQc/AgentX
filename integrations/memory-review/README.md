@@ -31,10 +31,18 @@ OpenClaw/Hermes homes, agent selection, state/watermarks and reports stay outsid
 Git. Preserve existing watermarks deliberately; do not read or reset
 real runtime state as part of running tests.
 
+The native OpenClaw reader takes every conversation of the selected agents,
+whatever its channel (Household, Telegram direct or group, main session); only
+scheduled and agent-to-agent sessions are left out. Who spoke is decided per
+message from OpenClaw's own owner flag. A Household turn contributes only what
+was said after Core's `Current user request:` label. A transcript OpenClaw
+rewrote is read again from its start. A run that reaches the session or
+observation bound stops there and the next run continues.
+
 Selected-note writes use Core `MemoryNote` through the native memory adapter; the
 CLI has no separate native-note writer.
 
-The 149 synthetic tests cover filtering of owner versus harness/tool content,
+The 158 synthetic tests cover filtering of owner versus harness/tool content,
 secret sanitation, bounded/resumable collection, API retries, idempotent watermarks,
 candidate validation and accepted Git evidence. No personal transcript or model
 is used. Native runtime formats, schedules and live acceptance are verified per
