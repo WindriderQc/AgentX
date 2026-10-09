@@ -46,6 +46,8 @@ const INDEX_SPECS = [
   { collection: 'janitor_runs', key: { status: 1 }, options: { name: 'status' } },
   { collection: 'janitor_strategy_reports', key: { generatedAt: -1 }, options: { name: 'generated_at_desc' } },
   { collection: 'janitor_strategy_report_details', key: { reportId: 1, ordinal: 1 }, options: { name: 'report_ordinal' } },
+  // Duplicate-review decisions are keyed by content hash (_id); lists read newest first.
+  { collection: 'janitor_review_decisions', key: { decidedAt: -1 }, options: { name: 'decided_at_desc' } },
   { collection: 'dedup_report_details', key: { reportId: 1, ordinal: 1 }, options: { name: 'report_ordinal' } },
   // Every latest/history/count/prune query filters on the feed and orders by time.
   { collection: 'livedata_points', key: { feedId: 1, ts: -1 }, options: { name: 'feed_ts_desc' } },

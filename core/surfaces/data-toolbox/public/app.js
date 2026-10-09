@@ -12,6 +12,7 @@ const state = {
   janitorReviewLoadedFor: null,
   janitorReviewLoaded: false,
   janitorReviewDraftFrom: null,
+  janitorReviewImportedAt: null,
   renderSeq: 0
 };
 const JANITOR_CURRENT_RUN_MS = 24 * 60 * 60 * 1000;
@@ -70,16 +71,9 @@ function janitorReviewPayload() {
     portfolioGeneratedAt: state.janitorReportGeneratedAt,
     capturedAt: new Date().toISOString(),
     authorizesFilesystemMutation: false,
+    // Set once the draft was imported into Data; the draft then stays as a backup.
+    ...(state.janitorReviewImportedAt ? { importedAt: state.janitorReviewImportedAt } : {}),
     decisions: Object.values(state.janitorReview)
-  };
-}
-
-function janitorReviewCounts() {
-  const decisions = Object.values(state.janitorReview);
-  return {
-    accepted: decisions.filter(item => item.decision === 'accept_for_preview').length,
-    rejected: decisions.filter(item => item.decision === 'reject_keep_all').length,
-    total: decisions.length
   };
 }
 
@@ -88,8 +82,16 @@ function normalizeJanitorReviewDecision(input) {
   const sha256 = typeof input.sha256 === 'string' ? input.sha256.trim() : '';
   if (!sha256 || sha256.length > 128) return null;
   if (!['accept_for_preview', 'reject_keep_all'].includes(input.decision)) return null;
+  // The file size and the copies seen, when the draft recorded them: an import
+  // into Data needs both as the evidence the decision was made on.
+  const seen = array(input.paths).filter(path => typeof path === 'string' && path).slice(0, 500);
+  const evidence = {
+    ...(Number.isSafeInteger(input.size) && input.size > 0 ? { size: input.size } : {}),
+    ...(seen.length > 1 ? { paths: seen } : {})
+  };
   if (input.decision === 'reject_keep_all') {
     return {
+      ...evidence,
       sha256,
       decision: 'reject_keep_all',
       keepPath: null,
@@ -103,6 +105,7 @@ function normalizeJanitorReviewDecision(input) {
     .slice(0, 10000);
   if (!keepPath || !removePaths.length) return null;
   return {
+    ...evidence,
     sha256,
     decision: 'accept_for_preview',
     keepPath,
@@ -149,6 +152,7 @@ function restoreJanitorReviewDraft(portfolioGeneratedAt) {
       if (decision) restored[decision.sha256] = decision;
     }
     state.janitorReviewDraftFrom = draft.portfolioGeneratedAt || null;
+    state.janitorReviewImportedAt = typeof draft.importedAt === 'string' ? draft.importedAt.slice(0, 40) : null;
   } catch {
     try { localStorage.removeItem(JANITOR_REVIEW_STORAGE_KEY); } catch {}
   }
@@ -160,6 +164,7 @@ function restoreJanitorReviewDraft(portfolioGeneratedAt) {
 function clearJanitorReviewDraft() {
   state.janitorReview = {};
   state.janitorReviewDraftFrom = null;
+  state.janitorReviewImportedAt = null;
   state.janitorReviewLoadedFor = state.janitorReportGeneratedAt;
   try { localStorage.removeItem(JANITOR_REVIEW_STORAGE_KEY); } catch {}
 }
@@ -176,39 +181,6 @@ function downloadJanitorReview() {
   link.download = `janitor-review-draft-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
   link.click();
   URL.revokeObjectURL(href);
-}
-
-function recordJanitorReview(button, decision) {
-  const row = button.closest('[data-janitor-group]');
-  const sha256 = row?.dataset.janitorGroup;
-  if (!row || !sha256) return;
-  const paths = array(JSON.parse(row.dataset.paths || '[]'));
-  if (decision === 'defer') {
-    delete state.janitorReview[sha256];
-    persistJanitorReviewDraft();
-    return;
-  }
-  if (decision === 'reject_keep_all') {
-    state.janitorReview[sha256] = {
-      sha256,
-      decision,
-      keepPath: null,
-      removePaths: [],
-      reason: 'operator rejected deletion proposal; keep every member'
-    };
-    persistJanitorReviewDraft();
-    return;
-  }
-  const selected = row.querySelector('input[type="radio"]:checked');
-  if (!selected) throw new Error('Choose the path to keep before accepting this group for preview.');
-  state.janitorReview[sha256] = {
-    sha256,
-    decision,
-    keepPath: selected.value,
-    removePaths: paths.filter(path => path !== selected.value),
-    reason: 'operator-selected survivor; complete SHA-256 preview required'
-  };
-  persistJanitorReviewDraft();
 }
 
 async function api(route, { method = 'GET', payload } = {}) {
@@ -322,7 +294,7 @@ async function overview() {
       <article class="card"><h3>Automation visibility</h3>
         <div class="metric-row"><span>Live feeds</span><strong>${sources.liveData?.ok ? `${feeds.filter((feed) => feed.enabled).length}/${feeds.length} enabled` : '—'}</strong></div>
         <div class="metric-row"><span>Janitor profiles</span><strong>${sources.janitor?.ok ? number(profiles.length) : '—'}</strong></div>
-        <div class="metric-row"><span>Write routes</span><strong>4 · network device record, network scan request, MQTT publish, storage scan request</strong></div>
+        <div class="metric-row"><span>Write routes</span><strong>7 in 5 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions (save, import, remove)</strong></div>
         <div class="metric-row"><span>Projection authority</span><strong>AgentX Data</strong></div>
       </article>
     </div>`;
@@ -655,12 +627,10 @@ async function janitor() {
   const metadataSummary = metadataTotalsKnown
     ? `${number(report.metadata.indexedFiles)} indexed files · ${bytes(report.metadata.indexedBytes)} total, counted once.`
     : 'Current portfolio total unavailable. Last recorded inventories are shown per root.';
-  const groups = array(report.duplicates);
   const workItems = array(report.organization?.workItems);
   const organizationCounts = comparison.organization?.counts || {};
   state.janitorReportGeneratedAt = report.generatedAt || null;
   restoreJanitorReviewDraft(state.janitorReportGeneratedAt);
-  const reviewCounts = janitorReviewCounts();
   const actions = `<div class="actions"><a class="button" href="/api/data-toolbox/janitor/strategy/latest/raw" target="_blank" rel="noopener">Open full JSON</a><a class="button" href="/api/data-toolbox/janitor/strategy/latest/raw" download="shared-drive-janitor-latest.json">Download full JSON</a><button class="button" data-action="refresh">Refresh</button></div>`;
   content.innerHTML = `${heading('Shared-drive Janitor', `Portfolio report ${report.status || 'unavailable'} · generated ${date(report.generatedAt)}.`, actions)}
     ${report.available === false ? '<div class="notice"><strong>No strategy report yet.</strong> The scheduled shared-drive assessment generates it; profiles and their latest runs are listed below.</div>' : ''}
@@ -713,29 +683,7 @@ async function janitor() {
       <div class="metric-row"><span>Recorded hash byte limit</span><strong>${bytes(root.latestHashingScan?.hashMaxBytes)}</strong></div>
     </article>`).join('') || '<div class="empty">No canonical root evidence is available.</div>'}</div>
 
-    ${heading('Review draft', 'Choose one survivor path per complete group, then accept it for a future preview, reject deletion, or leave it deferred. Decisions are keyed by SHA-256 and saved in this browser across refreshes, tab changes, and portfolio regenerations until you clear them; copy or download the draft to keep a file copy.', `<div class="actions"><button class="button" data-action="janitor-copy-review" ${reviewCounts.total ? '' : 'disabled'}>Copy draft</button><button class="button" data-action="janitor-download-review" ${reviewCounts.total ? '' : 'disabled'}>Download draft</button><button class="button" data-action="janitor-clear-review" ${reviewCounts.total ? '' : 'disabled'}>Clear</button></div>`)}
-    <div class="notice"><strong>${number(reviewCounts.accepted)} accepted for preview · ${number(reviewCounts.rejected)} rejected · ${number(reviewCounts.total)} decisions.</strong> This draft authorizes no filesystem mutation. “Accept” means re-hash in a later preview, never delete.</div>
-    ${state.janitorReviewDraftFrom && state.janitorReviewDraftFrom !== report.generatedAt && reviewCounts.total ? `<div class="notice">${number(Object.keys(state.janitorReview).filter((sha) => !groups.some((group) => group.sha256 === sha)).length)} of these decisions refer to groups outside this report's bounded rows (draft last captured against the report generated ${date(state.janitorReviewDraftFrom)}). They are kept — content hashes do not change between reports — and stay in the copied/downloaded draft.</div>` : ''}
-
-    ${heading('Top verified duplicate evidence', `Showing ${number(report.duplicatesShown)} of ${number(report.duplicatesTotal)} SHA-256 groups, ordered by proven savings.`)}
-    <div class="table-wrap"><table><thead><tr><th>Fingerprint / paths</th><th>Files</th><th>File size</th><th>Proven savings</th><th>Proof</th><th>Review</th></tr></thead><tbody>
-      ${groups.length ? groups.map((group) => {
-        const files = array(group.files);
-        const paths = files.map(file => file.path).filter(Boolean);
-        const complete = !group.filesOmitted && Number(group.count) === paths.length && paths.length > 1;
-        const decision = state.janitorReview[group.sha256];
-        const decisionLabel = decision?.decision === 'accept_for_preview'
-          ? `accepted · keep ${decision.keepPath}`
-          : decision?.decision === 'reject_keep_all'
-            ? 'rejected · keep all members'
-            : 'deferred';
-        const choices = complete ? files.map(file => `<label class="review-choice"><input type="radio" name="keep-${e(group.sha256)}" value="${e(file.path)}" ${decision?.keepPath === file.path ? 'checked' : ''}><span><strong>Keep this path</strong><code>${e(file.path)}</code><small>${e(label(file.storageRole))}</small></span></label>`).join('') : '';
-        const controls = complete
-          ? `<div class="review-actions"><button class="button" data-action="janitor-review-accept">Accept for preview</button><button class="button" data-action="janitor-review-reject">Reject deletion</button><button class="button" data-action="janitor-review-defer">Defer</button></div>`
-          : '<div class="notice warning">This bounded row omits members. Use the full JSON; no draft decision is allowed on incomplete evidence.</div>';
-        return `<tr data-janitor-group="${e(group.sha256)}" data-paths="${e(JSON.stringify(paths))}"><td><details><summary class="mono">${e(group.sha256).slice(0, 18)}…</summary><div class="review-choices">${choices}</div>${group.filesOmitted ? `<p class="muted">${number(group.filesOmitted)} additional paths are available in the full JSON.</p>` : ''}${controls}</details></td><td>${number(group.count)}</td><td>${bytes(group.size)}</td><td class="good"><strong>${bytes(group.provenSavingsBytes)}</strong></td><td><span class="pill good">${e(label(group.proof || 'current sha256'))}</span></td><td><span class="pill ${decision ? (decision.decision === 'accept_for_preview' ? 'good' : 'warn') : ''}">${e(decisionLabel)}</span></td></tr>`;
-      }).join('') : noRows(6, 'No verified duplicate groups are present in this report.')}
-    </tbody></table></div>`;
+    ${typeof janitorReviewSection === 'function' ? janitorReviewSection() : ''}`;
 
   content.innerHTML += `${heading('Organization priorities', `${number(report.organization?.workItemsTotal)} bounded, evidence-backed work items. None can mutate the filesystem.`)}
     <div class="priority-list">${workItems.map((item) => `<article class="priority-item"><span class="rank">${number(item.rank)}</span><div><div class="priority-heading"><h3>${e(item.title)}</h3><span class="pill ${item.priority === 'high' ? 'warn' : ''}">${e(item.priority)}</span></div><p>${e(item.rationale)}</p><div class="priority-meta"><span>${e(item.root)}</span><span>${number(item.evidence?.files)} files</span><span>${bytes(item.evidence?.bytes)}</span><span>${e(label(item.disposition))}</span></div></div></article>`).join('') || '<div class="empty">No organization work items are retained.</div>'}</div>
@@ -774,6 +722,9 @@ async function janitor() {
         return `<tr><td><strong>${e(profile.name || profile.id || profile._id)}</strong><div class="muted">${scope}</div></td><td>${run ? `${e(run.status || 'unknown')}<div class="muted">${date(summary.finishedAt)}</div>` : '—'}</td><td>${actionSet}</td><td>${review}</td></tr>`;
       }).join('') : noRows(4)}
     </tbody></table></div>`;
+  // The duplicate review (stored decisions, paging, import) lives in
+  // janitor-review.js, which the page loads before this file.
+  if (typeof janitorReviewMount === 'function') await janitorReviewMount(report);
 }
 
 const renderers = { overview, storage, network, databases, 'live-data': liveData, janitor };
@@ -806,18 +757,6 @@ document.addEventListener('click', async (event) => {
       state.filesPage = Math.max(1, state.filesPage + (action === 'files-next' ? 1 : -1));
       loading('Loading file evidence…');
       try { await files(); } catch (error) { errorView(error); }
-    }
-    if (action === 'janitor-review-accept') {
-      recordJanitorReview(event.target, 'accept_for_preview');
-      await janitor();
-    }
-    if (action === 'janitor-review-reject') {
-      recordJanitorReview(event.target, 'reject_keep_all');
-      await janitor();
-    }
-    if (action === 'janitor-review-defer') {
-      recordJanitorReview(event.target, 'defer');
-      await janitor();
     }
     if (action === 'janitor-copy-review') {
       await copyJanitorReview();

@@ -3,6 +3,7 @@
 const path = require('path');
 const { dataBaseUrl, fetchData: fetchDataService } = require('../../src/services/dataServiceClient');
 const { validatePublish } = require('../../../shared/mqttTopicRules');
+const janitorReviewRelay = require('./janitor-review-relay');
 
 const REQUEST_TIMEOUT_MS = () => Math.max(1000, Math.min(30000, Number(process.env.DATA_TOOLBOX_TIMEOUT_MS) || 10000));
 const SAFE_NAME = /^[a-z0-9_.-]{1,120}$/i;
@@ -281,6 +282,7 @@ function projectJanitorStrategy(body) {
         filesOmitted: Math.max(0, files.length - JANITOR_FILE_LIMIT)
       };
     }),
+    reviewDecisions: janitorReviewRelay.projectReviewSummary(report.reviewDecisions),
     duplicatesShown: duplicates.length,
     duplicatesTotal: numeric(evidence.verifiedDuplicateGroups),
     organization: {
@@ -403,16 +405,19 @@ async function buildStatus() {
   const healthy = Object.values(sources).filter((source) => source.ok).length;
   return {
     extension: 'aio-ops-data-toolbox',
-    version: '1.7.0',
+    version: '1.8.0',
     owner: 'agentx',
-    // Four writes are relayed: PATCH /network/devices/:mac (name, known flag,
+    // Five write families are relayed: PATCH /network/devices/:mac (name, known flag,
     // type, location, notes), POST /network/scan (one scan request for the
     // collectors), POST /mqtt/publish (one MQTT message sent by hand) and
     // POST /storage/scans (ask the native collector to read a source again:
-    // it refreshes the index and changes nothing on the disks).
+    // it refreshes the index and changes nothing on the disks). A fifth family,
+    // janitor-review-decision (janitor-review-relay.js), stores, imports or
+    // removes the owner's decision about a duplicate group: a record of intent
+    // in Data's database, which approves, previews and deletes nothing.
     readOnly: false,
     mutationsExposed: true,
-    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request'],
+    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision'],
     filesystemMutationsExposed: false,
     dataService: { baseUrl: dataBaseUrl(), healthy, total: entries.length },
     collectorPlacement: collectorPlacement(),
@@ -643,14 +648,16 @@ function register(api) {
     }
   });
   router.get('/janitor/strategy/latest/raw', relay(() => '/api/v1/janitor/profiles/shared-drive/strategy/latest'));
+  // Paged verified groups and the stored review decisions (the Janitor write family).
+  janitorReviewRelay.register(router, { fetchData });
 
   app.use('/api/data-toolbox', router);
 }
 
 module.exports = {
   id: 'aio-ops-data-toolbox',
-  version: '1.7.0',
-  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request'],
+  version: '1.8.0',
+  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision'],
   register,
   boundedInt,
   pickQuery,
