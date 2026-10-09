@@ -39,3 +39,31 @@ test('workshop disclosures read their presentation provider without generating o
   expect(workshop.details).toHaveBeenCalledWith('synthetic');
   expect(images.accept).not.toHaveBeenCalled(); expect(images.recover).not.toHaveBeenCalled();
 });
+
+test('manual recipe exports are private attachments and preserve exact graph bytes', async () => {
+  const images = { accept: jest.fn(), recover: jest.fn(), get: jest.fn(), list: jest.fn() };
+  const bytes = Buffer.from('{"recorded":"graph"}');
+  const exports = { manifest: jest.fn(async () => ({ schemaVersion: 1, parts: [{ name: 'graph.json' }] })),
+    part: jest.fn(async () => ({ bytes, mimeType: 'application/json', filename: 'graph.json' })) };
+  const app = express(); app.use('/api/images', createRouter(images, {}, exports));
+  const manifest = await request(app).get('/api/images/operations/synthetic/export').expect(200);
+  expect(manifest.body).toMatchObject({ schemaVersion: 1, parts: [{ name: 'graph.json' }] });
+  expect(manifest.headers['content-disposition']).toBe('attachment; filename="image-recipe.json"');
+  expect(manifest.headers['cache-control']).toBe('private, no-store');
+  expect(manifest.headers['x-content-type-options']).toBe('nosniff');
+  const graph = await request(app).get('/api/images/operations/synthetic/export/parts/graph.json').expect(200);
+  expect(Buffer.from(graph.text)).toEqual(bytes);
+  expect(graph.headers['content-disposition']).toBe('attachment; filename="graph.json"');
+  expect(graph.headers['cache-control']).toBe('private, no-store');
+  expect(graph.headers['x-content-type-options']).toBe('nosniff');
+  expect(exports.part).toHaveBeenCalledWith('synthetic', 'graph.json');
+  for (const effect of Object.values(images)) expect(effect).not.toHaveBeenCalled();
+});
+test.each([409, 503])('unavailable export returns %s JSON without attachment headers or a fallback', async statusCode => {
+  const exports = { manifest: jest.fn(async () => { throw Object.assign(new Error('Fixture export refused'), { statusCode }); }) };
+  const app = express(); app.use('/api/images', createRouter({}, {}, exports));
+  const result = await request(app).get('/api/images/operations/synthetic/export').expect(statusCode);
+  expect(result.body).toMatchObject({ ok: false, code: 'LOCAL_IMAGE_ERROR', message: 'Fixture export refused' });
+  expect(result.headers['content-disposition']).toBeUndefined();
+  expect(result.headers['cache-control']).toBe('private, no-store');
+});

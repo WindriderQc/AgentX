@@ -24,7 +24,7 @@ class Element {
   focus() {}
 }
 const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
-async function studio({ failFirst = false, lineage, requested = parentId, availableRecipe, historicalRecipe, execution } = {}) {
+async function studio({ failFirst = false, lineage, requested = parentId, availableRecipe, historicalRecipe, execution, exportFailure, exportPending } = {}) {
   const elements = new Map();
   const get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const size = new Element('option'); size.value = '1024,1024'; size.textContent = 'Square';
@@ -40,6 +40,10 @@ async function studio({ failFirst = false, lineage, requested = parentId, availa
       post.push(JSON.parse(options.body));
       if (failFirst && post.length === 1) return { ok: false, json: async () => ({ ok: false, message: 'Fixture connection interrupted' }) };
       data = { operation: archived(childId) };
+    } else if (url.endsWith('/export')) {
+      if (exportPending) await exportPending;
+      if (exportFailure) return { ok: false, json: async () => ({ message: exportFailure }) };
+      return { ok: true, json: async () => ({ schemaVersion: 1, parts: [{ name: 'graph.json' }, { name: 'reference-0-source.jpg' }, { name: 'output.png' }] }) };
     } else if (url.endsWith('/status')) data = { configured: true, defaultProfile: 'quality', profiles: [{ id: 'quality', label: 'Fixture', maxPixels: 4194304 }] };
     else if (url.endsWith('/workshop')) data = { profiles: [{ id: 'quality', label: 'Fixture', steps: 4, maxPixels: 4194304, ...(availableRecipe && { declaredIdentity: availableRecipe }) }], worker: null };
     else if (url.endsWith('/draft')) data = { draft: { profile: 'quality', prompt: 'Edit the chosen scene', width: 1024, height: 1024, seed: 42 } };
@@ -135,4 +139,30 @@ test('old details do not invent historical recipe or graph facts from the curren
   const labels = ui.get('image-saved-recipe').querySelectorAll('dt').map(el => el.textContent);
   expect(labels).not.toContain('Recette enregistrée'); expect(labels).not.toContain('Version enregistrée');
   expect(labels).not.toContain('Graphe préparé (SHA-256)'); expect(ui.post).toHaveLength(0);
+});
+
+test('an archive export requires a manual click and downloads historical pieces without a POST', async () => {
+  const ui = await studio();
+  expect(ui.fetch.mock.calls.some(([url]) => url.endsWith('/export'))).toBe(false);
+  expect(ui.get('image-export').hidden).toBe(false);
+  await ui.fire('image-export-prepare');
+  const links = ui.get('image-export-links').querySelectorAll('a');
+  expect(links.map(link => link.download)).toEqual(['image-recipe.json', 'graph.json', 'reference-0-source.jpg', 'output.png']);
+  expect(links.map(link => link.href)).toContain(`/api/images/operations/${parentId}/export/parts/graph.json`);
+  expect(ui.post).toHaveLength(0); expect(ui.canvas).not.toHaveBeenCalled();
+});
+test('a refused export leaves no fabricated download links', async () => {
+  const ui = await studio({ exportFailure: 'Historical references unavailable' });
+  await ui.fire('image-export-prepare');
+  expect(ui.get('image-export-status').textContent).toBe('Historical references unavailable');
+  expect(ui.get('image-export-links').querySelectorAll('a')).toHaveLength(0);
+  expect(ui.get('image-export-prepare').disabled).toBe(false); expect(ui.post).toHaveLength(0);
+});
+test('leaving an image while its export is pending discards stale download links', async () => {
+  let release; const exportPending = new Promise(resolve => { release = resolve; });
+  const ui = await studio({ exportPending });
+  await ui.fire('image-export-prepare'); await ui.fire('image-new'); release(); await settle();
+  expect(ui.get('image-export').hidden).toBe(true);
+  expect(ui.get('image-export-links').querySelectorAll('a')).toHaveLength(0);
+  expect(ui.post).toHaveLength(0);
 });
