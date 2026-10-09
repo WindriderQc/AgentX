@@ -73,7 +73,8 @@ async function observe(job) {
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.
   const runtime = await Runtime.findById('runtime').lean();
-  const held = (runtime?.workloads || []).some(item => queue.runtimeOverlaps(job, item));
+  const held = [...(runtime?.workloads || []), ...(runtime?.inferences || [])]
+    .some(item => queue.runtimeOverlaps(job, item));
   return { operationId, terminal: !held, waitingForRelease: held, ...receipt, observedAt: new Date().toISOString() };
 }
 async function reconcile(id, actor) {

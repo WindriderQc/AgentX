@@ -59,12 +59,12 @@ it('finds a lost launch by its native plan tag and settles only its own terminal
   expect(requestJson.mock.calls.every(([options]) => options.method === 'GET')).toBe(true);
 });
 
-it('keeps an unknown native workload held even after a terminal benchmark result', async () => {
+it.each(['workloads', 'inferences'])('keeps unknown native %s held even after a terminal benchmark result', async field => {
   const body = make('held');
   const job = await dispatch(body);
   await queue.record(job.id, { state: 'running', dispatchId: job.dispatchId, operationId }, 'test');
   requestJson.mockResolvedValue({ data: { tags: [planTag(planId(body.executor.plan))], status: 'completed', judge_status: 'completed' } });
-  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [{ hosts: [A], expiresAt: new Date(0), recoveryRequired: true }] });
+  await Runtime.collection.insertOne({ _id: 'runtime', [field]: [{ hosts: [A], expiresAt: new Date(0), recoveryRequired: true }] });
   expect((await evidence.reconcile(job.id, 'test')).state).toBe('running');
   await Runtime.deleteMany({});
   expect((await evidence.reconcile(job.id, 'test')).state).toBe('completed');

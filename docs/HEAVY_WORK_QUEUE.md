@@ -75,7 +75,8 @@ begin a request. Early/expired manual/API starts refuse. Running/uncertain work
 stays fenced after the estimated end. Topology changes require reconciliation.
 The Core observer reads existing executor receipts every 15 seconds, without
 launching, retrying, cancelling or releasing native authority. A completed result
-does not settle the request while overlapping native workloads remain held.
+does not settle the request while overlapping native workloads or inference
+admissions remain held, including quarantined or uncertain outcomes.
 
 Use `reconcile --id …` on demand. Cancel unstarted requests with `cancel --id …
 --revision …`. Cancel running work in its native executor, then reconcile.
