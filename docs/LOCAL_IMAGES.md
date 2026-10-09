@@ -298,6 +298,8 @@ the stored brief, requested dimensions/seed, historical profile and optional
 declared recipe identity, builder identity, graph SHA-256, ordered lineage and
 file descriptors. The brief and reference images may be personal; the atelier
 discloses this before the user prepares or shares the downloads.
+Source originals retain their embedded metadata, including EXIF/GPS when
+present; only the recorded worker PNG was normalized during acceptance.
 
 `GET /api/images/operations/:id/export` downloads a version-1 JSON manifest.
 `GET /api/images/operations/:id/export/parts/:name` downloads `graph.json`,
@@ -316,6 +318,10 @@ images' SHA, size, MIME and decoded dimensions and rechecks the Mongo snapshot
 before responding; no previous verification is cached. Host configuration,
 worker URLs, conversation identities, admission proofs and archive paths are
 excluded from the download projection.
+The export contract requires string model filenames and a scalar `weightDtype`
+token of 1–80 ASCII letters/digits/underscores/dots/hyphens (or the recorded
+default). Historical values outside that closed shape are refused without
+rewriting the graph or retaining its SHA for altered data.
 
 Unknown/active/unrestored operations return 409 before reading archives. Legacy
 operations without a full execution or retained references remain unavailable;
