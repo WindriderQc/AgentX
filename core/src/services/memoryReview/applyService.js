@@ -15,8 +15,9 @@
 // The content guard runs AGAIN on the final text immediately before the write.
 //
 // Adapter semantics:
-//   shared_fact    -> nestor-memory via nestorMemoryService (its own secret
-//                     guard runs a fourth time inside saveMemory)
+//   shared_fact    -> one of the owner's memory notes, the store the agents
+//                     and the memory editor read; a highly private candidate
+//                     keeps that label on the note
 //   soft_memory    -> agentx-working-memory, provisional + expiring inference
 //   artifact       -> agent-artifacts RAG lane, stable documentId upsert
 //   pipeline_task  -> Mongo pipeline task (approval-gated by definition here)
@@ -27,7 +28,9 @@
 //                     WRITES NOTHING anywhere (the owning runtime applies it
 //                     manually until a separately-approved adapter exists)
 
-const nestorMemoryService = require('../nestorMemoryService');
+const { personal } = require('../memoryNoteService');
+
+const NOTE_KINDS = { preference: 'preference', decision: 'decision' };
 const pipelineTaskService = require('../pipelineTaskService');
 const { getRagServiceClient } = require('../ragServiceClient');
 const MemoryReviewRun = require('../../../models/MemoryReviewRun');
@@ -58,21 +61,17 @@ function evidenceSummaryLines(candidate) {
 
 async function applySharedFact(run, candidate, deps) {
   const statement = effectiveStatement(candidate);
-  const target = effectiveTarget(candidate);
-  const save = deps.saveMemory || nestorMemoryService.saveMemory;
-  const result = await save({
+  // The same sentence always lands on the same note, so a retry after a lost
+  // response writes nothing twice.
+  const note = await (deps.ownerNotes || personal()).remember({
     text: statement,
-    type: 'fact',
-    agent: 'memory-review',
-    scope: candidate.scope,
+    kind: NOTE_KINDS[candidate.type] || 'fact',
+    source: 'memory-review',
     sensitivity: candidate.sensitivity,
-    topic: target.topic || 'general',
-    tags: ['memory-review', `run:${run.runId}`, `candidate:${candidate.candidateId.slice(0, 12)}`],
-    id: `memory-review-${candidate.memoryKey || candidate.candidateId}`,
-  }, deps.saveMemoryOpts || {});
+  });
   return {
-    result: `nestor-memory upsert ${result.documentId}`,
-    rollbackRef: `DELETE rag document ${result.documentId}`,
+    result: `owner note ${note.id} ${note.created ? 'created' : note.changed ? 'updated' : 'already held this sentence'}`,
+    rollbackRef: `forget owner note ${note.id}`,
   };
 }
 
