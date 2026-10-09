@@ -10,6 +10,7 @@ const ClusterScheduleEntry = require('../../models/ClusterScheduleEntry');
 const ClusterScheduleClaim = require('../../models/ClusterScheduleClaim');
 const { randomUUID } = require('crypto');
 const { defaultPlanningTimeZone, zonedDayBounds } = require('./planningDateService');
+const { detectVramOverflows } = require('./clusterScheduleConflicts');
 
 function normalizeRoutedModelName(modelName) {
   return String(modelName || '').trim().toLowerCase().replace(/:latest$/i, '');
@@ -331,46 +332,11 @@ async function getTimelineByHost(dateStr, timezone = defaultPlanningTimeZone()) 
 }
 
 /**
- * Detect scheduling conflicts: overlapping time slots on the same host.
+ * Detect projected VRAM overflows: overlapping slots on a host whose distinct
+ * models, with its resident models, exceed the host's configured VRAM.
  */
 async function getConflicts(dateStr, timezone = defaultPlanningTimeZone()) {
-  const timeline = await getTimeline(dateStr, timezone);
-  const byHost = {};
-
-  for (const entry of timeline) {
-    // Entries with no model consume no GPU — skip from conflict detection
-    if (!entry.model) continue;
-    const h = entry.host || 'unassigned';
-    if (!byHost[h]) byHost[h] = [];
-    byHost[h].push(entry);
-  }
-
-  const conflicts = [];
-  for (const [hostId, entries] of Object.entries(byHost)) {
-    // Flatten all slots with their parent entry info
-    const allSlots = [];
-    for (const entry of entries) {
-      for (const slot of entry.slots) {
-        if (slot.continuous) continue; // continuous tasks always overlap, skip
-        allSlots.push({ start: new Date(slot.start), end: new Date(slot.end), entryId: entry.id, name: entry.name, taskType: entry.taskType });
-      }
-    }
-    for (let i = 0; i < allSlots.length; i++) {
-      for (let j = i + 1; j < allSlots.length; j++) {
-        const a = allSlots[i];
-        const b = allSlots[j];
-        if (a.start < b.end && b.start < a.end) {
-          conflicts.push({
-            hostId,
-            taskA: { id: a.entryId, name: a.name, taskType: a.taskType, start: a.start.toISOString(), end: a.end.toISOString() },
-            taskB: { id: b.entryId, name: b.name, taskType: b.taskType, start: b.start.toISOString(), end: b.end.toISOString() }
-          });
-        }
-      }
-    }
-  }
-
-  return conflicts;
+  return detectVramOverflows(await getTimelineByHost(dateStr, timezone));
 }
 
 // ── Placement Service (Phase 2) ──────────────────────────────────────────

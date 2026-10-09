@@ -28,17 +28,26 @@ function utilColor(pct) {
   return '#ef4444';
 }
 
+// One fill for heatmap cells and legend swatches. Alpha lives in the
+// background so the percentage printed in the cell stays readable.
+function utilCellBackground(pct, observed = true) {
+  if (!observed) return 'rgba(255,255,255,0.02)';
+  if (pct <= 0) return 'rgba(255,255,255,0.06)';
+  const hex = utilColor(pct);
+  const [r, g, b] = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
+  const alpha = Math.max(0.25, pct / 100);
+  return `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+}
+
 function renderUtilLegend() {
   const bar = document.getElementById('utilLegendBar');
   if (!bar) return;
   const legend = document.getElementById('utilLegend');
   legend.style.display = 'flex';
   const stops = [0, 10, 25, 45, 65, 80, 95];
-  bar.innerHTML = stops.map(p => {
-    const c = utilColor(p);
-    const op = p === 0 ? 0.15 : 0.2 + (p / 100) * 0.8;
-    return `<div class="cs-util-swatch" style="background:${c};opacity:${op.toFixed(2)}" title="${p}%"></div>`;
-  }).join('');
+  bar.innerHTML = stops.map(p =>
+    `<div class="cs-util-swatch" style="background:${utilCellBackground(p)}" title="${p}%"></div>`
+  ).join('');
 }
 
 async function loadActualHeatmap() {
@@ -46,10 +55,9 @@ async function loadActualHeatmap() {
   const container = document.getElementById('actualContent');
   container.innerHTML = '<div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading heatmap...</div>';
   try {
-    const res = await fetch(`${API_BASE}/schedule/heatmap?days=${days}`);
-    const json = await res.json();
-    if (json.status !== 'success') throw new Error(json.error || 'API error');
-    const hasObservedEvidence = renderUtilHeatmap(container, json.data);
+    const params = new URLSearchParams({ days: String(days) });
+    if (OPERATOR_TIME_ZONE) params.set('timezone', OPERATOR_TIME_ZONE);
+    const hasObservedEvidence = renderUtilHeatmap(container, await fetchJSON(`${API_BASE}/schedule/heatmap?${params}`));
     if (hasObservedEvidence) renderUtilLegend();
     else document.getElementById('utilLegend').style.display = 'none';
   } catch (err) {
@@ -62,7 +70,7 @@ function renderUtilHeatmap(container, data) {
   // hosts are identity objects keyed into grid; older payloads used strings.
   const { hosts = [], days = [], grid = {} } = data;
   if (!hosts.length || !days.length) {
-    container.innerHTML = '<div class="cs-empty">No utilization evidence observed yet. Inference calls will populate this view after telemetry is recorded.</div>';
+    container.innerHTML = '<div class="cs-empty">No GPU usage measured yet. It appears here once inference calls are recorded.</div>';
     return false;
   }
 
@@ -71,11 +79,11 @@ function renderUtilHeatmap(container, data) {
     Array.isArray(day) && day.some(value => Number.isFinite(value))
   ));
   if (!hasObservedEvidence) {
-    container.innerHTML = '<div class="cs-empty">No utilization evidence observed yet. Configured hosts are not treated as zero-utilization measurements.</div>';
+    container.innerHTML = '<div class="cs-empty">No GPU usage measured for these days (unknown, not zero).</div>';
     return false;
   }
 
-  let html = '<div class="cs-actual-note">Measured utilization is grouped by UTC day and hour.</div>';
+  let html = `<div class="cs-actual-note">Measured utilization by day and hour (${esc(data.timeZone || 'UTC')}).</div>`;
   for (const host of hosts) {
     const rows = grid[hostKey(host)] || [];
     const hostHasEvidence = rows.some(day =>
@@ -100,7 +108,7 @@ function renderUtilHeatmap(container, data) {
     // Rows: one per day
     for (let di = 0; di < days.length; di++) {
       const dateLabel = SCHEDULE_DATE.formatCalendarDate(days[di], {
-        locale: 'en-US',
+        locale: UI_LOCALE,
         format: { month: 'short', day: 'numeric' }
       });
       html += `<div class="cs-util-label-cell">${dateLabel}</div>`;
@@ -109,10 +117,9 @@ function renderUtilHeatmap(container, data) {
         const rawPct = hourRow[h];
         const observed = Number.isFinite(rawPct);
         const pct = observed ? rawPct : 0;
-        const color = utilColor(pct);
-        const opacity = !observed ? 0.025 : pct <= 0 ? 0.06 : Math.max(0.2, pct / 100);
-        html += `<div class="cs-util-cell" style="background:${color};opacity:${opacity.toFixed(2)}"
-          title="${dateLabel} ${String(h).padStart(2, '0')}:00 — ${observed ? `${pct.toFixed(0)}% utilization` : 'utilization evidence not observed'}"></div>`;
+        const label = `${dateLabel} ${String(h).padStart(2, '0')}:00 — ${observed ? `${pct.toFixed(0)}% utilization` : 'not measured'}`;
+        html += `<div class="cs-util-cell" style="background:${utilCellBackground(pct, observed)}"
+          title="${label}" aria-label="${label}">${observed && pct >= 1 ? Math.round(pct) : ''}</div>`;
       }
     }
 
@@ -128,10 +135,7 @@ async function loadActualVsPlanned() {
   document.getElementById('utilLegend').style.display = 'none';
   container.innerHTML = '<div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading actual vs planned...</div>';
   try {
-    const res = await fetch(`${API_BASE}/schedule/actual-vs-planned?${calendarQuery()}`);
-    const json = await res.json();
-    if (json.status !== 'success') throw new Error(json.error || 'API error');
-    renderActualVsPlanned(container, json.data);
+    renderActualVsPlanned(container, await fetchJSON(`${API_BASE}/schedule/actual-vs-planned?${calendarQuery()}`));
   } catch (err) {
     container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
   }
@@ -145,11 +149,11 @@ function renderActualVsPlanned(container, data) {
   const hasAssignedGpuPlan = planned.some(host => (host.tasks || []).some(task => task.model));
 
   if (!hasAssignedGpuPlan && !hasActualEvidence) {
-    container.innerHTML = '<div class="cs-empty">No host-assigned GPU plan or utilization evidence observed for this date.</div>';
+    container.innerHTML = '<div class="cs-empty">No GPU jobs assigned to a host and no measured usage for this date.</div>';
     return;
   }
 
-  let html = hasAssignedGpuPlan ? '' : '<div class="cs-empty">No GPU job has a declared host for this date. Measured inference below is not attributed to the cron jobs above.</div>';
+  let html = hasAssignedGpuPlan ? '' : '<div class="cs-empty">No GPU job is assigned to a host on this date; the measured usage below is not linked to scheduled jobs.</div>';
   const HOUR_PCT = (1 / 24 * 100).toFixed(3);
 
   const renderTrack = (hostName, tasks, actualRows) => {
@@ -160,7 +164,7 @@ function renderActualVsPlanned(container, data) {
       <div class="cs-avp-host-label">
         <i class="fas fa-server" style="color:#7cf0ff;font-size:10px"></i>
         ${esc(hostName)}
-        ${tasks.length ? `<span style="font-size:10px;color:#475569;font-weight:400">${tasks.length} planned task${tasks.length > 1 ? 's' : ''}</span>` : '<span style="font-size:10px;color:#f59e0b;font-weight:400">actual only</span>'}
+        ${tasks.length ? `<span class="cs-avp-host-meta">${tasks.length} planned task${tasks.length > 1 ? 's' : ''}</span>` : '<span class="cs-avp-host-meta warn">measured only</span>'}
       </div>
       <div class="cs-avp-track">`;
 
@@ -188,7 +192,8 @@ function renderActualVsPlanned(container, data) {
         const s = new Date(slot.start);
         const e = new Date(slot.end);
         const startHour = s.getHours() + s.getMinutes() / 60;
-        const endHour   = e.getHours() + e.getMinutes() / 60;
+        // Derive the end from the duration: a slot ending at midnight is 24h, not 0h.
+        const endHour = Math.min(24, startHour + Math.max(0, e - s) / 3600000);
         const left  = (startHour / 24 * 100).toFixed(2);
         const width = Math.max((endHour - startHour) / 24 * 100, 0.4).toFixed(2);
         const color = TASK_COLORS[task.taskType] || '#666';
@@ -219,9 +224,9 @@ function renderActualVsPlanned(container, data) {
 
   // Legend
   html += `<div class="cs-avp-legend">
-    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:#7cf0ff;opacity:0.7"></div>Planned slot</div>
-    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:#22c55e;opacity:0.5"></div>Actual utilization</div>
+    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:linear-gradient(90deg,${TASK_COLORS.benchmark},${TASK_COLORS.ingestion},${TASK_COLORS.inference})"></div>Planned run (top, colored by job type)</div>
+    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:linear-gradient(90deg,${utilColor(10)},${utilColor(60)},${utilColor(95)});opacity:0.6"></div>Measured utilization (bottom, height and color = load)</div>
   </div>`;
 
-  container.innerHTML = html || '<div class="cs-empty">No planned-run or utilization evidence observed for this date.</div>';
+  container.innerHTML = html || '<div class="cs-empty">No planned runs or measured usage for this date.</div>';
 }

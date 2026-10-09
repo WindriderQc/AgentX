@@ -269,7 +269,7 @@ function renderLegend(timeline) {
   const sourceCounts = countBy(entries, entry => entry.source || 'unknown');
 
   el.innerHTML = `
-    ${renderLegendSection('Declared host assignments', hostCounts, id => {
+    ${renderLegendSection('Jobs per host', hostCounts, id => {
       const meta = getHostMeta(id);
       return {
         label: meta.label,
@@ -279,8 +279,8 @@ function renderLegend(timeline) {
     })}
     ${undeclaredAssignmentCount > 0 ? `
       <div class="cs-legend-section">
-        <span class="cs-legend-title">Assignment evidence</span>
-        <span class="cs-legend-empty">Not declared for ${undeclaredAssignmentCount} scheduled job${undeclaredAssignmentCount === 1 ? '' : 's'}; this is not a hardware count.</span>
+        <span class="cs-legend-title">Unassigned</span>
+        <span class="cs-legend-empty">${undeclaredAssignmentCount} scheduled job${undeclaredAssignmentCount === 1 ? ' has' : 's have'} no assigned host.</span>
       </div>` : ''}
     ${renderLegendSection('Sources', sourceCounts, id => {
       const meta = getSourceMeta(id);

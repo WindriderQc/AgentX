@@ -16,6 +16,8 @@ const SCHEDULE_DATE = window.ClusterScheduleDate;
 const UPCOMING_PROJECTION = window.ClusterScheduleUpcoming;
 const HEADLINE_PROJECTION = window.ClusterScheduleHeadline;
 const OPERATOR_TIME_ZONE = SCHEDULE_DATE.browserTimeZone();
+// One display locale for every date and time on the page, with a 24-hour clock.
+const UI_LOCALE = 'en-US';
 
 const TASK_COLORS = {
   benchmark: '#f59e0b', sync: '#3b82f6', cleanup: '#8b5cf6',
@@ -66,10 +68,24 @@ let lastTimelineMobile = window.innerWidth <= 700;
 
 // ── API ─────────────────────────────────────────────────────
 
+let failedRequests = 0;
+
+// Turn network failures, proxy HTML pages and API errors into short,
+// readable messages instead of raw JSON parse errors.
 async function fetchJSON(url) {
-  const res = await fetch(url);
-  const json = await res.json();
-  if (json.status !== 'success') throw new Error(json.error || 'API error');
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (_error) {
+    failedRequests += 1;
+    throw new Error('Core is unreachable');
+  }
+  let json = null;
+  try { json = await res.json(); } catch (_error) { json = null; }
+  if (!json || json.status !== 'success') {
+    failedRequests += 1;
+    throw new Error(json?.error || `Server returned HTTP ${res.status}`);
+  }
   return json.data;
 }
 
@@ -81,7 +97,7 @@ function updateDateLabel() {
   const description = SCHEDULE_DATE.describeCalendarDate(currentDate, {
     now: new Date(),
     timeZone: OPERATOR_TIME_ZONE,
-    locale: 'en-US'
+    locale: UI_LOCALE
   });
   el.textContent = description.label;
   el.setAttribute('datetime', currentDate);
@@ -130,7 +146,7 @@ async function loadLiveState() {
     updateLiveEvidence(liveResult.value);
   } else {
     liveHostsData = [];
-    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> Loaded-model and VRAM detail unavailable: ${esc(liveResult.reason?.message || 'unknown error')}</div>`;
+    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> Host details unavailable: ${esc(liveResult.reason?.message || 'unknown error')}</div>`;
     updateLiveEvidence(null);
   }
 
@@ -159,13 +175,15 @@ function updateLiveEvidence(liveData) {
     el.dataset.authority = evidence.authority;
     el.dataset.evidenceScope = evidence.scope;
     el.dataset.observedAt = evidence.observedAt;
-    el.textContent = `Loaded-model and VRAM cards are a separate runtime-detail poll observed ${formatEvidenceTime(evidence.observedAt)}. They do not set the ecosystem headline counts.`;
+    el.textContent = `Host cards polled ${formatEvidenceTime(evidence.observedAt)}.`;
+    el.title = 'Loaded models and VRAM come from polling each host directly; the host counts above come from the ecosystem snapshot.';
   } catch (_error) {
     el.dataset.status = 'unavailable';
     delete el.dataset.authority;
     delete el.dataset.evidenceScope;
     delete el.dataset.observedAt;
-    el.textContent = 'Loaded-model and VRAM detail evidence is unavailable. It is not treated as a zero measurement.';
+    el.textContent = 'Host details are unavailable right now; loaded models and VRAM are unknown, not zero.';
+    el.title = '';
   }
 }
 
@@ -240,7 +258,7 @@ function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true }
     if (!isOnline) {
       footerHtml = `<div class="cs-host-footer-offline"><i class="fas fa-exclamation-triangle"></i> Host unreachable</div>`;
     } else if (!scheduleAvailable) {
-      footerHtml = '<div class="cs-host-next" style="font-style:italic">Upcoming schedule evidence unavailable.</div>';
+      footerHtml = '<div class="cs-host-next" style="font-style:italic">Schedule unavailable.</div>';
     } else if (nextJob) {
       const jobCount = hostJobsSoon.length;
       const countPart = jobCount > 1 ? `<span class="cs-host-queue-count">${jobCount} jobs in next hour</span>` : '';
@@ -250,7 +268,7 @@ function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true }
         footerHtml += `<div class="cs-host-next-gpu"><i class="fas fa-microchip"></i> Next GPU run: ${esc(nextGpuJob.model)} in ${formatCountdown(nextGpuJob.msFromNow)}</div>`;
       }
     } else {
-      footerHtml = '<div class="cs-host-next" style="font-style:italic">No host-assigned scheduled job in this view</div><div class="cs-host-standby-note">See the separate heavy-work queue for operator batches.</div>';
+      footerHtml = '<div class="cs-host-next" style="font-style:italic">No scheduled jobs assigned to this host today</div>';
     }
 
     const cardClass = !isOnline ? ' down' : hasModels ? ' active' : '';
@@ -286,25 +304,25 @@ function updateHeaderStatus(headline, nextTasks, { scheduleAvailable = true, sch
   const lightJobs = scheduledNext.length - gpuJobs;
   const scheduleObservedAt = scheduleEvidence?.observedAt;
   const scheduleTitle = scheduleObservedAt && !Number.isNaN(Date.parse(scheduleObservedAt))
-    ? `Upcoming assignment projection observed ${formatEvidenceTime(scheduleObservedAt)}`
-    : 'Upcoming assignment projection';
+    ? `Schedule as of ${formatEvidenceTime(scheduleObservedAt)}`
+    : 'Schedule';
 
   let scheduleHtml;
   if (!scheduleAvailable) {
-    scheduleHtml = '<span class="cs-header-status-item warn"><i class="fas fa-clock" style="font-size:9px"></i> schedule evidence unavailable</span>';
+    scheduleHtml = '<span class="cs-header-status-item warn"><i class="fas fa-clock" style="font-size:9px"></i> schedule unavailable</span>';
   } else if (scheduledNext.length > 0) {
-    scheduleHtml = `<span class="cs-header-status-item warn" title="${esc(scheduleTitle)}"><i class="fas fa-clock" style="font-size:9px"></i> ${scheduledNext.length} next hour${gpuJobs ? ` · ${gpuJobs} GPU` : ''}${lightJobs ? ` · ${lightJobs} light` : ''}</span>`;
+    scheduleHtml = `<span class="cs-header-status-item" title="${esc(scheduleTitle)}"><i class="fas fa-clock" style="font-size:9px"></i> ${scheduledNext.length} next hour${gpuJobs ? ` · ${gpuJobs} GPU` : ''}${lightJobs ? ` · ${lightJobs} light` : ''}</span>`;
   } else {
     scheduleHtml = `<span class="cs-header-status-item" title="${esc(scheduleTitle)}"><i class="fas fa-clock" style="font-size:9px"></i> quiet next hour</span>`;
   }
 
   el.innerHTML = [
-    `<span class="cs-header-status-item" title="Canonical ecosystem snapshot observed ${esc(formatEvidenceTime(headline.observedAt))}">${headline.configuredHosts} configured hosts</span>`,
+    `<span class="cs-header-status-item" title="Ecosystem snapshot from ${esc(formatEvidenceTime(headline.observedAt))}">${headline.configuredHosts} configured hosts</span>`,
     `<span class="cs-header-status-item ${headline.onlineHosts > 0 ? 'ok' : ''}"><i class="fas fa-circle" style="font-size:7px"></i> ${headline.onlineHosts} online</span>`,
     `<span class="cs-header-status-item ${headline.offlineHosts > 0 ? 'err' : ''}">${headline.offlineHosts} offline</span>`,
-    `<span class="cs-header-status-item"><i class="fas fa-tags" style="font-size:9px"></i> ${headline.observedModels} observed model tags</span>`,
+    `<span class="cs-header-status-item"><i class="fas fa-tags" style="font-size:9px"></i> ${headline.observedModels} model tags</span>`,
     scheduleHtml,
-  ].filter(Boolean).join('<span style="color:#1e293b"> · </span>');
+  ].filter(Boolean).join('<span class="cs-header-sep" aria-hidden="true"> · </span>');
 }
 
 function updateHeaderStatusUnavailable(error) {
@@ -314,7 +332,7 @@ function updateHeaderStatusUnavailable(error) {
   delete el.dataset.authority;
   delete el.dataset.evidenceScope;
   delete el.dataset.observedAt;
-  el.innerHTML = `<span class="cs-header-status-item err"><i class="fas fa-triangle-exclamation"></i> Ecosystem headline unavailable${error?.message ? `: ${esc(error.message)}` : ''}</span>`;
+  el.innerHTML = `<span class="cs-header-status-item err"><i class="fas fa-triangle-exclamation"></i> Host summary unavailable${error?.message ? `: ${esc(error.message)}` : ''}</span>`;
 }
 
 // ── Timeline ────────────────────────────────────────────────
@@ -418,7 +436,6 @@ function renderGroupedHeatmap(container, timeline) {
   }
 
   const currentHour = isToday() ? new Date().getHours() : -1;
-  const nowMinuteFrac = isToday() ? new Date().getMinutes() / 60 : -1;
 
   // Group by taskType
   const groups = {};
@@ -476,24 +493,16 @@ function renderGroupedHeatmap(container, timeline) {
       for (let h = 0; h < 24; h++) {
         const pastClass = isToday() && h < currentHour ? ' past' : '';
         const slotsHtml = getSlotSegments(entry.slots, h, h + 1, entry.taskType, entry.name, isInfra, { host: entry.host, source: entry.source, model: entry.model, estimatedDurationMs: entry.estimatedDurationMs, vramMb: entry.vramMb });
-        html += `<div class="cs-hm-cell${pastClass}${hiddenClass}" data-hour="${h}" data-name="${esc(entry.name)}" data-type="${entry.taskType}">${slotsHtml}</div>`;
+        html += `<div class="cs-hm-cell${pastClass}${hiddenClass}" data-hour="${h}" data-name="${esc(entry.name)}" data-type="${esc(entry.taskType)}">${slotsHtml}</div>`;
       }
     }
   }
 
   html += '</div>';
 
-  // Now line
-  if (isToday() && currentHour >= 0) {
-    const gridCols = 25; // 1 label + 24 hours
-    const labelWidthPx = 230;
-    const nowPct = ((currentHour + nowMinuteFrac) / 24) * 100;
-    html += `<div class="cs-now-line" style="left:calc(${labelWidthPx}px + ${nowPct}% * (100% - ${labelWidthPx}px) / 100%)"></div>`;
-  }
-
   container.innerHTML = html;
 
-  // Position now line precisely using JS after render
+  // The now line is measured from the rendered grid.
   if (isToday()) positionNowLine(container);
   attachTooltipEvents(container);
 }
@@ -503,7 +512,7 @@ function positionNowLine(container) {
   if (!grid) return;
   const nowFrac = (new Date().getHours() + new Date().getMinutes() / 60) / 24;
   const gridRect = grid.getBoundingClientRect();
-  // First column is the label column (200px)
+  // Cells start after the label column, whatever its rendered width.
   const firstCell = grid.querySelector('.cs-hm-cell');
   if (!firstCell) return;
   const cellsStart = firstCell.getBoundingClientRect().left - gridRect.left;
@@ -595,7 +604,7 @@ function getSlotSegments(slots, hourStart, hourEnd, taskType, taskName, isInfra 
     const width = ((visEnd - visStart) * 100).toFixed(1);
     const contClass = slot.continuous ? ' continuous' : '';
     const infraClass = isInfra ? ' infra' : '';
-    html += `<div class="cs-hm-slot cs-timeline-detail ${taskType}${contClass}${infraClass}"
+    html += `<div class="cs-hm-slot cs-timeline-detail ${esc(taskType)}${contClass}${infraClass}"
       style="left:${left}%;width:${width}%"
       ${slotDetailAttributes(taskType, taskName, isInfra, meta, slotStart, slotEnd)}></div>`;
   }
@@ -635,7 +644,7 @@ function renderMobileTimeline(container, entries) {
 
 function getHostMeta(hostId) {
   if (!hostId || hostId === 'unassigned') {
-    return { id: 'unassigned', label: 'Host not declared', color: '#94a3b8' };
+    return { id: 'unassigned', label: 'No host assigned', color: '#94a3b8' };
   }
   const index = Math.abs([...String(hostId)].reduce((sum, char) => sum + char.charCodeAt(0), 0)) % HOST_COLORS.length;
   const live = liveHostsData.find(host => host.id === hostId);
@@ -653,20 +662,13 @@ function getSourceMeta(sourceId, metadata) {
 // ── Conflicts ───────────────────────────────────────────────
 
 async function loadConflicts() {
-  const banner = document.getElementById('conflictBanner');
-  const text = document.getElementById('conflictText');
   try {
     const data = await fetchJSON(`${API_BASE}/schedule/conflicts?${calendarQuery()}`);
     conflictsData = data.conflicts || [];
-    if (conflictsData.length > 0) {
-      const unique = summarizeConflicts(conflictsData).map(c => `${c.nameA} + ${c.nameB} on ${c.hostLabel}`);
-      text.textContent = `${unique.length} overlapping pair${unique.length > 1 ? 's' : ''} (${data.count} run${data.count > 1 ? 's' : ''}): ${unique.slice(0, 3).join('; ')}${unique.length > 3 ? ` (+${unique.length - 3} more)` : ''}`;
-      banner.classList.remove('hidden');
-    } else {
-      banner.classList.add('hidden');
-    }
-    renderAttention();
-  } catch { banner.classList.add('hidden'); renderAttention(); }
+  } catch {
+    conflictsData = [];
+  }
+  renderAttention();
 }
 
 async function loadClaims() {
@@ -687,8 +689,8 @@ function renderClaims(container) {
     container.innerHTML = `
       <div class="cs-empty cs-claims-empty">
         <i class="fas fa-feather-pointed"></i>
-        <div>No live soft claims</div>
-        <div class="cs-claims-empty-note">Scheduler advisory reservations will appear here when consumers request placement.</div>
+        <div>No active placement claims</div>
+        <div class="cs-claims-empty-note">Claims appear here when a job reserves a host before it runs.</div>
       </div>`;
     return;
   }
@@ -759,7 +761,7 @@ function showTooltip(e) {
 
   const typeColor = TASK_COLORS[type] || '#64748b';
   document.getElementById('tooltipType').innerHTML =
-    type ? `<span style="color:${typeColor}">${type.toUpperCase()}</span>` : '';
+    type ? `<span style="color:${typeColor}">${esc(type.toUpperCase())}</span>` : '';
   document.getElementById('tooltipName').textContent = name;
   document.getElementById('tooltipRows').innerHTML = rows.join('');
   document.getElementById('tooltip').classList.add('visible');
@@ -817,7 +819,7 @@ function renderNextTasks(container) {
   let html = '';
 
   if (scheduledTasks.length > 0) {
-    html += `<div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;padding:2px 0 6px">Scheduled Jobs <span style="font-weight:400;color:#64748b">${scheduledTasks.length}</span></div>`;
+    html += `<div class="cs-next-section">Scheduled Jobs <span class="cs-next-section-meta">${scheduledTasks.length}</span></div>`;
     html += scheduledTasks.map(task => renderNextItem(task, nextTasksData.indexOf(task))).join('');
   }
 
@@ -825,11 +827,11 @@ function renderNextTasks(container) {
     const due = sysTasks.filter(t => t.msFromNow <= 0).length;
     const dueSoon = sysTasks.filter(t => t.msFromNow > 0 && t.msFromNow < 300000).length;
     const upcomingOccurrences = sysTasks.reduce((total, task) => total + (task.occurrenceCount || 1), 0);
-    html += `<div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;padding:8px 0 6px;margin-top:4px;border-top:1px solid rgba(255,255,255,0.05)">
+    html += `<div class="cs-next-section cs-next-section-split">
       System Ticks
-      <span style="color:#64748b;font-weight:400;font-size:9px"> ${sysTasks.length} job${sysTasks.length === 1 ? '' : 's'} · ${upcomingOccurrences} upcoming occurrence${upcomingOccurrences === 1 ? '' : 's'}</span>
-      ${due > 0 ? `<span style="color:#94a3b8;font-weight:400;font-size:9px"> · ${due} due now</span>` : ''}
-      ${dueSoon > 0 ? `<span style="color:#94a3b8;font-weight:400;font-size:9px"> · ${dueSoon} in &lt;5m</span>` : ''}
+      <span class="cs-next-section-meta"> ${sysTasks.length} job${sysTasks.length === 1 ? '' : 's'} · ${upcomingOccurrences} upcoming run${upcomingOccurrences === 1 ? '' : 's'}</span>
+      ${due > 0 ? `<span class="cs-next-section-meta"> · ${due} due now</span>` : ''}
+      ${dueSoon > 0 ? `<span class="cs-next-section-meta"> · ${dueSoon} in &lt;5m</span>` : ''}
     </div>`;
     html += sysTasks.map(task => renderNextItem(task, nextTasksData.indexOf(task))).join('');
   }
@@ -847,9 +849,9 @@ function renderNextItem(task, i) {
       <div style="min-width:0;flex:1">
         <div class="cs-next-name">${esc(task.name)}</div>
         <div class="cs-next-meta">
-          <span class="cs-task-badge ${task.taskType}">${task.taskType}</span>
+          <span class="cs-task-badge ${esc(task.taskType)}">${esc(task.taskType)}</span>
           ${hostLabel ? `<span style="font-size:10px"><i class="fas fa-server" style="font-size:8px;margin-right:2px"></i>${esc(hostLabel)}</span>` : ''}
-          <span class="cs-source-chip ${sourceClass}" title="${esc(task.lastRun ? `Last run ${task.metadata?.lastStatus || 'unknown'} ${formatEvidenceTime(task.lastRun)}` : 'Next run is a schedule projection; no execution receipt is available here')}">${esc(sourceMeta.label)}</span>
+          <span class="cs-source-chip ${sourceClass}" title="${esc(task.lastRun ? `Last run ${task.metadata?.lastStatus || 'unknown'} ${formatEvidenceTime(task.lastRun)}` : 'Planned run; no run recorded yet')}">${esc(sourceMeta.label)}</span>
           ${cadenceLabel ? `<span class="cs-source-chip cadence">${esc(cadenceLabel)}</span>` : ''}
           ${task.occurrenceLabel ? `<span class="cs-source-chip cadence">${esc(task.occurrenceLabel)}</span>` : ''}
         </div>
@@ -859,7 +861,7 @@ function renderNextItem(task, i) {
 }
 
 function formatClockTime(value) {
-  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(value).toLocaleTimeString(UI_LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
 function startCountdown() {
@@ -900,18 +902,19 @@ function esc(s) {
   return window.AgentXUtils.escapeHtml(s);
 }
 function formatTime(date) {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  return date.toLocaleTimeString(UI_LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 function formatEvidenceTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'at an unknown time';
-  return date.toLocaleString([], {
+  return date.toLocaleString(UI_LOCALE, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit'
+    second: '2-digit',
+    hourCycle: 'h23'
   });
 }
 function formatDuration(ms) {
@@ -957,12 +960,17 @@ async function refreshAll() {
   const btn = document.getElementById('refreshBtn');
   const icon = btn.querySelector('i');
   icon.classList.add('spinning');
+  const failuresBefore = failedRequests;
   try {
     await Promise.all([
       loadLiveState(), loadTimeline(), loadConflicts(), loadClaims(), loadHeavyQueue(),
       actualView === 'heatmap' ? loadActualHeatmap() : loadActualVsPlanned()
     ]);
   } finally { icon.classList.remove('spinning'); }
+  const failed = failedRequests - failuresBefore;
+  if (failed > 0 && window.Toast) {
+    window.Toast.warning(`Refresh incomplete: ${failed} section${failed === 1 ? '' : 's'} could not load.`);
+  }
 }
 
 function startLivePolling() {
@@ -1022,6 +1030,8 @@ window.addEventListener('resize', () => {
       if (viewMode === 'host') renderHostHeatmap(container, visibleTimelineHosts);
       else renderGroupedHeatmap(container, visibleTimelineEntries);
     }
+  } else if (isToday()) {
+    positionNowLine(document.getElementById('heatmapContainer'));
   }
   if (!servicePopoverPinnedId) return;
   const activeChip = document.querySelector(`.cs-service-chip[data-service-id="${servicePopoverPinnedId}"]`);

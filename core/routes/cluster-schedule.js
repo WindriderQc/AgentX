@@ -202,12 +202,18 @@ router.get('/schedule/actual', async (req, res) => {
 /**
  * GET /schedule/heatmap
  * Utilization heatmap for the past N days (days × 24 hours per host).
- * Query params: days (default 7, max 30)
+ * Query params: days (default 7, max 30), timezone (IANA, default UTC)
  */
 router.get('/schedule/heatmap', async (req, res) => {
   try {
     const days = Math.min(parseInt(req.query.days || '7', 10), 30);
-    const data = await getUtilizationHeatmap(days);
+    const timeZone = req.query.timezone || 'UTC';
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone });
+    } catch {
+      return res.status(400).json({ status: 'error', error: 'Unknown time zone.' });
+    }
+    const data = await getUtilizationHeatmap(days, timeZone);
     res.json({ status: 'success', data });
   } catch (err) {
     logger.error('Failed to get utilization heatmap', { error: err.message });
