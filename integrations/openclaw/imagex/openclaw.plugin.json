@@ -1,0 +1,18 @@
+{
+  "id": "agentx-imagex",
+  "name": "imageX · Hermes Image Specialist",
+  "description": "Delegate image planning and advice to Hermes; Core owns local generation and archived output.",
+  "activation": { "onStartup": true },
+  "contracts": { "tools": ["imagex"] },
+  "toolMetadata": { "imagex": { "optional": true } },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["agentxUrl", "workerCommand"],
+    "properties": {
+      "agentxUrl": { "type": "string" },
+      "workerCommand": { "type": "string", "description": "Absolute executable path. Receives JSON on stdin; no shell evaluation." },
+      "mediaRoot": { "type": "string" }
+    }
+  }
+}
