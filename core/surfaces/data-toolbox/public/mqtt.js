@@ -235,7 +235,7 @@ async function mqttPoll() {
     if (status.error) mqttState.streamError = status.error;
     else if (!(await mqttReadNew(seq))) return;
     mqttPaintStream();
-    updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
+    shellRead(mqttState.streamError || '');
   } finally { mqttState.busy = false; }
 }
 

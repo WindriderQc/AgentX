@@ -367,8 +367,31 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   assert.match(views, /api\('\/reports', \{ method: 'POST', payload: \{ type, format \} \}\)/);
   assert.match(views, /api\(`\/reports\/\$\{encodeURIComponent\(name\)\}`, \{ method: 'DELETE' \}\)/);
   for (const file of ['storage-trends.js', 'activity.js']) assert.equal(fs.readFileSync(path.join(root, file), 'utf8').match(/method:/g), null);
-  assert.match(html, /<strong>No filesystem actions\.<\/strong>/);
-  assert.match(html, /This page sends seven kinds of change to Data: a network device's record \(name, known flag, type, location, notes\), a network scan request for the active collector, an MQTT message published by hand from the MQTT tab, which reaches the devices on the broker, a storage scan request from the Storage tab, which only reads the disks and refreshes the index, the duplicate-review decisions of the Janitor tab \(saved, imported from this browser's draft, or removed\), which delete no file, and the generation and the deletion of a report from the Storage tab: a report is a file in Data's own report store, never on the scanned disks\./);
+  // The guardrail is one short line that is always visible, with the full
+  // list behind a disclosure: every write family of the manifest is named
+  // there, each with its own explanation, and nothing else is listed.
+  const guardrail = html.match(/<section class="guardrail" role="note"[^>]*>([\s\S]*?)<\/section>/)[1];
+  assert.match(guardrail, /<details>\s*<summary><strong>No filesystem actions\.<\/strong> <span>This page can send seven kinds of change to Data\.<\/span>/);
+  assert.doesNotMatch(guardrail, /<details open/);
+  const listed = [...guardrail.matchAll(/<li data-write="([a-z-]+)">([^<]+)<\/li>/g)].map((match) => [match[1], match[2]]);
+  const families = toolbox.capabilities.filter((capability) => !['data-toolbox-ui', 'data-readonly-projection'].includes(capability));
+  assert.equal(families.length, 7);
+  assert.deepEqual(listed.map(([family]) => family), families);
+  assert.deepEqual(Object.fromEntries(listed), {
+    'network-device-update': "a network device's record (name, known flag, type, location, notes);",
+    'network-scan-request': 'a network scan request for the active collector;',
+    'mqtt-publish': 'an MQTT message published by hand from the MQTT tab, which reaches the devices on the broker;',
+    'storage-scan-request': 'a storage scan request from the Storage tab, which only reads the disks and refreshes the index;',
+    'janitor-review-decision': "the duplicate-review decisions of the Janitor tab (saved, imported from this browser's draft, or removed), which delete no file;",
+    'report-generate': 'the generation of a report from the Storage tab;',
+    'report-delete': 'the deletion of a report from the Storage tab.'
+  });
+  assert.match(guardrail, /<p>This page sends seven kinds of change to Data:<\/p>\s*<ol>/);
+  assert.match(guardrail, /<p>A report is a file in Data's own report store, never on the scanned disks\.<\/p>/);
+  // The Overview repeats the page's own list in full, from the same element.
+  assert.match(guardrail, /<div id="guardrailDetail"/);
+  assert.match(app, /document\.querySelector\('#guardrailDetail'\)\?\.innerHTML/);
+  assert.match(app, /<h3>What this page can change<\/h3>\$\{detail\}/);
   assert.match(html, /Preview, apply, move and delete endpoints are not exposed here/);
   assert.doesNotMatch(html, /Storage scan, preview/);
   assert.doesNotMatch(html, /The only change this page sends/);

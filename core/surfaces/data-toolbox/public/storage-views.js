@@ -184,7 +184,7 @@ async function reportPoll() {
     if (list.error) reportState.outcome = { ok: false, text: `The reports could not be read from Data: ${list.error}. The list below is the last one read.` };
     else { reportState.list = list; reportSettle(); }
     reportPaint();
-    updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
+    shellRead(list.error || '');
   } finally { reportState.busy = false; }
 }
 

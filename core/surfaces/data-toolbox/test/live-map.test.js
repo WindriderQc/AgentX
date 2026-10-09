@@ -84,8 +84,8 @@ function mapBrowser(respond, { world = worldRaw } = {}) {
     }
   };
   // The four scripts in page order: a name declared twice would fail here as it would in the browser.
-  const source = ['gpu.js', 'mqtt.js', 'live-map.js', 'app.js'].map((file) => fs.readFileSync(path.join(publicRoot, file), 'utf8')).join('\n')
-    .replace(/\nrender\(\);\s*$/, `\nglobalThis.page = { state, mapState, render, liveMapOpen, refreshLiveMap, setLiveMapView, mapProject, mapSplitTrack, mapQuakeRadius,
+  const source = ['refresh.js', 'gpu.js', 'mqtt.js', 'live-map.js', 'app.js'].map((file) => fs.readFileSync(path.join(publicRoot, file), 'utf8')).join('\n')
+    .replace(/\nrender\(\);\s*$/, `\nglobalThis.page = { state, mapState, mapRefresher, liveFeedsRefresher, render, liveMapOpen, refreshLiveMap, setLiveMapView, mapProject, mapSplitTrack, mapQuakeRadius,
       mapPrepareWorld, mapInRing, mapCountryAt, mapCountByCountry, mapBin, mapBinLabel, mapPosition };`);
   vm.runInNewContext(source, context);
   return { ...context.page, document, location: context.location, elements, element, listeners, requests, timers, cleared, content: element('#content'), map: element('#liveMap') };
@@ -254,7 +254,7 @@ test('the Live view draws the ISS, its track, the earthquakes and the stored poi
   assert.deepEqual(paths.filter((entry) => !entry.startsWith('/api/')), ['/assets/data-toolbox/geo/world-110m.json']);
   for (const expected of ['/live-data/iss/latest?limit=100', '/live-data/quakes/history?order=desc&limit=500', '/live-data/weather/latest?limit=100',
     '/live-data/air_quality/latest?limit=100', '/live-data/sensors/latest?limit=100']) assert.ok(paths.includes(`/api/data-toolbox${expected}`), expected);
-  assert.match(browser.content.innerHTML, /<section id="liveMap"><\/section>\s*<div class="grid">/, 'the map sits above the feed figures');
+  assert.match(browser.content.innerHTML, /<section id="liveMap"><\/section>\s*<p class="refresh-stamp" id="liveFeedsStamp"[^>]*>[^<]*<\/p>\s*<div id="liveFeeds"><div class="grid">/, 'the map sits above the feed figures');
 
   const html = browser.map.innerHTML;
   assert.match(html, /<h2>World map<\/h2>/);
@@ -312,7 +312,9 @@ test('the Live view draws the ISS, its track, the earthquakes and the stored poi
   assert.match(rows[0], /<td>M 6\.3<\/td><td>12 km S of Example Valley, Chile<\/td><td>10\.5 km<\/td><td class="mono">33\.40°S, 70\.60°W<\/td><td>earthquake<\/td>/);
   assert.match(rows.at(-1), /<td>M -0\.4<\/td>.*<td>quarry blast<\/td>/);
   assert.doesNotMatch(html, /class="notice warning"/);
-  assert.deepEqual(browser.timers.map((timer) => timer.ms).filter((ms) => ms === 60000), [60000]);
+  // Two 60 s timers on this tab: the feed cards and the ISS marker, each on its own refresher.
+  assert.deepEqual(browser.timers.filter((timer) => timer.ms === 60000).map((timer) => timer.callback),
+    [browser.liveFeedsRefresher.tick, browser.mapRefresher.tick]);
 });
 
 test('a hostile place string is escaped in the map and in the table', async () => {
@@ -440,11 +442,14 @@ test('a phone-width map is drawn at its own width with smaller circles', async (
   assert.match(stage.innerHTML, /viewBox="0 0 800 400"/);
 });
 
+// The ISS marker and the feed cards both read every 60 s, each on its own refresher.
+const issTimer = (browser) => browser.timers.find((entry) => entry.ms === 60000 && entry.callback === browser.mapRefresher.tick);
+
 test('only the ISS is read again, every 60 seconds, while the tab is open and the page visible', async () => {
   let issReads = 0;
   const moved = [{ ...issBody[0], _id: 'new', latitude: 21.5, longitude: -166, timeStamp: new Date(NOW).toISOString() }, ...issBody];
   const browser = await openMap(liveLike({ get '/live-data/iss/latest'() { issReads += 1; return issReads > 1 ? moved : issBody; } }));
-  const timer = browser.timers.find((entry) => entry.ms === 60000);
+  const timer = issTimer(browser);
   const before = browser.requests.length;
   browser.document.hidden = true;
   await timer.callback();
@@ -455,7 +460,7 @@ test('only the ISS is read again, every 60 seconds, while the tab is open and th
   assert.match(browser.element('#liveMapFigure').innerHTML, /ISS at 21\.50°N, 166\.00°W/);
   assert.match(browser.element('#liveMapIss').innerHTML, /<td class="mono">21\.500<\/td><td class="mono">-166\.000<\/td>/);
   assert.equal(browser.element('#liveMapNotes').innerHTML, '');
-  assert.match(browser.element('#lastUpdated').textContent, /^updated /);
+  assert.match(browser.element('#lastUpdated').textContent, /^last read /);
 
   // In the country view the read still happens but the map is left alone.
   browser.setLiveMapView('country');
@@ -467,7 +472,7 @@ test('only the ISS is read again, every 60 seconds, while the tab is open and th
   let down = false;
   const failing = await openMap(liveLike({ get '/live-data/iss/latest'() { return down ? new Error('Data service request timed out') : issBody; } }));
   down = true;
-  await failing.timers.find((entry) => entry.ms === 60000).callback();
+  await issTimer(failing).callback();
   assert.match(failing.element('#liveMapNotes').innerHTML, /<strong>ISS<\/strong> could not be read from Data: Data service request timed out\./);
   assert.match(failing.element('#liveMapFigure').innerHTML, /map-quake/);
   assert.doesNotMatch(failing.element('#liveMapFigure').innerHTML, /map-iss/);
@@ -475,14 +480,14 @@ test('only the ISS is read again, every 60 seconds, while the tab is open and th
 
 test('the map timer stops on another tab and a late answer is dropped', async () => {
   const browser = await openMap();
-  const timer = browser.timers.find((entry) => entry.ms === 60000);
+  const timer = issTimer(browser);
   const id = browser.timers.indexOf(timer) + 1;
   browser.state.tab = 'overview';
   const before = browser.requests.length;
   await timer.callback();
   assert.equal(browser.requests.length, before);
   assert.deepEqual(browser.cleared, [id]);
-  assert.equal(browser.mapState.timer, null);
+  assert.equal(browser.mapRefresher.timer, null);
   browser.setLiveMapView('country');
   assert.equal(browser.mapState.view, 'live', 'no view change from another tab');
 
@@ -492,10 +497,10 @@ test('the map timer stops on another tab and a late answer is dropped', async ()
   const late = mapBrowser(async (route) => { if (route === '/live-data/iss/latest' && late.mapState.loaded) await pending; return liveLike()(route); });
   await late.render();
   late.element('#liveMapFigure').innerHTML = 'before';
-  const tick = late.timers.find((entry) => entry.ms === 60000).callback();
+  const tick = issTimer(late).callback();
   late.state.tab = 'gpu';
   release();
   await tick;
   assert.equal(late.element('#liveMapFigure').innerHTML, 'before');
-  assert.equal(late.mapState.busy, false);
+  assert.equal(late.mapRefresher.busy, false);
 });

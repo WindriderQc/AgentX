@@ -19,7 +19,7 @@ const GPU_THROTTLES = Object.freeze({
   hw_thermal: 'thermal (hardware)', hw_slowdown: 'hardware slowdown'
 });
 
-const gpuState = { latest: null, collectors: null, occupancy: null, trend: null, loaded: false, windowHours: 24, nowBusy: false, timer: null };
+const gpuState = { latest: null, collectors: null, occupancy: null, trend: null, loaded: false, windowHours: 24 };
 
 const decimal = (value) => measurement(value).toLocaleString(undefined, { maximumFractionDigits: 1 });
 const pct = (value) => Number.isFinite(measurement(value)) ? `${decimal(value)}%` : '—';
@@ -224,7 +224,7 @@ async function gpu() {
     <section id="gpuTrend">${gpuTrendSection()}</section>
     ${heading('Collector', 'The host-native process that posts these samples to Data.')}
     <section id="gpuCollector">${gpuCollectorSection()}</section>`;
-  if (!gpuState.timer) gpuState.timer = setInterval(refreshGpuNow, GPU_REFRESH_MS);
+  gpuRefresher.opened();
   const to = Date.now();
   const from = to - GPU_TREND_MS;
   const hosts = gpuKnownHosts();
@@ -234,26 +234,22 @@ async function gpu() {
   gpuPaint('#gpuTrend', gpuTrendSection());
 }
 
-// The timer stops at its first tick on another tab and asks nothing while the
-// page is hidden. Its answer is written only into the GPU tab that asked for
-// it: a tab change or a newer render makes it stale and it is dropped.
-async function refreshGpuNow() {
-  if (state.tab !== 'gpu') {
-    clearInterval(gpuState.timer);
-    gpuState.timer = null;
-    return;
-  }
-  if (!gpuState.loaded || gpuState.nowBusy || document.hidden === true) return;
-  const seq = state.renderSeq;
-  gpuState.nowBusy = true;
-  try {
-    const latest = await settled(api('/hardware/latest'));
-    if (seq !== state.renderSeq || state.tab !== 'gpu') return;
+// "Now" on the shared refresher (refresh.js): the timer stops at its first
+// tick on another tab and asks nothing while the page is hidden. Its answer is
+// written only into the GPU tab that asked for it: a tab change or a newer
+// render makes it stale and it is dropped. A failed read replaces the numbers
+// with a notice, and the stamp and the header say that it failed.
+const gpuRefresher = tabRefresher({
+  tab: 'gpu', everyMs: GPU_REFRESH_MS,
+  ready: () => gpuState.loaded,
+  read: () => settled(api('/hardware/latest')),
+  apply(latest) {
     gpuState.latest = latest;
     gpuPaint('#gpuNow', gpuNowSection());
-    updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
-  } finally { gpuState.nowBusy = false; }
-}
+    return latest.error || '';
+  }
+});
+const refreshGpuNow = () => gpuRefresher.tick();
 
 async function setGpuWindow(value) {
   if (!GPU_WINDOWS[value] || state.tab !== 'gpu' || !gpuState.loaded) return;
@@ -270,5 +266,3 @@ async function setGpuWindow(value) {
 document.addEventListener('change', (event) => {
   if (event.target.id === 'gpuWindow') setGpuWindow(event.target.value);
 });
-
-document.addEventListener('visibilitychange', () => { refreshGpuNow(); });

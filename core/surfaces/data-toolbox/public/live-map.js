@@ -35,7 +35,7 @@ const MAP_LAYERS = Object.freeze([
   { key: 'sensors', feed: 'sensors', name: 'Sensors', route: `/live-data/sensors/latest?limit=${MAP_POINT_LIMIT}` }
 ]);
 
-const mapState = { view: 'live', world: null, worldLoad: null, layers: {}, feeds: [], paused: false, loaded: false, busy: false, timer: null, width: 0, paths: null };
+const mapState = { view: 'live', world: null, worldLoad: null, layers: {}, feeds: [], paused: false, loaded: false, width: 0, paths: null };
 
 const mapSettled = (promise) => promise.then((data) => ({ data }), (error) => ({ error: error.message }));
 const mapFixed = (value, digits = 1) => Number.isFinite(measurement(value)) ? measurement(value).toFixed(digits) : '—';
@@ -502,24 +502,18 @@ async function liveMapOpen(feeds, liveState) {
   MAP_LAYERS.forEach((layer, index) => { mapState.layers[layer.key] = layers[index]; });
   mapState.loaded = true;
   mapPaint('#liveMap', mapSection(mapStage()));
-  if (!mapState.timer) mapState.timer = setInterval(refreshLiveMap, MAP_REFRESH_MS);
+  mapRefresher.opened();
 }
 
-// Same guards as the GPU tab: the timer stops at its first tick on another
-// tab, asks nothing while the page is hidden, and its answer is dropped when a
-// tab change or a newer render made it stale. Only the ISS is read again.
-async function refreshLiveMap() {
-  if (state.tab !== 'live-data') {
-    clearInterval(mapState.timer);
-    mapState.timer = null;
-    return;
-  }
-  if (!mapState.loaded || mapState.busy || document.hidden === true) return;
-  const seq = state.renderSeq;
-  mapState.busy = true;
-  try {
-    const iss = await mapSettled(api(MAP_LAYERS[0].route));
-    if (seq !== state.renderSeq || state.tab !== 'live-data') return;
+// On the shared refresher (refresh.js), with the same guards as the GPU tab:
+// the timer stops at its first tick on another tab, asks nothing while the
+// page is hidden, and its answer is dropped when a tab change or a newer
+// render made it stale. Only the ISS is read again.
+const mapRefresher = tabRefresher({
+  tab: 'live-data', everyMs: MAP_REFRESH_MS,
+  ready: () => mapState.loaded,
+  read: () => mapSettled(api(MAP_LAYERS[0].route)),
+  apply(iss) {
     mapState.layers.iss = iss;
     // The map, the notices and the ISS table only: the other tables keep their scroll position.
     if (mapState.view === 'live') {
@@ -527,9 +521,10 @@ async function refreshLiveMap() {
       mapPaint('#liveMapFigure', mapLiveSvg(mapWidth()));
       mapPaint('#liveMapIss', mapIssTable());
     }
-    updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
-  } finally { mapState.busy = false; }
-}
+    return iss.error || '';
+  }
+});
+const refreshLiveMap = () => mapRefresher.tick();
 
 function setLiveMapView(view) {
   if (!['live', 'country'].includes(view) || state.tab !== 'live-data' || !mapState.loaded) return;
@@ -541,8 +536,6 @@ document.addEventListener('click', (event) => {
   const view = event.target.closest?.('[data-map-view]')?.dataset.mapView;
   if (view) setLiveMapView(view);
 });
-
-document.addEventListener('visibilitychange', () => { refreshLiveMap(); });
 
 // The map is drawn at its container's pixel width: a new width redraws it.
 window.addEventListener('resize', () => {

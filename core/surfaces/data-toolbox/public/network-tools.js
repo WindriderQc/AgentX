@@ -384,18 +384,44 @@ function netMount(devicesBody, agentsBody, capability) {
 
 // Reads the devices and collectors again and repaints everything but the
 // search box and the scan form, so what is being typed there stays.
-async function netReload() {
-  const seq = state.renderSeq;
-  const [devicesBody, agentsBody] = await Promise.all([api('/network/devices'), api('/network/agents')]);
-  if (seq !== state.renderSeq || state.tab !== 'network') return false;
+const netReadLists = () => Promise.all([api('/network/devices'), api('/network/agents')]);
+
+function netApplyLists([devicesBody, agentsBody]) {
   netAccept(devicesBody, agentsBody);
   if (typeof networkOverview === 'function') netPaint('#netOverview', networkOverview(devicesBody, agentsBody, netState.capability));
   netPaint('#netCollectors', netCollectorsSection());
   netPaint('#netViews', netViewSwitch());
   netPaintList();
   netSyncScan();
+}
+
+async function netReload() {
+  const seq = state.renderSeq;
+  const lists = await netReadLists();
+  if (seq !== state.renderSeq || state.tab !== 'network') return false;
+  netApplyLists(lists);
+  if (netRefresher) netRefresher.opened();
   return true;
 }
+
+// What must not be repainted under the user: an open device editor, a name
+// typed and not saved, a save on its way, a scan whose end reads the list itself.
+function netRefreshBlocked() {
+  if (netState.editing) return 'a device editor is open';
+  if (netState.saving) return 'a change is being saved';
+  if (Object.values(netState.drafts).some((draft) => String(draft || '').trim())) return 'a typed name is not saved yet';
+  if (['sending', 'following'].includes(netState.scan?.phase)) return 'a scan is running (the list is read again when it ends)';
+  return '';
+}
+
+// The device list, the collectors and the counts read themselves again every
+// minute, in place: the search box and the scan form are never repainted, and
+// the list keeps its sideways and vertical scroll.
+const netRefresher = typeof tabRefresher === 'function' ? tabRefresher({
+  tab: 'network', everyMs: 60000, stamp: 'netStamp', holds: true, blocked: netRefreshBlocked,
+  read: netReadLists,
+  apply(lists) { refreshKeepScroll('#netList .table-wrap', () => netApplyLists(lists)); }
+}) : null;
 
 // ── Scan request ────────────────────────────────────────────────────────────
 

@@ -90,8 +90,8 @@ function gpuBrowser(respond) {
       return { ok: true, status: 200, json: async () => ({ status: 'success', data: answer }) };
     }
   };
-  const source = ['gpu.js', 'app.js'].map((file) => fs.readFileSync(path.join(publicRoot, file), 'utf8')).join('\n')
-    .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, gpuState, render, renderers, gpu, refreshGpuNow, setGpuWindow, pct, mib, withUnit, span };');
+  const source = ['refresh.js', 'gpu.js', 'app.js'].map((file) => fs.readFileSync(path.join(publicRoot, file), 'utf8')).join('\n')
+    .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, gpuState, gpuRefresher, render, renderers, gpu, refreshGpuNow, setGpuWindow, pct, mib, withUnit, span };');
   vm.runInNewContext(source, context);
   return { ...context.page, document, location: context.location, elements, listeners, requests, timers, cleared, content: element('#content') };
 }
@@ -344,7 +344,7 @@ test('the 30 s refresh replaces only "Now", and only on a visible GPU tab', asyn
   await browser.timers[0].callback();
   assert.equal(count(), before);
   assert.deepEqual(browser.cleared, [1]);
-  assert.equal(browser.gpuState.timer, null);
+  assert.equal(browser.gpuRefresher.timer, null);
 });
 
 test('a slow GPU answer never writes into another tab', async () => {
