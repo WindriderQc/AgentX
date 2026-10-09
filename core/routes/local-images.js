@@ -43,11 +43,12 @@ function createRouter(images = service, workshop = presentation, exports = recip
   return router;
 }
 function mount(app) {
+  app.use('/api/images/expert', require('./image-expert').createRouter());
   app.use('/api/images', createRouter());
   app.get('/images', (_req, res) => res.render('layouts/main', {
     pageView: '../pages/images', title: 'AgentX · Images', service: 'core', activePage: 'images', showNav: true,
-    headCss: '<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/local-images.css"><link rel="stylesheet" href="/css/local-images-guide.css">',
-    footerJs: '<script src="/js/local-images.js" defer></script>'
+    headCss: '<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/local-images.css"><link rel="stylesheet" href="/css/local-images-guide.css"><link rel="stylesheet" href="/css/image-expert.css">',
+    footerJs: '<script src="/js/image-starters.js" defer></script><script src="/js/image-expert.js" defer></script><script src="/js/local-images.js" defer></script>'
   }));
   app.get('/images/guide', (_req, res) => res.render('layouts/main', {
     pageView: '../pages/images-guide', title: 'AgentX · Images · Comment ça marche', service: 'core', activePage: 'images', showNav: true,

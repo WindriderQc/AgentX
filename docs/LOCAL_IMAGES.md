@@ -13,6 +13,19 @@ configured archive may be part of the household photo library. Human studio
 access follows the deployment's trusted LAN boundary; native agents retain
 their separate permission policies.
 
+The optional imageX panel integrates Hermes into the Atelier: chat, editable
+prompt proposals, operational events, routing facts and read-only profile files.
+Core retains the canonical `image-workshop` conversation and keeps gateway
+credentials server-side. The panel sends text and current recipe evidence;
+reference images remain on the local rendering path. Apply a proposal explicitly
+before creating an image. A changed draft context blocks stale application.
+Completed proposals can be attached to an image request by session/turn identity;
+Core resolves that identity from its conversation store before any worker action.
+Details and recipe exports retain this collaboration receipt and record prompt
+or setting changes. Restarted consultations are interrupted without inference
+replay. The manual creation path remains usable without Hermes. Installation and
+protocol details are in [the Hermes adapter](../integrations/hermes/README.md).
+
 Nestor and Famille display conversation image cards with read-only progress,
 verified output and a **Continuer dans l’atelier** link. The atelier restores
 the selected operation's brief, seed and supported format/profile. **Utiliser

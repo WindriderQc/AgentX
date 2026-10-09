@@ -75,7 +75,7 @@ export async function recordTool(workspace, event, context, { config, pluginConf
   const soundTool = ['agentx__get_sound', 'get_sound'].includes(tool);
   const soundId = !failed && soundTool && data?.status === 'available'
     && /^[a-z][a-z0-9-]{0,63}$/.test(data?.sound?.id || '') ? data.sound.id : null;
-  const localImage = tool === 'local_image' && data?.ok === true && data?.operation?.id;
+  const localImage = ['local_image', 'imagex'].includes(tool) && data?.ok === true && data?.operation?.id;
   const imageOperation = !failed && localImage && event.params?.action === 'create'
     && data.acceptedAction?.operationId === data.operation.id
     && /^[a-f0-9-]{36}$/.test(data.operation.id) && /^[a-f0-9]{64}$/.test(data.acceptedAction.actionKey || '')

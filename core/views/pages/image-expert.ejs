@@ -1,0 +1,60 @@
+<section class="imagex-panel" id="imagex" aria-labelledby="imagex-title">
+  <header class="imagex-heading">
+    <div><p class="image-eyebrow">TON SPÉCIALISTE IMAGE</p><h2 id="imagex-title">imageX <span>Powered by Hermes</span></h2>
+      <p>Travaille ton idée avec l’expert, prépare le brief, puis crée dans l’Atelier.</p></div>
+    <div class="imagex-presence"><span id="imagex-connection">Connexion à Hermes…</span><a href="#imagex-dashboard">Voir son atelier ↓</a>
+      <a id="imagex-official-dashboard" target="_blank" rel="noopener noreferrer" hidden>Dashboard officiel Hermes · imageX ↗</a></div>
+  </header>
+  <div class="imagex-roles" aria-label="Qui fait quoi ?">
+    <div><span>01 · HERMES</span><strong>Imagine et conseille</strong><p>imageX discute, affine les prompts et propose une recette.</p></div>
+    <div><span>02 · AGENTX</span><strong>Coordonne et conserve</strong><p>L’Atelier garde les échanges, valide les demandes et archive les créations.</p></div>
+    <div><span>03 · COMFYUI LOCAL</span><strong>Produit les images</strong><p id="imagex-renderer">Le moteur de rendu utilise le GPU configuré par AgentX.</p></div>
+  </div>
+  <div class="imagex-workspace">
+    <section class="imagex-chat" aria-labelledby="imagex-chat-title">
+      <div class="imagex-section-heading"><h3 id="imagex-chat-title">Avec imageX</h3><button id="imagex-new" type="button" class="quiet-button">Nouvelle discussion</button></div>
+      <label class="imagex-history-label" for="imagex-session">Discussions de cet Atelier</label>
+      <select id="imagex-session"><option value="">Nouvelle discussion</option></select>
+      <div id="imagex-messages" class="imagex-messages" role="log" aria-live="polite">
+        <p class="imagex-welcome">« Décris ce que tu veux créer. On peut explorer une idée, améliorer ton brief ou comprendre une recette ensemble. »</p>
+      </div>
+      <div class="imagex-shortcuts"><button id="imagex-plan" type="button">Affiner mon brief ↗</button><button id="imagex-explore" type="button">Explorer les possibilités</button></div>
+      <form id="imagex-chat-form"><label for="imagex-message">Parler à imageX</label>
+        <textarea id="imagex-message" rows="2" maxlength="8000" placeholder="Une idée, un conseil, une question sur ta retouche…" required></textarea>
+        <div class="imagex-send-row"><p>Le texte et les réglages du brief sont transmis. Les images jointes restent destinées au rendu local.</p><button id="imagex-send" type="submit">Envoyer ↗</button></div>
+      </form>
+      <p id="imagex-notice" class="image-help" role="status"></p>
+      <button id="imagex-stop" type="button" class="quiet-button" hidden>Arrêter la consultation</button>
+    </section>
+    <section class="imagex-dashboard" id="imagex-dashboard" aria-labelledby="imagex-dashboard-title">
+      <div class="imagex-section-heading"><h3 id="imagex-dashboard-title">L’atelier du spécialiste</h3><span class="imagex-badge">HERMES · imageX</span></div>
+      <dl id="imagex-routing" class="imagex-routing"></dl>
+      <p class="image-help">Le dashboard officiel gère les sessions Hermes, la mémoire, les skills et la configuration. Les discussions de cet Atelier restent conservées dans AgentX.</p>
+      <div class="imagex-tabs" role="tablist" aria-label="Outils du spécialiste">
+        <button id="imagex-tab-proposal" type="button" role="tab" aria-selected="true" aria-controls="imagex-proposal">Proposition</button>
+        <button id="imagex-tab-activity" type="button" role="tab" aria-selected="false" aria-controls="imagex-activity" tabindex="-1">Console</button>
+        <button id="imagex-tab-files" type="button" role="tab" aria-selected="false" aria-controls="imagex-files" tabindex="-1">Fichiers &amp; prompts</button>
+      </div>
+      <div id="imagex-proposal" role="tabpanel" aria-labelledby="imagex-tab-proposal">
+        <p id="imagex-proposal-empty" class="image-help">Demande « Affiner mon brief » pour obtenir une proposition adaptée à la recette et au format choisis.</p>
+        <div id="imagex-proposal-content" hidden><p id="imagex-proposal-reason"></p><p id="imagex-proposal-settings" class="image-help"></p>
+          <label for="imagex-proposal-prompt">Prompt proposé · modifiable</label><textarea id="imagex-proposal-prompt" rows="7" maxlength="8000"></textarea>
+          <button id="imagex-apply" type="button">Appliquer au brief ↓</button><p id="imagex-apply-note" class="image-help">Vérifie ensuite le brief et les références, puis lance la création.</p>
+        </div>
+      </div>
+      <div id="imagex-activity" role="tabpanel" aria-labelledby="imagex-tab-activity" hidden>
+        <p class="image-help">Activité de la consultation sélectionnée : outils, délais et résultat.</p>
+        <select id="imagex-inspect-turn" aria-label="Consultation à examiner"><option value="">Aucune consultation</option></select>
+        <ol id="imagex-events" class="imagex-events"></ol>
+        <p id="imagex-receipt" class="image-help"></p>
+        <details><summary>Message et contexte transmis</summary><pre id="imagex-envelope"></pre></details>
+      </div>
+      <div id="imagex-files" role="tabpanel" aria-labelledby="imagex-tab-files" hidden>
+        <p class="image-help">Les documents utilisés par imageX. Leur contenu et leur date viennent du profil installé.</p>
+        <label for="imagex-resource">Ouvrir un document</label><select id="imagex-resource"><option value="">Choisir un fichier…</option></select>
+        <p id="imagex-file-facts" class="image-help" role="status"></p><pre id="imagex-file-content"></pre>
+        <a id="imagex-file-download" class="quiet-button" hidden>Télécharger ce document</a>
+      </div>
+    </section>
+  </div>
+</section>

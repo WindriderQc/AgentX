@@ -1,0 +1,53 @@
+.imagex-panel { margin: 0 0 28px; border: 1px solid #4f746765; border-radius: 20px; background: linear-gradient(135deg, #14332d55, #182126cc 65%); overflow: hidden; }
+.imagex-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 26px 28px 18px; }
+.imagex-heading h2 { margin: 4px 0 8px; font-size: 30px; letter-spacing: -.035em; }
+.imagex-heading h2 span { display: inline-block; margin-left: 10px; color: #a8d2bc; font-size: 12px; font-weight: 500; letter-spacing: .025em; vertical-align: middle; padding: 5px 10px; border: 1px solid #68988166; border-radius: 50px; }
+.imagex-heading p { margin: 0; color: #b6c1c3; font-size: 14px; }
+.imagex-presence { display: grid; gap: 8px; font-size: 12px; text-align: right; }
+.imagex-presence span { color: #c5dfcf; }
+.imagex-presence a { color: #a5c7b8; }
+.imagex-roles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 0 28px 22px; }
+.imagex-roles > div { padding: 16px 18px; border: 1px solid #64757238; border-radius: 12px; background: #17242580; }
+.imagex-roles span { color: #8ec6ad; font-size: 10px; letter-spacing: .1em; }
+.imagex-roles strong { display: block; margin: 7px 0; font-size: 14px; color: #e4ece8; }
+.imagex-roles p { color: #a9b8b4; line-height: 1.5; font-size: 12px; margin: 0; }
+.imagex-workspace { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); border-top: 1px solid #6b80723b; }
+.imagex-chat, .imagex-dashboard { min-width: 0; padding: 22px 28px; }
+.imagex-dashboard { border-left: 1px solid #6b80723b; background: #101b2280; }
+.imagex-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.imagex-section-heading h3 { font-size: 16px; margin: 0; }
+.imagex-badge { color: #8eaea0; font-size: 10px; letter-spacing: .1em; }
+.imagex-panel button, .imagex-panel select, .imagex-panel textarea { font: inherit; }
+.imagex-panel button { border: 1px solid #72958266; background: #344d4380; color: #e6f3eb; border-radius: 9px; padding: 9px 13px; font-size: 12px; cursor: pointer; }
+.imagex-panel button:hover:not(:disabled) { background: #446456; }
+.imagex-panel button:disabled { opacity: .45; cursor: default; }
+.imagex-panel select, .imagex-panel textarea { display: block; width: 100%; box-sizing: border-box; border: 1px solid #67817566; border-radius: 9px; background: #101b20; color: #e1e9e4; padding: 10px 12px; font-size: 13px; }
+.imagex-panel label { display: block; color: #cad6ce; font-size: 12px; margin-bottom: 7px; }
+.imagex-panel .imagex-history-label { font-size: 11px; color: #99aaa2; }
+.imagex-messages { max-height: 300px; min-height: 110px; overflow-y: auto; margin: 15px 0; padding: 3px 8px 3px 0; }
+.imagex-welcome { font-size: 15px; line-height: 1.65; color: #b9cfc3; max-width: 450px; }
+.imagex-message { padding: 12px 14px; margin: 0 0 10px; border-radius: 10px; background: #263a3280; overflow-wrap: anywhere; }
+.imagex-message-user { background: #28394580; }
+.imagex-message header { display: flex; justify-content: space-between; gap: 10px; color: #9fb6a9; font-size: 10px; margin-bottom: 6px; }
+.imagex-message p { white-space: pre-wrap; font-size: 13px; line-height: 1.6; margin: 0; }
+.imagex-message button { margin-top: 10px; padding: 5px 8px; font-size: 10px; }
+.imagex-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.imagex-send-row { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px; }
+.imagex-send-row p { font-size: 10px; line-height: 1.5; color: #9eadab; margin: 0; max-width: 330px; }
+.imagex-send-row button { flex-shrink: 0; }
+.imagex-routing { margin: 0 0 18px; display: grid; gap: 7px; }
+.imagex-routing > div { display: grid; grid-template-columns: 95px minmax(0, 1fr); gap: 10px; font-size: 11px; }
+.imagex-routing dt { color: #8fa29b; }.imagex-routing dd { margin: 0; color: #d0ded7; overflow-wrap: anywhere; }
+.imagex-tabs { display: flex; gap: 5px; border-bottom: 1px solid #637b6b50; margin-bottom: 18px; padding-bottom: 8px; }
+.imagex-tabs button { background: transparent; color: #a8bbb1; border-color: transparent; }
+.imagex-tabs button[aria-selected=true] { background: #36594665; color: #dcf6e6; border-color: #658d7270; }
+.imagex-dashboard [role=tabpanel] { min-height: 155px; }
+.imagex-dashboard pre { font: 11px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; background: #0c151b; color: #becdc3; border-radius: 8px; padding: 13px; max-height: 300px; overflow-y: auto; }
+.imagex-events { list-style: none; margin: 14px 0; padding: 0; display: grid; gap: 7px; font: 11px/1.5 ui-monospace, monospace; color: #b5cdbd; }
+.imagex-events li { border-left: 2px solid #709881; padding-left: 10px; overflow-wrap: anywhere; }
+#imagex-proposal-reason { font-size: 13px; line-height: 1.6; color: #c3d7c9; }
+#imagex-apply { margin-top: 12px; background: #c0debd; color: #142b22; font-weight: 600; }
+.imagex-panel :focus-visible { outline: 2px solid #b3d6be; outline-offset: 3px; }
+.imagex-panel [hidden] { display: none !important; }
+@media (max-width: 850px) { .imagex-workspace { grid-template-columns: 1fr; }.imagex-dashboard { border-left: 0; border-top: 1px solid #6b80723b; }.imagex-roles { gap: 8px; }.imagex-roles > div { padding: 12px; } }
+@media (max-width: 540px) { .imagex-heading { flex-direction: column; align-items: flex-start; padding: 20px; }.imagex-presence { text-align: left; display: flex; flex-wrap: wrap; gap: 12px; }.imagex-roles { grid-template-columns: 1fr; padding: 0 20px 20px; gap: 6px; }.imagex-roles > div { padding: 11px 13px; }.imagex-roles strong { display: inline; margin-left: 10px; }.imagex-roles p { margin-top: 6px; }.imagex-chat, .imagex-dashboard { padding: 20px; }.imagex-tabs { flex-wrap: wrap; }.imagex-heading h2 span { margin-left: 6px; font-size: 10px; } }
