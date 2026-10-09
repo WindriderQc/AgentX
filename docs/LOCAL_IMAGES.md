@@ -289,6 +289,43 @@ model failure. The native attempt remains in the audit; its text cannot cancel
 an accepted image. This receipt observation neither generates another image nor
 grants tools to a fallback model. A later status reads the same verified artifact.
 
+## Historical recipe downloads
+
+The atelier offers an explicit **Exporter la recette et ses images** action for
+a completed operation whose runtime has been restored. Preparing the downloads
+checks its persisted execution and every archived image. The manifest contains
+the stored brief, requested dimensions/seed, historical profile and optional
+declared recipe identity, builder identity, graph SHA-256, ordered lineage and
+file descriptors. The brief and reference images may be personal; the atelier
+discloses this before the user prepares or shares the downloads.
+
+`GET /api/images/operations/:id/export` downloads a version-1 JSON manifest.
+`GET /api/images/operations/:id/export/parts/:name` downloads `graph.json`,
+`output.png` (or `.jpg`) and the recorded `reference-0/1-source.png` (or `.jpg`)
+and `reference-0/1-worker.png` pieces. Filenames are enumerated from the operation;
+clients cannot supply archive paths. Responses use attachment disposition,
+`private, no-store` and `nosniff`. They retain the existing human LAN atelier
+authority and are not automatically exposed by conversation adapters.
+
+The graph is the exact stored `JSON.stringify(graph)` byte sequence, verified
+against its durable SHA. A frozen verifier accepts only the closed topology and
+fields of known builder v1 Klein/Qwen graphs, bound to the recorded parameters,
+model filenames, reference order and operation ID. It never replaces a missing
+graph with the current workflow or profile. Each request verifies the recorded
+images' SHA, size, MIME and decoded dimensions and rechecks the Mongo snapshot
+before responding; no previous verification is cached. Host configuration,
+worker URLs, conversation identities, admission proofs and archive paths are
+excluded from the download projection.
+
+Unknown/active/unrestored operations return 409 before reading archives. Legacy
+operations without a full execution or retained references remain unavailable;
+missing/corrupt recorded pieces return 503. Downloading does not initialize the
+image service, create indexes, mutate operations, recover a worker, regenerate,
+reserve resources or write archives. There is no ZIP, import or graph replay.
+Model filenames are historical declarations, not weight hashes or backend
+version qualification, and old upload names do not make the graph portable.
+Native storage performance, GPU output and device acceptance are separate checks.
+
 ## Conversation drawings
 
 For Nestor's private native Household session, the plugin creates through
