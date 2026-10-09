@@ -41,6 +41,7 @@ let livePollTimer = null;
 let countdownTimer = null;
 let nextTasksData = [];
 let conflictsData = [];
+let overdueData = [];
 let claimsData = [];
 let liveHostsData = [];
 let currentDate = SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE);
@@ -94,6 +95,7 @@ function setViewMode(mode) {
   loadTimeline(); loadConflicts();
 }
 function isToday() { return SCHEDULE_DATE.isToday(currentDate, new Date(), OPERATOR_TIME_ZONE); }
+function isPastDate() { return currentDate < SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE); }
 function calendarQuery() {
   const params = new URLSearchParams({ date: currentDate });
   if (OPERATOR_TIME_ZONE) params.set('timezone', OPERATOR_TIME_ZONE);
@@ -118,6 +120,7 @@ async function loadLiveState() {
     renderLiveBar(container, liveResult.value.hosts, nextTasks, { scheduleAvailable });
     updateLiveEvidence(liveResult.value);
   } else {
+    liveHostsData = [];
     container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> Loaded-model and VRAM detail unavailable: ${esc(liveResult.reason?.message || 'unknown error')}</div>`;
     updateLiveEvidence(null);
   }
@@ -135,6 +138,7 @@ async function loadLiveState() {
   } else {
     updateHeaderStatusUnavailable(ecosystemResult.reason);
   }
+  renderAttention();
 }
 
 function updateLiveEvidence(liveData) {
@@ -157,11 +161,11 @@ function updateLiveEvidence(liveData) {
 }
 
 function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true } = {}) {
+  liveHostsData = hosts || [];
   if (!hosts || hosts.length === 0) {
     container.innerHTML = '<div class="cs-empty">No hosts configured</div>';
     return;
   }
-  liveHostsData = hosts;
 
   container.innerHTML = hosts.map(h => {
     const isOnline = h.status === 'online';
@@ -336,10 +340,15 @@ async function loadTimeline() {
       renderGroupedHeatmap(container, visibleScheduled);
       renderLegend(visibleScheduled);
     }
+    overdueData = isToday()
+      ? UPCOMING_PROJECTION.findOverdueEntries(upcomingTimelineEntries, { now: Date.now() })
+      : [];
     loadNextTasks();
   } catch (err) {
+    overdueData = [];
     container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
   }
+  renderAttention();
 }
 
 // Split timeline into 24/7 continuous services vs schedulable jobs.
@@ -600,9 +609,8 @@ async function loadConflicts() {
     const data = await fetchJSON(`${API_BASE}/schedule/conflicts?${calendarQuery()}`);
     conflictsData = data.conflicts || [];
     if (conflictsData.length > 0) {
-      const summaries = conflictsData.map(c => `${c.taskA.name} + ${c.taskB.name} on ${c.hostId}`);
-      const unique = [...new Set(summaries)];
-      text.textContent = `${data.count} conflict${data.count > 1 ? 's' : ''}: ${unique.slice(0, 3).join('; ')}${unique.length > 3 ? ` (+${unique.length - 3} more)` : ''}`;
+      const unique = summarizeConflicts(conflictsData).map(c => `${c.nameA} + ${c.nameB} on ${c.hostLabel}`);
+      text.textContent = `${unique.length} overlapping pair${unique.length > 1 ? 's' : ''} (${data.count} run${data.count > 1 ? 's' : ''}): ${unique.slice(0, 3).join('; ')}${unique.length > 3 ? ` (+${unique.length - 3} more)` : ''}`;
       banner.classList.remove('hidden');
     } else {
       banner.classList.add('hidden');
@@ -622,56 +630,6 @@ async function loadClaims() {
   } catch (err) {
     container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
   }
-}
-
-// ── Attention Tab ───────────────────────────────────────────
-
-function renderAttention() {
-  const container = document.getElementById('attentionList');
-  const items = [];
-
-  // Conflicts
-  for (const c of conflictsData) {
-    items.push({ type: 'error', icon: 'fa-bolt', label: 'Schedule conflict',
-      detail: `${c.taskA.name} overlaps ${c.taskB.name} on ${c.hostId}` });
-  }
-
-  // Down hosts (from live bar data)
-  document.querySelectorAll('.cs-host-card.down').forEach(card => {
-    const name = card.querySelector('.cs-host-name')?.textContent || 'Host';
-    items.push({ type: 'error', icon: 'fa-server', label: `${name} unreachable`, detail: 'Host is not responding to Ollama API polling' });
-  });
-
-  // Tasks showing "Now" in next up = possibly overdue
-  for (const t of nextTasksData) {
-    if (t.msFromNow <= 0) {
-      items.push({ type: 'warn', icon: 'fa-clock', label: `${t.name} overdue`, detail: `Was expected to run — may be stale or stuck` });
-    }
-  }
-
-  if (items.length === 0) {
-    container.innerHTML = `
-      <div style="padding:12px 4px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <i class="fas fa-check-circle" style="color:#22c55e;font-size:16px"></i>
-          <span style="font-size:13px;font-weight:600;color:#22c55e">No issues detected</span>
-        </div>
-        <div style="font-size:11px;color:#374151;display:flex;flex-direction:column;gap:4px">
-          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>0 schedule conflicts</div>
-          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>0 overdue tasks</div>
-          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>All reachable hosts online</div>
-        </div>
-      </div>`;
-    return;
-  }
-
-  container.innerHTML = items.map(it => `
-    <div class="cs-attn-item${it.type === 'warn' ? ' warn' : ''}">
-      <span class="cs-attn-icon"><i class="fas ${it.icon}"></i></span>
-      <span class="cs-attn-label">${esc(it.label)}</span>
-      <div class="cs-attn-detail">${esc(it.detail)}</div>
-    </div>
-  `).join('');
 }
 
 function renderClaims(container) {
@@ -772,7 +730,9 @@ async function loadNextTasks() {
 
 function renderNextTasks(container) {
   if (nextTasksData.length === 0) {
-    container.innerHTML = '<div class="cs-empty">No upcoming tasks</div>';
+    container.innerHTML = isPastDate()
+      ? '<div class="cs-empty">This day is over; no upcoming tasks remain.</div>'
+      : '<div class="cs-empty">No upcoming tasks</div>';
     return;
   }
 
@@ -836,8 +796,8 @@ function startCountdown() {
     nextTasksData.forEach((task, i) => {
       const el = document.getElementById(`countdown-${i}`);
       if (!el) return;
-      if (task.displayMode === 'time') {
-        el.textContent = task.displayText || '';
+      if (task.running || task.displayMode === 'time') {
+        el.textContent = formatUpcomingDisplay(task);
         return;
       }
       el.textContent = formatCountdown(Math.max(0, task.msFromNow - elapsed));
@@ -855,6 +815,7 @@ function buildUpcomingTasksFromTimeline(entries) {
 }
 
 function formatUpcomingDisplay(task) {
+  if (task.running) return 'Running';
   if (task.displayMode === 'time') return task.displayText || '';
   return formatCountdown(task.msFromNow);
 }

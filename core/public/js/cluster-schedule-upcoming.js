@@ -11,6 +11,7 @@
   else if (root) root.ClusterScheduleUpcoming = api;
 }(typeof window !== 'undefined' ? window : globalThis, () => {
   const HOUR_MS = 60 * 60 * 1000;
+  const CLOCK_SKEW_MS = 60 * 1000;
 
   function toMillis(value) {
     const millis = new Date(value).getTime();
@@ -68,7 +69,8 @@
           endMs: toMillis(slot?.end)
         }))
         .filter(candidate => candidate.startMs !== null && candidate.endMs !== null)
-        .filter(candidate => !todaySelected || candidate.endMs >= now)
+        // A finished occurrence is never upcoming, whichever day is selected.
+        .filter(candidate => candidate.endMs >= now)
         .sort((a, b) => a.startMs - b.startMs);
 
       if (!slots.length) continue;
@@ -96,6 +98,7 @@
           dailyCount,
           nextRun: slot.start,
           msFromNow: Math.max(0, startMs - now),
+          running: startMs <= now,
           displayMode: todaySelected ? 'countdown' : 'time',
           displayText: formatTime(slot.start),
           collapsedOccurrences: collapseOccurrences,
@@ -117,8 +120,37 @@
     return occurrences.slice(0, maxItems);
   }
 
+  /**
+   * Overdue needs execution evidence: an entry is overdue only when it records
+   * a lastRun older than a projected start that is already past its grace.
+   * Entries without lastRun are unknown, not overdue.
+   */
+  function findOverdueEntries(entries, options = {}) {
+    const now = Number.isFinite(options.now) ? options.now : Date.now();
+    const graceMs = Number.isFinite(options.graceMs) ? options.graceMs : 10 * 60 * 1000;
+    const overdue = [];
+    for (const entry of (entries || [])) {
+      const lastRunMs = entry?.lastRun ? toMillis(entry.lastRun) : null;
+      if (lastRunMs === null) continue;
+      const expectedMs = (entry.slots || [])
+        .filter(slot => !slot?.continuous)
+        .map(slot => toMillis(slot?.start))
+        .filter(start => start !== null && start <= now - graceMs)
+        .reduce((latest, start) => Math.max(latest, start), -Infinity);
+      if (!Number.isFinite(expectedMs) || lastRunMs >= expectedMs - CLOCK_SKEW_MS) continue;
+      overdue.push({
+        id: entry.id || entry.sourceId || entry.name,
+        name: entry.name,
+        expectedAt: new Date(expectedMs).toISOString(),
+        lastRun: new Date(lastRunMs).toISOString()
+      });
+    }
+    return overdue;
+  }
+
   return Object.freeze({
     buildUpcomingTasks,
+    findOverdueEntries,
     deriveIntervalMs,
     isHighFrequencyRecurring
   });
