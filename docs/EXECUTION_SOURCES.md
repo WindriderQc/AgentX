@@ -133,9 +133,12 @@ native receipt fingerprint. Agent CLI execution cannot claim `isolated_model`,
 even when its observed tool count is zero. Agent targets cannot judge isolated
 models. Raw targets publish judge eligibility only after the native JSON format
 and the existing judge seed contract are supported. The qualified
-2026.9.4 completions transport forwards both through the native parameter wrapper. Paid native agent benchmark targets stay unavailable until a native
-spend/turn boundary can be qualified before execution; model mode has a single
-invocation ceiling.
+2026.9.4 completions transport forwards both through the native parameter wrapper.
+All native agent Benchmark targets stay unavailable until cell-wide turn, tool,
+token and spend limits are qualified before each native call; model mode has a
+single invocation ceiling. The [broker installation procedure](../integrations/benchmark-harness-broker/README.md#instance-configuration)
+describes the required catalogue refresh order. Historical agent receipts retain
+their existing ranking rules below; this gate prevents new native agent cells.
 
 A native agent ranks on the same leaderboard as bare models. The campaign kind
 does not split the quality cohort: results share one when scorer, judge and
