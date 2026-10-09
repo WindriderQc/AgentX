@@ -66,6 +66,13 @@ bounded successful conversation history and current recipe evidence, with no
 reference image bytes, private worker addresses or general owner conversations.
 Vision inspection and profile editing are not offered by this surface.
 
+When the instance runs the official `hermes dashboard`, set `HERMES_PUBLIC_URL`
+to its browser-facing URL (including any reverse-proxy prefix). Atelier shows
+an external management link with the `imagex` profile selected. Its fallback is
+`HERMES_DASHBOARD_URL`; no credentials or query tokens enter the link. Hermes
+retains its native authentication and profile management. The Atelier's saved
+conversations remain in Core; Hermes's dashboard shows native execution sessions.
+
 Run `python3 -m unittest discover -s integrations/hermes/test` and
 `npm test --prefix integrations/openclaw/imagex`, along with the personal harness
 suite when changing its shared adapter. Installation, native tool availability,

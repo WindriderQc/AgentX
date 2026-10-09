@@ -4,6 +4,7 @@ const { forSurface } = require('../surfaceConversationService');
 const gateway = require('./expertGateway');
 const presentation = require('./workshopPresentation');
 const images = require('./imageService');
+const { officialDashboardUrl } = require('./expertDashboard');
 const ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const failure = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const identity = sessionId => {
@@ -19,9 +20,10 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
   workshop = presentation, imageService = images } = {}) {
   const running = new Map(), admissions = new Map();
   async function status() {
-    if (!bridge.configured()) return { configured: false, available: false };
-    try { return { configured: true, available: true, ...await bridge.invoke({ action: 'describe' }, { timeoutMs: 12000 }) }; }
-    catch { return { configured: true, available: false, message: 'Le relais Hermes ne répond pas. La création manuelle reste disponible.' }; }
+    const dashboardUrl = officialDashboardUrl();
+    if (!bridge.configured()) return { configured: false, available: false, dashboardUrl };
+    try { return { configured: true, available: true, ...await bridge.invoke({ action: 'describe' }, { timeoutMs: 12000 }), dashboardUrl }; }
+    catch { return { configured: true, available: false, dashboardUrl, message: 'Le relais Hermes ne répond pas. La création manuelle reste disponible.' }; }
   }
   async function resource(id) {
     if (!['identity', 'agentx-images', 'comfyui', 'learning', 'memory'].includes(id)) throw failure('Fichier imageX inconnu.', 404);

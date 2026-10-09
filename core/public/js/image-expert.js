@@ -187,6 +187,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply }) {
   (async () => {
     try {
       metadata = await api('/status'); $('imagex-connection').textContent = metadata.available ? 'Hermes connecté · spécialiste imageX' : 'Hermes indisponible';
+      if (metadata.dashboardUrl) { $('imagex-official-dashboard').href = metadata.dashboardUrl; $('imagex-official-dashboard').hidden = false; }
       const entries = [['Conseil', metadata.routing?.model || 'Modèle non renseigné'], ['Route', metadata.routing?.provider || 'Non renseignée'],
         ['Tarification', metadata.routing?.freeOnly ? 'Modèles cloud gratuits configurés' : 'Selon le fournisseur configuré'],
         ['Repli configuré', metadata.routing?.fallbackModels?.join(', ') || 'Non renseigné'], ['Vision', 'Conseil textuel · références rendues localement']];
