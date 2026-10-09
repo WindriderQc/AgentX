@@ -4,5 +4,6 @@ function mount(app, jsonParser) {
   require('./finance').mount(app, jsonParser);
   require('./local-images').mount(app);
   require('./image-lab').mount(app);
+  require('./operator-skill').mount(app);
 }
 module.exports = { mount };

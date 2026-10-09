@@ -14,7 +14,7 @@ voice identity is not implemented.
 | `data/` (optional) | Filesystem/network inventory, GPU telemetry, feeds, exports and janitor operations | MongoDB; explicitly configured collectors, roots and feeds |
 | `shared/` | Cross-service contracts, utilities and the local test harness | None; no separate service |
 | `integrations/` | Host-native adapters: OpenClaw tools, coding team, Secretary, operations helpers, memory-review and Data collectors, benchmark harness broker | External instance settings |
-| `skills/` | Portable authoring capabilities and format validation | Explicit consumer invocation |
+| `skills/` | Portable authoring capabilities and format validation; `skills/agentx` is the operator skill, which Core serves as a zip (`GET /api/operator-skill/download`) together with the instance's own sheet when `config/operator-skill/instance.md` exists under the instance root | Explicit consumer invocation |
 
 Each service keeps its own process, `package.json` and test suite. One Compose
 definition and one launcher (`agentx` / `agentx.ps1`) run them all.
