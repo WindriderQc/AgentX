@@ -51,6 +51,12 @@
       <div class="result-actions"><a id="image-download" class="quiet-button" hidden download>Télécharger l’original</a><button id="image-reuse-brief" type="button" class="quiet-button" hidden>Reprendre le brief et les réglages</button><button id="image-use-reference" type="button" class="reference-button" hidden>Joindre cette image pour la retoucher</button></div>
       <p id="image-result-note" class="image-help" hidden></p>
       <details id="image-result-details" class="result-details" hidden><summary>Brief et recette de cette image</summary><p id="image-saved-prompt"></p><dl id="image-saved-recipe"></dl></details>
+      <details id="image-export" class="result-details" hidden>
+        <summary>Exporter la recette et ses images</summary>
+        <p>L’export contient ton brief, le graphe enregistré et les images de référence. Les originaux conservent leurs métadonnées intégrées, y compris la localisation si elle est présente. Choisis à qui tu partages ces fichiers. Il conserve la trace de cette création ; les poids et logiciels nécessaires restent à vérifier pour la reproduire ailleurs.</p>
+        <button id="image-export-prepare" type="button" class="quiet-button">Préparer les téléchargements</button>
+        <p id="image-export-status" role="status"></p><div id="image-export-links"></div>
+      </details>
     </section>
   </div>
   <section class="image-history" aria-labelledby="image-library-title">

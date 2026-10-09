@@ -9,7 +9,7 @@
                 <div>
                     <div class="cs-eyebrow">AgentX &bull; GPU Orchestration</div>
                     <h1><i class="fas fa-calendar-alt"></i> Cluster Schedule</h1>
-                    <p>Loaded models, projected schedules, measured usage, advisory claims, and the separate heavy-work queue.</p>
+                    <p>Loaded models, scheduled jobs, measured GPU usage, placement claims and the heavy-job queue.</p>
                 </div>
                 <div class="cs-header-controls">
                     <div id="headerStatus" class="cs-header-status"></div>
@@ -33,7 +33,7 @@
 
         <!-- Live Host Cards: separate loaded-model/VRAM detail evidence. -->
         <p id="liveEvidence" class="cs-live-evidence" aria-live="polite">
-            Loaded-model and VRAM detail evidence has not been observed yet.
+            Waiting for the first host poll…
         </p>
         <div id="liveBar" class="cs-live-bar" aria-describedby="liveEvidence">
             <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading host data...</div>
@@ -107,7 +107,7 @@
 
                 <!-- Conflict Banner -->
                 <div id="conflictBanner" class="cs-conflict-banner hidden">
-                    <div class="cs-conflict-header"><i class="fas fa-exclamation-triangle"></i> Conflicts</div>
+                    <div class="cs-conflict-header"><i class="fas fa-exclamation-triangle"></i> VRAM overflows</div>
                     <div id="conflictText" class="cs-conflict-text"></div>
                 </div>
 

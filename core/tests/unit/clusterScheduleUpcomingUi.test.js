@@ -248,8 +248,8 @@ describe('Cluster Schedule evidence presentation', () => {
     });
 
     expect(observed).toBe(false);
-    expect(container.innerHTML).toContain('No utilization evidence observed yet');
-    expect(container.innerHTML).toContain('not treated as zero-utilization measurements');
+    expect(container.innerHTML).toContain('No GPU usage measured');
+    expect(container.innerHTML).toContain('unknown, not zero');
   });
 
   test('distinguishes observed zero utilization from hours without evidence', () => {
@@ -266,7 +266,7 @@ describe('Cluster Schedule evidence presentation', () => {
 
     expect(observed).toBe(true);
     expect(container.innerHTML).toContain('04:00 — 0% utilization');
-    expect(container.innerHTML).toContain('00:00 — utilization evidence not observed');
+    expect(container.innerHTML).toContain('00:00 — not measured');
   });
 
   test('reads measured hours from the host identity keys returned by the API', () => {
@@ -304,7 +304,7 @@ describe('Cluster Schedule evidence presentation', () => {
     const render = vm.runInContext('renderActualVsPlanned', context);
     const emptyContainer = { innerHTML: '' };
     render(emptyContainer, { planned: [], actualByHost: { 'gpu-a': [] } });
-    expect(emptyContainer.innerHTML).toContain('No host-assigned GPU plan or utilization evidence observed');
+    expect(emptyContainer.innerHTML).toContain('No GPU jobs assigned to a host and no measured usage');
 
     const measuredContainer = { innerHTML: '' };
     render(measuredContainer, {
@@ -317,6 +317,60 @@ describe('Cluster Schedule evidence presentation', () => {
     expect(measuredContainer.innerHTML).toContain('04:00 actual 0% (1 call)');
   });
 
+  test('prints measured percentages in heatmap cells and fills them like the legend', () => {
+    const { context } = loadClusterScheduleContext();
+    const values = new Array(24).fill(null);
+    values[4] = 37;
+    const container = { innerHTML: '' };
+    vm.runInContext('renderUtilHeatmap', context)(container, {
+      hosts: ['gpu-a'], days: ['2026-08-28'], grid: { 'gpu-a': [values] }
+    });
+    const fill = vm.runInContext('utilCellBackground(37)', context);
+
+    expect(container.innerHTML).toMatch(new RegExp(`background:${fill.replace(/[()]/g, '\\$&')}"[^>]*>37<`));
+    expect(container.innerHTML).toContain('aria-label="2026-08-28 04:00 — 37% utilization"');
+  });
+
+  test('turns proxy pages and network failures into readable errors', async () => {
+    const { context } = loadClusterScheduleContext();
+    const fetchJSON = vm.runInContext('fetchJSON', context);
+
+    context.fetch = jest.fn(async () => ({ status: 502, json: async () => { throw new SyntaxError('Unexpected token <'); } }));
+    vm.runInContext('fetch = this.fetch', context);
+    await expect(fetchJSON('/x')).rejects.toThrow('Server returned HTTP 502');
+
+    context.fetch = jest.fn(async () => { throw new TypeError('Failed to fetch'); });
+    vm.runInContext('fetch = this.fetch', context);
+    await expect(fetchJSON('/x')).rejects.toThrow('Core is unreachable');
+
+    context.fetch = jest.fn(async () => ({ status: 500, json: async () => ({ status: 'error', error: 'Mongo down' }) }));
+    vm.runInContext('fetch = this.fetch', context);
+    await expect(fetchJSON('/x')).rejects.toThrow('Mongo down');
+    expect(vm.runInContext('failedRequests', context)).toBe(3);
+  });
+
+  test('formats every clock time in one English 24-hour format', () => {
+    const { context } = loadClusterScheduleContext();
+    context.testDate = new Date(2026, 7, 28, 22, 5, 9);
+    expect(vm.runInContext('formatTime(testDate)', context)).toBe('22:05');
+    expect(vm.runInContext('formatClockTime(testDate)', context)).toBe('22:05');
+    expect(vm.runInContext('formatEvidenceTime(testDate)', context)).toBe('Aug 28, 2026, 22:05:09');
+  });
+
+  test('draws a planned slot that ends at midnight to the end of the track', () => {
+    const { context } = loadClusterScheduleContext();
+    const container = { innerHTML: '' };
+    const start = new Date(2026, 7, 28, 23, 0);
+    const end = new Date(2026, 7, 29, 0, 0);
+    vm.runInContext('renderActualVsPlanned', context)(container, {
+      planned: [{ hostName: 'gpu-a', tasks: [{ name: 'Late job', model: 'm', taskType: 'benchmark',
+        slots: [{ start: start.toISOString(), end: end.toISOString() }] }] }],
+      actualByHost: {}
+    });
+
+    expect(container.innerHTML).toContain('left:95.83%;width:4.17%');
+  });
+
   test('shows only declared assignments as host evidence in the legend', () => {
     const { context, elements } = loadClusterScheduleContext();
     const render = vm.runInContext('renderLegend', context);
@@ -327,18 +381,23 @@ describe('Cluster Schedule evidence presentation', () => {
     ]);
     const html = elements.get('legend').innerHTML;
 
-    expect(html).toContain('Declared host assignments');
+    expect(html).toContain('Jobs per host');
     expect(html).toContain('gpu-a');
-    expect(html).toContain('Not declared for 2 scheduled jobs; this is not a hardware count.');
-    expect(html).not.toContain('>Host not declared<');
+    expect(html).toContain('2 scheduled jobs have no assigned host.');
+    expect(html).not.toContain('>No host assigned<');
   });
 
-  test('lists each conflicting pair once with its run count, and no projection-only overdue', () => {
+  test('lists each overflowing job set once with its window count, and no projection-only overdue', () => {
     const { context, elements } = loadClusterScheduleContext();
     context.testConflicts = Array.from({ length: 6 }, (_, index) => ({
       hostId: 'gpu-b',
-      taskA: { name: index % 2 ? 'Doc re-embed' : 'RAG ingestion' },
-      taskB: { name: index % 2 ? 'RAG ingestion' : 'Doc re-embed' }
+      capacityVramMb: 24576,
+      requiredVramMb: 26624,
+      tasks: [
+        { name: 'Voice model', resident: true },
+        { name: index % 2 ? 'Doc re-embed' : 'RAG ingestion', resident: false },
+        { name: index % 2 ? 'RAG ingestion' : 'Doc re-embed', resident: false }
+      ]
     }));
     context.testHosts = [
       { id: 'gpu-a', name: 'GPU A', status: 'online' },
@@ -353,8 +412,8 @@ describe('Cluster Schedule evidence presentation', () => {
     vm.runInContext('renderAttention', context)();
     const html = elements.get('attentionList').innerHTML;
 
-    expect(html.match(/Schedule conflict/g)).toHaveLength(1);
-    expect(html).toContain('Doc re-embed overlaps RAG ingestion on GPU B (6 runs)');
+    expect(html.match(/VRAM overflow/g)).toHaveLength(1);
+    expect(html).toContain('Doc re-embed + RAG ingestion with resident Voice model need 26.0 GB of 24.0 GB on GPU B (6 windows)');
     expect(html).toContain('GPU B unreachable');
     expect(html).not.toContain('GPU A unreachable');
     expect(html).not.toContain('overdue');

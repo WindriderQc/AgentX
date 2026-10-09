@@ -208,18 +208,30 @@ async function aggregateHour() {
 
 /**
  * Get utilization heatmap data for the past N days.
- * Returns: { hosts: string[], days: string[], grid: { [host]: number[][] } }
- * grid[host] is a days × 24 matrix of utilizationPct values.
+ * Returns: { hosts: string[], days: string[], grid: { [host]: number[][] }, timeZone }
+ * grid[host] is a days × 24 matrix of utilizationPct values, grouped by the
+ * calendar day and hour of `timeZone` (UTC by default).
  */
-async function getUtilizationHeatmap(days = 7) {
+async function getUtilizationHeatmap(days = 7, timeZone = 'UTC') {
   const since = new Date(Date.now() - days * 86400 * 1000);
   const records = await HostUsageLedger.find({ hour: { $gte: since } })
     .sort({ hour: 1 }).lean();
 
-  return buildUtilizationHeatmap(records, days, new Date(), getConfiguredHosts());
+  return buildUtilizationHeatmap(records, days, new Date(), getConfiguredHosts(), timeZone);
 }
 
-function buildUtilizationHeatmap(records, days = 7, now = new Date(), configuredHosts = []) {
+function zonedHourParts(timeZone) {
+  const format = new Intl.DateTimeFormat('en-CA', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23'
+  });
+  return date => {
+    const parts = Object.fromEntries(format.formatToParts(date).map(part => [part.type, part.value]));
+    return { dayKey: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
+  };
+}
+
+function buildUtilizationHeatmap(records, days = 7, now = new Date(), configuredHosts = [], timeZone = 'UTC') {
+  const zoned = zonedHourParts(timeZone);
   const since = new Date(now.getTime() - days * 86400 * 1000);
   const identities = new Map();
   for (const host of configuredHosts) {
@@ -233,14 +245,9 @@ function buildUtilizationHeatmap(records, days = 7, now = new Date(), configured
   }
 
   const dayKeys = [];
-  const cursor = truncateToHour(since);
-  cursor.setUTCHours(0);
-  const end = truncateToHour(now);
-  end.setUTCHours(0);
-  let d = new Date(cursor);
-  while (d <= end) {
-    dayKeys.push(d.toISOString().slice(0, 10));
-    d = new Date(d.getTime() + 86400 * 1000);
+  for (let hour = truncateToHour(since).getTime(); hour <= now.getTime(); hour += 3600 * 1000) {
+    const { dayKey } = zoned(new Date(hour));
+    if (dayKeys[dayKeys.length - 1] !== dayKey) dayKeys.push(dayKey);
   }
 
   const grid = {};
@@ -251,15 +258,14 @@ function buildUtilizationHeatmap(records, days = 7, now = new Date(), configured
   for (const r of records || []) {
     const identity = describeHost(r.host, r.hostKey, configuredHosts);
     const key = identity.key || hostUrlKey(r.host) || r.hostLabel || r.host;
-    const dayKey = r.hour.toISOString().slice(0, 10);
-    const hourIdx = r.hour.getUTCHours();
+    const { dayKey, hour: hourIdx } = zoned(r.hour);
     const dayIdx = dayKeys.indexOf(dayKey);
     if (dayIdx >= 0 && grid[key]) {
       grid[key][dayIdx][hourIdx] = r.utilizationPct;
     }
   }
 
-  return { hosts: [...identities.values()], days: dayKeys, grid };
+  return { hosts: [...identities.values()], days: dayKeys, grid, timeZone };
 }
 
 module.exports = {

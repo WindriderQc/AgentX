@@ -870,3 +870,69 @@
     }
 
 }
+
+/* ── Text helpers (readable on the dark panels) ─────────────── */
+
+.cs-header-sep {
+    color: var(--muted);
+    opacity: 0.6;
+}
+
+.cs-next-section {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 0 6px;
+}
+
+.cs-next-section-split {
+    padding-top: 8px;
+    margin-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cs-next-section-meta,
+.cs-avp-host-meta {
+    font-weight: 400;
+    font-size: 0.68rem;
+    color: var(--muted);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.cs-avp-host-meta.warn {
+    color: #f59e0b;
+}
+
+.cs-attn-ok {
+    padding: 12px 4px;
+}
+
+.cs-attn-ok-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #22c55e;
+}
+
+.cs-attn-ok-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.cs-attn-ok-list i {
+    margin-right: 6px;
+    font-size: 0.6rem;
+    color: #22c55e;
+}
