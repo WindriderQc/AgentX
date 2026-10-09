@@ -227,6 +227,65 @@ Saved measurements are retained independently from runtime recovery. A compariso
 readiness summary does not override an unresolved journal. For measured context,
 capacity and recall distinctions, see [context profiles](PROFILER_CONTEXT.md).
 
+## Data Toolbox: header, refresh and phone layout
+
+Open `/data-toolbox` (full profile, with the optional Data service). These rules
+hold on every tab.
+
+**Header.** The box beside the title states what the last read attempt gave, in
+words; its dot only repeats the state.
+
+| Header | Meaning |
+|---|---|
+| **Data answering** · `last read 14:02:11` (green) | The last read succeeded at that time |
+| **N of 7 Data sources unavailable** · `read …, incomplete` (amber) | The Overview was read but some sources did not answer; the Overview names them |
+| **Data unreachable: no source answered** (red) | The Overview was read and no source answered |
+| **N reads of this tab failed: …** (amber) | The tab drew itself with a notice in place of what could not be read |
+| **Data unreachable** · `failed …: reason · last good read …` (red) | AgentX answered that Data refused or timed out |
+| **AgentX unreachable from this page** (red) | The browser got no answer from AgentX itself |
+| **Last read failed** (red) | Any other failed read; the reason follows the time |
+
+The time is the time of a real read. A value kept from an earlier read never
+stamps the header.
+
+**Overview sources.** Each of the seven sources is listed by name with
+**answering** or **unavailable** and its reason: the HTTP status Data returned,
+`timeout`, the connection error, or the message of Data's error answer.
+
+**Automatic refresh.** A tab refreshes only while it is open and the page is
+visible; returning to the page reads at once. Each refreshing block says when it
+was read.
+
+| Tab | What refreshes | Every |
+|---|---|---|
+| Overview | Figures, source list, recent warnings and errors | 30 s |
+| Network | Counts, collectors and device list | 60 s |
+| Live Data | Feed counts and feed cards; the ISS marker | 60 s each |
+| GPU | **Now** | 30 s |
+| Activity | New events | 15 s |
+| MQTT | Broker state and new messages | 2 s |
+| Storage | A running scan or report only | while it runs |
+| Files, Databases, Janitor | Nothing | **Refresh** only |
+
+The Overview, Network and Live Data refreshes wait, and say so on their line,
+while a field of the tab has the focus, a details panel is open, a device editor
+is open, a typed name is not saved, or a network scan is running. They repaint
+their own block in place: the search box, the scan form, the map, an open
+inspector and the scroll position are left alone. A failed automatic read keeps
+what is on screen, names the failure on the line and turns the header red.
+**Refresh** reads the whole tab at any time.
+
+**What the page can change.** The amber line under the header reads **No
+filesystem actions. This page can send seven kinds of change to Data.** Open
+**Show the list** for the seven; the Overview repeats the list in full under
+**What this page can change**.
+
+**Phone width.** At 620 px and below the header shrinks to the title and the
+read state, the tab bar scrolls sideways with the open tab brought into view,
+and controls are at least 40 px tall. The Network, Activity, Reports, Databases
+and MQTT lists show one labelled block per row; other wide tables scroll inside
+their own frame, never the page.
+
 ## Data Toolbox: Activity
 
 Open `/data-toolbox#activity` (full profile, with the optional Data service).
@@ -374,6 +433,9 @@ changes: a scan request, and the edit of one device record.
   seconds; only an active one runs a scan. A **silent** collector is shown
   apart with the date it was last heard. Its record and the devices it
   reported are kept: nothing is deleted from this page.
+  An active collector with no placement metadata configured for the instance
+  is shown from its registration (host, address, registered since) and says
+  that its supervisor, unit and cadence are not declared.
 - **Scan now**: asks the active collector for one discovery scan of a target,
   pre-filled with the network it sweeps. The target is an IPv4 address or a
   CIDR from /16 to /32. The page follows the request every 2 seconds, then

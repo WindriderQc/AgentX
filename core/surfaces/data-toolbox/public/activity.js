@@ -221,7 +221,7 @@ async function activityPoll() {
       }
     }
     activityPaintList();
-    updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
+    shellRead(read.error || '');
   } finally { activityState.busy = false; }
 }
 

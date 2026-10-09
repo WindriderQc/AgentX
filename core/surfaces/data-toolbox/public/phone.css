@@ -1,0 +1,98 @@
+/* Phone width (390 px): the header, the tab bar, tap targets, fields and tables. Loaded last; nothing here applies above 620 px. */
+@media (max-width: 620px) {
+  /* The header leaves the first screen to the tab: a short title, no lede, the read state on one compact row. */
+  .hero { gap: 12px; padding: 16px 0 12px; }
+  .hero .eyebrow { margin-bottom: 6px; }
+  .hero h1 { font-size: 24px; line-height: 1.1; letter-spacing: -.02em; }
+  .hero .lede { display: none; }
+  .contract { width: 100%; max-width: none; min-width: 0; padding: 10px 14px; }
+  .contract strong { display: none; }
+  .contract small { display: inline; margin: 0 8px 0 0; }
+  .guardrail summary { padding: 6px 14px; }
+  .guardrail-detail { padding: 0 14px 10px; }
+
+  /* Ten tabs do not fit: the bar scrolls sideways, the open tab is brought into view, and a shadow on an edge says there is more that way. */
+  .tabs {
+    margin: 14px 0 12px; scroll-snap-type: x proximity; overscroll-behavior-x: contain;
+    background:
+      linear-gradient(to right, #0c121a 35%, rgba(12,18,26,0)) left center / 36px 100% no-repeat local,
+      linear-gradient(to left, #0c121a 35%, rgba(12,18,26,0)) right center / 36px 100% no-repeat local,
+      linear-gradient(to right, rgba(82,216,233,.55), rgba(82,216,233,0)) left center / 16px 100% no-repeat scroll,
+      linear-gradient(to left, rgba(82,216,233,.55), rgba(82,216,233,0)) right center / 16px 100% no-repeat scroll,
+      #0c121a;
+  }
+  .tabs a { flex: none; display: flex; align-items: center; min-height: 44px; scroll-snap-align: center; }
+  .section-head { gap: 12px; margin: 22px 0 12px; }
+  .content { min-height: 300px; }
+
+  /* Tap targets of at least 40 px, and fields a thumb can use: full width where they stood in a row, 16 px text so the phone does not zoom on focus. */
+  .button, .jr-filter, .net-chips .button, .net-views .button, .net-actions .button, .net-name .button, .net-editor .button,
+  .folder-table .button, .review-actions .button, .report-actions .button, .report-confirm .button, .trend-bars .button,
+  .jr-stale-list .button, .mqtt-filter .button.mono { min-height: 40px; padding-block: 9px; }
+  a.button { display: inline-flex; align-items: center; }
+  .link-button, .net-sort { display: inline-flex; align-items: center; min-height: 40px; }
+  .crumbs .link-button { padding-inline: 4px; }
+  main input:not([type="checkbox"]):not([type="radio"]), main select, main textarea { min-height: 42px; font-size: 16px; }
+  main input[type="checkbox"], main input[type="radio"] { width: 20px; height: 20px; flex: none; }
+  .mqtt-retain, .review-choice { min-height: 40px; }
+  main details > summary { min-height: 40px; padding-block: 10px; }
+  .guardrail summary, .jr-group summary, .scan-detail summary { padding-block: 8px; }
+  td details > summary { display: inline-block; min-width: 40px; }
+  .gpu-window, .report-form, .net-find, .net-scan, .mqtt-filter { flex-wrap: wrap; white-space: normal; }
+  .gpu-window select, .report-form select { flex: 1 1 150px; }
+  .inspector-search { display: grid; gap: 5px; }
+  .inspector-search input { width: 100%; }
+  .mqtt-filter input, .net-scan input, .net-find input { flex: 1 1 100%; }
+  .mqtt-send input:not([type="checkbox"]), .mqtt-send textarea { width: 100%; }
+  .metric-row { flex-wrap: wrap; }
+  .metric-row strong, .collector-card .metric-row strong { max-width: 100%; overflow-wrap: anywhere; }
+
+  /* Figures two by two instead of one tall card each. */
+  .grid:not(.two):has(> .card > .metric) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .grid:not(.two):has(> .card > .metric) > .card { padding: 13px; }
+  .grid:not(.two):has(> .card > .metric) > .card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .policy-grid .metric { font-size: 18px; overflow-wrap: anywhere; }
+  .source { padding: 10px 8px; }
+
+  /* A table too wide for the screen scrolls inside its own frame, never the page; its edge shows there is more. */
+  .table-wrap { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+    background:
+      linear-gradient(to right, #0d141d 35%, rgba(13,20,29,0)) left center / 30px 100% no-repeat local,
+      linear-gradient(to left, #0d141d 35%, rgba(13,20,29,0)) right center / 30px 100% no-repeat local,
+      linear-gradient(to right, rgba(82,216,233,.4), rgba(82,216,233,0)) left center / 12px 100% no-repeat scroll,
+      linear-gradient(to left, rgba(82,216,233,.4), rgba(82,216,233,0)) right center / 12px 100% no-repeat scroll,
+      #0d141d; }
+  .table-wrap th { background: #101923; }
+  th, td { padding: 10px; }
+}
+@media (max-width: 620px) {
+  /* The guardrail line flows as text, so it takes two lines instead of three. */
+  .guardrail summary { display: block; line-height: 1.5; }
+  .guardrail-toggle { margin-left: 4px; }
+}
+@media (max-width: 620px) {
+  .content p.muted { font-size: 13px; line-height: 1.5; }
+  /* A short table whose columns do not fit becomes one labelled block per row (roles are kept by app.js). */
+  .stack-table thead { position: absolute; left: -9999px; }
+  .stack-table table, .stack-table tbody, .stack-table tr { display: block; }
+  .stack-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 10px; padding: 12px; border-bottom: 1px solid #202b3a; }
+  .stack-table tr:last-child { border-bottom: 0; }
+  .stack-table td { display: block; padding: 0; border: 0; }
+  .stack-table td[data-label]::before { content: attr(data-label); display: block; color: var(--muted); font: 10px/1.6 Inter, ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .08em; }
+  .stack-table td:first-child { grid-column: 1 / -1; font-size: 13px; }
+  .stack-table td:first-child::before, .stack-table td:last-child::before { display: none; }
+  .stack-table td:last-child { grid-column: 1 / -1; margin-top: 6px; }
+  .stack-table td[colspan] { grid-column: 1 / -1; }
+}
+@media (max-width: 620px) {
+  /* One MQTT message per block: time, topic, size and flags on a line, the payload across the full width under them. */
+  .mqtt-stream thead { position: absolute; left: -9999px; }
+  .mqtt-stream table, .mqtt-stream tbody { display: block; }
+  .mqtt-stream tr { display: block; padding: 10px 12px; border-bottom: 1px solid #202b3a; }
+  .mqtt-stream tr:last-child { border-bottom: 0; }
+  .mqtt-stream td { display: inline; padding: 0; border: 0; }
+  .mqtt-stream td:nth-child(2) { margin-left: 8px; max-width: none; overflow-wrap: anywhere; font-weight: 600; }
+  .mqtt-stream td:nth-child(3) { display: block; max-width: none; margin: 6px 0; }
+  .mqtt-stream td:nth-child(4), .mqtt-stream td:nth-child(5) { color: var(--muted); margin-right: 8px; }
+  .mqtt-stream td[colspan] { display: block; }
+}

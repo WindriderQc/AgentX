@@ -307,7 +307,7 @@ async function scanPoll() {
     // The "queued" line has done its job once that scan has ended.
     if (scanState.outcome?.ok && !scanIsActive(scanState.followed.get(scanState.outcome.id))) scanState.outcome = null;
     scanPaintAll();
-    updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
+    shellRead(scanState.pollError || '');
   } finally { scanState.busy = false; }
 }
 
