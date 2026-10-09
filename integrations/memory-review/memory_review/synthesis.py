@@ -242,7 +242,7 @@ def _merge_candidates(candidates: list[dict]) -> list[dict]:
         key=lambda item: (float(item.get("confidence") or 0), len(item.get("evidenceRefs") or [])),
         reverse=True,
     )
-    return ranked[:schema.MAX_CANDIDATES_PER_RUN]
+    return ranked
 
 
 def synthesize(
@@ -253,8 +253,12 @@ def synthesize(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     timeout: int = DEFAULT_TIMEOUT_S,
     transport: Callable[[str, dict, int], str] | None = None,
+    receipt: dict | None = None,
 ) -> list[dict] | None:
     """Return validated candidates, or None when there is nothing to model.
+
+    Core accepts MAX_CANDIDATES_PER_RUN candidates per run. The strongest are
+    kept; `receipt["notSubmitted"]` counts the ones left out.
 
     `transport` is injectable for tests; production uses http_chat_completion.
     """
@@ -313,7 +317,10 @@ def synthesize(
             )
         all_candidates.extend(candidates)
 
-    return _merge_candidates(all_candidates)
+    ranked = _merge_candidates(all_candidates)
+    if receipt is not None:
+        receipt["notSubmitted"] = max(0, len(ranked) - schema.MAX_CANDIDATES_PER_RUN)
+    return ranked[:schema.MAX_CANDIDATES_PER_RUN]
 
 
 def _guard_output(candidates: list[dict]) -> list[dict]:

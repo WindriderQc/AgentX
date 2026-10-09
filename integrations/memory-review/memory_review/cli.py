@@ -152,11 +152,16 @@ def _finish_run(client: MemoryReviewClient, run_id: str, state_dir: Path,
 
     try:
         bundle = client.synthesis_input(run_id)
+        synthesis_receipt: dict = {}
         candidates = synthesis.synthesize(
             bundle,
             base_url=args.agentx_url, model=args.model,
             max_tokens=args.max_tokens, timeout=args.inference_timeout,
+            receipt=synthesis_receipt,
         )
+        if synthesis_receipt.get("notSubmitted"):
+            print(f"candidate bound of {schema.MAX_CANDIDATES_PER_RUN} per run reached: "
+                  f"{synthesis_receipt['notSubmitted']} weaker candidate(s) were not submitted")
         if candidates is None:
             print("synthesis input empty - model not called.")
             _write_local_report(client, run_id, state_dir)
