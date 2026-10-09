@@ -25,16 +25,13 @@ function renderAttention() {
 
   if (items.length === 0) {
     container.innerHTML = `
-      <div style="padding:12px 4px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <i class="fas fa-check-circle" style="color:#22c55e;font-size:16px"></i>
-          <span style="font-size:13px;font-weight:600;color:#22c55e">No issues detected</span>
-        </div>
-        <div style="font-size:11px;color:#374151;display:flex;flex-direction:column;gap:4px">
-          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>0 projected VRAM overflows</div>
-          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>0 overdue tasks with run evidence</div>
-          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>All reachable hosts online</div>
-        </div>
+      <div class="cs-attn-ok">
+        <div class="cs-attn-ok-title"><i class="fas fa-check-circle"></i> No issues detected</div>
+        <ul class="cs-attn-ok-list">
+          <li><i class="fas fa-check"></i> No projected VRAM overflows</li>
+          <li><i class="fas fa-check"></i> No overdue jobs with a recorded run</li>
+          <li><i class="fas fa-check"></i> No unreachable hosts</li>
+        </ul>
       </div>`;
     return;
   }

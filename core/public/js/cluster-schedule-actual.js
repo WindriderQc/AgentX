@@ -170,7 +170,7 @@ function renderActualVsPlanned(container, data) {
       <div class="cs-avp-host-label">
         <i class="fas fa-server" style="color:#7cf0ff;font-size:10px"></i>
         ${esc(hostName)}
-        ${tasks.length ? `<span style="font-size:10px;color:#475569;font-weight:400">${tasks.length} planned task${tasks.length > 1 ? 's' : ''}</span>` : '<span style="font-size:10px;color:#f59e0b;font-weight:400">actual only</span>'}
+        ${tasks.length ? `<span class="cs-avp-host-meta">${tasks.length} planned task${tasks.length > 1 ? 's' : ''}</span>` : '<span class="cs-avp-host-meta warn">measured only</span>'}
       </div>
       <div class="cs-avp-track">`;
 

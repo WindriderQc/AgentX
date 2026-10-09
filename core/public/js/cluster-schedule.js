@@ -308,7 +308,7 @@ function updateHeaderStatus(headline, nextTasks, { scheduleAvailable = true, sch
     `<span class="cs-header-status-item ${headline.offlineHosts > 0 ? 'err' : ''}">${headline.offlineHosts} offline</span>`,
     `<span class="cs-header-status-item"><i class="fas fa-tags" style="font-size:9px"></i> ${headline.observedModels} model tags</span>`,
     scheduleHtml,
-  ].filter(Boolean).join('<span style="color:#1e293b"> · </span>');
+  ].filter(Boolean).join('<span class="cs-header-sep" aria-hidden="true"> · </span>');
 }
 
 function updateHeaderStatusUnavailable(error) {
@@ -814,7 +814,7 @@ function renderNextTasks(container) {
   let html = '';
 
   if (scheduledTasks.length > 0) {
-    html += `<div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;padding:2px 0 6px">Scheduled Jobs <span style="font-weight:400;color:#64748b">${scheduledTasks.length}</span></div>`;
+    html += `<div class="cs-next-section">Scheduled Jobs <span class="cs-next-section-meta">${scheduledTasks.length}</span></div>`;
     html += scheduledTasks.map(task => renderNextItem(task, nextTasksData.indexOf(task))).join('');
   }
 
@@ -822,11 +822,11 @@ function renderNextTasks(container) {
     const due = sysTasks.filter(t => t.msFromNow <= 0).length;
     const dueSoon = sysTasks.filter(t => t.msFromNow > 0 && t.msFromNow < 300000).length;
     const upcomingOccurrences = sysTasks.reduce((total, task) => total + (task.occurrenceCount || 1), 0);
-    html += `<div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;padding:8px 0 6px;margin-top:4px;border-top:1px solid rgba(255,255,255,0.05)">
+    html += `<div class="cs-next-section cs-next-section-split">
       System Ticks
-      <span style="color:#64748b;font-weight:400;font-size:9px"> ${sysTasks.length} job${sysTasks.length === 1 ? '' : 's'} · ${upcomingOccurrences} upcoming occurrence${upcomingOccurrences === 1 ? '' : 's'}</span>
-      ${due > 0 ? `<span style="color:#94a3b8;font-weight:400;font-size:9px"> · ${due} due now</span>` : ''}
-      ${dueSoon > 0 ? `<span style="color:#94a3b8;font-weight:400;font-size:9px"> · ${dueSoon} in &lt;5m</span>` : ''}
+      <span class="cs-next-section-meta"> ${sysTasks.length} job${sysTasks.length === 1 ? '' : 's'} · ${upcomingOccurrences} upcoming run${upcomingOccurrences === 1 ? '' : 's'}</span>
+      ${due > 0 ? `<span class="cs-next-section-meta"> · ${due} due now</span>` : ''}
+      ${dueSoon > 0 ? `<span class="cs-next-section-meta"> · ${dueSoon} in &lt;5m</span>` : ''}
     </div>`;
     html += sysTasks.map(task => renderNextItem(task, nextTasksData.indexOf(task))).join('');
   }
