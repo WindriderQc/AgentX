@@ -3,7 +3,7 @@
 // The scan part of the Toolbox Storage tab. Loaded before app.js, whose
 // helpers (state, api, e, array, number, bytes, date, heading, label…) it uses
 // when called.
-// It sends the third of the page's writes: a request to the native collector
+// It sends the page's storage write: a request to the native collector
 // to read one configured source again. A scan reads the disks and refreshes
 // Data's index; it changes no file. While a scan is queued or running it is
 // read again every three seconds, only on a visible Storage tab.

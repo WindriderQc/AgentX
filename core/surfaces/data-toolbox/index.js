@@ -59,6 +59,81 @@ function safeName(value, label) {
 
 const MAC = /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/;
 const STORAGE_SOURCE = /^[a-z0-9][a-z0-9_-]{0,59}$/i;
+// A device Data stored without a MAC (a collector does not see its own) is
+// addressed by its 24-hex record id, which Data's PATCH accepts as well.
+const RECORD_ID = /^[0-9a-f]{24}$/;
+// Data stores these device fields as given, with no limit of its own: the
+// bounds are set here, and the page applies the same ones.
+const DEVICE_TEXT_LIMITS = Object.freeze({ alias: 80, location: 80, notes: 500 });
+const DEVICE_TYPES = Object.freeze(['computer', 'server', 'phone-tablet', 'iot', 'network', 'media', 'printer', 'other']);
+const DEVICE_FIELDS = Object.freeze(['alias', 'known', 'type', 'location', 'notes']);
+// A queued scan sweeps at most a /16. Mirrors data/utils/networkInput.js, which
+// Core cannot load from the Data service; the tests compare the two.
+const MIN_SCAN_PREFIX = 16;
+const SCAN_TARGET_MESSAGE = `Invalid target format. Use an IPv4 address or CIDR notation x.x.x.x/xx with a prefix from /${MIN_SCAN_PREFIX} to /32`;
+
+function invalid(message) {
+  const error = new Error(message);
+  error.status = 400;
+  return error;
+}
+
+function plainBody(body, allowed) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw invalid('Expected a JSON object');
+  const unknown = Object.keys(body).filter((key) => !allowed.includes(key));
+  if (unknown.length) throw invalid(`Unknown field ${unknown.slice(0, 3).map((key) => JSON.stringify(key.slice(0, 40))).join(', ')}: expected ${allowed.join(', ')}`);
+  return body;
+}
+
+/** An IPv4 address, or an IPv4 CIDR whose prefix is between /16 and /32. */
+function isScanTarget(value) {
+  if (typeof value !== 'string') return false;
+  const [address, prefix, ...rest] = value.split('/');
+  if (rest.length > 0 || !/^\d{1,3}(\.\d{1,3}){3}$/.test(address)) return false;
+  if (!address.split('.').every((octet) => Number(octet) <= 255)) return false;
+  if (prefix === undefined) return true;
+  return /^\d{1,2}$/.test(prefix) && Number(prefix) >= MIN_SCAN_PREFIX && Number(prefix) <= 32;
+}
+
+/** The body of a scan request: exactly `{ target }`, a valid scan target. */
+function validateScanRequest(body) {
+  const { target } = plainBody(body, ['target']);
+  if (!isScanTarget(target)) throw invalid(SCAN_TARGET_MESSAGE);
+  return { target };
+}
+
+/**
+ * The body of a device update: only alias, known, type, location and notes,
+ * the fields Data's PATCH accepts. Text is trimmed and refused over its limit,
+ * `type` is one of DEVICE_TYPES or empty (cleared), `known` is a boolean.
+ */
+function validateDeviceUpdate(body) {
+  const input = plainBody(body, DEVICE_FIELDS);
+  const update = {};
+  for (const [field, limit] of Object.entries(DEVICE_TEXT_LIMITS)) {
+    if (input[field] === undefined) continue;
+    if (typeof input[field] !== 'string') throw invalid(`${field} must be a string`);
+    const text = input[field].trim();
+    if (text.length > limit) throw invalid(`${field} must be at most ${limit} characters`);
+    update[field] = text;
+  }
+  if (input.type !== undefined) {
+    if (input.type !== '' && !DEVICE_TYPES.includes(input.type)) throw invalid(`type must be empty or one of ${DEVICE_TYPES.join(', ')}`);
+    update.type = input.type;
+  }
+  if (input.known !== undefined) {
+    if (typeof input.known !== 'boolean') throw invalid('known must be a boolean');
+    update.known = input.known;
+  }
+  if (!Object.keys(update).length) throw invalid(`Expected at least one of ${DEVICE_FIELDS.join(', ')}`);
+  return update;
+}
+
+function recordId(value) {
+  const id = String(value || '').toLowerCase();
+  if (!RECORD_ID.test(id)) throw invalid('Invalid scan request id');
+  return id;
+}
 
 function fetchData(relativePath, { query = '', timeoutMs = REQUEST_TIMEOUT_MS(), method, payload } = {}) {
   return fetchDataService(relativePath, { query, timeoutMs, method, payload });
@@ -328,15 +403,16 @@ async function buildStatus() {
   const healthy = Object.values(sources).filter((source) => source.ok).length;
   return {
     extension: 'aio-ops-data-toolbox',
-    version: '1.6.0',
+    version: '1.7.0',
     owner: 'agentx',
-    // Three writes are relayed: PATCH /network/devices/:mac (alias and known
-    // flag), POST /mqtt/publish (one MQTT message sent by hand) and
+    // Four writes are relayed: PATCH /network/devices/:mac (name, known flag,
+    // type, location, notes), POST /network/scan (one scan request for the
+    // collectors), POST /mqtt/publish (one MQTT message sent by hand) and
     // POST /storage/scans (ask the native collector to read a source again:
     // it refreshes the index and changes nothing on the disks).
     readOnly: false,
     mutationsExposed: true,
-    writes: ['network-device-acknowledge', 'mqtt-publish', 'storage-scan-request'],
+    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request'],
     filesystemMutationsExposed: false,
     dataService: { baseUrl: dataBaseUrl(), healthy, total: entries.length },
     collectorPlacement: collectorPlacement(),
@@ -373,7 +449,7 @@ function register(api) {
   // One scan by id: a queued scan has no start date yet and sorts after every
   // other in Data's list, so it is followed here.
   router.get('/storage/scans/:scanId', relay((req) => `/api/v1/storage/status/${safeName(req.params.scanId, 'scan id')}`));
-  // Third write: ask the native collector to read one configured source again.
+  // The storage write: ask the native collector to read one configured source again.
   // The body is exactly { source }, and the name must be one Data lists. Only
   // the name is forwarded, so hashing follows Data's defaults. Data answers
   // with the scan queued, or with the one already queued or running for that
@@ -434,20 +510,40 @@ function register(api) {
   router.get('/network/devices', relay(() => '/api/v1/network/devices'));
   router.get('/network/agents', relay(() => '/api/v1/network/agents'));
   router.get('/network/capability', relay(() => '/api/v1/network/capability'));
-  // First of the three writes: name a device or mark it known, which acknowledges
-  // it as not new. These existing controls follow private LAN human access.
-  router.patch('/network/devices/:mac', async (req, res) => {
-    const mac = String(req.params.mac || '').toUpperCase();
-    const { alias, known } = req.body || {};
-    const update = {};
-    if (alias !== undefined) update.alias = String(alias).trim().slice(0, 80);
-    if (known !== undefined) update.known = known;
-    if (!MAC.test(mac) || !Object.keys(update).length || (known !== undefined && typeof known !== 'boolean')) {
-      return res.status(400).json({ ok: false, status: 'error', code: 'INVALID_DEVICE_UPDATE',
-        message: 'Expected a MAC address and an alias or a boolean known flag' });
+  router.get('/network/scan-requests/:id', relay((req) => `/api/v1/network/scan-requests/${recordId(req.params.id)}`));
+  // Network write 1 of 2: ask the collectors for one scan of a target. Only
+  // the validated target is forwarded: Data queues it for the active
+  // collectors and answers 202 with the request id the page then follows.
+  router.post('/network/scan', async (req, res) => {
+    let request;
+    try { request = validateScanRequest(req.body); }
+    catch (error) {
+      return res.status(400).json({ ok: false, status: 'error', code: 'INVALID_SCAN_REQUEST', message: error.message });
     }
     try {
-      const { response, body } = await fetchData(`/api/v1/network/devices/${encodeURIComponent(mac)}`,
+      const { response, body } = await fetchData('/api/v1/network/scan', { method: 'POST', payload: { ...request, source: 'toolbox' } });
+      return res.status(response.status).json(body);
+    } catch (error) {
+      const timedOut = error.name === 'TimeoutError';
+      return res.status(502).json({ ok: false, status: 'error', code: timedOut ? 'DATA_TIMEOUT' : 'DATA_UNAVAILABLE',
+        message: timedOut ? 'Data did not answer in time: the scan may or may not have been queued' : error.message });
+    }
+  });
+  // Network write 2 of 2: edit what Data records about one device. A name or
+  // the known flag acknowledges it as not new; type, location and notes
+  // describe it. These controls follow private LAN human access.
+  router.patch('/network/devices/:mac', async (req, res) => {
+    const raw = String(req.params.mac || '');
+    const id = MAC.test(raw.toUpperCase()) ? raw.toUpperCase() : (RECORD_ID.test(raw.toLowerCase()) ? raw.toLowerCase() : '');
+    let update;
+    try {
+      if (!id) throw invalid('Expected a MAC address or a device record id');
+      update = validateDeviceUpdate(req.body);
+    } catch (error) {
+      return res.status(400).json({ ok: false, status: 'error', code: 'INVALID_DEVICE_UPDATE', message: error.message });
+    }
+    try {
+      const { response, body } = await fetchData(`/api/v1/network/devices/${encodeURIComponent(id)}`,
         { method: 'PATCH', payload: update });
       return res.status(response.status).json(body);
     } catch (error) {
@@ -488,7 +584,7 @@ function register(api) {
     limit: { type: 'int', fallback: 100, min: 1, max: 500 },
     topic: { maxLength: 256 }
   }));
-  // Second of the three writes: one MQTT message published by hand, on any topic
+  // The MQTT write: one MQTT message published by hand, on any topic
   // (the owner's choice). The body is checked here with Data's own rules, and
   // only topic, payload and retain are forwarded. Data refuses when the broker
   // is not connected instead of queueing, and answers after the write.
@@ -553,8 +649,8 @@ function register(api) {
 
 module.exports = {
   id: 'aio-ops-data-toolbox',
-  version: '1.6.0',
-  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-acknowledge', 'mqtt-publish', 'storage-scan-request'],
+  version: '1.7.0',
+  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request'],
   register,
   boundedInt,
   pickQuery,
@@ -562,5 +658,11 @@ module.exports = {
   dataBaseUrl,
   buildStatus,
   collectorPlacement,
-  projectJanitorStrategy
+  projectJanitorStrategy,
+  isScanTarget,
+  validateScanRequest,
+  validateDeviceUpdate,
+  SCAN_TARGET_MESSAGE,
+  DEVICE_TYPES,
+  DEVICE_TEXT_LIMITS
 };

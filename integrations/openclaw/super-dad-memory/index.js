@@ -11,6 +11,7 @@ import { createCoreJournalClient } from "./core-journal.js";
 import { createCoreBriefClient } from "./core-brief.js";
 import { createCoreIdentifiersClient, householdOwnerSession } from "./core-identifiers.js";
 import { registerLocalImages } from "./local-images.js";
+import { registerDataTools } from "./data-tools.js";
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
@@ -18,6 +19,7 @@ export default definePluginEntry({
   description: "Private notes, requested context, observed action receipts and the existing personal briefing.",
   register(api) {
     registerLocalImages(api);
+    registerDataTools(api);
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });

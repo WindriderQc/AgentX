@@ -231,6 +231,9 @@ def collect(
 
     if not found_any:
         return result
+    # One collector entry stands for every agent read; each observation keeps
+    # the agent it came from.
+    result.agentOrProfile = ",".join(agents)
     result.watermarkAfter = f"staged:{len(result.stagedWatermarks)}"
     return result
 

@@ -38,6 +38,8 @@ for (const extension of ['js', 'mjs']) {
     const catalog = JSON.parse(await readFile(fixture.output, 'utf8'));
     const { target, executor } = catalog.targets[0];
     assert.equal(target.harness.version, '2026.9.4');
+    assert.equal(target.available, false);
+    assert.equal(target.capabilities.candidate, true);
     assert.deepEqual(target.nativePolicy.tools.map(tool => tool.name).sort(), ['edit', 'read', 'write']);
     for (const name of ['openclaw-agent-exec', 'openclaw-coding-tools']) {
       const pin = executor.pins.runtime.find(entry => entry.name === name);
@@ -73,6 +75,8 @@ test('adds a named subscription agent without replacing the local target or copy
   assert.equal(target.provider, 'openai');
   assert.equal(target.model, 'sol');
   assert.equal(target.tier, 'free_cloud');
+  assert.equal(target.available, false);
+  assert.equal(catalog.targets[0].target.available, false);
   assert.match(target.pricing.source, /subscription-included-usage/);
   assert.equal(target.profile.id, 'openclaw-cloudx');
   assert.deepEqual(target.nativePolicy.networkDestinations, ['openai']);
@@ -85,7 +89,7 @@ test('adds a named subscription agent without replacing the local target or copy
 });
 
 
-test('native catalogue supports general cloud agents and keeps unbounded paid agents unavailable', async t => {
+test('native catalogue preserves cloud billing while all unqualified agent routes remain unavailable', async t => {
   const fixture = await installation(t, 'mjs');
   const profilePath = path.join(fixture.root, 'cloud.json');
   const profile = { models: { providers: { openrouter: { api: 'openai-completions', models: [
@@ -103,6 +107,6 @@ test('native catalogue supports general cloud agents and keeps unbounded paid ag
     const target = JSON.parse(await readFile(fixture.output)).targets[1].target;
     assert.equal(target.provider, 'openrouter'); assert.equal(target.billing, kind);
     assert.equal(target.mode, 'native_agent'); assert.equal(target.modelVersion, 'unknown');
-    assert.equal(target.capabilities.judge, false); assert.equal(target.available, kind !== 'paid');
+    assert.equal(target.capabilities.judge, false); assert.equal(target.available, false);
   }
 });

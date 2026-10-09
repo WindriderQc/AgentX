@@ -288,6 +288,49 @@ index totals: files, size, extensions (Data lists the 25 largest, shown as
 
 Duplicates and Cleanup take an optional folder to limit them.
 
+## Data Toolbox: Network
+
+Open `/data-toolbox#network` (full profile, with the optional Data service).
+The tab lists the devices Data's collectors have seen on the LAN and sends two
+changes: a scan request, and the edit of one device record.
+
+- **Collectors**: an **active** collector has reported to Data in the last 90
+  seconds; only an active one runs a scan. A **silent** collector is shown
+  apart with the date it was last heard. Its record and the devices it
+  reported are kept: nothing is deleted from this page.
+- **Scan now**: asks the active collector for one discovery scan of a target,
+  pre-filled with the network it sweeps. The target is an IPv4 address or a
+  CIDR from /16 to /32. The page follows the request every 2 seconds, then
+  shows how many devices were seen, names the ones that were not in the list
+  before, and reads the list again. A collector runs one scan at a time: a
+  request that arrives during its own periodic sweep is skipped at that poll
+  and tried again at the next ones (every 5 seconds by default). Data hands a
+  request out for two minutes; one the collector could not finish in that time
+  shows as **expired** and changed nothing. With no active collector the
+  button is disabled and the reason is shown.
+- **Find**: the search box matches the name, IP, MAC, vendor, hostname, type
+  and location. The chips filter the list (all, unnamed, online now, new in the
+  last 24 hours, not acknowledged) and show their count. The Device, IP, Last
+  seen and First seen columns sort; IP addresses sort by value. All of it works
+  on the loaded list, in the browser. A device first seen in the last 24 hours
+  carries the word **new**.
+- **Unnamed devices**: one card per device without a name, with its IP, MAC,
+  vendor, hostname, first and last sighting and the collector that saw it.
+  Type a name and press Enter (or Save): it is saved, the device leaves the
+  view and the next name field takes the focus. **Mark known** acknowledges a
+  device without naming it.
+- **Edit**: opens an editor under the row for the name, the type (computer,
+  server, phone or tablet, IoT, network equipment, media, printer, other), the
+  location and the notes. Only the fields that changed are sent. A name is at
+  most 80 characters, a location 80, notes 500. Type and Location appear as
+  columns once a device has one. Collector sweeps do not overwrite these
+  fields: a sweep only rewrites what it observed (IP, MAC, hostname, vendor,
+  last sighting).
+
+A name or the known flag acknowledges a device: Core's new-device alert no
+longer reports it. A device Data holds without a MAC (usually the collector's
+own address) can be named and edited, and is not part of that alert.
+
 ## Data Toolbox: GPU
 
 Open `/data-toolbox#gpu` (full profile, with the optional Data service). The
