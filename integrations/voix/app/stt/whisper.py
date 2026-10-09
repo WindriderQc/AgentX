@@ -74,6 +74,12 @@ def _active_backend() -> tuple[str, str]:
     return settings.whisper_device, settings.whisper_compute_type
 
 
+def backend_status() -> dict[str, str]:
+    """Current recognition backend, including a CPU fallback; never loads a model."""
+    device, compute = _active_backend()
+    return {"device": device, "compute_type": compute}
+
+
 def preload_model() -> dict[str, str]:
     device, compute = _active_backend()
     _get_model(device, compute)

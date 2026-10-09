@@ -22,7 +22,7 @@ from starlette.datastructures import UploadFile
 
 from app import warmup
 from app.audio_upload import audio_form
-from app.config import settings
+from app.config import TTS_PROVIDERS, settings
 from app.runtime import RuntimeConfig, static_settings
 from app.tts import preferences as speech_preferences
 from app.tts import provider as tts
@@ -88,6 +88,8 @@ def version() -> dict:
 
 @app.get("/v1/models")
 def models() -> dict:
+    from app.stt import whisper
+
     return {
         "object": "list",
         "data": [{
@@ -95,8 +97,9 @@ def models() -> dict:
             "object": "model",
             "owned_by": "voix",
             "type": "whisper",
-            "device": settings.whisper_device,
-            "compute_type": settings.whisper_compute_type,
+            **whisper.backend_status(),
+            "configured_device": settings.whisper_device,
+            "configured_compute_type": settings.whisper_compute_type,
             "language": settings.voix_language,
         }],
         "default": settings.whisper_model,
@@ -220,8 +223,17 @@ async def speech_request_profile(body: dict) -> dict:
     it asks for the service's saved choices instead: the default language, and
     the voice saved for that language on the selected engine.
     """
-    selected = tts.provider_name(body.get("tts_provider") or speech.tts_provider)
+    requested = str(body.get("tts_provider") or speech.tts_provider).strip().lower().replace("-", "_")
+    if requested not in TTS_PROVIDERS:
+        raise ValueError("Unknown synthesis provider")
     language, voice = body.get("language"), body.get("voice")
+    if settings.tts_pocket_only and requested != settings.tts_provider:
+        # Old tabs and saved personas may name a retired engine. A voice alias
+        # migrates its timbre; otherwise use the active engine's default voice.
+        # This is a migration, never a retry or a fallback to another engine.
+        voice = settings.tts_voice_aliases.get(f"{requested}|{voice or ''}", "")
+        requested = settings.tts_provider
+    selected = tts.provider_name(requested)
     if body.get("native_defaults"):
         language = language or speech.language
         if not voice and selected == speech.tts_provider:

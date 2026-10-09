@@ -45,6 +45,8 @@ def preload() -> None:
     served = {item.get("id") for item in data.get("voices") or [] if isinstance(item, dict)} or {data.get("voice")}
     if not data.get("ready") or settings.voxcpm_voice not in served:
         raise RuntimeError("VoxCPM2 worker is not ready with the configured voice")
+    if settings.tts_pocket_only and data.get("model") != "kyutai/pocket-tts":
+        raise RuntimeError("Pocket-only synthesis requires a Pocket TTS worker")
 
 
 class Decoder:

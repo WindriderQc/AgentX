@@ -57,6 +57,8 @@ class RuntimeConfig:
             provider = str(value).strip().lower().replace("-", "_")
             if provider not in TTS_PROVIDERS:
                 raise ValueError("tts_provider must be one of: kokoro, windows_sapi, voxcpm")
+            if settings.tts_pocket_only and provider != settings.tts_provider:
+                raise ValueError("This instance uses one synthesis provider; other engines are retired")
             if provider == "voxcpm" and not settings.voxcpm_base_url:
                 raise ValueError("Configure VOXCPM_BASE_URL before selecting VoxCPM2")
             return provider
@@ -78,6 +80,7 @@ def static_settings() -> dict:
         "whisper_hotwords": settings.whisper_hotwords,
         "whisper_initial_prompt": settings.whisper_initial_prompt,
         "tts_provider_default": settings.tts_provider,
+        "tts_pocket_only": settings.tts_pocket_only,
         "kokoro_voice": settings.kokoro_voice,
         "kokoro_language": settings.kokoro_language,
         "kokoro_onnx_provider": settings.kokoro_onnx_provider,
