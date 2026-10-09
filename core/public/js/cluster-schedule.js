@@ -316,8 +316,14 @@ function updateHeaderStatusUnavailable(error) {
 async function loadTimeline() {
   const container = document.getElementById('heatmapContainer');
   try {
+    const endpoint = viewMode === 'host' ? 'timeline-by-host' : 'timeline';
+    const [data, schedules] = await Promise.all([
+      fetchJSON(`${API_BASE}/schedule/${endpoint}?${calendarQuery()}`),
+      fetchJSON(`${API_BASE}/schedule?enabled=true`).catch(() => ({ entries: [] }))
+    ]);
+    const enrich = entries => UPCOMING_PROJECTION.withScheduleDetails(entries, schedules.entries);
     if (viewMode === 'host') {
-      const data = await fetchJSON(`${API_BASE}/schedule/timeline-by-host?${calendarQuery()}`);
+      data.hosts = data.hosts.map(host => ({ ...host, tasks: enrich(host.tasks) }));
       document.getElementById('servicesStrip').style.display = 'none';
       upcomingTimelineEntries = data.hosts.flatMap(host => host.tasks || []);
       const hosts = data.hosts.map(host => ({
@@ -328,8 +334,7 @@ async function loadTimeline() {
       renderHostHeatmap(container, hosts);
       renderLegendFromHosts(hosts);
     } else {
-      const data = await fetchJSON(`${API_BASE}/schedule/timeline?${calendarQuery()}`);
-      const { persistent, scheduled } = splitTimeline(data.timeline);
+      const { persistent, scheduled } = splitTimeline(enrich(data.timeline));
       const continuousServices = persistent.filter(entry => entry.source !== 'ollama-persistent');
       persistentServicesData = persistent;
       upcomingTimelineEntries = scheduled;
@@ -380,10 +385,7 @@ function isNoGpuTaskEntry(entry) {
 }
 
 function isHighFrequencyLightJob(entry) {
-  if (!isNoGpuTaskEntry(entry)) return false;
-  const slots = entry?.slots || [];
-  const isContinuous = slots.length === 1 && slots[0]?.continuous;
-  return isContinuous || slots.length > 12;
+  return UPCOMING_PROJECTION.isHighFrequencyLightJob(entry);
 }
 
 function setTimelineFilter(filterName, checked) {
@@ -770,7 +772,7 @@ function renderNextItem(task, i) {
   const sourceMeta = getSourceMeta(task.source, task.metadata);
   const sourceClass = task.source || 'agentx';
   const hostLabel = task.host ? getHostMeta(task.host).label : '';
-  const cadenceLabel = isServiceTick(task) ? `every ${formatInterval(task.intervalMs)}` : '';
+  const cadenceLabel = isServiceTick(task) ? getCadenceLabel(task) : '';
   return `
     <div class="cs-next-item">
       <div style="min-width:0;flex:1">
@@ -870,38 +872,14 @@ function formatCountdown(ms) {
   return `${sec}s`;
 }
 
-// Derive a short cadence label from slot count for timeline row labels
+// Use the declared interval or the chronological cron starts, never slot count guesses.
 function getCadenceLabel(entry) {
-  const n = entry.slots?.length || 0;
-  if (n === 0) return '';
-  if (n === 1 && entry.slots[0]?.continuous) return '24/7';
-  if (n >= 1000) return 'q1m';   // every minute or faster
-  if (n >= 200)  return 'q5m';   // every ~5 min
-  if (n >= 80)   return 'q10m';  // every ~10 min
-  if (n >= 40)   return 'q15m';  // every ~15 min
-  if (n >= 26)   return 'q30m';  // every ~30 min
-  if (n >= 20)   return 'hrly';  // roughly hourly (20-25/day)
-  if (n >= 11)   return 'q2h';   // every ~2 hours (12/day)
-  if (n >= 6)    return 'q4h';   // every ~4 hours
-  if (n >= 3)    return 'q8h';   // every ~8 hours
-  if (n === 2)   return '2×/d';
-  if (n === 1) {
-    // Show start time for single daily jobs
-    try {
-      const t = new Date(entry.slots[0].start);
-      return `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
-    } catch { return 'daily'; }
-  }
-  return `${n}×/d`;
+  return UPCOMING_PROJECTION.getCadenceLabel(entry, value => formatTime(new Date(value)));
 }
 
-// Service tick = mirrors splitTimeline threshold: short interval OR >12 runs/day
-// Consistent with what goes into the background services strip (slots.length > 12)
+// Shared with the timeline's high-frequency light-job filter.
 function isServiceTick(task) {
-  if (!task) return false;
-  if (task.scheduleType === 'interval' && task.intervalMs && task.intervalMs < 3600000) return true;
-  if (task.dailyCount && task.dailyCount > 12) return true;
-  return false;
+  return isHighFrequencyLightJob(task);
 }
 
 // ── Init / Refresh ──────────────────────────────────────────

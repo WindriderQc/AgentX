@@ -18,7 +18,7 @@
     return Number.isFinite(millis) ? millis : null;
   }
 
-  function deriveIntervalMs(entry, slot) {
+  function deriveIntervalMs(entry) {
     if (entry?.scheduleType === 'interval' && Number(entry.intervalMs) > 0) {
       return Number(entry.intervalMs);
     }
@@ -32,16 +32,52 @@
       if (delta > 0) return delta;
     }
 
-    const start = toMillis(slot?.start);
-    const end = toMillis(slot?.end);
-    return start !== null && end !== null && end > start ? end - start : null;
+    return null;
   }
 
   function isHighFrequencyRecurring(entry, intervalMs) {
     const slots = entry?.slots || [];
     const scheduleType = entry?.scheduleType || (slots.length > 1 ? 'cron' : null);
     if (scheduleType !== 'cron' && scheduleType !== 'interval') return false;
-    return (Number(intervalMs) > 0 && Number(intervalMs) < HOUR_MS) || slots.length > 12;
+    return (Number(intervalMs) > 0 && Number(intervalMs) < HOUR_MS)
+      || (entry?.dailyCount || slots.length) > 12;
+  }
+
+  // Timeline filters and Upcoming Tasks use the same light-job threshold.
+  function isHighFrequencyLightJob(entry) {
+    if (!entry || entry.model || entry.source === 'ollama-persistent') return false;
+    if (entry.scheduleType === 'continuous' || entry.slots?.some(slot => slot.continuous)) return true;
+    return isHighFrequencyRecurring(entry, entry.intervalMs || deriveIntervalMs(entry));
+  }
+
+  function formatCadenceInterval(ms) {
+    if (!(Number(ms) > 0)) return '';
+    const units = [[86_400_000, 'day'], [HOUR_MS, 'h'], [60_000, 'min'], [1000, 's']];
+    const [unitMs, unit] = units.find(([value]) => ms >= value) || units[units.length - 1];
+    return `every ${Number((ms / unitMs).toFixed(2))} ${unit}`;
+  }
+
+  function getCadenceLabel(entry, formatTime = defaultFormatTime) {
+    if (entry?.scheduleType === 'continuous' || entry?.slots?.some(slot => slot.continuous)) return '24/7';
+    if (entry?.scheduleType === 'interval') return formatCadenceInterval(entry.intervalMs);
+
+    const starts = [...new Set((entry?.slots || []).map(slot => toMillis(slot.start)))]
+      .filter(Number.isFinite).sort((a, b) => a - b);
+    if (!starts.length) return '';
+    if (starts.length === 1) return `daily ${formatTime(starts[0])}`;
+    const spacing = deriveIntervalMs({ ...entry, slots: starts.map(start => ({ start })) });
+    const regular = starts.length > 2 && starts.slice(1).every((start, i) => start - starts[i] === spacing);
+    return regular ? formatCadenceInterval(spacing) : `${starts.length}×/day`;
+  }
+
+  // The timeline API omits intervalMs; join the existing schedule-list response.
+  function withScheduleDetails(entries, schedules) {
+    const byId = new Map((schedules || []).map(entry => [String(entry._id || entry.id), entry.schedule]));
+    return (entries || []).map(entry => {
+      const schedule = byId.get(String(entry.id));
+      return { ...entry, scheduleType: schedule?.type || entry.scheduleType,
+        intervalMs: schedule?.intervalMs ?? entry.intervalMs };
+    });
   }
 
   function defaultFormatTime(value) {
@@ -89,6 +125,7 @@
           source: entry.source,
           taskType: entry.taskType,
           host: entry.host,
+          slots: entry.slots,
           model: entry.model,
           priority: entry.priority,
           lastRun: entry.lastRun || null,
@@ -152,6 +189,10 @@
     buildUpcomingTasks,
     findOverdueEntries,
     deriveIntervalMs,
-    isHighFrequencyRecurring
+    isHighFrequencyRecurring,
+    isHighFrequencyLightJob,
+    getCadenceLabel,
+    formatCadenceInterval,
+    withScheduleDetails
   });
 }));
