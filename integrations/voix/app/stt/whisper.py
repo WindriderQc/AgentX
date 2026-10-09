@@ -32,6 +32,7 @@ def _configure_windows_cuda_runtime() -> None:
         return
     bin_paths = [
         Path(sys.prefix) / "Lib" / "site-packages" / "nvidia" / "cublas" / "bin",
+        Path(sys.prefix) / "Lib" / "site-packages" / "nvidia" / "cudnn" / "bin",
         Path(sys.prefix) / "Lib" / "site-packages" / "nvidia" / "cuda_nvrtc" / "bin",
         Path(sys.prefix) / "Lib" / "site-packages" / "nvidia" / "cuda_runtime" / "bin",
     ]
