@@ -2,17 +2,18 @@
  * File Export — generate optimized reports from indexed NAS files.
  * Supports: full, summary, media, large, stats report types.
  */
-const path = require('path');
-const { formatFileSize, ensureDir, listFilesWithMeta, validateFilename, exists } = require('../utils/file-operations');
+const { formatFileSize } = require('../utils/file-operations');
 const { formatFilePath } = require('../utils/fileHelpers');
 const fs = require('fs/promises');
-const { createWriteStream } = require('fs');
-const { randomBytes } = require('crypto');
+const { createWriteStream, createReadStream } = require('fs');
+const { pipeline } = require('stream');
 const { csvCell } = require('../../shared/csvCell');
+const store = require('../services/exportStore');
+const { createExportJobs } = require('../services/exportJobs');
 
-const EXPORT_DIR = path.join(__dirname, '../exports');
-const REPORT_TYPES = new Set(['full', 'summary', 'media', 'large', 'stats']);
-const REPORT_FORMATS = new Set(['json', 'csv']);
+const REPORT_TYPES = new Set(store.REPORT_TYPES);
+const REPORT_FORMATS = new Set(store.REPORT_FORMATS);
+const jobs = createExportJobs();
 
 /**
  * Wait until a chunk is accepted by the write stream, honoring backpressure.
@@ -205,6 +206,51 @@ async function streamReport(filePath, source, format, generatedAt = new Date().t
   }
 }
 
+/** Write one report to `filePath` and say how many records it holds. */
+async function produceReport(db, type, format, filePath, generatedAt) {
+  const source = await reportSource(db, type);
+  if (source) {
+    const { rowCount, skippedFiles, totals } = await streamReport(filePath, source, format, generatedAt);
+    return { recordCount: totals.totalFiles ?? rowCount, skippedCount: skippedFiles };
+  }
+  const data = await generateStatsReport(db);
+  const content = format === 'csv' ? convertToCSV(data) : JSON.stringify(data, null, 2);
+  try {
+    await fs.writeFile(filePath, content, { flag: 'wx' });
+  } catch (error) {
+    if (error.code !== 'EEXIST') await fs.unlink(filePath).catch(() => {});
+    throw error;
+  }
+  return { recordCount: data.overview.totalFiles, skippedCount: 0 };
+}
+
+function iso(value) {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function reportEntry(job, file) {
+  const size = file ? file.size : job?.size ?? null;
+  const name = store.parseReportName(file ? file.filename : job.filename);
+  return {
+    filename: file ? file.filename : job.filename,
+    type: name.type,
+    format: name.format,
+    status: file ? 'ready' : job.status,
+    size,
+    sizeFormatted: size == null ? null : formatFileSize(size),
+    createdAt: iso(file ? file.createdAt : job.finishedAt),
+    requestedAt: iso(job?.requestedAt),
+    recordCount: job?.recordCount ?? null,
+    skippedCount: job?.skippedCount ?? null,
+    error: file ? null : job.error
+  };
+}
+
+/**
+ * POST /generate starts a generation and answers 202 at once: a report of the
+ * whole inventory takes too long to hold a request open. GET / says when the
+ * report is `ready` (or `failed`, with the reason).
+ */
 exports.generateReport = async (req, res, next) => {
   try {
     const db = req.app.locals.db;
@@ -222,58 +268,77 @@ exports.generateReport = async (req, res, next) => {
       return res.status(400).json({ status: 'error', message: 'Full reports support JSON only' });
     }
 
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-    // A random suffix keeps concurrent exports of the same type apart.
-    const filename = `export_${type}_${ts}_${randomBytes(3).toString('hex')}.${format}`;
-    const filePath = path.join(EXPORT_DIR, filename);
-    await ensureDir(EXPORT_DIR);
-
-    const source = await reportSource(db, type);
-    if (source) {
-      const generatedAt = now.toISOString();
-      const { rowCount, skippedFiles, totals } = await streamReport(filePath, source, format, generatedAt);
-      const stats = await fs.stat(filePath);
-      return res.json({
-        status: 'success',
-        data: {
-          filename, size: stats.size, sizeFormatted: formatFileSize(stats.size),
-          recordCount: totals.totalFiles ?? rowCount, skippedCount: skippedFiles, generatedAt
-        }
+    const started = jobs.start(type, format,
+      (filePath, generatedAt) => produceReport(db, type, format, filePath, generatedAt));
+    if (started.busy) {
+      return res.status(429).json({
+        status: 'error',
+        message: 'Two reports are already being generated; retry when one has finished'
       });
     }
-
-    const data = await generateStatsReport(db);
-    const content = format === 'csv' ? convertToCSV(data) : JSON.stringify(data, null, 2);
-    await fs.writeFile(filePath, content, { flag: 'wx' });
-    const stats = await fs.stat(filePath);
-
-    res.json({
+    res.status(202).json({
       status: 'success',
-      data: { filename, size: stats.size, sizeFormatted: formatFileSize(stats.size), recordCount: data.overview.totalFiles, generatedAt: data.generatedAt }
+      message: 'Report generation started',
+      data: reportEntry(started.job, null)
     });
-  } catch (error) {
-    if (error.code === 'EEXIST') return res.status(409).json({ status: 'error', message: 'An export with this name already exists; retry' });
-    next(error);
-  }
+  } catch (error) { next(error); }
 };
 
 exports.listExports = async (req, res, next) => {
   try {
-    await ensureDir(EXPORT_DIR);
-    const files = await listFilesWithMeta(EXPORT_DIR, { filesOnly: true, sortBy: 'modified', sortOrder: 'desc' });
-    res.json({ status: 'success', data: files });
+    await store.removeStaleParts(jobs.runningNames());
+    const files = await store.listReports();
+    const onDisk = new Set(files.map(file => file.filename));
+    const reports = [
+      // Running and failed generations have no report file.
+      ...jobs.list().filter(job => !onDisk.has(job.filename) && job.status !== 'ready')
+        .sort((a, b) => b.requestedAt - a.requestedAt).map(job => reportEntry(job, null)),
+      ...files.map(file => reportEntry(jobs.get(file.filename), file))
+    ];
+    res.json({
+      status: 'success',
+      data: {
+        reports,
+        totalSize: files.reduce((sum, file) => sum + file.size, 0),
+        limits: store.limits()
+      }
+    });
+  } catch (error) { next(error); }
+};
+
+exports.downloadExport = async (req, res, next) => {
+  try {
+    const { filename } = req.params;
+    const name = store.parseReportName(filename);
+    if (!name) return res.status(400).json({ status: 'error', message: 'Invalid filename' });
+    const file = await store.statReport(filename);
+    if (!file) return res.status(404).json({ status: 'error', message: 'File not found' });
+
+    res.setHeader('Content-Type', store.CONTENT_TYPES[name.format]);
+    res.setHeader('Content-Length', file.size);
+    // The name matched the exporter's own pattern: no quote, slash or control character.
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'no-store');
+    pipeline(createReadStream(file.path), res, (error) => {
+      if (!error || error.code === 'ERR_STREAM_PREMATURE_CLOSE') return;
+      if (!res.headersSent) next(error);
+    });
   } catch (error) { next(error); }
 };
 
 exports.deleteExport = async (req, res, next) => {
   try {
     const { filename } = req.params;
-    if (!validateFilename(filename)) return res.status(400).json({ status: 'error', message: 'Invalid filename' });
-    const filePath = path.join(EXPORT_DIR, filename);
-    if (!exists(filePath)) return res.status(404).json({ status: 'error', message: 'File not found' });
-    await fs.unlink(filePath);
+    if (!store.parseReportName(filename)) return res.status(400).json({ status: 'error', message: 'Invalid filename' });
+    const job = jobs.get(filename);
+    if (job?.status === 'running') {
+      return res.status(409).json({ status: 'error', message: 'This report is still being generated' });
+    }
+    const deleted = await store.deleteReport(filename);
+    // A failed generation has no file: deleting it only clears it from the list.
+    const forgotten = jobs.forget(filename);
+    if (!deleted && !forgotten) return res.status(404).json({ status: 'error', message: 'File not found' });
     res.json({ status: 'success', message: 'Deleted' });
   } catch (error) { next(error); }
 };
@@ -281,3 +346,5 @@ exports.deleteExport = async (req, res, next) => {
 // Exposed for stream-integrity tests.
 exports.streamReport = streamReport;
 exports.reportSource = reportSource;
+exports.produceReport = produceReport;
+exports.jobs = jobs;

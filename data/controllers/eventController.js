@@ -1,62 +1,39 @@
 const appEmitter = require('../utils/eventEmitter');
 const { log } = require('../utils/logger');
+const activityLog = require('../services/activityLog');
 
 const MAX_SSE_CONNECTIONS = 50;
 let sseConnectionCount = 0;
 const sseConnections = new Set();
 
-/**
- * Log an event to the database and emit for SSE subscribers.
- */
-async function logEvent(db, message, type = 'info', opts = {}) {
-  try {
-    const doc = { message, type, timestamp: new Date() };
-    if (opts.stack) doc.stack = opts.stack;
-    if (opts.meta) doc.meta = opts.meta;
-
-    await db.collection('appevents').insertOne(doc);
-    appEmitter.emit('newEvent', doc);
-  } catch (error) {
-    log(`[events] Failed to log: "${message}" — ${error.message}`, 'error');
-  }
-}
-
 // --- REST endpoints ---
 
+function badRequest(res, error) {
+  return res.status(400).json({ status: 'error', message: error.message });
+}
+
+/**
+ * GET / — newest first. Filters: `type` (a type or the beginning of one),
+ * `severity`, `since`, `until`; paging: `page`, `limit` (at most 200).
+ */
 exports.getEvents = async (req, res, next) => {
   try {
-    const db = req.app.locals.db;
-    const { page = 1, limit = 50 } = req.query;
-    const type = req.query.type;
-    const parsedPage = Math.max(1, parseInt(page));
-    const parsedLimit = Math.max(1, Math.min(200, parseInt(limit)));
-    const skip = (parsedPage - 1) * parsedLimit;
-
-    const filter = type ? { type } : {};
-    const col = db.collection('appevents');
-    const [total, events] = await Promise.all([
-      col.countDocuments(filter),
-      col.find(filter).sort({ timestamp: -1 }).skip(skip).limit(parsedLimit).toArray()
-    ]);
-
-    res.json({
-      status: 'success',
-      data: {
-        events,
-        pagination: { total, page: parsedPage, limit: parsedLimit, pages: Math.ceil(total / parsedLimit) }
-      }
-    });
-  } catch (error) { next(error); }
+    res.json({ status: 'success', data: await activityLog.list(req.app.locals.db, req.query) });
+  } catch (error) {
+    if (error.statusCode === 400) return badRequest(res, error);
+    next(error);
+  }
 };
 
+/** POST / — a trusted caller records an `external.*` event; every field is validated. */
 exports.createEvent = async (req, res, next) => {
   try {
-    const db = req.app.locals.db;
-    const { message, type, meta } = req.body;
-    if (!message) return res.status(400).json({ status: 'error', message: 'message is required' });
-
-    await logEvent(db, message, type || 'info', { meta });
-    res.status(201).json({ status: 'success', message: 'Event logged' });
+    let event;
+    try { event = activityLog.externalEvent(req.body); }
+    catch (error) { return badRequest(res, error); }
+    const stored = await activityLog.record(req.app.locals.db, event);
+    if (!stored) return res.status(500).json({ status: 'error', message: 'Event could not be stored' });
+    res.status(201).json({ status: 'success', message: 'Event logged', data: stored });
   } catch (error) { next(error); }
 };
 
@@ -67,6 +44,9 @@ exports.streamEvents = (req, res) => {
   if (sseConnectionCount >= MAX_SSE_CONNECTIONS) {
     return res.status(503).json({ status: 'error', message: 'Too many SSE connections' });
   }
+  let filter;
+  try { filter = activityLog.parseQuery({ type: req.query.type, severity: req.query.severity }).applied; }
+  catch (error) { return res.status(400).json({ status: 'error', message: error.message }); }
   sseConnectionCount++;
   sseConnections.add(res);
 
@@ -76,11 +56,9 @@ exports.streamEvents = (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
-  const typeFilter = req.query.type;
-
   const sendEvent = (data) => {
     try {
-      if (typeFilter && data.type !== typeFilter) return;
+      if (!activityLog.matches(data, filter)) return;
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     } catch (e) {
       log(`[events] SSE write error: ${e.message}`, 'error');

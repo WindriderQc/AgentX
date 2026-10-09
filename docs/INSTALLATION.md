@@ -228,6 +228,7 @@ and the inference endpoint you select determine which other systems receive data
 | Document retrieval | Qdrant document/chunk payloads, original text and vectors in `${project}_canonical_qdrant_data`; MongoDB manifests and ingestion/search telemetry | Both stores and approved sources; Qdrant contains document content, not only an embedding index |
 | Docker Ollama models | `${project}_canonical_ollama_data` | The local model store; native/LAN Ollama has its own independent storage |
 | Recovery archives | `${project}_canonical_recovery_data`, mounted at `/backups` in Core | Backups, including copies of deleted application content |
+| Data inventory reports generated on request (file paths and sizes) | `${project}_canonical_data_exports`, mounted at `/data/exports` in Data; at most 20 reports and 1 GiB | The reports: they list every indexed path |
 | Logs, benchmark settings and execution files | The project's `core_logs`, `benchmark_logs`, `rag_logs`, `benchmark_config` and `benchmark_jobs` named volumes | Logs, instance host settings and generated execution material |
 | Original documents, photos, media, sound packs and integration settings | External directories explicitly selected by the instance owner | The originals, credentials and external backup copies |
 

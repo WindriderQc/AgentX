@@ -14,6 +14,8 @@ const liveData = require('./services/liveData');
 const mqttMonitor = require('./services/mqttMonitor');
 const janitorScheduler = require('./services/janitorScheduler');
 const janitorRunner = require('./services/janitorRunner');
+const activityWatch = require('./services/activityWatch');
+const activityEvents = require('./services/activityEvents');
 const { backgroundJobsEnabled } = require('./utils/backgroundJobs');
 const eventController = require('./controllers/eventController');
 const liveDataController = require('./controllers/liveDataController');
@@ -100,8 +102,13 @@ async function start() {
 
   // The broker monitor serves a manual API: it connects whenever a broker is
   // configured, with or without background jobs, and never in a test process.
-  try { mqttMonitor.init(); }
+  try { mqttMonitor.init({ onStateChange: (state, detail) => activityEvents.mqttMonitorState(db, state, detail) }); }
   catch (e) { log(`[MQTT monitor] Init failed: ${e.message}`, 'warn'); }
+
+  // The activity log's check for collectors and GPU hosts that stopped
+  // reporting. It only reads Data's own records, so it does not depend on
+  // background jobs; it never starts in a test process.
+  activityWatch.start(db);
 
   // Background work is an explicit instance choice, never a test side effect.
   if (backgroundJobsEnabled()) {
@@ -117,6 +124,7 @@ async function shutdown() {
   log('Shutting down agentx-data...');
   try { eventController.drainSSE(); } catch (e) { log(`[shutdown] drainSSE error: ${e.message}`, 'warn'); }
   try { liveDataController.drainSSE(); } catch (e) { log(`[shutdown] livedata drainSSE error: ${e.message}`, 'warn'); }
+  activityWatch.stop();
   try { await mqttMonitor.close(); } catch (e) { log(`[shutdown] mqttMonitor.close error: ${e.message}`, 'warn'); }
   try { await liveData.close(); } catch (e) { log(`[shutdown] liveData.close error: ${e.message}`, 'warn'); }
   try { await janitorScheduler.close(); } catch (e) { log(`[shutdown] janitorScheduler.close error: ${e.message}`, 'warn'); }

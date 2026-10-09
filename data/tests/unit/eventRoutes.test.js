@@ -61,7 +61,19 @@ describe('Event Routes', () => {
     test('accepts type filter', async () => {
       const app = buildApp();
       await request(app).get('/api/v1/events?type=error').expect(200);
-      expect(app.locals.db._col.find).toHaveBeenCalledWith({ type: 'error' });
+      expect(app.locals.db._col.find).toHaveBeenCalledWith({ type: { $regex: '^error' } });
+    });
+
+    test('an invalid page or limit is not NaN', async () => {
+      const app = buildApp();
+      const res = await request(app).get('/api/v1/events?page=abc&limit=xyz').expect(200);
+      expect(res.body.data.pagination).toEqual({ total: 0, page: 1, limit: 50, pages: 0 });
+    });
+
+    test('an invalid filter is refused', async () => {
+      await request(buildApp()).get('/api/v1/events?severity=loud').expect(400);
+      await request(buildApp()).get('/api/v1/events?since=whenever').expect(400);
+      await request(buildApp()).get('/api/v1/events?type=storage.*').expect(400);
     });
 
     test('accepts limit param', async () => {
@@ -88,12 +100,25 @@ describe('Event Routes', () => {
       expect(res.body.message).toMatch(/message/i);
     });
 
-    test('defaults type to info', async () => {
-      const res = await request(buildApp())
+    test('defaults to an informational external note', async () => {
+      const app = buildApp();
+      const res = await request(app)
         .post('/api/v1/events')
         .send({ message: 'Default type test' })
         .expect(201);
-      expect(res.body.status).toBe('success');
+      expect(res.body.data).toMatchObject({ type: 'external.note', severity: 'info', message: 'Default type test' });
+      expect(app.locals.db._col.insertOne.mock.calls[0][0]).toMatchObject({ type: 'external.note', severity: 'info' });
+    });
+
+    test('refuses Data\'s own types, oversized bodies and unknown fields', async () => {
+      const app = buildApp();
+      await request(app).post('/api/v1/events').send({ message: 'm', type: 'storage.scan_finished' }).expect(400);
+      await request(app).post('/api/v1/events').send({ message: 'x'.repeat(301) }).expect(400);
+      await request(app).post('/api/v1/events').send({ message: 'm', meta: { a: 'z'.repeat(5000) } }).expect(201);
+      await request(app).post('/api/v1/events').send({ message: 'm', meta: Object.fromEntries(
+        Array.from({ length: 30 }, (_, i) => [`k${i}`, 'z'.repeat(200)])) }).expect(400);
+      await request(app).post('/api/v1/events').send({ message: 'm', stack: 'x' }).expect(400);
+      expect(app.locals.db._col.insertOne).toHaveBeenCalledTimes(1);
     });
   });
 

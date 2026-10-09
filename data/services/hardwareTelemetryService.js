@@ -10,6 +10,7 @@
  */
 
 const { normalizeOllamaEnvironment } = require('../../shared/ollamaServiceEnvironment');
+const activityEvents = require('./activityEvents');
 
 const COLLECTORS = 'hardware_collectors';
 const HOSTS = 'hardware_hosts';
@@ -111,11 +112,14 @@ function collectorFields(info) {
 
 async function registerCollector(db, info = {}, now = new Date()) {
   const fields = collectorFields(info);
-  await db.collection(COLLECTORS).updateOne(
+  const result = await db.collection(COLLECTORS).updateOne(
     { collectorId: fields.collectorId },
     { $set: { ...fields, lastSeen: now }, $setOnInsert: { firstSeen: now } },
     { upsert: true }
   );
+  await activityEvents.collectorSeen(db, 'gpu', fields.collectorId, {
+    inserted: (result?.upsertedCount || 0) > 0, hostname: fields.hostname
+  });
   return fields;
 }
 
@@ -133,6 +137,7 @@ async function ingestSamples(db, body = {}, now = new Date()) {
   let accepted = 0;
   let failed = 0;
   let gpuSamples = 0;
+  const sampledHosts = [];
   const historyDocs = [];
   const hostWrites = [];
   for (const raw of results) {
@@ -161,6 +166,7 @@ async function ingestSamples(db, body = {}, now = new Date()) {
       const gpus = (Array.isArray(raw.gpus) ? raw.gpus : []).slice(0, MAX_GPUS).map(normalizeGpu);
       accepted += 1;
       gpuSamples += gpus.length;
+      sampledHosts.push({ hostId: base.hostId, name: base.name, collectorId: collector.collectorId });
       for (const gpu of gpus) {
         historyDocs.push({ hostId: base.hostId, collectorId: collector.collectorId, sampledAt, ...gpu });
       }
@@ -204,6 +210,7 @@ async function ingestSamples(db, body = {}, now = new Date()) {
   }
   if (hostWrites.length) await db.collection(HOSTS).bulkWrite(hostWrites, { ordered: false });
   if (historyDocs.length) await db.collection(SAMPLES).insertMany(historyDocs, { ordered: false });
+  await Promise.all(sampledHosts.map(host => activityEvents.gpuHostSampled(db, host)));
   return { collectorId: collector.collectorId, accepted, failed, gpuSamples };
 }
 

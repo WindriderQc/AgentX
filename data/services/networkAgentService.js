@@ -14,6 +14,7 @@
  */
 const { ObjectId } = require('mongodb');
 const { sanitizeDevice } = require('../utils/networkInput');
+const activityEvents = require('./activityEvents');
 
 // A scanner whose heartbeat is within this window is considered "active".
 const ACTIVE_WINDOW_MS = 90_000;       // 90s — ~18 missed 5s polls of slack
@@ -65,7 +66,11 @@ async function applyScanResults(db, devices, { scanSource = 'unknown', pruneMiss
   }));
 
   if (bulkOps.length > 0) {
-    await db.collection(DEVICES).bulkWrite(bulkOps);
+    const written = await db.collection(DEVICES).bulkWrite(bulkOps);
+    // An upserted row is a device the inventory did not hold: a later sweep
+    // updates it, so a device is announced once.
+    const inserted = Object.keys(written?.upsertedIds || {}).map(index => list[Number(index)]).filter(Boolean);
+    await activityEvents.devicesFirstSeen(db, inserted, { scanSource });
   }
 
   let markedOffline = 0;
@@ -105,11 +110,14 @@ async function registerScanner(db, info = {}) {
   if (info.capabilities !== undefined) set.capabilities = info.capabilities;
   if (info.lastScanAt) set.lastScanAt = new Date(info.lastScanAt);
 
-  await db.collection(SCANNERS).updateOne(
+  const result = await db.collection(SCANNERS).updateOne(
     { scannerId },
     { $set: set, $setOnInsert: { firstSeen: now } },
     { upsert: true }
   );
+  await activityEvents.collectorSeen(db, 'network', scannerId, {
+    inserted: (result?.upsertedCount || 0) > 0, hostname: set.hostname
+  });
   return scannerId;
 }
 
