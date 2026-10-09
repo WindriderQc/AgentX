@@ -8,8 +8,16 @@ Core's full profile hosts `/data-toolbox`, a UI backed by Data HTTP APIs. Its
 tabs are Overview, Storage, Files, Network, GPU, Databases, Live Data, MQTT and
 Janitor; the GPU tab reads the four `GET /api/v1/hardware` routes and the MQTT
 tab the three `/api/v1/mqtt` routes described below. The Toolbox reads, with
-two writes: a network device's name or known flag, and an MQTT message
-published by hand. The original mutation APIs remain inside Data with their
+three writes: a network device's record (`PATCH /api/v1/network/devices/:id`:
+name, known flag, type, location, notes), a network scan request
+(`POST /api/v1/network/scan`, followed through
+`GET /api/v1/network/scan-requests/:id`) and an MQTT message published by
+hand. Data stores the device fields as given, with no length limit of its own:
+the Toolbox relay bounds them (name and location 80 characters, notes 500, a
+fixed list of types). A collector sweep rewrites only what it observed (IP,
+MAC, hostname, vendor, status, last sighting), so these fields survive it. The
+Toolbox does not expose `POST /api/v1/network/devices/:id/enrich`, which needs
+nmap inside the Data container. The original mutation APIs remain inside Data with their
 existing domain checks. Mount shared storage read-only unless a specific maintenance operation
 requires an explicitly approved writable mount. No disk mount is shipped by default.
 

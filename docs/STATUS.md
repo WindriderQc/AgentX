@@ -21,8 +21,9 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 - **Surfaces.** The full profile serves Nestor (`/dad`), Household (`/panel`),
   Reader (`/lecture`), animal sounds (`/kids/sounds`), PsyX (`/psyx`) and the
-  Data Toolbox (`/data-toolbox`), read-only except naming or acknowledging a
-  network device and publishing an MQTT message by hand. The `demo` profile keeps chat,
+  Data Toolbox (`/data-toolbox`), read-only except editing a network device's
+  record, requesting a network scan from the active collector and publishing
+  an MQTT message by hand. The `demo` profile keeps chat,
   model discovery, RAG and Benchmark. Core owns one common home at `/`,
   `/portal` and `/ecosystem`; full-profile navigation groups Personnel, Famille
   and Atelier, with Système as the secondary menu. Household, PsyX and Data
