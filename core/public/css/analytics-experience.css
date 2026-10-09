@@ -207,3 +207,13 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.analytics-experience-crosslink {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.analytics-experience-crosslink a {
+  color: var(--accent);
+}

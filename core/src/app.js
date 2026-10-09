@@ -720,7 +720,7 @@ app.get('/planning', (req, res) => {
 app.get('/analytics', (req, res) => {
   res.render('layouts/main', {
     pageView: '../pages/analytics',
-    title: 'Agent X · Activity',
+    title: 'AgentX \u2022 AI activity',
     service: 'core',
     activePage: 'analytics',
     headCss: [
@@ -739,7 +739,7 @@ app.get('/analytics', (req, res) => {
 app.get('/performance', (req, res) => {
   res.render('layouts/main', {
     pageView: '../pages/performance',
-    title: 'AgentX \u2022 Performance',
+    title: 'AgentX \u2022 Server performance',
     service: 'core',
     activePage: 'performance',
     headCss: [

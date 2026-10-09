@@ -2,7 +2,7 @@
  * Analytics — Shared State, Utilities & Product Analytics
  *
  * Exports: elements, charts, buildRangeQuery, checkAuth, fetchJSON,
- *          formatBytes, formatNumber, refreshProduct
+ *          formatNumber, refreshProduct
  * Consumed by: analytics-cost.js (the main module entry point)
  */
 
@@ -62,50 +62,6 @@ const elements = {
   costBreakdownDonut: document.getElementById('costBreakdownDonut'),
   costBreakdownStats: document.getElementById('costBreakdownStats'),
   costBreakdownEmpty: document.getElementById('costBreakdownEmpty'),
-
-  // System Metrics Elements
-  // clearCacheBtn: document.getElementById('clearCacheBtn'), // Removed in single-page view
-  timestamp: document.getElementById('sysTimestamp'), // Updated ID
-  // Cache
-  cacheStatus: document.getElementById('cacheStatus'),
-  cacheHitRate: document.getElementById('cacheHitRate'),
-  cacheBar: document.getElementById('cacheBar'),
-  cacheHits: document.getElementById('cacheHits'),
-  cacheMisses: document.getElementById('cacheMisses'),
-  cacheSize: document.getElementById('cacheSize'),
-  cacheMem: document.getElementById('cacheMem'),
-  // DB
-  dbTotalDocs: document.getElementById('dbTotalDocs'),
-  dbConversations: document.getElementById('dbConversations'),
-  dbPrompts: document.getElementById('dbPrompts'),
-  dbUsers: document.getElementById('dbUsers'),
-  dbIndexes: document.getElementById('dbIndexes'),
-  // Conn
-  connStatus: document.getElementById('connStatus'),
-  connActive: document.getElementById('connActive'),
-  connMax: document.getElementById('connMax'),
-  connBar: document.getElementById('connBar'),
-  connAvail: document.getElementById('connAvail'),
-  connWaiting: document.getElementById('connWaiting'),
-  connPool: document.getElementById('connPool'),
-  // System
-  sysStatus: document.getElementById('sysStatus'),
-  sysMem: document.getElementById('sysMem'),
-  sysTotalMem: document.getElementById('sysTotalMem'),
-  sysBar: document.getElementById('sysBar'),
-  sysNode: document.getElementById('sysNode'),
-  sysUptime: document.getElementById('sysUptime'),
-  sysPlatform: document.getElementById('sysPlatform'),
-  // Details
-  detailCacheTotal: document.getElementById('detailCacheTotal'),
-  detailCacheAvg: document.getElementById('detailCacheAvg'),
-  detailCacheEvict: document.getElementById('detailCacheEvict'),
-  detailDbName: document.getElementById('detailDbName'),
-  detailDbHost: document.getElementById('detailDbHost'),
-  detailDbCollections: document.getElementById('detailDbCollections'),
-  detailHeapUsed: document.getElementById('detailHeapUsed'),
-  detailHeapTotal: document.getElementById('detailHeapTotal'),
-  detailRss: document.getElementById('detailRss'),
 };
 
 const charts = {
@@ -115,8 +71,6 @@ const charts = {
   costTrend: null,
   costBreakdown: null,
 };
-
-let poller = null;
 
 /* -------------------------------------------------------------------------- */
 /*                                Utility Fns                                 */
@@ -195,23 +149,6 @@ function sampleNote(signal, noun, observedText) {
     : null;
   if (view.state === 'observed') return [counts, observedText].filter(Boolean).join(' · ');
   return [counts, view.detail].filter(Boolean).join(' · ');
-}
-
-function formatBytes(bytes) {
-  if (bytes === 0 || bytes === undefined) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-}
-
-function formatUptime(seconds) {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${mins}m`;
-  return `${mins}m`;
 }
 
 function periodRange(days) {
@@ -551,4 +488,4 @@ async function refreshProduct() {
 }
 
 
-export { elements, charts, buildRangeQuery, checkAuth, fetchJSON, formatBytes, formatNumber, refreshProduct };
+export { elements, charts, buildRangeQuery, checkAuth, fetchJSON, formatNumber, refreshProduct };

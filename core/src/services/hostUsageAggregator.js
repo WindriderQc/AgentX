@@ -220,6 +220,15 @@ async function getUtilizationHeatmap(days = 7, timeZone = 'UTC') {
   return buildUtilizationHeatmap(records, days, new Date(), getConfiguredHosts(), timeZone);
 }
 
+function isValidTimeZone(timeZone) {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function zonedHourParts(timeZone) {
   const format = new Intl.DateTimeFormat('en-CA', {
     timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23'
@@ -272,6 +281,7 @@ module.exports = {
   aggregateHour,
   getUtilizationHeatmap,
   buildUtilizationHeatmap,
+  isValidTimeZone,
   truncateToHour,
   hostLabel,
   buildHostLabelLookup

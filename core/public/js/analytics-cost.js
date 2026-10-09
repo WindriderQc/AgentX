@@ -1,5 +1,5 @@
 /**
- * Analytics — Cost Tracking, System Metrics, RAG Metrics & Initialization
+ * Analytics — Cost Tracking, RAG Metrics & Initialization
  *
  * Extracted from analytics.js — loaded as the main module in analytics.html.
  * Imports shared state and utilities from analytics.js.
@@ -9,7 +9,7 @@
 import {
   elements, charts,
   buildRangeQuery, checkAuth, fetchJSON,
-  formatBytes, formatNumber, refreshProduct
+  formatNumber, refreshProduct
 } from './analytics.js';
 import { COMPARISON_STATES, parseSignal, rankingSignal } from '/dist/signal-evidence.js';
 
@@ -499,194 +499,6 @@ async function refreshCostBreakdown() {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                            System Metrics Logic                            */
-/* -------------------------------------------------------------------------- */
-
-let systemMetricsBackoffMs = 0;
-let systemMetricsCooldownUntil = 0;
-let systemMetricsLast429LogAt = 0;
-
-async function refreshSystem() {
-  const now = Date.now();
-  if (now < systemMetricsCooldownUntil) return;
-
-  try {
-    const [summary, database] = await Promise.all([
-      fetchJSON('/api/metrics/summary'),
-      fetchJSON('/api/metrics/database')
-    ]);
-
-    renderSystemMetrics({ summary, database });
-    updateTimestamp();
-
-    systemMetricsBackoffMs = 0;
-    systemMetricsCooldownUntil = 0;
-
-  } catch (err) {
-    const status = err?.status;
-    if (status === 429) {
-      const retryAfterMs = Number.isFinite(err?.retryAfterMs) ? err.retryAfterMs : null;
-      const nextBackoff = retryAfterMs ?? (systemMetricsBackoffMs ? systemMetricsBackoffMs * 2 : 15000);
-      systemMetricsBackoffMs = Math.min(Math.max(nextBackoff, 15000), 120000);
-      systemMetricsCooldownUntil = Date.now() + systemMetricsBackoffMs;
-
-      if (Date.now() - systemMetricsLast429LogAt > 10000) {
-        // eslint-disable-next-line no-console
-        console.warn(`System metrics rate-limited (429). Backing off for ${Math.round(systemMetricsBackoffMs / 1000)}s`);
-        systemMetricsLast429LogAt = Date.now();
-      }
-      return;
-    }
-
-    console.error('System metrics load failed', err);
-  }
-}
-
-function updateTimestamp() {
-  const now = new Date().toLocaleTimeString();
-  elements.timestamp.textContent = `Updated: ${now}`;
-}
-
-function setStatus(el, val, healthyThreshold = 70, warningThreshold = 90, reverse = false) {
-    let status = 'healthy';
-    if (!reverse) {
-        if (val >= healthyThreshold) status = 'healthy';
-        else if (val >= 50) status = 'warning';
-        else status = 'error';
-    } else {
-        // Lower is better (e.g. usage)
-        if (val < healthyThreshold) status = 'healthy';
-        else if (val < warningThreshold) status = 'warning';
-        else status = 'error';
-    }
-
-    el.className = `status-dot ${status}`;
-}
-
-function renderSystemMetrics(metrics) {
-  const summaryData = metrics.summary?.data ?? {};
-  const databaseData = metrics.database?.data ?? {};
-
-  // No cache service active (RAG stripped) — use safe defaults
-  const cache = summaryData.cache ?? {
-    hitRate: 0, hitCount: 0, missCount: 0,
-    size: 0, maxSize: 0, memorySizeBytes: 0,
-    avgEntrySizeBytes: 0, evictions: 0,
-  };
-
-  // Backend returns collections as an array; convert to keyed map expected by render code
-  const rawCollections = Array.isArray(databaseData.collections)
-    ? databaseData.collections.reduce((acc, c) => { acc[c.name] = c; return acc; }, {})
-    : (databaseData.collections ?? {});
-  const db = {
-    collections: rawCollections,
-    database: {
-      indexes: databaseData.totals?.indexes ?? 0,
-      name: summaryData.mongo?.name ?? '—',
-    },
-  };
-
-  // Map mongo connection info to expected connection shape
-  const mongoInfo = summaryData.mongo ?? {};
-  const conn = summaryData.connection ?? {
-    activeConnections: mongoInfo.readyState === 1 ? 1 : 0,
-    poolSize: 100,
-    host: mongoInfo.host ?? '—',
-    availableConnections: mongoInfo.readyState === 1 ? 99 : 0,
-    waitingConnections: 0,
-    minPoolSize: 5,
-  };
-
-  // Map process/os info to expected system shape; backend memory is in MB, convert to bytes
-  const proc = summaryData.process ?? {};
-  const osInfo = summaryData.os ?? {};
-  const memMB = proc.memoryUsage ?? {};
-  const toBytes = mb => Math.round((mb ?? 0) * 1048576);
-  const sys = summaryData.system ?? {
-    memory: {
-      heapUsed: toBytes(memMB.heapUsed),
-      heapTotal: toBytes(memMB.heapTotal),
-      formatted: {
-        heapUsed: formatBytes(toBytes(memMB.heapUsed)),
-        heapTotal: formatBytes(toBytes(memMB.heapTotal)),
-        rss: formatBytes(toBytes(memMB.rss)),
-      },
-    },
-    nodeVersion: proc.nodeVersion ?? 'unknown',
-    uptime: { formatted: proc.uptimeFormatted ?? '—' },
-    platform: osInfo.platform ?? 'linux',
-  };
-
-    // --- Cache ---
-    const hitRate = (cache.hitRate * 100);
-    elements.cacheHitRate.textContent = hitRate.toFixed(1) + '%';
-    elements.cacheBar.style.width = `${hitRate}%`;
-    setStatus(elements.cacheStatus, hitRate, 70, 50);
-
-    elements.cacheHits.textContent = formatNumber(cache.hitCount);
-    elements.cacheMisses.textContent = formatNumber(cache.missCount);
-    elements.cacheSize.textContent = `${cache.size}/${cache.maxSize || '∞'}`;
-    elements.cacheMem.textContent = formatBytes(cache.memorySizeBytes);
-
-    elements.detailCacheTotal.textContent = formatNumber(cache.hitCount + cache.missCount);
-    elements.detailCacheAvg.textContent = formatBytes(cache.avgEntrySizeBytes);
-    elements.detailCacheEvict.textContent = formatNumber(cache.evictions);
-
-    // --- Database ---
-    const totalDocs = Object.values(db.collections).reduce((a, b) => a + (b.count || 0), 0);
-    elements.dbTotalDocs.textContent = formatNumber(totalDocs);
-    elements.dbConversations.textContent = formatNumber(db.collections.conversations?.count);
-    elements.dbPrompts.textContent = formatNumber(db.collections.promptConfigs?.count);
-    elements.dbUsers.textContent = formatNumber(db.collections.userProfiles?.count);
-    elements.dbIndexes.textContent = db.database.indexes;
-
-    elements.detailDbName.textContent = db.database.name;
-    elements.detailDbHost.textContent = conn.host; // Conn has host info
-    elements.detailDbCollections.textContent = Object.keys(db.collections).length;
-
-    // --- Connections ---
-    const activeConn = conn.activeConnections || 0;
-    const maxConn = conn.poolSize || 100;
-    const connUsage = (activeConn / maxConn) * 100;
-
-    elements.connActive.textContent = activeConn;
-    elements.connMax.textContent = maxConn;
-    elements.connBar.style.width = `${connUsage}%`;
-    setStatus(elements.connStatus, connUsage, 70, 90, true); // Reverse: lower usage is better/healthy until 70%
-
-    elements.connAvail.textContent = conn.availableConnections;
-    elements.connWaiting.textContent = conn.waitingConnections;
-    elements.connPool.textContent = `${conn.minPoolSize}-${conn.poolSize}`;
-
-    // --- System ---
-    // Use heap metrics consistently for the Memory (Heap) display
-    elements.sysMem.textContent = formatBytes(sys.memory.heapUsed);
-    elements.sysTotalMem.textContent = formatBytes(sys.memory.heapTotal);
-    const memUsagePercent = (sys.memory.heapUsed / sys.memory.heapTotal) * 100;
-    elements.sysBar.style.width = `${memUsagePercent}%`;
-    setStatus(elements.sysStatus, memUsagePercent, 80, 90, true);
-
-    // Safe access to optional elements
-    if (elements.sysNode) elements.sysNode.textContent = sys.nodeVersion || 'v18+';
-    if (elements.sysUptime) elements.sysUptime.textContent = sys.uptime.formatted;
-    if (elements.sysPlatform) elements.sysPlatform.textContent = sys.platform || 'Linux';
-
-    if (elements.detailHeapUsed) elements.detailHeapUsed.textContent = sys.memory.formatted.heapUsed;
-    if (elements.detailHeapTotal) elements.detailHeapTotal.textContent = sys.memory.formatted.heapTotal;
-    if (elements.detailRss) elements.detailRss.textContent = sys.memory.formatted.rss;
-}
-
-async function clearCache() {
-    if (!confirm('Clear embedding cache? This will reset all cache statistics.')) return;
-    try {
-        await fetchJSON('/api/metrics/cache/clear', 'POST');
-        refreshSystem();
-    } catch (e) {
-        alert('Failed to clear cache');
-    }
-}
-
-/* -------------------------------------------------------------------------- */
 /*                              RAG Metrics                                   */
 /* -------------------------------------------------------------------------- */
 
@@ -869,7 +681,6 @@ async function refreshAll() {
     try {
         await Promise.all([
             refreshProduct(),
-            refreshSystem(),
             refreshRagMetrics(),
             refreshCostStats(),
             refreshCostTrend(),
@@ -960,9 +771,4 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initial Load
   refreshAll();
 
-  // The System Metrics block this poll fed is display:none in analytics.ejs,
-  // and /api/metrics/database runs db.stats() plus a per-collection stats()
-  // across ~85 collections. Polling an invisible panel every 15s is pure load,
-  // so the poller is not started here. Re-enable alongside the panel if it
-  // is ever made visible again.
 });
