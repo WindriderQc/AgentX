@@ -248,8 +248,8 @@ describe('Cluster Schedule evidence presentation', () => {
     });
 
     expect(observed).toBe(false);
-    expect(container.innerHTML).toContain('No utilization evidence observed yet');
-    expect(container.innerHTML).toContain('not treated as zero-utilization measurements');
+    expect(container.innerHTML).toContain('No GPU usage measured');
+    expect(container.innerHTML).toContain('unknown, not zero');
   });
 
   test('distinguishes observed zero utilization from hours without evidence', () => {
@@ -266,7 +266,7 @@ describe('Cluster Schedule evidence presentation', () => {
 
     expect(observed).toBe(true);
     expect(container.innerHTML).toContain('04:00 — 0% utilization');
-    expect(container.innerHTML).toContain('00:00 — utilization evidence not observed');
+    expect(container.innerHTML).toContain('00:00 — not measured');
   });
 
   test('reads measured hours from the host identity keys returned by the API', () => {
@@ -304,7 +304,7 @@ describe('Cluster Schedule evidence presentation', () => {
     const render = vm.runInContext('renderActualVsPlanned', context);
     const emptyContainer = { innerHTML: '' };
     render(emptyContainer, { planned: [], actualByHost: { 'gpu-a': [] } });
-    expect(emptyContainer.innerHTML).toContain('No host-assigned GPU plan or utilization evidence observed');
+    expect(emptyContainer.innerHTML).toContain('No GPU jobs assigned to a host and no measured usage');
 
     const measuredContainer = { innerHTML: '' };
     render(measuredContainer, {
@@ -327,10 +327,10 @@ describe('Cluster Schedule evidence presentation', () => {
     ]);
     const html = elements.get('legend').innerHTML;
 
-    expect(html).toContain('Declared host assignments');
+    expect(html).toContain('Jobs per host');
     expect(html).toContain('gpu-a');
-    expect(html).toContain('Not declared for 2 scheduled jobs; this is not a hardware count.');
-    expect(html).not.toContain('>Host not declared<');
+    expect(html).toContain('2 scheduled jobs have no assigned host.');
+    expect(html).not.toContain('>No host assigned<');
   });
 
   test('lists each overflowing job set once with its window count, and no projection-only overdue', () => {

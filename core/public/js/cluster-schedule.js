@@ -130,7 +130,7 @@ async function loadLiveState() {
     updateLiveEvidence(liveResult.value);
   } else {
     liveHostsData = [];
-    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> Loaded-model and VRAM detail unavailable: ${esc(liveResult.reason?.message || 'unknown error')}</div>`;
+    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> Host details unavailable: ${esc(liveResult.reason?.message || 'unknown error')}</div>`;
     updateLiveEvidence(null);
   }
 
@@ -159,13 +159,15 @@ function updateLiveEvidence(liveData) {
     el.dataset.authority = evidence.authority;
     el.dataset.evidenceScope = evidence.scope;
     el.dataset.observedAt = evidence.observedAt;
-    el.textContent = `Loaded-model and VRAM cards are a separate runtime-detail poll observed ${formatEvidenceTime(evidence.observedAt)}. They do not set the ecosystem headline counts.`;
+    el.textContent = `Host cards polled ${formatEvidenceTime(evidence.observedAt)}.`;
+    el.title = 'Loaded models and VRAM come from polling each host directly; the host counts above come from the ecosystem snapshot.';
   } catch (_error) {
     el.dataset.status = 'unavailable';
     delete el.dataset.authority;
     delete el.dataset.evidenceScope;
     delete el.dataset.observedAt;
-    el.textContent = 'Loaded-model and VRAM detail evidence is unavailable. It is not treated as a zero measurement.';
+    el.textContent = 'Host details are unavailable right now; loaded models and VRAM are unknown, not zero.';
+    el.title = '';
   }
 }
 
@@ -240,7 +242,7 @@ function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true }
     if (!isOnline) {
       footerHtml = `<div class="cs-host-footer-offline"><i class="fas fa-exclamation-triangle"></i> Host unreachable</div>`;
     } else if (!scheduleAvailable) {
-      footerHtml = '<div class="cs-host-next" style="font-style:italic">Upcoming schedule evidence unavailable.</div>';
+      footerHtml = '<div class="cs-host-next" style="font-style:italic">Schedule unavailable.</div>';
     } else if (nextJob) {
       const jobCount = hostJobsSoon.length;
       const countPart = jobCount > 1 ? `<span class="cs-host-queue-count">${jobCount} jobs in next hour</span>` : '';
@@ -250,7 +252,7 @@ function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true }
         footerHtml += `<div class="cs-host-next-gpu"><i class="fas fa-microchip"></i> Next GPU run: ${esc(nextGpuJob.model)} in ${formatCountdown(nextGpuJob.msFromNow)}</div>`;
       }
     } else {
-      footerHtml = '<div class="cs-host-next" style="font-style:italic">No host-assigned scheduled job in this view</div><div class="cs-host-standby-note">See the separate heavy-work queue for operator batches.</div>';
+      footerHtml = '<div class="cs-host-next" style="font-style:italic">No scheduled jobs assigned to this host today</div>';
     }
 
     const cardClass = !isOnline ? ' down' : hasModels ? ' active' : '';
@@ -286,12 +288,12 @@ function updateHeaderStatus(headline, nextTasks, { scheduleAvailable = true, sch
   const lightJobs = scheduledNext.length - gpuJobs;
   const scheduleObservedAt = scheduleEvidence?.observedAt;
   const scheduleTitle = scheduleObservedAt && !Number.isNaN(Date.parse(scheduleObservedAt))
-    ? `Upcoming assignment projection observed ${formatEvidenceTime(scheduleObservedAt)}`
-    : 'Upcoming assignment projection';
+    ? `Schedule as of ${formatEvidenceTime(scheduleObservedAt)}`
+    : 'Schedule';
 
   let scheduleHtml;
   if (!scheduleAvailable) {
-    scheduleHtml = '<span class="cs-header-status-item warn"><i class="fas fa-clock" style="font-size:9px"></i> schedule evidence unavailable</span>';
+    scheduleHtml = '<span class="cs-header-status-item warn"><i class="fas fa-clock" style="font-size:9px"></i> schedule unavailable</span>';
   } else if (scheduledNext.length > 0) {
     scheduleHtml = `<span class="cs-header-status-item warn" title="${esc(scheduleTitle)}"><i class="fas fa-clock" style="font-size:9px"></i> ${scheduledNext.length} next hour${gpuJobs ? ` · ${gpuJobs} GPU` : ''}${lightJobs ? ` · ${lightJobs} light` : ''}</span>`;
   } else {
@@ -299,10 +301,10 @@ function updateHeaderStatus(headline, nextTasks, { scheduleAvailable = true, sch
   }
 
   el.innerHTML = [
-    `<span class="cs-header-status-item" title="Canonical ecosystem snapshot observed ${esc(formatEvidenceTime(headline.observedAt))}">${headline.configuredHosts} configured hosts</span>`,
+    `<span class="cs-header-status-item" title="Ecosystem snapshot from ${esc(formatEvidenceTime(headline.observedAt))}">${headline.configuredHosts} configured hosts</span>`,
     `<span class="cs-header-status-item ${headline.onlineHosts > 0 ? 'ok' : ''}"><i class="fas fa-circle" style="font-size:7px"></i> ${headline.onlineHosts} online</span>`,
     `<span class="cs-header-status-item ${headline.offlineHosts > 0 ? 'err' : ''}">${headline.offlineHosts} offline</span>`,
-    `<span class="cs-header-status-item"><i class="fas fa-tags" style="font-size:9px"></i> ${headline.observedModels} observed model tags</span>`,
+    `<span class="cs-header-status-item"><i class="fas fa-tags" style="font-size:9px"></i> ${headline.observedModels} model tags</span>`,
     scheduleHtml,
   ].filter(Boolean).join('<span style="color:#1e293b"> · </span>');
 }
@@ -314,7 +316,7 @@ function updateHeaderStatusUnavailable(error) {
   delete el.dataset.authority;
   delete el.dataset.evidenceScope;
   delete el.dataset.observedAt;
-  el.innerHTML = `<span class="cs-header-status-item err"><i class="fas fa-triangle-exclamation"></i> Ecosystem headline unavailable${error?.message ? `: ${esc(error.message)}` : ''}</span>`;
+  el.innerHTML = `<span class="cs-header-status-item err"><i class="fas fa-triangle-exclamation"></i> Host summary unavailable${error?.message ? `: ${esc(error.message)}` : ''}</span>`;
 }
 
 // ── Timeline ────────────────────────────────────────────────
@@ -635,7 +637,7 @@ function renderMobileTimeline(container, entries) {
 
 function getHostMeta(hostId) {
   if (!hostId || hostId === 'unassigned') {
-    return { id: 'unassigned', label: 'Host not declared', color: '#94a3b8' };
+    return { id: 'unassigned', label: 'No host assigned', color: '#94a3b8' };
   }
   const index = Math.abs([...String(hostId)].reduce((sum, char) => sum + char.charCodeAt(0), 0)) % HOST_COLORS.length;
   const live = liveHostsData.find(host => host.id === hostId);
@@ -680,8 +682,8 @@ function renderClaims(container) {
     container.innerHTML = `
       <div class="cs-empty cs-claims-empty">
         <i class="fas fa-feather-pointed"></i>
-        <div>No live soft claims</div>
-        <div class="cs-claims-empty-note">Scheduler advisory reservations will appear here when consumers request placement.</div>
+        <div>No active placement claims</div>
+        <div class="cs-claims-empty-note">Claims appear here when a job reserves a host before it runs.</div>
       </div>`;
     return;
   }
@@ -842,7 +844,7 @@ function renderNextItem(task, i) {
         <div class="cs-next-meta">
           <span class="cs-task-badge ${task.taskType}">${task.taskType}</span>
           ${hostLabel ? `<span style="font-size:10px"><i class="fas fa-server" style="font-size:8px;margin-right:2px"></i>${esc(hostLabel)}</span>` : ''}
-          <span class="cs-source-chip ${sourceClass}" title="${esc(task.lastRun ? `Last run ${task.metadata?.lastStatus || 'unknown'} ${formatEvidenceTime(task.lastRun)}` : 'Next run is a schedule projection; no execution receipt is available here')}">${esc(sourceMeta.label)}</span>
+          <span class="cs-source-chip ${sourceClass}" title="${esc(task.lastRun ? `Last run ${task.metadata?.lastStatus || 'unknown'} ${formatEvidenceTime(task.lastRun)}` : 'Planned run; no run recorded yet')}">${esc(sourceMeta.label)}</span>
           ${cadenceLabel ? `<span class="cs-source-chip cadence">${esc(cadenceLabel)}</span>` : ''}
           ${task.occurrenceLabel ? `<span class="cs-source-chip cadence">${esc(task.occurrenceLabel)}</span>` : ''}
         </div>

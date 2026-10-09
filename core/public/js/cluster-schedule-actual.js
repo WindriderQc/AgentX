@@ -62,7 +62,7 @@ function renderUtilHeatmap(container, data) {
   // hosts are identity objects keyed into grid; older payloads used strings.
   const { hosts = [], days = [], grid = {} } = data;
   if (!hosts.length || !days.length) {
-    container.innerHTML = '<div class="cs-empty">No utilization evidence observed yet. Inference calls will populate this view after telemetry is recorded.</div>';
+    container.innerHTML = '<div class="cs-empty">No GPU usage measured yet. It appears here once inference calls are recorded.</div>';
     return false;
   }
 
@@ -71,7 +71,7 @@ function renderUtilHeatmap(container, data) {
     Array.isArray(day) && day.some(value => Number.isFinite(value))
   ));
   if (!hasObservedEvidence) {
-    container.innerHTML = '<div class="cs-empty">No utilization evidence observed yet. Configured hosts are not treated as zero-utilization measurements.</div>';
+    container.innerHTML = '<div class="cs-empty">No GPU usage measured for these days (unknown, not zero).</div>';
     return false;
   }
 
@@ -112,7 +112,7 @@ function renderUtilHeatmap(container, data) {
         const color = utilColor(pct);
         const opacity = !observed ? 0.025 : pct <= 0 ? 0.06 : Math.max(0.2, pct / 100);
         html += `<div class="cs-util-cell" style="background:${color};opacity:${opacity.toFixed(2)}"
-          title="${dateLabel} ${String(h).padStart(2, '0')}:00 — ${observed ? `${pct.toFixed(0)}% utilization` : 'utilization evidence not observed'}"></div>`;
+          title="${dateLabel} ${String(h).padStart(2, '0')}:00 — ${observed ? `${pct.toFixed(0)}% utilization` : 'not measured'}"></div>`;
       }
     }
 
@@ -145,11 +145,11 @@ function renderActualVsPlanned(container, data) {
   const hasAssignedGpuPlan = planned.some(host => (host.tasks || []).some(task => task.model));
 
   if (!hasAssignedGpuPlan && !hasActualEvidence) {
-    container.innerHTML = '<div class="cs-empty">No host-assigned GPU plan or utilization evidence observed for this date.</div>';
+    container.innerHTML = '<div class="cs-empty">No GPU jobs assigned to a host and no measured usage for this date.</div>';
     return;
   }
 
-  let html = hasAssignedGpuPlan ? '' : '<div class="cs-empty">No GPU job has a declared host for this date. Measured inference below is not attributed to the cron jobs above.</div>';
+  let html = hasAssignedGpuPlan ? '' : '<div class="cs-empty">No GPU job is assigned to a host on this date; the measured usage below is not linked to scheduled jobs.</div>';
   const HOUR_PCT = (1 / 24 * 100).toFixed(3);
 
   const renderTrack = (hostName, tasks, actualRows) => {
@@ -223,5 +223,5 @@ function renderActualVsPlanned(container, data) {
     <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:#22c55e;opacity:0.5"></div>Actual utilization</div>
   </div>`;
 
-  container.innerHTML = html || '<div class="cs-empty">No planned-run or utilization evidence observed for this date.</div>';
+  container.innerHTML = html || '<div class="cs-empty">No planned runs or measured usage for this date.</div>';
 }
