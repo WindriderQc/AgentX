@@ -95,9 +95,9 @@
     try {
       const res = await fetch('/api/config', { credentials: 'include' });
       const cfg = await res.json();
-      return cfg?.publicUrls?.benchmark || 'http://localhost:3081';
+      return cfg?.publicUrls?.benchmark || 'http://localhost:3081/benchmark';
     } catch {
-      return 'http://localhost:3081';
+      return 'http://localhost:3081/benchmark';
     }
   }
 

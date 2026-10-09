@@ -22,7 +22,10 @@ definition and one launcher (`agentx` / `agentx.ps1`) run them all.
 Compose defaults to project `agentx` and `agentx_canonical_*` volumes. Selecting
 another project isolates container names, networks and `${project}_canonical_*`
 volumes. Application ports are loopback-only, 3180–3182 (Data 3183). MongoDB and
-Qdrant stay internal.
+Qdrant stay internal. Browsers reach Core, Benchmark and RAG through one address:
+Benchmark answers under `/benchmark` and RAG under `/rag`, each dropping its own
+prefix, so a gateway routes by path without rewriting. Both render Core's shared
+layout, whose assets keep their root paths and are served by Core at that address.
 
 Distribution uses optional profiles and capabilities from this one repository.
 Concrete host settings, credentials, personal data and backups are external

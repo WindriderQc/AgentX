@@ -319,12 +319,12 @@
       var alreadyIndexed = data.unchanged === true;
       var sourceHref = documentContext
         ? documentContext.documentsHref({ docId: data.documentId, source: source })
-        : '/documents';
+        : '/rag/documents';
       resultArea.className = 'result-success';
       resultArea.innerHTML =
         '<div class="result-callout"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span><strong>' + (alreadyIndexed ? 'Already indexed' : 'Knowledge added') + '</strong>' +
         '<small><span class="mono">' + escHtml(data.documentId) + '</span> · ' + data.chunkCount + ' searchable passage' + (data.chunkCount === 1 ? '' : 's') + '</small></span></div>' +
-        '<div class="result-actions"><a class="btn btn-primary" href="/search">Ask about it</a>' +
+        '<div class="result-actions"><a class="btn btn-primary" href="/rag/search">Ask about it</a>' +
         '<a class="btn btn-secondary" href="' + escHtml(sourceHref) + '">View source</a></div>';
     } else {
       resultArea.className = 'result-error';

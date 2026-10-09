@@ -2,7 +2,8 @@
 
 AgentX is one active repository with optional profiles and capabilities.
 Core, Benchmark and RAG run together; Data is optional. Application ports bind
-to loopback. Family devices use the LAN HTTPS [private gateway without a human code](PARENTAL_ACCESS.md).
+to loopback. Family devices use the LAN HTTPS [private gateway without a human code](PARENTAL_ACCESS.md),
+one address where Benchmark answers under `/benchmark` and RAG under `/rag`.
 The runtime baseline is Node.js 24 with Express, MongoDB, Qdrant, Ollama and Docker.
 Instance configuration, data and deployment receipts remain outside Git.
 

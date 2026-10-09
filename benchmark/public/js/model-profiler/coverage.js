@@ -101,7 +101,7 @@
     var status = form.querySelector('.mp-coverage-save');
     status.textContent = 'Saving…';
     try {
-      var response = await fetch('/api/benchmark/coverage/settings', {
+      var response = await fetch('/benchmark/api/benchmark/coverage/settings', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enabled: form.elements.enabled.checked,
@@ -123,7 +123,7 @@
     if (!target) return;
     target.setAttribute('aria-busy', 'true');
     try {
-      var response = await fetch('/api/benchmark/coverage', { cache: 'no-store' });
+      var response = await fetch('/benchmark/api/benchmark/coverage', { cache: 'no-store' });
       var body = await response.json().catch(function () { return {}; });
       if (!response.ok) throw new Error(body.message || 'Request failed (' + response.status + ')');
       render(target, body.data);

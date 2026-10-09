@@ -567,8 +567,8 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
     <footer class="cb-detail-actions">
       <p><strong>Manual choice only.</strong> Opening a model never changes routing automatically.</p>
       <div>
-        <a href="/courthouse?model=${encodeURIComponent(model)}" class="cb-detail-action"><i class="fas fa-gavel" aria-hidden="true"></i> Review in Courthouse</a>
-        <a href="/efficiency-map" class="cb-detail-action"><i class="fas fa-chart-line" aria-hidden="true"></i> Efficiency Map</a>
+        <a href="/benchmark/courthouse?model=${encodeURIComponent(model)}" class="cb-detail-action"><i class="fas fa-gavel" aria-hidden="true"></i> Review in Courthouse</a>
+        <a href="/benchmark/efficiency-map" class="cb-detail-action"><i class="fas fa-chart-line" aria-hidden="true"></i> Efficiency Map</a>
         ${useModelUrl ? `<a href="${useModelUrl}" class="cb-detail-action cb-use-model" title="Open this exact model and host in Manual Chat; routing will not change automatically"><i class="fas fa-comment-dots" aria-hidden="true"></i> Use in Chat</a>` : ''}
       </div>
     </footer>

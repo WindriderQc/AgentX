@@ -157,7 +157,7 @@ uses `nomic-embed-text:v1.5` with 768 dimensions. For Docker Ollama:
 ```
 
 For native Ollama, run `ollama pull nomic-embed-text:v1.5` on its host. Open the
-RAG interface at http://127.0.0.1:3182/, ingest a small non-sensitive text document
+RAG interface at http://127.0.0.1:3182/rag/, ingest a small non-sensitive text document
 and search for a phrase from it. Verify retrieval before importing a real corpus.
 An empty collection is normal on first start. Changing the embedding model or
 its dimensions needs a new collection; follow

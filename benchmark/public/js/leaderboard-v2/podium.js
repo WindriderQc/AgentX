@@ -313,7 +313,7 @@ function emptyState() {
     return `<div class="r-empty" style="text-align:center;padding:2rem;">
         <div style="font-size:2rem;margin-bottom:0.5rem;">🏁</div>
         <p>No rankings yet — launch a benchmark to populate the podium.</p>
-        <a href="/" class="r-nav-btn r-primary" style="display:inline-block;margin-top:0.5rem;">Launch a Benchmark</a>
+        <a href="/benchmark/" class="r-nav-btn r-primary" style="display:inline-block;margin-top:0.5rem;">Launch a Benchmark</a>
     </div>`;
 }
 

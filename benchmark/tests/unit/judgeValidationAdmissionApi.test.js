@@ -8,7 +8,7 @@ jest.mock('../../src/services/benchmark/judgeReadiness', () => ({
         code: 'JUDGE_NOT_READY',
         error: `${action} unavailable: ${check.error}`,
         readiness: check.readiness || null,
-        setup: { href: '/setup?focus=judge', label: 'Choose a judge' }
+        setup: { href: '/benchmark/setup?focus=judge', label: 'Choose a judge' }
     }))
 }));
 

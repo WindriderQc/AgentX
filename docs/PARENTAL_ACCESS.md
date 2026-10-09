@@ -16,8 +16,8 @@ the removed paths; [voice identification](VOICE_ID.md) is a future design only.
 flowchart LR
     Human[Browser on private LAN] -->|Private HTTPS, no account or code| Gateway[Caddy: private bind and peer IP restriction]
     Gateway -->|Loopback 3180| Core[Core: home, Nestor, Household, PsyX, Toolbox]
-    Gateway -->|Loopback 3181| Benchmark[Benchmark]
-    Gateway -->|Loopback 3182| RAG[RAG]
+    Gateway -->|"/benchmark → loopback 3181"| Benchmark[Benchmark]
+    Gateway -->|"/rag → loopback 3182"| RAG[RAG]
     Gateway -->|Optional loopback 3183| Data[Data APIs]
     Core -->|Internal service calls| Benchmark
     Core -->|Classified retrieval| RAG
@@ -27,9 +27,14 @@ flowchart LR
     RAG --> Qdrant[(Internal Qdrant)]
 ```
 
-Use `config/household.Caddyfile.example` for complete Core, Benchmark, RAG and
-optional Data entries, including all assets and API paths. Replace the example
-LAN bind address and local DNS name. The example uses the private Caddy CA;
+Use `config/household.Caddyfile.example` for the complete entry, including all
+assets and API paths. Core, Benchmark and RAG share one address: `/benchmark`
+and `/rag` go to their service, everything else to Core; Data keeps an optional
+entry of its own. The gateway forwards the paths unchanged, each service drops
+its own prefix. Set `BENCHMARK_PUBLIC_URL` and `RAG_PUBLIC_URL` to that address
+followed by `/benchmark` and `/rag`. In that file the peer restriction is
+written first inside `route`: Caddy would otherwise run the path blocks before
+it. Replace the example LAN bind address and local DNS name. The example uses the private Caddy CA;
 install/trust that CA on intended devices or preserve the installation's
 existing trusted TLS configuration. Never disable certificate verification.
 The example disables automatic HTTP redirects to avoid adding a wildcard port 80

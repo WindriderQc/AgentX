@@ -265,7 +265,7 @@ function segExpandedTooltip(result) {
         ${method ? `<div class="se-row"><span class="se-label">method</span><span class="se-val">${method}</span></div>` : ''}
       </div>
       ${result.review_reason ? `<div class="se-note">${esc(result.review_reason)}</div>` : ''}
-      ${resultId ? `<a class="se-courthouse-btn" href="/courthouse?result=${esc(resultId)}" title="Review in Courthouse">⚖️ Review in Courthouse</a>` : ''}
+      ${resultId ? `<a class="se-courthouse-btn" href="/benchmark/courthouse?result=${esc(resultId)}" title="Review in Courthouse">⚖️ Review in Courthouse</a>` : ''}
     </div>`;
 }
 

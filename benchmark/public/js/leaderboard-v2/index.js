@@ -393,8 +393,8 @@ export async function renderLeaderboardPage(main, { dashboardRes, generalistRes,
                     <h1>No ranked models yet</h1>
                     <p>Run one focused comparison to create the first evidence-backed ranking.</p>
                     <div class="results-empty-actions">
-                        <a href="/"><i class="fas fa-play" aria-hidden="true"></i> Run a comparison</a>
-                        <a href="/profiler"><i class="fas fa-microchip" aria-hidden="true"></i> Prepare a host</a>
+                        <a href="/benchmark/"><i class="fas fa-play" aria-hidden="true"></i> Run a comparison</a>
+                        <a href="/benchmark/profiler"><i class="fas fa-microchip" aria-hidden="true"></i> Prepare a host</a>
                     </div>
                 </section>`;
         }
@@ -443,7 +443,7 @@ export async function renderLeaderboardPage(main, { dashboardRes, generalistRes,
         // exact filtered leaderboard cohort and must not be overwritten.
         (async () => {
             try {
-                const calRes = await fetch('/api/benchmark/judge/calibration-status').then(r => r.json());
+                const calRes = await fetch('/benchmark/api/benchmark/judge/calibration-status').then(r => r.json());
                 const targetKey = (host, model) => `${String(host || '').trim().replace(/\/+$/, '').toLowerCase()}@@${String(model || '').trim().toLowerCase()}`;
                 const calibratedJudges = new Set(
                     (calRes.data?.matrices || []).map(m => targetKey(m.judge_host, m.judge_model))

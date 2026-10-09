@@ -6,10 +6,11 @@ const { normalizeTrustedRuntimeNavItems } = require('../../src/extensions/truste
 
 const navPath = path.join(__dirname, '../../views/partials/nav.ejs');
 const portalPath = path.join(__dirname, '../../views/pages/home.ejs');
+// One address: Benchmark and RAG public URLs carry their path prefix.
 const publicUrls = {
   core: 'https://core.example',
-  benchmark: 'http://bench.example:4181',
-  rag: 'http://rag.example:4182',
+  benchmark: 'https://core.example/benchmark',
+  rag: 'https://core.example/rag',
   data: 'http://data.example:4183',
 };
 
@@ -36,26 +37,35 @@ describe('shared navigation public URL contract', () => {
     expect(hrefFor(html, 'Chat')).toBe('/playground');
     expect(hrefFor(html, 'Nerve Center')).toBe('/nerve-center');
     expect(hrefFor(html, 'Agent Ops')).toBe('/agent-ops');
-    expect(hrefFor(html, 'Compare models')).toBe('http://bench.example:4181/');
-    expect(hrefFor(html, 'Knowledge overview')).toBe('http://rag.example:4182/');
+    expect(hrefFor(html, 'Compare models')).toBe('https://core.example/benchmark/');
+    expect(hrefFor(html, 'Knowledge overview')).toBe('https://core.example/rag/');
     expect(new URL(hrefFor(html, 'Nerve Center'), 'https://192.0.2.99').href)
       .toBe('https://192.0.2.99/nerve-center');
     expect(html).not.toContain('wrong-host.example');
   });
 
-  test('Benchmark stays relative and its Nerve Center hop uses configured Core', async () => {
+  test('Benchmark links its own pages through its public URL and its Nerve Center hop uses configured Core', async () => {
     const html = await renderNav('benchmark');
     expect(hrefFor(html, 'Chat')).toBe('https://core.example/playground');
-    expect(hrefFor(html, 'Compare models')).toBe('/');
+    expect(hrefFor(html, 'Compare models')).toBe('https://core.example/benchmark/');
+    expect(hrefFor(html, 'Leaderboard')).toBe('https://core.example/benchmark/leaderboard');
     expect(hrefFor(html, 'Nerve Center')).toBe('https://core.example/nerve-center');
-    expect(hrefFor(html, 'Knowledge overview')).toBe('http://rag.example:4182/');
+    expect(hrefFor(html, 'Knowledge overview')).toBe('https://core.example/rag/');
   });
 
-  test('RAG stays relative and its Nerve Center hop uses configured Core', async () => {
+  test('RAG links its own pages through its public URL and its Nerve Center hop uses configured Core', async () => {
     const html = await renderNav('rag');
-    expect(hrefFor(html, 'Knowledge overview')).toBe('/');
+    expect(hrefFor(html, 'Knowledge overview')).toBe('https://core.example/rag/');
     expect(hrefFor(html, 'Nerve Center')).toBe('https://core.example/nerve-center');
-    expect(hrefFor(html, 'Compare models')).toBe('http://bench.example:4181/');
+    expect(hrefFor(html, 'Compare models')).toBe('https://core.example/benchmark/');
+  });
+
+  test('Benchmark and RAG links are the same on every service', async () => {
+    const serviceLinks = html => [...html.matchAll(/href="(https:\/\/core\.example\/(?:benchmark|rag)\/[^"]*)"/g)].map(match => match[1]);
+    const core = serviceLinks(await renderNav('core'));
+    expect(core).toHaveLength(11);
+    expect(serviceLinks(await renderNav('benchmark'))).toEqual(core);
+    expect(serviceLinks(await renderNav('rag'))).toEqual(core);
   });
 
   test('every profile returns to the same canonical home on Core', async () => {
@@ -209,8 +219,8 @@ describe('shared navigation public URL contract', () => {
     }
 
     const ragMaintenance = await renderNav('rag', 'full', 'rag-maintenance');
-    expect(hrefFor(ragMaintenance, 'Maintenance')).toBe('/maintenance');
-    expect(ragMaintenance).toMatch(/href="\/maintenance"[\s\S]*?aria-current="page"/);
+    expect(hrefFor(ragMaintenance, 'Maintenance')).toBe('https://core.example/rag/maintenance');
+    expect(ragMaintenance).toMatch(/href="https:\/\/core\.example\/rag\/maintenance"[\s\S]*?aria-current="page"/);
   });
 
   test('navigation exposes a complete disclosure and keyboard contract', async () => {
@@ -248,8 +258,8 @@ describe('shared navigation public URL contract', () => {
     for (const route of ['/playground', '/models', '/analytics', '/performance', '/prompts', '/council', '/nerve-center', '/agent-ops', '/cluster-schedule', '/memory-review', '/pipeline', '/planning', '/backup']) {
       expect(html).toContain(`href="${route}"`);
     }
-    expect(hrefFor(html, 'Leaderboard')).toBe('http://bench.example:4181/leaderboard');
-    expect(html).toContain('http://rag.example:4182/documents');
+    expect(hrefFor(html, 'Leaderboard')).toBe('https://core.example/benchmark/leaderboard');
+    expect(html).toContain('https://core.example/rag/documents');
     expect(html).not.toContain('host-home-link');
   });
 

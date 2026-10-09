@@ -36,7 +36,7 @@ export function buildJudgeRoster(judgeRoster, config, onlineHosts) {
 
     return `${readinessBanner}<div class="jrc-header">
         <span class="jrc-title">Judge Host</span>
-        <a href="/courthouse" class="jrc-courthouse-link">Courthouse &rarr;</a>
+        <a href="/benchmark/courthouse" class="jrc-courthouse-link">Courthouse &rarr;</a>
       </div>
       ${warningBanner}
       <div class="jrc-help">Pick a judge host first. If Courthouse has a default judge for that host, it is selected automatically. If not, the host stays selected and you pick one of that host's available judges below. Scored shows the share of historical evaluations that returned a score. Use Courthouse calibration to check agreement with reference scores.</div>

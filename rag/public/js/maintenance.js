@@ -264,7 +264,7 @@
 
       // Fetch migration status directly — this endpoint computes migrationNeeded,
       // dimensionMatch, storedDimension, currentDimension, and documentCount.
-      var migrationRes = await RAG.apiFetch('/api/rag/embedding-migration/status');
+      var migrationRes = await RAG.apiFetch('/rag/api/rag/embedding-migration/status');
       var migration = migrationRes.data || {};
       var storedDimension = migration.storedDimension || 0;
       var currentDimension = migration.currentDimension || 0;

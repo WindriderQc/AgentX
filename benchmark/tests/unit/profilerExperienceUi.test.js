@@ -10,16 +10,16 @@ async function render(readiness, { unavailable = false, recovery = {} } = {}) {
     }
     let ready;
     const payloads = {
-        '/api/ollama-hosts': { hosts: [{ available: true, models: ['model'] }] },
-        '/api/profiler/hosts': { data: [{ baseline: { testedAt: '2026-09-09' } }] },
-        '/api/profiler/models': { data: [{ stage: 'profiled', readiness: { primary: readiness } }] },
-        '/api/profiler/recovery': { data: { schema: 'agentx.profiler-recovery-view/v1', observedAt: new Date().toISOString(), operations: [] } }
+        '/benchmark/api/ollama-hosts': { hosts: [{ available: true, models: ['model'] }] },
+        '/benchmark/api/profiler/hosts': { data: [{ baseline: { testedAt: '2026-09-09' } }] },
+        '/benchmark/api/profiler/models': { data: [{ stage: 'profiled', readiness: { primary: readiness } }] },
+        '/benchmark/api/profiler/recovery': { data: { schema: 'agentx.profiler-recovery-view/v1', observedAt: new Date().toISOString(), operations: [] } }
     };
     vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../public/js/model-profiler/experience.js'), 'utf8'), {
         window: { ProfilerRecovery: { render: () => recovery }, addEventListener() {} },
         document: { getElementById: element, querySelectorAll: () => [], addEventListener: (_type, callback) => { ready = callback; } },
         fetch: async url => {
-            if (unavailable && url === '/api/profiler/models') throw new Error('unavailable');
+            if (unavailable && url === '/benchmark/api/profiler/models') throw new Error('unavailable');
             return { ok: true, json: async () => payloads[url] };
         }, AbortController, setTimeout: (callback, delay) => delay === 15000 ? null : setTimeout(callback, delay), clearTimeout
     });

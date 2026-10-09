@@ -16,15 +16,24 @@
 
 https://household.example.invalid {
 	import agentx_private_lan
-	reverse_proxy 127.0.0.1:3180
-}
-https://household.example.invalid:3081 {
-	import agentx_private_lan
-	reverse_proxy 127.0.0.1:3181
-}
-https://household.example.invalid:3082 {
-	import agentx_private_lan
-	reverse_proxy 127.0.0.1:3182
+	# One address: Benchmark and RAG live under their path prefix. The paths are
+	# forwarded unchanged; each service drops its own prefix.
+	# Caddy orders `handle` before `respond`, so the peer guard is repeated
+	# inside `route`, which keeps the written order: the guard stays first.
+	route {
+		respond @outside "Private LAN only" 403
+		@benchmark path /benchmark /benchmark/*
+		handle @benchmark {
+			reverse_proxy 127.0.0.1:3181
+		}
+		@rag path /rag /rag/*
+		handle @rag {
+			reverse_proxy 127.0.0.1:3182
+		}
+		handle {
+			reverse_proxy 127.0.0.1:3180
+		}
+	}
 }
 # Optional Data entry; omit if Data is used only through Core's read-only Toolbox.
 https://household.example.invalid:3083 {

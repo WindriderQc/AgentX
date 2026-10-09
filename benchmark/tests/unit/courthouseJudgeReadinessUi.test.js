@@ -48,7 +48,7 @@ describe('Courthouse judge readiness UI contracts', () => {
 
     test('The Bench renders the authoritative state, evidence modes, retry, and explicit setup path', () => {
         const source = read('courthouse-v2', 'the-bench.js');
-        expect(source).toContain("apiFetch('/api/benchmark/judge/readiness')");
+        expect(source).toContain("apiFetch('/benchmark/api/benchmark/judge/readiness')");
         expect(source).toContain('rosterData?.readiness || fallbackReadiness');
         expect(source).toContain('data-judge-ready');
         expect(source).toContain('Retry check');
@@ -92,7 +92,7 @@ describe('Courthouse judge readiness UI contracts', () => {
             },
             readiness: async () => {
                 calls.push('readiness');
-                return { ready: false, setup: { href: '/setup?focus=judge' } };
+                return { ready: false, setup: { href: '/benchmark/setup?focus=judge' } };
             },
             review: async () => {
                 calls.push('review');
@@ -104,7 +104,7 @@ describe('Courthouse judge readiness UI contracts', () => {
         expect(evidence.dashboard.ok).toBe(false);
         expect(evidence.review.ok).toBe(false);
         expect(evidence.readiness.ok).toBe(true);
-        expect(evidence.readiness.value.setup.href).toBe('/setup?focus=judge');
+        expect(evidence.readiness.value.setup.href).toBe('/benchmark/setup?focus=judge');
     });
 
     test('routes blocked setup to a real page when roster candidates cannot render', () => {
@@ -118,7 +118,7 @@ describe('Courthouse judge readiness UI contracts', () => {
             rosterAvailable: false,
             hostPanels: [{ judges: [] }]
         });
-        expect(unavailableRoster.setup.href).toBe('/setup?focus=judge');
+        expect(unavailableRoster.setup.href).toBe('/benchmark/setup?focus=judge');
         expect(unavailableRoster.setup.label).toBe('Open judge setup');
 
         const renderedCandidates = withRecoverableJudgeSetup(blocked, {
@@ -140,9 +140,9 @@ describe('Courthouse judge readiness UI contracts', () => {
         expect(index).toContain('ch-retry-section');
         expect(index).toMatch(/await Promise\.allSettled\(\[\s+benchTask,\s+reviewTask,/);
         expect(index).not.toContain('await loadReviewQueue();\n\n    // ── Test library');
-        expect(bench).toContain("apiFetch('/api/benchmark/judge/readiness')");
+        expect(bench).toContain("apiFetch('/benchmark/api/benchmark/judge/readiness')");
         expect(bench).toContain('fallbackReadiness');
-        expect(bench).toContain("href: '/setup?focus=judge'");
+        expect(bench).toContain("href: '/benchmark/setup?focus=judge'");
         expect(bench).toContain('dashboard counts');
         expect(bench).toContain('Calibration evidence is historical.');
         expect(bench).toContain('retired or unconfigured host');

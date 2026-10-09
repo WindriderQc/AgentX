@@ -46,7 +46,7 @@ describe('Agent X Knowledge progressive-disclosure experience', () => {
   test('makes empty and blocked states actionable in plain language', () => {
     const empty = read('views', 'partials', 'empty-index-banner.ejs');
     expect(empty).toContain('Your knowledge is empty');
-    expect(empty).toContain('href="/upload"');
+    expect(empty).toContain('href="/rag/upload"');
     expect(search).toContain('id="search-prerequisite-action"');
     expect(searchJs).toContain("setReadiness('warn', 'Add a source first'");
     expect(searchJs).toContain("setReadiness('error', 'Search needs attention'");

@@ -98,7 +98,7 @@ async function openTestInspector(resultId) {
 
     try {
         // Fetch full result details
-        const response = await fetch(`/api/benchmark/results/${resultId}`);
+        const response = await fetch(`/benchmark/api/benchmark/results/${resultId}`);
         if (!response.ok) throw new Error('Failed to fetch result details');
 
         const data = await response.json();
@@ -837,7 +837,7 @@ async function rejudgeResult(resultId) {
     }
 
     try {
-        const response = await fetch(`/api/benchmark/results/${resultId}/rejudge`, {
+        const response = await fetch(`/benchmark/api/benchmark/results/${resultId}/rejudge`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });

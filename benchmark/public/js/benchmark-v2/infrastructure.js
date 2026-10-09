@@ -34,7 +34,7 @@ export async function renderHostSelection(container, hosts) {
                 <div style="font-size:1.1rem;color:var(--r-text,#e6edf3);margin-bottom:0.5rem;">No hosts configured</div>
                 <div style="color:var(--r-text-muted,#8b949e);font-size:0.85rem;">
                     Set <code>OLLAMA_HOST</code> environment variables and restart, or
-                    <a href="/profiler#hosts" style="color:var(--r-active,#58a6ff);">add hosts in the Profiler</a>.
+                    <a href="/benchmark/profiler#hosts" style="color:var(--r-active,#58a6ff);">add hosts in the Profiler</a>.
                 </div>
             </div>`;
             return null;
@@ -51,7 +51,7 @@ export async function renderHostSelection(container, hosts) {
         // the simple surface and hides the actual next step (run a baseline).
         await Promise.all(data.map(async (h) => {
             try {
-                const statusRes = await fetch(`/api/profiler/hosts/${encodeURIComponent(h.hostId)}/status/refresh`, {
+                const statusRes = await fetch(`/benchmark/api/profiler/hosts/${encodeURIComponent(h.hostId)}/status/refresh`, {
                     method: 'POST'
                 });
                 if (!statusRes.ok) return;
@@ -97,7 +97,7 @@ async function _fetchHosts() {
 /** Discover hosts from env config and seed HostProfile docs */
 async function _discoverHosts() {
     try {
-        const res = await fetch('/api/profiler/hosts/discover', { method: 'POST' });
+        const res = await fetch('/benchmark/api/profiler/hosts/discover', { method: 'POST' });
         if (!res.ok) return [];
         return await res.json();
     } catch (_) {

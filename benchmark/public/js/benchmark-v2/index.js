@@ -774,7 +774,7 @@ function _startPolling(batchId) {
     // Try SSE first
     if (typeof EventSource !== 'undefined') {
         try {
-            const source = new EventSource(`/api/benchmark/batch/${batchId}/stream`);
+            const source = new EventSource(`/benchmark/api/benchmark/batch/${batchId}/stream`);
             _sseSource = source;
             const isCurrent = () => _sseSource === source && _liveSession === session && _batchId === batchId && !_liveTerminal;
 
@@ -886,9 +886,9 @@ async function _pollBatch(batchId, session = _liveSession) {
                 const frag = document.createDocumentFragment();
                 frag.appendChild(document.createTextNode('Batch complete — '));
                 const links = [
-                    ['/leaderboard', 'Leaderboard'],
-                    ['/courthouse', 'Courthouse'],
-                    ['/results-explorer', 'Results']
+                    ['/benchmark/leaderboard', 'Leaderboard'],
+                    ['/benchmark/courthouse', 'Courthouse'],
+                    ['/benchmark/results-explorer', 'Results']
                 ];
                 links.forEach(([href, label], i) => {
                     const a = document.createElement('a');

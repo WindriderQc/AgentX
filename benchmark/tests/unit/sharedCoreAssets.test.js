@@ -43,7 +43,7 @@ function catalogResponse() {
 
 describe('shared Core assets', () => {
   it.each([
-    '/benchmark', '/benchmark-v2.html', '/leaderboard-v2.html', '/courthouse-v2.html',
+    '/benchmark-v2.html', '/leaderboard-v2.html', '/courthouse-v2.html',
     '/model-profiler.html', '/efficiency-map.html', '/results-explorer.html', '/setup.html', '/harnesses'
   ])('retires %s without a redirect', async (url) => {
     const response = await api.get(url).expect(404);
@@ -65,7 +65,7 @@ describe('shared Core assets', () => {
     try {
       process.env.BENCHMARK_HARNESS_ENABLED = 'false';
       const setup = await api.get('/').expect(302);
-      expect(setup.headers.location).toBe('/setup');
+      expect(setup.headers.location).toBe('/benchmark/setup');
 
       process.env.BENCHMARK_HARNESS_ENABLED = 'true';
       await api.get('/').expect(200);

@@ -61,6 +61,8 @@ app.set('views', [
 ]);
 
 // Middleware
+// Browser pages live under /benchmark; the same routes still answer at root.
+app.use(require('../shared/pathPrefix').stripPathPrefix('/benchmark'));
 app.use(createBrowserOriginGuard());
 
 // Shared browser controls also consume Core's unified model catalog. Keep the
@@ -160,7 +162,7 @@ const setupPageView = path.resolve(__dirname, 'views/pages/setup');
 app.get('/', (req, res) => {
   const { isConfigured } = require('./src/helpers/ollamaHostConfig');
   const harnessEnabled = String(process.env.BENCHMARK_HARNESS_ENABLED || '').toLowerCase() === 'true';
-  if (!isConfigured() && !harnessEnabled) return res.redirect('/setup');
+  if (!isConfigured() && !harnessEnabled) return res.redirect('/benchmark/setup');
   res.render('layouts/main', {
     pageView: benchmarkPageView,
     title: 'Agent X Evaluation — Compare Models',
@@ -168,14 +170,14 @@ app.get('/', (req, res) => {
     activePage: 'benchmark',
     bodyClass: 'page-benchmark',
     headCss: [
-      '<link rel="stylesheet" href="/css/redesign-tokens.css">',
-      '<link rel="stylesheet" href="/css/redesign-components.css">',
-      '<link rel="stylesheet" href="/css/benchmark-v2-layout.css?v=unbenchmarked-models-20260501">',
-      '<link rel="stylesheet" href="/css/benchmark-v2-config.css">',
-      '<link rel="stylesheet" href="/css/benchmark-v2-live.css">',
-      '<link rel="stylesheet" href="/css/model-evidence-experience.css">'
+      '<link rel="stylesheet" href="/benchmark/css/redesign-tokens.css">',
+      '<link rel="stylesheet" href="/benchmark/css/redesign-components.css">',
+      '<link rel="stylesheet" href="/benchmark/css/benchmark-v2-layout.css?v=unbenchmarked-models-20260501">',
+      '<link rel="stylesheet" href="/benchmark/css/benchmark-v2-config.css">',
+      '<link rel="stylesheet" href="/benchmark/css/benchmark-v2-live.css">',
+      '<link rel="stylesheet" href="/benchmark/css/model-evidence-experience.css">'
     ].join('\n'),
-    footerJs: '<script type="module" src="/js/benchmark-v2/index.js?v=unbenchmarked-models-20260501"></script>\n<script type="module" src="/js/benchmark-v2/experience.js"></script>'
+    footerJs: '<script type="module" src="/benchmark/js/benchmark-v2/index.js?v=unbenchmarked-models-20260501"></script>\n<script type="module" src="/benchmark/js/benchmark-v2/experience.js"></script>'
   });
 });
 
@@ -186,14 +188,14 @@ app.get('/leaderboard', (req, res) => {
     service: 'benchmark',
     activePage: 'leaderboard',
     headCss: [
-      '<link rel="stylesheet" href="/css/redesign-tokens.css">',
-      '<link rel="stylesheet" href="/css/redesign-components.css">',
-      '<link rel="stylesheet" href="/css/leaderboard-v2.css">',
-      '<link rel="stylesheet" href="/css/leaderboard-v2-groups.css">',
-      '<link rel="stylesheet" href="/css/scoring-profile.css">',
-      '<link rel="stylesheet" href="/css/model-evidence-experience.css">'
+      '<link rel="stylesheet" href="/benchmark/css/redesign-tokens.css">',
+      '<link rel="stylesheet" href="/benchmark/css/redesign-components.css">',
+      '<link rel="stylesheet" href="/benchmark/css/leaderboard-v2.css">',
+      '<link rel="stylesheet" href="/benchmark/css/leaderboard-v2-groups.css">',
+      '<link rel="stylesheet" href="/benchmark/css/scoring-profile.css">',
+      '<link rel="stylesheet" href="/benchmark/css/model-evidence-experience.css">'
     ].join('\n'),
-    footerJs: '<script type="module" src="/js/leaderboard-v2/index.js?v=response-shape-20260927"></script>'
+    footerJs: '<script type="module" src="/benchmark/js/leaderboard-v2/index.js?v=response-shape-20260927"></script>'
   });
 });
 
@@ -204,12 +206,12 @@ app.get('/courthouse', (req, res) => {
     service: 'benchmark',
     activePage: 'courthouse',
     headCss: [
-      '<link rel="stylesheet" href="/css/redesign-tokens.css">',
-      '<link rel="stylesheet" href="/css/redesign-components.css">',
-      '<link rel="stylesheet" href="/css/courthouse-v2-layout.css">',
-      '<link rel="stylesheet" href="/css/courthouse-v2-detail.css">'
+      '<link rel="stylesheet" href="/benchmark/css/redesign-tokens.css">',
+      '<link rel="stylesheet" href="/benchmark/css/redesign-components.css">',
+      '<link rel="stylesheet" href="/benchmark/css/courthouse-v2-layout.css">',
+      '<link rel="stylesheet" href="/benchmark/css/courthouse-v2-detail.css">'
     ].join('\n'),
-    footerJs: '<script type="module" src="/js/courthouse-v2/index.js?v=fast-hosts-20260503"></script>'
+    footerJs: '<script type="module" src="/benchmark/js/courthouse-v2/index.js?v=fast-hosts-20260503"></script>'
   });
 });
 
@@ -220,13 +222,13 @@ app.get('/profiler', (req, res) => {
     service: 'benchmark',
     activePage: 'profiler',
     headCss: [
-      '<link rel="stylesheet" href="/css/redesign-tokens.css">',
-      '<link rel="stylesheet" href="/css/redesign-components.css">',
-      '<link rel="stylesheet" href="/css/model-profiler.css?v=host-telemetry-20260622b">',
-      '<link rel="stylesheet" href="/css/profiler-experience.css">', '<link rel="stylesheet" href="/css/profiler-coverage.css">',
-      '<link rel="stylesheet" href="/css/context-proposal.css">'
+      '<link rel="stylesheet" href="/benchmark/css/redesign-tokens.css">',
+      '<link rel="stylesheet" href="/benchmark/css/redesign-components.css">',
+      '<link rel="stylesheet" href="/benchmark/css/model-profiler.css?v=host-telemetry-20260622b">',
+      '<link rel="stylesheet" href="/benchmark/css/profiler-experience.css">', '<link rel="stylesheet" href="/benchmark/css/profiler-coverage.css">',
+      '<link rel="stylesheet" href="/benchmark/css/context-proposal.css">'
     ].join('\n'),
-    footerJs: '<script type="module" src="/js/model-profiler/index.js?v=host-telemetry-20260622b"></script>\n<script src="/js/model-profiler/recovery.js"></script><script src="/js/model-profiler/experience.js"></script><script src="/js/model-profiler/coverage.js"></script>'
+    footerJs: '<script type="module" src="/benchmark/js/model-profiler/index.js?v=host-telemetry-20260622b"></script>\n<script src="/benchmark/js/model-profiler/recovery.js"></script><script src="/benchmark/js/model-profiler/experience.js"></script><script src="/benchmark/js/model-profiler/coverage.js"></script>'
   });
 });
 
@@ -237,11 +239,11 @@ app.get('/efficiency-map', (req, res) => {
     service: 'benchmark',
     activePage: 'efficiency-map',
     headCss: [
-      '<link rel="stylesheet" href="/css/redesign-tokens.css">',
-      '<link rel="stylesheet" href="/css/redesign-components.css">',
-      '<link rel="stylesheet" href="/css/efficiency-map.css">'
+      '<link rel="stylesheet" href="/benchmark/css/redesign-tokens.css">',
+      '<link rel="stylesheet" href="/benchmark/css/redesign-components.css">',
+      '<link rel="stylesheet" href="/benchmark/css/efficiency-map.css">'
     ].join('\n'),
-    footerJs: '<script type="module" src="/js/efficiency-map/index.js"></script>'
+    footerJs: '<script type="module" src="/benchmark/js/efficiency-map/index.js"></script>'
   });
 });
 
@@ -253,23 +255,23 @@ app.get('/results-explorer', (req, res) => {
     activePage: 'results-explorer',
     bodyClass: 'benchmark-shell',
     headCss: [
-      '<link rel="stylesheet" href="/css/redesign-tokens.css">',
-      '<link rel="stylesheet" href="/css/redesign-components.css">',
-      '<link rel="stylesheet" href="/css/results-explorer-layout.css">',
-      '<link rel="stylesheet" href="/css/results-explorer-components.css">',
-      '<link rel="stylesheet" href="/css/benchmark-shell.css">',
-      '<link rel="stylesheet" href="/css/model-evidence-experience.css">',
-      '<link rel="stylesheet" href="/css/results-qualification-card.css">',
-      '<script src="/vendor/chart.js/4.4.1/chart.umd.js"></script>'
+      '<link rel="stylesheet" href="/benchmark/css/redesign-tokens.css">',
+      '<link rel="stylesheet" href="/benchmark/css/redesign-components.css">',
+      '<link rel="stylesheet" href="/benchmark/css/results-explorer-layout.css">',
+      '<link rel="stylesheet" href="/benchmark/css/results-explorer-components.css">',
+      '<link rel="stylesheet" href="/benchmark/css/benchmark-shell.css">',
+      '<link rel="stylesheet" href="/benchmark/css/model-evidence-experience.css">',
+      '<link rel="stylesheet" href="/benchmark/css/results-qualification-card.css">',
+      '<script src="/benchmark/vendor/chart.js/4.4.1/chart.umd.js"></script>'
     ].join('\n'),
     footerJs: [
-      '<script src="/js/benchmark-categories.global.js"></script>',
-      '<script src="/js/csv-cell.global.js"></script>',
-      '<script src="/js/results-explorer.js"></script>',
-      '<script src="/js/results-explorer-charts.js"></script>',
-      '<script src="/js/results-explorer-comparison.js"></script>',
-      '<script src="/js/results-qualification-card.js"></script>',
-      '<script src="/js/results-explorer-inspector.js"></script>'
+      '<script src="/benchmark/js/benchmark-categories.global.js"></script>',
+      '<script src="/benchmark/js/csv-cell.global.js"></script>',
+      '<script src="/benchmark/js/results-explorer.js"></script>',
+      '<script src="/benchmark/js/results-explorer-charts.js"></script>',
+      '<script src="/benchmark/js/results-explorer-comparison.js"></script>',
+      '<script src="/benchmark/js/results-qualification-card.js"></script>',
+      '<script src="/benchmark/js/results-explorer-inspector.js"></script>'
     ].join('\n')
   });
 });
@@ -282,10 +284,10 @@ app.get('/setup', (req, res) => {
     activePage: 'setup',
     showNav: false,
     headCss: [
-      '<link rel="stylesheet" href="/css/redesign-tokens.css">',
-      '<link rel="stylesheet" href="/css/setup.css">'
+      '<link rel="stylesheet" href="/benchmark/css/redesign-tokens.css">',
+      '<link rel="stylesheet" href="/benchmark/css/setup.css">'
     ].join('\n'),
-    footerJs: '<script type="module" src="/js/setup/index.js"></script>'
+    footerJs: '<script type="module" src="/benchmark/js/setup/index.js"></script>'
   });
 });
 

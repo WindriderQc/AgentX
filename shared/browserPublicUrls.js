@@ -2,8 +2,8 @@
 
 const DEFAULT_PUBLIC_URLS = Object.freeze({
   core: 'http://localhost:3080',
-  benchmark: 'http://localhost:3081',
-  rag: 'http://localhost:3082',
+  benchmark: 'http://localhost:3081/benchmark',
+  rag: 'http://localhost:3082/rag',
 });
 
 function normalizeUrl(value) {

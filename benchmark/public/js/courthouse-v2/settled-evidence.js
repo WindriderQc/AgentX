@@ -29,7 +29,7 @@ export function withRecoverableJudgeSetup(readiness, {
         ...(readiness || {}),
         setup: {
             ...(readiness?.setup || {}),
-            href: '/setup?focus=judge',
+            href: '/benchmark/setup?focus=judge',
             label: 'Open judge setup',
             description: 'Open setup to select an already-installed judge model. No model is downloaded or selected automatically.'
         }

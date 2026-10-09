@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 benchEl,
                 'Judge readiness could not be rendered. Open setup or retry the independent readiness check.',
                 async () => setJudgeReadiness(await renderBench(benchEl)),
-                { setupHref: '/setup?focus=judge', setupLabel: 'Judge setup' }
+                { setupHref: '/benchmark/setup?focus=judge', setupLabel: 'Judge setup' }
             );
         }
     }
@@ -249,7 +249,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (modelParam) {
                 const banner = document.createElement('div');
                 banner.className = 'ch-model-filter';
-                banner.innerHTML = `Filtered to <strong>${escHtml(modelParam)}</strong> — <a href="/courthouse">show all</a>`;
+                banner.innerHTML = `Filtered to <strong>${escHtml(modelParam)}</strong> — <a href="/benchmark/courthouse">show all</a>`;
                 reviewQueueEl.prepend(banner);
             }
             return reviewResults;

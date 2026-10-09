@@ -4,7 +4,7 @@
 
 import { apiFetch as _rawFetch } from '../utils/api.js';
 
-const BASE = '/api/profiler';
+const BASE = '/benchmark/api/profiler';
 
 /** Unwrap { status, data } envelope if present */
 const fetchJson = async (...args) => {
