@@ -168,7 +168,7 @@ function _injectReadinessBadges(container, hostId) {
             if (!card.querySelector('.mc-profile-link')) {
                 const link = document.createElement('a');
                 link.className = 'mc-profile-link';
-                link.href = '/profiler#models';
+                link.href = '/benchmark/profiler#models';
                 link.textContent = 'Profile first \u2192';
                 link.style.cssText = 'font-size:0.62rem;color:var(--r-active,#58a6ff);text-decoration:none;margin-left:auto;';
                 const body = card.querySelector('.mc-card-body');

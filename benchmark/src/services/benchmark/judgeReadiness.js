@@ -289,7 +289,7 @@ async function getJudgeReadiness(options = {}) {
             }
         },
         setup: {
-            href: hostStates.length > 0 ? '#the-bench' : '/setup?focus=judge',
+            href: hostStates.length > 0 ? '#the-bench' : '/benchmark/setup?focus=judge',
             label: hostStates.length > 0 ? 'Choose a judge' : 'Configure a host and judge',
             description: hostStates.length > 0
                 ? 'Select an already-installed model in The Bench. Agent X will not download or choose a model automatically.'
@@ -297,7 +297,7 @@ async function getJudgeReadiness(options = {}) {
         },
         retry: {
             method: 'GET',
-            href: '/api/benchmark/judge/readiness?refresh=1',
+            href: '/benchmark/api/benchmark/judge/readiness?refresh=1',
             label: 'Retry readiness check'
         }
     };
@@ -430,7 +430,7 @@ function judgeUnavailablePayload(check, action = 'Judge-scored action') {
         error: `${action} unavailable: ${check?.error || 'no selected, reachable judge is ready.'}`,
         readiness: check?.readiness || null,
         setup: check?.readiness?.setup || {
-            href: '/setup?focus=judge',
+            href: '/benchmark/setup?focus=judge',
             label: 'Choose a judge'
         }
     };

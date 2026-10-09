@@ -235,7 +235,7 @@ function buildResultsParams(page, filterState = {}, includeFacets = false) {
 document.addEventListener('DOMContentLoaded', async () => {
     // Load readiness badges in the background; re-render table when ready
     try {
-        const mod = await import('/js/model-profiler/components/readiness-cache.js');
+        const mod = await import('/benchmark/js/model-profiler/components/readiness-cache.js');
         _readinessMap = await mod.getReadinessMap();
     } catch (_) {}
 
@@ -258,8 +258,8 @@ async function loadResults(page, { filterState = readFilterState(), includeFacet
     try {
         const params = buildResultsParams(paginationState.page, filterState, includeFacets);
         const [resultsRes, hostsRes] = await Promise.all([
-            fetch(`/api/benchmark/results/advanced?${params.toString()}`),
-            includeFacets ? fetch('/api/profiler/hosts').catch(() => null) : Promise.resolve(null)
+            fetch(`/benchmark/api/benchmark/results/advanced?${params.toString()}`),
+            includeFacets ? fetch('/benchmark/api/profiler/hosts').catch(() => null) : Promise.resolve(null)
         ]);
         if (!resultsRes.ok) throw new Error('Failed to fetch results');
 
@@ -622,7 +622,7 @@ function renderTableRow(result) {
     // Courthouse review link
     if (visibleColumns.has('courthouse')) {
         html += `<td>
-            <a href="/courthouse?result=${result._id}" class="action-link" title="Review in Courthouse" style="color:var(--accent-secondary,#d29922);font-size:0.75rem;text-decoration:none;">
+            <a href="/benchmark/courthouse?result=${result._id}" class="action-link" title="Review in Courthouse" style="color:var(--accent-secondary,#d29922);font-size:0.75rem;text-decoration:none;">
                 <i class="fas fa-gavel"></i>
             </a>
         </td>`;

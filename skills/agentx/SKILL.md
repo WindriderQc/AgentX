@@ -14,7 +14,7 @@ AgentX is a local-first AI platform (product: github.com/WindriderQc/AgentX). Th
 | RAG | Documents, embeddings, hybrid search |
 | Data | Through Core, `/api/data-toolbox/*` and the `/data-toolbox` page; no entry of its own |
 
-The application ports are bound to loopback on the host. From any other machine use the entries listed in `instance.md`, never a raw service port.
+The application ports are bound to loopback on the host. From any other machine use the address listed in `instance.md`, never a raw service port. Core, Benchmark and RAG share that one address: Benchmark answers under `/benchmark` and RAG under `/rag` (pages, APIs and `/health`), everything else is Core.
 
 ## Access
 
@@ -24,7 +24,7 @@ The private network needs no account and no code, and nothing is reachable from 
 
 1. **A connector**, when `instance.md` names one: prefer its tools.
 2. **Core tool bus** (`POST <core>/mcp`, JSON-RPC): personal tasks, memory search, briefing, shopping list, vault notes, benchmark results, `check_health`, `ecosystem_snapshot`, `rag_search`. These tools read and write owner data.
-3. **Plain HTTPS** with curl or fetch. Benchmark and RAG are reachable on their own entries or through Core's proxies `/api/benchmark-proxy/*` and `/api/rag/*`.
+3. **Plain HTTPS** with curl or fetch. Benchmark and RAG are reachable under `<core>/benchmark/*` and `<core>/rag/*` (for example `<core>/benchmark/api/benchmark/batches/active`, `<core>/rag/api/rag/status`) or through Core's proxies `/api/benchmark-proxy/*` and `/api/rag/*`.
 
 Send the header `x-service-caller: <who you are>` on direct calls; it is logged.
 
@@ -34,7 +34,7 @@ Canonical envelope `{ ok: true, data }` or `{ ok: false, error }`. Older routes 
 
 ## Common reads
 
-- **Health**: `GET /health` on each entry; `GET /api/operations/health`; `GET /api/nerve-center/ecosystem`; `GET /api/nerve-center/inference-health`.
+- **Health**: `GET /health`, `/benchmark/health` and `/rag/health`; `GET /api/operations/health`; `GET /api/nerve-center/ecosystem`; `GET /api/nerve-center/inference-health`.
 - **Hosts and models**: `GET /api/models/cluster-summary` (what is loaded and pinned on each host), `/api/models/all`, `/api/models/registry` (filters: category, tag, vendor, status), `/api/ollama-hosts`.
 - **Routing**: `GET /api/router/config` (which model and host serve each task type).
 - **Usage**: `GET /api/analytics/inference/summary?window=7d|30d`, `/api/analytics/usage`, `/api/analytics/costs`. These counts include trials and benchmark batches.

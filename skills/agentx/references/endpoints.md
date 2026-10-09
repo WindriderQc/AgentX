@@ -27,8 +27,8 @@ Base: the Core entry given in `references/instance.md`.
 **Other services through Core**
 `/api/rag/status` · `/api/rag/metrics` · `/api/data-toolbox/network/devices` · `/api/data-toolbox/storage/summary` · `/api/data-toolbox/hardware/latest` · `/api/voix/health` · `/api/hermes-openai/v1/models` (OpenAI-compatible list)
 
-**Benchmark** (its own entry): `/health` · `/api/benchmark/batches/active` · `/api/profiler/hosts`
-**RAG** (its own entry): `/health`
+**Benchmark** (under `/benchmark`): `/benchmark/health` · `/benchmark/api/benchmark/batches/active` · `/benchmark/api/profiler/hosts`
+**RAG** (under `/rag`): `/rag/health`
 
 ## Routes that exist and need a body
 

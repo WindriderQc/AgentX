@@ -13,8 +13,9 @@ const { demoSurfaceDisabled } = require('./agentxRuntimeProfile');
 const root = path.join(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-const ORIGINS = { core: 'https://core.test', benchmark: 'https://benchmark.test', rag: 'https://rag.test' };
-const SERVICE_BY_ORIGIN = Object.fromEntries(Object.entries(ORIGINS).map(([service, origin]) => [origin, service]));
+// One address: Benchmark and RAG live under the path prefix their public URL carries.
+const ORIGINS = { core: 'https://agentx.test', benchmark: 'https://agentx.test/benchmark', rag: 'https://agentx.test/rag' };
+const PREFIXES = { benchmark: '/benchmark', rag: '/rag' };
 const ROUTE_SOURCES = {
   core: ['core/src', 'core/routes', 'core/surfaces', 'core/integrations'],
   benchmark: ['benchmark/server.js', 'benchmark/src', 'benchmark/routes'],
@@ -38,7 +39,7 @@ const CONTEXTUAL = {
     '/images/guide': ['core/views/pages/images.ejs', 'href="/images/guide"']
   },
   benchmark: {
-    '/setup': ['benchmark/public/js/benchmark-v2/experience.js', "'/setup'"]
+    '/setup': ['benchmark/public/js/benchmark-v2/experience.js', "'/benchmark/setup'"]
   }
 };
 
@@ -71,8 +72,10 @@ function servedPages(service) {
 
 function addLink(links, href) {
   const url = new URL(href, ORIGINS.core);
-  const service = SERVICE_BY_ORIGIN[url.origin];
-  if (service && !NOT_A_PAGE.test(url.pathname)) links[service].add(normalize(url.pathname));
+  if (url.origin !== ORIGINS.core) return;
+  const service = Object.keys(PREFIXES).find((name) => (url.pathname + '/').startsWith(PREFIXES[name] + '/')) || 'core';
+  const pathname = url.pathname.slice((PREFIXES[service] || '').length) || '/';
+  if (!NOT_A_PAGE.test(pathname)) links[service].add(normalize(pathname));
 }
 
 function productLinks(agentxProfile = 'full') {

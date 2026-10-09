@@ -68,7 +68,7 @@ export function _buildMultiJudgeCard(judgeRoster) {
     const tieKey = cfg.tiebreaker ? `${cfg.tiebreaker.host}|${cfg.tiebreaker.model}` : '';
 
     const judgeRows = all.length === 0
-        ? `<div class="bf-mj-empty">No judges discovered. Open <a href="/courthouse">Courthouse</a> to configure judges.</div>`
+        ? `<div class="bf-mj-empty">No judges discovered. Open <a href="/benchmark/courthouse">Courthouse</a> to configure judges.</div>`
         : all.map((j) => {
             const key = `${j.host}|${j.model}`;
             const checked = selectedKeys.has(key) ? 'checked' : '';

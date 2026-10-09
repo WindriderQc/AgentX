@@ -34,7 +34,7 @@ describe('Benchmark local browser vendors', () => {
 
     const sources = scriptSources(response.text);
     expect(sources.filter((source) => /^https?:\/\//i.test(source))).toEqual([]);
-    expect(sources).toContain('/vendor/chart.js/4.4.1/chart.umd.js');
+    expect(sources).toContain('/benchmark/vendor/chart.js/4.4.1/chart.umd.js');
 
     const stylesheets = stylesheetSources(response.text);
     expect(stylesheets.filter((source) => /^https?:\/\//i.test(source))).toEqual([]);

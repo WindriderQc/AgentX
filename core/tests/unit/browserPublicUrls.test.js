@@ -12,18 +12,30 @@ describe('browser public URL authority', () => {
     })).toEqual({
       core: 'https://core.example',
       benchmark: 'http://bench.example:8444',
-      rag: 'http://localhost:3082',
+      rag: 'http://localhost:3082/rag',
+    });
+  });
+
+  test('a public URL keeps its path prefix', () => {
+    expect(getPublicUrls({
+      CORE_PUBLIC_URL: 'https://home.example/',
+      BENCHMARK_PUBLIC_URL: 'https://home.example/benchmark/',
+      RAG_PUBLIC_URL: 'https://home.example/rag',
+    })).toEqual({
+      core: 'https://home.example',
+      benchmark: 'https://home.example/benchmark',
+      rag: 'https://home.example/rag',
     });
   });
 
   test('Core publicUrls replace standalone fallbacks without erasing missing values', () => {
     expect(mergePublicUrls(
-      { core: 'http://localhost:3080', benchmark: 'http://localhost:3081' },
+      { core: 'http://localhost:3080', benchmark: 'http://localhost:3081/benchmark' },
       { core: 'https://core.example/', benchmark: 'http://bench.example:8444/' }
     )).toMatchObject({
       core: 'https://core.example',
       benchmark: 'http://bench.example:8444',
-      rag: 'http://localhost:3082',
+      rag: 'http://localhost:3082/rag',
     });
   });
 
@@ -87,8 +99,8 @@ describe('browser public URL authority', () => {
 
     await expect(resolve()).resolves.toEqual({
       core: 'http://localhost:3080',
-      benchmark: 'http://localhost:3081',
-      rag: 'http://localhost:3082',
+      benchmark: 'http://localhost:3081/benchmark',
+      rag: 'http://localhost:3082/rag',
     });
     expect(fetchImpl).not.toHaveBeenCalled();
   });

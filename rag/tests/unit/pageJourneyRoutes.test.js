@@ -32,9 +32,10 @@ describe('RAG page journey identities', () => {
   });
 
   test.each([
-    ['/documents', '/documents'],
-    ['/search', '/search'],
-    ['/upload', '/upload'],
+    // Shared navigation always links through RAG's public URL, prefix included.
+    ['/documents', 'http://localhost:3082/rag/documents'],
+    ['/search', 'http://localhost:3082/rag/search'],
+    ['/upload', 'http://localhost:3082/rag/upload'],
   ])('%s marks the matching shared Knowledge link as current', async (route, href) => {
     const response = await request(app).get(route).expect(200).expect('Content-Type', /html/);
     const tag = openingTag(response.text, href);
@@ -45,7 +46,7 @@ describe('RAG page journey identities', () => {
 
   test('maintenance marks the local instruments destination as current', async () => {
     const response = await request(app).get('/maintenance').expect(200).expect('Content-Type', /html/);
-    const tag = openingTag(response.text, '/maintenance', 'is-current');
+    const tag = openingTag(response.text, '/rag/maintenance', 'is-current');
 
     expect(tag).toContain('is-current');
     expect(tag).toContain('aria-current="page"');

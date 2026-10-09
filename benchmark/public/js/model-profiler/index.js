@@ -166,7 +166,7 @@ async function renderGuide(container) {
           <strong>1.</strong> <em>Baseline</em> \u2014 click <em>Baseline Probe</em> on a host card to baseline the hardware.
           <strong>2.</strong> <em>Profile</em> \u2014 click a tested host, then profile models in <strong>Section \u2461</strong> below.
           <strong>3.</strong> <em>Verify</em> \u2014 confirm the profile is bound to the installed registry digest and current host runtime.
-          <strong>4.</strong> <em>Benchmark</em> \u2014 once exact artifacts are qualified, <a href="/">open Benchmark</a> to run evaluations.
+          <strong>4.</strong> <em>Benchmark</em> \u2014 once exact artifacts are qualified, <a href="/benchmark/">open Benchmark</a> to run evaluations.
         </div>
       </details>`;
   } catch (_) {

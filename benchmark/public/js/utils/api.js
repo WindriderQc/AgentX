@@ -4,8 +4,8 @@
  *
  * Usage:
  *   import { apiFetch } from '../utils/api.js';
- *   const data = await apiFetch('/api/benchmark/batches');
- *   const created = await apiFetch('/api/benchmark/batch', { method: 'POST', body: { name: 'run-1' } });
+ *   const data = await apiFetch('/benchmark/api/benchmark/batches');
+ *   const created = await apiFetch('/benchmark/api/benchmark/batch', { method: 'POST', body: { name: 'run-1' } });
  */
 
 /**

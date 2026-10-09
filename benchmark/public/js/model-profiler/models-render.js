@@ -268,7 +268,7 @@ export function renderModelCard(model, api) {
           ${highestStage === 'available' ? 'Profile' : 'Reprofile'}
         </button>` : ''}
       ${highestStage === 'benchmarked' ? `
-        <a href="/" class="mp-bench-link">View Benchmarks →</a>` : ''}
+        <a href="/benchmark/" class="mp-bench-link">View Benchmarks →</a>` : ''}
     </div>
     <div class="mp-ctxp-slot" data-model="${escAttr(model.name)}"></div>
     <div class="mp-model-feedback" data-model="${escAttr(model.name)}"></div>
@@ -505,7 +505,7 @@ export function renderModelRow(model, api) {
         ? `<button class="mp-action mp-action--teal mp-btn-profile mp-card-cta" data-model="${escAttr(model.name)}">Profile</button>`
         : `<button class="mp-action mp-action--teal mp-btn-profile mp-card-cta" data-model="${escAttr(model.name)}">Reprofile</button>`}
       ${highestStage === 'benchmarked'
-        ? `<a href="/" class="mp-bench-link">Bench →</a>` : ''}`;
+        ? `<a href="/benchmark/" class="mp-bench-link">Bench →</a>` : ''}`;
 
   // Host dots removed — the stage badge + left-edge stripe already convey readiness
   const hostDots = '';

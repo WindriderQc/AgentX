@@ -25,14 +25,14 @@ const SCORING_PROFILE_RESET_CONFIRMATION = 'RESET SCORING PROFILE';
 // ---------------------------------------------------------------------------
 
 async function fetchProfile() {
-    const res = await fetch('/api/benchmark/scoring-profile');
+    const res = await fetch('/benchmark/api/benchmark/scoring-profile');
     const json = await res.json();
     if (json.status !== 'success') throw new Error(json.error || 'Failed to load profile');
     return json.data;
 }
 
 async function saveProfile(overrides) {
-    const res = await fetch('/api/benchmark/scoring-profile', {
+    const res = await fetch('/benchmark/api/benchmark/scoring-profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(overrides)
@@ -43,7 +43,7 @@ async function saveProfile(overrides) {
 }
 
 async function resetProfile(confirmation) {
-    const res = await fetch('/api/benchmark/scoring-profile/reset', {
+    const res = await fetch('/benchmark/api/benchmark/scoring-profile/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirm: confirmation })

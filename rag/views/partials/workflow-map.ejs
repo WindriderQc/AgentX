@@ -1,9 +1,9 @@
 <%
   const currentStep = typeof ragWorkflowStep === 'string' ? ragWorkflowStep : 'dashboard';
   const journeySteps = [
-    { key: 'upload', href: '/upload', icon: 'fa-file-circle-plus', title: 'Add knowledge', detail: 'Paste text or choose a file' },
-    { key: 'search', href: '/search', icon: 'fa-magnifying-glass', title: 'Ask your knowledge', detail: 'Find grounded evidence' },
-    { key: 'documents', href: '/documents', icon: 'fa-layer-group', title: 'Browse sources', detail: 'Inspect what Agent X knows' }
+    { key: 'upload', href: '/rag/upload', icon: 'fa-file-circle-plus', title: 'Add knowledge', detail: 'Paste text or choose a file' },
+    { key: 'search', href: '/rag/search', icon: 'fa-magnifying-glass', title: 'Ask your knowledge', detail: 'Find grounded evidence' },
+    { key: 'documents', href: '/rag/documents', icon: 'fa-layer-group', title: 'Browse sources', detail: 'Inspect what Agent X knows' }
   ];
 %>
 <nav class="rag-workflow-map" aria-label="Knowledge journey" data-rag-workflow-map>
@@ -27,11 +27,11 @@
   <details class="rag-instruments-door" <%= currentStep === 'maintenance' ? 'open' : '' %>>
     <summary><i class="fa-solid fa-sliders" aria-hidden="true"></i> Open instruments</summary>
     <div class="rag-instruments-links">
-      <a href="/" class="<%= currentStep === 'dashboard' ? 'is-current' : '' %>" <% if (currentStep === 'dashboard') { %>aria-current="page"<% } %>>
+      <a href="/rag/" class="<%= currentStep === 'dashboard' ? 'is-current' : '' %>" <% if (currentStep === 'dashboard') { %>aria-current="page"<% } %>>
         <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
         <span><strong>Knowledge readiness</strong><small>Health, corpus and embedding route</small></span>
       </a>
-      <a href="/maintenance" class="<%= currentStep === 'maintenance' ? 'is-current' : '' %>" <% if (currentStep === 'maintenance') { %>aria-current="page"<% } %>>
+      <a href="/rag/maintenance" class="<%= currentStep === 'maintenance' ? 'is-current' : '' %>" <% if (currentStep === 'maintenance') { %>aria-current="page"<% } %>>
         <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>
         <span><strong>Maintenance</strong><small>Reindex, snapshots and migrations</small></span>
       </a>

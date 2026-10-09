@@ -53,7 +53,7 @@ describe('Benchmark destructive confirmation UI wiring', () => {
 
         await deleteTemplate(id, confirmation);
 
-        expect(apiFetch).toHaveBeenCalledWith(`/api/benchmark/templates/${id}`, {
+        expect(apiFetch).toHaveBeenCalledWith(`/benchmark/api/benchmark/templates/${id}`, {
             method: 'DELETE',
             body: { confirm: confirmation }
         });
@@ -84,7 +84,7 @@ describe('Benchmark destructive confirmation UI wiring', () => {
 
         await resetProfile('RESET SCORING PROFILE');
 
-        expect(fetchMock).toHaveBeenCalledWith('/api/benchmark/scoring-profile/reset', {
+        expect(fetchMock).toHaveBeenCalledWith('/benchmark/api/benchmark/scoring-profile/reset', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ confirm: 'RESET SCORING PROFILE' })

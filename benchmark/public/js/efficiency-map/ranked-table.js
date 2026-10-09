@@ -29,7 +29,7 @@ function formatCell(col, entry) {
         case 'rank':
             return '';
         case 'model':
-            return `<a href="/leaderboard" title="View on leaderboard" style="color:inherit;text-decoration:none;border-bottom:1px dotted var(--r-text-muted);">${entry.model}</a>`;
+            return `<a href="/benchmark/leaderboard" title="View on leaderboard" style="color:inherit;text-decoration:none;border-bottom:1px dotted var(--r-text-muted);">${entry.model}</a>`;
         case 'host':
             return shortHost(entry.host);
         case 'avgQuality':

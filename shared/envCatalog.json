@@ -461,7 +461,7 @@
         "core"
       ],
       "forwarded": true,
-      "default": "http://127.0.0.1:${BENCHMARK_PORT:-3181}",
+      "default": "http://127.0.0.1:${BENCHMARK_PORT:-3181}/benchmark",
       "hostVar": "BENCHMARK_PORT",
       "category": "network",
       "secret": false,
@@ -2806,7 +2806,7 @@
         "core"
       ],
       "forwarded": true,
-      "default": "http://127.0.0.1:${RAG_PORT:-3182}",
+      "default": "http://127.0.0.1:${RAG_PORT:-3182}/rag",
       "hostVar": "RAG_PORT",
       "category": "network",
       "secret": false,

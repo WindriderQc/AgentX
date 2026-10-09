@@ -216,12 +216,12 @@ function fallbackReadiness(hostPanels = []) {
             }
         },
         setup: {
-            href: '/setup?focus=judge',
+            href: '/benchmark/setup?focus=judge',
             label: 'Open judge setup'
         },
         retry: {
             method: 'GET',
-            href: '/api/benchmark/judge/readiness?refresh=1',
+            href: '/benchmark/api/benchmark/judge/readiness?refresh=1',
             label: 'Retry readiness check'
         }
     };
@@ -285,7 +285,7 @@ function attachPromoteHandlers(root) {
             btn.disabled = true;
             btn.textContent = 'setting…';
             try {
-                await apiFetch('/api/benchmark/judge-defaults', {
+                await apiFetch('/benchmark/api/benchmark/judge-defaults', {
                     method: 'PUT',
                     body: { hostUrl, judgeModel }
                 });
@@ -318,12 +318,12 @@ export async function renderBench(container, { dashboard } = {}) {
 
     const evidence = await settleEvidence({
         dashboard: () => dashboard === undefined
-            ? apiFetch('/api/benchmark/dashboard')
+            ? apiFetch('/benchmark/api/benchmark/dashboard')
             : dashboard,
-        readiness: () => apiFetch('/api/benchmark/judge/readiness'),
-        roster: () => apiFetch('/api/benchmark/judge-roster'),
-        calibration: () => apiFetch('/api/benchmark/judge/calibration-status'),
-        qualifications: () => apiFetch('/api/benchmark/judge/qualifications')
+        readiness: () => apiFetch('/benchmark/api/benchmark/judge/readiness'),
+        roster: () => apiFetch('/benchmark/api/benchmark/judge-roster'),
+        calibration: () => apiFetch('/benchmark/api/benchmark/judge/calibration-status'),
+        qualifications: () => apiFetch('/benchmark/api/benchmark/judge/qualifications')
     });
 
     const rosterData = evidence.roster.ok ? evidence.roster.value?.data : null;
@@ -396,9 +396,9 @@ export async function renderBench(container, { dashboard } = {}) {
             ${calibrationEvidenceBanner(matrices, hostPanels)}
             <div class="tb-columns">${columns}</div>
             <div class="tb-quick-links">
-                <a href="/leaderboard"       class="tb-link">Leaderboard →</a>
-                <a href="/benchmark"         class="tb-link">Benchmark →</a>
-                <a href="/results-explorer"  class="tb-link">Results Explorer →</a>
+                <a href="/benchmark/leaderboard"       class="tb-link">Leaderboard →</a>
+                <a href="/benchmark/"         class="tb-link">Benchmark →</a>
+                <a href="/benchmark/results-explorer"  class="tb-link">Results Explorer →</a>
             </div>
         </div>`;
 

@@ -397,16 +397,16 @@ describe('Core API client scoped outbound execution', () => {
       body: JSON.stringify({
         publicUrls: {
           core: 'http://127.0.0.1:3180/',
-          benchmark: 'http://127.0.0.1:3181/',
-          rag: 'http://127.0.0.1:3182/',
+          benchmark: 'http://127.0.0.1:3181/benchmark/',
+          rag: 'http://127.0.0.1:3182/rag/',
         },
       }),
     }));
     const resolver = createCorePublicUrlsResolver({
       env: {
         CORE_PUBLIC_URL: 'http://localhost:3080',
-        BENCHMARK_PUBLIC_URL: 'http://localhost:3081',
-        RAG_PUBLIC_URL: 'http://localhost:3082',
+        BENCHMARK_PUBLIC_URL: 'http://localhost:3081/benchmark',
+        RAG_PUBLIC_URL: 'http://localhost:3082/rag',
       },
       loadCoreConfig: loadCorePublicConfig,
       ttlMs: 30_000,
@@ -414,8 +414,8 @@ describe('Core API client scoped outbound execution', () => {
 
     await expect(resolver()).resolves.toEqual({
       core: 'http://127.0.0.1:3180',
-      benchmark: 'http://127.0.0.1:3181',
-      rag: 'http://127.0.0.1:3182',
+      benchmark: 'http://127.0.0.1:3181/benchmark',
+      rag: 'http://127.0.0.1:3182/rag',
     });
     expect(fetch).toHaveBeenCalledWith(
       'http://core.test:3080/api/config',

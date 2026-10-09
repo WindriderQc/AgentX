@@ -51,7 +51,7 @@
     var params = [];
     if (docId) params.push('docId=' + encodeURIComponent(docId));
     if (source) params.push('source=' + encodeURIComponent(source));
-    return params.length ? '/documents?' + params.join('&') : '/documents';
+    return params.length ? '/rag/documents?' + params.join('&') : '/rag/documents';
   }
 
   function matches(document, context) {

@@ -473,7 +473,7 @@ describe('page wiring', () => {
         expect(page).not.toContain('buildCsvFromRankings');
         expect(page).not.toContain("getElementById('export-csv')");
         const server = read('server.js');
-        expect(server).toContain('<link rel="stylesheet" href="/css/leaderboard-v2-groups.css">');
+        expect(server).toContain('<link rel="stylesheet" href="/benchmark/css/leaderboard-v2-groups.css">');
         const html = read('tests/fixtures/leaderboard-grouped.html');
         expect(html).toContain('data-leaderboard-source="fixture"');
         expect(html).toContain("import { renderLeaderboardPage } from '../../public/js/leaderboard-v2/index.js'");

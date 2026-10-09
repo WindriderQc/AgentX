@@ -58,6 +58,10 @@ logs`), bounded at three 10 MB files per service. Core, Benchmark and RAG also w
 5 MB files each. Core request logs record the path without its query string.
 
 Default application ports: Core 3180, Benchmark 3181, RAG 3182, bound to 127.0.0.1.
+Benchmark and RAG pages live under a path prefix, `http://127.0.0.1:3181/benchmark/`
+and `http://127.0.0.1:3182/rag/`, so that one gateway address can serve the three
+services ([private LAN access](PARENTAL_ACCESS.md)); their APIs and `/health` answer
+under the prefix and at the root of their own port.
 MongoDB and Qdrant are internal. Browsers on a foreign site cannot read or mutate
 AgentX APIs: Core, Benchmark, RAG and Data answer CORS only for the origins of
 `CORE_PUBLIC_URL`, `BENCHMARK_PUBLIC_URL` and `RAG_PUBLIC_URL` (plus their loopback

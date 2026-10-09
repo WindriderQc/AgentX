@@ -36,6 +36,8 @@ app.set('views', [
   path.join(__dirname, '..', 'core', 'views')
 ]);
 
+// Browser pages live under /rag; the same routes still answer at root.
+app.use(require('../shared/pathPrefix').stripPathPrefix('/rag'));
 app.use(createBrowserOriginGuard());
 
 // Shared browser controls also consume Core's unified model catalog. Keep the
@@ -96,7 +98,7 @@ app.use(async (req, res, next) => {
 });
 
 // ── Page routes (EJS) ────────────────────────────────────────────────────────
-const ragHeadCss = '<link rel="stylesheet" href="/css/style.css">';
+const ragHeadCss = '<link rel="stylesheet" href="/rag/css/style.css">';
 
 const dashboardPageView = path.resolve(__dirname, 'views/pages/dashboard');
 const documentsPageView = path.resolve(__dirname, 'views/pages/documents');
@@ -113,7 +115,7 @@ app.get('/', (req, res) => {
     ragWorkflowStep: 'dashboard',
     bodyClass: 'dashboard-body',
     headCss: ragHeadCss,
-    footerJs: '<script src="/js/api.js"></script>\n<script src="/js/dashboard.js"></script>'
+    footerJs: '<script src="/rag/js/api.js"></script>\n<script src="/rag/js/dashboard.js"></script>'
   });
 });
 
@@ -125,7 +127,7 @@ app.get('/documents', (req, res) => {
     activePage: 'rag-documents',
     ragWorkflowStep: 'documents',
     headCss: ragHeadCss,
-    footerJs: '<script src="/js/api.js"></script>\n<script src="/js/document-context.js"></script>\n<script src="/js/documents.js"></script>\n<script src="/js/excluded-files.js"></script>'
+    footerJs: '<script src="/rag/js/api.js"></script>\n<script src="/rag/js/document-context.js"></script>\n<script src="/rag/js/documents.js"></script>\n<script src="/rag/js/excluded-files.js"></script>'
   });
 });
 
@@ -137,7 +139,7 @@ app.get('/search', (req, res) => {
     activePage: 'rag-search',
     ragWorkflowStep: 'search',
     headCss: ragHeadCss,
-    footerJs: '<script src="/js/api.js"></script>\n<script src="/js/document-context.js"></script>\n<script src="/js/search.js"></script>'
+    footerJs: '<script src="/rag/js/api.js"></script>\n<script src="/rag/js/document-context.js"></script>\n<script src="/rag/js/search.js"></script>'
   });
 });
 
@@ -149,7 +151,7 @@ app.get('/upload', (req, res) => {
     activePage: 'rag-upload',
     ragWorkflowStep: 'upload',
     headCss: ragHeadCss,
-    footerJs: '<script src="/js/api.js"></script>\n<script src="/js/document-context.js"></script>\n<script src="/js/upload.js"></script>'
+    footerJs: '<script src="/rag/js/api.js"></script>\n<script src="/rag/js/document-context.js"></script>\n<script src="/rag/js/upload.js"></script>'
   });
 });
 
@@ -161,7 +163,7 @@ app.get('/maintenance', (req, res) => {
     activePage: 'rag-maintenance',
     ragWorkflowStep: 'maintenance',
     headCss: ragHeadCss,
-    footerJs: '<script src="/js/api.js"></script>\n<script src="/js/maintenance.js"></script>'
+    footerJs: '<script src="/rag/js/api.js"></script>\n<script src="/rag/js/maintenance.js"></script>'
   });
 });
 

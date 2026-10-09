@@ -9,13 +9,13 @@ const searchSource = fs.readFileSync(path.join(__dirname, '../../public/js/searc
 
 describe('RAG dashboard status access', () => {
   test('polls observational status through GET', () => {
-    expect(apiSource).toMatch(/async function getStatus\(\)\s*\{\s*return apiFetch\('\/api\/rag\/status'\);/);
+    expect(apiSource).toMatch(/async function getStatus\(\)\s*\{\s*return apiFetch\('\/rag\/api\/rag\/status'\);/);
     expect(dashboardSource).toContain('window.RAG.getStatus()');
   });
 
   test('keeps active refresh available only as a distinct operator action', () => {
     expect(apiSource).toContain('async function refreshStatus()');
-    expect(apiSource).toContain("return apiFetch('/api/rag/status/refresh', { method: 'POST' });");
+    expect(apiSource).toContain("return apiFetch('/rag/api/rag/status/refresh', { method: 'POST' });");
     expect(apiSource).toContain('refreshStatus: refreshStatus');
     expect(searchSource).toContain('window.RAG.refreshStatus()');
     expect(searchSource).not.toContain('window.RAG.getStatus()');

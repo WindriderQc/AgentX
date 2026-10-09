@@ -113,7 +113,7 @@ function buildAnomalyItem(r) {
     const reason      = r._anomaly_reason || '—';
     const score       = r.quality_score != null ? Number(r.quality_score).toFixed(1) : '—';
     const sCls        = r.quality_score != null ? scoreClass(r.quality_score) : 'flag';
-    const reviewHref  = id ? `/courthouse?result=${esc(id)}` : '/courthouse';
+    const reviewHref  = id ? `/benchmark/courthouse?result=${esc(id)}` : '/benchmark/courthouse';
 
     return `
     <div class="an-item">
@@ -157,7 +157,7 @@ export function renderAnomalies(container, batch) {
 
     if (countEl) countEl.textContent = String(anomalies.length);
     if (listEl)  listEl.innerHTML    = buildAnomaliesHTML(anomalies);
-    if (linkEl)  linkEl.href         = '/courthouse';
+    if (linkEl)  linkEl.href         = '/benchmark/courthouse';
 }
 
 /**

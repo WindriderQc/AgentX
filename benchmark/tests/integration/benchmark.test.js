@@ -119,7 +119,7 @@ jest.mock('../../src/services/benchmark/judgeReadiness', () => {
             judge_scored: { status: 'available' }
         },
         setup: { href: '#the-bench', label: 'Choose a judge' },
-        retry: { method: 'GET', href: '/api/benchmark/judge/readiness?refresh=1' }
+        retry: { method: 'GET', href: '/benchmark/api/benchmark/judge/readiness?refresh=1' }
     };
     return {
         ...actual,

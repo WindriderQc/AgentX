@@ -9,6 +9,8 @@ last_verified: 2026-10-01
 # AgentX RAG — API Contract
 
 > Default Compose URL: `http://127.0.0.1:3182`. A direct `npm start` uses port 3082 unless `PORT` is set.
+> The same routes also answer under `/rag` (`/rag/api/rag/...`, `/rag/health`): that is the form to use
+> through the single LAN address, where the root paths belong to Core. The pages live at `/rag/`.
 
 **Envelope:** `{ "ok": true, "data": { ... }, "meta": { "durationMs": 42, "observedAt": "2026-08-28T12:00:00.000Z" } }`
 **Errors:** `{ "ok": false, "error": "CODE", "detail": "..." }`

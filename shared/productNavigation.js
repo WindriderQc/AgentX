@@ -7,8 +7,10 @@ function buildProductNavigation({ service = 'core', activePage = '', publicUrls 
   agentxProfile = 'full', trustedRuntimeNavItems = [] } = {}) {
   const cleanBase = value => String(value || '').replace(/\/+$/, '');
   const urls = publicUrls && typeof publicUrls === 'object' ? publicUrls : {};
-  const link = (owner, route) => (service === owner ? '' : cleanBase(urls[owner])) + route;
+  // Only Core-to-Core links stay relative. Benchmark and RAG pages live under a
+  // path prefix that their public URL carries, so their links always use it.
   const coreBase = service === 'core' ? '' : cleanBase(urls.core);
+  const link = (owner, route) => (owner === 'core' ? coreBase : cleanBase(urls[owner])) + route;
   const retired = ['operations', 'hosts', 'cluster', 'alerts', 'dashboard', 'alert-analytics', 'hardware-matrix'];
   const effectiveActive = activePage === 'cost-tracking' ? 'analytics'
     : retired.includes(activePage) ? 'nerve-center' : activePage;

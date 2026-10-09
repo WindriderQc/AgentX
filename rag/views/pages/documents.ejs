@@ -5,7 +5,7 @@
       <h1 class="page-title">Indexed documents</h1>
       <p>Inspect each indexed document and its passages. Source is the provenance label recorded when the document was ingested.</p>
     </div>
-    <a class="btn btn-primary" href="/upload"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add knowledge</a>
+    <a class="btn btn-primary" href="/rag/upload"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add knowledge</a>
   </header>
 
   <%- include('../partials/workflow-map') %>
@@ -26,14 +26,14 @@
 
   <div id="doc-table-wrap" class="table-scroll" tabindex="0" role="region" aria-label="Indexed document metadata">
     <table class="data-table" id="doc-table"><thead><tr><th>Document ID</th><th>Source provenance</th><th>Passages</th><th>Tags</th><th><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="doc-tbody"></tbody></table>
-    <div id="empty-state" class="empty-state actionable-empty" hidden><i class="fa-solid fa-book-open" aria-hidden="true"></i><strong>No indexed documents found</strong><span>Add knowledge or clear the active filters.</span><a class="btn btn-primary" href="/upload">Add knowledge</a></div>
+    <div id="empty-state" class="empty-state actionable-empty" hidden><i class="fa-solid fa-book-open" aria-hidden="true"></i><strong>No indexed documents found</strong><span>Add knowledge or clear the active filters.</span><a class="btn btn-primary" href="/rag/upload">Add knowledge</a></div>
     <div id="context-not-found" class="empty-state actionable-empty" role="status" tabindex="-1" hidden>
       <i class="fa-solid fa-file-circle-question" aria-hidden="true"></i>
       <strong id="context-not-found-title">Source not found</strong>
       <span id="context-not-found-detail">The requested source is not in the active index.</span>
       <div class="context-recovery-actions">
-        <a class="btn btn-primary" href="/documents">Browse all indexed documents</a>
-        <a class="btn btn-secondary" href="/upload">Add knowledge</a>
+        <a class="btn btn-primary" href="/rag/documents">Browse all indexed documents</a>
+        <a class="btn btn-secondary" href="/rag/upload">Add knowledge</a>
       </div>
     </div>
     <div id="loading-state" class="loading">Loading documents…</div>
