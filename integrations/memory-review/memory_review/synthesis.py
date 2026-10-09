@@ -89,6 +89,11 @@ OUTPUT: a single JSON object, no prose, no code fences:
 Return {{"candidates": []}} when nothing is durable."""
 
 
+# What the proxy last answered beside the content: the model's reasoning, why
+# it stopped and what it used. A run that proposes nothing is explained there.
+last_reply: dict = {}
+
+
 class SynthesisError(RuntimeError):
     """Model/transport failure. The run stays retryable; nothing was applied."""
 
@@ -138,6 +143,12 @@ def http_chat_completion(
         data = json.loads(raw)
         choice = data["choices"][0]
         content = str(choice["message"]["content"])
+        last_reply.clear()
+        last_reply.update({
+            "finishReason": choice.get("finish_reason"),
+            "usage": data.get("usage"),
+            "reasoning": choice["message"].get("reasoning_content"),
+        })
     except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
         raise SynthesisError("Hermes proxy response did not contain assistant content") from exc
     if choice.get("finish_reason") == "length":
@@ -260,11 +271,14 @@ def synthesize(
     timeout: int = DEFAULT_TIMEOUT_S,
     transport: Callable[[str, dict, int], str] | None = None,
     receipt: dict | None = None,
+    exchanges: list | None = None,
 ) -> list[dict] | None:
     """Return validated candidates, or None when there is nothing to model.
 
     Core accepts MAX_CANDIDATES_PER_RUN candidates per run. The strongest are
-    kept; `receipt["notSubmitted"]` counts the ones left out.
+    kept; `receipt["notSubmitted"]` counts the ones left out. `exchanges`
+    receives every request and reply as they happen, including the one a
+    failure stops on.
 
     `transport` is injectable for tests; production uses http_chat_completion.
     """
@@ -278,17 +292,22 @@ def synthesize(
     call = transport or http_chat_completion
 
     def request(messages: list[dict], tokens: int) -> str:
-        return call(
-            base_url,
-            {
-                "model": model,
-                "messages": messages,
-                "max_tokens": tokens,
-                "temperature": 0,
-                "response_format": {"type": "json_object"},
-            },
-            timeout,
-        )
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": tokens,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+        entry = {"request": payload, "reply": None}
+        if exchanges is not None:
+            exchanges.append(entry)
+        last_reply.clear()
+        try:
+            entry["reply"] = call(base_url, payload, timeout)
+        finally:
+            entry.update(last_reply)
+        return entry["reply"]
 
     all_candidates: list[dict] = []
     for chunk in partition_synthesis_input(synthesis_input):

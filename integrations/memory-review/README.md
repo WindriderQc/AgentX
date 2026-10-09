@@ -42,7 +42,10 @@ rewrote is read again from its start. A run that reaches the session or
 observation bound stops there and the next run continues. A session longer than
 the history window is read from its latest messages, and the run says so when
 turns before the window were never seen. Core accepts 30 candidates per run;
-the run prints how many weaker ones were not submitted.
+the run prints how many weaker ones were not submitted. Each synthesis keeps
+its requests, replies and the model's reasoning under `synthesis/` in the state
+directory (owner-only files, the 40 most recent), so a run that proposes
+nothing can be read afterwards.
 
 `--openclaw-member-agent` names an agent that serves the household's family
 pages. Its turns are submitted as `household_member_statement`: evidence about
@@ -53,7 +56,7 @@ review, whatever its type or confidence.
 Selected-note writes use Core `MemoryNote` through the native memory adapter; the
 CLI has no separate native-note writer.
 
-The 164 synthetic tests cover filtering of owner versus harness/tool content,
+The 167 synthetic tests cover filtering of owner versus harness/tool content,
 secret sanitation, bounded/resumable collection, API retries, idempotent watermarks,
 candidate validation and accepted Git evidence. No personal transcript or model
 is used. Native runtime formats, schedules and live acceptance are verified per
