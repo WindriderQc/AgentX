@@ -88,6 +88,14 @@
     });
   }
 
+  function buildRemainingTimelineSlots(entries, now = Date.now()) {
+    return (entries || []).flatMap(entry => (entry.slots || []).map(slot => ({
+      entry, slot, startMs: toMillis(slot.start), endMs: toMillis(slot.end)
+    }))).filter(item => item.startMs !== null && item.endMs !== null
+      && item.endMs > item.startMs && item.endMs >= now)
+      .sort((a, b) => a.startMs - b.startMs || String(a.entry.name).localeCompare(String(b.entry.name)));
+  }
+
   function buildUpcomingTasks(entries, options = {}) {
     const now = Number.isFinite(options.now) ? options.now : Date.now();
     const todaySelected = options.todaySelected !== false;
@@ -193,6 +201,7 @@
     isHighFrequencyLightJob,
     getCadenceLabel,
     formatCadenceInterval,
-    withScheduleDetails
+    withScheduleDetails,
+    buildRemainingTimelineSlots
   });
 }));

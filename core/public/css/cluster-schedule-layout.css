@@ -588,7 +588,7 @@
 
 .cs-heatmap-grid {
     display: grid;
-    grid-template-columns: 140px repeat(24, 1fr);
+    grid-template-columns: 230px repeat(24, 1fr);
     gap: 2px;
     min-width: 700px;
     position: relative;
@@ -658,6 +658,7 @@
     color: var(--text);
     padding: 4px 8px;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     white-space: nowrap;
@@ -742,9 +743,19 @@
 }
 
 .cs-label-name {
+    flex: 1 0 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 0.78rem;
     font-weight: 500;
     color: var(--text);
+}
+
+.cs-hm-label .cs-cadence-pill,
+.cs-hm-label .cs-host-tag {
+    flex: 0 0 auto;
 }
 
 /* ── Timeline Filters ────────────────────────────────────────── */

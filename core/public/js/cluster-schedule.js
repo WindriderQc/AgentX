@@ -60,6 +60,9 @@ let persistentServicesData = [];
 let visibleTimelineEntries = [];
 let upcomingTimelineEntries = [];
 let tooltipAnchor = null;
+let visibleTimelineHosts = [];
+let renderedTimelineMode = null;
+let lastTimelineMobile = window.innerWidth <= 700;
 
 // ── API ─────────────────────────────────────────────────────
 
@@ -334,6 +337,8 @@ async function loadTimeline() {
         tasks: filterTimelineEntries(host.tasks || [])
       }));
       visibleTimelineEntries = hosts.flatMap(host => host.tasks || []);
+      visibleTimelineHosts = hosts;
+      renderedTimelineMode = 'host';
       renderHostHeatmap(container, hosts);
       renderLegendFromHosts(hosts);
     } else {
@@ -346,6 +351,7 @@ async function loadTimeline() {
       const visibleServices = continuousServices;
       const visibleScheduled = filterTimelineEntries(scheduled);
       visibleTimelineEntries = visibleScheduled;
+      renderedTimelineMode = 'task';
 
       renderServicesStrip(visibleServices);
       renderGroupedHeatmap(container, visibleScheduled);
@@ -405,6 +411,7 @@ function syncTimelineFilterUI() {
 // ── Grouped Task Heatmap ────────────────────────────────────
 
 function renderGroupedHeatmap(container, timeline) {
+  if (window.innerWidth <= 700) { renderMobileTimeline(container, timeline); return; }
   if (!timeline || timeline.length === 0) {
     container.innerHTML = '<div class="cs-empty">No scheduled jobs for this day</div>';
     return;
@@ -533,6 +540,11 @@ function toggleGroup(groupKey) {
 // ── Host Gantt View ─────────────────────────────────────────
 
 function renderHostHeatmap(container, hosts) {
+  if (window.innerWidth <= 700) {
+    renderMobileTimeline(container, (hosts || []).flatMap(host =>
+      (host.tasks || []).map(task => ({ ...task, host: task.host || host.hostId }))));
+    return;
+  }
   if (!hosts || hosts.length === 0) {
     container.innerHTML = '<div class="cs-empty">No hosts configured</div>';
     return;
@@ -547,7 +559,7 @@ function renderHostHeatmap(container, hosts) {
 
   for (const host of hosts) {
     const vramInfo = host.vramCapacityMb ? `${(host.vramCapacityMb / 1024).toFixed(0)} GB` : '';
-    html += `<div class="cs-host-row-label"><i class="fas fa-server" style="color:#7cf0ff;font-size:10px"></i> ${esc(host.hostName)} ${vramInfo ? `<span class="cs-vram-info">${vramInfo}</span>` : ''}</div>`;
+    html += `<div class="cs-host-row-label" title="${esc(host.hostName)}${vramInfo ? ' · ' + vramInfo : ''}"><i class="fas fa-server" style="color:#7cf0ff;font-size:10px"></i> ${esc(host.hostName)} ${vramInfo ? `<span class="cs-vram-info">${vramInfo}</span>` : ''}</div>`;
 
     for (let h = 0; h < 24; h++) {
       const pastClass = isToday() && h < currentHour ? ' past' : '';
@@ -583,20 +595,42 @@ function getSlotSegments(slots, hourStart, hourEnd, taskType, taskName, isInfra 
     const width = ((visEnd - visStart) * 100).toFixed(1);
     const contClass = slot.continuous ? ' continuous' : '';
     const infraClass = isInfra ? ' infra' : '';
-    html += `<div class="cs-hm-slot ${taskType}${contClass}${infraClass}"
-      tabindex="0" role="button" aria-label="${esc(`${taskName}, ${formatTime(slotStart)}–${formatTime(slotEnd)}, ${getHostMeta(meta.host).label}`)}"
+    html += `<div class="cs-hm-slot cs-timeline-detail ${taskType}${contClass}${infraClass}"
       style="left:${left}%;width:${width}%"
-      data-tt-name="${esc(taskName)}"
-      data-tt-type="${esc(taskType)}"
-      data-tt-time="${esc(formatTime(slotStart))}–${esc(formatTime(slotEnd))}"
-      data-tt-host="${esc(meta.host || '')}"
-      data-tt-source="${esc(meta.source || '')}"
-      data-tt-model="${esc(meta.model || '')}"
-      data-tt-duration="${meta.estimatedDurationMs || 0}"
-      data-tt-vram="${meta.vramMb || 0}"
-      data-tt-infra="${isInfra ? '1' : '0'}"></div>`;
+      ${slotDetailAttributes(taskType, taskName, isInfra, meta, slotStart, slotEnd)}></div>`;
   }
   return html;
+}
+
+function slotDetailAttributes(taskType, name, isInfra, meta, start, end) {
+  const time = `${formatTime(start)}–${formatTime(end)}`;
+  return `tabindex="0" role="button" aria-label="${esc(`${name}, ${time}, ${getHostMeta(meta.host).label}`)}"
+    data-tt-name="${esc(name)}" data-tt-type="${esc(taskType)}" data-tt-time="${esc(time)}"
+    data-tt-host="${esc(meta.host || '')}" data-tt-source="${esc(meta.source || '')}"
+    data-tt-model="${esc(meta.model || '')}" data-tt-duration="${meta.estimatedDurationMs || 0}"
+    data-tt-vram="${meta.vramMb || 0}" data-tt-infra="${isInfra ? '1' : '0'}"`;
+}
+
+function renderMobileTimeline(container, entries) {
+  const remaining = UPCOMING_PROJECTION.buildRemainingTimelineSlots(entries);
+  if (!remaining.length) {
+    container.innerHTML = isPastDate()
+      ? '<div class="cs-empty">This day is over; no upcoming tasks remain.</div>'
+      : '<div class="cs-empty">No upcoming tasks</div>';
+    return;
+  }
+  container.innerHTML = `<ol class="cs-mobile-timeline">${remaining.map(({ entry, slot }) => {
+    const start = new Date(slot.start), end = new Date(slot.end);
+    const host = getHostMeta(entry.host).label;
+    return `<li><div class="cs-mobile-slot cs-timeline-detail"
+      ${slotDetailAttributes(entry.taskType, entry.name, isNoGpuTaskEntry(entry), entry, start, end)}>
+      <time datetime="${esc(slot.start)}">${esc(formatTime(start))}</time>
+      <span class="cs-mobile-name" title="${esc(entry.name)}">${esc(entry.name)}</span>
+      <span class="cs-mobile-meta"><span title="${esc(host)}">${esc(host)}</span>
+        <span class="cs-task-badge ${esc(entry.taskType)}">${esc(entry.taskType)}</span></span>
+    </div></li>`;
+  }).join('')}</ol>`;
+  attachTooltipEvents(container);
 }
 
 function getHostMeta(hostId) {
@@ -681,7 +715,7 @@ function renderClaims(container) {
 // ── Tooltip ─────────────────────────────────────────────────
 
 function attachTooltipEvents(container) {
-  container.querySelectorAll('.cs-hm-slot').forEach(el => {
+  container.querySelectorAll('.cs-timeline-detail').forEach(el => {
     el.addEventListener('mouseenter', showTooltip);
     el.addEventListener('mouseleave', () => { if (document.activeElement !== el) hideTooltip(); });
     el.addEventListener('mousemove', moveTooltip);
@@ -967,7 +1001,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('.cs-hm-slot')) hideTooltip();
+  if (!e.target.closest('.cs-timeline-detail')) hideTooltip();
   const popover = document.getElementById('servicePopover');
   if (!popover || !popover.classList.contains('visible') || !servicePopoverPinnedId) return;
   if (e.target.closest('.cs-service-chip') || e.target.closest('#servicePopover')) return;
@@ -979,6 +1013,16 @@ document.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('resize', () => {
+  const mobile = window.innerWidth <= 700;
+  if (mobile !== lastTimelineMobile) {
+    lastTimelineMobile = mobile;
+    if (renderedTimelineMode === viewMode) {
+      hideTooltip();
+      const container = document.getElementById('heatmapContainer');
+      if (viewMode === 'host') renderHostHeatmap(container, visibleTimelineHosts);
+      else renderGroupedHeatmap(container, visibleTimelineEntries);
+    }
+  }
   if (!servicePopoverPinnedId) return;
   const activeChip = document.querySelector(`.cs-service-chip[data-service-id="${servicePopoverPinnedId}"]`);
   if (activeChip) positionServicePopover(activeChip);
