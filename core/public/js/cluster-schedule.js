@@ -436,7 +436,6 @@ function renderGroupedHeatmap(container, timeline) {
   }
 
   const currentHour = isToday() ? new Date().getHours() : -1;
-  const nowMinuteFrac = isToday() ? new Date().getMinutes() / 60 : -1;
 
   // Group by taskType
   const groups = {};
@@ -494,24 +493,16 @@ function renderGroupedHeatmap(container, timeline) {
       for (let h = 0; h < 24; h++) {
         const pastClass = isToday() && h < currentHour ? ' past' : '';
         const slotsHtml = getSlotSegments(entry.slots, h, h + 1, entry.taskType, entry.name, isInfra, { host: entry.host, source: entry.source, model: entry.model, estimatedDurationMs: entry.estimatedDurationMs, vramMb: entry.vramMb });
-        html += `<div class="cs-hm-cell${pastClass}${hiddenClass}" data-hour="${h}" data-name="${esc(entry.name)}" data-type="${entry.taskType}">${slotsHtml}</div>`;
+        html += `<div class="cs-hm-cell${pastClass}${hiddenClass}" data-hour="${h}" data-name="${esc(entry.name)}" data-type="${esc(entry.taskType)}">${slotsHtml}</div>`;
       }
     }
   }
 
   html += '</div>';
 
-  // Now line
-  if (isToday() && currentHour >= 0) {
-    const gridCols = 25; // 1 label + 24 hours
-    const labelWidthPx = 230;
-    const nowPct = ((currentHour + nowMinuteFrac) / 24) * 100;
-    html += `<div class="cs-now-line" style="left:calc(${labelWidthPx}px + ${nowPct}% * (100% - ${labelWidthPx}px) / 100%)"></div>`;
-  }
-
   container.innerHTML = html;
 
-  // Position now line precisely using JS after render
+  // The now line is measured from the rendered grid.
   if (isToday()) positionNowLine(container);
   attachTooltipEvents(container);
 }
@@ -521,7 +512,7 @@ function positionNowLine(container) {
   if (!grid) return;
   const nowFrac = (new Date().getHours() + new Date().getMinutes() / 60) / 24;
   const gridRect = grid.getBoundingClientRect();
-  // First column is the label column (200px)
+  // Cells start after the label column, whatever its rendered width.
   const firstCell = grid.querySelector('.cs-hm-cell');
   if (!firstCell) return;
   const cellsStart = firstCell.getBoundingClientRect().left - gridRect.left;
@@ -613,7 +604,7 @@ function getSlotSegments(slots, hourStart, hourEnd, taskType, taskName, isInfra 
     const width = ((visEnd - visStart) * 100).toFixed(1);
     const contClass = slot.continuous ? ' continuous' : '';
     const infraClass = isInfra ? ' infra' : '';
-    html += `<div class="cs-hm-slot cs-timeline-detail ${taskType}${contClass}${infraClass}"
+    html += `<div class="cs-hm-slot cs-timeline-detail ${esc(taskType)}${contClass}${infraClass}"
       style="left:${left}%;width:${width}%"
       ${slotDetailAttributes(taskType, taskName, isInfra, meta, slotStart, slotEnd)}></div>`;
   }
@@ -770,7 +761,7 @@ function showTooltip(e) {
 
   const typeColor = TASK_COLORS[type] || '#64748b';
   document.getElementById('tooltipType').innerHTML =
-    type ? `<span style="color:${typeColor}">${type.toUpperCase()}</span>` : '';
+    type ? `<span style="color:${typeColor}">${esc(type.toUpperCase())}</span>` : '';
   document.getElementById('tooltipName').textContent = name;
   document.getElementById('tooltipRows').innerHTML = rows.join('');
   document.getElementById('tooltip').classList.add('visible');
@@ -858,7 +849,7 @@ function renderNextItem(task, i) {
       <div style="min-width:0;flex:1">
         <div class="cs-next-name">${esc(task.name)}</div>
         <div class="cs-next-meta">
-          <span class="cs-task-badge ${task.taskType}">${task.taskType}</span>
+          <span class="cs-task-badge ${esc(task.taskType)}">${esc(task.taskType)}</span>
           ${hostLabel ? `<span style="font-size:10px"><i class="fas fa-server" style="font-size:8px;margin-right:2px"></i>${esc(hostLabel)}</span>` : ''}
           <span class="cs-source-chip ${sourceClass}" title="${esc(task.lastRun ? `Last run ${task.metadata?.lastStatus || 'unknown'} ${formatEvidenceTime(task.lastRun)}` : 'Planned run; no run recorded yet')}">${esc(sourceMeta.label)}</span>
           ${cadenceLabel ? `<span class="cs-source-chip cadence">${esc(cadenceLabel)}</span>` : ''}
@@ -1039,6 +1030,8 @@ window.addEventListener('resize', () => {
       if (viewMode === 'host') renderHostHeatmap(container, visibleTimelineHosts);
       else renderGroupedHeatmap(container, visibleTimelineEntries);
     }
+  } else if (isToday()) {
+    positionNowLine(document.getElementById('heatmapContainer'));
   }
   if (!servicePopoverPinnedId) return;
   const activeChip = document.querySelector(`.cs-service-chip[data-service-id="${servicePopoverPinnedId}"]`);
