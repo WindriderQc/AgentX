@@ -23,7 +23,7 @@ dependencies and tests. Docker Compose runs them together through one launcher.
 | [`data/`](data/) | Optional inventory and telemetry service | Collectors and system observations |
 | [`shared/`](shared/) | Contracts, utilities and shared test infrastructure | Code used by multiple services |
 | [`integrations/`](integrations/) | Adapters for OpenClaw, voice, operations and external tools | Connecting an external system |
-| [`skills/`](skills/) | Portable content authoring and validation capabilities | Capabilities consumers invoke explicitly |
+| [`skills/`](skills/) | Portable content authoring and validation capabilities, and the operator skill Core serves at `/api/operator-skill/download` | Capabilities consumers invoke explicitly |
 
 **Core owns the canonical application data and shared capabilities.** Interfaces
 compose them; external integrations call them. A new interface uses Core's

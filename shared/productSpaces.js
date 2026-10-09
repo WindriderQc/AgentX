@@ -56,6 +56,9 @@ function productSpaces(link) {
       item('performance', 'Performance', '/performance', 'fa-tachometer-alt'),
       item('backup', 'Backup', '/backup', 'fa-box-archive'),
       item('data-toolbox', 'Data Toolbox', '/data-toolbox', 'fa-database'),
+      item('operator-skill', 'Skill opérateur (zip)', '/api/operator-skill/download', 'fa-file-zipper', 'core', {
+        description: 'Le skill qui apprend à un assistant à opérer cette instance, à jour avec la version en service.'
+      }),
       { section: 'Évaluation' },
       item('benchmark', 'Compare models', '/', 'fa-trophy', 'benchmark'),
       item('leaderboard', 'Leaderboard', '/leaderboard', 'fa-medal', 'benchmark'),
