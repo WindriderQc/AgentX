@@ -1776,7 +1776,11 @@ different facts reach 0.68 at most (1 % above 0.62), same-language
 restatements score 0.72 to 0.91, a restatement in another language 0.68, and
 a direct contradiction 0.70 to 0.96. A score above 0.70 therefore says "same
 subject", never "same statement": the reviewer decides whether it repeats or
-contradicts the note. With that model, 0.62 and 0.70 are the working floors.
+contradicts the note. With that model, 0.70 is the working value of
+`MEMORY_REVIEW_DUPLICATE_SCORE`, which compares a final statement with a note.
+`MEMORY_REVIEW_RAG_MIN_SCORE` compares a raw observation, often a short
+question, with a note: there a true match scored 0.47 to 0.52 and an unrelated
+one up to 0.48, so that floor only trims context and cannot decide relevance.
 
 ## Completed coding task replay
 
