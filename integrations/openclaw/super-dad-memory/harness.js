@@ -13,7 +13,7 @@ export function decodeResult(result) {
 }
 
 export async function agentxRead(baseUrl, name, args, fetchImpl = fetch) {
-  if (!["list_personal_tasks", "personal_briefing", "rag_search", "network_devices"].includes(name)) throw new Error("Unsupported Nestor read");
+  if (!["list_personal_tasks", "personal_briefing", "rag_search", "network_devices", "storage_summary", "find_files", "gpu_status"].includes(name)) throw new Error("Unsupported Nestor read");
   const response = await fetchImpl(new URL("/mcp", baseUrl), {
     method: "POST", redirect: "error", signal: AbortSignal.timeout(8000),
     headers: { "content-type": "application/json" },
@@ -21,6 +21,9 @@ export async function agentxRead(baseUrl, name, args, fetchImpl = fetch) {
   });
   if (!response.ok) throw new Error("AgentX source unavailable");
   const body = await response.json();
+  // A refused argument is the caller's to correct; it is not an outage.
+  const refused = body.result?.isError ? body.result.structuredContent : null;
+  if (refused?.error === "INVALID_ARGUMENTS") throw new Error(`Invalid request: ${String(refused.message || "").slice(0, 300)}`);
   const data = decodeResult(body.result);
   if (body.error || body.result?.isError || !data || data.error || data.ok === false) throw new Error("AgentX source unavailable");
   return data;

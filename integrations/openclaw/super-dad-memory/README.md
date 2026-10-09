@@ -35,6 +35,16 @@ so `personal_memory` may return `[coffre: label …1234]` instead of the number.
 `vault_note` files a Markdown note through `/api/consumers/nestor/v1/vault/notes`
 into the owner's vault inbox (Core's `VAULT_INBOX_PATH`); only the owner context
 receives it, and an invalid receipt is reported as not saved.
+`nestor_network`, `nestor_storage`, `nestor_files` and `nestor_gpus` relay
+Core's read-only `network_devices`, `storage_summary`, `find_files` and
+`gpu_status` tools (`/mcp`), which project the optional Data service: observed
+devices, the storage index, a bounded file-name search (10 results by default,
+25 at most; names, folders, sizes and dates, never contents) and GPU status.
+Each answer carries a French sentence stating how old its source is; a stale
+scan or GPU sample is said, and an unavailable Data service is a tool failure.
+Only the owner context receives them: file names and paths are the owner's.
+They are optional tools, enabled per agent in `tools.alsoAllow`; grant them to
+`main` only.
 The gateway continuity endpoint only projects agent catalogs and exact native
 run evidence. It does not read or write personal notes.
 When the transcript read throws, the turn projection keeps its fresh run/tool

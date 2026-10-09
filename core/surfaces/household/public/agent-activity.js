@@ -15,6 +15,8 @@
     [/^nestor_context$/, () => 'Je rassemble ton contexte.'],
     [/^nestor_briefing$/, () => 'Je prépare ton résumé.'],
     [/^vault_note$/, () => 'Je range la note dans ton coffre Obsidian.'],
+    [/^nestor_(storage|files)$/, () => 'Je consulte l’index des fichiers.'],
+    [/^nestor_gpus$/, () => 'Je regarde les cartes graphiques.'],
     [/personal_task/, () => 'Je regarde tes tâches.'],
     [/shopping_list/, () => 'Je vérifie la liste d’épicerie.'],
     [/^(web_search|web_fetch|searxng.*)$/, () => 'Je cherche sur le web.'],
