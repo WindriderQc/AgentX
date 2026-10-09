@@ -38,6 +38,11 @@ const PerformanceSnapshotSchema = new mongoose.Schema({
     default: 0,
     description: 'Requests with 4xx/5xx status codes'
   },
+  model_bound_requests: {
+    type: Number,
+    default: 0,
+    description: 'Chat, generation, embedding, classification and event-stream requests counted outside server latency'
+  },
 
   // Latency metrics (all in milliseconds)
   latency: {
@@ -226,11 +231,13 @@ PerformanceSnapshotSchema.statics.getAggregatedMetrics = async function(startDat
         total_requests: { $sum: '$requests_total' },
         total_successful: { $sum: '$requests_successful' },
         total_failed: { $sum: '$requests_failed' },
-        avg_latency: { $avg: '$latency.avg' },
-        avg_p95: { $avg: '$latency.p95' },
-        avg_p99: { $avg: '$latency.p99' },
-        max_latency: { $max: '$latency.max' },
-        min_latency: { $min: '$latency.min' }
+        total_model_bound: { $sum: { $ifNull: ['$model_bound_requests', 0] } },
+        // Hours that only counted model-bound requests have no latency sample.
+        avg_latency: { $avg: { $cond: [{ $gt: ['$requests_total', 0] }, '$latency.avg', null] } },
+        avg_p95: { $avg: { $cond: [{ $gt: ['$requests_total', 0] }, '$latency.p95', null] } },
+        avg_p99: { $avg: { $cond: [{ $gt: ['$requests_total', 0] }, '$latency.p99', null] } },
+        max_latency: { $max: { $cond: [{ $gt: ['$requests_total', 0] }, '$latency.max', null] } },
+        min_latency: { $min: { $cond: [{ $gt: ['$requests_total', 0] }, '$latency.min', null] } }
       }
     }
   ]);
@@ -248,6 +255,7 @@ PerformanceSnapshotSchema.statics.getAggregatedMetrics = async function(startDat
     total_requests: metrics.total_requests,
     total_successful: metrics.total_successful,
     total_failed: metrics.total_failed,
+    model_bound_requests: metrics.total_model_bound || 0,
     error_rate: parseFloat(errorRate),
     avg_latency: Math.round(metrics.avg_latency),
     avg_p95: Math.round(metrics.avg_p95),
@@ -305,8 +313,10 @@ PerformanceSnapshotSchema.statics.getLatencyTrend = async function(hours = 24, e
   }
 
   // System-wide latency
+  // Hours that only counted model-bound requests have no latency sample.
   const snapshots = await this.find({
-    hour: { $gte: startDate }
+    hour: { $gte: startDate },
+    requests_total: { $gt: 0 }
   })
     .sort({ hour: 1 })
     .select('hour latency')
