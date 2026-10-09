@@ -19,6 +19,7 @@ const janitorProfiles = require('../services/janitorProfiles');
 const janitorRunner = require('../services/janitorRunner');
 const janitorScheduler = require('../services/janitorScheduler');
 const janitorStrategy = require('../services/janitorStrategy');
+const janitorReviewDecisions = require('../services/janitorReviewDecisions');
 const { log } = require('../utils/logger');
 
 const list = async (req, res) => {
@@ -262,7 +263,9 @@ const getLatestSharedDriveStrategy = async (req, res) => {
   try {
     const report = await janitorStrategy.getLatestStrategy(req.app.locals.db);
     if (!report) return res.status(404).json({ status: 'error', message: 'strategy report not found' });
-    res.json({ status: 'success', data: { report } });
+    // Read-only: marks each group with the owner's stored decision, as it stands now.
+    const annotated = await janitorReviewDecisions.annotateStrategyReport(req.app.locals.db, report);
+    res.json({ status: 'success', data: { report: annotated } });
   } catch (err) {
     log(`[janitorProfiles] getLatestSharedDriveStrategy error: ${err.message}`, 'error');
     res.status(500).json({ status: 'error', message: err.message });

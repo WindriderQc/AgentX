@@ -175,6 +175,7 @@ function registeredSurface() {
         get(routePath, handler) { routes.push({ method: 'get', path: routePath, handler }); },
         patch(routePath, handler) { routes.push({ method: 'patch', path: routePath, handler }); },
         post(routePath, handler) { routes.push({ method: 'post', path: routePath, handler }); },
+        put(routePath, handler) { routes.push({ method: 'put', path: routePath, handler }); },
         delete(routePath, handler) { routes.push({ method: 'delete', path: routePath, handler }); }
       };
       routers.push(router);
@@ -189,10 +190,10 @@ function registeredSurface() {
   return { mounts, routers };
 }
 
-test('manifest identifies the AIOps Data Toolbox contract and its six writes', () => {
+test('manifest identifies the AIOps Data Toolbox contract and its seven write families', () => {
   assert.equal(toolbox.id, 'aio-ops-data-toolbox');
-  assert.equal(toolbox.version, '1.8.0');
-  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'report-generate', 'report-delete']);
+  assert.equal(toolbox.version, '1.9.0');
+  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete']);
   assert.throws(() => toolbox.register({ contractVersion: 1 }), /contract v2/);
 });
 
@@ -209,7 +210,7 @@ test('query projection keeps only allowlisted, bounded values', () => {
   assert.throws(() => toolbox.safeName('../private', 'collection'), /Invalid collection/);
 });
 
-test('registration mounts the cockpit, GET proxy families and exactly six writes', () => {
+test('registration mounts the cockpit, GET proxy families and exactly seven write families', () => {
   const { mounts, routers } = registeredSurface();
   const appPaths = mounts.map((entry) => entry.path);
   assert.ok(appPaths.includes('/assets/data-toolbox'));
@@ -220,13 +221,18 @@ test('registration mounts the cockpit, GET proxy families and exactly six writes
   const routes = routers.flatMap((router) => router.routes);
   assert.ok(routes.length >= 20);
   assert.deepEqual(routes.filter((route) => route.method !== 'get').map((route) => `${route.method} ${route.path}`),
-    ['post /storage/scans', 'post /network/scan', 'patch /network/devices/:mac', 'post /mqtt/publish', 'post /reports', 'delete /reports/:filename'],
-    'the only mutations are a storage scan request, a network scan request, the edit of a network device record, publishing an MQTT message, and generating or deleting a report');
+    ['post /storage/scans', 'post /network/scan', 'patch /network/devices/:mac', 'post /mqtt/publish',
+      'put /janitor/review-decisions/:sha256', 'post /janitor/review-decisions/batch', 'delete /janitor/review-decisions/:sha256',
+      'post /reports', 'delete /reports/:filename'],
+    'the only mutations are a storage scan request, a network scan request, the edit of a network device record, publishing an MQTT message, the three writes of a Janitor review decision (store, import, remove), and generating or deleting a report');
+  // No approval, preview or execution route of the janitor is relayed, under any method.
+  assert.deepEqual(routes.filter((route) => /approve|reject|preview|apply|execute|\/run$/.test(route.path)), []);
   for (const route of [
     '/status', '/storage/summary', '/storage/files', '/storage/scans/:scanId', '/storage/cleanup', '/storage/directory-count', '/network/devices', '/network/scan-requests/:id',
     '/hardware/collectors', '/hardware/latest', '/hardware/history', '/hardware/occupancy',
     '/databases/collections', '/live-data/feeds', '/mqtt/status', '/mqtt/messages', '/janitor/profiles', '/janitor/dedup-report',
     '/janitor/profiles/:id/runs', '/janitor/runs/:id', '/janitor/strategy/latest', '/janitor/strategy/latest/raw',
+    '/janitor/strategy/latest/groups', '/janitor/review-decisions',
     '/storage/trends', '/events', '/reports', '/reports/:filename/download'
   ]) assert.ok(routes.some((entry) => entry.path === route), `missing GET ${route}`);
 });
@@ -292,7 +298,7 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
     assert.match(html, new RegExp(`data-tab=["']${tab}["']`));
   }
   assert.match(html, /Filesystem-safe review console/);
-  assert.match(html, /Survivor choices and accept\/reject decisions stay in a local draft/);
+  assert.match(html, /Survivor choices and accept\/reject decisions are saved to Data as a record of intent for a later, separately confirmed cleanup; a local draft takes over when Data cannot be reached/);
   assert.match(html, /<!-- product-navigation -->/);
   const { buildProductNavigation } = require('../../../../shared/productNavigation');
   const destinations = buildProductNavigation({ activePage: 'data-toolbox' }).navItems.flatMap(group => group.children);
@@ -304,10 +310,15 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   assert.match(app, /Historical sets must be regenerated before preview/);
   assert.match(app, /historical · rerun required/);
   assert.match(app, /Open exact run JSON/);
-  assert.match(app, /Accept for preview/);
-  assert.match(app, /Reject deletion/);
+  // The duplicate review lives in janitor-review.js, loaded before app.js.
+  const review = fs.readFileSync(path.join(root, 'janitor-review.js'), 'utf8');
+  assert.ok(html.indexOf('/assets/data-toolbox/janitor-review.js') > 0);
+  assert.ok(html.indexOf('/assets/data-toolbox/janitor-review.js') < html.indexOf('/assets/data-toolbox/app.js'));
+  assert.match(app, /typeof janitorReviewSection === 'function'/);
+  assert.match(review, /Accept for preview/);
+  assert.match(review, /Reject deletion/);
   assert.match(app, /authorizesFilesystemMutation:\s*false/);
-  assert.match(app, /Choose the path to keep before accepting this group for preview/);
+  assert.match(review, /Choose the path to keep before accepting this group for preview/);
   assert.match(app, /Pinned near the top/);
   assert.match(app, /individual unhashed file above its root's recorded byte budget remains unverified/);
   assert.match(app, /\/janitor\/strategy\/latest/);
@@ -319,15 +330,26 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   // regeneration, a still-loading report, and internal tab changes.
   assert.doesNotMatch(app, /draft\.portfolioGeneratedAt === portfolioGeneratedAt/);
   assert.match(app, /state\.janitorReview = \{ \.\.\.restored, \.\.\.state\.janitorReview \}/);
-  assert.match(app, /content hashes do not change between reports/);
+  assert.match(review, /content hashes do not change between reports/);
   assert.match(app, /draft\.authorizesFilesystemMutation === false/);
   assert.match(app, /clearJanitorReviewDraft\(\)/);
-  assert.match(app, /saved in this browser across refreshes, tab changes, and portfolio regenerations/);
-  // The bundle sends six mutations: a network scan request and the edit of
-  // a device record (network-tools.js), an MQTT message (mqtt.js), a storage
-  // scan request (storage-tools.js), and the generation and the deletion of a
-  // report (storage-views.js). The page says so in both places.
+  assert.match(review, /saved in this browser across refreshes, tab changes, and portfolio regenerations/);
+  assert.match(review, /This draft authorizes no filesystem mutation/);
+  assert.match(review, /<strong>Nothing here deletes files\.<\/strong> A stored decision records your intent for a later, separately confirmed cleanup/);
+  // The bundle sends seven kinds of mutation: a network scan request and the
+  // edit of a device record (network-tools.js), an MQTT message (mqtt.js), a
+  // storage scan request (storage-tools.js), the Janitor review decisions
+  // (janitor-review.js: store one, import a batch, remove one), and the
+  // generation and the deletion of a report (storage-views.js). The page says
+  // so in both places.
   assert.equal(app.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi), null);
+  assert.deepEqual(review.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)["']/gi).sort(), ["method: 'DELETE'", "method: 'POST'", "method: 'PUT'"]);
+  assert.match(review, /api\(`\/janitor\/review-decisions\/\$\{encodeURIComponent\(sha\)\}`, \{ method: 'PUT', payload \}\)/);
+  assert.match(review, /api\('\/janitor\/review-decisions\/batch', \{ method: 'POST', payload: \{ mode: 'insert_missing', decisions \} \}\)/);
+  assert.match(review, /api\(`\/janitor\/review-decisions\/\$\{encodeURIComponent\(sha\)\}`, \{ method: 'DELETE' \}\)/);
+  // Every request of the review goes to the review-decision or group routes: none to a run, a preview or an approval.
+  assert.deepEqual([...new Set([...review.matchAll(/api\([`'](\/[a-z-]+\/[a-z-]+)/g)].map((match) => match[1]))].sort(), ['/janitor/review-decisions', '/janitor/strategy']);
+  assert.doesNotMatch(review, /alert\(|confirm\(|prompt\(|insertAdjacentHTML|document\.write|eval\(/);
   const networkTools = fs.readFileSync(path.join(root, 'network-tools.js'), 'utf8');
   assert.equal(networkTools.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi)?.length, 2);
   assert.match(networkTools, /api\('\/network\/scan', \{ method: 'POST'/);
@@ -346,11 +368,11 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   assert.match(views, /api\(`\/reports\/\$\{encodeURIComponent\(name\)\}`, \{ method: 'DELETE' \}\)/);
   for (const file of ['storage-trends.js', 'activity.js']) assert.equal(fs.readFileSync(path.join(root, file), 'utf8').match(/method:/g), null);
   assert.match(html, /<strong>No filesystem actions\.<\/strong>/);
-  assert.match(html, /This page sends six changes to Data: a network device's record \(name, known flag, type, location, notes\), a network scan request for the active collector, an MQTT message published by hand from the MQTT tab, which reaches the devices on the broker, a storage scan request from the Storage tab, which only reads the disks and refreshes the index, and the generation and the deletion of a report from the Storage tab: a report is a file in Data's own report store, never on the scanned disks\./);
+  assert.match(html, /This page sends seven kinds of change to Data: a network device's record \(name, known flag, type, location, notes\), a network scan request for the active collector, an MQTT message published by hand from the MQTT tab, which reaches the devices on the broker, a storage scan request from the Storage tab, which only reads the disks and refreshes the index, the duplicate-review decisions of the Janitor tab \(saved, imported from this browser's draft, or removed\), which delete no file, and the generation and the deletion of a report from the Storage tab: a report is a file in Data's own report store, never on the scanned disks\./);
   assert.match(html, /Preview, apply, move and delete endpoints are not exposed here/);
   assert.doesNotMatch(html, /Storage scan, preview/);
   assert.doesNotMatch(html, /The only change this page sends/);
-  assert.match(app, /Write routes<\/span><strong>6 · network device record, network scan request, MQTT publish, storage scan request, report generation, report deletion</);
+  assert.match(app, /Write routes<\/span><strong>9 in 7 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions \(save, import, remove\), report generation, report deletion</);
   assert.match(css, /@media \(max-width: 620px\)/);
 });
 

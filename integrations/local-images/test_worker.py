@@ -1,5 +1,9 @@
 import importlib.util
 import json
+import threading
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
 import pathlib
 import tempfile
 import types
@@ -79,6 +83,22 @@ class WorkerTest(unittest.TestCase):
         graph['latent']['inputs']['height'] = 1152
         self.assertEqual(self.worker.reserve_for_graph(graph), 1.2)
         self.assertEqual(self.worker.reserve_for_graph({'text': {'inputs': {'resolution': 2016}}}), 4.5)
+
+    def test_a_listed_client_is_served_and_an_unlisted_one_is_refused(self):
+        def status(allowed):
+            server = ThreadingHTTPServer(('127.0.0.1', 0), module.create_handler(self.worker, allowed))
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            try:
+                with urllib.request.urlopen(f'http://127.0.0.1:{server.server_port}/queue', timeout=5) as r:
+                    return r.status
+            except urllib.error.HTTPError as error:
+                return error.code
+            finally:
+                server.shutdown()
+                server.server_close()
+        self.assertEqual(status({'192.0.2.10'}), 403)
+        self.assertEqual(status({'192.0.2.10', '127.0.0.1'}), 200)
+        self.assertEqual(status(frozenset()), 200)
 
 
 if __name__ == '__main__':

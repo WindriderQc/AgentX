@@ -72,7 +72,7 @@ def _timestamp(value) -> float:
 
 
 def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
-                    allowed_owners, rpc=gateway_call):
+                    allowed_owners, rpc=gateway_call, member_agent=False):
     # Import lazily: the legacy collector selects this reader only for a native
     # store, so existing offline JSONL imports keep their established behavior.
     from .openclaw import (
@@ -228,7 +228,10 @@ def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
                 full = True
                 break
             build_observation(
-                result, text=text, trust=classify_memory_intent(text),
+                # On a member agent the runtime flag only proves the turn came
+                # through the family page, not who of the household spoke.
+                result, text=text,
+                trust="household_member_statement" if member_agent else classify_memory_intent(text),
                 session_id=session_id, event_id=event_id,
                 observed_at=datetime.fromtimestamp(observed, timezone.utc).isoformat(),
                 source_ref=source_key,

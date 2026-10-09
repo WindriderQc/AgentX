@@ -1,0 +1,49 @@
+/* The duplicate review of the Janitor tab (janitor-review.js). */
+.jr .loading { min-height: 120px; }
+.jr-progress .root-size { margin-top: 4px; }
+.jr-progress .root-size.warn { color: var(--amber); }
+.jr-progress .metric-label { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.jr-filter { display: inline-flex; align-items: center; gap: 8px; padding: 9px 13px; border: 1px solid #334157; border-radius: 9px; background: #16202d; color: #d6e0ec; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.jr-filter input { accent-color: var(--cyan); }
+.jr-filter:focus-within, .jr-group summary:focus-visible, .jr-stale summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.jr-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; color: var(--muted); font-size: 12px; }
+.jr-pager span { text-align: center; }
+.jr-groups { display: grid; gap: 8px; }
+.jr-groups .empty { min-height: 120px; border: 1px dashed var(--line); border-radius: 12px; padding: 0 16px; }
+.jr-group { min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: #0d141d; }
+.jr-group.stale { border-color: #5a4a22; }
+.jr-group details { padding: 0 14px; }
+.jr-group details[open] { padding-bottom: 14px; }
+.jr-group summary { display: grid; grid-template-columns: 150px minmax(0,1fr) auto; align-items: center; gap: 6px 14px; padding: 12px 0; color: var(--text); font-size: 12px; border-radius: 6px; }
+.jr-group summary .mono { color: var(--cyan); }
+.jr-facts { min-width: 0; color: var(--muted); }
+.jr-name { display: block; margin-bottom: 2px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jr-facts .good { color: var(--green); }
+.jr-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; min-width: 0; }
+.jr-pills .pill { max-width: 100%; overflow-wrap: anywhere; text-align: left; border-radius: 10px; }
+.jr .review-choices { min-width: 0; }
+.jr .review-choice small .pill { display: inline-flex; margin: 4px 4px 0 0; }
+.jr-saved { margin: 10px 0 0; font-size: 11px; }
+.jr-pair { margin: 8px 0 0; }
+.jr-pair dt { margin-top: 6px; color: var(--muted); }
+.jr-pair dd { margin: 0; }
+.jr-note { display: grid; gap: 5px; margin: 10px 0 0; color: var(--muted); font-size: 11px; }
+.jr-note input { width: 100%; padding: 8px 10px; color: var(--text); background: #080d13; border: 1px solid #263548; border-radius: 8px; font-size: 12px; }
+.jr-status { margin: 10px 0 0; }
+.jr-reasons { margin: 8px 0 0; padding-left: 18px; }
+.jr-reasons li { margin: 4px 0; }
+.jr-reasons code, .jr .notice code { display: block; margin-top: 3px; color: #d4dfec; overflow-wrap: anywhere; font-size: 10px; }
+.jr-stale { margin: 14px 0; padding: 12px 15px; border: 1px solid #5a4a22; border-radius: 12px; background: #19160f; font-size: 12px; }
+.jr-stale-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.jr-stale-list > li { padding-top: 10px; border-top: 1px solid #3a3220; }
+.jr-stale-list .button { margin-top: 8px; padding: 7px 10px; font-size: 11px; }
+.jr-import .table-wrap { margin: 10px 0; }
+.jr-import table { min-width: 720px; }
+.jr-import td code { overflow-wrap: anywhere; font-size: 10px; }
+@media (max-width: 620px) {
+  .jr-group summary { grid-template-columns: 1fr; }
+  .jr-pills { justify-content: flex-start; }
+  .jr-pager { flex-wrap: wrap; }
+  .jr-pager span { order: -1; flex-basis: 100%; text-align: left; }
+  .jr-filter { white-space: normal; }
+}

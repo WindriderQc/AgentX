@@ -43,7 +43,7 @@ neither authorizes nor proves Internet exposure.
 Core serves `/`, `/dad`, `/panel`, `/psyx` and `/data-toolbox` directly in the
 full profile. Benchmark and RAG retain their separate LAN HTTPS origins. Data
 has its own API service; the Toolbox retains its bounded projection, its network device record
-editor and scan request, the MQTT publish form and the storage scan request. The demo profile continues to exclude personal and household
+editor and scan request, the MQTT publish form, the storage scan request and the Janitor's stored duplicate-review decisions. The demo profile continues to exclude personal and household
 capabilities, regardless of the browser entry.
 
 ## Capability and identity boundaries

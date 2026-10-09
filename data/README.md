@@ -11,14 +11,18 @@ routes and the MQTT tab the three `/api/v1/mqtt` routes described below. The
 Activity tab and the Overview's recent-activity card read `GET /api/v1/events`;
 the Storage tab's Growth view reads `GET /api/v1/storage/trends` and its
 Reports view the `/api/v1/exports` routes. The Toolbox reads, with
-six writes: a network device's record (`PATCH /api/v1/network/devices/:id`:
+seven kinds of write: a network device's record (`PATCH /api/v1/network/devices/:id`:
 name, known flag, type, location, notes), a network scan request
 (`POST /api/v1/network/scan`, followed through
 `GET /api/v1/network/scan-requests/:id`), an MQTT message published by
-hand, a storage scan request, and the generation (`POST
-/api/v1/exports/generate`, with a type and a format and nothing else) and the
-deletion (`DELETE /api/v1/exports/:filename`) of a report. The Toolbox does not
-relay `POST /api/v1/events` or the event stream. Data stores the device fields as given, with no length limit of its own:
+hand, a storage scan request, the Janitor's duplicate-review decisions
+(`PUT`/`DELETE /api/v1/janitor/profiles/shared-drive/review-decisions/:sha256`
+and `POST .../review-decisions/batch`, described under
+[Duplicate-review decisions](#duplicate-review-decisions): a record of intent
+that deletes no file), and the generation (`POST /api/v1/exports/generate`,
+with a type and a format and nothing else) and the deletion
+(`DELETE /api/v1/exports/:filename`) of a report, a file in Data's own report
+store. The Toolbox does not relay `POST /api/v1/events` or the event stream. Data stores the device fields as given, with no length limit of its own:
 the Toolbox relay bounds them (name and location 80 characters, notes 500, a
 fixed list of types). A collector sweep rewrites only what it observed (IP,
 MAC, hostname, vendor, status, last sighting), so these fields survive it. The
@@ -129,6 +133,71 @@ only appears in a later run, once the stored duplicates have been removed. `GET 
 requested (TTL index). New indexes on `nas_files`, `livedata_points`,
 `dedup_report_details` and `network_scan_requests` are built at the first start
 after an upgrade.
+
+### Duplicate-review decisions
+
+The nightly shared-drive strategy report
+(`GET /api/v1/janitor/profiles/shared-drive/strategy/latest`) lists the verified
+duplicate groups of `/mnt/media` and `/mnt/datalake`. The owner's decision about
+a group is stored in `janitor_review_decisions`, one document per group.
+
+**A decision is intent only.** It says what the owner wants for a later cleanup.
+Storing, importing or removing one approves nothing, previews nothing and
+deletes nothing: the only path that deletes a file is still
+`POST /api/v1/janitor/profiles/runs/:run_id/actions/:idx/approve` on a profile
+run action, with a fresh SHA-256 preview, the typed confirmations and
+`JANITOR_EXECUTION_ENABLED=true`. That path does not read the decisions, and a
+decision's hash, date or content is not a preview id or a confirmation.
+
+- **Identity.** One decision per content hash (`sha256`, 64 lowercase
+  hexadecimal characters, the document `_id`). A duplicate group is "every
+  current file with this hash", so the hash is what stays the same from one
+  nightly report to the next. The file size and the paths seen when deciding
+  are kept as evidence, with the report id and date when known.
+- **Decision.** `keep_all` (reject deletion), `dedupe` (accept, with
+  `survivorPath`, which must be one of the evidence paths) or `defer`; an
+  optional `note` of at most 500 characters; `decidedAt`.
+- **Validation** (`shared/janitorReviewDecisionRules.js`, also applied by the
+  Toolbox relay). Unknown fields are refused. `evidence.size` is a whole number
+  of bytes from 1 to 2^53 - 1. `evidence.paths` lists 2 to 500 different paths,
+  each absolute, normalized (no empty, `.` or `..` segment), at most 1 024
+  bytes and under `/mnt/media/` or `/mnt/datalake/`. `survivorPath` is refused
+  on `keep_all` and `defer`.
+
+| Route (under `/api/v1/janitor/profiles/shared-drive`) | Effect |
+| --- | --- |
+| `GET /review-decisions` | newest first; `decision`, `pathPrefix` (a root or a path under one), `state` (`current` or `stale`), `sha256` (at most 100, comma-separated), `limit` (1-200, default 50), `offset`; answers `decisions`, `pagination` and a `summary` of every stored decision |
+| `PUT /review-decisions/:sha256` | store or replace the decision of one group (201 when new) |
+| `POST /review-decisions/batch` | 1 to 200 decisions, all valid and all different or nothing is stored; `mode` is `upsert` (default) or `insert_missing`, which never replaces a stored decision and answers `saved` and `skipped` |
+| `DELETE /review-decisions/:sha256` | remove the decision (undo); 404 when there is none |
+| `GET /strategy/latest/groups` | one page of the latest report's verified groups in the report's order: `offset`, `limit` (1-50, default 30), `review=undecided` to skip decided groups, or `sha256` (at most 50) to read named groups |
+
+**Staleness** is computed when reading, never stored, and a stale decision is
+never applied to the group's new shape. A decision is `stale` when what it was
+made on no longer matches: `group_not_verified` (fewer than two current copies
+carry the hash), `size_changed`, `path_missing` (a copy is gone),
+`hash_changed` (a copy now has other content, or its hash is no longer current
+for its size and date), `new_copies`, `survivor_missing`. Each reason gives a
+count and at most three paths. `GET /review-decisions` checks against the file
+index as it is now (`nas_files`, with the report's own test of a current
+member), at most the 2 000 most recent decisions per request (`summary.truncated`
+says when more exist; the counts by decision always cover all of them). A page
+of groups checks each decision against the group that page shows.
+
+**The report is aware of the decisions, read-only.** A generated report stores
+`reviewDecisions`: counts by decision, how many still fit this report's groups,
+and `dedupe.reclaimableBytes`, the duplicate bytes the still-fitting `dedupe`
+decisions represent (copies minus one, times the file size; nothing is freed by
+storing them). Reading the latest report returns the same summary as it stands
+now (the stored one moves to `reviewDecisions.atGeneration`) and marks each
+group that has a decision with `review`. Which groups are verified, the
+policy's survivor and the proposals are unchanged; where the owner's survivor
+differs from the policy's, `review` carries both (`survivorPath`,
+`policySurvivorPath`, `survivorDiffersFromPolicy`). The stored group chunks are
+not rewritten. `GET /strategy/latest/groups` reads only the chunk documents a
+page needs (a chunk holds at most 100 groups or 4 MiB); with
+`review=undecided` it reads at most 10 chunks per request and `nextOffset` says
+where to resume.
 
 Native collectors live in `integrations/data-collectors`. Set `DATA_URL`,
 `SCAN_CIDR` (network) and `STORAGE_SOURCES_JSON` (storage) in external instance

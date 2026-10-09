@@ -481,6 +481,41 @@ hand. It needs `MQTT_BROKER_URL` on Data; without it the tab says so.
   form, and the message then appears in the stream when the broker delivers it
   back. Nothing is queued: when the broker is not connected the send is refused.
 
+## Data Toolbox: Janitor duplicate review
+
+Open `/data-toolbox#janitor` (full profile, with the optional Data service).
+The tab shows the nightly shared-drive report; its **Duplicate review** section
+is where the owner decides what he wants for each verified duplicate group.
+
+Nothing in this tab deletes files. A stored decision records intent for a
+later, separately confirmed cleanup: that cleanup still needs a current profile
+run, a fresh SHA-256 preview and its own typed confirmations, none of which the
+page can send.
+
+- **Deciding**: open a group, choose the copy to keep, then **Accept for
+  preview**, **Reject deletion** or **Defer**; a note is optional. The decision
+  is saved to Data at once and the group says so (saved, or why it failed).
+  **Undo** removes the stored decision. A group shown without all its copies
+  (more than 60) cannot be decided from the page.
+- **Review progress**: groups decided on the page and in the whole report, the
+  count by decision, the space the accepted groups represent (not freed), and
+  the stale decisions with their reasons. A decision is stale when the group
+  changed since it was made (a copy gone or changed, new copies, the chosen
+  copy missing); it is shown, never applied to the new copies, and deciding
+  again records it on the current ones.
+- **Paging**: 30 groups per page, **Previous** and **Next**, in the report's
+  order. **Show only undecided groups** asks Data to skip the decided ones.
+- **Policy**: the copy the policy would keep is labelled. When the owner keeps
+  another one, both are shown.
+- **Browser draft**: when Data cannot store decisions, they are kept in this
+  browser as before. When the draft holds decisions that Data does not have,
+  **Import N decisions from this browser** shows exactly what will be sent
+  before sending it; a decision already stored is never replaced, and the
+  draft stays in the browser, marked as imported, as a backup that **Copy
+  draft**, **Download draft** and **Clear** still handle. A decision of an
+  older draft whose group is no longer in the latest report cannot be imported
+  and stays in the draft.
+
 ## Interaction and verification
 
 The diagnostic panels wrap long identifiers, expose textual status and reveal
