@@ -173,7 +173,7 @@ class Worker:
         return self.nodes
 
 
-def create_handler(worker):
+def create_handler(worker, allowed=frozenset()):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
             pass
@@ -188,6 +188,9 @@ def create_handler(worker):
             self.wfile.write(raw)
 
         def handle_request(self):
+            # On a LAN address the bind alone no longer limits callers to Core.
+            if allowed and self.client_address[0] not in allowed:
+                return self.send({'error': 'Caller is not an allowed client'}, 403)
             route = urlsplit(self.path)
             if self.command == 'GET':
                 if route.path == '/system_stats':
@@ -263,9 +266,11 @@ if __name__ == '__main__':
     parser.add_argument('--child-port', type=int, default=8189)
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--reserve-vram', type=float, default=1.2)
+    parser.add_argument('--allow-client', action='append', default=[],
+        help='Source address allowed to call the worker; repeat for several. Without it, every caller that reaches the bind address is accepted.')
     args = parser.parse_args()
     address = ipaddress.ip_address(args.bind)
     if not address.is_private or address.is_unspecified:
         parser.error('The worker must bind an explicit private or loopback address')
-    server = ThreadingHTTPServer((args.bind, args.port), create_handler(Worker(args)))
+    server = ThreadingHTTPServer((args.bind, args.port), create_handler(Worker(args), {str(ipaddress.ip_address(x)) for x in args.allow_client}))
     server.serve_forever()
