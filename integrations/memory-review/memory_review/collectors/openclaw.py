@@ -193,7 +193,11 @@ def collect(
     lookback_days: int = schema.DEFAULT_LOOKBACK_DAYS,
     max_files: int = schema.MAX_FILES_PER_COLLECTOR,
     owner_ids: tuple[str, ...] | None = None,
+    member_agents: tuple[str, ...] = (),
 ) -> CollectorResult:
+    # Agents of `member_agents` serve the household's family pages; they are
+    # read like the others and their turns are kept apart from the owner's.
+    agents = tuple(dict.fromkeys((*agents, *member_agents)))
     base = Path(home) if home else default_home()
     result = CollectorResult(runtime="openclaw", host=host_name())
     result.watermarkBefore = store.token()
@@ -214,7 +218,7 @@ def collect(
             collect_gateway(
                 home=base, agent=agent, store=store, result=result,
                 lookback_days=lookback_days, max_files=per_agent_files,
-                allowed_owners=allowed_owners,
+                allowed_owners=allowed_owners, member_agent=agent in member_agents,
             )
             _load_dedup_context(base, agent, result)
             continue
