@@ -110,8 +110,11 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
       const status = { configured: imageService.status().configured, profiles: available.profiles,
         maxReferences: 2, dimensions: available.dimensions };
       const history = rows.filter(row => row.outcome === 'completed').slice(0, 6).reverse()
-        .flatMap(row => [{ role: 'user', content: row.inputText.slice(0, 2000) },
-          { role: 'assistant', content: row.replyText.slice(0, 2000) }]);
+        .flatMap(row => {
+          const previous = evidence(row), plan = previous.proposal;
+          return [{ role: 'user', content: (plan ? `Brief à affiner : ${previous.context.prompt}\nDemande : ${row.inputText}` : row.inputText).slice(0, 2000) },
+            { role: 'assistant', content: (plan ? `Prompt proposé : ${plan.prompt}\nExplication : ${row.replyText}` : row.replyText).slice(0, 2000) }];
+        });
       const envelope = { action: input.mode, history, status,
         ...(input.mode === 'plan' ? { request: { ...input.context, instruction: input.message } }
           : { prompt: input.message, context: input.context }) };

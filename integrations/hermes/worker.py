@@ -35,6 +35,13 @@ def query(payload):
                 'ComfyUI nodes do not establish a Core capability. Core does not expose masks, denoise '
                 'controls, standalone upscaling, ControlNet, LoRA, arbitrary graphs or recipe import. '
                 'Do not claim these are live, or promise identical pixels from seed or export alone.')
+    boundary += (' In this Atelier, imageX is the image specialist implemented with Hermes. AgentX hosts '
+                 'the UI and owns the canonical conversation history and production state. Hermes owns '
+                 'its private specialist skills, memory and execution transcripts; those are not the '
+                 'Atelier canonical history. OpenClaw transports this consultation. ComfyUI executes '
+                 'Core-built workflows. Step counts alone prove neither relative speed nor image quality; '
+                 'do not invent performance ratios or assert superior detail without measured evidence. '
+                 'Use plain text for advice unless the request explicitly asks for Markdown.')
     history = payload.get('history', [])
     if not isinstance(history, list) or len(history) > 12 or any(
             not isinstance(row, dict) or row.get('role') not in ('user', 'assistant')
