@@ -10,6 +10,7 @@
 
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
+const { constants } = require('node:fs');
 const path = require('node:path');
 
 const MAX_BYTES = 50 * 1024 * 1024;
@@ -41,6 +42,26 @@ function cleanName(name) {
 
 function createImageArchive({ dir = process.env.IMAGE_ARCHIVE_DIR, now = () => new Date(), logger = null } = {}) {
   const root = typeof dir === 'string' && dir.trim() ? path.resolve(dir.trim()) : null;
+  const invalid = () => Object.assign(new Error('Image archive unavailable or integrity check failed'), { statusCode: 503 });
+
+  async function storePath(relative) {
+    // Configuration chooses a trusted root, including deliberate filesystem aliases.
+    await fs.mkdir(root, { recursive: true });
+    let directory = await fs.realpath(root);
+    for (const part of relative.split('/').slice(0, -1)) {
+      directory = path.join(directory, part);
+      try { await fs.mkdir(directory); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+      const stat = await fs.lstat(directory);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) throw invalid();
+    }
+    return path.join(directory, path.posix.basename(relative));
+  }
+
+  async function existingFile(file) {
+    const stat = await fs.lstat(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    if (stat && (stat.isSymbolicLink() || !stat.isFile())) throw invalid();
+    return stat;
+  }
 
   /**
    * Store one image. Returns its receipt, or null when the archive is off.
@@ -58,29 +79,80 @@ function createImageArchive({ dir = process.env.IMAGE_ARCHIVE_DIR, now = () => n
     const at = now();
     const relative = path.posix.join(origin, String(at.getUTCFullYear()), String(at.getUTCMonth() + 1).padStart(2, '0'),
       `${sha256}.${TYPES[mimeType]}`);
-    const file = path.join(root, ...relative.split('/'));
+    const file = await storePath(relative);
     const receipt = { sha256, mimeType, size: data.length, path: relative, origin, archivedAt: at.toISOString() };
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    const sameSize = await fs.stat(file).then(stat => stat.isFile() && stat.size === data.length, () => false);
-    const exists = sameSize && await fs.readFile(file).then(existing =>
-      crypto.createHash('sha256').update(existing).digest('hex') === sha256, () => false);
+    const sidecarFile = file.replace(/\.[a-z]+$/, '.json');
+    const stored = await existingFile(file);
+    await existingFile(sidecarFile);
+    const exists = stored?.size === data.length && await read(receipt).then(() => true, () => false);
     if (!exists) {
       const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
       await fs.writeFile(temporary, data, { flag: 'wx' });
       await fs.rename(temporary, file);
     }
-    const sidecarFile = file.replace(/\.[a-z]+$/, '.json');
-    const sidecarExists = await fs.readFile(sidecarFile, 'utf8').then(text => {
-      try { const record = JSON.parse(text); return record.sha256 === sha256 && record.size === data.length; }
-      catch { return false; }
-    }, () => false);
-    if (!sidecarExists) await fs.writeFile(sidecarFile,
-      `${JSON.stringify({ ...receipt, name: cleanName(name), context }, null, 2)}\n`);
+    const sidecarExists = await fs.open(sidecarFile, constants.O_RDONLY | constants.O_NOFOLLOW).then(async handle => {
+      try { const record = JSON.parse(await handle.readFile('utf8')); return record.sha256 === sha256 && record.size === data.length; }
+      catch { return false; } finally { await handle.close(); }
+    }, error => { if (error.code === 'ENOENT') return false; throw error; });
+    if (!sidecarExists) {
+      const handle = await fs.open(sidecarFile, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW);
+      try { await handle.writeFile(`${JSON.stringify({ ...receipt, name: cleanName(name), context }, null, 2)}\n`); }
+      finally { await handle.close(); }
+    }
     logger?.info?.('Image archived', { origin, sha256, size: data.length, duplicate: exists });
     return { ...receipt, duplicate: exists };
   }
 
-  return Object.freeze({ enabled: Boolean(root), store });
+  async function read(receipt) {
+    try {
+      if (!root || !receipt || !Number.isSafeInteger(receipt.size) || receipt.size < 1 || receipt.size > MAX_BYTES
+        || typeof receipt.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(receipt.sha256)
+        || typeof receipt.mimeType !== 'string' || !Object.hasOwn(TYPES, receipt.mimeType)
+        || typeof receipt.path !== 'string' || !receipt.path || receipt.path.length > 1024
+        || /[\\\x00-\x1f\x7f]/.test(receipt.path) || path.posix.isAbsolute(receipt.path)
+        || path.posix.normalize(receipt.path) !== receipt.path || receipt.path.split('/').some(part => !part || part === '.' || part === '..')) throw invalid();
+      const canonicalRoot = await fs.realpath(root);
+      const rootStat = await fs.lstat(canonicalRoot);
+      if (!rootStat.isDirectory()) throw invalid();
+      const file = path.resolve(canonicalRoot, ...receipt.path.split('/'));
+      if (!file.startsWith(canonicalRoot + path.sep)) throw invalid();
+      const components = [{ path: canonicalRoot, stat: rootStat }];
+      let current = canonicalRoot;
+      const parts = receipt.path.split('/');
+      for (let i = 0; i < parts.length; i++) {
+        current = path.join(current, parts[i]);
+        const stat = await fs.lstat(current);
+        if (stat.isSymbolicLink() || (i < parts.length - 1 ? !stat.isDirectory() : !stat.isFile())) throw invalid();
+        components.push({ path: current, stat });
+      }
+      const beforePath = components.at(-1).stat;
+      const same = (a, b) => a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+      const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        const before = await handle.stat();
+        if (!before.isFile() || before.size !== receipt.size || !same(before, beforePath)) throw invalid();
+        const buffer = Buffer.alloc(receipt.size + 1);
+        let length = 0;
+        while (length < buffer.length) {
+          const result = await handle.read(buffer, length, buffer.length - length, length);
+          if (!result.bytesRead) break;
+          length += result.bytesRead;
+        }
+        if (length !== receipt.size || !same(before, await handle.stat())) throw invalid();
+        for (const entry of components) {
+          const stat = await fs.lstat(entry.path);
+          if (stat.isSymbolicLink() || stat.dev !== entry.stat.dev || stat.ino !== entry.stat.ino) throw invalid();
+          if (entry.path === file && !same(before, stat)) throw invalid();
+        }
+        if (await fs.realpath(root) !== canonicalRoot) throw invalid();
+        const bytes = buffer.subarray(0, length);
+        if (sniff(bytes) !== receipt.mimeType || crypto.createHash('sha256').update(bytes).digest('hex') !== receipt.sha256) throw invalid();
+        return { bytes, mimeType: receipt.mimeType };
+      } finally { await handle.close(); }
+    } catch { throw invalid(); }
+  }
+
+  return Object.freeze({ enabled: Boolean(root), store, read });
 }
 
 let shared = null;

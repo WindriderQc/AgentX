@@ -1,11 +1,11 @@
 'use strict';
 const crypto = require('node:crypto');
-const fs = require('node:fs/promises');
-const path = require('node:path');
+const { isDeepStrictEqual } = require('node:util');
 const ImageOperation = require('../../../models/ImageOperation');
 const { defaultArchive } = require('../imageArchive');
 const { decode } = require('./codec');
 const { TRANSFORM, validateParent, prepareReferences } = require('./parentReference');
+const { retainReferences, loadReferences } = require('./referenceStorage');
 const { loadConfig } = require('./config');
 const { createComfyClient } = require('./comfyClient');
 const { reserve } = require('./gpuReservation');
@@ -94,6 +94,7 @@ async function accept(body, { conversation, signal } = {}) {
   assertRecipe(input.recipe, input.profile);
   signal?.throwIfAborted();
   const prepared = await prepareReferences(input.originals, input.parent, conversation, image);
+  const referenceStorage = await retainReferences(prepared);
   signal?.throwIfAborted();
   const client = createComfyClient(config.workerUrl);
   try { await client.ready(input.profile); } catch { throw fail('Le PC image est indisponible ou occupé. Fais une nouvelle demande quand il sera disponible.', 503); }
@@ -103,9 +104,10 @@ async function accept(body, { conversation, signal } = {}) {
   try {
     op = await ImageOperation.create([{ _id: id, actionKey: body.actionKey, requestHash: input.requestHash,
       ...(conversation && { conversation }), workerSlot: config.workerUrl, workerUrl: config.workerUrl, state: 'accepted', profile: input.profile, request: input.request,
-      references: prepared.references, ...(prepared.lineage && { lineage: prepared.lineage }), jobId: id }], { writeConcern: { w: 1, j: true } });
+      ...(referenceStorage && { referenceStorage }), ...(prepared.lineage && { lineage: prepared.lineage }), jobId: id }], { writeConcern: { w: 1, j: true } });
     op = op[0].toObject();
-    op.references = prepared.references;
+    if (referenceStorage) op.referenceStorage = referenceStorage;
+    if (prepared.lineage) op.lineage = prepared.lineage;
   } catch (error) {
     if (error.code !== 11000) throw error;
     const raced = await ImageOperation.findOne({ actionKey: body.actionKey }).lean();
@@ -128,14 +130,20 @@ async function execute(op, config, client) {
   const cancelled = async () => (await ImageOperation.findById(op._id).select('cancelRequested').lean())?.cancelRequested === true;
   const persist = changes => save(op._id, changes);
   try {
+    const stored = await ImageOperation.findById(op._id).select('+referenceStorage +references').lean();
+    if (!stored || !isDeepStrictEqual(stored.referenceStorage, op.referenceStorage)
+      || !isDeepStrictEqual(stored.lineage, op.lineage)) {
+      throw fail('Les références archivées ne correspondent pas à la demande acceptée.', 503);
+    }
+    const references = await loadReferences(stored);
     await persist({ state: 'reserving' });
     reservation = await reserve(config, op, persist, cancelled);
     await client.ready(op.profile);
     const stats = await client.json('/system_stats');
     if (stats.devices?.[0]?.vram_free < stats.devices?.[0]?.vram_total * 0.75) throw new Error('GPU utilisé par une autre application. Nouvelle demande requise.');
     const refs = [];
-    for (let i = 0; i < op.references.length; i++) {
-      await reservation.assertOwned(); refs.push(await client.upload(Buffer.from(op.references[i]), `agentx-${op._id}-${i}.png`));
+    for (let i = 0; i < references.length; i++) {
+      await reservation.assertOwned(); refs.push(await client.upload(references[i], `agentx-${op._id}-${i}.png`));
     }
     if (await cancelled()) throw Object.assign(new Error('Image request cancelled'), { cancelled: true });
     const execution = buildExecution(op.profile, op.request, refs, op._id);
@@ -217,14 +225,7 @@ async function cancel(id) {
 async function image(id) {
   const op = await ImageOperation.findById(id).lean();
   if (!op?.artifact) throw fail('Image non disponible.', 404);
-  const root = path.resolve(process.env.IMAGE_ARCHIVE_DIR);
-  const file = path.resolve(root, op.artifact.path);
-  if (!file.startsWith(root + path.sep)) throw fail('Invalid artifact path', 500);
-  const stat = await fs.stat(file);
-  if (!stat.isFile() || stat.size !== op.artifact.size) throw fail('Image archive integrity check failed', 503);
-  const bytes = await fs.readFile(file);
-  if (hash(bytes) !== op.artifact.sha256) throw fail('Image archive integrity check failed', 503);
-  return { bytes, mimeType: op.artifact.mimeType };
+  return defaultArchive().read(op.artifact);
 }
 async function retryArchive(id) {
   const op = await ImageOperation.findById(id).select('+output +workerUrl').lean();

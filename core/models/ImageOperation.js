@@ -12,6 +12,16 @@ const executionSchema = new mongoose.Schema({
   graph: { type: mongoose.Schema.Types.Mixed, required: true },
   parameters: { width: Number, height: Number, seed: Number, steps: Number },
 }, { _id: false });
+const referenceReceiptSchema = new mongoose.Schema({
+  path: { type: String, required: true }, sha256: { type: String, required: true, match: /^[0-9a-f]{64}$/ },
+  mimeType: { type: String, required: true }, size: { type: Number, required: true },
+  origin: { type: String, enum: ['uploaded', 'generated'], required: true }, archivedAt: { type: String, required: true },
+  width: { type: Number, required: true }, height: { type: Number, required: true },
+}, { _id: false });
+const referenceStorageSchema = new mongoose.Schema({
+  version: { type: Number, enum: [1], required: true },
+  entries: [{ _id: false, source: { type: referenceReceiptSchema, required: true }, worker: { type: referenceReceiptSchema, required: true } }],
+}, { _id: false });
 const schema = new mongoose.Schema({
   _id: { type: String, required: true },
   actionKey: { type: String, required: true, unique: true },
@@ -21,7 +31,8 @@ const schema = new mongoose.Schema({
   workerUrl: { type: String, select: false },
   state: { type: String, required: true, default: 'accepted' },
   request: { type: mongoose.Schema.Types.Mixed, required: true, select: false },
-  references: { type: [Buffer], select: false },
+  references: { type: [Buffer], select: false, default: undefined },
+  referenceStorage: { type: referenceStorageSchema, select: false },
   lineage: { type: lineageSchema },
   execution: { type: executionSchema, select: false },
   profile: { type: mongoose.Schema.Types.Mixed, required: true },
