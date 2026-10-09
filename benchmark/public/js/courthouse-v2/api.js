@@ -3,7 +3,7 @@
 
 import { apiFetch } from '../utils/api.js';
 
-const BASE = '/api/benchmark';
+const BASE = '/benchmark/api/benchmark';
 
 /**
  * GET /api/benchmark/results/advanced

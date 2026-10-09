@@ -1,0 +1,2 @@
+"""VoiX application package."""
+

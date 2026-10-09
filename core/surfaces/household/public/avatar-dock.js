@@ -123,11 +123,12 @@
       if (readySettled) return;
       readySettled = true;
       clearTimeout(readyTimer);
-      if (renderer !== 'face') { face?.remove(); face = null; }
-      dock.dataset.renderer = renderer;
       resolveReady(renderer);
     };
-    // A slow or broken 3D module keeps the visible orb as Nestor's avatar.
+    const showRenderer = renderer => { dock.dataset.renderer = renderer; finishReady(renderer); };
+    // A slow 3D face must not hold Nestor's first words: the orb stands in meanwhile, and the
+    // face still replaces it when it arrives (a phone often needs more than 7 s). Only a
+    // missing module or a face error removes the face for the visit.
     const readyTimer = setTimeout(() => finishReady('orb'), 7000);
 
     function setMode(next, remember = true) {
@@ -251,22 +252,23 @@
     dock.style.setProperty('--avatar-tint', tint);
 
     loadFace().then(ok => {
-      if (disposed || readySettled) return;
-      if (!ok) { finishReady('orb'); return; }
+      if (disposed) return;
+      if (!ok) { showRenderer('orb'); return; }
       const element = doc.createElement('llmx-face');
       element.setAttribute('tint', tint);
       // Density follows the device, not the window: a narrow desktop window at load must not
       // pin the dense mask to its coarsest level for the whole visit. Weak hardware is capped
       // by the element itself.
       if (root.matchMedia?.('(pointer: coarse)').matches) element.setAttribute('level', 'balanced');
-      element.addEventListener('llmx-face-ready', () => finishReady('face'), { once: true });
+      element.addEventListener('llmx-face-ready', () => { if (face === element) showRenderer('face'); }, { once: true });
       element.addEventListener('llmx-face-error', () => {
-        if (!readySettled) finishReady('orb');
-        else { element.remove(); face = null; dock.dataset.renderer = 'orb'; }
+        element.remove();
+        if (face === element) face = null;
+        showRenderer('orb');
       }, { once: true });
       face = element;
       stage.append(element);
-    }).catch(() => finishReady('orb'));
+    }).catch(() => showRenderer('orb'));
 
     const handle = {
       get mode() { return mode; },

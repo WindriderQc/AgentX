@@ -42,6 +42,7 @@
     els.deleteError = document.getElementById('delete-document-error');
     els.deleteCancel = document.getElementById('delete-document-cancel');
     els.deleteSubmit = document.getElementById('delete-document-submit');
+    els.deleteExclude = document.getElementById('delete-document-exclude');
   }
 
   // ── Empty-index banner (shared pattern; see dashboard.js) ──
@@ -501,6 +502,7 @@
     return 'DELETE ' + documentId;
   }
 
+  /** Resolves the confirmation with false, 'delete' or 'exclude'. */
   function finishDeleteConfirmation(confirmed) {
     var resolve = deleteConfirmationResolve;
     var opener = deleteConfirmationOpener;
@@ -516,7 +518,7 @@
     if (!els.deleteDialog || typeof els.deleteDialog.showModal !== 'function') {
       return Promise.resolve(window.prompt(
         'Delete document ' + documentData.documentId + ' from source provenance ' + (documentData.source || 'Unknown provenance') + ' and all indexed passages?\n\nType ' + expected + ' exactly to confirm.'
-      ) === expected);
+      ) === expected ? 'delete' : false);
     }
 
     if (deleteConfirmationResolve) finishDeleteConfirmation(false);
@@ -528,6 +530,7 @@
     els.deleteInput.setAttribute('aria-invalid', 'false');
     els.deleteError.textContent = '';
     els.deleteSubmit.disabled = true;
+    els.deleteExclude.disabled = true;
     els.deleteDialog.showModal();
     window.setTimeout(function () { els.deleteInput.focus(); }, 0);
 
@@ -549,14 +552,17 @@
   async function confirmDelete(documentData, rowEl, opener) {
     var docId = documentData.documentId;
     var confirmation = deleteConfirmationPhrase(docId);
-    var ok = await requestDeleteConfirmation(documentData, opener);
-    if (!ok) return;
+    var mode = await requestDeleteConfirmation(documentData, opener);
+    if (!mode) return;
+    var exclude = mode === 'exclude';
 
     try {
       els.errorState.hidden = true;
       els.errorState.textContent = '';
       setDocumentsStatus('loading', 'Deleting document', 'Removing document ' + docId + ' and its chunks from the index.');
-      await window.RAG.deleteDocument(docId, confirmation);
+      var response = await window.RAG.deleteDocument(docId, confirmation, exclude);
+      var filesExcluded = response && response.data ? response.data.filesExcluded : null;
+      if (exclude) document.dispatchEvent(new CustomEvent('rag:files-excluded'));
 
       // Remove expand row if present
       var expandRow = findExpandRow(docId);
@@ -582,7 +588,10 @@
         els.emptyState.hidden = false;
         checkEmptyIndex();
       }
-      setDocumentsStatus('ok', 'Document deleted', 'Removed ' + docId + ' from the active index.');
+      setDocumentsStatus('ok', 'Document deleted', 'Removed ' + docId + ' from the active index.' + (!exclude ? ''
+        : filesExcluded ? ' Its scanned file is excluded from later scans.'
+          : filesExcluded === 0 ? ' No scanned file to exclude: it did not come from an ingest folder.'
+            : ' The scanned file could not be marked excluded.'));
     } catch (err) {
       showDeleteFailure(err, opener);
     }
@@ -612,6 +621,7 @@
     els.deleteInput.addEventListener('input', function () {
       var matches = els.deleteInput.value === els.deleteExpected.textContent;
       els.deleteSubmit.disabled = !matches;
+      els.deleteExclude.disabled = !matches;
       els.deleteInput.setAttribute('aria-invalid', els.deleteInput.value && !matches ? 'true' : 'false');
       els.deleteError.textContent = els.deleteInput.value && !matches ? 'Confirmation does not match.' : '';
     });
@@ -624,7 +634,7 @@
         els.deleteInput.focus();
         return;
       }
-      finishDeleteConfirmation(true);
+      finishDeleteConfirmation(event.submitter && event.submitter.value === 'exclude' ? 'exclude' : 'delete');
     });
 
     els.deleteCancel.addEventListener('click', function () {

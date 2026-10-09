@@ -156,6 +156,15 @@ describe('pipeline automation contract', () => {
     });
   });
 
+  test('keeps original task worktree evidence and rejects malformed authority', () => {
+    const raw = { schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA, verification: { status: 'passed' }, changes: {}, usage: {},
+      repository: { baseRevision: 'a'.repeat(40), workspaceRef: 'tasks/0700', verificationProfileFingerprint: 'b'.repeat(64) } };
+    expect(normalizePipelineAutomationEvidence(raw).repository).toEqual(raw.repository);
+    expect(normalizePipelineAutomationEvidence({ ...raw, repository: undefined }).repository).toBeUndefined();
+    expect(() => normalizePipelineAutomationEvidence({ ...raw, repository: { ...raw.repository, workspaceRef: '../seed' } })).toThrow();
+    expect(() => normalizePipelineAutomationEvidence({ ...raw, repository: { ...raw.repository, verificationProfileFingerprint: null } })).toThrow();
+  });
+
   test('normalizes bounded cost provenance without exposing raw billing data', () => {
     const evidence = normalizePipelineAutomationEvidence({
       schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA,
@@ -282,4 +291,14 @@ describe('pipeline automation contract', () => {
       },
     })).toThrow(/estimated cost does not match/);
   });
+});
+
+
+test('keeps actual model and token usage on failed evidence with nullable legacy usage', () => {
+  const raw = { schema: PIPELINE_AUTOMATION_EVIDENCE_SCHEMA, verification: { status: 'failed' }, changes: {},
+    usage: { inputTokens: 0, outputTokens: 3, cacheReadTokens: 0, totalTokens: 3, modelCalls: 1,
+      effectiveModel: 'actual-model', tokenStatus: 'complete' } };
+  expect(normalizePipelineAutomationEvidence(raw).usage).toMatchObject(raw.usage);
+  expect(() => normalizePipelineAutomationEvidence({ ...raw, usage: { ...raw.usage, totalTokens: null } })).toThrow('complete token usage');
+  expect(() => normalizePipelineAutomationEvidence({ ...raw, usage: { ...raw.usage, inputTokens: -1 } })).toThrow();
 });

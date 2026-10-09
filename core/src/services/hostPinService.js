@@ -2,6 +2,7 @@
 
 const HostPreference = require('../../models/HostPreference');
 const { getPinnedEntries, pinNamesMatch } = require('./hostPinPrimitives');
+const { invalidateRoutingSnapshots } = require('./routing/routingSnapshotCache');
 
 function pinError(message, code = 'HOST_PIN_INVALID', statusCode = 400) {
   return Object.assign(new Error(message), { code, statusCode });
@@ -71,7 +72,11 @@ async function mutatePins(hostUrl, transform) {
       },
       { new: true, runValidators: true }
     ).lean();
-    if (result) return result;
+    if (result) {
+      // The effective routing snapshot carries each task's pin (#258).
+      invalidateRoutingSnapshots();
+      return result;
+    }
   }
   throw pinError('Pins changed concurrently; reload and retry', 'HOST_PIN_CONFLICT', 409);
 }

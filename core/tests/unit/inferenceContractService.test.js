@@ -33,11 +33,76 @@ function profileCollection(profile) {
 }
 
 describe('inferenceContractService', () => {
+  describe('configured default output reserve', () => {
+    let originalDefault;
+    beforeEach(() => {
+      originalDefault = process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS;
+      delete process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS;
+    });
+    afterEach(() => {
+      if (originalDefault === undefined) delete process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS;
+      else process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS = originalDefault;
+    });
+
+    function budgetFor(requestedNumCtx, requestedMaxOutputTokens) {
+      return resolveContextBudget(
+        { model: 'model-a', prompt: 'hello', requestedNumCtx, requestedMaxOutputTokens },
+        { resolveContextDetails: async () => null }
+      );
+    }
+
+    it('keeps the product default when no setting is supplied', async () => {
+      expect((await budgetFor(131072)).output).toEqual({
+        reservedTokens: 4096, source: 'default_reserve',
+        defaultMaxTokens: 4096, defaultSource: 'product_default'
+      });
+    });
+
+    it('uses the configured default and preserves the small-window bound', async () => {
+      process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS = '32768';
+      expect((await budgetFor(131072)).output).toEqual({
+        reservedTokens: 32768, source: 'default_reserve',
+        defaultMaxTokens: 32768, defaultSource: 'environment'
+      });
+      expect((await budgetFor(8192)).output.reservedTokens).toBe(2048);
+    });
+
+    it('preserves an explicit caller budget', async () => {
+      process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS = '32768';
+      expect((await budgetFor(131072, 700)).output).toMatchObject({
+        reservedTokens: 700, source: 'caller'
+      });
+      expect((await budgetFor(1024, 2000)).output.reservedTokens).toBe(1024);
+    });
+
+    it('reports the configured reserve without inventing an unresolved window', async () => {
+      process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS = '32768';
+      const budget = await budgetFor();
+      expect(budget.windowTokens).toBeNull();
+      expect(budget.output.reservedTokens).toBe(32768);
+      expect(budget.warnings).toContain('runtime context is unresolved; no context window was inferred');
+    });
+
+    it.each(['0', '-1', '12.5', 'invalid', '9007199254740992'])(
+      'warns and uses the product default for invalid setting %s', async (value) => {
+        process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS = value;
+        const budget = await budgetFor(131072);
+        expect(budget.output).toMatchObject({
+          reservedTokens: 4096, defaultMaxTokens: 4096, defaultSource: 'product_default'
+        });
+        expect(budget.warnings).toContain(
+          'AGENTX_DEFAULT_MAX_OUTPUT_TOKENS must be a positive safe integer; using the product default'
+        );
+      }
+    );
+  });
+
   it('resolves thinking from the deployed host/artifact profile rather than its name', async () => {
     const hostProfile = {
       hostId: 'host-alpha',
       hostUrl: 'http://192.0.2.199:11434',
-      displayName: 'Host Alpha'
+      displayName: 'Host Alpha',
+      gpus: [0, 1].map(index => ({ index, uuid: `GPU-synthetic-${index}`, model: 'synthetic GPU', vramTotalMiB: 24576 }))
     };
     const runtimeFingerprint = buildRuntimeFingerprint(hostProfile, hostProfile.hostUrl);
     const capabilities = await resolveCapabilities(
@@ -46,7 +111,9 @@ describe('inferenceContractService', () => {
       {
         configuredHosts: HOSTS,
         includeArtifactIdentity: true,
-        hostProfilesCollection: profileCollection(hostProfile),
+        hostProfilesCollection: { findOne: jest.fn(async (_query, { projection }) => Object.fromEntries(
+          Object.entries(hostProfile).filter(([key]) => projection[key])
+        )) },
         resolveArtifactDigest: jest.fn(async () => 'sha256:profiled'),
         registryEntry: {
           _id: 'registry-a',
@@ -615,5 +682,38 @@ describe('inferenceContractService', () => {
       method: 'token_counter_plus_message_overhead',
       exact: false
     });
+  });
+
+  it('includes a separate system instruction alongside chat messages', () => {
+    const messages = [{ role: 'user', content: 'hello' }];
+    const base = estimateInputTokens({ messages });
+    const expanded = estimateInputTokens({ messages, system: 's'.repeat(400) });
+    expect(expanded.characters).toBeGreaterThan(base.characters + 399);
+    expect(expanded.tokens).toBeGreaterThan(base.tokens);
+    expect(expanded.exact).toBe(false);
+  });
+
+  it('counts structured message content and native tool-call arguments', () => {
+    const structured = [{ role: 'user', content: [{ type: 'text', text: 'x'.repeat(400) }] },
+      { role: 'assistant', content: null,
+        tool_calls: [{ function: { name: 'read', arguments: { input: 'y'.repeat(400) } } }] }];
+    const expanded = estimateInputTokens({ messages: structured });
+    expect(expanded.characters).toBeGreaterThan(800);
+    expect(expanded.tokens).toBeGreaterThan(estimateInputTokens({
+      messages: [{ role: 'user', content: '[object Object]' }, { role: 'assistant', content: '' }]
+    }).tokens);
+    expect(structured[0].content[0].text).toHaveLength(400);
+  });
+
+  it('reports a budget overflow caused by tool schemas even when the message fits', async () => {
+    const input = { model: 'synthetic', requestedNumCtx: 256, requestedMaxOutputTokens: 64,
+      messages: [{ role: 'user', content: 'hello' }] };
+    const plain = await resolveContextBudget(input);
+    const tools = [{ type: 'function', function: { name: 'read', description: 'z'.repeat(800) } }];
+    const expanded = await resolveContextBudget({ ...input, tools });
+    expect(plain.input.overflowTokens).toBe(0);
+    expect(expanded.input.overflowTokens).toBeGreaterThan(0);
+    expect(expanded.warnings).toContain('estimated input exceeds the available context budget; upstream truncation is possible');
+    expect(expanded.input.estimation.exact).toBe(false);
   });
 });

@@ -193,17 +193,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const tokenLimit = document.getElementById('tokenLimit');
         const contextPercentage = document.getElementById('contextPercentage');
         const contextProgressFill = document.getElementById('contextProgressFill');
-        const currentTokens = conversation.usage.totalTokens || 0;
-        // Authoritative limit comes from the Modelfile (via chat-context-indicator).
-        // Fall back to local config only if the indicator hasn't loaded yet.
-        const maxTokens = window.__chatContextLimit
+        const currentTokens = Number.isFinite(conversation.usage.totalTokens) ? conversation.usage.totalTokens : null;
+        // Native limits come from the selected catalogue entry; execution token
+        // totals do not measure current context occupancy. Local estimates keep
+        // the existing Modelfile and configuration limit.
+        const maxTokens = elements.hostInput.value === 'openclaw' ? Number(elements.modelSelect.selectedOptions[0]?.dataset.contextWindow) || null : window.__chatContextLimit
           || readOptionalContextOverride()
           || state.config?.options?.num_ctx
           || null;
-        const percentage = maxTokens
+        const percentage = elements.hostInput.value !== 'openclaw' && maxTokens && currentTokens !== null
           ? Math.min(100, Math.round((currentTokens / maxTokens) * 100))
           : null;
-        if (tokenCount) tokenCount.textContent = currentTokens.toLocaleString();
+        if (tokenCount) tokenCount.textContent = currentTokens === null ? '—' : currentTokens.toLocaleString();
         if (tokenLimit) tokenLimit.textContent = maxTokens ? maxTokens.toLocaleString() : '—';
         if (contextPercentage) contextPercentage.textContent = percentage == null ? 'unresolved' : `${percentage}%`;
         if (contextProgressFill) {
@@ -216,7 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (costEl) {
         costEl.style.display = 'inline-flex';
         const costAmount = document.getElementById('costAmount');
-        if (costAmount) costAmount.textContent = '$' + (conversation.usage.estimatedCost || 0).toFixed(4);
+        if (costAmount) costAmount.textContent = Number.isFinite(conversation.usage.estimatedCost) ? '$' + conversation.usage.estimatedCost.toFixed(4) : '—';
       }
     } else {
       const tokensEl = document.getElementById('conversationTokens');
@@ -740,6 +741,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     elements.modelSelect.addEventListener('change', () => {
+      updateRoutingModeUi(elements, state, defaults);
       state.requestedRuntime = null;
       state.settings.model = elements.modelSelect.value;
       helpers.persistSettings();
@@ -747,7 +749,7 @@ document.addEventListener('DOMContentLoaded', () => {
       applyChatAvailability();
       // Refresh the Modelfile-derived context indicator (badge + limit pill)
       if (typeof ChatContextIndicator !== 'undefined') {
-        if (!isRouterMode(elements, state) && elements.modelSelect.value) {
+        if (elements.hostInput.value !== 'openclaw' && !isRouterMode(elements, state) && elements.modelSelect.value) {
           ChatContextIndicator.refresh({
             model: elements.modelSelect.value,
             host: targetHost(elements, defaults, { includeRouter: true }) || state.settings?.host
@@ -761,6 +763,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (elements.routingModeSelect) {
       elements.routingModeSelect.addEventListener('change', () => {
+        if (elements.routingModeSelect.value !== 'manual' && elements.hostInput.value === 'openclaw') {
+          elements.hostInput.value = state.ollamaHosts?.find(host => host.available)?.url || '';
+        }
         void queueRoutingModeSelection().catch((err) => {
           if (state.manualRecoveryPending) return;
           helpers.setStatus('Route update failed', 'error');
@@ -785,6 +790,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.ragCompress) elements.ragCompress.addEventListener('change', () => helpers.persistSettings());
 
     elements.hostInput.addEventListener('change', async () => {
+      if (elements.hostInput.value === 'openclaw') elements.routingModeSelect.value = 'manual';
+      updateRoutingModeUi(elements, state, defaults);
       state.requestedRuntime = null;
       helpers.persistSettings();
       await loadHostPreferences(state);

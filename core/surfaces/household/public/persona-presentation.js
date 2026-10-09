@@ -30,6 +30,7 @@
     const id = saved?.personaId || legacy?.personaId;
     return { personaId: personas.some(p => p.id === id) ? id : personas.find(p => p.id === 'nestor')?.id || personas[0]?.id,
       interruption: saved?.interruption !== false,
+      agentId: typeof saved?.agentId === 'string' && /^[a-z0-9_-]{1,64}$/.test(saved.agentId) ? saved.agentId : null,
       lastVoice: profile({ voice: saved?.lastVoice }).voice, profiles };
   }
   function save(storage, preferences) {
@@ -40,12 +41,22 @@
     if (selected) { const index = selected.indexOf('|'); return { provider: selected.slice(0, index), language, voice: selected.slice(index + 1) }; }
     const voice = persona?.voice || {};
     const presentation = preferences?.presentation || voice.presentation || 'feminine';
-    // An instance voice replaces the persona's presentation pair; only an explicit selection overrides it.
-    const voices = presentation === voice.presentation || voice.source === 'instance' ? voice.voices : null;
+    // An instance voice, or one chosen on the Team page, replaces the persona's presentation pair; only an explicit selection overrides it.
+    const voices = presentation === voice.presentation || ['instance', 'team'].includes(voice.source) ? voice.voices : null;
     const defaults = presentation === 'masculine'
       ? { en: 'am_michael', fr: 'am_michael:0.50+ff_siwis:0.50' }
       : { en: 'af_heart', fr: 'ff_siwis' };
     return { provider: voice.provider || 'kokoro', language, voice: voices?.[language] || (!voice.provider || voice.provider === 'kokoro' ? defaults[language] : ''), presentation };
+  }
+  // Voices to try in order, without duplicates: the explicit selection, the persona's
+  // voice (possibly an instance voice) and that persona's catalog voice. Speech then
+  // falls back to the browser's own voice when the speech service is unreachable.
+  function speechChoices(persona, language, preferences = {}) {
+    const fallback = persona?.voice?.fallback;
+    const choices = [speechFor(persona, language, preferences), speechFor(persona, language, { presentation: preferences?.presentation }),
+      ...(fallback ? [speechFor({ voice: fallback }, language, { presentation: preferences?.presentation })] : [])];
+    const seen = new Set();
+    return choices.filter(choice => choice.voice && !seen.has(choice.provider + '|' + choice.voice) && seen.add(choice.provider + '|' + choice.voice));
   }
   function chosenVoice(persona, override, lastVoice) {
     return profile({ voice: override }).voice || persona?.voice?.presentation
@@ -72,6 +83,7 @@
       await context.resume();
       if (signal.aborted) return;
       const bytes = await fetchBytes(signal);
+      if (bytes?.browserSpeech) return await root.NestorConversation?.speakWithBrowser?.(bytes.browserSpeech, signal);
       if (signal.aborted) return;
       const output = context.createGain();
       output.gain.value = Number(gain) || 1;
@@ -87,7 +99,7 @@
       });
     } finally { signal.removeEventListener('abort', close); close(); }
   }
-  const api = { visual, profile, selections, read, save, speechFor, chosenVoice, preview };
+  const api = { visual, profile, selections, read, save, speechFor, speechChoices, chosenVoice, preview };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PersonaPresentation = api;
 })(typeof window === 'undefined' ? globalThis : window);

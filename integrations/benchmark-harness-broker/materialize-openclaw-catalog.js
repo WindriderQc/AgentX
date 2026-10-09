@@ -5,9 +5,9 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 const { fingerprint, normalizeTarget } = require('./contract');
-const { ADAPTER_VERSION } = require('./executors/openclaw-executor');
+const { ADAPTER_VERSION, NATIVE_AGENT_BUDGETS_QUALIFIED } = require('./executors/openclaw-executor');
 
-async function materialize({ openclaw, output, profilePath, additionalProfilePaths = [] }) {
+async function materialize({ openclaw, output, profilePath, additionalProfilePaths = [], nativeCatalogue = null }) {
   if (![openclaw, output, profilePath, ...additionalProfilePaths].every(value => typeof value === 'string' && path.isAbsolute(value))) {
     throw new Error('Explicit absolute OpenClaw, output and instance profile paths are required');
   }
@@ -37,9 +37,22 @@ async function materialize({ openclaw, output, profilePath, additionalProfilePat
     const providerConfig = profile.models?.providers?.[provider];
     const model = providerConfig?.models?.find(entry => entry.id === modelId);
     if (!model) throw new Error('OpenClaw profile does not declare its selected model');
-    const subscription = provider === 'openai' && (model.api || providerConfig.api) === 'openai-chatgpt-responses';
-    if (provider !== 'ollama' && !subscription) throw new Error('OpenClaw cloud profile needs an explicit supported billing policy');
-    if (subscription && !agentId) throw new Error('ChatGPT subscription profile must select its auth-owning agent');
+    const subscription = (model.api || providerConfig.api) === 'openai-chatgpt-responses';
+    const local = provider === 'ollama' && !/[:\-]cloud$/.test(modelId);
+    let billing = subscription ? 'included' : local ? 'local' : null;
+    let pricing = subscription ? { kind: 'free', currency: 'USD', source: 'chatgpt-subscription-included-usage-not-total-subscription-cost' } : null;
+    if (!billing) {
+      nativeCatalogue ||= await require('../../shared/openclawExecutionClient').createOpenClawExecutionClient().catalog();
+      const native = nativeCatalogue.models.find(entry => entry.model === selection);
+      if (!native || nativeCatalogue.runtimeVersion !== runtimeVersion || !['free', 'included', 'paid'].includes(native.billing?.kind)) {
+        throw new Error('OpenClaw cloud profile needs native catalogue billing evidence');
+      }
+      billing = native.billing.kind;
+      pricing = billing === 'paid' ? { kind: 'manual_per_token', currency: 'USD', source: 'openclaw-native-catalog-estimate', effectiveAt: nativeCatalogue.observedAt,
+        ...Object.fromEntries(['input', 'output', 'cacheRead', 'cacheWrite'].map(key => [`${key}NanodollarsPerMillion`, Math.ceil(native.billing.rates[key] * 1e9)])) }
+        : { kind: 'free', currency: 'USD', source: billing === 'included' ? 'native-subscription-included-marginal-cost' : native.billing.source };
+    }
+    if (!local && !agentId) throw new Error('Cloud profile must select its auth-owning native agent');
     const targetId = agentId ? `openclaw-${agentId}` : 'openclaw-local';
     // Read actual schemas from the installed version; no synthetic tool definitions.
     const tools = coding.t({ includeBaseCodingTools: true, includeShellTools: false,
@@ -53,17 +66,21 @@ async function materialize({ openclaw, output, profilePath, additionalProfilePat
       pin('node', process.execPath), pin('openclaw-entry', entryPath), pin('openclaw-package', packagePath),
       pin('openclaw-agent-exec', execPath), pin('openclaw-coding-tools', codingPath),
       pin('openclaw-executor', path.join(__dirname, 'executors/openclaw-executor.js')),
-      pin('broker-contract', path.join(__dirname, 'contract.js'))
+      pin('broker-contract', path.join(__dirname, 'contract.js')),
+      pin('repo-fixture-adapter', path.join(__dirname, 'repoFixture.js')),
+      pin('repo-executable-grader', path.join(__dirname, '../../benchmark/src/services/qualification/executableRepoGrader.js')),
+      pin('repo-task-loader', path.join(__dirname, '../../benchmark/src/services/qualification/repoTaskFixtures.js')),
+      pin('repo-scratch-observers', path.join(__dirname, '../../benchmark/src/services/qualification/calibrationProbes.js'))
     ]);
     const target = normalizeTarget({
-      id: targetId, label: `OpenClaw${agentId ? ` / ${agentId}` : ''} · ${model.name}`, mode: 'native_agent', tier: subscription ? 'free_cloud' : 'local',
-      provider, model: model.id, modelVersion: model.id,
+      id: targetId, label: `OpenClaw${agentId ? ` / ${agentId}` : ''} · ${model.name}`, mode: 'native_agent', tier: local ? 'local' : billing === 'paid' ? 'paid_cloud' : 'free_cloud', billing,
+      provider, model: model.id, modelVersion: 'unknown',
       harness: { name: 'openclaw', version: runtimeVersion }, adapter: { name: 'openclaw-benchmark', version: ADAPTER_VERSION },
       profile: { id: agentId ? targetId : 'openclaw-native', version: '1', fingerprint: fingerprint(profilePins.map(({ name, sha256 }) => ({ name, sha256 }))) },
       api: { name: 'openclaw-agent-exec', version: runtimeVersion }, contextWindow: model.contextWindow,
       capabilities: { candidate: true, judge: false },
-      pricing: subscription ? { kind: 'free', currency: 'USD', source: 'chatgpt-subscription-included-usage-not-total-subscription-cost' } : null,
-      available: true, observedAt: null,
+      pricing,
+      available: NATIVE_AGENT_BUDGETS_QUALIFIED && billing !== 'paid', observedAt: null,
       catalogFingerprint: fingerprint({ runtimeVersion, model, profile }),
       nativePolicy: {
         tools: tools.filter((tool) => allowed.includes(tool.name)).map((tool) => ({ name: tool.name, version: runtimeVersion, schemaFingerprint: fingerprint(tool.parameters) })),

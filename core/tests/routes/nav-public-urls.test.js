@@ -6,10 +6,11 @@ const { normalizeTrustedRuntimeNavItems } = require('../../src/extensions/truste
 
 const navPath = path.join(__dirname, '../../views/partials/nav.ejs');
 const portalPath = path.join(__dirname, '../../views/pages/home.ejs');
+// One address: Benchmark and RAG public URLs carry their path prefix.
 const publicUrls = {
   core: 'https://core.example',
-  benchmark: 'http://bench.example:4181',
-  rag: 'http://rag.example:4182',
+  benchmark: 'https://core.example/benchmark',
+  rag: 'https://core.example/rag',
   data: 'http://data.example:4183',
 };
 
@@ -36,43 +37,102 @@ describe('shared navigation public URL contract', () => {
     expect(hrefFor(html, 'Chat')).toBe('/playground');
     expect(hrefFor(html, 'Nerve Center')).toBe('/nerve-center');
     expect(hrefFor(html, 'Agent Ops')).toBe('/agent-ops');
-    expect(hrefFor(html, 'Compare models')).toBe('http://bench.example:4181/');
-    expect(hrefFor(html, 'Knowledge overview')).toBe('http://rag.example:4182/');
+    expect(hrefFor(html, 'Compare models')).toBe('https://core.example/benchmark/');
+    expect(hrefFor(html, 'Knowledge overview')).toBe('https://core.example/rag/');
     expect(new URL(hrefFor(html, 'Nerve Center'), 'https://192.0.2.99').href)
       .toBe('https://192.0.2.99/nerve-center');
     expect(html).not.toContain('wrong-host.example');
   });
 
-  test('Benchmark stays relative and its Nerve Center hop uses configured Core', async () => {
+  test('Benchmark links its own pages through its public URL and its Nerve Center hop uses configured Core', async () => {
     const html = await renderNav('benchmark');
     expect(hrefFor(html, 'Chat')).toBe('https://core.example/playground');
-    expect(hrefFor(html, 'Compare models')).toBe('/');
+    expect(hrefFor(html, 'Compare models')).toBe('https://core.example/benchmark/');
+    expect(hrefFor(html, 'Leaderboard')).toBe('https://core.example/benchmark/leaderboard');
     expect(hrefFor(html, 'Nerve Center')).toBe('https://core.example/nerve-center');
-    expect(hrefFor(html, 'Knowledge overview')).toBe('http://rag.example:4182/');
+    expect(hrefFor(html, 'Knowledge overview')).toBe('https://core.example/rag/');
   });
 
-  test('RAG stays relative and its Nerve Center hop uses configured Core', async () => {
+  test('RAG links its own pages through its public URL and its Nerve Center hop uses configured Core', async () => {
     const html = await renderNav('rag');
-    expect(hrefFor(html, 'Knowledge overview')).toBe('/');
+    expect(hrefFor(html, 'Knowledge overview')).toBe('https://core.example/rag/');
     expect(hrefFor(html, 'Nerve Center')).toBe('https://core.example/nerve-center');
-    expect(hrefFor(html, 'Compare models')).toBe('http://bench.example:4181/');
+    expect(hrefFor(html, 'Compare models')).toBe('https://core.example/benchmark/');
   });
 
-  test('demo navigation never links its brand to the blocked full-profile portal', async () => {
-    expect(hrefFor(await renderNav('core', 'demo'), 'AgentX')).toBe('/portal/');
-    expect(hrefFor(await renderNav('benchmark', 'demo'), 'AgentX')).toBe('https://core.example/portal/');
-    expect(hrefFor(await renderNav('core', 'full'), 'AgentX')).toBe('/portal/');
+  test('Benchmark and RAG links are the same on every service', async () => {
+    const serviceLinks = html => [...html.matchAll(/href="(https:\/\/core\.example\/(?:benchmark|rag)\/[^"]*)"/g)].map(match => match[1]);
+    const core = serviceLinks(await renderNav('core'));
+    expect(core).toHaveLength(11);
+    expect(serviceLinks(await renderNav('benchmark'))).toEqual(core);
+    expect(serviceLinks(await renderNav('rag'))).toEqual(core);
   });
 
-  test('Chat is a first-class direct destination in full and demo navigation', async () => {
+  test('every profile returns to the same canonical home on Core', async () => {
+    expect(hrefFor(await renderNav('core', 'demo'), 'AgentX')).toBe('/');
+    expect(hrefFor(await renderNav('benchmark', 'demo'), 'AgentX')).toBe('https://core.example/');
+    expect(hrefFor(await renderNav('core', 'full'), 'AgentX')).toBe('/');
+  });
+
+  test('full navigation groups surfaces by use, with one secondary system door', () => {
+    const full = buildProductNavigation({ publicUrls, activePage: 'finance' });
+    expect(full.spaces.map(space => space.label)).toEqual(['Personnel', 'Famille', 'Atelier']);
+    expect(full.spaces.map(space => space.href)).toEqual(['/dad', '/panel', '/pipeline']);
+    expect(full.activeSpace.id).toBe('personal-group');
+    expect(full.navItems.filter(space => space.secondary).map(space => space.label)).toEqual(['Système']);
+    expect(buildProductNavigation({ activePage: 'kids-sounds' }).activeSpace.id).toBe('family-group');
+    expect(buildProductNavigation({ service: 'rag', activePage: 'rag-upload' }).activeSpace.id).toBe('workshop-group');
+  });
+
+  test('demo filters private spaces and destinations while keeping the workshop entry', () => {
+    const demo = buildProductNavigation({ agentxProfile: 'demo', publicUrls });
+    expect(demo.spaces.map(space => space.label)).toEqual(['Atelier']);
+    expect(demo.spaces[0].href).toBe('/playground');
+    const destinations = demo.navItems.flatMap(group => group.children).map(item => item.href);
+    for (const route of ['/dad', '/panel', '/finance', '/psyx', '/pipeline', '/data-toolbox']) {
+      expect(destinations).not.toContain(route);
+    }
+  });
+
+  test('household review has one direct LAN entry in Family across all services', async () => {
+    const navigation = buildProductNavigation({ activePage: 'dad-family' });
+    expect(navigation.activeSpace.id).toBe('family-group');
+    expect(navigation.navItems.flatMap(group => group.children).filter(item => item.id === 'dad-family')).toHaveLength(1);
+    for (const service of ['core', 'benchmark', 'rag']) {
+      const html = await renderNav(service, 'full', 'dad-family');
+      const destination = (service === 'core' ? '' : publicUrls.core) + '/dad/family';
+      expect(hrefFor(html, 'Suivi familial')).toBe(destination);
+      const anchor = [...html.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/g)].find(match => match[0].includes('Suivi familial'))[0];
+      expect(anchor).not.toContain('data-access="adult"');
+      expect(anchor).toContain('aria-current="page"');
+      expect(html).not.toContain('Suivi des lectures');
+      expect(html).not.toContain('Espace parents');
+      expect(hrefFor(await renderNav(service, 'demo'), 'Suivi familial')).toBeUndefined();
+    }
+  });
+
+  test('Chat stays directly reachable in the Atelier menu in both profiles', async () => {
     for (const profile of ['full', 'demo']) {
       const html = await renderNav('core', profile, 'playground');
-      const directChat = html.match(/<a href="\/playground" class="nav-link primary active"[^>]*>[\s\S]*?<\/a>/g) || [];
-      expect(directChat).toHaveLength(1);
-      expect(directChat[0]).toContain('Chat');
-      expect(directChat[0]).toContain('aria-current="page"');
+      expect(hrefFor(html, 'Chat')).toBe('/playground');
+      expect(html).toMatch(/href="\/playground" class="dropdown-item active"[\s\S]*?aria-current="page"/);
       expect(html).not.toContain('/harnesses');
     }
+  });
+
+  test('composed surfaces stay reachable across services and remain excluded from demo', async () => {
+    const surfaces = { Nestor: '/dad', 'Avec Nestor': '/panel', PsyX: '/psyx', Finance: '/finance', 'Data Toolbox': '/data-toolbox' };
+    for (const service of ['core', 'benchmark', 'rag']) {
+      const full = await renderNav(service);
+      const demo = await renderNav(service, 'demo', 'playground');
+      for (const [label, route] of Object.entries(surfaces)) {
+        expect(hrefFor(full, label)).toBe((service === 'core' ? '' : publicUrls.core) + route);
+        expect(hrefFor(demo, label)).toBeUndefined();
+      }
+      expect(demo).not.toContain('nav-trigger-personal-group');
+      expect(demo).not.toContain('nav-trigger-family-group');
+    }
+    expect(await renderNav('core', 'full', 'finance')).toMatch(/href="\/finance"\s+class="dropdown-item active"\s+aria-current="page"/);
   });
 
   const runtimeLaunchers = normalizeTrustedRuntimeNavItems([
@@ -117,7 +177,7 @@ describe('shared navigation public URL contract', () => {
 
   test('frozen Planning lives under History & reference, with Pipeline as the execution authority', async () => {
     const html = await renderNav('core', 'full', 'pipeline');
-    const labs = html.slice(html.indexOf('id="nav-menu-labs-group"'));
+    const labs = html.slice(html.indexOf('id="nav-menu-workshop-group"'));
     expect(labs).toContain('History &amp; reference');
     expect(labs).toContain('Experimental');
     expect(labs.indexOf('History &amp; reference')).toBeGreaterThan(labs.indexOf('Experimental'));
@@ -159,23 +219,24 @@ describe('shared navigation public URL contract', () => {
     }
 
     const ragMaintenance = await renderNav('rag', 'full', 'rag-maintenance');
-    expect(hrefFor(ragMaintenance, 'Maintenance')).toBe('/maintenance');
-    expect(ragMaintenance).toMatch(/href="\/maintenance"[\s\S]*?aria-current="page"/);
+    expect(hrefFor(ragMaintenance, 'Maintenance')).toBe('https://core.example/rag/maintenance');
+    expect(ragMaintenance).toMatch(/href="https:\/\/core\.example\/rag\/maintenance"[\s\S]*?aria-current="page"/);
   });
 
   test('navigation exposes a complete disclosure and keyboard contract', async () => {
     const html = await renderNav('core', 'full', 'pipeline');
-    expect(html).toContain('<nav class="top-nav" aria-label="Primary">');
-    expect(html).toContain('id="nav-trigger-work-group"');
-    expect(html).toContain('aria-controls="nav-menu-work-group"');
-    expect(html).toContain('id="nav-menu-work-group" aria-labelledby="nav-trigger-work-group"');
+    expect(html).toContain('<nav class="top-nav" aria-label="Navigation principale">');
+    expect(html).toContain('id="nav-trigger-workshop-group"');
+    expect(html).toContain('aria-controls="nav-menu-workshop-group"');
+    expect(html).toContain('id="nav-menu-workshop-group" aria-labelledby="nav-trigger-workshop-group"');
     expect(hrefFor(html, 'Pipeline')).toBe('/pipeline');
     expect(html.match(/href="\/pipeline"[\s\S]*?aria-current="page"/)).not.toBeNull();
-    expect(html).toContain("e.key === 'ArrowDown'");
-    expect(html).toContain("e.key === 'Escape'");
-    expect(html).toContain("e.key === 'Home'");
-    expect(html).toContain("e.key === 'End'");
-    expect(html).toContain("container.classList.toggle('has-open-menu'");
+    const controller = fs.readFileSync(path.join(__dirname, '../../public/js/product-navigation.js'), 'utf8');
+    expect(controller).toContain("e.key === 'ArrowDown'");
+    expect(controller).toContain("e.key === 'Escape'");
+    expect(controller).toContain("e.key === 'Home'");
+    expect(controller).toContain("e.key === 'End'");
+    expect(controller).toContain("container.classList.toggle('has-open-menu'");
   });
 
   test('shared layout provides a skip-to-content target without replacing page-owned ids', () => {
@@ -197,10 +258,20 @@ describe('shared navigation public URL contract', () => {
     for (const route of ['/playground', '/models', '/analytics', '/performance', '/prompts', '/council', '/nerve-center', '/agent-ops', '/cluster-schedule', '/memory-review', '/pipeline', '/planning', '/backup']) {
       expect(html).toContain(`href="${route}"`);
     }
-    expect(hrefFor(html, 'Leaderboard')).toBe('http://bench.example:4181/leaderboard');
-    expect(html).toContain('http://rag.example:4182/documents');
+    expect(hrefFor(html, 'Leaderboard')).toBe('https://core.example/benchmark/leaderboard');
+    expect(html).toContain('https://core.example/rag/documents');
     expect(html).not.toContain('host-home-link');
   });
+
+  test.each(['/', '/portal/', '/ecosystem', '/ECOSYSTEM/', '/ecosystem?from=portal#top', '/old/../portal'])(
+    'home omits a configured host return link to its own destination %s', async (url) => {
+      const html = await ejs.renderFile(portalPath, {
+        buildProductNavigation, publicUrls, hostHome: { url, label: 'Mon écosystème' }
+      });
+      expect(html).not.toContain('id="host-home-link"');
+      expect(html).toContain('aria-label="Choisir un espace"');
+    }
+  );
 
   test('home preserves optional host-home and normalized runtime launchers', async () => {
     const html = await ejs.renderFile(portalPath, {

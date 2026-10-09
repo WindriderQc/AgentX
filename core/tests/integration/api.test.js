@@ -97,34 +97,21 @@ describe('API Routes Integration', () => {
       }));
     });
 
-    it('keeps exact internal canary artifacts stored but out of Playground history', async () => {
-      const mockConversations = [
-        {
-          _id: { toHexString: () => '507f1f77bcf86cd799439011' },
-          title: 'Reply exactly FINAL_CORE_QWEN38_OK',
-          updatedAt: new Date('2026-08-20T02:00:00.000Z'),
-          model: 'qwen',
-          messages: [{ role: 'user', content: 'Reply exactly FINAL_CORE_QWEN38_OK' }]
-        },
-        {
-          _id: { toHexString: () => '507f1f77bcf86cd799439012' },
-          title: 'Plan a benchmark canary rollout',
-          updatedAt: new Date('2026-08-20T01:00:00.000Z'),
-          model: 'qwen',
-          messages: [{ role: 'user', content: 'Help with a canary rollout.' }]
-        }
-      ];
+    it('keeps internal canary artifacts out of Playground history in the query itself', async () => {
       const mockFind = Conversation.__mocks.find;
-      const mockSelect = jest.fn().mockResolvedValue(mockConversations);
+      const mockSelect = jest.fn().mockResolvedValue([]);
       const mockLimit = jest.fn().mockReturnValue({ select: mockSelect });
       const mockSort = jest.fn().mockReturnValue({ limit: mockLimit });
       mockFind.mockReturnValue({ sort: mockSort });
 
-      const res = await request(app).get('/api/history').expect(200);
+      await request(app).get('/api/history').expect(200);
 
-      expect(res.body.data.map((item) => item.title))
-        .toEqual(['Plan a benchmark canary rollout']);
-      expect(mockConversations).toHaveLength(2);
+      const [query] = mockFind.mock.calls[0];
+      expect(query.$nor).toEqual(expect.arrayContaining([
+        { title: expect.any(RegExp) },
+        { tags: { $in: expect.arrayContaining(['agentx:internal-probe']) } }
+      ]));
+      expect(mockSelect).toHaveBeenCalledWith(expect.objectContaining({ messages: { $slice: -1 } }));
     });
 
     it('should handle errors gracefully', async () => {

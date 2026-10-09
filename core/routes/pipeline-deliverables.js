@@ -1,8 +1,8 @@
 'use strict';
 
 // Task deliverables: files a pipeline task produced, served only inside that
-// task's scope. Gateway traffic reaches /api/pipeline only with an adult
-// session (parentalAccess); the family entry never lists these paths.
+// task's scope. Human management uses the private LAN; native workers keep
+// their bounded task scope. A selected page does not establish human identity.
 const router = require('express').Router();
 const envelope = require('../src/helpers/responseEnvelope');
 const logger = require('../config/logger');

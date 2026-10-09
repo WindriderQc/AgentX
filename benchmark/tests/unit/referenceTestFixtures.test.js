@@ -14,7 +14,8 @@ const FIXTURED_PROMPTS = [
     'Dependency Injection Refactor',
     'Count Words Function',
     'Arithmetic Expression Evaluator',
-    'Build Order With Cycle Detection'
+    'Build Order With Cycle Detection',
+    ...Object.keys(require('../fixtures/pairedCatalogSolutions.json'))
 ];
 
 describe('authored reference tests', () => {
@@ -39,9 +40,13 @@ describe('authored reference tests', () => {
         }
     });
 
-    test('every coding calibration item carries a valid fixture whose entry the reference answer defines', () => {
-        const coding = calibration.filter((item) => item.category === 'coding');
+    test('every coding calibration item without a reference answer carries a valid fixture its expected answer defines', () => {
+        // A diagnosis item mirrors the catalog's coding prompts without tests: it is
+        // graded against its reference answer instead (reference scorer).
+        const coding = calibration.filter((item) => item.category === 'coding' && !item.reference_answer);
         expect(coding).toHaveLength(4);
+        expect(calibration.filter((item) => item.category === 'coding' && item.reference_answer)
+            .every((item) => item.reference_tests === undefined)).toBe(true);
         for (const item of coding) {
             const { valid, errors, value } = validateReferenceTests(item.reference_tests);
             expect({ id: item.id, valid, errors }).toEqual({ id: item.id, valid: true, errors: [] });

@@ -32,7 +32,7 @@ const {
     persistSuccessfulResult,
     persistFailedResult
 } = require('../../../src/services/benchmark/batchResultPersistence');
-const { normalizeBenchmarkTarget } = require('../../../../shared/benchmarkTargetContract');
+const { buildPromptFingerprint, normalizeBenchmarkTarget } = require('../../../../shared/benchmarkTargetContract');
 
 const hex = character => character.repeat(64);
 
@@ -114,16 +114,23 @@ describe('batchResultPersistence truncation quarantine', () => {
         mockWaitForResultInvalidation.mockReset().mockReturnValue(Promise.resolve({ resolved: true }));
     });
 
-    it('stores native evidence for judging without treating it as a diagnostic model run', async () => {
+    it('stores a native agent result as rankable evidence, like a bare model result', async () => {
         await persistSuccessfulResult(baseArgs({
             executionTarget: { executionKind: 'harness', mode: 'native_agent' },
-            executionSettings: { rankable_mode: false }, responseTruncated: false,
+            executionSettings: { rankable_mode: true }, responseTruncated: false,
             providerUsage: { inputTokens: 3012, outputTokens: 64, turns: 3, toolCalls: 2 }
         }));
-        expect(savedDocs[0].excluded_from_leaderboard).toBe(true);
+        expect(savedDocs[0].excluded_from_leaderboard).toBe(false);
         expect(savedDocs[0].needs_review).toBe(false);
         expect(savedDocs[0].success).toBe(true);
         expect(savedDocs[0].provider_usage.toolCalls).toBe(2);
+    });
+
+    it('pins the prompt each result ran by id and content fingerprint', async () => {
+        const args = baseArgs();
+        await persistSuccessfulResult(args);
+        expect(savedDocs[0].prompt_id).toBe('prompt-id');
+        expect(savedDocs[0].prompt_fingerprint).toBe(buildPromptFingerprint(args.prompt));
     });
 
     it('does not persist an unlabeled prompt-eval duration as TTFT', async () => {
@@ -273,14 +280,15 @@ describe('batchResultPersistence truncation quarantine', () => {
         expect(doc.scoring_method).toBe('pending');
         expect(doc.needs_review).toBe(true);
         expect(doc.excluded_from_leaderboard).toBe(true);
-        expect(doc.review_reason).toMatch(/generation token limit while hidden reasoning was present/);
+        expect(doc.review_reason).toMatch(/reached its token budget while hidden reasoning was present/);
         expect(doc.truncation).toMatchObject({
             response_truncated: true,
             hidden_response_cap: false,
             visible_response_budget: true,
             thinking_present: true,
             thinking_only_response: false,
-            thinking_runaway: true,
+            thinking_budget_exhausted: true,
+            thinking_runaway: false,
             truncation_invalidates_score: true
         });
     });
@@ -308,7 +316,7 @@ describe('batchResultPersistence truncation quarantine', () => {
         expect(doc.truncation.thinking_only_response).toBe(true);
     });
 
-    it('quarantines thinking runaway even when no visible answer was produced', async () => {
+    it('records exhausted thinking budget even when no visible answer was produced', async () => {
         await persistSuccessfulResult(baseArgs({
             cleanedResponse: '',
             extractedThinking: 'hidden reasoning consumed the full generation budget',
@@ -329,13 +337,14 @@ describe('batchResultPersistence truncation quarantine', () => {
         expect(doc.scoring_method).toBe('response_contract_failed');
         expect(doc.excluded_from_leaderboard).toBe(true);
         expect(doc.review_reason).toMatch(/hidden reasoning but no visible final answer/);
-        expect(doc.review_reason).toMatch(/generation token limit while hidden reasoning was present/);
+        expect(doc.review_reason).toMatch(/reached its token budget while hidden reasoning was present/);
         expect(doc.truncation).toMatchObject({
             response_truncated: true,
             visible_response_budget: true,
             thinking_present: true,
             thinking_only_response: true,
-            thinking_runaway: true,
+            thinking_budget_exhausted: true,
+            thinking_runaway: false,
             truncation_invalidates_score: true
         });
     });
@@ -375,6 +384,7 @@ describe('batchResultPersistence truncation quarantine', () => {
         expect(doc.needs_review).toBe(true);
         expect(doc.excluded_from_leaderboard).toBe(true);
         expect(doc.review_reason).toMatch(/Infrastructure failure/);
+        expect(doc.prompt_fingerprint).toBe(buildPromptFingerprint(args.prompt));
     });
 
     it('persists harness results with the public receipt, its digest and a timestamp', async () => {

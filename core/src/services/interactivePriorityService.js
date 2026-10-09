@@ -50,6 +50,15 @@ function householdTurnActive(now = Date.now()) {
   return state.activeTurns > 0 || now - state.lastTurnEndedAt < TURN_GRACE_MS;
 }
 
+// How long the household has been quiet, for work that waits for a calm
+// moment before it starts (Benchmark's coverage job). A process that has seen
+// no turn yet counts as quiet since it started.
+const startedAt = Date.now();
+function householdIdle(now = Date.now()) {
+  const since = state.activeTurns > 0 ? now : state.lastTurnEndedAt || startedAt;
+  return { activeTurns: state.activeTurns, lastTurnEndedAt: state.lastTurnEndedAt || null, idleMs: Math.max(0, now - since) };
+}
+
 function noteBusy(now = Date.now()) {
   state.lastBusyAt = now;
 }
@@ -67,10 +76,11 @@ function householdBusyError(cause) {
 async function requestYield(host, now = new Date()) {
   const key = canonicalHost(host);
   if (!key) return { requested: false };
+  // A workload's shared host does not hold the turn back, so it is not asked.
   const result = await RuntimeCoordination.updateOne(
-    { _id: 'runtime', workloads: { $elemMatch: { hosts: key } } },
+    { _id: 'runtime', workloads: { $elemMatch: { hosts: key, sharedHosts: { $ne: key } } } },
     { $set: { 'workloads.$[w].yieldRequestedAt': now } },
-    { arrayFilters: [{ 'w.hosts': key }] }
+    { arrayFilters: [{ 'w.hosts': key, 'w.sharedHosts': { $ne: key } }] }
   );
   return { requested: Boolean(result.modifiedCount) };
 }
@@ -84,7 +94,7 @@ function demandActive(workload, runtime, nowMs) {
   if (!workload.yieldRequestedAt) return false;
   return nowMs - new Date(workload.yieldRequestedAt).getTime() < REQUEST_FRESH_MS
     || householdTurnActive(nowMs)
-    || ordinaryInferenceOn(runtime, workload.hosts || []);
+    || ordinaryInferenceOn(runtime, (workload.hosts || []).filter(host => !(workload.sharedHosts || []).includes(host)));
 }
 
 // Called by the workload owner before each prompt. While household demand is
@@ -130,6 +140,7 @@ module.exports = {
   TURN_GRACE_MS,
   beginHouseholdTurn,
   householdTurnActive,
+  householdIdle,
   noteBusy,
   noteWaiting,
   onWaiting,

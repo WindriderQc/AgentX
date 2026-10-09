@@ -8,6 +8,7 @@ const { getRagServiceClient } = require('../ragServiceClient');
 const MemoryReviewRun = require('../../../models/MemoryReviewRun');
 const { LIMITS } = require('./policy');
 const { scoreFloor } = require('../../helpers/scoreFloor');
+const { personal } = require('../memoryNoteService');
 
 const RAG_SEARCH_TIMEOUT_MS = Math.max(
   1000,
@@ -19,11 +20,41 @@ const MAX_OBSERVATIONS_SEARCHED = 20;
 const RAG_MIN_SCORE = scoreFloor(process.env.MEMORY_REVIEW_RAG_MIN_SCORE, 0.55);
 const DUPLICATE_SCORE = scoreFloor(process.env.MEMORY_REVIEW_DUPLICATE_SCORE, 0.8);
 
+// The owner's notes are the memory the agents actually read. Their closest
+// entries are searched by meaning, inside the owner's space, and reported
+// with the document matches under the source name below.
+const OWNER_NOTES_SOURCE = 'owner-memory';
+
+async function ownerNoteMatches(items, textOf, { ownerNotes, limit }) {
+  if (!items.length) return { matches: [], failures: 0, reason: null };
+  const notes = ownerNotes || personal();
+  let found;
+  try {
+    found = await notes.similar(items.map((item) => String(textOf(item)).slice(0, 300)),
+      { limit, minScore: RAG_MIN_SCORE });
+  } catch {
+    return { matches: [], failures: items.length, reason: 'owner notes could not be searched by meaning' };
+  }
+  const matches = [];
+  let failures = 0;
+  found.results.forEach((entry, position) => {
+    if (entry.error) { failures += 1; return; }
+    for (const note of entry.notes) matches.push({ item: items[position], note });
+  });
+  // A note without a current vector cannot be found: say so instead of
+  // letting the run read as "nothing known".
+  if (found.unindexed) {
+    return { matches, failures: Math.max(failures, 1), reason: `${found.unindexed} owner note(s) are not indexed yet` };
+  }
+  return { matches, failures, reason: failures ? 'owner notes could not be searched by meaning' : null };
+}
+
 /**
- * Search nestor-memory + agent-artifacts for near matches of the strongest
- * observations. Returns { ragMatches, degraded, degradedReason }.
+ * Search the owner's notes, the retired nestor-memory lane and
+ * agent-artifacts for near matches of the strongest observations. Returns
+ * { ragMatches, degraded, degradedReason }.
  */
-async function buildRagDedupContext(observations, { ragClient } = {}) {
+async function buildRagDedupContext(observations, { ragClient, ownerNotes } = {}) {
   const client = ragClient || getRagServiceClient();
   const strongest = [...observations]
     .sort((a, b) => (b.recurrence?.observationCount || 1) - (a.recurrence?.observationCount || 1))
@@ -32,6 +63,20 @@ async function buildRagDedupContext(observations, { ragClient } = {}) {
   const ragMatches = [];
   let failures = 0;
   let lastError = null;
+  const owned = await ownerNoteMatches(strongest, (obs) => obs.text, { ownerNotes, limit: 3 });
+  if (owned.failures) {
+    failures += owned.failures;
+    lastError = new Error(owned.reason);
+  }
+  for (const { item, note } of owned.matches) {
+    ragMatches.push({
+      observationId: item.observationId,
+      source: OWNER_NOTES_SOURCE,
+      documentId: note.id,
+      score: note.score,
+      gist: String(note.text || '').replace(/\s+/g, ' ').slice(0, 200),
+    });
+  }
   for (const source of ['nestor-memory', 'agent-artifacts']) {
     const settled = await Promise.allSettled(strongest.map((obs) =>
       client.searchSimilarChunks(String(obs.text).slice(0, 300), {
@@ -58,7 +103,7 @@ async function buildRagDedupContext(observations, { ragClient } = {}) {
       }
     }
   }
-  const attempted = strongest.length * 2;
+  const attempted = strongest.length * 3;
   const degraded = attempted > 0 && failures > 0;
   return {
     ragMatches: ragMatches.slice(0, 120),
@@ -136,8 +181,10 @@ async function loadPriorCandidatesByIds(candidateIds, excludeRunId) {
 
 /** Search the final normalized candidate statements, not only their source
  * observations. The returned conflicts are advisory and never auto-resolve. */
-async function searchCandidateDuplicates(candidates, { ragClient } = {}) {
+async function searchCandidateDuplicates(candidates, { ragClient, ownerNotes } = {}) {
   const client = ragClient || getRagServiceClient();
+  const bounded = (candidates || []).slice(0, LIMITS.MAX_CANDIDATES_PER_RUN);
+  const owned = await ownerNoteMatches(bounded, (candidate) => candidate.statement, { ownerNotes, limit: 2 });
   const jobs = [];
   for (const candidate of (candidates || []).slice(0, LIMITS.MAX_CANDIDATES_PER_RUN)) {
     for (const source of ['nestor-memory', 'agent-artifacts']) {
@@ -152,7 +199,16 @@ async function searchCandidateDuplicates(candidates, { ragClient } = {}) {
       timeoutMs: RAG_SEARCH_TIMEOUT_MS,
     }).then((results) => ({ candidate, source, results }))));
   const byId = new Map();
-  let failures = 0;
+  let failures = owned.failures;
+  for (const { item, note } of owned.matches.filter((match) => match.note.score >= DUPLICATE_SCORE)) {
+    const conflicts = byId.get(item.candidateId) || [];
+    conflicts.push({
+      authority: 'local_memory',
+      sourceRef: note.id,
+      summary: `an existing owner note scores ${note.score} against the final candidate statement: ${String(note.text).replace(/\s+/g, ' ').slice(0, 160)}`,
+    });
+    byId.set(item.candidateId, conflicts.slice(0, 4));
+  }
   for (const outcome of settled) {
     if (outcome.status === 'rejected') {
       failures += 1;
@@ -169,7 +225,7 @@ async function searchCandidateDuplicates(candidates, { ragClient } = {}) {
     }
     byId.set(candidate.candidateId, conflicts.slice(0, 4));
   }
-  return { byId, degraded: failures > 0, failures, attempted: jobs.length };
+  return { byId, degraded: failures > 0, failures, attempted: jobs.length + bounded.length };
 }
 
 /** Mark candidates that look like existing memory (high-score RAG match). */
@@ -179,7 +235,7 @@ function duplicateConflictsFor(candidate, ragMatches) {
     .filter((m) => m.score >= DUPLICATE_SCORE && evidenceIds.has(m.observationId))
     .slice(0, 3)
     .map((m) => ({
-      authority: 'rag',
+      authority: m.source === OWNER_NOTES_SOURCE ? 'local_memory' : 'rag',
       sourceRef: m.documentId || m.source,
       summary: `existing ${m.source} document scores ${m.score} against cited evidence`,
     }));
@@ -191,6 +247,7 @@ module.exports = {
   loadPriorCandidatesByIds,
   searchCandidateDuplicates,
   duplicateConflictsFor,
+  OWNER_NOTES_SOURCE,
   RAG_SEARCH_TIMEOUT_MS,
   RAG_MIN_SCORE,
   DUPLICATE_SCORE,

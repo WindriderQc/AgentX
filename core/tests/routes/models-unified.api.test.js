@@ -3,6 +3,12 @@ const request = require('supertest');
 
 const mockGetAllModels = jest.fn();
 const mockGetModelSources = jest.fn();
+const mockOpenClawSource = jest.fn();
+const mockOpenClawModels = jest.fn();
+jest.mock('../../src/services/execution/openclawSources', () => ({
+  readOpenClawSource: (...args) => mockOpenClawSource(...args),
+  openClawModels: (...args) => mockOpenClawModels(...args)
+}));
 
 jest.mock('../../src/services/modelAggregator', () => ({
   getAllModels: (...args) => mockGetAllModels(...args),
@@ -39,6 +45,23 @@ describe('Unified models routes', () => {
 
     app = express();
     app.use('/api/models', require('../../routes/models-unified'));
+  });
+
+  it('publishes both execution sources independently of Ollama inventory', async () => {
+    mockOpenClawSource.mockResolvedValue({ id: 'openclaw', configured: true, available: true });
+    const response = await request(app).get('/api/models/execution-sources').expect(200);
+    expect(response.body.sources.map(source => source.id)).toEqual(['local', 'openclaw']);
+    expect(mockGetAllModels).not.toHaveBeenCalled();
+  });
+
+  it('native selection reads its source catalogue independently of the local profiler gate', async () => {
+    process.env.REQUIRE_PROFILED_MODELS = 'true';
+    mockOpenClawModels.mockResolvedValue([{ name: 'openclaw:model:fixture/model', chatAllowed: true }]);
+    const response = await request(app).get('/api/models/all?host=openclaw&scope=runtime').expect(200);
+    expect(response.body[0].name).toBe('openclaw:model:fixture/model');
+    expect(response.headers['x-require-profiled-models']).toBe('false');
+    expect(response.headers['x-model-evidence']).toBe('runtime-source');
+    expect(mockGetAllModels).not.toHaveBeenCalled();
   });
 
   it('returns /all as a flat array with readiness data', async () => {

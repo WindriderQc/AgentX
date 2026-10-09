@@ -8,6 +8,10 @@ your documents and compare model quality in one place.
 use Core's shared capabilities. Other deployments use the same repository with
 the capabilities they enable.
 
+The common home at `/` offers Personnel, Famille and Atelier in the full profile.
+The same navigation connects surfaces and services, with system tools behind
+Système. The demo profile shows only its enabled capabilities.
+
 One repository contains several Node.js/Express services, each with its own
 dependencies and tests. Docker Compose runs them together through one launcher.
 
@@ -19,7 +23,7 @@ dependencies and tests. Docker Compose runs them together through one launcher.
 | [`data/`](data/) | Optional inventory and telemetry service | Collectors and system observations |
 | [`shared/`](shared/) | Contracts, utilities and shared test infrastructure | Code used by multiple services |
 | [`integrations/`](integrations/) | Adapters for OpenClaw, voice, operations and external tools | Connecting an external system |
-| [`skills/`](skills/) | Portable content authoring and validation capabilities | Capabilities consumers invoke explicitly |
+| [`skills/`](skills/) | Portable content authoring and validation capabilities, and the operator skill Core serves at `/api/operator-skill/download` | Capabilities consumers invoke explicitly |
 
 **Core owns the canonical application data and shared capabilities.** Interfaces
 compose them; external integrations call them. A new interface uses Core's
@@ -28,6 +32,8 @@ conversation and task storage rather than creating its own.
 MongoDB stores application data, Qdrant provides vector search, and Ollama serves
 the configured models. AgentX runs locally or on a private network. See
 [status](docs/STATUS.md) for available features and outstanding acceptance.
+The [agents, personalities and voice reference](docs/AGENTS_AND_VOICE.md)
+explains selection, execution attribution, speech fallback and qualification.
 
 ## Start locally
 
@@ -115,9 +121,17 @@ Before contributing, read this README, [Status](docs/STATUS.md),
 order. Preserve personal, family and child access boundaries and the existing
 stack. Record modernization proposals in [MODERNIZATION.md](MODERNIZATION.md).
 
+Human pages and APIs use [private LAN HTTPS](docs/PARENTAL_ACCESS.md) without
+an account or adult code; anyone reaching an entry can use human capabilities.
+Native integration tokens and family memory/tool boundaries remain separate.
+[Local voice identification](docs/VOICE_ID.md) is a proposed next step, not delivered.
+
+See [execution sources](docs/EXECUTION_SOURCES.md) for local direct and OpenClaw model/agent execution.
+
 AgentX runs locally or on your LAN. Keep runtime secrets, instance configuration
 and personal content outside Git. The code is [MIT licensed](LICENSE); bundled
-animal sounds retain their [individual licences](core/surfaces/household/public/sounds/CREDITS.md).
+animal sounds retain their [individual licences](core/surfaces/household/public/sounds/CREDITS.md),
+and the Data Toolbox world map geometry [its own](core/surfaces/data-toolbox/public/geo/CREDITS.md).
 
 [Status](docs/STATUS.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [Operations](docs/OPERATIONS.md) · [Decisions](docs/adr/0001-one-repository.md) ·

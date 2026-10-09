@@ -4,6 +4,7 @@ const mockGetActivePrompt = jest.fn();
 const mockBuildSystemPrompt = jest.fn();
 const mockGetOrCreateProfile = jest.fn();
 const mockPersistConversation = jest.fn();
+const mockFindConversationForUpdate = jest.fn();
 const mockGetHostPreference = jest.fn();
 
 jest.mock('node-fetch', () => mockFetch);
@@ -42,6 +43,7 @@ jest.mock('../../src/helpers/ollamaResponseHandler', () => ({
       }
     };
   }),
+  ollamaPhaseTimings: jest.requireActual('../../src/helpers/ollamaResponseHandler').ollamaPhaseTimings,
   isThinkingModel: jest.fn(() => false),
   extractResponse: jest.fn()
 }));
@@ -75,7 +77,8 @@ jest.mock('../../src/services/chat/ragContextBuilder', () => ({
   buildRagContext: jest.fn()
 }));
 jest.mock('../../src/services/chat/conversationPersistence', () => ({
-  persistConversation: mockPersistConversation
+  persistConversation: mockPersistConversation,
+  findConversationForUpdate: mockFindConversationForUpdate
 }));
 jest.mock('../../src/services/ragServiceClient', () => ({
   getRagServiceClient: jest.fn()
@@ -108,6 +111,7 @@ describe('chatServiceStream', () => {
       assistantMessageId: 'msg-1'
     });
     mockGetHostPreference.mockResolvedValue(null);
+    mockFindConversationForUpdate.mockResolvedValue(null);
   });
 
   it('surfaces Ollama error details without masking them in finally cleanup', async () => {
@@ -134,6 +138,32 @@ describe('chatServiceStream', () => {
 
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError.mock.calls[0][0].message).toContain('invalid options: frequency_penalty');
+  });
+
+  it('reports a failed history save as an error instead of a done receipt', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({ message: { content: 'Reply' }, done: false }) + '\n');
+        yield Buffer.from(JSON.stringify({ done: true, eval_count: 1, prompt_eval_count: 1 }) + '\n');
+      })()
+    });
+    mockPersistConversation.mockRejectedValueOnce(Object.assign(
+      new Error('The reply could not be saved to history.'),
+      { code: 'CONVERSATION_PERSIST_FAILED', statusCode: 503 }
+    ));
+    const onComplete = jest.fn();
+    const onError = jest.fn();
+
+    await handleChatRequestStream({
+      userId: 'user-1', model: 'qwen3:14b', message: 'hello', target: 'http://192.0.2.66:11434',
+      onToken: jest.fn(), onThinking: jest.fn(), onComplete, onError
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+      code: 'CONVERSATION_PERSIST_FAILED', statusCode: 503
+    }));
   });
 
   it('classifies missing Ollama models in streaming mode', async () => {
@@ -306,6 +336,50 @@ describe('chatServiceStream', () => {
     }));
   });
 
+  it('records the Ollama phase timings and time to first output of a streamed chat', async () => {
+    routeRequest.mockResolvedValue({
+      routed: true,
+      model: 'qwen3-2507-30b-long-48k',
+      target: 'http://192.0.2.66:11434',
+      host: 'primary',
+      taskType: 'analysis'
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({ message: { content: 'Hello' }, done: false }) + '\n');
+        yield Buffer.from(JSON.stringify({
+          done: true,
+          prompt_eval_count: 12,
+          eval_count: 2,
+          load_duration: 4_000_000,
+          prompt_eval_duration: 250_400_000,
+          eval_duration: 90_600_000
+        }) + '\n');
+      })()
+    });
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'auto',
+      message: 'Analyze this',
+      autoRoute: true,
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete: jest.fn(),
+      onError: jest.fn()
+    });
+
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'success',
+      tokensIn: 12,
+      loadMs: 4,
+      promptEvalMs: 250,
+      evalMs: 91,
+      firstTokenMs: expect.any(Number)
+    }));
+  });
+
   it('records streaming upstream failures with a terminal error decision', async () => {
     routeRequest.mockResolvedValue({
       routed: true,
@@ -335,6 +409,29 @@ describe('chatServiceStream', () => {
         outcome: expect.objectContaining({ code: 'upstream_error' })
       })
     }));
+  });
+
+  it('honors explicit RAG off and skips profile/history without skipping turn persistence', async () => {
+    const previousEnv = process.env.RAG_ENABLED; process.env.RAG_ENABLED = 'true';
+    mockFetch.mockResolvedValue({ ok: true, body: (async function* () {
+      yield Buffer.from(JSON.stringify({ message: { content: 'Synthetic reply' }, done: true }) + '\n');
+    })() });
+    try {
+      const onError = jest.fn();
+      await handleChatRequestStream({ userId: 'user-1', model: 'qwen3:14b', message: 'Current question',
+        conversationId: '507f1f77bcf86cd799439011', messages: [{ role: 'assistant', content: 'Synthetic past' }],
+        ragEnabled: true, useRag: false, conversationFeatures: { profileContext: false, historyContext: false },
+        onToken: jest.fn(), onThinking: jest.fn(), onComplete: jest.fn(), onError });
+      expect(onError).not.toHaveBeenCalled();
+      expect(mockGetOrCreateProfile).not.toHaveBeenCalled();
+      expect(require('../../src/services/chat/ragContextBuilder').buildRagContext).not.toHaveBeenCalled();
+      expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({ messages: [
+        { role: 'system', content: 'You are helpful.' }, { role: 'user', content: 'Current question' }
+      ] }));
+      expect(mockPersistConversation).toHaveBeenCalledWith(expect.objectContaining({
+        conversationId: '507f1f77bcf86cd799439011', message: 'Current question', assistantContent: 'Synthetic reply'
+      }));
+    } finally { if (previousEnv === undefined) delete process.env.RAG_ENABLED; else process.env.RAG_ENABLED = previousEnv; }
   });
 
   it('includes the current user message in the streaming Ollama payload', async () => {
@@ -374,6 +471,48 @@ describe('chatServiceStream', () => {
         { role: 'user', content: 'Stream this' }
       ]
     }));
+  });
+
+  it('rehydrates stored prior turns into the model context for a conversationId continuation', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* stream() {
+        yield Buffer.from(JSON.stringify({ message: { content: 'Looking at it' }, done: false }) + '\n');
+        yield Buffer.from(JSON.stringify({ done: true, eval_count: 1, prompt_eval_count: 1 }) + '\n');
+      })()
+    });
+    // Stored earlier turns from the first call of this conversation (#530).
+    mockFindConversationForUpdate.mockResolvedValue({
+      messages: [
+        { role: 'user', content: 'Show me the module' },
+        { role: 'assistant', content: 'Here is the module: 150 lines of code' }
+      ]
+    });
+
+    await handleChatRequestStream({
+      userId: 'user-1',
+      model: 'qwen3:14b',
+      message: 'Which line has the bug?',
+      conversationId: '507f1f77bcf86cd799439011',
+      target: 'http://192.0.2.66:11434',
+      onToken: jest.fn(),
+      onThinking: jest.fn(),
+      onComplete: jest.fn(),
+      onError: jest.fn()
+    });
+
+    expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [
+        { role: 'system', content: 'You are helpful.' },
+        { role: 'user', content: 'Show me the module' },
+        { role: 'assistant', content: 'Here is the module: 150 lines of code' },
+        { role: 'user', content: 'Which line has the bug?' }
+      ]
+    }));
+    expect(mockFindConversationForUpdate).toHaveBeenCalledWith({
+      conversationId: '507f1f77bcf86cd799439011',
+      userId: 'user-1'
+    });
   });
 
   it('uses the matching pin context and keep-alive for streaming chat', async () => {

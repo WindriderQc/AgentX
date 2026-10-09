@@ -77,7 +77,10 @@ async function resolveStartOptions(options = {}) {
 
 async function startRoundtable(options = {}) {
   const resolvedOptions = await resolveStartOptions(options);
-  validateRuntimeConfiguration(resolvedOptions.panel || DEFAULT_PANEL);
+  // An agent presiding as chair is a runtime participant too.
+  const chair = resolvedOptions.synthesizer?.runtime === 'openclaw'
+    ? [{ agentId: resolvedOptions.synthesizer.agentId, runtime: 'openclaw' }] : [];
+  validateRuntimeConfiguration([...(resolvedOptions.panel || DEFAULT_PANEL), ...chair]);
   const doc = await createRoundtable(resolvedOptions);
   const id = doc._id.toString();
   const enableScoring = resolvedOptions.enableScoring === true;

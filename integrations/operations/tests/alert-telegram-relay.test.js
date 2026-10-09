@@ -24,7 +24,7 @@ function alert(overrides = {}) {
     ruleName: 'Pinned model not in VRAM',
     severity: 'critical',
     status: 'active',
-    title: 'Pinned model off GPU — http://192.168.2.99:11434',
+    title: 'Pinned model off GPU — http://192.0.2.10:11434',
     message: 'pin_partial_spill for qllama/bge-m3:f16. Check the GPU driver.',
     channels: ['local_log', 'telegram'],
     delivery: { telegram: { sent: false, error: 'External notification delivery is not embedded in Agent X.' } },
@@ -37,7 +37,7 @@ function alert(overrides = {}) {
 }
 
 const CONFIG = validateConfig({
-  chatId: '-1003733742621',
+  chatId: '-1001234567890',
   topicId: '700',
   tokenFile: '/secrets/openclaw.json',
   tokenPointer: '/openclaw/channels/telegram/botToken',
@@ -82,7 +82,7 @@ test('selects only active, undelivered, recent alerts that ask for Telegram', ()
 
 test('formats a compact French message with severity, reminder and link', () => {
   const text = formatMessage(alert({ notificationCount: 2 }), { alertsUrl: 'https://agentx.example/alerts' });
-  assert.equal(text.split('\n')[0], '🔴 CRITIQUE · rappel · Pinned model off GPU — http://192.168.2.99:11434');
+  assert.equal(text.split('\n')[0], '🔴 CRITIQUE · rappel · Pinned model off GPU — http://192.0.2.10:11434');
   assert.match(text, /pin_partial_spill for qllama\/bge-m3:f16/);
   assert.match(text, /Règle pin-vram-spill · 3 occurrences · depuis 2026-09-27 19:50 UTC/);
   assert.match(text, /https:\/\/agentx\.example\/alerts$/);
@@ -121,7 +121,7 @@ test('send posts to the topic and records delivery in Core', async () => {
   const summary = await run(parseArgs(['--send']), { fetch, config: CONFIG, token: TOKEN, now: () => NOW, ...memoryState() });
   assert.equal(summary.sent, 1);
   const send = fetch.calls.find((c) => /sendMessage/.test(c.url));
-  assert.equal(send.body.chat_id, '-1003733742621');
+  assert.equal(send.body.chat_id, '-1001234567890');
   assert.equal(send.body.message_thread_id, 700);
   const record = fetch.calls.find((c) => /delivery-status/.test(c.url));
   assert.deepEqual({ channel: record.body.channel, status: record.body.status }, { channel: 'telegram', status: 'sent' });
@@ -174,7 +174,7 @@ test('formats a resolution notice with how and how long', () => {
     status: 'resolved',
     resolution: { resolvedAt: '2026-09-27T21:05:00Z', comment: 'Every pinned model is wholly in VRAM again' },
   }));
-  assert.equal(text.split('\n')[0], '✅ Résolu · Pinned model off GPU — http://192.168.2.99:11434');
+  assert.equal(text.split('\n')[0], '✅ Résolu · Pinned model off GPU — http://192.0.2.10:11434');
   assert.match(text, /Every pinned model is wholly in VRAM again/);
   assert.match(text, /Règle pin-vram-spill · durée 1 h 15/);
 });

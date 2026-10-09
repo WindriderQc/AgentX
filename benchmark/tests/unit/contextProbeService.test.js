@@ -45,7 +45,8 @@ jest.mock('../../src/helpers/ollamaModelIdentity', () => ({
 }));
 jest.mock('../../src/helpers/ollamaHostConfig', () => ({
   normalizeHostUrl: jest.fn((hostUrl) => hostUrl),
-  getConfiguredHosts: jest.fn(() => [])
+  getConfiguredHosts: jest.fn(() => []),
+  getHostResidency: jest.fn(() => 'gpu')
 }));
 jest.mock('../../src/services/modelContextResolver', () => ({
   normalizeModelName: jest.fn((name) => String(name || '').replace(/:latest$/i, '')),
@@ -71,6 +72,7 @@ const ollamaClient = require('../../src/clients/ollamaClient');
 const modelContextProfileService = require('../../src/services/modelContextProfileService');
 const authorityReconciliation = require('../../src/services/benchmark/benchmarkAuthorityReconciliation');
 const artifactIdentityService = require('../../src/services/profiler/artifactIdentityService');
+const hostConfig = require('../../src/helpers/ollamaHostConfig');
 const contextProbeService = require('../../src/services/contextProbeService');
 
 const ARTIFACT = {
@@ -94,6 +96,7 @@ function buildSnapshotDoc(data) {
 describe('contextProbeService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    hostConfig.getHostResidency.mockReturnValue('gpu');
     artifactIdentityService.resolveArtifactIdentity.mockResolvedValue(ARTIFACT);
     modelContextProfileService.updateFromProbeSnapshot.mockResolvedValue({ recommendationStatus: 'verified' });
     ModelContextProbeSnapshot.create.mockImplementation(async (data) => {
@@ -383,6 +386,90 @@ describe('contextProbeService', () => {
         expect.objectContaining({ testedNumCtx: 2048, ceilingFailureKind: 'transport' }),
         expect.anything()
       );
+    });
+
+    it('stops the ladder after a timed-out request proven stopped, keeping the verified context (#187)', async () => {
+      ollamaClient.showModel.mockResolvedValue({ model_info: { 'general.context_length': 16384 } });
+      let unloaded = false;
+      ollamaClient.listRunning.mockImplementation(async () => ({ models: unloaded ? [] : [{
+        name: 'gemma4:26b', model: 'gemma4:26b', size: 100, size_vram: 100, context_length: 262144 }] }));
+      ollamaClient.generate.mockImplementation(async (_hostUrl, payload) => {
+        const numCtx = payload.options.num_ctx;
+        if (numCtx < 8192) return { eval_count: 64, eval_duration: 1e9, prompt_eval_count: Math.floor(numCtx * 0.8) };
+        // The run journal aborted it at its deadline and proved it stopped;
+        // the runner was unloaded since, so the in-flight sample is the placement.
+        unloaded = true;
+        throw Object.assign(transportError(), { stopProof: { outcome: 'runner_unloaded',
+          baseline: { size: 100, sizeVram: 100, contextLength: 8192 } } });
+      });
+
+      const result = await contextProbeService.probeModelContext('gemma4:26b', {
+        hostUrl: 'http://192.0.2.66:11434', artifactIdentity: ARTIFACT, acknowledgeMaintenance: true,
+        workloadId: 'context-workload-1', maxCtx: 16384
+      });
+
+      expect(result).toEqual(expect.objectContaining({ status: 'completed', testedNumCtx: 4096, ceilingFailureKind: 'transport' }));
+      expect(result.steps.find(step => step.numCtx === 8192)).toMatchObject({
+        passed: false, failureKind: 'transport', failureCode: 'ETIMEDOUT', requestStopProven: true, gpuPercent: 100
+      });
+      // One sample at 8192, then no refinement and no larger candidate.
+      const sent = ollamaClient.generate.mock.calls.map(([, payload]) => payload.options.num_ctx);
+      expect(sent.filter(numCtx => numCtx > 4096)).toEqual([8192]);
+      expect(result.steps.filter(step => step.passed).map(step => step.numCtx)).toEqual([2048, 4096]);
+    });
+
+    it('measures lower CPU contexts before a large resident context times out', async () => {
+      hostConfig.getHostResidency.mockReturnValue('cpu');
+      ollamaClient.showModel.mockResolvedValue({ model_info: { 'general.context_length': 8192 } });
+      let currentCtx = 8192;
+      ollamaClient.listRunning.mockImplementation(async () => ({ models: [{
+        name: ARTIFACT.model, size: 100, size_vram: 0, context_length: currentCtx
+      }] }));
+      ollamaClient.generate.mockImplementation(async (_host, payload) => {
+        currentCtx = payload.options.num_ctx;
+        if (currentCtx === 8192) {
+          throw Object.assign(transportError(), { stopProof: { outcome: 'expiry_refreshed',
+            baseline: { size: 100, sizeVram: 0, contextLength: currentCtx } } });
+        }
+        return { eval_count: 64, eval_duration: 8e9, prompt_eval_count: Math.floor(currentCtx * 0.8) };
+      });
+
+      const result = await contextProbeService.probeModelContext(ARTIFACT.model, {
+        hostUrl: ARTIFACT.hostUrl, artifactIdentity: ARTIFACT, acknowledgeMaintenance: true,
+        workloadId: 'context-workload-1', maxCtx: 8192
+      });
+
+      expect(ollamaClient.generate.mock.calls.map(([, payload]) => payload.options.num_ctx))
+        .toEqual([2048, 2048, 4096, 4096, 8192]);
+      expect(result).toMatchObject({ status: 'completed', testedNumCtx: 4096, ceilingFailureKind: 'transport' });
+      expect(result.steps.find(step => step.numCtx === 8192))
+        .toMatchObject({ requestStopProven: true, passed: false, gpuPercent: 0, residency: 'cpu' });
+    });
+
+    it('sends no baseline after a resident GPU pretest timed out and was proven stopped', async () => {
+      ollamaClient.showModel.mockResolvedValue({ model_info: { 'general.context_length': 4096 } });
+      ollamaClient.listRunning.mockResolvedValue({ models: [{
+        name: ARTIFACT.model, size: 100, size_vram: 100, context_length: 4096
+      }] });
+      ollamaClient.generate.mockImplementation(async (_host, payload) => {
+        if (payload.options.num_ctx === 4096) {
+          throw Object.assign(transportError(), { stopProof: { outcome: 'expiry_refreshed',
+            baseline: { size: 100, sizeVram: 100, contextLength: 4096 } } });
+        }
+        return { eval_count: 64, eval_duration: 1e9, prompt_eval_count: 1600 };
+      });
+
+      await expect(contextProbeService.probeModelContext(ARTIFACT.model, {
+        hostUrl: ARTIFACT.hostUrl, artifactIdentity: ARTIFACT, acknowledgeMaintenance: true,
+        workloadId: 'context-workload-1', maxCtx: 4096
+      })).rejects.toThrow('before a baseline was verified');
+
+      expect(ollamaClient.generate.mock.calls.map(([, payload]) => payload.options.num_ctx)).toEqual([4096]);
+      expect(modelContextProfileService.updateFromProbeSnapshot).not.toHaveBeenCalled();
+      expect(ModelContextProbeSnapshot.create).toHaveBeenCalledWith([
+        expect.objectContaining({ status: 'failed', testedNumCtx: null,
+          steps: [expect.objectContaining({ numCtx: 4096, requestStopProven: true })] })
+      ], undefined);
     });
 
     it('reports the committed ceiling when the context profile retained a higher one', async () => {

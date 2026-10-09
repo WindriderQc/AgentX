@@ -2794,5 +2794,1249 @@
         "{name}}"
       ]
     }
+  },
+  {
+    "name": "Alert Routing Decision",
+    "level": 1,
+    "expected_tokens": 10,
+    "prompt": "You route monitoring alerts. Reply with exactly one word: PAGE (wake someone now), TICKET (fix during work hours) or IGNORE (no action).\n\nAlert: disk usage on the backup volume reached 71%; it grows 1% per week; the paging threshold is 90%.",
+    "expected_answer": "TICKET",
+    "judge_criteria": [
+      "Answers TICKET",
+      "Does not page for a slow, distant threshold",
+      "Single word, no extra text"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "exact",
+      "template": "TICKET"
+    },
+    "category": "agent",
+    "scoring_type": "agent"
+  },
+  {
+    "name": "Failing Service From Log",
+    "level": 1,
+    "expected_tokens": 10,
+    "prompt": "Name the service that failed in this log excerpt. Reply with the service name only.\n\n10:02:11 gateway  info  request accepted id=81\n10:02:11 scheduler info  job queued id=81\n10:02:12 renderer error worker exited code=137 (out of memory) id=81\n10:02:12 gateway  warn  upstream returned 502 id=81",
+    "expected_answer": "renderer",
+    "judge_criteria": [
+      "Answers renderer",
+      "Does not blame the gateway that only reported the 502",
+      "Service name only"
+    ],
+    "deterministic_scoring": {
+      "type": "exact",
+      "case_sensitive": false
+    },
+    "output_contract": {
+      "type": "exact",
+      "template": "renderer"
+    },
+    "category": "agent",
+    "scoring_type": "agent"
+  },
+  {
+    "name": "Household Mail Triage",
+    "level": 2,
+    "expected_tokens": 400,
+    "prompt": "You triage a family's email. For each message return one JSON object {\"id\": n, \"category\": \"family|school|finance|home|ads|phishing\", \"urgency\": \"high|medium|low\", \"action\": \"<one sentence>\"} and reply with a JSON array only.\n\n1. From: Maple Grove School - Museum trip on Friday - Please sign the permission form before Thursday.\n2. From: Example Heating Ltd - Your furnace - Our technician found a carbon monoxide leak during yesterday's inspection; do not use the furnace until it is repaired and call us today.\n3. From: Example Bank - September statement available - Your monthly statement is ready in your online account.\n4. From: security@examp1e-bank-verify.test - Account suspended - Click within 24 hours to confirm your PIN or your account will be closed.\n5. From: Example Sports - Autumn sale - Up to 40% off winter coats.",
+    "expected_answer": "JSON array of five objects: 1 school/medium (sign the form before Thursday); 2 home/high (stop using the furnace, call today); 3 finance/low (no action or file it); 4 phishing/high or medium (do not click, report or delete); 5 ads/low.",
+    "judge_criteria": [
+      "Valid JSON array with five objects and the requested keys",
+      "Message 2 is high urgency with a stop-using-the-furnace action",
+      "Message 4 is classified as phishing and the action avoids the link",
+      "Message 5 is ads with low urgency",
+      "No text outside the JSON array"
+    ],
+    "category": "agent",
+    "scoring_type": "agent"
+  },
+  {
+    "name": "Runbook Contradiction",
+    "level": 2,
+    "expected_tokens": 200,
+    "prompt": "Review this runbook paragraph. List each contradiction in one line; do not rewrite the text.\n\nBackups run nightly at 02:00 and keep 14 daily copies. Restores must use a copy no older than one week. Because backups are kept for 7 days, the oldest restorable copy is always within the retention window.",
+    "expected_answer": "Retention is stated as 14 daily copies and later as 7 days; the two figures contradict each other.",
+    "judge_criteria": [
+      "Flags 14 daily copies versus 7 days of retention",
+      "Does not invent other contradictions",
+      "One line per finding, no rewrite"
+    ],
+    "category": "agent",
+    "scoring_type": "agent"
+  },
+  {
+    "name": "Operations Doc Review",
+    "level": 3,
+    "expected_tokens": 300,
+    "prompt": "You review operations documentation. Find the inconsistencies in this passage and explain each in one line. Do not rewrite it.\n\nThe recovery worker resumes interrupted jobs. A failed pass is retried after 1, 2, 4 ... minutes, capped at 30 minutes. After five failures automatic recovery stops and the recovery view shows \"Automatic recovery stopped after 6 failed attempts\". Retries are spaced so that the host is reloaded at most once per hour. To resume, fix the cause, then clear operatorRequiredAt and nextAttemptAt on the job record.",
+    "expected_answer": "Two inconsistencies: the backoff is capped at 30 minutes, which contradicts reloading at most once per hour; recovery stops after five failures but the view reports six failed attempts.",
+    "judge_criteria": [
+      "Flags the 30-minute cap versus once per hour",
+      "Flags five failures versus six attempts",
+      "Does not report the resume instruction as an error",
+      "One line per finding"
+    ],
+    "category": "agent",
+    "scoring_type": "agent"
+  },
+  {
+    "name": "Tool Selection As JSON",
+    "level": 3,
+    "expected_tokens": 150,
+    "prompt": "You are an agent with these tools:\n- search_mail(query: string, newer_than_days: integer)\n- create_reminder(title: string, due: string ISO date)\n- send_mail(to: string, subject: string, body: string)\n\nToday is 2030-03-10. Request: \"Remind me on Friday to pay the plumber invoice.\"\nReply with a JSON object {\"tool\": <name>, \"arguments\": {...}} for the single call you would make, and nothing else.",
+    "expected_answer": "{\"tool\": \"create_reminder\", \"arguments\": {\"title\": \"Pay the plumber invoice\", \"due\": \"2030-03-15\"}}",
+    "judge_criteria": [
+      "Chooses create_reminder",
+      "Due date is 2030-03-15, the Friday after 2030-03-10",
+      "Title names paying the plumber invoice",
+      "Sends no mail and makes one call only",
+      "Valid JSON object only"
+    ],
+    "category": "agent",
+    "scoring_type": "agent"
+  },
+  {
+    "name": "Profiler Failure Diagnosis",
+    "level": 4,
+    "expected_tokens": 500,
+    "prompt": "You are a diagnostic agent. Here is a log excerpt from a model profiling service. Explain the probable root cause in 3 to 5 sentences and propose a fix.\n\n04:41:49 info  host test completed model=small-model tokensPerSec=175.8 numCtx=4096\n04:41:50 info  thinking behavior profiled model=small-model supported=false channel=error\n04:41:50 error context probe failed: baseline failed at num_ctx=2048: prior profiler request has no terminal receipt\n04:41:50 error profile queue: authority invalidation failed, holding fences for TTL recovery\n05:18:30 warn  recovery stopped; operator action required failedAttempts=6\n\nContext: every runtime request opens a ticket in a journal, and the ticket must receive a terminal receipt before the next request. The thinking probe sends think=true to the model.",
+    "expected_answer": "The thinking probe failed (the model does not support think=true) and that failure was not recorded as a terminal receipt, so the journal refused the next request, the context probe, and the queue held the host. Fix: record an error response as terminal for that ticket.",
+    "judge_criteria": [
+      "Identifies the unrecorded thinking-probe failure as the root cause",
+      "Explains that the next request was refused because of the missing receipt",
+      "Does not blame the context probe, VRAM or the host test",
+      "Proposes recording the failed response as a terminal receipt"
+    ],
+    "category": "agent",
+    "scoring_type": "agent"
+  },
+  {
+    "name": "Status Code Review",
+    "level": 4,
+    "expected_tokens": 400,
+    "prompt": "Review this diff. Intent: an HTTP 4xx answer from the model server means the request was refused before any work and can be treated as finished; network errors and 5xx answers must stay unknown. Report every bug or risk with the line concerned.\n\n```diff\n+function rejectedBeforeWork(error) {\n+  const status = Number(error?.status);\n+  return Number.isInteger(status) && status >= 400 && status <= 500;\n+}\n async function observeMutation(operation) {\n   ...\n   } catch (error) {\n-    await journal.unknownMutation(ticket, error);\n+    if (rejectedBeforeWork(error)) await journal.completeMutation(ticket);\n+    else await journal.unknownMutation(ticket, error);\n     throw error;\n   }\n }\n```",
+    "expected_answer": "The range check status <= 500 treats HTTP 500 as rejected before work; it must be status < 500 because a 5xx outcome is unknown. The rest of the change matches the intent.",
+    "judge_criteria": [
+      "Finds that status <= 500 wrongly includes 500",
+      "Explains why a 5xx outcome must stay unknown",
+      "Points at the comparison line",
+      "Does not invent problems in the unchanged lines"
+    ],
+    "category": "agent",
+    "scoring_type": "agent"
+  },
+  {
+    "name": "Platform Watch Report",
+    "level": 5,
+    "expected_tokens": 600,
+    "prompt": "You are the watch agent of a home AI platform. Here is a state snapshot. Write a short report: anomalies ranked by severity, user impact, recommended action. Invent nothing.\n\n```json\n{\"hosts\":[{\"name\":\"host-a\",\"status\":\"ready\",\"pins\":[{\"model\":\"large-model\",\"ctx\":196608,\"vram\":\"full\"}],\"disk\":\"67%\"},{\"name\":\"host-b\",\"status\":\"ready\",\"pins\":[{\"model\":\"medium-model\",\"ctx\":114688,\"vram\":\"full\"},{\"model\":\"embedder\",\"vram\":\"partial (0.58/1.26 GB)\"}],\"disk\":\"94%\"},{\"name\":\"host-c\",\"status\":\"ready\",\"pins\":[{\"model\":\"medium-model\",\"ctx\":79872,\"vram\":\"full\"}]}],\"runtime\":{\"inferences\":[{\"host\":\"host-c\",\"state\":\"UNKNOWN\",\"since\":\"08:16Z\"}],\"workloads\":[]},\"alerts_active\":0,\"core\":{\"status\":\"ok\"}}\n```",
+    "expected_answer": "1. host-c has an UNKNOWN inference since 08:16Z: the host is quarantined and fallbacks through it are blocked; recover it. 2. host-b disk at 94%: risk of failed writes; free space. 3. The embedder on host-b is only partly in VRAM (0.58 of 1.26 GB): slower retrieval; reduce the co-resident context. host-a and Core are healthy. No active alert despite these anomalies.",
+    "judge_criteria": [
+      "Reports the UNKNOWN inference on host-c as a blocking quarantine",
+      "Reports the 94% disk on host-b",
+      "Notices the partial VRAM placement of the embedder on host-b",
+      "Ranks the anomalies by severity with an action each",
+      "Invents no problem on host-a or Core"
+    ],
+    "category": "agent",
+    "scoring_type": "agent"
+  },
+  {
+    "name": "Redaction Test Cases",
+    "level": 5,
+    "expected_tokens": 900,
+    "scoring_type": "coding",
+    "prompt": "Write complete Jest tests (normal and edge cases) for this Node.js function exported by `./redact`. Reply with the test file code only.\n\n```js\nconst MAX_VALUE = 240;\nfunction redactValue(value) {\n  const text = String(value).replace(/(\\/\\/)[^/@\\s:]+:[^/@\\s]+@/g, '$1***@');\n  return text.length > MAX_VALUE ? `${text.slice(0, MAX_VALUE - 1)}…` : text;\n}\nmodule.exports = { redactValue };\n```",
+    "expected_answer": "Jest tests that check: credentials in a URL become ***@; a URL without credentials is unchanged; a value longer than 240 characters is cut to 240 with a trailing ellipsis; a value of exactly 240 is not cut; a non-string input is converted to text.",
+    "judge_criteria": [
+      "Tests credential redaction to ***@",
+      "Tests that a URL without credentials is unchanged",
+      "Tests truncation above 240 with the ellipsis and no truncation at exactly 240",
+      "Tests a non-string input",
+      "Imports from ./redact and would run under Jest"
+    ],
+    "category": "agent"
+  },
+  {
+    "name": "Clamp Integer Boundaries",
+    "level": 1,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 250,
+    "prompt": "Write clamp(value, lower, upper), returning value bounded inclusively by lower and upper. Assume lower <= upper. Return only Python code using the standard library.",
+    "expected_answer": "def clamp(value, lower, upper):\n    return max(lower, min(upper, value))",
+    "judge_criteria": [
+      "Implements the specified behavior for all inputs",
+      "Preserves the required ordering and boundary behavior",
+      "Uses the standard library without external dependencies"
+    ],
+    "reference_tests": {
+      "language": "python",
+      "harness": "function_calls",
+      "entry": "clamp",
+      "cases": [
+        {
+          "id": "0",
+          "args": [
+            2,
+            0,
+            4
+          ],
+          "expected": 2
+        },
+        {
+          "id": "1",
+          "args": [
+            -1,
+            0,
+            4
+          ],
+          "expected": 0
+        },
+        {
+          "id": "2",
+          "args": [
+            9,
+            0,
+            4
+          ],
+          "expected": 4
+        },
+        {
+          "id": "3",
+          "args": [
+            0,
+            0,
+            4
+          ],
+          "expected": 0
+        },
+        {
+          "id": "4",
+          "args": [
+            3,
+            3,
+            3
+          ],
+          "expected": 3
+        }
+      ]
+    }
+  },
+  {
+    "name": "First Unique Character",
+    "level": 1,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 250,
+    "prompt": "Write first_unique(text), returning the first character occurring exactly once, or None if none exists. Match characters case-sensitively. Return only Python code using the standard library.",
+    "expected_answer": "def first_unique(text):\n    from collections import Counter\n    counts = Counter(text)\n    return next((c for c in text if counts[c] == 1), None)",
+    "judge_criteria": [
+      "Implements the specified behavior for all inputs",
+      "Preserves the required ordering and boundary behavior",
+      "Uses the standard library without external dependencies"
+    ],
+    "reference_tests": {
+      "language": "python",
+      "harness": "function_calls",
+      "entry": "first_unique",
+      "cases": [
+        {
+          "id": "0",
+          "args": [
+            "swiss"
+          ],
+          "expected": "w"
+        },
+        {
+          "id": "1",
+          "args": [
+            "aabb"
+          ],
+          "expected": null
+        },
+        {
+          "id": "2",
+          "args": [
+            ""
+          ],
+          "expected": null
+        },
+        {
+          "id": "3",
+          "args": [
+            "aAa"
+          ],
+          "expected": "A"
+        },
+        {
+          "id": "4",
+          "args": [
+            "xyx"
+          ],
+          "expected": "y"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Merge Frequency Maps",
+    "level": 2,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 250,
+    "prompt": "Write merge_counts(maps), summing integer counts for each string key across a list of dictionaries. Keep keys whose sum is zero. Return a new dictionary without mutating inputs. Return only Python code using the standard library.",
+    "expected_answer": "def merge_counts(maps):\n    result = {}\n    for m in maps:\n        for key, count in m.items():\n            result[key] = result.get(key, 0) + count\n    return result",
+    "judge_criteria": [
+      "Implements the specified behavior for all inputs",
+      "Preserves the required ordering and boundary behavior",
+      "Uses the standard library without external dependencies"
+    ],
+    "reference_tests": {
+      "language": "python",
+      "harness": "function_calls",
+      "entry": "merge_counts",
+      "cases": [
+        {
+          "id": "0",
+          "args": [
+            []
+          ],
+          "expected": {}
+        },
+        {
+          "id": "1",
+          "args": [
+            [
+              {
+                "a": 2
+              },
+              {
+                "a": 3,
+                "b": 1
+              }
+            ]
+          ],
+          "expected": {
+            "a": 5,
+            "b": 1
+          }
+        },
+        {
+          "id": "2",
+          "args": [
+            [
+              {
+                "x": 2
+              },
+              {
+                "x": -2
+              }
+            ]
+          ],
+          "expected": {
+            "x": 0
+          }
+        },
+        {
+          "id": "3",
+          "args": [
+            [
+              {},
+              {
+                "b": -3
+              }
+            ]
+          ],
+          "expected": {
+            "b": -3
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "Consecutive Run Encoding",
+    "level": 2,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 250,
+    "prompt": "Write encode_runs(values) for a list of integers. Return [value, count] pairs for consecutive runs, preserving order. Equal values separated by another value form separate runs. Return only Python code using the standard library.",
+    "expected_answer": "def encode_runs(values):\n    result = []\n    for v in values:\n        if result and result[-1][0] == v:\n            result[-1][1] += 1\n        else:\n            result.append([v, 1])\n    return result",
+    "judge_criteria": [
+      "Implements the specified behavior for all inputs",
+      "Preserves the required ordering and boundary behavior",
+      "Uses the standard library without external dependencies"
+    ],
+    "reference_tests": {
+      "language": "python",
+      "harness": "function_calls",
+      "entry": "encode_runs",
+      "cases": [
+        {
+          "id": "0",
+          "args": [
+            []
+          ],
+          "expected": []
+        },
+        {
+          "id": "1",
+          "args": [
+            [
+              1,
+              1,
+              2,
+              1
+            ]
+          ],
+          "expected": [
+            [
+              1,
+              2
+            ],
+            [
+              2,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ]
+        },
+        {
+          "id": "2",
+          "args": [
+            [
+              0
+            ]
+          ],
+          "expected": [
+            [
+              0,
+              1
+            ]
+          ]
+        },
+        {
+          "id": "3",
+          "args": [
+            [
+              -1,
+              -1,
+              0,
+              0,
+              0
+            ]
+          ],
+          "expected": [
+            [
+              -1,
+              2
+            ],
+            [
+              0,
+              3
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "Rotate Rectangular Grid",
+    "level": 3,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 250,
+    "prompt": "Write rotate_grid(grid), returning a new grid rotated clockwise by 90 degrees. Inputs are rectangular lists of integer rows. An empty grid or grid with zero columns returns []. Do not mutate input. Return only Python code using the standard library.",
+    "expected_answer": "def rotate_grid(grid):\n    return [list(row) for row in zip(*grid[::-1])]",
+    "judge_criteria": [
+      "Implements the specified behavior for all inputs",
+      "Preserves the required ordering and boundary behavior",
+      "Uses the standard library without external dependencies"
+    ],
+    "reference_tests": {
+      "language": "python",
+      "harness": "function_calls",
+      "entry": "rotate_grid",
+      "cases": [
+        {
+          "id": "0",
+          "args": [
+            [
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                4,
+                5,
+                6
+              ]
+            ]
+          ],
+          "expected": [
+            [
+              4,
+              1
+            ],
+            [
+              5,
+              2
+            ],
+            [
+              6,
+              3
+            ]
+          ]
+        },
+        {
+          "id": "1",
+          "args": [
+            []
+          ],
+          "expected": []
+        },
+        {
+          "id": "2",
+          "args": [
+            [
+              []
+            ]
+          ],
+          "expected": []
+        },
+        {
+          "id": "3",
+          "args": [
+            [
+              [
+                1
+              ],
+              [
+                2
+              ],
+              [
+                3
+              ]
+            ]
+          ],
+          "expected": [
+            [
+              3,
+              2,
+              1
+            ]
+          ]
+        },
+        {
+          "id": "4",
+          "args": [
+            [
+              [
+                7
+              ]
+            ]
+          ],
+          "expected": [
+            [
+              7
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "Merge Closed Intervals",
+    "level": 3,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 250,
+    "prompt": "Write merge_intervals(intervals) for valid closed integer [start, end] intervals. Return a new sorted list, merging overlaps and intervals sharing an endpoint, but not integer-adjacent disjoint intervals. Preserve inputs. Return only Python code using the standard library.",
+    "expected_answer": "def merge_intervals(intervals):\n    result = []\n    for lo, hi in sorted(intervals):\n        if result and lo <= result[-1][1]:\n            result[-1][1] = max(result[-1][1], hi)\n        else:\n            result.append([lo, hi])\n    return result",
+    "judge_criteria": [
+      "Implements the specified behavior for all inputs",
+      "Preserves the required ordering and boundary behavior",
+      "Uses the standard library without external dependencies"
+    ],
+    "reference_tests": {
+      "language": "python",
+      "harness": "function_calls",
+      "entry": "merge_intervals",
+      "cases": [
+        {
+          "id": "0",
+          "args": [
+            [
+              [
+                5,
+                7
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                3,
+                6
+              ]
+            ]
+          ],
+          "expected": [
+            [
+              1,
+              7
+            ]
+          ]
+        },
+        {
+          "id": "1",
+          "args": [
+            []
+          ],
+          "expected": []
+        },
+        {
+          "id": "2",
+          "args": [
+            [
+              [
+                1,
+                2
+              ],
+              [
+                3,
+                4
+              ]
+            ]
+          ],
+          "expected": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ]
+          ]
+        },
+        {
+          "id": "3",
+          "args": [
+            [
+              [
+                1,
+                9
+              ],
+              [
+                2,
+                3
+              ],
+              [
+                9,
+                9
+              ]
+            ]
+          ],
+          "expected": [
+            [
+              1,
+              9
+            ]
+          ]
+        },
+        {
+          "id": "4",
+          "args": [
+            [
+              [
+                4,
+                4
+              ]
+            ]
+          ],
+          "expected": [
+            [
+              4,
+              4
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "Parse Quoted CSV Record",
+    "level": 4,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 600,
+    "prompt": "Write parse_record(line) for one valid comma-separated CSV record using double quotes and doubled quotes inside quoted fields. Commas inside quotes belong to the field. Preserve spaces and empty fields. There are no line breaks. The empty string represents one empty field. Return only Python code using the standard library.",
+    "expected_answer": "def parse_record(line):\n    import csv\n    return next(csv.reader([line])) if line else [\"\"]",
+    "judge_criteria": [
+      "Implements the specified behavior for all inputs",
+      "Preserves the required ordering and boundary behavior",
+      "Uses the standard library without external dependencies"
+    ],
+    "reference_tests": {
+      "language": "python",
+      "harness": "function_calls",
+      "entry": "parse_record",
+      "cases": [
+        {
+          "id": "0",
+          "args": [
+            "a,b"
+          ],
+          "expected": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "id": "1",
+          "args": [
+            "\"a,b\",c"
+          ],
+          "expected": [
+            "a,b",
+            "c"
+          ]
+        },
+        {
+          "id": "2",
+          "args": [
+            "\"say \"\"hi\"\"\","
+          ],
+          "expected": [
+            "say \"hi\"",
+            ""
+          ]
+        },
+        {
+          "id": "3",
+          "args": [
+            ""
+          ],
+          "expected": [
+            ""
+          ]
+        },
+        {
+          "id": "4",
+          "args": [
+            ",,"
+          ],
+          "expected": [
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "id": "5",
+          "args": [
+            " a ,\" b \""
+          ],
+          "expected": [
+            " a ",
+            " b "
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "Evaluate Integer RPN Stack",
+    "level": 4,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 600,
+    "prompt": "Write evaluate_rpn(tokens) for a valid non-empty reverse Polish expression of signed integer strings and +, -, *, /. Division truncates toward zero and the divisor is nonzero. Return the integer result. Use exact integer arithmetic. Return only Python code using the standard library.",
+    "expected_answer": "def evaluate_rpn(tokens):\n    stack = []\n    for token in tokens:\n        if token not in (\"+\", \"-\", \"*\", \"/\"):\n            stack.append(int(token)); continue\n        b, a = stack.pop(), stack.pop()\n        if token == \"+\": v = a + b\n        elif token == \"-\": v = a - b\n        elif token == \"*\": v = a * b\n        else: v = (abs(a) // abs(b)) * (-1 if (a < 0) != (b < 0) else 1)\n        stack.append(v)\n    return stack[0]",
+    "judge_criteria": [
+      "Implements the specified behavior for all inputs",
+      "Preserves the required ordering and boundary behavior",
+      "Uses the standard library without external dependencies"
+    ],
+    "reference_tests": {
+      "language": "python",
+      "harness": "function_calls",
+      "entry": "evaluate_rpn",
+      "cases": [
+        {
+          "id": "0",
+          "args": [
+            [
+              "2",
+              "3",
+              "+",
+              "4",
+              "*"
+            ]
+          ],
+          "expected": 20
+        },
+        {
+          "id": "1",
+          "args": [
+            [
+              "7",
+              "-3",
+              "/"
+            ]
+          ],
+          "expected": -2
+        },
+        {
+          "id": "2",
+          "args": [
+            [
+              "-7",
+              "3",
+              "/"
+            ]
+          ],
+          "expected": -2
+        },
+        {
+          "id": "3",
+          "args": [
+            [
+              "8",
+              "2",
+              "3",
+              "+",
+              "-"
+            ]
+          ],
+          "expected": 3
+        },
+        {
+          "id": "4",
+          "args": [
+            [
+              "9007199254740993",
+              "1",
+              "+"
+            ]
+          ],
+          "expected": 9007199254740994
+        }
+      ]
+    }
+  },
+  {
+    "name": "Stable Topological Schedule",
+    "level": 5,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 600,
+    "prompt": "Write schedule(nodes, edges) for distinct string nodes and unique directed [before, after] edges between listed nodes. Return a topological order, always choosing the lexicographically smallest currently available node. Return None if any cycle exists; return [] for no nodes. Return only Python code using the standard library.",
+    "expected_answer": "def schedule(nodes, edges):\n    import heapq\n    adjacent = {n: [] for n in nodes}\n    degrees = {n: 0 for n in nodes}\n    for a, b in edges:\n        adjacent[a].append(b); degrees[b] += 1\n    ready = [n for n in nodes if degrees[n] == 0]\n    heapq.heapify(ready); result = []\n    while ready:\n        n = heapq.heappop(ready); result.append(n)\n        for b in adjacent[n]:\n            degrees[b] -= 1\n            if degrees[b] == 0: heapq.heappush(ready, b)\n    return result if len(result) == len(nodes) else None",
+    "judge_criteria": [
+      "Implements the specified behavior for all inputs",
+      "Preserves the required ordering and boundary behavior",
+      "Uses the standard library without external dependencies"
+    ],
+    "reference_tests": {
+      "language": "python",
+      "harness": "function_calls",
+      "entry": "schedule",
+      "cases": [
+        {
+          "id": "0",
+          "args": [
+            [
+              "c",
+              "b",
+              "a"
+            ],
+            [
+              [
+                "a",
+                "c"
+              ]
+            ]
+          ],
+          "expected": [
+            "a",
+            "b",
+            "c"
+          ]
+        },
+        {
+          "id": "1",
+          "args": [
+            [
+              "b",
+              "a"
+            ],
+            [
+              [
+                "b",
+                "a"
+              ]
+            ]
+          ],
+          "expected": [
+            "b",
+            "a"
+          ]
+        },
+        {
+          "id": "2",
+          "args": [
+            [
+              "a",
+              "b"
+            ],
+            [
+              [
+                "a",
+                "b"
+              ],
+              [
+                "b",
+                "a"
+              ]
+            ]
+          ],
+          "expected": null
+        },
+        {
+          "id": "3",
+          "args": [
+            [],
+            []
+          ],
+          "expected": []
+        },
+        {
+          "id": "4",
+          "args": [
+            [
+              "a",
+              "b",
+              "c"
+            ],
+            [
+              [
+                "a",
+                "b"
+              ],
+              [
+                "b",
+                "c"
+              ]
+            ]
+          ],
+          "expected": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "LRU Operation Replay",
+    "level": 5,
+    "category": "coding",
+    "scoring_type": "coding",
+    "expected_tokens": 600,
+    "prompt": "Write replay_lru(capacity, operations) with capacity >= 1. Operations are [\"put\", key, integer_value] or [\"get\", key], with string keys. A successful get or any put makes its key most recently used. A full cache evicts the least recently used key. Return a list of get results, using None for misses. Updating an existing key must not evict a different key. Return only Python code using the standard library.",
+    "expected_answer": "def replay_lru(capacity, operations):\n    from collections import OrderedDict\n    cache = OrderedDict(); result = []\n    for op in operations:\n        key = op[1]\n        if op[0] == \"get\":\n            result.append(cache.get(key))\n            if key in cache: cache.move_to_end(key)\n        else:\n            cache[key] = op[2]; cache.move_to_end(key)\n            if len(cache) > capacity: cache.popitem(last=False)\n    return result",
+    "judge_criteria": [
+      "Implements the specified behavior for all inputs",
+      "Preserves the required ordering and boundary behavior",
+      "Uses the standard library without external dependencies"
+    ],
+    "reference_tests": {
+      "language": "python",
+      "harness": "function_calls",
+      "entry": "replay_lru",
+      "cases": [
+        {
+          "id": "0",
+          "args": [
+            2,
+            [
+              [
+                "put",
+                "a",
+                1
+              ],
+              [
+                "put",
+                "b",
+                2
+              ],
+              [
+                "get",
+                "a"
+              ],
+              [
+                "put",
+                "c",
+                3
+              ],
+              [
+                "get",
+                "b"
+              ],
+              [
+                "get",
+                "c"
+              ]
+            ]
+          ],
+          "expected": [
+            1,
+            null,
+            3
+          ]
+        },
+        {
+          "id": "1",
+          "args": [
+            1,
+            [
+              [
+                "get",
+                "x"
+              ],
+              [
+                "put",
+                "x",
+                2
+              ],
+              [
+                "put",
+                "x",
+                3
+              ],
+              [
+                "get",
+                "x"
+              ]
+            ]
+          ],
+          "expected": [
+            null,
+            3
+          ]
+        },
+        {
+          "id": "2",
+          "args": [
+            2,
+            [
+              [
+                "put",
+                "a",
+                1
+              ],
+              [
+                "put",
+                "b",
+                2
+              ],
+              [
+                "put",
+                "a",
+                5
+              ],
+              [
+                "put",
+                "c",
+                3
+              ],
+              [
+                "get",
+                "a"
+              ],
+              [
+                "get",
+                "b"
+              ]
+            ]
+          ],
+          "expected": [
+            5,
+            null
+          ]
+        },
+        {
+          "id": "3",
+          "args": [
+            3,
+            []
+          ],
+          "expected": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "Choose Safe Read Operation",
+    "level": 1,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 150,
+    "prompt": "Tools: read_status(service) reads current status; restart_service(service) mutates it. Task: check whether worker is healthy. Return one JSON object with tool and args. Do not change any service.",
+    "expected_answer": "{\"tool\":\"read_status\",\"args\":{\"service\":\"worker\"}}",
+    "judge_criteria": [
+      "Selects read_status",
+      "Arguments name worker",
+      "Uses one JSON object without restart or other mutation"
+    ]
+  },
+  {
+    "name": "Identify Failed Dependency",
+    "level": 1,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 150,
+    "prompt": "Log: 12:00 storage: disk full; 12:01 uploader: write failed (storage unavailable); 12:02 frontend: upload returned 503. Name the earliest failing component and one direct supporting log fact. Do not invent a network problem.",
+    "expected_answer": "Storage failed first: its disk was full at 12:00.",
+    "judge_criteria": [
+      "Names storage as the first failing component",
+      "Cites disk full at 12:00",
+      "Does not treat the uploader or frontend symptom as root cause"
+    ]
+  },
+  {
+    "name": "Preserve Unknown Execution",
+    "level": 2,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 200,
+    "prompt": "A remote job timed out. Its receipt is UNKNOWN and the remote process may still be running. Actions: retry_now, reconcile_receipt, clear_claim. Choose an action and explain the evidence needed before any retry.",
+    "expected_answer": "Reconcile the receipt; establish a terminal outcome or confirmed runtime recovery before retrying.",
+    "judge_criteria": [
+      "Chooses reconcile_receipt",
+      "Acknowledges remote execution may still be running",
+      "Requires terminal evidence before retry",
+      "Does not clear the claim or start another inference"
+    ]
+  },
+  {
+    "name": "Apply File Scope Rule",
+    "level": 2,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 200,
+    "prompt": "Authority: editable paths are src/math.py only. Request: fix sum_numbers in src/math.py. Worker proposes edits to src/math.py and tests/test_math.py. Return JSON {\"allowed\": [...], \"rejected\": [...]} listing proposed paths under the authority.",
+    "expected_answer": "{\"allowed\":[\"src/math.py\"],\"rejected\":[\"tests/test_math.py\"]}",
+    "judge_criteria": [
+      "Valid JSON object with both arrays",
+      "Allows only src/math.py",
+      "Rejects tests/test_math.py",
+      "Does not expand the declared scope"
+    ]
+  },
+  {
+    "name": "Resolve Retry Runbook Conflict",
+    "level": 3,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 250,
+    "prompt": "Policy: retry at most twice after the initial attempt; do not retry HTTP 400. Runbook: send up to four total attempts for all HTTP errors. List each conflict and a corrected rule, using only the given policy.",
+    "expected_answer": "Four total attempts exceeds three; retrying 400 is forbidden. Use at most three total attempts and stop on 400.",
+    "judge_criteria": [
+      "Finds four total attempts versus at most three",
+      "Finds retry on HTTP 400 versus no retry",
+      "States corrected limit of three total attempts",
+      "Invents no backoff or other policy"
+    ]
+  },
+  {
+    "name": "Respect Tool Preconditions",
+    "level": 3,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 250,
+    "prompt": "Tools: reserve(host) returns a claim ID; infer(host,claimId,prompt) requires an active claim; release(claimId) releases it after a terminal outcome. No claim currently exists. Plan a successful single inference, ordered as JSON array of tool names. Assume reserve succeeds and infer returns a confirmed terminal result.",
+    "expected_answer": "[\"reserve\",\"infer\",\"release\"]",
+    "judge_criteria": [
+      "Valid JSON array in reserve, infer, release order",
+      "Does not infer before admission",
+      "Releases only after the confirmed terminal inference",
+      "Adds no unrelated tool"
+    ]
+  },
+  {
+    "name": "Diagnose Versioned Artifact Drift",
+    "level": 4,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 300,
+    "prompt": "A campaign froze model tag sample:small at digest d1, context 8192. Before the next cell, the same tag resolves to d2 with context 8192. The earlier results used d1. Explain whether to resume and why a matching tag and context suffice or do not suffice.",
+    "expected_answer": "Stop the old campaign on digest drift. Matching tag and context do not prove the same artifact; freeze a new campaign for d2.",
+    "judge_criteria": [
+      "Stops the old campaign before the next inference",
+      "Names d1 versus d2 digest drift",
+      "Explains that tag and context do not identify the artifact",
+      "Preserves existing results and starts a new contract rather than relabelling them"
+    ]
+  },
+  {
+    "name": "Separate Failure From Missing Evidence",
+    "level": 4,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 300,
+    "prompt": "Run: task A exit 0 and 5/5 tests; task B exit 1 and 3/5 tests; task C response absent after timeout, no terminal receipt. Report each as passed, failed, or unknown and give one fact for each. No judge was used.",
+    "expected_answer": "A passed (exit 0, 5/5); B failed (exit 1, 3/5); C unknown (no terminal receipt).",
+    "judge_criteria": [
+      "Classifies A passed with executable evidence",
+      "Classifies B failed with executable evidence",
+      "Classifies C unknown rather than a zero-score failure",
+      "Invents neither a judge grade nor a retry"
+    ]
+  },
+  {
+    "name": "Prioritize Synthetic Platform Incidents",
+    "level": 5,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 350,
+    "prompt": "Snapshot: node-a healthy, disk 40%; node-b healthy, disk 97%; node-c inference receipt UNKNOWN with an active claim; node-d healthy, disk 55%. Give an ordered incident list with evidence and a bounded first action for each. Do not change anything or add healthy nodes to the incident list.",
+    "expected_answer": "1. node-c: UNKNOWN execution, reconcile receipt while retaining claim. 2. node-b: 97% disk, inspect disk usage before deletion.",
+    "judge_criteria": [
+      "Ranks node-c uncertainty first with claim preserved",
+      "Reports node-b disk at 97%",
+      "Proposes reconciliation for node-c and inspection for node-b",
+      "Does not invent incidents on node-a or node-d",
+      "Performs no destructive action"
+    ]
+  },
+  {
+    "name": "Review Durable Receipt State Machine",
+    "level": 5,
+    "category": "agent",
+    "scoring_type": "agent",
+    "expected_tokens": 350,
+    "prompt": "Contract: a request is admitted only after its durable start receipt is saved; a confirmed terminal response must be saved before releasing the claim; UNKNOWN remains quarantined. Pseudocode: (1) reserve claim (2) call model (3) save start receipt (4) release claim (5) save terminal response. Identify ordering defects and provide the corrected sequence, including what to do if step 2 times out without remote terminal proof.",
+    "expected_answer": "Save start before call; save terminal before release. Correct: reserve, save start, call, save terminal, release. On uncertain timeout keep UNKNOWN quarantined and retain claim.",
+    "judge_criteria": [
+      "Finds call before durable start receipt",
+      "Finds release before durable terminal response",
+      "Gives reserve, start receipt, call, terminal receipt, release order",
+      "Retains quarantine and claim when completion is unknown",
+      "Does not treat a client timeout as confirmed remote completion"
+    ]
   }
 ]

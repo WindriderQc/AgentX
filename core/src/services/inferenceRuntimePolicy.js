@@ -42,11 +42,21 @@ async function prepareInferenceRuntime(request, policy, overrides = {}) {
           options.num_ctx = Math.round(contextSize);
           numCtxSource = 'host_preference_pin';
         }
+        // A different num_thread reloads the runner, so inference reuses the pin's.
+        const numThread = Number(pin.numThread);
+        if (options.num_thread == null && Number.isSafeInteger(numThread) && numThread > 0) options.num_thread = numThread;
       }
     }
+  } else if (options.num_thread == null) {
+    // Evaluation keeps its exact options, except the pin's CPU threads: they
+    // describe the host, not the model. Without them a CPU host capped below
+    // its core count runs Ollama's default thread count and is measured
+    // several times slower than it serves.
+    const numThread = await (deps.pinNumThread || require('./pinThreadLookup').pinNumThread)(host, model);
+    if (numThread) options.num_thread = numThread;
   }
   const contractInput = {
-    model, host, prompt, messages, system,
+    model, host, prompt, messages, system, tools: request.tools,
     requestedNumCtx: options.num_ctx, numCtxSource,
     requestedMaxOutputTokens: options.num_predict,
   };

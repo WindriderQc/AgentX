@@ -18,6 +18,8 @@ MAILBOX_BACKLOG_QUERY = 'in:anywhere -in:spam -in:trash -in:drafts -in:sent -lab
 # recurring job that reaches it. Both Secretary jobs died silently that way on
 # 2026-09-16/17 during an inference outage; see revive/yield below.
 OPENCLAW_AUTO_DISABLE_LIMIT = 10
+# Written to the same audit log by the action-provenance hook after each tool call.
+ACTION_RECEIPT_SCHEMA = "agentx.tool-action-receipt/v1"
 
 class GmailSecretaryProbeError(RuntimeError):
     """Raised when the bounded Gmail authorization probe fails."""
@@ -139,7 +141,9 @@ def read_audit_records(audit_log: Path) -> list[dict[str, Any]]:
             value = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(value, dict):
+        # An action receipt says a tool call was observed, not how it ended:
+        # only the tool's own record carries its outcome.
+        if isinstance(value, dict) and value.get("schema") != ACTION_RECEIPT_SCHEMA:
             records.append(value)
     return records
 
@@ -236,6 +240,14 @@ def check_evidence_health(records, status_file, *, now=None, stale_seconds=7200)
         if (current - parse_audit_time(started.get("at"))).total_seconds() > 600:
             raise GmailSecretaryProbeError("Secretary read a source page without recording its review")
     return bool(status.get("pending"))
+
+
+def catchup_running(root: Path, *, fresh_seconds: int = 1800) -> bool:
+    lock = root / "catchup.lock"
+    try:
+        return datetime.now(timezone.utc).timestamp() - lock.stat().st_mtime < fresh_seconds
+    except OSError:
+        return False
 
 
 def duration_milliseconds(value: str) -> int:
@@ -371,6 +383,8 @@ def main() -> int:
             incomplete_grace_seconds=args.incomplete_grace_seconds,
         )
         evidence_pending = check_evidence_health(records, args.evidence_status, stale_seconds=args.audit_stale_seconds)
+        # The bounded catch-up job owns the deep review while it runs; the triage turn stays steady.
+        evidence_pending = evidence_pending and not catchup_running(Path(args.evidence_status).parent)
         cadence = reconcile_cadence(
             openclaw=args.openclaw,
             job_id=args.triage_job_id,

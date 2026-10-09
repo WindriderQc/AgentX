@@ -10,6 +10,11 @@ const { spawn } = require('node:child_process');
 
 const script = path.join(__dirname, 'runtime-lease.sh').replace(/\\/g, '/');
 
+const BLOCKER = { type: 'workload', kind: 'benchmark', id: 'batch-42',
+  summary: 'workload benchmark batch-42 on http://host-a:11434 (owner benchmark-service, started 2026-10-02T10:00:00.000Z): '
+    + 'benchmark work goes through Core inference; a Core recreate cuts it. Cancel: Benchmark POST /api/benchmark/batch/batch-42/stop' };
+
+// refuse: false, true (refusal with blockers) or 'legacy' (a Core without blockers or verdict endpoint).
 function fakeCore(refuse) {
   const seen = [];
   const server = http.createServer((req, res) => {
@@ -19,8 +24,12 @@ function fakeCore(refuse) {
       seen.push({ method: req.method, url: req.url, caller: req.headers['x-agentx-caller'], body: body ? JSON.parse(body) : null });
       const send = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
       if (req.method === 'POST' && req.url === '/api/nerve-center/maintenance-leases') {
-        return refuse ? send(409, { status: 'error', data: { acquired: false } })
+        return refuse ? send(409, { status: 'error', data: { acquired: false, ...(refuse === true && { blockers: [BLOCKER] }) } })
           : send(200, { status: 'success', data: { acquired: true, leaseId: 'lease-1', generation: 'gen-1' } });
+      }
+      if (refuse !== 'legacy' && req.url.startsWith('/api/nerve-center/runtime-coordination/deploy-blockers?service=')) {
+        return send(200, { status: 'success', data: refuse ? { service: 'benchmark', allowed: false, blockers: [BLOCKER] }
+          : { service: 'benchmark', allowed: true, blockers: [] } });
       }
       if (req.url === '/api/nerve-center/runtime-coordination/active') {
         return send(200, { ok: true, data: { maintenance: null, inferences: [],
@@ -61,8 +70,65 @@ test('a granted lease heartbeats while held and is released with its exact gener
   } finally { core.server.close(); }
 });
 
-test('a refused lease names the active work and holds nothing', async () => {
+test('a refused lease prints the blockers Core names, with their cancel route, and holds nothing', async () => {
   const core = await fakeCore(true);
+  try {
+    const result = await run(`runtime_lease_acquire '${core.url}' core-recreate; echo "rc=$? id=[$RUNTIME_LEASE_ID]"`);
+    assert.match(result.stdout, /rc=10 id=\[\]/);
+    assert.match(result.stderr, /- workload benchmark batch-42 on http:\/\/host-a:11434 \(owner benchmark-service, started 2026-10-02T10:00:00.000Z\)/);
+    assert.match(result.stderr, /Cancel: Benchmark POST \/api\/benchmark\/batch\/batch-42\/stop/);
+    assert.equal(core.seen[0].body.scope, 'core-recreate');
+    assert.equal(core.seen.some(call => call.method === 'DELETE'), false);
+  } finally { core.server.close(); }
+});
+
+// A Core held only by background inference, which stops once a drain is requested (#253).
+function drainingCore(blocker) {
+  const seen = [];
+  let draining = false;
+  const server = http.createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      seen.push(`${req.method} ${req.url}`);
+      const send = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+      if (req.url === '/api/nerve-center/runtime-coordination/drain') { draining = req.method === 'POST'; return send(200, { data: {} }); }
+      if (req.method === 'POST' && req.url === '/api/nerve-center/maintenance-leases') {
+        return draining ? send(200, { data: { acquired: true, leaseId: 'lease-1', generation: 'gen-1' } })
+          : send(409, { status: 'error', data: { acquired: false, blockers: [blocker] } });
+      }
+      return send(200, { data: { released: true, heartbeat: true } });
+    });
+  });
+  return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({ server, seen, url: `http://127.0.0.1:${server.address().port}` })));
+}
+
+test('held only by background inference, the launcher asks it to pause, takes the lease and withdraws the request', async () => {
+  const core = await drainingCore({ type: 'inference', kind: 'inference-automated', id: 'synthetic-model',
+    summary: 'inference inference-automated synthetic-model on http://host-a:11434 (owner core-inference, started unknown): Core serves it. Cancel: none' });
+  try {
+    const result = await run(`runtime_lease_acquire '${core.url}' core-recreate; echo "rc=$? id=$RUNTIME_LEASE_ID"; runtime_lease_release`,
+      { AGENTX_RUNTIME_LEASE_DRAIN_SECONDS: '6', AGENTX_RUNTIME_LEASE_DRAIN_POLL_SECONDS: '1' });
+    assert.match(result.stdout, /rc=0 id=lease-1/);
+    assert.match(result.stderr, /asking it to pause/);
+    const drain = core.seen.filter(call => call.endsWith('/runtime-coordination/drain'));
+    assert.deepEqual(drain.map(call => call.split(' ')[0]), ['POST', 'DELETE']);
+  } finally { core.server.close(); }
+});
+
+test('interactive or benchmark work is never asked to drain: the refusal is immediate', async () => {
+  const core = await drainingCore({ type: 'inference', kind: 'trusted-runtime-stream', id: 'synthetic-model',
+    summary: 'inference trusted-runtime-stream synthetic-model on http://host-a:11434 (owner core-trusted-runtime, started unknown): Core serves it. Cancel: none' });
+  try {
+    const result = await run(`runtime_lease_acquire '${core.url}' core-recreate; echo "rc=$? id=[$RUNTIME_LEASE_ID]"`,
+      { AGENTX_RUNTIME_LEASE_DRAIN_SECONDS: '6', AGENTX_RUNTIME_LEASE_DRAIN_POLL_SECONDS: '1' });
+    assert.match(result.stdout, /rc=10 id=\[\]/);
+    assert.match(result.stderr, /inference trusted-runtime-stream synthetic-model/);
+    assert.equal(core.seen.some(call => call.includes('/drain')), false);
+  } finally { core.server.close(); }
+});
+
+test('a refusal from a Core without blockers falls back to its workload list', async () => {
+  const core = await fakeCore('legacy');
   try {
     const result = await run(`runtime_lease_acquire '${core.url}' runtime-deploy; echo "rc=$? id=[$RUNTIME_LEASE_ID]"`);
     assert.match(result.stdout, /rc=10 id=\[\]/);
@@ -88,15 +154,22 @@ test('only a recreate of Core or Benchmark, or of every service, needs the lease
     '[--no-deps --build]=lease', '[rag]=none', '[rag data --no-deps]=none'].join('\n'));
 });
 
-test('Core needs the global lease; a Benchmark-only recreate checks only Benchmark workloads', async () => {
-  const scopes = await run(`for args in "core" "benchmark" "benchmark benchmark-runner --no-deps" "core benchmark" "" "rag"; do
-    echo "[$args]=$(runtime_guard_scope $args)"; done`);
-  assert.equal(scopes.stdout.trim(), ['[core]=core', '[benchmark]=benchmark', '[benchmark benchmark-runner --no-deps]=benchmark',
-    '[core benchmark]=core', '[]=core', '[rag]='].join('\n'));
-  const core = await fakeCore(true);
-  try {
-    const busy = await run(`runtime_workloads_active '${core.url}'; echo "rc=$?"`);
-    assert.match(busy.stdout, /rc=0/);
-    assert.match(busy.stderr, /"workloadId":"batch-42"/);
-  } finally { core.server.close(); }
+test('Core alone takes the core-recreate lease, both or all services the global one, Benchmark only a verdict', async () => {
+  const scopes = await run(`for args in "core" "core rag --no-deps" "benchmark" "benchmark benchmark-runner --no-deps" "core benchmark" "" "rag"; do
+    scope=$(runtime_guard_scope $args); echo "[$args]=$scope/$( [[ -n $scope ]] && runtime_lease_scope $scope)"; done`);
+  assert.equal(scopes.stdout.trim(), ['[core]=core/core-recreate', '[core rag --no-deps]=core/core-recreate',
+    '[benchmark]=benchmark/runtime-deploy', '[benchmark benchmark-runner --no-deps]=benchmark/runtime-deploy',
+    '[core benchmark]=all/runtime-deploy', '[]=all/runtime-deploy', '[rag]=/'].join('\n'));
+});
+
+test('a Benchmark recreate follows the Core verdict and names what it would cut', async () => {
+  for (const [refuse, rc] of [[true, 0], [false, 1], ['legacy', 0]]) {
+    const core = await fakeCore(refuse);
+    try {
+      const result = await run(`runtime_deploy_blocked '${core.url}' benchmark; echo "rc=$?"`);
+      assert.match(result.stdout, new RegExp(`rc=${rc}`));
+      if (refuse === true) assert.match(result.stderr, /Cancel: Benchmark POST \/api\/benchmark\/batch\/batch-42\/stop/);
+      if (refuse === 'legacy') assert.match(result.stderr, /"workloadId":"batch-42"/);
+    } finally { core.server.close(); }
+  }
 });

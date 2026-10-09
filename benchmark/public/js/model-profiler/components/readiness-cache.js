@@ -9,7 +9,7 @@ export async function getReadinessMap() {
   if (_cache) return _cache;
   if (_fetching) return _fetching;
 
-  _fetching = fetch('/api/profiler/models')
+  _fetching = fetch('/benchmark/api/profiler/models')
     .then(r => r.ok ? r.json() : [])
     .then(json => {
       const models = json?.data ?? json;

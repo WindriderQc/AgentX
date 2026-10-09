@@ -4,9 +4,13 @@
  * Bounded GPU telemetry store fed by the native gpu-agent collector.
  *
  * - `hardware_collectors`: one row per collector (heartbeat, interval, declared hosts)
- * - `hardware_hosts`: latest snapshot and error/staleness state per GPU host
+ * - `hardware_hosts`: latest snapshot and error/staleness state per GPU host,
+ *   with the latest observation of its Ollama service settings when collected
  * - `hardware_gpu_samples`: per-GPU history, expired by a TTL index
  */
+
+const { normalizeOllamaEnvironment } = require('../../shared/ollamaServiceEnvironment');
+const activityEvents = require('./activityEvents');
 
 const COLLECTORS = 'hardware_collectors';
 const HOSTS = 'hardware_hosts';
@@ -108,11 +112,14 @@ function collectorFields(info) {
 
 async function registerCollector(db, info = {}, now = new Date()) {
   const fields = collectorFields(info);
-  await db.collection(COLLECTORS).updateOne(
+  const result = await db.collection(COLLECTORS).updateOne(
     { collectorId: fields.collectorId },
     { $set: { ...fields, lastSeen: now }, $setOnInsert: { firstSeen: now } },
     { upsert: true }
   );
+  await activityEvents.collectorSeen(db, 'gpu', fields.collectorId, {
+    inserted: (result?.upsertedCount || 0) > 0, hostname: fields.hostname
+  });
   return fields;
 }
 
@@ -130,6 +137,7 @@ async function ingestSamples(db, body = {}, now = new Date()) {
   let accepted = 0;
   let failed = 0;
   let gpuSamples = 0;
+  const sampledHosts = [];
   const historyDocs = [];
   const hostWrites = [];
   for (const raw of results) {
@@ -142,18 +150,23 @@ async function ingestSamples(db, body = {}, now = new Date()) {
     });
     if (!base) continue;
     const sampledAt = validDate(raw.sampledAt, now);
+    // Ollama settings are read less often than GPUs: a result without them keeps
+    // the previous observation, which carries its own observedAt.
+    const ollamaEnvironment = normalizeOllamaEnvironment(raw.ollamaEnvironment);
     const common = {
       collectorId: collector.collectorId,
       name: base.name,
       ollamaUrl: base.ollamaUrl,
       local: base.local,
       intervalMs: collector.intervalMs,
-      lastAttemptAt: sampledAt
+      lastAttemptAt: sampledAt,
+      ...(ollamaEnvironment && { ollamaEnvironment })
     };
     if (raw.ok === true) {
       const gpus = (Array.isArray(raw.gpus) ? raw.gpus : []).slice(0, MAX_GPUS).map(normalizeGpu);
       accepted += 1;
       gpuSamples += gpus.length;
+      sampledHosts.push({ hostId: base.hostId, name: base.name, collectorId: collector.collectorId });
       for (const gpu of gpus) {
         historyDocs.push({ hostId: base.hostId, collectorId: collector.collectorId, sampledAt, ...gpu });
       }
@@ -197,6 +210,7 @@ async function ingestSamples(db, body = {}, now = new Date()) {
   }
   if (hostWrites.length) await db.collection(HOSTS).bulkWrite(hostWrites, { ordered: false });
   if (historyDocs.length) await db.collection(SAMPLES).insertMany(historyDocs, { ordered: false });
+  await Promise.all(sampledHosts.map(host => activityEvents.gpuHostSampled(db, host)));
   return { collectorId: collector.collectorId, accepted, failed, gpuSamples };
 }
 

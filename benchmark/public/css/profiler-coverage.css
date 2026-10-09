@@ -1,0 +1,30 @@
+/* Profiler cockpit — coverage matrix */
+.mp-coverage-summary { margin: 0 0 12px; font-size: 0.85rem; }
+.mp-coverage-summary small { margin-left: 8px; opacity: 0.6; }
+.mp-coverage-empty { margin: 8px 0; opacity: 0.75; font-size: 0.85rem; }
+.mp-coverage-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.mp-coverage-table th { text-align: left; padding: 6px 10px; font-weight: 600; opacity: 0.7; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+.mp-coverage-table td { padding: 8px 10px; vertical-align: top; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.mp-coverage-table td small { display: block; opacity: 0.6; font-size: 0.7rem; margin-top: 2px; }
+.mp-coverage-bar { height: 6px; width: 160px; max-width: 100%; border-radius: 3px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.mp-coverage-bar span { display: block; height: 100%; background: #4ade80; }
+.mp-coverage-cats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.mp-coverage-cat { padding: 1px 6px; border-radius: 8px; font-size: 0.66rem; border: 1px solid rgba(255, 255, 255, 0.15); }
+.mp-coverage-cat.is-done { color: #4ade80; border-color: rgba(74, 222, 128, 0.4); }
+.mp-coverage-cat.is-partial { color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); }
+.mp-coverage-cat.is-none { opacity: 0.55; }
+.mp-coverage-profile { font-weight: 600; }
+.mp-coverage-profile.is-current, .mp-coverage-done { color: #4ade80; }
+.mp-coverage-profile.is-stale, .mp-coverage-profile.is-unqualified { color: #f59e0b; }
+.mp-coverage-profile.is-missing { color: #f87171; }
+.mp-coverage-settings { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 0.78rem; }
+.mp-coverage-settings .mp-coverage-job { flex-basis: 100%; margin: 0; }
+.mp-coverage-settings input[type="number"] { width: 64px; }
+.mp-coverage-settings input, .mp-coverage-settings button { font: inherit; padding: 3px 6px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.06); color: inherit; }
+.mp-coverage-settings button { cursor: pointer; padding: 4px 12px; }
+.mp-coverage-save { opacity: 0.75; }
+@media (max-width: 720px) {
+  .mp-coverage-table thead { display: none; }
+  .mp-coverage-table td { display: block; border-bottom: 0; padding: 4px 10px; }
+  .mp-coverage-table tr { display: block; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+}

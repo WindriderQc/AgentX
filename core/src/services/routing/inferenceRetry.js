@@ -2,6 +2,7 @@
 
 const { setTimeout: sleep } = require('node:timers/promises');
 const { describeFailure } = require('../../../../shared/failureDiagnostics');
+const { attemptWaits } = require('./inferenceWaitTelemetry');
 
 function classifyFailure(error) {
   let failure;
@@ -63,7 +64,7 @@ async function retryPolicy(operation, { enabled = false, signal, beforeAttempt, 
       const canRetry = enabled && failure.retryable === true && failure.safeToRetry === true
         && !error.inferenceQuarantineError && attempt < maxAttempts
         && now() - startedAt + delayMs < maxElapsedMs;
-      history.push({ attempt, cause: failure.cause, delayMs: canRetry ? delayMs : 0 });
+      history.push({ attempt, cause: failure.cause, delayMs: canRetry ? delayMs : 0, ...attemptWaits(error.inferenceWaits) });
       const retry = { state: canRetry ? 'waiting' : failure.retryable && enabled ? 'exhausted' : 'failed',
         attempts: attempt, elapsedMs: now() - startedAt, cause: failure.cause,
         nextRetryAt: canRetry ? new Date(now() + delayMs).toISOString() : null, history: [...history] };

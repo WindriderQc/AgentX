@@ -28,16 +28,15 @@ const RERANK_CONCURRENCY = Number(process.env.RERANK_CONCURRENCY) || 2;
  * Build the LLM relevance-scoring prompt.
  *
  * @param {string} query - User query
- * @param {string} text - Chunk text (truncated to 500 chars)
+ * @param {string} text - Complete chunk text
  * @returns {string} Prompt string
  */
 function buildScoringPrompt(query, text) {
-  const truncated = text.substring(0, 500);
   return `You are a relevance judge. Rate how relevant this text is to the query on a scale of 0-10.
 
 Query: "${query}"
 
-Text: "${truncated}"
+Text: "${text}"
 
 Return ONLY a number from 0 to 10, where:
 - 0 = completely irrelevant

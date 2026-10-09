@@ -139,6 +139,7 @@ jest.mock('../../src/services/runtimeCoordinationService', () => ({
   heartbeat: jest.fn(),
   release: jest.fn(),
   markMaintenanceUnknown: jest.fn(),
+  listDeployBlockers: jest.fn(),
   assertWorkloadAdmission: jest.fn(() => Promise.resolve({
     admitted: true,
     admissionId: 'admission-core',
@@ -649,6 +650,28 @@ describe('Nerve Center API Routes', () => {
       const reloaded = await buildRouterConfigPayload({ force: true });
       expect(reloaded.taskModels.quick_chat).toEqual(ORIGINAL_TASK_MODELS.quick_chat);
       expect(reloaded.overrides.taskModels).not.toHaveProperty('quick_chat');
+    });
+  });
+
+  describe('PUT /inference/routing-config/:taskType', () => {
+    it('saves one task override and resets it', async () => {
+      const saved = await http.request
+        .put('/api/nerve-center/inference/routing-config/quick_chat')
+        .send({ model: 'patched:1b', host: 'tertiary' })
+        .expect(200);
+
+      expect(saved.body.status).toBe('success');
+      expect(saved.body.data.taskType).toBe('quick_chat');
+      expect(saved.body.data.effective).toEqual({ model: 'patched:1b', host: 'tertiary' });
+      expect(saved.body.data.isOverride).toBe(true);
+
+      const reset = await http.request
+        .put('/api/nerve-center/inference/routing-config/quick_chat')
+        .send({ resetToDefault: true })
+        .expect(200);
+
+      expect(reset.body.data.isOverride).toBe(false);
+      expect(reset.body.data.effective).toEqual(ORIGINAL_TASK_MODELS.quick_chat);
     });
   });
 
@@ -1654,6 +1677,26 @@ describe('Nerve Center API Routes', () => {
       expect(res.body.data.claims[0]).not.toHaveProperty('admissionGeneration');
       expect(res.body.data.claims[0]).not.toHaveProperty('preClaimRuntime');
       expect(res.body.data.claims[0]).not.toHaveProperty('finalizeToken');
+    });
+  });
+
+  describe('runtime deploy verdict (#47)', () => {
+    it('passes the requested service and returns Core blockers', async () => {
+      const blockers = [{ type: 'workload', kind: 'profiler', id: 'profile-1', summary: 'workload profiler profile-1' }];
+      runtimeCoordinationService.listDeployBlockers.mockResolvedValue({ service: 'benchmark', allowed: false, blockers });
+      const res = await http.request.get('/api/nerve-center/runtime-coordination/deploy-blockers?service=benchmark').expect(200);
+      expect(runtimeCoordinationService.listDeployBlockers).toHaveBeenCalledWith({ service: 'benchmark' });
+      expect(res.body.data).toEqual({ service: 'benchmark', allowed: false, blockers });
+    });
+
+    it('returns the blockers of a refused maintenance lease', async () => {
+      const blockers = [{ type: 'inference', summary: 'inference chat qwen3:8b' }];
+      runtimeCoordinationService.acquireMaintenance.mockResolvedValueOnce({ acquired: false, reason: 'busy', blockers });
+      const res = await http.request.post('/api/nerve-center/maintenance-leases')
+        .set('X-AgentX-Caller', 'operator')
+        .send({ requestId: 'deploy-1', scope: 'core-recreate' }).expect(409);
+      expect(runtimeCoordinationService.acquireMaintenance).toHaveBeenCalledWith(expect.objectContaining({ scope: 'core-recreate' }));
+      expect(res.body.data.blockers).toEqual(blockers);
     });
   });
 });

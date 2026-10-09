@@ -21,6 +21,7 @@ const janitorApprovalEvidence = require('./janitorApprovalEvidence');
 const janitorAI = require('./janitorAI');
 const janitorProfiles = require('./janitorProfiles');
 const janitorStrategy = require('./janitorStrategy');
+const activityEvents = require('./activityEvents');
 const { log } = require('../utils/logger');
 
 const COLLECTION = 'janitor_runs';
@@ -28,6 +29,13 @@ const AI_SAMPLE_SIZE = 50;
 const PROFILE_APPLY_CONFIRMATION = 'DELETE_APPROVED_FILES';
 const RESTORE_SOURCE_CONFIRMATION = 'VERIFIED_SURVIVOR_IS_RESTORE_SOURCE';
 const DEFAULT_PREVIEW_TTL_MS = 15 * 60 * 1000;
+// Proposed actions stay inside the run document, where approval addresses them
+// by index, so a run stores a bounded prefix: at most this many actions and
+// this many serialized bytes, well under MongoDB's 16 MB document limit. The
+// rest is counted in `proposed_actions_omitted` and only appears in a later
+// run, once the duplicates of the stored actions have been removed.
+const MAX_PROPOSED_ACTIONS = 2000;
+const MAX_PROPOSED_ACTIONS_BYTES = 8 * 1024 * 1024;
 
 // In-memory concurrency guard: profile ids currently running
 const running = new Set();
@@ -49,6 +57,7 @@ async function _createRunDoc(db, profile) {
     strategy_status: null,
     decisions_required: [],
     proposed_actions: [],
+    proposed_actions_omitted: 0,
     error: null
   };
   const result = await db.collection(COLLECTION).insertOne(doc);
@@ -136,20 +145,42 @@ function _buildProposedActions(profile, dedupMerged, sharedDrivePolicy) {
   };
 }
 
+function _boundProposedActions(actions) {
+  let bytes = 0;
+  let kept = 0;
+  for (const action of actions) {
+    if (kept >= MAX_PROPOSED_ACTIONS) break;
+    bytes += Buffer.byteLength(JSON.stringify(action), 'utf8');
+    if (bytes > MAX_PROPOSED_ACTIONS_BYTES) break;
+    kept += 1;
+  }
+  return { actions: actions.slice(0, kept), omitted: actions.length - kept };
+}
+
 async function _runAiTriage(profile, runDoc, proposedActions, scanCounts) {
   const sample = proposedActions.slice(0, AI_SAMPLE_SIZE).map(a => ({
     policy: a.policy,
     files: (a.files || []).slice(0, 5),
     space_saved: a.space_saved
   }));
+  const includedFiles = sample.reduce((n, a) => n + a.files.length, 0);
+  const availableFiles = proposedActions.reduce((n, a) => n + (a.files || []).length, 0);
+  const coverage = {
+    scope: 'advisory_metadata_sample',
+    actions: { included: sample.length, available: proposedActions.length },
+    fileEntries: { included: includedFiles, available: availableFiles },
+    complete: sample.length === proposedActions.length && includedFiles === availableFiles,
+    selection: `First ${AI_SAMPLE_SIZE} proposed actions; first 5 file entries per action.`
+  };
   try {
     const aiResult = await janitorAI.callAI('triage', {
       files: sample,
+      coverage,
       stats: { ...scanCounts, total_proposed_actions: proposedActions.length }
     });
-    return { verdict: aiResult.result, model: aiResult.model, duration_ms: aiResult.duration_ms };
+    return { verdict: aiResult.result, model: aiResult.model, duration_ms: aiResult.duration_ms, coverage, outcome: 'completed' };
   } catch (err) {
-    return { error: err.message };
+    return { error: err.message, coverage, outcome: 'failed' };
   }
 }
 
@@ -173,6 +204,14 @@ async function _prepareRun(db, profileId) {
 async function _executePreparedRun(db, prepared) {
   const { profile, key, runDoc } = prepared;
   try {
+    // Step 0: a root that is missing or not a directory fails the run here.
+    const roots = await janitorProfiles.checkRoots(profile.roots);
+    if (!roots.ok) {
+      const error = `roots: ${roots.errors.join('; ')}`;
+      await _patchRun(db, runDoc._id, { status: 'failed', error, finished_at: new Date() });
+      return { ok: false, run_id: runDoc._id, error };
+    }
+
     // Step 1: scan
     let scanResult;
     try {
@@ -204,7 +243,7 @@ async function _executePreparedRun(db, prepared) {
     // incomplete, so a fresh installation fails closed instead of keep-oldest.
     const sharedDrivePolicy = await janitorStrategy.getPolicy(db);
     const actionPlan = _buildProposedActions(profile, dedupMerged, sharedDrivePolicy);
-    const proposedActions = actionPlan.actions;
+    const { actions: proposedActions, omitted: proposedActionsOmitted } = _boundProposedActions(actionPlan.actions);
 
     // Step 4: AI triage (best-effort)
     let aiTriage = null;
@@ -217,6 +256,7 @@ async function _executePreparedRun(db, prepared) {
       status: 'complete',
       finished_at: new Date(),
       proposed_actions: proposedActions,
+      proposed_actions_omitted: proposedActionsOmitted,
       strategy_status: actionPlan.status,
       decisions_required: actionPlan.decisions_required,
       strategy_policy: janitorStrategy.publicPolicy(sharedDrivePolicy),
@@ -236,6 +276,7 @@ async function _executePreparedRun(db, prepared) {
     return { ok: false, error: err.message, run_id: runDoc._id };
   } finally {
     running.delete(key);
+    await activityEvents.janitorRunFinished(db, runDoc._id);
   }
 }
 
@@ -627,14 +668,38 @@ async function rejectAction(db, runId, actionIdx) {
   return { ok: true, action: updatedAction };
 }
 
+// Startup repair: nothing is in progress in a process that has just started.
 async function sweepStaleRuns(db) {
+  const now = new Date();
   const result = await db.collection(COLLECTION).updateMany(
     { status: 'running' },
-    { $set: { status: 'stopped', finished_at: new Date() } }
+    { $set: { status: 'stopped', finished_at: now } }
   );
   if (result.modifiedCount > 0) {
     log(`[janitorRunner] Swept ${result.modifiedCount} stale running run(s)`);
   }
+
+  // An action a crash left `executing` has an unknown outcome. It returns to
+  // `pending` with its preview invalidated: nothing is approved or executed
+  // here, and a new preview must re-verify every file before any apply.
+  const stuck = await db.collection(COLLECTION).find({ 'proposed_actions.status': 'executing' }).toArray();
+  let actions = 0;
+  for (const run of stuck) {
+    for (const [idx, action] of (run.proposed_actions || []).entries()) {
+      if (action?.status !== 'executing') continue;
+      const at = `proposed_actions.${idx}`;
+      const write = await db.collection(COLLECTION).updateOne({ _id: run._id, [`${at}.status`]: 'executing' }, { $set: {
+        [`${at}.status`]: 'pending',
+        [`${at}.execution_authorized`]: false,
+        [`${at}.execution_interrupted_at`]: now,
+        [`${at}.approval_preview.status`]: 'invalidated',
+        [`${at}.approval_preview.invalidated_at`]: now,
+        [`${at}.result`]: { note: 'Execution was interrupted by a restart; some targets may already be deleted. Generate a new preview.' }
+      } });
+      if (_modified(write)) actions += 1;
+    }
+  }
+  if (actions > 0) log(`[janitorRunner] Returned ${actions} interrupted action(s) to pending; a new preview is required`, 'warn');
   return result.modifiedCount;
 }
 
@@ -644,11 +709,10 @@ module.exports = {
   PROFILE_APPLY_CONFIRMATION,
   RESTORE_SOURCE_CONFIRMATION,
   DEFAULT_PREVIEW_TTL_MS,
+  MAX_PROPOSED_ACTIONS,
+  MAX_PROPOSED_ACTIONS_BYTES,
   isLiveExecutionEnabled,
-  runProfile,
-  startProfileRun,
-  listRunsForProfile,
-  getRun,
+  runProfile, startProfileRun, listRunsForProfile, getRun,
   approveAction,
   rejectAction,
   sweepStaleRuns,

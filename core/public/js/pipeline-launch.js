@@ -3,7 +3,7 @@
   else root.PipelineLaunchController = factory();
 })(typeof window === 'undefined' ? globalThis : window, function () {
   'use strict';
-  const STORAGE_KEY = 'agentx.pipeline.launchRequest.v1';
+  const STORAGE_KEY = 'agentx.pipeline.simpleWorkerRequest.v1';
   const TERMINAL = new Set(['finished', 'rejected', 'stopped']);
 
   class PipelineLaunchController {
@@ -76,7 +76,7 @@
         this.error = null;
         const run = this.control.run;
         if (!this.pending && run?.requestId && run.pipelineId && Number.isSafeInteger(run.expectedAttemptCount)
-          && ['submitting', 'uncertain', 'accepted', 'running'].includes(run.phase)) {
+          && ['submitting', 'uncertain', 'accepted', 'running', 'unknown', 'waiting'].includes(run.phase)) {
           this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount };
           this.persist();
         }
@@ -110,6 +110,20 @@
     async retry() {
       if (!this.canRetry()) return false;
       return this.submit();
+    }
+    canCancel() {
+      return !this.disposed && !this.submitting && !this.checking && !this.error && Boolean(this.pending)
+        && this.control?.run?.requestId === this.pending.requestId && this.control.run.canCancel === true;
+    }
+    async cancel() {
+      if (!this.canCancel()) return false;
+      this.submitting = true;
+      this.changed();
+      try {
+        await this.boundedRequest(`/api/runtime-bridges/coding-dispatch/runs/${this.pending.requestId}/cancel`, { method: 'POST' });
+      } catch (error) { this.error = error.message; }
+      finally { this.submitting = false; await this.refresh(); }
+      return true;
     }
     async submit() {
       if (this.submitting || !this.pending || this.disposed) return false;

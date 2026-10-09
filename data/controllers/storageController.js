@@ -1,11 +1,13 @@
-const { Scanner, rebuildDirectoryRollups } = require('../services/scanner');
+const { Scanner } = require('../services/scanner');
 const { CANDIDATE_QUEUE_ORDER } = require('../services/candidateHasher');
 const { ObjectId } = require('mongodb');
 const { resolveAllowedPath } = require('../services/janitorService');
 const storageAgentService = require('../services/storageAgentService');
+const { cleanupStaleScans, scanEnded } = require('../services/storageScanLifecycle');
+const activityEvents = require('../services/activityEvents');
+const { updateScan } = require('./storageScanUpdateController');
 const { classifyFileMetadata, normalizeContentType } = require('../utils/fileMetadata');
 const { log } = require('../utils/logger');
-const { fetchWithTimeoutAndRetry } = require('../utils/fetch-utils');
 
 // Track running scans so they can be stopped
 const runningScans = new Map();
@@ -34,26 +36,22 @@ function validHashExpression() {
   };
 }
 
-// Helper to resolve n8n Webhook URL
-function resolveN8nUrl() {
-  return process.env.N8N_WEBHOOK_URL ||
-    (process.env.N8N_WEBHOOK_BASE_URL && process.env.N8N_WEBHOOK_GENERIC
-      ? `${process.env.N8N_WEBHOOK_BASE_URL}/${process.env.N8N_WEBHOOK_GENERIC}` : null);
+const MAX_SCAN_BATCH_SIZE = 10000;
+const MAX_SCAN_EXTENSIONS = 200;
+const MAX_SCANS_PAGE = 100000;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
+
+function isExtensionList(value) {
+  return value == null || (
+    Array.isArray(value) && value.length <= MAX_SCAN_EXTENSIONS &&
+    value.every(item => typeof item === 'string' && item.length > 0 && item.length <= 32)
+  );
 }
 
-// Cleanup stale "running" scans on server restart
-async function cleanupStaleScans(db) {
-  try {
-    const result = await db.collection('nas_scans').updateMany(
-      { status: 'running', 'config.external': { $ne: true } },
-      { $set: { status: 'stopped', finished_at: new Date() } }
-    );
-    if (result.modifiedCount > 0) {
-      log(`[Storage] Cleaned up ${result.modifiedCount} stale running scan(s)`);
-    }
-  } catch (error) {
-    log(`[Storage] Error cleaning up stale scans: ${error.message}`, 'error');
-  }
+function boundedInt(value, fallback, maximum) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(maximum, parsed);
 }
 
 const scan = async (req, res) => {
@@ -78,6 +76,20 @@ const scan = async (req, res) => {
       });
     }
 
+    const batchSize = batch_size == null ? 1000 : Number(batch_size);
+    if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > MAX_SCAN_BATCH_SIZE) {
+      return res.status(400).json({
+        status: 'error',
+        message: `batch_size must be an integer between 1 and ${MAX_SCAN_BATCH_SIZE}`
+      });
+    }
+    if (!isExtensionList(extensions) || !isExtensionList(exclude_extensions)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `extensions and exclude_extensions must be arrays of at most ${MAX_SCAN_EXTENSIONS} strings`
+      });
+    }
+
     const safeRoots = [];
     for (const root of requestedRoots) {
       const safePath = await resolveAllowedPath(root, { mustExist: true, type: 'directory' });
@@ -88,15 +100,30 @@ const scan = async (req, res) => {
       safeRoots.push(safePath.realPath);
     }
 
+    await storageAgentService.expireStaleScans(db);
+    const overlapping = await storageAgentService.findOverlappingScan(db, safeRoots);
+    if (overlapping) {
+      return res.status(409).json({
+        status: 'error',
+        message: `Scan ${overlapping._id} is already ${overlapping.status} on an overlapping root`,
+        data: { scan_id: overlapping._id }
+      });
+    }
+
     const scanner = new Scanner(db);
     runningScans.set(scan_id, scanner);
-    scanner.on('done', () => runningScans.delete(scan_id));
+    const scanDoc = { _id: scan_id, config: { roots: safeRoots } };
+    scanner.on('done', (done = {}) => {
+      runningScans.delete(scan_id);
+      scanEnded(db, { ...scanDoc, ...done }, { rollupsRebuilt: done.rollups_rebuilt === true, filtered: done.filtered === true });
+    });
+    activityEvents.scanStarted(db, scanDoc);
 
     scanner.run({
       roots: safeRoots,
-      includeExt: extensions,
-      excludeExt: exclude_extensions,
-      batchSize: batch_size || 1000,
+      includeExt: extensions || [],
+      excludeExt: exclude_extensions || [],
+      batchSize,
       scanId: scan_id,
       computeHashes: compute_hashes === true,
       hashMode: requestedHashMode,
@@ -104,9 +131,19 @@ const scan = async (req, res) => {
       hashMaxFiles: hash_max_files,
       hashMaxBytes: hash_max_bytes,
       hashMinSize: hash_min_size
-    }).catch(err => {
+    }).catch(async err => {
       log(`[Storage] Scan ${scan_id} failed: ${err.message}`, 'error');
       runningScans.delete(scan_id);
+      // A crashed scan left "running" would block every later scan of its roots.
+      try {
+        const failure = { status: 'failed', finished_at: new Date(), last_error: String(err && err.message || err) };
+        const marked = await db.collection('nas_scans').updateOne(
+          { _id: scan_id, status: { $in: ['running', 'hashing'] } }, { $set: failure }
+        );
+        if (marked?.modifiedCount) await scanEnded(db, { ...scanDoc, ...failure });
+      } catch (updateError) {
+        log(`[Storage] Could not mark scan ${scan_id} failed: ${updateError.message}`, 'error');
+      }
     });
 
     res.json({
@@ -117,7 +154,7 @@ const scan = async (req, res) => {
         roots: safeRoots,
         extensions,
         exclude_extensions,
-        batch_size: batch_size || 1000,
+        batch_size: batchSize,
         hash_mode: requestedHashMode
       }
     });
@@ -133,6 +170,8 @@ const getStatus = async (req, res) => {
     if (!scan_id) return res.status(400).json({ status: 'error', message: 'Missing scan_id' });
 
     const db = req.app.locals.db;
+    // A waiting client must see a dead external scan end even when no collector polls.
+    await storageAgentService.expireStaleScans(db);
     const scanDoc = await db.collection('nas_scans').findOne({ _id: scan_id });
     if (!scanDoc) return res.status(404).json({ status: 'error', message: `Scan not found: ${scan_id}` });
     res.json({
@@ -177,16 +216,20 @@ const enqueueAgentScan = async (req, res, next) => {
       hashMaxBytes: req.body?.hash_max_bytes
     });
     if (!result.ok) {
-      return res.status(result.unavailable ? 503 : 400).json({ status: 'error', message: result.error });
+      return res.status(result.unavailable ? 503 : (result.conflict ? 409 : 400))
+        .json({ status: 'error', message: result.error });
     }
     res.status(202).json({
       status: 'success',
-      message: 'Storage scan queued to native agent',
+      message: result.coalesced
+        ? `Storage scan already ${result.scan.status} for this source; joined it`
+        : 'Storage scan queued to native agent',
       data: {
         scan_id: result.scan._id,
         source: result.scan.config.source,
         root: result.scan.config.roots[0],
-        hash_mode: result.scan.config.hash_mode
+        hash_mode: result.scan.config.hash_mode,
+        coalesced: result.coalesced === true
       }
     });
   } catch (error) { next(error); }
@@ -194,17 +237,19 @@ const enqueueAgentScan = async (req, res, next) => {
 
 const heartbeatAgent = async (req, res, next) => {
   try {
-    const { scannerId, hostname, platform, agentVersion, sources = '' } = req.body || {};
+    const { scannerId, hostname, platform, agentVersion, sources = '', scanId } = req.body || {};
     if (!String(scannerId || '').trim()) {
       return res.status(400).json({ status: 'error', message: 'scannerId body field required' });
     }
     const registeredId = await storageAgentService.registerScanner(req.app.locals.db, {
       scannerId, hostname, platform, agentVersion, sources
     });
-    res.json({
-      status: 'success',
-      data: { scanner_id: registeredId, heartbeat_at: new Date().toISOString() }
-    });
+    const data = { scanner_id: registeredId, heartbeat_at: new Date().toISOString() };
+    // false tells the collector its scan is no longer running (finished or reaped).
+    if (scanId != null) {
+      data.scan_refreshed = await storageAgentService.touchScanHeartbeat(req.app.locals.db, scanId);
+    }
+    res.json({ status: 'success', data });
   } catch (error) { next(error); }
 };
 
@@ -259,9 +304,10 @@ const listScans = async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     const db = req.app.locals.db;
-    const parsedPage = Math.max(1, parseInt(page));
-    const parsedLimit = Math.max(1, Math.min(100, parseInt(limit)));
+    const parsedPage = boundedInt(page, 1, MAX_SCANS_PAGE);
+    const parsedLimit = boundedInt(limit, 10, 100);
     const skip = (parsedPage - 1) * parsedLimit;
+    await storageAgentService.expireStaleScans(db);
 
     const col = db.collection('nas_scans');
     const [total, scans] = await Promise.all([
@@ -307,7 +353,14 @@ const insertBatch = async (req, res) => {
     const db = req.app.locals.db;
     const scanDoc = await db.collection('nas_scans').findOne({ _id: scan_id });
     if (!scanDoc) return res.status(404).json({ status: 'error', message: `Scan not found: ${scan_id}` });
+    if (scanDoc.config?.external !== true || scanDoc.status !== 'running') {
+      return res.status(409).json({
+        status: 'error',
+        message: `Scan ${scan_id} does not accept batches: only a running external scan does`
+      });
+    }
 
+    const scanRoots = (scanDoc.config.roots || []).map(root => String(root).replace(/\/+$/, ''));
     const filesCollection = db.collection('nas_files');
     const now = new Date();
     const nowSeconds = Math.floor(now.getTime() / 1000);
@@ -318,9 +371,23 @@ const insertBatch = async (req, res) => {
       }
     }
 
-    const bulkOps = files.map(file => {
+    // Entries outside the scan's roots are dropped and counted, never stored:
+    // they would escape this scan's pruning and pollute another root's index.
+    let rejected = 0;
+    let hashesRejected = 0;
+    const accepted = [];
+    for (const file of files) {
       const normalizedPath = file.path.replace(/\/+$/, '').trim();
-      const pathParts = normalizedPath?.split('/') || [];
+      const sourceRoot = scanRoots.find(root => normalizedPath.startsWith(`${root}/`));
+      if (!sourceRoot || normalizedPath.split('/').some(part => part === '.' || part === '..')) {
+        rejected++;
+        continue;
+      }
+      accepted.push({ file, normalizedPath, sourceRoot });
+    }
+
+    const bulkOps = accepted.map(({ file, normalizedPath, sourceRoot }) => {
+      const pathParts = normalizedPath.split('/');
       const filename = pathParts.pop() || '';
       const dirname = pathParts.join('/') || '';
       const dotIdx = filename.lastIndexOf('.');
@@ -331,10 +398,9 @@ const insertBatch = async (req, res) => {
         ? 'native-magic-v1'
         : null;
       const contentType = contentProbeSource ? normalizeContentType(file) : null;
-      const sourceRoot = file.source_root || scanDoc.config?.roots?.[0] || '';
-      const relativePath = file.relative_path || (sourceRoot && normalizedPath.startsWith(sourceRoot)
-        ? normalizedPath.slice(sourceRoot.length).replace(/^\/+/, '')
-        : filename);
+      const relativePath = typeof file.relative_path === 'string' && file.relative_path
+        ? file.relative_path
+        : normalizedPath.slice(sourceRoot.length).replace(/^\/+/, '');
       const relativeParts = relativePath.split('/').filter(Boolean);
       const classification = classifyFileMetadata({
         path: normalizedPath,
@@ -378,8 +444,12 @@ const insertBatch = async (req, res) => {
           unset.content_type_source = '';
         }
       }
-      if (file.sha256) {
-        set.sha256 = file.sha256;
+      // A malformed hash is dropped, the metadata row is kept: an unstamped
+      // row would be pruned as stale when the scan completes.
+      if (file.sha256 && !(typeof file.sha256 === 'string' && SHA256_PATTERN.test(file.sha256))) {
+        hashesRejected++;
+      } else if (file.sha256) {
+        set.sha256 = file.sha256.toLowerCase();
         set.hash_fingerprint = `${size}:${mtime}`;
         set.hashed_at = now;
         set.hash_strategy = file.hash_strategy || 'external-agent';
@@ -398,122 +468,43 @@ const insertBatch = async (req, res) => {
       };
     });
 
-    const result = await filesCollection.bulkWrite(bulkOps, { ordered: false });
+    const result = bulkOps.length
+      ? await filesCollection.bulkWrite(bulkOps, { ordered: false })
+      : {};
 
-    await db.collection('nas_scans').updateOne(
-      { _id: scan_id },
-      {
-        $inc: {
-          'counts.files_processed': files.length,
-          'counts.inserted': result.upsertedCount || 0,
-          'counts.updated': result.modifiedCount || 0
-        },
-        $set: { last_batch_at: now }
-      }
-    );
+    const increments = {
+      'counts.files_processed': accepted.length,
+      'counts.inserted': result.upsertedCount || 0,
+      'counts.updated': result.modifiedCount || 0
+    };
+    const scanPatch = { last_batch_at: now };
+    if (rejected > 0) increments['counts.rejected'] = rejected;
+    if (hashesRejected > 0) increments['counts.hashes_rejected'] = hashesRejected;
+    if (rejected > 0 || hashesRejected > 0) {
+      scanPatch.last_error = `Batch dropped ${rejected} file(s) outside the scan roots and ${hashesRejected} malformed sha256 value(s)`;
+      log(`[Storage] Scan ${scan_id}: ${scanPatch.last_error}`, 'warn');
+    }
+    await db.collection('nas_scans').updateOne({ _id: scan_id }, { $inc: increments, $set: scanPatch });
 
     res.json({
       status: 'success',
-      message: `Processed ${files.length} files`,
+      message: `Processed ${accepted.length} of ${files.length} files`,
       data: {
         scan_id,
-        batch: { received: files.length, inserted: result.upsertedCount || 0, updated: result.modifiedCount || 0 },
+        batch: {
+          received: files.length,
+          accepted: accepted.length,
+          rejected,
+          hashes_rejected: hashesRejected,
+          inserted: result.upsertedCount || 0,
+          updated: result.modifiedCount || 0
+        },
         meta: meta || {}
       }
     });
   } catch (error) {
     log(`[Storage] Failed to insert batch: ${error.message}`, 'error');
     res.status(500).json({ status: 'error', message: 'Failed to insert file batch', error: error.message });
-  }
-};
-
-const updateScan = async (req, res) => {
-  try {
-    const { scan_id } = req.params;
-    const { status, stats, completedAt } = req.body;
-    if (!scan_id) return res.status(400).json({ status: 'error', message: 'Missing scan_id' });
-
-    const db = req.app.locals.db;
-    const updateFields = {};
-    const normalizedStatus = status === 'completed' ? 'complete' : status;
-
-    if (status) updateFields.status = normalizedStatus;
-    if (status === 'complete' || status === 'completed' || completedAt) {
-      updateFields.finished_at = completedAt ? new Date(completedAt) : new Date();
-    }
-    if (stats) {
-      const allowedStats = [
-        'files_processed', 'files_seen', 'inserted', 'updated', 'errors', 'skipped',
-        'directories', 'hashed', 'hash_bytes', 'candidate_groups',
-        'candidate_groups_selected', 'candidate_groups_complete',
-        'candidate_groups_partial', 'candidate_groups_deferred',
-        'candidate_files_deferred', 'candidate_bytes_deferred',
-        'candidate_groups_oversized', 'candidate_files_oversized',
-        'candidate_bytes_oversized', 'stale_removed',
-        'metadata_errors', 'hash_errors', 'content_probed',
-        'content_probe_matched', 'content_probe_errors'
-      ];
-      Object.entries(stats).forEach(([key, value]) => {
-        if (allowedStats.includes(key)) updateFields[`counts.${key}`] = value;
-      });
-    }
-
-    const scans = db.collection('nas_scans');
-    const scanDoc = await scans.findOne({ _id: scan_id });
-    if (!scanDoc) return res.status(404).json({ status: 'error', message: `Scan not found: ${scan_id}` });
-
-    const terminalStatuses = new Set(['complete', 'partial', 'failed', 'stopped']);
-    const existingStatus = scanDoc.status === 'completed' ? 'complete' : scanDoc.status;
-    if (
-      scanDoc.config?.external === true &&
-      scanDoc.finished_at &&
-      terminalStatuses.has(normalizedStatus) &&
-      normalizedStatus === existingStatus
-    ) {
-      return res.json({
-        status: 'success',
-        message: 'Scan already finalized',
-        data: {
-          scan_id,
-          already_finalized: true,
-          updated: { status: existingStatus, finished_at: scanDoc.finished_at }
-        }
-      });
-    }
-
-    if ((status === 'complete' || status === 'completed') && scanDoc.config?.external === true) {
-      const files = db.collection('nas_files');
-      let staleRemoved = 0;
-      for (const root of scanDoc.config.roots || []) {
-        const stale = await files.deleteMany({ ...pathScope(root), scan_id: { $ne: scan_id } });
-        staleRemoved += stale.deletedCount || 0;
-      }
-      updateFields['counts.stale_removed'] = staleRemoved;
-      updateFields['counts.directories'] = await rebuildDirectoryRollups(
-        files,
-        db.collection('nas_directories'),
-        scanDoc.config.roots || []
-      );
-    }
-
-    const result = await scans.updateOne({ _id: scan_id }, { $set: updateFields });
-    if (result.matchedCount === 0) return res.status(404).json({ status: 'error', message: `Scan not found: ${scan_id}` });
-
-    // Trigger n8n webhook if scan completed
-    const n8nUrl = resolveN8nUrl();
-    if (status === 'completed' && n8nUrl) {
-      fetchWithTimeoutAndRetry(n8nUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'scan_complete', scan_id, stats: stats || {} }),
-        timeout: 5000, retries: 1, name: 'n8n-webhook'
-      }).catch(err => log(`[Storage] Failed to trigger n8n webhook: ${err.message}`, 'warn'));
-    }
-
-    res.json({ status: 'success', message: 'Scan updated', data: { scan_id, updated: updateFields } });
-  } catch (error) {
-    log(`[Storage] Failed to update scan: ${error.message}`, 'error');
-    res.status(500).json({ status: 'error', message: 'Failed to update scan', error: error.message });
   }
 };
 

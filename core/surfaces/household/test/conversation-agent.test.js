@@ -10,6 +10,25 @@ const created = row({ type: 'response.created', response: { id: runId } });
 const completed = row({ type: 'response.completed', response: { id: runId } });
 const answer = text => ({ status: 'ready', runId, text, source: 'openclaw/sessions.get' });
 
+function heldNativeStream(rows = [created]) {
+  let release;
+  let requests = 0;
+  return {
+    fetch: async (_url, options) => {
+      requests++;
+      return { ok: true, body: (async function* () {
+        for (const item of rows) yield item;
+        await new Promise(resolve => {
+          release = resolve;
+          options.signal.addEventListener('abort', resolve, { once: true });
+        });
+      })() };
+    },
+    close: () => release?.(),
+    requests: () => requests
+  };
+}
+
 test('native opening uses the existing message shape with explicit application origin and the same native session', async () => {
   let body;
   const applicationEvent = { type: 'environment_ready', origin: 'application_opening', openingVersion: 1, language: 'fr', environment: null };
@@ -222,12 +241,21 @@ test('personal voice does not deliver a final tool promise without a current res
   const voice = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' };
   const cases = [
     { native: "I'll check your personal tasks and search for urgent items right now.", expected: 'I could not complete that check. Please try again.', receipts: [] },
+    { native: 'Let me check.', expected: 'I could not complete that check. Please try again.', receipts: [] },
     { native: 'Je regarde tes tâches.', expected: 'Je n’ai pas pu terminer cette vérification. Réessaie ta demande.', receipts: [] },
     { native: 'Je vais vérifier tes tâches.', expected: 'Je n’ai pas pu terminer cette vérification. Réessaie ta demande.',
       receipts: [{ runId, observed: true, status: 'failed', tool: 'agentx__list_personal_tasks' }] },
     { native: 'Je regarde tes tâches: tu en as deux en cours.', expected: 'Je regarde tes tâches: tu en as deux en cours.', receipts: [] },
     { native: 'Je regarde tes tâches, tu en as deux en cours.', expected: 'Je regarde tes tâches, tu en as deux en cours.', receipts: [] },
     { native: 'Je vais te raconter une histoire.', expected: 'Je vais te raconter une histoire.', receipts: [] },
+    { native: 'Voici les deux approches possibles. '.repeat(12) + '\n\nJe vais faire une petite recherche sur la documentation. Je te reviens avec les résultats.\n\nAttends deux secondes.',
+      expected: 'Je n’ai pas pu terminer cette vérification. Réessaie ta demande.', receipts: [] },
+    { native: 'There are several ways to compare these options. '.repeat(12) + '\n\nI will search the documentation. Please wait a moment.',
+      expected: 'I could not complete that check. Please try again.', receipts: [] },
+    { native: 'Je vais chercher dans la documentation. Attends un instant. Voici le résultat vérifié: deux options.',
+      expected: 'Je vais chercher dans la documentation. Attends un instant. Voici le résultat vérifié: deux options.', receipts: [] },
+    { native: 'La documentation confirme deux possibilités. Souhaites-tu que je fasse une recherche supplémentaire?',
+      expected: 'La documentation confirme deux possibilités. Souhaites-tu que je fasse une recherche supplémentaire?', receipts: [] },
     { native: 'Je regarde tes tâches.', expected: 'Je n’ai pas pu terminer cette vérification. Réessaie ta demande.',
       receipts: [{ runId, observed: true, status: 'verified', tool: 'agentx__list_personal_tasks' }] }
   ];
@@ -361,13 +389,16 @@ test('a gateway refusal to stream a rewritten answer still delivers the run\'s v
 test('a turn delegated to a sub-agent reports its tools, waits for the settled answer and names the agent', async () => {
   const deltas = [], activity = [];
   let reads = 0;
+  const deliveredBy = `announce:requester-settle:main:${sessionKeyFor(session)}:child:synthetic-yield`;
   const progress = [{ id: 'call-1', tool: 'agents_list' }, { id: 'call-2', tool: 'sessions_spawn', agentId: 'comptable' }];
   const client = createAgentClient({ env, settleMs: 0, delegateMs: 10000,
     continuity: async () => ({ run: { model: 'native' }, progress,
-      answer: ++reads < 3 ? { status: 'yielded', runId } : answer('Le comptable a répondu.') }),
+      answer: ++reads < 3 ? { status: 'yielded', runId } : { ...answer('Le comptable a répondu.'), deliveredBy } }),
     fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
   const result = await client({ session, text: 'Combien coûte le karaté ?', onDelta: text => deltas.push(text), onActivity: item => activity.push(item) });
   assert.equal(result.text, 'Le comptable a répondu.');
+  assert.equal(result.tools.deliveredBy, deliveredBy);
+  assert.deepEqual(result.tools.performedBy, [{ agentId: 'main', runId }, { agentId: 'main', runId: deliveredBy }]);
   assert.deepEqual(deltas, [result.text]);
   assert.deepEqual(activity, [{ kind: 'tool', tool: 'agents_list' }, { kind: 'tool', tool: 'sessions_spawn', agentId: 'comptable' },
     { kind: 'waiting_agent', agentId: 'comptable' }]);
@@ -404,9 +435,719 @@ test('tool progress is reported while the native run is still streaming', async 
   assert.deepEqual(activity, [{ kind: 'tool', tool: 'personal_memory' }]);
 });
 
+test('a final answer is delivered when the gateway keeps a finished run\'s stream open', async () => {
+  let closeStream, reads = 0, aborted = false;
+  const open = () => ({ ok: true, body: (async function* () {
+    yield created;
+    await new Promise(resolve => { closeStream = resolve; });
+  })() });
+  const evidence = { run: { model: 'native' }, answer: answer('Trois tâches.'), progress: [{ id: 'call-1', tool: 'list_personal_tasks' }] };
+  const activity = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 20, streamDrainMs: 40,
+    // The first reads fall while the tool still runs: no final answer yet.
+    continuity: async () => (++reads < 3 ? { progress: evidence.progress, answer: { status: 'unavailable', runId } } : evidence),
+    fetchImpl: async (_url, options) => { options.signal.addEventListener('abort', () => { aborted = true; closeStream(); }); return open(); } });
+  let settled = 0;
+  const result = await client({ session, text: 'Mes tâches ?', onActivity: item => activity.push(item), onSettled: () => { settled += 1; } });
+  assert.equal(result.text, 'Trois tâches.');
+  assert.equal(result.tools.status, 'observed');
+  assert.equal(result.interrupted, undefined);
+  assert.equal(settled, 1);
+  assert.deepEqual(activity, [{ kind: 'tool', tool: 'list_personal_tasks' }]);
+  assert.ok(result.metadata.phases.streamOverdue > 0 && result.metadata.phases.streamEnd === undefined);
+  assert.equal(aborted, false, 'The gateway keeps a bounded time to finish behind the run');
+  await new Promise(resolve => setTimeout(resolve, 80));
+  assert.equal(aborted, true, 'A request the gateway never closes is closed for it');
+});
+
+test('a stream that ends within the grace is never abandoned, and a browser reply always waits for it', async () => {
+  const evidence = { run: { model: 'native' }, answer: answer('Voilà.') };
+  const slow = () => ({ ok: true, body: (async function* () {
+    yield created;
+    await new Promise(resolve => setTimeout(resolve, 60));
+    yield completed;
+  })() });
+  const graced = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 500, continuity: async () => evidence, fetchImpl: async () => slow() });
+  const first = await graced({ session, text: 'Alors ?' });
+  assert.ok(first.metadata.phases.streamEnd > 0 && first.metadata.phases.streamOverdue === undefined);
+  const scene = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 5, continuity: async () => evidence, fetchImpl: async () => slow() });
+  const second = await scene({ session, text: 'Alors ?', browserReply: { context: {} } });
+  assert.ok(second.metadata.phases.streamEnd > 0 && second.metadata.phases.streamOverdue === undefined);
+});
+
+test('an observed final answer survives a failed final read without claiming an old fallback provider', async () => {
+  const stream = heldNativeStream();
+  let reads = 0, settled = 0;
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 20, streamDrainMs: 20,
+    continuity: async () => {
+      if (++reads > 1) throw new Error('Continuity unavailable');
+      return { answer: answer('Trois tâches.'), run: { model: 'first-attempt', provider: 'old-provider' },
+        receipts: [{ tool: 'list_personal_tasks', observed: true }] };
+    }, fetchImpl: stream.fetch });
+  try {
+    const result = await client({ session, text: 'Mes tâches ?', onDelta: text => deltas.push(text), onSettled: () => { settled++; } });
+    assert.equal(result.text, 'Trois tâches.');
+    assert.equal(result.metadata.model, '');
+    assert.equal(result.metadata.provider, '');
+    assert.equal(result.tools.status, 'unavailable');
+    assert.equal(result.tools.run, null);
+    assert.deepEqual(result.tools.receipts, []);
+    assert.deepEqual(deltas, ['Trois tâches.']);
+    assert.equal(settled, 1);
+    assert.equal(stream.requests(), 1);
+    assert.ok(reads >= 2);
+  } finally { stream.close(); }
+});
+
+test('a final answer seen during settlement survives the next failed observation', async () => {
+  let reads = 0;
+  const client = createAgentClient({ env, settleMs: 400,
+    continuity: async () => {
+      if (++reads > 1) throw new Error('Continuity unavailable');
+      return { answer: answer('Réponse reçue.'), run: { model: 'first-attempt', provider: 'old-provider' } };
+    }, fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
+  const result = await client({ session, text: 'Et ensuite ?' });
+  assert.equal(result.text, 'Réponse reçue.');
+  assert.equal(result.metadata.model, '');
+  assert.equal(result.metadata.provider, '');
+  assert.equal(reads, 2);
+});
+
+test('GraphysX dialogue never substitutes a watcher answer when its final read is unavailable', async () => {
+  const stream = heldNativeStream([created, completed]);
+  let reads = 0;
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 15, streamDrainMs: 20,
+    continuity: async () => {
+      if (++reads === 1) return { answer: answer('Ne pas substituer.') };
+      throw new Error('Continuity unavailable');
+    }, fetchImpl: stream.fetch });
+  try {
+    await assert.rejects(client({ session, text: 'Bonjour.', browserReply: { context: {} },
+      onDelta: text => deltas.push(text) }), /pas donné de réponse finale/);
+    assert.deepEqual(deltas, []);
+    assert.ok(reads >= 2);
+    assert.equal(stream.requests(), 1);
+  } finally { stream.close(); }
+});
+
+for (const [name, invalid] of [
+  ['yielded', { answer: { status: 'yielded', runId } }],
+  ['unavailable', { answer: { status: 'unavailable', runId } }],
+  ['another run', { answer: { ...answer('Autre tour.'), runId: 'another-run' } }],
+  ['blank text', { answer: answer('   ') }],
+  ['non-string text', { answer: { ...answer('Unused'), text: 42 } }],
+  ['missing answer', null]
+]) {
+  test(`a successful ${name} observation invalidates a previously ready answer`, async () => {
+    const stream = heldNativeStream([created, completed]);
+    let reads = 0;
+    const deltas = [];
+    const client = createAgentClient({ env, settleMs: 0, delegateMs: 0, progressMs: 3, streamGraceMs: 25, streamDrainMs: 20,
+      continuity: async () => {
+        reads++;
+        if (reads === 1) return { answer: answer('Ancienne réponse.') };
+        if (reads === 2) return invalid;
+        throw new Error('Continuity unavailable');
+      }, fetchImpl: stream.fetch });
+    try {
+      await assert.rejects(client({ session, text: 'Suite ?', onDelta: text => deltas.push(text) }), /pas donné de réponse finale/);
+      assert.ok(reads >= 3);
+      assert.deepEqual(deltas, []);
+      assert.equal(stream.requests(), 1);
+    } finally { stream.close(); }
+  });
+}
+
+// Invalidation must retract the evidence-based grace, not terminate a still
+// open run. The fixture releases only after checking beyond that old deadline.
+for (const [name, invalid] of [
+  ['yielded', { answer: { status: 'yielded', runId } }],
+  ['unavailable', { answer: { status: 'unavailable', runId } }],
+  ['another run', { answer: { ...answer('Autre tour.'), runId: 'another-run' } }],
+  ['blank text', { answer: answer('   ') }],
+  ['non-string text', { answer: { ...answer('Unused'), text: 42 } }],
+  ['missing answer', null]
+]) {
+  test(`a retracted ${name} ready grace keeps waiting for real native completion`, async () => {
+    let finish, invalidated, reads = 0, released = false, requests = 0, settled = 0, aborted = false;
+    const invalidSeen = new Promise(resolve => { invalidated = resolve; });
+    const held = new Promise(resolve => { finish = resolve; });
+    const deltas = [];
+    const client = createAgentClient({ env, settleMs: 0, delegateMs: 0, progressMs: 3, streamGraceMs: 30, streamDrainMs: 20,
+      continuity: async () => {
+        if (released) return { answer: answer('Réponse finale vérifiée.') };
+        if (++reads === 1) return { answer: answer('Réponse périmée.') };
+        invalidated();
+        return invalid;
+      }, fetchImpl: async (_url, options) => {
+        requests++;
+        options.signal.addEventListener('abort', () => { aborted = true; finish(); }, { once: true });
+        return { ok: true, body: (async function* () {
+          yield created;
+          await held;
+          yield completed;
+        })() };
+      } });
+    let outcome;
+    const turn = client({ session, text: 'Suite ?', onDelta: value => deltas.push(value), onSettled: () => { settled++; } })
+      .then(result => { outcome = { result }; }, error => { outcome = { error }; });
+    try {
+      await invalidSeen;
+      await new Promise(resolve => setTimeout(resolve, 90));
+      assert.equal(outcome, undefined, 'an invalidated answer cannot settle the open run');
+      assert.equal(settled, 0);
+      assert.equal(aborted, false, 'no drain is armed from invalidated evidence');
+      assert.deepEqual(deltas, []);
+      released = true; finish();
+      await turn;
+      assert.equal(outcome.error, undefined);
+      assert.equal(outcome.result.text, 'Réponse finale vérifiée.');
+      assert.equal(outcome.result.metadata.phases.streamOverdue, undefined);
+      assert.deepEqual(deltas, ['Réponse finale vérifiée.']);
+      assert.equal(settled, 1);
+      assert.equal(requests, 1);
+    } finally { released = true; finish(); await turn; }
+  });
+}
+
+test('a later ready answer receives a full grace after invalidation', async () => {
+  const stream = heldNativeStream();
+  let reads = 0, invalidated, current = null;
+  const invalidSeen = new Promise(resolve => { invalidated = resolve; });
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 100, streamDrainMs: 20,
+    continuity: async () => {
+      if (++reads === 1) return { answer: answer('Réponse périmée.') };
+      if (reads === 2) { invalidated(); return { answer: { status: 'unavailable', runId } }; }
+      return current;
+    }, fetchImpl: stream.fetch });
+  let outcome;
+  const turn = client({ session, text: 'Suite ?' }).then(result => { outcome = { result }; }, error => { outcome = { error }; });
+  try {
+    await invalidSeen;
+    await new Promise(resolve => setTimeout(resolve, 70));
+    const readyAt = Date.now();
+    current = { run: { model: 'native' }, answer: answer('Nouvelle réponse.') };
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(outcome, undefined, 'the first ready deadline cannot shorten the next grace');
+    await turn;
+    assert.equal(outcome.error, undefined);
+    assert.equal(outcome.result.text, 'Nouvelle réponse.');
+    // A 100 ms timer can read as 99 ms on the wall clock: timers follow the
+    // loop's own millisecond clock, not Date.now(). The earlier grace would end
+    // near 30 ms, so a few milliseconds of tolerance still tell the two apart.
+    assert.ok(Date.now() - readyAt >= 95, 'new evidence receives its own complete grace');
+    assert.equal(stream.requests(), 1);
+  } finally { current = { run: { model: 'native' }, answer: answer('Nouvelle réponse.') }; stream.close(); await turn; }
+});
+
+test('a slow progress callback cannot delay the verified ready grace', async () => {
+  const stream = heldNativeStream();
+  let releaseActivity;
+  const activityHeld = new Promise(resolve => { releaseActivity = resolve; });
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 20, streamDrainMs: 1000,
+    continuity: async () => ({ answer: answer('Réponse vérifiée.'), progress: [{ id: 'slow-activity', tool: 'list_personal_tasks' }] }),
+    fetchImpl: stream.fetch });
+  let outcome;
+  const turn = client({ session, text: 'Mes tâches ?', onActivity: () => activityHeld })
+    .then(result => { outcome = { result }; }, error => { outcome = { error }; });
+  try {
+    await new Promise(resolve => setTimeout(resolve, 700));
+    assert.ok(outcome, 'the bounded watcher waits cannot extend the grace indefinitely');
+    assert.equal(outcome.error, undefined);
+    assert.equal(outcome.result.text, 'Réponse vérifiée.');
+    assert.equal(stream.requests(), 1);
+  } finally { releaseActivity(); stream.close(); await turn; }
+});
+
+test('the latest observed ready answer replaces an earlier one before an observation failure', async () => {
+  const stream = heldNativeStream();
+  let reads = 0;
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 25, streamDrainMs: 20,
+    continuity: async () => {
+      if (++reads > 2) throw new Error('Continuity unavailable');
+      return { answer: answer(reads === 1 ? 'Première réponse.' : 'Réponse corrigée.') };
+    }, fetchImpl: stream.fetch });
+  try {
+    assert.equal((await client({ session, text: 'Suite ?' })).text, 'Réponse corrigée.');
+    assert.equal(stream.requests(), 1);
+  } finally { stream.close(); }
+});
+
+test('a stopped watcher cannot restore a ready answer after a newer invalidation', async () => {
+  const stream = heldNativeStream();
+  let reads = 0, resolveWatcher;
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 1000, progressMs: 3, streamGraceMs: 15, streamDrainMs: 20,
+    continuity: async () => {
+      reads++;
+      if (reads === 1) return { answer: answer('Réponse ancienne.') };
+      if (reads === 2) return new Promise(resolve => { resolveWatcher = resolve; });
+      if (reads === 3) {
+        setTimeout(() => resolveWatcher({ answer: answer('Réponse ancienne.') }), 5);
+        return { answer: { status: 'unavailable', runId } };
+      }
+      throw new Error('Continuity unavailable');
+    }, fetchImpl: stream.fetch });
+  try {
+    await assert.rejects(client({ session, text: 'Suite ?', onDelta: text => deltas.push(text) }), /pas donné de réponse finale/);
+    assert.deepEqual(deltas, []);
+    assert.equal(stream.requests(), 1);
+  } finally { resolveWatcher?.(null); stream.close(); }
+});
+
+test('a ready expiry invalidated before the waiting continuation cannot confirm termination', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  let finish, resolveObservation, reads = 0, released = false, settled = 0, aborted = false;
+  const held = new Promise(resolve => { finish = resolve; });
+  const observation = new Promise(resolve => { resolveObservation = resolve; });
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 10, streamGraceMs: 30, streamDrainMs: 20,
+    continuity: () => {
+      if (released) return Promise.resolve({ run: { model: 'native' }, answer: answer('Réponse finale.') });
+      if (++reads === 1) return Promise.resolve({ answer: answer('Réponse périmée.') });
+      if (reads === 2) return observation;
+      return Promise.resolve({ answer: { status: 'unavailable', runId } });
+    }, fetchImpl: async (_url, options) => {
+      options.signal.addEventListener('abort', () => { aborted = true; finish(); }, { once: true });
+      return { ok: true, body: (async function* () { yield created; await held; yield completed; })() };
+    } });
+  let outcome;
+  const turn = client({ session, text: 'Suite ?', onSettled: () => { settled++; } })
+    .then(result => { outcome = { result }; }, error => { outcome = { error }; });
+  try {
+    await flush();
+    t.mock.timers.tick(10); await flush(); // ready A, grace due at 40
+    t.mock.timers.tick(10); await flush(); // a newer observation is pending
+    assert.equal(reads, 2);
+    // Expire ready A while its newer observation is being consumed, so the
+    // invalidation is recorded before the waiting continuation can run.
+    let expired = false;
+    resolveObservation({ get answer() {
+      if (!expired) { expired = true; t.mock.timers.tick(20); }
+      return { status: 'unavailable', runId };
+    } });
+    await flush();
+    t.mock.timers.tick(100); await flush();
+    assert.equal(outcome, undefined, 'a resolved notification is not a terminal proof');
+    assert.equal(settled, 0);
+    assert.equal(aborted, false);
+    released = true; finish(); await turn;
+    assert.equal(outcome.error, undefined);
+    assert.equal(outcome.result.text, 'Réponse finale.');
+    assert.equal(outcome.result.metadata.phases.streamOverdue, undefined);
+    assert.equal(settled, 1);
+  } finally { released = true; finish(); resolveObservation(null); await flush(); t.mock.timers.tick(1000); await flush(); t.mock.timers.reset(); await turn; }
+});
+
+for (const browser of [false, true]) {
+  test(`a ${browser ? 'GraphysX validation error' : 'native failure'} after invalidation closes HTTP before suspended iterator closure`, async () => {
+  let finishClosing, invalidated, reads = 0, settled = 0, requestSignal;
+  const closing = new Promise(resolve => { finishClosing = resolve; });
+  const invalidSeen = new Promise(resolve => { invalidated = resolve; });
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 1000,
+    continuity: async () => {
+      if (++reads === 1) return { answer: answer('Réponse périmée.') };
+      invalidated();
+      return { answer: { status: 'unavailable', runId } };
+    }, fetchImpl: async (_url, options) => { requestSignal = options.signal; return { ok: true, body: (async function* () {
+      try {
+        yield created;
+        await invalidSeen;
+        yield browser ? browserCompleted([{ ...browserItem({ reply: 'Ne pas livrer.' }), name: 'another_tool' }])
+          : row({ type: 'response.failed', response: { id: runId, error: { message: 'Native failure' } } });
+      } finally { await closing; }
+    })() }; } });
+  let outcome;
+  const turn = client({ session, text: 'Suite ?', ...(browser ? { browserReply: { context: browserContext } } : {}), onDelta: value => deltas.push(value), onSettled: () => { settled++; } })
+    .then(result => { outcome = { result }; }, error => { outcome = { error }; });
+  try {
+    await invalidSeen;
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.ok(outcome, 'the known failure cannot wait for a removed grace or iterator closure');
+    assert.match(outcome.error.message, browser ? /GraphysX native browser reply/ : /pas pu finir sa réponse/);
+    assert.equal(requestSignal.aborted, true, 'the errored HTTP request is closed before the fixture releases its iterator');
+    assert.deepEqual(deltas, []);
+    assert.equal(settled, 1, 'native failure really is terminal');
+  } finally { finishClosing(); await turn; }
+});
+}
+
+test('caller cancellation still rejects when a ready answer has already been observed', async () => {
+  const abort = new AbortController();
+  const stream = heldNativeStream([created, completed]);
+  const deltas = [];
+  let settled = 0;
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 30,
+    continuity: async () => {
+      setTimeout(() => abort.abort(new Error('Caller stopped')), 5);
+      return { answer: answer('Ne pas livrer.') };
+    }, fetchImpl: stream.fetch });
+  try {
+    await assert.rejects(client({ session, text: 'Suite ?', signal: abort.signal,
+      onDelta: text => deltas.push(text), onSettled: () => { settled++; } }), /Caller stopped/);
+    assert.deepEqual(deltas, []);
+    assert.equal(stream.requests(), 1);
+    assert.equal(settled, 1);
+  } finally { stream.close(); }
+});
+
+test('a native terminal failure never becomes a cached answer success', async () => {
+  let observed, reads = 0;
+  const firstRead = new Promise(resolve => { observed = resolve; });
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 30,
+    continuity: async () => {
+      if (++reads > 1) throw new Error('Continuity unavailable');
+      observed();
+      return { answer: answer('Ne pas livrer.') };
+    }, fetchImpl: async () => ({ ok: true, body: (async function* () {
+      yield created;
+      await firstRead;
+      yield row({ type: 'response.failed', response: { id: runId, error: { message: 'Native failure' } } });
+    })() }) });
+  await assert.rejects(client({ session, text: 'Suite ?', onDelta: text => deltas.push(text) }), /pas pu finir sa réponse/);
+  assert.deepEqual(deltas, []);
+});
+
+for (const [name, failed, expected, afterAbort] of [
+  ['native failure', row({ type: 'response.failed', response: { id: runId, error: { message: 'Native failure' } } }), /pas pu finir sa réponse/],
+  ['native failure after drain abort', row({ type: 'response.failed', response: { id: runId, error: { message: 'Native failure' } } }), /pas pu finir sa réponse/, true],
+  ['wrong-run failure', row({ type: 'response.failed', response: { id: 'another-run' } }), /does not match/],
+  ['malformed event', Buffer.from('data: {invalid-json}\n\n'), SyntaxError]
+]) {
+  test(`a late ${name} during drain prevents cached answer delivery`, async () => {
+    let reads = 0, startSettlement, releaseFinal;
+    const settling = new Promise(resolve => { startSettlement = resolve; });
+    const lastRead = new Promise(resolve => { releaseFinal = resolve; });
+    const deltas = [];
+    const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 1, streamDrainMs: afterAbort ? 20 : 1000,
+      continuity: async () => {
+        if (++reads === 1) return { answer: answer('Ne pas livrer.') };
+        startSettlement();
+        await lastRead;
+        throw new Error('Continuity unavailable');
+      }, fetchImpl: async (_url, options) => ({ ok: true, body: (async function* () {
+        yield created;
+        await settling;
+        if (afterAbort) await new Promise(resolve => options.signal.aborted ? resolve()
+          : options.signal.addEventListener('abort', resolve, { once: true }));
+        try { yield failed; }
+        finally { setTimeout(releaseFinal, 10); }
+      })() }) });
+    await assert.rejects(client({ session, text: 'Suite ?', onDelta: text => deltas.push(text) }), expected);
+    assert.deepEqual(deltas, []);
+  });
+}
+
+test('a parsed native failure prevents cached delivery while iterator closure is still pending', async () => {
+  let reads = 0, startSettlement, releaseFinal, finishClosing;
+  const settling = new Promise(resolve => { startSettlement = resolve; });
+  const lastRead = new Promise(resolve => { releaseFinal = resolve; });
+  const closing = new Promise(resolve => { finishClosing = resolve; });
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 1, streamDrainMs: 1000,
+    continuity: async () => {
+      if (++reads === 1) return { answer: answer('Ne pas livrer.') };
+      startSettlement();
+      await lastRead;
+      throw new Error('Continuity unavailable');
+    }, fetchImpl: async () => ({ ok: true, body: (async function* () {
+      try {
+        yield created;
+        await settling;
+        yield row({ type: 'response.failed', response: { id: runId, error: { message: 'Native failure' } } });
+      } finally {
+        releaseFinal();
+        await closing;
+      }
+    })() }) });
+  try {
+    await assert.rejects(client({ session, text: 'Suite ?', onDelta: text => deltas.push(text) }), /pas pu finir sa réponse/);
+    assert.deepEqual(deltas, []);
+  } finally { finishClosing(); }
+});
+
+for (const finalReadFails of [false, true]) {
+  test(`a transport reset during drain preserves ${finalReadFails ? 'retained' : 'fresh'} same-run answer evidence`, async () => {
+    let reads = 0, startSettlement, releaseFinal;
+    const settling = new Promise(resolve => { startSettlement = resolve; });
+    const lastRead = new Promise(resolve => { releaseFinal = resolve; });
+    const client = createAgentClient({ env, settleMs: 0, progressMs: 3, streamGraceMs: 1, streamDrainMs: 1000,
+      continuity: async () => {
+        if (++reads === 1) return { answer: answer('Réponse reçue.') };
+        startSettlement();
+        await lastRead;
+        if (finalReadFails) throw new Error('Continuity unavailable');
+        return { answer: answer('Réponse reçue.'), run: { model: 'final-model' } };
+      }, fetchImpl: async () => ({ ok: true, body: (async function* () {
+        yield created;
+        await settling;
+        try { throw new Error('Synthetic HTTP reset'); }
+        finally { releaseFinal(); }
+      })() }) });
+    const result = await client({ session, text: 'Suite ?' });
+    assert.equal(result.text, 'Réponse reçue.');
+    assert.equal(result.metadata.model, finalReadFails ? '' : 'final-model');
+  });
+}
+
 test('a delegated turn that never settles fails plainly after its bound', async () => {
   const client = createAgentClient({ env, settleMs: 0, delegateMs: 0,
     continuity: async () => ({ run: { model: 'native' }, answer: { status: 'yielded', runId } }),
     fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
   await assert.rejects(client({ session, text: 'Combien ?' }), /autre agent n’a pas répondu/);
+});
+
+test('a turn cancelled while the gateway is still preparing settles quickly without native evidence', async () => {
+  const abort = new AbortController(); const settled = [];
+  const client = createAgentClient({ env, settleMs: 20000, continuity: async () => ({}),
+    fetchImpl: async (_url, options) => ({ ok: true, body: (async function* () {
+      yield created; abort.abort(); assert.equal(options.signal.aborted, true);
+      throw abort.signal.reason;
+    })() }) });
+  const started = Date.now();
+  const result = await client({ session, text: 'Question', signal: abort.signal, onSettled: (...args) => settled.push(args) });
+  assert.equal(result.interrupted, true);
+  assert.equal(result.tools.status, 'unavailable');
+  assert.ok(Date.now() - started < 5000, 'no 20 s wait for an agent_end that never comes');
+  assert.deepEqual(settled, [[sessionKeyFor(session), runId]]);
+});
+
+test('a turn cancelled after the model started still waits for native termination evidence', async () => {
+  const abort = new AbortController();
+  const client = createAgentClient({ env, settleMs: 300, continuity: async () => ({}),
+    fetchImpl: async () => ({ ok: true, body: (async function* () {
+      yield created; yield row({ type: 'response.output_text.delta', delta: 'Bon' }); abort.abort();
+      throw abort.signal.reason;
+    })() }) });
+  await assert.rejects(client({ session, text: 'Question', signal: abort.signal }), /pas encore confirmé/);
+});
+
+// The gateway opens its stream with lifecycle rows and an empty message
+// scaffold before the agent has produced anything.
+const scaffold = [
+  row({ type: 'response.in_progress', response: { id: runId } }),
+  row({ type: 'response.output_item.added', output_index: 0, item: { type: 'message', role: 'assistant', content: [], status: 'in_progress' } }),
+  row({ type: 'response.content_part.added', output_index: 0, content_index: 0, part: { type: 'output_text', text: '' } })
+];
+
+test('a cancel during the gateway stream scaffold settles at once, without an agent_end receipt', async () => {
+  const abort = new AbortController(); const settled = [];
+  const client = createAgentClient({ env, settleMs: 20000, continuity: async () => ({}),
+    fetchImpl: async () => ({ ok: true, body: (async function* () {
+      yield created; for (const item of scaffold) yield item;
+      abort.abort(); throw abort.signal.reason;
+    })() }) });
+  const started = Date.now();
+  const result = await client({ session, text: 'Question', signal: abort.signal, onSettled: (...args) => settled.push(args) });
+  assert.equal(result.interrupted, true);
+  assert.ok(Date.now() - started < 5000, 'no 20 s wait for an agent_end that never comes');
+  assert.deepEqual(settled, [[sessionKeyFor(session), runId]]);
+});
+
+for (const [label, started] of [
+  ['a tool call item', row({ type: 'response.output_item.added', output_index: 1, item: { type: 'function_call', name: 'tool_search', call_id: 'call_1' } })],
+  ['a reasoning item', row({ type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', summary: [] } })],
+  ['a text delta after the scaffold', row({ type: 'response.output_text.delta', delta: 'Bon' })]
+]) {
+  test(`a cancel after ${label} keeps waiting for native termination evidence`, async () => {
+    const abort = new AbortController(); const settled = [];
+    const client = createAgentClient({ env, settleMs: 300, continuity: async () => ({}),
+      fetchImpl: async () => ({ ok: true, body: (async function* () {
+        yield created; for (const item of scaffold) yield item; yield started;
+        abort.abort(); throw abort.signal.reason;
+      })() }) });
+    await assert.rejects(client({ session, text: 'Question', signal: abort.signal, onSettled: (...args) => settled.push(args) }),
+      /L’arrêt de Nestor n’est pas encore confirmé/);
+    assert.deepEqual(settled, [], 'an unconfirmed stop never releases the turn');
+  });
+}
+
+
+// The gateway can announce completion without closing HTTP. The test guard
+// only releases the fixture on the old path; it must never be the client bound.
+for (const browser of [false, true]) {
+  test(`a confirmed completion bounds an open body with unavailable evidence (${browser ? 'GraphysX' : 'Nestor'})`, async () => {
+    const guard = new AbortController();
+    let closeStream, requests = 0, settled = 0;
+    const deltas = [];
+    const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 10, streamDrainMs: 30,
+      continuity: async () => { throw new Error('Evidence unavailable'); },
+      fetchImpl: async (_url, options) => {
+        requests++;
+        options.signal.addEventListener('abort', () => closeStream?.(), { once: true });
+        return { ok: true, body: (async function* () {
+          yield created;
+          yield browser ? browserCompleted([browserItem({ reply: 'Bonjour.' })]) : completed;
+          await new Promise(resolve => { closeStream = resolve; });
+          options.signal.throwIfAborted();
+        })() };
+      } });
+    const timeout = setTimeout(() => guard.abort(new Error('Test deadline reached')), 250);
+    try {
+      const turn = client({ session, text: 'Alors ?', signal: guard.signal,
+        ...(browser ? { browserReply: { context: browserContext } } : {}),
+        onDelta: text => deltas.push(text), onSettled: () => { settled++; } });
+      if (browser) {
+        const result = await turn;
+        assert.equal(result.text, 'Bonjour.');
+        assert.equal(result.tools.status, 'unavailable');
+        assert.equal(result.tools.browserReply.callId, 'call_scene_1');
+        assert.deepEqual(deltas, ['Bonjour.']);
+      } else {
+        await assert.rejects(turn, /Nestor n’a pas donné de réponse finale/);
+        assert.deepEqual(deltas, []);
+      }
+      assert.equal(guard.signal.aborted, false, 'the test guard must not finish the turn');
+      assert.equal(settled, 1);
+      assert.equal(requests, 1, 'observation never replays the native request');
+      await new Promise(resolve => setTimeout(resolve, 45));
+      assert.equal(settled, 1, 'drain does not settle the turn again');
+      assert.equal(deltas.length, browser ? 1 : 0, 'drain never delivers a second answer');
+    } finally { clearTimeout(timeout); closeStream?.(); }
+  });
+}
+
+
+test('caller interruption during completion grace never delivers the browser action', async () => {
+  const caller = new AbortController();
+  let closeStream, settled = 0;
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 50,
+    continuity: async () => { throw new Error('Evidence unavailable'); },
+    fetchImpl: async (_url, options) => {
+      options.signal.addEventListener('abort', () => closeStream?.(), { once: true });
+      return { ok: true, body: (async function* () {
+        yield created;
+        yield browserCompleted([browserItem({ reply: 'Bonjour.' })]);
+        await new Promise(resolve => { closeStream = resolve; setTimeout(() => caller.abort(), 5); });
+        options.signal.throwIfAborted();
+      })() };
+    } });
+  await assert.rejects(client({ session, text: 'Alors ?', signal: caller.signal,
+    browserReply: { context: browserContext }, onDelta: text => deltas.push(text), onSettled: () => { settled++; } }),
+  error => error.name === 'AbortError');
+  assert.deepEqual(deltas, []);
+  assert.equal(settled, 1, 'the completion already confirmed native termination');
+});
+
+test('GraphysX dialogue delivers verified same-run text after completion with open HTTP', async () => {
+  let release, settled = 0;
+  const deltas = [];
+  const client = createAgentClient({ env, settleMs: 0, progressMs: 25, streamGraceMs: 5, streamDrainMs: 20,
+    continuity: async () => ({ run: { model: 'native' }, answer: answer('Bonjour.') }),
+    fetchImpl: async (_url, options) => ({ ok: true, body: (async function* () {
+      yield created;
+      yield browserCompleted([]);
+      await new Promise(resolve => {
+        release = resolve;
+        options.signal.addEventListener('abort', resolve, { once: true });
+      });
+    })() }) });
+  try {
+    const result = await client({ session, text: 'Salut', browserReply: { context: browserContext },
+      onDelta: text => deltas.push(text), onSettled: () => { settled++; } });
+    assert.equal(result.text, 'Bonjour.');
+    assert.equal(result.tools.browserReply, undefined);
+    assert.equal(typeof result.metadata.phases.streamOverdue, 'number');
+    assert.equal(result.metadata.phases.streamEnd, undefined);
+    assert.deepEqual(deltas, ['Bonjour.']);
+    assert.equal(settled, 1);
+  } finally { release?.(); }
+});
+
+test('an explicit personal task check refuses an unsupported count without replaying the native request', async () => {
+  const voice = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' };
+  for (const channel of ['voice', 'text']) {
+    for (const tools of [['agents_list'], ['list_personal_tasks']]) {
+      const deltas = []; let requests = 0;
+      const client = createAgentClient({ env, settleMs: 0,
+        continuity: async () => ({ answer: answer('Tu as neuf tâches ouvertes.'), run: { model: 'native' },
+          toolChecks: { status: 'observed', runId, completedTools: tools, loop: null } }),
+        fetchImpl: async () => { requests++; return { ok: true, body: [created, completed] }; } });
+      const result = await client({ session: voice, channel, text: 'Regarde mes tâches et dis-moi combien sont ouvertes.', onDelta: text => deltas.push(text) });
+      assert.equal(requests, 1);
+      assert.deepEqual(deltas, [result.text]);
+      if (tools[0] === 'agents_list') {
+        assert.match(result.text, /vérification n’a pas abouti/);
+        assert.doesNotMatch(result.text, /neuf/);
+        assert.equal(result.tools.verification.reason, 'task_check_missing');
+      } else assert.equal(result.text, 'Tu as neuf tâches ouvertes.');
+    }
+  }
+});
+
+test('retained task answers still require successful task evidence observed in their own run', async () => {
+  for (const verified of [true, false]) {
+    const stream = heldNativeStream(); let reads = 0;
+    const client = createAgentClient({ env, settleMs: 0, progressMs: 5, streamGraceMs: 15, streamDrainMs: 20,
+      continuity: async () => {
+        if (++reads > 1) throw new Error('Continuity unavailable');
+        return { answer: answer('Trois tâches.'), run: { model: 'old-attempt' }, toolChecks: { status: 'observed', runId,
+          completedTools: verified ? ['list_personal_tasks'] : ['agents_list'], loop: null } };
+      }, fetchImpl: stream.fetch });
+    try {
+      const result = await client({ session: { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' }, text: 'Regarde mes tâches.' });
+      assert.equal(result.text.includes('Trois tâches.'), verified);
+      if (!verified) assert.equal(result.tools.verification.reason, 'task_check_missing');
+      assert.equal(result.tools.status, 'unavailable');
+      assert.equal(result.metadata.model, '');
+      assert.deepEqual(result.tools.receipts, []);
+      assert.equal(stream.requests(), 1);
+    } finally { stream.close(); }
+  }
+});
+
+test('specialist and scene dialogue keep their own task response contract', async () => {
+  for (const change of [{ agentId: 'secretary' }, { llmx: { scene: 'example' } }, { source: 'graphysx-llmx' }]) {
+    const client = createAgentClient({ env, settleMs: 0,
+      continuity: async () => ({ run: { model: 'native' }, answer: answer('La liste de cet espace contient deux tâches.') }),
+      fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
+    const result = await client({ session: { ...session, packId: 'personal_operator', scopeId: 'personal', ...change }, text: 'Regarde mes tâches.' });
+    assert.equal(result.text, 'La liste de cet espace contient deux tâches.');
+    assert.equal(result.tools.verification, undefined);
+  }
+});
+
+test('a confirmed repeated-tool loop stops the native run before delivering a plain failure', async () => {
+  let aborted = false, closeStream, requests = 0, settled = 0;
+  const deltas = [];
+  const checks = { status: 'observed', runId, completedTools: ['agents_list'], loop: { tool: 'agents_list', repetitions: 4 } };
+  const client = createAgentClient({ env, settleMs: 100, progressMs: 2,
+    continuity: async () => ({ toolChecks: checks, ...(aborted ? { run: { model: 'native' } } : {}) }),
+    fetchImpl: async (_url, options) => {
+      requests++;
+      options.signal.addEventListener('abort', () => { aborted = true; closeStream?.(); });
+      return { ok: true, body: (async function* () { yield created; await new Promise(resolve => { closeStream = resolve; }); })() };
+    } });
+  const result = await client({ session, text: 'Vérifie cette demande', onDelta: text => { assert.equal(aborted, true); deltas.push(text); }, onSettled: () => { settled++; } });
+  assert.equal(requests, 1); assert.equal(settled, 1);
+  assert.match(result.text, /vérification n’a pas abouti/);
+  assert.equal(result.tools.verification.reason, 'repeated_tool_call');
+  assert.deepEqual(deltas, [result.text]);
+});
+
+test('an unconfirmed loop stop pauses the conversation without delivering an answer or claiming settlement', async () => {
+  const deltas = []; let closeStream, settled = 0;
+  const client = createAgentClient({ env, settleMs: 20, progressMs: 2,
+    continuity: async () => ({ toolChecks: { status: 'observed', runId, completedTools: [], loop: { tool: 'agents_list', repetitions: 4 } } }),
+    fetchImpl: async (_url, options) => {
+      options.signal.addEventListener('abort', () => closeStream?.());
+      return { ok: true, body: (async function* () { yield created; await new Promise(resolve => { closeStream = resolve; }); })() };
+    } });
+  await assert.rejects(client({ session, text: 'Check', onDelta: text => deltas.push(text), onSettled: () => settled++ }), /arrêt de Nestor n’est pas encore confirmé/);
+  assert.equal(settled, 0); assert.deepEqual(deltas, []);
+});
+
+test('a stalled continuity read after native completion fails within its evidence deadline', async () => {
+  let readAborted = false, settled = 0;
+  const started = Date.now();
+  const client = createAgentClient({ env, settleMs: 0, evidenceReadMs: 15,
+    continuity: async (_request, signal) => { signal.addEventListener('abort', () => { readAborted = true; }); await new Promise(() => {}); },
+    fetchImpl: async () => ({ ok: true, body: [created, completed] }) });
+  await assert.rejects(client({ session, text: 'Check', onSettled: () => settled++ }), /pas donné de réponse finale/);
+  assert.ok(Date.now() - started < 500); assert.equal(readAborted, true); assert.equal(settled, 1);
 });

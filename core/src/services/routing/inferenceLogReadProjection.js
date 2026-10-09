@@ -18,6 +18,9 @@ const {
   projectRouteDecision,
 } = require('./routeDecision');
 const { sanitizeRoutingTrace } = require('./inferenceTelemetry');
+const { sanitizePromptPrefix } = require('./promptPrefixFingerprint');
+const { sanitizePromptCache } = require('./promptCacheAttribution');
+const { sanitizeRetry } = require('./inferenceWaitTelemetry');
 
 const CALLERS = new Set(['chat', 'council', 'benchmark', 'embedding', 'classification', 'proxy', 'unknown']);
 const RUNTIMES = new Set(['agentx', 'codex', 'claude-code', 'external', 'other']);
@@ -159,6 +162,15 @@ function projectInferenceLog(row) {
     ...(Object.prototype.hasOwnProperty.call(row, 'tokensIn') && { tokensIn: finiteNumber(row.tokensIn) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'tokensOut') && { tokensOut: finiteNumber(row.tokensOut) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'durationMs') && { durationMs: finiteNumber(row.durationMs) }),
+    ...(Object.prototype.hasOwnProperty.call(row, 'loadMs') && { loadMs: finiteNumber(row.loadMs) }),
+    ...(Object.prototype.hasOwnProperty.call(row, 'promptEvalMs') && { promptEvalMs: finiteNumber(row.promptEvalMs) }),
+    ...(Object.prototype.hasOwnProperty.call(row, 'evalMs') && { evalMs: finiteNumber(row.evalMs) }),
+    ...(Object.prototype.hasOwnProperty.call(row, 'firstTokenMs') && { firstTokenMs: finiteNumber(row.firstTokenMs) }),
+    ...(Object.prototype.hasOwnProperty.call(row, 'admissionWaitMs') && { admissionWaitMs: finiteNumber(row.admissionWaitMs) }),
+    ...(Object.prototype.hasOwnProperty.call(row, 'hostGateWaitMs') && { hostGateWaitMs: finiteNumber(row.hostGateWaitMs) }),
+    ...(Object.prototype.hasOwnProperty.call(row, 'retry') && { retry: sanitizeRetry(row.retry) }),
+    ...(Object.prototype.hasOwnProperty.call(row, 'promptPrefix') && { promptPrefix: sanitizePromptPrefix(row.promptPrefix) }),
+    ...(Object.prototype.hasOwnProperty.call(row, 'promptCache') && { promptCache: sanitizePromptCache(row.promptCache) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'status') && { status: enumValue(row.status, STATUSES) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'timestamp') && { timestamp: safeTimestamp(row.timestamp) }),
     ...(isCancellationEvidence(row) && { cancelled: true }),

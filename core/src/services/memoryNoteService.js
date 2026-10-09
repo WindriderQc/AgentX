@@ -2,6 +2,8 @@
 
 const { createHash } = require('node:crypto');
 const MemoryNote = require('../../models/MemoryNote');
+const { sealText } = require('./identifierVault');
+const { createIndex } = require('./memoryNoteIndex');
 
 const error = (message, statusCode = 400) => Object.assign(new Error(message), {
   statusCode, code: 'MEMORY_NOTE_INVALID'
@@ -17,6 +19,12 @@ const cleanText = (value, max = 4000) => {
   }
   return value.trim();
 };
+// Provenance of a new note; a trusted caller may name its channel.
+const sourceOf = value => (typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test(value) ? value : 'explicit-ui');
+// Where an agent-written note came from (ADR 0003, #207/#208). Only these
+// values are accepted from the Nestor consumer; anything else is not a note
+// the owner dictated, but it is never relabelled as one either.
+const AGENT_PROVENANCE = Object.freeze({ conversation: 'nestor-conversation', 'mail-review': 'nestor-mail-review', scheduled: 'nestor-scheduled' });
 const limitOf = (value, fallback = 25) => Math.max(1, Math.min(100, Math.trunc(Number(value)) || fallback));
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const stopWords = new Set(['les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'avec', 'mon', 'mes', 'moi', 'est', 'this', 'that', 'the', 'and', 'you', 'what', 'remember', 'retiens',
@@ -33,6 +41,9 @@ const stopWords = new Set(['les', 'des', 'une', 'que', 'qui', 'pour', 'dans', 'a
   'maintenant', 'actuel', 'actuelle', 'actuels', 'actuelles',
   'bonjour', 'salut', 'hello', 'merci', 'thanks', 'please']);
 const words = value => [...new Set(String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().match(/[a-z0-9]{3,}/g) || [])].filter(word => !stopWords.has(word));
+// Broad child queries can match individual son/daughter facts. Specific relation queries stay exact.
+const childQueryTerms = new Set(['enfant', 'enfants', 'child', 'children']);
+const childNoteTerms = ['fils', 'fille', 'filles', 'garcon', 'garcons', 'daughter', 'daughters'];
 
 function project(row) {
   return { id: String(row._id), text: row.text, kind: row.kind || 'fact', type: row.type,
@@ -43,7 +54,7 @@ function project(row) {
 
 // Bind once in trusted server code. Request bodies and personas cannot widen
 // either the information audience or the family space.
-function forSpace({ audience, scopeId, packIds } = {}) {
+function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   if (!['owner', 'household'].includes(audience) || typeof scopeId !== 'string'
       || !/^[a-zA-Z0-9_.:-]{1,120}$/.test(scopeId) || !Array.isArray(packIds)
       || !packIds.length || packIds.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(id))) {
@@ -55,6 +66,9 @@ function forSpace({ audience, scopeId, packIds } = {}) {
   const boundary = { scopeId, packId: { $in: packs }, ...(audience === 'household' ? classification : {}) };
   const active = () => ({ ...boundary, status: { $ne: 'forgotten' },
     $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] });
+  // The note is saved first and stays valid without its vector: an embedding
+  // host that is busy or down delays the index, never the memory.
+  const indexLater = row => { index.indexNote(row._id, row.text).catch(() => {}); };
 
   async function list({ limit, offset = 0, query, kind } = {}) {
     const filter = active();
@@ -73,9 +87,14 @@ function forSpace({ audience, scopeId, packIds } = {}) {
       truncated: skip + rows.length < total, nextOffset: skip + rows.length < total ? skip + rows.length : null };
   }
 
+  // Owner notes only: a family space has no way to reveal a sealed value.
+  const seal = value => (audience === 'owner' ? sealText(value, { seenIn: 'memory-note' }) : { text: value, sealed: [] });
+
   async function remember(input = {}) {
-    const text = cleanText(input.text);
+    const raw = cleanText(input.text);
     if (input.kind !== undefined && !['fact', 'preference', 'decision'].includes(input.kind)) throw error('Choose fact, preference or decision');
+    if (input.id !== undefined) noteId(input.id);
+    const { text, sealed } = await seal(raw);
     const id = input.id === undefined ? digest([scopeId, packs[0], text].join('\n')).slice(0, 24) : noteId(input.id);
     const existing = await MemoryNote.findOne({ ...boundary, _id: id }).lean();
     if (input.id !== undefined && (!existing || existing.status === 'forgotten')) throw error('The selected note no longer exists', 404);
@@ -84,7 +103,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     const kind = input.kind || existing?.kind || 'fact';
     const changed = !existing || existing.status === 'forgotten' || existing.text !== text || existing.kind !== kind
       || String(existing.expiresAt || '') !== String(expiresAt || '');
-    if (!changed) return { ok: true, authority: 'agentx.core', id, text, created: false, changed: false, updatedAt: existing.updatedAt };
+    if (!changed) return { ok: true, authority: 'agentx.core', id, text, kind, sealed, created: false, changed: false, updatedAt: existing.updatedAt };
     // An explicit correction keeps an existing classification. In particular it
     // cannot downgrade a highly-private note by using a different presentation.
     const labels = existing?.scope && existing?.sensitivity
@@ -93,7 +112,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     const update = { $set: {
       text, kind, ...labels, expiresAt, status: 'active', forgottenAt: null,
       contentHash: digest(text.toLowerCase())
-    }, $setOnInsert: { packId: packs[0], scopeId, topic: 'general', type: 'fact', source: 'explicit-ui' } };
+    }, $setOnInsert: { packId: packs[0], scopeId, topic: 'general', type: 'fact', source: sourceOf(input.source) } };
     let result;
     try {
       result = await MemoryNote.findOneAndUpdate(filter, update,
@@ -107,19 +126,21 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     }
     const row = result.value;
     if (!row) throw error('The selected note no longer exists', 404);
-    return { ok: true, authority: 'agentx.core', ...project(row), created: Boolean(result.lastErrorObject?.upserted), changed: true };
+    indexLater(row);
+    return { ok: true, authority: 'agentx.core', ...project(row), sealed, created: Boolean(result.lastErrorObject?.upserted), changed: true };
   }
 
   async function record(input = {}) {
-    const text = cleanText(input.text);
+    const { text } = await seal(cleanText(input.text));
     const values = { packId: packs[0], scopeId, ...classification, text,
       topic: typeof input.topic === 'string' ? input.topic.slice(0, 80) : 'general',
       type: input.type === 'summary' ? 'summary' : 'fact', source: input.source || 'explicit-ui',
       contentHash: digest(text.toLowerCase()), status: 'active' };
-    if (!input.sourceTraceId) return project(await MemoryNote.create(values));
+    if (!input.sourceTraceId) { const created = await MemoryNote.create(values); indexLater(created); return project(created); }
     const sourceTraceId = cleanText(input.sourceTraceId, 300);
     const row = await MemoryNote.findOneAndUpdate({ ...boundary, sourceTraceId },
       { $setOnInsert: { ...values, sourceTraceId } }, { new: true, upsert: true, runValidators: true });
+    if (!row.embeddedHash) indexLater(row);
     return project(row);
   }
 
@@ -133,6 +154,8 @@ function forSpace({ audience, scopeId, packIds } = {}) {
   async function search(query, { limit = 8, minMatchedTerms = 1 } = {}) {
     cleanText(query, 4000);
     const terms = words(query);
+    const matchingTerms = new Set(terms);
+    if (terms.some(term => childQueryTerms.has(term))) childNoteTerms.forEach(term => matchingTerms.add(term));
     const minimum = minMatchedTerms === 2 ? 2 : 1;
     // A greeting or vague request has no recall topic. It must not turn into
     // an implicit list of every note; explicit list/filter remains available.
@@ -142,7 +165,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     let best = [], offset = 0, page;
     do {
       page = await list({ offset, limit: 100 });
-      best = [...best, ...page.notes.map(note => ({ note, score: words(note.text).filter(term => terms.includes(term)).length }))]
+      best = [...best, ...page.notes.map(note => ({ note, score: words(note.text).filter(term => matchingTerms.has(term)).length }))]
         .filter(entry => entry.score >= minimum)
         .sort((a, b) => b.score - a.score || new Date(b.note.updatedAt) - new Date(a.note.updatedAt))
         .slice(0, limitOf(limit, 8));
@@ -151,7 +174,18 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     return { ok: true, authority: 'agentx.core', notes: best.map(entry => entry.note), total: page.total };
   }
 
-  return Object.freeze({ list, remember, record, forget, search, count: () => MemoryNote.countDocuments(active()) });
+  // Notes of this space closest in meaning to each text. Same boundary as
+  // every other read here; notes not indexed yet are counted, not guessed.
+  async function similar(queries, { limit = 3, minScore = 0 } = {}) {
+    const texts = (Array.isArray(queries) ? queries : [queries]).map(query => cleanText(query, 4000));
+    const found = await index.nearest(active(), texts, { limit: limitOf(limit, 3), minScore });
+    return { ok: true, authority: 'agentx.core', indexed: found.indexed, unindexed: found.unindexed,
+      results: found.results.map(entry => ({ query: entry.query, ...(entry.error ? { error: entry.error } : {}),
+        notes: entry.hits.map(hit => ({ ...project(hit.note), score: Math.round(hit.score * 1000) / 1000 })) })) };
+  }
+  const reindex = () => index.rebuild(boundary);
+
+  return Object.freeze({ list, remember, record, forget, search, similar, reindex, count: () => MemoryNote.countDocuments(active()) });
 }
 
 const personal = () => forSpace({ audience: 'owner', scopeId: 'personal', packIds: ['personal_operator'] });
@@ -167,10 +201,12 @@ async function operatePersonal(input = {}) {
     result = { ...matched, notes: [...matched.notes, ...preferences.notes.filter(note => !matched.notes.some(hit => hit.id === note.id))]
       .slice(0, limitOf(input.limit, 4)) };
   }
-  else if (operation === 'remember') result = await notes.remember(input);
+  // Provenance is set by trusted server callers (MCP), never by a request body.
+  else if (operation === 'remember') result = await notes.remember({ ...input,
+    source: input.provenance === undefined ? undefined : AGENT_PROVENANCE[input.provenance] || 'nestor-conversation' });
   else if (operation === 'forget') result = await notes.forget(input.id);
   else throw error('Choose list, search, remember or forget');
   return { ...result, operation };
 }
 
-module.exports = { forSpace, personal, operatePersonal };
+module.exports = { forSpace, personal, operatePersonal, AGENT_PROVENANCE };

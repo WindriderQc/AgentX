@@ -9,7 +9,6 @@ const cookieParser = require('cookie-parser');
 const logger = require('../config/logger');
 const { requestLogger, errorLogger } = require('./middleware/logging');
 const systemHealth = require('./systemHealth');
-const { normalizeHostUrl } = require('./helpers/ollamaHostConfig');
 const { getHostHomeLink } = require('./helpers/hostHomeLink');
 const { refreshOllamaHealth } = require('./services/ollamaHealthProbe');
 const { normalizePublicUrls } = require('../../shared/browserPublicUrls');
@@ -212,8 +211,7 @@ app.use('/api/roundtable', routeDefaultJsonParser);
 app.use('/api/operations/backup/config', routeDefaultJsonParser);
 
 // Every remaining JSON route uses the bounded product default.
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+require('./middleware/productRequestParsers')(app, express);
 
 const { createRequestSanitizer } = require('./middleware/requestSanitizer');
 app.use(createRequestSanitizer({ logger }));
@@ -227,9 +225,9 @@ app.use(correlationId);
 // route. This guard runs before route modules can perform upstream work.
 app.use(createAgentXProfileGuard(agentxProfile));
 
-const parentalAccess = isDemoProfile(agentxProfile) ? null
-  : require('./middleware/parentalAccess').registerParentalAccess({ app, express });
-app.locals.parentalAccess = parentalAccess;
+if (!isDemoProfile(agentxProfile)) {
+  require('./middleware/legacyHumanAccess').registerLegacyHumanAccess({ app });
+}
 
 // Request logging middleware
 app.use(requestLogger);
@@ -249,9 +247,10 @@ app.use(responseEnvelopeCompatibility);
 
 // Trusted extensions are separately installed absolute-path modules. They are
 // disabled by default and outside the demo profile. Registration happens after
-// the shared API limiter but before built-in routes so an extension can protect
-// Core-owned paths without bypassing the product's admission controls.
+// the origin guard, body parsers, sanitizer and profile guard but before built-in
+// routes so an extension can protect Core-owned paths without bypassing them.
 const runtimeServices = createTrustedRuntimeServices();
+require('./ui/productShell').registerProductHome(app);
 if (!isDemoProfile(agentxProfile)) {
   require('../surfaces/household').register({
     contractVersion: 2,
@@ -259,7 +258,7 @@ if (!isDemoProfile(agentxProfile)) {
     extensionRoot: path.join(__dirname, '../surfaces/household')
   });
   require('../surfaces/data-toolbox').register({ contractVersion: 2, app, express });
-  require('../surfaces/psyx').register({ app, mongoose, runtimeServices, conversationLifecycle, logger, parentalAccess });
+  require('../surfaces/psyx').register({ app, mongoose, runtimeServices, conversationLifecycle, logger });
   // Optional host integrations use the same admitted Core runtime and models.
   // Instance configuration and native harness processes remain external.
   const integrationApi = { contractVersion: 2, app, express, mongoose, logger, standardJsonParser, runtimeServices };
@@ -324,10 +323,6 @@ app.use('/api/analytics', standardJsonParser, analyticsFederatedRoutes);
 const clusterScheduleRoutes = require('../routes/cluster-schedule');
 app.use('/api/cluster', clusterScheduleRoutes);
 
-// Custom Model Management routes
-const customModelsRoutes = require('../routes/custom-models');
-app.use('/api/custom-models', customModelsRoutes);
-
 // History routes
 const historyRoutes = require('../routes/history');
 app.use('/api/history', historyRoutes);
@@ -354,10 +349,6 @@ app.use('/api/models', modelsUnifiedRoutes);
 const ollamaHostsRoutes = require('../routes/ollama-hosts');
 app.use('/api/ollama-hosts', ollamaHostsRoutes);
 
-// Explicit Ollama VRAM configuration (no host probing)
-const ollamaVramRoutes = require('../routes/ollama-vram');
-app.use('/api/ollama-vram', ollamaVramRoutes);
-
 // Ollama Watchdog (inference jam detection + auto-recovery)
 const ollamaWatchdogRoutes = require('../routes/ollama-watchdog');
 app.use('/api/ollama-watchdog', ollamaWatchdogRoutes);
@@ -383,10 +374,6 @@ app.use('/api/performance', performanceRoutes);
 // Prompt management routes (A/B testing)
 const promptRoutes = require('../routes/prompts');
 app.use('/api/prompts', promptRoutes);
-
-// Prompt template routes (CRUD, render, duplicate)
-const promptTemplateRoutes = require('../routes/prompt-templates');
-app.use('/api/prompt-templates', promptTemplateRoutes);
 
 // Lightweight profile routes for chat UI compatibility
 const profileRoutes = require('../routes/profile');
@@ -420,9 +407,8 @@ const pipelineRoutes = require('../routes/pipeline');
 app.use('/api/pipeline', standardJsonParser, pipelineRoutes);
 
 // AgentX-native planning (workstreams, outcomes, ideas, decisions, runtime
-// schedule linkage) and the personal finance ledger (adult-only via gateway).
-app.use('/api/planning', standardJsonParser, require('../routes/planning'));
-require('../routes/finance').mount(app, standardJsonParser);
+// schedule linkage) and the personal finance ledger (private LAN access).
+require('../routes/product-capabilities').mount(app, standardJsonParser);
 
 // AgentX MCP skill bus (Streamable HTTP JSON-RPC endpoint)
 const mcpRoutes = require('../routes/mcp');
@@ -492,7 +478,7 @@ for (const [route, assetPath] of Object.entries(coreVendorAssets)) {
 
 registerLocalStyleVendorAssets(app, path.join(__dirname, '..', 'node_modules'));
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'))); require('../../shared/benchmarkCategories').mountBrowserCategories(app);
 
 // Browsers often request /favicon.ico implicitly. We serve a real icon to avoid noisy 404s.
 app.get('/favicon.ico', (_req, res) => {
@@ -521,46 +507,8 @@ app.get('/health', async (_req, res) => {
   });
 });
 
-// Config endpoint - expose server configuration
-app.get('/api/config', (_req, res) => {
-  const ollamaHost = normalizeHostUrl(process.env.OLLAMA_HOST);
-
-  if (!ollamaHost) {
-    return res.status(500).json({
-      status: 'error',
-      message: 'OLLAMA_HOST environment variable is not configured'
-    });
-  }
-
-  const match = ollamaHost.match(/^(?:https?:\/\/)?([^:]+)(?::(\d+))?/);
-  const host = match ? match[1] : 'localhost';
-  const port = match && match[2] ? match[2] : '11434';
-
-  res.json({
-    profile: agentxProfile,
-    ollama: {
-      host,
-      port,
-      fullUrl: ollamaHost
-    },
-    features: {},
-    // Browser-reachable URLs for cross-service navigation. Public JS
-    // and EJS pages use these instead of hardcoded localhost:<port>
-    // so remote browsers reach the right host.
-    publicUrls: app.locals.publicUrls,
-    // Optional same-origin return path supplied by the composing host. It is
-    // absent by default so standalone and shareable Product remain neutral.
-    hostHome: app.locals.hostHome,
-    // Validated launchers supplied by trusted extensions. Benchmark and RAG
-    // read this projection so every Product service renders the same
-    // "External runtimes" entries; the launcher hrefs are Core routes.
-    navigation: {
-      trustedRuntimeNavItems: isDemoProfile(agentxProfile)
-        ? []
-        : normalizeTrustedRuntimeNavItems(app.locals.trustedRuntimeNavItems)
-    }
-  });
-});
+// Public browser configuration; inference may be unconfigured.
+app.get('/api/config', require('../routes/public-config').createPublicConfigHandler({ app, profile: agentxProfile }));
 
 // Live portal status — server-side aggregation of each service's /health so the
 // portal landing page shows live status without any cross-origin requests.
@@ -579,20 +527,6 @@ app.get('/api/portal/health', async (_req, res) => {
 // ============================================
 // EJS PAGE ROUTES
 // ============================================
-// One Product home. Trusted extensions may own the deployment's root page.
-function renderProductHome(_req, res) {
-  res.render('layouts/main', {
-    pageView: '../pages/home',
-    title: 'Agent X · Home',
-    service: 'core',
-    activePage: 'portal',
-    showNav: false,
-    headCss: '<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/home.css">',
-    footerJs: '<script src="/js/home.js" defer></script>'
-  });
-}
-app.get('/', renderProductHome);
-app.get('/portal', renderProductHome);
 app.get('/playground', (req, res) => {
   const demo = isDemoProfile(agentxProfile);
   res.render('layouts/main', {
@@ -635,14 +569,14 @@ app.get('/nerve-center', (req, res) => {
     bodyClass: 'nerve-center-page',
     headCss: [
       '<link rel="stylesheet" href="/styles.css">',
-      '<link rel="stylesheet" href="/css/nerve-center.css"><link rel="stylesheet" href="/css/nerve-center-diagnostics.css">',
+      '<link rel="stylesheet" href="/css/nerve-center.css"><link rel="stylesheet" href="/css/nerve-center-diagnostics.css"><link rel="stylesheet" href="/css/nerve-center-controls.css">',
       '<script src="/vendor/chart.js/4.5.1/chart.umd.js"></script>'
     ].join('\n'),
     footerJs: [
       '<script src="/js/nerve-center-mode.js"></script>',
       '<script src="/js/nerve-center.js"></script>',
       '<script src="/js/nerve-center-routing.js"></script>',
-      '<script src="/js/nerve-center-gpu-health.js"></script><script src="/js/nerve-center-cluster.js"></script><script src="/js/nerve-center-hosts.js"></script>',
+      '<script src="/js/nerve-center-gpu-health.js"></script><script src="/js/nerve-center-gpu-occupancy.js"></script><script src="/js/nerve-center-cluster.js"></script><script src="/js/nerve-center-hosts.js"></script><script src="/js/nerve-center-ops-watch.js"></script>',
       '<script src="/js/nerve-center-health.js"></script>',
       '<script src="/js/nerve-center-performance.js"></script>',
       '<script src="/js/nerve-center-inference.js"></script>',
@@ -671,6 +605,9 @@ app.get('/agent-ops', (_req, res) => {
     footerJs: [
       '<script src="/js/agent-ops-availability.js"></script>',
       '<script src="/js/agent-ops-advanced.js"></script>',
+      '<script src="/js/agent-ops-team.js"></script>',
+      '<script src="/js/agent-ops-team-editor.js"></script>',
+      '<script src="/js/agent-ops-team-guide.js"></script>',
       '<script src="/js/cockpit-help.js"></script>',
       '<script src="/js/agent-ops.js"></script>'
     ].join('\n')
@@ -692,10 +629,11 @@ app.get('/models', (req, res) => {
       '<script src="/js/utils/playground-link.js"></script>',
       '<script src="/js/models-unified.js"></script>',
       '<script src="/js/models-unified-popouts.js"></script>',
+      '<script src="/js/models-stats-strip.js"></script>',
       '<script src="/js/models-management.js"></script>',
       '<script src="/js/models-comparison.js"></script>',
       '<script src="/js/models-execution-config.js"></script>',
-      '<script src="/js/models-recommendations.js"></script>',
+      '<script src="/js/benchmark-categories.global.js"></script><script src="/js/models-recommendations.js"></script>',
       '<script src="/js/models-experience.js"></script>'
     ].join('\n')
   });
@@ -717,7 +655,11 @@ app.get('/cluster-schedule', (req, res) => {
       '<script src="/js/cluster-schedule-upcoming.js"></script>',
       '<script src="/js/cluster-schedule-headline.js"></script>',
       '<script src="/js/cluster-schedule.js"></script>',
-      '<script src="/js/cluster-schedule-services.js"></script>'
+        '<script src="/js/cluster-schedule-attention.js"></script>',
+        '<script src="/js/cluster-schedule-actual.js"></script>',
+        '<script src="/js/cluster-schedule-services.js"></script>',
+        '<script src="/js/cluster-schedule-queue.js"></script>',
+        '<script src="/js/cluster-schedule-controls.js"></script>'
     ].join('\n')
   });
 });
@@ -752,7 +694,7 @@ app.get('/pipeline', (req, res) => {
       '<script src="/js/cockpit-help.js"></script>',
       '<script src="/js/pipeline-editor.js"></script><script src="/js/pipeline-deliverables.js"></script>',
       '<script src="/js/pipeline-eligibility.js"></script><script src="/js/pipeline-launch.js"></script><script src="/js/pipeline-attention.js"></script><script src="/js/pipeline-evidence-references.js"></script><script src="/js/pipeline-phase-durations.js"></script><script src="/js/pipeline-plan.js"></script><script src="/js/pipeline-stall-diagnosis.js"></script>',
-      '<script src="/js/pipeline.js"></script>'
+      '<script src="/js/pipeline-delivery.js"></script><script src="/js/pipeline-board.js"></script><script src="/js/pipeline-attempt-dossier.js"></script><script src="/js/pipeline-drawer.js"></script><script src="/js/pipeline.js"></script>'
     ].join('\n')
   });
 });

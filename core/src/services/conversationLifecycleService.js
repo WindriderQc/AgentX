@@ -94,6 +94,7 @@ function conversationDto(document, { includeMessages = false } = {}) {
   const lastMessage = raw.lastMessage || raw.messages?.[raw.messages.length - 1] || null;
   const dto = {
     id: String(raw._id),
+    ...(raw.sessionRecap ? { sessionRecap: raw.sessionRecap } : {}),
     userId: raw.userId,
     promptName: raw.promptName,
     promptVersion: Number.isFinite(Number(raw.promptVersion)) ? Number(raw.promptVersion) : null,
@@ -175,6 +176,7 @@ function createConversationLifecycleService({ ConversationModel = Conversation, 
             createdAt: 1,
             updatedAt: 1,
             lifecycle: 1,
+            sessionRecap: 1,
             messageCount: { $size: { $ifNull: ['$messages', []] } },
             lastMessage: { $arrayElemAt: [{ $ifNull: ['$messages', []] }, -1] }
           }
@@ -203,6 +205,7 @@ function createConversationLifecycleService({ ConversationModel = Conversation, 
       createdAt: 1,
       updatedAt: 1,
       lifecycle: 1,
+      sessionRecap: 1,
       ...(includeMessages ? { messages: 1 } : {})
     };
     const conversation = await ConversationModel.findOne(filter).select(projection).lean();

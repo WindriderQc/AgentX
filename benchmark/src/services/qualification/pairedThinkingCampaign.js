@@ -41,6 +41,7 @@ function isReviewClean(row) {
 function unresolvedReason(row) {
   if (row?.success !== true) return row?.infra_error === true ? 'infrastructure_failure' : 'execution_failure';
   if (row?.evaluation_authority === 'executable') return 'executable_verification_required';
+  if (row?.truncation?.thinking_budget_exhausted) return 'thinking_budget_exhausted';
   if (row?.truncation?.thinking_only_response) return 'thinking_only_response';
   if (row?.truncation?.thinking_runaway) return 'thinking_runaway';
   if (row?.truncation?.input_truncated) return 'input_truncated';
@@ -108,6 +109,7 @@ function summarizeMode(rows, { mode, expectedRepeats }) {
       visible_response_chars: numericStats(successful.map((row) => row?.truncation?.visible_response_chars)),
       response_truncated: successful.filter((row) => row?.truncation?.response_truncated === true).length,
       thinking_only: successful.filter((row) => row?.truncation?.thinking_only_response === true).length,
+      thinking_budget_exhausted: successful.filter((row) => row?.truncation?.thinking_budget_exhausted === true).length,
       thinking_runaway: successful.filter((row) => row?.truncation?.thinking_runaway === true).length
     },
     evidence: {

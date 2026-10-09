@@ -30,6 +30,21 @@ beforeEach(() => {
 });
 
 describe('reference scoring with short references', () => {
+  it('persists upstream HTTP failures for every reference check without producing a quality score', async () => {
+    const body = JSON.stringify({ message: 'Synthetic upstream runner failure' });
+    mockFetch.mockResolvedValue({ ok: false, status: 500, text: async () => body });
+    const result = await score('candidate', {
+      prompt: 'Give the answer.', reference_answer: 'The reference answer.', category: 'knowledge',
+      judge_criteria: ['Required answer is present']
+    }, { model: 'judge', host: 'http://judge:11434' });
+    expect(result.quality_score).toBeNull();
+    const evidence = JSON.parse(result.judge_raw_response);
+    expect(evidence.calls).toHaveLength(mockFetch.mock.calls.length);
+    expect(evidence.calls.length).toBeGreaterThanOrEqual(3);
+    expect(evidence.calls.every(call => call.status === 500 && call.http_error_body === body
+      && call.error === 'Judge HTTP 500' && call.response === undefined)).toBe(true);
+  });
+
   it('accepts an explicit rating line followed by an explanation', async () => {
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({
       response: 'Most required behavior is present.\nRATING: GOOD\n\nMinor gaps remain.', done: true, done_reason: 'stop'
@@ -79,6 +94,17 @@ describe('reference scoring with short references', () => {
     expect(body.options.num_predict).toBe(160);
     expect(body.prompt).toContain('independently of other task requirements');
   });
+  it('propagates frozen runtime drift instead of returning a partial reference score', async () => {
+    const config = { model: 'judge:latest', host: 'http://judge:11434', execution_contract: {
+      schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 65536,
+      artifact: { model: 'judge:latest', digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) }
+    } };
+    await expect(checkKeyPoint('answer', 'criterion', config)).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
+    await expect(checkContradictions('answer', 'reference', config)).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
+    await expect(checkOverallSimilarity('answer', 'reference', config)).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
+    expect(mockFetch.mock.calls.every(([, options]) => JSON.parse(options.body).includeArtifactIdentity === true)).toBe(true);
+  });
+
   it('does not infer a criterion verdict from an incomplete explanation', async () => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: 'YES may apply, but further analysis is needed.' }) });
     expect(await checkKeyPoint('answer', 'criterion', { model: 'judge', host: 'http://judge:11434' }))
@@ -112,14 +138,17 @@ describe('reference scoring with short references', () => {
     expect(calls).toHaveLength(3);
     expect(calls.every(body => body.prompt.includes('TASK: Write a function that sums an array.'))).toBe(true);
   });
-  it('honors the explicit verdict budget for all reference checks', async () => {
+  it('honors the explicit verdict budget and deadline for all reference checks', async () => {
     await score('The answer is correct.', { reference_answer: 'The answer is correct.' }, {
-      model: 'judge', host: 'http://judge:11434', num_predict: 1024
+      model: 'judge', host: 'http://judge:11434', num_predict: 65536, timeout: 7200000
     });
     expect(new Set(mockFetch.mock.calls.map(([, opts]) => JSON.parse(opts.body).callerDetail))).toEqual(
       new Set(['benchmark-ref-keypoint', 'benchmark-ref-contradictions', 'benchmark-ref-overall'])
     );
-    expect(mockFetch.mock.calls.every(([, opts]) => JSON.parse(opts.body).options.num_predict === 1024)).toBe(true);
+    expect(mockFetch.mock.calls.every(([, opts]) => {
+      const body = JSON.parse(opts.body);
+      return body.options.num_predict === 65536 && body.timeoutMs === 7200000;
+    })).toBe(true);
   });
   it.each(['benchmark-ref-keypoint', 'benchmark-ref-contradictions', 'benchmark-ref-overall'])(
     'does not score when %s returns a readable but truncated verdict', async truncatedCaller => {

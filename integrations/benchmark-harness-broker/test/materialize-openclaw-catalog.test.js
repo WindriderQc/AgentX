@@ -38,6 +38,8 @@ for (const extension of ['js', 'mjs']) {
     const catalog = JSON.parse(await readFile(fixture.output, 'utf8'));
     const { target, executor } = catalog.targets[0];
     assert.equal(target.harness.version, '2026.9.4');
+    assert.equal(target.available, false);
+    assert.equal(target.capabilities.candidate, true);
     assert.deepEqual(target.nativePolicy.tools.map(tool => tool.name).sort(), ['edit', 'read', 'write']);
     for (const name of ['openclaw-agent-exec', 'openclaw-coding-tools']) {
       const pin = executor.pins.runtime.find(entry => entry.name === name);
@@ -73,6 +75,8 @@ test('adds a named subscription agent without replacing the local target or copy
   assert.equal(target.provider, 'openai');
   assert.equal(target.model, 'sol');
   assert.equal(target.tier, 'free_cloud');
+  assert.equal(target.available, false);
+  assert.equal(catalog.targets[0].target.available, false);
   assert.match(target.pricing.source, /subscription-included-usage/);
   assert.equal(target.profile.id, 'openclaw-cloudx');
   assert.deepEqual(target.nativePolicy.networkDestinations, ['openai']);
@@ -81,5 +85,28 @@ test('adds a named subscription agent without replacing the local target or copy
   assert.ok(!JSON.stringify(catalog).includes('/private/cloudx/agent'));
   profile.models.providers.openai.models[0].api = 'openai-responses';
   await writeFile(profilePath, JSON.stringify(profile));
-  await assert.rejects(materialize({ ...fixture, additionalProfilePaths: [profilePath] }), /billing policy/);
+  await assert.rejects(materialize({ ...fixture, additionalProfilePaths: [profilePath], nativeCatalogue: { runtimeVersion: '2026.9.4', models: [] } }), /billing evidence/);
+});
+
+
+test('native catalogue preserves cloud billing while all unqualified agent routes remain unavailable', async t => {
+  const fixture = await installation(t, 'mjs');
+  const profilePath = path.join(fixture.root, 'cloud.json');
+  const profile = { models: { providers: { openrouter: { api: 'openai-completions', models: [
+    { id: 'vendor/model', name: 'Cloud', contextWindow: 8192 }
+  ] } } }, agents: { defaults: { systemAgent: { agentId: 'cloud' } }, entries: {
+    cloud: { model: { primary: 'openrouter/vendor/model', fallbacks: [] } }
+  } }, tools: { allow: ['read'] } };
+  await writeFile(profilePath, JSON.stringify(profile));
+  for (const kind of ['free', 'paid']) {
+    const nativeCatalogue = { runtimeVersion: '2026.9.4', observedAt: new Date().toISOString(), models: [
+      { model: 'openrouter/vendor/model', billing: { kind, source: 'native-catalog',
+        rates: { input: kind === 'paid' ? 1 : 0, output: kind === 'paid' ? 2 : 0, cacheRead: 0, cacheWrite: 0 } } }
+    ] };
+    await materialize({ ...fixture, additionalProfilePaths: [profilePath], nativeCatalogue });
+    const target = JSON.parse(await readFile(fixture.output)).targets[1].target;
+    assert.equal(target.provider, 'openrouter'); assert.equal(target.billing, kind);
+    assert.equal(target.mode, 'native_agent'); assert.equal(target.modelVersion, 'unknown');
+    assert.equal(target.capabilities.judge, false); assert.equal(target.available, false);
+  }
 });

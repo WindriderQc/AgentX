@@ -19,6 +19,7 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../config/logger');
 const roundtableService = require('../src/services/roundtable');
+const { listOpenClawAgents } = require('../src/services/roundtable/runtimeParticipantAdapter');
 const Roundtable = require('../models/Roundtable');
 const { requireTypedConfirmation } = require('../src/helpers/typedConfirmation');
 
@@ -30,6 +31,8 @@ function secretMatches(actual, expected) {
 }
 
 function requireChairToken(req, res) {
+  // The owner's unlocked session at the household entry is the chair: no second secret to type.
+  if (res.locals?.adultUserId) return true;
   const expected = process.env.ROUNDTABLE_CHAIR_TOKEN;
   if (!expected) {
     res.status(503).json({ status: 'error', message: 'Roundtable chair approval is not configured' });
@@ -47,7 +50,7 @@ router.post('/', express.json(), async (req, res) => {
   try {
     const {
       question, rounds, panel, synthesizer, tags, source, enableScoring,
-      governance
+      governance, turnOrder
     } = req.body || {};
 
     if (!question || typeof question !== 'string' || question.trim().length === 0) {
@@ -56,8 +59,9 @@ router.post('/', express.json(), async (req, res) => {
     if (question.length > 5000) {
       return res.status(400).json({ status: 'error', message: 'question exceeds 5000 char limit' });
     }
-    const usesRealRuntime = Array.isArray(panel)
-      && panel.some((agent) => String(agent?.runtime || 'model').toLowerCase() !== 'model');
+    const usesRealRuntime = (Array.isArray(panel)
+      && panel.some((agent) => String(agent?.runtime || 'model').toLowerCase() !== 'model'))
+      || String(synthesizer?.runtime || 'model').toLowerCase() !== 'model';
     if (req.body?.telegram || req.body?.notify) {
       return res.status(410).json({
         status: 'error',
@@ -72,6 +76,7 @@ router.post('/', express.json(), async (req, res) => {
       rounds,
       panel,
       synthesizer,
+      turnOrder,
       source: source || 'api',
       tags: tags || [],
       governance: governance || {},
@@ -111,11 +116,13 @@ router.get('/', async (req, res) => {
 
 router.get('/defaults', async (_req, res) => {
   try {
-    const defaults = await roundtableService.getCouncilDefaults();
+    const [defaults, openclawAgents] = await Promise.all([roundtableService.getCouncilDefaults(), listOpenClawAgents()]);
     res.json({
       status: 'ok',
       data: {
         ...defaults,
+        // The OpenClaw agents a Council may seat; empty when runtime participants are off.
+        openclawAgents,
         options: roundtableService.COUNCIL_OPTIONS,
         policy: {
           canonicalSurface: '/council',

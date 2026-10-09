@@ -74,3 +74,71 @@ describe('roundtable Codex participant bridge', () => {
     })).toBe(true);
   });
 });
+
+describe('roundtable OpenClaw agent participants', () => {
+  const { finalOpenClawText, listOpenClawAgents } = require('../../src/services/roundtable/runtimeParticipantAdapter');
+  const env = { ROUNDTABLE_RUNTIME_PARTICIPANTS_ENABLED: 'true', OPENCLAW_GATEWAY_URL: 'ws://gateway.invalid:18789', OPENCLAW_GATEWAY_TOKEN: 'synthetic-token' };
+  const completed = (text) => ({ status: 'completed', output: [
+    { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Je vérifie.' }] },
+    { type: 'function_call', name: 'read' },
+    { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }
+  ] });
+
+  test('seats a named agent in a session dedicated to this Council and keeps its final answer', async () => {
+    const calls = [];
+    const fetchImpl = async (url, options) => { calls.push({ url, options }); return { ok: true, json: async () => completed('Deux factures attendent.') }; };
+    const result = await callRuntimeParticipant({ agentId: 'secretary', role: 'Secrétaire', runtime: 'openclaw' },
+      [{ role: 'user', content: 'Quelles dépenses surveiller?' }], { roundtableId: '6ac0abc', round: 1, timeoutMs: 5000 }, { env, fetchImpl });
+    expect(result).toMatchObject({ response: 'Deux factures attendent.', error: null, runtime: 'openclaw',
+      target: 'openclaw://secretary', runtimeRef: 'agent:secretary:roundtable:6ac0abc' });
+    expect(calls[0].url).toBe('http://gateway.invalid:18789/v1/responses');
+    expect(calls[0].options.headers).toMatchObject({ Authorization: 'Bearer synthetic-token', 'x-openclaw-session-key': 'agent:secretary:roundtable:6ac0abc' });
+    const body = JSON.parse(calls[0].options.body);
+    expect(body).toMatchObject({ model: 'openclaw/secretary', stream: false });
+    expect(body.instructions).toContain('advisory only');
+    expect(body.input[0].content).toContain('Quelles dépenses surveiller?');
+  });
+
+  test('an unfinished run or an invalid agent id is a participant error, not an answer', async () => {
+    expect(() => finalOpenClawText({ status: 'incomplete', output: [] })).toThrow('OpenClaw run ended incomplete');
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ status: 'failed' }) });
+    const failed = await callRuntimeParticipant({ agentId: 'secretary', runtime: 'openclaw' }, [], { roundtableId: 'x', timeoutMs: 5000 }, { env, fetchImpl });
+    expect(failed.response).toBe('');
+    expect(failed.error).toContain('OpenClaw run ended failed');
+    expect(() => validateRuntimeConfiguration([{ agentId: 'Not An Agent', runtime: 'openclaw' }], env)).toThrow('OpenClaw agent id');
+    expect(() => validateRuntimeConfiguration([{ agentId: 'secretary', runtime: 'openclaw' }], { ...env, OPENCLAW_GATEWAY_TOKEN: '' })).toThrow('OPENCLAW_GATEWAY_TOKEN');
+    expect(validateRuntimeConfiguration([{ agentId: 'secretary', runtime: 'openclaw' }], env)).toBe(true);
+  });
+
+  test('a seated agent waits for its own brain instead of a busy-host fallback, whoever it is', async () => {
+    const { strictModel } = require('../../src/services/roundtable/runtimeParticipantAdapter');
+    const strictEnv = { ...env, OPENCLAW_GATEWAY_URL: 'http://gateway-strict.invalid:18789',
+      ROUNDTABLE_OPENCLAW_STRICT_PROVIDERS: JSON.stringify({ 'agentx-conversation': 'ollama' }) };
+    expect(strictModel('agentx-conversation/model-a:27b', strictEnv)).toBe('ollama/model-a:27b');
+    expect(strictModel('ollama/model-a:27b', strictEnv)).toBeNull();
+    expect(strictModel('agentx-conversation/model-a', env)).toBeNull();
+    expect(strictModel('agentx-conversation/model-a', { ROUNDTABLE_OPENCLAW_STRICT_PROVIDERS: 'not json' })).toBeNull();
+    const calls = [];
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, headers: options.headers });
+      if (String(url).endsWith('/api/nestor/continuity')) return { ok: true, json: async () => ({ authority: 'openclaw.nestor', agents: [
+        { id: 'secretary', name: 'Secretary', model: 'agentx-conversation/model-a:27b' }, { id: 'leadx', name: 'LeadX', model: 'ollama/model-a:27b' }] }) };
+      return { ok: true, json: async () => completed('Answer.') };
+    };
+    for (const agentId of ['secretary', 'leadx', 'secretary']) {
+      await callRuntimeParticipant({ agentId, runtime: 'openclaw' }, [], { roundtableId: 'x', timeoutMs: 5000 }, { env: strictEnv, fetchImpl });
+    }
+    const turns = calls.filter((call) => String(call.url).endsWith('/v1/responses'));
+    expect(turns.map((call) => call.headers['x-openclaw-model'])).toEqual(['ollama/model-a:27b', undefined, 'ollama/model-a:27b']);
+    // The catalog is read once, not once per turn.
+    expect(calls.filter((call) => String(call.url).endsWith('/api/nestor/continuity'))).toHaveLength(1);
+  });
+
+  test('the roster comes from the gateway, never offers the family agent, and is empty when runtimes are off', async () => {
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ authority: 'openclaw.nestor', agents: [
+      { id: 'main', name: 'Main' }, { id: 'secretary', name: 'Secrétaire' }, { id: 'family', name: 'Nestor Famille' }, { id: 'Bad Id' }] }) });
+    expect(await listOpenClawAgents(env, fetchImpl)).toEqual([{ id: 'main', name: 'Main', model: '' }, { id: 'secretary', name: 'Secrétaire', model: '' }]);
+    expect(await listOpenClawAgents({ ...env, ROUNDTABLE_RUNTIME_PARTICIPANTS_ENABLED: '' }, fetchImpl)).toEqual([]);
+    expect(await listOpenClawAgents(env, async () => { throw new Error('down'); })).toEqual([]);
+  });
+});

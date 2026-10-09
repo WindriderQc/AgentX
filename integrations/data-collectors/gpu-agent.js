@@ -9,23 +9,38 @@
  * hosts. Every cycle posts one result per host to Data; a failing or slow host
  * is reported as an error and never blocks the others.
  *
+ * A host that names its Ollama service (`ollamaService`: a systemd unit such as
+ * "ollama.service", or "windows") also has the service's allowlisted settings
+ * read, read-only, at a slower interval (shared/ollamaServiceEnvironment.js).
+ *
  * Configuration (external instance settings, never committed):
  *   DATA_URL               Data base URL (default http://127.0.0.1:3083)
  *   GPU_AGENT_HOSTS_JSON   JSON array of hosts, or
  *   GPU_AGENT_HOSTS_FILE   path to a file holding that JSON array
- *       [{"id":"gpu-a","name":"GPU A","ssh":"user@gpu-a","ollamaUrl":"http://gpu-a:11434"},
+ *       [{"id":"gpu-a","name":"GPU A","ssh":"user@gpu-a","ollamaUrl":"http://gpu-a:11434",
+ *         "ollamaService":"ollama.service"},
  *        {"id":"core","local":true}]
  *   GPU_AGENT_ID           collector identifier (default hostname)
  *   GPU_AGENT_INTERVAL_MS  sampling interval, 5 s..10 min (default 30 s)
  *   GPU_AGENT_HOST_TIMEOUT_MS  per-host command timeout, 2..60 s (default 10 s)
+ *   GPU_AGENT_OLLAMA_ENV_INTERVAL_MS  Ollama settings interval, 1 min..24 h (default 10 min)
  *   GPU_AGENT_ONCE=1       one cycle, then exit (non-zero if anything failed)
  */
 
 const os = require('os');
 const fs = require('fs');
 const { execFile } = require('child_process');
+const {
+  SAFE_UNIT,
+  WINDOWS_MACHINE_KEY,
+  WINDOWS_SERVICE,
+  WINDOWS_USER_KEY,
+  parseSystemdShow,
+  parseWindowsEnvironment,
+  systemdShowArgs
+} = require('../../shared/ollamaServiceEnvironment');
 
-const VERSION = 'gpu-1.0.0';
+const VERSION = 'gpu-1.1.0';
 const MAX_HOSTS = 32;
 const MAX_GPUS = 16;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
@@ -69,8 +84,10 @@ function readSettings(env = process.env) {
     intervalMs: boundedInt(env.GPU_AGENT_INTERVAL_MS, 30_000, 5_000, 600_000),
     hostTimeoutMs: boundedInt(env.GPU_AGENT_HOST_TIMEOUT_MS, 10_000, 2_000, 60_000),
     requestTimeoutMs: boundedInt(env.GPU_AGENT_REQUEST_TIMEOUT_MS, 10_000, 2_000, 60_000),
+    ollamaEnvIntervalMs: boundedInt(env.GPU_AGENT_OLLAMA_ENV_INTERVAL_MS, 600_000, 60_000, 86_400_000),
     sshBin: env.GPU_AGENT_SSH_BIN || 'ssh',
     nvidiaSmiBin: env.NVIDIA_SMI_BIN || 'nvidia-smi',
+    systemctlBin: env.SYSTEMCTL_BIN || 'systemctl',
     once: env.GPU_AGENT_ONCE === '1'
   };
 }
@@ -98,6 +115,10 @@ function validateHost(raw, position) {
     }
     ollamaUrl = parsed.origin;
   }
+  const ollamaService = raw.ollamaService == null ? '' : String(raw.ollamaService).trim();
+  if (ollamaService && ollamaService !== WINDOWS_SERVICE && !SAFE_UNIT.test(ollamaService)) {
+    throw new Error(`${id}: ollamaService must be a systemd unit name or "${WINDOWS_SERVICE}"`);
+  }
   return {
     id,
     name: String(raw.name || id).slice(0, 200),
@@ -105,7 +126,8 @@ function validateHost(raw, position) {
     ssh,
     sshPort,
     nvidiaSmi,
-    ollamaUrl
+    ollamaUrl,
+    ollamaService
   };
 }
 
@@ -192,10 +214,7 @@ function parseNvidiaSmiCsv(stdout) {
   });
 }
 
-/** The executable and arguments that sample one host. Arguments are never shell-joined locally. */
-function commandFor(host, settings) {
-  const smi = host.nvidiaSmi || settings.nvidiaSmiBin;
-  if (host.local) return { file: smi, args: [...QUERY_ARGS] };
+function sshCommand(host, settings, remoteCommand) {
   const connectTimeout = String(Math.max(1, Math.min(5, Math.floor(settings.hostTimeoutMs / 2000))));
   return {
     file: settings.sshBin,
@@ -204,11 +223,37 @@ function commandFor(host, settings) {
       '-o', `ConnectTimeout=${connectTimeout}`,
       ...(host.sshPort ? ['-p', String(host.sshPort)] : []),
       '--', host.ssh,
-      // The remote shell receives one fixed command; only the validated binary path
-      // is configurable (quoted when it holds a space, e.g. a Windows install path).
-      [smi.includes(' ') ? `"${smi}"` : smi, ...QUERY_ARGS].join(' ')
+      remoteCommand
     ]
   };
+}
+
+/** The executable and arguments that sample one host. Arguments are never shell-joined locally. */
+function commandFor(host, settings) {
+  const smi = host.nvidiaSmi || settings.nvidiaSmiBin;
+  if (host.local) return { file: smi, args: [...QUERY_ARGS] };
+  // The remote shell receives one fixed command; only the validated binary path
+  // is configurable (quoted when it holds a space, e.g. a Windows install path).
+  return sshCommand(host, settings, [smi.includes(' ') ? `"${smi}"` : smi, ...QUERY_ARGS].join(' '));
+}
+
+/**
+ * Read-only commands that print the Ollama service's environment: one
+ * `systemctl show` for a systemd unit, or the machine then the user
+ * environment for "windows". Each remote command is fixed text that both
+ * cmd.exe and PowerShell accept; only the validated unit name varies.
+ */
+function ollamaEnvCommands(host, settings) {
+  if (host.ollamaService === WINDOWS_SERVICE) {
+    const keys = [WINDOWS_MACHINE_KEY, WINDOWS_USER_KEY];
+    return host.local
+      ? keys.map(key => ({ file: 'reg', args: ['query', key] }))
+      : keys.map(key => sshCommand(host, settings, `reg query ${key.includes(' ') ? `"${key}"` : key}`));
+  }
+  const args = systemdShowArgs(host.ollamaService);
+  return [host.local
+    ? { file: settings.systemctlBin, args }
+    : sshCommand(host, settings, ['systemctl', ...args].join(' '))];
 }
 
 function runCommand(execFileImpl, file, args, timeoutMs) {
@@ -243,6 +288,26 @@ async function sampleHost(host, settings, execFileImpl = execFile) {
   }
 }
 
+/** Read one host's Ollama service settings. Never rejects: failures become `{ ok: false, error }`. */
+async function readOllamaEnvironment(host, settings, execFileImpl = execFile) {
+  const windows = host.ollamaService === WINDOWS_SERVICE;
+  const base = { source: windows ? 'windows-registry' : 'systemd', unit: windows ? null : host.ollamaService };
+  try {
+    const outputs = [];
+    for (const { file, args } of ollamaEnvCommands(host, settings)) {
+      const { error, stdout, stderr } = await runCommand(execFileImpl, file, args, settings.hostTimeoutMs);
+      if (error) {
+        return { ...base, observedAt: new Date().toISOString(), ok: false, error: describeFailure(error, stderr, settings.hostTimeoutMs) };
+      }
+      outputs.push(stdout);
+    }
+    const parsed = windows ? parseWindowsEnvironment(outputs[0], outputs[1]) : parseSystemdShow(outputs[0], host.ollamaService);
+    return { ...parsed, observedAt: new Date().toISOString() };
+  } catch (error) {
+    return { ...base, observedAt: new Date().toISOString(), ok: false, error: String(error.message || error).slice(0, 400) };
+  }
+}
+
 function collectorInfo(settings, hosts) {
   return {
     collectorId: settings.collectorId,
@@ -266,9 +331,25 @@ async function postJson(settings, route, body, fetchImpl = globalThis.fetch) {
   return json.data || json;
 }
 
-/** One collection cycle: all hosts in parallel, then one post to Data. */
-async function runCycle({ settings, hosts, execFileImpl = execFile, fetchImpl = globalThis.fetch }) {
-  const results = await Promise.all(hosts.map(host => sampleHost(host, settings, execFileImpl)));
+/**
+ * One collection cycle: all hosts in parallel, then one post to Data. Ollama
+ * settings are read for a host when `envState` (host id → last read) says they
+ * are due; a failed read waits for the next interval too.
+ */
+async function runCycle({ settings, hosts, execFileImpl = execFile, fetchImpl = globalThis.fetch, envState = new Map(), now = Date.now }) {
+  const startedAt = now();
+  const due = host => Boolean(host.ollamaService)
+    && (!envState.has(host.id) || startedAt - envState.get(host.id) >= settings.ollamaEnvIntervalMs);
+  const results = await Promise.all(hosts.map(async (host) => {
+    const [sample, environment] = await Promise.all([
+      sampleHost(host, settings, execFileImpl),
+      due(host) ? readOllamaEnvironment(host, settings, execFileImpl) : null
+    ]);
+    if (!environment) return sample;
+    envState.set(host.id, startedAt);
+    if (!environment.ok) console.error(`[${ts()}] ${host.id} Ollama settings: ${environment.error}`);
+    return { ...sample, ollamaEnvironment: environment };
+  }));
   for (const result of results) {
     if (!result.ok) console.error(`[${ts()}] ${result.hostId}: ${result.error}`);
   }
@@ -291,8 +372,10 @@ function start(env = process.env) {
     collectorId: settings.collectorId,
     intervalMs: settings.intervalMs,
     hostTimeoutMs: settings.hostTimeoutMs,
+    ollamaEnvIntervalMs: settings.ollamaEnvIntervalMs,
     hosts: hosts.map(host => host.id)
   });
+  const envState = new Map();
 
   if (settings.once) {
     (async () => {
@@ -311,7 +394,7 @@ function start(env = process.env) {
   const tick = async () => {
     if (running) return; // a slow cycle is never stacked
     running = true;
-    try { await runCycle({ settings, hosts }); }
+    try { await runCycle({ settings, hosts, envState }); }
     catch (error) { console.error(`[${ts()}] cycle failed: ${error.message}`); }
     finally { running = false; }
   };
@@ -339,7 +422,9 @@ module.exports = {
   parseNvidiaSmiCsv,
   decodeThrottleReasons,
   commandFor,
+  ollamaEnvCommands,
   sampleHost,
+  readOllamaEnvironment,
   runCycle,
   collectorInfo
 };

@@ -55,11 +55,13 @@ function qualificationBadge(record, scorerVersion, available) {
     }
     const status = record.current?.status || 'unknown';
     const causes = (record.current?.causes || []).join(', ');
+    const contract = record.qualification_contract_fingerprint?.slice(0, 8) || null;
+    const scope = contract ? ` · contract ${escHtml(contract)}` : '';
     const at = record.recorded_at ? record.recorded_at.slice(0, 10) : 'unknown date';
     if (status === 'qualified') {
-        return `<span class="tb-cal tb-cal-ok" title="Qualified by calibration of ${escHtml(at)} under scorer${version}">qualified ·${version}</span>`;
+        return `<span class="tb-cal tb-cal-ok" title="Qualified by calibration of ${escHtml(at)} under scorer${version}, only for the recorded artifact, runtime and settings">qualified${scope} ·${version}</span>`;
     }
-    return `<span class="tb-cal tb-cal-${status === 'unqualified' ? 'bad' : 'none'}" title="Calibration of ${escHtml(at)}: ${escHtml(causes || status)}. Rankings judged by it stay provisional.">${status === 'unqualified' ? 'failed qualification' : 'not qualified'} ·${version}</span>`;
+    return `<span class="tb-cal tb-cal-${status === 'unqualified' ? 'bad' : 'none'}" title="Calibration of ${escHtml(at)}: ${escHtml(causes || status)}. Verdicts with this contract stay provisional.">${status === 'unqualified' ? 'failed qualification' : 'not qualified'}${scope} ·${version}</span>`;
 }
 
 function candidateRow(host, judge, isActive, cal, qualification = {}) {
@@ -77,7 +79,8 @@ function candidateRow(host, judge, isActive, cal, qualification = {}) {
             <div class="tb-cand-top">
                 <span class="tb-cand-name">${name}</span>
                 ${calBadge(cal)}
-                ${qualificationBadge(qualification.record, qualification.scorerVersion, qualification.available)}
+                ${(qualification.records?.length ? qualification.records : [null]).map(record =>
+                    qualificationBadge(record, qualification.scorerVersion, qualification.available)).join('')}
             </div>
             <div class="tb-cand-meta">
                 <span>${evals} evals</span>
@@ -112,7 +115,7 @@ function hostColumn(host, calMap, index, qualifications = {}) {
             {
                 available: qualifications.available,
                 scorerVersion: qualifications.scorerVersion,
-                record: qualifications.map?.[calibrationKey(host.hostUrl, j.modelName)] || null
+                records: qualifications.map?.[calibrationKey(host.hostUrl, j.modelName)] || []
             }
         )).join('')
         : `<div class="tb-empty">No judge-capable models discovered on this host.</div>`;
@@ -213,12 +216,12 @@ function fallbackReadiness(hostPanels = []) {
             }
         },
         setup: {
-            href: '/setup?focus=judge',
+            href: '/benchmark/setup?focus=judge',
             label: 'Open judge setup'
         },
         retry: {
             method: 'GET',
-            href: '/api/benchmark/judge/readiness?refresh=1',
+            href: '/benchmark/api/benchmark/judge/readiness?refresh=1',
             label: 'Retry readiness check'
         }
     };
@@ -282,7 +285,7 @@ function attachPromoteHandlers(root) {
             btn.disabled = true;
             btn.textContent = 'setting…';
             try {
-                await apiFetch('/api/benchmark/judge-defaults', {
+                await apiFetch('/benchmark/api/benchmark/judge-defaults', {
                     method: 'PUT',
                     body: { hostUrl, judgeModel }
                 });
@@ -315,12 +318,12 @@ export async function renderBench(container, { dashboard } = {}) {
 
     const evidence = await settleEvidence({
         dashboard: () => dashboard === undefined
-            ? apiFetch('/api/benchmark/dashboard')
+            ? apiFetch('/benchmark/api/benchmark/dashboard')
             : dashboard,
-        readiness: () => apiFetch('/api/benchmark/judge/readiness'),
-        roster: () => apiFetch('/api/benchmark/judge-roster'),
-        calibration: () => apiFetch('/api/benchmark/judge/calibration-status'),
-        qualifications: () => apiFetch('/api/benchmark/judge/qualifications')
+        readiness: () => apiFetch('/benchmark/api/benchmark/judge/readiness'),
+        roster: () => apiFetch('/benchmark/api/benchmark/judge-roster'),
+        calibration: () => apiFetch('/benchmark/api/benchmark/judge/calibration-status'),
+        qualifications: () => apiFetch('/benchmark/api/benchmark/judge/qualifications')
     });
 
     const rosterData = evidence.roster.ok ? evidence.roster.value?.data : null;
@@ -352,7 +355,8 @@ export async function renderBench(container, { dashboard } = {}) {
     };
     for (const record of qualificationData?.records || []) {
         if (record.scorer_version !== qualifications.scorerVersion) continue;
-        qualifications.map[calibrationKey(record.judge_host, record.judge_model)] = record;
+        const key = calibrationKey(record.judge_host, record.judge_model);
+        (qualifications.map[key] ||= []).push(record);
     }
 
     const columns = hostPanels.length
@@ -392,9 +396,9 @@ export async function renderBench(container, { dashboard } = {}) {
             ${calibrationEvidenceBanner(matrices, hostPanels)}
             <div class="tb-columns">${columns}</div>
             <div class="tb-quick-links">
-                <a href="/leaderboard"       class="tb-link">Leaderboard →</a>
-                <a href="/benchmark"         class="tb-link">Benchmark →</a>
-                <a href="/results-explorer"  class="tb-link">Results Explorer →</a>
+                <a href="/benchmark/leaderboard"       class="tb-link">Leaderboard →</a>
+                <a href="/benchmark/"         class="tb-link">Benchmark →</a>
+                <a href="/benchmark/results-explorer"  class="tb-link">Results Explorer →</a>
             </div>
         </div>`;
 

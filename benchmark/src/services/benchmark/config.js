@@ -4,10 +4,13 @@
  * Default settings and normalization functions for benchmark execution
  */
 
+const { RESPONSE_TOKEN_LIMIT, EXECUTION_TIMEOUT_LIMITS, EARLY_STOP_POLICY, validateResponseBudgets,
+    DEFAULT_RESPONSE_MIN_TOKENS, DEFAULT_RESPONSE_MAX_TOKENS } = require('./executionPolicy');
+
 const DEFAULT_EXECUTION_CONFIG = {
     // Simple config: just set a high limit and let models finish naturally
-    response_max_tokens: 32000,  // High enough for any response including <think> reasoning
-    response_min_tokens: 100,
+    response_max_tokens: DEFAULT_RESPONSE_MAX_TOKENS,
+    response_min_tokens: DEFAULT_RESPONSE_MIN_TOKENS,
     response_tokens_multiplier: 1,  // No multiplier games - just use the max
     // Null preserves the resident Ollama/Modelfile context. Campaign contracts
     // materialize the actual host/model window; operators may still request an
@@ -31,10 +34,9 @@ const DEFAULT_EXECUTION_CONFIG = {
     top_k: 40,
     repeat_penalty: 1.1,
     seed: 42,
-    // Repeat each (model, host, prompt) N times. With seed pinned, low variance
-    // = stable model+host pair; high variance with seed pinned = model ignores
-    // seed (some quants do). Without repeats, single-sample noise is mistaken
-    // for hardware/model signal. Default 1 = legacy single-shot.
+    seed_policy: 'repeat_index_v1', // base seed + zero-based repeat index
+    // Repeat each (model, host, prompt) N times with reproducible independent
+    // seeds. An explicit fixed policy still measures same-seed nondeterminism.
     repeats: 1,
     // Per-test abort timeout in ms. 180s was too short for large models (27B+).
     per_test_timeout_ms: 600000,
@@ -70,7 +72,9 @@ const DEFAULT_EXECUTION_CONFIG = {
     warmup_timeout_loaded: 90000,
     // Judge queue drain timeouts. drain = max total wait; stall = max idle gap.
     judge_drain_timeout_ms: 1800000,
-    judge_stall_timeout_ms: 120000
+    judge_stall_timeout_ms: 120000,
+    // Disable for complete coverage even when the first judged prompts are weak.
+    early_stop_enabled: EARLY_STOP_POLICY.enabledByDefault
 };
 
 /**
@@ -78,7 +82,10 @@ const DEFAULT_EXECUTION_CONFIG = {
  * @param {Object} config - User-provided config
  * @returns {Object} - Normalized config with defaults applied
  */
+const RESPONSE_BUDGET_RULE = 'documented_default_half_window_v1';
+
 function normalizeExecutionConfig(config = {}) {
+    validateResponseBudgets(config || {});
     const responseMaxTokensExplicit = config?.response_max_tokens_source
         ? config.response_max_tokens_source === 'caller'
         : Object.prototype.hasOwnProperty.call(config || {}, 'response_max_tokens');
@@ -102,18 +109,25 @@ function normalizeExecutionConfig(config = {}) {
         merged.response_min_tokens,
         DEFAULT_EXECUTION_CONFIG.response_min_tokens,
         1,
-        50000
+        RESPONSE_TOKEN_LIMIT
     ));
     merged.response_max_tokens = Math.round(toNumber(
         merged.response_max_tokens,
         DEFAULT_EXECUTION_CONFIG.response_max_tokens,
         merged.response_min_tokens,
-        50000
+        RESPONSE_TOKEN_LIMIT
     ));
     if (merged.response_max_tokens < merged.response_min_tokens) {
         merged.response_max_tokens = merged.response_min_tokens;
     }
     merged.response_max_tokens_source = responseMaxTokensExplicit ? 'caller' : 'default';
+    // A launch without its own budget gets the documented default, limited to
+    // half of each candidate's window (inferenceContractSnapshot). A stored
+    // config keeps the rule it was launched with: earlier batches ran under
+    // Core's smaller output reserve and stay in their own cohort.
+    if (responseMaxTokensExplicit) delete merged.response_budget_rule;
+    else if (!config?.response_max_tokens_source) merged.response_budget_rule = RESPONSE_BUDGET_RULE;
+    else if (merged.response_budget_rule !== RESPONSE_BUDGET_RULE) delete merged.response_budget_rule;
     if (merged.num_ctx === null || merged.num_ctx === undefined || merged.num_ctx === '') {
         merged.num_ctx = null;
     } else {
@@ -152,6 +166,7 @@ function normalizeExecutionConfig(config = {}) {
             merged.seed = Number.isFinite(seedN) ? Math.round(seedN) : DEFAULT_EXECUTION_CONFIG.seed;
         }
     }
+    merged.seed_policy = merged.seed_policy === 'fixed' ? 'fixed' : 'repeat_index_v1';
     merged.repeats = Math.round(toNumber(
         merged.repeats,
         DEFAULT_EXECUTION_CONFIG.repeats,
@@ -161,8 +176,7 @@ function normalizeExecutionConfig(config = {}) {
     merged.per_test_timeout_ms = Math.round(toNumber(
         merged.per_test_timeout_ms,
         DEFAULT_EXECUTION_CONFIG.per_test_timeout_ms,
-        30000,
-        3600000
+        ...EXECUTION_TIMEOUT_LIMITS.per_test_timeout_ms
     ));
     const thinkingModeRequested = String(merged.think ?? '').trim().toLowerCase() === 'best_qualified';
     if (merged.think === true || merged.think === false) {
@@ -238,26 +252,22 @@ function normalizeExecutionConfig(config = {}) {
     merged.warmup_timeout_cold = Math.round(toNumber(
         merged.warmup_timeout_cold,
         DEFAULT_EXECUTION_CONFIG.warmup_timeout_cold,
-        30000,
-        600000
+        ...EXECUTION_TIMEOUT_LIMITS.warmup_timeout_cold
     ));
     merged.warmup_timeout_loaded = Math.round(toNumber(
         merged.warmup_timeout_loaded,
         DEFAULT_EXECUTION_CONFIG.warmup_timeout_loaded,
-        10000,
-        180000
+        ...EXECUTION_TIMEOUT_LIMITS.warmup_timeout_loaded
     ));
     merged.judge_drain_timeout_ms = Math.round(toNumber(
         merged.judge_drain_timeout_ms,
         DEFAULT_EXECUTION_CONFIG.judge_drain_timeout_ms,
-        300000,
-        3600000
+        ...EXECUTION_TIMEOUT_LIMITS.judge_drain_timeout_ms
     ));
     merged.judge_stall_timeout_ms = Math.round(toNumber(
         merged.judge_stall_timeout_ms,
         DEFAULT_EXECUTION_CONFIG.judge_stall_timeout_ms,
-        30000,
-        600000
+        ...EXECUTION_TIMEOUT_LIMITS.judge_stall_timeout_ms
     ));
     if (typeof merged.length_hint_template !== 'string' || !merged.length_hint_template.trim()) {
         merged.length_hint_template = DEFAULT_EXECUTION_CONFIG.length_hint_template;
@@ -268,6 +278,13 @@ function normalizeExecutionConfig(config = {}) {
     }
     merged.custom_hint = merged.custom_hint.trim();
     return merged;
+}
+
+function seedForRepeat(config, repeatIndex = 0) {
+    if (!Number.isFinite(config?.seed)) return null;
+    if (config.seed_policy !== 'repeat_index_v1') return config.seed;
+    if (!Number.isSafeInteger(repeatIndex) || repeatIndex < 0) throw new Error('Invalid repeat index');
+    return ((config.seed >>> 0) + repeatIndex) >>> 0;
 }
 
 function renderTokenTemplate(template, values) {
@@ -411,6 +428,8 @@ function applyLengthHint(promptText, expectedTokens, numPredict, config) {
 
 module.exports = {
     DEFAULT_EXECUTION_CONFIG,
+    seedForRepeat,
+    RESPONSE_BUDGET_RULE,
     normalizeExecutionConfig,
     applyLengthHint,
     buildPromptHints,

@@ -38,6 +38,7 @@ jest.mock('../../../src/clients/coreApiClient', () => ({
     releaseBenchmarkClaim: (...args) => mockReleaseBenchmarkClaim(...args),
     getBenchmarkClaims: (...args) => mockGetBenchmarkClaims(...args),
     getBenchmarkClaimIdentity: (...args) => mockGetBenchmarkClaimIdentity(...args),
+    getWorkloadAdmissionIdentity: () => null,
     getDedicationStatuses: jest.fn(() => Promise.resolve([])),
     resolveHostKey: jest.fn(() => Promise.resolve(null)),
     restoreDedication: jest.fn(() => Promise.resolve({}))
@@ -279,7 +280,7 @@ function setRunnableBatchLookup() {
 }
 
 describe('runBatchOrchestrator claim lifecycle', () => {
-    async function runSameModelOnTwoHosts({ completedPairs = [], legacyResults = [] } = {}) {
+    async function runSameModelOnTwoHosts({ completedPairs = [], legacyResults = [], sampling = {} } = {}) {
         mockDrain.mockResolvedValue({ completed: 4, failed: 0, timedOut: false });
         const { buildOllamaTarget } = require('../../../../shared/benchmarkTargetContract');
         const targets = ['http://exec-a:11434', 'http://exec-b:11434'].map(host => buildOllamaTarget(host, 'same-model'));
@@ -293,7 +294,7 @@ describe('runBatchOrchestrator claim lifecycle', () => {
             batchId: 'same-model-hosts', defaultHost: targets[0].host, models: targets.map(target => target.model), targets,
             prompts: [{ _id: 'prompt-1', name: 'Prompt 1', prompt: 'Say hello', level: 1, category: 'reasoning' }],
             judgeConfig: { model: 'judge-1', concurrency: 1 },
-            executionConfig: { repeats: 2, per_test_timeout_ms: 60000, judge_drain_timeout_ms: 120000, judge_stall_timeout_ms: 30000 },
+            executionConfig: { repeats: 2, per_test_timeout_ms: 60000, judge_drain_timeout_ms: 120000, judge_stall_timeout_ms: 30000, ...sampling },
             executionMode: 'latency', recordBatchTimelineEvent: jest.fn(async () => {}),
             queueBatchProgress: jest.fn(), flushBatchProgress: jest.fn(async () => {}), setBatchPhase: jest.fn(async () => {})
         });
@@ -305,6 +306,16 @@ describe('runBatchOrchestrator claim lifecycle', () => {
         expect(persisted).toHaveLength(4);
         expect(new Set(persisted.map(result => result.repeatGroupId)).size).toBe(2);
         expect(new Set(mockUpdateOne.mock.calls.map(call => call[1]?.$addToSet?.['checkpoint.completed_pairs']).filter(Boolean)).size).toBe(4);
+    });
+
+    it('forwards matching derived repeat seeds to both hosts and persists the actual seed', async () => {
+        await runSameModelOnTwoHosts({ sampling: { seed: 42, seed_policy: 'repeat_index_v1' } });
+        const requests = mockBenchmarkFetch.mock.calls.map(call => JSON.parse(call[1].body));
+        expect(requests.map(request => request.options.seed)).toEqual([42, 43, 42, 43]);
+        expect(mockPersistSuccessfulResult.mock.calls.map(call => call[0].executionSettings.seed)).toEqual([42, 43, 42, 43]);
+        const cohorts = mockPersistSuccessfulResult.mock.calls.map(call => call[0].qualityCohortFingerprint);
+        expect(new Set(cohorts).size).toBe(1);
+        expect(cohorts[0]).toMatch(/^[a-f0-9]{64}$/);
     });
 
     it('preserves Core HTTP errors instead of inventing an empty-model diagnosis', async () => {
@@ -859,7 +870,7 @@ describe('runBatchOrchestrator claim lifecycle', () => {
         expect(mockPersistSuccessfulResult).toHaveBeenCalledWith(expect.objectContaining({ performanceBaseline: null }));
     });
 
-    it('omits all thinking controls when the frozen campaign mode is native', async () => {
+    it.each([60_000, 1_200_000, undefined])('preserves native thinking controls and forwards the per-test timeout (%s)', async timeoutMs => {
         mockDrain.mockResolvedValue({ completed: 1, failed: 0, timedOut: false });
         mockGetFrozenModelExecutionConfig.mockImplementation((_, __, ___, baseConfig) => ({
             ...baseConfig,
@@ -887,7 +898,7 @@ describe('runBatchOrchestrator claim lifecycle', () => {
             judgeConfig: { model: 'judge-1', concurrency: 2, think: false },
             executionConfig: {
                 response_mode: 'native',
-                per_test_timeout_ms: 60_000,
+                per_test_timeout_ms: timeoutMs,
                 judge_drain_timeout_ms: 120_000,
                 judge_stall_timeout_ms: 30_000
             },
@@ -899,6 +910,7 @@ describe('runBatchOrchestrator claim lifecycle', () => {
         });
 
         const requestBody = JSON.parse(mockBenchmarkFetch.mock.calls[0][1].body);
+        expect(requestBody.timeoutMs).toBe(timeoutMs || 600_000);
         expect(requestBody).not.toHaveProperty('think');
         expect(requestBody).not.toHaveProperty('includeThinking');
         expect(requestBody).not.toHaveProperty('suppressThinking');
@@ -1510,11 +1522,16 @@ describe('runBatchOrchestrator claim lifecycle', () => {
 
         await bodyStarted.promise;
         expect(getActiveBatchRequestCount('batch-timeout-body')).toBe(2);
+        expect(JSON.parse(mockBenchmarkFetch.mock.calls[0][1].body).timeoutMs).toBe(25);
         await expect(runPromise).resolves.toEqual({ stopped: false, cancelled: false });
 
         expect(requestSignal.aborted).toBe(true);
         expect(mockPersistSuccessfulResult).not.toHaveBeenCalled();
         expect(mockPersistFailedResult).toHaveBeenCalledTimes(1);
+        expect(mockPersistFailedResult).toHaveBeenCalledWith(expect.objectContaining({
+            err: expect.objectContaining({ code: 'BENCHMARK_TEST_DEADLINE_EXCEEDED',
+                message: 'Benchmark test deadline exceeded after 25ms', infra: true })
+        }));
         expect(getActiveBatchRequestCount('batch-timeout-body')).toBe(0);
     });
 

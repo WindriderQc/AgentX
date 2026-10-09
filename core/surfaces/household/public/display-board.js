@@ -27,6 +27,7 @@
   }
 
   function safeUrl(value) {
+    if (/^\/images\?operation=[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(String(value || ''))) return value;
     try {
       const url = new URL(/^www\./i.test(value) ? 'https://' + value : value);
       return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
@@ -90,7 +91,8 @@
 
   // A picture Core found; the model never supplied its address. Web images load
   // directly over https without a referrer, household files through Core.
-  function imageBody(block) {
+  function imageBody(block, space) {
+    if (block.source === 'local' && root.ConversationImages) return root.ConversationImages.create(block, { space });
     const image = block.status === 'found' ? block.image : null;
     const href = image && (/^\/api\/voice-personas\/(?:family|private)\/visuals\/(?:file|generated)\?/.test(image.url) ? image.url : safeUrl(image.url));
     if (!href) return node('p', 'display-block-note', 'Aucune image trouvée pour « ' + block.body + ' ».');
@@ -147,7 +149,7 @@
     header.append(actions);
     let content;
     if (block.kind === 'secret') content = secretBody(block, actions);
-    else if (block.kind === 'image') content = imageBody(block);
+    else if (block.kind === 'image') content = imageBody(block, space);
     else if (block.kind === 'scene') content = sceneBody(block, space);
     else {
       if (block.kind === 'table') content = tableBody(block.body);
@@ -157,6 +159,7 @@
       actions.append(copyButton(block.body));
     }
     card.append(header, content);
+    card._dispose = content._dispose;
     return card;
   }
 
@@ -170,17 +173,19 @@
         const card = render(block, { secrets, space });
         if (!card) return false;
         // A keyed block replaces its previous card: one live 3D picture, not one per turn.
-        if (block.key) {
-          card.dataset.key = block.key;
-          Array.from(list.children).filter(child => child.dataset?.key === block.key).forEach(child => child.remove());
+        const key = block.key || (block.operation?.id ? `image:${block.operation.id}` : '');
+        if (key) {
+          card.dataset.key = key;
+          Array.from(list.children).filter(child => child.dataset?.key === key).forEach(child => { child._dispose?.(); child.remove(); });
         }
         list.prepend(card);
-        while (list.childElementCount > MAX_BLOCKS) list.lastElementChild.remove();
+        while (list.childElementCount > MAX_BLOCKS) { list.lastElementChild._dispose?.(); list.lastElementChild.remove(); }
         update();
         return true;
       },
       restore(blocks = []) { (Array.isArray(blocks) ? blocks : []).forEach(board.add); },
-      clear() { list.replaceChildren(); update(); }
+      has: key => Array.from(list.children).some(child => child.dataset?.key === key),
+      clear() { Array.from(list.children).forEach(child => child._dispose?.()); list.replaceChildren(); update(); }
     };
     update();
     return board;
@@ -194,6 +199,7 @@
       // True when one of the zones drew the block.
       add: block => boards.map(board => board.add(block)).some(Boolean),
       restore: blocks => boards.forEach(board => board.restore(blocks)),
+      has: key => boards.some(board => board.has(key)),
       clear: () => boards.forEach(board => board.clear())
     };
   }

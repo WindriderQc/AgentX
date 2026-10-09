@@ -1,7 +1,14 @@
 name: ${AGENTX_PROJECT_NAME:-agentx}
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   mongo:
+    logging: *default-logging
     image: mongo:7.0.34@sha256:c1a84ab5d0c17deed1e0dba1d24bd7c76e5c7b281145fe536911939b1551754c
     restart: unless-stopped
     volumes:
@@ -14,12 +21,14 @@ services:
       start_period: 20s
 
   qdrant:
+    logging: *default-logging
     image: qdrant/qdrant:v1.18.1@sha256:45f8e3ddc2570a4d029877e1b5ec1045c19b3852b4e22a55c7f43b05aea0ca89
     restart: unless-stopped
     volumes:
       - qdrant_data:/qdrant/storage
 
   core:
+    logging: *default-logging
     stop_grace_period: 11m
     build:
       context: .
@@ -30,10 +39,13 @@ services:
     ports:
       - "127.0.0.1:${CORE_PORT:-3180}:3080"
     environment:
+      AGENTX_RUNTIME_RESOURCES_JSON: ${AGENTX_RUNTIME_RESOURCES_JSON:-}
+      LOCAL_IMAGES_CONFIG: ${LOCAL_IMAGES_CONFIG:-}
       NODE_ENV: production
       PORT: 3080
       HOST: 0.0.0.0
       AGENTX_PROFILE: ${AGENTX_PROFILE:-demo}
+      AGENTX_DEFAULT_MAX_OUTPUT_TOKENS: ${AGENTX_DEFAULT_MAX_OUTPUT_TOKENS:-4096}
       MONGODB_URI: mongodb://mongo:27017/agentx_product
       OLLAMA_HOST: ${AGENTX_OLLAMA_HOST:-http://host.docker.internal:11434}
       OLLAMA_HOST_NAME: ${OLLAMA_HOST_NAME:-Local Ollama}
@@ -45,13 +57,28 @@ services:
       BENCHMARK_SERVICE_URL: http://benchmark:3081
       RAG_SERVICE_URL: http://rag:3082
       DATAAPI_BASE_URL: ${DATAAPI_BASE_URL:-http://data:3083}
+      NETWORK_DEVICE_WATCH_MS: ${NETWORK_DEVICE_WATCH_MS:-}
+      OPS_WATCH_MS: ${OPS_WATCH_MS:-}
+      OPS_WATCH_LANGUAGE: ${OPS_WATCH_LANGUAGE:-}
+      MAIL_JOURNAL_RETENTION_DAYS: ${MAIL_JOURNAL_RETENTION_DAYS:-}
+      MEMORY_NOTE_RETENTION_DAYS: ${MEMORY_NOTE_RETENTION_DAYS:-}
+      IDENTIFIER_VAULT_KEY: ${IDENTIFIER_VAULT_KEY:-}
       DATA_COLLECTOR_PLACEMENT_JSON: ${DATA_COLLECTOR_PLACEMENT_JSON:-}
       HOUSEHOLD_CONVERSATION_BACKEND: ${HOUSEHOLD_CONVERSATION_BACKEND:-auto}
+      HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: ${HOUSEHOLD_FAMILY_CONVERSATION_BACKEND:-}
+      HOUSEHOLD_VOICE_TASK: ${HOUSEHOLD_VOICE_TASK:-voice_persona_chat}
       HOUSEHOLD_VOICE_MODEL: ${HOUSEHOLD_VOICE_MODEL:-}
       HOUSEHOLD_PERSONA_VOICES: ${HOUSEHOLD_PERSONA_VOICES:-}
+      HOUSEHOLD_TEAM_MEMBERS: ${HOUSEHOLD_TEAM_MEMBERS:-}
+      HOUSEHOLD_VOICE_WARMUP: ${HOUSEHOLD_VOICE_WARMUP:-}
+      ROUNDTABLE_RUNTIME_PARTICIPANTS_ENABLED: ${ROUNDTABLE_RUNTIME_PARTICIPANTS_ENABLED:-}
+      ROUNDTABLE_CHAIR_TOKEN: ${ROUNDTABLE_CHAIR_TOKEN:-}
+      ROUNDTABLE_OPENCLAW_STRICT_PROVIDERS: ${ROUNDTABLE_OPENCLAW_STRICT_PROVIDERS:-}
+      HOUSEHOLD_BROWSER_STT_FALLBACK: ${HOUSEHOLD_BROWSER_STT_FALLBACK:-false}
       OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-}
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
       VOIX_BASE_URL: ${VOIX_BASE_URL:-}
+      VOIX_FALLBACK_URL: ${VOIX_FALLBACK_URL:-}
       VOIX_SPOKEN_CONTROLS_ENABLED: ${VOIX_SPOKEN_CONTROLS_ENABLED:-false}
       HOUSEHOLD_AVATAR_MODULE_URL: ${HOUSEHOLD_AVATAR_MODULE_URL:-}
       SEARXNG_URL: ${SEARXNG_URL:-}
@@ -59,12 +86,9 @@ services:
       HOUSEHOLD_BRAIN_FAMILY: ${HOUSEHOLD_BRAIN_FAMILY:-true}
       HOUSEHOLD_BRAIN_MODEL: ${HOUSEHOLD_BRAIN_MODEL:-}
       HOUSEHOLD_BRAIN_HOST_URL: ${HOUSEHOLD_BRAIN_HOST_URL:-}
+      HOUSEHOLD_BRAIN_EXCLUSIVE: ${HOUSEHOLD_BRAIN_EXCLUSIVE:-false}
       HOUSEHOLD_IMAGE_ROOTS_JSON: ${HOUSEHOLD_IMAGE_ROOTS_JSON:-}
       HOUSEHOLD_IMAGE_FAMILY_SOURCES: ${HOUSEHOLD_IMAGE_FAMILY_SOURCES:-web,photos,media,generated}
-      AGENTX_PARENTAL_CODE: ${AGENTX_PARENTAL_CODE:-}
-      AGENTX_PARENTAL_SESSION_MINUTES: ${AGENTX_PARENTAL_SESSION_MINUTES:-30}
-      AGENTX_FACE_UNLOCK_ENABLED: ${AGENTX_FACE_UNLOCK_ENABLED:-false}
-      AGENTX_FACE_UNLOCK_MAX_DISTANCE: ${AGENTX_FACE_UNLOCK_MAX_DISTANCE:-0.4}
       FINANCE_INBOX_PATH: ${FINANCE_INBOX_PATH:-}
       FINANCE_ARCHIVE_PATH: ${FINANCE_ARCHIVE_PATH:-}
       FINANCE_REVIEW_PATH: ${FINANCE_REVIEW_PATH:-}
@@ -77,16 +101,24 @@ services:
       FINANCE_ALERT_MIN_BALANCE_ACCOUNTS: ${FINANCE_ALERT_MIN_BALANCE_ACCOUNTS:-EOP}
       FINANCE_ALERT_STALE_DAYS: ${FINANCE_ALERT_STALE_DAYS:-45}
       PSYX_ACCESS_TOKEN: ${PSYX_ACCESS_TOKEN:-}
-      PSYX_ACCESS_MODE: ${PSYX_ACCESS_MODE:-token}
-      PSYX_LOOPBACK_BYPASS: ${PSYX_LOOPBACK_BYPASS:-false}
+      PSYX_ACCESS_MODE: ${PSYX_ACCESS_MODE:-trusted-network}
       PSYX_VOICE_MODE: ${PSYX_VOICE_MODE:-disabled}
+      PSYX_AUTO_REVIEW: ${PSYX_AUTO_REVIEW:-true}
+      PSYX_DREAM: ${PSYX_DREAM:-true}
+      PSYX_REVIEW_TASK: ${PSYX_REVIEW_TASK:-deep_reasoning}
+      PSYX_FRONTIER_AGENT: ${PSYX_FRONTIER_AGENT:-}
+      PSYX_FRONTIER_MODEL: ${PSYX_FRONTIER_MODEL:-frontier}
+      PSYX_FRONTIER_MODE: ${PSYX_FRONTIER_MODE:-local}
       AGENTX_INSTANCE_ROOT: ${AGENTX_INSTANCE_ROOT:-}
       AGENTX_CODING_CONFIG: ${AGENTX_CODING_CONFIG:-}
       OPENCLAW_AGENTX_PROVIDER_BASE_URL: ${OPENCLAW_AGENTX_PROVIDER_BASE_URL:-}
       OPENCLAW_CONVERSATION_HOSTS: ${OPENCLAW_CONVERSATION_HOSTS:-}
+      OPENCLAW_CONVERSATION_NO_THINK_MODELS: ${OPENCLAW_CONVERSATION_NO_THINK_MODELS:-}
       OPENCLAW_CONVERSATION_FALLBACK_TASK: ${OPENCLAW_CONVERSATION_FALLBACK_TASK:-}
       AGENTX_TASK_FALLBACKS_JSON: ${AGENTX_TASK_FALLBACKS_JSON:-}
       AGENTX_TASK_FALLBACK_WAIT_MS: ${AGENTX_TASK_FALLBACK_WAIT_MS:-}
+      AGENTX_ROUTING_SNAPSHOT_CACHE_MS: ${AGENTX_ROUTING_SNAPSHOT_CACHE_MS:-5000}
+      AGENTX_ROUTING_SNAPSHOT_STALE_MS: ${AGENTX_ROUTING_SNAPSHOT_STALE_MS:-300000}
       OPENCLAW_CONFIG_PATH: ${OPENCLAW_CONFIG_PATH:-}
       OPENCLAW_HOME: ${OPENCLAW_HOME:-}
       OPENCLAW_CONTROL_UI_PUBLIC_URL: ${OPENCLAW_CONTROL_UI_PUBLIC_URL:-}
@@ -118,8 +150,8 @@ services:
       AGENTX_RUNTIME_BRIDGES_ENABLED: ${AGENTX_RUNTIME_BRIDGES_ENABLED:-false}
       AGENTX_PRINTER_VISION_ENABLED: ${AGENTX_PRINTER_VISION_ENABLED:-false}
       CORE_PUBLIC_URL: ${CORE_PUBLIC_URL:-http://127.0.0.1:${CORE_PORT:-3180}}
-      BENCHMARK_PUBLIC_URL: http://127.0.0.1:${BENCHMARK_PORT:-3181}
-      RAG_PUBLIC_URL: http://127.0.0.1:${RAG_PORT:-3182}
+      BENCHMARK_PUBLIC_URL: http://127.0.0.1:${BENCHMARK_PORT:-3181}/benchmark
+      RAG_PUBLIC_URL: http://127.0.0.1:${RAG_PORT:-3182}/rag
       AGENTX_HOST_HOME_URL: ${AGENTX_HOST_HOME_URL:-}
       AGENTX_HOST_HOME_LABEL: ${AGENTX_HOST_HOME_LABEL:-}
       AGENTX_RESTORE_REHEARSAL_ENABLED: ${AGENTX_RESTORE_REHEARSAL_ENABLED:-false}
@@ -145,6 +177,7 @@ services:
       - ${HOUSEHOLD_MEDIA_DIR:-./docker/empty}:/mnt/household/media:ro
 
   benchmark:
+    logging: *default-logging
     build:
       context: .
       dockerfile: docker/benchmark.Dockerfile
@@ -193,6 +226,7 @@ services:
       - benchmark_jobs:/jobs
 
   benchmark-runner:
+    logging: *default-logging
     # Runs candidate code for Benchmark's coding prompts. It only sees the
     # jobs volume: no network, a read-only image, a tmpfs scratch, one CPU,
     # 512 MB, 128 processes, and jobs run as `nobody`. The capabilities kept
@@ -230,6 +264,7 @@ services:
       start_period: 10s
 
   rag:
+    logging: *default-logging
     build:
       context: .
       dockerfile: docker/rag.Dockerfile
@@ -271,6 +306,7 @@ services:
       - rag_logs:/app/logs
 
   data:
+    logging: *default-logging
     profiles: [data]
     build:
       context: .
@@ -288,10 +324,15 @@ services:
       CORE_URL: http://core:3080
       CORE_PROXY_URL: http://core:3080
       DATA_BACKGROUND_JOBS_ENABLED: ${DATA_BACKGROUND_JOBS_ENABLED:-false}
+      JANITOR_AI_TIMEOUT_MS: ${JANITOR_AI_TIMEOUT_MS:-}
       # Container path of the optional alias file; the instance override mounts it.
       DATA_PATH_ROLE_ALIASES_FILE: ${DATA_PATH_ROLE_ALIASES_FILE:-}
       NETWORK_SCAN_CIDR: ${NETWORK_SCAN_CIDR:-}
       DATA_HARDWARE_HISTORY_TTL_DAYS: ${DATA_HARDWARE_HISTORY_TTL_DAYS:-7}
+      # Container path of the generated reports; the named volume below is mounted there.
+      DATA_EXPORT_DIR: ${DATA_EXPORT_DIR:-/data/exports}
+    volumes:
+      - data_exports:/data/exports
     depends_on:
       mongo:
         condition: service_healthy
@@ -319,3 +360,5 @@ volumes:
     name: ${COMPOSE_PROJECT_NAME}_canonical_benchmark_jobs
   rag_logs:
     name: ${COMPOSE_PROJECT_NAME}_canonical_rag_logs
+  data_exports:
+    name: ${COMPOSE_PROJECT_NAME}_canonical_data_exports

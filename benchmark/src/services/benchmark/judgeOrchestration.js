@@ -30,7 +30,7 @@ const { resolveJudgeHost } = require('./judgeHostResolution');
 const { normalizeJudgeNumCtx } = require('../scoring/judgeRuntimeConfig');
 const { classifyBenchmarkError } = require('./errorClassifier');
 const { resolveHarnessTarget } = require('./harnessBrokerClient');
-const { getBenchmarkClaimIdentity } = require('../../clients/coreApiClient');
+const { judgeRequestIdentity } = require('../scoring/judgeRequestIdentity');
 const { resolveContractNumCtx } = require('./inferenceContractSnapshot');
 const { yieldWaitMs } = require('./workloadYield');
 const { judgeDrainBudgetMs } = require('./standaloneJudgePreparation');
@@ -202,9 +202,14 @@ function createJudgeOrchestrator({
                     warmupTimeoutCold: executionConfig.warmup_timeout_cold || 180000,
                     warmupTimeoutLoaded: executionConfig.warmup_timeout_loaded || 90000,
                     num_ctx: judgeNumCtx,
+                    // Nothing is measured on a separate judge host: its other
+                    // residents (embeddings, pins) stay, as for a standalone judge.
+                    preUnloadOthers: false,
                     onPhaseDetail: (detail) => _setPhase('judge_warmup', detail),
                     signal: cancelSignal,
-                    claimIdentity: getBenchmarkClaimIdentity(judgeHostUrl, String(batchId)),
+                    // A shared judge host has no host claim (#396): the warmup then
+                    // carries the batch's workload admission alone, like judge calls.
+                    claimIdentity: judgeRequestIdentity({ host: judgeHostUrl, batch_id: String(batchId) }),
                     assertClaimActive: () => { if (isCancelled()) throw cancellationReason(); }
                 });
                 logger.info('Judge model ready on configured host', { host: judgeHostUrl, model: judgeModel, num_ctx: judgeNumCtx });
@@ -408,7 +413,7 @@ function createJudgeOrchestrator({
                         num_ctx: judgeNumCtx,
                         onPhaseDetail: (detail) => _setPhase('judge_warmup', detail),
                         signal: cancelSignal,
-                        claimIdentity: getBenchmarkClaimIdentity(judgeHostUrl, String(batchId)),
+                        claimIdentity: judgeRequestIdentity({ host: judgeHostUrl, batch_id: String(batchId) }),
                         assertClaimActive: () => { if (isCancelled()) throw cancellationReason(); }
                     });
                     warmedJudgeHosts.add(warmupKey);

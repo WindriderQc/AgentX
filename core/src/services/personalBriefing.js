@@ -4,7 +4,7 @@
 // channel (OpenClaw Telegram job, Dad's Desk preview). Channels do not rebuild it.
 
 const MAX_LINES = 6;
-const MAX_URGENT = 3;
+const MAX_URGENT = 2;
 const TITLE_CHARS = 110;
 const PREPARE_WINDOW_MS = 36 * 3600000;
 
@@ -32,7 +32,15 @@ function example(tasks) {
 /**
  * @param {object[]} tasks public personal tasks (personalTaskView.publicTask)
  */
-function composePersonalBriefing(tasks = [], now = new Date(), { timeZone = 'America/Toronto' } = {}) {
+function defaultBriefingTimeZone() {
+  // Lazy require: the household domain owns the configured calendar zone and
+  // imports this module's view layer, so resolve it at call time, not load time.
+  const { familyTimeZone } = require('../domains/household/family');
+  return familyTimeZone();
+}
+
+function composePersonalBriefing(tasks = [], now = new Date(), options = {}) {
+  const timeZone = options.timeZone || defaultBriefingTimeZone();
   const open = tasks.filter((task) => task && !['done', 'cancelled'].includes(task.status) && task.lane !== 'done');
   const byDue = (left, right) => new Date(left.dueAt) - new Date(right.dueAt) || left.priority - right.priority;
   const overdue = open.filter((task) => task.overdue).sort(byDue);
@@ -46,13 +54,16 @@ function composePersonalBriefing(tasks = [], now = new Date(), { timeZone = 'Ame
     .sort(byDue)[0] || null;
 
   const urgent = [
-    ...overdue.map((task) => ({ task, prefix: 'En retard' })),
-    ...dueToday.map((task) => ({ task, prefix: "Aujourd'hui" }))
+    ...dueToday.map((task) => ({ task, prefix: "Aujourd'hui" })),
+    ...overdue.map((task) => ({ task, prefix: 'En retard' }))
   ];
   const shown = urgent.slice(0, MAX_URGENT);
+  const focusTask = shown[0]?.task || null;
   const lines = ["Bonjour Dad — voici l'essentiel."];
   if (!shown.length) lines.push("Rien d'urgent aujourd'hui.");
   for (const { task, prefix } of shown) lines.push(`${prefix} : ${clipTitle(task.title)}`);
+  // The scheduled delivery and Dad's reply may use different agent sessions.
+  if (focusTask) lines.push(`Pour la tâche #${focusTask.id} : faite, à reporter (avec une date) ou encore utile ?`);
 
   const hidden = urgent.length - shown.length;
   // Order is priority: when six lines overflow, the last ones drop first.
@@ -70,6 +81,12 @@ function composePersonalBriefing(tasks = [], now = new Date(), { timeZone = 'Ame
     language: 'fr',
     text: lines.join('\n'),
     lines,
+    focus: focusTask ? {
+      id: focusTask.id,
+      title: focusTask.title,
+      lane: focusTask.lane,
+      dueAt: focusTask.dueAt
+    } : null,
     counts: {
       open: open.length,
       overdue: overdue.length,

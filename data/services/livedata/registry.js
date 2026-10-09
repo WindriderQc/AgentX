@@ -64,15 +64,24 @@ function getSeedFeeds() {
       label: 'Barometric Pressure',
       category: 'weather',
       kind: 'http',
-      sourceUrl: process.env.WEATHER_API_URL || 'https://api.openweathermap.org/data/2.5/weather',
-      parser: 'openWeather',
-      intervalMs: int(process.env.WEATHER_INTERVAL_MS, 60000),
+      // OpenWeather when an instance holds a key; otherwise keyless Open-Meteo,
+      // so the feed works without a credential. Both give sea-level hPa.
+      ...(process.env.WEATHER_API_KEY ? {
+        sourceUrl: process.env.WEATHER_API_URL || 'https://api.openweathermap.org/data/2.5/weather',
+        parser: 'openWeather',
+        intervalMs: int(process.env.WEATHER_INTERVAL_MS, 60000),
+        urlTemplate: '${sourceUrl}?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}',
+        apiKeyEnv: 'WEATHER_API_KEY'
+      } : {
+        sourceUrl: process.env.WEATHER_API_URL || 'https://api.open-meteo.com/v1/forecast',
+        parser: 'openMeteoPressure',
+        intervalMs: int(process.env.WEATHER_INTERVAL_MS, 900000), // Open-Meteo refreshes every 15 min
+        urlTemplate: '${sourceUrl}?latitude=${lat}&longitude=${lon}&current=pressure_msl'
+      }),
       timeout: 10000,
       retries: 2,
       geo: true,
       fanout: 'weatherLocations',
-      urlTemplate: '${sourceUrl}?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}',
-      apiKeyEnv: 'WEATHER_API_KEY',
       mqttPublish: process.env.MQTT_PRESSURE_TOPIC || 'liveData/pressure',
       legacyToggle: 'weather',
       // Original `pressures` had no prune — preserve (omit retention).

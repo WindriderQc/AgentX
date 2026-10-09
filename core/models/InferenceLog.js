@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
 /**
- * InferenceLog — records every Ollama inference call across all hosts.
+ * InferenceLog — records local and delegated inference calls.
  * Written fire-and-forget from modelRouter.recordInference().
  * TTL: 30 days by default (configurable via INFERENCE_LOG_TTL_DAYS env).
  */
@@ -58,6 +58,10 @@ const InferenceLogSchema = new mongoose.Schema({
   num_ctx: { type: Number, default: null },
   num_ctx_source: { type: String, default: null },
 
+  executionSource: { type: String, enum: ['local', 'openclaw'], default: null },
+  executionMode: { type: String, enum: ['model', 'agent'], default: null },
+  executionReceiptFingerprint: { type: String, default: null },
+
   // Performance
   // Estimate captured before dispatch. Unlike tokensIn, this remains available
   // when the upstream request times out before returning usage metadata.
@@ -65,6 +69,27 @@ const InferenceLogSchema = new mongoose.Schema({
   tokensIn: { type: Number, default: 0 },
   tokensOut: { type: Number, default: 0 },
   durationMs: { type: Number, default: 0 },
+  // Ollama phase timings in ms (load_duration, prompt_eval_duration,
+  // eval_duration) and, for streamed calls, Core's dispatch-to-first-output
+  // latency. No defaults: a phase the upstream did not report stays absent.
+  loadMs: { type: Number, min: 0 },
+  promptEvalMs: { type: Number, min: 0 },
+  evalMs: { type: Number, min: 0 },
+  firstTokenMs: { type: Number, min: 0 },
+  // Waits before Ollama received the call: runtime admission and the host
+  // gate of the attempt that ended it, and the bounded retry history of the
+  // logical call (routing/inferenceWaitTelemetry.js). Absent when unmeasured.
+  admissionWaitMs: { type: Number, min: 0 },
+  hostGateWaitMs: { type: Number, min: 0 },
+  retry: { type: Schema.Types.Mixed },
+  // Prompt structure for prompt (KV) cache diagnosis: counts, a tools hash and
+  // the first position that differs from the previous call to the same host
+  // and model. Never prompt text — see routing/promptPrefixFingerprint.js.
+  promptPrefix: { type: Schema.Types.Mixed },
+  // Who cost this call its prompt cache: the verdict, character counts of the
+  // prefix it shared and lost, the prefill time lost and the labels of the
+  // calls in between. Never prompt text — see routing/promptCacheAttribution.js.
+  promptCache: { type: Schema.Types.Mixed },
 
   // Status
   status: {

@@ -4,12 +4,10 @@ const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
 const { getUserId } = require('../src/helpers/userHelpers');
 const conversationSearchService = require('../src/services/conversationSearchService');
-const {
-    isPlaygroundConversation,
-    withPlaygroundHistoryFilter
-} = require('../src/services/conversationSurfacePolicy');
+const { withPlaygroundHistoryFilter } = require('../src/services/conversationSurfacePolicy');
 const logger = require('../config/logger');
 const { requireTypedConfirmation } = require('../src/helpers/typedConfirmation');
+const exchanges = require('../src/services/conversations/exchangeReceipts');
 const {
     TurnOutcomeError,
     persistTurnOutcome
@@ -126,6 +124,37 @@ router.post('/turn-outcome', async (req, res) => {
 });
 
 // HISTORY: Get list (workspace-aware)
+router.get('/receipts', async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    try {
+        const page = await exchanges.listRecoverable(`playground:${getUserId(res)}`, { cursor: req.query.cursor });
+        return res.json({ status: 'success', data: page.items, nextCursor: page.nextCursor });
+    } catch (error) {
+        return res.status(error.statusCode || 503).json({ status: 'error', code: error.code,
+            message: 'Saved exchanges could not be listed.' });
+    }
+});
+router.get('/receipts/:receiptId', async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    try {
+        const data = await exchanges.read(`playground:${getUserId(res)}`, req.params.receiptId);
+        return data ? res.json({ status: 'success', data })
+            : res.status(404).json({ status: 'error', code: 'EXCHANGE_NOT_FOUND', message: 'Exchange not found.' });
+    } catch (error) {
+        return res.status(error.statusCode || 503).json({ status: 'error', code: error.code,
+            message: 'The complete exchange could not be recovered.' });
+    }
+});
+router.delete('/receipts/:receiptId', async (req, res) => {
+    try {
+        const erased = await exchanges.eraseOne(`playground:${getUserId(res)}`, req.params.receiptId);
+        if (!erased) return res.status(404).json({ status: 'error', code: 'EXCHANGE_NOT_FOUND', message: 'Exchange not found.' });
+        return res.json({ status: 'success', data: { erased: true } });
+    } catch (error) {
+        return res.status(error.statusCode || 503).json({ status: 'error', code: error.code,
+            message: 'Exchange erasure has not completed. Retry after its pending writer settles.' });
+    }
+});
 router.get('/', async (req, res) => {
     try {
         const userId = getUserId(res);
@@ -134,12 +163,17 @@ router.get('/', async (req, res) => {
             'lifecycle.status': { $ne: 'archived' }
         });
 
+        // The visibility filter runs in the query so the limit counts only
+        // visible rows; only the last message is loaded for the preview.
         const conversations = await Conversation.find(query)
             .sort({ updatedAt: -1 })
             .limit(50)
-            .select('title updatedAt model messages quality_assessment.overall_score quality_assessment.judged_at');
+            .select({
+                title: 1, updatedAt: 1, model: 1, messages: { $slice: -1 },
+                'quality_assessment.overall_score': 1, 'quality_assessment.judged_at': 1
+            });
 
-        const previews = conversations.filter(isPlaygroundConversation).map(c => {
+        const previews = conversations.map(c => {
             const lastMessage = c.messages && c.messages.length > 0
                 ? c.messages[c.messages.length - 1]
                 : null;
@@ -235,9 +269,12 @@ router.get('/search', async (req, res) => {
 
         const result = await conversationSearchService.searchConversations(searchOptions);
 
+        // Search text stays out of logs; only its length is recorded.
         logger.info('Conversation search executed', {
             userId,
-            query,
+            queryLength: typeof query === 'string' ? query.length : 0,
+            page: pageNum,
+            limit: limitNum,
             resultsCount: result.data.results.length,
             totalResults: result.data.pagination.totalResults
         });
@@ -248,7 +285,7 @@ router.get('/search', async (req, res) => {
         logger.error('Conversation search failed', {
             error: err.message,
             userId: getUserId(res),
-            query: req.query
+            queryLength: typeof req.query?.q === 'string' ? req.query.q.length : 0
         });
         res.status(500).json({ status: 'error', message: err.message });
     }
@@ -291,17 +328,24 @@ router.get('/conversations', async (req, res) => {
             'lifecycle.status': { $ne: 'archived' }
         });
 
-        const conversations = await Conversation.find(query)
-            .sort({ updatedAt: -1 })
-            .limit(50)
-            .select('title updatedAt model messages');
+        const conversations = await Conversation.aggregate([
+            { $match: query },
+            { $sort: { updatedAt: -1 } },
+            { $limit: 50 },
+            {
+                $project: {
+                    title: 1, updatedAt: 1, model: 1,
+                    messageCount: { $size: { $ifNull: ['$messages', []] } }
+                }
+            }
+        ]);
 
-        const previews = conversations.filter(isPlaygroundConversation).map(c => ({
+        const previews = conversations.map(c => ({
             id: publicId(c._id),
             title: c.title,
             date: publicDate(c.updatedAt),
             model: c.model,
-            messageCount: c.messages?.length || 0
+            messageCount: c.messageCount || 0
         }));
 
         res.json({ status: 'success', data: previews });
@@ -342,13 +386,19 @@ router.get('/:id', async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
         }
 
+        // Same scope as chat persistence: an archived conversation is not
+        // reopened in the Playground, because a new turn could not be saved to it.
         const userId = getUserId(res);
-        const query = { _id: new mongoose.Types.ObjectId(req.params.id), userId };
+        const query = {
+            _id: new mongoose.Types.ObjectId(req.params.id),
+            userId,
+            'lifecycle.status': { $ne: 'archived' }
+        };
 
         const conversation = await Conversation.findOne(query);
 
         if (!conversation) {
-            return res.status(404).json({ status: 'error', message: 'Conversation not found' });
+            return res.status(404).json({ status: 'error', code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found' });
         }
 
         res.json({ status: 'success', data: publicConversation(conversation) });
@@ -391,18 +441,24 @@ router.delete('/:id', async (req, res) => {
         return res.status(400).json({ status: 'error', message: 'Invalid conversation ID format' });
     }
     try {
-        const conversation = await Conversation.findOneAndDelete(withPlaygroundHistoryFilter({
+        const filter = withPlaygroundHistoryFilter({
             _id: new mongoose.Types.ObjectId(req.params.id),
             userId: getUserId(res),
             'lifecycle.status': { $ne: 'archived' }
-        })).select('_id');
-        if (!conversation) {
+        });
+        const owned = await Conversation.findOne(filter).select('_id clientTurnId messages.metadata.clientTurnId');
+        if (!owned) {
             return res.status(404).json({ status: 'error', message: 'Conversation not found' });
         }
+        const conversation = await exchanges.eraseCanonical(`playground:${getUserId(res)}`, owned._id,
+            () => Conversation.findOneAndDelete(filter, { writeConcern: { w: 'majority', j: true } }).select('_id'),
+            { clientTurnIds: [...new Set([owned.clientTurnId, ...(owned.messages || []).map(message => message.metadata?.clientTurnId)].filter(Boolean))] });
+        if (!conversation) return res.status(404).json({ status: 'error', message: 'Conversation not found' });
         res.json({ status: 'success', data: { conversationId: publicId(conversation._id), deleted: true } });
     } catch (err) {
         logger.error('Failed to delete conversation:', err);
-        res.status(500).json({ status: 'error', message: 'Could not delete conversation' });
+        res.status(err.statusCode || 500).json({ status: 'error', code: err.code,
+            message: 'Conversation erasure has not completed.' });
     }
 });
 

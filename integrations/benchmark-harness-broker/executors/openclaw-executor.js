@@ -4,7 +4,12 @@ const { spawn } = require('node:child_process');
 const { readFile, writeFile, mkdir } = require('node:fs/promises');
 const path = require('node:path');
 const { fingerprint: hash } = require('../contract');
-const ADAPTER_VERSION = '2.2.0';
+const ADAPTER_VERSION = '2.3.1';
+// agent exec does not receive the cell-wide turn/tool/token/spend ceilings.
+// Its timeout and the broker's final usage check do not enforce those limits.
+// Keep this route closed until enforcement before each native call is qualified.
+const NATIVE_AGENT_BUDGETS_QUALIFIED = false;
+const { fixtureForEnvelope, stageFixture, verifyFixture } = require('../repoFixture');
 
 function parseArgs(argv) {
   const result = {};
@@ -34,14 +39,17 @@ function invocationConfig(profile, input) {
     if (!agent) throw new Error('pinned profile does not contain the selected agent');
     agent.model = { primary: key, fallbacks: [] };
   }
-  config.agents.defaults.models = {
-    [key]: { params: { maxTokens: parameters.maxTokens, temperature: parameters.temperature, topP: parameters.topP, seed: parameters.seed } }
+  const modelSettings = config.agents.defaults.models || {};
+  config.agents.defaults.models = { ...modelSettings,
+    [key]: { ...modelSettings[key], params: { ...modelSettings[key]?.params,
+      maxTokens: parameters.maxTokens, temperature: parameters.temperature, topP: parameters.topP, seed: parameters.seed } }
   };
   return config;
 }
 
 function parseResult(body, input, durationMs, env = process.env) {
   const target = input.target;
+  if (target.mode !== 'native_agent') throw new Error('agent exec cannot attest an isolated model result');
   if (body.ok !== true || body.status !== 'ok') throw new Error(`OpenClaw execution ${body.status || 'failed'}`);
   if (body.provider !== target.provider || body.model !== target.model) throw new Error('OpenClaw returned a different provider or model');
   const output = typeof body.final === 'string' ? body.final : '';
@@ -50,12 +58,13 @@ function parseResult(body, input, durationMs, env = process.env) {
     if (!Number.isSafeInteger(value) || value < 0) throw new Error(`OpenClaw did not report valid ${label}`);
     return value;
   };
-  const inputTokens = count(body.usage?.input, 'input tokens');
+  const cacheRead = body.usage?.cacheRead == null ? null : count(body.usage.cacheRead, 'cached input tokens');
+  const cacheWrite = body.usage?.cacheWrite == null ? null : count(body.usage.cacheWrite, 'cache write tokens');
+  const inputTokens = count(body.usage?.input, 'input tokens') + (cacheRead || 0) + (cacheWrite || 0);
   const outputTokens = count(body.usage?.output, 'output tokens');
   const turns = count(body.assistantTurns, 'model turns');
   // agent exec omits the summary for a single assistant turn without tool activity.
   const toolCalls = count(body.toolSummary?.calls ?? (turns === 1 ? 0 : undefined), 'tool calls');
-  if (target.mode === 'isolated_model' && toolCalls !== 0) throw new Error('isolated OpenClaw profile reported tool activity');
   return {
     requestFingerprint: hash({ targetFingerprint: target.fingerprint, envelopeFingerprint: input.envelope.fingerprint, promptFingerprint: input.envelope.prompt.fingerprint }),
     responseFingerprint: hash(output), output, thinking: null, finishReason: null,
@@ -63,17 +72,21 @@ function parseResult(body, input, durationMs, env = process.env) {
     fallbackUsed: false,
     actual: {
       provider: body.provider, providerVersion: 'openclaw-provider-api',
-      model: body.model, modelVersion: body.model,
+      model: body.model, modelVersion: 'unknown',
       harnessVersion: env.OPENCLAW_RUNTIME_VERSION, adapterVersion: ADAPTER_VERSION,
       environmentId: target.profile.id, environmentVersion: target.profile.version,
       environmentFingerprint: env.AGENTX_OBSERVED_PROFILE_FINGERPRINT || null,
       runtimeFingerprint: env.AGENTX_OBSERVED_RUNTIME_FINGERPRINT || null, modelDigest: null
     },
-    usage: { durationMs, inputTokens, outputTokens, turns, toolCalls }
+    usage: { durationMs, inputTokens, outputTokens, turns, toolCalls,
+      ...(cacheRead != null ? { cacheReadTokens: cacheRead } : {}), ...(cacheWrite != null ? { cacheWriteTokens: cacheWrite } : {}) }
   };
 }
 
 async function execute(input, fixed, run = spawn) {
+  if (!NATIVE_AGENT_BUDGETS_QUALIFIED || input.target.tier === 'paid_cloud') {
+    throw new Error('OPENCLAW_NATIVE_AGENT_BUDGET_UNQUALIFIED');
+  }
   const runtimeVersion = String(process.env.OPENCLAW_RUNTIME_VERSION || '');
   if (!runtimeVersion || runtimeVersion !== input.target.harness.version) throw new Error('OPENCLAW_RUNTIME_VERSION does not match the catalog target');
   const config = invocationConfig(JSON.parse(await readFile(fixed.config, 'utf8')), input);
@@ -81,6 +94,9 @@ async function execute(input, fixed, run = spawn) {
   const configPath = path.resolve('invocation.json');
   const workspace = path.resolve('work');
   await mkdir(workspace);
+  const fixture = fixtureForEnvelope(input.envelope);
+  if (fixture && input.target.mode !== 'native_agent') throw new Error('Repository fixtures require native_agent');
+  const staged = fixture ? stageFixture(fixture, workspace) : null;
   await writeFile(configPath, JSON.stringify(config), { mode: 0o600 });
   const args = ['agent', 'exec', '--config', configPath, '--cwd', workspace,
     '--model', `${input.target.provider}/${input.target.model}`, '--message-file', '-',
@@ -104,7 +120,11 @@ async function execute(input, fixed, run = spawn) {
     child.stdin.end(String(input.input?.prompt || ''));
   });
   if (result.code !== 0) throw new Error(`OpenClaw exited ${result.code}`);
-  return parseResult(JSON.parse(result.stdout), input, Date.now() - started);
+  const parsed = parseResult(JSON.parse(result.stdout), input, Date.now() - started);
+  if (staged) Object.assign(parsed, verifyFixture(staged, { model: input.target.model,
+    timeoutMs: Math.min(30_000, input.parameters.timeoutMs) }));
+  parsed.usage.durationMs = Date.now() - started;
+  return parsed;
 }
 
 async function main() {
@@ -116,4 +136,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((error) => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
-module.exports = { ADAPTER_VERSION, execute, invocationConfig, parseArgs, parseResult };
+module.exports = { ADAPTER_VERSION, NATIVE_AGENT_BUDGETS_QUALIFIED, execute, invocationConfig, parseArgs, parseResult };

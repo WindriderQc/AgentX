@@ -9,6 +9,8 @@
  * interval; only a fresh snapshot counts as observed evidence.
  */
 
+const { normalizeOllamaEnvironment } = require('../../../../shared/ollamaServiceEnvironment');
+
 const CONTRACT = 'agentx.profiler-hardware-collector/v1';
 const REQUEST_TIMEOUT_MS = 2500;
 
@@ -72,7 +74,12 @@ async function readHostHardware(hostUrl, { env = process.env, fetchImpl = global
     sampledAt: host.lastSampleAt || null,
     ageMs: host.ageMs ?? null,
     staleAfterMs: host.staleAfterMs ?? null,
-    lastError: host.lastError || null
+    lastError: host.lastError || null,
+    // Configuration facts that outlive a sample's freshness: the latest Ollama
+    // service observation and the machine's GPU count (#368).
+    ollamaEnvironment: normalizeOllamaEnvironment(host.ollamaEnvironment),
+    knownGpuCount: Number.isSafeInteger(host.gpuCount) && host.gpuCount > 0 ? host.gpuCount
+      : (Array.isArray(host.gpus) && host.gpus.length > 0 ? host.gpus.length : null)
   };
   if (host.freshness === 'fresh' && Array.isArray(host.gpus) && host.gpus.length > 0) {
     return { ...common, status: 'observed', gpus: host.gpus };

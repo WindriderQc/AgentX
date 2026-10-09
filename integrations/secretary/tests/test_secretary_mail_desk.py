@@ -165,6 +165,24 @@ class SecretaryMailDeskTest(unittest.TestCase):
         self.assertIn("gog auth add", payload["message"])
         self.assertNotIn("owner@example.com", payload["message"])
 
+    def test_catchup_reports_counts_only_without_a_gmail_account(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "catchup-status.json").write_text(json.dumps({"phase": "reviewing", "reviewed": 3, "remaining": 7,
+                "failed": 0, "pagesPerHour": 400.0, "etaHours": 0.1, "lane": "contact", "summary": "private text",
+                "paused": {"reason": "benchmark running", "since": "2026-10-02T19:00:00Z"}}))
+            (root / "catchup-proposals.json").write_text(json.dumps([{"state": "pending", "text": "private"}, {"state": "queued"}, {"state": "queued"}]))
+            (root / "catchup.lock").write_text("{}")
+            data = MODULE.catchup(None, root)
+            self.assertEqual((data["known"], data["running"], data["reviewed"], data["proposalsPending"], data["proposalsQueued"]), (True, True, 3, 1, 2))
+            self.assertEqual(data["paused"]["reason"], "benchmark running")
+            self.assertNotIn("private", json.dumps(data))
+            self.assertEqual(MODULE.catchup(None, root / "missing")["known"], False)
+        out = io.StringIO()
+        with mock.patch.dict(MODULE.os.environ, {"GMAIL_SECRETARY_ACCOUNT": "", "GMAIL_SECRETARY_KEYRING_FILE": ""}),              mock.patch.object(MODULE, "native_settings", return_value={}), contextlib.redirect_stdout(out):
+            MODULE.main(["catchup"])
+        self.assertEqual(json.loads(out.getvalue())["status"], "success")
+
 
 if __name__ == "__main__":
     unittest.main()

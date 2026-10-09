@@ -20,9 +20,9 @@ const PHASE_DEFINITIONS = Object.freeze([
     note: 'Includes backlog, preparation, dependencies and dispatch capacity; it is not a resource wait.',
   },
   {
-    id: 'resource_wait', label: 'Resource wait', clock: null, instrumented: false,
-    measures: 'Not instrumented.',
-    note: 'A busy host refuses the claim, so no attempt exists; model-call admission waits are kept only for the last call of a lease.',
+    id: 'resource_wait', label: 'Resource wait', clock: 'core',
+    measures: "Summed waits of the attempt's model calls before Ollama received them: runtime admission, host gate, retry backoff and the waits of retried calls.",
+    note: 'Part of the worker run, not added to it. A busy host that refuses the claim creates no attempt; parallel calls can add up to more than the attempt.',
   },
   {
     id: 'startup', label: 'Startup', clock: null, instrumented: false,
@@ -123,14 +123,29 @@ function workerPhases(attempt, acquiredAt, completedAt) {
   return { worker, verification };
 }
 
-function attemptPhases(task, attempt) {
+// Key of an attempt's model-call waits (pipelineAttemptResourceWaits.js).
+function resourceWaitKey(pipelineId, attempt) {
+  return `${pipelineId}#${Number(attempt)}`;
+}
+
+// Every model call of the attempt must carry a measured wait: rows recorded
+// before waits existed, or expired, leave the phase unknown rather than short.
+function resourceWaitPhase(task, attempt, resourceWaits) {
+  if ((attempt.finalState || 'active') === 'active') return unknown('pending', 'attempt_active');
+  if (!(resourceWaits instanceof Map)) return unknown('missing', 'inference_waits_not_read');
+  const waits = resourceWaits.get(resourceWaitKey(task.pipelineId, attempt.attempt));
+  if (!waits?.calls) return unknown('missing', 'no_attributed_model_calls');
+  if (waits.measuredCalls < waits.calls) return unknown('missing', 'wait_not_recorded');
+  return observed(waits.waitMs);
+}
+
+function attemptPhases(task, attempt, { resourceWaits = null } = {}) {
   const acquiredAt = instant(attempt.acquiredAt);
   const completedAt = instant(attempt.completedAt);
-  const notInstrumented = unknown('not_instrumented', 'not_instrumented');
   return {
     before_claim: coreSpan(queueEntry(task, attempt), acquiredAt, 'queue_entry_not_recorded'),
-    resource_wait: notInstrumented,
-    startup: notInstrumented,
+    resource_wait: resourceWaitPhase(task, attempt, resourceWaits),
+    startup: unknown('not_instrumented', 'not_instrumented'),
     ...workerPhases(attempt, acquiredAt, completedAt),
     decision: decisionPhase(attempt, acquiredAt, completedAt),
   };
@@ -175,5 +190,6 @@ module.exports = {
   PHASE_DEFINITIONS,
   CLOCK_TOLERANCE_MS,
   attemptPhases,
+  resourceWaitKey,
   summarizePhases,
 };

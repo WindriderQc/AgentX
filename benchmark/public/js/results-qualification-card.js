@@ -24,6 +24,8 @@
     };
 
     const CAUSE_TEXT = {
+        judge_contract_missing: 'the verdict does not record its complete judge execution settings',
+        no_calibration_for_contract: 'no calibration covers this exact judge artifact, runtime and settings',
         judge_identity_missing: 'the result does not record its judge',
         scorer_version_missing: 'the result carries no scorer version',
         no_calibration_record: 'this judge has never been calibrated',

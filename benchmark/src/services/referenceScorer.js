@@ -11,8 +11,10 @@ const { withBenchmarkServiceAuth } = require('../helpers/coreServiceAuth');
 const { normalizeJudgeNumCtx } = require('./scoring/judgeRuntimeConfig');
 const { DEFAULT_SCORING_CATEGORY, normalizeScoringCategory } = require('./scoring/scoringConfigs');
 const { judgeRequestIdentity } = require('./scoring/judgeRequestIdentity');
-const { prepareJudgeResponse, assertJudgeInputUnmodified, assertJudgeOutputComplete, beginJudgeCallEvidence, finishJudgeCallEvidence, judgeCallEvidenceFields } = require('./scoring/judgeInput');
+const { GATE_BOUND, assessGates, boundByGates, failedGates, gatesAnswered } = require('./scoring/categoryGates');
+const { prepareJudgeResponse, assertJudgeInputUnmodified, assertJudgeOutputComplete, beginJudgeCallEvidence, finishJudgeCallEvidence, judgeHttpError, judgeCallEvidenceFields } = require('./scoring/judgeInput');
 const {
+    fetchWhenJudgeHostFree,
     openJudgeCall,
     rethrowIfJudgeCancelled,
     throwIfJudgeCancelled
@@ -45,7 +47,9 @@ function buildGenerateRequest(judgeConfig, prompt, numPredict, callerDetail) {
             host: judgeConfig.host,
             prompt,
             stream: false,
+            timeoutMs: judgeConfig.timeout,
             responseMode: 'normalized',
+            ...(judgeConfig.execution_contract ? { includeArtifactIdentity: true } : {}),
             think: resolveThink(judgeConfig),
             callerDetail: callerDetail || 'benchmark-reference-scorer',
             ...judgeRequestIdentity(judgeConfig),
@@ -123,17 +127,17 @@ Give one brief sentence of evidence for this criterion, then end with a separate
             signal: abortContext.signal
         });
 
-        const res = await fetch(url, fetchOptions);
+        const res = await fetchWhenJudgeHostFree(() => fetch(url, fetchOptions), judgeConfig);
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
-            throw new Error(`Judge HTTP ${res.status}`);
+            throw await judgeHttpError(res, callEvidence);
         }
 
         const data = await res.json();
         finishJudgeCallEvidence(callEvidence, { data });
         throwIfJudgeCancelled(judgeConfig);
-        assertJudgeInputUnmodified(data);
+        assertJudgeInputUnmodified(data, judgeConfig);
         assertJudgeOutputComplete(data);
         const verdict = parseReferenceVerdict(data.response, 'VERDICT', ['YES', 'NO']);
         if (!verdict) throw new Error('Judge did not return a YES/NO key-point verdict');
@@ -194,17 +198,17 @@ Give one brief sentence identifying a specific contradiction, or explaining why 
             signal: abortContext.signal
         });
 
-        const res = await fetch(url, fetchOptions);
+        const res = await fetchWhenJudgeHostFree(() => fetch(url, fetchOptions), judgeConfig);
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
-            throw new Error(`Judge HTTP ${res.status}`);
+            throw await judgeHttpError(res, callEvidence);
         }
 
         const data = await res.json();
         finishJudgeCallEvidence(callEvidence, { data });
         throwIfJudgeCancelled(judgeConfig);
-        assertJudgeInputUnmodified(data);
+        assertJudgeInputUnmodified(data, judgeConfig);
         assertJudgeOutputComplete(data);
         const verdict = parseReferenceVerdict(data.response, 'VERDICT', ['YES', 'NO']);
         if (!verdict) throw new Error('Judge did not return a YES/NO contradiction verdict');
@@ -266,17 +270,17 @@ Give one brief sentence identifying any missing required behavior, or stating th
             signal: abortContext.signal
         });
 
-        const res = await fetch(url, fetchOptions);
+        const res = await fetchWhenJudgeHostFree(() => fetch(url, fetchOptions), judgeConfig);
         finishJudgeCallEvidence(callEvidence, { status: res.status });
 
         if (!res.ok) {
-            throw new Error(`Judge HTTP ${res.status}`);
+            throw await judgeHttpError(res, callEvidence);
         }
 
         const data = await res.json();
         finishJudgeCallEvidence(callEvidence, { data });
         throwIfJudgeCancelled(judgeConfig);
-        assertJudgeInputUnmodified(data);
+        assertJudgeInputUnmodified(data, judgeConfig);
         assertJudgeOutputComplete(data);
         const scoreMap = {
             excellent: 10,
@@ -352,9 +356,15 @@ async function score(response, prompt, judgeConfig) {
     // Get overall similarity
     const similarity = await checkOverallSimilarity(response, reference, judgeConfig, prompt.prompt);
     throwIfJudgeCancelled(judgeConfig);
+
+    // A failed category gate (categoryGates.js) bounds the grade, as on the decomposed path.
+    const category = normalizeScoringCategory(prompt.scoring_type || prompt.category, DEFAULT_SCORING_CATEGORY);
+    const gates = await assessGates(category, async question => (await checkKeyPoint(response, question, judgeConfig, prompt.prompt)).found);
+    const gateFailures = failedGates(gates).map(gate => gate.key);
     const judgeReliable = Number.isFinite(similarity.score)
         && typeof contradictions.hasContradictions === 'boolean'
-        && keyPointResults.every(result => result.confidence !== 'error');
+        && keyPointResults.every(result => result.confidence !== 'error')
+        && gatesAnswered(gates);
 
     // Calculate final score
     // 70% similarity rating, 30% key-point coverage, penalty if contradictions.
@@ -368,7 +378,7 @@ async function score(response, prompt, judgeConfig) {
     if (contradictions.hasContradictions) {
         finalScore = Math.max(0, finalScore - 2);
     }
-    finalScore = Math.round(finalScore * 10) / 10;
+    finalScore = boundByGates(Math.round(finalScore * 10) / 10, gates);
 
     const scoringTimeMs = Date.now() - startTime;
     const missing = keyPoints.filter((_, i) => keyPointResults[i].found === false);
@@ -393,6 +403,7 @@ async function score(response, prompt, judgeConfig) {
         scoring_method: 'reference',
         ...judgeCallEvidenceFields(judgeCalls),
         scoring_type: normalizeScoringCategory(prompt.scoring_type || prompt.category, DEFAULT_SCORING_CATEGORY),
+        ...(gates.length ? { gates } : {}),
         breakdown: {
             similarity_rating: similarity.similarity,
             similarity_score: similarity.score,
@@ -410,7 +421,7 @@ async function score(response, prompt, judgeConfig) {
             point: point.substring(0, 100),
             found: keyPointResults[i].found
         })),
-        explanation: `Reference comparison: ${similarity.similarity} overall similarity${total > 0 ? `, ${matched}/${total} criteria met. Missing: ${missing.join('; ') || 'none'}${unconfirmed.length ? `. Unconfirmed: ${unconfirmed.join('; ')}` : ''}` : ' (reference too short for key-point coverage)'}. ${contradictionSummary}`,
+        explanation: `Reference comparison: ${similarity.similarity} overall similarity${total > 0 ? `, ${matched}/${total} criteria met. Missing: ${missing.join('; ') || 'none'}${unconfirmed.length ? `. Unconfirmed: ${unconfirmed.join('; ')}` : ''}` : ' (reference too short for key-point coverage)'}. ${contradictionSummary}${gateFailures.length ? `. Bounded at ${GATE_BOUND}: ${gateFailures.join(', ')} not met` : ''}`,
         scoring_time_ms: scoringTimeMs,
         judge_model: judgeConfig.model,
         judge_host: judgeConfig.host

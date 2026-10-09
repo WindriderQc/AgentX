@@ -68,6 +68,43 @@ async function drain(stream) {
 }
 
 describe('trusted runtime services', () => {
+  test('coding inference borrows only the exact task reservation and checks it again after admission', async () => {
+    const capacity = require('../../src/services/pipelineCodingCapacity');
+    const proof = { principal: 'core-trusted-runtime', workloadAdmissionId: 'coding-admission', workloadGeneration: 'coding-generation' };
+    const authorize = jest.spyOn(capacity, 'authorizeInference').mockResolvedValue(proof);
+    const deps = inferenceDeps();
+    try {
+      await executeRoutedInference(deps, { mode: 'generate', model: 'model-a', prompt: 'Make the permitted patch' },
+        { hostUrl: 'http://ollama.test:11434', codingCapacity: { pipelineId: '0800', leaseId: 'task-lease' } });
+      expect(authorize).toHaveBeenCalledTimes(2);
+      expect(authorize.mock.calls[0][1]).toMatchObject({ model: 'model-a', hostUrl: 'http://ollama.test:11434', numCtx: 32768 });
+      expect(deps.beginInferenceAdmission).toHaveBeenCalledWith(expect.objectContaining(proof));
+      expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.anything(), { includeArtifactIdentity: true });
+    } finally { authorize.mockRestore(); }
+  });
+  test('accounts for the same tools and tool-call messages sent to the native chat wire', async () => {
+    const deps = inferenceDeps();
+    const messages = [{ role: 'assistant', content: '',
+      tool_calls: [{ function: { name: 'read', arguments: { query: 'Complete input' } } }] }];
+    const tools = [{ type: 'function', function: { name: 'read', description: 'Complete tool schema' } }];
+    await executeRoutedInference(deps, { mode: 'chat', model: 'model-a', messages, tools });
+    const payload = JSON.parse(deps.fetch.mock.calls[0][1].body);
+    expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.objectContaining({
+      messages: payload.messages, tools: payload.tools
+    }));
+    expect(payload.tools).toEqual(tools);
+  });
+
+  test('accounts for the same system instruction sent to the native generation wire', async () => {
+    const deps = inferenceDeps();
+    await executeRoutedInference(deps, { mode: 'generate', model: 'model-a',
+      prompt: 'hello', system: 'Complete system instruction' });
+    const payload = JSON.parse(deps.fetch.mock.calls[0][1].body);
+    expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: payload.prompt, system: payload.system
+    }));
+  });
+
   test('vision is verified on the exact routed model and images reach the same admitted request', async () => {
     const deps = inferenceDeps();
     deps.fetch.mockResolvedValueOnce(response({ body: { capabilities: ['completion', 'vision'] } }));
@@ -610,6 +647,22 @@ describe('trusted runtime services', () => {
     }, { hostUrl: 'http://ollama.test:11434' });
     expect(result.metadata.routing).toBeUndefined();
     expect(deps.recordInference).toHaveBeenCalledWith(expect.objectContaining({ fallbackUsed: false }));
+  });
+
+  test('a rung chosen by the caller is recorded as a fallback only for the model it names', async () => {
+    const marker = { degraded: true, reason: 'primary_busy', note: 'dropped',
+      fallbackFrom: { model: 'model-big', host: 'primary' }, fallbackTo: { model: 'model-a', host: 'tertiary' } };
+    const served = inferenceDeps();
+    const result = await executeRoutedInference(served, { mode: 'generate', model: 'model-a', prompt: 'hello' },
+      { hostUrl: 'http://ollama.test:11434', degraded: marker });
+    expect(result.metadata.routing).toEqual({ degraded: true, reason: 'primary_busy',
+      fallbackFrom: marker.fallbackFrom, fallbackTo: marker.fallbackTo });
+    expect(served.recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      fallbackUsed: true, fallbackReason: 'task_fallback_primary_busy'
+    }));
+    const other = inferenceDeps();
+    await executeRoutedInference(other, { mode: 'generate', model: 'model-b', prompt: 'hello' }, { degraded: marker });
+    expect(other.recordInference).toHaveBeenCalledWith(expect.objectContaining({ fallbackUsed: false, fallbackReason: null }));
   });
 
   test('releases admission after an exact Ollama HTTP rejection', async () => {

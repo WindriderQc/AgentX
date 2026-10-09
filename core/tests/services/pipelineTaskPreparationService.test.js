@@ -34,6 +34,15 @@ test('prepared local intent is normalized by Core with review and merge decision
   expect(prepared.automation.fingerprint).toMatch(/^[a-f0-9]{64}$/);
   expect(prepared.automation.humanGates).toEqual(['merge', 'review']);
 });
+test('preparation coverage is visible on the ticket without changing its request or attempt budget', async () => {
+  const task = await create();
+  const contextNotice = 'Preparation context sent: 9/9 discussion entries; 112/112 permitted candidate files; Planning upstream reduction reported.';
+  const prepared = await apply(task, { contextNotice, question: 'Narrow the linked context.' });
+  expect(prepared.feedback.map(entry => entry.text)).toEqual([contextNotice, 'Narrow the linked context.']);
+  expect(prepared.spec).toBe(task.spec);
+  expect(prepared.automationAttemptCount).toBe(task.automationAttemptCount);
+  expect(prepared.automation).toBeUndefined();
+});
 test('concurrent preparation cannot overwrite a new question or operator edit', async () => {
   const task = await create();
   const results = await Promise.allSettled([apply(task, { question: 'A?' }), apply(task, { question: 'B?' })]);
@@ -55,4 +64,11 @@ test('resume releases a blocked automated claim and records the attempt decision
   expect(resumed).toMatchObject({ status: 'queued', assignee: null, automationAttemptCount: 1 });
   expect(resumed.automationAttempts[0]).toMatchObject({ finalState: 'blocked', reviewOutcome: 'requeued' });
   expect(resumed.automationAttempts[0].reviewedAt).toBeInstanceOf(Date);
+});
+test('a ticket the coding worker left blocked returns to the queue with the answer; another owner keeps it', async () => {
+  const blocked = await create({ status: 'blocked', assignee: 'coding-team' });
+  const resumed = await apply(blocked, { answer: 'Use the household timezone.' });
+  expect([resumed.status, resumed.assignee, resumed.feedback.at(-1).text]).toEqual(['queued', null, 'Use the household timezone.']);
+  await PipelineTask.deleteMany({});
+  await expect(apply(await create({ status: 'blocked', assignee: 'someone-else' }), { answer: 'Mine.' })).rejects.toThrow('Another worker owns this task.');
 });

@@ -38,3 +38,14 @@ personal query is shipped. See `integrations/secretary/README.md` for the native
 helper/watchdog. Tests use synthetic messages and stubbed commands. SDK factory
 compatibility was checked with the already installed OpenClaw 2026.7.1; current
 host registration, credentials and real mailbox acceptance remain separate.
+
+## Action provenance
+
+Gmail hooks record the trusted native session origin and hashed session/run/call
+references in the existing private audit log, without input or output content.
+Background review and scheduled sessions cannot send mail or perform mailbox
+changes that require approval. They can read, prepare drafts and record bounded
+review evidence. A conversation retains the existing one-time approval gate.
+The shared classifier reads Nestor's configured Secretary/briefing session keys;
+the model cannot declare its own origin. This labels session context and grants
+no execution authority. Load this adapter from the complete AgentX checkout.

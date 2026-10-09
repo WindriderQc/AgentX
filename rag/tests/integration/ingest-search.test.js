@@ -59,6 +59,50 @@ afterAll(() => {
   resetEmbeddingsService();
 });
 
+describe('Input refusal preserves the indexed corpus', () => {
+  let originalEmbed;
+  beforeEach(() => {
+    originalEmbed = ragStoreInstance.embeddingsService.embedBatch.getMockImplementation();
+    const provider = new (require('../../src/services/embeddings/coreProxyProvider'))();
+    ragStoreInstance.embeddingsService.embedBatch.mockImplementation(async texts => {
+      provider.validateTexts(texts);
+      return texts.map(() => [...FIXED_EMBEDDING]);
+    });
+  });
+  afterEach(() => ragStoreInstance.embeddingsService.embedBatch.mockImplementation(originalEmbed));
+
+  it('reports the provider limit and preserves an existing document after a refused update', async () => {
+    const documentId = 'input-limit-regression';
+    await supertest(app).post('/api/rag/ingest').send({ documentId, source: 'limit-test', text: 'Original complete source' }).expect(200);
+    const refused = await supertest(app).post('/api/rag/ingest').send({ documentId, source: 'limit-test', text: 'x'.repeat(9001), chunkSize: 10000 }).expect(413);
+    expect(refused.body).toMatchObject({ ok: false, error: 'EMBEDDING_INPUT_TOO_LARGE', meta: { limit: 8000, inputLength: 9001, unit: 'characters', overflow: 'reject' } });
+    const chunks = await ragStoreInstance.getDocumentChunks(documentId);
+    expect(chunks.map(chunk => chunk.text).join('')).toBe('Original complete source');
+    const search = await supertest(app).post('/api/rag/search').send({ query: 'x'.repeat(8001) }).expect(413);
+    expect(search.body.error).toBe('EMBEDDING_INPUT_TOO_LARGE');
+    await ragStoreInstance.deleteDocument(documentId);
+  });
+
+  it('reports a refused first batch document and still accounts for the next one', async () => {
+    const result = await supertest(app).post('/api/rag/ingest/batch').send({ documents: [
+      { documentId: 'batch-limit-refused', text: 'x'.repeat(9001), chunkSize: 10000 },
+      { documentId: 'batch-limit-accepted', text: 'Complete small source' }
+    ] }).expect(200);
+    expect(result.body.data).toMatchObject({ total: 2, succeeded: 1, failed: 1, results: [
+      { index: 0, status: 'error', code: 'EMBEDDING_INPUT_TOO_LARGE', statusCode: 413 },
+      { index: 1, status: 'ok' }
+    ] });
+    expect(await ragStoreInstance.vectorStore.getDocument('batch-limit-refused')).toBeNull();
+    await ragStoreInstance.deleteDocument('batch-limit-accepted');
+  });
+
+  it('never indexes an apparently complete document after the chunk safety limit', async () => {
+    const response = await supertest(app).post('/api/rag/ingest').send({ documentId: 'chunk-limit-refused', text: 'x'.repeat(1_000_100), chunkSize: 100, chunkOverlap: 0 }).expect(413);
+    expect(response.body.error).toBe('RAG_CHUNK_LIMIT_EXCEEDED');
+    expect(await ragStoreInstance.vectorStore.getDocument('chunk-limit-refused')).toBeNull();
+  });
+});
+
 describe('Integration: ingest → search → delete cycle', () => {
   const testText = 'The quick brown fox jumps over the lazy dog. ' +
     'This is an important document about foxes and dogs. ' +

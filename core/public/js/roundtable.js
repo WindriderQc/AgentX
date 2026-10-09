@@ -40,10 +40,28 @@
   let currentPanel = [];
   let currentSynth = { model: '', systemPrompt: '' };
   let currentModelReadiness = null;
+  let openclawAgents = [];
+  // The household team at the table: each OpenClaw agent as itself. Nestor (main)
+  // supervises the team, so he presides and gives the verdict instead of debating.
+  const CHAIR_PREFIX = 'openclaw/';
+  const chairAgent = () => openclawAgents.find((agent) => agent.id === 'main') || null;
+  function teamPanel() {
+    return openclawAgents.filter((agent) => agent.id !== chairAgent()?.id).map((agent) => ({
+      agentId: agent.id, role: agent.name, runtime: 'openclaw', model: 'runtime-managed',
+      systemPrompt: '', enableWebSearch: false
+    }));
+  }
+  // "openclaw/<agent id>" in the synthesizer field means that agent presides.
+  function synthesizerFromForm() {
+    const model = $('formSynthModel').value.trim(), systemPrompt = $('formSynthPrompt').value.trim();
+    return model.startsWith(CHAIR_PREFIX)
+      ? { runtime: 'openclaw', agentId: model.slice(CHAIR_PREFIX.length), systemPrompt }
+      : { model, systemPrompt };
+  }
 
   function renderAgentCard(agent, index) {
     const runtime = agent.runtime || 'model';
-    const runtimeOptions = ['model', 'codex']
+    const runtimeOptions = ['model', 'codex', 'openclaw']
       .map((value) => `<option value="${value}" ${runtime === value ? 'selected' : ''}>${value}</option>`)
       .join('');
     return `
@@ -55,7 +73,7 @@
         </div>
         <div class="rt-agent-edit-row">
           <div><label class="rt-label">Runtime</label><select class="rt-input" data-field="runtime">${runtimeOptions}</select></div>
-          <div><label class="rt-label">Model</label><input type="text" class="rt-input" data-field="model" list="councilModelOptions" autocomplete="off" value="${escape(agent.model || '')}" placeholder="required for model runtime"></div>
+          <div><label class="rt-label">Model</label><input type="text" class="rt-input" data-field="model" list="councilModelOptions" autocomplete="off" value="${escape(agent.model || '')}" placeholder="required for model runtime; openclaw: the agent's own"></div>
         </div>
         <div class="rt-agent-edit-row">
           <div><label class="rt-label">Session key / ID</label><input type="text" class="rt-input" data-runtime-field="sessionKey" value="${escape(agent.runtimeConfig?.sessionKey || agent.runtimeConfig?.sessionId || '')}" placeholder="optional dedicated runtime session"></div>
@@ -137,6 +155,8 @@
     try {
       const { data } = await jsonFetch('/api/roundtable/defaults');
       currentModelReadiness = data.readiness || { canStart: false };
+      openclawAgents = Array.isArray(data.openclawAgents) ? data.openclawAgents : [];
+      $('formTeamPanel').hidden = !openclawAgents.length;
       $('councilModelOptions').innerHTML = (data.models || [])
         .map((model) => `<option value="${escape(model)}"></option>`)
         .join('');
@@ -197,14 +217,14 @@
     if (!liveDoc?._id) return;
     const text = $('liveInterjection').value.trim();
     if (!text) { showToast('Enter chair guidance first', 'error'); return; }
+    // An unlocked owner session is the chair; the token is only for callers without one.
     const token = $('liveChairToken').value;
-    if (!token) { showToast('Chair token is required for interjections', 'error'); return; }
     try {
       await jsonFetch(`/api/roundtable/${liveDoc._id}/interjections`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-roundtable-chair-token': token
+          ...(token ? { 'x-roundtable-chair-token': token } : {})
         },
         body: JSON.stringify({ text, author: 'Example User', source: 'web-ui' })
       });
@@ -219,13 +239,12 @@
   async function submitDecision(decision) {
     if (!liveDoc?._id) return;
     const token = $('liveChairToken').value;
-    if (!token) { showToast('Chair token is required for web decisions', 'error'); return; }
     try {
       await jsonFetch(`/api/roundtable/${liveDoc._id}/decision`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-roundtable-chair-token': token
+          ...(token ? { 'x-roundtable-chair-token': token } : {})
         },
         body: JSON.stringify({
           decision,
@@ -577,10 +596,8 @@
       question,
       rounds: Number($('formRounds').value),
       panel,
-      synthesizer: {
-        model: $('formSynthModel').value.trim(),
-        systemPrompt: $('formSynthPrompt').value.trim()
-      },
+      synthesizer: synthesizerFromForm(),
+      turnOrder: $('formTurnOrder').value,
       enableScoring: $('formScoring').value === 'true',
       governance: { requireApproval: $('formApproval').value === 'true' },
       // A question handed off from the Playground is recorded as such; the
@@ -665,6 +682,13 @@
     $('formAgents').addEventListener('input', updateStartReadiness);
     $('formSynthModel').addEventListener('input', updateStartReadiness);
     $('formResetBtn').addEventListener('click', () => loadDefaults(true));
+    $('formTeamPanel').addEventListener('click', () => {
+      currentPanel = teamPanel();
+      if (chairAgent()) currentSynth = { ...currentSynth, model: CHAIR_PREFIX + chairAgent().id };
+      $('formTurnOrder').value = 'conversation';
+      renderPanel();
+      showToast(chairAgent() ? 'Team seated: Nestor presides and gives the verdict; the others debate.' : 'Team seated: each agent answers as itself.', 'info');
+    });
     $('formAddAgent').addEventListener('click', () => {
       currentPanel = readPanelFromDOM();
       currentPanel.push({

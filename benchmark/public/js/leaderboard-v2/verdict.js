@@ -16,6 +16,7 @@ export function esc(value) {
 // adds. Each sentence starts with a short label, then a colon.
 export const REASON_TEXT = Object.freeze({
     quality_cohort_fingerprint_mismatch: 'Other cohort: these results were judged under a different judge, scorer version or context set than the cohort the board compares.',
+    prompt_content_changed: 'Edited prompt: these results ran a prompt whose content has changed in the catalog since, or that left the catalog, so they are not compared with results on the current prompt.',
     mixed_scorer_versions: 'Mixed scorer generations: its rows were scored by two scorer generations, which are different scales and cannot be averaged.',
     excessive_empty_responses: 'Too many empty responses: more than half of its answers were empty, so its score is withheld.',
     mixed_execution_lanes: 'Mixed execution lanes: some rows ran through a harness and others directly, so the evidence is not one lane.',
@@ -35,6 +36,8 @@ export const REASON_TEXT = Object.freeze({
 
 // Why a grader is not qualified, one phrase per cause code.
 export const GRADER_CAUSE_TEXT = Object.freeze({
+    judge_contract_missing: 'the verdict does not record its complete judge execution settings',
+    no_calibration_for_contract: 'no calibration covers this exact judge artifact, runtime and settings',
     judge_identity_missing: 'some judged results do not record which judge graded them',
     scorer_version_missing: 'some results carry no scorer version',
     mixed_scorer_versions: 'the results span several scorer versions',
@@ -188,7 +191,7 @@ export function reasonLegendHtml(codes) {
     const items = (codes || []).map(code => `<dt data-reason="${esc(code)}">${esc(reasonLabel(code))}</dt><dd>${esc(humanizeReason(code))}</dd>`).join('');
     return `<details class="cb-legend">
     <summary>How to read verdicts and ranks</summary>
-    <p>The score is the average judged quality over every category and level, minus a penalty for missing coverage and hard levels. A rank (#1, #2, …) orders the models judged on the same terms: one judge, one scorer generation and one prompt catalog. A model with partial coverage still ranks, with its gaps shown on the row. Results judged on other terms are listed apart, without a rank. A rank is authoritative only when the judge behind it passed calibration for the exact scorer version; otherwise it is marked provisional, carries no medal, and the causes are listed on the row. A rank measures benchmark results; it never changes routing.</p>
+    <p>The score is the average judged quality over every category and level, minus a penalty for missing coverage and hard levels. A rank (#1, #2, …) orders the models judged on the same terms: one judge, one scorer generation and one prompt catalog. A model with partial coverage still ranks, with its gaps shown on the row. Results judged on other terms are listed apart, without a rank. A rank is authoritative only when the judge behind it passed calibration for the exact scorer version, artifact, runtime and execution settings; otherwise it is marked provisional, carries no medal, and the causes are listed on the row. A rank measures benchmark results; it never changes routing.</p>
     ${items ? `<dl>${items}</dl>` : '<p>Every row on this board is ranked.</p>'}
   </details>`;
 }

@@ -3,9 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { readChatMessagingSource } = require('../helpers/chatMessagingSource');
 
-const messagingPath = path.resolve(__dirname, '../../public/js/chat/chat-messaging.js');
-const source = fs.readFileSync(messagingPath, 'utf8').replace(/\r\n/g, '\n');
+const source = readChatMessagingSource().replace(/\r\n/g, '\n');
 const mainSource = fs.readFileSync(
   path.resolve(__dirname, '../../public/js/chat/chat-main.js'),
   'utf8'
@@ -88,7 +88,9 @@ describe('Playground request history contract', () => {
   });
 
   test('threads the current-turn id through streaming and non-streaming dispatch', () => {
-    expect(source).toContain('sendMessageStreamFetch(ctx, message, model, currentUserMessageId, requestTurnAction)');
+    expect(source).toContain('sendMessageStreamFetch(ctx, message, model, currentUserMessageId, requestTurnAction, terminalAttemptId)');
+    expect(source).toContain('payload.clientTurnId = terminalAttemptId;');
+    expect(source).toContain('clientTurnId: terminalAttemptId,\n      stream: false');
     expect(source).toContain('currentUserMessageId,\n        requestTurnAction');
     expect(source).toContain('messages: historyBeforeCurrentTurn(state.history, currentUserMessageId)');
   });

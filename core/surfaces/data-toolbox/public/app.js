@@ -2,6 +2,12 @@
 
 const content = document.querySelector('#content');
 const updated = document.querySelector('#lastUpdated');
+const DATA_DOWN = 'Data unreachable';
+// The header box: what the last read attempt gave, and when Data last answered.
+const shell = {
+  box: document.querySelector('#shellState'), label: document.querySelector('#shellStatus'),
+  notice: document.querySelector('#shellNotice'), goodAt: null, failures: []
+};
 const state = {
   status: null,
   tab: '',
@@ -11,7 +17,9 @@ const state = {
   janitorReportGeneratedAt: null,
   janitorReviewLoadedFor: null,
   janitorReviewLoaded: false,
-  janitorReviewDraftFrom: null
+  janitorReviewDraftFrom: null,
+  janitorReviewImportedAt: null,
+  renderSeq: 0
 };
 const JANITOR_CURRENT_RUN_MS = 24 * 60 * 60 * 1000;
 const JANITOR_REVIEW_STORAGE_KEY = 'agentx.data-toolbox.janitor-review-draft.v1';
@@ -69,16 +77,9 @@ function janitorReviewPayload() {
     portfolioGeneratedAt: state.janitorReportGeneratedAt,
     capturedAt: new Date().toISOString(),
     authorizesFilesystemMutation: false,
+    // Set once the draft was imported into Data; the draft then stays as a backup.
+    ...(state.janitorReviewImportedAt ? { importedAt: state.janitorReviewImportedAt } : {}),
     decisions: Object.values(state.janitorReview)
-  };
-}
-
-function janitorReviewCounts() {
-  const decisions = Object.values(state.janitorReview);
-  return {
-    accepted: decisions.filter(item => item.decision === 'accept_for_preview').length,
-    rejected: decisions.filter(item => item.decision === 'reject_keep_all').length,
-    total: decisions.length
   };
 }
 
@@ -87,8 +88,16 @@ function normalizeJanitorReviewDecision(input) {
   const sha256 = typeof input.sha256 === 'string' ? input.sha256.trim() : '';
   if (!sha256 || sha256.length > 128) return null;
   if (!['accept_for_preview', 'reject_keep_all'].includes(input.decision)) return null;
+  // The file size and the copies seen, when the draft recorded them: an import
+  // into Data needs both as the evidence the decision was made on.
+  const seen = array(input.paths).filter(path => typeof path === 'string' && path).slice(0, 500);
+  const evidence = {
+    ...(Number.isSafeInteger(input.size) && input.size > 0 ? { size: input.size } : {}),
+    ...(seen.length > 1 ? { paths: seen } : {})
+  };
   if (input.decision === 'reject_keep_all') {
     return {
+      ...evidence,
       sha256,
       decision: 'reject_keep_all',
       keepPath: null,
@@ -102,6 +111,7 @@ function normalizeJanitorReviewDecision(input) {
     .slice(0, 10000);
   if (!keepPath || !removePaths.length) return null;
   return {
+    ...evidence,
     sha256,
     decision: 'accept_for_preview',
     keepPath,
@@ -148,6 +158,7 @@ function restoreJanitorReviewDraft(portfolioGeneratedAt) {
       if (decision) restored[decision.sha256] = decision;
     }
     state.janitorReviewDraftFrom = draft.portfolioGeneratedAt || null;
+    state.janitorReviewImportedAt = typeof draft.importedAt === 'string' ? draft.importedAt.slice(0, 40) : null;
   } catch {
     try { localStorage.removeItem(JANITOR_REVIEW_STORAGE_KEY); } catch {}
   }
@@ -159,6 +170,7 @@ function restoreJanitorReviewDraft(portfolioGeneratedAt) {
 function clearJanitorReviewDraft() {
   state.janitorReview = {};
   state.janitorReviewDraftFrom = null;
+  state.janitorReviewImportedAt = null;
   state.janitorReviewLoadedFor = state.janitorReportGeneratedAt;
   try { localStorage.removeItem(JANITOR_REVIEW_STORAGE_KEY); } catch {}
 }
@@ -177,54 +189,67 @@ function downloadJanitorReview() {
   URL.revokeObjectURL(href);
 }
 
-function recordJanitorReview(button, decision) {
-  const row = button.closest('[data-janitor-group]');
-  const sha256 = row?.dataset.janitorGroup;
-  if (!row || !sha256) return;
-  const paths = array(JSON.parse(row.dataset.paths || '[]'));
-  if (decision === 'defer') {
-    delete state.janitorReview[sha256];
-    persistJanitorReviewDraft();
-    return;
-  }
-  if (decision === 'reject_keep_all') {
-    state.janitorReview[sha256] = {
-      sha256,
-      decision,
-      keepPath: null,
-      removePaths: [],
-      reason: 'operator rejected deletion proposal; keep every member'
-    };
-    persistJanitorReviewDraft();
-    return;
-  }
-  const selected = row.querySelector('input[type="radio"]:checked');
-  if (!selected) throw new Error('Choose the path to keep before accepting this group for preview.');
-  state.janitorReview[sha256] = {
-    sha256,
-    decision,
-    keepPath: selected.value,
-    removePaths: paths.filter(path => path !== selected.value),
-    reason: 'operator-selected survivor; complete SHA-256 preview required'
-  };
-  persistJanitorReviewDraft();
+// Every failed request is remembered with its kind until the header is next
+// written, so a tab that shows a failed read as a notice in its place still
+// cannot leave the header green.
+function apiFailure(error, code) {
+  shell.failures.push({ message: error.message, code });
+  return error;
 }
 
-async function api(route) {
-  const response = await fetch(`/api/data-toolbox${route}`, { headers: { Accept: 'application/json' } });
+async function api(route, { method = 'GET', payload } = {}) {
+  const headers = { Accept: 'application/json', ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }) };
+  let response;
+  try { response = await fetch(`/api/data-toolbox${route}`, { method, headers, body: payload === undefined ? undefined : JSON.stringify(payload) }); }
+  catch (error) { throw apiFailure(error, 'AGENTX_UNREACHABLE'); }
   let body;
-  try { body = await response.json(); } catch { throw new Error('Data projection returned an unreadable response. Try again.'); }
-  if (!body || typeof body !== 'object') throw new Error('Data projection returned an unreadable response. Try again.');
-  if (!response.ok || body.ok === false || body.status === 'error') throw new Error(body.message || body.error || `${route} returned ${response.status}`);
+  try { body = await response.json(); } catch { throw apiFailure(new Error('Data projection returned an unreadable response. Try again.'), 'UNREADABLE'); }
+  if (!body || typeof body !== 'object') throw apiFailure(new Error('Data projection returned an unreadable response. Try again.'), 'UNREADABLE');
+  if (!response.ok || body.ok === false || body.status === 'error') throw apiFailure(new Error(body.message || body.error || `${route} returned ${response.status}`), String(body.code || `HTTP_${response.status}`));
   return body.data ?? body;
 }
 
+// The header after one read attempt. `problem` is why the read failed ('' when
+// it succeeded) and `warning` what a successful read found wrong. The state is
+// written as text, the dot only repeats it; the time shown is the time of the
+// attempt, and after a failure the last successful read is named beside it.
+// A read that found Data wholly unreachable is red like a failed one.
+function shellRead(problem = '', warning = '') {
+  const failures = shell.failures.splice(0);
+  const now = new Date();
+  const kind = problem || warning.startsWith(DATA_DOWN) ? 'failed' : warning ? 'degraded' : 'ok';
+  let text = 'Data answering';
+  if (problem) {
+    text = failures.some((failure) => failure.code === 'AGENTX_UNREACHABLE') ? 'AgentX unreachable from this page'
+      : failures.some((failure) => ['DATA_UNAVAILABLE', 'DATA_TIMEOUT'].includes(failure.code)) ? 'Data unreachable'
+        : 'Last read failed';
+  } else if (warning) text = warning;
+  else shell.goodAt = now;
+  if (shell.box && typeof shell.box.setAttribute === 'function') shell.box.setAttribute('data-state', kind);
+  // The state line is a live region: it is rewritten only when it changes.
+  if (shell.label && shell.label.textContent !== text) shell.label.textContent = text;
+  const good = shell.goodAt ? `last good read ${shell.goodAt.toLocaleTimeString()}` : 'no successful read yet';
+  updated.textContent = problem ? `failed ${now.toLocaleTimeString()}: ${problem} · ${good}`
+    : warning ? `read ${now.toLocaleTimeString()}, incomplete`
+      : `last read ${now.toLocaleTimeString()}`;
+  return kind;
+}
+
+// A problem with something the user asked for, shown above the tab and announced once.
+function shellNotice(message = '') {
+  if (!shell.notice) return;
+  shell.notice.textContent = message;
+  shell.notice.hidden = !message;
+}
+
+const refresherFor = (options) => (typeof tabRefresher === 'function' ? tabRefresher(options) : null);
+
 function loading(label = 'Loading Data…') {
-  content.innerHTML = `<div class="loading"><span></span>${e(label)}</div>`;
+  content.innerHTML = `<div class="loading" role="status"><span aria-hidden="true"></span>${e(label)}</div>`;
 }
 
 function errorView(error) {
-  content.innerHTML = `<div class="error"><div><strong>Data projection unavailable</strong><p>${e(error.message)}</p><button class="button" data-action="refresh">Try again</button></div></div>`;
+  content.innerHTML = `<div class="error" role="alert"><div><strong>Data projection unavailable</strong><p>${e(error.message)}</p><button class="button" data-action="refresh">Try again</button></div></div>`;
 }
 
 function heading(title, detail, action = '') {
@@ -240,22 +265,31 @@ function collectorCard(agent, kind) {
   const placement = state.status?.collectorPlacement?.[kind]?.[id];
   const active = agent.active === true;
   const host = placement?.host || `${agent.hostname || 'Unknown host'} · ${agent.platform || 'unknown platform'}`;
+  // A collector that reports now is not "historical": without placement
+  // metadata the card says what its registration tells, and that the rest is
+  // not declared.
+  const declared = Boolean(placement) || !active;
   const supervisor = placement?.supervisor || 'No current placement contract';
   const runtime = placement?.runtime || 'Historical registration only';
   const cadence = placement?.cadence || 'not scheduled';
+  const placementRows = declared
+    ? `<div class="metric-row"><span>Supervisor</span><strong>${e(supervisor)}</strong></div>
+    <div class="metric-row"><span>Unit / task</span><strong class="mono">${e(runtime)}</strong></div>
+    <div class="metric-row"><span>Cadence</span><strong>${e(cadence)}</strong></div>`
+    : `${agent.ip ? `<div class="metric-row"><span>Address</span><strong class="mono">${e(agent.ip)}</strong></div>` : ''}
+    <div class="metric-row"><span>Registered since</span><strong>${date(agent.firstSeen)}</strong></div>`;
   const scope = kind === 'network'
     ? (agent.cidr || 'CIDR unavailable')
     : (array(agent.sources).join(', ') || 'sources unavailable');
   return `<article class="card collector-card">
     <div class="card-title"><h3>${e(id)}</h3>${statusPill(active, 'active', placement ? 'inactive' : 'historical')}</div>
     <div class="metric-row"><span>Runs on</span><strong>${e(host)}</strong></div>
-    <div class="metric-row"><span>Supervisor</span><strong>${e(supervisor)}</strong></div>
-    <div class="metric-row"><span>Unit / task</span><strong class="mono">${e(runtime)}</strong></div>
-    <div class="metric-row"><span>Cadence</span><strong>${e(cadence)}</strong></div>
+    ${placementRows}
     <div class="metric-row"><span>Last heartbeat</span><strong>${date(agent.lastSeen)}</strong></div>
     ${kind === 'network' ? `<div class="metric-row"><span>Last scan</span><strong>${date(agent.lastScanAt)}</strong></div>` : ''}
     <div class="metric-row"><span>${kind === 'network' ? 'CIDR' : 'Sources'}</span><strong class="mono">${e(scope)}</strong></div>
     <div class="metric-row"><span>Collector version</span><strong class="mono">${e(agent.agentVersion || 'unknown')}</strong></div>
+    ${declared ? '' : '<p class="muted card-note">Shown from its live registration with Data. Its supervisor, unit and cadence are not declared for this instance (no placement metadata is configured).</p>'}
   </article>`;
 }
 
@@ -288,12 +322,50 @@ async function ensureStatus(force = false) {
     }
     state.status = status;
   }
-  updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
+  // No header stamp here: a status kept from an earlier read is not a new read.
   return state.status;
 }
 
-async function overview() {
-  const status = await ensureStatus(true);
+// Readable names for the keys of the status projection.
+const SOURCE_NAMES = Object.freeze({
+  health: 'Data service', resources: 'Host resources', storage: 'Storage inventory', network: 'Network devices',
+  liveData: 'Live Data feeds', databases: 'Databases', janitor: 'Janitor profiles'
+});
+
+// Why a source counts as unavailable, from what the status projection holds:
+// the relay's own error (timeout, refused connection), Data's HTTP status, or
+// the message of the error envelope Data answered with.
+function sourceReason(source) {
+  if (source.ok) return Number(source.status) > 0 ? `HTTP ${source.status}` : 'answered';
+  if (source.error) return String(source.error).slice(0, 160);
+  const message = typeof source.data?.message === 'string' ? source.data.message : typeof source.data?.error === 'string' ? source.data.error : '';
+  const http = Number(source.status) > 0 ? `HTTP ${source.status}` : '';
+  if (message) return `${http ? `${http}: ` : ''}${message.slice(0, 160)}`;
+  if (Number(source.status) >= 400) return http;
+  return http ? `${http}, but the answer was not a usable Data response` : 'no reason reported';
+}
+
+function sourceList(sources) {
+  return `<ul class="source-list" aria-label="Data sources read for this overview">${Object.entries(sources).map(([name, source]) => `<li class="source ${source.ok ? 'ok' : 'down'}"><span class="dot" aria-hidden="true"></span><strong>${e(SOURCE_NAMES[name] || label(name))}</strong><span class="source-state">${source.ok ? 'answering' : 'unavailable'}</span><small class="source-reason">${e(sourceReason(source))}</small></li>`).join('')}</ul>`;
+}
+
+// What the header says about a status that was read but is not whole.
+function statusWarning(status) {
+  const { healthy, total } = status.dataService;
+  if (healthy === total) return '';
+  return healthy === 0 ? `${DATA_DOWN}: no source answered` : `${total - healthy} of ${total} Data sources unavailable`;
+}
+
+// The page's own list of what it can send (index.html), repeated in full here.
+function guardrailDetail() {
+  const detail = document.querySelector('#guardrailDetail')?.innerHTML;
+  return typeof detail === 'string' && detail.trim()
+    ? `<article class="card guardrail-card"><h3>What this page can change</h3>${detail}</article>` : '';
+}
+
+// Everything under the Overview's heading except the activity card: the
+// automatic refresh repaints this block in place.
+function overviewBody(status) {
   const sources = status.sources || {};
   const storage = sources.storage?.data || {};
   const devices = sources.network?.data?.devices || [];
@@ -301,15 +373,14 @@ async function overview() {
   const feeds = array(sources.liveData?.data);
   const database = sources.databases?.data || {};
   const profiles = sources.janitor?.data?.profiles || [];
-  content.innerHTML = `${heading('Operational overview', 'A bounded health projection assembled from the existing Data service engines.', '<button class="button" data-action="refresh">Refresh</button>')}
-    <div class="grid">
+  return `<div class="grid">
       ${metric(`${status.dataService?.healthy ?? 0}/${status.dataService?.total ?? 0}`, 'healthy Data capabilities')}
       ${metric(number(storage.totalFiles), 'indexed files')}
       ${metric(sources.network?.ok ? number(devices.length) : '—', 'known network devices')}
       ${metric(networkSummary ? number(networkSummary.online) : '—', networkSummary ? `online now (≤ ${ttlLabel(networkSummary.onlineTtlMs)})` : 'online now (not observed)')}
       ${metric(number(database.totalCollections), 'MongoDB collections')}
     </div>
-    <div class="source-list">${Object.entries(sources).map(([name, source]) => `<div class="source ${source.ok ? 'ok' : ''}"><span class="dot"></span><strong>${e(name)}</strong></div>`).join('')}</div>
+    ${sourceList(sources)}
     <div class="grid two" style="margin-top:14px">
       <article class="card"><h3>Storage evidence</h3>
         <div class="metric-row"><span>Inventory size</span><strong>${e(storage.totalSizeFormatted || bytes(storage.totalSize))}</strong></div>
@@ -320,19 +391,46 @@ async function overview() {
       <article class="card"><h3>Automation visibility</h3>
         <div class="metric-row"><span>Live feeds</span><strong>${sources.liveData?.ok ? `${feeds.filter((feed) => feed.enabled).length}/${feeds.length} enabled` : '—'}</strong></div>
         <div class="metric-row"><span>Janitor profiles</span><strong>${sources.janitor?.ok ? number(profiles.length) : '—'}</strong></div>
-        <div class="metric-row"><span>Mutation routes</span><strong class="good">0 exposed</strong></div>
+        <div class="metric-row"><span>Write routes</span><strong>9 in 7 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions (save, import, remove), report generation, report deletion</strong></div>
         <div class="metric-row"><span>Projection authority</span><strong>AgentX Data</strong></div>
       </article>
     </div>`;
 }
 
+const overviewRefresher = refresherFor({
+  tab: 'overview', everyMs: 30000, stamp: 'overviewStamp', holds: true,
+  read: () => ensureStatus(true),
+  apply(status) {
+    const body = document.querySelector('#overviewBody');
+    if (body) body.innerHTML = overviewBody(status);
+    // The last warnings and errors are read apart and written into their own card.
+    if (typeof activityOverviewCard === 'function') activityOverviewCard();
+    return { warning: statusWarning(status) };
+  }
+});
+
+async function overview() {
+  const status = await ensureStatus(true);
+  content.innerHTML = `${heading('Operational overview', 'A bounded health projection assembled from the existing Data service engines.', '<button class="button" data-action="refresh">Refresh</button>')}
+    ${overviewRefresher ? overviewRefresher.stampHtml() : ''}
+    <div id="overviewBody">${overviewBody(status)}</div>
+    <section id="overviewActivity"></section>
+    ${guardrailDetail()}`;
+  // The last warnings and errors of the activity log: activity.js reads them apart.
+  if (typeof activityOverviewCard === 'function') activityOverviewCard();
+  overviewRefresher?.opened();
+  return statusWarning(status);
+}
+
 async function storage() {
+  // Growth and Reports are views of this tab: storage-views.js draws them.
+  if (typeof storageOtherView === 'function' && await storageOtherView()) return;
   const [summary, scansBody, agentsBody] = await Promise.all([
     api('/storage/summary'), api('/storage/scans?limit=12'), api('/storage/agents')
   ]);
-  const scans = array(scansBody.scans || scansBody);
   const agents = array(agentsBody.scanners || agentsBody.agents || agentsBody);
-  content.innerHTML = `${heading('Storage evidence', 'Inventory coverage, scan receipts, and the native Data collector that can see shared storage. No scan can be launched here.', '<button class="button" data-action="refresh">Refresh</button>')}
+  content.innerHTML = `${heading('Storage evidence', 'Inventory coverage, scan receipts, and the native Data collector that can see shared storage. A scan can be asked for below; it only reads the disks.', '<button class="button" data-action="refresh">Refresh</button>')}
+    ${typeof storageViewSwitch === 'function' ? storageViewSwitch() : ''}
     <div class="grid">
       ${metric(number(summary.totalFiles), 'files inventoried')}
       ${metric(summary.totalSizeFormatted || bytes(summary.totalSize), 'inventory size')}
@@ -356,41 +454,11 @@ async function storage() {
     </div>
     ${heading('Where storage collection runs', 'This is a host-native Data process, not an AgentX Product or LLM agent.')}
     <div class="grid two">${agents.length ? agents.map((agent) => collectorCard(agent, 'storage')).join('') : '<div class="empty">No storage collectors registered.</div>'}</div>
-    ${heading('Recent scan receipts', 'Existing scan state only.')}
-    <div class="table-wrap"><table><thead><tr><th>Scan</th><th>Root / source</th><th>Status</th><th>Files</th><th>Started</th></tr></thead><tbody>
-      ${scans.length ? scans.map((scan) => `<tr><td class="mono">${e(scan.scan_id || scan.scanId || scan._id)}</td><td class="mono">${e(scan.root || scan.source || scan.hostname)}</td><td>${statusPill(['completed','done','success'].includes(scan.status), scan.status, scan.status)}</td><td>${number(scan.file_count ?? scan.fileCount ?? scan.files)}</td><td>${date(scan.started_at || scan.startedAt || scan.created_at)}</td></tr>`).join('') : noRows(5)}
-    </tbody></table></div>`;
+    ${storageScanSections(agentsBody, scansBody)}`;
+  storageScanStart();
 }
 
-function fileToolbar() {
-  return `<form id="fileFilters" class="toolbar">
-    <input name="search" placeholder="Filename contains…" aria-label="Filename search">
-    <input name="root" placeholder="Root path scope…" aria-label="Root path">
-    <select name="category" aria-label="File category"><option value="">All categories</option><option>document</option><option>image</option><option>video</option><option>audio</option><option>archive</option><option>code</option><option>unclassified</option></select>
-    <button class="button">Apply filters</button>
-  </form>`;
-}
-
-async function files(params = new URLSearchParams(state.filesQuery)) {
-  state.filesQuery = params.toString();
-  params.set('limit', '50');
-  params.set('page', String(state.filesPage));
-  const result = await api(`/storage/files?${params}`);
-  const files = array(result.files);
-  const paging = result.pagination || {};
-  content.innerHTML = `${heading('File inventory', 'Bounded, read-only file metadata from the latest storage evidence.')}${fileToolbar()}
-    <div class="notice">Paths and metadata can be private. This view stays on the local AgentX origin and does not offer file mutation.</div>
-    <div class="table-wrap" tabindex="0" role="region" aria-label="File inventory table"><table class="file-inventory-table"><thead><tr><th>Name</th><th>Directory</th><th>Size</th><th>Category</th><th>Modified</th><th>Hash</th></tr></thead><tbody>
-      ${files.length ? files.map((file) => `<tr><td>${e(file.filename || file.name)}</td><td class="mono muted">${e(file.dirname || file.path)}</td><td>${e(file.sizeFormatted || bytes(file.size))}</td><td><span class="pill">${e(file.category || file.ext || 'unclassified')}</span></td><td>${date(file.mtimeFormatted || (file.mtime ? file.mtime * 1000 : null))}</td><td class="mono">${file.sha256 ? `${e(file.sha256).slice(0,12)}…` : '<span class="warn">missing</span>'}</td></tr>`).join('') : noRows(6)}
-    </tbody></table></div>
-    <p class="muted">Page ${number(paging.page || 1)} of ${number(paging.pages || 1)} · ${number(paging.total ?? files.length)} matching files</p>
-    <nav class="toolbar" aria-label="File inventory pages">
-      <button class="button" data-action="files-previous" ${state.filesPage <= 1 ? 'disabled' : ''}>Previous page</button>
-      <button class="button" data-action="files-next" ${state.filesPage >= (paging.pages || 1) ? 'disabled' : ''}>Next page</button>
-    </nav>`;
-  const form = document.querySelector('#fileFilters');
-  for (const [key, value] of params) if (form.elements[key] && !['limit','page'].includes(key)) form.elements[key].value = value;
-}
+// The Files tab (inventory, folders, duplicates, cleanup) lives in files-tools.js.
 
 const OBSERVATION_LABELS = Object.freeze({
   online: 'online now',
@@ -411,8 +479,9 @@ function ttlLabel(ms) {
   return value >= 3600000 ? `${Math.round(value / 3600000)}h` : `${Math.round(value / 60000)}m`;
 }
 
-async function network() {
-  const [devicesBody, agentsBody, capability] = await Promise.all([api('/network/devices'), api('/network/agents'), api('/network/capability')]);
+// The metrics and the line stating Data's observation windows. network-tools.js
+// repaints this block after a scan or a reload.
+function networkOverview(devicesBody, agentsBody, capability) {
   const devices = array(devicesBody.devices || devicesBody);
   const agents = array(agentsBody.scanners || agentsBody.agents || agentsBody);
   // Data owns the temporal semantics: `summary` states the reference time and
@@ -423,31 +492,35 @@ async function network() {
   const referenceLine = summary
     ? `Reference time ${date(summary.referenceTime)} · online = seen within ${ttlLabel(summary.onlineTtlMs)} by a reporting collector · recent = within ${ttlLabel(summary.recentTtlMs)} · ${number(summary.reportedOnline)} rows still carry a raw online flag`
     : 'Data did not report the observation windows; "online now" is not observed.';
-  content.innerHTML = `${heading('Network inventory', 'Observed devices and the host-native Data collectors that can see the real LAN. Discovery cannot be started from this console.', '<button class="button" data-action="refresh">Refresh</button>')}
-    <div class="grid">
+  return `<div class="grid">
       ${metric(number(devices.length), 'known devices')}
       ${metric(onlineNow, 'online now')}
       ${metric(summary ? number(summary.recent) : '—', 'recently seen')}
       ${metric(summary ? number(summary.historical + summary.never_confirmed) : '—', 'historical / never confirmed')}
       ${metric(`${agents.filter((agent) => agent.active === true).length}/${agents.length}`, 'active / registered collectors')}
-      ${metric(capability.nmap?.available || capability.nmapAvailable ? 'ready' : 'bounded', 'native scan capability')}
+      ${metric(capability.nmap === true || capability.nmap?.available || capability.nmapAvailable || agents.some((agent) => agent.active === true && agent.capabilities?.nmap) ? 'ready' : 'bounded', 'native scan capability')}
     </div>
-    <p class="muted" id="networkObservationRules">${e(referenceLine)}</p>
-    ${heading('Where network collection runs', 'Current supervisors are explicit. An inactive unmapped row is retained history, not a configured runtime.')}
-    <div class="grid two">${agents.length ? agents.map((agent) => collectorCard(agent, 'network')).join('') : '<div class="empty">No network collectors registered.</div>'}</div>
-    ${heading('Devices', 'Every retained observation from Data; the state column is derived from the age of the last sighting, not from the raw flag.')}
-    <div class="table-wrap"><table><thead><tr><th>Device</th><th>IP</th><th>MAC</th><th>Vendor / type</th><th>Observation</th><th>Reported by</th><th>Last seen</th></tr></thead><tbody>
-      ${devices.length ? devices.map((device) => `<tr><td>${e(device.hostname || device.name || device.label || 'unknown')}</td><td class="mono">${e(device.ip || device.ip_address)}</td><td class="mono muted">${e(device.mac || device.mac_address)}</td><td>${e(device.vendor || device.device_type || device.type || '—')}</td><td>${observationPill(device.observation)}</td><td class="mono muted">${e(device.observation?.source || device.scanSource || '—')}</td><td>${date(device.observation?.lastSeenAt || device.last_seen || device.lastSeen || device.updated_at)}</td></tr>`).join('') : noRows(7)}
-    </tbody></table></div>`;
+    <p class="muted" id="networkObservationRules">${e(referenceLine)}</p>`;
+}
+
+// The collectors, the scan request, the device list and its editors live in
+// network-tools.js, which the page loads before this file.
+async function network() {
+  const [devicesBody, agentsBody, capability] = await Promise.all([api('/network/devices'), api('/network/agents'), api('/network/capability')]);
+  content.innerHTML = `${heading('Network inventory', 'Observed devices and the host-native Data collectors that can see the real LAN. From here you can ask the active collector for a scan and edit what Data records about a device: its name, known flag, type, location and notes.', '<button class="button" data-action="refresh">Refresh</button>')}
+    ${typeof netRefresher === 'object' && netRefresher ? netRefresher.stampHtml() : ''}
+    <div id="netOverview">${networkOverview(devicesBody, agentsBody, capability)}</div>
+    ${typeof netMount === 'function' ? netMount(devicesBody, agentsBody, capability) : '<div class="notice warning">The network tools script did not load. Reload the page.</div>'}`;
+  if (typeof netRefresher === 'object' && netRefresher) netRefresher.opened();
 }
 
 async function databases() {
   const result = await api('/databases/collections');
   const collections = array(result.collections);
-  content.innerHTML = `${heading('Database browser', `MongoDB ${result.database || ''}: collection metadata and bounded document inspection.`)}
+  content.innerHTML = `${heading('Database browser', `MongoDB ${result.database || ''}: collection metadata and bounded document inspection. Read when the tab opens and on Refresh.`, '<button class="button" data-action="refresh">Refresh</button>')}
     <div class="notice warning">Document contents may contain operational or personal data. Open a collection only when needed; this browser cannot modify it.</div>
-    <div class="table-wrap"><table><thead><tr><th>Collection</th><th>Documents</th><th>Logical size</th><th>Storage</th><th>Inspection</th></tr></thead><tbody>
-      ${collections.length ? collections.map((collection) => `<tr><td class="mono">${e(collection.name)}</td><td>${number(collection.count)}</td><td>${bytes(collection.size)}</td><td>${bytes(collection.storageSize)}</td><td><button class="button" data-collection="${e(collection.name)}">Inspect</button></td></tr>`).join('') : noRows(5)}
+    <div class="table-wrap stack-table"><table><thead><tr><th>Collection</th><th>Documents</th><th>Logical size</th><th>Storage</th><th>Inspection</th></tr></thead><tbody>
+      ${collections.length ? collections.map((collection) => `<tr><td class="mono" data-label="Collection">${e(collection.name)}</td><td data-label="Documents">${number(collection.count)}</td><td data-label="Logical size">${bytes(collection.size)}</td><td data-label="Storage">${bytes(collection.storageSize)}</td><td data-label="Inspection"><button class="button" data-collection="${e(collection.name)}" aria-label="Inspect ${e(collection.name)}">Inspect</button></td></tr>`).join('') : noRows(5)}
     </tbody></table></div><section id="documentInspector"></section>`;
 }
 
@@ -588,19 +661,39 @@ async function inspectCollection(name) {
   }
 }
 
-async function liveData() {
-  const [feedsBody, liveState] = await Promise.all([api('/live-data/feeds'), api('/live-data/state')]);
-  const feeds = array(feedsBody);
-  content.innerHTML = `${heading('Live Data', 'Feed health and latest retained observations. Configuration stays in the Data service.', '<button class="button" data-action="refresh">Refresh</button>')}
-    <div class="grid">
+// The counts and the feed cards: the automatic refresh repaints this block in
+// place, so the map above it and the inspector below it are left alone.
+function liveFeedsBlock(feeds, liveState) {
+  return `<div class="grid">
       ${metric(number(feeds.length), 'registered feeds')}
       ${metric(number(feeds.filter((feed) => feed.enabled).length), 'enabled feeds')}
       ${metric(number(feeds.reduce((sum, feed) => sum + Number(feed.count || 0), 0)), 'retained observations')}
       ${metric(liveState.liveDataEnabled === false ? 'paused' : 'active', 'master state')}
     </div>
     ${heading('Feed registry', 'Select a feed to inspect its five latest points.')}
-    <div class="grid two">${feeds.map((feed) => `<article class="card clickable" data-feed="${e(feed.id)}"><h3>${e(feed.label || feed.id)} ${statusPill(feed.enabled, 'enabled', 'disabled')}</h3><div class="metric-row"><span>Category</span><strong>${e(feed.category || feed.kind)}</strong></div><div class="metric-row"><span>Records</span><strong>${number(feed.count)}</strong></div><div class="metric-row"><span>Last fetch</span><strong>${date(feed.lastFetchAt)}</strong></div><div class="metric-row"><span>Last error</span><strong class="${feed.lastError ? 'bad' : 'good'}">${e(feed.lastError || 'none')}</strong></div></article>`).join('') || '<div class="empty">No feeds registered.</div>'}</div>
+    <div class="grid two">${feeds.map((feed) => `<article class="card clickable" data-feed="${e(feed.id)}"><h3>${e(feed.label || feed.id)} ${statusPill(feed.enabled, 'enabled', 'disabled')}</h3><div class="metric-row"><span>Category</span><strong>${e(feed.category || feed.kind)}</strong></div><div class="metric-row"><span>Records</span><strong>${number(feed.count)}</strong></div><div class="metric-row"><span>Last fetch</span><strong>${date(feed.lastFetchAt)}</strong></div><div class="metric-row"><span>Last error</span><strong class="${feed.lastError ? 'bad' : 'good'}">${e(feed.lastError || 'none')}</strong></div></article>`).join('') || '<div class="empty">No feeds registered.</div>'}</div>`;
+}
+
+const liveFeedsRefresher = refresherFor({
+  tab: 'live-data', everyMs: 60000, stamp: 'liveFeedsStamp', holds: true,
+  read: () => Promise.all([api('/live-data/feeds'), api('/live-data/state')]),
+  apply([feedsBody, liveState]) {
+    const block = document.querySelector('#liveFeeds');
+    if (block) block.innerHTML = liveFeedsBlock(array(feedsBody), liveState);
+  }
+});
+
+async function liveData() {
+  const [feedsBody, liveState] = await Promise.all([api('/live-data/feeds'), api('/live-data/state')]);
+  const feeds = array(feedsBody);
+  content.innerHTML = `${heading('Live Data', 'Feed health and latest retained observations. Configuration stays in the Data service.', '<button class="button" data-action="refresh">Refresh</button>')}
+    <section id="liveMap"></section>
+    ${liveFeedsRefresher ? liveFeedsRefresher.stampHtml() : ''}
+    <div id="liveFeeds">${liveFeedsBlock(feeds, liveState)}</div>
     <section id="feedInspector"></section>`;
+  liveFeedsRefresher?.opened();
+  // The world map lives in live-map.js, which the page loads before this file.
+  if (typeof liveMapOpen === 'function') await liveMapOpen(feeds, liveState);
 }
 
 // Main fields per feed kind; anything else is discoverable per row.
@@ -637,7 +730,7 @@ async function inspectFeed(feed) {
     const { tsKey, columns } = feedColumns(feed, points);
     const newest = points.length && tsKey ? points[0]?.[tsKey] : null;
     const geo = String(feed).toLowerCase() === 'iss' && points[0] && Number.isFinite(Number(points[0].latitude)) && Number.isFinite(Number(points[0].longitude))
-      ? `<p class="muted">Latest position: <span class="mono">${e(Number(points[0].latitude).toFixed(3))}, ${e(Number(points[0].longitude).toFixed(3))}</span> (latitude, longitude). Map rendering is intentionally omitted from this read-only console.</p>`
+      ? `<p class="muted">Latest position: <span class="mono">${e(Number(points[0].latitude).toFixed(3))}, ${e(Number(points[0].longitude).toFixed(3))}</span> (latitude, longitude). It is drawn on the world map above.</p>`
       : '';
     target.innerHTML = `${heading(`${feed}: latest`, `${number(points.length)} most recent retained observation${points.length === 1 ? '' : 's'} · read-only`)}
       <div class="grid">
@@ -678,15 +771,14 @@ async function janitor() {
   const metadataSummary = metadataTotalsKnown
     ? `${number(report.metadata.indexedFiles)} indexed files · ${bytes(report.metadata.indexedBytes)} total, counted once.`
     : 'Current portfolio total unavailable. Last recorded inventories are shown per root.';
-  const groups = array(report.duplicates);
   const workItems = array(report.organization?.workItems);
   const organizationCounts = comparison.organization?.counts || {};
   state.janitorReportGeneratedAt = report.generatedAt || null;
   restoreJanitorReviewDraft(state.janitorReportGeneratedAt);
-  const reviewCounts = janitorReviewCounts();
   const actions = `<div class="actions"><a class="button" href="/api/data-toolbox/janitor/strategy/latest/raw" target="_blank" rel="noopener">Open full JSON</a><a class="button" href="/api/data-toolbox/janitor/strategy/latest/raw" download="shared-drive-janitor-latest.json">Download full JSON</a><button class="button" data-action="refresh">Refresh</button></div>`;
   content.innerHTML = `${heading('Shared-drive Janitor', `Portfolio report ${report.status || 'unavailable'} · generated ${date(report.generatedAt)}.`, actions)}
-    <div class="notice success"><strong>Portfolio evidence ready for policy review.</strong> This is not an executable deletion plan. Exact candidates come from a current profile run and still require a separate SHA-256 preview; this dashboard is read-only.</div>
+    ${report.available === false ? '<div class="notice"><strong>No strategy report yet.</strong> The scheduled shared-drive assessment generates it; profiles and their latest runs are listed below.</div>' : ''}
+    <div class="notice success"${report.available === false ? ' hidden' : ''}><strong>Portfolio evidence ready for policy review.</strong> This is not an executable deletion plan. Exact candidates come from a current profile run and still require a separate SHA-256 preview; this dashboard is read-only.</div>
     ${heading('Execution boundary', 'Pinned near the top so the current safety state is always easy to verify.')}
     <div class="grid">
       ${metric(number(report.safety?.sharedDriveMutations), 'shared-drive mutations')}
@@ -735,29 +827,7 @@ async function janitor() {
       <div class="metric-row"><span>Recorded hash byte limit</span><strong>${bytes(root.latestHashingScan?.hashMaxBytes)}</strong></div>
     </article>`).join('') || '<div class="empty">No canonical root evidence is available.</div>'}</div>
 
-    ${heading('Review draft', 'Choose one survivor path per complete group, then accept it for a future preview, reject deletion, or leave it deferred. Decisions are keyed by SHA-256 and saved in this browser across refreshes, tab changes, and portfolio regenerations until you clear them; copy or download the draft to keep a file copy.', `<div class="actions"><button class="button" data-action="janitor-copy-review" ${reviewCounts.total ? '' : 'disabled'}>Copy draft</button><button class="button" data-action="janitor-download-review" ${reviewCounts.total ? '' : 'disabled'}>Download draft</button><button class="button" data-action="janitor-clear-review" ${reviewCounts.total ? '' : 'disabled'}>Clear</button></div>`)}
-    <div class="notice"><strong>${number(reviewCounts.accepted)} accepted for preview · ${number(reviewCounts.rejected)} rejected · ${number(reviewCounts.total)} decisions.</strong> This draft authorizes no filesystem mutation. “Accept” means re-hash in a later preview, never delete.</div>
-    ${state.janitorReviewDraftFrom && state.janitorReviewDraftFrom !== report.generatedAt && reviewCounts.total ? `<div class="notice">${number(Object.keys(state.janitorReview).filter((sha) => !groups.some((group) => group.sha256 === sha)).length)} of these decisions refer to groups outside this report's bounded rows (draft last captured against the report generated ${date(state.janitorReviewDraftFrom)}). They are kept — content hashes do not change between reports — and stay in the copied/downloaded draft.</div>` : ''}
-
-    ${heading('Top verified duplicate evidence', `Showing ${number(report.duplicatesShown)} of ${number(report.duplicatesTotal)} SHA-256 groups, ordered by proven savings.`)}
-    <div class="table-wrap"><table><thead><tr><th>Fingerprint / paths</th><th>Files</th><th>File size</th><th>Proven savings</th><th>Proof</th><th>Review</th></tr></thead><tbody>
-      ${groups.length ? groups.map((group) => {
-        const files = array(group.files);
-        const paths = files.map(file => file.path).filter(Boolean);
-        const complete = !group.filesOmitted && Number(group.count) === paths.length && paths.length > 1;
-        const decision = state.janitorReview[group.sha256];
-        const decisionLabel = decision?.decision === 'accept_for_preview'
-          ? `accepted · keep ${decision.keepPath}`
-          : decision?.decision === 'reject_keep_all'
-            ? 'rejected · keep all members'
-            : 'deferred';
-        const choices = complete ? files.map(file => `<label class="review-choice"><input type="radio" name="keep-${e(group.sha256)}" value="${e(file.path)}" ${decision?.keepPath === file.path ? 'checked' : ''}><span><strong>Keep this path</strong><code>${e(file.path)}</code><small>${e(label(file.storageRole))}</small></span></label>`).join('') : '';
-        const controls = complete
-          ? `<div class="review-actions"><button class="button" data-action="janitor-review-accept">Accept for preview</button><button class="button" data-action="janitor-review-reject">Reject deletion</button><button class="button" data-action="janitor-review-defer">Defer</button></div>`
-          : '<div class="notice warning">This bounded row omits members. Use the full JSON; no draft decision is allowed on incomplete evidence.</div>';
-        return `<tr data-janitor-group="${e(group.sha256)}" data-paths="${e(JSON.stringify(paths))}"><td><details><summary class="mono">${e(group.sha256).slice(0, 18)}…</summary><div class="review-choices">${choices}</div>${group.filesOmitted ? `<p class="muted">${number(group.filesOmitted)} additional paths are available in the full JSON.</p>` : ''}${controls}</details></td><td>${number(group.count)}</td><td>${bytes(group.size)}</td><td class="good"><strong>${bytes(group.provenSavingsBytes)}</strong></td><td><span class="pill good">${e(label(group.proof || 'current sha256'))}</span></td><td><span class="pill ${decision ? (decision.decision === 'accept_for_preview' ? 'good' : 'warn') : ''}">${e(decisionLabel)}</span></td></tr>`;
-      }).join('') : noRows(6, 'No verified duplicate groups are present in this report.')}
-    </tbody></table></div>`;
+    ${typeof janitorReviewSection === 'function' ? janitorReviewSection() : ''}`;
 
   content.innerHTML += `${heading('Organization priorities', `${number(report.organization?.workItemsTotal)} bounded, evidence-backed work items. None can mutate the filesystem.`)}
     <div class="priority-list">${workItems.map((item) => `<article class="priority-item"><span class="rank">${number(item.rank)}</span><div><div class="priority-heading"><h3>${e(item.title)}</h3><span class="pill ${item.priority === 'high' ? 'warn' : ''}">${e(item.priority)}</span></div><p>${e(item.rationale)}</p><div class="priority-meta"><span>${e(item.root)}</span><span>${number(item.evidence?.files)} files</span><span>${bytes(item.evidence?.bytes)}</span><span>${e(label(item.disposition))}</span></div></div></article>`).join('') || '<div class="empty">No organization work items are retained.</div>'}</div>
@@ -796,20 +866,73 @@ async function janitor() {
         return `<tr><td><strong>${e(profile.name || profile.id || profile._id)}</strong><div class="muted">${scope}</div></td><td>${run ? `${e(run.status || 'unknown')}<div class="muted">${date(summary.finishedAt)}</div>` : '—'}</td><td>${actionSet}</td><td>${review}</td></tr>`;
       }).join('') : noRows(4)}
     </tbody></table></div>`;
+  // The duplicate review (stored decisions, paging, import) lives in
+  // janitor-review.js, which the page loads before this file.
+  if (typeof janitorReviewMount === 'function') await janitorReviewMount(report);
 }
 
-const renderers = { overview, storage, files, network, databases, 'live-data': liveData, janitor };
+// The tables that become labelled blocks at phone width (display: block in
+// CSS) would lose their table semantics for assistive technology: explicit
+// roles keep rows, headers and cells announced as such at every width.
+const STACKED_TABLES = '.net-table table, .activity-table table, table.report-table, .stack-table table, .mqtt-stream table';
+function keepTableRoles() {
+  for (const table of content.querySelectorAll(STACKED_TABLES)) {
+    if (table.getAttribute('role')) continue;
+    table.setAttribute('role', 'table');
+    table.querySelectorAll('thead, tbody').forEach((group) => group.setAttribute('role', 'rowgroup'));
+    table.querySelectorAll('tr').forEach((row) => row.setAttribute('role', 'row'));
+    table.querySelectorAll('th').forEach((cell) => cell.setAttribute('role', cell.getAttribute('scope') === 'row' ? 'rowheader' : 'columnheader'));
+    table.querySelectorAll('td').forEach((cell) => cell.setAttribute('role', 'cell'));
+  }
+}
+if (typeof MutationObserver === 'function' && typeof content.querySelectorAll === 'function') {
+  new MutationObserver(keepTableRoles).observe(content, { childList: true, subtree: true });
+}
+
+const renderers = { overview, storage, network, databases, 'live-data': liveData, janitor };
+// The Files tab lives in files-tools.js, which the page loads before this file.
+if (typeof files === 'function') renderers.files = files;
+// The GPU tab lives in gpu.js, which the page loads before this file.
+if (typeof gpu === 'function') renderers.gpu = gpu;
+// The MQTT tab lives in mqtt.js, loaded the same way.
+if (typeof mqttTab === 'function') renderers.mqtt = mqttTab;
+// The Activity tab lives in activity.js, loaded the same way.
+if (typeof activityTab === 'function') renderers.activity = activityTab;
+
+// Marks the open tab in the bar for sight and for assistive technology, and
+// brings it into view when the bar scrolls sideways (phone width).
+function markActiveTab() {
+  document.querySelectorAll('[data-tab]').forEach((link) => {
+    const active = link.dataset.tab === state.tab;
+    link.classList.toggle('active', active);
+    if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+    if (active && typeof link.scrollIntoView === 'function') link.scrollIntoView({ block: 'nearest', inline: 'center' });
+  });
+}
 
 async function render(force = false) {
   const tab = location.hash.slice(1) || 'overview';
   state.tab = renderers[tab] ? tab : 'overview';
-  document.querySelectorAll('[data-tab]').forEach((link) => link.classList.toggle('active', link.dataset.tab === state.tab));
+  // A render that is no longer the latest one must not report on the page.
+  const seq = ++state.renderSeq;
+  markActiveTab();
+  shellNotice();
+  shell.failures.length = 0;
   loading();
   try {
     if (force) state.status = null;
-    await renderers[state.tab]();
-    updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
-  } catch (error) { errorView(error); }
+    const warning = await renderers[state.tab]();
+    if (seq !== state.renderSeq) return;
+    // A tab that shows a failed read as a notice in its place has drawn itself,
+    // but the header must not call that a clean read.
+    const failed = shell.failures.length;
+    shellRead('', typeof warning === 'string' && warning ? warning
+      : failed ? `${failed} read${failed === 1 ? '' : 's'} of this tab failed: ${shell.failures[0].message}` : '');
+  } catch (error) {
+    if (seq !== state.renderSeq) return;
+    errorView(error);
+    shellRead(error.message);
+  }
 }
 
 document.addEventListener('click', async (event) => {
@@ -821,18 +944,6 @@ document.addEventListener('click', async (event) => {
       loading('Loading file evidence…');
       try { await files(); } catch (error) { errorView(error); }
     }
-    if (action === 'janitor-review-accept') {
-      recordJanitorReview(event.target, 'accept_for_preview');
-      await janitor();
-    }
-    if (action === 'janitor-review-reject') {
-      recordJanitorReview(event.target, 'reject_keep_all');
-      await janitor();
-    }
-    if (action === 'janitor-review-defer') {
-      recordJanitorReview(event.target, 'defer');
-      await janitor();
-    }
     if (action === 'janitor-copy-review') {
       await copyJanitorReview();
       event.target.textContent = 'Copied';
@@ -843,7 +954,7 @@ document.addEventListener('click', async (event) => {
       await janitor();
     }
   } catch (error) {
-    window.alert(error.message);
+    shellNotice(`That did not work: ${error.message}`);
   }
   const collection = event.target.closest('[data-collection]')?.dataset.collection;
   if (collection) inspectCollection(collection);

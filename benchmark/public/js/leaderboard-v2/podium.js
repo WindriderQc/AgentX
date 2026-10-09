@@ -5,6 +5,7 @@
 
 import { scoreColor } from '../components/score-color.js';
 import { esc, isComparable } from './verdict.js';
+import { CATEGORY_KEYS, CATEGORY_META } from '../benchmark-categories.js';
 
 function _shortHost(url) {
     return String(url || '').replace(/^https?:\/\//, '').replace(/:11434$/, '');
@@ -15,21 +16,13 @@ const MEDAL_LABELS = ['Silver', 'Gold', 'Bronze'];
 const MEDAL_COLORS = ['#cfcfcf', '#ffd54f', '#cd7f32'];
 const POD_TITLES = ['Runner up', 'Champion', 'Third place'];
 
-const CATEGORIES = ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'];
-const CAT_LABELS = {
-    coding: 'Coding', reasoning: 'Reasoning', math: 'Math', knowledge: 'Knowledge',
-    instruction: 'Instruction', creative: 'Creative', translation: 'Translation'
-};
+const CATEGORIES = CATEGORY_KEYS;
+const metaMap = field => Object.fromEntries(CATEGORY_KEYS.map(key => [key, CATEGORY_META[key][field]]));
+const CAT_LABELS = metaMap('label');
 // Compact lane labels for the chips
-const CAT_SHORT = {
-    coding: 'Code', reasoning: 'Reason', math: 'Math', knowledge: 'Know',
-    instruction: 'Instr', creative: 'Create', translation: 'Transl'
-};
+const CAT_SHORT = metaMap('short');
 // Uniform ultra-short labels printed under each lane bar (full name in tooltip)
-const CAT_TINY = {
-    coding: 'Code', reasoning: 'Reas', math: 'Math', knowledge: 'Know',
-    instruction: 'Inst', creative: 'Crea', translation: 'Tran'
-};
+const CAT_TINY = metaMap('tiny');
 
 /** Per-category 0–10 scores for one entry, keyed by category (null where untested). */
 function laneScores(entry) {
@@ -320,7 +313,7 @@ function emptyState() {
     return `<div class="r-empty" style="text-align:center;padding:2rem;">
         <div style="font-size:2rem;margin-bottom:0.5rem;">🏁</div>
         <p>No rankings yet — launch a benchmark to populate the podium.</p>
-        <a href="/" class="r-nav-btn r-primary" style="display:inline-block;margin-top:0.5rem;">Launch a Benchmark</a>
+        <a href="/benchmark/" class="r-nav-btn r-primary" style="display:inline-block;margin-top:0.5rem;">Launch a Benchmark</a>
     </div>`;
 }
 

@@ -191,6 +191,9 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
       if (!upstream.ok || !Object.values(IMAGE_TYPES).includes(type)) return notFound();
       const bytes = Buffer.from(await upstream.arrayBuffer());
       if (bytes.length > MAX_GENERATED_BYTES) return notFound();
+      // Every generated picture shown to the family is also kept, full quality, in the image archive.
+      void require('../../src/services/imageArchive').defaultArchive().store({ bytes, name: path.posix.basename(ref), origin: 'generated',
+        context: { ref, space: family ? 'family' : 'personal' } }).catch(error => logger?.warn?.('Generated image archive failed', { error: error.message }));
       res.set({ 'Content-Type': type, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
       return res.end(bytes);
     } catch (error) {

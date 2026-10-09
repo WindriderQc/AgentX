@@ -10,11 +10,14 @@
 
 const API_BASE = '/api/cluster';
 const LIVE_POLL_MS = 30000;
+const TIMELINE_POLL_MS = 60000;
 const COUNTDOWN_TICK_MS = 1000;
 const SCHEDULE_DATE = window.ClusterScheduleDate;
 const UPCOMING_PROJECTION = window.ClusterScheduleUpcoming;
 const HEADLINE_PROJECTION = window.ClusterScheduleHeadline;
 const OPERATOR_TIME_ZONE = SCHEDULE_DATE.browserTimeZone();
+// One display locale for every date and time on the page, with a 24-hour clock.
+const UI_LOCALE = 'en-US';
 
 const TASK_COLORS = {
   benchmark: '#f59e0b', sync: '#3b82f6', cleanup: '#8b5cf6',
@@ -27,7 +30,7 @@ const HOST_COLORS = ['#7cf0ff', '#f97316', '#22c55e', '#a78bfa', '#f59e0b'];
 
 const SOURCE_META = {
   agentx: { label: 'AgentX', color: '#38bdf8' },
-  'agentx-system': { label: 'System Cron', color: '#f59e0b' },
+  'agentx-system': { label: 'External scheduler', color: '#f59e0b' },
   'ollama-persistent': { label: 'Persistent GPU', color: '#22c55e' }
 };
 
@@ -38,12 +41,15 @@ const CATEGORY_LABELS = {
 };
 
 let livePollTimer = null;
+let timelinePollTimer = null;
 let countdownTimer = null;
 let nextTasksData = [];
 let conflictsData = [];
+let overdueData = [];
 let claimsData = [];
 let liveHostsData = [];
 let currentDate = SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE);
+let lastObservedToday = currentDate;
 let viewMode = 'task';
 let collapsedGroups = new Set();
 let servicesCollapsed = false;
@@ -55,13 +61,31 @@ let lastServiceHoverId = null;
 let persistentServicesData = [];
 let visibleTimelineEntries = [];
 let upcomingTimelineEntries = [];
+let tooltipAnchor = null;
+let visibleTimelineHosts = [];
+let renderedTimelineMode = null;
+let lastTimelineMobile = window.innerWidth <= 700;
 
 // ── API ─────────────────────────────────────────────────────
 
+let failedRequests = 0;
+
+// Turn network failures, proxy HTML pages and API errors into short,
+// readable messages instead of raw JSON parse errors.
 async function fetchJSON(url) {
-  const res = await fetch(url);
-  const json = await res.json();
-  if (json.status !== 'success') throw new Error(json.error || 'API error');
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (_error) {
+    failedRequests += 1;
+    throw new Error('Core is unreachable');
+  }
+  let json = null;
+  try { json = await res.json(); } catch (_error) { json = null; }
+  if (!res.ok || !json || !(json.ok === true || json.status === 'success')) {
+    failedRequests += 1;
+    throw new Error(json?.message || json?.error || `Server returned HTTP ${res.status}`);
+  }
   return json.data;
 }
 
@@ -73,7 +97,7 @@ function updateDateLabel() {
   const description = SCHEDULE_DATE.describeCalendarDate(currentDate, {
     now: new Date(),
     timeZone: OPERATOR_TIME_ZONE,
-    locale: 'en-US'
+    locale: UI_LOCALE
   });
   el.textContent = description.label;
   el.setAttribute('datetime', currentDate);
@@ -83,16 +107,25 @@ function updateDateLabel() {
 function shiftDate(delta) {
   currentDate = SCHEDULE_DATE.addCalendarDays(currentDate, delta);
   updateDateLabel(); loadTimeline(); loadConflicts();
+  if (actualView === 'avp') loadActualVsPlanned();
 }
-function goToday() { currentDate = SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE); updateDateLabel(); loadTimeline(); loadConflicts(); }
+function goToday() { currentDate = SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE); updateDateLabel(); loadTimeline(); loadConflicts(); if (actualView === 'avp') loadActualVsPlanned(); }
 function setViewMode(mode) {
   viewMode = mode;
   document.getElementById('viewTask').classList.toggle('active', mode === 'task');
   document.getElementById('viewHost').classList.toggle('active', mode === 'host');
+  document.getElementById('viewTask').setAttribute('aria-pressed', String(mode === 'task'));
+  document.getElementById('viewHost').setAttribute('aria-pressed', String(mode === 'host'));
   syncTimelineFilterUI();
   loadTimeline(); loadConflicts();
 }
 function isToday() { return SCHEDULE_DATE.isToday(currentDate, new Date(), OPERATOR_TIME_ZONE); }
+function isPastDate() { return currentDate < SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE); }
+function calendarQuery() {
+  const params = new URLSearchParams({ date: currentDate });
+  if (OPERATOR_TIME_ZONE) params.set('timezone', OPERATOR_TIME_ZONE);
+  return params.toString();
+}
 
 // ── Live Host Cards (enriched) ──────────────────────────────
 
@@ -112,7 +145,8 @@ async function loadLiveState() {
     renderLiveBar(container, liveResult.value.hosts, nextTasks, { scheduleAvailable });
     updateLiveEvidence(liveResult.value);
   } else {
-    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> Loaded-model and VRAM detail unavailable: ${esc(liveResult.reason?.message || 'unknown error')}</div>`;
+    liveHostsData = [];
+    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> Host details unavailable: ${esc(liveResult.reason?.message || 'unknown error')}</div>`;
     updateLiveEvidence(null);
   }
 
@@ -129,6 +163,7 @@ async function loadLiveState() {
   } else {
     updateHeaderStatusUnavailable(ecosystemResult.reason);
   }
+  renderAttention();
 }
 
 function updateLiveEvidence(liveData) {
@@ -140,22 +175,24 @@ function updateLiveEvidence(liveData) {
     el.dataset.authority = evidence.authority;
     el.dataset.evidenceScope = evidence.scope;
     el.dataset.observedAt = evidence.observedAt;
-    el.textContent = `Loaded-model and VRAM cards are a separate runtime-detail poll observed ${formatEvidenceTime(evidence.observedAt)}. They do not set the ecosystem headline counts.`;
+    el.textContent = `Host cards polled ${formatEvidenceTime(evidence.observedAt)}.`;
+    el.title = 'Loaded models and VRAM come from polling each host directly; the host counts above come from the ecosystem snapshot.';
   } catch (_error) {
     el.dataset.status = 'unavailable';
     delete el.dataset.authority;
     delete el.dataset.evidenceScope;
     delete el.dataset.observedAt;
-    el.textContent = 'Loaded-model and VRAM detail evidence is unavailable. It is not treated as a zero measurement.';
+    el.textContent = 'Host details are unavailable right now; loaded models and VRAM are unknown, not zero.';
+    el.title = '';
   }
 }
 
 function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true } = {}) {
+  liveHostsData = hosts || [];
   if (!hosts || hosts.length === 0) {
     container.innerHTML = '<div class="cs-empty">No hosts configured</div>';
     return;
   }
-  liveHostsData = hosts;
 
   container.innerHTML = hosts.map(h => {
     const isOnline = h.status === 'online';
@@ -179,7 +216,7 @@ function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true }
     let stateBadgeClass, stateBadgeLabel;
     if (!isOnline)     { stateBadgeClass = 'down';    stateBadgeLabel = 'OFFLINE'; }
     else if (hasModels){ stateBadgeClass = 'ok';      stateBadgeLabel = 'ACTIVE'; }
-    else               { stateBadgeClass = 'idle';    stateBadgeLabel = 'IDLE'; }
+    else               { stateBadgeClass = 'idle';    stateBadgeLabel = 'NO MODEL'; }
 
     const gpuLine = h.gpu?.model || h.gpuModel || '';
 
@@ -221,7 +258,7 @@ function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true }
     if (!isOnline) {
       footerHtml = `<div class="cs-host-footer-offline"><i class="fas fa-exclamation-triangle"></i> Host unreachable</div>`;
     } else if (!scheduleAvailable) {
-      footerHtml = '<div class="cs-host-next" style="font-style:italic">Upcoming schedule evidence unavailable.</div>';
+      footerHtml = '<div class="cs-host-next" style="font-style:italic">Schedule unavailable.</div>';
     } else if (nextJob) {
       const jobCount = hostJobsSoon.length;
       const countPart = jobCount > 1 ? `<span class="cs-host-queue-count">${jobCount} jobs in next hour</span>` : '';
@@ -231,7 +268,7 @@ function renderLiveBar(container, hosts, nextTasks, { scheduleAvailable = true }
         footerHtml += `<div class="cs-host-next-gpu"><i class="fas fa-microchip"></i> Next GPU run: ${esc(nextGpuJob.model)} in ${formatCountdown(nextGpuJob.msFromNow)}</div>`;
       }
     } else {
-      footerHtml = `<div class="cs-host-next" style="font-style:italic">No scheduled jobs today</div><div class="cs-host-standby-note">Host is online and ready for queued work.</div>`;
+      footerHtml = '<div class="cs-host-next" style="font-style:italic">No scheduled jobs assigned to this host today</div>';
     }
 
     const cardClass = !isOnline ? ' down' : hasModels ? ' active' : '';
@@ -267,25 +304,25 @@ function updateHeaderStatus(headline, nextTasks, { scheduleAvailable = true, sch
   const lightJobs = scheduledNext.length - gpuJobs;
   const scheduleObservedAt = scheduleEvidence?.observedAt;
   const scheduleTitle = scheduleObservedAt && !Number.isNaN(Date.parse(scheduleObservedAt))
-    ? `Upcoming assignment projection observed ${formatEvidenceTime(scheduleObservedAt)}`
-    : 'Upcoming assignment projection';
+    ? `Schedule as of ${formatEvidenceTime(scheduleObservedAt)}`
+    : 'Schedule';
 
   let scheduleHtml;
   if (!scheduleAvailable) {
-    scheduleHtml = '<span class="cs-header-status-item warn"><i class="fas fa-clock" style="font-size:9px"></i> schedule evidence unavailable</span>';
+    scheduleHtml = '<span class="cs-header-status-item warn"><i class="fas fa-clock" style="font-size:9px"></i> schedule unavailable</span>';
   } else if (scheduledNext.length > 0) {
-    scheduleHtml = `<span class="cs-header-status-item warn" title="${esc(scheduleTitle)}"><i class="fas fa-clock" style="font-size:9px"></i> ${scheduledNext.length} next hour${gpuJobs ? ` · ${gpuJobs} GPU` : ''}${lightJobs ? ` · ${lightJobs} light` : ''}</span>`;
+    scheduleHtml = `<span class="cs-header-status-item" title="${esc(scheduleTitle)}"><i class="fas fa-clock" style="font-size:9px"></i> ${scheduledNext.length} next hour${gpuJobs ? ` · ${gpuJobs} GPU` : ''}${lightJobs ? ` · ${lightJobs} light` : ''}</span>`;
   } else {
     scheduleHtml = `<span class="cs-header-status-item" title="${esc(scheduleTitle)}"><i class="fas fa-clock" style="font-size:9px"></i> quiet next hour</span>`;
   }
 
   el.innerHTML = [
-    `<span class="cs-header-status-item" title="Canonical ecosystem snapshot observed ${esc(formatEvidenceTime(headline.observedAt))}">${headline.configuredHosts} configured hosts</span>`,
+    `<span class="cs-header-status-item" title="Ecosystem snapshot from ${esc(formatEvidenceTime(headline.observedAt))}">${headline.configuredHosts} configured hosts</span>`,
     `<span class="cs-header-status-item ${headline.onlineHosts > 0 ? 'ok' : ''}"><i class="fas fa-circle" style="font-size:7px"></i> ${headline.onlineHosts} online</span>`,
     `<span class="cs-header-status-item ${headline.offlineHosts > 0 ? 'err' : ''}">${headline.offlineHosts} offline</span>`,
-    `<span class="cs-header-status-item"><i class="fas fa-tags" style="font-size:9px"></i> ${headline.observedModels} observed model tags</span>`,
+    `<span class="cs-header-status-item"><i class="fas fa-tags" style="font-size:9px"></i> ${headline.observedModels} model tags</span>`,
     scheduleHtml,
-  ].filter(Boolean).join('<span style="color:#1e293b"> · </span>');
+  ].filter(Boolean).join('<span class="cs-header-sep" aria-hidden="true"> · </span>');
 }
 
 function updateHeaderStatusUnavailable(error) {
@@ -295,7 +332,7 @@ function updateHeaderStatusUnavailable(error) {
   delete el.dataset.authority;
   delete el.dataset.evidenceScope;
   delete el.dataset.observedAt;
-  el.innerHTML = `<span class="cs-header-status-item err"><i class="fas fa-triangle-exclamation"></i> Ecosystem headline unavailable${error?.message ? `: ${esc(error.message)}` : ''}</span>`;
+  el.innerHTML = `<span class="cs-header-status-item err"><i class="fas fa-triangle-exclamation"></i> Host summary unavailable${error?.message ? `: ${esc(error.message)}` : ''}</span>`;
 }
 
 // ── Timeline ────────────────────────────────────────────────
@@ -303,8 +340,14 @@ function updateHeaderStatusUnavailable(error) {
 async function loadTimeline() {
   const container = document.getElementById('heatmapContainer');
   try {
+    const endpoint = viewMode === 'host' ? 'timeline-by-host' : 'timeline';
+    const [data, schedules] = await Promise.all([
+      fetchJSON(`${API_BASE}/schedule/${endpoint}?${calendarQuery()}`),
+      fetchJSON(`${API_BASE}/schedule?enabled=true`).catch(() => ({ entries: [] }))
+    ]);
+    const enrich = entries => UPCOMING_PROJECTION.withScheduleDetails(entries, schedules.entries);
     if (viewMode === 'host') {
-      const data = await fetchJSON(`${API_BASE}/schedule/timeline-by-host?date=${currentDate}`);
+      data.hosts = data.hosts.map(host => ({ ...host, tasks: enrich(host.tasks) }));
       document.getElementById('servicesStrip').style.display = 'none';
       upcomingTimelineEntries = data.hosts.flatMap(host => host.tasks || []);
       const hosts = data.hosts.map(host => ({
@@ -312,11 +355,12 @@ async function loadTimeline() {
         tasks: filterTimelineEntries(host.tasks || [])
       }));
       visibleTimelineEntries = hosts.flatMap(host => host.tasks || []);
+      visibleTimelineHosts = hosts;
+      renderedTimelineMode = 'host';
       renderHostHeatmap(container, hosts);
       renderLegendFromHosts(hosts);
     } else {
-      const data = await fetchJSON(`${API_BASE}/schedule/timeline?date=${currentDate}`);
-      const { persistent, scheduled } = splitTimeline(data.timeline);
+      const { persistent, scheduled } = splitTimeline(enrich(data.timeline));
       const continuousServices = persistent.filter(entry => entry.source !== 'ollama-persistent');
       persistentServicesData = persistent;
       upcomingTimelineEntries = scheduled;
@@ -325,15 +369,21 @@ async function loadTimeline() {
       const visibleServices = continuousServices;
       const visibleScheduled = filterTimelineEntries(scheduled);
       visibleTimelineEntries = visibleScheduled;
+      renderedTimelineMode = 'task';
 
       renderServicesStrip(visibleServices);
       renderGroupedHeatmap(container, visibleScheduled);
       renderLegend(visibleScheduled);
     }
+    overdueData = isToday()
+      ? UPCOMING_PROJECTION.findOverdueEntries(upcomingTimelineEntries, { now: Date.now() })
+      : [];
     loadNextTasks();
   } catch (err) {
+    overdueData = [];
     container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
   }
+  renderAttention();
 }
 
 // Split timeline into 24/7 continuous services vs schedulable jobs.
@@ -362,10 +412,7 @@ function isNoGpuTaskEntry(entry) {
 }
 
 function isHighFrequencyLightJob(entry) {
-  if (!isNoGpuTaskEntry(entry)) return false;
-  const slots = entry?.slots || [];
-  const isContinuous = slots.length === 1 && slots[0]?.continuous;
-  return isContinuous || slots.length > 12;
+  return UPCOMING_PROJECTION.isHighFrequencyLightJob(entry);
 }
 
 function setTimelineFilter(filterName, checked) {
@@ -382,13 +429,13 @@ function syncTimelineFilterUI() {
 // ── Grouped Task Heatmap ────────────────────────────────────
 
 function renderGroupedHeatmap(container, timeline) {
+  if (window.innerWidth <= 700) { renderMobileTimeline(container, timeline); return; }
   if (!timeline || timeline.length === 0) {
     container.innerHTML = '<div class="cs-empty">No scheduled jobs for this day</div>';
     return;
   }
 
   const currentHour = isToday() ? new Date().getHours() : -1;
-  const nowMinuteFrac = isToday() ? new Date().getMinutes() / 60 : -1;
 
   // Group by taskType
   const groups = {};
@@ -423,7 +470,7 @@ function renderGroupedHeatmap(container, timeline) {
     const countLabel = gpuCount > 0
       ? `${gpuCount} AI job${gpuCount !== 1 ? 's' : ''}${infraCount > 0 ? `, ${infraCount} sys` : ''}`
       : `${infraCount} sys job${infraCount !== 1 ? 's' : ''}`;
-    html += `<div class="cs-group-header" onclick="toggleGroup('${groupKey}')">
+    html += `<div class="cs-group-header" role="button" tabindex="0" aria-expanded="${!isCollapsed}" data-group-key="${esc(groupKey)}">
       <i class="fas fa-caret-down toggle ${toggleIcon}"></i>
       <span style="color:${color}">${(groupKey).toUpperCase()}</span>
       <span class="cs-group-count">${countLabel}</span>
@@ -446,24 +493,16 @@ function renderGroupedHeatmap(container, timeline) {
       for (let h = 0; h < 24; h++) {
         const pastClass = isToday() && h < currentHour ? ' past' : '';
         const slotsHtml = getSlotSegments(entry.slots, h, h + 1, entry.taskType, entry.name, isInfra, { host: entry.host, source: entry.source, model: entry.model, estimatedDurationMs: entry.estimatedDurationMs, vramMb: entry.vramMb });
-        html += `<div class="cs-hm-cell${pastClass}${hiddenClass}" data-hour="${h}" data-name="${esc(entry.name)}" data-type="${entry.taskType}">${slotsHtml}</div>`;
+        html += `<div class="cs-hm-cell${pastClass}${hiddenClass}" data-hour="${h}" data-name="${esc(entry.name)}" data-type="${esc(entry.taskType)}">${slotsHtml}</div>`;
       }
     }
   }
 
   html += '</div>';
 
-  // Now line
-  if (isToday() && currentHour >= 0) {
-    const gridCols = 25; // 1 label + 24 hours
-    const labelWidthPx = 230;
-    const nowPct = ((currentHour + nowMinuteFrac) / 24) * 100;
-    html += `<div class="cs-now-line" style="left:calc(${labelWidthPx}px + ${nowPct}% * (100% - ${labelWidthPx}px) / 100%)"></div>`;
-  }
-
   container.innerHTML = html;
 
-  // Position now line precisely using JS after render
+  // The now line is measured from the rendered grid.
   if (isToday()) positionNowLine(container);
   attachTooltipEvents(container);
 }
@@ -473,7 +512,7 @@ function positionNowLine(container) {
   if (!grid) return;
   const nowFrac = (new Date().getHours() + new Date().getMinutes() / 60) / 24;
   const gridRect = grid.getBoundingClientRect();
-  // First column is the label column (200px)
+  // Cells start after the label column, whatever its rendered width.
   const firstCell = grid.querySelector('.cs-hm-cell');
   if (!firstCell) return;
   const cellsStart = firstCell.getBoundingClientRect().left - gridRect.left;
@@ -495,14 +534,26 @@ function positionNowLine(container) {
 }
 
 function toggleGroup(groupKey) {
+  const hadFocus = document.activeElement?.dataset?.groupKey === groupKey;
   if (collapsedGroups.has(groupKey)) collapsedGroups.delete(groupKey);
   else collapsedGroups.add(groupKey);
-  loadTimeline();
+  const container = document.getElementById('heatmapContainer');
+  hideTooltip();
+  renderGroupedHeatmap(container, visibleTimelineEntries);
+  if (hadFocus) {
+    [...container.querySelectorAll('.cs-group-header')]
+      .find(header => header.dataset.groupKey === groupKey)?.focus();
+  }
 }
 
 // ── Host Gantt View ─────────────────────────────────────────
 
 function renderHostHeatmap(container, hosts) {
+  if (window.innerWidth <= 700) {
+    renderMobileTimeline(container, (hosts || []).flatMap(host =>
+      (host.tasks || []).map(task => ({ ...task, host: task.host || host.hostId }))));
+    return;
+  }
   if (!hosts || hosts.length === 0) {
     container.innerHTML = '<div class="cs-empty">No hosts configured</div>';
     return;
@@ -517,7 +568,7 @@ function renderHostHeatmap(container, hosts) {
 
   for (const host of hosts) {
     const vramInfo = host.vramCapacityMb ? `${(host.vramCapacityMb / 1024).toFixed(0)} GB` : '';
-    html += `<div class="cs-host-row-label"><i class="fas fa-server" style="color:#7cf0ff;font-size:10px"></i> ${esc(host.hostName)} ${vramInfo ? `<span class="cs-vram-info">${vramInfo}</span>` : ''}</div>`;
+    html += `<div class="cs-host-row-label" title="${esc(host.hostName)}${vramInfo ? ' · ' + vramInfo : ''}"><i class="fas fa-server" style="color:#7cf0ff;font-size:10px"></i> ${esc(host.hostName)} ${vramInfo ? `<span class="cs-vram-info">${vramInfo}</span>` : ''}</div>`;
 
     for (let h = 0; h < 24; h++) {
       const pastClass = isToday() && h < currentHour ? ' past' : '';
@@ -553,53 +604,71 @@ function getSlotSegments(slots, hourStart, hourEnd, taskType, taskName, isInfra 
     const width = ((visEnd - visStart) * 100).toFixed(1);
     const contClass = slot.continuous ? ' continuous' : '';
     const infraClass = isInfra ? ' infra' : '';
-    html += `<div class="cs-hm-slot ${taskType}${contClass}${infraClass}"
+    html += `<div class="cs-hm-slot cs-timeline-detail ${esc(taskType)}${contClass}${infraClass}"
       style="left:${left}%;width:${width}%"
-      data-tt-name="${esc(taskName)}"
-      data-tt-type="${esc(taskType)}"
-      data-tt-time="${esc(formatTime(slotStart))}–${esc(formatTime(slotEnd))}"
-      data-tt-host="${esc(meta.host || '')}"
-      data-tt-source="${esc(meta.source || '')}"
-      data-tt-model="${esc(meta.model || '')}"
-      data-tt-duration="${meta.estimatedDurationMs || 0}"
-      data-tt-vram="${meta.vramMb || 0}"
-      data-tt-infra="${isInfra ? '1' : '0'}"></div>`;
+      ${slotDetailAttributes(taskType, taskName, isInfra, meta, slotStart, slotEnd)}></div>`;
   }
   return html;
 }
 
+function slotDetailAttributes(taskType, name, isInfra, meta, start, end) {
+  const time = `${formatTime(start)}–${formatTime(end)}`;
+  return `tabindex="0" role="button" aria-label="${esc(`${name}, ${time}, ${getHostMeta(meta.host).label}`)}"
+    data-tt-name="${esc(name)}" data-tt-type="${esc(taskType)}" data-tt-time="${esc(time)}"
+    data-tt-host="${esc(meta.host || '')}" data-tt-source="${esc(meta.source || '')}"
+    data-tt-model="${esc(meta.model || '')}" data-tt-duration="${meta.estimatedDurationMs || 0}"
+    data-tt-vram="${meta.vramMb || 0}" data-tt-infra="${isInfra ? '1' : '0'}"`;
+}
+
+function renderMobileTimeline(container, entries) {
+  const remaining = UPCOMING_PROJECTION.buildRemainingTimelineSlots(entries);
+  if (!remaining.length) {
+    container.innerHTML = isPastDate()
+      ? '<div class="cs-empty">This day is over; no upcoming tasks remain.</div>'
+      : '<div class="cs-empty">No upcoming tasks</div>';
+    return;
+  }
+  container.innerHTML = `<ol class="cs-mobile-timeline">${remaining.map(({ entry, slot }) => {
+    const start = new Date(slot.start), end = new Date(slot.end);
+    const host = getHostMeta(entry.host).label;
+    return `<li><div class="cs-mobile-slot cs-timeline-detail"
+      ${slotDetailAttributes(entry.taskType, entry.name, isNoGpuTaskEntry(entry), entry, start, end)}>
+      <time datetime="${esc(slot.start)}">${esc(formatTime(start))}</time>
+      <span class="cs-mobile-name" title="${esc(entry.name)}">${esc(entry.name)}</span>
+      <span class="cs-mobile-meta"><span title="${esc(host)}">${esc(host)}</span>
+        <span class="cs-task-badge ${esc(entry.taskType)}">${esc(entry.taskType)}</span></span>
+    </div></li>`;
+  }).join('')}</ol>`;
+  attachTooltipEvents(container);
+}
+
 function getHostMeta(hostId) {
   if (!hostId || hostId === 'unassigned') {
-    return { id: 'unassigned', label: 'Host not declared', color: '#94a3b8' };
+    return { id: 'unassigned', label: 'No host assigned', color: '#94a3b8' };
   }
   const index = Math.abs([...String(hostId)].reduce((sum, char) => sum + char.charCodeAt(0), 0)) % HOST_COLORS.length;
   const live = liveHostsData.find(host => host.id === hostId);
   return { id: hostId, label: live?.name || hostId, color: HOST_COLORS[index] };
 }
 
-function getSourceMeta(sourceId) {
+function getSourceMeta(sourceId, metadata) {
   if (!sourceId) return { label: 'Unknown', color: '#64748b' };
+  if (sourceId === 'agentx-system' && metadata?.scheduler === 'openclaw') {
+    return { label: 'OpenClaw mirror', color: '#f59e0b' };
+  }
   return SOURCE_META[sourceId] || { label: sourceId, color: '#64748b' };
 }
 
 // ── Conflicts ───────────────────────────────────────────────
 
 async function loadConflicts() {
-  const banner = document.getElementById('conflictBanner');
-  const text = document.getElementById('conflictText');
   try {
-    const data = await fetchJSON(`${API_BASE}/schedule/conflicts?date=${currentDate}`);
+    const data = await fetchJSON(`${API_BASE}/schedule/conflicts?${calendarQuery()}`);
     conflictsData = data.conflicts || [];
-    if (conflictsData.length > 0) {
-      const summaries = conflictsData.map(c => `${c.taskA.name} + ${c.taskB.name} on ${c.hostId}`);
-      const unique = [...new Set(summaries)];
-      text.textContent = `${data.count} conflict${data.count > 1 ? 's' : ''}: ${unique.slice(0, 3).join('; ')}${unique.length > 3 ? ` (+${unique.length - 3} more)` : ''}`;
-      banner.classList.remove('hidden');
-    } else {
-      banner.classList.add('hidden');
-    }
-    renderAttention();
-  } catch { banner.classList.add('hidden'); renderAttention(); }
+  } catch {
+    conflictsData = [];
+  }
+  renderAttention();
 }
 
 async function loadClaims() {
@@ -615,63 +684,13 @@ async function loadClaims() {
   }
 }
 
-// ── Attention Tab ───────────────────────────────────────────
-
-function renderAttention() {
-  const container = document.getElementById('attentionList');
-  const items = [];
-
-  // Conflicts
-  for (const c of conflictsData) {
-    items.push({ type: 'error', icon: 'fa-bolt', label: 'Schedule conflict',
-      detail: `${c.taskA.name} overlaps ${c.taskB.name} on ${c.hostId}` });
-  }
-
-  // Down hosts (from live bar data)
-  document.querySelectorAll('.cs-host-card.down').forEach(card => {
-    const name = card.querySelector('.cs-host-name')?.textContent || 'Host';
-    items.push({ type: 'error', icon: 'fa-server', label: `${name} unreachable`, detail: 'Host is not responding to Ollama API polling' });
-  });
-
-  // Tasks showing "Now" in next up = possibly overdue
-  for (const t of nextTasksData) {
-    if (t.msFromNow <= 0) {
-      items.push({ type: 'warn', icon: 'fa-clock', label: `${t.name} overdue`, detail: `Was expected to run — may be stale or stuck` });
-    }
-  }
-
-  if (items.length === 0) {
-    container.innerHTML = `
-      <div style="padding:12px 4px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <i class="fas fa-check-circle" style="color:#22c55e;font-size:16px"></i>
-          <span style="font-size:13px;font-weight:600;color:#22c55e">No issues detected</span>
-        </div>
-        <div style="font-size:11px;color:#374151;display:flex;flex-direction:column;gap:4px">
-          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>0 schedule conflicts</div>
-          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>0 overdue tasks</div>
-          <div><i class="fas fa-check" style="color:#374151;margin-right:6px;font-size:9px"></i>All reachable hosts online</div>
-        </div>
-      </div>`;
-    return;
-  }
-
-  container.innerHTML = items.map(it => `
-    <div class="cs-attn-item${it.type === 'warn' ? ' warn' : ''}">
-      <span class="cs-attn-icon"><i class="fas ${it.icon}"></i></span>
-      <span class="cs-attn-label">${esc(it.label)}</span>
-      <div class="cs-attn-detail">${esc(it.detail)}</div>
-    </div>
-  `).join('');
-}
-
 function renderClaims(container) {
   if (!claimsData.length) {
     container.innerHTML = `
       <div class="cs-empty cs-claims-empty">
         <i class="fas fa-feather-pointed"></i>
-        <div>No live soft claims</div>
-        <div class="cs-claims-empty-note">Scheduler advisory reservations will appear here when consumers request placement.</div>
+        <div>No active placement claims</div>
+        <div class="cs-claims-empty-note">Claims appear here when a job reserves a host before it runs.</div>
       </div>`;
     return;
   }
@@ -698,14 +717,26 @@ function renderClaims(container) {
 // ── Tooltip ─────────────────────────────────────────────────
 
 function attachTooltipEvents(container) {
-  container.querySelectorAll('.cs-hm-slot').forEach(el => {
+  container.querySelectorAll('.cs-timeline-detail').forEach(el => {
     el.addEventListener('mouseenter', showTooltip);
-    el.addEventListener('mouseleave', hideTooltip);
+    el.addEventListener('mouseleave', () => { if (document.activeElement !== el) hideTooltip(); });
     el.addEventListener('mousemove', moveTooltip);
+    el.addEventListener('focus', showTooltip);
+    el.addEventListener('blur', hideTooltip);
+    el.addEventListener('click', showTooltip);
+    el.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      showTooltip(event);
+    });
   });
 }
 function showTooltip(e) {
-  const d = e.target.dataset;
+  const anchor = e.currentTarget || e.target;
+  if (tooltipAnchor && tooltipAnchor !== anchor) tooltipAnchor.removeAttribute('aria-describedby');
+  tooltipAnchor = anchor;
+  anchor.setAttribute('aria-describedby', 'tooltip');
+  const d = anchor.dataset;
   const name    = d.ttName || '';
   const type    = d.ttType || '';
   const time    = d.ttTime || '';
@@ -730,24 +761,36 @@ function showTooltip(e) {
 
   const typeColor = TASK_COLORS[type] || '#64748b';
   document.getElementById('tooltipType').innerHTML =
-    type ? `<span style="color:${typeColor}">${type.toUpperCase()}</span>` : '';
+    type ? `<span style="color:${typeColor}">${esc(type.toUpperCase())}</span>` : '';
   document.getElementById('tooltipName').textContent = name;
   document.getElementById('tooltipRows').innerHTML = rows.join('');
   document.getElementById('tooltip').classList.add('visible');
+  document.getElementById('tooltip').setAttribute('aria-hidden', 'false');
+  moveTooltip(e);
 }
 
 function row(icon, text, cls) {
   return `<div class="cs-tooltip-row"><i class="fas ${icon}"></i><span class="${cls}">${esc(text)}</span></div>`;
 }
 
-function hideTooltip() { document.getElementById('tooltip').classList.remove('visible'); }
+function hideTooltip() {
+  const tooltip = document.getElementById('tooltip');
+  tooltip.classList.remove('visible');
+  tooltip.setAttribute('aria-hidden', 'true');
+  tooltipAnchor?.removeAttribute('aria-describedby');
+  tooltipAnchor = null;
+}
 function moveTooltip(e) {
   const t = document.getElementById('tooltip');
+  const rect = (e.currentTarget || tooltipAnchor)?.getBoundingClientRect();
+  if (!rect) return;
   const margin = 12;
-  let left = e.clientX + 14;
-  let top  = e.clientY - 10;
-  if (left + 310 > window.innerWidth) left = e.clientX - 320;
-  if (top  + 200 > window.innerHeight) top = e.clientY - 160;
+  const pointer = e.type === 'mouseenter' || e.type === 'mousemove';
+  let left = pointer ? e.clientX + 14 : rect.left;
+  let top = pointer ? e.clientY + 14 : rect.bottom + 10;
+  left = Math.max(margin, Math.min(left, window.innerWidth - t.offsetWidth - margin));
+  if (top + t.offsetHeight > window.innerHeight - margin) top = rect.top - t.offsetHeight - 10;
+  top = Math.max(margin, top);
   t.style.left = left + 'px';
   t.style.top  = top  + 'px';
 }
@@ -763,7 +806,9 @@ async function loadNextTasks() {
 
 function renderNextTasks(container) {
   if (nextTasksData.length === 0) {
-    container.innerHTML = '<div class="cs-empty">No upcoming tasks</div>';
+    container.innerHTML = isPastDate()
+      ? '<div class="cs-empty">This day is over; no upcoming tasks remain.</div>'
+      : '<div class="cs-empty">No upcoming tasks</div>';
     return;
   }
 
@@ -774,39 +819,39 @@ function renderNextTasks(container) {
   let html = '';
 
   if (scheduledTasks.length > 0) {
-    html += `<div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;padding:2px 0 6px">Scheduled Jobs <span style="font-weight:400;color:#64748b">${scheduledTasks.length}</span></div>`;
-    html += scheduledTasks.map((task, i) => renderNextItem(task, i)).join('');
+    html += `<div class="cs-next-section">Scheduled Jobs <span class="cs-next-section-meta">${scheduledTasks.length}</span></div>`;
+    html += scheduledTasks.map(task => renderNextItem(task, nextTasksData.indexOf(task))).join('');
   }
 
   if (sysTasks.length > 0) {
     const due = sysTasks.filter(t => t.msFromNow <= 0).length;
     const dueSoon = sysTasks.filter(t => t.msFromNow > 0 && t.msFromNow < 300000).length;
     const upcomingOccurrences = sysTasks.reduce((total, task) => total + (task.occurrenceCount || 1), 0);
-    html += `<div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;padding:8px 0 6px;margin-top:4px;border-top:1px solid rgba(255,255,255,0.05)">
+    html += `<div class="cs-next-section cs-next-section-split">
       System Ticks
-      <span style="color:#64748b;font-weight:400;font-size:9px"> ${sysTasks.length} job${sysTasks.length === 1 ? '' : 's'} · ${upcomingOccurrences} upcoming occurrence${upcomingOccurrences === 1 ? '' : 's'}</span>
-      ${due > 0 ? `<span style="color:#94a3b8;font-weight:400;font-size:9px"> · ${due} due now</span>` : ''}
-      ${dueSoon > 0 ? `<span style="color:#94a3b8;font-weight:400;font-size:9px"> · ${dueSoon} in &lt;5m</span>` : ''}
+      <span class="cs-next-section-meta"> ${sysTasks.length} job${sysTasks.length === 1 ? '' : 's'} · ${upcomingOccurrences} upcoming run${upcomingOccurrences === 1 ? '' : 's'}</span>
+      ${due > 0 ? `<span class="cs-next-section-meta"> · ${due} due now</span>` : ''}
+      ${dueSoon > 0 ? `<span class="cs-next-section-meta"> · ${dueSoon} in &lt;5m</span>` : ''}
     </div>`;
-    html += sysTasks.map((task, i) => renderNextItem(task, scheduledTasks.length + i)).join('');
+    html += sysTasks.map(task => renderNextItem(task, nextTasksData.indexOf(task))).join('');
   }
 
   container.innerHTML = html || '<div class="cs-empty">No upcoming tasks</div>';
 }
 
 function renderNextItem(task, i) {
-  const sourceMeta = getSourceMeta(task.source);
+  const sourceMeta = getSourceMeta(task.source, task.metadata);
   const sourceClass = task.source || 'agentx';
   const hostLabel = task.host ? getHostMeta(task.host).label : '';
-  const cadenceLabel = isServiceTick(task) ? `every ${formatInterval(task.intervalMs)}` : '';
+  const cadenceLabel = isServiceTick(task) ? getCadenceLabel(task) : '';
   return `
     <div class="cs-next-item">
       <div style="min-width:0;flex:1">
         <div class="cs-next-name">${esc(task.name)}</div>
         <div class="cs-next-meta">
-          <span class="cs-task-badge ${task.taskType}">${task.taskType}</span>
+          <span class="cs-task-badge ${esc(task.taskType)}">${esc(task.taskType)}</span>
           ${hostLabel ? `<span style="font-size:10px"><i class="fas fa-server" style="font-size:8px;margin-right:2px"></i>${esc(hostLabel)}</span>` : ''}
-          <span class="cs-source-chip ${sourceClass}">${esc(sourceMeta.label)}</span>
+          <span class="cs-source-chip ${sourceClass}" title="${esc(task.lastRun ? `Last run ${task.metadata?.lastStatus || 'unknown'} ${formatEvidenceTime(task.lastRun)}` : 'Planned run; no run recorded yet')}">${esc(sourceMeta.label)}</span>
           ${cadenceLabel ? `<span class="cs-source-chip cadence">${esc(cadenceLabel)}</span>` : ''}
           ${task.occurrenceLabel ? `<span class="cs-source-chip cadence">${esc(task.occurrenceLabel)}</span>` : ''}
         </div>
@@ -816,7 +861,7 @@ function renderNextItem(task, i) {
 }
 
 function formatClockTime(value) {
-  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(value).toLocaleTimeString(UI_LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
 function startCountdown() {
@@ -827,8 +872,8 @@ function startCountdown() {
     nextTasksData.forEach((task, i) => {
       const el = document.getElementById(`countdown-${i}`);
       if (!el) return;
-      if (task.displayMode === 'time') {
-        el.textContent = task.displayText || '';
+      if (task.running || task.displayMode === 'time') {
+        el.textContent = formatUpcomingDisplay(task);
         return;
       }
       el.textContent = formatCountdown(Math.max(0, task.msFromNow - elapsed));
@@ -846,6 +891,7 @@ function buildUpcomingTasksFromTimeline(entries) {
 }
 
 function formatUpcomingDisplay(task) {
+  if (task.running) return 'Running';
   if (task.displayMode === 'time') return task.displayText || '';
   return formatCountdown(task.msFromNow);
 }
@@ -856,18 +902,19 @@ function esc(s) {
   return window.AgentXUtils.escapeHtml(s);
 }
 function formatTime(date) {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  return date.toLocaleTimeString(UI_LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 function formatEvidenceTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'at an unknown time';
-  return date.toLocaleString([], {
+  return date.toLocaleString(UI_LOCALE, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit'
+    second: '2-digit',
+    hourCycle: 'h23'
   });
 }
 function formatDuration(ms) {
@@ -897,256 +944,14 @@ function formatCountdown(ms) {
   return `${sec}s`;
 }
 
-// Derive a short cadence label from slot count for timeline row labels
+// Use the declared interval or the chronological cron starts, never slot count guesses.
 function getCadenceLabel(entry) {
-  const n = entry.slots?.length || 0;
-  if (n === 0) return '';
-  if (n === 1 && entry.slots[0]?.continuous) return '24/7';
-  if (n >= 1000) return 'q1m';   // every minute or faster
-  if (n >= 200)  return 'q5m';   // every ~5 min
-  if (n >= 80)   return 'q10m';  // every ~10 min
-  if (n >= 40)   return 'q15m';  // every ~15 min
-  if (n >= 26)   return 'q30m';  // every ~30 min
-  if (n >= 20)   return 'hrly';  // roughly hourly (20-25/day)
-  if (n >= 11)   return 'q2h';   // every ~2 hours (12/day)
-  if (n >= 6)    return 'q4h';   // every ~4 hours
-  if (n >= 3)    return 'q8h';   // every ~8 hours
-  if (n === 2)   return '2×/d';
-  if (n === 1) {
-    // Show start time for single daily jobs
-    try {
-      const t = new Date(entry.slots[0].start);
-      return `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
-    } catch { return 'daily'; }
-  }
-  return `${n}×/d`;
+  return UPCOMING_PROJECTION.getCadenceLabel(entry, value => formatTime(new Date(value)));
 }
 
-// Service tick = mirrors splitTimeline threshold: short interval OR >12 runs/day
-// Consistent with what goes into the background services strip (slots.length > 12)
+// Shared with the timeline's high-frequency light-job filter.
 function isServiceTick(task) {
-  if (!task) return false;
-  if (task.scheduleType === 'interval' && task.intervalMs && task.intervalMs < 3600000) return true;
-  if (task.dailyCount && task.dailyCount > 12) return true;
-  return false;
-}
-
-// ── Actual Utilization ──────────────────────────────────────
-
-function setActualView(mode) {
-  actualView = mode;
-  document.getElementById('btnHeatmap').classList.toggle('active', mode === 'heatmap');
-  document.getElementById('btnAvp').classList.toggle('active', mode === 'avp');
-  if (mode === 'heatmap') loadActualHeatmap();
-  else loadActualVsPlanned();
-}
-
-function actualViewChanged() {
-  if (actualView === 'heatmap') loadActualHeatmap();
-  else loadActualVsPlanned();
-}
-
-// Utilization colour ramp: 0% → dim, 1-20% → green, 20-50% → lime, 50-75% → amber, 75-90% → orange, 90%+ → red
-function utilColor(pct) {
-  if (pct <= 0) return 'rgba(255,255,255,0.04)';
-  if (pct < 20)  return '#22c55e';
-  if (pct < 50)  return '#84cc16';
-  if (pct < 75)  return '#f59e0b';
-  if (pct < 90)  return '#f97316';
-  return '#ef4444';
-}
-
-function renderUtilLegend() {
-  const bar = document.getElementById('utilLegendBar');
-  if (!bar) return;
-  const legend = document.getElementById('utilLegend');
-  legend.style.display = 'flex';
-  const stops = [0, 10, 25, 45, 65, 80, 95];
-  bar.innerHTML = stops.map(p => {
-    const c = utilColor(p);
-    const op = p === 0 ? 0.15 : 0.2 + (p / 100) * 0.8;
-    return `<div class="cs-util-swatch" style="background:${c};opacity:${op.toFixed(2)}" title="${p}%"></div>`;
-  }).join('');
-}
-
-async function loadActualHeatmap() {
-  const days = parseInt(document.getElementById('heatmapDays')?.value || '7', 10);
-  const container = document.getElementById('actualContent');
-  container.innerHTML = '<div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading heatmap...</div>';
-  try {
-    const res = await fetch(`${API_BASE}/schedule/heatmap?days=${days}`);
-    const json = await res.json();
-    if (json.status !== 'success') throw new Error(json.error || 'API error');
-    const hasObservedEvidence = renderUtilHeatmap(container, json.data);
-    if (hasObservedEvidence) renderUtilLegend();
-    else document.getElementById('utilLegend').style.display = 'none';
-  } catch (err) {
-    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
-    document.getElementById('utilLegend').style.display = 'none';
-  }
-}
-
-function renderUtilHeatmap(container, data) {
-  // data: { hosts: string[], days: string[], grid: { [host]: number[][] } }
-  const { hosts = [], days = [], grid = {} } = data;
-  if (!hosts.length || !days.length) {
-    container.innerHTML = '<div class="cs-empty">No utilization evidence observed yet. Inference calls will populate this view after telemetry is recorded.</div>';
-    return false;
-  }
-
-  const hasObservedEvidence = hosts.some(host => (grid[host] || []).some(day =>
-    Array.isArray(day) && day.some(value => Number.isFinite(value))
-  ));
-  if (!hasObservedEvidence) {
-    container.innerHTML = '<div class="cs-empty">No utilization evidence observed yet. Configured hosts are not treated as zero-utilization measurements.</div>';
-    return false;
-  }
-
-  let html = '';
-  for (const host of hosts) {
-    const rows = grid[host] || [];
-    const hostHasEvidence = rows.some(day =>
-      Array.isArray(day) && day.some(value => Number.isFinite(value))
-    );
-    if (!hostHasEvidence) continue;
-
-    // grid is days-major, hours-minor: rows[dayIdx][hourIdx]
-    html += `<div style="margin-bottom:20px">
-      <div style="font-size:12px;font-weight:600;color:#fff;margin-bottom:8px">
-        <i class="fas fa-server" style="color:#7cf0ff;margin-right:6px;font-size:10px"></i>${esc(host)}
-      </div>
-      <div style="overflow-x:auto">
-        <div class="cs-util-grid" style="grid-template-columns:70px repeat(24,1fr);min-width:640px;gap:2px">`;
-
-    // Header: hour labels
-    html += '<div class="cs-util-h-label"></div>';
-    for (let h = 0; h < 24; h++) {
-      html += `<div class="cs-util-h-label">${String(h).padStart(2, '0')}</div>`;
-    }
-
-    // Rows: one per day
-    for (let di = 0; di < days.length; di++) {
-      const dateLabel = SCHEDULE_DATE.formatCalendarDate(days[di], {
-        locale: 'en-US',
-        format: { month: 'short', day: 'numeric' }
-      });
-      html += `<div class="cs-util-label-cell">${dateLabel}</div>`;
-      const hourRow = rows[di] || new Array(24).fill(null);
-      for (let h = 0; h < 24; h++) {
-        const rawPct = hourRow[h];
-        const observed = Number.isFinite(rawPct);
-        const pct = observed ? rawPct : 0;
-        const color = utilColor(pct);
-        const opacity = !observed ? 0.025 : pct <= 0 ? 0.06 : Math.max(0.2, pct / 100);
-        html += `<div class="cs-util-cell" style="background:${color};opacity:${opacity.toFixed(2)}"
-          title="${dateLabel} ${String(h).padStart(2, '0')}:00 — ${observed ? `${pct.toFixed(0)}% utilization` : 'utilization evidence not observed'}"></div>`;
-      }
-    }
-
-    html += '</div></div></div>';
-  }
-
-  container.innerHTML = html || '<div class="cs-empty">No utilization evidence observed yet.</div>';
-  return Boolean(html);
-}
-
-async function loadActualVsPlanned() {
-  const container = document.getElementById('actualContent');
-  document.getElementById('utilLegend').style.display = 'none';
-  container.innerHTML = '<div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading actual vs planned...</div>';
-  try {
-    const res = await fetch(`${API_BASE}/schedule/actual-vs-planned?date=${currentDate}`);
-    const json = await res.json();
-    if (json.status !== 'success') throw new Error(json.error || 'API error');
-    renderActualVsPlanned(container, json.data);
-  } catch (err) {
-    container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
-  }
-}
-
-function renderActualVsPlanned(container, data) {
-  const { planned = [], actualByHost = {} } = data;
-  const hasActualEvidence = Object.values(actualByHost).some(rows =>
-    (rows || []).some(row => Number.isFinite(row?.utilizationPct))
-  );
-
-  if (!planned.length && !hasActualEvidence) {
-    container.innerHTML = '<div class="cs-empty">No planned-run or utilization evidence observed for this date.</div>';
-    return;
-  }
-
-  let html = '';
-  const HOUR_PCT = (1 / 24 * 100).toFixed(3);
-
-  const renderTrack = (hostName, tasks, actualRows) => {
-    const actualMap = {};
-    for (const r of (actualRows || [])) actualMap[r.hour] = r;
-
-    html += `<div class="cs-avp-host">
-      <div class="cs-avp-host-label">
-        <i class="fas fa-server" style="color:#7cf0ff;font-size:10px"></i>
-        ${esc(hostName)}
-        ${tasks.length ? `<span style="font-size:10px;color:#475569;font-weight:400">${tasks.length} planned task${tasks.length > 1 ? 's' : ''}</span>` : '<span style="font-size:10px;color:#f59e0b;font-weight:400">actual only</span>'}
-      </div>
-      <div class="cs-avp-track">`;
-
-    // Grid lines at 0, 6, 12, 18, 24h
-    for (let h = 0; h <= 24; h += 6) {
-      const left = (h / 24 * 100).toFixed(2);
-      html += `<div class="cs-avp-gridline" style="left:${left}%"></div>`;
-      if (h < 24) html += `<div class="cs-avp-hour-label" style="left:calc(${left}% + 2px)">${String(h).padStart(2, '0')}</div>`;
-    }
-
-    // Actual utilization bars — bottom 50%, per-hour
-    for (let h = 0; h < 24; h++) {
-      const a = actualMap[h];
-      if (!a || !Number.isFinite(a.utilizationPct)) continue;
-      const left = (h / 24 * 100).toFixed(3);
-      const color = utilColor(a.utilizationPct);
-      const heightPct = Math.max(5, a.utilizationPct / 2); // max 50% of track height
-      html += `<div class="cs-avp-actual" style="left:${left}%;width:${HOUR_PCT}%;height:${heightPct.toFixed(1)}%;background:${color};opacity:0.4"
-        title="${String(h).padStart(2, '0')}:00 actual ${a.utilizationPct.toFixed(0)}% (${a.totalCalls || 0} call${a.totalCalls === 1 ? '' : 's'})"></div>`;
-    }
-
-    // Planned task slots — top area
-    for (const task of tasks) {
-      for (const slot of (task.slots || [])) {
-        const s = new Date(slot.start);
-        const e = new Date(slot.end);
-        const startHour = s.getHours() + s.getMinutes() / 60;
-        const endHour   = e.getHours() + e.getMinutes() / 60;
-        const left  = (startHour / 24 * 100).toFixed(2);
-        const width = Math.max((endHour - startHour) / 24 * 100, 0.4).toFixed(2);
-        const color = TASK_COLORS[task.taskType] || '#666';
-        html += `<div class="cs-avp-planned" style="left:${left}%;width:${width}%;top:6px;height:36%;background:${color}"
-          title="${esc(task.name)} ${formatTime(s)}–${formatTime(e)}"></div>`;
-      }
-    }
-
-    html += '</div></div>';
-  };
-
-  // Render planned hosts
-  const plannedHostNames = new Set();
-  for (const host of planned) {
-    plannedHostNames.add(host.hostName);
-    renderTrack(host.hostName, host.tasks || [], actualByHost[host.hostName] || []);
-  }
-
-  // Render actual-only hosts
-  for (const [hostName, rows] of Object.entries(actualByHost)) {
-    if (plannedHostNames.has(hostName)) continue;
-    if (!rows.some(r => Number.isFinite(r?.utilizationPct))) continue;
-    renderTrack(hostName, [], rows);
-  }
-
-  // Legend
-  html += `<div class="cs-avp-legend">
-    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:#7cf0ff;opacity:0.7"></div>Planned slot</div>
-    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:#22c55e;opacity:0.5"></div>Actual utilization</div>
-  </div>`;
-
-  container.innerHTML = html || '<div class="cs-empty">No planned-run or utilization evidence observed for this date.</div>';
+  return isHighFrequencyLightJob(task);
 }
 
 // ── Init / Refresh ──────────────────────────────────────────
@@ -1155,12 +960,17 @@ async function refreshAll() {
   const btn = document.getElementById('refreshBtn');
   const icon = btn.querySelector('i');
   icon.classList.add('spinning');
+  const failuresBefore = failedRequests;
   try {
     await Promise.all([
-      loadLiveState(), loadTimeline(), loadConflicts(), loadClaims(),
+      loadLiveState(), loadTimeline(), loadConflicts(), loadClaims(), loadHeavyQueue(),
       actualView === 'heatmap' ? loadActualHeatmap() : loadActualVsPlanned()
     ]);
   } finally { icon.classList.remove('spinning'); }
+  const failed = failedRequests - failuresBefore;
+  if (failed > 0 && window.Toast) {
+    window.Toast.warning(`Refresh incomplete: ${failed} section${failed === 1 ? '' : 's'} could not load.`);
+  }
 }
 
 function startLivePolling() {
@@ -1168,7 +978,27 @@ function startLivePolling() {
   livePollTimer = setInterval(() => {
     loadLiveState();
     loadClaims();
+    loadHeavyQueue();
   }, LIVE_POLL_MS);
+  if (timelinePollTimer) clearInterval(timelinePollTimer);
+  timelinePollTimer = setInterval(refreshTimelineClock, TIMELINE_POLL_MS);
+}
+
+// Keep "now", past shading and upcoming countdowns current; follow midnight
+// when the operator was watching today.
+function refreshTimelineClock() {
+  const today = SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE);
+  const wasToday = currentDate === lastObservedToday;
+  lastObservedToday = today;
+  if (wasToday && currentDate !== today) {
+    currentDate = today;
+    updateDateLabel();
+  } else if (!isToday()) {
+    return;
+  }
+  hideTooltip();
+  loadTimeline();
+  loadConflicts();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1179,6 +1009,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('click', (e) => {
+  if (!e.target.closest('.cs-timeline-detail')) hideTooltip();
   const popover = document.getElementById('servicePopover');
   if (!popover || !popover.classList.contains('visible') || !servicePopoverPinnedId) return;
   if (e.target.closest('.cs-service-chip') || e.target.closest('#servicePopover')) return;
@@ -1186,10 +1017,22 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') hideServicePopover(true);
+  if (e.key === 'Escape') { hideTooltip(); hideServicePopover(true); }
 });
 
 window.addEventListener('resize', () => {
+  const mobile = window.innerWidth <= 700;
+  if (mobile !== lastTimelineMobile) {
+    lastTimelineMobile = mobile;
+    if (renderedTimelineMode === viewMode) {
+      hideTooltip();
+      const container = document.getElementById('heatmapContainer');
+      if (viewMode === 'host') renderHostHeatmap(container, visibleTimelineHosts);
+      else renderGroupedHeatmap(container, visibleTimelineEntries);
+    }
+  } else if (isToday()) {
+    positionNowLine(document.getElementById('heatmapContainer'));
+  }
   if (!servicePopoverPinnedId) return;
   const activeChip = document.querySelector(`.cs-service-chip[data-service-id="${servicePopoverPinnedId}"]`);
   if (activeChip) positionServicePopover(activeChip);

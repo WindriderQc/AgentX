@@ -159,6 +159,26 @@ test('waiting for a question is idle, and editing during a search cannot enable 
   expect(el('btn-search').disabled).toBe(false);
 });
 
+test('hybrid search and query expansion stay exclusive and the summary shows the applied modes', async () => {
+  const search = jest.fn().mockResolvedValue({ data: { results: [{ text: 'a', score: 0.9, metadata: {} }], applied: { hybrid: true, expand: false } } });
+  const { el } = loadPage('search.js', { refreshStatus: async () => ready, search });
+  await flush();
+  el('opt-expand').checked = true;
+  el('opt-expand').fire('change');
+  el('opt-hybrid').checked = true;
+  el('opt-hybrid').fire('change');
+  expect(el('opt-expand').checked).toBe(false);
+  el('opt-expand').checked = true;
+  el('opt-expand').fire('change');
+  expect(el('opt-hybrid').checked).toBe(false);
+  // A request that still carries both reports only the mode that ran.
+  el('opt-hybrid').checked = true;
+  el('search-query').value = 'IA';
+  el('search-query').fire('input');
+  await el('btn-search').fire('click');
+  expect(el('search-meta').textContent).toMatch(/· hybrid$/);
+});
+
 test('load more reaches documents after the first 200 and retries the same offset after failure', async () => {
   const getDocuments = jest.fn()
     .mockResolvedValueOnce({ data: { documents: docs(200), total: 205 } })
@@ -213,7 +233,7 @@ test('deleting a loaded document adjusts the next offset so the following docume
   await flush();
   el('doc-tbody').children[0].querySelector('.btn-delete').fire('click');
   await flush();
-  expect(deleteDocument).toHaveBeenCalledWith('doc-0', 'DELETE doc-0');
+  expect(deleteDocument).toHaveBeenCalledWith('doc-0', 'DELETE doc-0', false);
   el('btn-more-documents').fire('click');
   await flush();
   expect(getDocuments).toHaveBeenLastCalledWith({ limit: 200, offset: 199 });

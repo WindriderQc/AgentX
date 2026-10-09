@@ -23,6 +23,10 @@ module.exports = new Schema({
     display: { type: [Object], default: undefined },
     interrupted: { type: Boolean, default: false },
     interruptionState: { type: String, enum: ['', 'confirmed', 'failed'], default: '' },
+    // A spoken turn's browser timeline: ms from the end of the person's speech.
+    voiceTimings: { type: Object, default: undefined },
+    // Where the turn's server time went (prepared, executed, native run steps), in ms.
+    serverTimings: { type: Object, default: undefined },
     inputPreview: String,
     replyPreview: String,
     inputSha256: String,
@@ -43,6 +47,17 @@ module.exports = new Schema({
     knowledgeCorpusFingerprint: String,
     personalContinuity: { type: Object, default: null },
     toolEvidence: { type: Object, default: null },
+    // The team member who answered when the turn addressed one directly (#41).
+    speakerAgentId: { type: String, default: '' },
+    speaker: { type: new Schema({
+      agentId: String, personaId: { type: String, default: null },
+      personaVersion: { type: Number, default: null }, name: String
+    }, { _id: false }), default: undefined },
+    performedBy: { type: [new Schema({
+      agentId: String, runId: { type: String, default: null }
+    }, { _id: false })], default: undefined },
+    // Requested synthesis, not proof of playback or of a client fallback.
+    voice: { type: new Schema({ provider: String, voice: String }, { _id: false }), default: undefined },
     durationMs: Number,
     source: { type: String, default: 'household-persona' },
     sourceTurnId: { type: String, default: '' },

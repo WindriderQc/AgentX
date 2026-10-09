@@ -8,6 +8,7 @@ const { multiJudgeScore, shouldEscalateToMultiJudge, AGREEMENT_REVIEW_THRESHOLD 
 const { normalizeScoringCategory, DEFAULT_SCORING_CATEGORY } = require('../scoring/scoringConfigs');
 const { throwIfJudgeCancelled } = require('../scoring/judgeCall');
 const { executionReviewReason } = require('./executionReview');
+const { buildJudgeQualificationContract } = require('./judgeQualificationContract');
 
 function cancellationSignal(config = {}) {
     return config.cancelSignal || config.signal || null;
@@ -105,26 +106,6 @@ async function findOriginalPrompt(result) {
         .lean();
 }
 
-async function persistMultiJudgeScores(resultId, multiJudgeResult, cancellationConfig = {}) {
-    throwIfJudgeCancelled(cancellationConfig);
-    const judgeScoreRecords = multiJudgeResult.scores
-        .filter((score) => score.success)
-        .map((score) => ({
-            judge_model: score.judge_model,
-            judge_host: score.judge_host,
-            quality_score: score.quality_score,
-            explanation: score.explanation,
-            scoring_time_ms: score.scoring_time_ms
-        }));
-
-    await persistJudgeUpdate(
-        resultId,
-        { $set: { judge_scores: judgeScoreRecords } },
-        cancellationConfig,
-        'multi-judge score persistence'
-    );
-}
-
 function buildConsensusReviewReason(baseScores, multiJudgeResult, agreementNeedsReview = false) {
     return [
         baseScores.review_reason || null,
@@ -213,9 +194,16 @@ async function applyScoresToResult(resultId, scores, resultData, cancellationCon
                 quality_breakdown: scores.breakdown,
                 quality_explanation: scores.explanation,
                 judge_prompt: scores.judge_prompt,
-                judge_model: scores.judge_model,
-                judge_host: scores.judge_host || resultData.judge_host || null,
+                judge_model: scores.judge_model || cancellationConfig.model || null,
+                judge_host: scores.judge_host || cancellationConfig.host || resultData.judge_host || null,
                 judge_raw_response: scores.judge_raw_response,
+                judge_execution_contract: cancellationConfig.execution_contract || null,
+                judge_qualification_contract: buildJudgeQualificationContract(cancellationConfig, {
+                    escalation: scores.judge_escalated ? cancellationConfig.multi_judge : null
+                }),
+                judge_scores: scores.judge_scores || [],
+                ...(cancellationConfig.quality_cohort_fingerprint
+                    ? { quality_cohort_fingerprint: cancellationConfig.quality_cohort_fingerprint } : {}),
                 judge_target: scores.judge_target || null,
                 judge_receipt: scores.judge_receipt || null,
                 judge_provider_usage: scores.judge_provider_usage || null,
@@ -291,6 +279,9 @@ async function judgeResult(resultId, judgeConfig = {}, batchHardwareSnapshot = n
         resultDefaults: { judge_model: result.judge_model, judge_host: result.judge_host }
     });
 
+    multiJudgeConfig = multiJudgeConfig || mergedConfig.multi_judge || null;
+    mergedConfig.multi_judge = multiJudgeConfig;
+
     const baseScores = await scoreResponse({
         response: result.response,
         prompt: promptData,
@@ -325,9 +316,12 @@ async function judgeResult(resultId, judgeConfig = {}, batchHardwareSnapshot = n
         tiebreakerJudge: multiJudgeConfig.tiebreaker || null,
         _batchHardwareSnapshot: batchHardwareSnapshot,
         cancelSignal: mergedConfig.cancelSignal || mergedConfig.signal || null,
+        escalationPolicy: multiJudgeConfig,
         seedJudgeResult: {
             judge_model: baseScores.judge_model || mergedConfig.model,
             judge_host: baseScores.judge_host || mergedConfig.host,
+            execution_contract: mergedConfig.execution_contract || null,
+            qualification_contract: buildJudgeQualificationContract(mergedConfig, { escalation: multiJudgeConfig }),
             quality_score: baseScores.quality_score,
             explanation: baseScores.explanation,
             scoring_time_ms: baseScores.scoring_time_ms,
@@ -335,9 +329,6 @@ async function judgeResult(resultId, judgeConfig = {}, batchHardwareSnapshot = n
             success: baseScores.quality_score !== null && baseScores.quality_score !== undefined
         }
     });
-    throwIfJudgeCancelled(mergedConfig);
-
-    await persistMultiJudgeScores(resultId, multiJudgeResult, mergedConfig);
     throwIfJudgeCancelled(mergedConfig);
 
     const consensusConfidence = buildConsensusConfidence(baseScores, multiJudgeResult);
@@ -359,7 +350,8 @@ async function judgeResult(resultId, judgeConfig = {}, batchHardwareSnapshot = n
         judge_consensus: multiJudgeResult.consensus,
         judge_divergence: multiJudgeResult.divergence ?? null,
         judge_tiebreaker_used: !!multiJudgeResult.tiebreakerUsed,
-        judge_escalated: true
+        judge_escalated: true,
+        judge_scores: multiJudgeResult.scores.filter(score => score.success),
     }, resultData, mergedConfig);
 }
 

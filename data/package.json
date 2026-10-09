@@ -17,12 +17,11 @@
   "author": "WindriderQc",
   "license": "ISC",
   "dependencies": {
-    "cors": "^2.8.5",
     "csvtojson": "^2.0.14",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "mongodb": "^6.5.0",
-    "morgan": "^1.10.1",
+    "mqtt": "^5.16.0",
     "pidusage": "^4.0.1",
     "winston": "^3.17.0",
     "xml2js": "^0.6.2"

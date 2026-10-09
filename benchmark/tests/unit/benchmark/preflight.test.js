@@ -67,6 +67,11 @@ jest.mock('../../../models/ModelProfile', () => ({
     }))
 }));
 
+// Response budgets resolve contracts through Core; preflightBudgets.test.js covers them.
+jest.mock('../../../src/services/benchmark/preflightBudgets', () => ({
+    checkResponseBudgets: jest.fn(async () => ({ candidates: [], judge: null, warnings: [], blockers: [] }))
+}));
+
 jest.mock('../../../models/HostProfile', () => ({
     findOne: jest.fn(() => ({
         select: jest.fn().mockReturnValue({
@@ -230,6 +235,41 @@ describe('benchmark preflight', () => {
         expect(result.blockers).toEqual([]);
         expect(result.requested_num_ctx).toBe(8192);
         expect(result.model_context_length).toBe(8192);
+    });
+
+    describe('without a configured judge context', () => {
+        const { JUDGE_CONFIG } = require('../../../src/services/qualityScorer');
+        let configured;
+        beforeEach(() => { configured = JUDGE_CONFIG.num_ctx; JUDGE_CONFIG.num_ctx = null; });
+        afterEach(() => { JUDGE_CONFIG.num_ctx = configured; });
+        const judge = { host: 'http://judge-host:11434', model: 'judge-model:latest' };
+
+        it('takes the context Core serves the judge at', async () => {
+            const resolveNumCtx = jest.fn(async () => ({ num_ctx: 114688, source: 'inference_contract:host_preference_pin' }));
+            const result = await checkJudgeConfiguration(judge, { resolveNumCtx });
+
+            expect(resolveNumCtx).toHaveBeenCalledWith('judge-model', 'http://judge-host:11434');
+            expect(result).toMatchObject({ ok: true, blockers: [], requested_num_ctx: null, resolved_num_ctx: 114688,
+                num_ctx_source: 'inference_contract:host_preference_pin', num_ctx_authoritative: true });
+        });
+
+        it('blocks the launch when that context cannot be resolved', async () => {
+            const resolveNumCtx = jest.fn(async () => { throw new Error('Core contract resolution failed with HTTP 503'); });
+            const result = await checkJudgeConfiguration(judge, { resolveNumCtx });
+
+            expect(result.ok).toBe(false);
+            expect(result.blockers).toHaveLength(1);
+            expect(result.blockers[0]).toMatch(/cannot be resolved \(Core contract resolution failed with HTTP 503\)/);
+            expect(result.blockers[0]).toMatch(/judge_config\.num_ctx/);
+        });
+
+        it('does not ask Core when the launch names a context', async () => {
+            const resolveNumCtx = jest.fn();
+            const result = await checkJudgeConfiguration({ ...judge, num_ctx: 16384 }, { resolveNumCtx });
+
+            expect(resolveNumCtx).not.toHaveBeenCalled();
+            expect(result).toMatchObject({ ok: true, requested_num_ctx: 16384, resolved_num_ctx: 16384, num_ctx_source: 'explicit' });
+        });
     });
 
     it('warns when requested num_ctx exceeds model context window', async () => {
@@ -426,6 +466,57 @@ describe('benchmark preflight', () => {
         expect(benchmarkFetch).toHaveBeenCalledTimes(2);
     });
 
+    it('lists the response budgets and their warnings without blocking (#397)', async () => {
+        const { checkResponseBudgets } = require('../../../src/services/benchmark/preflightBudgets');
+        checkResponseBudgets.mockResolvedValueOnce({
+            candidates: [{ host: 'http://exec-host:11434', model: 'model-a', num_ctx: 65536, num_predict: 32000,
+                num_predict_source: 'documented_default_half_window_v1' }],
+            judge: { host: 'http://judge-host:11434', model: 'judge-model', num_ctx: 16384, fits: false },
+            warnings: ['Judge judge-model reads a 16384-token window, but a candidate may answer up to 32000 tokens'],
+            blockers: []
+        });
+        const result = await runPreflight({
+            targets: [{ host: 'http://exec-host:11434', model: 'model-a' }],
+            judgeConfig: { host: 'http://judge-host:11434', model: 'judge-model:latest', num_predict: 1200 },
+            levels: [5],
+            executionConfig: { response_max_tokens: 32000 }
+        });
+        expect(checkResponseBudgets).toHaveBeenLastCalledWith(
+            [{ host: 'http://exec-host:11434', model: 'model-a' }],
+            { response_max_tokens: 32000 },
+            expect.objectContaining({ host: 'http://judge-host:11434', model: 'judge-model:latest', num_predict: 1200 }),
+            { levels: [5], promptIds: null }
+        );
+        expect(result.checks.budgets.candidates[0]).toMatchObject({ num_ctx: 65536, num_predict: 32000 });
+        expect(result.warnings).toEqual(expect.arrayContaining([expect.stringMatching(/16384-token window/)]));
+        expect(result.issues.join(' ')).not.toMatch(/16384/);
+    });
+
+    it('refuses a candidate window that the launch would refuse at contract freeze', async () => {
+        const { checkResponseBudgets } = require('../../../src/services/benchmark/preflightBudgets');
+        BenchmarkPrompt.find.mockReturnValue(chainResolved([
+            { _id: 'aaaaaaaaaaaaaaaaaaaaaaaa', name: 'Prompt', category: 'reasoning', level: 5, expected_tokens: 500 }
+        ]));
+        const refusal = 'Context 32768 is not verified for judge-model:latest on http://exec-host:11434. Profile this model and choose a context within its verified range.';
+        const budgets = { candidates: [], judge: null, warnings: [] };
+        const options = {
+            targets: [{ host: 'http://exec-host:11434', model: 'judge-model:latest' }],
+            judgeConfig: { host: 'http://judge-host:11434', model: 'judge-model:latest' },
+            levels: [5],
+            prompt_ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'],
+            executionConfig: { response_max_tokens: 4096 }
+        };
+
+        checkResponseBudgets.mockResolvedValueOnce({ ...budgets, blockers: [] });
+        expect(await runPreflight(options)).toMatchObject({ ready: true, issues: [] });
+
+        checkResponseBudgets.mockResolvedValueOnce({ ...budgets, blockers: [refusal] });
+        const result = await runPreflight(options);
+        expect(result.ready).toBe(false);
+        expect(result.issues).toEqual([refusal]);
+        expect(result.warnings.join(' ')).not.toMatch(/not verified/);
+    });
+
     it('uses exact prompt_ids for preflight prompt coverage and budget alignment', async () => {
         BenchmarkPrompt.find.mockReturnValue(chainResolved([
             {
@@ -540,7 +631,7 @@ describe('benchmark preflight', () => {
             } },
             thinkingProfiles: {
                 'exec-host': {
-                    profileVersion: 2,
+                    profileVersion: 3,
                     supported: true,
                     channel: 'hidden',
                     probeCount: 4,
@@ -608,7 +699,7 @@ describe('benchmark preflight', () => {
 
         expect(result.ready).toBe(true);
         expect(result.checks.hosts[0].warnings).toEqual(expect.arrayContaining([
-            expect.stringMatching(/predates calibrated retry profiling/),
+            expect.stringMatching(/predates the current classification/),
             expect.stringMatching(/Forced think=true will run/)
         ]));
     });

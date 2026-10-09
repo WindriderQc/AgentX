@@ -3,6 +3,7 @@
 const fetch = require('node-fetch');
 const { StringDecoder } = require('string_decoder');
 const { Transform, Readable } = require('stream');
+const { protectContext } = require('./contextIntegrityPolicy');
 const {
   beginAdmittedOllamaAttempt, createAttemptAbortBridge,
   createOllamaStreamTerminalValidator, readOllamaResponse,
@@ -20,12 +21,24 @@ function releaseOnce(release) {
   };
 }
 
-function createStreamingTelemetryObserver() {
+const PHASE_DURATION_FIELDS = ['load_duration', 'prompt_eval_duration', 'eval_duration'];
+
+// A frame that carries model output: content, thinking or a tool call.
+function carriesOutput(data) {
+  const message = data?.message;
+  return [message?.content, message?.thinking, data?.response, data?.thinking]
+    .some(value => typeof value === 'string' && value.length > 0)
+    || (Array.isArray(message?.tool_calls) && message.tool_calls.length > 0);
+}
+
+function createStreamingTelemetryObserver({ dispatchedAt = null } = {}) {
   const decoder = new StringDecoder('utf8');
   let pending = '';
   let discardingOversizedLine = false;
   let tokensIn = 0;
   let tokensOut = 0;
+  let firstTokenMs = null;
+  const phaseDurations = {};
   const terminalValidator = createOllamaStreamTerminalValidator();
 
   const observeLine = (rawLine) => {
@@ -39,6 +52,14 @@ function createStreamingTelemetryObserver() {
     const observedTokensOut = Number(data?.eval_count ?? data?.usage?.completion_tokens);
     if (Number.isFinite(observedTokensIn) && observedTokensIn >= 0) tokensIn = observedTokensIn;
     if (Number.isFinite(observedTokensOut) && observedTokensOut >= 0) tokensOut = observedTokensOut;
+    if (firstTokenMs === null && dispatchedAt !== null && carriesOutput(data)) {
+      firstTokenMs = Date.now() - dispatchedAt;
+    }
+    if (observed.terminal) {
+      for (const field of PHASE_DURATION_FIELDS) {
+        if (typeof data[field] === 'number') phaseDurations[field] = data[field];
+      }
+    }
   };
 
   const consume = (text, final = false) => {
@@ -85,6 +106,8 @@ function createStreamingTelemetryObserver() {
       return {
         prompt_eval_count: tokensIn,
         eval_count: tokensOut,
+        ...phaseDurations,
+        ...(firstTokenMs !== null && { firstTokenMs }),
         terminalObserved: terminal.terminalObserved,
         terminalComplete: terminal.complete,
         terminalInvalid: terminal.invalid
@@ -93,10 +116,10 @@ function createStreamingTelemetryObserver() {
   };
 }
 
-function attachStreamLifecycle(stream, { abortBridge, release, inferenceAdmission }) {
+function attachStreamLifecycle(stream, { abortBridge, release, inferenceAdmission, dispatchedAt }) {
   let resolveCompletion;
   const completion = new Promise(resolve => { resolveCompletion = resolve; });
-  const observer = createStreamingTelemetryObserver();
+  const observer = createStreamingTelemetryObserver({ dispatchedAt });
   let sourceEnded = false;
   let relayFinished = false;
   const relay = new Transform({
@@ -129,7 +152,8 @@ function attachStreamLifecycle(stream, { abortBridge, release, inferenceAdmissio
         inferenceAdmission.assertActive();
         return inferenceAdmission.complete();
       }
-      return inferenceAdmission.abandon(error || new Error('Ollama stream closed before verified upstream EOF'));
+      return inferenceAdmission.abandon(error || Object.assign(
+        new Error('Ollama stream closed before verified upstream EOF'), { code: 'OLLAMA_STREAM_CLOSED_EARLY' }));
     })
       .then(() => ({ ...snapshot, completed: exactSourceTerminal }))
       .catch(async settlementError => {
@@ -194,8 +218,10 @@ async function executeAdmittedOllamaStream(options, dependencies = {}) {
   let relaying = false;
   let receivedResponse = false;
   try {
+    options = { ...options, payload: await protectContext({ ...options, signal: abortBridge.signal }, dependencies) };
     scope = await beginAdmittedOllamaAttempt({ ...options, stream: true, signal: abortBridge.signal }, dependencies);
     const endpoint = options.mode === 'embed' ? 'embed' : options.useChat ? 'chat' : 'generate';
+    const dispatchedAt = Date.now();
     const response = await fetchImpl(`${options.hostUrl}/api/${endpoint}`, {
       ...options.fetchOptions,
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -210,17 +236,21 @@ async function executeAdmittedOllamaStream(options, dependencies = {}) {
       });
       scope.admission.assertActive();
       await scope.admission.complete();
-      return result;
+      return { ...result, waits: scope.waits, promptCache: scope.promptCache };
     }
     // Chat also accepts an async byte iterable (for embedded transports).
     const source = typeof response.body.pipe === 'function' ? response.body
       : Readable.from(response.body, { objectMode: false });
     const relay = attachStreamLifecycle(source, {
-      abortBridge, release: scope.release, inferenceAdmission: scope.admission,
+      abortBridge, release: scope.release, inferenceAdmission: scope.admission, dispatchedAt,
     });
     relaying = true;
-    return { ok: true, status: response.status, response, ...relay };
+    return { ok: true, status: response.status, response, ...relay, waits: scope.waits, promptCache: scope.promptCache };
   } catch (error) {
+    if (scope) {
+      error.inferenceWaits ??= scope.waits;
+      error.inferencePromptCache ??= scope.promptCache;
+    }
     error.ollamaRequestNotSent = Boolean(scope) && !receivedResponse && requestNotSent(error);
     if (scope) await (error.ollamaRequestNotSent ? scope.admission.complete() : scope.admission.abandon(error)).catch(quarantineError => {
       error.inferenceQuarantineError = quarantineError;

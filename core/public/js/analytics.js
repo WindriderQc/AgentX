@@ -256,10 +256,6 @@ async function fetchJSON(url, method = 'GET') {
   return res.json();
 }
 
-let systemMetricsCooldownUntil = 0;
-let systemMetricsBackoffMs = 0;
-let systemMetricsLast429LogAt = 0;
-
 async function checkAuth() {
   return true;
 }

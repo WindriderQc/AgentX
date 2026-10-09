@@ -10,7 +10,10 @@
  */
 
 const logger = require('../../../config/logger');
-const { ENHANCED_SCORING_CONFIGS } = require('./scoringConfigs');
+const { ENHANCED_SCORING_CONFIGS, PRIMARY_DIMENSION_CAP_MARGIN } = require('./scoringConfigs');
+
+// Share of the grade the prompt's own criteria take when it carries some.
+const SPECIFIC_CRITERIA_WEIGHT = 0.25;
 const { DECOMPOSED_QUESTIONS } = require('../decomposedJudgeQuestions');
 
 /**
@@ -97,7 +100,8 @@ function parseGradedAnswer(text, options) {
     const lines = String(text || '').trim().split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     const last = (lines[lines.length - 1] || '').toLowerCase()
         .replace(/^(?:final\s+)?(?:answer|count|total)\s*[:=]\s*/, '')
-        .replace(/[*_`.\s]+$/, '').replace(/^[*_`\s]+/, '');
+        // Quotes too: the prompt lists the options quoted and a judge copies them so.
+        .replace(/[*_`"'\u201c\u201d.\s]+$/, '').replace(/^[*_`"'\u201c\u201d\s]+/, '');
     if (lines.length < 2 || !/^(\d+(\s*or more|\+)?|[a-z]+)$/.test(last)) return null;
     return parseGradedHead(last, options);
 }
@@ -245,7 +249,83 @@ function suppliedDimensionResult(score) {
     };
 }
 
+/**
+ * The overall score held to the category's secondary bounds (scoringConfigs.js,
+ * #446): each bound is a dimension score plus its margin. A dimension that was
+ * not scored (every question not applicable) sets no bound.
+ * @returns {{ score: number, bounds: Array<{dimension, score, margin, applied}> }}
+ */
+function applySecondaryBounds(score, dimensionScores, bounds = []) {
+    const limits = bounds.map(({ dimension, margin }) => {
+        const dimensionScore = typeof dimensionScores[dimension] === 'number' ? dimensionScores[dimension] : null;
+        const limit = dimensionScore === null ? null : Math.round((dimensionScore + margin) * 10) / 10;
+        return { dimension, score: dimensionScore, margin, applied: limit !== null && limit < score, limit };
+    });
+    const bounded = Math.min(score, ...limits.filter(bound => bound.applied).map(bound => bound.limit));
+    return { score: bounded, bounds: limits.map(({ limit, ...bound }) => bound) };
+}
+
+/**
+ * The dimension weights a response is graded with: the category's, scaled to
+ * make room for the prompt's own criteria when it carries some.
+ */
+function effectiveDimensionWeights(baseWeights, withSpecificCriteria) {
+    if (!withSpecificCriteria) return { ...baseWeights };
+    const weights = {};
+    for (const [dimension, weight] of Object.entries(baseWeights)) {
+        weights[dimension] = weight * (1 - SPECIFIC_CRITERIA_WEIGHT);
+    }
+    weights.specific_criteria = SPECIFIC_CRITERIA_WEIGHT;
+    return weights;
+}
+
+/**
+ * The overall grade assembled from dimension scores: their weighted average
+ * (contract §2.3; a dimension without a score drops out and the remaining
+ * weights are renormalized), held by the primary dimension, then by the
+ * category's secondary bounds. Pure, so a stored grade can be assembled again
+ * from its stored dimension scores (gradeCarryOver.js).
+ * @returns {{ score, uncappedScore, primaryCap, secondary }}
+ */
+function assembleOverall(category, dimensionScores, dimensionWeights, { secondaryBounds = true } = {}) {
+    let weightedSum = 0;
+    let totalWeight = 0;
+    for (const [dimension, dimensionScore] of Object.entries(dimensionScores)) {
+        if (typeof dimensionScore !== 'number') continue;
+        const weight = Number(dimensionWeights[dimension]) || 0;
+        weightedSum += dimensionScore * weight;
+        totalWeight += weight;
+    }
+    const uncappedScore = totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 10) / 10 : 0;
+
+    // The primary dimension bounds the overall score: secondary dimensions
+    // refine the grade of a correct answer, they cannot rescue a wrong one.
+    const primaryDimension = ENHANCED_SCORING_CONFIGS[category]?.primary_dimension || null;
+    const primaryScore = primaryDimension ? dimensionScores[primaryDimension] : null;
+    const capApplies = typeof primaryScore === 'number'
+        && uncappedScore > primaryScore + PRIMARY_DIMENSION_CAP_MARGIN;
+    const cappedScore = capApplies
+        ? Math.round((primaryScore + PRIMARY_DIMENSION_CAP_MARGIN) * 10) / 10
+        : uncappedScore;
+    const primaryCap = {
+        dimension: primaryDimension,
+        score: typeof primaryScore === 'number' ? primaryScore : null,
+        margin: PRIMARY_DIMENSION_CAP_MARGIN,
+        applied: capApplies,
+        uncapped_score: uncappedScore
+    };
+
+    // A weak dimension the task's quality rests on bounds the grade too (#446).
+    const secondary = applySecondaryBounds(cappedScore, dimensionScores,
+        secondaryBounds ? ENHANCED_SCORING_CONFIGS[category]?.secondary_bounds : []);
+    return { score: secondary.score, uncappedScore, primaryCap, secondary };
+}
+
 module.exports = {
+    SPECIFIC_CRITERIA_WEIGHT,
+    assembleOverall,
+    effectiveDimensionWeights,
+    applySecondaryBounds,
     resolveDimensionWeights,
     parseGradedAnswer,
     judgeAnswerSpec,

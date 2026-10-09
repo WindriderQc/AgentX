@@ -23,10 +23,12 @@ const { normalizeModelName } = require('./modelMetadata');
 const { normalizeHostUrl, getConfiguredHosts } = require('../../helpers/ollamaHostConfig');
 const { admitOllamaTargetResolved } = require('../../helpers/ollamaTargetAdmission');
 const { readBoundedJson } = require('../../helpers/boundedJsonResponse');
-const { getDedicationStatuses } = require('../../clients/coreApiClient');
+const { checkPinnedResidents } = require('./preflightPinnedResidents');
+const { checkResponseBudgets } = require('./preflightBudgets');
 const { identitiesMatch, resolveArtifactIdentity } = require('../profiler/artifactIdentityService');
 const { hasQualifiedProfilerAuthority } = require('../profiler/profilerAuthorityReceipt');
 const { normalizeJudgeNumCtx } = require('../scoring/judgeRuntimeConfig');
+const { resolveContractNumCtx } = require('./inferenceContractSnapshot');
 const { normalizeExecutionConfig } = require('./config');
 const {
     MIN_THINKING_PROBE_COUNT,
@@ -105,10 +107,10 @@ function summarizeThinkingPreflight(profile, hostId, normalizedModel, executionC
     if (!isThinkingProfileCurrent(thinkingProfile)) {
         const staleReason = probeCount < MIN_THINKING_PROBE_COUNT
             ? 'Thinking profile was created before the multi-probe behavior matrix'
-            : `Thinking profile predates calibrated retry profiling (requires profileVersion >= ${THINKING_PROFILE_VERSION})`;
+            : `Thinking profile predates the current classification (requires profileVersion >= ${THINKING_PROFILE_VERSION})`;
         const action = forced
             ? 'Forced think=true will run, but rows should be labeled diagnostic and reviewed manually.'
-            : 'Auto will keep thinking off until this model is re-profiled.';
+            : 'Core keeps applying the earlier classification until this model is re-profiled.';
         return {
             warning: `${base}. ${staleReason}; ${action}`,
             profile: thinkingProfile
@@ -368,7 +370,7 @@ function buildPromptAlignmentWarnings(prompts, executionConfig = {}) {
         }
     } else if (config.think === 'auto') {
         warnings.push(
-            'think=auto enabled: benchmark will use host-specific thinking profiles. Rows resolved to think=true still share response_max_tokens with hidden reasoning and remain subject to runaway quarantine.'
+            'think=auto enabled: benchmark will use host-specific thinking profiles. Rows resolved to think=true still share response_max_tokens with hidden reasoning; a row that reaches this budget stays excluded from automatic ranking, without establishing runaway reasoning.'
         );
     }
 
@@ -489,7 +491,7 @@ async function checkPromptCoverage(levels = [1, 2, 3, 4, 5], promptIds = null, e
     };
 }
 
-async function checkJudgeConfiguration(judgeConfig = {}) {
+async function checkJudgeConfiguration(judgeConfig = {}, { resolveNumCtx = resolveContractNumCtx } = {}) {
     const host = normalizeHostUrl(judgeConfig.host || JUDGE_CONFIG.host);
     const model = normalizeModelName(judgeConfig.model || JUDGE_CONFIG.model);
 
@@ -505,14 +507,35 @@ async function checkJudgeConfiguration(judgeConfig = {}) {
     const blockers = [];
 
     const requestedNumCtx = normalizeJudgeNumCtx(judgeConfig.num_ctx ?? JUDGE_CONFIG.num_ctx);
-    const numCtxSource = requestedNumCtx ? 'explicit' : 'modelfile';
-    const numCtxAuthoritative = requestedNumCtx != null;
+    let numCtxSource = requestedNumCtx ? 'explicit' : 'modelfile';
+    let numCtxAuthoritative = requestedNumCtx != null;
+    let resolvedNumCtx = requestedNumCtx || null;
 
     // Check host reachability and model availability
     const hostCheck = await checkHostModel(host, model);
     if (!hostCheck.ok) {
         blockers.push(`Judge: ${hostCheck.error}`);
         return { ok: false, host, model, warnings, blockers };
+    }
+
+    // Without a context the judge calls omit num_ctx and Ollama reloads the
+    // model at its default context, for the judge and for everyone else who
+    // uses it on that host. The batch reads the context from Core's contract;
+    // when that cannot be read, the launch stops here instead.
+    if (!requestedNumCtx) {
+        try {
+            const contract = await resolveNumCtx(model, host);
+            resolvedNumCtx = normalizeJudgeNumCtx(contract?.num_ctx);
+            if (!resolvedNumCtx) throw new Error('Core returned no context window');
+            numCtxSource = contract.source || 'inference_contract';
+            numCtxAuthoritative = true;
+        } catch (error) {
+            blockers.push(
+                `Judge context for ${model} on ${host} cannot be resolved (${error.message}). ` +
+                'Judge calls would omit num_ctx and Ollama would reload the model at its default context. ' +
+                'Set judge_config.num_ctx, or restore the Core inference contract for this judge.'
+            );
+        }
     }
 
     // Probe model capabilities (context window)
@@ -533,6 +556,7 @@ async function checkJudgeConfiguration(judgeConfig = {}) {
         host,
         model,
         requested_num_ctx: requestedNumCtx,
+        resolved_num_ctx: resolvedNumCtx,
         num_ctx_source: numCtxSource,
         num_ctx_authoritative: numCtxAuthoritative,
         model_context_length: modelContextLength,
@@ -569,52 +593,6 @@ async function checkOrphanedBatches() {
             started_at: b.started_at
         }))
     };
-}
-
-/**
- * Check if any execution hosts have GPU-dedicated models.
- * Non-blocking — dedication is informational, not a blocker.
- * @param {Array<{host, model}>} targets
- * @returns {Object} { ok, affectedHosts, warnings }
- */
-async function checkDedication(targets) {
-    const affectedHosts = [];
-    const warnings = [];
-
-    try {
-        const statuses = await getDedicationStatuses();
-        const execHosts = [...new Set(targets.map(t => t.host?.replace(/\/+$/, '')))];
-
-        for (const hostUrl of execHosts) {
-            const match = statuses.find(s => s.host?.replace(/\/+$/, '') === hostUrl);
-            if (!match?.pinnedModels?.length) continue;
-
-            const pinnedModels = match.pinnedModels
-                .map(p => normalizeModelName(p?.model || p?.name || p?.modelName || p))
-                .filter(Boolean);
-            if (!pinnedModels.length) continue;
-
-            const batchModels = targets.filter(t => t.host?.replace(/\/+$/, '') === hostUrl).map(t => t.model);
-            const nonPinned = batchModels.filter(m => !pinnedModels.some(p => normalizeModelName(p) === normalizeModelName(m)));
-
-            if (nonPinned.length > 0) {
-                affectedHosts.push({
-                    host: hostUrl,
-                    pinnedModels,
-                    nonPinnedBatchModels: nonPinned,
-                    state: match.state
-                });
-                warnings.push(
-                    `Host ${hostUrl} has pinned model(s): ${pinnedModels.join(', ')}. ` +
-                    `Pinned models will be temporarily unloaded during the batch and automatically restored after completion.`
-                );
-            }
-        }
-    } catch (err) {
-        logger.debug('Dedication check skipped — core unreachable', { error: err.message });
-    }
-
-    return { ok: true, affectedHosts, warnings };
 }
 
 /**
@@ -665,22 +643,25 @@ async function runPreflight(options = {}) {
         };
     });
 
-    const [hostResults, promptResult, batchResult, dedicationResult] = await Promise.all([
+    const judgeHost = judgeConfig?.target?.executionKind === 'harness'
+        ? null
+        : normalizeHostUrl(judgeConfig?.host || JUDGE_CONFIG.host);
+    const [hostResults, promptResult, batchResult, dedicationResult, budgetResult] = await Promise.all([
         Promise.all(hostChecks),
         checkPromptCoverage(levels, promptIds || prompt_ids, executionConfig),
         checkOrphanedBatches(),
-        checkDedication(uniqueTargets)
+        checkPinnedResidents(uniqueTargets, { judgeHost }),
+        checkResponseBudgets(uniqueTargets, executionConfig, { ...judgeConfig, host: judgeHost, model: judgeConfig?.model || JUDGE_CONFIG.model,
+            num_ctx: judgeConfig?.num_ctx ?? JUDGE_CONFIG.num_ctx, num_predict: judgeConfig?.num_predict || JUDGE_CONFIG.num_predict },
+            { levels, promptIds: promptIds || prompt_ids })
     ]);
+    const harnessJudgeOk = judgeConfig?.target?.mode === 'isolated_model'
+        && judgeConfig.target.capabilities?.judge === true
+        && judgeConfig.target.available !== false;
     const judgeResult = judgeConfig?.target?.executionKind === 'harness'
         ? {
-            ok: judgeConfig.target.mode === 'isolated_model'
-                && judgeConfig.target.capabilities?.judge === true
-                && judgeConfig.target.available !== false,
-            blockers: judgeConfig.target.mode === 'isolated_model'
-                && judgeConfig.target.capabilities?.judge === true
-                && judgeConfig.target.available !== false
-                ? []
-                : ['Harness judge is not an available isolated-model target'],
+            ok: harnessJudgeOk,
+            blockers: harnessJudgeOk ? [] : ['Harness judge is not an available isolated-model target'],
             target: judgeConfig.target,
             source: 'benchmark-target-v1'
         }
@@ -691,13 +672,15 @@ async function runPreflight(options = {}) {
     checks.prompts = promptResult;
     checks.batches = batchResult;
     checks.dedication = dedicationResult;
+    checks.budgets = budgetResult;
 
     const allHostsOk = checks.hosts.every(h => h.ok);
     const judgeOk = checks.judge && checks.judge.ok;
     const promptsOk = checks.prompts.ok;
     const batchesOk = checks.batches.ok;
 
-    const ready = allHostsOk && judgeOk && promptsOk && batchesOk;
+    // A window no profile verifies is refused when the launch freezes its contract.
+    const ready = allHostsOk && judgeOk && promptsOk && batchesOk && budgetResult.blockers.length === 0;
 
     const issues = [];
     const warnings = [];
@@ -710,9 +693,8 @@ async function runPreflight(options = {}) {
     if (!judgeOk) issues.push(...checks.judge.blockers);
     if (!promptsOk) issues.push(...checks.prompts.blockers);
     if (!batchesOk) issues.push(`${checks.batches.orphanedBatches.length} orphaned batch(es) detected`);
-    if (dedicationResult.affectedHosts.length > 0) {
-        warnings.push(...dedicationResult.warnings);
-    }
+    issues.push(...budgetResult.blockers);
+    warnings.push(...dedicationResult.warnings, ...budgetResult.warnings);
 
     logger.info('Pre-flight check completed', { ready, issues, warnings });
 
@@ -727,7 +709,7 @@ async function runPreflight(options = {}) {
 module.exports = {
     MIN_PROMPTS_PER_CATEGORY,
     WARN_PROMPTS_PER_CATEGORY,
-    checkHostModel,
+    checkHostModel, checkBenchmarkTargetEligibility,
     checkPromptCoverage,
     checkJudgeConfiguration,
     checkOrphanedBatches,

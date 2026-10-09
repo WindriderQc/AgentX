@@ -1,4 +1,6 @@
-const ESCALATION_TARGETS = ['cloudx', 'anthropicx'];
+// One cloud specialist; its provider order (and the absence of a local
+// fallback) lives in the OpenClaw agent configuration.
+const ESCALATION_TARGETS = ['cloudx'];
 
 function normalizeBudgetHealth(value) {
   const health = String(value || '').trim().toLowerCase();

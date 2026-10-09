@@ -3,9 +3,38 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { Readable } = require('node:stream');
-const { conversationBackend, createConversationExecutor } = require('../conversation-executor');
+const { conversationBackend, familyConversationBackend, voiceTask, createConversationExecutor } = require('../conversation-executor');
 
 const configured = { OPENCLAW_GATEWAY_URL: 'http://test.invalid', OPENCLAW_GATEWAY_TOKEN: 'fixture' };
+
+test('confirmed Core recaps reach both personal transports without crossing into family', async () => {
+  let corePayload, nativePayload, reads = 0;
+  const personalRecaps = { read: async () => { reads++; return { recap: { summary: 'Synthetic confirmed point', nextStep: '', takeaway: '' } }; }, latest: async () => null };
+  const execute = createConversationExecutor({ personalRecaps,
+    inference: { execute: async value => { corePayload = value; return { ok: true, body: { message: { content: 'Synthetic reply' } } }; } },
+    agentClient: async value => { nativePayload = value; return { text: 'Synthetic native reply' }; }
+  });
+  const personal = { ...request(), session: { sessionId: 'synthetic-personal', packId: 'personal_operator', modeId: 'personal' }, turnContext: 'Existing selected context' };
+  await execute(personal);
+  assert.ok(corePayload.messages.at(-1).content.includes('Synthetic confirmed point'));
+  assert.ok(corePayload.messages.at(-1).content.includes('Existing selected context'));
+  await execute({ ...personal, backend: 'openclaw' });
+  assert.ok(nativePayload.turnContext.includes('Synthetic confirmed point'));
+  await execute(request());
+  assert.equal(reads, 2);
+  assert.ok(!corePayload.messages.at(-1).content.includes('Synthetic confirmed point'));
+});
+test('disabled confirmed recap performs no read on either personal transport', async () => {
+  const payloads = [];
+  const execute = createConversationExecutor({ personalRecaps: { read: () => assert.fail('Disabled context must not be read'), latest: () => assert.fail('Disabled continuation must not be read') },
+    inference: { execute: async value => { payloads.push(value); return { ok: true, body: { response: 'Synthetic' } }; } },
+    agentClient: async value => { payloads.push(value); return { text: 'Synthetic native' }; } });
+  const input = { ...request(), session: { sessionId: 'synthetic-personal', packId: 'personal_operator', modeId: 'personal' },
+    conversationFeatures: { recapContext: false }, turnContext: 'Selected context' };
+  await execute(input); await execute({ ...input, backend: 'openclaw' });
+  assert.ok(payloads[0].messages.at(-1).content.includes('Selected context'));
+  assert.equal(payloads[1].turnContext, 'Selected context');
+});
 const request = () => ({ backend: 'agentx', session: { sessionId: 'conversation', modeId: 'family' },
   pack: { id: 'kidx_nestor', taskType: 'nestor_answer_light', temperature: 0.5, maxTokens: 800 },
   text: 'Et ensuite?', history: [{ role: 'user', content: 'Je construis un rover.' }, { role: 'assistant', content: 'Commençons par les roues.' }],
@@ -42,6 +71,40 @@ test('AgentX preserves server history, persona context, routing and explicit Ope
   assert.equal(reply.text, 'Les roues!');
   assert.equal(reply.tools.status, 'not_supported');
   assert.equal(reply.metadata.model, 'local-model');
+});
+
+test('the family lane names the backend of new family conversations only when the instance sets it (#261)', () => {
+  assert.equal(familyConversationBackend({}), null);
+  assert.equal(familyConversationBackend({ HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: '' }), null);
+  assert.equal(familyConversationBackend({ HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: 'agentx' }), 'agentx');
+  assert.equal(familyConversationBackend({ HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: ' OpenClaw ' }), 'openclaw');
+  for (const value of ['auto', 'unknown', 'true']) assert.equal(familyConversationBackend({ HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: value }), null);
+  // Unset, the general choice stands; set, it wins over that choice and over what a page requested.
+  const choose = (requested, env) => conversationBackend(familyConversationBackend(env) || requested, env);
+  assert.equal(choose(null, configured), 'openclaw');
+  assert.equal(choose('openclaw', { ...configured, HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: 'agentx' }), 'agentx');
+  assert.equal(choose('agentx', { HOUSEHOLD_CONVERSATION_BACKEND: 'agentx', HOUSEHOLD_FAMILY_CONVERSATION_BACKEND: 'openclaw' }), 'openclaw');
+});
+
+test('a spoken turn on Core inference uses the voice task in any pack; typed turns keep the pack task (#261)', async () => {
+  assert.equal(voiceTask({}), 'voice_persona_chat');
+  assert.equal(voiceTask({ HOUSEHOLD_VOICE_TASK: ' quick_chat ' }), 'quick_chat');
+  assert.equal(voiceTask({ HOUSEHOLD_VOICE_TASK: 'Not a task!' }), 'voice_persona_chat');
+  const submitted = [];
+  const executor = env => createConversationExecutor({ env, agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async body => { submitted.push(body); return { ok: true, body: { response: 'ok' }, metadata: {} }; } } });
+  const personal = { id: 'personal_operator', taskType: 'general_chat', temperature: 0.35, maxTokens: 800 };
+  await executor({})({ ...request(), channel: 'voice', streaming: true });
+  await executor({})({ ...request(), channel: 'text' });
+  await executor({})({ ...request(), pack: personal, channel: 'voice' });
+  await executor({ HOUSEHOLD_VOICE_TASK: 'quick_chat' })({ ...request(), channel: 'voice' });
+  await executor({})({ ...request(), channel: 'voice', session: { ...request().session, llmx: { schemaVersion: 1 } } });
+  assert.deepEqual(submitted.map(body => body.taskType),
+    ['voice_persona_chat', 'nestor_answer_light', 'voice_persona_chat', 'quick_chat', 'nestor_answer_light']);
+  assert.deepEqual(submitted.map(body => body.think), [false, false, false, false, false]);
+  assert.equal(submitted[0].stream, true);
+  assert.equal(submitted[0].max_tokens, 800);
+  assert.equal(submitted[0].callerDetail, 'agentx-household/kidx_nestor/family');
 });
 
 test('native errors never replay an action through AgentX', async () => {

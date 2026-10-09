@@ -319,6 +319,9 @@ describe('Core API client scoped outbound execution', () => {
       ['GET', '/api/models/registry/qwen%3A7b?host=ollama', CORE_OPERATIONS.MODEL_REGISTRY],
       ['GET', '/api/config', CORE_OPERATIONS.PUBLIC_CONFIG],
       ['GET', '/api/nerve-center/host-preferences', CORE_OPERATIONS.HOST_PREFERENCES],
+      ['GET', '/api/nerve-center/inference/routing-config', CORE_OPERATIONS.ROUTING_CONFIG],
+      ['GET', '/api/nerve-center/runtime-coordination/active', CORE_OPERATIONS.RUNTIME_ACTIVE],
+      ['GET', '/api/nerve-center/interactive-priority/status', CORE_OPERATIONS.HOUSEHOLD_IDLE],
       ['POST', '/api/nerve-center/host-preferences/ollama/reload', CORE_OPERATIONS.HOST_RELOAD],
       ['POST', '/api/nerve-center/host-preferences/ollama/pin/context', CORE_OPERATIONS.PIN_CONTEXT_APPLY],
       ['POST', '/api/nerve-center/host-preferences/ollama/benchmark-claim', CORE_OPERATIONS.CLAIM_ACQUIRE],
@@ -331,6 +334,7 @@ describe('Core API client scoped outbound execution', () => {
       ['DELETE', '/api/nerve-center/workload-admissions/admission-1', CORE_OPERATIONS.WORKLOAD_RELEASE],
       ['POST', '/api/nerve-center/workload-admissions/admission-1/release-receipt', CORE_OPERATIONS.WORKLOAD_RELEASE_RECOVERY],
       ['POST', '/api/nerve-center/workload-admissions/admission-1/recovery', CORE_OPERATIONS.WORKLOAD_RECOVERY_ARM],
+      ['POST', '/api/nerve-center/workload-recoveries/lookup', CORE_OPERATIONS.WORKLOAD_RECOVERY_LOOKUP],
       ['POST', '/api/nerve-center/workload-recoveries/recovery-1/adopt', CORE_OPERATIONS.WORKLOAD_RECOVERY_ADOPT],
       ['POST', '/api/nerve-center/workload-recoveries/recovery-1/heartbeat', CORE_OPERATIONS.WORKLOAD_RECOVERY_HEARTBEAT],
       ['POST', '/api/nerve-center/workload-recoveries/recovery-1/assert', CORE_OPERATIONS.WORKLOAD_RECOVERY_ASSERT],
@@ -339,6 +343,7 @@ describe('Core API client scoped outbound execution', () => {
       ['DELETE', '/api/nerve-center/workload-recoveries/recovery-1', CORE_OPERATIONS.WORKLOAD_RECOVERY_RELEASE],
       ['POST', '/api/nerve-center/workload-admissions/admission-1/yield-point', CORE_OPERATIONS.WORKLOAD_YIELD_POINT],
       ['POST', '/api/inference/generate', CORE_OPERATIONS.INFERENCE_GENERATE],
+      ['POST', '/api/inference/contract/resolve', CORE_OPERATIONS.INFERENCE_CONTRACT],
     ].map(([method, path, operationId]) => classifyCoreOperation(path, method)))
       .toEqual(Object.values(CORE_OPERATIONS));
     expect(() => classifyCoreOperation('/api/nerve-center/host-preferences', 'POST'))
@@ -392,16 +397,16 @@ describe('Core API client scoped outbound execution', () => {
       body: JSON.stringify({
         publicUrls: {
           core: 'http://127.0.0.1:3180/',
-          benchmark: 'http://127.0.0.1:3181/',
-          rag: 'http://127.0.0.1:3182/',
+          benchmark: 'http://127.0.0.1:3181/benchmark/',
+          rag: 'http://127.0.0.1:3182/rag/',
         },
       }),
     }));
     const resolver = createCorePublicUrlsResolver({
       env: {
         CORE_PUBLIC_URL: 'http://localhost:3080',
-        BENCHMARK_PUBLIC_URL: 'http://localhost:3081',
-        RAG_PUBLIC_URL: 'http://localhost:3082',
+        BENCHMARK_PUBLIC_URL: 'http://localhost:3081/benchmark',
+        RAG_PUBLIC_URL: 'http://localhost:3082/rag',
       },
       loadCoreConfig: loadCorePublicConfig,
       ttlMs: 30_000,
@@ -409,8 +414,8 @@ describe('Core API client scoped outbound execution', () => {
 
     await expect(resolver()).resolves.toEqual({
       core: 'http://127.0.0.1:3180',
-      benchmark: 'http://127.0.0.1:3181',
-      rag: 'http://127.0.0.1:3182',
+      benchmark: 'http://127.0.0.1:3181/benchmark',
+      rag: 'http://127.0.0.1:3182/rag',
     });
     expect(fetch).toHaveBeenCalledWith(
       'http://core.test:3080/api/config',
@@ -458,6 +463,34 @@ describe('Core API client scoped outbound execution', () => {
       code: 'OUTBOUND_RESPONSE_TOO_LARGE',
       sinkId: CORE_OPERATIONS.MODEL_REGISTRIES,
     });
+  });
+
+  test('asks Core to share a judge-only host and keeps the subset Core grants', async () => {
+    const hosts = ['http://exec:11434', 'http://judge:11434'];
+    queueWorkloadAcquire('batch-shared', hosts, { sharedHosts: ['http://judge:11434'] });
+    const receipt = await acquireWorkloadAdmission('batch-shared', {
+      hosts, sharedHosts: ['http://judge:11434/', 'http://not-held:11434']
+    });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ hosts, sharedHosts: ['http://judge:11434'] });
+    expect(receipt.sharedHosts).toEqual(['http://judge:11434']);
+
+    queueWorkloadAcquire('batch-unshared', hosts);
+    await expect(acquireWorkloadAdmission('batch-unshared', { hosts, sharedHosts: ['http://judge:11434'] }))
+      .resolves.toMatchObject({ sharedHosts: [] });
+
+    fetch.mockImplementationOnce(async url => response(url, { body: JSON.stringify({ status: 'success',
+      data: { ...workloadAcquireBody('batch-forged', hosts).data, sharedHosts: ['http://elsewhere:11434'] } }) }));
+    await expect(acquireWorkloadAdmission('batch-forged', { hosts }))
+      .rejects.toMatchObject({ code: 'WORKLOAD_ADMISSION_REJECTED' });
+  });
+
+  test('reports a Core refusal to admit as a coded conflict, without asking again', async () => {
+    const refused = { status: 'error', data: { acquired: false, reason: 'a conflicting workload blocks workload admission' } };
+    fetch.mockImplementationOnce(async url => response(url, { status: 409, body: JSON.stringify(refused) }));
+    await expect(acquireWorkloadAdmission('batch-refused', { hosts: ['http://ollama:11434'] })).rejects.toMatchObject({
+      code: 'WORKLOAD_ADMISSION_REJECTED', statusCode: 409, message: 'a conflicting workload blocks workload admission'
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   test('enforces the claim request cap before dispatch', async () => {
@@ -658,6 +691,41 @@ describe('Core API client scoped outbound execution', () => {
     impossibleTimeline.releasedAt = '2026-09-04T12:00:04.000Z';
     expect(exactBenchmarkReleaseReceipt({ released: true, releaseReceipt: impossibleTimeline }, expected))
       .toBe(false);
+  });
+
+  test.each([false, true])('keeps the exact claim during a pending drain (foreign proof=%s)', async foreign => {
+    const hostUrl = 'http://pending-drain:11434';
+    const batchId = `batch-pending-drain-${foreign}`;
+    const claimGeneration = '99999999-9999-4999-8999-999999999999';
+    const snapshot = runtimeSnapshot();
+    const workload = queueWorkloadAcquire(batchId, [hostUrl]);
+    fetch.mockImplementationOnce(async url => response(url, {
+      body: JSON.stringify(claimAcquireBody({ hostUrl, batchId, claimGeneration, snapshot }))
+    }));
+    await acquireWorkloadAdmission(batchId, { hosts: [hostUrl] });
+    await claimHostForBenchmark(hostUrl, batchId, null, { claimGeneration });
+    const identity = getBenchmarkClaimIdentity(hostUrl, batchId);
+    fetch.mockImplementationOnce(async url => response(url, {
+      body: JSON.stringify({ status: 'success', data: { released: false,
+        callerAbortRecoveryPending: true, contract: 'agentx.benchmark-caller-abort-drain/v1',
+        hostUrl, batchId, claimGeneration, admissionId: workload.admissionId,
+        admissionGeneration: foreign ? 'foreign' : workload.generation, retryAfterMs: 1 } })
+    }));
+    if (foreign) {
+      await expect(releaseBenchmarkClaim(hostUrl, batchId))
+        .rejects.toMatchObject({ code: 'BENCHMARK_DRAIN_RECEIPT_INVALID', retainAdmission: true });
+      expect(getBenchmarkClaimIdentity(hostUrl, batchId)).toEqual(identity);
+      expect(fetch).toHaveBeenCalledTimes(5);
+    } else {
+      fetch.mockImplementationOnce(async url => {
+        expect(getBenchmarkClaimIdentity(hostUrl, batchId)).toEqual(identity);
+        return response(url, { body: JSON.stringify({ status: 'success', data: { released: true,
+          releaseReceipt: exactReleaseReceipt({ hostUrl, batchId, claimGeneration, snapshot }) } }) });
+      });
+      await expect(releaseBenchmarkClaim(hostUrl, batchId)).resolves.toMatchObject({ released: true });
+      expect(getBenchmarkClaimIdentity(hostUrl, batchId)).toBeNull();
+      expect(fetch).toHaveBeenCalledTimes(6);
+    }
   });
 
   test('recovers a durable exact receipt when the release response is lost', async () => {

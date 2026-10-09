@@ -15,13 +15,14 @@ const {
 } = require('../../src/services/profiler/activeProfileState');
 const { acquireProfilerClaimLease } = require('../../src/services/profiler/profilerClaimLifecycle');
 const { runJournaledProfile } = require('../../src/services/profiler/profilerRunJournal');
+const { createProfileCancellation } = require('../../src/services/profiler/profileCancellation');
 const contextProposalService = require('../../src/services/profiler/contextProposalService');
 const logger = require('../../config/logger');
 
 const STEPS_BY_DEPTH = {
   quick:    ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'saving'],
   standard: ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'context_probe', 'saving'],
-  full:     ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'context_probe', 'throughput_curve', 'generation_stability', 'prefill_decode_matrix', 'load_timing', 'saving']
+  full:     ['warmup', 'throughput', 'spill_detection', 'thinking_behavior', 'context_probe', 'throughput_curve', 'generation_stability', 'prefill_decode_matrix', 'long_context_quality', 'load_timing', 'saving']
 };
 
 // Rough upper bound on how long a profile run can take — used by the
@@ -29,7 +30,9 @@ const STEPS_BY_DEPTH = {
 const ESTIMATED_DURATION_MS_BY_DEPTH = {
   quick:    5  * 60 * 1000,
   standard: 30 * 60 * 1000,
-  full:     45 * 60 * 1000
+  // Agent-sized prefill and the long-context quality probe add minutes per
+  // 128k+ prompt on a large model.
+  full:     90 * 60 * 1000
 };
 
 router.post('/scout', async (req, res) => {
@@ -146,12 +149,19 @@ router.post('/profile', async (req, res) => {
       return res.status(err.statusCode || 503).json({ status: 'error', error: err.message, code: err.code || 'PROFILER_CLAIM_UNAVAILABLE' });
     }
     tracker.statusMessage = 'Starting…';
+    // A cancel aborts an abortable in-flight request and the run journal waits
+    // for Ollama's stop proof; otherwise it stops at the next checkpoint.
+    const cancellation = createProfileCancellation({ hostUrl: host.hostUrl, parentSignal: lease.signal });
+    tracker.cancellation = cancellation;
 
     // Fire-and-forget
     runJournaledProfile(lease, { hostId, hostUrl: host.hostUrl, modelName }, () => orchestrator.profile(modelName, hostId, host.hostUrl, chosenDepth, {
-      assertClaimActive: lease.assertActive,
+      assertClaimActive: () => {
+        lease.assertActive();
+        cancellation.assertNotCancelled();
+      },
       claimIdentity: lease.identityFor(host.hostUrl),
-      signal: lease.signal,
+      signal: cancellation.signal,
       onProgress: (step, data) => {
         const idx = steps.indexOf(step);
         if (idx >= 0) tracker.stepsCompleted = idx;
@@ -162,7 +172,7 @@ router.post('/profile', async (req, res) => {
           Object.assign(tracker.metrics, rest);
         }
       }
-    })).then(result => {
+    }), { cancellation }).then(result => {
       lease.assertActive();
       tracker.statusMessage = 'Restoring pinned models…';
       tracker.result = result;
@@ -172,21 +182,35 @@ router.post('/profile', async (req, res) => {
           profileId, error: abandonError.message
         }));
       }
-      tracker.status = 'failed';
       tracker.error = err.message;
-      logger.error('Profile job failed', { profileId, modelName, hostId, error: err.message });
+      // A cancelled profile reports `cancelled` once Core restored the pins.
+      if (err.code === 'PROFILE_CANCELLED') {
+        tracker.cancelEnded = true;
+        tracker.statusMessage = err.cancelStopUnproven
+          ? 'Cancelled, but Ollama did not confirm the aborted request stopped: the host stays quarantined (UNKNOWN)'
+          : 'Cancelled; restoring pinned models…';
+      } else tracker.status = 'failed';
+      logger[tracker.cancelEnded ? 'info' : 'error']('Profile job ended', { profileId, modelName, hostId, cancelled: tracker.cancelEnded === true, error: err.message });
     }).finally(async () => {
       // Core performs a fenced restore under this exact lease and releases
       // only after pinned residency verifies.
       try {
         await lease.finalize();
-        if (tracker.status === 'running') {
+        if (tracker.cancelEnded) {
+          tracker.status = 'cancelled';
+          tracker.statusMessage = 'Cancelled; pinned models restored';
+        } else if (tracker.status === 'running') {
           tracker.status = 'completed';
           tracker.statusMessage = 'Completed';
           tracker.stepsCompleted = steps.length;
           tracker.currentStep = null;
         }
       } catch (error) {
+        // An unproven cancel keeps its explanation: the host stays quarantined.
+        if (tracker.cancelEnded && cancellation.status().phase === 'stop_unproven') {
+          tracker.status = 'cancelled';
+          return;
+        }
         tracker.status = 'failed';
         tracker.error = error.message;
       }
@@ -194,6 +218,24 @@ router.post('/profile', async (req, res) => {
 
     res.json({ status: 'success', data: { profileId } });
   } catch (err) { res.status(500).json({ status: 'error', error: err.message }); }
+});
+
+// Cancel a running profile. A direct Ollama request in flight is aborted and
+// the profile ends once Ollama shows it stopped (bounded; otherwise UNKNOWN as
+// before); any other request finishes first. Core then restores the pins.
+router.post('/profile/:profileId/cancel', async (req, res) => {
+  const tracker = activeProfiles.get(req.params.profileId);
+  if (!tracker) return res.status(404).json({ status: 'error', error: 'Profile not found' });
+  if (tracker.status !== 'running') return res.json({ status: 'success', data: { profileStatus: tracker.status, cancelRequested: false } });
+  if (!tracker.cancellation) return res.status(409).json({ status: 'error', error: 'This profile runs in a host queue: cancel the queue' });
+  tracker.cancelRequested = true;
+  const cancel = await tracker.cancellation.cancel();
+  if (tracker.status === 'running' && !tracker.cancelEnded) {
+    tracker.statusMessage = cancel.phase === 'awaiting_stop_proof'
+      ? `Cancelling: request aborted, waiting up to ${Math.round(cancel.budgetMs / 1000)} s for Ollama to confirm it stopped…`
+      : 'Cancelling after the current request…';
+  }
+  return res.json({ status: 'success', data: { profileStatus: tracker.status, cancelRequested: true, cancel } });
 });
 
 // List active profiles (for detecting externally-started profiles)
@@ -218,6 +260,8 @@ router.get('/profile/:profileId/progress', async (req, res) => {
   const contextProposal = await completionProposal(tracker);
   res.json({ status: 'success', data: {
     profileStatus: tracker.status,
+    cancelRequested: tracker.cancelRequested === true,
+    cancel: tracker.cancelRequested ? tracker.cancellation?.status() ?? null : null,
     modelName: tracker.modelName,
     hostId: tracker.hostId,
     hostUrl: tracker.hostUrl || null,
@@ -307,6 +351,9 @@ async function _queueRunSingleProfile(modelName, hostId, hostUrl, depth, lease) 
  * validation/conflict failures, which the route maps to an HTTP response.
  */
 async function startProfileHostQueue(body = {}) {
+  if (body.queueRequestId !== undefined && !/^[a-f0-9-]{36}$/.test(body.queueRequestId)) {
+    throw Object.assign(new Error('Invalid queueRequestId'), { statusCode: 400 });
+  }
   const { hostId, depth, skipRecentDays, modelNames } = body;
   if (!hostId) throw Object.assign(new Error('hostId is required'), { statusCode: 400 });
 
@@ -336,6 +383,7 @@ async function startProfileHostQueue(body = {}) {
   const skipDays = Number.isFinite(Number(skipRecentDays)) ? Number(skipRecentDays) : 7;
   const tracker = {
     queueId,
+    queueRequestId: body.queueRequestId || null,
     hostId,
     hostUrl: host.hostUrl,
     hostName: host.displayName || hostId,
@@ -469,7 +517,7 @@ async function startProfileHostQueue(body = {}) {
     lease.finalize().catch(releaseErr => logger.warn('Profile queue claim finalization failed', { queueId, error: releaseErr.message }));
   });
 
-  return { queueId, hostId, depth: chosenDepth, total: candidates.length, models: candidates, skippedRecent, notOnHost };
+  return { queueId, queueRequestId: tracker.queueRequestId, hostId, depth: chosenDepth, total: candidates.length, models: candidates, skippedRecent, notOnHost };
 }
 
 router.post('/profile-host', async (req, res) => {
@@ -495,6 +543,7 @@ router.get('/profile-host/:queueId/progress', (req, res) => {
   if (!tracker) return res.status(404).json({ status: 'error', error: 'Queue not found or expired' });
   res.json({ status: 'success', data: {
     queueStatus: tracker.status,
+    queueRequestId: tracker.queueRequestId || null,
     hostId: tracker.hostId,
     hostName: tracker.hostName,
     depth: tracker.depth,

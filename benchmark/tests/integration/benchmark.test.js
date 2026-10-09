@@ -61,6 +61,15 @@ jest.mock('../../src/clients/coreApiClient', () => {
     const actual = jest.requireActual('../../src/clients/coreApiClient');
     return {
         ...actual,
+        coreRequest: jest.fn(async (path, options = {}) => {
+            if (path !== '/api/inference/contract/resolve') return actual.coreRequest(path, options);
+            const { model, host, options: parameters = {} } = JSON.parse(options.body);
+            return { version: 'agentx.inference-contract.v1', artifact: {
+                model, host, hostId: 'judge-host', digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64),
+                identityQualified: true, registryQualified: true
+            }, qualification: { qualified: false, stale: true },
+            contextBudget: { windowTokens: parameters.num_ctx || 65536, source: 'host_preference_pin' } };
+        }),
         acquireWorkloadAdmission: jest.fn(async (workloadId, options = {}) => ({
             acquired: true,
             admissionId: `admission-${workloadId}`,
@@ -86,7 +95,8 @@ jest.mock('../../src/clients/coreApiClient', () => {
         getBenchmarkClaimIdentity: jest.fn((_host, batchId) => ({
             claimBatchId: batchId,
             claimGeneration: `generation-${batchId}`
-        }))
+        })),
+        getWorkloadAdmissionIdentity: jest.fn(() => null)
     };
 });
 
@@ -109,7 +119,7 @@ jest.mock('../../src/services/benchmark/judgeReadiness', () => {
             judge_scored: { status: 'available' }
         },
         setup: { href: '#the-bench', label: 'Choose a judge' },
-        retry: { method: 'GET', href: '/api/benchmark/judge/readiness?refresh=1' }
+        retry: { method: 'GET', href: '/benchmark/api/benchmark/judge/readiness?refresh=1' }
     };
     return {
         ...actual,
@@ -228,8 +238,9 @@ describe('Benchmark System - Integration Tests', () => {
                 'knowledge',
                 'math',
                 'reasoning',
-                'translation'
-            ]);
+                'translation',
+                'agent'
+            ].sort());
         });
 
         it('should return prompts grouped by level', async () => {
@@ -738,6 +749,43 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.error).toContain('required');
         });
 
+        it.each([{ response_max_tokens: 80000 }, { early_stop_enabled: 'false' },
+            { per_test_timeout_ms: 3600001 }])('rejects candidate policies before creating a batch: %j', async execution_config => {
+            const response = await api.post('/api/benchmark/batch').send({
+                host: 'http://localhost:11434', models: ['ax/test-model'], levels: [1], execution_config
+            });
+            expect(response.status).toBe(400);
+            expect(response.body.code).toBe('INVALID_EXECUTION_CONFIG');
+            expect(await BenchmarkBatch.countDocuments()).toBe(0);
+        });
+
+        it('publishes candidate limits and accepts a timeout supported by stored configuration', async () => {
+            const config = await api.get('/api/benchmark/config');
+            expect(config.body.data.execution_policy).toMatchObject({ responseTokenLimit: 50000,
+                timeoutLimits: { per_test_timeout_ms: [30000, 3600000] },
+                earlyStop: { enabledByDefault: true, minJudged: 5, threshold: 2 } });
+            const response = await api.post('/api/benchmark/batch').send({
+                host: 'http://localhost:11434', models: ['ax/test-model'], levels: [1],
+                judge_config: { host: 'http://localhost:11434', model: 'judge-model' },
+                execution_config: { per_test_timeout_ms: 1800000, early_stop_enabled: false }
+            });
+            expect(response.status).toBe(200);
+            const batch = await BenchmarkBatch.findById(response.body.data.batch_id).lean();
+            expect(batch.execution_config).toMatchObject({ per_test_timeout_ms: 1800000, early_stop_enabled: false });
+        });
+
+        it('rejects an incompatible preflight budget before resolving readiness', async () => {
+            const preflight = require('../../src/services/benchmark/preflight').runPreflight;
+            const callsBefore = preflight.mock.calls.length;
+            const response = await api.post('/api/benchmark/preflight').send({
+                execution_config: { response_max_tokens: 80000 }
+            });
+            expect(response.status).toBe(400);
+            expect(response.body.code).toBe('INVALID_EXECUTION_CONFIG');
+            expect(preflight.mock.calls).toHaveLength(callsBefore);
+            expect(await BenchmarkBatch.countDocuments()).toBe(0);
+        });
+
         it('derives campaign kind from targets instead of trusting the submitted label', async () => {
             const response = await api.post('/api/benchmark/batch').send({
                 host: 'http://localhost:11434',
@@ -789,6 +837,24 @@ describe('Benchmark System - Integration Tests', () => {
             expect(batch).toBeTruthy();
             expect(batch.status).toBe('running');
             expect(batch.models).toEqual(['ax/test-model']);
+            expect(batch.judge_config).toMatchObject({ num_ctx: 65536, execution_contract: {
+                num_ctx: 65536, artifact: { digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) }
+            } });
+        });
+
+        it('refuses an unresolved judge contract before saving a batch or handing off its admission', async () => {
+            const { coreRequest, releaseWorkloadAdmission } = require('../../src/clients/coreApiClient');
+            const releasesBefore = releaseWorkloadAdmission.mock.calls.length;
+            coreRequest.mockResolvedValueOnce({ version: 'agentx.inference-contract.v1',
+                artifact: null, contextBudget: { windowTokens: 65536 } });
+            const response = await api.post('/api/benchmark/batch').send({
+                host: 'http://localhost:11434', models: ['ax/test-model'], levels: [1],
+                judge_config: { host: 'http://localhost:11434', model: 'judge-model' }
+            });
+            expect(response.status).toBe(422);
+            expect(response.body.code).toBe('JUDGE_EXECUTION_CONTRACT_UNRESOLVED');
+            expect(await BenchmarkBatch.countDocuments({})).toBe(0);
+            expect(releaseWorkloadAdmission.mock.calls.length).toBe(releasesBefore + 1);
         });
 
         it('should not report pending judge work immediately after launch', async () => {
@@ -905,7 +971,9 @@ describe('Benchmark System - Integration Tests', () => {
                     levels: [1],
                     judge_config: {
                         host: 'http://judge-host:11434',
-                        model: 'qwen2.5:14b-instruct'
+                        model: 'qwen2.5:14b-instruct',
+                        num_predict: 65536,
+                        timeout: 7200000
                     }
                 });
 
@@ -918,9 +986,17 @@ describe('Benchmark System - Integration Tests', () => {
             expect(runPreflight).toHaveBeenCalledWith(expect.objectContaining({
                 judgeConfig: expect.objectContaining({
                     model: 'qwen2.5:14b-instruct',
-                    host: 'http://judge-host:11434'
+                    host: 'http://judge-host:11434',
+                    num_predict: 65536,
+                    timeout: 7200000
                 })
             }));
+            const saved = await BenchmarkBatch.findById(response.body.data.batch_id).lean();
+            expect(saved.judge_config).toMatchObject({ num_predict: 65536, timeout: 7200000 });
+            expect(response.body.data.warnings).toEqual(expect.arrayContaining([
+                expect.stringMatching(/num_predict 65536.*Kept as chosen/),
+                expect.stringMatching(/timeout 7200000 ms.*Kept as chosen/)
+            ]));
         });
 
         it('should return 409 on duplicate-key race collision during start', async () => {
@@ -2439,11 +2515,100 @@ describe('Benchmark System - Integration Tests', () => {
         });
     });
 
+    describe('per-prompt comparison inside a cohort', () => {
+        const { SCORER_VERSION } = require('../../src/services/scoring/scorerVersion');
+        const { buildPromptFingerprint } = require('../../../shared/benchmarkTargetContract');
+        const cohort = 'a'.repeat(64);
+        const BOARD = '/api/benchmark/generalist-leaderboard?axis=quality&includeUnavailableModels=true&includeCloud=true';
+
+        async function seedCatalog() {
+            const [p1, p2, c1] = await BenchmarkPrompt.create([
+                { name: 'Reasoning one', prompt: 'Reason about one.', level: 3, category: 'reasoning' },
+                { name: 'Reasoning two', prompt: 'Reason about two.', level: 3, category: 'reasoning' },
+                { name: 'Coding one', prompt: 'Write one function.', level: 3, category: 'coding' }
+            ]);
+            return { p1, p2, c1 };
+        }
+
+        async function seedResults(rows, { pinned = true } = {}) {
+            await BenchmarkResult.create(rows.map(([model, prompt, score]) => ({
+                model, host: 'http://localhost:11434', prompt: prompt.prompt, prompt_name: prompt.name,
+                prompt_category: prompt.category, prompt_level: prompt.level, success: true, response: 'An answer',
+                scorer_version: SCORER_VERSION, scoring_method: 'decomposed', quality_cohort_fingerprint: cohort,
+                quality_score: score, judge_model: 'judge:27b', judge_host: 'http://judge:11434',
+                ...(pinned ? { prompt_id: String(prompt._id), prompt_fingerprint: buildPromptFingerprint(prompt.toObject()) } : {})
+            })));
+        }
+
+        const byModel = body => Object.fromEntries(body.data.groups.map(group => [group.model, group]));
+
+        it('keeps existing results comparable when a prompt is added and says which prompts rows share', async () => {
+            const { p1, p2, c1 } = await seedCatalog();
+            await seedResults([
+                ['model-a', p1, 8], ['model-a', p2, 8], ['model-a', c1, 8],
+                ['model-b', p1, 6], ['model-b', p2, 6]
+            ]);
+            await BenchmarkPrompt.create({ name: 'Coding two', prompt: 'Write another function.', level: 3, category: 'coding' });
+
+            const response = await api.get(BOARD);
+            expect(response.status).toBe(200);
+            const groups = byModel(response.body);
+            expect(groups['model-a']).toMatchObject({ rank: 1, comparable: true });
+            expect(groups['model-b']).toMatchObject({ rank: 2, comparable: true });
+            expect(response.body.data.comparison.promptSet).toEqual({ perPrompt: true, boardPrompts: 3, sharedByAll: 2, catalogPrompts: 4 });
+            expect(groups['model-a'].headline.promptCoverage).toMatchObject({ covered: 3, missingCount: 0, sharedWithLeader: 3 });
+            expect(groups['model-b'].headline.promptCoverage).toMatchObject({
+                covered: 2, boardPrompts: 3, sharedByAll: 2, sharedWithLeader: 2, missingCount: 1,
+                missing: [{ name: 'Coding one', category: 'coding', level: 3 }]
+            });
+        });
+
+        it('takes only the results on an edited prompt out of the comparison', async () => {
+            const { p1, p2, c1 } = await seedCatalog();
+            await seedResults([
+                ['model-a', p1, 8], ['model-a', p2, 8], ['model-a', c1, 8],
+                ['model-b', p1, 6], ['model-b', p2, 6], ['model-b', c1, 6]
+            ]);
+            await BenchmarkPrompt.updateOne({ _id: p2._id }, { $set: { prompt: 'Reason about two, reworded.' } });
+
+            const response = await api.get(BOARD);
+            const groups = byModel(response.body);
+            for (const model of ['model-a', 'model-b']) {
+                expect(groups[model]).toMatchObject({ comparable: true });
+                expect(groups[model].headline).toMatchObject({ totalTests: 2, promptCoverage: { covered: 2, missingCount: 0 } });
+                expect(groups[model].history).toHaveLength(1);
+                expect(groups[model].history[0]).toMatchObject({
+                    qualityCohortFingerprint: cohort, filterReason: 'prompt_content_changed', promptContentStale: true,
+                    stalePrompts: ['Reasoning two'], totalTests: 1, rankable: false
+                });
+            }
+            expect(groups['model-a'].rank).toBe(1);
+        });
+
+        it('compares a cohort written before prompt fingerprints as one catalog-wide cohort', async () => {
+            const { p1, c1 } = await seedCatalog();
+            await seedResults([['model-a', p1, 8], ['model-a', c1, 8], ['model-b', p1, 6]], { pinned: false });
+            await BenchmarkPrompt.updateOne({ _id: p1._id }, { $set: { prompt: 'Reworded.' } });
+
+            const response = await api.get(BOARD);
+            const groups = byModel(response.body);
+            expect(response.body.data.comparison.promptSet).toEqual({ perPrompt: false });
+            expect(groups['model-a']).toMatchObject({ rank: 1, comparable: true });
+            expect(groups['model-b']).toMatchObject({ rank: 2, comparable: true });
+            expect(groups['model-a'].headline.promptCoverage).toBeUndefined();
+        });
+    });
+
     describe('grader qualification', () => {
         const JudgeQualification = require('../../models/JudgeQualification');
         const { SCORER_VERSION } = require('../../src/services/scoring/scorerVersion');
         const { currentReferenceFingerprint } = require('../../src/services/benchmark/judgeQualification');
         const JUDGE = { model: 'judge-qualified:27b', host: 'http://judge-a:11434' };
+        const { buildJudgeQualificationContract } = require('../../src/services/benchmark/judgeQualificationContract');
+        const contract = buildJudgeQualificationContract({ ...JUDGE, num_ctx: 65536, num_predict: 800, timeout: 60000,
+            temperature: 0.1, seed: 7, max_retries: 2, execution_contract: {
+                schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 65536,
+                artifact: { ...JUDGE, digest: 'digest-a', runtimeFingerprint: 'runtime-a' } } });
         const cohort = 'e'.repeat(64);
 
         afterEach(async () => {
@@ -2452,6 +2617,7 @@ describe('Benchmark System - Integration Tests', () => {
 
         async function qualify(judge, overrides = {}) {
             return JudgeQualification.create({
+                qualification_contract: contract,
                 judge_model: judge.model, judge_host: judge.host,
                 judge_model_key: judge.model, judge_host_key: judge.host,
                 scorer_version: SCORER_VERSION, reference_fingerprint: currentReferenceFingerprint(),
@@ -2465,7 +2631,7 @@ describe('Benchmark System - Integration Tests', () => {
                 host: 'http://localhost:11434', prompt: 'Explain', prompt_name: 'Reasoning prompt',
                 prompt_category: 'reasoning', prompt_level: 3, success: true, response: 'An answer',
                 scorer_version: SCORER_VERSION, scoring_method: 'decomposed', quality_cohort_fingerprint: cohort,
-                judge_model: JUDGE.model, judge_host: JUDGE.host
+                judge_qualification_contract: contract, judge_model: JUDGE.model, judge_host: JUDGE.host
             };
             await BenchmarkResult.create([
                 { ...base, model: 'model-a', quality_score: 8 },
@@ -2534,14 +2700,14 @@ describe('Benchmark System - Integration Tests', () => {
                     model: 'model-a', host: 'http://localhost:11434', prompt: 'Explain', prompt_name: 'p',
                     prompt_category: 'reasoning', prompt_level: 3, success: true, response: 'An answer',
                     quality_score: 7.5, scorer_version: SCORER_VERSION, scoring_method: 'decomposed',
-                    judge_model: JUDGE.model, judge_host: JUDGE.host, attention_check: { passed: false },
+                    judge_qualification_contract: contract, judge_model: JUDGE.model, judge_host: JUDGE.host, attention_check: { passed: false },
                     needs_review: true
                 },
                 {
                     model: 'model-a', host: 'http://localhost:11434', prompt: 'Explain', prompt_name: 'p',
                     prompt_category: 'reasoning', prompt_level: 3, success: false, response: '',
                     quality_score: null, scoring_method: 'exec_failed', infra_error: true, error_type: 'infra',
-                    failure_classification: 'infra', judge_model: JUDGE.model, judge_host: JUDGE.host
+                    failure_classification: 'infra', judge_qualification_contract: contract, judge_model: JUDGE.model, judge_host: JUDGE.host
                 }
             ]);
 
@@ -2666,6 +2832,40 @@ describe('Benchmark System - Integration Tests', () => {
             expect(row.coveragePenalty).toBeGreaterThan(0);
             expect(row.fullScopeEligible).toBe(false);
             expect(row.evidenceStatus).toBe('partial_scope');
+        });
+
+        it('ranks a native agent beside the bare model, each as its own entry', async () => {
+            await BenchmarkPrompt.create({ name: 'Agent proof prompt', prompt: 'Explain the proof boundary', level: 4, category: 'reasoning' });
+            const { executionHost } = require("../../../shared/benchmarkTargetContract");
+            const cohort = "e".repeat(64);
+            const agentTarget = (id, fingerprint) => ({
+                id, label: `Agent ${id}`, executionKind: 'harness', mode: 'native_agent', tier: 'local', provider: 'ollama',
+                model: 'shared-local-model', available: true, contextWindow: 65536, fingerprint, catalogFingerprint: 'b'.repeat(64),
+                harness: { name: 'openclaw', version: '1.0.0' }
+            });
+            const receipt = executionProfile => ({ schema: 'agentx.worker-receipt/v1', schemaVersion: 1, executionProfile,
+                finalState: 'succeeded', result: { contractSatisfied: true }, fingerprint: 'c'.repeat(64) });
+            const base = { model: 'shared-local-model', prompt: 'Explain the proof boundary', prompt_name: 'Agent proof prompt',
+                prompt_category: 'reasoning', prompt_level: 4, quality_cohort_fingerprint: cohort, success: true };
+            const first = agentTarget('agent-one', '1'.repeat(64)), second = agentTarget('agent-two', '2'.repeat(64));
+            await BenchmarkResult.create([
+                { ...base, host: 'http://model-host:11434', quality_score: 6 },
+                { ...base, host: executionHost(first), quality_score: 9, execution_target: first, execution_receipt: receipt('native-ceiling') },
+                // A portable receipt does not prove a native agent run.
+                { ...base, host: executionHost(second), quality_score: 9, execution_target: second, execution_receipt: receipt('portable') }
+            ]);
+
+            const response = await api.get('/api/benchmark/generalist-leaderboard?axis=quality&includeUnavailableModels=true&includeCloud=true');
+
+            expect(response.status).toBe(200);
+            const rows = response.body.data.leaderboard.filter((row) => row.model === 'shared-local-model');
+            const byHost = host => rows.find((row) => row.host === host);
+            expect(rows).toHaveLength(3);
+            expect(byHost('http://model-host:11434')).toMatchObject({ rankable: true, executionTarget: null });
+            expect(byHost('harness:openclaw:agent-one')).toMatchObject({ rankable: true, qualityCohortFingerprint: cohort,
+                executionTarget: { mode: 'native_agent', contextWindow: 65536 }, harnessEvidence: { rankable: true, completeExecutionRows: 1 } });
+            expect(byHost('harness:openclaw:agent-two')).toMatchObject({ rankable: false, filterReason: 'incomplete_harness_execution_receipt' });
+            expect(rows.indexOf(byHost('harness:openclaw:agent-one'))).toBeLessThan(rows.indexOf(byHost('http://model-host:11434')));
         });
 
         it('keeps incomplete or mixed harness evidence visible but unranked and unqualified', async () => {

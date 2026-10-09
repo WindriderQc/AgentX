@@ -74,6 +74,23 @@ function makeRequestMock() {
 }
 
 describe('datalake maintenance workflow', () => {
+  test('JSON retains all received suggestions while Markdown declares its overview and AI sample', () => {
+    const coverage = { actions: { included: 50, available: 70 }, fileEntries: { included: 250, available: 700 }, selection: 'First 50 actions.' };
+    const report = workflow.buildReport({ options: baseOptions(), generatedAt: '2026-10-06T00:00:00Z',
+      collected: { janitorSuggest: { ok: true, data: { suggestions: Array.from({ length: 30 }, (_, i) => ({
+        policy: `suggestion-${i}`, files: [`/synthetic/${i}.txt`], space_saved: i
+      })) } } },
+      profileRun: { run_id: 'run-1', run: { proposed_actions: [], ai_triage: { outcome: 'completed', coverage } } }
+    });
+    expect(report.proposals).toHaveLength(30);
+    expect(report.proposals[0].type).toBe('suggestion-29');
+    expect(report.proposals.at(-1).type).toBe('suggestion-0');
+    const markdown = workflow.markdownReport(report);
+    expect(markdown).toContain('Showing 25 of 30 proposals');
+    expect(markdown).toContain('50/70 actions and 250/700 file entries submitted');
+    expect(markdown).toContain('JSON report retains the complete received proposal list');
+  });
+
   test('parseArgs keeps the default profile proposal-only and unscheduled', () => {
     const options = workflow.parseArgs([
       '--root', '/mnt/datalake/RAG',

@@ -33,6 +33,7 @@ const TRUST_ELIGIBLE = [
   'verified_runtime_evidence',
   'observed_project_event',
   'verified_git_or_test_outcome',
+  'household_member_statement',
 ];
 const TRUST_INELIGIBLE = [
   'assistant_claim', 'tool_output', 'recalled_context', 'cron_or_automation',
@@ -51,6 +52,9 @@ const CENTRAL_SUBMISSION_TRUST = [
   'verified_runtime_evidence',
   'observed_project_event',
   'verified_git_or_test_outcome',
+  // Said on a family surface by someone of the household, not by the owner.
+  // It is evidence about that person and never about the owner.
+  'household_member_statement',
 ];
 
 const CANDIDATE_TYPES = [
@@ -403,6 +407,9 @@ function evidenceTrusts(candidate) {
 
 function evidenceClass(candidate) {
   const trusts = evidenceTrusts(candidate);
+  // One member statement among the evidence is enough: the owner's own words
+  // cannot vouch for what someone else said.
+  if (trusts.includes('household_member_statement')) return 'household_member';
   if (trusts.includes('explicit_memory_request')) return 'explicit';
   if (trusts.includes('authenticated_owner_statement') || trusts.includes('repeated_owner_preference')) {
     return 'owner_observed';
@@ -430,6 +437,9 @@ function automationDecision(candidate) {
   if (ignoreTypes.includes(candidate.type) || candidate.target?.kind === 'ignore'
       && !['contradiction', 'stale_memory'].includes(candidate.type)) {
     return { disposition: 'ignore', evidenceClass: klass, reason: `type:${candidate.type}` };
+  }
+  if (klass === 'household_member') {
+    return { disposition: 'review', evidenceClass: klass, reason: 'household-member-evidence' };
   }
   if (conflicts.length || ['contradiction', 'stale_memory'].includes(candidate.type)) {
     return { disposition: 'review', evidenceClass: klass, reason: 'conflict-or-temporal-dispute' };

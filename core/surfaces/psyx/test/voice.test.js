@@ -44,7 +44,7 @@ test('PsyX has no path that writes the shared VoiX configuration', async () => {
   const requests = [];
   const client = createVoiceClient(VOICE_CONFIG, recordingFetch(requests));
   assert.equal(typeof client.updateConfig, 'undefined');
-  assert.deepEqual(Object.keys(client).sort(), ['catalog', 'config', 'enabled', 'player', 'status', 'stream', 'synthesize', 'transcribe']);
+  assert.deepEqual(Object.keys(client).sort(), ['catalog', 'config', 'enabled', 'player', 'status', 'stream', 'synthesize', 'transcribe', 'warm']);
   await client.synthesize({ text: 'bonjour', ttsProvider: 'windows_sapi', language: 'fr' });
   assert.deepEqual(requests.map((item) => `${item.method} ${item.path}`), ['POST /api/tts']);
 });
@@ -153,4 +153,74 @@ test('two independently configured clients share VoiX without touching each othe
     ['POST', '/api/tts', 'kokoro', 'fr', 'ff_siwis']
   ]);
   assert.equal(requests.some((item) => item.path === '/config' && item.method !== 'GET'), false);
+});
+
+test('hands-free WAV capture keeps its format and cancellation through the local transcription adapter', async () => {
+  const abort = new AbortController(); let upstream;
+  const client = createVoiceClient(VOICE_CONFIG, async (url, options) => {
+    upstream = options;
+    assert.ok(url.endsWith('/v1/audio/transcriptions'));
+    assert.equal(options.body.get('file').name, 'recording.wav');
+    assert.equal(options.body.get('file').type, 'audio/wav');
+    assert.equal(options.body.get('language'), 'fr');
+    return new Response(JSON.stringify({ text: 'Bonjour', language: 'fr' }));
+  });
+  const transcript = await client.transcribe(Buffer.from('synthetic PCM'), { contentType: 'audio/wav', language: 'fr', signal: abort.signal });
+  assert.equal(transcript.text, 'Bonjour');
+  assert.equal(upstream.signal.aborted, false);
+  abort.abort(); assert.equal(upstream.signal.aborted, true);
+});
+
+test('the instance-qualified spoken Stop endpoint is shared with PsyX without creating speech text', async t => {
+  const previous = process.env.VOIX_SPOKEN_CONTROLS_ENABLED;
+  process.env.VOIX_SPOKEN_CONTROLS_ENABLED = 'true';
+  t.after(() => { if (previous === undefined) delete process.env.VOIX_SPOKEN_CONTROLS_ENABLED; else process.env.VOIX_SPOKEN_CONTROLS_ENABLED = previous; });
+  const client = createVoiceClient(VOICE_CONFIG, async (url, options) => {
+    assert.ok(url.endsWith('/v1/audio/transcriptions/controls'));
+    assert.equal(options.body.get('file').name, 'recording.wav');
+    return new Response(JSON.stringify({ text: '', control: 'stop' }));
+  });
+  assert.deepEqual(await client.transcribe(Buffer.from('RIFF'), { contentType: 'audio/wav', language: 'fr' }), { text: '', control: 'stop', language: 'fr' });
+});
+
+test('browser voice remains ready on the shared backup without reading or borrowing native device state', async t => {
+  const before = { base: process.env.VOIX_BASE_URL, fallback: process.env.VOIX_FALLBACK_URL };
+  process.env.VOIX_BASE_URL = VOICE_CONFIG.voice.baseUrl;
+  process.env.VOIX_FALLBACK_URL = 'http://backup.test';
+  t.after(() => {
+    for (const [key, value] of [['VOIX_BASE_URL', before.base], ['VOIX_FALLBACK_URL', before.fallback]]) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+  const calls = [];
+  const client = createVoiceClient(VOICE_CONFIG, async url => {
+    calls.push(url);
+    if (url.startsWith(VOICE_CONFIG.voice.baseUrl)) return new Response('{}', { status: 503 });
+    return new Response(JSON.stringify({ status: 'ok', version: 'synthetic-backup', running: true }));
+  });
+  const status = await client.status();
+  assert.equal(status.reachable, true);
+  assert.equal(status.activeUpstream, 'fallback');
+  assert.equal(status.nativeAvailable, false); assert.equal(status.nativeSessionRunning, false);
+  assert.deepEqual(status.devices, []);
+  assert.deepEqual(calls, [VOICE_CONFIG.voice.baseUrl + '/health', 'http://backup.test/health']);
+});
+
+test('waking recognition is one best-effort request to the primary speech service', async () => {
+  const requests = [];
+  const client = createVoiceClient(VOICE_CONFIG, async (url, options = {}) => {
+    requests.push({ path: new URL(url).pathname, method: options.method || 'GET' });
+    return new Response(JSON.stringify({ warmed: true, warmMs: 400 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  });
+  assert.deepEqual(await client.warm(), { warmed: true });
+  assert.deepEqual(requests, [{ path: '/api/stt/warm', method: 'POST' }]);
+  // An older speech service, an unreachable one or a disabled voice is never an error.
+  const older = createVoiceClient(VOICE_CONFIG, async () => new Response(JSON.stringify({ detail: 'Not Found' }), { status: 404, headers: { 'Content-Type': 'application/json' } }));
+  assert.deepEqual(await older.warm(), { warmed: false });
+  const away = createVoiceClient(VOICE_CONFIG, async () => { throw new Error('connection refused'); });
+  assert.deepEqual(await away.warm(), { warmed: false });
+  let reached = false;
+  const disabled = createVoiceClient({ voice: { mode: 'disabled' } }, async () => { reached = true; return new Response('{}'); });
+  assert.deepEqual(await disabled.warm(), { warmed: false });
+  assert.equal(reached, false);
 });

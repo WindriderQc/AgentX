@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var API_BASE = '/api/rag';
+  var API_BASE = '/rag/api/rag';
 
   /**
    * Fetch wrapper that auto-parses JSON and checks the envelope.
@@ -45,7 +45,7 @@
    * Dashboard polling reads cached observations without starting an embedding probe.
    */
   async function getStatus() {
-    return apiFetch('/api/rag/status');
+    return apiFetch('/rag/api/rag/status');
   }
 
   /**
@@ -53,14 +53,14 @@
    * Search uses a fresh embedding probe before enabling retrieval.
    */
   async function refreshStatus() {
-    return apiFetch('/api/rag/status/refresh', { method: 'POST' });
+    return apiFetch('/rag/api/rag/status/refresh', { method: 'POST' });
   }
 
   /**
    * GET /health — basic liveness check.
    */
   async function getHealth() {
-    return apiFetch('/health');
+    return apiFetch('/rag/health');
   }
 
   /**
@@ -77,33 +77,48 @@
       if (filters.offset) params.push('offset=' + encodeURIComponent(filters.offset));
     }
     var qs = params.length ? '?' + params.join('&') : '';
-    return apiFetch('/api/rag/documents' + qs);
+    return apiFetch('/rag/api/rag/documents' + qs);
   }
 
   /**
    * GET /api/rag/documents/:id — get document metadata.
    */
   async function getDocument(id) {
-    return apiFetch('/api/rag/documents/' + encodeURIComponent(id));
+    return apiFetch('/rag/api/rag/documents/' + encodeURIComponent(id));
   }
 
   /**
    * GET /api/rag/documents/:id/chunks — get all chunks for a document.
    */
   async function getDocumentChunks(id) {
-    return apiFetch('/api/rag/documents/' + encodeURIComponent(id) + '/chunks');
+    return apiFetch('/rag/api/rag/documents/' + encodeURIComponent(id) + '/chunks');
   }
 
   /**
    * DELETE /api/rag/documents/:id — delete a document.
    * @param {string} id - Full opaque document identifier.
    * @param {string} confirmation - Exact `DELETE <id>` typed confirmation.
+   * @param {boolean} [exclude] - Keep the scanned file out of later scans.
    */
-  async function deleteDocument(id, confirmation) {
-    return apiFetch('/api/rag/documents/' + encodeURIComponent(id), {
+  async function deleteDocument(id, confirmation, exclude) {
+    return apiFetch('/rag/api/rag/documents/' + encodeURIComponent(id), {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmation: confirmation })
+      body: JSON.stringify(exclude ? { confirmation: confirmation, exclude: true } : { confirmation: confirmation })
+    });
+  }
+
+  /** GET /api/rag/ingestion/excluded — files kept out of the index. */
+  async function listExcludedFiles() {
+    return apiFetch('/rag/api/rag/ingestion/excluded');
+  }
+
+  /** POST /api/rag/ingestion/excluded/restore — the next scan ingests the file again. */
+  async function restoreExcludedFile(path) {
+    return apiFetch('/rag/api/rag/ingestion/excluded/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path })
     });
   }
 
@@ -128,7 +143,7 @@
       if (options.rerank === true) body.rerank = true;
       if (options.compress === true) body.compress = true;
     }
-    return apiFetch('/api/rag/search', {
+    return apiFetch('/rag/api/rag/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -141,7 +156,7 @@
    * @returns {Promise<object>} { ok, data: { documentId, chunkCount, status } }
    */
   async function ingestDocument(params) {
-    return apiFetch('/api/rag/ingest', {
+    return apiFetch('/rag/api/rag/ingest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -154,7 +169,7 @@
    */
   async function getLatestManifest(source) {
     var qs = source ? '?source=' + encodeURIComponent(source) : '';
-    return apiFetch('/api/rag/manifests/latest' + qs);
+    return apiFetch('/rag/api/rag/manifests/latest' + qs);
   }
 
   /**
@@ -163,7 +178,7 @@
    */
   async function getDeletionPreview(source) {
     var qs = source ? '?source=' + encodeURIComponent(source) : '';
-    return apiFetch('/api/rag/deletion-preview' + qs);
+    return apiFetch('/rag/api/rag/deletion-preview' + qs);
   }
 
   /**
@@ -175,7 +190,7 @@
   async function runCleanup(source, dryRun, confirmation) {
     var body = { source: source, dryRun: dryRun !== undefined ? dryRun : false };
     if (confirmation !== undefined) body.confirmation = confirmation;
-    return apiFetch('/api/rag/cleanup', {
+    return apiFetch('/rag/api/rag/cleanup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -186,7 +201,7 @@
    * POST /api/rag/embedding-migration/reindex — trigger embedding reindex.
    */
   async function triggerReindex(confirmation) {
-    return apiFetch('/api/rag/embedding-migration/reindex', {
+    return apiFetch('/rag/api/rag/embedding-migration/reindex', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ confirmation: confirmation })
@@ -203,6 +218,8 @@
     getDocument: getDocument,
     getDocumentChunks: getDocumentChunks,
     deleteDocument: deleteDocument,
+    listExcludedFiles: listExcludedFiles,
+    restoreExcludedFile: restoreExcludedFile,
     search: search,
     ingestDocument: ingestDocument,
     getLatestManifest: getLatestManifest,

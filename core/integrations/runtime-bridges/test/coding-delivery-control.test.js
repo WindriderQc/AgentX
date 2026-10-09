@@ -528,6 +528,12 @@ test('manual deployment requires running source identity and handles optional Da
   assert.equal((await deliveryForPromotedTask({ ...input, production: accepted })).stage, 'deployed');
   const drifted = parseProductionState([...base, `coreRevision=${HEAD_SHA}`, `benchmarkRevision=${MERGE_SHA}`, `ragRevision=${MERGE_SHA}`].join('\n'));
   assert.equal((await deliveryForPromotedTask({ ...input, production: drifted })).stage, 'deployment_pending');
+  const sourceEquivalent = parseProductionState([...base, `coreRevision=${HEAD_SHA}`, 'coreEquivalent=yes',
+    `benchmarkRevision=${MERGE_SHA}`, `ragRevision=${MERGE_SHA}`].join('\n'));
+  assert.equal((await deliveryForPromotedTask({ ...input, production: sourceEquivalent })).stage, 'deployed');
+  const unproven = parseProductionState([...base, `coreRevision=${HEAD_SHA}`, 'coreEquivalent=no',
+    `benchmarkRevision=${MERGE_SHA}`, `ragRevision=${MERGE_SHA}`].join('\n'));
+  assert.equal((await deliveryForPromotedTask({ ...input, production: unproven })).stage, 'deployment_pending');
 });
 
 test('production probe selects the configured Compose instance and rejects shell syntax', () => {
@@ -535,6 +541,7 @@ test('production probe selects the configured Compose instance and rejects shell
   assert.match(command, /--project-name agentx-canary/);
   assert.match(command, /--env-file \/etc\/agentx\/canary.env/);
   assert.match(command, /compose ps -q/);
+  assert.match(command, /service-image-parity\.py/);
   assert.doesNotMatch(command, /agentx-core|up -d/);
   assert.throws(() => productionCommand('/srv/agentx/AgentX'), /explicit production env/);
   assert.throws(() => productionCommand('/srv/agentx/AgentX', { projectName: 'x; touch', envFile: '/tmp/a' }));

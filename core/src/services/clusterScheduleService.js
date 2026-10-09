@@ -9,7 +9,8 @@ const logger = require('../../config/logger');
 const ClusterScheduleEntry = require('../../models/ClusterScheduleEntry');
 const ClusterScheduleClaim = require('../../models/ClusterScheduleClaim');
 const { randomUUID } = require('crypto');
-const { defaultPlanningTimeZone } = require('./planningDateService');
+const { defaultPlanningTimeZone, zonedDayBounds } = require('./planningDateService');
+const { detectVramOverflows } = require('./clusterScheduleConflicts');
 
 function normalizeRoutedModelName(modelName) {
   return String(modelName || '').trim().toLowerCase().replace(/:latest$/i, '');
@@ -37,17 +38,14 @@ async function getAllEntries(filters = {}) {
 
 /**
  * Resolve all enabled entries into time slots for a given date.
- * Note: day boundaries use UTC (00:00Z–23:59Z). Cron expressions are resolved
- * in the requested timezone. Late-night local tasks may fall outside the UTC day
- * window — a known limitation for v1.
+ * Day boundaries and cron occurrences use the same requested time zone.
  * @param {string} dateStr - ISO date string (YYYY-MM-DD)
  * @param {string} timezone - IANA timezone
  * @returns {Promise<Array>} - Array of { entry, slots: [{ start, end }] }
  */
 async function getTimeline(dateStr, timezone = defaultPlanningTimeZone()) {
   const entries = await ClusterScheduleEntry.find({ enabled: true }).lean();
-  const dayStart = new Date(`${dateStr}T00:00:00Z`);
-  const dayEnd = new Date(`${dateStr}T23:59:59Z`);
+  const { start: dayStart, end: dayEnd } = zonedDayBounds(dateStr, timezone);
   const timeline = [];
 
   for (const entry of entries) {
@@ -66,13 +64,14 @@ async function getTimeline(dateStr, timezone = defaultPlanningTimeZone()) {
         estimatedDurationMs: entry.estimatedDurationMs,
         vramMb: entry.vramMb,
         scheduleType: entry.schedule?.type || null,
+        lastRun: entry.lastRun || null,
         metadata: entry.metadata || {},
         slots
       });
     }
   }
 
-  return timeline;
+  return timeline.concat(await require('./heavyWorkQueueTimeline').reservations(dayStart, dayEnd));
 }
 
 /**
@@ -91,7 +90,11 @@ function resolveSlots(entry, dayStart, dayEnd, timezone) {
       return [{ start: dayStart.toISOString(), end: dayEnd.toISOString(), continuous: true }];
     }
     const slots = [];
-    let cursor = new Date(dayStart);
+    const sourceNext = Number(entry.metadata?.nextRunAtMs);
+    const lastRun = entry.lastRun ? new Date(entry.lastRun).getTime() : NaN;
+    const anchor = sourceNext > 0 ? sourceNext
+      : (Number.isFinite(lastRun) ? lastRun + intervalMs : dayStart.getTime());
+    let cursor = new Date(anchor + Math.ceil((dayStart.getTime() - anchor) / intervalMs) * intervalMs);
     while (cursor < dayEnd) {
       const end = new Date(cursor.getTime() + (entry.estimatedDurationMs || intervalMs));
       slots.push({
@@ -106,9 +109,9 @@ function resolveSlots(entry, dayStart, dayEnd, timezone) {
   if (schedType === 'cron' && entry.schedule.cron) {
     try {
       const options = {
-        currentDate: dayStart,
-        endDate: dayEnd,
-        tz: timezone || entry.schedule.timezone || defaultPlanningTimeZone()
+        currentDate: new Date(dayStart.getTime() - 1),
+        endDate: new Date(dayEnd.getTime() - 1),
+        tz: entry.schedule.timezone || timezone || defaultPlanningTimeZone()
       };
       const interval = CronExpressionParser.parse(entry.schedule.cron, options);
       const slots = [];
@@ -116,6 +119,7 @@ function resolveSlots(entry, dayStart, dayEnd, timezone) {
         try {
           const next = interval.next();
           const start = next.toDate ? next.toDate() : new Date(next);
+          if (start >= dayEnd) break;
           const durationMs = entry.estimatedDurationMs || 300000; // default 5 min
           const end = new Date(start.getTime() + durationMs);
           slots.push({
@@ -220,6 +224,8 @@ function getNextOccurrence(entry, now) {
   }
 
   if (entry.schedule?.type === 'interval' && entry.schedule.intervalMs) {
+    const sourceNext = Number(entry.metadata?.nextRunAtMs);
+    if (sourceNext > now.getTime()) return new Date(sourceNext);
     const lastRun = entry.lastRun ? new Date(entry.lastRun) : now;
     const next = new Date(lastRun.getTime() + entry.schedule.intervalMs);
     return next > now ? next : new Date(now.getTime() + entry.schedule.intervalMs);
@@ -326,46 +332,11 @@ async function getTimelineByHost(dateStr, timezone = defaultPlanningTimeZone()) 
 }
 
 /**
- * Detect scheduling conflicts: overlapping time slots on the same host.
+ * Detect projected VRAM overflows: overlapping slots on a host whose distinct
+ * models, with its resident models, exceed the host's configured VRAM.
  */
 async function getConflicts(dateStr, timezone = defaultPlanningTimeZone()) {
-  const timeline = await getTimeline(dateStr, timezone);
-  const byHost = {};
-
-  for (const entry of timeline) {
-    // Entries with no model consume no GPU — skip from conflict detection
-    if (!entry.model) continue;
-    const h = entry.host || 'unassigned';
-    if (!byHost[h]) byHost[h] = [];
-    byHost[h].push(entry);
-  }
-
-  const conflicts = [];
-  for (const [hostId, entries] of Object.entries(byHost)) {
-    // Flatten all slots with their parent entry info
-    const allSlots = [];
-    for (const entry of entries) {
-      for (const slot of entry.slots) {
-        if (slot.continuous) continue; // continuous tasks always overlap, skip
-        allSlots.push({ start: new Date(slot.start), end: new Date(slot.end), entryId: entry.id, name: entry.name, taskType: entry.taskType });
-      }
-    }
-    for (let i = 0; i < allSlots.length; i++) {
-      for (let j = i + 1; j < allSlots.length; j++) {
-        const a = allSlots[i];
-        const b = allSlots[j];
-        if (a.start < b.end && b.start < a.end) {
-          conflicts.push({
-            hostId,
-            taskA: { id: a.entryId, name: a.name, taskType: a.taskType, start: a.start.toISOString(), end: a.end.toISOString() },
-            taskB: { id: b.entryId, name: b.name, taskType: b.taskType, start: b.start.toISOString(), end: b.end.toISOString() }
-          });
-        }
-      }
-    }
-  }
-
-  return conflicts;
+  return detectVramOverflows(await getTimelineByHost(dateStr, timezone));
 }
 
 // ── Placement Service (Phase 2) ──────────────────────────────────────────

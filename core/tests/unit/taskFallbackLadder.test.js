@@ -373,4 +373,16 @@ describe('task fallback ladder routing', () => {
       { host: HOST_URLS.secondary, state: 'UNKNOWN' },
     ] }, HOST_URLS.primary, 0)).toBeNull();
   });
+
+  it('counts the primary busy only while the same model runs: other models share the host', () => {
+    const { coordinationBlock } = ladder._internal;
+    const running = (modelKey) => ({ maintenance: null, workloads: [], inferences: [
+      { host: HOST_URLS.primary, mode: 'shared', state: 'ACTIVE', expiresAt: new Date(10_000), ...(modelKey && { modelKey }) },
+    ] });
+    const probe = (state) => coordinationBlock(state, HOST_URLS.primary, 0, { busyCounts: true, model: `${PRIMARY_MODEL}:latest` });
+    expect(probe(running('bge-m3'))).toBeNull();
+    expect(probe(running(PRIMARY_MODEL))).toBe('primary_busy');
+    // An admission recorded before model keys still counts.
+    expect(probe(running(null))).toBe('primary_busy');
+  });
 });

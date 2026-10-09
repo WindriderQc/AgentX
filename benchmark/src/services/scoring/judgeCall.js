@@ -16,8 +16,8 @@ const { assertJudgeInputUnmodified, assertJudgeOutputComplete } = require('./jud
 // authenticates the Benchmark policy while telemetry remains caller-supplied.
 const CORE_URL = process.env.CORE_URL || 'http://localhost:3080';
 // Judge model configuration
-// Default: 7B model — fits on most hosts without stealing context from the
-// model being tested. Upgrade per-batch via judge_config.
+// No judge size is assumed: the judge is whatever JUDGE_MODEL names, and a
+// batch chooses its own through judge_config.
 // All fields are overridable via env: JUDGE_MODEL, JUDGE_HOST, JUDGE_NUM_CTX,
 // JUDGE_TEMPERATURE, JUDGE_NUM_PREDICT. Per-batch judge_config still wins.
 //
@@ -75,6 +75,9 @@ function throwIfJudgeCancelled(config = {}) {
 }
 
 function rethrowIfJudgeCancelled(error, config = {}) {
+    // Identity drift is fatal to the whole score, including reference and
+    // decomposed sub-verdicts. It must not become a retry or partial score.
+    if (error?.code === 'JUDGE_EXECUTION_CONTRACT_MISMATCH') throw error;
     if (isBenchmarkBatchStoppedError(error) || getJudgeCancelSignal(config)?.aborted) {
         throw createBenchmarkBatchStoppedError();
     }
@@ -419,7 +422,9 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
                 host: judgeConfig.host,
                 messages: [{ role: 'user', content: evalPrompt }],
                 stream: false,
+                timeoutMs: judgeConfig.timeout,
                 responseMode: 'normalized',
+                ...(judgeConfig.execution_contract ? { includeArtifactIdentity: true } : {}),
                 think,
                 callerDetail: 'benchmark-judge',
                 ...judgeRequestIdentity(judgeConfig),
@@ -439,16 +444,17 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
             data = await response.json();
         }
         throwIfJudgeCancelled(judgeConfig);
-        assertJudgeInputUnmodified(data);
+        assertJudgeInputUnmodified(data, judgeConfig);
         const text = data.message?.content || data.response || '';
 
         const judgeTruncated = data.done_reason === 'length';
         const judgeTokens = data.eval_count || 0;
 
-        // Retry with expanded num_predict on truncation before attempting parse
+        // Legacy calls may expand on truncation. A frozen cohort must retain
+        // its chosen budget; incomplete output cannot become a scored retry.
         const NUM_PREDICT_CAP = 4096;
         const currentNumPredict = judgeConfig.num_predict || JUDGE_CONFIG.num_predict;
-        if (judgeTruncated && retryCount < (judgeConfig.max_retries ?? 2)) {
+        if (judgeTruncated && !judgeConfig.execution_contract && retryCount < (judgeConfig.max_retries ?? 2)) {
             if (currentNumPredict >= NUM_PREDICT_CAP) {
                 logger.warn('Judge output truncated but num_predict already at cap, stopping retry', {
                     judge_model: judgeConfig.model || JUDGE_CONFIG.model,
@@ -520,7 +526,33 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
     }
 }
 
+const HOST_BUSY_WAIT_MS = 60000; // below the batch judge stall timeout (120 s by default)
+const HOST_BUSY_RETRY_MS = 2000;
+
+/**
+ * A judge request that waits out a busy judge host. Core answers 503 before
+ * dispatch when the host is taken, so nothing ran and the same request can be
+ * sent again. The wait is bounded and stops with the batch.
+ */
+async function fetchWhenJudgeHostFree(send, judgeConfig = {}) {
+    const budgetMs = Number.isFinite(judgeConfig.host_busy_wait_ms) ? judgeConfig.host_busy_wait_ms : HOST_BUSY_WAIT_MS;
+    const retryMs = Number.isFinite(judgeConfig.host_busy_retry_ms) ? judgeConfig.host_busy_retry_ms : HOST_BUSY_RETRY_MS;
+    const deadline = Date.now() + budgetMs;
+    let refusals = 0;
+    for (;;) {
+        const res = await send();
+        if (res.status !== 503 || Date.now() + retryMs > deadline) {
+            if (refusals > 0 && res.status !== 503) logger.info('Judge host free again', { host: judgeConfig.host, refusals });
+            return res;
+        }
+        refusals += 1;
+        if (refusals === 1) logger.warn('Judge host busy, waiting', { host: judgeConfig.host, budgetMs });
+        await waitForJudgeRetry(retryMs, judgeConfig);
+    }
+}
+
 module.exports = {
+    fetchWhenJudgeHostFree,
     JUDGE_CONFIG,
     callJudge,
     buildDynamicJudgePrompt,

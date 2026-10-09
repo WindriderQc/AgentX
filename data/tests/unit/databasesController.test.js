@@ -164,6 +164,18 @@ describe('listCollections', () => {
     expect(res.body.data.collections).toBeDefined();
     expect(res.body.data.totalCollections).toBeGreaterThanOrEqual(0);
   });
+
+  it('lists and stats only allowlisted collections of the shared database', async () => {
+    const app = buildApp();
+    app.locals.db.listCollections.mockReturnValue({
+      toArray: jest.fn().mockResolvedValue([{ name: 'appevents' }, { name: 'conversations' }, { name: 'nas_files' }])
+    });
+    const res = await request(app).get('/collections').expect(200);
+    expect(res.body.data.collections.map(c => c.name).sort()).toEqual(['appevents', 'nas_files']);
+    expect(res.body.data.totalCollections).toBe(2);
+    expect(app.locals.db.collection).not.toHaveBeenCalledWith('conversations');
+    expect(app.locals.db.command).not.toHaveBeenCalledWith({ collStats: 'conversations' });
+  });
 });
 
 describe('getDocument', () => {

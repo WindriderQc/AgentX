@@ -1,8 +1,9 @@
-// mini-bars.js — Renders 7 inline category mini-bars
+// mini-bars.js — Renders one inline mini-bar per benchmark category
 import { scoreColor } from './score-color.js';
+import { CATEGORY_KEYS, CATEGORY_META } from '../benchmark-categories.js';
 
-const CATS = ['coding','reasoning','math','knowledge','instruction','creative','translation'];
-const ABBR = ['COD','RSN','MTH','KNW','INS','CRE','MLT'];
+const CATS = CATEGORY_KEYS;
+const ABBR = CATEGORY_KEYS.map(key => CATEGORY_META[key].abbr);
 
 export function miniBars(categoryScores, { height = 4, width = 30 } = {}) {
   return CATS.map((cat, i) => {

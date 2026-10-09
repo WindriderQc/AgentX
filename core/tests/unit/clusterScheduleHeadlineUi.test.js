@@ -135,7 +135,7 @@ describe('Cluster Schedule canonical headline evidence', () => {
     expect(header.innerHTML).toContain('3 configured hosts');
     expect(header.innerHTML).toContain('2 online');
     expect(header.innerHTML).toContain('1 offline');
-    expect(header.innerHTML).toContain('18 observed model tags');
+    expect(header.innerHTML).toContain('18 model tags');
     expect(header.innerHTML).not.toContain('1 configured hosts');
     expect(header.dataset).toMatchObject({
       authority: 'agentx-product',
@@ -144,8 +144,8 @@ describe('Cluster Schedule canonical headline evidence', () => {
     });
 
     const detail = elements.get('liveEvidence');
-    expect(detail.textContent).toContain('separate runtime-detail poll');
-    expect(detail.textContent).toContain('do not set the ecosystem headline counts');
+    expect(detail.textContent).toContain('Host cards polled');
+    expect(detail.title).toContain('host counts above come from the ecosystem snapshot');
     expect(detail.dataset).toMatchObject({
       authority: 'agentx.cluster-schedule-live-detail',
       evidenceScope: 'loaded-model-and-vram-detail',

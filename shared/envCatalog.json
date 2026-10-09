@@ -1,6 +1,26 @@
 {
   "version": 1,
   "variables": {
+    "AGENTX_ACCESS_CODE_FILE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": true,
+      "description": "Path of a file holding the access code, read by the PsyX scenario evaluation (core/surfaces/psyx/eval) on the operator's machine. Unset: ~/.agentx/access/parental-code."
+    },
+    "AGENTX_BASE_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Core URL the PsyX scenario evaluation (core/surfaces/psyx/eval) calls from the operator's machine. Unset: the runner requires --base."
+    },
     "AGENTX_BENCHMARK_HARNESS_URL": {
       "services": [
         "benchmark"
@@ -42,35 +62,15 @@
       "secret": false,
       "description": "Default chat model for Core routing and the Benchmark judge fallback. Unset: gemma4:26b-a4b-it-qat in Core, llama3.2:3b for the judge."
     },
-    "AGENTX_EXTERNAL_CONSUMER_TOKEN": {
-      "services": [
-        "core"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "security",
-      "secret": true,
-      "description": "Token required from the VoiX voice-memory consumer. Unset: that consumer answers 503 not configured."
-    },
-    "AGENTX_FACE_UNLOCK_ENABLED": {
+    "AGENTX_DEFAULT_MAX_OUTPUT_TOKENS": {
       "services": [
         "core"
       ],
       "forwarded": true,
-      "default": "false",
-      "category": "household",
+      "default": "4096",
+      "category": "inference",
       "secret": false,
-      "description": "true enables face unlock of the adult space once a parental code exists (configured or set from the host). Any other value or unset: face unlock is off."
-    },
-    "AGENTX_FACE_UNLOCK_MAX_DISTANCE": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "0.4",
-      "category": "household",
-      "secret": false,
-      "description": "Maximum face-descriptor distance accepted by face unlock, from 0.3 to 0.5; a value outside that range fails startup. Unset: 0.4."
+      "description": "Core default output reserve when a caller supplies none. Positive integer, additionally bounded to one quarter of the resolved context window with a 256-token minimum. Explicit caller budgets take priority. Invalid values warn in the contract and use 4096."
     },
     "AGENTX_HOST_HOME_LABEL": {
       "services": [
@@ -121,26 +121,6 @@
       "category": "bridges",
       "secret": false,
       "description": "Maximum age of the OpenClaw manifest in the agent-ops projection before it counts as stale. Unset: a built-in default."
-    },
-    "AGENTX_PARENTAL_CODE": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "security",
-      "secret": true,
-      "description": "Optional parental code that unlocks the adult space through the gateway and bearer access; when set it takes precedence and cannot be changed from the UI. Unset: the code is set and changed from the unlock page and stored hashed in MongoDB; until it is set from the AgentX host, adult pages stay locked."
-    },
-    "AGENTX_PARENTAL_SESSION_MINUTES": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "30",
-      "category": "security",
-      "secret": false,
-      "description": "Lifetime in minutes of an adult session after unlock, from 5 to 480; a value outside that range fails startup. Unset: 30."
     },
     "AGENTX_PLATFORM_MAP_PATH": {
       "services": [
@@ -205,6 +185,26 @@
       "secret": false,
       "description": "true allows restore rehearsal in Core backups and RAG Qdrant snapshots. Any other value or unset: restore rehearsal is refused."
     },
+    "AGENTX_ROUTING_SNAPSHOT_CACHE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "5000",
+      "category": "routing",
+      "secret": false,
+      "description": "Fresh window: how long runtime bridges and trusted consumers share one effective routing snapshot and its artifact identity reads; router configuration and host preference or pin writes discard it at once. 0 rebuilds the snapshot on every call and disables the stale window. Invalid or unset: 5000 ms."
+    },
+    "AGENTX_ROUTING_SNAPSHOT_STALE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "300000",
+      "category": "routing",
+      "secret": false,
+      "description": "Stale window, counted from the build: past the fresh window and younger than this, a routing snapshot is returned at once while one background refresh replaces it; the exact-artifact view is never served stale. 0 makes every caller past the fresh window wait for a build. Invalid or unset: 300000 ms."
+    },
     "AGENTX_RUNTIME_BRIDGES_ENABLED": {
       "services": [
         "core"
@@ -214,6 +214,16 @@
       "category": "bridges",
       "secret": false,
       "description": "true registers the OpenClaw, Hermes, DSH and coding runtime bridges in Core (full profile). Any other value or unset: the bridges are not loaded."
+    },
+    "AGENTX_RUNTIME_RESOURCES_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "inference",
+      "secret": true,
+      "description": "Private physical GPU IDs with their consumer endpoint URLs. Unset: endpoint-only coordination. Invalid or changed mappings refuse new admissions while existing work remains fenced."
     },
     "AGENTX_TASK_FALLBACK_WAIT_MS": {
       "services": [
@@ -451,7 +461,7 @@
         "core"
       ],
       "forwarded": true,
-      "default": "http://127.0.0.1:${BENCHMARK_PORT:-3181}",
+      "default": "http://127.0.0.1:${BENCHMARK_PORT:-3181}/benchmark",
       "hostVar": "BENCHMARK_PORT",
       "category": "network",
       "secret": false,
@@ -486,6 +496,16 @@
       "category": "other",
       "secret": false,
       "description": "Comma-separated providers counted as cloud in budget accounting. Unset: built-in providers."
+    },
+    "CALLER_ABORT_RECOVERY_SETTLE_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "observability",
+      "secret": false,
+      "description": "Wait before the watchdog releases a caller-aborted inference whose model is resident at its context, at least 15000. Unset: 60000."
     },
     "CELESTRAK_GP_URL": {
       "services": [
@@ -705,7 +725,7 @@
       "default": null,
       "category": "benchmark",
       "secret": false,
-      "description": "Per-step timeout of the Profiler context probe on a CPU-resident host, in ms. Unset: 1200000."
+      "description": "Per-step timeout of the Profiler context probe on a CPU-resident host, and the minimum bound of every other Profiler request there, in ms. Unset: 1200000."
     },
     "CONTEXT_PROBE_MAX_CTX": {
       "services": [
@@ -848,6 +868,16 @@
       "category": "operations",
       "secret": false,
       "description": "JSON display map (network/storage rows with host, supervisor, runtime, cadence) for Data Toolbox collectors, at most 32 KiB. Unset: the Toolbox shows registrations only."
+    },
+    "DATA_EXPORT_DIR": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": "/data/exports",
+      "category": "operations",
+      "secret": false,
+      "description": "Directory where Data writes generated inventory reports (at most 20 reports and 1 GiB, oldest removed first). In Compose it is the container path of the data_exports named volume; change it only with a matching mount. Unset on a native run: exports beside the service code."
     },
     "DATA_HARDWARE_HISTORY_TTL_DAYS": {
       "services": [
@@ -1393,6 +1423,16 @@
       "secret": false,
       "description": "Run a bounded background review after each Household turn. Unset: enabled in Compose."
     },
+    "HOUSEHOLD_BRAIN_EXCLUSIVE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Ask for exclusive admission on HOUSEHOLD_BRAIN_HOST_URL for background reviews (waits for an idle host, blocks other callers, unloads co-resident models). Unset: shared admission."
+    },
     "HOUSEHOLD_BRAIN_FAMILY": {
       "services": [
         "core"
@@ -1402,17 +1442,6 @@
       "category": "household",
       "secret": false,
       "description": "Allow the background review on the Famille surface. Unset: enabled in Compose."
-    },
-    "HOUSEHOLD_PERSONA_VOICES": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Optional JSON mapping a Household persona id, or \"*\", to an instance voice \"provider|voice\" (kokoro, windows_sapi or voxcpm). A browser voice selection still wins. Unset: catalog voices.",
-      "fallback": "catalog persona voices"
     },
     "HOUSEHOLD_BRAIN_HOST_URL": {
       "services": [
@@ -1436,6 +1465,16 @@
       "description": "Optional Ollama model for Household background reviews. Unset: use the router master_brain lane.",
       "fallback": "the router master_brain lane"
     },
+    "HOUSEHOLD_BROWSER_STT_FALLBACK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Allow the browser's own speech recognition when local transcription (VoiX) is unavailable: false, personal (Super Dad only) or true (Super Dad and Famille). Each browser must still consent per space; Chrome and Edge send the audio to the vendor's cloud. Unset: off."
+    },
     "HOUSEHOLD_CONVERSATION_BACKEND": {
       "services": [
         "core"
@@ -1445,6 +1484,17 @@
       "category": "household",
       "secret": false,
       "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
+    },
+    "HOUSEHOLD_FAMILY_CONVERSATION_BACKEND": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Conversation engine of new Family conversations (Famille, Kids Room, Lecture, native Family voice): agentx or openclaw. It wins over the page's request; existing conversations keep their engine and LLMx scenes are unaffected. Unset or any other value: HOUSEHOLD_CONVERSATION_BACKEND applies.",
+      "fallback": "HOUSEHOLD_CONVERSATION_BACKEND"
     },
     "HOUSEHOLD_IMAGE_FAMILY_SOURCES": {
       "services": [
@@ -1476,6 +1526,28 @@
       "secret": false,
       "description": "Model of the household permissive personal-operator pack. Unset: a built-in default model."
     },
+    "HOUSEHOLD_PERSONA_VOICES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional JSON mapping a Household persona id, or \"*\", to an instance voice \"provider|voice\" (kokoro, windows_sapi or voxcpm). A browser voice selection still wins. Unset: catalog voices.",
+      "fallback": "catalog persona voices"
+    },
+    "HOUSEHOLD_TEAM_MEMBERS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional JSON mapping an OpenClaw agent id to the names the owner uses to address it directly in Super Dad (\"Secretary, ...\", \"ask the secretary ...\"). That turn goes to the agent's own session and voice. Unset: every turn stays with the conversation's agent.",
+      "fallback": "no direct addressing"
+    },
     "HOUSEHOLD_VOICE_MODEL": {
       "services": [
         "core"
@@ -1485,6 +1557,47 @@
       "category": "household",
       "secret": false,
       "description": "provider/model sent to OpenClaw for personal Nestor voice turns on the main agent. Unset: native OpenClaw model policy applies."
+    },
+    "HOUSEHOLD_VOICE_TASK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "voice_persona_chat",
+      "category": "household",
+      "secret": false,
+      "description": "Router task of a spoken Household turn on Core inference (agentx engine), in any pack; typed turns and LLMx scenes keep their pack task. Unset or invalid: voice_persona_chat."
+    },
+    "HOUSEHOLD_VOICE_WARMUP": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Set to true to warm a new spoken personal conversation's prompt while its greeting plays (one small unrecorded turn in the conversation's native session). Unset: no warm-up; the first spoken turn reads its whole prompt.",
+      "fallback": "no warm-up"
+    },
+    "IDENTIFIER_VAULT_KEY": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "security",
+      "secret": true,
+      "description": "32-byte key in base64 that encrypts the owner's sensitive identifiers (NIQ, NAS, REEE, account and card numbers) moved out of notes and the mail journal. Keep it in the instance env on the host; losing it makes stored values unreadable. Unset: identifiers stay in the text as written."
+    },
+    "IMAGE_ARCHIVE_DIR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Writable directory, inside the Core container, where the original of every attached photo and every generated image is kept at full quality. Unset: nothing is archived."
     },
     "INFERENCE_FETCH_TIMEOUT_MS": {
       "services": [
@@ -1565,6 +1678,16 @@
       "category": "operations",
       "secret": false,
       "description": "Maximum stored ISS positions. Unset: 8000."
+    },
+    "JANITOR_AI_TIMEOUT_MS": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "How long one janitor AI advisory request may take, from 10000 to 1200000. Raise it when janitor_ai is routed to a CPU-resident host; above 120000 a timed-out request is not retried. Unset: 60000 with one retry."
     },
     "JANITOR_ALLOWED_ROOTS": {
       "services": [
@@ -1675,6 +1798,48 @@
       "category": "bridges",
       "secret": false,
       "description": "Leantime URL for household email actions and agent-ops links. Unset: email actions answer 503."
+    },
+    "LIVEDATA_LOCATIONS_JSON": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Optional JSON array of named latitude/longitude locations used to seed Data weatherLocations only when empty. Unset: no location seed. Supply through an external Data environment override; instance locations stay outside public Git."
+    },
+    "LOCAL_IMAGES_CONFIG": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Path to an external local image worker manifest (profiles and GPU consumers). Unset: local generation is disabled."
+    },
+    "MAIL_JOURNAL_RETENTION_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Days a mail journal entry is kept, counted from the mail's date; Mongo removes it afterwards. Applies to entries recorded after a change. 0 keeps entries forever; an invalid value uses 365.",
+      "fallback": "365"
+    },
+    "MEMORY_NOTE_RETENTION_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Days a forgotten or expired memory note is kept before Core deletes its text (daily sweep). 0 keeps hidden notes forever.",
+      "fallback": "30"
     },
     "MEMORY_REVIEW_AUTOMATION_MODE": {
       "services": [
@@ -1816,7 +1981,7 @@
       "default": null,
       "category": "network",
       "secret": false,
-      "description": "MQTT broker for Data live feeds. Unset: MQTT is skipped."
+      "description": "MQTT broker for Data live feeds and the Toolbox MQTT monitor. Unset: MQTT is skipped."
     },
     "MQTT_ISS_TOPIC": {
       "services": [
@@ -1858,36 +2023,6 @@
       "secret": false,
       "description": "Username of the Data MQTT connection."
     },
-    "N8N_WEBHOOK_BASE_URL": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "network",
-      "secret": false,
-      "description": "n8n base URL combined with N8N_WEBHOOK_GENERIC when N8N_WEBHOOK_URL is unset."
-    },
-    "N8N_WEBHOOK_GENERIC": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "operations",
-      "secret": false,
-      "description": "n8n webhook path appended to N8N_WEBHOOK_BASE_URL."
-    },
-    "N8N_WEBHOOK_URL": {
-      "services": [
-        "data"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "network",
-      "secret": false,
-      "description": "Full n8n webhook URL used by Data storage. Unset: base URL plus generic path, or none."
-    },
     "NESTOR_KNOWLEDGE_CONFIG_PATH": {
       "services": [
         "core"
@@ -1907,6 +2042,16 @@
       "category": "memory",
       "secret": false,
       "description": "Timeout of Nestor memory RAG calls, 1000 to 30000. Unset: 5000."
+    },
+    "NETWORK_DEVICE_WATCH_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Interval at which Core checks the Data network inventory for new unknown devices, minimum 60000. Unset: no check and no network-new-device alert."
     },
     "NETWORK_SCAN_CIDR": {
       "services": [
@@ -2154,6 +2299,16 @@
       "secret": false,
       "description": "Comma-separated model=http://host:port entries routing an OpenClaw conversation model to one inference host. Unset: the routed task model applies; an invalid entry fails bridge startup."
     },
+    "OPENCLAW_CONVERSATION_NO_THINK_MODELS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Comma-separated OpenClaw conversation models that answer without reasoning, whatever thinking level the agent asks for, e.g. the model of a spoken lane. Unset: every model keeps the level it was sent."
+    },
     "OPENCLAW_GATEWAY_TOKEN": {
       "services": [
         "core"
@@ -2296,6 +2451,26 @@
       "secret": false,
       "description": "Cache lifetime of OpenClaw runtime evidence. Unset: 15000 ms."
     },
+    "OPS_WATCH_LANGUAGE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Language the operations watch report is written in, for example French, until one is saved in the Nerve Center. Unset: English."
+    },
+    "OPS_WATCH_MS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Interval at which Core turns the current operational findings and active alerts into one short model-written report (task ops_watch), minimum 300000. Applies until the watch is set in the Nerve Center. Unset: off."
+    },
     "PIN_CONTEXT_SPEED_TOLERANCE_PCT": {
       "services": [
         "core"
@@ -2356,6 +2531,36 @@
       "secret": false,
       "description": "Timeout of portal service health probes. Unset: 1500 ms."
     },
+    "PROFILE_CANCEL_PROOF_BUDGET_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "How long a profile waits for Ollama /api/ps to prove a request it aborted (operator cancel or expired deadline) stopped before leaving it UNKNOWN, in ms, at least 10000. Unset: 60000."
+    },
+    "PROFILE_CANCEL_SETTLE_MS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Minimum wait after a profile aborts a request (operator cancel or expired deadline) before /api/ps can prove it stopped, in ms, at least 5000. Unset: 15000."
+    },
+    "PROFILER_LONG_CONTEXT_QUALITY_TOKENS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Comma-separated window sizes of the Full profile's long-context quality probe; the verified window is added when it is larger. Unset: 32768, 65536, 131072, 196608."
+    },
     "PROFILER_MATRIX_DECODE_TOKENS": {
       "services": [
         "benchmark"
@@ -2365,6 +2570,16 @@
       "category": "benchmark",
       "secret": false,
       "description": "Comma-separated decode lengths of the profiler matrix. Unset: built-in values."
+    },
+    "PROFILER_MATRIX_LONG_PREFILL_TOKENS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "benchmark",
+      "secret": false,
+      "description": "Comma-separated windows of the Full profile's agent-sized prefill series, each filled to 90 %. Unset: 32768, 65536, 131072."
     },
     "PROFILER_MATRIX_PREFILL_TOKENS": {
       "services": [
@@ -2421,7 +2636,7 @@
         "core"
       ],
       "forwarded": true,
-      "default": "token",
+      "default": "trusted-network",
       "category": "household",
       "secret": false,
       "description": "PsyX access mode: token (access code required) or trusted-network (no locking, an operator decision); another value fails startup. Unset: token."
@@ -2436,15 +2651,65 @@
       "secret": true,
       "description": "Private access code that unlocks PsyX in token mode. Unset: PsyX private APIs stay locked."
     },
-    "PSYX_LOOPBACK_BYPASS": {
+    "PSYX_AUTO_REVIEW": {
       "services": [
         "core"
       ],
       "forwarded": true,
-      "default": "false",
+      "default": "true",
       "category": "household",
       "secret": false,
-      "description": "true lets loopback requests bypass the PsyX access code. Any other value or unset: loopback requests need the code too."
+      "description": "PsyX background review after each completed turn (digest and memory proposals the user approves). false disables it. Unset: true."
+    },
+    "PSYX_DREAM": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "true",
+      "category": "household",
+      "secret": false,
+      "description": "PsyX dream between sessions: rereads conversations, memory and the owner's notes, tasks and mail journal, then writes the portrait and memory changes the user can undo. false disables it. Unset: true."
+    },
+    "PSYX_FRONTIER_AGENT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "OpenClaw agent PsyX uses as its frontier lane (a cloud model reached through OPENCLAW_GATEWAY_URL). Unset: PsyX stays on local routes and the setting is hidden."
+    },
+    "PSYX_FRONTIER_MODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "local",
+      "category": "household",
+      "secret": false,
+      "description": "Default frontier use for a PsyX user who has not chosen: local, deep (deep turns and the background review) or all. Another value fails startup. Unset: local."
+    },
+    "PSYX_FRONTIER_MODEL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "frontier",
+      "category": "household",
+      "secret": false,
+      "description": "Label of the model behind the PsyX frontier agent, shown in the interface and saved with turns. Unset: frontier."
+    },
+    "PSYX_REVIEW_TASK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "deep_reasoning",
+      "category": "household",
+      "secret": false,
+      "description": "Router task type of the PsyX background review. Unset: deep_reasoning."
     },
     "PSYX_VOICE_MODE": {
       "services": [
@@ -2541,7 +2806,7 @@
         "core"
       ],
       "forwarded": true,
-      "default": "http://127.0.0.1:${RAG_PORT:-3182}",
+      "default": "http://127.0.0.1:${RAG_PORT:-3182}/rag",
       "hostVar": "RAG_PORT",
       "category": "network",
       "secret": false,
@@ -2571,11 +2836,11 @@
       "services": [
         "core"
       ],
-      "forwarded": false,
+      "forwarded": true,
       "default": null,
       "category": "security",
       "secret": true,
-      "description": "Token required for roundtable chair actions."
+      "description": "Token required for roundtable chair actions and to convene runtime participants (Codex or OpenClaw agents). Keep it in the instance secrets."
     },
     "ROUNDTABLE_JUDGE_MODEL": {
       "services": [
@@ -2597,15 +2862,25 @@
       "secret": false,
       "description": "Timeout of the roundtable quality judge. Unset: 120000 ms."
     },
+    "ROUNDTABLE_OPENCLAW_STRICT_PROVIDERS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "bridges",
+      "secret": false,
+      "description": "Optional JSON mapping an OpenClaw conversation provider to its strict provider. A seated Council agent then waits for its own model instead of answering with a busy-host fallback. Unset: the agent's configured provider."
+    },
     "ROUNDTABLE_RUNTIME_PARTICIPANTS_ENABLED": {
       "services": [
         "core"
       ],
-      "forwarded": false,
+      "forwarded": true,
       "default": null,
       "category": "bridges",
       "secret": false,
-      "description": "Enables external runtime participants in the roundtable. Unset: off."
+      "description": "Enables runtime participants in the roundtable: the Codex bridge and OpenClaw agents seated through the gateway (OPENCLAW_GATEWAY_URL/TOKEN). Unset: off."
     },
     "ROUTE_RESOLVER_SHADOW": {
       "services": [
@@ -2707,6 +2982,16 @@
       "secret": false,
       "description": "Base URL of the VoiX service for household player, transcription, synthesis and PsyX voice. Unset: VoiX routes answer 503 VOIX_NOT_CONFIGURED."
     },
+    "VOIX_FALLBACK_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional backup VoiX base URL. Transcription, synthesis, the voice catalog and the player script use it while VOIX_BASE_URL fails its cached /health probe (15 s period, 1.5 s timeout), and retry on it once after a primary network error or 502/503/504. Native sessions, media vault and config stay on the primary. Unset: no failover."
+    },
     "VOIX_LONG_TIMEOUT_MS": {
       "services": [
         "core"
@@ -2796,6 +3081,16 @@
       "category": "observability",
       "secret": false,
       "description": "false stops the watchdog reloading a model after an unjam. Unset: on."
+    },
+    "WEATHER_API_KEY": {
+      "services": [
+        "data"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": true,
+      "description": "Optional OpenWeather API credential for Data weather feeds. Unset: use keyless Open-Meteo. Supply through an external Data environment override; keep the credential outside Git."
     },
     "WEATHER_API_URL": {
       "services": [

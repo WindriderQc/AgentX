@@ -220,7 +220,8 @@ function normalizeHarnessInvocationParameters(parameters = {}, {
     maxTokens: normalizedMaxTokens,
     timeoutMs: normalizedTimeoutMs,
     thinking: thinkingValue,
-    responseFormat: role === 'judge' ? 'json' : 'text'
+    responseFormat: role === 'judge' ? 'json' : 'text',
+    ...(parameters.reasoningMaxTokens != null ? { reasoningMaxTokens: Number(parameters.reasoningMaxTokens) } : {})
   };
 }
 
@@ -233,11 +234,15 @@ function buildHarnessEnvelope({
   timeoutMs,
   maxTokens,
   maxCostNanodollars = 0,
-  role = 'candidate'
+  role = 'candidate',
+  repoFixture = null
 }) {
   const targetIdentity = normalizeBenchmarkTarget(target);
   const isNative = targetIdentity.mode === 'native_agent';
   const nativePolicy = targetIdentity.nativePolicy;
+  if (repoFixture && (!isNative || !/^[a-zA-Z0-9_-]+$/.test(repoFixture.id) || !/^[a-f0-9]{64}$/.test(repoFixture.fingerprint))) {
+    throw brokerError('REPO_FIXTURE_INVALID', 'Repository cells require native_agent and an exact product fixture pin', 422);
+  }
   const promptFingerprint = fingerprint(String(promptText || ''));
   const invocationParameters = normalizeHarnessInvocationParameters(parameters, {
     timeoutMs,
@@ -251,7 +256,7 @@ function buildHarnessEnvelope({
   const estimatedInputTokens = Math.max(1, Math.ceil(Buffer.byteLength(String(promptText || ''), 'utf8') / 3));
   const totalTokenBudget = Math.min(1_000_000_000, isNative
     ? (targetIdentity.contextWindow + invocationParameters.maxTokens) * nativePolicy.maxTurns
-    : estimatedInputTokens + invocationParameters.maxTokens);
+    : (targetIdentity.api?.name === 'openclaw-model-sdk' ? targetIdentity.contextWindow : estimatedInputTokens) + invocationParameters.maxTokens);
   return normalizeWorkerEnvelope({
     schema: 'agentx.worker-envelope/v1',
     schemaVersion: 1,
@@ -272,7 +277,8 @@ function buildHarnessEnvelope({
         digest: null,
         constraints: targetIdentity.mode === 'isolated_model'
           ? ['isolated-model', 'no-fallback', `inference-contract:${invocationFingerprint}`]
-          : ['native-agent', `inference-contract:${invocationFingerprint}`],
+          : ['native-agent', `inference-contract:${invocationFingerprint}`,
+            ...(repoFixture ? [`repo-fixture:${repoFixture.id}:${repoFixture.fingerprint}`] : [])],
       },
     },
     prompt: { reference: `benchmark.${role}.prompt`, fingerprint: promptFingerprint },
@@ -298,11 +304,11 @@ function buildHarnessEnvelope({
       },
       output: { mode: 'result_only', maxBytes: 2_000_000, publicProjection: 'allowlist_only' },
     },
-    resultContract: { format: role === 'judge' ? 'json' : 'text', schemaFingerprint: null, requiredEvidence: [] },
+    resultContract: { format: role === 'judge' ? 'json' : 'text', schemaFingerprint: null, requiredEvidence: repoFixture ? ['patch', 'artifact', 'tests'] : [] },
   });
 }
 
-async function executeHarnessTarget({ batchId, batchFingerprint, cellId, target, promptText, parameters = {}, spendGrant = null, runtimeClaims = [], role = 'candidate', signal = null }) {
+async function executeHarnessTarget({ batchId, batchFingerprint, cellId, target, promptText, parameters = {}, spendGrant = null, runtimeClaims = [], role = 'candidate', signal = null, repoFixture = null }) {
   if (!/^[a-f0-9]{64}$/.test(String(batchFingerprint || '').toLowerCase())) {
     throw brokerError('BATCH_FINGERPRINT_REQUIRED', 'Harness execution requires the frozen batch contract fingerprint', 422);
   }
@@ -318,6 +324,7 @@ async function executeHarnessTarget({ batchId, batchFingerprint, cellId, target,
     promptText,
     parameters: invocationParameters,
     maxCostNanodollars: spendGrant?.maxCostNanodollars || 0,
+    repoFixture,
     role,
   });
   const response = await brokerRequest('/v1/benchmark/execute', {
@@ -340,10 +347,15 @@ async function executeHarnessTarget({ batchId, batchFingerprint, cellId, target,
     maxBytes: MAX_EXECUTION_BYTES,
   });
   try {
-    return {
-      ...normalizeHarnessExecutionResponse(response, { envelope, target: currentTarget }),
-      envelope
-    };
+    const normalized = normalizeHarnessExecutionResponse(response, { envelope, target: currentTarget });
+    if (repoFixture) {
+      const id = `repo-fixture.${repoFixture.id}`;
+      if (!normalized.receipt.evidence.artifacts.some(item => item.id === id && item.digest === repoFixture.fingerprint)
+        || !normalized.receipt.evidence.tests.some(item => item.id === id && item.status === 'passed')) {
+        throw brokerError('HARNESS_FIXTURE_EVIDENCE_MISMATCH', 'Receipt does not verify the pinned repository fixture', 409);
+      }
+    }
+    return { ...normalized, envelope };
   } catch (error) {
     throw markHarnessContractFailure(error);
   }
@@ -386,7 +398,8 @@ function buildSpendPlan({ batchId, batchFingerprint, targets, judgeTarget = null
   const inputTokensPerCall = Math.max(1, Number(executionConfig?.input_token_ceiling) || 32_000);
   const units = paidExecutionUnits.map(unit => ({
     ...unit,
-    inputTokensPerCall: unit.target.mode === 'native_agent' ? unit.target.contextWindow * unit.target.nativePolicy.maxTurns : inputTokensPerCall,
+    inputTokensPerCall: unit.target.mode === 'native_agent' ? unit.target.contextWindow * unit.target.nativePolicy.maxTurns
+      : unit.target.api?.name === 'openclaw-model-sdk' ? unit.target.contextWindow : inputTokensPerCall,
     outputTokensPerCall: outputTokensPerCall * (unit.target.mode === 'native_agent' ? unit.target.nativePolicy.maxTurns : 1)
   }));
   const maxTokens = units.reduce((sum, unit) => sum + unit.calls * (unit.inputTokensPerCall + unit.outputTokensPerCall), 0);

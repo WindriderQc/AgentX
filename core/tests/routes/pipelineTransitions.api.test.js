@@ -55,10 +55,10 @@ test('creation, claim and worker verdict each write one event with the status ch
 
 test('a declared actor never becomes an authenticated identity', async () => {
   const id = await create();
-  await status(id, { status: 'blocked', by: 'Yanik', reason: 'Waiting on a decision', actor: { authenticated: 'root' } }).expect(200);
+  await status(id, { status: 'blocked', by: 'Operator', reason: 'Waiting on a decision', actor: { authenticated: 'root' } }).expect(200);
   const event = (await raw(id)).transitions.at(-1);
   expect(event).toMatchObject({ kind: 'operator_set', reason: 'Waiting on a decision' });
-  expect(event.actor).toEqual({ declared: 'Yanik', authenticated: null, channel: 'operator_api' });
+  expect(event.actor).toEqual({ declared: 'Operator', authenticated: null, channel: 'operator_api' });
 });
 
 test('concurrent status changes: exactly the applied change is logged, the stale one is refused', async () => {

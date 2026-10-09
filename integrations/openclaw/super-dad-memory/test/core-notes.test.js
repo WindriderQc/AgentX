@@ -22,6 +22,13 @@ test('native personal_memory forwards only note inputs and validates the Core re
   assert.deepEqual(JSON.parse(captured.options.body), { action: 'remember', text: ' Synthetic note ' });
   assert.equal(captured.options.redirect, 'error');
   assert.equal(calls, 1);
+  await client({ action: 'remember', text: 'Synthetic note', provenance: 'mail-review' });
+  assert.equal(JSON.parse(captured.options.body).provenance, 'mail-review');
+  // Core may seal an identifier; any other text change is still refused.
+  const answer = data => createCoreNotesClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async () => ({ ok: true,
+    json: async () => ({ status: 'success', data: { ok: true, authority: 'agentx.core', operation: 'remember', id, ...data } }) }) });
+  assert.equal((await answer({ text: 'NIQ [coffre: NIQ …7890]', sealed: [{ label: 'NIQ' }] })({ action: 'remember', text: 'NIQ 1234567890' })).id, id);
+  await assert.rejects(answer({ text: 'Something else' })({ action: 'remember', text: 'NIQ 1234567890' }), /receipt is invalid/);
   for (const data of [{ ok: true, authority: 'openclaw.nestor', operation: 'list', notes: [] },
     { ok: true, authority: 'agentx.core', operation: 'list' }]) {
     const broken = createCoreNotesClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async () => ({ ok: true,
@@ -38,6 +45,12 @@ test('only the existing owner contexts or explicitly configured native jobs rece
   assert.equal(privateOwnerContext({ agentId: 'main', sandboxed: true, sessionKey: 'agent:main:telegram:direct:12345' }, config), false);
   assert.equal(configuredJobContext({ agentId: 'main', sessionKey: 'agent:main:cron:synthetic:run' }), false);
   assert.equal(configuredJobContext({ agentId: 'main', sessionKey: 'agent:main:cron:synthetic:run' }, ['agent:main:cron:synthetic']), true);
+  const mailJob = ['agent:mail-agent:cron:synthetic'];
+  assert.equal(configuredJobContext({ agentId: 'mail-agent', sessionKey: 'agent:mail-agent:cron:synthetic:run' }, mailJob), true);
+  assert.equal(configuredJobContext({ agentId: 'mail-agent', sandboxed: true, sessionKey: 'agent:mail-agent:cron:synthetic' }, mailJob), false);
+  assert.equal(configuredJobContext({ agentId: 'main', sessionKey: 'agent:mail-agent:cron:synthetic' }, mailJob), false);
+  assert.equal(configuredJobContext({ agentId: 'family', sessionKey: 'agent:family:cron:synthetic' }, mailJob), false);
+  assert.equal(configuredJobContext({ sessionKey: 'agent:mail-agent:cron:synthetic' }, mailJob), false);
 });
 
 test('the harness keeps native receipts and transient context, while Core owns every selected note', async t => {
@@ -61,9 +74,44 @@ test('the harness keeps native receipts and transient context, while Core owns e
   assert.equal(evidence.answer.text, 'Synthetic final answer');
   assert.equal(evidence.run.status, 'completed');
   assert.equal(evidence.receipts[0].status, 'verified');
+  assert.equal(evidence.receipts[0].provenance.schema, 'agentx.action-provenance/v1');
+  assert.equal(evidence.receipts[0].provenance.origin, 'unknown', 'legacy hook context without agentId proves no owner');
+  assert.equal(evidence.receipts[0].provenance.authority, 'none');
   assert.equal((await readState(workspace)).receipts.length, 1);
   await assert.rejects(operate({ operation: 'remember', text: 'No local note store' }), /notes belong to AgentX Core/);
   assert.equal(nativeTurnAnswer({ ...history, messages: [{ ...history.messages[0], phase: 'commentary' }] }, sessionKey, runId).status, 'unavailable');
+});
+
+test('the existing Nestor receipt capsule preserves trusted session origin on internal writes', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-origin-receipts-'));
+  t.after(() => rm(workspace, { recursive: true }));
+  const context = { agentId: 'mail', sessionKey: 'agent:mail:cron:review:run', runId: 'review-run' };
+  const pluginConfig = { secretarySessionKeys: ['agent:mail:cron:review'] };
+  await recordTool(workspace, { toolName: 'personal_memory', result: { details: { ok: true, id: 'a'.repeat(24),
+    provenance: { origin: 'owner_turn' } } } }, context, { pluginConfig });
+  await recordRun(workspace, { success: true }, context, { pluginConfig });
+  const state = await readState(workspace);
+  assert.equal(state.receipts[0].provenance.origin, 'ingested_content');
+  assert.equal(state.runs[0].provenance.origin, 'ingested_content');
+});
+
+test('health receipts distinguish a verified unhealthy system from a failed or incomplete tool call', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-health-receipts-'));
+  t.after(() => rm(workspace, { recursive: true }));
+  const context = { runId: 'synthetic-run', sessionKey: 'synthetic-session' };
+  const record = async (toolCallId, result) => {
+    await recordTool(workspace, { toolName: 'agentx__check_health', result }, { ...context, toolCallId });
+    return (await readState(workspace)).receipts.at(-1);
+  };
+  const healthy = await record('healthy', { details: { ok: true, core: { mongodb: 'connected', ollama: 'connected' }, rag: { ok: true } } });
+  assert.equal(healthy.status, 'verified');
+  assert.equal(healthy.observed, true);
+  const unhealthy = await record('unhealthy', { details: { ok: false, core: { mongodb: 'connected', ollama: 'disconnected' }, rag: { ok: false } } });
+  assert.equal(unhealthy.status, 'verified', 'the health result was received even though a dependency is unhealthy');
+  const incomplete = await record('incomplete', { details: { ok: true, core: { mongodb: 'connected' } } });
+  assert.equal(incomplete.status, 'unknown');
+  const failed = await record('failed', { isError: true, content: [{ type: 'text', text: 'Synthetic failure' }] });
+  assert.equal(failed.status, 'failed');
 });
 
 test('a run that yielded to a sub-agent answers with the announce run that settles its session', () => {

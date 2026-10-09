@@ -135,17 +135,39 @@ const DIRECT_INVOKE_TASKS = {
     voice_persona_chat: { model: LIGHTWEIGHT_MODEL, host: LIGHTWEIGHT_HOST },
     voice_persona_reader: { model: VOICE_PERSONA_READER_MODEL, host: VOICE_PERSONA_READER_HOST },
     janitor_ai: { model: UTILITY_MODEL, host: UTILITY_HOST },
+    ops_watch: { model: envModel('AGENTX_OPS_WATCH_MODEL', UTILITY_MODEL), host: envHost('AGENTX_OPS_WATCH_HOST', UTILITY_HOST) },
+    mail_review: { model: ANALYSIS_MODEL, host: ANALYSIS_HOST },
     embeddings: { model: EMBEDDING_TASK_MODEL, host: EMBEDDING_TASK_HOST }
 };
 
 const DEFAULT_TASK_MODELS = { ...CLASSIFIABLE_TASKS, ...DIRECT_INVOKE_TASKS };
 const CLASSIFICATION_MODEL = envModel('AGENTX_CLASSIFIER_MODEL', LIGHTWEIGHT_MODEL);
 const CLASSIFICATION_HOST = envHost('AGENTX_CLASSIFIER_HOST', LIGHTWEIGHT_HOST);
-const STRICT_CONFIGURED_HOST_TASKS = new Set(['quick_chat', 'buddy_reaction', 'nestor_answer_light']);
+// The spoken lane stays on the host the operator chose for it: its prompt cache and its
+// measured timings live there, and it must never follow its model to the speech host.
+const STRICT_CONFIGURED_HOST_TASKS = new Set(['quick_chat', 'buddy_reaction', 'nestor_answer_light', 'ops_watch', 'mail_review', 'voice_persona_chat']);
+
+// A task may follow its model to another host only when that host has the
+// same residency: a CPU-routed task never moves to a GPU host (the model would
+// spill), and a GPU-routed task never lands on a slow CPU instance.
+function sameResidencyAs(hostKey) {
+    const residencyOf = (key) => (typeof hostConfig.getHostResidency === 'function' ? hostConfig.getHostResidency(HOSTS[key]) : 'gpu');
+    return (otherKey) => otherKey === hostKey || residencyOf(otherKey) === residencyOf(hostKey);
+}
+
+// A task stays on its configured host when it is one of the fixed lanes above,
+// or when that host is CPU-resident: each CPU instance is a lane the operator
+// fills on purpose in the routing table, so work is not pooled across them.
+function staysOnConfiguredHost(taskType, hostKey) {
+    if (STRICT_CONFIGURED_HOST_TASKS.has(taskType)) return true;
+    return typeof hostConfig.getHostResidency === 'function' && hostConfig.getHostResidency(HOSTS[hostKey]) === 'cpu';
+}
 
 module.exports = {
     HOSTS,
     refreshHosts,
+    sameResidencyAs,
+    staysOnConfiguredHost,
     PRODUCT_DEFAULT_MODEL: DEFAULT_CHAT_MODEL,
     PRODUCT_MASTER_BRAIN_MODEL: MASTER_BRAIN_MODEL,
     CLASSIFIABLE_TASKS,

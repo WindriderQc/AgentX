@@ -8,6 +8,8 @@
  * the deployed Modelfile/model metadata, or a measured host/model profile.
  */
 
+const { kvCacheBytes } = require('./kvCacheEstimate');
+
 function parseParameterCount(raw) {
   if (!raw) return null;
   const value = String(raw).toLowerCase();
@@ -50,19 +52,44 @@ function bytesPerParam(quant) {
  * count that overhead twice. The paired factors and measurements are locked by
  * parameterDetectionVramBacktest.test.js.
  */
-function estimateKvCacheBytes(paramBillions, numCtx) {
-  if (!Number.isFinite(paramBillions) || paramBillions <= 0) return 0;
-  if (!Number.isFinite(numCtx) || numCtx <= 0) return 0;
+function ruleOfThumbKvBytes(paramBillions, numCtx) {
   const mbPerKCtxPerB = paramBillions >= 70 ? 45 : paramBillions >= 30 ? 35 : 55;
   return paramBillions * (numCtx / 1024) * mbPerKCtxPerB * 1024 * 1024;
 }
 
-function estimateTotalVram(paramBillions, quantization, numCtx) {
-  if (!Number.isFinite(paramBillions) || paramBillions <= 0) return Infinity;
+/**
+ * With `kvCache` (shared/kvCacheEstimate.js describeKvCache), the model's own
+ * metadata sets the KV size, times `requestSlots` (Ollama allocates the
+ * context once per slot). Without it, the rule of thumb above applies; its
+ * calibration point matches a dense 8B at about four slots.
+ */
+function estimateKvCacheBytes(paramBillions, numCtx, { kvCache = null, requestSlots = 1 } = {}) {
+  if (!Number.isFinite(numCtx) || numCtx <= 0) return 0;
+  const exact = kvCacheBytes(kvCache, numCtx, requestSlots);
+  if (exact != null) return exact;
+  if (!Number.isFinite(paramBillions) || paramBillions <= 0) return 0;
+  return ruleOfThumbKvBytes(paramBillions, numCtx);
+}
+
+/** Weights, KV and tiered overhead, with the basis of the KV term. */
+function estimateVramBreakdown(paramBillions, quantization, numCtx, options = {}) {
+  if (!Number.isFinite(paramBillions) || paramBillions <= 0) return null;
   const weightBytes = paramBillions * 1e9 * bytesPerParam(quantization);
-  const kvBytes = estimateKvCacheBytes(paramBillions, numCtx);
+  const kvFromModel = kvCacheBytes(options.kvCache, numCtx, options.requestSlots ?? 1) != null;
+  const kvBytes = estimateKvCacheBytes(paramBillions, numCtx, options);
   const overheadPct = numCtx >= 32768 ? 0.30 : numCtx >= 16384 ? 0.20 : 0.10;
-  return (weightBytes + kvBytes) * (1 + overheadPct);
+  return {
+    weightBytes,
+    kvBytes,
+    overheadBytes: (weightBytes + kvBytes) * overheadPct,
+    totalBytes: (weightBytes + kvBytes) * (1 + overheadPct),
+    kvBasis: kvFromModel ? 'model_info' : 'parameter_rule_of_thumb',
+    requestSlots: kvFromModel ? Number(options.requestSlots ?? 1) : null,
+  };
+}
+
+function estimateTotalVram(paramBillions, quantization, numCtx, options = {}) {
+  return estimateVramBreakdown(paramBillions, quantization, numCtx, options)?.totalBytes ?? Infinity;
 }
 
 function inferVendor(modelName, family) {
@@ -88,6 +115,7 @@ module.exports = {
   bytesPerParam,
   estimateKvCacheBytes,
   estimateTotalVram,
+  estimateVramBreakdown,
   inferVendor,
   generateDisplayName
 };

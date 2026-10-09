@@ -52,6 +52,23 @@ describe('WorkerReceipt v1', () => {
     expect(receipt.fingerprint).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  test('preserves native isolation evidence through normalization and public projection', () => {
+    const envelope = normalizeWorkerEnvelope(envelopeInput());
+    const execution = { source: 'openclaw', mode: 'model', modelCalls: 1, toolsExecuted: 0,
+      modelVersionSource: 'not-observed', upstreamProvider: null, costSource: 'runtime-estimate',
+      nativeReceiptFingerprint: '1'.repeat(64), targetFingerprint: '2'.repeat(64),
+      contextFingerprint: '3'.repeat(64), payloadFingerprint: '4'.repeat(64),
+      noMemory: true, noAgentPrompt: true, noTools: true, noRuntimeFallback: true, providerRoutingPinned: true };
+    const legacy = normalizeWorkerReceipt(receiptInput(envelope), { envelope });
+    expect(legacy).not.toHaveProperty('execution');
+    const receipt = normalizeWorkerReceipt(receiptInput(envelope, { execution }), { envelope });
+    expect(receipt.execution).toEqual(execution);
+    expect(projectWorkerReceiptPublic(receipt).execution).toEqual(execution);
+    expect(receipt.fingerprint).not.toBe(legacy.fingerprint);
+    expect(() => normalizeWorkerReceipt(receiptInput(envelope, { execution: { ...execution, noMemory: false } }), { envelope }))
+      .toThrow(expect.objectContaining({ code: 'EXECUTION_EVIDENCE_INVALID' }));
+  });
+
   test('preserves provider-reported cost provenance and cache usage', () => {
     const envelope = normalizeWorkerEnvelope(envelopeInput());
     const raw = receiptInput(envelope);

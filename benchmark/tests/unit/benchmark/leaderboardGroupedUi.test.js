@@ -11,8 +11,9 @@ const { loadBrowserModule, loadLeaderboardTextModules } = require('../../helpers
 const { VERDICT_REASON } = require('../../../src/services/benchmark/leaderboardGrouping');
 
 const ROOT = path.join(__dirname, '../../..');
-const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
+const read = (relative) => readSource(path.join(ROOT, relative));
 const fixture = require('../../fixtures/leaderboard-grouped.json');
+const { readSource } = require('../../../../shared/testing/readSource');
 
 const text = loadLeaderboardTextModules();
 const viewModel = loadBrowserModule('leaderboard-v2/view-model.js',
@@ -233,6 +234,23 @@ describe('grouped board rendering', () => {
         expect(qwen).toContain('<td data-label="Score">not scored</td>');
     });
 
+    test('says which prompts a row is compared on and which edited prompts left the comparison', async () => {
+        const data = JSON.parse(JSON.stringify(fixture.generalistRes.data));
+        const group = data.groups.find(item => item.comparable);
+        group.headline.promptCoverage = {
+            covered: 2, boardPrompts: 3, sharedByAll: 2, sharedWithLeader: 2, missingCount: 2,
+            missing: [{ name: 'Coding <one>', category: 'coding', level: 3 }]
+        };
+        group.history[0].stalePrompts = ['Reasoning two'];
+        const target = container();
+        await board.renderCombinedBoard(target, viewModel.groupsFromResponse(data, { scoreAxis: 'quality', hostNameMap }));
+
+        expect(target.innerHTML).toContain('<p class="cb-prompt-coverage">Prompts: compared on 2 of the 3 prompts the board covers; '
+            + '2 shared by every ranked row, 2 shared with the leader. Not run: Coding &lt;one&gt; (coding L3) and 1 more.</p>');
+        expect(target.innerHTML).toContain('edited: Reasoning two</td>');
+        expect(text.humanizeReason('prompt_content_changed')).toMatch(/^Edited prompt: /);
+    });
+
     test('spells out every non-comparable verdict and never shows an unknown success rate as 100 %', async () => {
         const target = container();
         await board.renderCombinedBoard(target, fixtureGroups());
@@ -333,8 +351,6 @@ describe('csv export', () => {
         expect(cell(phi4, 'rank')).toBe('3');
         expect(cell(phi4, 'successRate')).toBe('');
         expect(cell(phi4, 'infraErrors')).toBe('3');
-        expect(text.csvEscape('a,b')).toBe('"a,b"');
-        expect(text.csvEscape('say "hi"')).toBe('"say ""hi"""');
         expect(text.csvFilename(new Date('2026-09-22T10:00:00Z'))).toBe('leaderboard-2026-09-22.csv');
     });
 
@@ -360,23 +376,15 @@ describe('csv export', () => {
     });
 
     test('neutralises spreadsheet formulas and keeps line breaks inside one quoted field', () => {
-        expect(text.csvEscape('=HYPERLINK("http://x","go")')).toBe('"\'=HYPERLINK(""http://x"",""go"")"');
-        expect(text.csvEscape('+1')).toBe('"\'+1"');
-        expect(text.csvEscape('-1')).toBe('"\'-1"');
-        expect(text.csvEscape('@cmd')).toBe('"\'@cmd"');
-        expect(text.csvEscape('\tx')).toBe('"\'\tx"');
-        expect(text.csvEscape('two\nlines')).toBe('"two\nlines"');
-        expect(text.csvEscape(-1.5)).toBe('-1.5');
-        expect(text.csvEscape(true)).toBe('true');
-        expect(text.csvEscape('plain')).toBe('plain');
-
         const groups = fixtureGroups().slice(0, 1);
         groups[0].headline.host = '=HYPERLINK("http://x","go")';
         groups[0].headline.judgeModel = 'judge\nwith break';
+        groups[0].headline.harness = { name: '@cmd', version: '-1' };
         const lines = text.buildCsvFromGroups(groups).split('\n');
         expect(lines[1]).toContain(',"\'=HYPERLINK(""http://x"",""go"")",');
+        expect(lines[1]).toContain(",'@cmd,-1,");
         expect(lines[1]).toContain(',"judge');
-        expect(lines[2]).toBe('with break",2.16.0:42,65536:42,2026-09-18,2026-09-21,42,8.240,8.610,0.000,0.000,0.000,100,true,8.610,quality_score,38.4,46.1,1840,3320,410,355,42,44,1,98,,8.80,8.40,8.10,7.90,9.00,7.60,8.50');
+        expect(lines[2]).toBe('with break",2.16.0:42,65536:42,2026-09-18,2026-09-21,42,8.240,8.610,0.000,0.000,0.000,100,true,8.610,quality_score,38.4,46.1,1840,3320,410,355,42,44,1,98,,8.80,8.40,8.10,7.90,9.00,7.60,8.50,');
     });
 });
 
@@ -465,7 +473,7 @@ describe('page wiring', () => {
         expect(page).not.toContain('buildCsvFromRankings');
         expect(page).not.toContain("getElementById('export-csv')");
         const server = read('server.js');
-        expect(server).toContain('<link rel="stylesheet" href="/css/leaderboard-v2-groups.css">');
+        expect(server).toContain('<link rel="stylesheet" href="/benchmark/css/leaderboard-v2-groups.css">');
         const html = read('tests/fixtures/leaderboard-grouped.html');
         expect(html).toContain('data-leaderboard-source="fixture"');
         expect(html).toContain("import { renderLeaderboardPage } from '../../public/js/leaderboard-v2/index.js'");

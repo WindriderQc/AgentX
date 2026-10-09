@@ -59,7 +59,55 @@ beforeEach(() => {
     jest.clearAllMocks();
 });
 
+describe('Busy judge host', () => {
+    const busy = () => Promise.resolve({ ok: false, status: 503, json: async () => ({ status: 'error' }) });
+
+    it('waits for a refused call and keeps the ordinary retry unused', async () => {
+        mockFetchFn.mockImplementationOnce(busy).mockImplementationOnce(busy).mockImplementation(() => mockFetchResponse('YES'));
+        const result = await askBinaryQuestion('response', 'question?', { ...JUDGE_CONFIG, host_busy_retry_ms: 1 });
+        expect(result).toBe(true);
+        expect(mockFetchFn).toHaveBeenCalledTimes(3);
+    });
+
+    it('gives up once the wait budget is spent', async () => {
+        mockFetchFn.mockImplementation(busy);
+        const result = await askBinaryQuestion('response', 'question?', { ...JUDGE_CONFIG, host_busy_retry_ms: 5, host_busy_wait_ms: 20 });
+        expect(result).toBeNull();
+        expect(mockFetchFn.mock.calls.length).toBeGreaterThan(2);
+        expect(mockFetchFn.mock.calls.length).toBeLessThan(20);
+    });
+
+    it('does not wait on another server error', async () => {
+        mockFetchFn.mockImplementation(() => Promise.resolve({ ok: false, status: 500, json: async () => ({}) }));
+        const result = await askBinaryQuestion('response', 'question?', { ...JUDGE_CONFIG, host_busy_retry_ms: 1 });
+        expect(result).toBeNull();
+        expect(mockFetchFn).toHaveBeenCalledTimes(2);
+    });
+});
+
 describe('Default voting (single call, voting_count=1)', () => {
+    test('failed HTTP votes retain the complete upstream body and never become a verdict', async () => {
+        const body = JSON.stringify({ message: 'Synthetic runner failure: ' + 'x'.repeat(9000) });
+        mockFetchFn.mockResolvedValue({ ok: false, status: 500, text: async () => body });
+        const calls = [];
+        expect(await askBinaryQuestion('42', 'Correct?', { ...JUDGE_CONFIG, judgeCallEvidence: calls })).toBeNull();
+        expect(mockFetchFn).toHaveBeenCalledTimes(2);
+        expect(calls).toHaveLength(2);
+        expect(calls.every(call => call.status === 500 && call.http_error_body === body
+            && call.error === 'Judge HTTP 500' && call.response === undefined)).toBe(true);
+        expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('Synthetic runner failure');
+    });
+
+    test('an unreadable HTTP error body preserves the original failed vote', async () => {
+        mockFetchFn.mockResolvedValue({ ok: false, status: 500,
+            text: async () => { throw new Error('Synthetic response disconnected'); } });
+        const calls = [];
+        expect(await askBinaryQuestion('42', 'Correct?', { ...JUDGE_CONFIG, judgeCallEvidence: calls })).toBeNull();
+        expect(calls).toHaveLength(2);
+        expect(calls.every(call => call.error === 'Judge HTTP 500'
+            && call.http_error_body_error === 'Synthetic response disconnected')).toBe(true);
+    });
+
     test('sends the selected temperature and seed, including zero', async () => {
         mockFetchFn.mockImplementation(() => mockFetchResponse('YES'));
         await askBinaryQuestion('42', 'Correct?', { ...JUDGE_CONFIG, temperature: 0, seed: 0 });
@@ -81,6 +129,16 @@ describe('Default voting (single call, voting_count=1)', () => {
             prompt_eval_count: 170, eval_count: 2, done_reason: 'stop', status: 200 });
         expect(evidence.calls[0].options).toHaveProperty('temperature');
         expect(evidence.calls[0]).not.toHaveProperty('context');
+    });
+
+    test.each([1, 3])('runtime drift stops a verdict with voting_count=%i instead of retrying or accepting other votes', async voting_count => {
+        mockFetchFn.mockImplementation(() => mockFetchResponse('YES'));
+        await expect(askBinaryQuestion('Paris', 'Correct?', { ...JUDGE_CONFIG, voting_count,
+            execution_contract: { schema: 'agentx.benchmark-judge-execution/v1', num_ctx: 65536,
+                artifact: { model: 'judge:latest', digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64) } }
+        })).rejects.toMatchObject({ code: 'JUDGE_EXECUTION_CONTRACT_MISMATCH' });
+        expect(mockFetchFn).toHaveBeenCalledTimes(voting_count);
+        expect(mockFetchFn.mock.calls.every(([, options]) => JSON.parse(options.body).includeArtifactIdentity === true)).toBe(true);
     });
 
     test('honors the explicit verdict budget for binary judging', async () => {
@@ -121,6 +179,21 @@ describe('Default voting (single call, voting_count=1)', () => {
         mockFetchFn.mockResolvedValueOnce({ ok: true, json: async () => ({ response: 'Counting', done_reason: 'length' }) });
         expect(await askBinaryQuestion('Paris', 'How many?', JUDGE_CONFIG, {}, { graded })).toBe('2 or more');
         expect(JSON.parse(mockFetchFn.mock.calls[1][1].body).format.enum).toEqual(['0', '1', '2 or more']);
+    });
+    test('a reply that is not an answer is asked again, constrained to the answers', async () => {
+        // A judge that redid the task instead of judging it.
+        mockFetchFn.mockImplementation(() => mockFetchResponse('NO'));
+        mockFetchFn.mockResolvedValueOnce({ ok: true, json: async () => ({ response: '- Rhythm\n- System\n- Trust\n- Unity' }) });
+        expect(await askBinaryQuestion('- Rhythm', 'Does it satisfy the constraints?', JUDGE_CONFIG)).toBe(false);
+        const [first, retry] = mockFetchFn.mock.calls.map(call => JSON.parse(call[1].body));
+        expect(mockFetchFn).toHaveBeenCalledTimes(2);
+        expect(first.format).toBeUndefined();
+        expect(retry.format).toEqual({ type: 'string', enum: ['YES', 'NO'] });
+    });
+    test('a judge that never answers is asked twice, then the question stays unanswered', async () => {
+        mockFetchFn.mockImplementation(() => mockFetchResponse('undecidable'));
+        expect(await askBinaryQuestion('Paris', 'Correct?', JUDGE_CONFIG)).toBeNull();
+        expect(mockFetchFn).toHaveBeenCalledTimes(2);
     });
     test('carries the standalone calibration workload into binary judging', async () => {
         const controller = new AbortController();
@@ -212,7 +285,8 @@ describe('Default voting (single call, voting_count=1)', () => {
         mockFetchSequence(['Based on the analysis, YES']);
         const result = await askBinaryQuestion('response', 'Is this good?', JUDGE_CONFIG);
         expect(result).toBeNull();
-        expect(mockFetchFn).toHaveBeenCalledTimes(1);
+        // Asked once more, constrained to the answers; the same prose is still not one.
+        expect(mockFetchFn).toHaveBeenCalledTimes(2);
     });
 });
 
@@ -373,10 +447,12 @@ describe('Model options', () => {
 
     test('sends correct model name', async () => {
         mockFetchSequence(['YES']);
-        await askBinaryQuestion('response', 'q?', JUDGE_CONFIG);
+        await askBinaryQuestion('response', 'q?', { ...JUDGE_CONFIG, timeout: 7200000, num_predict: 65536 });
 
         const body = JSON.parse(mockFetchFn.mock.calls[0][1].body);
         expect(body.model).toBe('qwen2.5:7b');
+        expect(body.timeoutMs).toBe(7200000);
+        expect(body.options.num_predict).toBe(65536);
     });
 
     test('stream is false', async () => {
@@ -570,6 +646,9 @@ describe('graded (counted) questions', () => {
         expect(parseGradedAnswer(reasoned, MISSING_COUNT).credit).toBe(0.66);
         expect(parseGradedAnswer('checked every requirement.\n**0**', MISSING_COUNT).credit).toBe(1);
         expect(parseGradedAnswer('several problems.\nanswer: 3 or more', MISSING_COUNT).answer).toBe('3 or more');
+        // As a judge answered on 2026-10-07: its count, then the listed option copied with its quotes.
+        expect(parseGradedAnswer('all 5 key points are missing.\n\ncount: 5\n\n"3 or more"', MISSING_COUNT).answer).toBe('3 or more');
+        expect(parseGradedAnswer('nothing is missing.\n\u201c0\u201d', MISSING_COUNT).credit).toBe(1);
     });
 
     test('does not take a number buried in the last line of prose', () => {
@@ -636,8 +715,9 @@ describe('DECOMPOSED_QUESTIONS coverage', () => {
         }
     });
 
-    test('all 7 benchmark categories exist', () => {
+    test('every benchmark category exists', () => {
         expect(Object.keys(DECOMPOSED_QUESTIONS).sort()).toEqual([
+            'agent',
             'coding',
             'creative',
             'instruction',

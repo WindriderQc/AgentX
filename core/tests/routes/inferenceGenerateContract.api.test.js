@@ -83,6 +83,11 @@ jest.mock('../../src/services/hostPreferenceService', () => ({
   stop: jest.fn(),
 }));
 
+jest.mock('../../src/services/artifactIdentityService', () => ({
+  ...jest.requireActual('../../src/services/artifactIdentityService'),
+  resolveArtifactIdentity: jest.fn(jest.requireActual('../../src/services/artifactIdentityService').resolveArtifactIdentity)
+}));
+
 jest.mock('../../src/services/buddyEvents', () => ({ emit: jest.fn() }));
 jest.mock('../../src/services/routing/taskFallbackLadder', () => ({
   ...jest.requireActual('../../src/services/routing/taskFallbackLadder'),
@@ -140,6 +145,24 @@ describe('caller-neutral generation entry point', () => {
     expect(fetch.mock.calls.some(([url]) => String(url).includes('/api/inference/'))).toBe(false);
   });
 
+  test('an explicit identity request returns the current digest without requiring a qualified performance profile', async () => {
+    const { resolveArtifactIdentity } = require('../../src/services/artifactIdentityService');
+    mockOllamaOk();
+    const ordinary = await request(app).post('/api/inference/generate').send({ model: 'test-model', prompt: 'hello' });
+    expect(ordinary.status).toBe(200);
+    expect(resolveArtifactIdentity).not.toHaveBeenCalled();
+    const artifact = { model: 'test-model:latest', hostUrl: 'http://primary:11434', hostId: 'primary',
+      digest: 'a'.repeat(64), runtimeFingerprint: 'b'.repeat(64), identityQualified: true, registryQualified: true };
+    resolveArtifactIdentity.mockResolvedValueOnce(artifact);
+    const exact = await request(app).post('/api/inference/generate').send({ model: 'test-model', prompt: 'hello',
+      responseMode: 'normalized', includeArtifactIdentity: true });
+    expect(exact.status).toBe(200);
+    expect(exact.body.agentx_contract.artifact).toMatchObject({ digest: artifact.digest,
+      runtimeFingerprint: artifact.runtimeFingerprint, identityQualified: true });
+    expect(resolveArtifactIdentity).toHaveBeenCalledTimes(1);
+    expect(exact.body.agentx_contract.qualification.qualified).toBe(false);
+  });
+
   test('an already-cancelled internal call neither dispatches nor invents an inference', async () => {
     const controller = new AbortController();
     controller.abort();
@@ -191,6 +214,9 @@ describe('POST /api/inference/generate — behaviour contract', () => {
       // both the new executor and the old path is invisible in a diff and
       // silently corrupts cost and usage analytics.
       expect(recordInference).toHaveBeenCalledTimes(1);
+      expect(recordInference.mock.calls[0][0].waits).toEqual({
+        admissionMs: expect.any(Number), hostGateMs: expect.any(Number)
+      });
       expect(logger.info).toHaveBeenCalledWith(
         '[InferenceProxy] route outcome',
         expect.objectContaining({
@@ -215,9 +241,10 @@ describe('POST /api/inference/generate — behaviour contract', () => {
         .send({ model: 'test-model', prompt: 'hello' });
 
       expect(recordInference).toHaveBeenCalledTimes(1);
-      expect(recordInference).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'error' })
-      );
+      expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'error',
+        waits: { admissionMs: expect.any(Number), hostGateMs: expect.any(Number) }
+      }));
     });
 
     test('a request rejected before dispatch records nothing', async () => {
@@ -632,6 +659,57 @@ describe('RouteDecision attribution is populated', () => {
     expect(response.headers['x-agentx-degraded-reason']).toBe('dispatch_refused');
     expect(response.body.agentx_routing).toMatchObject({ degraded: true, reason: 'dispatch_refused' });
     hostPreferenceService.getByHost.mockImplementation(async () => null);
+  });
+
+  test('a strict task whose only host is claimed gets the busy refusal, never a dispatch', async () => {
+    getModelForTask.mockReturnValue({ model: 'task-model', host: 'primary', url: 'http://primary:11434' });
+    getAdvisoryModelForTask.mockResolvedValue({
+      model: 'task-model', host: null, url: null, source: 'scheduler-blocked',
+      reason: 'task-model is only installed on primary, which is held by an active benchmark claim',
+      recommendation: { blockedByBenchmarkClaim: true },
+    });
+    mockOllamaOk();
+
+    const response = await request(app)
+      .post('/api/inference/generate')
+      .send({ taskType: 'analysis', messages: [{ role: 'user', content: 'hello' }] })
+      .expect(503);
+
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'NO_UNCLAIMED_OLLAMA_HOST',
+      message: expect.stringContaining('held by an active benchmark claim'),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(fallbackAfterRefusal).not.toHaveBeenCalled();
+  });
+
+  test('a strict task refused by runtime admission answers with the refusal code, not a 500', async () => {
+    const { beginInferenceAdmission } = require('../../src/services/inferenceAdmissionService');
+    getModelForTask.mockReturnValue({ model: 'task-model', host: 'primary', url: 'http://primary:11434' });
+    getAdvisoryModelForTask.mockResolvedValue({
+      model: 'task-model', host: 'primary', url: 'http://primary:11434', source: 'scheduler', recommendation: null,
+    });
+    beginInferenceAdmission.mockRejectedValueOnce(Object.assign(
+      new Error('maintenance, workload, UNKNOWN inference, or incompatible residency blocks inference on this host'),
+      { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', statusCode: 503 }
+    ));
+    mockOllamaOk();
+
+    const response = await request(app)
+      .post('/api/inference/generate')
+      .send({ taskType: 'deep_reasoning', messages: [{ role: 'user', content: 'hello' }] })
+      .expect(503);
+
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'RUNTIME_INFERENCE_ADMISSION_DENIED',
+      message: expect.stringContaining('blocks inference on this host'),
+    });
+    expect(response.headers['x-agentx-route-outcome']).not.toBe('response_processing_error');
+    expect(fetch.mock.calls.filter(([url]) => /\/api\/(chat|generate)$/.test(url))).toHaveLength(0);
+    // Strict: the ladder is consulted and has no rung for this task.
+    expect(fallbackAfterRefusal).toHaveBeenCalledTimes(1);
   });
 
   test('an explicit model or a failure after dispatch is never sent to another rung', async () => {

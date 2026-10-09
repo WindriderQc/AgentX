@@ -1,6 +1,6 @@
 /**
- * Database Browser — inspect any MongoDB collection via API.
- * Admin/debug utility for all AgentX services.
+ * Database Browser — inspect Data's allowlisted MongoDB collections via API.
+ * The database is shared with Core; other collections stay out of reach.
  */
 
 const { logger } = require('../utils/logger');
@@ -41,7 +41,9 @@ function stripMongoOperators(obj) {
 exports.listCollections = async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const collections = await db.listCollections().toArray();
+    // The database is shared with Core: list and stat only the allowlist.
+    const collections = (await db.listCollections({}, { nameOnly: true }).toArray())
+      .filter((coll) => ALLOWED_COLLECTIONS.has(coll.name));
 
     const stats = await Promise.all(
       collections.map(async (coll) => {

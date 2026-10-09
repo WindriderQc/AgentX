@@ -88,6 +88,26 @@ describe('inferenceAttemptExecutor cancellation', () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
+  test('a dispatched owned deadline passes closed-transport proof to its admission', async () => {
+    const lifecycle = {
+      signal: new AbortController().signal,
+      markDispatched: jest.fn(), assertActive: jest.fn(),
+      complete: jest.fn(), abandon: jest.fn().mockResolvedValue({ quarantined: true })
+    };
+    beginInferenceAdmission.mockResolvedValueOnce(lifecycle);
+    let started;
+    const dispatched = new Promise(resolve => { started = resolve; });
+    fetch.mockImplementation((_url, options) => { started(); return rejectWhenAborted(options.signal); });
+    const attempt = executeAdmittedOllamaAttempt({ hostUrl: 'http://ollama.test:11434',
+      model: 'model-a', payload: { model: 'model-a', prompt: 'hello' }, useChat: false, timeoutMs: 250
+    }).catch(error => error);
+    await dispatched;
+    jest.advanceTimersByTime(250);
+    expect(await attempt).toMatchObject({ isOllamaTimeout: true });
+    expect(lifecycle.abandon).toHaveBeenCalledWith(expect.any(Error), { deadlineAborted: true });
+    expect(lifecycle.complete).not.toHaveBeenCalled();
+  });
+
   test('caller cancellation aborts transport and removes its listener and timeout', async () => {
     const caller = new AbortController();
     const addListener = jest.spyOn(caller.signal, 'addEventListener');
@@ -296,6 +316,34 @@ describe('inferenceAttemptExecutor cancellation', () => {
     await expect(attempt).resolves.toMatchObject({ data: { response: 'terminal', done: true } });
     expect(lifecycle.complete).toHaveBeenCalledTimes(1);
     expect(lifecycle.abandon).not.toHaveBeenCalled();
+  });
+
+  test('each dispatch is observed for the prompt cache under its admission kind (#364)', async () => {
+    const observePromptCache = jest.fn(() => ({ tracked: false, chars: 5 }));
+    const options = {
+      hostUrl: 'http://ollama.test:11434', model: 'model-a', payload: { model: 'model-a', prompt: 'hello' },
+      useChat: false, timeoutMs: 60_000, admissionKind: 'classifier', cacheLabels: { consumerContract: 'nestor-v1' },
+    };
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ response: 'ok', done: true }) });
+    await expect(executeAdmittedOllamaAttempt(options, { observePromptCache }))
+      .resolves.toMatchObject({ promptCache: { tracked: false, chars: 5 } });
+    expect(observePromptCache).toHaveBeenCalledWith({
+      hostUrl: 'http://ollama.test:11434', model: 'model-a',
+      payload: expect.objectContaining({ prompt: 'hello' }),
+      labels: { consumerContract: 'nestor-v1', kind: 'classifier' },
+    });
+
+    // A failure after dispatch still carries the observation for its row.
+    fetch.mockRejectedValueOnce(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
+    await expect(executeAdmittedOllamaAttempt(options, { observePromptCache }))
+      .rejects.toMatchObject({ inferencePromptCache: { tracked: false, chars: 5 } });
+
+    // Embeddings have no prompt cache to observe.
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ embeddings: [[0]] }) });
+    observePromptCache.mockClear();
+    await executeAdmittedOllamaAttempt({ ...options, mode: 'embed', payload: { model: 'model-a', input: ['x'] } },
+      { observePromptCache });
+    expect(observePromptCache).not.toHaveBeenCalled();
   });
 
   test('a lost admission with the caller still connected is not a caller cancellation', async () => {

@@ -243,6 +243,8 @@ describe('ollamaWatchdogService governed outbound operations', () => {
       quarantined: false
     });
     await expect(reloadModel(HOST, 'restore-model', executor)).resolves.toEqual({ ok: true });
+    const restore = fetchImpl.mock.calls.find(([, init]) => JSON.parse(init.body || '{}').model === 'restore-model');
+    expect(JSON.parse(restore[1].body)).toMatchObject({ truncate: false, shift: false });
     await expect(unjamHost(HOST, ['missing-terminal'], executor)).resolves.toMatchObject({
       success: false,
       quarantined: true
@@ -261,6 +263,22 @@ describe('ollamaWatchdogService governed outbound operations', () => {
     });
     expect(mockRunRuntimeMutation).toHaveBeenCalled();
     expect(fetchImpl).toHaveBeenCalledTimes(7);
+  });
+
+  test('a probe asks for an idle host and steps aside when coordination refuses it (#471)', async () => {
+    const fetchImpl = jest.fn(async (url) => response(url, { body: '{"done":true}' }));
+    const executor = createTestExecutor(fetchImpl);
+
+    await expect(probeHost(HOST, 'probe-model', executor)).resolves.toMatchObject({ ok: true });
+    expect(mockBeginInferenceAdmission).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: 'watchdog-probe', mode: 'shared', hostIdle: true }));
+
+    fetchImpl.mockClear();
+    mockBeginInferenceAdmission.mockRejectedValueOnce(Object.assign(
+      new Error('maintenance, workload, UNKNOWN inference, or incompatible residency blocks inference on this host'),
+      { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', statusCode: 503 }));
+    await expect(probeHost(HOST, 'probe-model', executor)).resolves.toEqual({ ok: false, reason: 'coordination_busy' });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   test('enforces a full response-lifecycle deadline on a hanging metadata body', async () => {

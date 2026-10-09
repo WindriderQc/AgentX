@@ -8,7 +8,11 @@ const {
 const { executeAdmittedOllamaStream } = require('../services/routing/inferenceStreamExecutor');
 const { withInferenceRetry } = require('../services/routing/inferenceRetry');
 const { telemetryEntry } = require('../services/routing/trustedRuntimeTelemetry');
-const { publicDegradedMarker } = require('../services/routing/taskFallbackLadder');
+const { observePromptPrefix } = require('../services/routing/promptPrefixFingerprint');
+const { publicDegradedMarker, servedRungMarker } = require('../services/routing/taskFallbackLadder');
+const { buildEffectiveRoutingSnapshot } = require('../services/routing/effectiveRoutingSnapshot');
+const { frozenCopy } = require('../helpers/frozenCopy');
+const { buildLocalPayload } = require('../services/routing/trustedRuntimePayload');
 
 const DEFAULT_TIMEOUT_MS = 600_000;
 const MIN_TIMEOUT_MS = 1_000;
@@ -16,6 +20,7 @@ const MAX_TIMEOUT_MS = 900_000;
 const CONTRACT_VERSION = 1;
 const MODES = new Set(['chat', 'generate', 'embed']);
 const INFERENCE_REFUSALS = Object.freeze({
+  INFERENCE_CONTEXT_POLICY_UNAVAILABLE: 'Inference runtime cannot enforce complete input and context overflow refusal.',
   BENCHMARK_CLAIM_ACTIVE: 'Inference host is reserved by an active benchmark workload.',
   BENCHMARK_CLAIM_PROOF_INVALID: 'Benchmark host reservation is no longer active.',
   RUNTIME_INFERENCE_ADMISSION_DENIED: 'Inference host is busy with another workload or incompatible model residency.',
@@ -55,21 +60,6 @@ function boundedTimeout(value) {
     || positiveInteger(process.env.INFERENCE_FETCH_TIMEOUT_MS)
     || DEFAULT_TIMEOUT_MS;
   return Math.max(MIN_TIMEOUT_MS, Math.min(MAX_TIMEOUT_MS, configured));
-}
-
-function clone(value) {
-  if (value === undefined) return undefined;
-  return JSON.parse(JSON.stringify(value));
-}
-
-function deepFreeze(value) {
-  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  for (const child of Object.values(value)) deepFreeze(child);
-  return Object.freeze(value);
-}
-
-function frozenCopy(value) {
-  return deepFreeze(clone(value));
 }
 
 function normalizeServerAttribution(value) {
@@ -117,116 +107,6 @@ function normalizeServerAttribution(value) {
   return frozenCopy({ workItemId, correlationId, runtime, attempt });
 }
 
-function sanitizeHostPreference(pref, getPinnedEntries) {
-  return {
-    hostUrl: pref?.hostUrl || null,
-    displayName: pref?.displayName || null,
-    status: pref?.status || null,
-    loadedModel: pref?.loadedModel || null,
-    loadedModels: Array.isArray(pref?.loadedModels) ? [...pref.loadedModels] : [],
-    maxConcurrentModels: positiveInteger(pref?.maxConcurrentModels),
-    vramTotalMiB: positiveInteger(pref?.vramTotalMiB),
-    benchmarkClaimed: Boolean(pref?.status === 'benchmarking' || pref?.benchmarkClaim?.batchId),
-    pinnedModels: getPinnedEntries(pref).map((entry) => ({
-      model: entry.model,
-      contextSize: positiveInteger(entry.contextSize),
-      keepAlive: entry.keepAlive ?? null,
-      autoRestore: entry.autoRestore ?? null
-    }))
-  };
-}
-
-function buildTaskSnapshot(taskType, task, routerConfig, preferencesByHost, modelsMatch) {
-  const hostKey = task?.host || null;
-  const hostUrl = hostKey ? routerConfig.hosts?.[hostKey] || null : null;
-  const preference = hostUrl ? preferencesByHost.get(hostUrl) || null : null;
-  const pin = preference?.pinnedModels?.find((entry) => modelsMatch(entry.model, task?.model)) || null;
-  return {
-    taskType,
-    model: pin?.model || task?.model || null,
-    configuredModel: task?.model || null,
-    hostKey,
-    hostUrl,
-    contextSize: positiveInteger(pin?.contextSize),
-    contextSource: pin?.contextSize ? 'host_preference_pin' : 'unresolved',
-    keepAlive: pin?.keepAlive ?? null,
-    pinAligned: Boolean(pin),
-    hostPreference: preference
-  };
-}
-
-async function buildEffectiveRoutingSnapshot(deps, options = {}) {
-  const [routerConfig, rawPreferences] = await Promise.all([
-    deps.buildRouterConfigPayload(options.routerOptions || {}),
-    deps.hostPreferenceService.getAll()
-  ]);
-  const hostPreferences = (rawPreferences || []).map((pref) =>
-    sanitizeHostPreference(pref, deps.hostPreferenceService.getPinnedEntries)
-  );
-  const preferencesByHost = new Map(hostPreferences.map((pref) => [pref.hostUrl, pref]));
-  const tasks = {};
-  const warnings = [];
-
-  for (const [taskType, task] of Object.entries(routerConfig.taskModels || {})) {
-    const resolved = buildTaskSnapshot(taskType, task, routerConfig, preferencesByHost, deps.modelsMatch);
-    if (resolved.model) {
-      try {
-        const contractInput = { model: resolved.model, host: resolved.hostUrl };
-        const [contextInfo, inferenceContract] = await Promise.all([
-          deps.getContextInfo(resolved.model, resolved.hostUrl),
-          options.includeArtifactIdentity === true
-            ? deps.resolveInferenceContract(contractInput, { includeArtifactIdentity: true })
-            : deps.resolveInferenceContract(contractInput)
-        ]);
-        if (!resolved.contextSize && positiveInteger(contextInfo?.num_ctx)) {
-          resolved.contextSize = positiveInteger(contextInfo.num_ctx);
-          resolved.contextSource = contextInfo.source || 'context_info';
-        }
-        resolved.contextInfo = contextInfo;
-        resolved.inferenceContract = inferenceContract;
-      } catch (error) {
-        resolved.resolutionError = String(error?.message || 'routing capability resolution failed');
-      }
-    }
-    tasks[taskType] = resolved;
-  }
-
-  let catalog = [];
-  if (options.includeCatalog !== false) {
-    try {
-      const docs = await deps.ModelRegistry.find({
-        isActive: { $ne: false },
-        status: { $ne: 'retired' }
-      })
-        .select('modelName sourceHost parameterSize quantization family capabilities categories')
-        .sort({ modelName: 1 })
-        .lean();
-      catalog = (docs || []).map((doc) => ({
-        model: doc.modelName || null,
-        hostUrl: doc.sourceHost || null,
-        parameterSize: doc.parameterSize || null,
-        quantization: doc.quantization || null,
-        family: doc.family || null,
-        capabilities: Array.isArray(doc.capabilities) ? doc.capabilities : [],
-        categories: Array.isArray(doc.categories) ? doc.categories : []
-      }));
-    } catch (error) {
-      warnings.push(`Active model catalog is unavailable: ${error.message}`);
-    }
-  }
-
-  return frozenCopy({
-    schemaVersion: 1,
-    generatedAt: new Date().toISOString(),
-    authority: routerConfig.authority || null,
-    hosts: routerConfig.hosts || {},
-    tasks,
-    hostPreferences,
-    catalog,
-    warnings
-  });
-}
-
 function createAbortBridge(signal, timeoutMs) {
   const controller = new AbortController();
   const abortFromCaller = () => controller.abort(signal?.reason || new Error('Inference request cancelled'));
@@ -242,40 +122,6 @@ function createAbortBridge(signal, timeoutMs) {
       clearTimeout(timer);
       signal?.removeEventListener?.('abort', abortFromCaller);
     }
-  };
-}
-
-function buildLocalPayload(request, model, options, keepAlive) {
-  const common = {
-    model,
-    stream: request.stream === true,
-    ...(Object.keys(options).length > 0 && { options }),
-    ...(keepAlive !== undefined && { keep_alive: keepAlive })
-  };
-  if (request.mode === 'embed') {
-    return {
-      model,
-      input: request.input,
-      ...(request.truncate !== undefined && { truncate: request.truncate }),
-      ...(Object.keys(options).length > 0 && { options }),
-      ...(keepAlive !== undefined && { keep_alive: keepAlive })
-    };
-  }
-  if (request.mode === 'chat') {
-    return {
-      ...common,
-      messages: request.messages,
-      ...(Array.isArray(request.tools) && { tools: request.tools }),
-      ...(request.format !== undefined && { format: request.format }),
-      ...(request.think !== undefined && { think: request.think })
-    };
-  }
-  return {
-    ...common,
-    prompt: request.prompt,
-    ...(request.system !== undefined && { system: request.system }),
-    ...(request.format !== undefined && { format: request.format }),
-    ...(request.think !== undefined && { think: request.think })
   };
 }
 
@@ -408,7 +254,7 @@ async function executeRoutedInference(deps, request, options = {}) {
   let hostUrl = null;
   let hostKey = null;
   let routingSource = 'model_router';
-  let taskFallback = null; // a fallback ladder rung serves this task (#135)
+  let taskFallback = servedRungMarker(options.degraded, requestedModel); // a ladder rung serves this call (#135, #143)
 
   if (!model && taskType) {
     const recommendation = options.ladderRetry || await deps.getAdvisoryModelForTask(taskType, {
@@ -500,9 +346,11 @@ async function executeRoutedInference(deps, request, options = {}) {
     path: 'trusted-extension-contract',
     ...claimProof
   });
+  payload = buildLocalPayload(request, model, runtimeOptions, keepAlive);
   const runtime = await prepareInferenceRuntime({
-    model, host: hostUrl, prompt: request.prompt, messages: request.messages,
+    ...payload, host: hostUrl,
     options: runtimeOptions, keepAlive, think: request.think,
+    ...(options.codingCapacity && { includeArtifactIdentity: true }),
   }, request.mode === 'embed' ? 'embed' : 'extension', deps);
   ({ options: runtimeOptions, keepAlive, numCtxSource, inferenceContract } = runtime);
   payload = buildLocalPayload(request, model, runtimeOptions, keepAlive);
@@ -520,6 +368,11 @@ async function executeRoutedInference(deps, request, options = {}) {
     inferenceContract,
     ...(taskFallback && { routing: taskFallback })
   });
+  // Opt-in, telemetry-only prompt structure: it never enters the Ollama payload.
+  const observePrefix = options.observePromptPrefix === true && request.mode === 'chat'
+    && (deps.observePromptPrefix || observePromptPrefix);
+  let promptPrefix = null;
+  const record = entry => deps.recordInference(promptPrefix ? { ...entry, promptPrefix } : entry);
   const timeoutMs = boundedTimeout(request.timeoutMs);
   const abortBridge = createAbortBridge(options.signal, timeoutMs);
 
@@ -527,6 +380,8 @@ async function executeRoutedInference(deps, request, options = {}) {
     const execute = request.stream === true ? executeAdmittedOllamaStream : executeAdmittedOllamaAttempt;
     const attempt = await withInferenceRetry(async () => {
       await assertClaim();
+      const capacity = await require('../services/pipelineCodingCapacity').authorizeInference(options.codingCapacity,
+        { model, hostUrl, inferenceContract, numCtx: runtimeOptions.num_ctx });
       return execute({
       hostUrl, model, payload, mode: request.mode,
       useChat: request.mode === 'chat', stream: request.stream === true,
@@ -535,8 +390,9 @@ async function executeRoutedInference(deps, request, options = {}) {
       // Ollama sends headers. A caller can stop delivery without losing the
       // terminal evidence required to release the inference admission.
       ...(request.stream === true && { onDispatch: () => abortBridge.detachCaller() }),
-      admissionKind: request.stream === true ? 'trusted-runtime-stream' : 'trusted-runtime',
+      admissionKind: request.stream === true ? 'trusted-runtime-stream' : 'trusted-runtime', cacheLabels: { consumerContract, taskType },
       principal: benchmarkClaim ? 'benchmark-service' : 'core-trusted-runtime',
+      ...(capacity || {}),
       ...(benchmarkClaim && {
         workloadAdmissionId: benchmarkClaim.workloadAdmissionId,
         workloadGeneration: benchmarkClaim.workloadGeneration
@@ -545,7 +401,11 @@ async function executeRoutedInference(deps, request, options = {}) {
         // Recheck the same Core-owned reservation after admission, just as
         // direct Benchmark inference does. No discovery or reacquisition here.
         if (benchmarkClaim) await assertClaim();
+        if (capacity) await require('../services/pipelineCodingCapacity').authorizeInference(options.codingCapacity,
+          { model, hostUrl, inferenceContract, numCtx: runtimeOptions.num_ctx });
         options.signal?.throwIfAborted();
+        // Compared once, in admission order: the order Ollama receives prompts.
+        if (observePrefix) promptPrefix ??= observePrefix({ hostUrl, model, messages: request.messages, tools: request.tools });
       },
       verifyRejection: true, exclusive: request.exclusiveHost === true,
       ...(request.exclusiveHost === true && {
@@ -571,7 +431,7 @@ async function executeRoutedInference(deps, request, options = {}) {
       void attempt.completion.then(data => {
         abortBridge.cleanup();
         const completed = data?.completed === true && data?.terminalComplete === true;
-        void deps.recordInference(telemetryEntry(request, { ...metadata, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
+        void record(telemetryEntry(request, { ...metadata, waits: attempt.waits, promptCache: attempt.promptCache, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
           completed && !abortBridge.signal.aborted && !options.signal?.aborted ? 'success' : 'error', data,
           options.signal?.aborted ? 'cancelled' : abortBridge.signal.aborted ? 'timeout'
             : (completed ? null : (data?.admissionError || 'terminal_record_unverified')),
@@ -595,7 +455,7 @@ async function executeRoutedInference(deps, request, options = {}) {
         stream: attempt.stream, completion, metadata, retry: attempt.retry });
     }
     abortBridge.cleanup();
-    void deps.recordInference(telemetryEntry(request, { ...metadata, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
+    void record(telemetryEntry(request, { ...metadata, waits: attempt.waits, promptCache: attempt.promptCache, ...(options.retry?.enabled && { retry: attempt.retry }) }, startedAt,
       attempt.ok ? 'success' : 'error', attempt.data,
       attempt.ok ? null : `upstream_http_${attempt.status}`, attribution));
     return Object.freeze({ ok: attempt.ok, status: attempt.status, headers: attempt.response.headers,
@@ -608,8 +468,8 @@ async function executeRoutedInference(deps, request, options = {}) {
     const ladderRetry = !cancelled && !timedOut && !options.ladderRetry && !options.hostUrl && !requestedModel && taskType
       && deps.refusedBeforeDispatch?.(error) && await deps.fallbackAfterRefusal?.(taskType,
         { model, host: hostKey, url: hostUrl, degraded: taskFallback });
-    void deps.recordInference(telemetryEntry(
-      request, { ...metadata, retry: error.retry }, startedAt, timedOut ? 'timeout' : 'error', null,
+    void record(telemetryEntry(
+      request, { ...metadata, retry: error.retry, waits: error.inferenceWaits, promptCache: error.inferencePromptCache }, startedAt, timedOut ? 'timeout' : 'error', null,
       cancelled ? 'cancelled' : (timedOut ? `timeout_${timeoutMs}ms`
         : (Object.hasOwn(INFERENCE_REFUSALS, error.code) ? error.code : error.message)),
       attribution
@@ -753,6 +613,7 @@ function createTrustedRuntimeServices(overrides = {}) {
     contractVersion: CONTRACT_VERSION,
     personas: Object.freeze(require('../services/personaCatalog')),
     conversations: Object.freeze(require('../services/surfaceConversationService')),
+    ...require('../services/conversations/capabilities').createConversationCapabilities(),
     attachments: Object.freeze(require('../services/conversationAttachmentService')),
     memory: Object.freeze({ ...require('../services/memoryReadService'),
       notes: Object.freeze(require('../services/memoryNoteService')) }),
@@ -769,11 +630,11 @@ function createTrustedRuntimeServices(overrides = {}) {
     }),
     inference: Object.freeze({
       execute(request, options) {
-        return executeRoutedInference(deps, request, options);
+        return require('../services/execution/openclawInference').withExecutionSource((input, fixed) => executeRoutedInference(deps, input, fixed), deps.openclawClient)(request, options);
       }
     }),
     routing: Object.freeze({
-      getEffectiveSnapshot: options => buildEffectiveRoutingSnapshot(deps, options),
+      getEffectiveSnapshot: require('../services/routing/routingSnapshotCache').effectiveSnapshotReader(deps),
       // #143: an exact-model conversation borrows a light task's fallback ladder.
       planFallback: request => require('../services/routing/taskFallbackLadder').planExactModelFallback(request)
     }),

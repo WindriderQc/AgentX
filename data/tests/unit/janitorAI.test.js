@@ -47,6 +47,13 @@ describe('buildPrompt', () => {
     expect(result.system).toContain('KEEP');
   });
 
+  test('triage tells the model which actions and file entries were omitted', () => {
+    const coverage = { actions: { included: 50, available: 70 }, fileEntries: { included: 250, available: 700 } };
+    const result = buildPrompt('triage', { files: [], coverage });
+    expect(result.prompt).toContain(JSON.stringify(coverage));
+    expect(result.prompt).toContain('Unsampled actions and files have not been reviewed');
+  });
+
   test('resolve_duplicates includes duplicate paths', () => {
     const context = {
       duplicates: [
@@ -81,5 +88,24 @@ describe('parseAIResponse', () => {
     const raw = 'I recommend keeping all files.';
     const result = parseAIResponse(raw);
     expect(result).toEqual({ text: raw });
+  });
+});
+
+describe('requestLimits', () => {
+  const { requestLimits } = require('../../services/janitorAI');
+
+  it('keeps the GPU default: one minute and one retry', () => {
+    expect(requestLimits({})).toEqual({ timeout: 60000, retries: 1 });
+    expect(requestLimits({ JANITOR_AI_TIMEOUT_MS: 'abc' })).toEqual({ timeout: 60000, retries: 1 });
+  });
+
+  it('lets a slow CPU host answer, without queueing a retry behind a long request', () => {
+    expect(requestLimits({ JANITOR_AI_TIMEOUT_MS: '600000' })).toEqual({ timeout: 600000, retries: 0 });
+    expect(requestLimits({ JANITOR_AI_TIMEOUT_MS: '120000' })).toEqual({ timeout: 120000, retries: 1 });
+  });
+
+  it('bounds the configured value', () => {
+    expect(requestLimits({ JANITOR_AI_TIMEOUT_MS: '5' }).timeout).toBe(10000);
+    expect(requestLimits({ JANITOR_AI_TIMEOUT_MS: '99999999' }).timeout).toBe(1200000);
   });
 });

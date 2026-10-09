@@ -118,13 +118,16 @@ async function dedupScan(req, res, next) {
   }
 }
 
-/** GET /dedup-report */
+/** GET /dedup-report — `groups` is one page: group_offset, group_limit (default 100, at most 1000). */
 async function dedupReport(req, res, next) {
   const db = req.app.locals.db;
   if (!db) return res.status(503).json({ status: 'error', message: 'Database not ready' });
 
   try {
-    const report = await dedupScanner.getReport(db, req.query.report_id || null);
+    const report = await dedupScanner.getReport(db, req.query.report_id || null, {
+      groupOffset: req.query.group_offset,
+      groupLimit: req.query.group_limit
+    });
     // No report is a valid first-run collection state, not a missing route.
     // Return an empty success so dashboards do not emit a noisy console 404.
     if (!report) return res.json({ status: 'success', data: null, message: 'No dedup report found' });

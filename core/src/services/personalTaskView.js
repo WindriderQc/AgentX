@@ -24,16 +24,29 @@ function validDate(value) {
 // still matters. Age alone never closes a task: a late form can still be due.
 const RECHECK_AFTER_DAYS = 14;
 
-function publicTask(task, now = new Date()) {
+// Day classification ("due today", "the today lane") belongs to the household
+// calendar, not the process: a late local evening is still "today" even when its
+// UTC date is the next day. The overdue/recheck/late flags keep the explicit
+// dueAt instant, independent of this day window.
+function zonedDayKeys(now, dueAt, timeZone) {
+  // Lazy require: family.js imports this module, so resolving it at load time
+  // would hit the circular import before its exports are populated.
+  const { familyTimeZone, calendarDayKey } = require('../domains/household/family');
+  const zone = familyTimeZone(timeZone);
+  return {
+    todayKey: calendarDayKey(now, zone),
+    dueKey: dueAt ? calendarDayKey(dueAt, zone) : null
+  };
+}
+
+function publicTask(task, now = new Date(), timeZone) {
   const dueAt = validDate(task?.dueAt);
   const createdAt = validDate(task?.createdAt);
   const relevantUntil = validDate(task?.relevantUntil);
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(now);
-  tomorrow.setHours(0, 0, 0, 0);
-  tomorrow.setDate(tomorrow.getDate() + 1);
   const open = !['done', 'cancelled'].includes(task?.status);
+  const { todayKey, dueKey } = zonedDayKeys(now, dueAt, timeZone);
   const ageDays = createdAt ? Math.max(0, Math.floor((now - createdAt) / 86400000)) : null;
   // The activity it serves is over: nothing left to do, only to close it.
   const expired = Boolean(open && relevantUntil && relevantUntil < today);
@@ -44,7 +57,7 @@ function publicTask(task, now = new Date()) {
   const lateDays = late ? Math.floor((now - dueAt) / 86400000) : 0;
   const recheck = late && !relevantUntil && (bornLate || lateDays >= RECHECK_AFTER_DAYS);
   const overdue = late && !recheck;
-  const dueToday = Boolean(dueAt && dueAt >= today && dueAt < tomorrow && open && !expired);
+  const dueToday = Boolean(dueAt && dueKey && dueKey === todayKey && open && !expired);
   return {
     id: boundedText(task?.pipelineId || task?.id, 40),
     title: boundedText(task?.title, 200),

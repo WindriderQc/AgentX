@@ -14,6 +14,7 @@ const { log } = require('../utils/logger');
 const registry = require('./livedata/registry');
 const parsers = require('./livedata/parsers');
 const store = require('./livedata/store');
+const activityEvents = require('./activityEvents');
 
 let db;
 let intervalIds = [];
@@ -24,6 +25,7 @@ let feeds = registry.getSeedFeeds().map(f => ({ ...f, enabled: false }));
 let masterEnabled = false;
 let prevEnabled = new Set();   // feed ids running before the last (re)start — for immediate-on-enable
 const health = {};             // feedId -> { lastFetchAt, lastError, lastErrorAt, lastCount }
+const running = new Set();     // feed ids with a fetch in flight — a slow upstream must not stack runs
 
 // --- Feed execution ---
 
@@ -59,23 +61,49 @@ async function fetchParseStore(feed, location) {
 }
 
 async function runFeed(feed) {
-  if (!db) return;
+  if (!db || running.has(feed.id)) return;
+  running.add(feed.id);
   try {
     let count = 0;
     if (feed.fanout) {
-      // Per-location fanout (e.g. weather over weatherLocations).
-      if (feed.apiKeyEnv && !process.env[feed.apiKeyEnv]) return; // preserve original silent key guard
+      // Per-location fanout (e.g. weather over weatherLocations). A feed that
+      // cannot run says why in its health instead of staying silently empty.
+      if (feed.apiKeyEnv && !process.env[feed.apiKeyEnv]) throw new Error(`${feed.apiKeyEnv} is not set`);
       const locations = await db.collection(feed.fanout).find({}).toArray();
+      if (!locations.length) throw new Error(`No location configured in ${feed.fanout} (set LIVEDATA_LOCATIONS_JSON)`);
       for (const loc of locations) count += await fetchParseStore(feed, loc);
     } else {
       count = await fetchParseStore(feed);
     }
     health[feed.id] = { lastFetchAt: new Date(), lastError: null, lastCount: count };
     if (feed.store.mode === 'replace') log(`[liveData] ${feed.label} refreshed: ${count} records`);
+    await activityEvents.feedRun(db, feed, null);
   } catch (err) {
     health[feed.id] = { ...(health[feed.id] || {}), lastError: err.message, lastErrorAt: new Date() };
     log(`[liveData] ${feed.label} error: ${err.message}`, 'error');
+    await activityEvents.feedRun(db, feed, err);
+  } finally {
+    running.delete(feed.id);
   }
+}
+
+// Locations the per-location feeds fan out over, from LIVEDATA_LOCATIONS_JSON:
+// [{"name":"Home","lat":46.81,"lon":-71.21}]. Seeds an empty registry only, so
+// locations already stored are never replaced.
+async function seedLocations() {
+  const raw = process.env.LIVEDATA_LOCATIONS_JSON;
+  if (!raw) return;
+  let configured;
+  try { configured = JSON.parse(raw); }
+  catch (e) { log(`[liveData] LIVEDATA_LOCATIONS_JSON is not valid JSON: ${e.message}`, 'warn'); return; }
+  const locations = (Array.isArray(configured) ? configured : []).slice(0, 20)
+    .map(l => ({ name: String(l?.name || '').slice(0, 80), lat: Number(l?.lat), lon: Number(l?.lon) }))
+    .filter(l => Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180);
+  if (!locations.length) return;
+  const collection = db.collection('weatherLocations');
+  if (await collection.countDocuments({}, { limit: 1 })) return;
+  await collection.insertMany(locations);
+  log(`[liveData] Seeded ${locations.length} location(s)`);
 }
 
 // --- Lifecycle ---
@@ -174,6 +202,9 @@ async function init(dbConnection) {
     );
   }
 
+  try { await seedLocations(); }
+  catch (e) { log(`[liveData] Location seed failed: ${e.message}`, 'warn'); }
+
   // Connect MQTT first (if configured) so push-in feeds can subscribe on reload.
   if (process.env.MQTT_BROKER_URL) mqttClient.init();
 
@@ -202,6 +233,8 @@ module.exports = {
   close,
   reloadConfig,
   getState,
+  // False until init() ran: feeds start only with DATA_BACKGROUND_JOBS_ENABLED=true.
+  isRunning: () => initialized,
   // Registry + health getters (consumed by the uniform consumption API).
   getFeeds: () => feeds.map(f => ({ ...f, health: health[f.id] || null })),
   getFeedById: (id) => feeds.find(f => f.id === id) || null,

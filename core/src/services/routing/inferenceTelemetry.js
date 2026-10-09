@@ -21,6 +21,21 @@ const {
     normalizeSelectionSource,
     projectRouteDecision,
 } = require('./routeDecision');
+const { sanitizePromptPrefix } = require('./promptPrefixFingerprint');
+const { promptCacheVerdict } = require('./promptCacheAttribution');
+const { inferenceWaitFields } = require('./inferenceWaitTelemetry');
+
+const PHASE_TIMING_FIELDS = ['loadMs', 'promptEvalMs', 'evalMs', 'firstTokenMs'];
+
+// Only reported phases are persisted: an absent timing stays absent, never 0.
+function phaseTimingFields(data) {
+    const fields = {};
+    for (const field of PHASE_TIMING_FIELDS) {
+        const value = data?.[field];
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0) fields[field] = Math.round(value);
+    }
+    return fields;
+}
 
 /**
  * Last line of defence before a decision is persisted for 30 days.
@@ -372,6 +387,12 @@ function decisionForTelemetry(data = {}) {
  * @param {number}  [data.estimatedInputTokensAtDispatch] - Pre-dispatch input estimate; survives upstream failures
  * @param {number}  [data.tokensIn]
  * @param {number}  [data.tokensOut]
+ * @param {number}  [data.loadMs]        - Ollama load_duration, ms; absent when unreported
+ * @param {number}  [data.promptEvalMs]  - Ollama prompt_eval_duration, ms
+ * @param {number}  [data.evalMs]        - Ollama eval_duration, ms
+ * @param {number}  [data.firstTokenMs]  - Streamed: dispatch to first output frame, ms
+ * @param {Object}  [data.promptPrefix]  - Payload-free prompt structure (promptPrefixFingerprint)
+ * @param {Object}  [data.promptCache]   - Dispatch observation of the prompt cache (promptCacheAttribution)
  * @param {number}  [data.durationMs]
  * @param {'success'|'error'|'timeout'} [data.status]
  * @param {string}  [data.error]
@@ -387,6 +408,9 @@ async function recordInference(data) {
         const { resolveHostKey } = require('../modelRouter');
         const host = data.host || data.routedHostUrl || 'unknown';
         const routedHost = data.routedHost || resolveHostKey(data.routedHostUrl || data.host);
+        const promptPrefix = sanitizePromptPrefix(data.promptPrefix);
+        const phases = phaseTimingFields(data);
+        const promptCache = promptCacheVerdict(data.promptCache, phases);
         const row = await InferenceLog.create({
             host,
             hostKey: resolveHostKey(host),
@@ -405,7 +429,7 @@ async function recordInference(data) {
             routedModel: data.routedModel || data.model || null,
             routedHost,
             routedHostUrl: data.routedHostUrl || data.host || null,
-            fallbackUsed: data.fallbackUsed || false,
+            fallbackUsed: data.fallbackUsed === null ? null : data.fallbackUsed || false,
             fallbackReason: data.fallbackReason || null,
             swapped: data.swapped || false,
             routingTrace: sanitizeRoutingTrace(data.routingTrace),
@@ -415,8 +439,15 @@ async function recordInference(data) {
             estimatedInputTokensAtDispatch: Number.isFinite(Number(data.estimatedInputTokensAtDispatch))
                 ? Math.max(0, Number(data.estimatedInputTokensAtDispatch))
                 : null,
-            tokensIn: data.tokensIn || 0,
-            tokensOut: data.tokensOut || 0,
+            executionSource: ['local', 'openclaw'].includes(data.executionSource) ? data.executionSource : null,
+            executionMode: ['model', 'agent'].includes(data.executionMode) ? data.executionMode : null,
+            executionReceiptFingerprint: /^[a-f0-9]{64}$/.test(data.executionReceiptFingerprint || '') ? data.executionReceiptFingerprint : null,
+            tokensIn: data.executionSource === 'openclaw' ? data.tokensIn ?? null : data.tokensIn || 0,
+            tokensOut: data.executionSource === 'openclaw' ? data.tokensOut ?? null : data.tokensOut || 0,
+            ...phases,
+            ...inferenceWaitFields({ waits: data.waits, retry: data.retry }),
+            ...(promptPrefix && { promptPrefix }),
+            ...(promptCache && { promptCache }),
             durationMs: data.durationMs || 0,
             status: data.status || 'success',
             error: data.error || null,

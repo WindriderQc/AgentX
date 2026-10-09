@@ -719,6 +719,13 @@ a.service { text-decoration: none; }
 .conversation-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
 .conversation-toolbar button { min-height: 44px; }
 .conversation-toolbar [aria-expanded=true] { border-color: #52cfc5; background: #173d43; }
+.conversation-team { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -12px 0 20px; }
+.conversation-team .team-label { color: #9fb3b8; font-size: .85rem; margin-right: 4px; }
+.conversation-team .team-card { min-height: 40px; padding: 6px 14px; border: 1px solid #2c4a50; border-radius: 999px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.conversation-team .team-card.active { border-color: #52cfc5; background: #173d43; font-weight: 600; }
+.conversation-team .team-card:disabled { opacity: .45; cursor: not-allowed; }
+.conversation-message.assistant[data-speaker]::before { content: attr(data-speaker); display: block; margin-bottom: 4px; color: #e0b252; font-size: .78rem; font-weight: 600; letter-spacing: .02em; }
+.conversation-locked { margin: 8px 0 12px; padding: 8px 10px; border-left: 3px solid #e0b252; background: rgba(224, 178, 82, .08); font-size: .85rem; line-height: 1.45; }
 .conversation-history { border: 1px solid #29404d; border-radius: 18px; padding: 18px; margin-bottom: 24px; background: #0c1b26; }
 .conversation-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .conversation-history-heading h2 { font-size: 1.05rem; margin: 0; }
@@ -762,6 +769,8 @@ a.service { text-decoration: none; }
 .conversation-audio summary { cursor: pointer; }
 .conversation-audio-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .conversation-audio-actions[hidden] { display: none; }
+.conversation-browser-stt { margin: 4px 0; color: #f2c46d; font-weight: 600; }
+.conversation-browser-stt[hidden] { display: none; }
 .conversation-audio-actions button { min-height: 44px; white-space: normal; }
 .conversation-audio-transcript { white-space: pre-wrap; overflow-wrap: anywhere; }
 .conversation-transcript { min-height: 120px; max-height: 44vh; overflow-y: auto; overscroll-behavior: contain; padding: 12px 0; }
@@ -796,13 +805,6 @@ a.service { text-decoration: none; }
 .nav-tools-panel a:hover, .nav-tools-panel a:focus-visible { background: var(--panel-2); }
 .nav-tools-panel small { display: block; color: var(--soft); font-size: .75rem; }
 .nav-tools-panel .runtime-pill { margin: .5rem .8rem; }
-/* The access client marks <html data-agentx-access="locked"> on a family page behind the
-   parental gateway: adult destinations show a lock and the menu offers the unlock first. */
-.nav-tools-panel a[data-access="unlock"] { display: none; }
-html[data-agentx-access="locked"] .nav-tools-panel a[data-access="unlock"] { display: block; margin-bottom: .3rem; border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; }
-html[data-agentx-access="locked"] a[data-access="adult"]::after { content: '🔒'; margin-left: .35rem; font-size: .8em; }
-html[data-agentx-access="locked"] .nav-tools-panel a[data-access="adult"] { position: relative; padding-right: 2.2rem; }
-html[data-agentx-access="locked"] .nav-tools-panel a[data-access="adult"]::after { position: absolute; right: .8rem; top: .7rem; margin: 0; }
 .section-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem; padding: .65rem 1rem; border-bottom: 1px solid var(--line); background: rgba(13,25,35,.72); }
 .section-nav[hidden] { display: none; }
 .section-nav a { padding: .4rem .7rem; border-radius: 8px; color: var(--soft); text-decoration: none; font-size: .85rem; }
@@ -863,8 +865,38 @@ html[data-agentx-access="locked"] .nav-tools-panel a[data-access="adult"]::after
 
 .conversation-history-entry { min-width: 0; }
 .conversation-history-entry > .conversation-history-item { width: 100%; }
+.conversation-resume { display: grid; gap: 6px; margin-block-end: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; min-width: 0; }
+.conversation-resume p { margin: 0; overflow-wrap: anywhere; }
+.conversation-resume-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.conversation-resume-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .conversation-history-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
 .shopping-items { list-style: none; padding: 0; margin: 0; }
 .shopping-items li { align-items: center; padding: .35rem 0; border-bottom: 1px solid var(--line); }
 .kids-shopping { margin-top: 1rem; }
 .dad-triage input[type="date"] { max-width: 11rem; padding: .4rem .55rem; font-size: .82rem; }
+
+/* Family review keeps validation visible and setup within reach. */
+.family-overview { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.2rem; }
+.family-overview h1 { max-width: none; font-size: clamp(1.8rem, 4vw, 2.8rem); line-height: 1.1; }
+.family-overview p { margin: .4rem 0 0; }
+.family-tasks { border-top: 2px solid #c96d3c; }
+.family-tasks h2 { margin: 0; }
+.family-tasks > .row { margin-bottom: .9rem; }
+.family-attention { color: #ffc49f; background: #c96d3c20; border-color: #c96d3c75; }
+.family-disclosure > summary { display: flex; align-items: center; gap: .6rem; cursor: pointer; list-style: none; font-weight: 750; min-height: 2rem; }
+.family-disclosure > summary::-webkit-details-marker { display: none; }
+.family-disclosure > summary::before { content: '›'; color: #e99360; font-size: 1.3rem; transition: transform .15s; }
+.family-disclosure[open] > summary::before { transform: rotate(90deg); }
+.family-disclosure > summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; border-radius: 4px; }
+.family-disclosure[open] > summary { margin-bottom: 1rem; }
+.family-tasks > .family-disclosure, #profileCreate { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+.family-disclosure .pill { margin-left: auto; }
+.family-tasks .parent-chore.warning { border-color: #c96d3c70; background: linear-gradient(110deg, #c96d3c15, #09151e); }
+@media (max-width: 700px) {
+  .family-overview { gap: .7rem; }
+  .family-overview > .row { width: 100%; justify-content: space-between; }
+  .family-tasks .parent-chore { align-items: stretch; flex-direction: column; flex-wrap: nowrap; }
+  .family-tasks .parent-chore > .grow { min-width: 0; overflow-wrap: anywhere; }
+  .family-tasks .chore-action { min-height: 44px; }
+  .family-disclosure > summary { min-height: 44px; }
+}

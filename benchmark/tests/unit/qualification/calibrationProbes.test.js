@@ -18,6 +18,8 @@ describe('scratch-root safety (probes never touch the live tree)', () => {
     expect(probes.isScratchRoot('/home/agentx/codes/agentx-platform/scratch')).toBe(true);
     expect(probes.isScratchRoot('/home/agentx/codes/agentx-platform')).toBe(false);
     expect(probes.isScratchRoot('C:/Users/Example User/Documents/product')).toBe(false);
+    // Relative roots never inherit markers from the current directory.
+    expect(probes.isScratchRoot('scratch')).toBe(false);
   });
 
   test('assertScratchRoot refuses to build under a non-scratch root', () => {

@@ -96,6 +96,9 @@ class TokenCounterService {
    * @returns {Object} { promptTokens, completionTokens, totalTokens, cost, model }
    */
   analyzeConversation(conversation) {
+    if (conversation?.model?.startsWith('openclaw:') || conversation?.messages?.some(message => message.metadata?.executionReceipt?.source === 'openclaw')) {
+      return require('./chat/recordedConversationUsage').recordedConversationUsage(conversation);
+    }
     if (!conversation || !conversation.messages) {
       return {
         promptTokens: 0,

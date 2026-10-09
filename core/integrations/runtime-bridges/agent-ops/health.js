@@ -30,10 +30,12 @@ function productService(service, productOk, links) {
   };
 }
 
+// Data is an optional service (Compose profile `data`): its row reports its real
+// state, but it never turns the summary down.
 function dataService(result, href) {
   const healthy = result?.ok && result.body?.ok === true && result.body?.status === 'success';
   return {
-    id: 'data', name: 'Data', owner: 'AIOps', port: 3083,
+    id: 'data', name: 'Data', owner: 'AgentX Product', port: 3083, optional: true,
     status: healthy ? 'ok' : 'down',
     latencyMs: Number(result?.durationMs) || 0,
     issues: healthy ? [] : [result?.error || result?.body?.message || 'Data health check failed.'],
@@ -63,10 +65,14 @@ async function buildServiceHealth(options = {}) {
   const healthy = services.filter((service) => service.status === 'ok').length;
   const degraded = services.filter((service) => service.status === 'degraded').length;
   const down = services.length - healthy - degraded;
+  const optionalDown = services.filter((service) => service.optional && service.status === 'down').length;
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
-    summary: { status: down ? 'down' : degraded ? 'degraded' : 'ok', total: services.length, healthy, degraded, down },
+    summary: {
+      status: down > optionalDown ? 'down' : degraded || optionalDown ? 'degraded' : 'ok',
+      total: services.length, healthy, degraded, down, optionalDown,
+    },
     services,
   };
 }

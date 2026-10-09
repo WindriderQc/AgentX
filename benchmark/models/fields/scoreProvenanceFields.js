@@ -10,6 +10,7 @@
  */
 
 const mongoose = require('mongoose');
+const { BENCHMARK_CATEGORY_KEYS } = require('../../config/categories');
 
 const scoreProvenanceFields = {
     // Dual scoring: semantic correctness vs format compliance
@@ -62,6 +63,20 @@ const scoreProvenanceFields = {
         default: null,
         index: true
     },
+    // What this result held under earlier scorer versions, before its grade
+    // was carried over to the current one (measurementCoverage/gradeCarryOverPass.js).
+    scorer_history: {
+        type: [{
+            _id: false,
+            scorer_version: String,
+            quality_score: Number,
+            composite_score: Number,
+            quality_cohort_fingerprint: String,
+            rules: [String],
+            carried_at: Date
+        }],
+        default: undefined
+    },
     quality_score: {
         type: Number,
         min: 0,
@@ -104,7 +119,7 @@ const scoreProvenanceFields = {
     },
     scoring_type: {
         type: String,
-        enum: ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation', 'factual', 'custom', null],
+        enum: [...BENCHMARK_CATEGORY_KEYS, 'factual', 'custom', null],
         default: null
     },
     scoring_time_ms: {

@@ -6,7 +6,7 @@ const { createApp } = require('../src/app');
 
 function config() {
   return {
-    env: 'test', accessMode: 'token', accessToken: 'psyx-secret', sessionTtlMs: 3600000, loopbackBypass: false,
+    env: 'test', accessMode: 'token', accessToken: 'psyx-secret',
     maxBodyBytes: 262144, requestTimeoutMs: 1000, provider: 'ollama',
     voice: { mode: 'disabled', maxAudioBytes: 1024 * 1024 }
   };
@@ -89,21 +89,19 @@ test('protected status supports bearer automation without creating a cookie', as
   });
 });
 
-test('trusted-network mode serves protected APIs without a code and cannot be browser-locked', async () => {
+test('trusted-network human access has no code routes or cookies, and rejects invalid native credentials', async () => {
   const provider = { id: 'ollama', probe: async () => ({}), routing: async () => ({}), stream: async () => ({}) };
-  const trustedConfig = { ...config(), accessMode: 'trusted-network', accessToken: '' };
+  const trustedConfig = { ...config(), accessMode: 'trusted-network' };
   await withServer(createApp({ config: trustedConfig, database: repositories(), provider, logger: { error() {} } }), async (base) => {
-    const auth = await (await fetch(`${base}/api/psyx/auth/status`)).json();
-    assert.equal(auth.data.unlocked, true);
-    assert.equal(auth.data.accessMode, 'trusted-network');
-
     const status = await fetch(`${base}/api/psyx/status`);
     assert.equal(status.status, 200);
-    assert.equal((await status.json()).data.privacy.protected, false);
-
-    const locked = await (await fetch(`${base}/api/psyx/auth/lock`, { method: 'POST' })).json();
-    assert.equal(locked.data.unlocked, true);
-    assert.equal((await fetch(`${base}/api/psyx/status`)).status, 200);
+    assert.equal((await status.json()).data.privacy.humanIdentityVerified, false);
+    assert.equal(status.headers.get('set-cookie'), null);
+    for (const route of ['status', 'unlock', 'lock']) {
+      assert.equal((await fetch(`${base}/api/psyx/auth/${route}`, { method: route === 'status' ? 'GET' : 'POST' })).status, 404);
+    }
+    assert.equal((await fetch(`${base}/api/psyx/state`, { headers: { Authorization: 'Bearer wrong-native-token' } })).status, 401);
+    assert.equal((await fetch(`${base}/api/psyx/state`, { headers: { Authorization: 'Bearer psyx-secret' } })).status, 200);
   });
 });
 
@@ -131,9 +129,80 @@ test('chat ignores browser transcript authority and persists only provider compl
     assert.match(text, /event: done/);
   });
   assert.deepEqual(providerRequest.messages, [{ role: 'user', content: 'trusted prior' }]);
+  assert.deepEqual(providerRequest.contextCoverage, { availableMessages: 1, includedMessages: 1, omittedMessages: 0, complete: true });
   assert.doesNotMatch(providerRequest.system, /browser override/);
   assert.deepEqual(providerRequest.options, { temperature: 0.7 });
   assert.equal(saved.assistantMessage, 'safe answer');
+});
+
+test('accepted long messages retain their tail for safety, inference and storage; replies stay whole', async () => {
+  const message = `${'x'.repeat(12000)} Je veux mourir.`;
+  const answer = `${'a'.repeat(50000)} Fin de la réponse.`;
+  let received, saved;
+  const database = repositories();
+  database.conversationRepository.saveCompletedTurn = async input => {
+    saved = input;
+    return { id: '507f1f77bcf86cd799439011' };
+  };
+  const provider = { id: 'synthetic', async stream(input, sink) {
+    received = input;
+    sink.onToken(answer);
+    return { content: answer, model: 'synthetic' };
+  } };
+  await withServer(createApp({ config: config(), database, provider, logger: {} }), async base => {
+    const response = await fetch(`${base}/api/psyx/chat/stream`, {
+      method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, psyx: { mode: 'challenge', depth: 'deep' } })
+    });
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.match(text, /event: safety/);
+    assert.equal(JSON.parse(text.match(/event: done\ndata: ([^\n]+)/)[1]).response, answer);
+  });
+  assert.equal(received.message, message);
+  assert.match(received.system, /SAFETY STANCE/);
+  assert.equal(saved.userMessage, message);
+  assert.equal(saved.assistantMessage, answer);
+});
+
+test('reply coverage includes older canonical messages outside the fetched context window', async () => {
+  const { createConversationAdapter } = require('../src/conversations');
+  const id = '507f1f77bcf86cd799439011';
+  const messages = Array.from({ length: 250 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', content: `message ${index}` }));
+  const adapter = createConversationAdapter({ conversationLifecycle: {
+    getConversation: async () => ({ id, lifecycle: { status: 'active' }, messages }),
+    recordCompletedTurn: async () => ({ id })
+  } });
+  const database = repositories({ conversationRepository: adapter });
+  let received;
+  const provider = { async stream(request, sink) { received = request; sink.onToken('ok'); return { content: 'ok' }; } };
+  await withServer(createApp({ config: config(), database, provider, logger: {} }), async base => {
+    const response = await fetch(`${base}/api/psyx/chat/stream`, {
+      method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: id, message: 'suite' })
+    });
+    assert.equal(response.status, 200);
+    const control = JSON.parse((await response.text()).match(/event: control\ndata: ([^\n]+)/)[1]);
+    assert.deepEqual(control.contextCoverage, { availableMessages: 250, includedMessages: 40, omittedMessages: 210, complete: false });
+  });
+  assert.deepEqual(received.messages, messages.slice(-40));
+  assert.deepEqual(received.contextCoverage, { availableMessages: 250, includedMessages: 40, omittedMessages: 210, complete: false });
+  assert.equal((await adapter.context('default', id, 40)).length, 40, 'the review retains its array contract');
+});
+
+test('a request exceeding the configured body limit is refused before inference or storage', async () => {
+  let calls = 0;
+  const database = repositories();
+  database.conversationRepository.saveCompletedTurn = async () => { calls += 1; };
+  const provider = { async stream() { calls += 1; } };
+  await withServer(createApp({ config: { ...config(), maxBodyBytes: 1024 }, database, provider, logger: {} }), async base => {
+    const response = await fetch(`${base}/api/psyx/chat/stream`, {
+      method: 'POST', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'x'.repeat(2048) })
+    });
+    assert.equal(response.status, 413);
+    assert.equal(calls, 0);
+  });
 });
 
 test('failed or incomplete inference never persists a turn', async () => {
@@ -171,9 +240,16 @@ test('voice stays protected, permits this origin, and relays audio without persi
   await withServer(createApp({ config: { ...config(), voice: { mode: 'voix', maxAudioBytes: 1024 * 1024 } }, database: repositories(), provider: { id: 'ollama', probe: async () => ({}), routing: async () => ({}), stream: async () => ({}) }, voice, logger: { error() {} } }), async (base) => {
     const page = await fetch(`${base}/psyx`);
     assert.match(page.headers.get('permissions-policy'), /microphone=\(self\)/);
-    assert.match(await page.text(), /voice-preferences\.js/);
+    const html = await page.text();
+    assert.match(html, /voice-preferences\.js/);
+    // app.js calls functions declared by the voice, state, review, care, follow-up and frontier scripts, so they load first.
+    assert.match(html, /voice-session\.js[^]*voice-controls\.js[^]*state-panel\.js[^]*review\.js[^]*care\.js[^]*follow-up\.js[^]*frontier\.js[^]*assets\/app\.js/);
+    // setBusy in app.js re-syncs the voice session controls, so both scripts carry the same asset version.
+    assert.equal(html.match(/voice-session\.js\?v=([\d.]+)/)[1], html.match(/assets\/app\.js\?v=([\d.]+)/)[1]);
     assert.equal((await fetch(`${base}/api/psyx/voice/status`)).status, 401);
-    assert.equal((await fetch(`${base}/psyx/assets/voice-preferences.js`)).status, 200);
+    for (const asset of ['voice-preferences.js', 'voice-controls.js', 'state-panel.js', 'review.js', 'care.js', 'follow-up.js', 'frontier.js', 'profile.js']) {
+      assert.equal((await fetch(`${base}/psyx/assets/${asset}`)).status, 200);
+    }
 
     const headers = { Authorization: 'Bearer psyx-secret' };
     const capabilities = await (await fetch(`${base}/api/psyx/status`, { headers })).json();
@@ -207,8 +283,10 @@ test('voice stays protected, permits this origin, and relays audio without persi
     assert.equal(native.status, 200);
     assert.equal(native.headers.get('x-psyx-tts-provider'), null);
   });
+  assert.ok(calls[0].options.signal instanceof AbortSignal);
+  assert.equal(calls[0].options.signal.aborted, false);
   assert.deepEqual(calls, [
-    { kind: 'stt', size: 5, options: { contentType: 'audio/webm', language: 'fr' } },
+    { kind: 'stt', size: 5, options: { contentType: 'audio/webm', language: 'fr', signal: calls[0].options.signal } },
     { kind: 'tts', request: { text: 'salut', ttsProvider: 'kokoro', language: 'fr', voice: 'ff_siwis' } },
     { kind: 'tts', request: { text: 'salut', ttsProvider: undefined, language: undefined, voice: undefined } }
   ]);
@@ -277,5 +355,82 @@ test('namespaced chat and routing endpoints support the LAN HTTPS proxy', async 
       method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'hello' })
     });
     assert.match(await response.text(), /event: done/);
+  });
+});
+
+test('configuration reports human LAN access without identity and keeps frontier disabled', async () => {
+  const app = createApp({ config: { ...config(), accessMode: 'trusted-network', accessToken: '' }, database: repositories(), provider: {} });
+  await withServer(app, async base => {
+    const response = await fetch(base + '/api/psyx/status');
+    assert.equal(response.status, 200);
+    const status = (await response.json()).data;
+    assert.equal(status.privacy.configured, true);
+    assert.equal(status.privacy.protected, false);
+    assert.equal(status.privacy.humanIdentityVerified, false);
+    assert.equal(status.frontier.enabled, false);
+    assert.equal(JSON.stringify(status).includes('psyx-secret'), false);
+  });
+});
+
+test('memory corrections use authenticated ownership, stay protected, and serve both new views', async () => {
+  const calls = [];
+  const database = repositories();
+  database.stateRepository.updateItem = async (...args) => { calls.push(args); return { state: {} }; };
+  await withServer(createApp({ config: config(), database, provider: {} }), async base => {
+    const url = `${base}/api/psyx/state/items/patterns/item`;
+    assert.equal((await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401);
+    const changes = { text: 'Synthetic correction', expectedRevision: 2, userId: 'another-owner' };
+    assert.equal((await fetch(url, { method: 'PATCH', headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' }, body: JSON.stringify(changes) })).status, 200);
+    assert.equal(calls[0][0], 'default');
+    assert.equal(calls[0][1], 'patterns');
+    for (const asset of ['formulation.js', 'setup.js']) assert.equal((await fetch(`${base}/psyx/assets/${asset}`)).status, 200);
+    const html = await (await fetch(`${base}/psyx`)).text();
+    assert.match(html, /Comment psyX te comprend/);
+    assert.match(html, /Configuration de psyX/);
+  });
+});
+
+test('closing private speech recognition cancels VoiX before any late transcript is returned', async () => {
+  let signal;
+  const voice = { transcribe: async (_bytes, options) => {
+    signal = options.signal;
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('cancelled'), { name: 'AbortError' })), { once: true }));
+  } };
+  await withServer(createApp({ config: config(), database: repositories(), provider: {}, voice, logger: { error() {} } }), async base => {
+    const abort = new AbortController();
+    const pending = fetch(base + '/api/psyx/voice/transcribe', { method: 'POST', signal: abort.signal,
+      headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'audio/wav' }, body: 'synthetic WAV' });
+    while (!signal) await new Promise(resolve => setImmediate(resolve));
+    const aborted = new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    abort.abort(); await assert.rejects(pending, { name: 'AbortError' }); await aborted;
+    assert.equal(signal.aborted, true);
+  });
+});
+
+test('a failed speech engine is reported before private stream audio headers', async () => {
+  const voice = { stream: async () => new Response('{"type":"error","message":"private engine details"}\n', { headers: { 'Content-Type': 'application/x-ndjson' } }) };
+  await withServer(createApp({ config: config(), database: repositories(), provider: {}, voice, logger: { error() {} } }), async base => {
+    const response = await fetch(base + '/api/psyx/voice/synthesize/stream', { method: 'POST',
+      headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Bonjour' }) });
+    assert.equal(response.status, 503);
+    assert.match(response.headers.get('content-type'), /application\/json/);
+    assert.doesNotMatch(await response.text(), /private engine details/);
+  });
+});
+
+test('closing buffered private synthesis cancels VoiX as well', async () => {
+  let signal;
+  const voice = { synthesize: async (_request, requestSignal) => {
+    signal = requestSignal;
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  } };
+  await withServer(createApp({ config: config(), database: repositories(), provider: {}, voice, logger: { error() {} } }), async base => {
+    const abort = new AbortController();
+    const pending = fetch(base + '/api/psyx/voice/synthesize', { method: 'POST', signal: abort.signal,
+      headers: { Authorization: 'Bearer psyx-secret', 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'Bonjour' }) }).catch(error => error);
+    while (!signal) await new Promise(resolve => setImmediate(resolve));
+    const stopped = new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    abort.abort(); await stopped; await pending;
+    assert.equal(signal.aborted, true);
   });
 });

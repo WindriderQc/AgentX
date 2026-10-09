@@ -48,7 +48,7 @@
         ]},
         "channels": ["local_log"],
         "renotifyMs": 900000,
-        "description": "Windowed platform-inference error rate. Requires at least 20 inference rows in the preceding hour."
+        "description": "Windowed platform-inference error rate over the calls dispatched to a model; an attempt Core refused before dispatch is neither a call nor a failure. Requires at least 20 such rows in the preceding hour."
     },
     {
         "id": "host-unreachable",
@@ -102,6 +102,19 @@
         "channels": ["local_log"],
         "renotifyMs": 3600000,
         "description": "Evidence-backed truncation, incomplete response, or no-visible-final outcome."
+    },
+    {
+        "id": "openclaw-paid-spend-step",
+        "name": "Paid model spend crossed another 10 USD",
+        "enabled": true,
+        "severity": "warning",
+        "title": "Paid model spend reached {{stepUsd}} USD",
+        "message": "Estimated total {{totalUsd}} USD over {{paidCalls}} paid model calls since {{since}}; {{unknownCostCalls}} calls have no observed cost.",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "openclaw_paid_spend_step" }
+        ]},
+        "channels": ["local_log", "telegram"],
+        "description": "One alert per 10 USD step of the native running total of paid OpenClaw model-mode calls. The total is an estimate from catalogue rates, not an invoice."
     },
     {
         "id": "benchmark-claim-release-failure",
@@ -158,5 +171,33 @@
         "channels": ["local_log"],
         "renotifyMs": 3600000,
         "description": "Recent one-hour median versus the preceding 24-hour baseline, sample-gated and observe-only."
+    },
+    {
+        "id": "network-new-device",
+        "name": "New unknown device on the network",
+        "enabled": true,
+        "severity": "warning",
+        "title": "New device on the network — {{vendor}}",
+        "message": "{{mac}} at {{ip}} ({{hostname}}). {{guess}} Name it or mark it known in the Data Toolbox.",
+        "previousMessages": ["{{mac}} at {{ip}} ({{hostname}}). Name it or mark it known in the Data Toolbox."],
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "network_new_device" }
+        ]},
+        "channels": ["local_log", "telegram"],
+        "description": "Raised once per MAC that joins the LAN without an alias, after the baseline inventory. Requires NETWORK_DEVICE_WATCH_MS and the Data network collector."
+    },
+    {
+        "id": "ops-watch-report",
+        "name": "Operations watch report",
+        "enabled": true,
+        "severity": "warning",
+        "title": "Operations watch — {{findingCount}} finding(s)",
+        "message": "{{summary}}",
+        "conditions": { "all": [
+            { "fact": "metric", "operator": "equal", "value": "ops_watch_report" }
+        ]},
+        "channels": ["local_log", "telegram"],
+        "renotifyMs": 21600000,
+        "description": "One short report, written by the ops_watch task model, of what monitoring rules currently flag. One incident per distinct set of findings; it resolves when they are gone. Requires OPS_WATCH_MS."
     }
 ]

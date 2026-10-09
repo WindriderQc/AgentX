@@ -46,6 +46,9 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
                         help="fnmatch pattern for allowed Codex session cwds (repeatable)")
     parser.add_argument("--openclaw-home", type=Path, default=None)
     parser.add_argument("--openclaw-agent", action="append", default=None)
+    parser.add_argument("--openclaw-member-agent", action="append", default=None,
+                        help="agent serving the household's family pages: its turns are "
+                             "household-member statements, never the owner's (repeatable)")
     parser.add_argument("--hermes-home", type=Path, default=None)
     parser.add_argument("--git-repo", action="append", type=Path, default=None,
                         help="repository whose accepted history is verified evidence (repeatable)")
@@ -72,6 +75,7 @@ def _collect_one(runtime: str, args: argparse.Namespace, store: WatermarkStore):
         return openclaw_collector.collect(
             home=args.openclaw_home, store=store,
             agents=tuple(args.openclaw_agent or ("main",)),
+            member_agents=tuple(args.openclaw_member_agent or ()),
             lookback_days=args.lookback_days, max_files=args.max_files,
         )
     if runtime == "git":
@@ -133,6 +137,30 @@ def _window(args: argparse.Namespace) -> dict:
     }
 
 
+SYNTHESIS_EXCHANGES_KEPT = 40
+
+
+def _keep_synthesis_exchanges(state_dir: Path, run_id: str, exchanges: list) -> None:
+    """Keep what was asked and answered, beside the watermarks and as private
+    as they are. Without it a run that proposes nothing cannot be explained."""
+    if not exchanges:
+        return
+    try:
+        folder = Path(state_dir) / "synthesis"
+        folder.mkdir(parents=True, exist_ok=True)
+        os.chmod(folder, 0o700)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        path = folder / f"{run_id}-{stamp}.json"
+        with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as handle:
+            json.dump({"runId": run_id, "promptVersion": PROMPT_VERSION, "exchanges": exchanges},
+                      handle, ensure_ascii=False)
+        for old in sorted(folder.glob("*.json"), key=lambda item: item.stat().st_mtime)[:-SYNTHESIS_EXCHANGES_KEPT]:
+            old.unlink()
+        print(f"synthesis exchange kept: {path}")
+    except OSError as exc:
+        print(f"synthesis exchange not kept: {exc}")
+
+
 def _finish_run(client: MemoryReviewClient, run_id: str, state_dir: Path,
                 args: argparse.Namespace) -> int:
     """Idempotently finalize and synthesize one accepted run."""
@@ -150,13 +178,22 @@ def _finish_run(client: MemoryReviewClient, run_id: str, state_dir: Path,
         _write_local_report(client, run_id, state_dir)
         return 0
 
+    exchanges: list = []
     try:
         bundle = client.synthesis_input(run_id)
-        candidates = synthesis.synthesize(
-            bundle,
-            base_url=args.agentx_url, model=args.model,
-            max_tokens=args.max_tokens, timeout=args.inference_timeout,
-        )
+        synthesis_receipt: dict = {}
+        try:
+            candidates = synthesis.synthesize(
+                bundle,
+                base_url=args.agentx_url, model=args.model,
+                max_tokens=args.max_tokens, timeout=args.inference_timeout,
+                receipt=synthesis_receipt, exchanges=exchanges,
+            )
+        finally:
+            _keep_synthesis_exchanges(state_dir, run_id, exchanges)
+        if synthesis_receipt.get("notSubmitted"):
+            print(f"candidate bound of {schema.MAX_CANDIDATES_PER_RUN} per run reached: "
+                  f"{synthesis_receipt['notSubmitted']} weaker candidate(s) were not submitted")
         if candidates is None:
             print("synthesis input empty - model not called.")
             _write_local_report(client, run_id, state_dir)

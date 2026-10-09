@@ -33,6 +33,17 @@ routed task model, for example a second agent on a smaller GPU. The bridge sets
 no `num_ctx`: Core applies that host's pinned context and keep-alive, so pin
 the model on the host first or each turn may load it beside the resident one.
 
+`OPENCLAW_CONVERSATION_NO_THINK_MODELS` (model names, comma-separated) makes the
+listed conversation models answer without reasoning, whatever thinking level the
+agent or session asks for. It suits a spoken lane, where reasoning delays the
+first word; other models and Pipeline turns keep the level they were sent.
+
+A model that several uses share takes its reasoning from the use, not from its
+name: a gateway provider that sends `x-agentx-think: off` (or `on`) in its
+headers sets it for every turn of that provider, over the list above and over
+the level the agent asked for. Another provider of the same model keeps its
+own. Any other value is refused (400). Pipeline turns keep their level.
+
 The operations projection, protected OpenClaw/DSH launchers, runtime config
 export/validation and coding delivery inbox retain their existing HTTP contracts.
 Historical `aio-ops-*` wire identifiers and old Product release receipt readers
@@ -41,8 +52,7 @@ remain compatible; they do not create another deployment or source repository.
 Set private values through the external `AGENTX_ENV_FILE`; Compose forwards the
 supported integration variables. Mount external inventories read-only through
 `AGENTX_COMPOSE_OVERRIDE` and set `AGENTX_INSTANCE_ROOT` to their container path.
-Its optional `config/agent-registry.yml`, `config/coding-dispatcher.json`,
-`SCHEDULED.md` and old coordination evidence are read-only projection inputs.
+Its optional `config/agent-registry.yml`, `SCHEDULED.md` and old coordination evidence are read-only projection inputs.
 Do not commit a copy here. SSH key/known-host mounts and remote paths are explicit
 instance settings. Inventory SSH does not implicitly enable coding dispatch or
 production probing.

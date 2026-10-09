@@ -9,7 +9,7 @@ const path = require('node:path');
 test('a degraded household turn marks its assistant message with the existing note style', () => {
   const page = fs.readFileSync(path.join(__dirname, '../public/conversation-page.js'), 'utf8');
   const css = fs.readFileSync(path.join(__dirname, '../public/app.css'), 'utf8');
-  const server = fs.readFileSync(path.join(__dirname, '../index.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, '../persona-turn.js'), 'utf8');
   assert.match(server, /if \(metadata\?\.routing\?\.degraded\) \{ fallbackUsed = true; fallbackReason = `task_fallback_\$\{metadata\.routing\.reason\}`; \}/);
   assert.match(page, /degradedReply = result\.routing\?\.fallbackUsed === true;/);
   assert.match(page, /if \(role === 'assistant' && degradedReply\) \{ row\.dataset\.degraded = 'true'; degradedReply = false; \}/);

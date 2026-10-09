@@ -6,11 +6,12 @@ const { chat } = require('../../clients/ollamaClient');
 const { extractThinkingBlocks } = require('../../helpers/ollamaResponseHandler');
 const logger = require('../../../config/logger');
 
-const THINKING_PROFILE_VERSION = 2;
+// v3 (#397): a cap hit while thinking is a budget symptom, not a safety failure.
+const THINKING_PROFILE_VERSION = 3;
 const DEFAULT_NUM_CTX = 4096;
 const DEFAULT_NUM_PREDICT = 512;
-const DEFAULT_CONTRACT_RETRY_NUM_PREDICT = 1024;
-const DEFAULT_STRESS_RETRY_NUM_PREDICT = 2048;
+const DEFAULT_CONTRACT_RETRY_NUM_PREDICT = 2048;
+const DEFAULT_STRESS_RETRY_NUM_PREDICT = 4096;
 const DEFAULT_TIMEOUT_MS = 120000;
 const FINAL_ANSWER_RE = /\bFINAL\s*:\s*42\b/i;
 const THINKING_PROBE_PROMPT = [
@@ -335,7 +336,8 @@ function _recommendPolicy({
   latencyMultiplier,
   contractSensitive,
   hasProbeError,
-  retryProbeCount
+  retryProbeCount,
+  maxProbeNumPredict
 }) {
   if (supportSignal === 'error') {
     return { policy: 'unknown', reason: 'think=true probe failed' };
@@ -346,14 +348,23 @@ function _recommendPolicy({
   if (contractedThinkProbes.some(probe => probe?.ok === false || probe?.channel === 'error')) {
     return { policy: 'unknown', reason: 'a contracted think=true behavior probe failed' };
   }
-  if (contractedThinkProbes.some(probe => !probe.visibleFinalAnswerOk)) {
+  const silent = contractedThinkProbes.filter(probe => !probe.visibleFinalAnswerOk);
+  // Stopped by the output cap while still thinking: the budget was too small
+  // to tell whether an answer would follow. Only an answerless stop is unsafe.
+  if (silent.length && silent.every(probe => probe.responseTruncated && probe.thinkingPresent)) {
+    return {
+      policy: 'unknown',
+      reason: `think=true reached the probe output cap (${maxProbeNumPredict} tokens) while thinking, before a visible answer; undecided at this budget`
+    };
+  }
+  if (silent.length) {
     return { policy: 'disallowed', reason: 'think=true did not consistently produce visible answer text' };
   }
   if (contractedThinkProbes.some(probe => probe.thinkingOnlyResponse)) {
     return { policy: 'disallowed', reason: 'think=true produced thinking-only output under a visible-answer contract' };
   }
   if (contractedThinkProbes.some(probe => probe.runawayRisk)) {
-    return { policy: 'disallowed', reason: 'think=true hit the output cap while thinking was present' };
+    return { policy: 'metered', reason: 'think=true answered visibly, then reached the probe output cap while thinking; budget its output' };
   }
   if (contractedThinkProbes.some(probe => !probe.finalAnswerContractOk)) {
     return { policy: 'metered', reason: 'think=true produced visible text but missed a final-answer contract' };
@@ -426,7 +437,8 @@ async function profileThinkingBehavior(modelName, hostUrl, options = {}) {
     latencyMultiplier,
     contractSensitive,
     hasProbeError: _hasProbeError(thinkProbes),
-    retryProbeCount
+    retryProbeCount,
+    maxProbeNumPredict
   });
 
   const profile = {

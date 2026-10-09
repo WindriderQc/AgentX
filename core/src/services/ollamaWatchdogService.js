@@ -33,6 +33,7 @@ const { runRuntimeMutation } = require('./runtimeMutationLeaseService');
 const { beginInferenceAdmission } = require('./inferenceAdmissionService');
 const runtimeCoordination = require('./runtimeCoordinationService');
 const { collectRecoveryRequired } = require('./watchdogProbeRecovery'), { isSpillOnlyRestore } = require('./hostPinPrimitives');
+const { probePayload, probeTarget, residentsOf, restorePayload } = require('./watchdogRuntimePayload');
 
 let _fetch = nodeFetch;
 let _outboundExecutor = null;
@@ -240,33 +241,22 @@ const _consecutiveFails = new Map();  // hostUrl → count
 const _lastProbeStatus = new Map();   // hostUrl → 'ok' | 'fail' (previous cycle)
 const _graceWindowEndsAt = new Map(); // hostUrl → timestamp (ms since epoch)
 const _recoveryRequired = new Map(); // last cycle's durable quarantine projection
-const _stats = {
-  probesSent: 0,
-  probesOk: 0,
-  probesFailed: 0,
-  jamsDetected: 0,
-  unjamsDone: 0,
-  lastProbeAt: null,
-  lastJamAt: null,
-  history: []   // last N events (ring buffer, max 50)
-};
+const { stats: _stats, recordEvent, observeHost, hostSnapshots } = require('./ollamaWatchdogHealth');
 
 // ── Core Logic ──────────────────────────────────────────────
 
 /**
  * Probe a single host by sending a minimal generate request. When `model` is
  * supplied this exercises the resident worker; the invalid sentinel is only a
- * control-plane check for hosts with nothing loaded.
+ * control-plane check for hosts with no resident that is there to stay.
  * Returns { ok: true } or { ok: false, reason: string }.
  */
 async function probeHost(host, model = null, executor = getWatchdogExecutor(), contextLength = null) {
   let admission = null;
   try {
     const probeModel = model || '_';
-    const runtimeOptions = {
-      num_predict: 1,
-      ...(model && Number.isSafeInteger(contextLength) && contextLength > 0 && { num_ctx: contextLength })
-    };
+    // The resident's context and pinned CPU threads: a different value reloads it.
+    const runtimeOptions = await require('./pinThreadLookup').watchdogProbeOptions(host.url, model, contextLength);
     admission = await beginInferenceAdmission({
       host: host.url,
       model: probeModel,
@@ -275,6 +265,11 @@ async function probeHost(host, model = null, executor = getWatchdogExecutor(), c
       principal: 'core-watchdog',
       runtimeOptions,
       keepAlive: -1,
+      // A probe queued behind a slow call on a one-slot host hits its deadline
+      // and quarantines a host that was answering. The in-process gate cannot
+      // see a call that Core has admitted but not yet dispatched; coordination
+      // can, and refuses the probe while anything else is admitted here.
+      hostIdle: true,
       ttlMs: Math.max(30_000, PROBE_TIMEOUT_MS * 2)
     });
     admission.assertActive();
@@ -285,14 +280,7 @@ async function probeHost(host, model = null, executor = getWatchdogExecutor(), c
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: probeModel,
-          prompt: 'ok',
-          stream: false,
-          think: false,
-          keep_alive: -1,
-          options: runtimeOptions
-        }),
+        body: JSON.stringify(probePayload(probeModel, runtimeOptions)),
         signal: admission.signal
       },
       executor
@@ -366,11 +354,7 @@ async function checkMeta(host, executor = getWatchdogExecutor()) {
       return { ok: false, models: [] };
     }
     const data = await readBoundedJson(res);
-    const residentModels = (data.models || []).map(m => ({
-      model: m.name || m.model,
-      contextLength: Number.isSafeInteger(m.context_length) && m.context_length > 0
-        ? m.context_length : null
-    }));
+    const residentModels = residentsOf(data.models || []);
     return { ok: true, models: residentModels.map(m => m.model), residentModels, rawModels: data.models || [] };
   } catch {
     return { ok: false, models: [] };
@@ -458,12 +442,7 @@ async function reloadModel(host, model, executor = getWatchdogExecutor()) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model,
-            prompt: 'warmup',
-            stream: false,
-            options: { num_predict: 1 }
-          }),
+          body: JSON.stringify(restorePayload(model)),
           signal
         },
         executor
@@ -506,23 +485,6 @@ async function restorePinnedModel(host, hostPrefService, primaryPin) {
 }
 
 /**
- * Push an event into the ring buffer history.
- */
-function recordEvent(type, host, details) {
-  const event = {
-    type,
-    hostId: host.id,
-    hostName: host.name,
-    hostUrl: host.url,
-    timestamp: new Date().toISOString(),
-    ...details
-  };
-  _stats.history.push(event);
-  if (_stats.history.length > 50) _stats.history.shift();
-  return event;
-}
-
-/**
  * Run one probe cycle across all configured hosts.
  */
 async function probeCycle(isStopped = () => false) {
@@ -541,6 +503,7 @@ async function probeCycle(isStopped = () => false) {
   for (const host of hosts) {
     if (isStopped()) return;
     if (_recoveryRequired.has(host.url)) {
+      observeHost(host, { reason: _recoveryRequired.get(host.url).reason }, false);
       _lastProbeStatus.set(host.url, 'fail');
       _consecutiveFails.set(host.url, 0);
       continue;
@@ -559,6 +522,7 @@ async function probeCycle(isStopped = () => false) {
         model: hold.model || null,
         owner: hold.owner || null
       });
+      observeHost(host, { reason: 'session_hold' }, false);
       recordEvent('hold_skip', host, { model: hold.model || null, owner: hold.owner || null });
       continue;
     }
@@ -578,29 +542,33 @@ async function probeCycle(isStopped = () => false) {
       // currently loaded model during that window can repeatedly win the
       // scheduler race and starve the legitimate cold swap.
       if (hostGate.hostHasInflight(host.url)) {
+        observeHost(host, { reason: 'active_inference' }, false);
         logger.debug(`[Watchdog] ${host.name} probe skipped — host has active inference`);
         continue;
       }
 
-      const probeModel = meta.models[0] || null;
-      const contextLength = meta.residentModels[0]?.contextLength;
+      const target = probeTarget(meta.residentModels);
+      const probeModel = target?.model || null, contextLength = target?.contextLength;
       // Omitting num_ctx can reload a resident worker at the model default,
       // overriding a profiled context and turning this probe into a cold load.
       // Metadata alone cannot prove worker health when residency is incomplete.
       if (probeModel && !contextLength) {
         logger.debug(`[Watchdog] ${host.name} probe skipped — resident context unavailable`, { model: probeModel });
+        observeHost(host, { reason: 'resident_context_unavailable' }, false);
         recordEvent('context_skip', host, { model: probeModel });
         continue;
       }
 
-      _stats.probesSent++;
       result = await probeHost(host, probeModel, undefined, contextLength);
     }
 
     // Complete the dispatched probe, but never begin recovery or another host
     // after shutdown/demotion has stopped this generation of the watchdog.
     if (isStopped()) return;
+    const dispatched = meta.ok && result.reason !== 'coordination_busy';
+    observeHost(host, result, dispatched);
     if (result.reason === 'coordination_busy') continue;
+    if (dispatched) _stats.probesSent++;
 
     // Track fail→ok transitions to arm the recovery grace window. A recovering
     // host may queue cold model loads that exceed the probe timeout; without
@@ -792,7 +760,7 @@ function stop() {
 }
 
 function getStats() {
-  return { ..._stats, recoveryRequired: Array.from(_recoveryRequired, ([hostUrl, details]) => ({ hostUrl, ...details })), isRunning: !!_interval, config: { probeIntervalMs: PROBE_INTERVAL_MS, probeTimeoutMs: PROBE_TIMEOUT_MS, maxConsecutive: MAX_CONSECUTIVE, reloadAfterUnjam: RELOAD_AFTER_UNJAM } };
+  return { ..._stats, hosts: hostSnapshots(getConfiguredHosts()), recoveryRequired: Array.from(_recoveryRequired, ([hostUrl, details]) => ({ hostUrl, ...details })), isRunning: !!_interval, config: { probeIntervalMs: PROBE_INTERVAL_MS, probeTimeoutMs: PROBE_TIMEOUT_MS, maxConsecutive: MAX_CONSECUTIVE, reloadAfterUnjam: RELOAD_AFTER_UNJAM } };
 }
 
 /** Manual trigger: run one probe cycle right now */

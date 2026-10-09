@@ -100,7 +100,7 @@ function summarizeCluster(cluster) {
   };
 }
 
-function summarizeOperationalAttention({ clusterHealth, serviceHealth, routing, hostPreferences, alertSummary }) {
+function summarizeOperationalAttention({ clusterHealth, serviceHealth, identityConsistency, routing, hostPreferences, alertSummary }) {
   const issues = [];
   const addIssue = (code, severity, message, details = {}) => {
     issues.push({ code, severity, message, ...details });
@@ -120,10 +120,17 @@ function summarizeOperationalAttention({ clusterHealth, serviceHealth, routing, 
   if (servicesDown > 0) {
     addIssue('services_down', 'critical', `${servicesDown} product service${servicesDown === 1 ? '' : 's'} down`, { count: servicesDown });
   } else if (servicesDegraded > 0 || String(serviceHealth?.status || '').toLowerCase() !== 'ok') {
+    const identityIssues = identityConsistency?.status === 'degraded' && Array.isArray(identityConsistency.issues)
+      ? identityConsistency.issues.filter(Boolean)
+      : [];
     addIssue(
       'services_degraded',
       'attention',
-      `${Number.isFinite(servicesDegraded) ? servicesDegraded : 'One or more'} product service${servicesDegraded === 1 ? '' : 's'} degraded`,
+      servicesDegraded > 0 ? `${servicesDegraded} product service${servicesDegraded === 1 ? '' : 's'} degraded`
+        : identityIssues.length ? `Product services do not match: ${identityIssues.join('; ')}`
+        : String(serviceHealth?.identityStatus || 'ok').toLowerCase() !== 'ok'
+          ? 'Product services run different versions or revisions'
+          : `Product service health is ${String(serviceHealth?.status || 'unknown').toLowerCase()}`,
       { count: Number.isFinite(servicesDegraded) ? servicesDegraded : null }
     );
   }
@@ -208,6 +215,7 @@ async function buildEcosystemSnapshot(options = {}) {
   const operationalAttention = summarizeOperationalAttention({
     clusterHealth,
     serviceHealth,
+    identityConsistency: serviceStatus.consistency,
     routing: intelligence.routing,
     hostPreferences: intelligence.hostPreferences,
     alertSummary: intelligence.alertSummary

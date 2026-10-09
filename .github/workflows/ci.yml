@@ -20,7 +20,9 @@ concurrency:
 jobs:
   tests:
     # Drafts are not tested; marking the pull request ready starts the run.
-    if: ${{ !github.event.pull_request.draft }}
+    # The coding worker's drafts are the exception: it delivers only drafts, and
+    # the owner reviews them with their test result.
+    if: ${{ !github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-') }}
     runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
@@ -51,6 +53,21 @@ jobs:
         run: npm run setup:integrations
       - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
         run: python3 -m unittest discover -s integrations/voix -p 'test_*.py'
+      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/voix-venv"
+          "$RUNNER_TEMP/voix-venv/bin/python" -m pip install --quiet -r requirements-test.txt
+          "$RUNNER_TEMP/voix-venv/bin/python" -m pytest -q
+          node --test tests/voice-audio.test.cjs
+        working-directory: integrations/voix
+      # The image worker fsyncs its state directory through a POSIX-only flag,
+      # so its test runs here and not with the cross-platform native tests.
+      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
+        run: python3 -m unittest discover -s integrations/local-images -p 'test_*.py'
+      # integrations/coding/tests is not a package, so its modules run by
+      # dotted name from the repository root instead of through discover.
+      - if: steps.scope.outputs.run == 'true' && matrix.service == 'core'
+        run: python3 -m unittest $(ls integrations/coding/tests/test_*.py | sed 's#/#.#g; s#\.py$##')
       - if: steps.scope.outputs.run == 'true'
         run: npm run build --if-present
         working-directory: ${{ matrix.service }}
@@ -62,7 +79,7 @@ jobs:
         working-directory: ${{ matrix.service }}
 
   compose:
-    if: ${{ !github.event.pull_request.draft }}
+    if: ${{ !github.event.pull_request.draft || startsWith(github.head_ref, 'agentx/coding-task-') }}
     runs-on: ${{ github.event.repository.private && vars.AGENTX_CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
@@ -92,7 +109,6 @@ jobs:
           RAG_PORT=43182
           DATA_PORT=43183
           PSYX_ACCESS_TOKEN=ci-synthetic-psyx-code
-          AGENTX_PARENTAL_CODE=ci-synthetic-parent-code
           AGENTX_RUNTIME_BRIDGES_ENABLED=true
           AGENTX_PRINTER_VISION_ENABLED=true
           ENV
@@ -134,14 +150,12 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:43180/data-toolbox | grep -q 'assets/data-toolbox/app.js'
           curl --fail --silent --show-error http://127.0.0.1:43180/api/data-toolbox/status | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{const d=JSON.parse(s).data;require('node:assert/strict').equal(d.dataService.healthy,d.dataService.total)})"
           curl --fail --silent --show-error http://127.0.0.1:43180/psyx | grep -q 'PsyX'
-          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/psyx/state)" = 401
+          curl --fail --silent --show-error http://127.0.0.1:43180/api/psyx/state
           curl --fail --silent --show-error -H 'Authorization: Bearer ci-synthetic-psyx-code' http://127.0.0.1:43180/api/psyx/state
-          test "$(curl --silent -H 'X-AgentX-Entry: household' -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/voice-personas/private/agents)" = 401
-          curl --fail --silent --show-error -c /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' -H 'Content-Type: application/json' -d '{"code":"ci-synthetic-parent-code"}' http://127.0.0.1:43180/api/access/unlock
-          curl --fail --silent --show-error -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' http://127.0.0.1:43180/api/psyx/state
-          curl --fail --silent --show-error -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' http://127.0.0.1:43180/api/voice-personas/private/agents
-          curl --fail --silent --show-error -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' http://127.0.0.1:43180/panel > /dev/null
-          test "$(curl --silent -b /tmp/agentx-parent.cookies -H 'X-AgentX-Entry: household' -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/psyx/state)" = 401
+          curl --fail --silent --show-error http://127.0.0.1:43180/api/voice-personas/private/agents
+          curl --fail --silent --show-error http://127.0.0.1:43180/panel > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:43180/api/psyx/state
+          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:43180/api/access/authorize)" = 404
           curl --fail --silent --show-error http://127.0.0.1:43180/api/runtime-bridges/status
           curl --fail --silent --show-error http://127.0.0.1:43180/api/printer-vision/adapter
           docker compose --env-file "$AGENTX_ENV_FILE" exec -T rag node <<'NODE'

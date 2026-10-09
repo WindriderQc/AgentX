@@ -4,7 +4,7 @@
 
 import { apiFetch as _rawFetch } from '../utils/api.js';
 
-const BASE = '/api/profiler';
+const BASE = '/benchmark/api/profiler';
 
 /** Unwrap { status, data } envelope if present */
 const fetchJson = async (...args) => {
@@ -85,6 +85,8 @@ export const getProfileEvidence = (modelName, hostId) => fetchJson(`${BASE}/evid
 export const profileModel = (modelName, hostId, depth) => fetchJson(`${BASE}/pipeline/profile`, { method: 'POST', body: { modelName, hostId, depth } });
 export const getProfileProgress = (profileId) => fetchJson(`${BASE}/pipeline/profile/${encodeURIComponent(profileId)}/progress`);
 export const getActiveProfiles = () => fetchJson(`${BASE}/pipeline/profile/active`);
+export const cancelProfile = (profileId) =>
+  fetchJson(`${BASE}/pipeline/profile/${encodeURIComponent(profileId)}/cancel`, { method: 'POST' });
 export const runFullPipeline = (modelName) => fetchJson(`${BASE}/pipeline/full`, { method: 'POST', body: { modelName } });
 export const startHostProfileQueue = ({ hostId, depth, skipRecentDays, modelNames } = {}) =>
   fetchJson(`${BASE}/pipeline/profile-host`, { method: 'POST', body: { hostId, depth, skipRecentDays, modelNames } });

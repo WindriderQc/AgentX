@@ -8,6 +8,7 @@ const {
     fingerprint,
     normalizeCandidate,
     normalizeContract,
+    nativeModelSpendBound,
     stableSerialize
 } = require('./cloudLaneAccounting');
 
@@ -292,7 +293,8 @@ function assertPaidBudget(plan, candidate, fixture, counters, callId, now) {
     if (counters.calls + 1 > plan.estimatedCalls) {
         throw runnerError('CALL_CEILING_EXCEEDED', 'paid call ceiling would be exceeded', 403);
     }
-    const ceiling = ceilingAttribution(plan, candidate, fixture, callId, now).totalCostNanodollars;
+    const ceiling = nativeModelSpendBound(candidate, plan.contract.maxOutputTokens)
+        ?? ceilingAttribution(plan, candidate, fixture, callId, now).totalCostNanodollars;
     if (counters.spendNanodollars + ceiling > plan.spendCeilingNanodollars) {
         throw runnerError('SPEND_CEILING_EXCEEDED', 'worst-case paid call cost would exceed the spend ceiling', 403);
     }

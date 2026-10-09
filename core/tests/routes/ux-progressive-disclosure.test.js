@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const ejs = require('ejs');
 const { buildProductNavigation } = require('../../../shared/productNavigation');
+const { readChatMessagingSource } = require('../helpers/chatMessagingSource');
 
 const root = path.join(__dirname, '../..');
 const demoPath = path.join(root, 'views/pages/home.ejs');
@@ -13,7 +14,6 @@ const demoCssPath = path.join(root, 'public/css/home.css');
 const chatCssPath = path.join(root, 'public/css/chat-experience.css');
 const chatMainPath = path.join(root, 'public/js/chat/chat-main.js');
 const chatConfigPath = path.join(root, 'public/js/chat/chat-config.js');
-const chatMessagingPath = path.join(root, 'public/js/chat/chat-messaging.js');
 const demoJsPath = path.join(root, 'public/js/home.js');
 const modelsExperiencePath = path.join(root, 'public/js/models-experience.js');
 const modelsUnifiedPath = path.join(root, 'public/js/models-unified.js');
@@ -26,6 +26,7 @@ const analyticsInferencePath = path.join(root, 'public/js/analytics-inference.js
 async function renderDemo() {
   return ejs.renderFile(demoPath, {
     buildProductNavigation,
+    agentxProfile: 'demo',
     publicUrls: {
       core: 'https://core.example',
       benchmark: 'https://benchmark.example',
@@ -130,7 +131,7 @@ describe('simple-to-expert UX contract', () => {
   test('an optional missing model runtime is presented as recoverable setup', () => {
     const mainSource = fs.readFileSync(chatMainPath, 'utf8');
     const configSource = fs.readFileSync(chatConfigPath, 'utf8');
-    const messagingSource = fs.readFileSync(chatMessagingPath, 'utf8');
+    const messagingSource = readChatMessagingSource();
     const demoSource = fs.readFileSync(demoJsPath, 'utf8');
 
     expect(configSource).toContain('if (!state.ollamaHostsLoaded)');
@@ -154,9 +155,9 @@ describe('simple-to-expert UX contract', () => {
     const demoCss = fs.readFileSync(demoCssPath, 'utf8');
     const chatCss = fs.readFileSync(chatCssPath, 'utf8');
 
-    expect(demoCss).toContain('@media (max-width: 640px)');
+    expect(demoCss).toContain('@media (max-width: 760px)');
     expect(chatCss).toContain('@media (max-width: 720px)');
-    expect(demoCss).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(fs.readFileSync(path.join(root, 'public/css/product-shell.css'), 'utf8')).toContain('@media (prefers-reduced-motion: reduce)');
     expect(chatCss).toContain('@media (prefers-reduced-motion: reduce)');
     expect(chatCss).toContain('.agent-selector.single-option');
     expect(chatCss).toContain('body[data-agentx-profile="demo"] .chat-command-bar { padding-left: 66px; }');
@@ -165,6 +166,7 @@ describe('simple-to-expert UX contract', () => {
   test('navigation uses the human Chat label while preserving the route', async () => {
     const html = await ejs.renderFile(navPath, {
       buildProductNavigation,
+    agentxProfile: 'demo',
       service: 'core',
       activePage: 'playground',
       agentxProfile: 'demo',
@@ -196,7 +198,7 @@ describe('simple-to-expert UX contract', () => {
     const comparison = fs.readFileSync(modelsComparisonPath, 'utf8');
     const chatMain = fs.readFileSync(chatMainPath, 'utf8');
     const chatConfig = fs.readFileSync(chatConfigPath, 'utf8');
-    const chatMessaging = fs.readFileSync(chatMessagingPath, 'utf8');
+    const chatMessaging = readChatMessagingSource();
     const css = fs.readFileSync(modelsExperienceCssPath, 'utf8');
 
     expect(source).toContain('cockpitSurface.inert = !cockpit.open');

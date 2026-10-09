@@ -21,6 +21,7 @@ COPY core/ ./
 COPY shared/ /shared/
 RUN mkdir -p /app/product-config/config
 COPY docker-compose.yml docker-compose.ollama.yml /app/product-config/
+COPY skills/agentx/ /app/product-config/skills/agentx/
 COPY config/agentx.env config/rag-ingestion-policy.json config/product-surfaces.json config/adapter-consumer-contracts.json config/container-image-pins.json /app/product-config/config/
 RUN npm run build && rm -rf tests surfaces/household/test surfaces/data-toolbox/test surfaces/psyx/test integrations/runtime-bridges/test coverage .env .env.* .git
 

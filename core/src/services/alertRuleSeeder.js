@@ -84,6 +84,12 @@ async function seedDefaultRules() {
       );
       backfilled++;
     }
+    // A built-in message the operator never edited follows the product's new
+    // wording; a customised one is left alone.
+    if (exists?.builtIn && Array.isArray(rule.previousMessages) && rule.previousMessages.includes(exists.message)) {
+      await AlertRule.updateOne({ ruleId: rule.id }, { $set: { message: rule.message } });
+      backfilled++;
+    }
   }
   if (created > 0 || backfilled > 0 || retired > 0) await syncRulesToEngine();
   return created;

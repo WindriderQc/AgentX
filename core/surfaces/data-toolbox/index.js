@@ -2,6 +2,8 @@
 
 const path = require('path');
 const { dataBaseUrl, fetchData: fetchDataService } = require('../../src/services/dataServiceClient');
+const { validatePublish } = require('../../../shared/mqttTopicRules');
+const janitorReviewRelay = require('./janitor-review-relay');
 
 const REQUEST_TIMEOUT_MS = () => Math.max(1000, Math.min(30000, Number(process.env.DATA_TOOLBOX_TIMEOUT_MS) || 10000));
 const SAFE_NAME = /^[a-z0-9_.-]{1,120}$/i;
@@ -56,8 +58,86 @@ function safeName(value, label) {
   return name;
 }
 
-function fetchData(relativePath, { query = '', timeoutMs = REQUEST_TIMEOUT_MS() } = {}) {
-  return fetchDataService(relativePath, { query, timeoutMs });
+const MAC = /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/;
+const STORAGE_SOURCE = /^[a-z0-9][a-z0-9_-]{0,59}$/i;
+// A device Data stored without a MAC (a collector does not see its own) is
+// addressed by its 24-hex record id, which Data's PATCH accepts as well.
+const RECORD_ID = /^[0-9a-f]{24}$/;
+// Data stores these device fields as given, with no limit of its own: the
+// bounds are set here, and the page applies the same ones.
+const DEVICE_TEXT_LIMITS = Object.freeze({ alias: 80, location: 80, notes: 500 });
+const DEVICE_TYPES = Object.freeze(['computer', 'server', 'phone-tablet', 'iot', 'network', 'media', 'printer', 'other']);
+const DEVICE_FIELDS = Object.freeze(['alias', 'known', 'type', 'location', 'notes']);
+// A queued scan sweeps at most a /16. Mirrors data/utils/networkInput.js, which
+// Core cannot load from the Data service; the tests compare the two.
+const MIN_SCAN_PREFIX = 16;
+const SCAN_TARGET_MESSAGE = `Invalid target format. Use an IPv4 address or CIDR notation x.x.x.x/xx with a prefix from /${MIN_SCAN_PREFIX} to /32`;
+
+function invalid(message) {
+  const error = new Error(message);
+  error.status = 400;
+  return error;
+}
+
+function plainBody(body, allowed) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw invalid('Expected a JSON object');
+  const unknown = Object.keys(body).filter((key) => !allowed.includes(key));
+  if (unknown.length) throw invalid(`Unknown field ${unknown.slice(0, 3).map((key) => JSON.stringify(key.slice(0, 40))).join(', ')}: expected ${allowed.join(', ')}`);
+  return body;
+}
+
+/** An IPv4 address, or an IPv4 CIDR whose prefix is between /16 and /32. */
+function isScanTarget(value) {
+  if (typeof value !== 'string') return false;
+  const [address, prefix, ...rest] = value.split('/');
+  if (rest.length > 0 || !/^\d{1,3}(\.\d{1,3}){3}$/.test(address)) return false;
+  if (!address.split('.').every((octet) => Number(octet) <= 255)) return false;
+  if (prefix === undefined) return true;
+  return /^\d{1,2}$/.test(prefix) && Number(prefix) >= MIN_SCAN_PREFIX && Number(prefix) <= 32;
+}
+
+/** The body of a scan request: exactly `{ target }`, a valid scan target. */
+function validateScanRequest(body) {
+  const { target } = plainBody(body, ['target']);
+  if (!isScanTarget(target)) throw invalid(SCAN_TARGET_MESSAGE);
+  return { target };
+}
+
+/**
+ * The body of a device update: only alias, known, type, location and notes,
+ * the fields Data's PATCH accepts. Text is trimmed and refused over its limit,
+ * `type` is one of DEVICE_TYPES or empty (cleared), `known` is a boolean.
+ */
+function validateDeviceUpdate(body) {
+  const input = plainBody(body, DEVICE_FIELDS);
+  const update = {};
+  for (const [field, limit] of Object.entries(DEVICE_TEXT_LIMITS)) {
+    if (input[field] === undefined) continue;
+    if (typeof input[field] !== 'string') throw invalid(`${field} must be a string`);
+    const text = input[field].trim();
+    if (text.length > limit) throw invalid(`${field} must be at most ${limit} characters`);
+    update[field] = text;
+  }
+  if (input.type !== undefined) {
+    if (input.type !== '' && !DEVICE_TYPES.includes(input.type)) throw invalid(`type must be empty or one of ${DEVICE_TYPES.join(', ')}`);
+    update.type = input.type;
+  }
+  if (input.known !== undefined) {
+    if (typeof input.known !== 'boolean') throw invalid('known must be a boolean');
+    update.known = input.known;
+  }
+  if (!Object.keys(update).length) throw invalid(`Expected at least one of ${DEVICE_FIELDS.join(', ')}`);
+  return update;
+}
+
+function recordId(value) {
+  const id = String(value || '').toLowerCase();
+  if (!RECORD_ID.test(id)) throw invalid('Invalid scan request id');
+  return id;
+}
+
+function fetchData(relativePath, { query = '', timeoutMs = REQUEST_TIMEOUT_MS(), method, payload } = {}) {
+  return fetchDataService(relativePath, { query, timeoutMs, method, payload });
 }
 
 function relay(relativePath, queryRules) {
@@ -202,6 +282,7 @@ function projectJanitorStrategy(body) {
         filesOmitted: Math.max(0, files.length - JANITOR_FILE_LIMIT)
       };
     }),
+    reviewDecisions: janitorReviewRelay.projectReviewSummary(report.reviewDecisions),
     duplicatesShown: duplicates.length,
     duplicatesTotal: numeric(evidence.verifiedDuplicateGroups),
     organization: {
@@ -324,10 +405,24 @@ async function buildStatus() {
   const healthy = Object.values(sources).filter((source) => source.ok).length;
   return {
     extension: 'aio-ops-data-toolbox',
-    version: '1.3.2',
+    version: '1.9.0',
     owner: 'agentx',
-    readOnly: true,
-    mutationsExposed: false,
+    // Seven write families are relayed: PATCH /network/devices/:mac (name, known flag,
+    // type, location, notes), POST /network/scan (one scan request for the
+    // collectors), POST /mqtt/publish (one MQTT message sent by hand),
+    // POST /storage/scans (ask the native collector to read a source again:
+    // it refreshes the index and changes nothing on the disks). A fifth family,
+    // janitor-review-decision (janitor-review-relay.js), stores, imports or
+    // removes the owner's decision about a duplicate group: a record of intent
+    // in Data's database, which approves, previews and deletes nothing. The
+    // last two, report-generate and report-delete (reports-trends-activity.js),
+    // are POST /reports and DELETE /reports/:filename: a report is a file in
+    // Data's own report store, never on the scanned disks, which is what
+    // `filesystemMutationsExposed` is about.
+    readOnly: false,
+    mutationsExposed: true,
+    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete'],
+    filesystemMutationsExposed: false,
     dataService: { baseUrl: dataBaseUrl(), healthy, total: entries.length },
     collectorPlacement: collectorPlacement(),
     sources
@@ -345,7 +440,7 @@ function register(api) {
   const indexFile = path.join(publicRoot, 'index.html');
 
   app.use('/assets/data-toolbox', express.static(publicRoot, { fallthrough: false, maxAge: '5m' }));
-  app.get('/data-toolbox', (_req, res) => res.sendFile(indexFile));
+  app.get('/data-toolbox', require('../../src/ui/productShell').surfacePage(app, indexFile, { activePage: 'data-toolbox' }));
 
   const router = express.Router();
   router.get('/status', async (_req, res) => {
@@ -357,9 +452,48 @@ function register(api) {
   router.get('/storage/summary', relay(() => '/api/v1/storage/summary', commonScope));
   router.get('/storage/scans', relay(() => '/api/v1/storage/scans', {
     limit: { type: 'int', fallback: 10, min: 1, max: 50 },
-    skip: { type: 'int', fallback: 0, min: 0, max: 10000 }
+    page: { type: 'int', fallback: 1, min: 1, max: 10000 }
   }));
   router.get('/storage/agents', relay(() => '/api/v1/storage/agents'));
+  // One scan by id: a queued scan has no start date yet and sorts after every
+  // other in Data's list, so it is followed here.
+  router.get('/storage/scans/:scanId', relay((req) => `/api/v1/storage/status/${safeName(req.params.scanId, 'scan id')}`));
+  // The storage write: ask the native collector to read one configured source again.
+  // The body is exactly { source }, and the name must be one Data lists. Only
+  // the name is forwarded, so hashing follows Data's defaults. Data answers
+  // with the scan queued, or with the one already queued or running for that
+  // source (coalesced). A scan reads the disks and refreshes the index.
+  router.post('/storage/scans', async (req, res) => {
+    const input = req.body;
+    const refuse = (status, code, message) => res.status(status).json({ ok: false, status: 'error', code, message });
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return refuse(400, 'INVALID_STORAGE_SCAN', 'Expected a JSON object with one field: source');
+    }
+    const unknown = Object.keys(input).filter((key) => key !== 'source');
+    if (unknown.length) return refuse(400, 'INVALID_STORAGE_SCAN', `Unknown field: ${unknown.slice(0, 5).join(', ').slice(0, 200)}`);
+    if (typeof input.source !== 'string' || !STORAGE_SOURCE.test(input.source)) {
+      return refuse(400, 'INVALID_STORAGE_SCAN', 'source must be the name of a configured storage source');
+    }
+    let requested = false;
+    try {
+      const registry = await fetchData('/api/v1/storage/agents');
+      const sources = (registry.body.data ?? registry.body).sources;
+      if (!registry.response.ok || !sources || typeof sources !== 'object' || Array.isArray(sources)) {
+        return refuse(502, 'DATA_UNAVAILABLE', 'Data did not list its storage sources: no scan was requested');
+      }
+      if (!Object.hasOwn(sources, input.source)) {
+        return refuse(400, 'UNKNOWN_STORAGE_SOURCE', `Unknown storage source: ${input.source}`);
+      }
+      requested = true;
+      const { response, body } = await fetchData('/api/v1/storage/agent-scans', { method: 'POST', payload: { source: input.source } });
+      return res.status(response.status).json(body);
+    } catch (error) {
+      const timedOut = error.name === 'TimeoutError';
+      return refuse(502, timedOut ? 'DATA_TIMEOUT' : 'DATA_UNAVAILABLE', !timedOut ? error.message
+        : requested ? 'Data did not answer in time: the scan may or may not have been queued'
+          : 'Data did not answer in time: no scan was requested');
+    }
+  });
   router.get('/storage/files', relay(() => '/api/v1/storage/files/browse', {
     ...commonScope,
     search: { maxLength: 200 },
@@ -374,17 +508,73 @@ function register(api) {
   }));
   router.get('/storage/stats', relay(() => '/api/v1/storage/files/stats', commonScope));
   router.get('/storage/tree', relay(() => '/api/v1/storage/files/tree', {
-    root: { maxLength: 500 }, limit: { type: 'int', fallback: 200, min: 1, max: 500 }
+    root: { maxLength: 500 }, limit: { type: 'int', fallback: 200, min: 1, max: 2000 }
   }));
   router.get('/storage/duplicates', relay(() => '/api/v1/storage/files/duplicates', {
     root: { maxLength: 500 }, method: { values: ['auto', 'hash', 'fuzzy'] }, limit: { type: 'int', fallback: 50, min: 1, max: 100 }
   }));
+  router.get('/storage/cleanup', relay(() => '/api/v1/storage/files/cleanup-recommendations', { root: { maxLength: 500 } }));
+  router.get('/storage/directory-count', relay(() => '/api/v1/storage/directory-count'));
 
   router.get('/network/devices', relay(() => '/api/v1/network/devices'));
   router.get('/network/agents', relay(() => '/api/v1/network/agents'));
   router.get('/network/capability', relay(() => '/api/v1/network/capability'));
+  router.get('/network/scan-requests/:id', relay((req) => `/api/v1/network/scan-requests/${recordId(req.params.id)}`));
+  // Network write 1 of 2: ask the collectors for one scan of a target. Only
+  // the validated target is forwarded: Data queues it for the active
+  // collectors and answers 202 with the request id the page then follows.
+  router.post('/network/scan', async (req, res) => {
+    let request;
+    try { request = validateScanRequest(req.body); }
+    catch (error) {
+      return res.status(400).json({ ok: false, status: 'error', code: 'INVALID_SCAN_REQUEST', message: error.message });
+    }
+    try {
+      const { response, body } = await fetchData('/api/v1/network/scan', { method: 'POST', payload: { ...request, source: 'toolbox' } });
+      return res.status(response.status).json(body);
+    } catch (error) {
+      const timedOut = error.name === 'TimeoutError';
+      return res.status(502).json({ ok: false, status: 'error', code: timedOut ? 'DATA_TIMEOUT' : 'DATA_UNAVAILABLE',
+        message: timedOut ? 'Data did not answer in time: the scan may or may not have been queued' : error.message });
+    }
+  });
+  // Network write 2 of 2: edit what Data records about one device. A name or
+  // the known flag acknowledges it as not new; type, location and notes
+  // describe it. These controls follow private LAN human access.
+  router.patch('/network/devices/:mac', async (req, res) => {
+    const raw = String(req.params.mac || '');
+    const id = MAC.test(raw.toUpperCase()) ? raw.toUpperCase() : (RECORD_ID.test(raw.toLowerCase()) ? raw.toLowerCase() : '');
+    let update;
+    try {
+      if (!id) throw invalid('Expected a MAC address or a device record id');
+      update = validateDeviceUpdate(req.body);
+    } catch (error) {
+      return res.status(400).json({ ok: false, status: 'error', code: 'INVALID_DEVICE_UPDATE', message: error.message });
+    }
+    try {
+      const { response, body } = await fetchData(`/api/v1/network/devices/${encodeURIComponent(id)}`,
+        { method: 'PATCH', payload: update });
+      return res.status(response.status).json(body);
+    } catch (error) {
+      return res.status(502).json({ ok: false, status: 'error',
+        code: error.name === 'TimeoutError' ? 'DATA_TIMEOUT' : 'DATA_UNAVAILABLE', message: error.message });
+    }
+  });
   router.get('/hardware/collectors', relay(() => '/api/v1/hardware/collectors'));
   router.get('/hardware/latest', relay(() => '/api/v1/hardware/latest', { hostId: { maxLength: 128 } }));
+  // Data's own bounds: at most 2 000 samples per read, a non-negative GPU index,
+  // a busy threshold in (0, 100]. Data validates the dates and the host id.
+  router.get('/hardware/history', relay(() => '/api/v1/hardware/history', {
+    hostId: { maxLength: 128 },
+    gpuIndex: { type: 'int', fallback: 0, min: 0, max: 255 },
+    from: { maxLength: 80 }, to: { maxLength: 80 },
+    limit: { type: 'int', fallback: 500, min: 1, max: 2000 }
+  }));
+  router.get('/hardware/occupancy', relay(() => '/api/v1/hardware/occupancy', {
+    hostId: { maxLength: 128 },
+    from: { maxLength: 80 }, to: { maxLength: 80 },
+    busyAtPct: { type: 'int', fallback: 10, min: 1, max: 100 }
+  }));
 
   router.get('/live-data/feeds', relay(() => '/api/v1/livedata/feeds'));
   router.get('/live-data/state', relay(() => '/api/v1/livedata/state'));
@@ -394,6 +584,34 @@ function register(api) {
   router.get('/live-data/:feed/history', relay((req) => `/api/v1/livedata/${safeName(req.params.feed, 'feed')}/history`, {
     from: { maxLength: 80 }, to: { maxLength: 80 }, order: { values: ['asc', 'desc'] }, limit: { type: 'int', fallback: 100, min: 1, max: 500 }
   }));
+
+  // The broker monitor Data keeps in memory. `topic` is an MQTT filter that
+  // Data validates and applies; a publish topic is at most 256 bytes.
+  router.get('/mqtt/status', relay(() => '/api/v1/mqtt/status'));
+  router.get('/mqtt/messages', relay(() => '/api/v1/mqtt/messages', {
+    since: { type: 'int', fallback: 0, min: 0, max: Number.MAX_SAFE_INTEGER },
+    limit: { type: 'int', fallback: 100, min: 1, max: 500 },
+    topic: { maxLength: 256 }
+  }));
+  // The MQTT write: one MQTT message published by hand, on any topic
+  // (the owner's choice). The body is checked here with Data's own rules, and
+  // only topic, payload and retain are forwarded. Data refuses when the broker
+  // is not connected instead of queueing, and answers after the write.
+  router.post('/mqtt/publish', async (req, res) => {
+    let message;
+    try { message = validatePublish(req.body); }
+    catch (error) {
+      return res.status(400).json({ ok: false, status: 'error', code: 'INVALID_MQTT_PUBLISH', message: error.message });
+    }
+    try {
+      const { response, body } = await fetchData('/api/v1/mqtt/publish', { method: 'POST', payload: message });
+      return res.status(response.status).json(body);
+    } catch (error) {
+      const timedOut = error.name === 'TimeoutError';
+      return res.status(502).json({ ok: false, status: 'error', code: timedOut ? 'DATA_TIMEOUT' : 'DATA_UNAVAILABLE',
+        message: timedOut ? 'Data did not answer in time: the message may or may not have been sent' : error.message });
+    }
+  });
 
   router.get('/databases/collections', relay(() => '/api/v1/databases/collections'));
   router.get('/databases/collections/:name/stats', relay((req) => `/api/v1/databases/collections/${safeName(req.params.name, 'collection')}/stats`));
@@ -410,11 +628,18 @@ function register(api) {
     page: { type: 'int', fallback: 1, min: 1, max: 100000 }, limit: { type: 'int', fallback: 20, min: 1, max: 100 }
   }));
   router.get('/janitor/runs/:id', relay((req) => `/api/v1/janitor/profiles/runs/${safeName(req.params.id, 'run id')}`));
-  router.get('/janitor/dedup-report', relay(() => '/api/v1/janitor/dedup-report'));
+  router.get('/janitor/dedup-report', relay(() => '/api/v1/janitor/dedup-report', {
+    group_offset: { type: 'int', fallback: 0, min: 0, max: Number.MAX_SAFE_INTEGER },
+    group_limit: { type: 'int', fallback: 100, min: 1, max: 1000 }
+  }));
   router.get('/janitor/policies', relay(() => '/api/v1/janitor/policies'));
   router.get('/janitor/strategy/latest', async (_req, res) => {
     try {
       const { response, body } = await fetchData('/api/v1/janitor/profiles/shared-drive/strategy/latest');
+      // No report generated yet is an empty state, not a failure of the tab.
+      if (response.status === 404) {
+        return res.json({ ok: true, status: 'success', data: { ...projectJanitorStrategy({}), available: false } });
+      }
       if (!response.ok) return res.status(response.status).json(body);
       return res.json({ ok: true, status: 'success', data: projectJanitorStrategy(body) });
     } catch (error) {
@@ -427,14 +652,19 @@ function register(api) {
     }
   });
   router.get('/janitor/strategy/latest/raw', relay(() => '/api/v1/janitor/profiles/shared-drive/strategy/latest'));
+  // Paged verified groups and the stored review decisions (the Janitor write family).
+  janitorReviewRelay.register(router, { fetchData });
+
+  // Reports, storage growth trends and the activity log: their own file.
+  require('./reports-trends-activity').mount(router, { relay, fetchData, timeoutMs: REQUEST_TIMEOUT_MS });
 
   app.use('/api/data-toolbox', router);
 }
 
 module.exports = {
   id: 'aio-ops-data-toolbox',
-  version: '1.3.2',
-  capabilities: ['data-toolbox-ui', 'data-readonly-projection'],
+  version: '1.9.0',
+  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete'],
   register,
   boundedInt,
   pickQuery,
@@ -442,5 +672,11 @@ module.exports = {
   dataBaseUrl,
   buildStatus,
   collectorPlacement,
-  projectJanitorStrategy
+  projectJanitorStrategy,
+  isScanTarget,
+  validateScanRequest,
+  validateDeviceUpdate,
+  SCAN_TARGET_MESSAGE,
+  DEVICE_TYPES,
+  DEVICE_TEXT_LIMITS
 };

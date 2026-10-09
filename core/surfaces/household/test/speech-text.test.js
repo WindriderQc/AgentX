@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { speechText, synthesisText, transcriptionLanguage, withoutMediaReferences } = require('../public/speech-language');
+const { scoreSpeechLanguage, speechText, synthesisText, transcriptionLanguage, withoutMediaReferences } = require('../public/speech-language');
 
 test('a verified recording displays its prose without raw delivery metadata', () => {
   const text = 'Voici un éléphant. 🐘\n\nMEDIA:/assets/household/sounds/elephant-reviewed.ogg';
@@ -30,9 +30,18 @@ test('Kokoro never receives a quote-only sentence after spoken punctuation', () 
 });
 
 test('spoken lists omit enumeration markers while preserving numbers in their content', () => {
-  const reply = 'Voici les étapes :\n1. Prépare 3 billets à 7 dollars.\n2) Il reste 2 dollars.\n10. Garde la version 2.5 et 192.168.2.1.';
-  assert.equal(speechText(reply), 'Voici les étapes :\nPrépare 3 billets à 7 dollars.\nIl reste 2 dollars.\nGarde la version 2.5 et 192.168.2.1.');
+  const reply = 'Voici les étapes :\n1. Prépare 3 billets à 7 dollars.\n2) Il reste 2 dollars.\n10. Garde la version 2.5 et 192.0.2.1.';
+  assert.equal(speechText(reply), 'Voici les étapes :\nPrépare 3 billets à 7 dollars.\nIl reste 2 dollars.\nGarde la version 2.5 et 192.0.2.1.');
   assert.equal(speechText('1.5 dollars restent. 2026. Le projet continue.'), '1.5 dollars restent. 2026. Le projet continue.');
+});
+
+test('spoken tables retain help contacts and crisis resource URLs without reading Markdown separators', () => {
+  const text = '| Ressource | Contact |\n| :--- | ---: |\n| Prévention du suicide | 9-8-8 |\n| Info-Social | 811 et 8-1-1 |\n| Québec | 1 866 APPELLE (277-3553) |\n| Clé technique | private_value |\n| Urgence | 911 |';
+  const spoken = speechText(text);
+  for (const contact of ['9-8-8', '811', '8-1-1', '1 866 APPELLE (277-3553)', '911']) assert.ok(spoken.includes(contact), contact);
+  assert.doesNotMatch(spoken, /\||---|private_value|Clé technique/);
+  assert.equal(speechText('Aide : https://suicide.ca/fr et https://988.ca/fr'), 'Aide : suicide.ca et 988.ca');
+  assert.equal(speechText('Lien technique https://example.com/private/path'), 'Lien technique');
 });
 
 test('the advertised automatic French/English mode requests bounded bilingual recognition', () => {
@@ -55,6 +64,30 @@ test('composed emoji are silent while natural words, numbers, math and identifie
   assert.equal(speechText(literal), literal);
   assert.equal(speechText('Hello 🦉 Alex, **all clear**.'), 'Hello Alex, all clear.');
   assert.equal(speechText('## Bilan\n- **Disponible** : `MongoDB`\n> _À vérifier_ : __Ollama__'), 'Bilan\nDisponible : MongoDB\nÀ vérifier : Ollama');
-  assert.equal(speechText('```sh\ncheck_health --timeout=7\n```'), 'check_health --timeout=7');
+  assert.equal(speechText('```sh\ncheck_health --timeout=7\n```'), '');
   assert.equal(speechText(speechText('🦉 **C’est prêt.**')), 'C’est prêt.');
+});
+
+test('Québécois French is the default: English needs more English than French words', () => {
+  assert.equal(scoreSpeechLanguage('OK').language, 'fr');
+  assert.equal(scoreSpeechLanguage('Le build a passé, le deploy est OK.').language, 'fr');
+  assert.equal(scoreSpeechLanguage('Can you check the hosts?').language, 'en');
+});
+
+test('one language per turn: a chosen language wins, automatic modes follow the speech', () => {
+  const { explicitSpeechLanguage, turnSpeechLanguage } = require('../public/speech-language');
+  for (const [value, expected] of [['fr', 'fr'], ['en', 'en'], ['fr-CA', 'fr'], ['en_US', 'en'], ['auto', ''], ['fr-en', ''], ['', ''], [undefined, '']]) {
+    assert.equal(explicitSpeechLanguage(value), expected, String(value));
+  }
+  assert.equal(turnSpeechLanguage('Can you check the hosts?', 'en', 'fr'), 'fr');
+  assert.equal(turnSpeechLanguage('Bonjour, comment ça va ?', 'fr', 'en'), 'en');
+  assert.equal(turnSpeechLanguage('OK', 'en', 'auto'), 'en');
+  assert.equal(turnSpeechLanguage('Can you check the hosts?', '', 'fr-en'), 'en');
+  assert.equal(turnSpeechLanguage('OK', '', 'auto'), 'fr');
+});
+
+test('the Household page speaks each clause in the language the voice loop chose', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../public/conversation-page.js'), 'utf8');
+  assert.match(source, /const lang = NestorSpeech\.normalizeSpeechLanguage\(reply\.language\) \|\| 'fr';/);
+  assert.doesNotMatch(source, /replySpeechLanguage/);
 });

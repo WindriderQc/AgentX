@@ -1,9 +1,20 @@
 'use strict';
 
 const crypto = require('crypto');
+const proposals = require('./proposals');
+const followUp = require('./followUp');
+
+const FRONTIER_MODES = ['local', 'deep', 'all'];
+const { createItemCorrection } = require('./stateItemCorrection');
+const dream = require('./dream');
+const assessments = require('./assessments');
+const { createDreamStore } = require('./dreamStore');
+const { normalizeEvidenceRefs } = require('./dreamEvidence');
 
 const PSYX_STATE_VERSION = 2;
-const STATE_ITEM_KEYS = ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops'];
+const STATE_ITEM_KEYS = ['activeThreads', 'notes', 'patterns', 'hypotheses', 'openLoops', 'goals'];
+// What the user wrote about himself; like settings, a memory reset keeps it.
+const PROFILE_LIMITS = Object.freeze({ about: 3000, expectations: 1500 });
 const STATE_ITEM_KEY_SET = new Set(STATE_ITEM_KEYS);
 const STATE_LIMITS = Object.freeze({
   activeThreads: 50,
@@ -11,6 +22,7 @@ const STATE_LIMITS = Object.freeze({
   patterns: 50,
   hypotheses: 50,
   openLoops: 50,
+  goals: 20,
   experiments: 50
 });
 
@@ -36,6 +48,11 @@ function normalizeDate(value, fallback = null) {
   return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
 }
 
+// A missing confidence stays unknown; Number(null) would read as 0%.
+function confidenceValue(value) {
+  return value == null || value === '' ? NaN : Number(value);
+}
+
 function normalizeStateItem(raw, key) {
   if (typeof raw === 'string') {
     const text = cleanText(raw, key === 'notes' ? 1000 : 500);
@@ -55,11 +72,14 @@ function normalizeStateItem(raw, key) {
   if (!raw || typeof raw !== 'object') return null;
   const text = cleanText(raw.text, key === 'notes' ? 1000 : 500);
   if (!text) return null;
-  const confidence = Number(raw.confidence);
+  const confidence = confidenceValue(raw.confidence);
   return {
     id: cleanText(raw.id || crypto.randomUUID(), 80),
     text,
-    source: ['user', 'psyx', 'legacy', 'import'].includes(raw.source) ? raw.source : 'user',
+    source: ['user', 'psyx', 'dream', 'legacy', 'import'].includes(raw.source) ? raw.source : 'user',
+    sourceConversationId: cleanText(raw.sourceConversationId, 80) || null,
+    evidenceRefs: normalizeEvidenceRefs(raw.evidenceRefs),
+    correctedBy: raw.correctedBy === 'user' ? 'user' : null,
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
     evidence: Array.isArray(raw.evidence)
       ? raw.evidence.map((item) => cleanText(item, 240)).filter(Boolean).slice(0, 20)
@@ -80,11 +100,13 @@ function createStateItem(key, body = {}, source = 'user') {
     throw error;
   }
   const now = new Date().toISOString();
-  const confidence = Number(body.confidence);
+  const confidence = confidenceValue(body.confidence);
   return {
     id: crypto.randomUUID(),
     text,
-    source: ['user', 'psyx', 'import'].includes(source) ? source : 'user',
+    source: ['user', 'psyx', 'dream', 'import'].includes(source) ? source : 'user',
+    sourceConversationId: source === 'psyx' ? cleanText(body.sourceConversationId, 80) || null : null,
+    evidenceRefs: source === 'dream' ? normalizeEvidenceRefs(body.evidenceRefs) : [],
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
     evidence: Array.isArray(body.evidence)
       ? body.evidence.map((item) => cleanText(item, 240)).filter(Boolean).slice(0, 20)
@@ -118,6 +140,10 @@ function sanitizeExperiments(value) {
       expectedSignal: cleanText(item?.expectedSignal, 1000),
       result: cleanText(item?.result, 1500),
       status: ['planned', 'active', 'completed', 'abandoned'].includes(item?.status) ? item.status : 'planned',
+      outcome: followUp.EXPERIMENT_OUTCOMES.includes(item?.outcome) ? item.outcome : null,
+      checkInAt: followUp.dateOrNull(item?.checkInAt)
+        || (['planned', 'active'].includes(item?.status) && normalizeDate(item?.createdAt)
+          ? followUp.checkInAtFrom(followUp.DEFAULT_CHECK_IN_DAYS, new Date(item.createdAt).getTime()) : null),
       fingerprint: experimentFingerprint(hypothesis, action),
       createdAt: normalizeDate(item?.createdAt, now),
       updatedAt: normalizeDate(item?.updatedAt, now)
@@ -136,6 +162,14 @@ function emptyState(userId = 'default') {
     hypotheses: [],
     openLoops: [],
     experiments: [],
+    proposals: [],
+    settledProposals: [],
+    sessionDigests: [],
+    checkIns: [],
+    settings: { frontierMode: null },
+    profile: { about: '', expectations: '' },
+    portrait: null, portraitPrevious: null, portraitRejected: [], dreamLog: [], assessments: [],
+    goals: [],
     updatedAt: null
   };
 }
@@ -149,6 +183,17 @@ function normalizeState(doc, userId = 'default') {
     version: PSYX_STATE_VERSION,
     revision: Number.isInteger(doc.revision) && doc.revision >= 0 ? doc.revision : 0,
     experiments: sanitizeExperiments(doc.experiments || []),
+    proposals: proposals.normalizeProposals(doc.proposals),
+    settledProposals: proposals.normalizeSettled(doc.settledProposals),
+    sessionDigests: proposals.normalizeDigests(doc.sessionDigests),
+    checkIns: followUp.normalizeCheckIns(doc.checkIns),
+    resetAt: normalizeDate(doc.resetAt),
+    assessments: assessments.normalizeAssessments(doc.assessments),
+    portrait: dream.normalizeStoredPortrait(doc.portrait), portraitPrevious: dream.normalizeStoredPortrait(doc.portraitPrevious),
+    portraitRejected: dream.normalizeRejected(doc.portraitRejected), dreamLog: dream.normalizeDreamLog(doc.dreamLog),
+    profile: { about: cleanText(doc.profile?.about, PROFILE_LIMITS.about), expectations: cleanText(doc.profile?.expectations, PROFILE_LIMITS.expectations) },
+    // Preferences, not memory: a reset keeps them.
+    settings: { frontierMode: FRONTIER_MODES.includes(doc.settings?.frontierMode) ? doc.settings.frontierMode : null },
     updatedAt: normalizeDate(doc.updatedAt)
   };
   for (const key of STATE_ITEM_KEYS) {
@@ -162,21 +207,32 @@ function normalizeState(doc, userId = 'default') {
   return result;
 }
 
-function stateForPrompt(state) {
+// A frontier model reads far more context than the local 16k-character message contract allows.
+function stateForPrompt(state, { conversationId = null, budget = 'local' } = {}) {
+  const wide = budget === 'frontier';
   const compact = {};
   for (const key of STATE_ITEM_KEYS) {
-    compact[key] = (state[key] || []).slice(-30).map((item) => ({
+    compact[key] = (state[key] || []).slice(wide ? -60 : -30).map((item) => ({
       text: item.text,
       source: item.source,
+      correctedBy: item.correctedBy || null,
       confidence: item.confidence,
-      evidence: item.evidence,
+      // A local reply has little room: one short quote is enough to anchor an item.
+      evidence: wide ? item.evidence : (item.evidence || []).slice(0, 1).map((quote) => cleanText(quote, 120)),
       status: item.status
     }));
   }
   compact.experiments = (state.experiments || [])
     .filter((item) => item.status === 'planned' || item.status === 'active')
     .slice(-10)
-    .map(({ id, hypothesis, action, expectedSignal, result, status }) => ({ id, hypothesis, action, expectedSignal, result, status }));
+    .map(({ id, hypothesis, action, expectedSignal, result, status, checkInAt }) => ({ id, ...Object.fromEntries(Object.entries({ hypothesis, action, expectedSignal, result })
+      .map(([field, value]) => [field, wide ? value : cleanText(value, 300)])), status, checkInAt, due: followUp.isDue({ status, checkInAt }) }));
+  compact.recentCheckIns = (state.checkIns || []).slice(-5).map(({ score, phase, at }) => ({ score, phase, at }));
+  // Digests of other recent conversations give continuity across sessions.
+  compact.recentSessions = (state.sessionDigests || [])
+    .filter((item) => item.conversationId !== conversationId)
+    .slice(wide ? -10 : -3)
+    .map(({ summary, movement, commitment, updatedAt }) => ({ summary, movement, commitment, updatedAt }));
   return compact;
 }
 
@@ -210,6 +266,34 @@ function mergeStateDocuments(documents, userId = 'default') {
     STATE_LIMITS.experiments
   );
   return merged;
+}
+
+function createExperiment(body = {}) {
+  const hypothesis = cleanText(body.hypothesis, 1000);
+  const action = cleanText(body.action, 1000);
+  if (!hypothesis || !action) {
+    const error = new Error('hypothesis and action are required');
+    error.statusCode = 400;
+    throw error;
+  }
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    hypothesis,
+    action,
+    expectedSignal: cleanText(body.expectedSignal, 1000),
+    result: '',
+    status: 'planned',
+    outcome: null,
+    checkInAt: followUp.checkInAtFrom(body.checkInDays),
+    fingerprint: experimentFingerprint(hypothesis, action),
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function pick(source, keys) {
+  return Object.fromEntries(keys.filter((key) => cleanText(source?.[key])).map((key) => [key, source[key]]));
 }
 
 function unknownSectionError() {
@@ -273,6 +357,10 @@ function createStateRepository({ collection, logger }) {
             hypotheses: [],
             openLoops: [],
             experiments: [],
+            proposals: [],
+            settledProposals: [],
+            sessionDigests: [],
+            checkIns: [],
             createdAt: now,
             updatedAt: now
           }
@@ -324,25 +412,7 @@ function createStateRepository({ collection, logger }) {
 
   async function addExperiment(userId, body = {}) {
     await ensureDocument(userId);
-    const hypothesis = cleanText(body.hypothesis, 1000);
-    const action = cleanText(body.action, 1000);
-    if (!hypothesis || !action) {
-      const error = new Error('hypothesis and action are required');
-      error.statusCode = 400;
-      throw error;
-    }
-    const now = new Date().toISOString();
-    const item = {
-      id: crypto.randomUUID(),
-      hypothesis,
-      action,
-      expectedSignal: cleanText(body.expectedSignal, 1000),
-      result: '',
-      status: 'planned',
-      fingerprint: experimentFingerprint(hypothesis, action),
-      createdAt: now,
-      updatedAt: now
-    };
+    const item = createExperiment(body);
     const result = await collection.updateOne(
       { userId, 'experiments.fingerprint': { $ne: item.fingerprint } },
       {
@@ -384,6 +454,24 @@ function createStateRepository({ collection, logger }) {
       set['experiments.$[experiment].expectedSignal'] = expectedSignal;
       semanticChanges.push({ experiments: { $elemMatch: { id, expectedSignal: { $ne: expectedSignal } } } });
     }
+    if ('outcome' in body) {
+      if ('status' in body) {
+        const error = new Error('Send either an outcome or a status, not both');
+        error.statusCode = 400;
+        throw error;
+      }
+      const changes = followUp.outcomeChanges(body.outcome);
+      // Recording the same outcome again on a reopened experiment is still a change.
+      if (changes.status) semanticChanges.push({ experiments: { $elemMatch: { id, status: { $ne: changes.status } } } });
+      for (const [field, value] of Object.entries(changes)) set[`experiments.$[experiment].${field}`] = value;
+      semanticChanges.push({ experiments: { $elemMatch: { id, outcome: { $ne: changes.outcome } } } });
+      if (changes.checkInAt) semanticChanges.push({ experiments: { $elemMatch: { id, checkInAt: { $ne: changes.checkInAt } } } });
+    }
+    if ('checkInDays' in body) {
+      const checkInAt = followUp.checkInAtFrom(body.checkInDays);
+      set['experiments.$[experiment].checkInAt'] = checkInAt;
+      semanticChanges.push({ experiments: { $elemMatch: { id, checkInAt: { $ne: checkInAt } } } });
+    }
     if (Object.keys(set).length === 0) {
       const error = new Error('No supported experiment changes supplied');
       error.statusCode = 400;
@@ -402,25 +490,185 @@ function createStateRepository({ collection, logger }) {
   async function reset(userId) {
     await ensureDocument(userId);
     const now = new Date();
-    const cleared = Object.fromEntries([...STATE_ITEM_KEYS, 'experiments'].map((key) => [key, []]));
+    const cleared = Object.fromEntries([...STATE_ITEM_KEYS, 'experiments', 'proposals', 'settledProposals', 'sessionDigests', 'checkIns', 'assessments'].map((key) => [key, []]));
     await collection.updateOne(
       { userId },
       {
-        $set: { ...cleared, version: PSYX_STATE_VERSION, updatedAt: now },
+        // resetAt lets a review that started before the reset discard its result.
+        $set: { ...cleared, portrait: null, portraitPrevious: null, portraitRejected: [], dreamLog: [], version: PSYX_STATE_VERSION, updatedAt: now, resetAt: now },
         $inc: { revision: 1 }
       }
     );
     return read(userId);
   }
 
+  // Background review output: a digest replaces the conversation's previous one;
+  // proposals already known (memory, pending or settled by the user) are dropped.
+  async function recordReview(userId, { conversationId, digest = null, proposals: incoming = [], resetAt = null, stillWanted = null }) {
+    await ensureDocument(userId);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const state = await read(userId);
+      if ((state.resetAt || null) !== (resetAt || null)) return { added: 0, digest: null, skipped: 'reset', state };
+      const known = new Set([
+        ...state.proposals.map((item) => item.fingerprint), ...state.settledProposals,
+        ...STATE_ITEM_KEYS.flatMap((key) => state[key].map((item) => proposals.proposalFingerprint(key, item.text))),
+        ...state.experiments.map((item) => proposals.proposalFingerprint('experiments', item.hypothesis, item.action))
+      ]);
+      const fresh = incoming.filter((item) => !known.has(item.fingerprint));
+      if (stillWanted && !await stillWanted()) return { added: 0, digest: null, skipped: 'gone', state };
+      if (!fresh.length && !digest) return { added: 0, digest: null, state };
+      const set = { updatedAt: new Date(), version: PSYX_STATE_VERSION };
+      if (fresh.length) set.proposals = [...state.proposals, ...fresh].slice(-proposals.PROPOSAL_LIMITS.pending);
+      if (digest) set.sessionDigests = [...state.sessionDigests.filter(item => item.conversationId !== conversationId), digest].slice(-proposals.PROPOSAL_LIMITS.digests);
+      // Reset, erasure and proposal decisions change the revision. Replace both
+      // derived arrays together, or reread; stale model output cannot undo them.
+      const result = await collection.updateOne({ userId, revision: state.revision }, { $set: set, $inc: { revision: 1 } });
+      if (result.modifiedCount) return { added: fresh.length, digest, state: await read(userId) };
+    }
+    throw Object.assign(new Error('PsyX state changed during review'), { statusCode: 409, code: 'PSYX_REVIEW_STATE_CONFLICT' });
+  }
+
+  // A permanently deleted conversation leaves nothing derived from it in PsyX memory.
+  async function forgetConversation(userId, conversationId) {
+    const result = await collection.updateOne({ userId }, {
+      $pull: { sessionDigests: { conversationId }, proposals: { conversationId } },
+      $inc: { revision: 1 },
+      $set: { updatedAt: new Date() }
+    });
+    return { removed: result.modifiedCount > 0 };
+  }
+
+  function proposalNotFound() {
+    const error = new Error('PsyX proposal not found');
+    error.statusCode = 404;
+    return error;
+  }
+
+  // Accepting moves a proposal into memory as a PsyX-sourced item; the user may edit its text first.
+  async function acceptProposal(userId, id, edits = {}) {
+    const state = await read(userId);
+    const proposal = state.proposals.find((item) => item.id === id);
+    if (!proposal) throw proposalNotFound();
+    // The original fingerprint is settled too, so an edited acceptance is not proposed again.
+    const update = {
+      $pull: { proposals: { id } },
+      $push: { settledProposals: { $each: [proposal.fingerprint], $slice: -proposals.PROPOSAL_LIMITS.settled } },
+      $inc: { revision: 1 },
+      $set: { updatedAt: new Date() }
+    };
+    let item;
+    let options;
+    if (proposal.kind === 'experimentResult') {
+      // Applies to the experiment it names; if that experiment is gone the proposal is only settled.
+      const changes = followUp.outcomeChanges(proposal.outcome);
+      const result = cleanText(edits.result, 1500) || proposal.result;
+      // Only an experiment still open takes the outcome; one the user closed meanwhile keeps the user's decision.
+      if (state.experiments.some((entry) => entry.id === proposal.experimentId && ['planned', 'active'].includes(entry.status))) {
+        update.$set = { ...update.$set, 'experiments.$[experiment].updatedAt': new Date().toISOString() };
+        for (const [field, value] of Object.entries({ ...changes, ...(result ? { result } : {}) })) update.$set[`experiments.$[experiment].${field}`] = value;
+        options = { arrayFilters: [{ 'experiment.id': proposal.experimentId }] };
+      }
+      item = { experimentId: proposal.experimentId, ...changes, result };
+    } else if (proposal.kind === 'experiments') {
+      item = createExperiment({ ...proposal, ...pick(edits, ['hypothesis', 'action', 'expectedSignal']) });
+      if (!state.experiments.some((entry) => entry.fingerprint === item.fingerprint)) {
+        update.$push.experiments = { $each: [item], $slice: -STATE_LIMITS.experiments };
+      }
+    } else {
+      item = createStateItem(proposal.kind, {
+        text: cleanText(edits.text) || proposal.text,
+        sourceConversationId: proposal.conversationId,
+        evidence: proposal.evidence,
+        confidence: proposal.confidence,
+        status: proposal.kind === 'hypotheses' ? 'working' : 'active'
+      }, 'psyx');
+      if (!state[proposal.kind].some((entry) => entry.fingerprint === item.fingerprint)) {
+        update.$push[proposal.kind] = { $each: [item], $slice: -STATE_LIMITS[proposal.kind] };
+      }
+    }
+    const result = await collection.updateOne({ userId, 'proposals.id': id }, update, options);
+    if (!result.modifiedCount) throw proposalNotFound();
+    return { kind: proposal.kind, item, state: await read(userId) };
+  }
+
+  // A rejected proposal is settled by fingerprint so the review does not propose it again.
+  async function rejectProposal(userId, id) {
+    const state = await read(userId);
+    const proposal = state.proposals.find((item) => item.id === id);
+    if (!proposal) throw proposalNotFound();
+    const result = await collection.updateOne({ userId, 'proposals.id': id }, {
+      $pull: { proposals: { id } },
+      $push: { settledProposals: { $each: [proposal.fingerprint], $slice: -proposals.PROPOSAL_LIMITS.settled } },
+      $inc: { revision: 1 },
+      $set: { updatedAt: new Date() }
+    });
+    if (!result.modifiedCount) throw proposalNotFound();
+    return { state: await read(userId) };
+  }
+
+  // A short self-rating of how heavy things feel, 0 (light) to 10 (heaviest).
+  async function addCheckIn(userId, body = {}) {
+    const checkIn = followUp.normalizeCheckIn({ id: crypto.randomUUID(), score: body.score, phase: body.phase, at: new Date().toISOString() });
+    if (!checkIn) {
+      const error = new Error('score must be an integer from 0 to 10');
+      error.statusCode = 400;
+      throw error;
+    }
+    await ensureDocument(userId);
+    await collection.updateOne({ userId }, {
+      $push: { checkIns: { $each: [checkIn], $slice: -followUp.CHECK_IN_LIMIT } },
+      $inc: { revision: 1 },
+      $set: { updatedAt: new Date() }
+    });
+    return { checkIn, state: await read(userId) };
+  }
+
+  // A completed questionnaire, scored here from the answers.
+  async function addAssessment(userId, body = {}) {
+    const assessment = assessments.createAssessment(body.kind, body.answers);
+    await ensureDocument(userId);
+    await collection.updateOne({ userId }, { $push: { assessments: { $each: [assessment], $slice: -assessments.ASSESSMENT_LIMIT } }, $inc: { revision: 1 }, $set: { updatedAt: new Date() } });
+    return { assessment, state: await read(userId) };
+  }
+
+  async function updateSettings(userId, body = {}) {
+    if (!FRONTIER_MODES.includes(body.frontierMode)) {
+      const error = new Error('frontierMode must be local, deep or all');
+      error.statusCode = 400;
+      throw error;
+    }
+    await ensureDocument(userId);
+    const current = (await collection.findOne({ userId }))?.settings || {};
+    await collection.updateOne({ userId }, { $set: { settings: { ...current, frontierMode: body.frontierMode }, updatedAt: new Date() }, $inc: { revision: 1 } });
+    return { state: await read(userId) };
+  }
+
+  async function updateProfile(userId, body = {}) {
+    if ([body.about, body.expectations].some((value) => value != null && typeof value !== 'string')) throw Object.assign(new Error('about and expectations must be text'), { statusCode: 400 });
+    await ensureDocument(userId);
+    const profile = { about: cleanText(body.about, PROFILE_LIMITS.about), expectations: cleanText(body.expectations, PROFILE_LIMITS.expectations) };
+    await collection.updateOne({ userId }, { $set: { profile, updatedAt: new Date() }, $inc: { revision: 1 } });
+    return { state: await read(userId) };
+  }
+
   return {
+    ...createDreamStore({ collection, read, ensureDocument, createStateItem, limits: STATE_LIMITS }),
+    updateProfile,
+    addAssessment,
+    updateSettings,
+    updateItem: createItemCorrection({ collection, read, keys: STATE_ITEM_KEYS, cleanText, fingerprint: stateItemFingerprint }),
+    addCheckIn,
     ensureInfrastructure,
     read,
     addItem,
     deleteItem,
     addExperiment,
     updateExperiment,
-    reset
+    reset,
+    recordReview,
+    forgetConversation,
+    acceptProposal,
+    rejectProposal
   };
 }
 

@@ -77,8 +77,8 @@ curl -fsS -X POST "$BENCHMARK_BASE_URL/api/benchmark/sweeps/plan" \
 `host` may replace `hostId` with the URL of a host already known to the
 Benchmark host-profile registry. Accepted controls are `hostId`/`host`,
 `candidates`, `levels`, `prompt_ids`, `profileDepth`, `judge_config`,
-`execution_config`, `run_name`, `tags`, `description`, `vramLimitMiB`, and
-`maxVramFraction`. `lane` is echoed for caller correlation but does not change
+`execution_config`, `run_name`, `tags`, `description`, `vramLimitMiB`,
+`maxVramFraction`, `kv_cache_type` and `request_slots`. `lane` is echoed for caller correlation but does not change
 the plan. Omitting `profileDepth` uses `standard`.
 
 Sweep inputs intentionally are not direct `/batch` parity. The coordinator
@@ -92,7 +92,15 @@ The response also returns ready-to-use `payloads.profileQueue` and
 `payloads.benchmark` values. Its `estimate` is one analytical target-host
 planning hint, never a prefilter or admission gate; live inventory, registry-
 qualified exact-artifact identity, and measured profile VRAM remain
-authoritative.
+authoritative. For an installed candidate the estimate reads the model's
+`/api/show` metadata: its exact parameter count and its KV layout (layers,
+KV heads, key and value sizes, and for hybrid models only the full-attention
+layers), times the context and `request_slots`. `kv_cache_type` (`f16`,
+`q8_0`, `q4_0`) states the host's `OLLAMA_KV_CACHE_TYPE`; unstated, `f16` and
+one slot are assumed, and `estimate.kv` says which. A model that is not
+installed, or whose metadata does not describe its cache, keeps the
+parameter rule of thumb (`estimate.kv.basis: parameter_rule_of_thumb`), which
+overstates the KV of hybrid and grouped-query models.
 
 ## Run the guarded plan
 

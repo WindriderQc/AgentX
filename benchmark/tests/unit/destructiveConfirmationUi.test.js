@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { readBatchConfigSource } = require('../helpers/batchConfigSource');
 
 const benchmarkRoot = path.resolve(__dirname, '..', '..');
 const read = (...segments) => fs.readFileSync(path.join(benchmarkRoot, ...segments), 'utf8');
@@ -24,13 +25,15 @@ function loadApiModule(apiFetch) {
 function loadScoringReset(fetchMock) {
     const sourcePath = path.join(benchmarkRoot, 'public', 'js', 'benchmark', 'scoring-profile.js');
     let source = fs.readFileSync(sourcePath, 'utf8');
-    source = source.replace(/^import .*?;\r?\n/m, '');
+    source = source.replace(/^import .*?;\r?\n/gm, '');
     source = source.replace(/export\s+async\s+function\s+/g, 'async function ');
     source += '\nmodule.exports = { resetProfile };\n';
 
     const context = {
         module: { exports: {} },
         exports: {},
+        CATEGORY_KEYS: require('../../../shared/benchmarkCategories').BENCHMARK_CATEGORY_KEYS,
+        CATEGORY_META: require('../../../shared/benchmarkCategories').BENCHMARK_CATEGORIES,
         fetch: fetchMock,
         showToast: jest.fn(),
         document: {}
@@ -50,12 +53,12 @@ describe('Benchmark destructive confirmation UI wiring', () => {
 
         await deleteTemplate(id, confirmation);
 
-        expect(apiFetch).toHaveBeenCalledWith(`/api/benchmark/templates/${id}`, {
+        expect(apiFetch).toHaveBeenCalledWith(`/benchmark/api/benchmark/templates/${id}`, {
             method: 'DELETE',
             body: { confirm: confirmation }
         });
 
-        const batchConfig = read('public', 'js', 'benchmark-v2', 'batch-config.js');
+        const batchConfig = readBatchConfigSource();
         expect(batchConfig).toContain('const expectedConfirmation = `DELETE TEMPLATE ${delBtn.dataset.id}`;');
         expect(batchConfig).toContain('const confirmation = window.prompt(');
         expect(batchConfig).toContain('await deleteTemplate(delBtn.dataset.id, confirmation);');
@@ -81,7 +84,7 @@ describe('Benchmark destructive confirmation UI wiring', () => {
 
         await resetProfile('RESET SCORING PROFILE');
 
-        expect(fetchMock).toHaveBeenCalledWith('/api/benchmark/scoring-profile/reset', {
+        expect(fetchMock).toHaveBeenCalledWith('/benchmark/api/benchmark/scoring-profile/reset', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ confirm: 'RESET SCORING PROFILE' })

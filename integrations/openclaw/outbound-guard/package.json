@@ -1,0 +1,31 @@
+{
+  "name": "@agentx/openclaw-outbound-guard",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Owner approval before an OpenClaw agent messages anyone outside the owner's conversations.",
+  "files": [
+    "index.js",
+    "policy.js",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.9.4"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.9.4"
+    }
+  }
+}

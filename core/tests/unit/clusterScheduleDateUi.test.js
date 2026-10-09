@@ -59,6 +59,7 @@ describe('Cluster Schedule browser-local calendar', () => {
   test('loads the calendar helper before the dashboard and removes UTC-derived UI day keys', () => {
     const app = read('src/app.js');
     const controller = read('public/js/cluster-schedule.js');
+    const actual = read('public/js/cluster-schedule-actual.js');
     const view = read('views/pages/cluster-schedule.ejs');
     const routeBlock = app.slice(
       app.indexOf("app.get('/cluster-schedule'"),
@@ -69,9 +70,9 @@ describe('Cluster Schedule browser-local calendar', () => {
       .toBeLessThan(routeBlock.indexOf('/js/cluster-schedule.js'));
     expect(controller).toContain('SCHEDULE_DATE.localDateKey');
     expect(controller).toContain('SCHEDULE_DATE.addCalendarDays');
-    expect(controller).toContain('SCHEDULE_DATE.formatCalendarDate');
+    expect(actual).toContain('SCHEDULE_DATE.formatCalendarDate');
     expect(controller).not.toContain("new Date().toISOString().slice(0, 10)");
-    expect(controller).not.toContain("days[di] + 'T12:00:00Z'");
+    expect(actual).not.toContain("days[di] + 'T12:00:00Z'");
     expect(view).toContain('id="dateZoneLabel"');
   });
 });

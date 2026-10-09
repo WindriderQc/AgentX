@@ -274,7 +274,7 @@ describe('hostSessionHoldService', () => {
     const call = executeAdmittedOllamaAttempt.mock.calls[0][0];
     expect(call).toMatchObject({ hostUrl: HOST_URL, model: HOLD_MODEL, exclusive: true, admissionKind: 'session-hold-warm' });
     expect(call.payload).toEqual({
-      model: HOLD_MODEL, prompt: 'warmup', stream: false, keep_alive: -1,
+      model: HOLD_MODEL, prompt: 'warmup', stream: false, keep_alive: -1, truncate: false, shift: false,
       options: { num_predict: 1, num_ctx: 8192 }
     });
   });
@@ -307,7 +307,7 @@ describe('hostSessionHoldService', () => {
     const stored = await HostPreference.findOne({ hostUrl: HOST_URL }).lean();
     expect(stored.sessionHold.numCtx).toBeNull();
     expect(executeAdmittedOllamaAttempt.mock.calls[0][0].payload).toEqual({
-      model: HOLD_MODEL, prompt: 'warmup', stream: false, keep_alive: -1, options: { num_predict: 1 }
+      model: HOLD_MODEL, prompt: 'warmup', stream: false, keep_alive: -1, truncate: false, shift: false, options: { num_predict: 1 }
     });
     // Whatever context the model is loaded at satisfies a context-free hold.
     mockPs([{ name: HOLD_MODEL, context_length: 262144 }]);

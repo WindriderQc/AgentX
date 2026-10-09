@@ -13,6 +13,9 @@
   };
   let advanced = null;
   let availability = null;
+  let team = null;
+  let editor = null;
+  let guide = null;
 
   const ragBase = String(root.dataset.ragBase || '').replace(/\/+$/, '');
   const dataBase = String(root.dataset.dataBase || '').replace(/\/+$/, '');
@@ -497,45 +500,18 @@
 
   function renderAgents(data) {
     const all = asArray(data.agents);
-    const agents = all.filter((agent) => matchesPreset(agent, 'agent') && matchesQuery(agent, [
+    const agents = all.filter((agent) => matchesPreset(agent, 'agent') && (matchesQuery(agent, [
       'id', 'registryId', 'name', 'type', 'runtime', 'responsibility', 'status', 'acceptanceGate', 'owns', 'observedFrom'
-    ]));
+    ]) || matchesQuery(agent.persona, ['id', 'label'])));
     byId('agentOpsFilterResult').textContent = `${agents.length} of ${all.length} agents${PRESET_LABELS[state.preset] ? ` · ${PRESET_LABELS[state.preset]}` : ''}`;
     updatePresetControl();
-    byId('agentOpsAgents').innerHTML = agents.length ? agents.map((agent) => `
-      <article class="agent-ops-agent-card">
-        <header class="agent-ops-agent-top">
-          <div class="agent-ops-agent-avatar"><i class="fas ${agentIcon(agent)}"></i></div>
-          <div>
-            <h3>${esc(agent.name)}</h3>
-            <div class="agent-ops-agent-id">${esc(agent.id)}</div>
-          </div>
-          ${badge(humanize(agent.status), agent.status)}
-        </header>
-        <div class="agent-ops-agent-body">
-          <p>${esc(agent.responsibility)}</p>
-          <div class="agent-ops-meta-row">
-            <span class="agent-ops-chip"><i class="fas fa-tag"></i>${esc(humanize(agent.type))}</span>
-            ${agent.runtime ? `<span class="agent-ops-chip"><i class="fas fa-microchip"></i>${esc(agent.runtime)}</span>` : ''}
-            ${agent.acceptanceGate ? `<span class="agent-ops-chip"><i class="fas fa-check-double"></i>${esc(humanize(agent.acceptanceGate))}</span>` : ''}
-            ${agent.confidence ? `<span class="agent-ops-chip"><i class="fas fa-signal"></i>${esc(agent.confidence)}</span>` : ''}
-          </div>
-          <div class="agent-ops-model">
-            <span>Primary model · ${esc(agent.model?.source || 'not declared')}</span>
-            <code title="${esc(agent.model?.primary || 'No model declared')}">${esc(agent.model?.primary || 'No model declared')}</code>
-          </div>
-          <div class="agent-ops-agent-stats">
-            <span><i class="fas fa-clock"></i>${number(agent.automationCount)} recurring</span>
-            <span><i class="fas fa-list-check"></i>${number(agent.workCount)} work</span>
-            ${agent.blockedWorkCount ? `<span><i class="fas fa-ban"></i>${number(agent.blockedWorkCount)} blocked</span>` : ''}
-          </div>
-          <div class="agent-ops-agent-actions">
-            <button type="button" data-agent-inspect="${esc(agent.registryId)}"><i class="fas fa-id-card"></i>Inspect dossier</button>
-            ${agentRuntimeLink(agent) ? `<a ${nativeControlAttributes(nativeAgentPath(agent))} title="Open OpenClaw already focused on ${esc(agent.id)}"><i class="fas fa-arrow-up-right"></i>Open native agent UI</a>` : ''}
-          </div>
-        </div>
-      </article>
-    `).join('') : empty('No agents match this filter.', 'fa-users-slash');
+    // The cards, grouped as team, roles and tools, are drawn by agent-ops-team.js.
+    editor ||= window.AgentOpsTeamEditor.create({ esc, reload: load });
+    guide ||= window.AgentOpsTeamGuide.create({ esc });
+    team ||= window.AgentOpsTeam.create({ esc, humanize, number, badge, empty, agentIcon, editPersona: editor.open, newAgent: () => guide.open(asArray(state.data?.agents).filter((agent) => agent.group === 'team').map((agent) => agent.model?.primary)),
+      newPersona: (owner, name) => editor.openNew(owner, owner.agentId ? { name: owner.agentId.replace(/-/g, '_'), label: name } : {}),
+      runtimeLink: (agent) => agentRuntimeLink(agent) ? `<a ${nativeControlAttributes(nativeAgentPath(agent))} title="Open OpenClaw already focused on ${esc(agent.id)}"><i class="fas fa-arrow-up-right"></i>Open native agent UI</a>` : '' });
+    byId('agentOpsAgents').innerHTML = team.render(agents, data.team);
   }
 
   function renderAutomations(data) {

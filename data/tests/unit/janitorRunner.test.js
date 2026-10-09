@@ -3,6 +3,7 @@ const { ObjectId } = require('mongodb');
 
 jest.mock('../../services/janitorProfiles', () => ({
   get: jest.fn(),
+  checkRoots: jest.fn(),
   COLLECTION: 'janitor_profiles'
 }));
 jest.mock('../../services/scanner', () => {
@@ -129,6 +130,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   scannerMod._instances.length = 0;
   janitorRunner._reset(); // clear in-memory concurrency guard
+  janitorProfiles.checkRoots.mockResolvedValue({ ok: true });
   janitorApprovalEvidence.verifyDuplicateAction.mockResolvedValue(previewEvidence());
   janitorStrategy.getPolicy.mockResolvedValue({
     version: 1,
@@ -223,6 +225,70 @@ function previewResult(file = '/mnt/datalake/dup.txt') {
 }
 
 describe('janitorRunner.runProfile', () => {
+  test('stores a bounded prefix of the proposed actions and counts the rest', async () => {
+    janitorProfiles.get.mockResolvedValue({ ...profileFixture });
+    const total = janitorRunner.MAX_PROPOSED_ACTIONS + 3;
+    const groups = Array.from({ length: total }, (_, group) => ({
+      hash: `group-${group}`, count: 2, file_size: 100,
+      files: [0, 1].map(copy => ({ path: `/mnt/datalake/test/group-${group}-copy-${copy}.txt`, mtime: copy + 1, size: 100 }))
+    }));
+    dedupScanner.buildDedupReport.mockResolvedValue({ groups, summary: {} });
+    dedupScanner.saveReport.mockResolvedValue(new ObjectId());
+    const db = makeMockDb();
+    await janitorRunner.runProfile(db, String(profileFixture._id));
+    const run = db._collections.janitor_runs.docs[0];
+    expect(run.status).toBe('complete');
+    expect(run.proposed_actions).toHaveLength(janitorRunner.MAX_PROPOSED_ACTIONS);
+    expect(run.proposed_actions_omitted).toBe(3);
+    // The stored actions are the first ones, so approval indexes stay stable.
+    expect(run.proposed_actions[0].sha256).toBe('group-0');
+    expect(run.proposed_actions.at(-1).sha256).toBe(`group-${janitorRunner.MAX_PROPOSED_ACTIONS - 1}`);
+  });
+
+  test('stops storing proposed actions at the byte budget', async () => {
+    janitorProfiles.get.mockResolvedValue({ ...profileFixture });
+    const longName = 'x'.repeat(512 * 1024);
+    const groups = Array.from({ length: 9 }, (_, group) => ({
+      hash: `group-${group}`, count: 2, file_size: 100,
+      files: [0, 1].map(copy => ({ path: `/mnt/datalake/test/${longName}-${group}-${copy}`, mtime: copy + 1, size: 100 }))
+    }));
+    dedupScanner.buildDedupReport.mockResolvedValue({ groups, summary: {} });
+    dedupScanner.saveReport.mockResolvedValue(new ObjectId());
+    const db = makeMockDb();
+    await janitorRunner.runProfile(db, String(profileFixture._id));
+    const run = db._collections.janitor_runs.docs[0];
+    expect(run.proposed_actions.length).toBeGreaterThan(0);
+    expect(run.proposed_actions_omitted).toBeGreaterThan(0);
+    expect(run.proposed_actions.length + run.proposed_actions_omitted).toBe(9);
+    expect(Buffer.byteLength(JSON.stringify(run.proposed_actions))).toBeLessThanOrEqual(janitorRunner.MAX_PROPOSED_ACTIONS_BYTES);
+  });
+
+  test('triage declares both sample limits while preserving every proposal and file for review', async () => {
+    janitorProfiles.get.mockResolvedValue({ ...profileFixture, aiTriage: true });
+    const groups = Array.from({ length: 70 }, (_, group) => ({
+      hash: `group-${group}`, count: 11, file_size: 100,
+      files: Array.from({ length: 11 }, (_, copy) => ({
+        path: `/mnt/datalake/test/group-${group}-copy-${copy}.txt`, mtime: copy + 1, size: 100
+      }))
+    }));
+    dedupScanner.buildDedupReport.mockResolvedValue({ groups, summary: {} });
+    dedupScanner.saveReport.mockResolvedValue(new ObjectId());
+    janitorAI.callAI.mockResolvedValue({ result: { categories: [] }, model: 'test-model', duration_ms: 1 });
+    const db = makeMockDb();
+    await janitorRunner.runProfile(db, String(profileFixture._id));
+    const run = db._collections.janitor_runs.docs[0];
+    expect(run.proposed_actions).toHaveLength(70);
+    expect(run.proposed_actions_omitted).toBe(0);
+    expect(run.proposed_actions.every(action => action.files.length === 10)).toBe(true);
+    expect(run.proposed_actions.flatMap(action => action.files)).toContain('/mnt/datalake/test/group-69-copy-9.txt');
+    expect(run.ai_triage.coverage).toMatchObject({ complete: false,
+      actions: { included: 50, available: 70 }, fileEntries: { included: 250, available: 700 } });
+    const submitted = janitorAI.callAI.mock.calls[0][1];
+    expect(submitted.files).toHaveLength(50);
+    expect(submitted.files.every(action => action.files.length === 5)).toBe(true);
+    expect(submitted.coverage).toEqual(run.ai_triage.coverage);
+  });
+
   test('happy path: scan → dedup → persist run as complete', async () => {
     janitorProfiles.get.mockResolvedValue(profileFixture);
     // Dedup returns one current SHA group. The explicitly persisted `newest`
@@ -328,7 +394,8 @@ describe('janitorRunner.runProfile', () => {
     expect(result.ok).toBe(true);
     const run = db._collections['janitor_runs'].docs[0];
     expect(run.status).toBe('complete');
-    expect(run.ai_triage).toEqual({ error: 'Ollama unreachable' });
+    expect(run.ai_triage).toMatchObject({ error: 'Ollama unreachable', outcome: 'failed',
+      coverage: { actions: { included: 0, available: 0 }, fileEntries: { included: 0, available: 0 } } });
   });
 
   test('dedup failure recorded but run completes', async () => {
@@ -342,6 +409,27 @@ describe('janitorRunner.runProfile', () => {
     const run = db._collections['janitor_runs'].docs[0];
     expect(run.status).toBe('complete');
     expect(run.dedup_error).toBe('agg failed');
+  });
+
+  test('a missing root fails the run before any scan, dedup or proposal', async () => {
+    janitorProfiles.get.mockResolvedValue(profileFixture);
+    janitorProfiles.checkRoots.mockResolvedValue({ ok: false, errors: ['root "/mnt/datalake/test": Path not found'] });
+    const db = makeMockDb();
+
+    const result = await janitorRunner.runProfile(db, String(profileFixture._id));
+
+    expect(janitorProfiles.checkRoots).toHaveBeenCalledWith(profileFixture.roots);
+    expect(result).toMatchObject({ ok: false, error: 'roots: root "/mnt/datalake/test": Path not found' });
+    const run = db._collections.janitor_runs.docs[0];
+    expect(run).toMatchObject({ status: 'failed', error: result.error, scan_id: null, proposed_actions: [] });
+    expect(run.finished_at).toBeInstanceOf(Date);
+    expect(scannerMod._instances).toHaveLength(0);
+    expect(dedupScanner.buildDedupReport).not.toHaveBeenCalled();
+    // The concurrency guard is released: the next run is not "already running".
+    janitorProfiles.checkRoots.mockResolvedValue({ ok: true });
+    dedupScanner.buildDedupReport.mockResolvedValue({ groups: [], summary: {} });
+    dedupScanner.saveReport.mockResolvedValue(new ObjectId());
+    expect((await janitorRunner.runProfile(db, String(profileFixture._id))).ok).toBe(true);
   });
 
   test('scanner failure marks run as failed', async () => {
@@ -709,5 +797,95 @@ describe('janitorRunner profile action preview/apply safety', () => {
     expect(replay.ok).toBe(false);
     expect(replay.error).toMatch(/action is executed/i);
     expect(execute).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('janitorRunner.sweepStaleRuns', () => {
+  // The sweep reads with find() and an array-field filter the shared mock does not model.
+  function sweepDb(docs) {
+    const db = makeMockDb();
+    const coll = db.collection(janitorRunner.COLLECTION);
+    coll.docs.push(...docs);
+    coll.updateMany = jest.fn(async (filter, update) => {
+      const hit = coll.docs.filter(doc => matches(doc, filter));
+      hit.forEach(doc => Object.entries(update.$set).forEach(([key, value]) => setPath(doc, key, value)));
+      return { modifiedCount: hit.length };
+    });
+    coll.find = jest.fn((filter) => ({
+      toArray: async () => coll.docs
+        .filter(doc => (doc.proposed_actions || []).some(action => action.status === filter['proposed_actions.status']))
+        .map(cloneRun)
+    }));
+    return { db, coll };
+  }
+
+  test('stops runs left running and leaves finished runs alone', async () => {
+    const { db, coll } = sweepDb([
+      { _id: new ObjectId(), status: 'running', finished_at: null, proposed_actions: [] },
+      { _id: new ObjectId(), status: 'complete', finished_at: new Date(0), proposed_actions: [] }
+    ]);
+
+    await expect(janitorRunner.sweepStaleRuns(db)).resolves.toBe(1);
+
+    expect(coll.docs[0].status).toBe('stopped');
+    expect(coll.docs[0].finished_at).toBeInstanceOf(Date);
+    expect(coll.docs[1]).toMatchObject({ status: 'complete', finished_at: new Date(0) });
+  });
+
+  test('returns an action stuck in executing to pending with its preview invalidated, without executing anything', async () => {
+    const executeCleanup = jest.spyOn(janitorService, 'executeCleanup');
+    const startedAt = new Date('2026-07-18T12:00:00.000Z');
+    const { db, coll } = sweepDb([{
+      _id: new ObjectId(),
+      status: 'complete',
+      proposed_actions: [
+        { status: 'executed', files: ['/mnt/datalake/a.txt'], approval_preview: { id: 'p0', status: 'consumed' } },
+        {
+          status: 'executing', files: ['/mnt/datalake/dup.txt'], execution_authorized: true,
+          execution_started_at: startedAt, approval_preview: { id: 'p1', status: 'ready' }
+        },
+        { status: 'pending', files: ['/mnt/datalake/b.txt'], approval_preview: { id: 'p2', status: 'ready' } }
+      ]
+    }]);
+
+    await janitorRunner.sweepStaleRuns(db);
+
+    const [executed, interrupted, pending] = coll.docs[0].proposed_actions;
+    expect(interrupted).toMatchObject({
+      status: 'pending',
+      execution_authorized: false,
+      execution_started_at: startedAt,
+      approval_preview: { id: 'p1', status: 'invalidated' },
+      result: { note: expect.stringMatching(/interrupted by a restart.*Generate a new preview/) }
+    });
+    expect(interrupted.execution_interrupted_at).toBeInstanceOf(Date);
+    expect(interrupted.approval_preview.invalidated_at).toBeInstanceOf(Date);
+    expect(executed).toEqual({ status: 'executed', files: ['/mnt/datalake/a.txt'], approval_preview: { id: 'p0', status: 'consumed' } });
+    expect(pending.approval_preview.status).toBe('ready');
+    expect(executeCleanup).not.toHaveBeenCalled();
+  });
+
+  test('a swept action cannot be applied with its old preview', async () => {
+    process.env.JANITOR_EXECUTION_ENABLED = 'true';
+    const executeCleanup = jest.spyOn(janitorService, 'executeCleanup');
+    const runId = new ObjectId();
+    const { db } = sweepDb([{
+      _id: runId,
+      status: 'complete',
+      proposed_actions: [{
+        status: 'executing', files: ['/mnt/datalake/dup.txt'],
+        approval_preview: { id: 'p1', status: 'ready', expires_at: new Date(Date.now() + 60000) }
+      }]
+    }]);
+    await janitorRunner.sweepStaleRuns(db);
+
+    const result = await janitorRunner.approveAction(db, String(runId), 0, {
+      confirm: true, dryRun: false, previewId: 'p1',
+      applyConfirmation: janitorRunner.PROFILE_APPLY_CONFIRMATION,
+      restoreConfirmation: janitorRunner.RESTORE_SOURCE_CONFIRMATION
+    });
+
+    expect(result).toMatchObject({ ok: false, error: 'a recorded dry-run preview is required before live apply' });
+    expect(executeCleanup).not.toHaveBeenCalled();
   });
 });

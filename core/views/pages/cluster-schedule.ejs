@@ -9,31 +9,31 @@
                 <div>
                     <div class="cs-eyebrow">AgentX &bull; GPU Orchestration</div>
                     <h1><i class="fas fa-calendar-alt"></i> Cluster Schedule</h1>
-                    <p>Live GPU hosts, 24h timeline, upcoming tasks, and conflict detection</p>
+                    <p>Loaded models, scheduled jobs, measured GPU usage, placement claims and the heavy-job queue.</p>
                 </div>
                 <div class="cs-header-controls">
                     <div id="headerStatus" class="cs-header-status"></div>
                     <div class="cs-date-nav">
-                        <button class="cs-btn cs-btn-icon" onclick="shiftDate(-1)" title="Previous day"><i class="fas fa-chevron-left"></i></button>
+                        <button id="prevDateBtn" class="cs-btn cs-btn-icon" title="Previous day" aria-label="Previous day"><i class="fas fa-chevron-left"></i></button>
                         <span class="cs-date-context" aria-live="polite">
                             <time id="dateLabel" class="cs-date-label">--</time>
                             <span id="dateZoneLabel" class="cs-date-zone" aria-label="Browser time zone"></span>
                         </span>
-                        <button class="cs-btn cs-btn-icon" onclick="shiftDate(1)" title="Next day"><i class="fas fa-chevron-right"></i></button>
-                        <button class="cs-btn cs-btn-sm" onclick="goToday()">Today</button>
+                        <button id="nextDateBtn" class="cs-btn cs-btn-icon" title="Next day" aria-label="Next day"><i class="fas fa-chevron-right"></i></button>
+                        <button id="todayBtn" class="cs-btn cs-btn-sm">Today</button>
                     </div>
                     <div class="cs-view-toggles">
-                        <button id="viewTask" class="cs-btn cs-btn-sm active" onclick="setViewMode('task')"><i class="fas fa-layer-group"></i> Task</button>
-                        <button id="viewHost" class="cs-btn cs-btn-sm" onclick="setViewMode('host')"><i class="fas fa-server"></i> Host</button>
+                        <button id="viewTask" class="cs-btn cs-btn-sm active" aria-pressed="true"><i class="fas fa-layer-group"></i> Task</button>
+                        <button id="viewHost" class="cs-btn cs-btn-sm" aria-pressed="false"><i class="fas fa-server"></i> Host</button>
                     </div>
-                    <button id="refreshBtn" class="cs-btn" onclick="refreshAll()" title="Refresh all data"><i class="fas fa-sync-alt"></i></button>
+                    <button id="refreshBtn" class="cs-btn" title="Refresh all data" aria-label="Refresh all data"><i class="fas fa-sync-alt"></i></button>
                 </div>
             </div>
         </div>
 
         <!-- Live Host Cards: separate loaded-model/VRAM detail evidence. -->
         <p id="liveEvidence" class="cs-live-evidence" aria-live="polite">
-            Loaded-model and VRAM detail evidence has not been observed yet.
+            Waiting for the first host poll…
         </p>
         <div id="liveBar" class="cs-live-bar" aria-describedby="liveEvidence">
             <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading host data...</div>
@@ -42,7 +42,7 @@
         <!-- Background Services Strip -->
         <div id="servicesStrip" class="cs-services-strip" style="display:none">
             <div class="cs-services-header">
-                <button id="servicesToggle" class="cs-btn cs-btn-sm" onclick="toggleServices()">
+                <button id="servicesToggle" class="cs-btn cs-btn-sm" aria-expanded="true" aria-controls="servicesGrid">
                     <i class="fas fa-caret-down"></i> Background Services <span id="servicesCount" class="cs-services-count"></span>
                 </button>
             </div>
@@ -58,10 +58,10 @@
                 <!-- Timeline Filters -->
                 <div id="timelineFilters" class="cs-timeline-filters" style="display:none">
                     <label class="cs-filter-label">
-                        <input type="checkbox" onchange="setTimelineFilter('highFreq', this.checked)"> Show high-freq light jobs
+                        <input id="highFreqFilter" type="checkbox"> Show high-freq light jobs
                     </label>
                     <label class="cs-filter-label">
-                        <input type="checkbox" checked onchange="setTimelineFilter('noGpu', this.checked)"> Show non-GPU tasks
+                        <input id="noGpuFilter" type="checkbox" checked> Show non-GPU tasks
                     </label>
                 </div>
 
@@ -74,16 +74,16 @@
                 <div class="cs-actual-section">
                     <div class="cs-actual-header">
                         <div class="cs-actual-tabs">
-                            <button id="btnHeatmap" class="cs-btn cs-btn-sm active" onclick="setActualView('heatmap')">
+                            <button id="btnHeatmap" class="cs-btn cs-btn-sm active" aria-pressed="true">
                                 <i class="fas fa-th"></i> Utilization Heatmap
                             </button>
-                            <button id="btnAvp" class="cs-btn cs-btn-sm" onclick="setActualView('avp')">
+                            <button id="btnAvp" class="cs-btn cs-btn-sm" aria-pressed="false">
                                 <i class="fas fa-chart-bar"></i> Actual vs Planned
                             </button>
                         </div>
                         <div class="cs-actual-controls">
                             <label class="cs-filter-label">
-                                Days: <select id="heatmapDays" class="cs-select" onchange="actualViewChanged()">
+                                Days: <select id="heatmapDays" class="cs-select">
                                     <option value="1">1</option>
                                     <option value="3">3</option>
                                     <option value="7" selected>7</option>
@@ -107,8 +107,32 @@
 
                 <!-- Conflict Banner -->
                 <div id="conflictBanner" class="cs-conflict-banner hidden">
-                    <div class="cs-conflict-header"><i class="fas fa-exclamation-triangle"></i> Conflicts</div>
+                    <div class="cs-conflict-header"><i class="fas fa-exclamation-triangle"></i> VRAM overflows</div>
                     <div id="conflictText" class="cs-conflict-text"></div>
+                </div>
+
+                <div class="cs-panel">
+                    <div class="cs-panel-header">
+                        <h3><i class="fas fa-list-check"></i> Heavy Work Queue</h3>
+                    </div>
+                    <div id="heavyQueueList" class="cs-next-list" aria-live="polite">
+                        <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading queue...</div>
+                    </div>
+                    <p id="heavyQueueError" class="cs-queue-note" role="alert"></p>
+                    <dialog id="heavyQueueReservation" class="cs-queue-dialog">
+                        <form>
+                            <h3 data-queue-title></h3>
+                            <p data-queue-zone></p>
+                            <label>Planned start <input type="datetime-local" name="start" required></label>
+                            <label>Priority (1 first, 9 last) <input type="number" name="priority" min="1" max="9" required></label>
+                            <p>Planning a slot does not start the job or acquire runtime resources.</p>
+                            <p role="alert"></p>
+                            <div class="cs-queue-actions">
+                                <button type="submit" class="cs-queue-button">Save slot</button>
+                                <button type="submit" class="cs-queue-button" value="cancel" formnovalidate>Close</button>
+                            </div>
+                        </form>
+                    </dialog>
                 </div>
 
                 <!-- Upcoming Tasks -->
@@ -150,11 +174,11 @@
     </div>
 
     <!-- Tooltip (hidden by default) -->
-    <div id="tooltip" class="cs-tooltip">
+    <div id="tooltip" class="cs-tooltip" role="tooltip" aria-hidden="true">
         <div id="tooltipType" class="cs-tooltip-type"></div>
         <div id="tooltipName" class="cs-tooltip-name"></div>
         <div id="tooltipRows" class="cs-tooltip-rows"></div>
     </div>
 
     <!-- Service Popover (hidden by default) -->
-    <div id="servicePopover" class="cs-service-popover"></div>
+    <div id="servicePopover" class="cs-service-popover" role="dialog" aria-label="Background Services" aria-hidden="true"></div>

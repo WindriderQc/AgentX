@@ -55,7 +55,7 @@ class RAGCompressionService {
     const originalTokens = this._estimateTokens(chunks);
 
     logger.info('Starting contextual compression', {
-      query: query.substring(0, 50),
+      queryLength: query.length,
       chunkCount: chunks.length,
       originalTokens
     });
@@ -65,11 +65,11 @@ class RAGCompressionService {
     // Tune via COMPRESSION_CONCURRENCY env var.
     const compressedChunks = await boundedConcurrency(chunks, async (chunk) => {
       // Check cache first
-      const cacheKey = this._buildCacheKey(query, chunk);
+      const cacheKey = this._buildCacheKey(query, chunk, minRelevanceScore, maxSentencesPerChunk);
       if (useCache && this.compressionCache.has(cacheKey)) {
         const cached = this.compressionCache.get(cacheKey);
         if (Date.now() - cached.timestamp < this.cacheTTL) {
-          logger.debug('Compression cache hit', { cacheKey: cacheKey.substring(0, 40) });
+          logger.debug('Compression cache hit');
           return cached.result;
         }
         // Expired — remove stale entry
@@ -109,23 +109,36 @@ class RAGCompressionService {
 
   /**
    * Build stable cache key for a query/chunk pair.
-   * Uses metadata identifiers first, then content-hash fallback.
+   * Include content and selection policy even when the chunk has an identifier.
    * @private
    */
-  _buildCacheKey(query, chunk) {
+  _buildCacheKey(query, chunk, minScore = 0.6, maxSentences = 5) {
     const metadata = chunk && chunk.metadata ? chunk.metadata : {};
     const documentId = metadata.documentId || chunk.documentId || chunk._id || chunk.id || '';
     const chunkIndex = metadata.chunkIndex ?? chunk.chunkIndex ?? '';
 
-    if (documentId !== '' || chunkIndex !== '') {
-      return `${query}:${documentId}:${chunkIndex}`;
-    }
-
     const textHash = crypto
-      .createHash('sha1')
+      .createHash('sha256')
       .update(chunk && typeof chunk.text === 'string' ? chunk.text : '')
       .digest('hex');
-    return `${query}:hash:${textHash}`;
+    return JSON.stringify([query, documentId, chunkIndex, textHash, minScore, maxSentences]);
+  }
+
+  // A compression is an extract, so every complete sentence must occur in the
+  // source in the same order. Unverifiable output keeps the original context.
+  _isSourceExtract(source, extract, maximum) {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'sentence' });
+    const sentences = text => Array.from(segmenter.segment(text), part => part.segment.trim()).filter(Boolean);
+    const original = sentences(source);
+    const selected = extract.split('\n').flatMap(sentences);
+    if (!selected.length || selected.length > maximum) return false;
+    let next = 0;
+    return selected.every(sentence => {
+      const index = original.indexOf(sentence, next);
+      if (index < 0) return false;
+      next = index + 1;
+      return true;
+    });
   }
 
   /**
@@ -181,6 +194,9 @@ Extract the most relevant sentences:`;
       }
 
       const data = await response.json();
+      if (data.done === false || /length|max(?:imum)?[_ -]?tokens|token_limit/i.test(data.done_reason || '')) {
+        throw new Error('Compression output is incomplete');
+      }
       let extractedText = data.response ? data.response.trim() : '';
 
       // Post-processing cleanup
@@ -192,9 +208,9 @@ Extract the most relevant sentences:`;
       extractedText = extractedText.trim();
 
       // Handle "no content" case
-      if (extractedText.includes('NO_RELEVANT_CONTENT') || extractedText.length < 10) {
+      if (extractedText === 'NO_RELEVANT_CONTENT') {
         logger.debug('No relevant content found in chunk', {
-          query: query.substring(0, 50)
+          queryLength: query.length
         });
         return {
           ...chunk,
@@ -203,6 +219,10 @@ Extract the most relevant sentences:`;
           compressionRatio: 0,
           wasCompressed: true
         };
+      }
+
+      if (!this._isSourceExtract(chunk.text, extractedText, maxSentences)) {
+        throw new Error('Compression output is not an exact source sentence extract');
       }
 
       const originalLength = chunk.text.length;

@@ -4,6 +4,7 @@ const {
   PHASES_SCHEMA,
   PHASE_DEFINITIONS,
   attemptPhases,
+  resourceWaitKey,
   summarizePhases,
 } = require('../../src/services/pipelineAttemptPhases');
 const { buildPipelineAutomationPerformance } = require('../../src/services/pipelineAutomationPerformanceService');
@@ -24,9 +25,11 @@ describe('pipeline attempt phases', () => {
       finalState: 'review', reviewOutcome: 'accepted', evidence: receipt(840_000, 120_000),
     };
     task.automationAttempts.push(attempt);
-    expect(attemptPhases(task, attempt)).toEqual({
+    task.pipelineId = '0700';
+    const resourceWaits = new Map([[resourceWaitKey('0700', 1), { calls: 4, measuredCalls: 4, waitMs: 2_500 }]]);
+    expect(attemptPhases(task, attempt, { resourceWaits })).toEqual({
       before_claim: { status: 'observed', durationMs: 30 * 60_000 },
-      resource_wait: { status: 'not_instrumented', durationMs: null, reason: 'not_instrumented' },
+      resource_wait: { status: 'observed', durationMs: 2_500 },
       startup: { status: 'not_instrumented', durationMs: null, reason: 'not_instrumented' },
       worker: { status: 'observed', durationMs: 720_000 },
       verification: { status: 'observed', durationMs: 120_000 },
@@ -57,6 +60,21 @@ describe('pipeline attempt phases', () => {
     expect(two.verification).toMatchObject({ status: 'missing', durationMs: null });
     // A legacy "done" without a recorded decision time stays unknown.
     expect(two.decision).toMatchObject({ status: 'missing', reason: 'decision_time_not_recorded' });
+  });
+
+  test('reports a resource wait only when every model call of the attempt measured it', () => {
+    const task = { pipelineId: '0711', createdAt: at(0), automationAttempts: [] };
+    const done = (attempt) => ({ attempt, acquiredAt: at(1), completedAt: at(20), finalState: 'blocked' });
+    const resourceWaits = new Map([
+      [resourceWaitKey('0711', 1), { calls: 3, measuredCalls: 3, waitMs: 0 }],
+      [resourceWaitKey('0711', 2), { calls: 3, measuredCalls: 2, waitMs: 900 }],
+    ]);
+    const phase = (attempt, options) => attemptPhases(task, attempt, options).resource_wait;
+    expect(phase(done(1), { resourceWaits })).toEqual({ status: 'observed', durationMs: 0 });
+    expect(phase(done(2), { resourceWaits })).toMatchObject({ status: 'missing', durationMs: null, reason: 'wait_not_recorded' });
+    expect(phase(done(3), { resourceWaits })).toMatchObject({ status: 'missing', reason: 'no_attributed_model_calls' });
+    expect(phase(done(1))).toMatchObject({ status: 'missing', reason: 'inference_waits_not_read' });
+    expect(phase({ ...done(1), finalState: 'active' }, { resourceWaits })).toMatchObject({ status: 'pending', reason: 'attempt_active' });
   });
 
   test('uses the recorded requeue decision or release as the next queue entry', () => {
@@ -118,13 +136,13 @@ describe('pipeline attempt phases', () => {
 
   test('bounded aggregates carry coverage and only observed values', () => {
     const rows = [
-      { phases: { before_claim: { status: 'observed', durationMs: 1_000 }, resource_wait: { status: 'not_instrumented' },
+      { phases: { before_claim: { status: 'observed', durationMs: 1_000 }, resource_wait: { status: 'observed', durationMs: 40 },
         startup: { status: 'not_instrumented' }, worker: { status: 'observed', durationMs: 50 },
         verification: { status: 'observed', durationMs: 10 }, decision: { status: 'pending' } } },
-      { phases: { before_claim: { status: 'observed', durationMs: 3_000 }, resource_wait: { status: 'not_instrumented' },
+      { phases: { before_claim: { status: 'observed', durationMs: 3_000 }, resource_wait: { status: 'missing' },
         startup: { status: 'not_instrumented' }, worker: { status: 'inconsistent' },
         verification: { status: 'inconsistent' }, decision: { status: 'observed', durationMs: 7 } } },
-      { phases: { before_claim: { status: 'missing' }, resource_wait: { status: 'not_instrumented' },
+      { phases: { before_claim: { status: 'missing' }, resource_wait: { status: 'pending' },
         startup: { status: 'not_instrumented' }, worker: { status: 'missing' },
         verification: { status: 'missing' }, decision: { status: 'not_applicable' } } },
     ];
@@ -135,9 +153,12 @@ describe('pipeline attempt phases', () => {
     const byId = Object.fromEntries(summary.phases.map((phase) => [phase.id, phase]));
     expect(byId.before_claim.durationMs).toEqual({ p50: 1_000, p95: 3_000, min: 1_000, max: 3_000 });
     expect(byId.before_claim.coverage).toMatchObject({ observed: 2, missing: 1, total: 3 });
-    expect(byId.resource_wait).toMatchObject({ instrumented: false, clock: null,
+    expect(byId.resource_wait).toMatchObject({ instrumented: true, clock: 'core',
+      durationMs: { p50: 40, p95: 40, min: 40, max: 40 } });
+    expect(byId.resource_wait.coverage).toMatchObject({ observed: 1, missing: 1, pending: 1, total: 3 });
+    expect(byId.startup).toMatchObject({ instrumented: false, clock: null,
       durationMs: { p50: null, p95: null, min: null, max: null } });
-    expect(byId.resource_wait.coverage).toMatchObject({ observed: 0, not_instrumented: 3, total: 3 });
+    expect(byId.startup.coverage).toMatchObject({ observed: 0, not_instrumented: 3, total: 3 });
     expect(byId.worker.coverage).toMatchObject({ observed: 1, inconsistent: 1, missing: 1 });
     expect(byId.decision.coverage).toMatchObject({ observed: 1, pending: 1, not_applicable: 1 });
     for (const phase of summary.phases) {
@@ -157,8 +178,10 @@ describe('pipeline attempt phases', () => {
         attempt: 1, acquiredAt: '2026-09-20T10:00:00.000Z', completedAt: '2026-09-20T10:20:00.000Z',
         finalState: 'review', reviewOutcome: 'pending', evidence: receipt(1_100_000, 100_000),
       }],
-    }], { now: '2026-09-27T00:00:00.000Z', windowDays: 30 });
+    }], { now: '2026-09-27T00:00:00.000Z', windowDays: 30,
+      resourceWaits: new Map([[resourceWaitKey('0710', 1), { calls: 2, measuredCalls: 2, waitMs: 1_234 }]]) });
     expect(performance.attempts[0].phases.worker).toEqual({ status: 'observed', durationMs: 1_000_000 });
+    expect(performance.attempts[0].phases.resource_wait).toEqual({ status: 'observed', durationMs: 1_234 });
     expect(performance.attempts[0].phases.decision).toMatchObject({ status: 'pending', durationMs: null });
     const decision = performance.phaseDurations.phases.find((phase) => phase.id === 'decision');
     expect(decision.coverage).toMatchObject({ observed: 0, pending: 1, total: 1 });

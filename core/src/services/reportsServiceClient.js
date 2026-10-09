@@ -102,7 +102,7 @@ class ReportsServiceClient {
 
   /** GET /api/benchmark/recommend — returns top recommendations per category */
   async fetchBenchmarkRecommendations() {
-    const categories = ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'];
+    const categories = require('../../../shared/benchmarkCategories').BENCHMARK_CATEGORY_KEYS;
     const views = await Promise.all(categories.map((category) => fetchJson(
       getBenchmarkBaseUrl(),
       `/api/benchmark/recommend?category=${encodeURIComponent(category)}`

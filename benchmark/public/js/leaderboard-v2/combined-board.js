@@ -14,8 +14,9 @@ import {
   authorityReasons, collectReasonCodes, coverageGaps, describeHeadline, graderSummary, humanizeReason,
   isAuthoritative, isComparable, isPartialCoverage, reasonLabel, reasonLegendHtml, verdictReasons
 } from './verdict.js';
-import { historyHtml, metricsHtml, provenanceHtml, scorePartsText, successText, SUCCESS_DEFINITION } from './cohort-history.js';
+import { historyHtml, metricsHtml, promptCoverageText, provenanceHtml, scorePartsText, successText, SUCCESS_DEFINITION } from './cohort-history.js';
 import { buildCsvFromGroups, csvFilename, downloadCsv } from './leaderboard-csv.js';
+import { CATEGORY_KEYS, BENCHMARK_CATEGORY_META } from '../benchmark-categories.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -24,15 +25,8 @@ import { buildCsvFromGroups, csvFilename, downloadCsv } from './leaderboard-csv.
 const MEDAL = ['🥇', '🥈', '🥉'];
 const RANK_CLASS = ['r1', 'r2', 'r3'];
 
-const CATEGORY_META = {
-  coding:      { icon: '💻', label: 'Coding' },
-  reasoning:   { icon: '🧠', label: 'Reasoning' },
-  math:        { icon: '🔢', label: 'Math' },
-  knowledge:   { icon: '📚', label: 'Knowledge' },
-  instruction: { icon: '📋', label: 'Instruction' },
-  creative:    { icon: '🎨', label: 'Creative' },
-  translation: { icon: '🌐', label: 'Translation' }
-};
+const CATEGORY_META = Object.fromEntries(CATEGORY_KEYS.map(key =>
+  [key, { icon: BENCHMARK_CATEGORY_META[key].emoji, label: BENCHMARK_CATEGORY_META[key].label }]));
 const CATEGORY_ORDER = Object.keys(CATEGORY_META);
 
 // ---------------------------------------------------------------------------
@@ -334,6 +328,7 @@ function verdictBlock(entry, group, comparable) {
     ${graderBlock(entry)}
     ${provenanceHtml(entry)}
     <p class="cb-score-parts">${esc(scorePartsText(entry))}</p>
+    ${entry.promptCoverage ? `<p class="cb-prompt-coverage">${esc(promptCoverageText(entry))}</p>` : ''}
     ${metricsHtml(entry)}
     ${historyHtml(group)}
   </div>`;
@@ -447,6 +442,12 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
     ? `<span class="cb-unavailable-badge" title="${esc(verdictReasons(entry).map(humanizeReason).join(' ') || 'Visible evidence only; excluded from rank')}">NOT RANKED</span>`
     : '';
   const harnessLabel = entry.harness?.name ? ` · ${entry.harness.name} ${entry.harness.version || ''}` : '';
+  // An agent ranks beside bare models; its context and tools are part of what was measured.
+  const agentTarget = entry.executionTarget?.mode === 'native_agent' ? entry.executionTarget : null;
+  const agentTools = agentTarget?.nativePolicy?.tools?.length ?? null;
+  const agentConfig = agentTarget ? [agentTarget.label, agentTarget.contextWindow ? `context ${agentTarget.contextWindow}` : null,
+    agentTools != null ? `${agentTools} tool${agentTools === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ') : '';
+  const agentBadge = agentTarget ? `<span class="cb-use-model-proof" title="${esc(`Agent with its own prompt, context and tools: ${agentConfig}`)}">AGENT</span>` : '';
   const tierLabel = entry.tier === 'paid_cloud' ? 'paid cloud' : entry.tier === 'free_cloud' ? 'free cloud' : entry.residency === 'cpu' ? 'local · CPU' : 'local';
   const pricingLabel = entry.pricing?.kind && entry.pricing.kind !== 'free'
     ? ` · manual estimate · ${entry.pricing.source || 'declared price'}`
@@ -488,7 +489,7 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
     <span class="cb-rank">${rank}</span>
     <span class="cb-summary-id">
       <span class="cb-summary-model">${esc(model)}${readinessBadge}</span>
-      <span class="cb-summary-source"><i class="fas fa-${isLocal ? 'server' : 'cloud'}" aria-hidden="true"></i> ${esc(entry.provider || 'ollama')} · ${esc(tierLabel)} · ${esc(hostName)}</span>
+      <span class="cb-summary-source"><i class="fas fa-${isLocal ? 'server' : 'cloud'}" aria-hidden="true"></i> ${agentTarget ? 'agent · ' : ''}${esc(entry.provider || 'ollama')} · ${esc(tierLabel)} · ${esc(hostName)}</span>
       <span class="cb-summary-state" data-evidence-level="${esc(evidenceLevel)}" data-comparable="${comparable}" data-partial="${comparable && isPartialCoverage(entry)}">${esc(rowState(entry, comparable))}</span>
     </span>
     <span class="cb-summary-score" style="--score-pct:${scorePct}%" title="${parts ? esc(scorePartsText(entry)) : 'No comparable score'}">
@@ -511,7 +512,7 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
       <div class="cb-detail-identity">
         <p class="cb-detail-kicker">Complete model evidence</p>
         <h3 id="cb-model-dialog-title">${esc(model)}</h3>
-        <div class="cb-detail-badges">${readinessBadge}${unavailableBadge}${nonComparableBadge}<span class="cb-use-model-proof" data-evidence-level="${esc(evidenceLevel)}">${esc(evidenceProof)}</span></div>
+        <div class="cb-detail-badges">${agentBadge}${readinessBadge}${unavailableBadge}${nonComparableBadge}<span class="cb-use-model-proof" data-evidence-level="${esc(evidenceLevel)}">${esc(evidenceProof)}</span></div>
       </div>
       <div class="cb-detail-score" style="--score-pct:${scorePct}%">
         ${renderTrend(entry.trend)}
@@ -522,7 +523,7 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
 
     <section class="cb-detail-provenance" aria-label="Execution provenance">
       <div><span>Host</span><strong>${esc(hostName)}</strong><small>${esc(entry.host || 'Host identity unavailable')}</small></div>
-      <div><span>Source</span><strong>${esc(entry.provider || 'ollama')} · ${esc(tierLabel)}</strong><small>${esc(`${harnessLabel ? harnessLabel.replace(/^ · /, '') : 'direct model'}${pricingLabel}`)}</small></div>
+      <div><span>Source</span><strong>${esc(entry.provider || 'ollama')} · ${esc(tierLabel)}</strong><small>${esc(`${agentTarget ? `agent · ${agentConfig}` : harnessLabel ? harnessLabel.replace(/^ · /, '') : 'direct model'}${pricingLabel}`)}</small></div>
       <div><span>Judge</span><strong>${esc(judgeModel || '—')}</strong><small>${judgeModel ? 'Observed judge target' : 'Judge identity unavailable'}</small></div>
       <div><span>Evidence</span><strong>${esc(evidenceProof)}</strong><small>${esc(entry.qualityCohortFingerprint || 'Cohort fingerprint unavailable')}</small></div>
     </section>
@@ -566,8 +567,8 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
     <footer class="cb-detail-actions">
       <p><strong>Manual choice only.</strong> Opening a model never changes routing automatically.</p>
       <div>
-        <a href="/courthouse?model=${encodeURIComponent(model)}" class="cb-detail-action"><i class="fas fa-gavel" aria-hidden="true"></i> Review in Courthouse</a>
-        <a href="/efficiency-map" class="cb-detail-action"><i class="fas fa-chart-line" aria-hidden="true"></i> Efficiency Map</a>
+        <a href="/benchmark/courthouse?model=${encodeURIComponent(model)}" class="cb-detail-action"><i class="fas fa-gavel" aria-hidden="true"></i> Review in Courthouse</a>
+        <a href="/benchmark/efficiency-map" class="cb-detail-action"><i class="fas fa-chart-line" aria-hidden="true"></i> Efficiency Map</a>
         ${useModelUrl ? `<a href="${useModelUrl}" class="cb-detail-action cb-use-model" title="Open this exact model and host in Manual Chat; routing will not change automatically"><i class="fas fa-comment-dots" aria-hidden="true"></i> Use in Chat</a>` : ''}
       </div>
     </footer>

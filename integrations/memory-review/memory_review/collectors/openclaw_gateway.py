@@ -16,6 +16,26 @@ from . import build_observation, classify_memory_intent, reject
 RPC_TIMEOUT = 35
 MAX_RPC_BYTES = 8 * 1024 * 1024
 
+# Core wraps a Household turn: reference blocks, then this label, then what was
+# said (core/surfaces/household/conversation-agent.js). An application event
+# carries no human utterance.
+HOUSEHOLD_REQUEST_LABEL = "Current user request:"
+HOUSEHOLD_EVENT_MARKER = "[Household application event; no human utterance]"
+# OpenClaw's own classification of a session. These are driven by a schedule,
+# another agent or a program (qualification fixtures, round tables, sessions a
+# tool opens under its own key), never by a person talking to the agent.
+PROGRAM_CLASSIFICATIONS = {"cron", "subagent", "custom", "explicit"}
+RUNTIME_EVENT_MARKERS = ("[OpenClaw exec completion]", "[OpenClaw cron wake]")
+
+
+def _spoken_text(text: str) -> str | None:
+    """The human part of a user turn, or None when the turn has none."""
+    _, label, request = text.rpartition(HOUSEHOLD_REQUEST_LABEL)
+    spoken = request.strip() if label else text.strip()
+    if spoken.startswith((HOUSEHOLD_EVENT_MARKER,) + RUNTIME_EVENT_MARKERS):
+        return None
+    return spoken
+
 
 def gateway_call(home: Path, method: str, params: dict) -> dict:
     """Keep credentials in OpenClaw's resolver and private output off logs."""
@@ -52,7 +72,7 @@ def _timestamp(value) -> float:
 
 
 def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
-                    allowed_owners, rpc=gateway_call):
+                    allowed_owners, rpc=gateway_call, member_agent=False):
     # Import lazily: the legacy collector selects this reader only for a native
     # store, so existing offline JSONL imports keep their established behavior.
     from .openclaw import (
@@ -92,19 +112,15 @@ def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
         key = str(row.get("key") or "")
         if not key.startswith(f"agent:{agent}:") or _timestamp(row.get("updatedAt")) < horizon:
             continue
-        # A native owner flag inside group, agent or scheduled content never
-        # turns that entire conversation into the owner's private memory.
-        if any(marker in key for marker in (":cron:", ":subagent:", ":heartbeat:")):
+        # Every conversation of the agent is read, whatever its channel; only
+        # scheduled, agent-to-agent and program-driven sessions are left out.
+        # Who spoke is decided per message below, never from the session as a
+        # whole.
+        if (any(marker in key for marker in (":cron:", ":subagent:", ":heartbeat:"))
+                or str(row.get("classification") or "").lower() in PROGRAM_CLASSIFICATIONS
+                or _session_registry_state(row, allowed_owners) == "automation"):
             reject(result, "cron_or_automation")
             continue
-        state = _session_registry_state(row, allowed_owners)
-        if state != "owner":
-            reject(result, "non_owner_user" if state == "non_owner" else "unknown_kind")
-            continue
-        if picked >= max_files:
-            result.errors.append("OpenClaw owner sessions exceeded collection limit")
-            break
-        picked += 1
         result.sourceFilesSeen += 1
         session_id = str(row.get("sessionId") or "")
         if not session_id:
@@ -116,6 +132,12 @@ def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
         if same_session and prior.get("updatedAtMs") == row.get("updatedAt"):
             result.stagedWatermarks[source_key] = prior
             continue
+        # Only a session that is actually read counts against the bound; the
+        # rest stay unmarked and are read on a later run.
+        if picked >= max_files:
+            result.errors.append("OpenClaw sessions exceeded collection limit; the rest wait for the next run")
+            break
+        picked += 1
         try:
             history = rpc(home, "sessions.get", {
                 "key": key, "agentId": agent, "limit": schema.MAX_EVENTS_PER_FILE,
@@ -123,16 +145,35 @@ def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
             messages = history.get("messages")
             if not isinstance(messages, list):
                 raise RuntimeError("OpenClaw session history has invalid shape")
-            # Do not advance past an unseen tail or quietly lose old messages.
-            if len(messages) >= schema.MAX_EVENTS_PER_FILE:
-                raise RuntimeError("OpenClaw history reached limit; collection incomplete")
         except RuntimeError as exc:
             result.errors.append(str(exc))
             continue
         old_ids = set(prior.get("eventIds", [])) if same_session else set()
+        ids_now = {str((m.get("__openclaw") or {}).get("id") or "")
+                   for m in messages if isinstance(m, dict) and isinstance(m.get("__openclaw"), dict)}
+        # OpenClaw rewrites a transcript it compacts: the session keeps its id
+        # and every event gets a new one. Nothing of the old mark can be found
+        # again, so the rewritten history is read whole; Core drops what it
+        # already holds.
+        rewritten = bool(old_ids and ids_now and not old_ids & ids_now)
+        # A long session comes back as its latest MAX_EVENTS_PER_FILE messages.
+        # That window is complete when it still holds an event already read, or
+        # when it starts before the lookback horizon; otherwise turns between
+        # the last read and the window were never seen, and that is said.
+        if len(messages) >= schema.MAX_EVENTS_PER_FILE and (rewritten or not old_ids):
+            first = messages[0] if isinstance(messages[0], dict) else {}
+            oldest = _timestamp(first.get("timestamp")
+                                or (first.get("__openclaw") or {}).get("recordTimestampMs"))
+            if not oldest or oldest >= horizon:
+                result.errors.append(
+                    f"OpenClaw history longer than {schema.MAX_EVENTS_PER_FILE} messages;"
+                    " turns before the returned window were not read")
+        if rewritten:
+            old_ids = set()
         new_ids = []
         start_observations = len(result.observations)
         invalid = False
+        full = False
         for message in messages:
             if not isinstance(message, dict):
                 result.errors.append("OpenClaw history contains invalid message")
@@ -169,8 +210,12 @@ def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
             if owner_id and owner_id not in allowed_owners:
                 reject(result, "non_owner_user")
                 continue
-            text = _event_text(message)
-            if _is_cron_prompt(text):
+            # With every session open, a turn nobody vouches for is not the owner's.
+            if native_owner is None and not owner_id:
+                reject(result, "unknown_kind")
+                continue
+            text = _spoken_text(_event_text(message))
+            if text is None or _is_cron_prompt(text):
                 reject(result, "cron_or_automation")
                 continue
             observed = _timestamp(message.get("timestamp") or meta.get("recordTimestampMs"))
@@ -180,23 +225,32 @@ def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
             if observed < horizon:
                 continue
             if len(result.observations) >= schema.MAX_OBSERVATIONS_PER_COLLECTOR:
-                result.errors.append("OpenClaw observations exceeded collection limit")
-                invalid = True
+                full = True
                 break
             build_observation(
-                result, text=text, trust=classify_memory_intent(text),
+                # On a member agent the runtime flag only proves the turn came
+                # through the family page, not who of the household spoke.
+                result, text=text,
+                trust="household_member_statement" if member_agent else classify_memory_intent(text),
                 session_id=session_id, event_id=event_id,
                 observed_at=datetime.fromtimestamp(observed, timezone.utc).isoformat(),
                 source_ref=source_key,
             )
+        if full:
+            # A session is submitted whole or not at all: this one and the
+            # rest stay unmarked and are read on a later run.
+            del result.observations[start_observations:]
+            result.errors.append(
+                f"OpenClaw observations reached the bound of {schema.MAX_OBSERVATIONS_PER_COLLECTOR}"
+                " per run; the rest wait for the next run")
+            break
         if invalid:
             del result.observations[start_observations:]
             continue
         # Empty history with an existing nonempty watermark is not evidence
         # that all old events have been read; surface a reset for investigation.
-        if same_session and old_ids and not old_ids.intersection(new_ids):
-            result.errors.append("OpenClaw history identity changed; watermark retained")
-            del result.observations[start_observations:]
+        if same_session and prior.get("eventIds") and not new_ids:
+            result.errors.append("OpenClaw history came back empty; watermark retained")
             continue
         result.stagedWatermarks[source_key] = {
             "sessionId": session_id, "updatedAtMs": row.get("updatedAt"),

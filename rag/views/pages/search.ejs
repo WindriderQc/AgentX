@@ -16,7 +16,7 @@
       <span><strong id="knowledge-search-readiness-label">Checking your knowledge…</strong><small id="knowledge-search-readiness-detail">Confirming that a source is ready to search</small></span>
       <div class="knowledge-readiness-actions">
         <button id="btn-recheck-search" class="btn btn-secondary btn-sm" type="button" hidden>Check again</button>
-        <a id="search-prerequisite-action" class="btn btn-secondary btn-sm" href="/upload" hidden>Add knowledge</a>
+        <a id="search-prerequisite-action" class="btn btn-secondary btn-sm" href="/rag/upload" hidden>Add knowledge</a>
       </div>
     </div>
 
@@ -42,8 +42,8 @@
           <div class="control-group"><label for="search-tags">Tags</label><input id="search-tags" class="input-field input-sm" type="text" placeholder="tag1, tag2"></div>
         </div>
         <div class="adv-options">
-          <label class="adv-toggle"><input id="opt-expand" type="checkbox"><span><strong>Query expansion</strong><small>Rewrite the query into variants to widen recall.</small></span></label>
-          <label class="adv-toggle"><input id="opt-hybrid" type="checkbox"><span><strong>Hybrid search</strong><small>Blend keywords with vector similarity.</small></span></label>
+          <label class="adv-toggle"><input id="opt-expand" type="checkbox"><span><strong>Query expansion</strong><small>Rewrite the query into variants to widen recall. Not combined with hybrid search.</small></span></label>
+          <label class="adv-toggle"><input id="opt-hybrid" type="checkbox"><span><strong>Hybrid search</strong><small>Blend keywords with vector similarity. Not combined with query expansion.</small></span></label>
           <label class="adv-toggle"><input id="opt-rerank" type="checkbox"><span><strong>LLM re-ranking</strong><small>Judge and reorder extra candidates; slower.</small></span></label>
           <label class="adv-toggle"><input id="opt-compress" type="checkbox"><span><strong>Contextual compression</strong><small>Keep only query-relevant sentences; slower.</small></span></label>
         </div>

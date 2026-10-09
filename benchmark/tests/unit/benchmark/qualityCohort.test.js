@@ -9,7 +9,10 @@ jest.mock('../../../config/logger', () => ({ info: jest.fn(), warn: jest.fn(), e
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
-const { applyJudgeCohort, cohortFingerprintForBatch, selectComparisonCohort } = require('../../../src/services/benchmark/qualityCohort');
+const {
+    applyJudgeCohort, cohortFingerprintForBatch, recoverPromptFingerprints, selectComparisonCohort
+} = require('../../../src/services/benchmark/qualityCohort');
+const { buildPromptFingerprint } = require('../../../../shared/benchmarkTargetContract');
 
 const QWEN = { host: 'http://judge-a:11434', model: 'qwen3.8:27b-mtp-q8_0' };
 const GEMMA = { host: 'http://judge-b:11434', model: 'gemma4:12b-it-qat' };
@@ -45,14 +48,21 @@ describe('quality cohort', () => {
         expect(await cohortFingerprintForBatch(levelOne, QWEN)).toBe(await cohortFingerprintForBatch(levelFive, QWEN));
     });
 
-    test('another judge, other generation settings or an edited catalog start another cohort', async () => {
+    test('another judge or other generation settings start another cohort', async () => {
         const batch = { execution_config: EXEC, campaign_kind: 'model' };
         const base = await cohortFingerprintForBatch(batch, QWEN);
 
         expect(await cohortFingerprintForBatch(batch, GEMMA)).not.toBe(base);
         expect(await cohortFingerprintForBatch({ ...batch, execution_config: { ...EXEC, think: true } }, QWEN)).not.toBe(base);
+    });
+
+    test('adding or editing a catalog prompt keeps the cohort', async () => {
+        const batch = { execution_config: EXEC, campaign_kind: 'model' };
+        const base = await cohortFingerprintForBatch(batch, QWEN);
+
+        await BenchmarkPrompt.create({ name: 'prompt-new', prompt: 'new question', level: 2, category: 'reasoning' });
         await BenchmarkPrompt.updateOne({ name: 'prompt-3' }, { $set: { expected_answer: 'changed' } });
-        expect(await cohortFingerprintForBatch(batch, QWEN)).not.toBe(base);
+        expect(await cohortFingerprintForBatch(batch, QWEN)).toBe(base);
     });
 
     test('the board compares the cohort covering the most models, the most recent on a tie', async () => {
@@ -74,8 +84,8 @@ describe('quality cohort', () => {
             execution_config: EXEC, campaign_kind: 'model', judge_config: GEMMA
         });
         await BenchmarkResult.collection.insertMany([
-            { batch_id: batchId, scoring_method: 'decomposed', quality_cohort_fingerprint: 'first-judge' },
-            { batch_id: batchId, scoring_method: 'deterministic', quality_cohort_fingerprint: 'first-judge' }
+            { batch_id: batchId, scoring_method: 'decomposed', quality_cohort_fingerprint: 'first-judge', prompt_fingerprint: 'p1' },
+            { batch_id: batchId, scoring_method: 'deterministic', quality_cohort_fingerprint: 'first-judge', prompt_fingerprint: 'p2' }
         ]);
 
         const cohort = await applyJudgeCohort(batchId, QWEN);
@@ -84,4 +94,63 @@ describe('quality cohort', () => {
         const stored = await BenchmarkResult.collection.find({ batch_id: batchId }).toArray();
         expect(stored.map(r => r.quality_cohort_fingerprint)).toEqual([cohort, cohort]);
     });
+
+    test('a partial re-judge keeps older verdicts and pending rows in their original cohort', async () => {
+        const { insertedId: batchId } = await BenchmarkBatch.collection.insertOne({ execution_config: EXEC, campaign_kind: 'model' });
+        const ids = [1, 2, 3, 4].map(() => new mongoose.Types.ObjectId());
+        await BenchmarkResult.collection.insertMany(ids.map((_id, index) => ({ _id, batch_id: batchId,
+            prompt_fingerprint: `p${index}`, quality_cohort_fingerprint: 'old-runtime',
+            scoring_method: ['decomposed', 'deterministic', 'pending', 'reference'][index] })));
+        const cohort = await applyJudgeCohort(batchId, QWEN, { resultIds: [ids[0]] });
+        const rows = await BenchmarkResult.collection.find({ batch_id: batchId }).toArray();
+        expect(rows.map(row => row.quality_cohort_fingerprint)).toEqual([cohort, cohort, 'old-runtime', 'old-runtime']);
+    });
+
+    test('a re-judge gives legacy results the fingerprint of the catalog prompt they provably ran', async () => {
+        const { insertedId: batchId } = await BenchmarkBatch.collection.insertOne({ execution_config: EXEC, campaign_kind: 'model' });
+        const legacy = (level, extra = {}) => ({
+            batch_id: batchId, prompt: `question ${level}`, prompt_name: `prompt-${level}`, prompt_level: level,
+            prompt_category: 'math', expected_answer: String(level), quality_cohort_fingerprint: 'catalog-wide', ...extra
+        });
+        await BenchmarkResult.collection.insertMany([
+            legacy(1),
+            legacy(2, { prompt: 'question 2\n\nAnswer in at most 200 tokens.' }),
+            legacy(3, { expected_answer: 'an older answer' }),
+            legacy(4, { prompt: 'question 4 (older wording)' })
+        ]);
+        const catalog = await BenchmarkPrompt.find({}).lean();
+        const expected = name => buildPromptFingerprint(catalog.find(prompt => prompt.name === name));
+
+        expect(await recoverPromptFingerprints(batchId, { dryRun: true })).toEqual({ recovered: 2, unrecovered: 2 });
+        expect(await BenchmarkResult.countDocuments({ prompt_fingerprint: { $type: 'string' } })).toBe(0);
+
+        await applyJudgeCohort(batchId, QWEN);
+        const stored = await BenchmarkResult.collection.find({ batch_id: batchId }).sort({ prompt_level: 1 }).toArray();
+        expect(stored.map(r => r.prompt_fingerprint || null)).toEqual([expected('prompt-1'), expected('prompt-2'), null, null]);
+        // A result whose prompt cannot be proven leaves every cohort.
+        const cohort = await cohortFingerprintForBatch({ execution_config: EXEC, campaign_kind: 'model' }, QWEN);
+        expect(stored.map(r => r.quality_cohort_fingerprint)).toEqual([cohort, cohort, null, null]);
+        expect(stored[0].prompt_id).toBe(String(catalog.find(prompt => prompt.name === 'prompt-1')._id));
+
+        expect(await recoverPromptFingerprints(batchId)).toEqual({ recovered: 0, unrecovered: 2 });
+    });
+});
+
+
+test('a campaign pins all candidate digests and effective contexts without splitting repeats', async () => {
+    const candidates = ['a', 'b'].map(model => ({ model, host: 'http://exec:11434', artifactDigest: `${model}-digest`,
+        contract: { artifact: { runtimeFingerprint: 'runtime-a' } }, execution: { num_ctx: 8192, num_predict: 4096 },
+        mode: { think: false, sendThink: true } }));
+    const batch = { execution_config: { ...EXEC, seed_policy: 'repeat_index_v1' },
+        inference_contract_campaign: { candidates }, campaign_kind: 'model' };
+    const base = await cohortFingerprintForBatch(batch, QWEN);
+    const withCandidates = entries => ({ ...batch, inference_contract_campaign: { candidates: entries } });
+    expect(await cohortFingerprintForBatch(withCandidates([...candidates].reverse()), QWEN)).toBe(base);
+    for (const change of [{ artifactDigest: 'new-digest' }, { execution: { num_ctx: 16384, num_predict: 4096 } },
+        { contract: { artifact: { runtimeFingerprint: 'new-runtime' } } }]) {
+        expect(await cohortFingerprintForBatch(withCandidates([{ ...candidates[0], ...change }, candidates[1]]), QWEN)).not.toBe(base);
+    }
+    expect(await cohortFingerprintForBatch({ ...batch, execution_config: { ...batch.execution_config, repeats: 5 } }, QWEN)).toBe(base);
+    expect(await cohortFingerprintForBatch({ ...batch, execution_config: { ...batch.execution_config, seed_policy: 'fixed' } }, QWEN)).not.toBe(base);
+    expect(await cohortFingerprintForBatch({ ...batch, execution_config: { ...batch.execution_config, num_ctx: 16384 } }, QWEN)).not.toBe(base);
 });

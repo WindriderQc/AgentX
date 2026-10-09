@@ -9,3 +9,9 @@
 .nc-gpu-health small { color: #cbd5e1; }
 .nc-host-expand { width: 100%; justify-content: center; margin-top: 10px; min-height: 44px; }
 .nc-container :focus-visible { outline: 3px solid #7cf0ff; outline-offset: 3px; }
+.nc-gpu-occupancy { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--panel-border); font-size: 11px; overflow-x: auto; }
+.nc-gpu-occ-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nc-gpu-occ-table { width: 100%; border-collapse: collapse; margin: 4px 0 10px; }
+.nc-gpu-occ-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 3px 6px 3px 0; }
+.nc-gpu-occ-table td { padding: 4px 6px 4px 0; vertical-align: top; border-top: 1px solid rgba(255,255,255,0.04); }
+.nc-gpu-occ-resource { color: var(--muted); overflow-wrap: anywhere; }

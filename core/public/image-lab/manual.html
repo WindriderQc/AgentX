@@ -1,0 +1,220 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentX · Manuel illustré</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f8ff;color:#071642;font:16px/1.65 system-ui,sans-serif}a{color:#09687c}a:hover{text-decoration:underline}header{padding:20px 30px;border-bottom:1px solid #d8e2f0;background:white;display:flex;align-items:center;gap:24px}header strong{font-size:1.2rem}header span{color:#52647b;font-size:.875rem}.cover{display:grid;grid-template-columns:1fr 340px;gap:35px;align-items:center;background:white;padding:30px;border-bottom:1px solid #d8e2f0}.cover h1{font-size:2rem;line-height:1.2}.cover img{width:100%;border-radius:15px}.layout{max-width:1360px;margin:0 auto;display:grid;grid-template-columns:270px 1fr;gap:28px;padding:30px}.toc{position:sticky;top:20px;align-self:start;display:grid;gap:8px;font-size:.875rem}.toc a{padding:7px 9px;border-radius:6px;text-decoration:none}.toc a:hover{background:#e3ebf9}article{background:white;padding:30px;border-radius:14px;min-width:0}article>h1{display:none}h2{border-bottom:2px solid #c5eaf0;padding-bottom:10px;margin-top:45px;font-size:1.45rem;scroll-margin-top:25px}h3{font-size:1.1rem;margin-top:30px}p{margin:16px 0}.illustration[alt^="Carte logique"]{width:min(100%,820px)}.illustration{display:block;width:min(100%,520px);margin:20px auto;border-radius:8px}code{font-size:.875em;background:#edf2fb;padding:2px 4px;border-radius:3px;overflow-wrap:anywhere}pre{font-size:.8125rem;background:#edf2fb;padding:16px;overflow:auto}.technical{font-size:.875rem;margin:18px 0}.technical summary{cursor:pointer;color:#52647b}.table-wrap{overflow:auto;margin:20px 0}table{width:100%;border-collapse:collapse;font-size:.875rem}th,td{padding:10px 12px;border-bottom:1px solid #d8e2f0;text-align:left;vertical-align:top}th{background:#edf3fb;font-weight:650}.summary{display:flex;gap:15px;flex-wrap:wrap;color:#52647b;font-size:.875rem}footer{padding:30px;color:#52647b;font-size:.875rem;text-align:center}@media(max-width:900px){.layout{grid-template-columns:1fr;padding:18px}.toc{position:static;grid-template-columns:repeat(2,1fr)}.cover{grid-template-columns:1fr 220px;padding:20px;gap:20px}article{padding:20px}}@media(max-width:550px){.cover{grid-template-columns:1fr}.cover img{max-width:250px;justify-self:center}.toc{grid-template-columns:1fr}header{padding:16px;gap:15px;flex-wrap:wrap}.cover h1{font-size:1.65rem}}@media print{body{background:white}header a,.toc,header span{display:none}.layout{display:block;padding:0}article{padding:10mm;border-radius:0}.cover{page-break-after:always;min-height:220mm;grid-template-columns:1fr}.cover{align-content:center;gap:12mm}.cover>a{width:150mm;max-width:100%;justify-self:center}.cover img{max-width:150mm;justify-self:center}h2{break-after:avoid}table,.illustration{break-inside:avoid}.illustration[alt^="Carte logique"]{width:160mm;max-width:100%}a{color:#071642}footer{font-size:10pt}.technical{display:none}}</style></head><body><header><a href="/images/labo/">Atelier</a><strong>Manuel AgentX</strong><a href="/images/labo/gallery">Galerie comparative</a><span>Instance privée · 5 octobre 2026</span></header><section class="cover"><div><h1>Comprendre et créer avec notre écosystème</h1><p>Core, agents, données, voix, images et matériel : qui fait quoi, avec quelles preuves.</p><div class="summary"><span>50 sorties vérifiées</span><span>Textes et architecture éditables</span></div></div><a href="/images/labo/assets/couverture-manuel.svg"><img src="/images/labo/assets/couverture-manuel.png" alt="Couverture composée avec les tours générées et des titres exacts éditables"></a></section><div class="layout"><nav class="toc" aria-label="Chapitres"><a href="#chapter-0">1. Les cinq choses à distinguer</a><a href="#chapter-1">2. Carte logique</a><a href="#chapter-2">3. Services et données</a><a href="#chapter-3">4. Parc matériel</a><a href="#chapter-4">5. Rôles déclarés dans l’export OpenClaw</a><a href="#chapter-5">6. Voix : le parcours complet</a><a href="#chapter-6">7. GraphysX et les images</a><a href="#chapter-7">8. Les modes de création</a><a href="#chapter-8">9. Produire le manuel pendant les comparaisons</a><a href="#chapter-9">10. Premiers éléments disponibles</a><a href="#chapter-10">11. Plan du manuel complet</a><a href="#chapter-11">12. Maintenir l’exactitude</a><a href="#chapter-12">13. Les rendus réellement produits</a><a href="#chapter-13">14. Ce qui est confirmé et ce qui reste à qualifier</a><a href="#chapter-14">15. Ce que le SSD change dans notre atelier</a></nav><article><h1 id="heading-1">AgentX : manuel illustré de notre écosystème</h1>
+<p>Cette V1 conserve la base du manuel et ajoute les rendus réellement vérifiés : 50/50 sorties de la campagne Frank au moment de cette composition. La référence jointe donne l’esthétique : fond clair, bleu nuit, cyan pour infrastructure/données, violet pour inférence, orange pour voix/interaction. Les sources locales donnent les faits. Les placements matériels sont des configurations documentées. Le relevé du 5 octobre confirme le GPU et les profils d’images sur Frank ainsi que les résidents Ollama des trois postes ; l’inventaire système Alien/Brutal reste incomplet. <a href="/images/labo/docs/INVENTAIRE-PREFLIGHT-2026-10-05.json">Relevé initial</a>.</p>
+<p><a href="/images/labo/assets/architecture.svg">Vue d’ensemble éditable</a> · <a href="/images/labo/assets/architecture.png">Aperçu PNG</a> · <a href="/images/labo/assets/icons.svg">Pictogrammes</a> · <a href="/images/labo/assets/briefs.json">Briefs de génération locale</a> · <a href="/images/labo/assets/facts.json">Faits et empreintes</a>.</p>
+<h2 id="chapter-0">1. Les cinq choses à distinguer</h2>
+<div class="table-wrap"><table>
+<tr><th>Terme</th><th>Ce que cela désigne</th><th>Exemple</th></tr>
+<tr><td>Surface</td><td>Là où une personne interagit</td><td>Nestor, Famille, Reader, PsyX, Atelier, GraphysX</td></tr>
+<tr><td>Persona / rôle</td><td>La fonction et la manière de répondre</td><td>Nestor, Secrétaire, Comptable, LeadX</td></tr>
+<tr><td>Capacité</td><td>Une fonction commune réutilisable</td><td>Conversation, mémoire, tâches, fichiers, routage</td></tr>
+<tr><td>Runtime / moteur</td><td>Ce qui exécute la boucle ou le calcul</td><td>OpenClaw, Ollama, VoiX, ComfyUI supervisé sur Frank</td></tr>
+<tr><td>Modèle / poste</td><td>Poids choisis et ressources physiques</td><td>Alias Qwen ou Gemma ; Frank, Alien, Brutal</td></tr>
+</table></div>
+<p>Une persona n’a pas besoin de son propre serveur ou de sa propre base. Le changement de modèle n’est pas un changement d’identité. Une même machine peut héberger plusieurs services, sans pouvoir faire tenir simultanément tous les modèles en VRAM.</p>
+<h2 id="chapter-1">2. Carte logique</h2>
+<p><a href="/images/labo/assets/architecture.png"><img class="illustration" src="/images/labo/assets/architecture.png" alt="Carte logique éditable AgentX"></a></p>
+<details class="technical"><summary>Source du schéma éditable</summary><pre>flowchart TB
+  PERSONNEL[Personnel / Nestor]
+  FAMILLE[Famille / Reader / kids]
+  ATELIER[Atelier / code / modèles]
+  GRAPHYS[GraphysX / scènes / assets]
+  CORE[Core AgentX : données et capacités communes]
+  OPENCLAW[OpenClaw : agents natifs / outils]
+  PERSONNEL --&gt; CORE
+  FAMILLE --&gt; CORE
+  ATELIER --&gt; CORE
+  GRAPHYS &lt;--&gt; CORE
+  CORE &lt;--&gt; OPENCLAW
+  CORE --&gt; ROUTAGE[Routage / coordination / preuves]
+  ROUTAGE --&gt; OLLAMA[Ollama / modèles locaux]
+  ROUTAGE -. selon configuration .-&gt; CLOUD[Providers externes]
+  CORE --&gt; MONGO[(MongoDB : états canoniques)]
+  CORE --&gt; RAG[RAG : ingestion / recherche]
+  RAG --&gt; QDRANT[(Qdrant : index vectoriel)]
+  RAG --&gt; MONGO
+  RAG --&gt; EMB[Proxy embedding Core]
+  EMB --&gt; OLLAMA
+  CORE &lt;--&gt; BENCH[Benchmark / Profiler]
+  BENCH --&gt; MONGO
+  BENCH --&gt; ROUTAGE
+  CORE --&gt; DATA[Data optionnel : inventaire / télémétrie]
+  DATA --&gt; MONGO
+  VOIX[VoiX : STT / TTS] &lt;--&gt; CORE
+  CORE --&gt; IMAGES[Images : ComfyUI supervise sur Frank]
+  IMAGES --&gt; ASSETS[Assets / archives / projets prives]
+  ASSETS -.-&gt; GRAPHYS</pre></details>
+<p>Core possède les conversations, notes sélectionnées, tâches, pièces jointes, événements et capacités communes. Les surfaces composent ces capacités. OpenClaw exécute des agents natifs et appelle Core ; certains parcours utilisent l’inférence Core directement, d’autres une boucle OpenClaw configurée. La donnée canonique ne change pas de propriétaire selon le chemin choisi. <span title="/home/yb/codes/AgentX/docs/ARCHITECTURE.md">Architecture locale</span>.</p>
+<h2 id="chapter-2">3. Services et données</h2>
+<div class="table-wrap"><table>
+<tr><th>Composant</th><th>Rôle documentaire</th><th>Ce qu’on doit montrer dans une fiche</th></tr>
+<tr><td>Core</td><td>UI/API, conversations, routage, outils/tâches, mémoire et fichiers</td><td>Entrée, portée, propriétaire des données, sortie et reçu</td></tr>
+<tr><td>Benchmark / Profiler</td><td>Évaluation, juges, profils et comparaison</td><td>Recette exacte, preuves, limites et qualification</td></tr>
+<tr><td>RAG</td><td>Ingestion, chunks, embeddings et recherche</td><td>Corpus, origine, index et contexte récupéré</td></tr>
+<tr><td>Data, optionnel</td><td>Inventaire, fichiers, GPU, collecteurs, exports</td><td>Source, fraîcheur et périmètre observé</td></tr>
+<tr><td>MongoDB</td><td>États persistants des services</td><td>Domaine et collection propriétaire</td></tr>
+<tr><td>Qdrant</td><td>Recherche vectorielle</td><td>Index/corpus et règles d’accès via les capacités</td></tr>
+<tr><td>Fichiers / projets privés</td><td>Originaux, références, sorties, configurations</td><td>Hash, parent, format, disponibilité et emplacement</td></tr>
+</table></div>
+<p>Les notes Core et le corpus RAG ne sont pas deux copies arbitraires de la même mémoire. Les accès familiaux/personnels suivent les portées établies. Le dépôt AgentX décrit le produit ; <code>agentx-home</code> compose cette instance privée. <span title="/home/yb/codes/AgentX/README.md">Produit</span>, <span title="/home/yb/codes/agentx-home/README.md">instance privée</span>.</p>
+<h2 id="chapter-3">4. Parc matériel</h2>
+<div class="table-wrap"><table>
+<tr><th>Poste</th><th>Capacité nominale héritée</th><th>Rôle/configuration documentés</th><th>Limite de preuve</th></tr>
+<tr><td>UGFrank</td><td>RTX 3080 Ti, 12 Go vérifiée</td><td>Core images configuré : <code>qwen-quality</code> / <code>klein-fast</code>, six fichiers de poids présents ; Gemma 12B résident lors du relevé</td><td>Lecture seule du 5 octobre ; voix/juge non réaudités</td></tr>
+<tr><td>UGAlien</td><td>Deux RTX 3090, <strong>24 Go par carte</strong></td><td>Alias Qwen 27B et recettes de calcul lourdes dans les documents</td><td>Répartition, charge et deux workers à mesurer</td></tr>
+<tr><td>UGBrutal</td><td>RTX 5070 Ti, 16 Go</td><td>Persona Brutal déclarée avec <code>gemma4:12b-it-qat</code> ; interaction/calcul</td><td>Occupation, voix et moteur image à vérifier</td></tr>
+</table></div>
+<p>Les deux cartes d’Alien ne forment pas automatiquement un GPU de 48 Go. Deux rendus indépendants peuvent améliorer le débit ; un générateur réparti a besoin d’un backend qui le supporte et d’une mesure par carte. Pour l’atelier image, les besoins de génération guident les ressources et la voix s’adapte ensuite. <a href="/images/labo/docs/PLAN-MAITRE-V2.md">Protocole V2</a>.</p>
+<h2 id="chapter-4">5. Rôles déclarés dans l’export OpenClaw</h2>
+<p>Cette table reprend uniquement le fichier normalisé lu ; elle ne prouve ni disponibilité ni résidence GPU actuelle. « Repli déclaré » décrit la configuration de ce rôle, pas une règle universelle autorisant tous les parcours à changer de modèle.</p>
+<div class="table-wrap"><table>
+<tr><th>ID</th><th>Nom déclaré</th><th>Primaire déclaré</th><th>Replis déclarés</th></tr>
+<tr><td>main</td><td>Main</td><td><code>agentx-conversation/qwen3.8:27b-mtp-q8_0</code></td><td>Aucun déclaré</td></tr>
+<tr><td>leadx</td><td>LeadX</td><td><code>ollama/qwen3.8:27b-mtp-q8_0</code></td><td><code>openrouter/z-ai/glm-5.2</code></td></tr>
+<tr><td>clawdx-coder</td><td>ClawdX Coder</td><td><code>openrouter/z-ai/glm-5.2</code></td><td><code>ollama/qwen3.8:27b-mtp-q8_0</code></td></tr>
+<tr><td>deepsearch</td><td>DeepSearch</td><td><code>openrouter/z-ai/glm-5.2</code></td><td><code>ollama/qwen3.8:27b-mtp-q8_0</code></td></tr>
+<tr><td>cloudx</td><td>CloudX</td><td><code>openai/gpt-5.6-sol</code></td><td><code>openrouter/nvidia/nemotron-3-super-120b-a12b:free</code>, <code>ollama/qwen3.8:27b-mtp-q8_0</code></td></tr>
+<tr><td>overseer</td><td>Overseer</td><td><code>ollama/qwen3.8:27b-mtp-q8_0</code></td><td><code>openrouter/z-ai/glm-5.2</code></td></tr>
+<tr><td>deepcoding</td><td>DeepCoding Reflection</td><td><code>ollama/qwen3.8:27b-mtp-q8_0</code></td><td><code>openrouter/z-ai/glm-5.2</code></td></tr>
+<tr><td>anthropicx</td><td>AnthropicX</td><td><code>anthropic/claude-sonnet-4-6</code></td><td><code>ollama/qwen3.8:27b-mtp-q8_0</code></td></tr>
+<tr><td>comptable</td><td>Comptable</td><td><code>agentx-conversation/qwen3.8:27b-mtp-q8_0</code></td><td>Aucun déclaré</td></tr>
+<tr><td>clawdx-worker</td><td>ClawdX Worker</td><td><code>openrouter/z-ai/glm-5.2</code></td><td>Aucun déclaré</td></tr>
+<tr><td>family</td><td>Nestor Family</td><td><code>ollama/qwen3.8:27b-mtp-q8_0</code></td><td>Aucun déclaré</td></tr>
+<tr><td>brutal</td><td>Brutal</td><td><code>agentx-conversation/gemma4:12b-it-qat</code></td><td>Aucun déclaré</td></tr>
+<tr><td>secretary</td><td>Secrétaire</td><td><code>agentx-conversation/qwen3.8:27b-mtp-q8_0</code></td><td>Aucun déclaré</td></tr>
+</table></div>
+<p>PsyX est une surface et un domaine Core, pas un agent OpenClaw détecté dans cet export. Family est aussi une surface/utilisation : son identité native configurée n’est qu’un mode d’exécution. <span title="/home/yb/codes/agentx-home/openclaw/openclaw.json">Export normalisé</span>, <span title="/home/yb/codes/AgentX/core/surfaces/psyx/README.md">PsyX</span>.</p>
+<h2 id="chapter-5">6. Voix : le parcours complet</h2>
+<details class="technical"><summary>Source du schéma éditable</summary><pre>sequenceDiagram
+  participant U as Personne / navigateur
+  participant V as VoiX / STT-TTS
+  participant C as Core
+  participant A as Exécuteur configuré / OpenClaw
+  participant M as Modèle / hôte admis
+  U-&gt;&gt;V: Microphone / audio
+  V--&gt;&gt;C: Transcription
+  C-&gt;&gt;C: Session, portée, demande et pièces jointes
+  C-&gt;&gt;A: Exécution selon la route configurée
+  A-&gt;&gt;M: Inférence admise
+  M--&gt;&gt;A: Réponse et appels d’outils éventuels
+  A--&gt;&gt;C: Réponse / preuves d’exécution
+  C--&gt;&gt;U: Contenu affiché / événements
+  C-&gt;&gt;V: Texte à prononcer
+  V--&gt;&gt;U: Audio / lecteur
+  Note over A,M: Chemin simplifié ; Core direct ou boucle native selon session</pre></details>
+<p>Le micro, STT, conversation et TTS sont des étapes distinctes. Le modèle qui répond n’est pas le moteur qui prononce. VoiX et ses adaptateurs natifs appellent les capacités Core. L’unité consultée déclare un serveur <strong>VoxCPM2 Voice A sur UGFrank</strong> ; cela corrige l’idée d’une voix exclusivement située sur Brutal. Whisper/VoxCPM/Kokoro restent des moteurs ou options à identifier selon la recette effectivement utilisée ; aucun relevé live n’est annoncé ici. <span title="/home/yb/codes/agentx-home/ops/systemd/user/voix-tts.service">Unité déclarée</span>, <span title="/home/yb/codes/AgentX/integrations/voix/README.md">adaptateur voix</span>.</p>
+<h2 id="chapter-6">7. GraphysX et les images</h2>
+<p>GraphysX apporte scènes 3D et éléments visuels intégrés : la documentation Core décrit le visage Nestor et le stage de maths, pilotés par l’état observable et accompagnés de reçus. L’atelier existant sur Frank propose déjà Qwen 2.1 qualité et Klein rapide. Son extension prépare logos, icônes, textures, paint jobs et illustrations pour ces surfaces et pour le manuel. Les quatre modes et la file HQ de nuit restent des spécifications à qualifier, pas des fonctionnalités déclarées déployées. Une texture couleur, un decal, une UV map et un ensemble PBR ne sont pas la même sortie. Les formats, mappings et gabarits du projet exact restent à figer avec un asset représentatif. <span title="/home/yb/codes/AgentX/docs/ARCHITECTURE.md:194">Surfaces</span>.</p>
+<details class="technical"><summary>Source du schéma éditable</summary><pre>flowchart LR
+  BRIEF[Brief du manuel / GraphysX] --&gt; MODE[Fun / Atelier / HQ / Nuit]
+  REF[Référence visuelle + fichiers figés] --&gt; RECETTE[Recette locale et entrées exactes]
+  MODE --&gt; RECETTE
+  MODE -. Nuit explicite .-&gt; FILE[File persistante proposée]
+  FILE -. démarrage .-&gt; RES[Réservation GPU physique]
+  RECETTE --&gt; RES
+  RES --&gt; RENDU[Illustration / icône raster / texture]
+  RENDU --&gt; CONTROLE[Style / fidélité / alpha / raccords]
+  FAITS[Faits sourcés / noms / relations] --&gt; COMPO[Composition SVG / texte exact]
+  CONTROLE --&gt; COMPO
+  COMPO --&gt; LIVRABLE[Manuel / docs / GraphysX]
+  RENDU --&gt; RECU[Recette + hashes + temps + résultat]
+  COMPO --&gt; RECU
+  RECU --&gt; COMPARAISON[Comparer modèles et postes]</pre></details>
+<h2 id="chapter-7">8. Les modes de création</h2>
+<ul>
+<li><strong>Fun</strong> : première idée rapidement, kids et variations, format natif compatible autour de 768–1024 px.</li>
+<li><strong>Atelier</strong> : asset propre, transparence/texte/corrections, exports à la taille utile.</li>
+<li><strong>HQ</strong> : recette favorite, détail et finition, patience choisie ; HQ ne signifie pas systématiquement un plus grand raster.</li>
+<li><strong>Nuit</strong> : backlog explicite de briefs et variantes, créneau, suivi, annulation et restitution. Fonctionnalité proposée, non installée dans ce travail.</li>
+</ul>
+<p>Le mode définit une intention et une enveloppe à mesurer, pas un nom de GPU gagnant. Les modèles et toutes leurs dépendances sont comptés ; master, export, variantes, alpha, texture répétée et temps humain restent distincts.</p>
+<h2 id="chapter-8">9. Produire le manuel pendant les comparaisons</h2>
+<p>Chaque sortie utile garde deux rôles : preuve de comparaison et asset candidat du manuel. Les échecs restent dans la galerie d’évaluation ; les assets choisis entrent dans la mise en page. Les <a href="/images/labo/assets/briefs.json">six briefs</a> couvrent : trois tours cohérentes, quatre pictogrammes, texture répétable, mascotte, couverture et vignette du parcours créatif. À deux seeds, une couverture complète représente <strong>12 unités et 22 images générées principales par recette</strong>, avant reprises, détourage, exports et répétitions de temps. Les rendus vérifiés de cette campagne sont présentés au chapitre 13.</p>
+<p>Les modèles produisent le visuel ; les noms, capacités, relations et textes exacts restent dans les sources et schémas éditables. Un beau dessin de PC ne démontre pas un GPU installé ; une flèche esthétique ne démontre pas une connexion système. La référence image est un matériau de style, pas une instruction de travail ni une observation de production.</p>
+<h2 id="chapter-9">10. Premiers éléments disponibles</h2>
+<p><a href="/images/labo/assets/icons.png"><img class="illustration" src="/images/labo/assets/icons.png" alt="Douze pictogrammes natifs du kit"></a></p>
+<ul>
+<li>12 pictogrammes SVG transparents, avec PNG 64/128 px et un sprite ; ils sont créés nativement pour servir tout de suite et fournir une référence de comparaison.</li>
+<li>Vue d’ensemble SVG à texte éditable, aperçu PNG et planche de pictogrammes.</li>
+<li>Trois sources Mermaid : architecture, voix, parcours asset.</li>
+<li>Palette JSON, faits/source hashes, briefs de génération et manifest des fichiers.</li>
+<li>Copie intacte de la référence pour figer son empreinte et retrouver le style.</li>
+</ul>
+<p>Ces fichiers sont des éléments vectoriels composés, <strong>pas des rendus de modèles locaux ni des mesures GPU</strong>. Les illustrations raster produites sont conservées avec leurs reçus de génération ; leur sélection figure au chapitre 13.</p>
+<h2 id="chapter-10">11. Plan du manuel complet</h2>
+<div class="table-wrap"><table>
+<tr><th>Fiche/chapitre à étendre</th><th>Livrable concret</th><th>Entrées utiles pour l’approfondir</th></tr>
+<tr><td>Vue d’ensemble</td><td>Carte logique et glossaire</td><td>Sources Core et instance déjà relues</td></tr>
+<tr><td>Qui demander, pour quoi ?</td><td>Fiche persona/surface avec exemples</td><td>Parcours réellement utilisés</td></tr>
+<tr><td>Matériel et ressources</td><td>Carte par poste, modes et disponibilité</td><td>Inventaire live et profils mesurés</td></tr>
+<tr><td>Conversations et mémoire</td><td>Origine → portée → réponse → conservation</td><td>Corpus et règles observés</td></tr>
+<tr><td>Voix</td><td>Diagramme STT/réponse/TTS et dépannage</td><td>Route/moteurs exacts, microphone et chronométrage</td></tr>
+<tr><td>GraphysX</td><td>Formats, scènes, assets et paint jobs</td><td>Projet/gabarit 2D ou mesh/UV représentatif</td></tr>
+<tr><td>Images</td><td>Recettes favorites, alpha, texture et export</td><td>Campagne U01–U08 et DOC01–DOC06</td></tr>
+<tr><td>Code et delivery</td><td>Idée → tâche → worker → preuve → revue</td><td>Parcours Pipeline actuel</td></tr>
+<tr><td>Secrétariat et finance</td><td>Fiches d’usage et données propriétaires</td><td>Exemples fictifs et contrat source, sans importer des données personnelles réelles</td></tr>
+<tr><td>Benchmark, RAG, Data</td><td>Schéma et mode d’emploi de chaque capacité</td><td>Écrans et preuves actuels</td></tr>
+<tr><td>Exploitation</td><td>Lire les états, annuler, reprendre, restituer</td><td>Reçus et runbooks réellement qualifiés</td></tr>
+<tr><td>Local, LAN, providers</td><td>Chemins et choix de configuration</td><td>Routes/export exacts ; accès public distinct de cloud</td></tr>
+</table></div>
+<h2 id="chapter-11">12. Maintenir l’exactitude</h2>
+<p>Une fiche porte date, source/hash, niveau de preuve et état. Les états sont <strong>documenté</strong>, <strong>configuration exportée</strong>, <strong>mesuré</strong>, <strong>proposé</strong> ou <strong>à vérifier</strong>. Une nouvelle observation de résidence ne réécrit pas un ancien benchmark. Une modification de routage met à jour le schéma, les faits et la fiche concernée, avec son reçu.</p>
+<p>Les documents de l’ancien registre qui parlent encore d’AIOps comme propriétaire sont historiques ; les documents canoniques actuels donnent Core comme propriétaire et <code>agentx-home</code> comme couche d’instance. La date et le contenu de <code>DEPLOYED.md</code> ne prouvent pas la version des fichiers du checkout courant ni le déploiement live d’aujourd’hui. <span title="/home/yb/codes/AgentX/docs/ARCHITECTURE.md">Architecture</span>, <span title="/home/yb/codes/agentx-home/DEPLOYED.md">déploiement déclaré</span>.</p>
+<p>Cette V0 est la base du manuel. L’inventaire live, l’acceptation sur appareils, la génération locale des assets raster et les chapitres détaillés restent des travaux distincts ; aucun changement de service ou de production n’a été réalisé.</p>
+<h2 id="chapter-12">13. Les rendus réellement produits</h2>
+<p>Campagne sur <strong>UGFrank</strong> : <strong>50 / 50 sorties vérifiées</strong>. Les profils sont ceux de l’atelier Core existant. Les nouvelles illustrations sont générées localement ; les pictogrammes et les textes d’architecture restent composés séparément.</p>
+<p>Les deux recettes ne dépensent pas le même calcul : Klein utilise quatre étapes et un chargement FP8 ; Qwen utilise vingt-cinq étapes et des poids INT8 ConvRot. Le bon compromis se décide sur les images et leur usage. Ces observations sur Frank ne désignent pas une carte gagnante et ne qualifient pas les photos de famille.</p>
+<div class="table-wrap"><table>
+<tr><th>Recette</th><th>Sorties vérifiées</th><th>Médiane jusqu’à restitution</th><th>Pic GPU observé sur les opérations</th></tr>
+<tr><td>Klein 4B</td><td>25</td><td>34.2 s</td><td>10.5 Go</td></tr>
+<tr><td>Qwen 2.1 INT8</td><td>25</td><td>70.3 s</td><td>10.5 Go</td></tr>
+</table></div>
+<p>Ces médianes mélangent les briefs ; les comparaisons par cas sont dans la galerie. La mesure inclut chargement, calcul, archive et restitution. Le pic GPU est échantillonné chaque seconde sur l’opération entière, y compris les résidents existants et leur restauration. Les caches système ne sont pas purgés : il s’agit d’observations du parcours complet, pas de la grille contrôlée froid/chaud/résident du protocole V2.</p>
+<p><a href="/images/labo/gallery">Galerie comparative</a> · <span title="/home/yb/.codex/reports/agentx-image-master-setup-2026-10-04/CAMPAGNE/campaign.json">Reçus de campagne</span>.</p>
+<h3 id="heading-217">Mascotte et retouche</h3>
+<p><a href="/images/labo/renders/klein-fast-DOC04-1-s42.png"><img class="illustration" src="/images/labo/renders/klein-fast-DOC04-1-s42.png" alt="Mascotte Nestor"></a></p>
+<p>Mascotte Nestor — klein-fast, seed 42, 1024 × 1024. Source PNG conservée, archive vérifiée.</p>
+<p>Mascotte amicale et geste explicatif. Klein : petit majordome en costume.</p>
+<p><a href="/images/labo/renders/klein-fast-SYN01-s42.png"><img class="illustration" src="/images/labo/renders/klein-fast-SYN01-s42.png" alt="Retouche drôle de la mascotte"></a></p>
+<p>Retouche drôle de la mascotte — klein-fast, seed 42, 1024 × 1024. Source PNG conservée, archive vérifiée.</p>
+<p>Visage, palette et costume reconnaissables. Le robot tient la fusée au lieu de la piloter ; action seulement partiellement suivie.</p>
+<h3 id="heading-231">Illustrations des postes</h3>
+<p><a href="/images/labo/renders/klein-fast-DOC01-1-s42.png"><img class="illustration" src="/images/labo/renders/klein-fast-DOC01-1-s42.png" alt="Illustration artistique de UGFrank"></a></p>
+<p>UGFrank — illustration artistique. Les étiquettes de GPU, capacités et connexions viennent des faits, pas des détails peints dans l’image.</p>
+<p><a href="/images/labo/renders/klein-fast-DOC01-2-s42.png"><img class="illustration" src="/images/labo/renders/klein-fast-DOC01-2-s42.png" alt="Illustration artistique de UGAlien"></a></p>
+<p>UGAlien — illustration artistique. Les étiquettes de GPU, capacités et connexions viennent des faits, pas des détails peints dans l’image.</p>
+<p><a href="/images/labo/renders/klein-fast-DOC01-3-s42.png"><img class="illustration" src="/images/labo/renders/klein-fast-DOC01-3-s42.png" alt="Illustration artistique de UGBrutal"></a></p>
+<p>UGBrutal — illustration artistique. Les étiquettes de GPU, capacités et connexions viennent des faits, pas des détails peints dans l’image.</p>
+<h3 id="heading-245">Textures, couverture et parcours créatif</h3>
+<p><a href="/images/labo/renders/qwen-quality-DOC03-1-s42.png"><img class="illustration" src="/images/labo/renders/qwen-quality-DOC03-1-s42.png" alt="Texture du manuel"></a></p>
+<p>Texture du manuel — sélection visuelle issue du profil qwen-quality, seed 42.</p>
+<p>Fond très discret. La grille 3×3 révèle moins le motif ; raccords à qualifier à l’échelle de la surface cible.</p>
+<p><a href="/images/labo/renders/qwen-quality-DOC05-1-s1234.png"><img class="illustration" src="/images/labo/renders/qwen-quality-DOC05-1-s1234.png" alt="Couverture"></a></p>
+<p>Couverture — sélection visuelle issue du profil qwen-quality, seed 1234.</p>
+<p>Trois tours cyan/violet/orange, espace supérieur pour composition. Aucun grand titre inventé visible ; alternative de couverture retenue.</p>
+<p><a href="/images/labo/renders/klein-fast-DOC06-1-s1234.png"><img class="illustration" src="/images/labo/renders/klein-fast-DOC06-1-s1234.png" alt="Parcours créatif"></a></p>
+<p>Parcours créatif — sélection visuelle issue du profil klein-fast, seed 1234.</p>
+<p>Illustration de chapitre avec espace pour texte composé.</p>
+<p><a href="/images/labo/assets/couverture-manuel.png"><img class="illustration" src="/images/labo/assets/couverture-manuel.png" alt="Couverture composée"></a></p>
+<p>Couverture composée en SVG : trois tours générées et titres exacts éditables. Trois des quatre essais de couverture directe ont inventé du texte ; cette composition est une recette distincte, sans nouvelle génération.</p>
+<p>Les textures directes nécessitent un contrôle en répétition. Une couleur de surface n’est pas un ensemble PBR : relief, roughness et mapping doivent être définis séparément. Les PNG de logos n’ont pas d’alpha natif déclaré ; la base de douze SVG reste disponible pour les petits éléments de navigation.</p>
+<h2 id="chapter-13">14. Ce qui est confirmé et ce qui reste à qualifier</h2>
+<ul>
+<li>Génération locale, archivage et restitution sont vérifiés pour chaque sortie marquée terminée.</li>
+<li>La retouche SYN01 utilise la même mascotte synthétique comme référence pour les deux recettes ; elle ne remplace pas le cas U07 sur une vraie photo.</li>
+<li>Alien et Brutal ont chacun terminé six cellules du pilote. Les essais de stockage et les répétitions Brutal sont archivés séparément ; les deux services expérimentaux sont arrêtés, résidents restitués.</li>
+<li>Les modes Fun/Atelier/HQ et la file de nuit de production restent à intégrer et qualifier ; la campagne actuelle est un lot explicite piloté depuis devX.</li>
+<li>Aucun achat ou remplacement permanent de modèle n’est déduit de ces premières observations.</li>
+</ul>
+<h2 id="chapter-14">15. Ce que le SSD change dans notre atelier</h2>
+<p>Sur Brutal, le même logo Klein est passé de 237,7 s sur HDD à une série de 36,8 / 36,8 / 35,7 s après réutilisation du cache sur SSD dans le stockage Linux natif. Le PNG reste strictement identique. Les quatre étapes de débruitage occupent environ 2–3 s : charger et préparer les poids domine le mauvais premier temps.</p>
+<p>Ces résultats portent sur le parcours complet, incluant la restitution de Gemma, avec la voix WSL et d’autres applications Windows présentes. Caches, CPU, pilotes et modèles résidents diffèrent entre machines ; ces points ne désignent pas le GPU seul comme gagnant.</p>
+<p>Le corpus comprend 74 archives vérifiées, dont des répétitions, et 61 empreintes PNG distinctes. Le pilote Alien/Brutal compte 12 cellules exécutées sur 12. Les six cas Brutal sur SSD/Linux ont tous fini en moins de deux minutes, restauration comprise.</p>
+<div class="table-wrap"><table>
+<tr><th>Logo U01 répété, seed 42</th><th>Trois temps complets</th><th>Médiane</th></tr>
+<tr><td>klein-fast</td><td>36.8 s / 36.8 s / 35.7 s</td><td>36.8 s</td></tr>
+<tr><td>qwen-quality</td><td>77.3 s / 73.7 s / 72.2 s</td><td>73.7 s</td></tr>
+</table></div>
+<p>Ces répétitions réutilisent les mêmes fichiers sans réinitialiser le cache, avec un processus CUDA neuf. Trois mesures ne donnent pas un p95.</p>
+<p>La préparation Qwen avait été suspendue lorsque C: est tombé à ~1 Go libre. Le ménage Windows a permis de reprendre la copie, vérifier les six poids et terminer les essais. Le relevé de clôture à 2026-10-05T15:22:07.4965589Z donne 15.0 Go libres sur C:. Il décrit un instant, sans réserver cet espace aux images.</p>
+<p>Pour Linux sous WSL, conserver les poids actifs sur un SSD dans le filesystem Linux évite le parcours des fichiers Windows. La capacité virtuelle WSL ne réserve pas de place sur C:. La voix active dans la même distribution et la taille réelle du VHD / pagefile doivent entrer dans le choix de ressources.</p>
+<p><a href="/images/labo/docs/BILAN-COMPARAISON-GPU.md">Diagnostic détaillé et choix de stockage, modes et voix</a>. Les modes Fun/Atelier/HQ restent des choix à intégrer ; les essais actuels sont des lots explicites, sans modification du routage permanent.</p></article></div><footer>Composition fondée sur les documents privés et les reçus réels. Illustrations artistiques, faits composés séparément.</footer></body></html>

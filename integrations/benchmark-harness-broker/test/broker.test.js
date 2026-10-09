@@ -383,3 +383,36 @@ test('HTTP surface serves the trusted LAN without an internal service token', as
     assert.equal((await issued.json()).data.batchId, 'batch-http');
   } finally { await new Promise((resolve) => server.close(resolve)); }
 });
+
+
+test('a failed repository verifier produces a failed receipt with its measured usage and test evidence', () => {
+  const { buildReceipt } = require('../contract');
+  const target = normalizeTarget(rawTarget(), fingerprint('catalog'));
+  const workerEnvelope = envelope(target);
+  const receipt = buildReceipt({ envelope: workerEnvelope, target,
+    actual: { providerVersion: 'api', environmentId: target.profile.id, environmentVersion: target.profile.version,
+      environmentFingerprint: target.profile.fingerprint, runtimeFingerprint: 'a'.repeat(64) },
+    usage: { durationMs: 20, inputTokens: 12, outputTokens: 7, turns: 1, toolCalls: 0 }, output: 'patch failed',
+    contractSatisfied: false, evidence: { patches: [], artifacts: [], tests: [{ id: 'repo-fixture.test', status: 'failed', digest: 'b'.repeat(64) }] } });
+  assert.equal(receipt.finalState, 'failed');
+  assert.equal(receipt.result.contractSatisfied, false);
+  assert.equal(receipt.failure.code, 'REPO_FIXTURE_VERIFICATION_FAILED');
+  assert.equal(receipt.usage.totalTokens, 19);
+  assert.equal(receipt.evidence.tests[0].status, 'failed');
+});
+
+test('expired cloud entries do not disable freshly pinned local targets in a mixed catalog', async () => {
+  const item = await fixture();
+  try {
+    const config = JSON.parse(await fs.readFile(item.configPath, 'utf8'));
+    const localTarget = require('../contract').normalizeTarget({ ...config.targets[0].target, id: 'local-preserved', tier: 'local', provider: 'ollama', pricing: null });
+    config.targets.push({ ...config.targets[0], target: localTarget });
+    config.catalog.observedAt = new Date(Date.now() - 120000).toISOString();
+    config.catalog.expiresAt = new Date(Date.now() - 60000).toISOString();
+    await fs.writeFile(item.configPath, JSON.stringify(config));
+    const result = await item.broker.catalog();
+    assert.equal(result.targets.find(target => target.id === 'local-preserved').fingerprint, localTarget.fingerprint);
+    assert.equal(result.targets.find(target => target.id === item.target.id).available, false);
+    assert.ok(Date.parse(result.expiresAt) > Date.now());
+  } finally { await cleanup(item); }
+});

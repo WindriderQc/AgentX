@@ -1,13 +1,15 @@
 'use strict';
 /**
- * User Helper Functions — stub
+ * User Helper Functions
  *
- * Auth is stripped from agentx-core. All requests run as 'default' user.
- * getOrCreateProfile returns a minimal in-memory profile object.
+ * AgentX has no user accounts: every request runs as 'default' (see
+ * docs/ARCHITECTURE.md). The chat profile of that identity is stored in
+ * MongoDB (models/UserProfile) so it survives a restart.
  */
 
-const logger = require('../../config/logger');
-const profileStore = new Map();
+const UserProfile = require('../../models/UserProfile');
+
+const PREFERENCE_FIELDS = Object.freeze(['customInstructions', 'language', 'role', 'style']);
 
 /**
  * Extract userId from response locals with fallback to 'default'
@@ -20,36 +22,59 @@ function getUserId(res) {
         || 'default';
 }
 
+function toPlainProfile(doc, userId) {
+    const preferences = doc?.preferences || {};
+    return {
+        userId: doc?.userId || userId,
+        about: doc?.about || '',
+        preferences: Object.fromEntries(PREFERENCE_FIELDS.map(field => [field, preferences[field] || '']))
+    };
+}
+
+async function upsertProfile(userId, update) {
+    const run = () => UserProfile.findOneAndUpdate(
+        { userId },
+        { ...update, $setOnInsert: { userId } },
+        { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    ).lean();
+    try {
+        return await run();
+    } catch (err) {
+        // Two concurrent first-time upserts race on the unique userId index;
+        // the loser retries against the document the winner created.
+        if (err && err.code === 11000) return run();
+        throw err;
+    }
+}
+
 /**
- * Get or create user profile — returns minimal stub (no DB)
+ * Load the stored profile; an empty profile is returned (not written) until
+ * the first save, so chat turns never write here.
  * @param {string} userId
- * @returns {Promise<Object>}
+ * @returns {Promise<{userId: string, about: string, preferences: Object}>}
  */
 async function getOrCreateProfile(userId) {
     const resolvedUserId = userId || 'default';
-    if (!profileStore.has(resolvedUserId)) {
-        profileStore.set(resolvedUserId, {
-            userId: resolvedUserId,
-            about: '',
-            preferences: {}
-        });
-    }
-    return profileStore.get(resolvedUserId);
+    const doc = await UserProfile.findOne({ userId: resolvedUserId }).lean();
+    return toPlainProfile(doc, resolvedUserId);
 }
 
+/**
+ * Persist the provided profile fields; omitted fields keep their stored value.
+ * Callers validate types and lengths (routes/profile.js).
+ * @param {string} userId
+ * @param {{about?: string, preferences?: Object}} profile
+ */
 async function saveProfile(userId, profile = {}) {
     const resolvedUserId = userId || 'default';
-    const existing = await getOrCreateProfile(resolvedUserId);
-    const nextProfile = {
-        ...existing,
-        about: typeof profile.about === 'string' ? profile.about : existing.about,
-        preferences: {
-            ...(existing.preferences || {}),
-            ...((profile && typeof profile.preferences === 'object' && profile.preferences) || {})
-        }
-    };
-    profileStore.set(resolvedUserId, nextProfile);
-    return nextProfile;
+    const $set = {};
+    if (typeof profile.about === 'string') $set.about = profile.about;
+    const preferences = profile.preferences || {};
+    for (const field of PREFERENCE_FIELDS) {
+        if (typeof preferences[field] === 'string') $set[`preferences.${field}`] = preferences[field];
+    }
+    const doc = await upsertProfile(resolvedUserId, Object.keys($set).length ? { $set } : {});
+    return toPlainProfile(doc, resolvedUserId);
 }
 
-module.exports = { getUserId, getOrCreateProfile, saveProfile };
+module.exports = { getUserId, getOrCreateProfile, saveProfile, PREFERENCE_FIELDS };

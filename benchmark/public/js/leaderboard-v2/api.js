@@ -3,7 +3,7 @@
 
 import { apiFetch } from '../utils/api.js';
 
-const BASE = '/api/benchmark';
+const BASE = '/benchmark/api/benchmark';
 
 export const fetchDashboard = (includeUnavailableModels = false, includeCloud = true) => {
     const params = new URLSearchParams();
@@ -56,7 +56,7 @@ export async function fetchHosts() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 900);
     try {
-        return await apiFetch('/api/ollama-hosts', { signal: controller.signal });
+        return await apiFetch('/benchmark/api/ollama-hosts', { signal: controller.signal });
     } catch (_) {
         return hostNameMapToHosts(await apiFetch(`${BASE}/host-names`));
     } finally {

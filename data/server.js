@@ -2,15 +2,21 @@ require('dotenv').config();
 
 const express = require('express');
 const { createBrowserOriginGuard } = require('../shared/browserOriginGuard');
-const morgan = require('morgan');
+const { createServiceIdentity } = require('../shared/serviceIdentity');
 const { MongoClient } = require('mongodb');
 const { log } = require('./utils/logger');
 const { ensureIndexes } = require('./utils/indexes');
 const errorHandler = require('./middleware/errorHandler');
 const responseEnvelope = require('./middleware/responseEnvelope');
+const { createRequestLog } = require('./middleware/requestLog');
 const storageController = require('./controllers/storageController');
 const liveData = require('./services/liveData');
+const mqttMonitor = require('./services/mqttMonitor');
 const janitorScheduler = require('./services/janitorScheduler');
+const janitorRunner = require('./services/janitorRunner');
+const activityWatch = require('./services/activityWatch');
+const activityEvents = require('./services/activityEvents');
+const { backgroundJobsEnabled } = require('./utils/backgroundJobs');
 const eventController = require('./controllers/eventController');
 const liveDataController = require('./controllers/liveDataController');
 const pjson = require('./package.json');
@@ -25,12 +31,15 @@ app.use(createBrowserOriginGuard());
 app.use(express.json({ limit: '10mb' }));
 // Unify API response envelope: add canonical { ok, error } alongside legacy { status, message }
 app.use(responseEnvelope);
-if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
+if (process.env.NODE_ENV !== 'test') app.use(createRequestLog(log));
 
 // Health
 app.get('/', (req, res) => res.redirect('/health'));
 app.get('/health', (req, res) => {
-  res.status(app.locals.db ? 200 : 503).json({ ok: Boolean(app.locals.db), service: 'agentx-data', version: pjson.version, ts: Date.now() });
+  res.status(app.locals.db ? 200 : 503).json({
+    ok: Boolean(app.locals.db),
+    ...createServiceIdentity({ service: 'agentx-data', version: pjson.version })
+  });
 });
 
 // API routes
@@ -40,6 +49,7 @@ app.use('/api/v1/network', require('./routes/network.routes'));
 app.use('/api/v1/hardware', require('./routes/hardware.routes'));
 app.use('/api/v1/events', require('./routes/events.routes'));
 app.use('/api/v1/livedata', require('./routes/livedata.routes'));
+app.use('/api/v1/mqtt', require('./routes/mqtt.routes'));
 app.use('/api/v1/databases', require('./routes/databases.routes'));
 app.use('/api/v1/exports', require('./routes/exports.routes'));
 app.use('/api/v1/janitor', require('./routes/janitor.routes'));
@@ -79,6 +89,10 @@ async function start() {
 
   // Cleanup stale scans from previous session
   await storageController.cleanupStaleScans(db);
+  // Same repair for janitor runs and actions a crash left in progress. It is
+  // not a background job: it runs whether or not background jobs are enabled.
+  try { await janitorRunner.sweepStaleRuns(db); }
+  catch (e) { log(`[janitorRunner] sweepStaleRuns failed: ${e.message}`, 'warn'); }
 
   await new Promise((resolve, reject) => {
     server = app.listen(PORT, HOST, resolve);
@@ -86,8 +100,18 @@ async function start() {
   });
   log(`agentx-data listening on port ${server.address().port}`);
 
+  // The broker monitor serves a manual API: it connects whenever a broker is
+  // configured, with or without background jobs, and never in a test process.
+  try { mqttMonitor.init({ onStateChange: (state, detail) => activityEvents.mqttMonitorState(db, state, detail) }); }
+  catch (e) { log(`[MQTT monitor] Init failed: ${e.message}`, 'warn'); }
+
+  // The activity log's check for collectors and GPU hosts that stopped
+  // reporting. It only reads Data's own records, so it does not depend on
+  // background jobs; it never starts in a test process.
+  activityWatch.start(db);
+
   // Background work is an explicit instance choice, never a test side effect.
-  if (process.env.NODE_ENV !== 'test' && process.env.DATA_BACKGROUND_JOBS_ENABLED === 'true') {
+  if (backgroundJobsEnabled()) {
     try { await liveData.init(db); }
     catch (e) { log(`[liveData] Init failed: ${e.message}`, 'warn'); }
     try { await janitorScheduler.init(db); }
@@ -100,6 +124,8 @@ async function shutdown() {
   log('Shutting down agentx-data...');
   try { eventController.drainSSE(); } catch (e) { log(`[shutdown] drainSSE error: ${e.message}`, 'warn'); }
   try { liveDataController.drainSSE(); } catch (e) { log(`[shutdown] livedata drainSSE error: ${e.message}`, 'warn'); }
+  activityWatch.stop();
+  try { await mqttMonitor.close(); } catch (e) { log(`[shutdown] mqttMonitor.close error: ${e.message}`, 'warn'); }
   try { await liveData.close(); } catch (e) { log(`[shutdown] liveData.close error: ${e.message}`, 'warn'); }
   try { await janitorScheduler.close(); } catch (e) { log(`[shutdown] janitorScheduler.close error: ${e.message}`, 'warn'); }
   if (server) {

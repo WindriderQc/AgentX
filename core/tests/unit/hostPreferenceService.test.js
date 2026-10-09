@@ -431,6 +431,8 @@ describe('hostPreferenceService', () => {
           model: 'gemma4:26b',
           prompt: 'warmup',
           stream: false,
+          truncate: false,
+          shift: false,
           keep_alive: -1,
           options: {
             num_predict: 1,

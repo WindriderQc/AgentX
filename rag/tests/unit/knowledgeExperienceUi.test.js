@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const { readSource } = require('../../../shared/testing/readSource');
 
 const root = path.resolve(__dirname, '..', '..');
-const read = (...segments) => fs.readFileSync(path.join(root, ...segments), 'utf8');
+const read = (...segments) => readSource(path.join(root, ...segments));
 
 describe('Agent X Knowledge progressive-disclosure experience', () => {
   const workflow = read('views', 'partials', 'workflow-map.ejs');
@@ -45,7 +46,7 @@ describe('Agent X Knowledge progressive-disclosure experience', () => {
   test('makes empty and blocked states actionable in plain language', () => {
     const empty = read('views', 'partials', 'empty-index-banner.ejs');
     expect(empty).toContain('Your knowledge is empty');
-    expect(empty).toContain('href="/upload"');
+    expect(empty).toContain('href="/rag/upload"');
     expect(search).toContain('id="search-prerequisite-action"');
     expect(searchJs).toContain("setReadiness('warn', 'Add a source first'");
     expect(searchJs).toContain("setReadiness('error', 'Search needs attention'");
@@ -122,7 +123,10 @@ describe('Agent X Knowledge progressive-disclosure experience', () => {
     expect(documentsJs).toContain('els.deleteDocumentId.textContent = documentData.documentId');
     expect(documentsJs).toContain("els.deleteSource.textContent = documentData.source || 'Unknown provenance'");
     expect(documentsJs).toContain('els.deleteInput.value === els.deleteExpected.textContent');
-    expect(documentsJs).toContain('await window.RAG.deleteDocument(docId, confirmation)');
+    expect(documentsJs).toContain('await window.RAG.deleteDocument(docId, confirmation, exclude)');
+    expect(documents).toContain('id="delete-document-exclude"');
+    expect(documents).toContain('>Delete and exclude</button>');
+    expect(documents).toContain('id="excluded-files"');
     expect(documentsJs).toContain('showDeleteReceipt(documentData)');
     expect(documentsJs).toContain('Other indexed documents may remain.');
     expect(documentsJs).toContain('showDeleteFailure(err, opener)');

@@ -23,7 +23,9 @@ const mockConversation = jest.fn(function FakeConversation(data) {
   this.messages = messageArray(data.messages);
   this.save = save;
 });
+const findOneAndUpdate = jest.fn();
 mockConversation.findOne = findOne;
+mockConversation.findOneAndUpdate = findOneAndUpdate;
 
 jest.mock('../../models/Conversation', () => mockConversation);
 
@@ -37,6 +39,7 @@ describe('durable terminal chat outcomes', () => {
   beforeEach(() => {
     idCounter = 1;
     findOne.mockReset();
+    findOneAndUpdate.mockReset();
     save.mockClear();
     mockConversation.mockClear();
   });
@@ -89,7 +92,7 @@ describe('durable terminal chat outcomes', () => {
       metadata: expect.objectContaining({
         outcome: 'failed',
         retryable: true,
-        sourceUserMessageId: conversation.messages[0]._id
+        sourceUserMessageId: String(conversation.messages[0]._id)
       })
     }));
     expect(save).toHaveBeenCalledTimes(1);
@@ -136,6 +139,7 @@ describe('durable terminal chat outcomes', () => {
       save
     };
     findOne.mockResolvedValue(existing);
+    findOneAndUpdate.mockResolvedValue({ _id: existing._id });
 
     await persistTurnOutcome('user-1', {
       conversationId: existing._id,
@@ -146,8 +150,10 @@ describe('durable terminal chat outcomes', () => {
       outcome: 'failed'
     });
 
-    expect(existing.messages).toHaveLength(2);
-    expect(existing.messages[1].metadata.sourceUserMessageId).toBe(sourceUserMessageId);
-    expect(save).toHaveBeenCalledTimes(1);
+    const [filter, update] = findOneAndUpdate.mock.calls[0];
+    expect(filter['messages.metadata.clientTurnId']).toEqual({ $ne: 'retry-1' });
+    expect(update.$push.messages.$each).toHaveLength(1);
+    expect(update.$push.messages.$each[0].metadata.sourceUserMessageId).toBe(sourceUserMessageId);
+    expect(save).not.toHaveBeenCalled();
   });
 });

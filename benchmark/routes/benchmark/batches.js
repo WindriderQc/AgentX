@@ -48,6 +48,8 @@ function mapJudgeStartErrorStatus(err) {
 function standaloneJudgeConfig(storedConfig, requestedConfig, readyTarget) {
     const config = { ...(storedConfig || {}), ...requestedConfig, host: readyTarget.host, model: readyTarget.model };
     if (config.target && (config.target.host !== config.host || config.target.model !== config.model)) delete config.target;
+    // Standalone preparation resolves a new runtime before scoring.
+    delete config.execution_contract;
     return config;
 }
 

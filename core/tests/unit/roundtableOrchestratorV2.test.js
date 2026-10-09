@@ -85,6 +85,19 @@ describe('Roundtable v2 orchestrator', () => {
     }));
   });
 
+  test('an OpenClaw agent seated without a role prompt gets the runtime seat prompt', async () => {
+    await createRoundtable({
+      question: 'Discuss the budget.',
+      panel: [{ agentId: 'secretary', role: 'Secrétaire', runtime: 'openclaw', systemPrompt: '' },
+        { agentId: 'model-a', role: 'Pragmatist', runtime: 'model', model: 'runtime/model-a', systemPrompt: 'Be pragmatic.' }],
+      synthesizer: { model: 'runtime/model-a', systemPrompt: 'Synthesize.' }
+    });
+    const created = Roundtable.create.mock.calls.at(-1)[0];
+    expect(created.panelConfig[0]).toMatchObject({ runtime: 'openclaw', model: 'runtime-managed' });
+    expect(created.panelConfig[0].systemPrompt).toMatch(/Take part as yourself/);
+    expect(created.panelConfig[1].systemPrompt).toBe('Be pragmatic.');
+  });
+
   test('rejects duplicate agent identities before persistence', async () => {
     await expect(createRoundtable({
       question: 'Duplicate?',

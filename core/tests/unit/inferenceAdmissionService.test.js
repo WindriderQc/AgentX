@@ -53,6 +53,84 @@ describe('distributed inference admission lifecycle', () => {
     expect(runtime.releaseInference).not.toHaveBeenCalled();
   });
 
+  test('a failure that is neither an abort nor a closed connection is quarantined with no origin', async () => {
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
+    lifecycle.markDispatched();
+    await lifecycle.abandon(new Error('unexpected upstream failure'));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: null }));
+  });
+
+  test.each([
+    ['a socket hang-up', new Error('socket hang up')],
+    ['a connection reset', Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })],
+    ['a reset reported as the cause', Object.assign(new Error('fetch failed'), { cause: { code: 'UND_ERR_SOCKET' } })],
+    ['a stream closed early', Object.assign(new Error('stream closed'), { code: 'OLLAMA_STREAM_CLOSED_EARLY' })]
+  ])('%s that Core did not cause is quarantined as a runtime disconnect', async (_label, error) => {
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
+    lifecycle.markDispatched();
+    await lifecycle.abandon(error);
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: 'runtime-disconnect' }));
+  });
+
+  test('a connection Core closed itself is never a runtime disconnect', async () => {
+    const caller = new AbortController();
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a', signal: caller.signal });
+    lifecycle.markDispatched();
+    caller.abort(new Error('client disconnected'));
+    await lifecycle.abandon(new Error('socket hang up'));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: 'caller-abort' }));
+  });
+
+  test('a caller abort after dispatch is quarantined as a caller abort', async () => {
+    const caller = new AbortController();
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a', signal: caller.signal });
+    lifecycle.markDispatched();
+    caller.abort(new Error('client disconnected'));
+    expect(lifecycle.signal.aborted).toBe(true);
+    await lifecycle.abandon(new Error('The user aborted a request.'));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'inference-a', origin: 'caller-abort', reason: 'The user aborted a request.'
+    }));
+    expect(runtime.releaseInference).not.toHaveBeenCalled();
+  });
+
+  test('an executor-owned deadline retains quarantine with explicit abort provenance', async () => {
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
+    lifecycle.markDispatched();
+    await lifecycle.abandon(new Error('owned deadline'), { deadlineAborted: true });
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: 'deadline-abort' }));
+    expect(runtime.releaseInference).not.toHaveBeenCalled();
+  });
+
+  test('timeout-looking error metadata alone cannot establish closed-connection provenance', async () => {
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
+    lifecycle.markDispatched();
+    await lifecycle.abandon(Object.assign(new Error('timeout'), { isOllamaTimeout: true, ollamaAbortSource: 'timeout' }));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: null }));
+  });
+
+  test('deadline proof never reclassifies a lost admission', async () => {
+    runtime.heartbeatInference.mockResolvedValueOnce({ heartbeat: false, reason: 'lost' });
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
+    lifecycle.markDispatched();
+    await lifecycle._heartbeatOnce();
+    await lifecycle.abandon(new Error('deadline after loss'), { deadlineAborted: true });
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledTimes(1);
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: null }));
+  });
+
+  test('a lost heartbeat is never a caller abort, even when the caller also left', async () => {
+    runtime.heartbeatInference.mockResolvedValueOnce({ heartbeat: false, reason: 'lost' });
+    const caller = new AbortController();
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a', signal: caller.signal });
+    lifecycle.markDispatched();
+    await lifecycle._heartbeatOnce();
+    caller.abort();
+    await lifecycle.abandon(new Error('lost'));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledTimes(1);
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({ origin: null }));
+  });
+
   test('heartbeat loss aborts the request and quarantines the admission', async () => {
     runtime.heartbeatInference.mockResolvedValueOnce({ heartbeat: false, reason: 'lost' });
     const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });

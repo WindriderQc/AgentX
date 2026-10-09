@@ -1,0 +1,66 @@
+<main class="image-studio">
+  <header class="studio-header">
+    <div><p class="image-eyebrow">ATELIER IMAGE · AGENTX</p><h1>De l’idée à l’image.</h1>
+      <p>Crée, explore tes propositions, puis retouche celle que tu choisis. <a class="studio-guide-link" href="/images/guide">Comment ça marche, et quelques conseils →</a> <a class="studio-guide-link" href="/images/labo/">Le labo : comparer et comprendre →</a></p></div>
+    <div class="studio-host"><span class="studio-dot" aria-hidden="true"></span><div><span class="studio-host-label">Calcul local</span><strong id="image-host">Lecture de la configuration…</strong><span id="image-gpu"></span></div></div>
+  </header>
+  <div class="image-layout">
+    <section class="image-compose" aria-labelledby="image-compose-title">
+      <div class="panel-heading"><div><p class="panel-step">01 · COMPOSER</p><h2 id="image-compose-title">Nouvelle création</h2></div><button id="image-new" type="button" class="quiet-button" disabled>Nouveau brief</button></div>
+      <p id="image-draft-source" class="draft-source" hidden></p>
+      <form id="image-form">
+        <label for="image-prompt">Ton brief</label>
+        <textarea id="image-prompt" maxlength="8000" required rows="6" placeholder="Décris le sujet, l’ambiance et les détails qui comptent. Pour une retouche, précise ce qui change et ce qui doit rester."></textarea>
+        <div class="field-heading"><label for="image-profile">Recette de rendu</label><span>Configuration actuelle</span></div>
+        <select id="image-profile" aria-describedby="image-recipe-summary"></select>
+        <div id="image-recipe-summary" class="recipe-summary" aria-live="polite"><p>Lecture des recettes disponibles…</p></div>
+        <details class="recipe-components"><summary>Voir les composants du modèle</summary><dl id="image-components"></dl></details>
+        <label for="image-size">Format demandé</label>
+        <select id="image-size">
+          <option value="1024,1024">Carré · 1024 × 1024 · 1,05 MP</option>
+          <option value="1280,768">Paysage · 1280 × 768 · 0,98 MP</option>
+          <option value="768,1280">Portrait · 768 × 1280 · 0,98 MP</option>
+          <option value="512,512">Petit carré · 512 × 512 · 0,26 MP</option>
+          <option value="2048,2048">Carré · 2048 × 2048 · 4,19 MP</option>
+          <option value="2048,1152">Paysage · 2048 × 1152 · 2,36 MP</option>
+        </select>
+        <p id="image-format-help" class="image-help"></p>
+        <details class="seed-settings"><summary>Graine et reproductibilité</summary>
+          <label for="image-seed">Graine <span>facultatif</span></label><input id="image-seed" type="number" min="0" max="9007199254740991" step="1" placeholder="Aléatoire si vide">
+          <p class="image-help">Une graine permet de retrouver les réglages. Pour préserver une composition choisie, joins son image comme référence.</p>
+        </details>
+        <div class="references-section"><div class="field-heading"><label for="image-references">Références pour cette demande</label><span>2 maximum</span></div>
+          <p class="image-help">Ajoute une photo à transformer ou utilise une création de la bibliothèque.</p>
+          <div id="image-selected-reference" class="selected-reference" hidden></div>
+          <input id="image-references" type="file" accept="image/png,image/jpeg" multiple>
+          <div id="image-reference-previews"></div>
+          <p id="image-reference-help" class="image-help">Sans référence jointe, le modèle crée une nouvelle composition.</p>
+        </div>
+        <button type="submit" id="image-create" disabled><span id="image-create-label">Créer une nouvelle image</span><span aria-hidden="true">↗</span></button>
+      </form>
+      <div class="image-progress"><p id="image-status" role="status" aria-live="polite">Connexion au service…</p>
+        <ol id="image-stages" aria-label="Étapes de la génération" hidden><li>Préparation</li><li>Calcul</li><li>Archivage</li><li>Restitution</li></ol>
+        <div class="operation-actions"><button id="image-cancel" type="button" hidden>Annuler cette génération</button><button id="image-recover" type="button" hidden>Vérifier et récupérer</button></div>
+      </div>
+    </section>
+    <section class="image-result" aria-labelledby="image-result-title">
+      <div class="panel-heading"><div><p class="panel-step">02 · EXAMINER</p><h2 id="image-result-title">Ton prochain résultat</h2></div><span id="image-result-origin" class="origin-badge" hidden></span></div>
+      <p id="image-preview-help" class="image-help">Une image sélectionnée dans la bibliothèque s’affiche ici.</p>
+      <div class="image-canvas"><div id="image-placeholder"><span aria-hidden="true">✦</span><p>Le prochain résultat apparaît ici.<br>Tu peux aussi consulter une création conservée.</p></div><img id="image-output" alt="Image générée localement" hidden></div>
+      <dl id="image-result-facts" class="result-facts" hidden></dl>
+      <div class="result-actions"><a id="image-download" class="quiet-button" hidden download>Télécharger l’original</a><button id="image-reuse-brief" type="button" class="quiet-button" hidden>Reprendre le brief et les réglages</button><button id="image-use-reference" type="button" class="reference-button" hidden>Joindre cette image pour la retoucher</button></div>
+      <p id="image-result-note" class="image-help" hidden></p>
+      <details id="image-result-details" class="result-details" hidden><summary>Brief et recette de cette image</summary><p id="image-saved-prompt"></p><dl id="image-saved-recipe"></dl></details>
+      <details id="image-export" class="result-details" hidden>
+        <summary>Exporter la recette et ses images</summary>
+        <p>L’export contient ton brief, le graphe enregistré et les images de référence. Les originaux conservent leurs métadonnées intégrées, y compris la localisation si elle est présente. Choisis à qui tu partages ces fichiers. Il conserve la trace de cette création ; les poids et logiciels nécessaires restent à vérifier pour la reproduire ailleurs.</p>
+        <button id="image-export-prepare" type="button" class="quiet-button">Préparer les téléchargements</button>
+        <p id="image-export-status" role="status"></p><div id="image-export-links"></div>
+      </details>
+    </section>
+  </div>
+  <section class="image-history" aria-labelledby="image-library-title">
+    <div class="library-heading"><div><p class="panel-step">03 · BIBLIOTHÈQUE</p><h2 id="image-library-title">Les créations conservées</h2><p>Cliquer ouvre un aperçu. Pour préparer une autre demande, choisis ensuite « Reprendre le brief » ou « Joindre cette image ».</p></div><label class="library-search" for="image-search">Filtrer les créations<input id="image-search" type="search" placeholder="Modèle, date, dimensions…"></label></div>
+    <p id="image-gallery-count" class="image-help"></p><div id="image-gallery"></div>
+  </section>
+</main>

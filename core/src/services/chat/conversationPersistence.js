@@ -3,12 +3,34 @@
  * Save/update conversation history with messages, metadata, and costs
  */
 
+const mongoose = require('mongoose');
 const Conversation = require('../../../models/Conversation');
 const { calculateMessageCost, calculateConversationCost } = require('../costCalculator');
 const logger = require('../../../config/logger');
+const { publishConversation } = require('../conversations/exchangeContext');
+
+// Typed failures reach the client as HTTP status (JSON) or an SSE `error`.
+function persistenceError(message, statusCode, code) {
+    return Object.assign(new Error(message), { statusCode, code });
+}
+
+function conversationNotFound() {
+    return persistenceError('Conversation not found or archived. Start a new conversation.', 404, 'CONVERSATION_NOT_FOUND');
+}
+
+// A repeated clientTurnId returns the turn already stored instead of a copy.
+function storedTurn(conversation, clientTurnId) {
+    if (!conversation || !clientTurnId) return null;
+    const turn = Array.from(conversation.messages || [])
+        .filter(message => message?.metadata?.clientTurnId === clientTurnId);
+    if (turn.length === 0) return null;
+    const reply = turn.find(message => message.role === 'assistant');
+    return { conversation, assistantMessageId: reply?._id || null, idempotent: true };
+}
 
 async function findConversationForUpdate({ conversationId, userId }) {
     if (!conversationId || !userId) return null;
+    if (!mongoose.isObjectIdOrHexString(conversationId)) return null;
 
     return Conversation.findOne({
         _id: conversationId,
@@ -41,6 +63,7 @@ function buildRagSourceEntries(ragSources) {
  * @param {Object} params - Conversation data
  * @param {string} params.userId - User ID
  * @param {string} params.conversationId - Existing conversation ID (or null)
+ * @param {string} [params.clientTurnId] - Client turn id; a repeat is stored once
  * @param {string} params.model - Model used
  * @param {string} params.effectiveSystemPrompt - Full system prompt
  * @param {string} params.message - User message
@@ -52,10 +75,12 @@ function buildRagSourceEntries(ragSources) {
  * @param {boolean} params.useRag - Whether RAG was requested
  * @param {Array} params.ragSources - RAG source entries
  * @returns {Promise<Object>} { conversation, assistantMessageId }
+ * @throws CONVERSATION_NOT_FOUND (404) when a supplied conversationId is unknown,
+ *   archived or invalid; CONVERSATION_PERSIST_FAILED (503) when the save fails.
  */
 async function persistConversation(params) {
     const {
-        userId, conversationId, model,
+        userId, conversationId, clientTurnId = null, model,
         effectiveSystemPrompt, message, assistantContent,
         activePrompt, metadata = {}, stats,
         ragUsed, useRag, ragSources
@@ -66,19 +91,35 @@ async function persistConversation(params) {
 
     try {
         if (conversationId) {
+            // A supplied id is never silently replaced by a new conversation.
             conversation = await findConversationForUpdate({ conversationId, userId });
-        }
-        if (!conversation) {
+            if (!conversation) throw conversationNotFound();
+            const existing = storedTurn(conversation, clientTurnId);
+            if (existing) return existing;
+            // Archiving or a concurrent copy of this turn during inference must
+            // not be overwritten by this save.
+            conversation.$where = {
+                'lifecycle.status': { $ne: 'archived' },
+                ...(clientTurnId ? { 'messages.metadata.clientTurnId': { $ne: clientTurnId } } : {})
+            };
+        } else {
             conversation = new Conversation({
                 userId,
                 model,
                 systemPrompt: effectiveSystemPrompt,
-                messages: []
+                messages: [],
+                ...(clientTurnId ? { clientTurnId } : {})
             });
         }
+        const turnMetadata = clientTurnId ? { clientTurnId } : {};
+        const unansweredReceipt = metadata.executionReceipt && !assistantContent?.trim()
+            ? { executionReceipt: metadata.executionReceipt, partial: true } : {};
 
         if (message && message.trim()) {
-            conversation.messages.push({ role: 'user', content: message.trim() });
+            conversation.messages.push({
+                role: 'user', content: message.trim(),
+                ...((clientTurnId || metadata.executionReceipt) ? { metadata: { ...turnMetadata, ...unansweredReceipt } } : {})
+            });
         }
 
         if (assistantContent && assistantContent.trim()) {
@@ -89,6 +130,7 @@ async function persistConversation(params) {
 
             assistantMsg.metadata = {
                 ...(metadata || {}),
+                ...turnMetadata,
                 model,
                 routingInfo: metadata.routingInfo || null
             };
@@ -109,6 +151,13 @@ async function persistConversation(params) {
                 assistantMsg.ragSources = buildRagSourceEntries(ragSources);
             }
 
+            if (metadata.executionReceipt) {
+                if (metadata.executionReceipt.usage == null) assistantMsg.stats = null;
+                const nativeCost = metadata.executionReceipt.cost;
+                assistantMsg.cost = { totalCost: nativeCost ? nativeCost.nanodollars / 1e9 : null,
+                    currency: nativeCost?.currency || 'USD', pricingSource: { source: nativeCost ? 'openclaw' : 'unconfigured' } };
+            }
+
             if (stats) {
                 assistantMsg.stats = stats;
                 assistantMsg.stats.parameters = metadata.options || {};
@@ -119,7 +168,12 @@ async function persistConversation(params) {
                 };
 
                 try {
-                    const cost = await calculateMessageCost(model, stats);
+                    const nativeCost = metadata.executionReceipt?.cost;
+                    const cost = metadata.executionReceipt ? {
+                        totalCost: nativeCost ? nativeCost.nanodollars / 1e9 : null,
+                        currency: nativeCost?.currency || 'USD',
+                        pricingSource: { source: nativeCost ? 'openclaw' : 'unconfigured' }
+                    } : await calculateMessageCost(model, stats);
                     assistantMsg.cost = cost;
                     logger.debug('Message cost calculated', {
                         model, totalCost: cost.totalCost, source: cost.pricingSource?.source
@@ -170,12 +224,28 @@ async function persistConversation(params) {
             logger.error('Token usage update failed', { error: err.message });
         }
 
-        await conversation.save();
+        await publishConversation(conversation._id, () => conversation.save({ writeConcern: { w: 'majority', j: true } }));
     } catch (err) {
-        logger.error('Failed to save conversation', { error: err.message });
+        if (['CONVERSATION_NOT_FOUND', 'EXCHANGE_CLOSED'].includes(err?.code)) throw err;
+        // The conditional save matched nothing: the same turn was stored
+        // concurrently (return it), the conversation was archived or deleted
+        // meanwhile (not found), or anything else (failed save).
+        if (conversationId && ['DocumentNotFoundError', 'VersionError'].includes(err?.name)) {
+            const current = await findConversationForUpdate({ conversationId, userId }).catch(() => undefined);
+            if (current === null) throw conversationNotFound();
+            const existing = storedTurn(current, clientTurnId);
+            if (existing) return existing;
+        }
+        // A concurrent first turn already created the conversation.
+        if (!conversationId && clientTurnId && err?.code === 11000) {
+            const existing = storedTurn(await Conversation.findOne({ userId, clientTurnId }).catch(() => null), clientTurnId);
+            if (existing) return existing;
+        }
+        logger.error('Failed to save conversation', { conversationId, error: err.message });
+        throw persistenceError('The reply could not be saved to history.', 503, 'CONVERSATION_PERSIST_FAILED');
     }
 
     return { conversation, assistantMessageId };
 }
 
-module.exports = { persistConversation, buildRagSourceEntries, findConversationForUpdate };
+module.exports = { persistConversation, buildRagSourceEntries, findConversationForUpdate, conversationNotFound };

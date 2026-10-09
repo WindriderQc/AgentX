@@ -57,7 +57,7 @@ export function wireQuickComparison(container, { host, apply }) {
         button.disabled = true;
         status.textContent = 'Checking model compatibility and the selected judge…';
         try {
-            const response = await apiFetch('/api/benchmark/quick-comparison', {
+            const response = await apiFetch('/benchmark/api/benchmark/quick-comparison', {
                 method: 'POST', signal: request.signal,
                 body: { host: host?.hostUrl || host?.url || '', models: selected.map(input => input.value), judge_config: judge }
             });

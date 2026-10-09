@@ -1,10 +1,12 @@
 'use strict';
 
 // Personal finance ledger (read-only questions + inbox trigger). Gateway
-// traffic needs an adult session through parentalAccess; the OpenClaw finance
-// persona reaches it over loopback.
+// traffic uses the private LAN; the OpenClaw finance persona keeps its
+// native permissions and reaches it over loopback.
 
 const express = require('express');
+const { Readable } = require('stream');
+const { pipeline } = require('stream/promises');
 const query = require('../src/services/finance/financeQueryService');
 const { financeInbox } = require('../src/services/finance/financeInboxService');
 const categories = require('../src/services/finance/financeCategories');
@@ -58,14 +60,17 @@ function createFinanceRoutes({ inbox = financeInbox } = {}) {
   router.post('/alerts/report', handle(() => alerts.report()));
   router.post('/alerts/ack', handle((req) => alerts.acknowledge(req.body?.ids)));
   router.get('/export.csv', async (req, res) => {
+    let exported;
     try {
-      const { csv, fileName } = await exportCsv(req.query);
-      res.set('Content-Type', 'text/csv; charset=utf-8');
-      res.set('Content-Disposition', `attachment; filename="${fileName}"`);
-      return res.send(csv);
+      exported = await exportCsv(req.query);
     } catch (error) {
       return sendError(res, error);
     }
+    res.set('Content-Type', 'text/csv; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${exported.fileName}"`);
+    // Headers are sent: a failure now cuts the download before its totals.
+    return pipeline(Readable.from(exported.chunks), res)
+      .catch((error) => console.error('[finance] CSV export interrupted', error));
   });
   router.get('/uncategorized', handle((req) => categories.uncategorized(req.query)));
   router.post('/suggestions', handle((req) => suggest(req.body || {})));

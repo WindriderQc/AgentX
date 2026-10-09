@@ -18,7 +18,6 @@ const MAX_PLAN_CHARS = 8000;
 const MAX_STEPS = 30;
 const MAX_STEP_CHARS = 500;
 const MAX_SCOPE_PATHS = 50;
-const MAX_REVISIONS = 10;
 const PRIVATE_LANES = ['personal', 'family', 'household', 'secretary'];
 const SUBMIT_KEYS = ['expectedRevision', 'mode', 'text', 'steps', 'by'];
 const DECISION_KEYS = ['revision', 'planFingerprint', 'outcome', 'by', 'reason'];
@@ -37,7 +36,8 @@ function cleanText(value) {
 
 function bounded(value, max) {
   if (value == null) return null;
-  const text = String(value).replace(/\s+/g, ' ').trim().slice(0, max);
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  if (text.length > max) throw planError(`The complete field exceeds ${max} characters.`, 413, 'PLAN_TOO_LONG');
   return text || null;
 }
 
@@ -107,19 +107,19 @@ function normalizeDecision(body) {
 /**
  * Build the next revision from the document state the guarded update will
  * match. `automation` is the intent in force once the write lands (the new
- * one when the same update replaces it). `truncate` is only for Core-internal
- * callers whose text comes from a model; the stored text is what is
- * fingerprinted and reviewed, and `truncated` says so.
+ * one when the same update replaces it). All callers refuse an oversized
+ * revision; the complete stored text is fingerprinted and reviewed.
  */
 function buildRevision(task, { mode = 'plan', text, steps, declaredActor = null, channel,
-  automation = task?.automation, truncate = false, at = new Date() }) {
+  automation = task?.automation, at = new Date() }) {
   if (!MODES.includes(mode)) throw new Error(`unknown plan mode: ${mode}`);
   if (!CHANNELS.includes(channel)) throw new Error(`unknown plan channel: ${channel}`);
   const full = cleanText(text);
   if (!full) throw planError('text must not be empty');
-  if (full.length > MAX_PLAN_CHARS && !truncate) throw planError('The plan is too long.', 413, 'PLAN_TOO_LONG');
-  const stored = full.slice(0, MAX_PLAN_CHARS);
-  const scope = Array.isArray(automation?.scope) ? automation.scope.slice(0, MAX_SCOPE_PATHS).map(String) : undefined;
+  if (full.length > MAX_PLAN_CHARS) throw planError('The plan is too long.', 413, 'PLAN_TOO_LONG');
+  const stored = full;
+  const scope = Array.isArray(automation?.scope) ? automation.scope.map(String) : undefined;
+  if (scope?.length > MAX_SCOPE_PATHS) throw planError('The complete plan scope has too many paths.', 413, 'PLAN_TOO_LONG');
   const revision = {
     schema: SCHEMA,
     revision: currentRevision(task) + 1,
@@ -142,12 +142,12 @@ function buildRevision(task, { mode = 'plan', text, steps, declaredActor = null,
 /**
  * Add the revision to an existing update and guard the query on the revision
  * counter it was built from. A concurrent revision makes the update match
- * nothing. The store keeps the last MAX_REVISIONS revisions.
+ * nothing. The store preserves all revisions.
  */
 function recordPlanRevision(query, update, task, revision) {
   query.planRevision = currentRevision(task) || null; // null also matches a task without plans
   update.$set = { ...(update.$set || {}), planRevision: revision.revision };
-  update.$push = { ...(update.$push || {}), planRevisions: { $each: [revision], $slice: -MAX_REVISIONS } };
+  update.$push = { ...(update.$push || {}), planRevisions: { $each: [revision] } };
   return { query, update };
 }
 
@@ -237,7 +237,6 @@ module.exports = {
   CHANNELS,
   MAX_PLAN_CHARS,
   MAX_STEPS,
-  MAX_REVISIONS,
   planError,
   basisRef,
   currentRevision,

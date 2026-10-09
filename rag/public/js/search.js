@@ -106,10 +106,10 @@
             : !embeddingOk
               ? 'The embedding route is unavailable.'
               : 'One or more required knowledge dependencies are unavailable.';
-        setReadiness('error', 'Search needs attention', dependencyDetail, { label: 'View status', href: '/' });
+        setReadiness('error', 'Search needs attention', dependencyDetail, { label: 'View status', href: '/rag/' });
         setSearchStatus('error', 'Search is unavailable', 'You can keep writing. Once the dependency is ready, select Check again.');
       } else if (documents === 0) {
-        setReadiness('warn', 'Add a source first', 'Search is healthy, but there is nothing to retrieve yet.', { label: 'Add knowledge', href: '/upload' });
+        setReadiness('warn', 'Add a source first', 'Search is healthy, but there is nothing to retrieve yet.', { label: 'Add knowledge', href: '/rag/upload' });
         setSearchStatus('warn', 'Your knowledge is empty', 'Add one source, then return to ask a question.');
       } else if (documents === null) {
         setReadiness('ok', 'Search available', 'The source count is unavailable. You can still search.');
@@ -119,7 +119,7 @@
         updateQuestionStatus();
       }
     } catch (error) {
-      setReadiness('error', 'Could not check knowledge', error.message || 'The knowledge service did not respond.', { label: 'View status', href: '/' });
+      setReadiness('error', 'Could not check knowledge', error.message || 'The knowledge service did not respond.', { label: 'View status', href: '/rag/' });
       setSearchStatus('error', 'Search is unavailable', 'Select Check again to retry without losing your question or filters.');
     } finally {
       checkingReadiness = false;
@@ -159,7 +159,7 @@
       var displaySource = docSource || docId;
       var displayText = result.wasCompressed && result.compressedText ? result.compressedText : (result.text || '');
       var sourceHref = documentContext ? documentContext.documentsHref({ source: docSource, docId: docId }) : '';
-      var hasBoundedSourceContext = sourceHref && sourceHref !== '/documents';
+      var hasBoundedSourceContext = sourceHref && sourceHref !== '/rag/documents';
 
       var card = document.createElement('article');
       card.className = 'result-card';
@@ -217,6 +217,12 @@
       var response = await window.RAG.search(query, topK, minScore, Object.keys(filters).length ? filters : undefined, options);
       var elapsed = Math.round(performance.now() - started);
       var results = response.data.results || [];
+      var applied = response.data.applied;
+      if (applied) {
+        // Report the retrieval modes that ran, not the ones requested.
+        enhancements = enhancements.filter(function (key) { return (key !== 'expand' && key !== 'hybrid') || applied[key]; });
+        if (applied.keywordSearchFailed) enhancements.push('keyword search failed, vector results only');
+      }
       els.meta.hidden = false;
       els.meta.textContent = results.length + ' passage' + (results.length === 1 ? '' : 's') + ' found in ' + elapsed + ' ms' + (enhancements.length ? ' · ' + enhancements.join(', ') : '');
       if (!results.length) {
@@ -243,6 +249,9 @@
     var initialQuery = new URLSearchParams(window.location.search).get('query');
     if (initialQuery) els.query.value = initialQuery;
     els.btnSearch.addEventListener('click', executeSearch);
+    // Hybrid search and query expansion do not compose; keep one at a time.
+    els.optHybrid.addEventListener('change', function () { if (els.optHybrid.checked) els.optExpand.checked = false; });
+    els.optExpand.addEventListener('change', function () { if (els.optExpand.checked) els.optHybrid.checked = false; });
     els.recheck.addEventListener('click', checkReadiness);
     els.query.addEventListener('keydown', function (event) {
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); executeSearch(); }

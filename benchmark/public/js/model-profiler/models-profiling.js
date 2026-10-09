@@ -51,11 +51,11 @@ export function _showFeedback(container, modelName, html) {
 const STEPS_BY_DEPTH = {
   quick:    ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Save'],
   standard: ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Context probe', 'Save'],
-  full:     ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Context probe', 'Throughput curve', 'Generation stability', 'Prefill / decode matrix', 'Load timing', 'Save'],
+  full:     ['Warmup', 'Throughput', 'Spill detection', 'Thinking behavior', 'Context probe', 'Throughput curve', 'Generation stability', 'Prefill / decode matrix', 'Long-context quality', 'Load timing', 'Save'],
 };
 
 // Nominal wall-clock estimate per depth (seconds) — matches UI hint text
-const DEPTH_NOMINAL_SEC = { quick: 60, standard: 300, full: 1200 };
+const DEPTH_NOMINAL_SEC = { quick: 60, standard: 300, full: 2400 };
 
 // Per-step descriptors: a short tagline shown under the active pill so users
 // know *why* the profiler is in this phase. Keep concise (≤ 32 chars).
@@ -68,6 +68,7 @@ const STEP_DESCRIPTIONS = {
   'Throughput curve':      'Mapping tok/s across contexts',
   'Generation stability':  'Stress-testing long generations',
   'Prefill / decode matrix':'Validating every workload cell',
+  'Long-context quality':  'Recall of facts at agent sizes',
   'Load timing':           'Cold vs hot reload timing',
   'Save':                  'Persisting profile to database',
 };
@@ -231,6 +232,45 @@ function _formatRepeatedEvidence(statistics) {
   return `n=${statistics.sampleCount} · p50 ${Number(statistics.p50).toFixed(1)} · p95 ${Number(statistics.p95).toFixed(1)} · ${cv} · ${ciText}`;
 }
 
+const _ctxLabel = value => (value >= 1024 ? `${Math.round(value / 1024)}k` : String(value ?? '?'));
+
+// Agent-sized prefill (32k-128k windows) and the long-context quality probe (#367).
+function _renderAgentSizedEvidence(profile) {
+  let html = '';
+  const series = profile?.prefillDecodeMatrix?.longPrefill;
+  if (Array.isArray(series?.sizes) && series.sizes.length) {
+    html += `<table class="mp-extras-table">
+      <caption>Agent-sized prefill (window filled to ${Math.round((series.fillRatio || 0.9) * 100)} %)</caption>
+      <thead><tr><th>Window</th><th>Prefill tok/s</th><th>First token</th><th>Load</th><th>Status</th></tr></thead>
+      <tbody>${series.sizes.map(size => `<tr>
+        <td>${_ctxLabel(size.numCtx)}</td>
+        <td>${size.prefillTokensPerSec ?? '—'}</td>
+        <td>${size.ttftMs != null ? `${(size.ttftMs / 1000).toFixed(1)} s` : '—'}</td>
+        <td>${size.loadDurationMs != null ? `${(size.loadDurationMs / 1000).toFixed(1)} s` : '—'}</td>
+        <td>${size.status || 'unknown'}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }
+  const quality = profile?.longContextQuality;
+  if (Array.isArray(quality?.results) && quality.results.length) {
+    html += `<table class="mp-extras-table">
+      <caption>Long-context quality (verified ${quality.qualityVerifiedContext ? _ctxLabel(quality.qualityVerifiedContext) : 'at no size'})</caption>
+      <thead><tr><th>Window</th><th>Planted facts</th><th>Two-hop</th><th>Prompt</th><th>Status</th></tr></thead>
+      <tbody>${quality.results.map(result => {
+        const missed = (result.retrieval || []).filter(item => !item.correct).map(item => `${item.depthPct} %`);
+        const facts = result.retrieval ? `${result.retrievalCorrect}/5${missed.length ? ` (missed at ${missed.join(', ')})` : ''}` : '—';
+        const hop = result.retrieval ? (result.multiHopCorrect ? 'right' : result.multiHopDistractor ? 'decoy' : 'wrong') : '—';
+        return `<tr>
+          <td>${_ctxLabel(result.numCtx)}</td><td>${facts}</td><td>${hop}</td>
+          <td>${result.promptTokens ? `${result.promptTokens} tok (${result.promptCoveragePct} %)` : '—'}</td>
+          <td>${result.status || 'unknown'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  }
+  return html;
+}
+
 function _renderFullDepthExtras(profile) {
   let html = '';
 
@@ -263,6 +303,8 @@ function _renderFullDepthExtras(profile) {
       </tr>`).join('')}</tbody>
     </table>`;
   }
+
+  html += _renderAgentSizedEvidence(profile);
 
   // Generation stability table
   const stability = profile?.generationStability || [];
@@ -413,7 +455,10 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
     const titleHtml = extra?.title || `<span class="mp-prof-title-pulse"></span><span class="mp-prof-title-text">Profiling <strong>${modelName}</strong> <span class="mp-prof-title-on">on</span> <span class="mp-prof-title-host">${hostName}</span></span><span class="mp-prof-depth-chip">${depth}</span>`;
     const metricsHtml = extra?.metrics ?? renderMetricsRow();
     const activeElapsed = !isTerminal ? Math.max(0, elSec() - stepStartSec) : null;
-    const closeBtn = isTerminal ? `<button class="mp-prof-close" type="button" aria-label="Dismiss">×</button>` : '';
+    // A running profile can be cancelled; the label shows the expected delay.
+    const cancelText = cancelLabel();
+    const closeBtn = isTerminal ? `<button class="mp-prof-close" type="button" aria-label="Dismiss">×</button>`
+      : profileId ? `<button class="mp-prof-cancel" type="button" data-profile-id="${profileId}" title="${cancelText.title}">${cancelText.label}</button>` : '';
 
     // The activity log already shows the latest status verbatim, so we drop
     // the standalone italic status line. We also drop the separate "Up next"
@@ -424,7 +469,7 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
       cls, titleHtml, activeIdx, statuses, metricsHtml,
       chart: extra?.chart || '',
       activity: activity.length, lastMsg,
-      stepTimes, isTerminal
+      stepTimes, isTerminal, cancelText
     });
 
     if (sig === lastSignature) {
@@ -450,6 +495,33 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
   // Start profiling — or attach to an existing in-flight profile after a page reload.
   const reattaching = !!existingProfileId;
   pushActivity(reattaching ? 'Reattached to running profile' : 'Starting profile');
+  let profileId = existingProfileId;
+  let cancelRequested = false;
+  // Server cancel state; proofDeadline is local time derived from remainingMs.
+  let cancelState = null;
+  const trackCancel = (cancel) => {
+    if (!cancel) return;
+    cancelState = { ...cancel, proofDeadline: cancel.remainingMs != null ? Date.now() + cancel.remainingMs : null };
+  };
+  function cancelLabel() {
+    if (!cancelRequested) return { label: 'Cancel', title: 'Cancel this profile' };
+    const phase = cancelState?.phase;
+    if (phase === 'awaiting_stop_proof') {
+      const left = Math.max(0, Math.ceil((cancelState.proofDeadline - Date.now()) / 1000));
+      return { label: `Stopping… ≤${left}s`, title: 'Request aborted; waiting for Ollama to confirm it stopped. Without confirmation the host stays quarantined (UNKNOWN).' };
+    }
+    if (phase === 'stopped') return { label: 'Restoring pins…', title: 'Ollama confirmed the request stopped; restoring pinned models' };
+    if (phase === 'stop_unproven') return { label: 'Stop unproven', title: 'Ollama did not confirm the aborted request stopped; the host stays quarantined (UNKNOWN)' };
+    return { label: 'Cancelling…', title: 'Stops after the current request, which cannot be aborted safely; a CPU context sample can take minutes' };
+  }
+  const onCancelClick = async (event) => {
+    const button = event.target.closest?.('.mp-prof-cancel');
+    if (!button || !profileId || button.dataset.profileId !== profileId || cancelRequested) return;
+    cancelRequested = true;
+    currentStatusMsg = 'Cancelling…';
+    try { trackCancel((await api.cancelProfile(profileId))?.cancel); } catch (error) { cancelRequested = false; pushActivity(`Cancel failed: ${error.message}`); }
+  };
+  document.addEventListener('click', onCancelClick);
   showPanel(0, reattaching ? 'Reattached—resuming live updates…' : 'Starting profile…');
   if (btn) btn.textContent = reattaching ? 'Resuming…' : 'Starting…';
 
@@ -463,7 +535,6 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
     showPanel(currentStepIdx, currentStatusMsg);
   }, 1000);
 
-  let profileId = existingProfileId;
   if (existingProfileId) _activeProfileRuns.add(existingProfileId);
 
   try {
@@ -484,6 +555,7 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
           const progress = await api.getProfileProgress(profileId);
           const stepIdx = progress.stepsCompleted || 0;
           const msg = progress.statusMessage || 'Working…';
+          if (progress.cancelRequested) { cancelRequested = true; trackCancel(progress.cancel); }
 
           // Track step transitions → record duration of the step that just finished
           if (stepIdx > lastStepIdx) {
@@ -534,9 +606,9 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
             clearInterval(poll);
             completionProposal = progress.contextProposal || null;
             resolve(progress.result);
-          } else if (progress.profileStatus === 'failed') {
+          } else if (progress.profileStatus === 'failed' || progress.profileStatus === 'cancelled') {
             clearInterval(poll);
-            reject(new Error(progress.error || 'Profile failed'));
+            reject(new Error(progress.profileStatus === 'cancelled' ? (progress.statusMessage || 'Profile cancelled') : (progress.error || 'Profile failed')));
           }
         } catch (pollErr) {
           // Tolerate transient poll errors
@@ -655,6 +727,7 @@ export async function _runProfiling(container, btn, modelName, hostId, depth, ap
     }
     if (btn) { btn.textContent = 'Profile'; btn.disabled = false; }
   } finally {
+    document.removeEventListener('click', onCancelClick);
     window.dispatchEvent(new CustomEvent('mp:runtime-updated'));
     if (profileId) _activeProfileRuns.delete(profileId);
   }

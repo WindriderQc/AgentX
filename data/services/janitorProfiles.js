@@ -83,6 +83,21 @@ async function validate(doc) {
 }
 
 /**
+ * A profile is saved without requiring its roots to exist (a share may be
+ * mounted later). Before a run, every root must be an existing allowed directory.
+ * @returns {Promise<{ok: true} | {ok: false, errors: string[]}>}
+ */
+async function checkRoots(roots) {
+  if (!Array.isArray(roots) || roots.length === 0) return { ok: false, errors: ['profile has no root'] };
+  const errors = [];
+  for (const root of roots) {
+    const safe = await resolveAllowedPath(root, { mustExist: true, type: 'directory' });
+    if (!safe.ok) errors.push(`root "${root}": ${safe.reason}`);
+  }
+  return errors.length ? { ok: false, errors } : { ok: true };
+}
+
+/**
  * Normalize an input doc into the canonical persisted shape.
  */
 function normalize(doc) {
@@ -176,6 +191,7 @@ module.exports = {
   MIN_INTERVAL_MINUTES,
   MAX_INTERVAL_MINUTES,
   validate,
+  checkRoots,
   normalize,
   list,
   get,

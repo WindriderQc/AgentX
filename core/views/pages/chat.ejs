@@ -110,6 +110,7 @@
           <button id="workspaceNewChatBtn" class="chat-command-secondary" type="button" title="Start new chat" aria-label="Start new chat">
             <i class="fas fa-plus" aria-hidden="true"></i><span>New chat</span>
           </button>
+          <button id="conversationPerformance" class="chat-command-secondary" type="button">Contexte et performance</button>
           <button id="toggleConfigBtn" class="take-controls-button" type="button" aria-label="Open precision controls" aria-expanded="false" aria-controls="configDrawer">
             <i class="fas fa-sliders" aria-hidden="true"></i><span>Take the controls</span>
           </button>
@@ -237,6 +238,14 @@
           </section>
         </div>
         <p class="chat-announcements" id="chatAnnouncements" role="status" aria-live="polite" aria-atomic="true"></p>
+        <details id="exchangeRecovery" class="exchange-recovery">
+          <summary>Recover a refused or interrupted exchange</summary>
+          <p>The accepted request and received response stay in Agent X. Erasing a copy keeps the saved conversation; erasing a conversation also erases its copies.</p>
+          <button id="exchangeRecoveryRefresh" type="button" class="ghost">Refresh</button>
+          <p id="exchangeRecoveryStatus" role="status" aria-live="polite"></p>
+          <ul id="exchangeRecoveryList"></ul>
+          <button id="exchangeRecoveryOlder" type="button" class="ghost" hidden>Older exchanges</button>
+        </details>
 
         <section class="chat-route-recovery" id="chatRouteRecovery" aria-labelledby="chatRouteRecoveryTitle" hidden>
           <span class="chat-route-recovery__icon" aria-hidden="true"><i class="fas fa-route"></i></span>
@@ -444,7 +453,7 @@
       </div>
 
       <div class="field">
-        <label for="hostInput">Ollama host</label>
+        <label for="hostInput">Execution source</label>
         <div class="input-row">
           <select id="hostInput" style="flex: 1;" aria-describedby="hostInputHint">
             <option value="">Loading hosts&hellip;</option>
@@ -655,26 +664,26 @@
         <div class="field">
           <label for="userAbout">About You (Memory)</label>
           <div class="hint" id="userAboutHint">Facts the agent should remember about you (e.g., job, interests, background).</div>
-          <textarea id="userAbout" rows="5" aria-describedby="userAboutHint" placeholder="I am a software engineer interested in AI..."></textarea>
+          <textarea id="userAbout" rows="5" aria-describedby="userAboutHint" maxlength="8000" placeholder="I am a software engineer interested in AI..."></textarea>
         </div>
         <div class="field">
           <label for="memoryLanguage">Preferred Language</label>
-          <input type="text" id="memoryLanguage" placeholder="English">
+          <input type="text" id="memoryLanguage" maxlength="100" placeholder="English">
         </div>
         <div class="field">
           <label for="memoryRole">Role / Context</label>
-          <input type="text" id="memoryRole" placeholder="e.g. Product manager focusing on UX">
+          <input type="text" id="memoryRole" maxlength="300" placeholder="e.g. Product manager focusing on UX">
         </div>
         <div class="field">
           <label for="memoryStyle">Response Style</label>
-          <textarea id="memoryStyle" rows="2" placeholder="Concise, decisive, include next steps."></textarea>
+          <textarea id="memoryStyle" rows="2" maxlength="1000" placeholder="Concise, decisive, include next steps."></textarea>
         </div>
         <div class="field">
           <label for="userInstructions">Custom Instructions</label>
           <div class="hint" id="userInstructionsHint">How the agent should behave (e.g., always be concise).</div>
-          <textarea id="userInstructions" rows="3" aria-describedby="userInstructionsHint" placeholder="Be brief and professional."></textarea>
+          <textarea id="userInstructions" rows="3" aria-describedby="userInstructionsHint" maxlength="4000" placeholder="Be brief and professional."></textarea>
         </div>
-        <div class="hint" id="profilePersistenceNote">All profile data is saved to your AgentX database and persisted across conversations.</div>
+        <div class="hint" id="profilePersistenceNote">About, custom instructions, language, role and response style are saved in the AgentX database and added to the Playground chat system prompt.</div>
         <div class="action-row">
           <button class="ghost" id="resetProfileBtn" type="button">Reset</button>
           <button class="primary" id="saveProfileBtn" type="button">Save Profile</button>
@@ -697,3 +706,8 @@
       if (tutorialBtn) tutorialBtn.style.display = 'none';
     });
   </script>
+  <script type="module" src="/js/chat/chat-exchange-recovery.js"></script>
+
+  <link rel="stylesheet" href="/css/conversation-preferences.css?v=1">
+  <script src="/js/conversation-preferences.js?v=1" defer></script>
+  <script src="/js/chat/chat-conversation-preferences.js?v=1" defer></script>

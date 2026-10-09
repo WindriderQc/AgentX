@@ -3,12 +3,14 @@ doc_type: permanent
 authority: canonical
 status: active
 owner: rag
-last_verified: 2026-09-07
+last_verified: 2026-10-01
 ---
 
 # AgentX RAG — API Contract
 
 > Default Compose URL: `http://127.0.0.1:3182`. A direct `npm start` uses port 3082 unless `PORT` is set.
+> The same routes also answer under `/rag` (`/rag/api/rag/...`, `/rag/health`): that is the form to use
+> through the single LAN address, where the root paths belong to Core. The pages live at `/rag/`.
 
 **Envelope:** `{ "ok": true, "data": { ... }, "meta": { "durationMs": 42, "observedAt": "2026-08-28T12:00:00.000Z" } }`
 **Errors:** `{ "ok": false, "error": "CODE", "detail": "..." }`
@@ -69,6 +71,15 @@ Ingest a text document (chunk + embed + store). `POST /api/rag/documents` is an 
 | chunkSize | int | no | 500 | 50-10,000 |
 | chunkOverlap | int | no | 50 | 0 to chunkSize/2 |
 | documentId | string | no | MD5 auto | Stable ID; re-ingest replaces |
+| scope | string | no | -- | Supply together with sensitivity; see classification below |
+| sensitivity | string | no | -- | Supply together with scope; see classification below |
+
+Classification uses `scope`: `project`, `ecosystem`, `workflow`, `owner`,
+`household`, `private_domain`; and `sensitivity`: `normal`, `private`,
+`highly_private`. Both fields must be supplied together with valid values.
+Re-ingesting an existing identity with a different classification returns
+409 `MEMORY_CLASSIFICATION_CONFLICT`; ingestion does not implicitly relabel it.
+These labels describe content, not authentication or an access grant.
 
 An explicit `chunkOverlap: 0` disables overlap. If you reduce `chunkSize`
 below 100, also supply an overlap no greater than half that size.
@@ -94,8 +105,12 @@ Ingestion is idempotent at the source/content boundary:
 curl -X POST http://127.0.0.1:3182/api/rag/ingest \
   -H 'Content-Type: application/json' \
   -d '{ "text": "Content...", "source": "my-source", "tags": ["docs"] }'
-# => { "ok": true, "data": { "documentId": "abc123", "chunkCount": 7, "status": "ok" } }
+# => { "ok": true, "data": { "documentId": "abc123", "chunkCount": 7, "status": "created" } }
 ```
+
+A new document returns `created`, a replaced document `updated`, and an exact
+repeat `unchanged`. The batch route below instead reports successful mutations
+as `ok` and unchanged documents as `unchanged`.
 
 An exact repeat returns the existing document and its passage count:
 
@@ -103,7 +118,7 @@ An exact repeat returns the existing document and its passage count:
 { "ok": true, "data": { "documentId": "abc123", "chunkCount": 7, "status": "unchanged", "unchanged": true, "deduplicated": false } }
 ```
 
-**Errors:** 400 (validation), 503 `VECTOR_STORE_UNAVAILABLE`, 503 `EMBEDDING_SERVICE_UNAVAILABLE`
+**Errors:** 400 (validation), 409 `MEMORY_CLASSIFICATION_CONFLICT`, 503 `VECTOR_STORE_UNAVAILABLE`, 503 `EMBEDDING_SERVICE_UNAVAILABLE`
 
 ### POST /api/rag/ingest/batch
 
@@ -211,10 +226,14 @@ Semantic vector search across chunks.
 | topK | int | no | 5 | 1-20 |
 | minScore | number | no | 0.0 | 0-1 |
 | filters | object | no | -- | `{ source, tags }` |
-| expand | bool | no | false | LLM query expansion (+~300ms) |
-| hybrid | bool | no | false | Semantic + keyword (+~75ms) |
-| rerank | bool | no | false | LLM judge re-ranking (+~1000ms) |
+| expand | bool | no | false | LLM query expansion; adds inference work; not combined with `hybrid` |
+| hybrid | bool | no | false | Semantic + keyword retrieval; takes precedence over `expand` |
+| rerank | bool | no | false | LLM judge re-ranking; adds inference work |
 | compress | bool | no | false | Extract query-relevant sentences after retrieval; fail-soft |
+| followLinks | bool or number | no | false | Follow retrieved Markdown links; true adds up to 2 notes, numeric values are truncated/clamped to 0-3 |
+
+Optional search stages have variable costs depending on the corpus, model and
+available inference host; these options do not promise fixed added latency.
 
 ```bash
 curl -X POST http://127.0.0.1:3182/api/rag/search \
@@ -226,9 +245,15 @@ curl -X POST http://127.0.0.1:3182/api/rag/search \
 { "ok": true, "data": {
   "results": [{ "text": "The alert system monitors...", "score": 0.87,
     "metadata": { "source": "docs", "documentId": "abc123", "chunkIndex": 2 } }],
-  "count": 1
+  "count": 1,
+  "applied": { "hybrid": false, "expand": false }
 } }
 ```
+
+`applied` reports the retrieval modes that ran. Hybrid search and query
+expansion do not compose: when both are requested, hybrid runs and
+`applied.expand` is `false`. When the keyword half of a hybrid search fails,
+the vector results are returned and `applied.keywordSearchFailed` is `true`.
 
 **Errors:** 400 (validation), 503 `VECTOR_STORE_UNAVAILABLE`, 503 `EMBEDDING_SERVICE_UNAVAILABLE`
 
@@ -281,18 +306,63 @@ case-sensitive phrase `DELETE <full document ID>` in `confirmation`. This
 destructive-action confirmation is an additional safety gate; it does not
 replace or grant operator authorization at the deployment boundary.
 
-**Errors:** 400 `CONFIRMATION_REQUIRED`, 404
+**Errors:** 400 `CONFIRMATION_REQUIRED`, 404 when no chunk carries that ID
 
 ```bash
 curl -X DELETE http://127.0.0.1:3182/api/rag/documents/abc123 \
   -H 'Content-Type: application/json' \
   -d '{ "confirmation": "DELETE abc123" }'
-# => { "ok": true, "data": { "documentId": "abc123" } }
+# => { "ok": true, "data": { "documentId": "abc123", "filesReset": 1 } }
 ```
+
+Deleting a document also clears the index state of the scanned file records
+(`nas_files`) that produced it; `filesReset` counts them (`null` when MongoDB
+was unavailable). A file still under an ingest root is therefore ingested
+again by the next scan.
+
+To keep the file out of the index, add `"exclude": true` to the body. The
+matching records are marked `indexed_status: "excluded"` (with `excluded_at`)
+instead of reset, and scans skip them even when the file changes on disk. The
+response carries `filesExcluded` instead of `filesReset`; it is `0` for a
+document that did not come from a scanned file (upload, API ingest) and `null`
+when MongoDB was unavailable.
+
+```bash
+curl -X DELETE http://127.0.0.1:3182/api/rag/documents/abc123 \
+  -H 'Content-Type: application/json' \
+  -d '{ "confirmation": "DELETE abc123", "exclude": true }'
+# => { "ok": true, "data": { "documentId": "abc123", "filesExcluded": 1 } }
+```
+
+To exclude whole folders, use the ingestion policy instead.
 
 When confirmation is missing or does not match the decoded route ID exactly,
 the store is not called. The error includes
 `confirmation: { "field": "confirmation", "expected": "DELETE abc123" }`.
+
+### GET /api/rag/ingestion/excluded
+
+List scanned files excluded by a delete with `exclude`, newest first (at most
+200). **Errors:** 503 `MONGODB_UNAVAILABLE`
+
+```bash
+curl http://127.0.0.1:3182/api/rag/ingestion/excluded
+# => { "ok": true, "data": { "files": [{ "path": "/data/notes/a.md", "excludedAt": "2026-10-02T08:00:00.000Z" }], "count": 1 } }
+```
+
+### POST /api/rag/ingestion/excluded/restore
+
+Lift one exclusion. The record's index state is cleared, so the next scan
+ingests the file again if it is still under an ingest root. The Documents page
+offers the same action under **Excluded files**.
+**Errors:** 400 missing `path`, 404 no excluded file at that path, 503 `MONGODB_UNAVAILABLE`
+
+```bash
+curl -X POST http://127.0.0.1:3182/api/rag/ingestion/excluded/restore \
+  -H 'Content-Type: application/json' \
+  -d '{ "path": "/data/notes/a.md" }'
+# => { "ok": true, "data": { "path": "/data/notes/a.md", "restored": 1 } }
+```
 
 ## Manifests & Cleanup
 
@@ -341,12 +411,24 @@ Delete stale documents. Dry-run by default.
 | dryRun | bool | no | true | Set false to delete |
 | manifestId | string | no | latest | Specific manifest |
 | maxDeletes | int | no | 100 | Safety cap (max 500) |
+| confirmation | string | when dryRun is false | -- | Exact phrase: `DELETE STALE DOCUMENTS FROM <trimmed source>` |
+
+Inspect `deletion-preview` and a dry-run before deleting. A dry-run needs no
+confirmation and leaves documents intact:
 
 ```bash
 curl -X POST http://127.0.0.1:3182/api/rag/cleanup \
   -H 'Content-Type: application/json' \
-  -d '{ "source": "local-import", "dryRun": false, "maxDeletes": 100 }'
-# => { "ok": true, "data": { "dryRun": false, "deleted": ["doc1"], "errors": [], "stats": { "attempted": 1, "succeeded": 1, "failed": 0, "elapsedMs": 150 } } }
+  -d '{ "source": "local-import", "dryRun": true, "maxDeletes": 100 }'
+```
+
+After reviewing that result, an explicitly confirmed deletion uses:
+
+```bash
+curl -X POST http://127.0.0.1:3182/api/rag/cleanup \
+  -H 'Content-Type: application/json' \
+  -d '{ "source": "local-import", "dryRun": false, "maxDeletes": 100, "confirmation": "DELETE STALE DOCUMENTS FROM local-import" }'
+# => { "ok": true, "data": { "dryRun": false, "deleted": ["doc1"], "errors": [], "filesReset": 1, "stats": { "attempted": 1, "succeeded": 1, "failed": 0, "elapsedMs": 150 } } }
 ```
 
 ## Embedding Migration
@@ -362,21 +444,31 @@ curl http://127.0.0.1:3182/api/rag/embedding-migration/status
 
 ### POST /api/rag/embedding-migration/reindex
 
-Re-embed all documents with current model. Requires `{ "confirm": true }`. Async 202 + jobId.
+Re-embed all documents in place with the current model. Requires the exact
+`confirmation` phrase `REINDEX ALL DOCUMENTS`. Returns async 202 + jobId.
+When dimensions already match, the no-op guard returns `MIGRATION_NOT_NEEDED`
+unless the JSON boolean `force: true` explicitly requests regeneration.
+For an intentional same-dimension regeneration, after checking status:
 
 ```bash
 curl -X POST http://127.0.0.1:3182/api/rag/embedding-migration/reindex \
-  -H 'Content-Type: application/json' -d '{ "confirm": true }'
+  -H 'Content-Type: application/json' \
+  -d '{ "confirmation": "REINDEX ALL DOCUMENTS", "force": true }'
 # => 202 { "ok": true, "data": { "jobId": "reindex-...", "status": "running" } }
 ```
 
-**Errors:** 400 `CONFIRMATION_REQUIRED`, 409 `REINDEX_ALREADY_RUNNING`
+**Errors:** 400 `CONFIRMATION_REQUIRED`, 400 `MIGRATION_NOT_NEEDED`, 409 `REINDEX_ALREADY_RUNNING`
 
 Reindex re-embeds in place, so it only suits a model with the same dimension.
 A model with another dimension uses a new collection:
 `scripts/migrate-embedding-collection.js` copies every document from a source
 collection into a target one (see "Switching the embedding model" in
 `docs/OPERATIONS.md`).
+
+Job tracking is in process memory and is lost on restart. Poll per-document
+failures: a completed job can contain failed documents. Documents without the
+original-text payload must be re-ingested from their approved sources before
+they can be reindexed.
 
 ### GET /api/rag/embedding-migration/reindex/:jobId
 

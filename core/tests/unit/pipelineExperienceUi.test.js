@@ -2,10 +2,11 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { readPipelineSource, loadPipelineParts } = require('../helpers/pipelineScripts');
 
 describe('Pipeline open-work experience', () => {
   const view = fs.readFileSync(path.resolve(__dirname, '../../views/pages/pipeline.ejs'), 'utf8');
-  const script = fs.readFileSync(path.resolve(__dirname, '../../public/js/pipeline.js'), 'utf8');
+  const script = readPipelineSource();
 
   test('offers visible service, lane, and status-card filters', () => {
     for (const id of ['pipelineServiceFilter', 'pipelineLaneFilter']) {
@@ -99,8 +100,8 @@ describe('Pipeline open-work experience', () => {
     expect(view).toContain('Starts one bounded local worker');
     expect(view).toContain('scheduling, merge, and deploy stay off');
     expect(script).toContain('window.PipelineLaunchController');
-    expect(script).toContain('provider spend ceiling $0');
-    expect(script).toContain('declared authority sources');
+    expect(script).toContain('one local coding worker');
+    expect(script).toContain('Only unassigned, non-private agentx-coding tasks can start');
     expect(view).toContain('id="pipelineTeamEligibilityReasons"');
     expect(view).toContain('id="pipelineTeamLaunchRetry"');
   });

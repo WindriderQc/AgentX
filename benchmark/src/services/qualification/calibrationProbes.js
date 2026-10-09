@@ -36,7 +36,9 @@ const PROBE_IDS = Object.freeze(['K1', 'K2', 'K3', 'K4']);
 const SCRATCH_MARKERS = ['scratch', 'tmp', 'temp', 'worktree', 'k-probe', 'kprobe', 'calibration-probe'];
 
 function isScratchRoot(root) {
-  if (!root || typeof root !== 'string') return false;
+  // A relative root would resolve against the current directory and inherit
+  // its markers, so only an absolute path on this platform can qualify.
+  if (!root || typeof root !== 'string' || !path.isAbsolute(root)) return false;
   const norm = path.resolve(root).replace(/\\/g, '/').toLowerCase();
   const tmp = path.resolve(os.tmpdir()).replace(/\\/g, '/').toLowerCase();
   if (norm === tmp || norm.startsWith(tmp + '/')) return true;

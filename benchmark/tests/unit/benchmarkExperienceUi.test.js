@@ -2,19 +2,19 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const historyUrl = '/api/benchmark/batches?status=completed&limit=1';
-const activeUrl = '/api/benchmark/batches/active';
+const historyUrl = '/benchmark/api/benchmark/batches?status=completed&limit=1';
+const activeUrl = '/benchmark/api/benchmark/batches/active';
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
 async function loadExperience() {
     const elements = {};
     const classes = new Set();
     const payloads = {
-        '/api/ollama-hosts': { hosts: [{ available: true, models: ['model-a'] }] },
-        '/api/profiler/hosts': { data: [{ status: 'online', baseline: { testedAt: '2026-09-07' } }] },
+        '/benchmark/api/ollama-hosts': { hosts: [{ available: true, models: ['model-a'] }] },
+        '/benchmark/api/profiler/hosts': { data: [{ status: 'online', baseline: { testedAt: '2026-09-07' } }] },
         [historyUrl]: { data: { batches: [{ _id: 'completed-1' }], total: 2 } },
         [activeUrl]: { data: [] },
-        '/api/benchmark/judge/readiness': { data: { ready: true } }
+        '/benchmark/api/benchmark/judge/readiness': { data: { ready: true } }
     };
     let onReady;
     let onBodyChange;

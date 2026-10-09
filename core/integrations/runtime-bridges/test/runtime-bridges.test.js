@@ -18,7 +18,7 @@ const {
   requestAbort, pipeRuntimeStream
 } = require('../common');
 const { OPENCLAW_CONSUMER_CONTRACT, registerOpenClawProtocol } = require('../openclaw/protocol');
-const { createConversationHostResolver, parseConversationHosts } = require('../openclaw/conversationHosts');
+const { createConversationHostResolver, parseConversationHosts, parseNoThinkModels } = require('../openclaw/conversationHosts');
 const {
   PIPELINE_CONSUMER_CONTRACT,
   PIPELINE_MODEL_ALIAS
@@ -320,6 +320,8 @@ test('Pipeline attribution requests exact artifact identity from Product routing
     status: 1,
     assignee: 1,
     automationAttemptCount: 1,
+    codingCapacity: 1,
+    'automationLease.leaseId': 1,
     'automationLease.attempt': 1,
     'automationLease.expiresAt': 1,
     'automationAttempts.attempt': 1,
@@ -509,6 +511,61 @@ test('conversation hosts reject malformed entries', () => {
   assert.equal(parseConversationHosts(' a=http://h:1 , b:9b=https://h2:2 ').get('b:9b').hostUrl, 'https://h2:2');
   for (const value of ['no-host', '=http://h:1', 'a=ftp://h:1', 'a=http://user@h:1', 'a=http://h:1/path?x=1']) {
     assert.throws(() => parseConversationHosts(value), /OPENCLAW_CONVERSATION_HOSTS/);
+  }
+});
+
+test('a conversation model on the no-reasoning list answers without thinking, others keep their level', async () => {
+  let captured;
+  const resolve = createConversationHostResolver('companion:12b=http://second-host:11434');
+  const router = registerOpenClawProtocol({ express: fakeExpress(), logger: {},
+    noThinkModels: parseNoThinkModels(' companion:12b , other:4b '),
+    resolveConversationTarget: async model => resolve(model),
+    runtimeServices: runtimeServices(async (request) => {
+      captured = request;
+      return { ok: true, status: 200, body: { done: true }, metadata: {} };
+    }) });
+  const turn = async (model, think) => {
+    const res = new Response();
+    await route(router, 'post', '/api/chat').handlers[0](new Request({ body: { model, stream: false,
+      ...(think !== undefined && { think }), messages: [{ role: 'user', content: 'hello' }] } }), res);
+    assert.equal(res.statusCode, 200);
+    return captured.think;
+  };
+  assert.equal(await turn('companion:12b', 'high'), false);
+  assert.equal(await turn('companion:12b', undefined), false);
+  assert.equal(await turn('model-a', 'high'), 'high');
+  assert.equal(await turn('model-a', undefined), undefined);
+});
+
+test('a lane declares its own reasoning for a model other lanes use with theirs', async () => {
+  let captured;
+  const router = registerOpenClawProtocol({ express: fakeExpress(), logger: {},
+    noThinkModels: parseNoThinkModels('model-a'),
+    runtimeServices: runtimeServices(async (request) => {
+      captured = request;
+      return { ok: true, status: 200, body: { done: true }, metadata: {} };
+    }) });
+  const turn = async (headers, think, model = 'model-a') => {
+    const res = new Response();
+    captured = null;
+    await route(router, 'post', '/api/chat').handlers[0](new Request({ headers, body: { model, stream: false,
+      ...(think !== undefined && { think }), messages: [{ role: 'user', content: 'hello' }] } }), res);
+    return { status: res.statusCode, think: captured?.think };
+  };
+  assert.deepEqual(await turn({ 'x-agentx-think': 'off' }, 'high'), { status: 200, think: false });
+  assert.deepEqual(await turn({ 'x-agentx-think': ' OFF ' }, undefined), { status: 200, think: false });
+  assert.deepEqual(await turn({}, 'high'), { status: 200, think: false }, 'without a declaration the list still decides');
+  assert.deepEqual(await turn({ 'x-agentx-think': 'on' }, undefined), { status: 200, think: true }, 'the lane wins over the list');
+  const refused = await turn({ 'x-agentx-think': 'maybe' }, 'high');
+  assert.equal(refused.status, 400);
+  assert.equal(refused.think, undefined, 'an unreadable declaration never reaches inference');
+});
+
+test('the no-reasoning list rejects malformed entries', () => {
+  assert.equal(parseNoThinkModels('').size, 0);
+  assert.deepEqual([...parseNoThinkModels('a:1b,, b ')], ['a:1b', 'b']);
+  for (const value of ['a=http://h:1', 'two words']) {
+    assert.throws(() => parseNoThinkModels(value), /OPENCLAW_CONVERSATION_NO_THINK_MODELS/);
   }
 });
 
@@ -798,6 +855,31 @@ test('request abort helper does not cancel completed responses', () => {
   res.emit('close');
   assert.equal(abort.signal.aborted, false);
   abort.cleanup();
+});
+
+test('agent chat turns ask Core for prompt-prefix telemetry outside the model request', async () => {
+  const calls = [];
+  const services = runtimeServices(async (request, options) => {
+    calls.push({ request, options });
+    return { ok: true, status: 200, body: { model: 'model-a', message: { role: 'assistant', content: 'ok' }, done: true },
+      metadata: { model: 'model-a', upstreamProtocol: 'ollama' } };
+  });
+  const openclaw = registerOpenClawProtocol({ express: fakeExpress(), runtimeServices: services, logger: {} });
+  const hermes = registerHermesProtocol({ express: fakeExpress(), runtimeServices: services, logger: {} });
+  const messages = [{ role: 'system', content: '## Tooling\nsynthetic' }, { role: 'user', content: 'hello' }];
+  await route(openclaw, 'post', '/api/chat').handlers[0](
+    new Request({ body: { model: 'model-a', stream: false, messages, options: { temperature: 0.2 } } }), new Response());
+  await route(openclaw, 'post', '/api/generate').handlers[0](
+    new Request({ body: { model: 'model-a', stream: false, prompt: 'hello' } }), new Response());
+  await route(hermes, 'post', '/v1/chat/completions').handlers[0](
+    new Request({ body: { model: 'model-a', messages } }), new Response());
+  assert.deepEqual(calls.map(call => call.options.observePromptPrefix), [true, undefined, true]);
+  for (const { request } of calls) {
+    assert.equal(request.observePromptPrefix, undefined);
+    assert.equal(request.promptPrefix, undefined);
+    assert.equal(request.options?.observePromptPrefix, undefined);
+  }
+  assert.deepEqual(calls[0].request.messages, messages);
 });
 
 test('Hermes maps non-streaming content, tools, usage, and routing metadata', async () => {

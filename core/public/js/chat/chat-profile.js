@@ -59,25 +59,48 @@ export async function loadProfile(elements) {
     const responseData = await res.json();
     const data = responseData.data || responseData;
     if (!data) return;
+    const preferences = data.preferences || {};
     elements.userAbout.value = data.about || '';
-    elements.userInstructions.value = data.preferences?.customInstructions || '';
+    elements.userInstructions.value = preferences.customInstructions || '';
+    if (elements.memoryLanguage) elements.memoryLanguage.value = preferences.language || '';
+    if (elements.memoryRole) elements.memoryRole.value = preferences.role || '';
+    if (elements.memoryStyle) elements.memoryStyle.value = preferences.style || '';
   } catch (err) {
     console.warn('Failed to load profile', err);
   }
 }
 
+async function readSaveError(res) {
+  try {
+    const body = await res.json();
+    if (body && typeof body.message === 'string' && body.message) return body.message;
+  } catch { /* non-JSON error body */ }
+  return `HTTP ${res.status}`;
+}
+
 export async function saveProfile(elements, setFeedback) {
   if (document.body.dataset.agentxProfile === 'demo') return;
   try {
-    await fetchWithDeadline('/api/profile', {
+    const res = await fetchWithDeadline('/api/profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         about: elements.userAbout.value,
-        preferences: { customInstructions: elements.userInstructions.value }
+        preferences: {
+          customInstructions: elements.userInstructions.value,
+          language: elements.memoryLanguage ? elements.memoryLanguage.value.trim() : undefined,
+          role: elements.memoryRole ? elements.memoryRole.value.trim() : undefined,
+          style: elements.memoryStyle ? elements.memoryStyle.value.trim() : undefined
+        }
       }),
       credentials: 'include'
     });
+    if (!res.ok) {
+      const reason = await readSaveError(res);
+      console.warn('Profile save rejected:', res.status, reason);
+      setFeedback(`Profile not saved: ${reason}`, 'error');
+      return;
+    }
     closeProfileModal(elements);
     setFeedback('Profile saved.', 'success');
     if (window.checkProfileSetup) window.checkProfileSetup();

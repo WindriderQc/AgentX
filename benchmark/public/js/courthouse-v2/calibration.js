@@ -286,7 +286,7 @@ function wireRunButton(container, hosts) {
         setStatus(status, 'Running…', 'running');
 
         try {
-            const res = await fetch('/api/benchmark/judge/matrix-calibrate', {
+            const res = await fetch('/benchmark/api/benchmark/judge/matrix-calibrate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -308,7 +308,7 @@ function wireRunButton(container, hosts) {
 
             // Refresh section
             try {
-                const calRes = await fetch('/api/benchmark/judge/calibration-status').then(r => r.json());
+                const calRes = await fetch('/benchmark/api/benchmark/judge/calibration-status').then(r => r.json());
                 const matrices = calRes.data?.matrices || [];
                 renderCalibration(container, { matrices, hosts });
             } catch (fetchErr) {
@@ -354,7 +354,7 @@ async function loadModelsForHost(hostUrl, selectEl) {
     selectEl.disabled = true;
     selectEl.innerHTML = '<option value="">Checking installed models…</option>';
     try {
-        const res  = await fetch('/api/profiler/hosts/test/hosts-status');
+        const res  = await fetch('/benchmark/api/profiler/hosts/test/hosts-status');
         const data = await res.json();
         const hosts    = data.data?.hosts || data.data || [];
         const hostData = hosts.find(h => (h.url || h.host) === hostUrl);

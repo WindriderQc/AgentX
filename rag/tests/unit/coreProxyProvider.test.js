@@ -39,46 +39,30 @@ describe('CoreProxyProvider constructor', () => {
     const p = new CoreProxyProvider();
     expect(p.coreProxyUrl).toBe(process.env.CORE_PROXY_URL || 'http://localhost:3080');
     expect(p.batchSize).toBe(10);
-    expect(p.maxTextLength).toBe(8000);
+    expect(p.getStatusInfo().inputLimit).toEqual({ unit: 'characters', maximum: 8000, source: 'provider', overflow: 'reject' });
   });
 });
 
 // ── _validateText ────────────────────────────────────────
 
-describe('_validateText', () => {
+describe('validateText', () => {
   let provider;
   beforeEach(() => { provider = new CoreProxyProvider(); });
 
   it('throws on empty string', () => {
-    expect(() => provider._validateText('')).toThrow('non-empty string');
+    expect(() => provider.validateText('')).toThrow('non-empty string');
   });
 
   it('throws on null', () => {
-    expect(() => provider._validateText(null)).toThrow('non-empty string');
+    expect(() => provider.validateText(null)).toThrow('non-empty string');
   });
 
   it('throws on non-string', () => {
-    expect(() => provider._validateText(123)).toThrow('non-empty string');
+    expect(() => provider.validateText(123)).toThrow('non-empty string');
   });
 
   it('does not throw on valid text', () => {
-    expect(() => provider._validateText('hello')).not.toThrow();
-  });
-});
-
-// ── _truncateText ────────────────────────────────────────
-
-describe('_truncateText', () => {
-  let provider;
-  beforeEach(() => { provider = new CoreProxyProvider(); });
-
-  it('returns text unchanged when under limit', () => {
-    expect(provider._truncateText('short')).toBe('short');
-  });
-
-  it('truncates text exceeding maxTextLength', () => {
-    const long = 'x'.repeat(9000);
-    expect(provider._truncateText(long)).toHaveLength(8000);
+    expect(() => provider.validateText('hello')).not.toThrow();
   });
 });
 
@@ -122,18 +106,32 @@ describe('embed', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('truncates long text before sending', async () => {
+  it('sends the complete text at the declared limit', async () => {
     fetch.mockResolvedValueOnce(okEmbedding());
     const provider = new CoreProxyProvider();
-    await provider.embed('x'.repeat(9000));
+    const text = 'x'.repeat(7990) + 'TAIL_VALUE';
+    await provider.embed(text);
     const body = JSON.parse(fetch.mock.calls[0][1].body);
-    expect(body.prompt).toHaveLength(8000);
+    expect(body.prompt).toBe(text);
+  });
+
+  it('refuses oversized input without dispatching or returning a partial vector', async () => {
+    const provider = new CoreProxyProvider();
+    await expect(provider.embed('x'.repeat(8001))).rejects.toMatchObject({
+      code: 'EMBEDDING_INPUT_TOO_LARGE', statusCode: 413, limit: 8000, inputLength: 8001
+    });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('throws on non-ok response', async () => {
     fetch.mockResolvedValueOnce(failRes(502, 'bad gateway'));
     const provider = new CoreProxyProvider();
     await expect(provider.embed('test')).rejects.toThrow('Failed to generate embedding');
+  });
+
+  it('preserves a native model input refusal for the RAG boundary', async () => {
+    fetch.mockResolvedValueOnce(failRes(400, JSON.stringify({ code: 'EMBEDDING_INPUT_REJECTED' })));
+    await expect(new CoreProxyProvider().embed('Complete input')).rejects.toMatchObject({ code: 'EMBEDDING_INPUT_REJECTED', statusCode: 400 });
   });
 
   it('throws on invalid response (missing embedding)', async () => {
@@ -155,6 +153,11 @@ describe('embed', () => {
 // ── embedBatch ───────────────────────────────────────────
 
 describe('embedBatch', () => {
+  it('validates the entire batch before dispatching its first group', async () => {
+    const provider = new CoreProxyProvider({ batchSize: 1 });
+    await expect(provider.embedBatch(['valid', 'x'.repeat(8001)])).rejects.toMatchObject({ code: 'EMBEDDING_INPUT_TOO_LARGE' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it('processes all texts and returns embeddings', async () => {
     fetch.mockResolvedValue(okEmbedding([1, 2, 3]));
     const provider = new CoreProxyProvider();

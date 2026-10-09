@@ -10,6 +10,11 @@ function mockOk(jsonBody = {}) {
 function mockFail(status = 500, body = 'error') {
   return { ok: false, status, text: async () => body };
 }
+// Collection read whose payload schema already holds every index the store ensures.
+function mockIndexedCollection() {
+  const payloadSchema = Object.fromEntries(Object.keys(QdrantVectorStore.PAYLOAD_INDEXES).map(field => [field, {}]));
+  return mockOk({ result: { payload_schema: payloadSchema } });
+}
 
 describe('bounded corpus traversal payloads', () => {
   let requests;
@@ -143,7 +148,7 @@ describe('complete corpus reads beyond 10,000 points', () => {
     expect(chunks.at(-1).text).toBe('passage-10000');
     store._collectionVerified = true;
     await store.upsertDocument('large-source', { source: 'api' }, [{ chunkIndex: 0, text: 'replacement', embedding: [1, 0] }]);
-    const deletion = JSON.parse(fetch.mock.calls.find(([url]) => url.endsWith('/points/delete'))[1].body);
+    const deletion = JSON.parse(fetch.mock.calls.find(([url]) => new URL(url).pathname.endsWith('/points/delete'))[1].body);
     expect(deletion.filter.must).toEqual([{ key: 'documentId', match: { value: 'large-source' } }]);
     expect(deletion.filter.must_not).toEqual([{ key: 'revision', match: { value: expect.any(String) } }]);
   });
@@ -245,12 +250,8 @@ describe('QdrantVectorStore._ensureCollection caching', () => {
   });
 
   it('only calls Qdrant once across multiple upserts', async () => {
-    // _ensureCollection check — collection exists
-    fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ result: { points: [] } }),
-      text: async () => ''
-    });
+    // _ensureCollection check — collection exists with its payload indexes
+    fetch.mockResolvedValue(mockIndexedCollection());
 
     const store = new QdrantVectorStore({
       qdrantUrl: 'http://qdrant:6333',
@@ -382,8 +383,8 @@ describe('QdrantVectorStore.upsertDocument', () => {
   it('calls _ensureCollection, checks for existing points, upserts, cleans up and returns result', async () => {
     store._collectionVerified = false;
 
-    // _ensureCollection — collection exists
-    fetch.mockResolvedValueOnce(mockOk());
+    // _ensureCollection — collection exists with its payload indexes
+    fetch.mockResolvedValueOnce(mockIndexedCollection());
     // Scroll — no existing points
     fetch.mockResolvedValueOnce(mockOk({ result: { points: [] } }));
     // upsert batch, then cleanup of other revisions

@@ -13,7 +13,12 @@ const clusterScheduleService = require('../src/services/clusterScheduleService')
 const clusterLiveService = require('../src/services/clusterLiveService');
 const HostUsageLedger = require('../models/HostUsageLedger');
 const { getUtilizationHeatmap } = require('../src/services/hostUsageAggregator');
-const { defaultPlanningTimeZone } = require('../src/services/planningDateService');
+const { defaultPlanningTimeZone, zonedDateOnly, zonedDayBounds } = require('../src/services/planningDateService');
+const { getConfiguredHosts } = require('../src/helpers/ollamaHostConfig');
+const { describeHost } = require('../src/services/hostIdentityService');
+const { getHeavyQueue } = require('../src/services/heavyQueueProjectionService');
+
+router.use('/schedule/work-queue', require('./heavy-work-queue'));
 
 /**
  * GET /schedule
@@ -43,8 +48,8 @@ router.get('/schedule', async (req, res) => {
  */
 router.get('/schedule/timeline', async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
     const timezone = req.query.timezone || defaultPlanningTimeZone();
+    const date = req.query.date || zonedDateOnly(new Date(), timezone);
     const timeline = await clusterScheduleService.getTimeline(date, timezone);
     res.json({ status: 'success', data: { date, timezone, timeline } });
   } catch (err) {
@@ -60,8 +65,8 @@ router.get('/schedule/timeline', async (req, res) => {
  */
 router.get('/schedule/timeline-by-host', async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
     const timezone = req.query.timezone || defaultPlanningTimeZone();
+    const date = req.query.date || zonedDateOnly(new Date(), timezone);
     const hosts = await clusterScheduleService.getTimelineByHost(date, timezone);
     res.json({ status: 'success', data: { date, timezone, hosts } });
   } catch (err) {
@@ -77,8 +82,8 @@ router.get('/schedule/timeline-by-host', async (req, res) => {
  */
 router.get('/schedule/conflicts', async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
     const timezone = req.query.timezone || defaultPlanningTimeZone();
+    const date = req.query.date || zonedDateOnly(new Date(), timezone);
     const conflicts = await clusterScheduleService.getConflicts(date, timezone);
     res.json({ status: 'success', data: { date, timezone, conflicts, count: conflicts.length } });
   } catch (err) {
@@ -126,6 +131,17 @@ router.get('/schedule/next', async (req, res) => {
   } catch (err) {
     logger.error('Failed to get next cluster tasks', { error: err.message });
     res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+router.get('/schedule/heavy-queue', async (_req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const durable = await require('../src/services/heavyWorkQueueService').list();
+    res.json({ status: 'success', data: durable || await getHeavyQueue() });
+  } catch (error) {
+    logger.error('Failed to read instance heavy queue', { error: error.message });
+    res.status(500).json({ status: 'error', error: 'Heavy queue unavailable' });
   }
 });
 
@@ -189,12 +205,18 @@ router.get('/schedule/actual', async (req, res) => {
 /**
  * GET /schedule/heatmap
  * Utilization heatmap for the past N days (days × 24 hours per host).
- * Query params: days (default 7, max 30)
+ * Query params: days (default 7, max 30), timezone (IANA, default UTC)
  */
 router.get('/schedule/heatmap', async (req, res) => {
   try {
     const days = Math.min(parseInt(req.query.days || '7', 10), 30);
-    const data = await getUtilizationHeatmap(days);
+    const timeZone = req.query.timezone || 'UTC';
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone });
+    } catch {
+      return res.status(400).json({ status: 'error', error: 'Unknown time zone.' });
+    }
+    const data = await getUtilizationHeatmap(days, timeZone);
     res.json({ status: 'success', data });
   } catch (err) {
     logger.error('Failed to get utilization heatmap', { error: err.message });
@@ -209,26 +231,29 @@ router.get('/schedule/heatmap', async (req, res) => {
  */
 router.get('/schedule/actual-vs-planned', async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
     const timezone = req.query.timezone || defaultPlanningTimeZone();
+    const date = req.query.date || zonedDateOnly(new Date(), timezone);
 
     // Get planned timeline
     const planned = await clusterScheduleService.getTimelineByHost(date, timezone);
 
     // Get actual for same day
-    const dayStart = new Date(`${date}T00:00:00Z`);
-    const dayEnd = new Date(dayStart.getTime() + 86400 * 1000);
+    const { start: dayStart, end: dayEnd } = zonedDayBounds(date, timezone);
     const actual = await HostUsageLedger.find({
       hour: { $gte: dayStart, $lt: dayEnd }
     }).sort({ hour: 1 }).lean();
 
     // Build actual by host
     const actualByHost = {};
+    const configuredHosts = getConfiguredHosts();
+    const hourFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone, hour: '2-digit', hourCycle: 'h23'
+    });
     for (const r of actual) {
-      const label = r.hostLabel || r.hostKey || r.host;
+      const label = describeHost(r.host, r.hostKey, configuredHosts).displayName;
       if (!actualByHost[label]) actualByHost[label] = [];
       actualByHost[label].push({
-        hour: r.hour.getUTCHours(),
+        hour: Number(hourFormatter.format(r.hour)),
         utilizationPct: r.utilizationPct,
         totalCalls: r.totalCalls,
         avgDurationMs: r.avgDurationMs

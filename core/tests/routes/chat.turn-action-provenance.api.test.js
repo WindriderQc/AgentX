@@ -21,6 +21,8 @@ const Conversation = require('../../models/Conversation');
 const chatService = require('../../src/services/chatService');
 const chatRoutes = require('../../routes/chat');
 
+const CONVERSATION_ID = '64b7f0c2a1b2c3d4e5f60718';
+
 function buildApp() {
   const app = express();
   app.use(express.json());
@@ -68,7 +70,7 @@ describe('chat route turn-action provenance', () => {
       .send({
         model: 'test-model',
         message: 'Duplicate prompt',
-        conversationId: 'conversation-1',
+        conversationId: CONVERSATION_ID,
         turnAction
       });
 
@@ -88,7 +90,7 @@ describe('chat route turn-action provenance', () => {
       .send({
         model: 'test-model',
         message: 'Duplicate prompt',
-        conversationId: 'conversation-1',
+        conversationId: CONVERSATION_ID,
         turnAction: {
           kind: 'ask-again',
           sourceUserMessageId: 'u-older',

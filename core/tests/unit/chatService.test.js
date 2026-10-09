@@ -183,6 +183,46 @@ describe('chatService', () => {
             expect(Conversation).toHaveBeenCalled(); // New conversation created
         });
 
+        it('honors disabled profile, history and RAG while retaining the saved transcript', async () => {
+            const oldEnv = process.env.RAG_ENABLED; process.env.RAG_ENABLED = 'true';
+            const previous = [{ role: 'user', content: 'Synthetic previous question' }, { role: 'assistant', content: 'Synthetic previous reply' }];
+            const saved = new Conversation({ _id: '507f1f77bcf86cd799439011', userId: 'user123', messages: previous });
+            Conversation.findOne.mockResolvedValue(saved);
+            try {
+                await handleChatRequest({ userId: 'user123', model: 'llama2', message: 'Current question',
+                    conversationId: saved._id, messages: previous, ragEnabled: false, useRag: true, ragStore: mockRagStore,
+                    conversationFeatures: { profileContext: false, historyContext: false } });
+                expect(getOrCreateProfile).not.toHaveBeenCalled();
+                expect(mockRagStore.searchSimilarChunks).not.toHaveBeenCalled();
+                expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({ messages: [
+                    { role: 'system', content: mockPrompt.systemPrompt }, { role: 'user', content: 'Current question' }
+                ] }));
+                expect(saved.messages.slice(0, 2)).toEqual(previous);
+                expect(saved.messages.map(row => row.content)).toEqual([...previous.map(row => row.content), 'Current question', 'Test response']);
+                expect(saved.save).toHaveBeenCalled();
+            } finally { if (oldEnv === undefined) delete process.env.RAG_ENABLED; else process.env.RAG_ENABLED = oldEnv; }
+        });
+
+        it('reports an unavailable knowledge base distinctly from no match', async () => {
+            mockRagStore.searchSimilarChunks.mockRejectedValueOnce(new Error('RAG down'));
+            const unavailable = await handleChatRequest({
+                userId: 'user123', model: 'llama2', message: 'What is in my notes?',
+                useRag: true, ragStore: mockRagStore
+            });
+            expect(unavailable.ragUsed).toBe(false);
+            expect(unavailable.ragStatus).toBe('unavailable');
+
+            mockRagStore.searchSimilarChunks.mockResolvedValueOnce([]);
+            const noMatch = await handleChatRequest({
+                userId: 'user123', model: 'llama2', message: 'What is in my notes?',
+                useRag: true, ragStore: mockRagStore
+            });
+            expect(noMatch.ragStatus).toBe('no_match');
+
+            const notRequested = await handleChatRequest({ userId: 'user123', model: 'llama2', message: 'Hi' });
+            expect(notRequested.ragStatus).toBe('not_requested');
+        });
+
         it('should include the current user message in the Ollama payload', async () => {
             await handleChatRequest({
                 userId: 'user123',
@@ -261,7 +301,7 @@ describe('chatService', () => {
         it('should use existing conversation if conversationId is provided', async () => {
             // Mock an existing conversation instance
             const mockExistingConvInstance = {
-                _id: 'existing123',
+                _id: '64b7f0c2a1b2c3d4e5f60718',
                 userId: 'user123',
                 messages: [], // Real array
                 save: jest.fn().mockResolvedValue(true)
@@ -277,14 +317,14 @@ describe('chatService', () => {
                 userId: 'user123',
                 model: 'llama2',
                 message: 'Continue chat',
-                conversationId: 'existing123'
+                conversationId: '64b7f0c2a1b2c3d4e5f60718'
             };
 
             const result = await handleChatRequest(request);
 
-            expect(result.conversationId).toBe('existing123');
+            expect(result.conversationId).toBe('64b7f0c2a1b2c3d4e5f60718');
             expect(Conversation.findOne).toHaveBeenCalledWith({
-                _id: 'existing123',
+                _id: '64b7f0c2a1b2c3d4e5f60718',
                 userId: 'user123',
                 'lifecycle.status': { $ne: 'archived' }
             });
@@ -292,25 +332,59 @@ describe('chatService', () => {
             expect(mockExistingConvInstance.save).toHaveBeenCalled();
         });
 
-        it('should create a new conversation when the provided ID is outside the caller scope', async () => {
+        it('rehydrates stored prior turns into the model context for a conversationId continuation', async () => {
+            const priorTurns = [
+                { role: 'user', content: 'Show me the module' },
+                { role: 'assistant', content: 'Here is the module: 150 lines of code' }
+            ];
+            const existing = {
+                _id: '64b7f0c2a1b2c3d4e5f60720',
+                userId: 'user123',
+                messages: [...priorTurns],
+                save: jest.fn().mockResolvedValue(true)
+            };
+            existing.messages.create = jest.fn((msg) => ({ ...msg, _id: 'newmsg', metadata: {} }));
+            existing.messages.push = jest.fn((item) => Array.prototype.push.call(existing.messages, item));
+            Conversation.findOne.mockResolvedValue(existing);
+
+            // The connector sends only the conversationId and the follow-up;
+            // it does not resend the earlier turns (issue #530).
+            const result = await handleChatRequest({
+                userId: 'user123',
+                model: 'llama2',
+                message: 'Which line has the bug?',
+                conversationId: '64b7f0c2a1b2c3d4e5f60720'
+            });
+
+            expect(result.conversationId).toBe('64b7f0c2a1b2c3d4e5f60720');
+            expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({
+                messages: [
+                    { role: 'system', content: expect.stringContaining('You are a helpful assistant.') },
+                    { role: 'user', content: 'Show me the module' },
+                    { role: 'assistant', content: 'Here is the module: 150 lines of code' },
+                    { role: 'user', content: 'Which line has the bug?' }
+                ]
+            }));
+        });
+
+        it('refuses a conversation ID outside the caller scope instead of forking', async () => {
             const request = {
                 userId: 'user123',
                 model: 'llama2',
                 message: 'Continue chat',
-                conversationId: 'foreign123'
+                conversationId: '64b7f0c2a1b2c3d4e5f60719'
             };
 
-            const result = await handleChatRequest(request);
-
-            expect(result.conversationId).toBe('conv123');
+            await expect(handleChatRequest(request)).rejects.toMatchObject({
+                code: 'CONVERSATION_NOT_FOUND',
+                statusCode: 404
+            });
             expect(Conversation.findOne).toHaveBeenCalledWith({
-                _id: 'foreign123',
+                _id: '64b7f0c2a1b2c3d4e5f60719',
                 userId: 'user123',
                 'lifecycle.status': { $ne: 'archived' }
             });
-            expect(Conversation).toHaveBeenCalledWith(expect.objectContaining({
-                userId: 'user123'
-            }));
+            expect(Conversation).not.toHaveBeenCalled();
         });
     });
 
@@ -589,7 +663,7 @@ describe('chatService', () => {
                  message: 'Hi'
              };
 
-             await expect(handleChatRequest(request)).rejects.toThrow('Ollama request timed out');
+             await expect(handleChatRequest(request)).rejects.toThrow('Ollama request timed out (5m limit).');
         });
     });
 

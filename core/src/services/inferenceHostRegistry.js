@@ -137,8 +137,13 @@ function readAttributes(body = {}, { partial = false } = {}) {
 async function list() {
   const docs = await InferenceHost.find({}).lean();
   const byKey = new Map(docs.map(doc => [hostUrlKey(doc.url), doc]));
+  // Benchmark reads this list: its probes on a CPU host reuse the pin's threads.
+  const preferences = await HostPreference.find({ 'pinnedModels.numThread': { $gt: 0 } }).select('hostUrl pinnedModels').lean();
+  const threadsByKey = new Map(preferences.map(pref => [hostUrlKey(pref.hostUrl), Object.fromEntries(
+    (pref.pinnedModels || []).filter(pin => pin.numThread > 0).map(pin => [pin.model, pin.numThread]))]));
   return hostConfig.getConfiguredHosts().map(host => ({
     ...host,
+    pinThreads: threadsByKey.get(hostUrlKey(host.url)) || {},
     registered: byKey.has(hostUrlKey(host.url)),
     removable: host.source === 'registry'
   }));
@@ -157,6 +162,11 @@ async function create(body = {}, { fetchImpl } = {}) {
   const reachability = await probe(url, fetchImpl);
   const doc = await InferenceHost.create({ hostId, url, ...readAttributes(body) });
   await load();
+  // The host card's pin editor works on the host preference; create it with
+  // the host so the first pin can be added from the Nerve Center.
+  await HostPreference.updateOne({ hostUrl: url },
+    { $setOnInsert: { hostUrl: url, hostKey: hostId, displayName: doc.name || hostId, status: 'idle' } },
+    { upsert: true });
   logger.info('Inference host registered', { hostId, url, residency: doc.residency, reachable: reachability.reachable });
   return { host: toSnapshot(doc.toObject()), reachability };
 }
@@ -189,6 +199,8 @@ async function remove(hostId) {
     if (routed) throw new RegistryError(409, 'HOST_IN_ROUTING', `Task ${routed.taskType} still routes to this host`);
   }
   await InferenceHost.deleteOne({ hostId });
+  // A registered host's empty preference would otherwise read as an unconfigured host.
+  if (!BOOTSTRAP_IDS.has(hostId)) await HostPreference.deleteOne({ hostUrl: doc.url, 'pinnedModels.0': { $exists: false } });
   await load();
   return { removed: hostId };
 }

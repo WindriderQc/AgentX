@@ -103,10 +103,13 @@ router.post('/tasks/:id/feedback', async (req, res) => {
 
     const query = { pipelineId: req.params.id };
     const options = { new: true };
+    if (b.status === 'deferred' && b.expectedQueuedUpdatedAt == null) {
+      return envelope.error(res, 400, 'Capacity deferral requires the observed queued task version', 'INVALID_PREFLIGHT_FEEDBACK');
+    }
     if (b.expectedQueuedUpdatedAt != null) {
       const expected = new Date(b.expectedQueuedUpdatedAt);
-      if (b.status !== 'blocked' || lease || Number.isNaN(expected.getTime())) {
-        return envelope.error(res, 400, 'Queued preflight feedback requires a valid task version and blocked verdict', 'INVALID_PREFLIGHT_FEEDBACK');
+      if (!['blocked', 'deferred'].includes(b.status) || lease || Number.isNaN(expected.getTime())) {
+        return envelope.error(res, 400, 'Queued preflight feedback requires a valid task version and blocked or deferred status', 'INVALID_PREFLIGHT_FEEDBACK');
       }
       Object.assign(query, { status: 'queued', assignee: null, updatedAt: expected });
     }

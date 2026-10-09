@@ -42,6 +42,7 @@ function serializeActiveQueue(id, q, now = Date.now()) {
   return {
     type: 'profile-host',
     queueId: id,
+    queueRequestId: q.queueRequestId || null,
     hostId: q.hostId,
     hostUrl: q.hostUrl || null,
     hostName: q.hostName || null,

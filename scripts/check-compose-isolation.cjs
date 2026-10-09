@@ -18,7 +18,10 @@ const render = project => JSON.parse(execFileSync('docker', ['compose', '--proje
 try {
   const primary = render('agentx'), canary = render('agentx-canary');
   for (const config of [primary, canary]) {
-    for (const service of Object.values(config.services)) assert.equal(service.container_name, undefined);
+    for (const [name, service] of Object.entries(config.services)) {
+      assert.equal(service.container_name, undefined);
+      assert.deepEqual(service.logging, { driver: 'json-file', options: { 'max-size': '10m', 'max-file': '3' } }, `${name} logs must be bounded`);
+    }
     for (const volume of Object.values(config.volumes)) assert.ok(volume.name.startsWith(`${config.name}_canonical_`));
     assert.equal(config.services.core.environment.PSYX_ACCESS_TOKEN, 'synthetic-config-check');
     for (const [service, port] of Object.entries({core:43180, benchmark:43181, rag:43182, data:43183})) {
@@ -31,7 +34,7 @@ try {
   assert.equal(primary.volumes.qdrant_data.name, 'agentx_canonical_qdrant_data');
   assert.ok(Object.values(canary.volumes).every(volume => !primaryVolumes.has(volume.name)));
   assert.notEqual(primary.networks.default.name, canary.networks.default.name);
-  console.log('Compose projects have distinct networks/volumes; default volumes are preserved; external ports/private settings are honored.');
+  console.log('Compose projects have distinct networks/volumes; default volumes are preserved; external ports/private settings are honored; container logs are bounded.');
 } finally {
   fs.unlinkSync(envFile);
   fs.rmdirSync(temp);

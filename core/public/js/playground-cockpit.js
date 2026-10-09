@@ -230,7 +230,8 @@
 
     const identitySuffix = identityConsistency?.status === 'degraded'
       ? ' · deployment mismatch'
-      : (identityConsistency?.status === 'unverified' ? ' · build unverified' : '');
+      : (identityConsistency?.status === 'mixed' ? ' · mixed builds'
+        : (identityConsistency?.status === 'unverified' ? ' · build unverified' : ''));
     setText(elements.serviceSummary, total
       ? `${healthy}/${total} product services ready${identitySuffix}`
       : 'Product health unavailable');

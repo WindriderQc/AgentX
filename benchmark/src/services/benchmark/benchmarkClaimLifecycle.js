@@ -12,6 +12,8 @@ const {
     heartbeatWorkloadAdmission,
     releaseWorkloadAdmission
 } = require('../../clients/coreApiClient');
+const { isCoreUnavailable, withinConfirmedAdmission } = require('./coreRestartTolerance');
+const { hostUrlKey } = require('../../../../shared/ollamaHostConfig');
 
 const PHASE_BUDGET_PER_TEST_MS = 30_000;
 const CLAIM_HEARTBEAT_INTERVAL_MS = 30_000;
@@ -29,14 +31,18 @@ const CLAIM_HEARTBEAT_INTERVAL_MS = 30_000;
  */
 async function acquireBenchmarkClaims(hostUrls, batchId, estimatedDurationMs, claimOptions = {}) {
     const acquired = [];
-    await acquireWorkloadAdmission(batchId, {
+    const admission = await acquireWorkloadAdmission(batchId, {
         requestId: claimOptions.requestId || `benchmark:${batchId}`,
         kind: claimOptions.kind || (claimOptions.source === 'profiler' ? 'profiler' : 'benchmark'),
         batchId: claimOptions.source === 'benchmark' || !claimOptions.source ? batchId : null,
         hosts: claimOptions.admissionHosts || hostUrls,
+        sharedHosts: claimOptions.sharedHosts || [],
         ttlMs: estimatedDurationMs
     });
-    for (const hostUrl of hostUrls) {
+    // A host Core granted as shared (a judge-only host) gets no claim: its
+    // pinned models keep serving and the batch never unloads or drains it.
+    const shared = new Set(admission?.sharedHosts || []);
+    for (const hostUrl of hostUrls.filter(url => !shared.has(hostUrlKey(url)))) {
         try {
             const result = await claimHostForBenchmark(hostUrl, batchId, estimatedDurationMs, {
                 source: claimOptions.source || 'benchmark',
@@ -159,6 +165,7 @@ function startBenchmarkClaimHeartbeat(hostUrls, batchId, estimatedDurationMs, op
     let running = false;
     let inFlight = Promise.resolve();
     let failure = null;
+    let confirmedExpiresAt = null;
     let resolveReady;
     const ready = new Promise(resolve => { resolveReady = resolve; });
 
@@ -181,6 +188,7 @@ function startBenchmarkClaimHeartbeat(hostUrls, batchId, estimatedDurationMs, op
                     fail(null, workload.reason || 'workload admission ownership rejected');
                     return;
                 }
+                if (workload?.expiresAt) confirmedExpiresAt = workload.expiresAt;
                 if (typeof options.onHeartbeat === 'function') await options.onHeartbeat();
                 if (!hostHeartbeatsEnabled) return;
                 await Promise.all(hostUrls.map(async (hostUrl) => {
@@ -198,6 +206,14 @@ function startBenchmarkClaimHeartbeat(hostUrls, batchId, estimatedDurationMs, op
                     }
                 }));
             } catch (err) {
+                // A Core restart (#47) refuses connections for a while; the
+                // admission Core confirmed outlives it. Retry at the next tick.
+                if (isCoreUnavailable(err) && withinConfirmedAdmission(confirmedExpiresAt)) {
+                    logger.warn('Core unreachable; the workload admission is still valid, retrying', {
+                        batchId, expiresAt: confirmedExpiresAt, error: err.message
+                    });
+                    return;
+                }
                 logger.warn('Benchmark claim heartbeat failed', { batchId, error: err.message });
                 fail(null, err.message, err);
             } finally {
@@ -229,6 +245,8 @@ function startBenchmarkClaimHeartbeat(hostUrls, batchId, estimatedDurationMs, op
         await inFlight;
     };
     stop.getFailure = () => failure;
+    stop.confirmedExpiresAt = () => confirmedExpiresAt;
+    stop.noteConfirmedExpiry = value => { if (value) confirmedExpiresAt = value; };
     stop.assertActive = () => {
         if (failure) throw failure;
         if (stopped) {

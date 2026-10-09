@@ -1,6 +1,6 @@
 const Conversation = require('../../models/Conversation');
 const { getOrCreateProfile } = require('../helpers/userHelpers');
-const { extractResponse, buildOllamaPayload } = require('../helpers/ollamaResponseHandler');
+const { extractResponse, buildOllamaPayload, ollamaPhaseTimings } = require('../helpers/ollamaResponseHandler');
 const { summarizeOllamaOutcome } = require('./laneObservabilityService');
 const { sanitizeOptions, resolveTarget } = require('../helpers/ollamaUtils');
 const { recordInference } = require('./modelRouter');
@@ -16,6 +16,7 @@ const {
     hasQualifiedThinkingCapability
 } = require('./inferenceContractService');
 const { persistConversation } = require('./chat/conversationPersistence');
+const { resolveContextMessages } = require('./chat/conversationHistory');
 const { prepareChatOrchestration } = require('./chat/chatOrchestrationPrelude');
 const {
     finalizeRouteDecision,
@@ -61,12 +62,14 @@ const handleChatRequest = async ({
     persona,
     promptVersion,
     conversationId,
+    clientTurnId = null,
     useRag,
     ragEnabled,
     ragTopK,
     ragFilters,
     target,
     ragStore,
+    conversationFeatures = {},
     autoRoute = false,
     taskType = null,
     enableWebSearch = false,
@@ -114,15 +117,16 @@ const handleChatRequest = async ({
         personaName,
         exactPromptVersion == null ? {} : { promptVersion: exactPromptVersion }
     );
-    const userProfile = await getOrCreateProfile(userId);
+    const userProfile = conversationFeatures.profileContext === false ? {} : await getOrCreateProfile(userId);
 
     // Shared prelude, second pass: RAG + web-search.
     // Routing already ran above (no model/target passed here, so it's skipped).
-    const ragRequested = ragEnabled === true || useRag === true || process.env.RAG_ENABLED === 'true';
+    const ragRequested = ragEnabled !== false && useRag !== false && (ragEnabled === true || useRag === true || process.env.RAG_ENABLED === 'true');
     const {
         ragUsed,
         ragSources,
         ragContext,
+        ragStatus,
         webSearchResults,
         webSearchContext
     } = await prepareChatOrchestration({
@@ -138,9 +142,15 @@ const handleChatRequest = async ({
 
     const effectiveSystemPrompt = buildSystemPrompt(activePrompt.systemPrompt, userProfile, ragContext);
 
+    // Explicit caller turns always win; an id-based continuation without them
+    // rehydrates the stored transcript so earlier turns reach the model.
+    const contextMessages = await resolveContextMessages({
+        messages, conversationId, userId,
+        historyContext: conversationFeatures.historyContext
+    });
     const formattedMessages = [
         { role: 'system', content: effectiveSystemPrompt },
-        ...messages.map(m => ({ role: m.role, content: m.content })),
+        ...contextMessages,
         { role: 'user', content: message.trim() }
     ];
 
@@ -148,7 +158,7 @@ const handleChatRequest = async ({
     if (webSearchContext && formattedMessages.length > 1) {
         formattedMessages.splice(formattedMessages.length - 1, 0, {
             role: 'user',
-            content: `Use these web search results as additional context for your analysis:\n\n${webSearchContext}`
+            content: require('./webSearch').untrustedSearchMessage(webSearchContext)
         });
     }
 
@@ -156,6 +166,8 @@ const handleChatRequest = async ({
     let assistantMessageContent, thinking, warning, stats;
     let inferenceContract = null;
     let observabilityOutcome = null;
+    let phaseTimings = {};
+    let promptCache = null;
     let sanitized = {};
     let numCtxSource = null;
     let inferenceDispatched = false;
@@ -199,6 +211,7 @@ const handleChatRequest = async ({
                 afterAdmission: () => { inferenceDispatched = true; }
             });
             const { response, data, raw } = attempt;
+            promptCache = attempt.promptCache;
             if (!response.ok) {
                 const errDetail = typeof data?.error === 'string'
                     ? data.error
@@ -206,6 +219,7 @@ const handleChatRequest = async ({
                 throw buildOllamaStatusError({ url, response, detail: errDetail, model: effectiveModel });
             }
             observabilityOutcome = summarizeOllamaOutcome(data);
+            phaseTimings = ollamaPhaseTimings(data);
 
             const extracted = extractResponse(data, effectiveModel, {
                 thinkingSupported: hasQualifiedThinkingCapability(inferenceContract)
@@ -217,11 +231,12 @@ const handleChatRequest = async ({
 
             if (warning) logger.warn('Response extraction warning', { model, warning });
         } catch (err) {
+            promptCache ??= err.inferencePromptCache || null;
             throw wrapOllamaFetchError({
                 url,
                 error: err,
                 model: effectiveModel,
-                timeoutMessage: 'Ollama request timed out (2m limit).'
+                timeoutMessage: 'Ollama request timed out (5m limit).'
             });
         }
     } catch (err) {
@@ -266,6 +281,7 @@ const handleChatRequest = async ({
             },
             num_ctx: sanitized.num_ctx || null,
             num_ctx_source: numCtxSource,
+            promptCache,
             durationMs,
             status: terminalStatus,
             error: err.message
@@ -306,6 +322,8 @@ const handleChatRequest = async ({
         num_ctx_source: numCtxSource,
         tokensIn: stats?.usage?.promptTokens || 0,
         tokensOut: stats?.usage?.completionTokens || 0,
+        ...phaseTimings,
+        promptCache,
         durationMs: successDurationMs,
         status: 'success'
     });
@@ -313,10 +331,10 @@ const handleChatRequest = async ({
     // Persist conversation
     const routingPayload = buildRoutingPayload(routingInfo, effectiveModel, effectiveTarget, autoRoute);
     const { conversation, assistantMessageId } = await persistConversation({
-        userId, conversationId, model: effectiveModel,
+        userId, conversationId, clientTurnId, model: effectiveModel,
         effectiveSystemPrompt, message, assistantContent: assistantMessageContent,
         activePrompt,
-        metadata: { thinking, options, webSearchResults, routingInfo: routingPayload },
+        metadata: { thinking, options, webSearchResults, routingInfo: routingPayload, ragStatus },
         stats, ragUsed, useRag, ragSources
     });
 
@@ -338,6 +356,7 @@ const handleChatRequest = async ({
         stats: stats || null,
         ragUsed,
         ragSources,
+        ragStatus,
         webSearchResults: webSearchResults.length > 0 ? webSearchResults : undefined,
         warning: hasQualifiedThinkingCapability(inferenceContract)
             ? 'This deployed model artifact has qualified thinking capabilities. Enable streaming for better response quality.'
@@ -349,4 +368,4 @@ const handleChatRequest = async ({
 // Streaming handler extracted to chatServiceStream.js
 const { handleChatRequestStream } = require('./chatServiceStream');
 
-module.exports = { handleChatRequest, handleChatRequestStream };
+module.exports = { handleChatRequest: require('./chat/openclawChat').withOpenClawChat(handleChatRequest), handleChatRequestStream };

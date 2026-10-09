@@ -31,6 +31,14 @@ const WorkloadAdmissionSchema = new mongoose.Schema({
   kind: { type: String, required: true },
   batchId: { type: String, default: null },
   hosts: { type: [String], default: [] },
+  // Hosts held for a role that tolerates other models, such as a separate
+  // judge host: ordinary shared inference stays admitted there; exclusive
+  // admission does not. Core drops a host sharing a GPU with an unshared one.
+  sharedHosts: { type: [String], default: [] },
+  resourceIds: { type: [String], default: [] },
+  // Claim release closes inference dispatch on these hosts until the workload
+  // is released. The native finalizer still owns exact runtime restoration.
+  drainingHosts: { type: [String], default: [] },
   acquiredAt: { type: Date, required: true },
   heartbeatAt: { type: Date, required: true },
   expiresAt: { type: Date, required: true },
@@ -67,9 +75,13 @@ const InferenceAdmissionSchema = new mongoose.Schema({
   requestId: { type: String, required: true },
   host: { type: String, required: true },
   model: { type: String, required: true },
+  resourceIds: { type: [String], default: [] },
+  // Normalized model tag. Shared admissions of different models coexist on a
+  // host; absent on admissions written before that rule.
+  modelKey: { type: String, default: null },
   // Core derives this key from the canonical host-independent residency
-  // intent. Callers never choose it. Shared admissions may coexist only when
-  // the exact runner/residency key matches.
+  // intent. Callers never choose it. Shared admissions of one model coexist
+  // only when the exact runner/residency key matches.
   residencyKey: { type: String, required: true },
   residencySpec: { type: mongoose.Schema.Types.Mixed, required: true },
   kind: { type: String, required: true },
@@ -81,18 +93,22 @@ const InferenceAdmissionSchema = new mongoose.Schema({
   expiresAt: { type: Date, required: true },
   // An inference is itself able to change Ollama residency. If its owner
   // disappears, TTL expiry cannot prove the upstream request stopped. Keep a
-  // durable quarantine until an operator supplies a runtime-restart receipt.
+  // durable quarantine until an operator supplies a runtime-restart receipt,
+  // or, for a watchdog probe or a caller abort, until the watchdog observes the
+  // runtime settled (watchdogProbeRecovery).
   state: {
     type: String,
     enum: ['ACTIVE', 'UNKNOWN'],
     default: 'ACTIVE'
   },
   unknownAt: { type: Date, default: null },
-  unknownReason: { type: String, default: null }
+  unknownReason: { type: String, default: null },
+  unknownOrigin: { type: String, enum: ['caller-abort', 'deadline-abort', null], default: null }
 }, { _id: false });
 
 const RuntimeCoordinationSchema = new mongoose.Schema({
   _id: { type: String, default: 'runtime' },
+  resourceTopologyHash: { type: String, default: null },
   maintenance: { type: MaintenanceLeaseSchema, default: null },
   workloads: { type: [WorkloadAdmissionSchema], default: [] },
   inferences: { type: [InferenceAdmissionSchema], default: [] },

@@ -23,6 +23,8 @@ describe('EmbeddingsService connection evidence', () => {
       name: 'stub',
       model: 'stub-model',
       getDimension: () => 3,
+      validateText: jest.fn(),
+      validateTexts: jest.fn(),
       embed: jest.fn().mockResolvedValue([0.1, 0.2, 0.3]),
       embedBatch: jest.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),
       testConnection: jest.fn().mockResolvedValue(true),

@@ -215,6 +215,34 @@ describe('isRetryableError', () => {
     });
 });
 
+describe('fetchWhenJudgeHostFree', () => {
+    const { fetchWhenJudgeHostFree } = require('../../src/services/scoring/judgeCall');
+    const fast = { host_busy_retry_ms: 1 };
+
+    it('sends the request again while Core answers 503, then returns the answer', async () => {
+        const send = jest.fn()
+            .mockResolvedValueOnce({ status: 503 })
+            .mockResolvedValueOnce({ status: 503 })
+            .mockResolvedValue({ status: 200, ok: true });
+        await expect(fetchWhenJudgeHostFree(send, fast)).resolves.toEqual({ status: 200, ok: true });
+        expect(send).toHaveBeenCalledTimes(3);
+    });
+
+    it('returns the refusal once the wait budget is spent', async () => {
+        const send = jest.fn().mockResolvedValue({ status: 503 });
+        await expect(fetchWhenJudgeHostFree(send, { host_busy_retry_ms: 5, host_busy_wait_ms: 20 }))
+            .resolves.toEqual({ status: 503 });
+        expect(send.mock.calls.length).toBeGreaterThan(1);
+        expect(send.mock.calls.length).toBeLessThan(10);
+    });
+
+    it('does not repeat another status', async () => {
+        const send = jest.fn().mockResolvedValue({ status: 500 });
+        await expect(fetchWhenJudgeHostFree(send, fast)).resolves.toEqual({ status: 500 });
+        expect(send).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe('normalizeJudgeHost', () => {
     it('remaps 0.0.0.0 to a concrete loopback client URL', () => {
         expect(normalizeJudgeHost('http://0.0.0.0:11434')).toBe('http://127.0.0.1:11434');
@@ -330,10 +358,13 @@ describe('callJudge think parameter', () => {
 
     test('should send think:true when configured', async () => {
         const callJudge = getCallJudge();
-        await callJudge('test prompt', { host: 'http://localhost:11434', model: 'test', think: true });
+        await callJudge('test prompt', { host: 'http://localhost:11434', model: 'test', think: true,
+            timeout: 7200000, num_predict: 65536 });
 
         expect(mockFetch).toHaveBeenCalledTimes(1);
         const body = JSON.parse(mockFetch.mock.calls[JUDGE_CALL_IDX][1].body);
         expect(body.think).toBe(true);
+        expect(body.timeoutMs).toBe(7200000);
+        expect(body.options.num_predict).toBe(65536);
     });
 });

@@ -55,13 +55,30 @@
     return `<details class="journal-shown"><summary>Shown on screen · ${count}</summary><ul>${items}</ul></details>`;
   }
 
+  /** A spoken turn's browser timeline, from the end of the child's speech: '' when none was kept. */
+  function voiceTimings(entry) {
+    const timings = entry?.voiceTimings;
+    if (!timings || typeof timings !== 'object') return '';
+    const seconds = value => (Number.isFinite(value) && value >= 0 ? (value / 1000).toFixed(1) + ' s' : '');
+    // What explains the transcription: its recognition share (the rest is upload and transport) and the clip length.
+    const recognition = [seconds(timings.sttServer) && `recognition ${seconds(timings.sttServer)}`, seconds(timings.audioMs) && `clip ${seconds(timings.audioMs)}`]
+      .filter(Boolean).join(', ');
+    const parts = [['transcribed', timings.sttDone, recognition], ['first words', timings.firstDelta], ['first sound', timings.firstAudio]]
+      .filter(([, value]) => seconds(value)).map(([label, value, detail]) => `${label} ${seconds(value)}${detail ? ` (${detail})` : ''}`);
+    // The marks start once the end of speech is decided: the silence waited before comes on top.
+    if (parts.length && seconds(timings.silenceMs)) parts.unshift(`after ${seconds(timings.silenceMs)} of silence`);
+    if (seconds(timings.holdingPhrase)) parts.push(`holding phrase ${seconds(timings.holdingPhrase)}`);
+    if (timings.interrupted === true) parts.push('interrupted');
+    return parts.length ? ` · voice: ${parts.join(', ')}` : '';
+  }
+
   function row(entry, { esc, sound = null }) {
     const flags = Array.isArray(entry.safetyFlags) ? entry.safetyFlags : [];
     const soundNote = entry.soundId ? ` · offered ${esc(sound ? `${sound.emoji} ${sound.label.fr}` : entry.soundId)}` : '';
     return `<div class="audit ${entry.parentAttention || flags.length ? 'danger-box' : ''}"><strong>${esc(entry.inputText || 'No retained preview')}</strong>`
       + `<div>${esc(entry.replyText)}</div>${shown(entry, esc)}`
-      + `<small>${esc(new Date(entry.createdAt).toLocaleString())} · ${esc(entry.packId || 'unknown lane')} · ${esc(entry.channel)} · ${esc(entry.model || 'deterministic')} · ${entry.durationMs}ms${soundNote}${flags.length ? ` · ${esc(flags.join(', '))}` : ''}</small></div>`;
+      + `<small>${esc(new Date(entry.createdAt).toLocaleString())} · ${esc(entry.packId || 'unknown lane')} · ${esc(entry.channel)} · ${esc(entry.model || 'deterministic')} · ${entry.durationMs}ms${esc(voiceTimings(entry))}${soundNote}${flags.length ? ` · ${esc(flags.join(', '))}` : ''}</small></div>`;
   }
 
-  root.JournalDisplay = Object.freeze({ row, shown });
+  root.JournalDisplay = Object.freeze({ row, shown, voiceTimings });
 }(typeof window !== 'undefined' ? window : globalThis));

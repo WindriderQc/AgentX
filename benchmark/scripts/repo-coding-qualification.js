@@ -10,10 +10,9 @@
  * public + hidden tests, and score PURELY from exit codes (executableRepoGrader).
  * Aggregated with the unbiased pass@k estimator. No judge model anywhere.
  *
- * This CLI is deliberately offline-only. `--dry-run` grades each task's golden
- * solution.diff without calling a model. The former live mode could outlive its
- * host claim without a durable workload/inference proof, so it is hard-disabled
- * until it is rebuilt on the shared admission lifecycle.
+ * Live runs own a managed workload and exact host claim. Every model call
+ * passes through Core's durable inference admission and uncertain completion
+ * stops the campaign while retaining authority for reconciliation.
  *
  * Verify offline first:
  *   node benchmark/scripts/repo-coding-qualification.js --dry-run
@@ -63,7 +62,7 @@ const DEFAULT_GRADE_TIMEOUT_MS = 30_000;
 const CORE_CLAIM_TIMEOUT_MS = 10_000;
 const MAX_CORE_CLAIM_RESPONSE_BYTES = 1024 * 1024;
 const DEFAULT_OUTPUT_ROOT = path.join(__dirname, '..', '.agentx', 'reports', 'repo-coding-qualification');
-const LIVE_DISABLED_CODE = 'REPO_CODING_LIVE_DISABLED';
+const { withRepoAdmission, buildAdmittedCallModel } = require('../src/services/qualification/repoLiveAdmission');
 
 function parseList(value) {
   return String(value).split(',').map((s) => s.trim()).filter(Boolean);
@@ -143,7 +142,7 @@ function parseArgs(argv) {
   if (new Set(args.seeds.slice(0, args.attempts)).size !== args.attempts) {
     throw new Error('--seeds must be unique so attempts are independent');
   }
-  if (!args.dryRun && !args.claimId) throw new Error('--claim-id is required for live runs');
+
   if (!args.dryRun && !args.host) throw new Error('--host is required for live runs');
   if (!args.dryRun && !args.core) throw new Error('--core is required for live runs');
   if (!args.dryRun && !args.models?.length) throw new Error('--models is required for live runs');
@@ -170,7 +169,7 @@ Options:
   --tasks <id,id>           Restrict to these fixture task ids.
   --host <ollama-url>       Ollama host (required live).
   --core <agentx-url>       Core contract/claim API (required live).
-  --claim-id <id>           Required live: exact active benchmark claim id.
+  --claim-id <id>           Optional id for this owned managed campaign (never a borrowed claim).
   --num-ctx <n>             Context window for the model call (default: ${DEFAULT_NUM_CTX}).
   --num-predict <n>         Max output tokens; UNIFORM per campaign, floor ${MIN_NUM_PREDICT}
                             so reasoning models finish and emit the patch (default: ${DEFAULT_NUM_PREDICT}).
@@ -188,8 +187,8 @@ Options:
   --ks <1,3,5>              pass@k values to report (default: ${DEFAULT_KS.join(',')}).
   --out <dir>               Report directory (default under .agentx/reports/).
 
-Live execution is hard-disabled until this runner uses durable workload and
-per-inference admission receipts. Only --dry-run is supported.
+Live execution owns workload admission and exact host claims. Configure CORE_URL
+to match --core and the Benchmark service credentials/database before running.
 `);
 }
 
@@ -197,20 +196,15 @@ function safeRunId() {
   return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 }
 
-function liveDisabledError() {
-  const error = new Error('Live repository coding qualification is disabled until it uses durable workload and inference admissions');
-  error.code = LIVE_DISABLED_CODE;
-  return error;
-}
-
 function assertLiveExecutionAllowed(args) {
   if (args?.dryRun === true) return;
-  throw liveDisabledError();
+  if (!args.core || !args.host || !args.models?.length) throw new Error('Live execution requires core, host and models');
 }
 
-/** Retained export for callers that previously constructed the unsafe direct client. */
-function buildOllamaCallModel() {
-  throw liveDisabledError();
+// The compatibility export also requires the owned admission; direct Ollama
+// clients cannot be constructed by this CLI.
+function buildOllamaCallModel(options) {
+  return buildAdmittedCallModel(options);
 }
 
 async function requestJson(url, fetchImpl = benchmarkFetch) {
@@ -301,6 +295,11 @@ async function main() {
   if (args.help) { usage(); return; }
   assertLiveExecutionAllowed(args);
 
+  if (!args.dryRun) return withRepoAdmission(args, session => executeCampaign({ ...args, claimId: session.workloadId }, session));
+  return executeCampaign(args);
+}
+
+async function executeCampaign(args, session = null) {
   const allTasks = loadRepoTasks();
   const tasks = selectTasks(allTasks, args.tasks);
   const models = args.models || ['golden'];
@@ -395,7 +394,8 @@ async function main() {
 
   const callModel = args.dryRun
     ? null
-    : buildOllamaCallModel({ host: args.host, modelConfigs, timeoutMs: args.modelTimeoutMs });
+    : buildOllamaCallModel({ host: args.host, modelConfigs, timeoutMs: args.modelTimeoutMs, session,
+      assertArtifact: model => assertFrozenArtifactDigest(campaign, model, args.host) });
 
   const jsonlStream = fs.createWriteStream(path.join(outDir, 'runs.jsonl'), { flags: 'w' });
   // Raw model replies (final + thinking channels) persisted separately so a
@@ -500,7 +500,6 @@ if (require.main === module) {
 module.exports = {
   CORE_CLAIM_TIMEOUT_MS,
   MAX_CORE_CLAIM_RESPONSE_BYTES,
-  LIVE_DISABLED_CODE,
   parseArgs,
   buildOllamaCallModel,
   assertLiveExecutionAllowed,

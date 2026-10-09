@@ -3,6 +3,7 @@
 const { memoryReviewCollectorPosture } = require('./memory-coverage');
 const { TASK_ORIGINS, taskOrigin, publicTask, sortedPersonalTasks } = require('../../src/services/personalTaskView');
 const { composePersonalBriefing } = require('../../src/services/personalBriefing');
+const { catchupProjection } = require('./secretary-catchup');
 
 function boundedText(value, max = 4000) {
   return String(value || '').trim().slice(0, max);
@@ -69,7 +70,7 @@ function familyDesk(familyBody = {}) {
   };
 }
 
-function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(), familyBody = {}, activationBody = {}, budgetBody = {}, mailBacklogBody = {}) {
+function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(), familyBody = {}, activationBody = {}, budgetBody = {}, mailBacklogBody = {}, mailCatchupBody = null) {
   const briefing = dadBriefing(reportBody, taskItems, now);
   const tasks = sortedPersonalTasks(taskItems, now).filter((task) => !['done', 'cancelled'].includes(task.status));
   const inbox = tasks.filter((task) => task.unscheduled);
@@ -213,7 +214,8 @@ function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(
       watchdog,
       morning,
       backlog,
-      authority: 'OpenClaw main owns Gmail; every send and destructive mutation remains approval-gated.'
+      catchup: catchupProjection(mailCatchupBody),
+      authority: 'The OpenClaw secretary agent owns Gmail; every send and destructive mutation remains approval-gated.'
     },
     reminder: {
       status: reminderStatus,

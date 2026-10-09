@@ -64,6 +64,10 @@ Return ONLY the queries, one per line, without numbering or explanation.`;
     }
 
     const data = await response.json();
+    if (data.done === false || /length|max(?:imum)?[_ -]?tokens|token_limit/i.test(data.done_reason || '')) {
+      logger.warn('Query expansion failed, using original query only');
+      return [];
+    }
     const expandedText = data.response || '';
 
     // Parse line-separated queries, strip numbering artifacts
@@ -75,7 +79,7 @@ Return ONLY the queries, one per line, without numbering or explanation.`;
       .slice(0, MAX_EXPANSIONS);
 
     logger.info('Query expanded', {
-      original: query.substring(0, 50),
+      queryLength: query.length,
       expansionCount: relatedQueries.length
     });
 

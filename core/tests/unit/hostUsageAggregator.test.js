@@ -67,4 +67,23 @@ describe('hostUsageAggregator host labels', () => {
     expect(heatmap.grid.primary[today][11]).toBe(0);
     expect(heatmap.grid.secondary[today][11]).toBeNull();
   });
+
+  it('groups measured hours by the requested time zone', () => {
+    const now = new Date('2026-08-23T12:30:00.000Z');
+    const records = [{
+      host: 'http://primary:11434',
+      hostKey: 'primary',
+      hour: new Date('2026-08-23T02:00:00.000Z'),
+      utilizationPct: 40,
+    }];
+    const configured = [{ id: 'primary', name: 'GPU One', url: 'http://primary:11434' }];
+
+    const utc = hostUsageAggregator.buildUtilizationHeatmap(records, 1, now, configured);
+    expect(utc.timeZone).toBe('UTC');
+    expect(utc.grid.primary[utc.days.indexOf('2026-08-23')][2]).toBe(40);
+
+    const toronto = hostUsageAggregator.buildUtilizationHeatmap(records, 1, now, configured, 'America/Toronto');
+    expect(toronto.days).toEqual(['2026-08-22', '2026-08-23']);
+    expect(toronto.grid.primary[toronto.days.indexOf('2026-08-22')][22]).toBe(40);
+  });
 });

@@ -1,5 +1,7 @@
 'use strict';
 
+const { SPOKEN_REPLY_INSTRUCTION } = require('../../src/services/voice/presentation');
+
 // A conversation reply has two audiences: the ear and the eye (#166, #167).
 // The model marks what belongs on screen with <show kind="…" title="…">…</show>;
 // everything outside those blocks is the spoken reply. A deterministic net then
@@ -44,7 +46,7 @@ function languageOf(value) {
 function attributes(source) {
   const values = {};
   for (const [, name, value] of String(source || '').matchAll(/([a-z]+)\s*=\s*"([^"]*)"/gi)) values[name.toLowerCase()] = value;
-  const kind = KINDS.includes(values.kind) ? values.kind : 'text';
+  const kind = KINDS.includes(values.kind) || values.kind === 'consult' ? values.kind : 'text';
   return { kind, title: values.title?.trim().slice(0, LIMITS.title) || '',
     ...(kind === 'image' ? { source: String(values.source || '').trim().toLowerCase().slice(0, 20) } : {}) };
 }
@@ -69,7 +71,18 @@ function tokenKind(core) {
   return '';
 }
 
-function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = () => {}, onShow = () => {} } = {}) {
+// Recover a useful spoken answer when an unmarked long list slips through.
+// Remove noisy tokens before shortening, so even a partial key cannot be read.
+function listSummary(lines, lang) {
+  const items = lines.slice(0, LIMITS.spokenListItems).map(row => {
+    const text = plainReply(row.replace(/^\s*(?:[-*•+]|\d{1,2}[.)])\s+/, ''), LIMITS.body)
+      .split(/\s+/).filter(word => !tokenKind(word.replace(/^[(«“"']+|[.,;:!?)»”"']+$/g, ''))).join(' ');
+    return text.length <= 160 ? text : text.slice(0, 160).replace(/\s+\S*$/, '') + '…';
+  }).filter(Boolean);
+  return items.length ? (lang === 'en' ? 'First items: ' : 'Les premiers éléments : ') + items.join('; ') + '. ' : '';
+}
+
+function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
   let pending = '', inShow = false, showAttributes = null, received = false, ended = false;
@@ -86,6 +99,8 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = ()
     const content = String(body || '').replace(/^\n+|\s+$/g, '').slice(0, LIMITS.body);
     if (!content.trim()) return false;
     if (kind === 'secret' && !allowSecrets) return false;
+    // A consult block is a request to Core (#41), never something to display or to store.
+    if (kind === 'consult') { onConsult({ member: title, question: content }); return false; }
     if (display.length >= LIMITS.blocks) return false;
     const block = { id: 'b' + (display.length + 1), kind, title, body: content, ...extra };
     display.push(block);
@@ -115,7 +130,10 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = ()
     if (kind === 'list' && lines.length <= LIMITS.spokenListItems) { speakProse(lines.join('\n') + '\n'); return; }
     const body = kind === 'code' ? lines.filter(row => !LINE.fence.test(row)).join('\n') : lines.join('\n');
     const shown = addBlock(kind, '', body);
-    if (shown) say(screenCue(true) + '\n');
+    if (kind === 'list') {
+      say(listSummary(lines, lang));
+      if (shown) say((lang === 'en' ? 'The full list is on screen.' : 'La liste complète est à l’écran.') + '\n');
+    } else if (shown) say(screenCue(true) + '\n');
   };
 
   // Line structure decides lists, tables and code; everything else is prose.
@@ -229,13 +247,15 @@ function storedDisplay(display = []) {
   return display.map(block => block.kind === 'secret'
     ? { id: block.id, kind: 'secret', title: block.title, body: '', redacted: true }
     : { id: block.id, kind: block.kind, title: block.title, body: block.body,
-      ...(block.kind === 'image' ? { source: block.source || '', status: block.status || 'missing', image: block.image || null } : {}) });
+      ...(block.kind === 'image' ? { source: block.source || '', status: block.status || 'missing', image: block.image || null,
+        ...(block.operation && { operation: block.operation, key: block.key }) } : {}) });
 }
 
 // The model sees its own earlier screen content, so "read me step three" works.
 function historyText(replyText, display = []) {
   const blocks = (Array.isArray(display) ? display : []).map(block => block.kind === 'secret'
     ? '[A secret was shown masked on screen; it was not retained.]'
+    : block.kind === 'image' && block.source === 'local' ? `[Earlier image request${block.operation?.id ? ' ' + block.operation.id : ''}: ${block.title ? block.title + ': ' : ''}${block.body}. Last recorded state: ${block.status}. This is history, never a new creation instruction; only its current Core receipt can confirm readiness.]`
     : `<show kind="${block.kind}"${block.kind === 'image' ? ` source="${block.source || ''}"` : ''}${block.title ? ` title="${String(block.title).replace(/"/g, "'")}"` : ''}>\n${block.body}\n</show>`
       + (block.kind === 'image' && block.status !== 'found' ? '\n[No image was found for this block; nothing was displayed.]' : ''));
   return [String(replyText || ''), ...blocks].filter(Boolean).join('\n');
@@ -244,7 +264,8 @@ function historyText(replyText, display = []) {
 function contract({ family = false, imageSources = [] } = {}) {
   return [
     'Your reply reaches two places: everything outside a show block is spoken aloud; show blocks are displayed on the user\'s screen and never spoken.',
-    'Keep the spoken part conversational and short, in plain text without Markdown. When details are on screen, say so naturally, for example "je te l\'ai mis à l\'écran".',
+    `${SPOKEN_REPLY_INSTRUCTION} When details are on screen, say so naturally, for example "je te l'ai mis à l'écran".`,
+    'For a priority or task question, speak the one to three most useful items and their deadlines outside the show block. A screen pointer alone is not an answer.',
     `Put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: lists longer than three items, steps, tables, code, commands, links, identifiers and long details. Markdown is allowed inside show blocks only.`,
     family
       ? 'Never show passwords, keys, account details or private information.'

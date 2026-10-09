@@ -6,7 +6,7 @@ const { generatedPersonas, snapshot, speechFor, readReplyStream, instanceVoice }
 
 test('generated private catalog preserves every former voice preset and the requested voice defaults', () => {
   const rows = generatedPersonas();
-  assert.deepEqual(rows.map(row => row.name), ['native_personality', 'nestor', 'nestor_strategist', 'nestor_challenger', 'jarvis', 'nestor_companion', 'nestor_concise', 'secretary']);
+  assert.deepEqual(rows.map(row => row.name), ['native_personality', 'nestor', 'nestor_strategist', 'nestor_challenger', 'jarvis', 'nestor_companion', 'nestor_concise', 'secretary', 'comptable']);
   const jarvis = rows.find(row => row.name === 'jarvis');
   assert.ok(jarvis.systemPrompt.startsWith('For this conversation, use the name Jarvis.'));
   assert.equal(jarvis.systemPrompt.includes('You are Nestor'), false);
@@ -20,6 +20,10 @@ test('generated private catalog preserves every former voice preset and the requ
   }
   for (const [name, voice] of [['nestor', 'am_michael'], ['jarvis', 'bm_lewis']]) assert.equal(speechFor(snapshot({ ...rows.find(row => row.name === name), _id: name, version: 1 }), 'en').voice, voice);
   assert.equal(speechFor(snapshot({ ...rows.find(row => row.name === 'secretary'), _id: 'secretary', version: 1 }), 'fr').voice, 'ff_siwis');
+  // The accountant keeps Nestor's former Kokoro French blend and declares its own agent.
+  const comptable = rows.find(row => row.name === 'comptable');
+  assert.equal(speechFor(snapshot({ ...comptable, _id: 'comptable', version: 1 }), 'fr').voice, 'am_michael:0.50+ff_siwis:0.50');
+  assert.equal(comptable.uiConfig.layoutConfig.agentId, 'comptable');
 });
 
 test('split Unicode reply chunks stream intact and require a terminal completion record', async () => {
@@ -54,7 +58,8 @@ test('an instance voice replaces catalog voices per persona or for every persona
   const catalog = { provider: 'kokoro', presentation: 'masculine', voices: { fr: 'catalog-fr', en: 'catalog-en' } };
   const env = { HOUSEHOLD_PERSONA_VOICES: JSON.stringify({ '*': 'voxcpm|example-clone', jarvis: 'kokoro|example-jarvis' }) };
   const nestor = instanceVoice('nestor', catalog, env);
-  assert.deepEqual(nestor, { provider: 'voxcpm', presentation: 'masculine', voices: { fr: 'example-clone', en: 'example-clone' }, source: 'instance' });
+  assert.deepEqual(nestor, { provider: 'voxcpm', presentation: 'masculine', voices: { fr: 'example-clone', en: 'example-clone' }, source: 'instance',
+    fallback: { provider: 'kokoro', presentation: 'masculine', voices: { fr: 'catalog-fr', en: 'catalog-en' } } });
   assert.equal(instanceVoice('jarvis', catalog, env).voices.fr, 'example-jarvis');
   for (const language of ['fr', 'en']) assert.deepEqual(speechFor({ voice: nestor }, language), { provider: 'voxcpm', language, voice: 'example-clone', presentation: 'masculine' });
   assert.equal(speechFor({ voice: nestor }, 'fr', { presentation: 'feminine' }).voice, 'example-clone');
@@ -62,4 +67,19 @@ test('an instance voice replaces catalog voices per persona or for every persona
   for (const value of ['', 'not json', JSON.stringify({ '*': 'unknown|x' }), JSON.stringify({ '*': 'voxcpm|' }), JSON.stringify({ '*': 'voxcpm|a\nb' })]) {
     assert.equal(instanceVoice('nestor', catalog, { HOUSEHOLD_PERSONA_VOICES: value }), catalog);
   }
+});
+
+test('turn speech refreshes an instance override and restores the frozen catalog voice after removal or invalidation', () => {
+  const base = { provider: 'kokoro', presentation: 'masculine', voices: { fr: 'catalog-fr', en: 'catalog-en' } };
+  const persona = { id: 'jarvis', version: 3, voice: instanceVoice('jarvis', base, { HOUSEHOLD_PERSONA_VOICES: '{"jarvis":"voxcpm|synthetic-old"}' }) };
+  for (const language of ['fr', 'en']) {
+    assert.equal(speechFor(persona, language, {}, { HOUSEHOLD_PERSONA_VOICES: '{"jarvis":"windows_sapi|synthetic-new"}' }).voice, 'synthetic-new');
+    assert.equal(speechFor(persona, language, {}, { HOUSEHOLD_PERSONA_VOICES: '{"*":"voxcpm|synthetic-all"}' }).voice, 'synthetic-all');
+    for (const env of [{}, { HOUSEHOLD_PERSONA_VOICES: 'invalid' }, { HOUSEHOLD_PERSONA_VOICES: '{"jarvis":"unknown|bad"}' }]) {
+      assert.deepEqual(speechFor(persona, language, {}, env), { provider: 'kokoro', language, voice: base.voices[language], presentation: 'masculine' });
+    }
+    assert.equal(speechFor(persona, language, { selections: { [language]: 'kokoro|synthetic-selected' } },
+      { HOUSEHOLD_PERSONA_VOICES: '{"jarvis":"voxcpm|synthetic-new"}' }).voice, 'synthetic-selected');
+  }
+  assert.equal(persona.voice.voices.fr, 'synthetic-old', 'reply resolution does not mutate the personality snapshot');
 });

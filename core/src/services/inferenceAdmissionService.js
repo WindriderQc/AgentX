@@ -20,10 +20,15 @@ function admissionError(message, code = 'RUNTIME_INFERENCE_ADMISSION_DENIED') {
   return error;
 }
 
+// A caller abort (client disconnect, busy reply, superseded turn) is Core's
+// own decision to close the upstream connection. It is remembered so the
+// quarantine can be released once the runtime is observed settled (#35).
 function createAbortBridge(externalSignal) {
   const controller = new AbortController();
+  let callerAborted = false;
   const onAbort = () => {
     if (!controller.signal.aborted) {
+      callerAborted = true;
       controller.abort(new Error('Inference caller disconnected'));
     }
   };
@@ -31,6 +36,7 @@ function createAbortBridge(externalSignal) {
   else externalSignal?.addEventListener?.('abort', onAbort, { once: true });
   return {
     controller,
+    get callerAborted() { return callerAborted; },
     cleanup() { externalSignal?.removeEventListener?.('abort', onAbort); }
   };
 }
@@ -46,6 +52,7 @@ async function acquireInferenceAdmission({
   workloadGeneration = null,
   runtimeOptions = null,
   keepAlive,
+  hostIdle = false,
   ttlMs = DEFAULT_TTL_MS,
   signal: externalSignal
 } = {}, onSettled = () => {}) {
@@ -61,6 +68,7 @@ async function acquireInferenceAdmission({
     workloadGeneration,
     runtimeOptions,
     ...(keepAlive !== undefined && { keepAlive }),
+    ...(hostIdle && { hostIdle: true }),
     ttl: duration
   });
   if (acquired?.acquired !== true) {
@@ -77,7 +85,7 @@ async function acquireInferenceAdmission({
   let dispatched = false;
   let heartbeatRunning = false;
 
-  const quarantine = async (reason) => {
+  const quarantine = async (reason, origin = null) => {
     if (closed) return { quarantined: false, reason: 'admission already closed' };
     closed = true;
     clearInterval(timer);
@@ -86,7 +94,8 @@ async function acquireInferenceAdmission({
       id: acquired.admissionId,
       generation: acquired.generation,
       principal: acquired.principal,
-      reason: reason?.message || reason || 'upstream terminal state unknown'
+      reason: reason?.message || reason || 'upstream terminal state unknown',
+      origin
     }).finally(onSettled);
   };
 
@@ -155,7 +164,7 @@ async function acquireInferenceAdmission({
       }
       return released;
     },
-    async abandon(reason) {
+    async abandon(reason, { deadlineAborted = false } = {}) {
       if (!dispatched) {
         if (closed) return { released: false, reason: 'admission already closed' };
         closed = true;
@@ -167,10 +176,26 @@ async function acquireInferenceAdmission({
           principal: acquired.principal
         });
       }
-      return quarantine(reason);
+      // Only the attempt executor supplies this proof after its own timer
+      // closes the transport. Error text/flags alone never establish it.
+      const origin = fatalError ? null : bridge.callerAborted ? 'caller-abort'
+        : deadlineAborted === true && !bridge.controller.signal.aborted ? 'deadline-abort'
+          : !bridge.controller.signal.aborted && runtimeClosedConnection(reason) ? 'runtime-disconnect' : null;
+      return quarantine(reason, origin);
     },
     _heartbeatOnce: heartbeatOnce
   };
+}
+
+// The runtime end closed the connection while this side had not aborted it:
+// the process serving the request died or was restarted. A deadline, a caller
+// abort or a lost admission never classify here.
+const RUNTIME_CLOSED_CODES = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET', 'OLLAMA_STREAM_CLOSED_EARLY']);
+function runtimeClosedConnection(error) {
+  for (let current = error, depth = 0; current && depth < 4; current = current.cause, depth += 1) {
+    if (RUNTIME_CLOSED_CODES.has(current.code) || /socket hang up/i.test(String(current.message || ''))) return true;
+  }
+  return false;
 }
 
 function beginInferenceAdmission(options) {

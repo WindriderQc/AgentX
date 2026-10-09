@@ -58,8 +58,13 @@ describe('mcpSkillBus product tools', () => {
       'get_escalation_recommendation',
       'create_todo',
       'write_vault_note',
+      'memory_search',
+      'memory_remember',
+      'benchmark_coverage',
+      'benchmark_results',
+      'benchmark_request_measurement',
     ]);
-    expect(TOOLS).toHaveLength(5);
+    expect(TOOLS).toHaveLength(10);
   });
 
   test('rag_search uses an injected RAG client and returns structured content', async () => {
@@ -82,6 +87,16 @@ describe('mcpSkillBus product tools', () => {
     }));
     expect(response.result.isError).toBe(false);
     expect(response.result.structuredContent.count).toBe(1);
+  });
+
+  test('rag_search applies the memory score floor when minScore is omitted', async () => {
+    const ragClient = { searchSimilarChunks: jest.fn(async () => []) };
+    await handleMcpMessage({
+      jsonrpc: '2.0', id: 5, method: 'tools/call',
+      params: { name: 'rag_search', arguments: { query: 'unrelated question' } },
+    }, { ragClient });
+    expect(ragClient.searchSimilarChunks).toHaveBeenCalledWith('unrelated question',
+      expect.objectContaining({ minScore: require('../../src/services/memoryReadService').defaultMinScore() }));
   });
 
   test('check_health uses the injected health provider', async () => {

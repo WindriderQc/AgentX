@@ -26,6 +26,52 @@ describe('Pipeline launch reconciliation', () => {
   afterEach(() => { controllers.forEach(c => c.dispose()); jest.clearAllTimers(); jest.useRealTimers(); });
   const posts = () => request.mock.calls.filter(([, options]) => options.method === 'POST');
 
+  test('an unknown execution is recovered after reload and cannot be retried', async () => {
+    request.mockResolvedValue(snapshot(run('unknown', 'in_progress', { canRetry: false }), true));
+    const controller = make();
+    await controller.refresh();
+    expect(controller.pending).toEqual(selection);
+    expect(controller.canLaunch('0700')).toBe(false);
+    expect(controller.canRetry()).toBe(false);
+    controller.dispose();
+    const reloaded = make();
+    await reloaded.refresh();
+    await jest.advanceTimersByTimeAsync(8000);
+    expect(reloaded.pending).toEqual(selection);
+    expect(posts()).toHaveLength(0);
+  });
+
+  test('a guarded browser request is retained without resuming it through the replacement worker', async () => {
+    const original = JSON.stringify(selection);
+    storage.setItem('agentx.pipeline.launchRequest.v1', original);
+    const controller = make();
+    await controller.refresh();
+    expect(controller.pending).toBeNull();
+    expect(controller.canRetry()).toBe(false);
+    expect(posts()).toHaveLength(0);
+    expect(storage.getItem('agentx.pipeline.launchRequest.v1')).toBe(original);
+  });
+
+  test('a reloaded capacity wait keeps its identity and cancels once without launching another task', async () => {
+    request.mockResolvedValue(snapshot(run('waiting', 'queued', { canCancel: true }), true));
+    const controller = make();
+    await controller.refresh();
+    expect(controller.pending).toEqual(selection);
+    expect(controller.canLaunch('0700')).toBe(false);
+    expect(controller.canRetry()).toBe(false);
+    expect(posts()).toHaveLength(0);
+    const cancelled = deferred();
+    request.mockImplementation((url, options) => options.method === 'POST' ? cancelled.promise
+      : Promise.resolve(snapshot(run('stopped'), false)));
+    const first = controller.cancel();
+    expect(await controller.cancel()).toBe(false);
+    cancelled.resolve({ data: { cancelled: true } });
+    await first;
+    expect(posts()).toHaveLength(1);
+    expect(posts()[0][0]).toBe(`/api/runtime-bridges/coding-dispatch/runs/${ID}/cancel`);
+    expect(controller.pending).toBeNull();
+  });
+
   test('double click sends one request and queued observations never unlock an accepted run', async () => {
     const controller = make();
     await controller.refresh();
@@ -99,7 +145,7 @@ describe('Pipeline launch reconciliation', () => {
   });
 
   test('a missing receipt is retried only explicitly with its original request identity', async () => {
-    storage.setItem('agentx.pipeline.launchRequest.v1', JSON.stringify(selection));
+    storage.setItem('agentx.pipeline.simpleWorkerRequest.v1', JSON.stringify(selection));
     request.mockResolvedValue(snapshot(run('not_received')));
     const controller = make();
     await controller.refresh();
@@ -138,7 +184,7 @@ describe('Pipeline launch reconciliation', () => {
   });
 
   test('disposal cancels read reconciliation without another POST', async () => {
-    storage.setItem('agentx.pipeline.launchRequest.v1', JSON.stringify(selection));
+    storage.setItem('agentx.pipeline.simpleWorkerRequest.v1', JSON.stringify(selection));
     const controller = make();
     await controller.refresh();
     const count = request.mock.calls.length;

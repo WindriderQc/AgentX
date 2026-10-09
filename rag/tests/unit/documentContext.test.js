@@ -9,7 +9,7 @@ describe('bounded document journey context', () => {
       source: 'Product guides & policies',
     });
 
-    expect(href).toBe('/documents?docId=guide%2Fv2%20%23final&source=Product%20guides%20%26%20policies');
+    expect(href).toBe('/rag/documents?docId=guide%2Fv2%20%23final&source=Product%20guides%20%26%20policies');
     expect(context.parse(href.slice(href.indexOf('?')))).toEqual({
       docId: 'guide/v2 #final',
       source: 'Product guides & policies',
@@ -33,7 +33,7 @@ describe('bounded document journey context', () => {
       invalid: true,
       invalidFields: ['source'],
     });
-    expect(context.documentsHref({ docId: overBound, source: 'valid' })).toBe('/documents?source=valid');
+    expect(context.documentsHref({ docId: overBound, source: 'valid' })).toBe('/rag/documents?source=valid');
   });
 
   test('requires exact document identity and provenance when both are supplied', () => {

@@ -7,11 +7,13 @@ const { withBenchmarkServiceAuth } = require('../../helpers/coreServiceAuth');
 const { benchmarkFetch } = require('./http');
 const { getModelDigest } = require('./modelDigestService');
 const { normalizeModelTag } = require('../../../../shared/modelNames');
+const { RESPONSE_BUDGET_RULE } = require('./config');
 
 const CORE_URL = process.env.CORE_URL || 'http://localhost:3080';
 const CAMPAIGN_SCHEMA_VERSION = 1;
 const CONTRACT_VERSION = 'agentx.inference-contract.v1';
 const MIN_FROZEN_INPUT_TOKENS = 2048;
+const CONTEXT_NOT_VERIFIED = 'CONTEXT_NOT_VERIFIED';
 const MODES = Object.freeze({
     FINAL_ONLY: 'final_only',
     NATIVE: 'native',
@@ -150,9 +152,31 @@ function validateSnapshot(snapshot, requested) {
     }
     if (!Number.isInteger(validatedWindowTokens) || validatedWindowTokens <= 0
         || windowTokens > validatedWindowTokens) {
-        throw new Error(
+        // A property of the artifact and its profile, not of the moment: preflight refuses on this code.
+        throw Object.assign(new Error(
             `Context ${windowTokens} is not verified for ${requested.model} on ${requested.host}. Profile this model and choose a context within its verified range. Run a Full profile for automatic context recommendations.`
-        );
+        ), { code: CONTEXT_NOT_VERIFIED });
+    }
+}
+
+/**
+ * A judge is not the artifact being measured: it only needs the context Core
+ * serves it at, so its profile may be stale. The artifact identity and the
+ * window still have to be the ones asked for.
+ */
+function validateJudgeContext(snapshot, requested) {
+    if (!snapshot || snapshot.version !== CONTRACT_VERSION) {
+        throw new Error(`Core returned an unsupported inference contract for ${requested.model} on ${requested.host}`);
+    }
+    const requestedHost = String(requested.host || '').replace(/\/+$/, '').toLowerCase();
+    const returnedHost = String(snapshot.artifact?.host || '').replace(/\/+$/, '').toLowerCase();
+    if (normalizeModelTag(snapshot.artifact?.model).toLowerCase() !== normalizeModelTag(requested.model).toLowerCase()
+        || returnedHost !== requestedHost) {
+        throw new Error(`Core returned a contract for a different artifact or host than ${requested.model} on ${requested.host}`);
+    }
+    const windowTokens = Number(snapshot.contextBudget?.windowTokens);
+    if (!Number.isInteger(windowTokens) || windowTokens <= 0) {
+        throw new Error(`Inference contract for ${requested.model} on ${requested.host} carries no context window`);
     }
 }
 
@@ -169,21 +193,39 @@ async function fetchSnapshot(request, deps = {}) {
     if (!response.ok) {
         throw new Error(payload?.message || payload?.error || `Core contract resolution failed with HTTP ${response.status}`);
     }
-    validateSnapshot(payload, request);
+    (deps.validate || validateSnapshot)(payload, request);
     return payload;
 }
 
 /**
  * The context window Core freezes for a model on a host, from the same
  * contract candidates use. A judge that omits num_ctx makes Ollama reload a
- * resident model at its default context, so judges read this value instead.
+ * resident model at its default context, so judges read this value instead,
+ * whether or not the judge's own profile is benchmark-qualified.
  */
 async function resolveContractNumCtx(model, host, deps = {}) {
-    const snapshot = await fetchSnapshot({ model, host, options: {} }, deps);
+    const snapshot = await fetchSnapshot({ model, host, options: {} }, { ...deps, validate: validateJudgeContext });
     return {
         num_ctx: snapshot.contextBudget.windowTokens,
-        source: `inference_contract:${snapshot.contextBudget.source}`
+        source: `inference_contract:${snapshot.contextBudget.source}`,
+        // Informational: a stale judge profile does not withhold the window.
+        profile_qualified: snapshot.qualification?.qualified === true
     };
+}
+
+/**
+ * The response budget of a launch that set none: the documented default
+ * (`execution_config.response_max_tokens`), limited to half of the frozen
+ * window so the other half stays for the prompt, and never below the reserve
+ * Core chose. Null when Core's reserve already covers it.
+ */
+function documentedDefaultBudget(snapshot, executionConfig) {
+    if (executionConfig.response_budget_rule !== RESPONSE_BUDGET_RULE) return null;
+    const windowTokens = snapshot.contextBudget.windowTokens;
+    const reserved = snapshot.contextBudget.output.reservedTokens;
+    const inputFloor = Math.max(MIN_FROZEN_INPUT_TOKENS, Math.ceil(windowTokens / 2));
+    const budget = Math.min(Number(executionConfig.response_max_tokens) || 0, windowTokens - inputFloor);
+    return budget > reserved ? budget : null;
 }
 
 function buildCandidate(snapshot, request, executionConfig) {
@@ -199,6 +241,9 @@ function buildCandidate(snapshot, request, executionConfig) {
             num_ctx: snapshot.contextBudget.windowTokens,
             num_ctx_source: `inference_contract:${snapshot.contextBudget.source}`,
             num_predict: snapshot.contextBudget.output.reservedTokens,
+            num_predict_source: request.options?.num_predict
+                ? (executionConfig.response_max_tokens_source === 'caller' ? 'caller' : RESPONSE_BUDGET_RULE)
+                : 'core_default_reserve',
             sampling: {
                 profile: executionConfig.sampling_profile || 'controlled',
                 source: executionConfig.sampling_source || 'controlled_override',
@@ -206,11 +251,33 @@ function buildCandidate(snapshot, request, executionConfig) {
                 top_p: executionConfig.top_p ?? null,
                 top_k: executionConfig.top_k ?? null,
                 repeat_penalty: executionConfig.repeat_penalty ?? null,
-                seed: executionConfig.seed ?? null
+                seed: executionConfig.seed ?? null,
+                seed_policy: executionConfig.seed_policy || 'fixed'
             }
         },
         contract: snapshot
     };
+}
+
+/**
+ * One candidate's frozen window and response budget, as a launch would run it.
+ * A launch without its own budget gets the documented default in the same
+ * window instead of Core's reserve.
+ */
+async function resolveCandidate(candidateRequest, executionConfig, deps = {}) {
+    let resolved = candidateRequest;
+    let snapshot = await fetchSnapshot(candidateRequest, deps);
+    const budget = candidateRequest.options.num_predict ? null : documentedDefaultBudget(snapshot, executionConfig);
+    if (budget) {
+        resolved = { ...candidateRequest, options: { ...candidateRequest.options, num_predict: budget } };
+        snapshot = await fetchSnapshot(resolved, deps);
+    }
+    return buildCandidate(snapshot, resolved, executionConfig);
+}
+
+/** The candidate a launch would freeze for one model on one host. */
+function resolveCandidateContract(model, host, executionConfig = {}, deps = {}) {
+    return resolveCandidate(buildResolutionRequest(model, host, executionConfig), executionConfig, deps);
 }
 
 function campaignRequest(hostGroups, executionConfig) {
@@ -231,6 +298,7 @@ function campaignRequest(hostGroups, executionConfig) {
             top_k: executionConfig.top_k ?? null,
             repeat_penalty: executionConfig.repeat_penalty ?? null,
             seed: executionConfig.seed ?? null,
+            ...(executionConfig.seed_policy ? { seed_policy: executionConfig.seed_policy } : {}),
             api_mode: executionConfig.api_mode || 'chat',
             repeats: Number(executionConfig.repeats) || 1,
             answer_contract_mode: executionConfig.answer_contract_mode || 'auto',
@@ -399,8 +467,7 @@ async function resolveStandaloneCampaignInferenceContracts({
     const requestFingerprint = fingerprint(request);
     const candidates = [];
     for (const candidateRequest of request.candidates) {
-        const snapshot = await fetchSnapshot(candidateRequest, deps);
-        candidates.push(buildCandidate(snapshot, candidateRequest, executionConfig));
+        candidates.push(await resolveCandidate(candidateRequest, executionConfig, deps));
     }
     return {
         schemaVersion: CAMPAIGN_SCHEMA_VERSION,
@@ -440,6 +507,7 @@ function getFrozenModelExecutionConfig(campaign, model, host, baseConfig = {}) {
         top_k: candidate.execution.sampling.top_k,
         repeat_penalty: candidate.execution.sampling.repeat_penalty,
         seed: candidate.execution.sampling.seed,
+        seed_policy: candidate.execution.sampling.seed_policy || fixed.seed_policy || 'fixed',
         api_mode: fixed.api_mode || baseConfig.api_mode,
         repeats: fixed.repeats || baseConfig.repeats,
         answer_contract_mode: fixed.answer_contract_mode || baseConfig.answer_contract_mode,
@@ -484,16 +552,19 @@ async function assertFrozenArtifactDigest(campaign, model, host, deps = {}) {
 
 module.exports = {
     CAMPAIGN_SCHEMA_VERSION,
+    CONTEXT_NOT_VERIFIED,
     MIN_FROZEN_INPUT_TOKENS,
     MODES,
     assertFrozenArtifactDigest,
     buildResolutionRequest,
     candidateKey,
+    documentedDefaultBudget,
     getFrozenModelExecutionConfig,
     loadOrResolveCampaignInferenceContracts,
     loadOrResumeCampaignInferenceContracts,
     normalizeResponseMode,
     promptExecConfig,
+    resolveCandidateContract,
     resolveContractNumCtx,
     resolveStandaloneCampaignInferenceContracts,
     resolveFrozenMode,

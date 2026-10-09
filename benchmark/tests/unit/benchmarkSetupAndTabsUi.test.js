@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { readSource } = require('../../../shared/testing/readSource');
 
 const benchmarkRoot = path.resolve(__dirname, '..', '..');
-const read = (...segments) => fs.readFileSync(path.join(benchmarkRoot, ...segments), 'utf8');
+const read = (...segments) => readSource(path.join(benchmarkRoot, ...segments));
 
 class FakeSetupElement {
     constructor() {
@@ -57,7 +58,7 @@ async function loadSetupPage(probeFetch) {
     ];
     const elements = Object.fromEntries(ids.map((id) => [id, new FakeSetupElement()]));
     const fetchMock = jest.fn((url, options) => {
-        if (url === '/api/setup/status') {
+        if (url === '/benchmark/api/setup/status') {
             return Promise.resolve(jsonResponse({ configured: false, hosts: [], judge: null }));
         }
         return probeFetch(url, options);
@@ -111,11 +112,11 @@ describe('Benchmark judge setup and Courthouse navigation contracts', () => {
         const elements = {};
         const profiles = hostIds.map(hostId => ({ hostId, status: 'online', baseline: { testedAt: '2026-09-07' } }));
         const payloads = {
-            '/api/ollama-hosts': { hosts: [{ available: true, models: ['model-a'] }] },
-            '/api/profiler/hosts': { data: profiles },
-            '/api/benchmark/batches?status=completed&limit=1': { data: { batches: [], total: 0 } },
-            '/api/benchmark/batches/active': { data: [] },
-            '/api/benchmark/judge/readiness': { data: { ready: true } }
+            '/benchmark/api/ollama-hosts': { hosts: [{ available: true, models: ['model-a'] }] },
+            '/benchmark/api/profiler/hosts': { data: profiles },
+            '/benchmark/api/benchmark/batches?status=completed&limit=1': { data: { batches: [], total: 0 } },
+            '/benchmark/api/benchmark/batches/active': { data: [] },
+            '/benchmark/api/benchmark/judge/readiness': { data: { ready: true } }
         };
         const context = {
             document: {
@@ -139,17 +140,17 @@ describe('Benchmark judge setup and Courthouse navigation contracts', () => {
         await context.refreshHero();
         expect(elements['evaluation-readiness-label'].textContent).toBe(expected);
         expect(elements['evaluation-primary-action'].href).toBe(
-            expected === 'Ready to compare' ? '#benchmark-cockpit' : '/profiler'
+            expected === 'Ready to compare' ? '#benchmark-cockpit' : '/benchmark/profiler'
         );
     });
 
     test('the Benchmark hero does not claim launch readiness without judge evidence', () => {
         const source = read('public', 'js', 'benchmark-v2', 'experience.js');
 
-        expect(source).toContain("fetchJson('/api/benchmark/judge/readiness')");
+        expect(source).toContain("fetchJson('/benchmark/api/benchmark/judge/readiness')");
         expect(source).toContain("setReadiness('unknown', 'Judge status is unknown'");
         expect(source).toContain("setReadiness('error', 'Judge is not ready'");
-        expect(source).toContain("'/setup?focus=judge&return=%2F'");
+        expect(source).toContain("'/benchmark/setup?focus=judge&return=%2Fbenchmark%2F'");
         expect(source).toMatch(/judgeReadiness\.ready !== true[\s\S]*Ready to compare/);
     });
 
@@ -170,7 +171,7 @@ describe('Benchmark judge setup and Courthouse navigation contracts', () => {
         expect(page).toContain('when Benchmark runs directly');
         expect(page).not.toMatch(/picked a good default/i);
         expect(source).toContain("setupParams.get('focus') === 'judge'");
-        expect(source).toContain("fetch('/api/setup/status')");
+        expect(source).toContain("fetch('/benchmark/api/setup/status')");
         expect(source).toContain('renderConfiguredHosts(configuredHosts, configuredJudge)');
         expect(source).toContain('await probeConnection(initialHost.url');
         expect(source).toContain('Restored the explicitly configured judge');

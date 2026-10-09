@@ -71,6 +71,41 @@ describe('clusterScheduleService', () => {
   // ── getTimeline ─────────────────────────────────────────────
 
   describe('getTimeline', () => {
+    it('includes midnight and late-evening occurrences on the selected Toronto day', async () => {
+      await ClusterScheduleEntry.create([
+        { source: 'agentx', sourceId: 'midnight', name: 'Midnight',
+          taskType: 'maintenance', schedule: { type: 'cron', cron: '0 0 * * *', timezone: 'America/Toronto' } },
+        { source: 'agentx', sourceId: 'late', name: 'Late',
+          taskType: 'maintenance', schedule: { type: 'cron', cron: '0 23 * * *', timezone: 'America/Toronto' } }
+      ]);
+      const timeline = await clusterScheduleService.getTimeline('2026-10-08', 'America/Toronto');
+      expect(timeline.find(entry => entry.name === 'Midnight').slots[0].start)
+        .toBe('2026-10-08T04:00:00.000Z');
+      expect(timeline.find(entry => entry.name === 'Late').slots[0].start)
+        .toBe('2026-10-09T03:00:00.000Z');
+    });
+
+    it('keeps the cron source timezone while projecting a Toronto calendar day', async () => {
+      await ClusterScheduleEntry.create({
+        source: 'agentx-system', sourceId: 'utc-job', name: 'UTC Job',
+        taskType: 'maintenance',
+        schedule: { type: 'cron', cron: '0 9 * * *', timezone: 'UTC' }
+      });
+      const timeline = await clusterScheduleService.getTimeline('2026-10-08', 'America/Toronto');
+      expect(timeline[0].slots[0].start).toBe('2026-10-08T09:00:00.000Z');
+    });
+
+    it('anchors interval projections on the source scheduler next run', async () => {
+      await ClusterScheduleEntry.create({
+        source: 'agentx-system', sourceId: 'every-15m', name: 'Every 15 minutes',
+        taskType: 'monitoring',
+        schedule: { type: 'interval', intervalMs: 15 * 60_000, timezone: 'UTC' },
+        metadata: { nextRunAtMs: Date.parse('2026-10-08T04:02:00.000Z') }
+      });
+      const timeline = await clusterScheduleService.getTimeline('2026-10-08', 'America/Toronto');
+      expect(timeline[0].slots[0].start).toBe('2026-10-08T04:02:00.000Z');
+    });
+
     it('resolves cron entries into time slots', async () => {
       await ClusterScheduleEntry.create({
         source: 'agentx', sourceId: 'cron1', name: 'Hourly Task',
@@ -125,6 +160,18 @@ describe('clusterScheduleService', () => {
   // ── getNextTasks ────────────────────────────────────────────
 
   describe('getNextTasks', () => {
+    it('uses an external interval scheduler next-run receipt when available', async () => {
+      const nextRun = Date.now() + 12 * 60_000;
+      await ClusterScheduleEntry.create({
+        source: 'agentx-system', sourceId: 'next-tick', name: 'Next tick',
+        taskType: 'monitoring',
+        schedule: { type: 'interval', intervalMs: 15 * 60_000 },
+        metadata: { nextRunAtMs: nextRun }
+      });
+      const tasks = await clusterScheduleService.getNextTasks(1);
+      expect(tasks[0].nextRun).toBe(new Date(nextRun).toISOString());
+    });
+
     it('returns next occurrences sorted by time', async () => {
       await ClusterScheduleEntry.create([
         {
@@ -219,41 +266,101 @@ describe('clusterScheduleService', () => {
   // ── getConflicts ──────────────────────────────────────────────
 
   describe('getConflicts', () => {
-    it('detects overlapping tasks on the same host', async () => {
-      await ClusterScheduleEntry.create([
-        { source: 'agentx', sourceId: 'c1', name: 'Task A', taskType: 'benchmark', host: 'primary', model: 'llama3:8b', enabled: true,
-          schedule: { type: 'cron', cron: '0 2 * * *', timezone: 'UTC' }, estimatedDurationMs: 7200000 },
-        { source: 'agentx', sourceId: 'c2', name: 'Task B', taskType: 'sync', host: 'primary', model: 'llama3:8b', enabled: true,
-          schedule: { type: 'cron', cron: '0 3 * * *', timezone: 'UTC' }, estimatedDurationMs: 3600000 }
-      ]);
+    const savedHostEnv = {};
+    const hostEnvKeys = ['OLLAMA_HOST', 'OLLAMA_HOST_2', 'OLLAMA_HOST_3', 'OLLAMA_HOST_VRAM_MAP'];
 
-      const conflicts = await clusterScheduleService.getConflicts('2026-03-04', 'UTC');
-      expect(conflicts.length).toBeGreaterThanOrEqual(1);
-      expect(conflicts[0].hostId).toBe('primary');
+    beforeEach(() => {
+      for (const key of hostEnvKeys) savedHostEnv[key] = process.env[key];
+      process.env.OLLAMA_HOST = 'http://127.0.0.1:11434';
+      process.env.OLLAMA_HOST_VRAM_MAP = '127.0.0.1:11434=24576';
+      delete process.env.OLLAMA_HOST_2;
+      delete process.env.OLLAMA_HOST_3;
     });
 
-    it('returns no conflicts for non-overlapping tasks', async () => {
-      await ClusterScheduleEntry.create([
-        { source: 'agentx', sourceId: 'nc1', name: 'Morning', taskType: 'benchmark', host: 'primary', enabled: true,
-          schedule: { type: 'cron', cron: '0 2 * * *', timezone: 'UTC' }, estimatedDurationMs: 300000 },
-        { source: 'agentx', sourceId: 'nc2', name: 'Afternoon', taskType: 'sync', host: 'primary', enabled: true,
-          schedule: { type: 'cron', cron: '0 14 * * *', timezone: 'UTC' }, estimatedDurationMs: 300000 }
-      ]);
-
-      const conflicts = await clusterScheduleService.getConflicts('2026-03-04', 'UTC');
-      expect(conflicts).toHaveLength(0);
+    afterEach(() => {
+      for (const key of hostEnvKeys) {
+        if (savedHostEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = savedHostEnv[key];
+      }
     });
 
-    it('ignores continuous tasks in conflict detection', async () => {
+    const job = (overrides) => ({
+      source: 'agentx', taskType: 'benchmark', host: 'primary', enabled: true,
+      schedule: { type: 'cron', cron: '0 2 * * *', timezone: 'UTC' }, estimatedDurationMs: 7200000,
+      ...overrides
+    });
+
+    it('reports overlapping models whose combined VRAM exceeds the host', async () => {
       await ClusterScheduleEntry.create([
-        { source: 'ollama-persistent', sourceId: 'pc1', name: 'Resident Model', taskType: 'inference', host: 'primary', enabled: true,
-          schedule: { type: 'continuous' } },
-        { source: 'agentx', sourceId: 'pc2', name: 'Cron Task', taskType: 'benchmark', host: 'primary', enabled: true,
-          schedule: { type: 'cron', cron: '0 2 * * *', timezone: 'UTC' }, estimatedDurationMs: 300000 }
+        job({ sourceId: 'c1', name: 'Task A', model: 'qwen3:32b', vramMb: 20000 }),
+        job({ sourceId: 'c2', name: 'Task B', model: 'gemma3:12b', vramMb: 9000,
+          schedule: { type: 'cron', cron: '0 3 * * *', timezone: 'UTC' }, estimatedDurationMs: 3600000 })
       ]);
 
       const conflicts = await clusterScheduleService.getConflicts('2026-03-04', 'UTC');
-      expect(conflicts).toHaveLength(0);
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]).toMatchObject({
+        hostId: 'primary',
+        start: '2026-03-04T03:00:00.000Z',
+        end: '2026-03-04T04:00:00.000Z',
+        capacityVramMb: 24576,
+        requiredVramMb: 29000,
+        unknownVramModels: []
+      });
+      expect(conflicts[0].tasks.map(task => task.name).sort()).toEqual(['Task A', 'Task B']);
+    });
+
+    it('does not report overlaps that fit, or that share one loaded model', async () => {
+      await ClusterScheduleEntry.create([
+        job({ sourceId: 'f1', name: 'Embed A', model: 'nomic-embed-text', vramMb: 1000 }),
+        job({ sourceId: 'f2', name: 'Embed B', model: 'nomic-embed-text', vramMb: 1000 }),
+        job({ sourceId: 'f3', name: 'Small', model: 'llama3:8b', vramMb: 6000 }),
+        job({ sourceId: 'f4', name: 'Big twin', model: 'qwen3:32b', vramMb: 20000,
+          schedule: { type: 'cron', cron: '0 10 * * *', timezone: 'UTC' } }),
+        job({ sourceId: 'f5', name: 'Big twin 2', model: 'qwen3:32b', vramMb: 20000,
+          schedule: { type: 'cron', cron: '0 10 * * *', timezone: 'UTC' } })
+      ]);
+
+      expect(await clusterScheduleService.getConflicts('2026-03-04', 'UTC')).toHaveLength(0);
+    });
+
+    it('counts resident models against the capacity', async () => {
+      await ClusterScheduleEntry.create([
+        { source: 'ollama-persistent', sourceId: 'r1', name: 'Voice model', taskType: 'inference', host: 'primary',
+          model: 'gemma3:12b', vramMb: 9000, enabled: true, schedule: { type: 'continuous' } },
+        job({ sourceId: 'r2', name: 'Nightly', model: 'qwen3:32b', vramMb: 20000 })
+      ]);
+
+      const conflicts = await clusterScheduleService.getConflicts('2026-03-04', 'UTC');
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].requiredVramMb).toBe(29000);
+      expect(conflicts[0].tasks.find(task => task.name === 'Voice model')).toMatchObject({ resident: true });
+    });
+
+    it('does not invent a conflict from unknown model sizes or unknown capacity', async () => {
+      await ClusterScheduleEntry.create([
+        job({ sourceId: 'u1', name: 'Sized', model: 'qwen3:32b', vramMb: 20000 }),
+        job({ sourceId: 'u2', name: 'Unsized', model: 'mystery:70b' })
+      ]);
+      expect(await clusterScheduleService.getConflicts('2026-03-04', 'UTC')).toHaveLength(0);
+
+      await ClusterScheduleEntry.create(job({ sourceId: 'u3', name: 'Second big', model: 'llama3:70b', vramMb: 20000 }));
+      const conflicts = await clusterScheduleService.getConflicts('2026-03-04', 'UTC');
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].unknownVramModels).toEqual(['mystery:70b']);
+
+      delete process.env.OLLAMA_HOST_VRAM_MAP;
+      expect(await clusterScheduleService.getConflicts('2026-03-04', 'UTC')).toHaveLength(0);
+    });
+
+    it('ignores jobs without a model or without a declared host', async () => {
+      await ClusterScheduleEntry.create([
+        job({ sourceId: 'n1', name: 'No model A' }),
+        job({ sourceId: 'n2', name: 'No model B' }),
+        job({ sourceId: 'n3', name: 'Unassigned A', host: null, model: 'qwen3:32b', vramMb: 20000 }),
+        job({ sourceId: 'n4', name: 'Unassigned B', host: null, model: 'llama3:70b', vramMb: 20000 })
+      ]);
+      expect(await clusterScheduleService.getConflicts('2026-03-04', 'UTC')).toHaveLength(0);
     });
   });
 

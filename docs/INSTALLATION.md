@@ -157,7 +157,7 @@ uses `nomic-embed-text:v1.5` with 768 dimensions. For Docker Ollama:
 ```
 
 For native Ollama, run `ollama pull nomic-embed-text:v1.5` on its host. Open the
-RAG interface at http://127.0.0.1:3182/, ingest a small non-sensitive text document
+RAG interface at http://127.0.0.1:3182/rag/, ingest a small non-sensitive text document
 and search for a phrase from it. Verify retrieval before importing a real corpus.
 An empty collection is normal on first start. Changing the embedding model or
 its dimensions needs a new collection; follow
@@ -181,14 +181,14 @@ host inventories or runtime volumes.
 |---|---|
 | Default `demo` | Playground, Ollama discovery, RAG and Benchmark |
 | `AGENTX_PROFILE=full` | Also Nestor (`/dad`), Household (`/panel`) and operational surfaces |
-| Full plus `COMPOSE_PROFILES=data` | Also optional Data and `/data-toolbox` |
+| `COMPOSE_PROFILES=data` | Also the optional Data service; Core shows `/data-toolbox` in `full` only |
 
 Set these values in the external env file. Data binds to loopback 3183 and has
 no collector target, storage mount or background job enabled by default. See
 [Data configuration](../data/README.md). Voice, private harnesses, photos and
 other integrations require their own configuration; enabling `full` does not
 install them. Before family access from another device, configure the
-[LAN HTTPS parental gateway](PARENTAL_ACCESS.md). Keep raw service ports local.
+[private LAN HTTPS gateway](PARENTAL_ACCESS.md). Keep raw service ports local.
 
 ### Private sound packs
 
@@ -225,9 +225,10 @@ and the inference endpoint you select determine which other systems receive data
 | Material | Default storage | What to keep private |
 |---|---|---|
 | Conversations, memory, tasks, family profiles and conversation attachments | MongoDB, in `${project}_canonical_mongo_data` | The database, exports and dumps; attachments include their file bytes |
-| Document retrieval | MongoDB document/chunk records and `${project}_canonical_qdrant_data` vectors | Both stores; an embedding index is instance data too |
+| Document retrieval | Qdrant document/chunk payloads, original text and vectors in `${project}_canonical_qdrant_data`; MongoDB manifests and ingestion/search telemetry | Both stores and approved sources; Qdrant contains document content, not only an embedding index |
 | Docker Ollama models | `${project}_canonical_ollama_data` | The local model store; native/LAN Ollama has its own independent storage |
 | Recovery archives | `${project}_canonical_recovery_data`, mounted at `/backups` in Core | Backups, including copies of deleted application content |
+| Data inventory reports generated on request (file paths and sizes) | `${project}_canonical_data_exports`, mounted at `/data/exports` in Data; at most 20 reports and 1 GiB | The reports: they list every indexed path |
 | Logs, benchmark settings and execution files | The project's `core_logs`, `benchmark_logs`, `rag_logs`, `benchmark_config` and `benchmark_jobs` named volumes | Logs, instance host settings and generated execution material |
 | Original documents, photos, media, sound packs and integration settings | External directories explicitly selected by the instance owner | The originals, credentials and external backup copies |
 
@@ -262,7 +263,9 @@ Follow [Operations](OPERATIONS.md) for routing and voice settings, and
 Set `HOUSEHOLD_PHOTOS_DIR` and `HOUSEHOLD_MEDIA_DIR` to external directories when
 using those mounts. Use the [private sound pack override](#private-sound-packs)
 for your own recordings. Enabling the full profile does not import these files.
-Configure [parental access](PARENTAL_ACCESS.md) before sharing with family devices.
+Configure [private LAN HTTPS access](PARENTAL_ACCESS.md) before sharing with
+family devices. Every LAN user can reach human pages/APIs without a code or
+account; keep backend ports on loopback and refuse non-LAN gateway peers.
 
 Reusable changes to code or interfaces belong in a reviewed source PR. Actual
 family names, prompts containing personal memories, host inventories, secrets,

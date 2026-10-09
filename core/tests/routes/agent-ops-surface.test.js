@@ -1,12 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const ejs = require('ejs');
+const { readSource } = require('../../../shared/testing/readSource');
 
 const root = path.resolve(__dirname, '../..');
 const viewPath = path.join(root, 'views/pages/agent-ops.ejs');
 const appPath = path.join(root, 'src/app.js');
 const mainScriptPath = path.join(root, 'public/js/agent-ops.js');
 const advancedScriptPath = path.join(root, 'public/js/agent-ops-advanced.js');
+const teamScriptPath = path.join(root, 'public/js/agent-ops-team.js');
 const stylePath = path.join(root, 'public/css/agent-ops.css');
 
 describe('read-only Agent Ops shell', () => {
@@ -28,7 +30,7 @@ describe('read-only Agent Ops shell', () => {
     expect(html).toContain('href="/pipeline"');
     expect(html).toContain('docs/TRUSTED_EXTENSIONS.md');
     expect(html).not.toContain('href="/api/openclaw/control-launch/overview"');
-    expect(fs.readFileSync(stylePath, 'utf8')).toMatch(/\[data-openclaw-native\]\[hidden\][\s\S]*display:\s*none\s*!important/);
+    expect(readSource(stylePath)).toMatch(/\[data-openclaw-native\]\[hidden\][\s\S]*display:\s*none\s*!important/);
     expect(html).not.toContain('agent-ops-launchpad');
     expect(html).not.toContain('agent-ops-handoff-panel');
     expect(html).not.toContain('id="agentOpsCapabilities"');
@@ -47,7 +49,7 @@ describe('read-only Agent Ops shell', () => {
   });
 
   test('contains no mutation path or action controls', () => {
-    const source = [mainScriptPath, advancedScriptPath, viewPath]
+    const source = [mainScriptPath, advancedScriptPath, teamScriptPath, viewPath]
       .map((file) => fs.readFileSync(file, 'utf8'))
       .join('\n');
     expect(source).not.toMatch(/\/api\/agent-ops\/actions|work-claim|data-work-claim|data-agent-ops-action/);

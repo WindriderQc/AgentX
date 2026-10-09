@@ -51,10 +51,10 @@
     clearTimeout(refreshTimer);
     setStatus('unknown', 'Checking preparation…', 'Reading hosts, baselines and exact model profiles', 'fa-circle-notch fa-spin');
     var responses = await Promise.allSettled([
-      fetchJson('/api/ollama-hosts'),
-      fetchJson('/api/profiler/hosts'),
-      fetchJson('/api/profiler/models'),
-      fetchJson('/api/profiler/recovery')
+      fetchJson('/benchmark/api/ollama-hosts'),
+      fetchJson('/benchmark/api/profiler/hosts'),
+      fetchJson('/benchmark/api/profiler/models'),
+      fetchJson('/benchmark/api/profiler/recovery')
     ]);
     if (version !== refreshVersion) return;
     var recovery = window.ProfilerRecovery.render(responses[3].status === 'fulfilled' ? responses[3].value.data : null);
@@ -127,7 +127,7 @@
   function openTo(targetId) {
     if (targetId === 'profiler-recovery') { document.getElementById(targetId).focus(); return; }
     if (!runtimeAvailable && targetId === 'mp-hosts-section') {
-      window.location.href = '/setup';
+      window.location.href = '/benchmark/setup';
       return;
     }
     cockpit.open = true;

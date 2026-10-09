@@ -5,6 +5,7 @@
 // or reminder for the parent to review (#13). Nothing here checks in, approves
 // or completes a chore, and no personal task or code work is reachable.
 const defaultIdeaInbox = require('../../src/services/ideaInboxService');
+const { ageInYears, birthdayLabel, instanceToday } = require('../../src/domains/household/familyBirthDate');
 
 const IDEA_REQUEST = /(j'?\s?ai une (?:super |bonne |petite )?id[ée]e|(?:note|garde|ajoute|[ée]cris)[sz]?(?:-moi)?\s+(?:une|mon|cette|l')\s*id[ée]e|id[ée]e pour (?:papa|la maison|plus tard)|i have an idea|(?:save|keep|write down) (?:my|this|an) idea)/i;
 const REMINDER_REQUEST = /(rappelle[sz]?[- ]moi|fais[- ]moi penser|n'?oublie pas de me rappeler|(?:note|ajoute|garde)[sz]?(?:-moi)?\s+(?:un|ce)\s+rappel|remind me)/i;
@@ -52,6 +53,49 @@ async function choreSummary(familyTasks, { logger } = {}) {
   }
 }
 
+// How Nestor sounds with children (#121). Famille keeps the Nestor
+// personality, whose adult temperament (a dry-witted majordomo) read flat to a
+// child; this replaces that temperament in family conversations only. It is
+// presentation: accuracy and every safety rule still come first.
+const FAMILY_TONE = [
+  'Tone with children: playful, curious and encouraging, like a fun guide at a science museum, never a dry or formal butler.',
+  'This replaces the selected personality\'s adult temperament in family conversations.',
+  'Answer first, in simple words. When it helps, add one vivid comparison, a surprising fact or a tiny game the child can try.',
+  'Show real interest in the question instead of generic praise such as "Great question".',
+  'When useful, offer a short invitation to explore further. A complete answer can end naturally; do not force a question after every reply.',
+  'Gentle humour is welcome, never sarcasm and never at the child\'s expense.',
+  'Stay within two to four short spoken sentences unless the child asks for more. Fun never overrides accuracy or the safety rules.'
+].join(' ');
+
+const AGE_LABELS = Object.freeze({ little: 'petite enfance', school: 'âge scolaire', teen: 'adolescence' });
+
+// With a birth date the parent set, the age is computed for today and the
+// birthday is given as day and month; otherwise the age band stands.
+function memberAge(profile, today) {
+  const age = ageInYears(profile.birthDate, today);
+  if (age === null) return AGE_LABELS[profile.ageBand] || AGE_LABELS.school;
+  return `${age} an${age > 1 ? 's' : ''}, anniversaire le ${birthdayLabel(profile.birthDate)}`;
+}
+
+// Who the children are comes from the parent's Family page, not from whatever
+// notes a search happens to select (#119): notes about one child must never
+// make Nestor forget another. A failure leaves the turn without the list.
+// Super Dad only: Famille turns never call this.
+async function householdMembers(familyTasks, { logger, now = new Date() } = {}) {
+  try {
+    const { profiles = [] } = await familyTasks.listProfileDetails();
+    const today = instanceToday(now);
+    const names = profiles.filter(profile => profile.active !== false).slice(0, MAX_PROFILES)
+      .map(profile => `${String(profile.displayName || profile.id).slice(0, 80)} (${memberAge(profile, today)})`);
+    return names.length
+      ? `Enfants de la maison (profils de la page Famille de papa; cette liste fait foi sur les notes) : ${names.join(', ')}.`
+      : '';
+  } catch (error) {
+    logger?.warn?.('Household members unavailable', { error: error.message });
+    return '';
+  }
+}
+
 // One explicit request per turn: an idea or reminder goes to the parent's
 // inbox; otherwise an explicit "remember" keeps a family note as before.
 async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true }) {
@@ -82,4 +126,4 @@ function capturedPrompt(captured) {
   return ` The child asked to keep ${captured === 'reminder' ? 'a reminder' : 'an idea'} and it has been saved for Dad to review; confirm plainly that Dad will see it, without promising that he will act on it.`;
 }
 
-module.exports = { capturedPrompt, choreSummary, familyCaptureKind, familyTurn };
+module.exports = { FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers };

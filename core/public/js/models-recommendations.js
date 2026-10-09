@@ -12,25 +12,11 @@
   'use strict';
 
   const PROXY_BASE = '/api/benchmark-proxy';
-  const CATEGORIES = ['coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'];
-  const CAT_ICONS = {
-    coding:      'fa-code',
-    reasoning:   'fa-brain',
-    math:        'fa-calculator',
-    knowledge:   'fa-book',
-    instruction: 'fa-list-check',
-    creative:    'fa-palette',
-    translation: 'fa-language'
-  };
-  const CAT_COLORS = {
-    coding:      '#3b82f6',
-    reasoning:   '#a855f7',
-    math:        '#f59e0b',
-    knowledge:   '#06b6d4',
-    instruction: '#10b981',
-    creative:    '#ec4899',
-    translation: '#64748b'
-  };
+  // Shared benchmark category list (/js/benchmark-categories.global.js).
+  const SHARED = window.AgentXBenchmarkCategories || { keys: [], meta: {} };
+  const CATEGORIES = SHARED.keys;
+  const CAT_ICONS = Object.fromEntries(CATEGORIES.map(key => [key, SHARED.meta[key].faIcon]));
+  const CAT_COLORS = Object.fromEntries(CATEGORIES.map(key => [key, SHARED.meta[key].color]));
   const CONFIDENCE_MAP = {
     high:   { label: 'High',   cls: 'rec-conf-high',   symbol: '\u2713' },
     medium: { label: 'Medium', cls: 'rec-conf-medium', symbol: '\u26A0' },
@@ -109,9 +95,9 @@
     try {
       const res = await fetch('/api/config', { credentials: 'include' });
       const cfg = await res.json();
-      return cfg?.publicUrls?.benchmark || 'http://localhost:3081';
+      return cfg?.publicUrls?.benchmark || 'http://localhost:3081/benchmark';
     } catch {
-      return 'http://localhost:3081';
+      return 'http://localhost:3081/benchmark';
     }
   }
 

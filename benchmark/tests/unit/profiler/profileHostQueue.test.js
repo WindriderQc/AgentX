@@ -104,6 +104,21 @@ describe('profile-host queue depth selection', () => {
     );
   });
 
+  it('preserves the Core work request identity in the native queue and progress receipt', async () => {
+    const queueRequestId = '00000000-0000-4000-8000-000000000001';
+    const started = await startProfileHostQueue({ hostId: 'host-beta', skipRecentDays: 0, queueRequestId });
+    expect(started.queueRequestId).toBe(queueRequestId);
+    const progress = await request(pipelineApp).get(`/api/profiler/pipeline/profile-host/${started.queueId}/progress`).expect(200);
+    expect(progress.body.data.queueRequestId).toBe(queueRequestId);
+    await flushPromises();
+  });
+
+  it('refuses invalid queue correlation before host lookup or profiling', async () => {
+    await expect(startProfileHostQueue({ hostId: 'host-beta', queueRequestId: 'bad-id' })).rejects.toMatchObject({ statusCode: 400 });
+    expect(hostProfileService.getById).not.toHaveBeenCalled();
+    expect(orchestrator.profile).not.toHaveBeenCalled();
+  });
+
   it('keeps an old running profile and queue visible until they finish', () => {
     const old = Date.now() - 48 * 60 * 60 * 1000;
     for (const state of [activeProfiles, activeProfileQueues]) {
@@ -131,6 +146,36 @@ describe('profile-host queue depth selection', () => {
     finishRestore({ released: true, runtimeRestore: { verified: true } });
     await flushPromises();
     expect(tracker.status).toBe('completed');
+  });
+
+  it('cancels a running profile at its next checkpoint and still restores the pins', async () => {
+    coreApiClient.claimHostForBenchmark.mockResolvedValue({ claimed: true });
+    let reachCheckpoint;
+    orchestrator.profile.mockImplementationOnce((_model, _hostId, _url, _depth, options) => new Promise((resolve, reject) => {
+      // The current request finishes, then the profile reaches its next checkpoint.
+      reachCheckpoint = () => { try { options.assertClaimActive(); resolve({ ok: true }); } catch (error) { reject(error); } };
+    }));
+    const started = await request(pipelineApp).post('/api/profiler/pipeline/profile')
+      .send({ modelName: 'llama3:8b', hostId: 'host-beta', depth: 'standard' });
+    const profileId = started.body.data.profileId;
+    await flushPromises();
+
+    // No abortable request is in flight: the cancel lands at the next checkpoint.
+    const cancel = await request(pipelineApp).post(`/api/profiler/pipeline/profile/${profileId}/cancel`);
+    expect(cancel.body.data).toMatchObject({ profileStatus: 'running', cancelRequested: true,
+      cancel: { phase: 'checkpoint', abortedAt: null, budgetMs: 60_000 } });
+    const progress = (await request(pipelineApp).get(`/api/profiler/pipeline/profile/${profileId}/progress`)).body.data;
+    expect(progress).toMatchObject({ cancelRequested: true, cancel: { phase: 'checkpoint' }, statusMessage: 'Cancelling after the current request…' });
+
+    reachCheckpoint();
+    await flushPromises();
+    const tracker = activeProfiles.get(profileId);
+    expect(tracker.status).toBe('cancelled');
+    expect(tracker.statusMessage).toBe('Cancelled; pinned models restored');
+    expect(coreApiClient.releaseBenchmarkClaim).toHaveBeenCalled();
+    expect((await request(pipelineApp).post(`/api/profiler/pipeline/profile/${profileId}/cancel`)).body.data)
+      .toEqual({ profileStatus: 'cancelled', cancelRequested: false });
+    expect((await request(pipelineApp).post('/api/profiler/pipeline/profile/unknown/cancel')).status).toBe(404);
   });
 
   it('fails closed before queue start when the host claim is rejected', async () => {

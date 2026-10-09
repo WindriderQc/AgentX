@@ -262,9 +262,9 @@ describe('cloud/local exact campaign execution', () => {
         expect(transports['local-a'].execute).not.toHaveBeenCalled();
     });
 
-    test('enforces worst-case paid spend before the first paid provider call', async () => {
-        const candidates = [paidCandidate(), localCandidate()];
-        const { fixtures, plan } = campaign(candidates, { spendCeilingNanodollars: 1 });
+    test.each([['historical', {}, 1], ['native context', { apiVersion: 'openclaw-model-sdk-2026.9.4' }, 100000]])('enforces %s paid spend before the first model call', async (_label, overrides, spendCeilingNanodollars) => {
+        const candidates = [paidCandidate(overrides), localCandidate()];
+        const { fixtures, plan } = campaign(candidates, { spendCeilingNanodollars });
         const paidApproval = {
             approvalId: 'approval-1',
             campaignId: plan.campaignId,

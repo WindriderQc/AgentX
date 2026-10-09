@@ -11,7 +11,18 @@ const {
   TurnActionProvenanceError,
   validateTurnActionProvenance
 } = require('../src/helpers/turnActionProvenance');
+const {
+  findConversationForUpdate,
+  conversationNotFound
+} = require('../src/services/chat/conversationPersistence');
 const ragStore = getRagServiceClient();
+const conversationPreferences = require('../src/services/conversationPreferences/service').createConversationPreferences();
+require('../src/services/conversationPreferences/routes').registerPreferenceRoutes(router, {
+  base: '/conversation-preferences', serviceFor: (_req, res) => conversationPreferences.forOwner({ ownerId: getUserId(res), surface: 'playground' })
+});
+const { durableConversationExchange } = require('../src/middleware/durableConversationExchange');
+router.use(durableConversationExchange({ scope: (_req, res) => `playground:${getUserId(res)}`,
+  matches: req => ['/chat', '/chat/stream'].includes(req.path) && ['POST', 'GET'].includes(req.method) }));
 
 function resolveAllowlistedTarget(target) {
   const validation = validateHostUrl(target);
@@ -28,7 +39,8 @@ function resolveAllowlistedTarget(target) {
 }
 
 function sendChatInputError(res, error) {
-  const isContractError = error instanceof TurnActionProvenanceError || error.code === 'CHAT_REQUEST_INVALID';
+  const isContractError = error instanceof TurnActionProvenanceError
+    || ['CHAT_REQUEST_INVALID', 'EXECUTION_SOURCE_INVALID', 'CONVERSATION_NOT_FOUND'].includes(error.code);
   const statusCode = isContractError ? error.statusCode : 500;
   if (!isContractError) {
     logger.error('Turn action provenance validation failed', {
@@ -68,6 +80,7 @@ async function projectChatError(error, options = {}) {
 // CHAT: Delegated to chatService
 async function resolveChatRequest(payload, userId) {
   const {
+    execution, parameters, budget, reasoningMaxTokens,
     target,
     model,
     message,
@@ -77,6 +90,7 @@ async function resolveChatRequest(payload, userId) {
     promptVersion,
     options = {},
     conversationId,
+    clientTurnId,
     useRag,
     ragEnabled,
     ragTopK,
@@ -95,7 +109,8 @@ async function resolveChatRequest(payload, userId) {
   const invalid = (message) => {
     throw Object.assign(new Error(message), { statusCode: 400, code: 'CHAT_REQUEST_INVALID' });
   };
-  if (!model && !autoRoute && !taskType) invalid('Model is required (or enable autoRoute/taskType)');
+  const selection = require('../../shared/executionSource').parseExecutionSource(payload);
+  if (!model && !selection && !autoRoute && !taskType) invalid('Model is required (or enable autoRoute/taskType)');
   if (typeof message !== 'string' || !message.trim()) invalid('Message is required and must be a non-empty string');
   if (!Array.isArray(messages) || messages.some((entry) => !entry
       || !['system', 'user', 'assistant', 'tool'].includes(entry.role)
@@ -103,18 +118,29 @@ async function resolveChatRequest(payload, userId) {
     invalid('messages must be an array of messages with a role and string content');
   }
   if (!options || typeof options !== 'object' || Array.isArray(options)) invalid('options must be an object');
+  // One id per client turn: a repeated request stores the turn once.
+  if (clientTurnId !== undefined && clientTurnId !== null && (typeof clientTurnId !== 'string'
+      || !/^[\x21-\x7e]{1,160}$/.test(clientTurnId))) {
+    invalid('clientTurnId must be 1 to 160 printable characters');
+  }
 
   // Omitted target stays omitted so the router can choose the host.
-  const allowlistedTarget = resolveAllowlistedTarget(target);
+  const allowlistedTarget = selection?.source === 'openclaw' ? { ok: true, target: undefined } : resolveAllowlistedTarget(target);
   if (!allowlistedTarget.ok) invalid(allowlistedTarget.message);
+  // Refuse an unknown or archived conversation before inference: its save would be refused.
+  if (conversationId && !(await findConversationForUpdate({ conversationId, userId }))) {
+    throw conversationNotFound();
+  }
 
   return {
-    model, message, messages, system, persona, promptVersion, conversationId,
+    execution, parameters, budget, reasoningMaxTokens, model, message, messages, system, persona, promptVersion, conversationId,
+    clientTurnId: clientTurnId || null,
     useRag, ragEnabled, ragTopK, ragFilters, autoRoute, taskType, enableWebSearch, think,
     options: { ...options, ...(ragCompress !== undefined ? { ragCompress: ragCompress === true } : {}) },
     target: allowlistedTarget.target,
     thinkingMode: thinkingMode ?? thinking_mode,
-    turnAction
+    turnAction,
+    conversationFeatures: (await conversationPreferences.forOwner({ ownerId: userId, surface: 'playground' }).read()).values
   };
 }
 
@@ -143,6 +169,7 @@ router.post('/chat', async (req, res) => {
       ...input, userId, ragStore, abortSignal: abortController.signal
     });
 
+    res.locals.exchangeConversationId = result.conversationId;
     const responseData = turnAction ? { ...result, turnAction } : result;
 
     res.json({
@@ -158,6 +185,7 @@ router.post('/chat', async (req, res) => {
         autoRouted: result.routing?.autoRouted || false,
         ragUsed: result.ragUsed,
         ragSources: result.ragSources,
+        ragStatus: result.ragStatus,
         warning: result.warning,
         ...(turnAction ? { turnAction } : {})
     });
@@ -304,6 +332,7 @@ const handleChatStreamRequest = async (req, res, payload) => {
         sendEvent('thinking', { content: thinking });
       },
       onComplete: (result) => {
+        res.locals.exchangeConversationId = result.conversationId;
         const completionReceipt = turnAction ? { ...result, turnAction } : result;
         if (finishStream('done', completionReceipt)) {
           emitBuddyEvent('message_received', 'chat', 'Streamed response completed', 'normal');
@@ -355,7 +384,7 @@ router.get('/chat/stream', async (req, res) => {
     promptVersion: req.query.promptVersion,
     options: safeJsonParse(req.query.options, {}),
     conversationId: req.query.conversationId,
-    useRag: req.query.useRag === 'true',
+    useRag: req.query.useRag === undefined ? undefined : req.query.useRag === 'true',
     ragTopK: req.query.ragTopK ? parseInt(req.query.ragTopK, 10) : undefined,
     ragFilters: safeJsonParse(req.query.ragFilters, undefined),
     ragCompress: req.query.ragCompress === 'true',

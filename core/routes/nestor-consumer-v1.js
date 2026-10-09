@@ -282,8 +282,27 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
   // an operation, never a collection, audience or storage path.
   router.post('/memory/notes', asyncRoute(async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const result = await require('../src/services/memoryNoteService').operatePersonal(req.body || {});
+    // Notes written through this agent contract are never labelled as dictated by the owner (#207).
+    const result = await require('../src/services/memoryNoteService').operatePersonal({ provenance: 'conversation', ...(req.body || {}) });
     envelope.success(res, result);
+  }));
+
+  // Dated mail digests: owner-only journal, kept out of memory notes.
+  router.post('/mail-journal', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    envelope.success(res, await require('../src/services/mailJournalService').operate(req.body || {}));
+  }));
+
+  // The standing brief of one collaborator of the main agent: one envelope for all of them, read-only.
+  router.post('/team-brief', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    envelope.success(res, await require('../src/services/teamBriefService').brief(req.body || {}));
+  }));
+
+  // Sensitive identifiers: labels for listing, a value only on request.
+  router.post('/identifiers', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    envelope.success(res, await require('../src/services/identifierVault').operate(req.body || {}));
   }));
 
   // Nestor files a Markdown note for the owner to review in the vault inbox.

@@ -32,6 +32,23 @@ function validateCalibrationSet(entries) {
     }
 }
 
+/**
+ * The prompt a calibration case is scored as. The fields a case carries put
+ * it on the scoring path of the catalog prompts it mirrors: reference tests
+ * run the code, a reference answer selects the reference scorer, and judge
+ * criteria become the decomposed judge's specific criteria.
+ */
+function calibrationPrompt(item) {
+    return {
+        prompt: item.prompt,
+        category: item.category,
+        expected_answer: item.expected_answer,
+        ...(item.reference_answer !== undefined && { reference_answer: item.reference_answer }),
+        ...(item.judge_criteria !== undefined && { judge_criteria: item.judge_criteria }),
+        reference_tests: item.reference_tests
+    };
+}
+
 function evaluateCalibrationCase(entry, actual) {
     const humanScore = calibrationScore(entry.expert_scores.overall);
     const judgeScore = calibrationScore(actual.quality_score);
@@ -324,6 +341,7 @@ module.exports = {
     SCALE_MAXIMUM,
     isAccuracyCalibrationValid,
     qualificationFailures,
+    calibrationPrompt,
     isIdentityCase,
     keyingCredit,
     loadCalibrationSet,

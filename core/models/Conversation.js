@@ -40,7 +40,7 @@ const MessageSchema = new mongoose.Schema({
       modelName: String,
       promptCostPer1M: Number,
       completionCostPer1M: Number,
-      source: { type: String, enum: ['environment', 'database', 'default', 'unconfigured'] }
+      source: { type: String, enum: ['environment', 'database', 'default', 'unconfigured', 'openclaw'] }
     },
     calculatedAt: Date
   },
@@ -68,6 +68,7 @@ const ConversationSchema = new mongoose.Schema({
   userId: { type: String, default: 'default' },
   surface: { type: String, default: undefined },
   surfaceSession: { type: require('./conversationSessionSchema'), default: undefined },
+  sessionRecap: { type: require('./conversationRecapSchema'), default: undefined },
 
   model: String,
   systemPrompt: String,
@@ -123,6 +124,9 @@ const ConversationSchema = new mongoose.Schema({
     index: true
   },
   clientRef: { type: String, default: undefined, maxlength: 160 },
+  // Playground turn that created this conversation. With the unique index
+  // below, concurrent copies of a first turn cannot create two conversations.
+  clientTurnId: { type: String, default: undefined, maxlength: 160 },
 
   // V5: Total conversation cost (sum of all message costs)
   totalCost: {
@@ -169,6 +173,10 @@ ConversationSchema.index({ createdAt: 1 });
 ConversationSchema.index({ userId: 1, clientRef: 1 }, {
   name: 'surface_source_unique', unique: true,
   partialFilterExpression: { surface: { $type: 'string' }, clientRef: { $type: 'string' } }
+});
+ConversationSchema.index({ userId: 1, clientTurnId: 1 }, {
+  name: 'playground_first_turn_unique', unique: true,
+  partialFilterExpression: { clientTurnId: { $type: 'string' } }
 });
 ConversationSchema.index({ surface: 1, 'surfaceSession.sessionId': 1 }, {
   unique: true, partialFilterExpression: { 'surfaceSession.sessionId': { $type: 'string' } }
@@ -235,7 +243,9 @@ ConversationSchema.index({ 'usage.totalTokens': -1 });
 
 // Update timestamp on save
 ConversationSchema.pre('save', function() {
-  this.updatedAt = Date.now();
+  if (!this.$locals.transcriptBulkInsert) this.updatedAt = Date.now();
 });
+
+ConversationSchema.plugin(require('../src/services/conversations/transcriptPlugin'));
 
 module.exports = mongoose.model('Conversation', ConversationSchema);

@@ -3,9 +3,9 @@
  *
  * One record per completed `POST /judge/calibrate-accuracy` run. A record
  * qualifies exactly one judge identity: the judge model on one host, one
- * scorer version and one reference set (fingerprinted). Records are append
+ * scorer version, frozen execution/settings contract and reference set. Records are append
  * only; the newest record of an identity is the one readers use, so a later
- * failing run withdraws an earlier qualification.
+ * failing run withdraws an earlier qualification only for the same contract.
  *
  * The per-case grades stay with the record so the causes of a failure remain
  * inspectable without re-running inference.
@@ -20,10 +20,14 @@ const CaseSchema = new mongoose.Schema({
     gold_score: { type: Number, default: null },
     judge_score: { type: Number, default: null },
     abs_diff: { type: Number, default: null },
+    scoring_method: { type: String, default: null },
     identity_case: { type: Boolean, default: null },
     identity_full_marks: { type: Boolean, default: null },
     attention_passed: { type: Boolean, default: null },
-    error: { type: String, default: null }
+    error: { type: String, default: null },
+    // The HTTP response can be lost while a completed qualification is saved.
+    // Keep the judge answers and grade derivation with the durable record.
+    diagnostics: { type: mongoose.Schema.Types.Mixed, default: null }
 }, { _id: false });
 
 const JudgeQualificationSchema = new mongoose.Schema({
@@ -38,6 +42,9 @@ const JudgeQualificationSchema = new mongoose.Schema({
     reference_fingerprint: { type: String, required: true },
     reference_count: { type: Number, default: 0 },
     requested_num_ctx: { type: Number, default: null },
+    judge_config: { type: mongoose.Schema.Types.Mixed, default: null },
+    qualification_contract: { type: mongoose.Schema.Types.Mixed, default: null },
+    qualification_contract_fingerprint: { type: String, default: null },
     qualified: { type: Boolean, required: true },
     failed: { type: [String], default: [] },
     criteria: { type: mongoose.Schema.Types.Mixed, default: null },
@@ -47,6 +54,7 @@ const JudgeQualificationSchema = new mongoose.Schema({
 }, { timestamps: false });
 
 JudgeQualificationSchema.index({ judge_host_key: 1, judge_model_key: 1, scorer_version: 1, recorded_at: -1 });
+JudgeQualificationSchema.index({ judge_host_key: 1, judge_model_key: 1, scorer_version: 1, qualification_contract_fingerprint: 1, recorded_at: -1 });
 JudgeQualificationSchema.index({ recorded_at: -1 });
 
 module.exports = mongoose.models.JudgeQualification

@@ -64,13 +64,13 @@ describe('POST /api/rag/search telemetry', () => {
   it('records a bounded success event without the query text or passages', async () => {
     const secretQuery = 'PUBLIC_EXPOSURE_GUARD private question';
     getRagStore.mockReturnValue({
-      searchSimilarChunks: jest.fn().mockResolvedValue([
+      search: jest.fn().mockResolvedValue({ results: [
         { text: 'secret passage one', score: 0.81, metadata: { source: 'nestor' } },
         { text: 'secret passage two', score: 0.42 }
-      ])
+      ] })
     });
 
-    const res = await request.post('/api/rag/search').send({ query: secretQuery, topK: 5, hybrid: true, filters: { source: 'x' } });
+    const res = await request.post('/api/rag/search').send({ query: secretQuery, topK: 5, hybrid: true, expand: true, filters: { source: 'x' } });
     await flush();
 
     expect(res.status).toBe(200);
@@ -78,7 +78,7 @@ describe('POST /api/rag/search telemetry', () => {
     const event = SearchEvent.create.mock.calls[0][0];
     expect(event).toMatchObject({
       surface: 'api', status: 'success', queryLength: secretQuery.length, topK: 5,
-      filterCount: 1, hybrid: true, rerank: false, resultCount: 2, topScore: 0.81
+      filterCount: 1, hybrid: true, expand: false, rerank: false, resultCount: 2, topScore: 0.81
     });
     expect(typeof event.eventId).toBe('string');
     expect(event.durationMs).toBeGreaterThanOrEqual(0);
@@ -88,12 +88,15 @@ describe('POST /api/rag/search telemetry', () => {
   });
 
   it('records an empty event when nothing matched and a failed event when the store throws', async () => {
-    getRagStore.mockReturnValue({ searchSimilarChunks: jest.fn().mockResolvedValue([]) });
+    getRagStore.mockReturnValue({ search: jest.fn().mockResolvedValue({ results: [] }) });
     await request.post('/api/rag/search').send({ query: 'nothing here' });
     await flush();
     expect(SearchEvent.create.mock.calls[0][0]).toMatchObject({ status: 'empty', resultCount: 0 });
+    const buddyRagEvents = require('../../src/services/buddyRagEvents');
+    expect(buddyRagEvents.searchEmpty).toHaveBeenCalledTimes(1);
+    expect(buddyRagEvents.searchEmpty.mock.calls[0][0]).not.toContain('nothing here');
 
-    getRagStore.mockReturnValue({ searchSimilarChunks: jest.fn().mockRejectedValue(new Error('qdrant unavailable')) });
+    getRagStore.mockReturnValue({ search: jest.fn().mockRejectedValue(new Error('qdrant unavailable')) });
     const res = await request.post('/api/rag/search').send({ query: 'boom' });
     await flush();
     expect(res.status).toBeGreaterThanOrEqual(500);
@@ -103,7 +106,7 @@ describe('POST /api/rag/search telemetry', () => {
 
   it('never fails a search because telemetry failed', async () => {
     SearchEvent.create.mockRejectedValueOnce(new Error('mongo down'));
-    getRagStore.mockReturnValue({ searchSimilarChunks: jest.fn().mockResolvedValue([{ text: 'a', score: 0.9 }]) });
+    getRagStore.mockReturnValue({ search: jest.fn().mockResolvedValue({ results: [{ text: 'a', score: 0.9 }] }) });
     const res = await request.post('/api/rag/search').send({ query: 'still works' });
     await flush();
     expect(res.status).toBe(200);
@@ -112,7 +115,7 @@ describe('POST /api/rag/search telemetry', () => {
 
   it('records a measured zero when the search completes within one clock tick', async () => {
     jest.spyOn(Date, 'now').mockReturnValue(1234567890);
-    getRagStore.mockReturnValue({ searchSimilarChunks: jest.fn().mockResolvedValue([]) });
+    getRagStore.mockReturnValue({ search: jest.fn().mockResolvedValue({ results: [] }) });
 
     const res = await request.post('/api/rag/search').send({ query: 'instant' });
 

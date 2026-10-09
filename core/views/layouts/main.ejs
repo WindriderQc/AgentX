@@ -1,13 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<%= locals.pageLanguage || 'en' %>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><%= title %></title>
-  <% if (locals.parentalAccess) { %>
-    <link rel="stylesheet" href="/access-assets/client.css">
-    <script src="/access-assets/client.js" defer></script>
-  <% } %>
   <%- include('../partials/head-assets') %>
   <%- locals.headCss ? headCss : '' %>
 </head>
@@ -30,18 +26,13 @@
   );
 %>
 <body class="<%= locals.bodyClass || '' %>" data-agentx-profile="<%= locals.agentxProfile || 'full' %>" data-agentx-surface="<%= canonicalSurfaceId %>">
-  <a class="skip-link" id="skipToMainContent" href="#main-content">Skip to main content</a>
+  <a class="skip-link" id="skipToMainContent" href="#main-content"><%= locals.pageLanguage === 'fr' ? 'Aller au contenu' : 'Skip to main content' %></a>
   <% if (locals.showNav !== false) { %>
     <%- include('../partials/nav', { service: service, activePage: activePage }) %>
   <% } else { %>
     <%- include('../partials/shortcuts-modal') %>
   <% } %>
-  <% if (locals.agentxProfile === 'demo' && activePage !== 'portal') { %>
-    <% const demoCoreBase = String(locals.publicUrls && locals.publicUrls.core || '').replace(/\/+$/, ''); %>
-    <a class="demo-profile-home" href="<%= demoCoreBase %>/portal/" aria-label="Back to Agent X home">
-      <i class="fas fa-arrow-left" aria-hidden="true"></i><span>Agent X</span>
-    </a>
-  <% } %>
+
 
   <%- include(pageView) %>
 

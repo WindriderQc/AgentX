@@ -1,10 +1,42 @@
-# Extend the existing private LAN HTTPS gateway; no public ingress or new service.
-# All application/backend published ports must remain bound to loopback.
-# Replace the example hostname and reuse the instance's existing TLS configuration.
-household.example.invalid {
-    reverse_proxy 127.0.0.1:3180 {
-        # Always overwrite the client-supplied value, including on static/API routes.
-        header_up X-AgentX-Entry household
-        header_up X-Forwarded-Proto {scheme}
-    }
+# Private HTTPS only. Replace this example LAN bind address and local DNS name.
+# Keep every backend on loopback and databases on the internal Compose network.
+# These complete application entries proxy pages, assets and APIs directly.
+# Do not replace unrelated native-integration gates (for example DSH Studio).
+{
+	# Avoid adding an automatic wildcard HTTP redirect listener.
+	auto_https disable_redirects
+}
+
+(agentx_private_lan) {
+	bind 192.168.1.10
+	tls internal
+	@outside not remote_ip private_ranges
+	respond @outside "Private LAN only" 403
+}
+
+https://household.example.invalid {
+	import agentx_private_lan
+	# One address: Benchmark and RAG live under their path prefix. The paths are
+	# forwarded unchanged; each service drops its own prefix.
+	# Caddy orders `handle` before `respond`, so the peer guard is repeated
+	# inside `route`, which keeps the written order: the guard stays first.
+	route {
+		respond @outside "Private LAN only" 403
+		@benchmark path /benchmark /benchmark/*
+		handle @benchmark {
+			reverse_proxy 127.0.0.1:3181
+		}
+		@rag path /rag /rag/*
+		handle @rag {
+			reverse_proxy 127.0.0.1:3182
+		}
+		handle {
+			reverse_proxy 127.0.0.1:3180
+		}
+	}
+}
+# Optional Data entry; omit if Data is used only through Core's read-only Toolbox.
+https://household.example.invalid:3083 {
+	import agentx_private_lan
+	reverse_proxy 127.0.0.1:3183
 }

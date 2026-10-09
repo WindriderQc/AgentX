@@ -57,6 +57,16 @@ exports.updateConfig = async (req, res) => {
   if (!valid.includes(service)) {
     return res.status(400).json({ status: 'error', message: `Invalid service. Must be: ${valid.join(', ')}` });
   }
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ status: 'error', message: 'enabled must be true or false' });
+  }
+  // Without the orchestrator a stored toggle starts nothing; say so instead of reporting success.
+  if (!liveData.isRunning()) {
+    return res.status(409).json({
+      status: 'error',
+      message: 'Live feeds are not running on this instance: start Data with DATA_BACKGROUND_JOBS_ENABLED=true'
+    });
+  }
   try {
     const db = req.app.locals.db;
     await db.collection('livedataconfigs').updateOne(
@@ -181,7 +191,8 @@ exports.getISS = async (req, res, next) => {
 exports.getQuakes = async (req, res, next) => {
   try {
     const db = req.app.locals.db;
-    const data = await db.collection('quakes').find({}).toArray();
+    const limit = Math.max(1, Math.min(5000, parseInt(req.query.limit) || 1000));
+    const data = await db.collection('quakes').find({}).limit(limit).toArray();
     res.json({ status: 'success', data, count: data.length });
   } catch (error) { next(error); }
 };

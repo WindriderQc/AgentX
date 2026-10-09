@@ -5,7 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const app = fs.readFileSync(path.resolve(__dirname, '..', 'public', 'app.js'), 'utf8');
+// The Network tab is rendered by app.js (metrics, observation rules) and
+// network-tools.js (collectors, device list).
+const app = ['app.js', 'network-tools.js'].map((file) => fs.readFileSync(path.resolve(__dirname, '..', 'public', file), 'utf8')).join('\n');
 
 test('Network counts "online now" from Data observation semantics, never from the raw flag', () => {
   assert.doesNotMatch(app, /item\.status === 'online' \|\| item\.online === true\)\.length\), 'currently online'/);
@@ -23,6 +25,7 @@ test('the overview uses the same Data summary as the Network tab', () => {
 });
 
 test('historical observations stay listed with their reporting collector', () => {
-  assert.match(app, /<th>Observation<\/th><th>Reported by<\/th><th>Last seen<\/th>/);
+  assert.match(app, /<th>Observation<\/th><th>Reported by<\/th>\$\{netSortHeader\('lastSeen', 'Last seen'\)\}/);
   assert.match(app, /device\.observation\?\.source \|\| device\.scanSource \|\| '—'/);
+  assert.doesNotMatch(app, /status === 'online'/, 'no list, filter or count reads the raw flag');
 });

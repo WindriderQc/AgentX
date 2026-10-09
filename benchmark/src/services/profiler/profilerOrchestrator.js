@@ -1,612 +1,42 @@
 'use strict';
 
-const crypto = require('crypto');
-const {
-  canonicalValue,
-  createProfilerAuthorityReceipt,
-  verifyProfilerAuthorityReceipt, qualifiesForBenchmark
-} = require('./profilerAuthorityReceipt');
 const hostTestService = require('../hostTestService');
-const { jsonMutationDuration } = require('./profilerMutationObservation');
 const contextProbeService = require('../contextProbeService');
 const { projectProbeStep } = require('../probeResidency');
-const modelProfileService = require('./modelProfileService');
-const modelPerformanceProfileService = require('./modelPerformanceProfileService');
 const { identitiesMatch, resolveArtifactIdentity } = require('./artifactIdentityService');
 const hostProfileService = require('./hostProfileService');
 const settingsService = require('./settingsService');
 const { _captureHardwareSnapshot, _buildHardwareTelemetry } = require('./profilerHardwareSnapshots');
 const { runPrefillDecodeMatrix } = require('./prefillDecodeMatrix');
+const { runLongContextQualityProbe } = require('./longContextQualityProbe');
 const { profileThinkingBehavior } = require('./thinkingProfileService');
 const { resolveModelNumCtxDetails } = require('../modelContextResolver');
-const { listRunning, generate, showModel } = require('../../clients/ollamaClient');
+const { listRunning, showModel } = require('../../clients/ollamaClient');
 const { isSameOllamaModel } = require('../../helpers/ollamaModelIdentity');
 const ModelProfile = require('../../../models/ModelProfile');
 const ModelPerformanceProfile = require('../../../models/ModelPerformanceProfile');
 const logger = require('../../../config/logger');
 const buddySurface = require('../benchmark/buddySurfaceEvents');
-const authorityReconciliation = require('../benchmark/benchmarkAuthorityReconciliation');
-
-function _formatCtx(n) {
-  if (n >= 1024) return `${Math.round(n / 1024)}k`;
-  return String(n);
-}
-
-function buildContextInsight(previousNumCtx, previousSource, discoveredNumCtx) {
-  if (!previousNumCtx || !discoveredNumCtx) return null;
-  const factor = Number((discoveredNumCtx / previousNumCtx).toFixed(1));
-  const upgradeAvailable = discoveredNumCtx > previousNumCtx * 1.25; // >25% gain counts
-  const downgrade = discoveredNumCtx < previousNumCtx * 0.75;
-
-  let recommendation;
-  if (upgradeAvailable) {
-    recommendation = `Verified capacity reached ${_formatCtx(discoveredNumCtx)} context (runtime was ${_formatCtx(previousNumCtx)})`;
-  } else if (downgrade) {
-    recommendation = `Runtime ${_formatCtx(previousNumCtx)} exceeds the current verified maximum ${_formatCtx(discoveredNumCtx)} — reconfigure by workload`;
-  } else {
-    recommendation = `Runtime is near the measured maximum (${_formatCtx(previousNumCtx)} → ${_formatCtx(discoveredNumCtx)})`;
-  }
-
-  return { previousNumCtx, previousSource, discoveredNumCtx, upgradeAvailable, upgradeFactor: factor, recommendation };
-}
-
-function _round(n, places = 2) {
-  return Number(Number(n || 0).toFixed(places));
-}
-
-function _median(values) {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function _buildProfilerCapabilities(depth, hardwareTelemetry) {
-  const hardwareCapability = hardwareTelemetry?.capability
-    || hardwareTelemetry?.latest?.capability
-    || {
-      contract: 'agentx.profiler-hardware-capability/v1',
-      status: 'unavailable',
-      qualificationAuthority: 'none',
-      collector: {
-        requiredContract: 'agentx.profiler-hardware-collector/v1',
-        status: 'not_configured',
-        ownershipBoundary: 'deployment_extension'
-      }
-    };
-  return {
-    contract: 'agentx.profiler-capability-coverage/v1',
-    profileDepth: depth,
-    qualificationScope: 'single_request_exact_artifact_runtime',
-    singleRequestPerformance: { status: 'measured', authority: 'profiler_pipeline' },
-    contextCapacity: { status: depth === 'quick' ? 'unknown' : 'measured', authority: depth === 'quick' ? 'none' : 'profiler_pipeline' },
-    hardwareTelemetry: hardwareCapability,
-    concurrentServing: {
-      status: 'unknown',
-      authority: 'none',
-      reason: 'concurrency_not_measured_by_current_profiler',
-      metrics: {
-        goodput: null,
-        latencyP95Ms: null,
-        fairness: null,
-        saturationConcurrency: null
-      }
-    },
-    responseQuality: {
-      status: 'not_measured',
-      authority: 'none',
-      reason: 'profiler_measures_runtime_performance_not_semantic_quality'
-    },
-    productionServingQualification: {
-      qualified: false,
-      reason: 'concurrency_goodput_fairness_and_long_context_quality_not_measured'
-    }
-  };
-}
-
-function _quantile(values, q) {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const position = (sorted.length - 1) * q;
-  const lower = Math.floor(position);
-  const fraction = position - lower;
-  return sorted[lower + 1] === undefined
-    ? sorted[lower]
-    : sorted[lower] + fraction * (sorted[lower + 1] - sorted[lower]);
-}
-
-function _studentTCritical95(sampleCount) {
-  const byDf = [null, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262,
-    2.228, 2.201, 2.179, 2.16, 2.145, 2.131, 2.12, 2.11, 2.101, 2.093, 2.086,
-    2.08, 2.074, 2.069, 2.064, 2.06, 2.056, 2.052, 2.048, 2.045, 2.042];
-  const df = Math.max(1, Math.floor(sampleCount) - 1);
-  return byDf[Math.min(df, 30)] || 1.96;
-}
-
-function summarizeThroughputSamples(samples, { minimumRetainedSamples = 2 } = {}) {
-  // Exclude warm-up / discarded samples from steady-state stats. They stay
-  // on the record (sample.discarded=true) so the UI can show them, but they
-  // never contribute to mean/median/CV/reliability.
-  const kept = samples.filter(s => !s.discarded);
-  const passing = kept.filter(s => s.status === 'pass' && Number.isFinite(Number(s.tokensPerSec)) && Number(s.tokensPerSec) > 0);
-  const values = passing.map(s => Number(s.tokensPerSec));
-  if (!values.length) {
-    return {
-      sampleCount: kept.length,
-      retainedSampleCount: kept.length,
-      passingSampleCount: 0,
-      minimumRetainedSamples,
-      tokensPerSecMean: null,
-      tokensPerSecMedian: null,
-      tokensPerSecMin: null,
-      tokensPerSecMax: null,
-      tokensPerSecStdDev: null,
-      coefficientOfVariation: null,
-      p50: null,
-      p95: null,
-      ttftP50Ms: null,
-      ttftP95Ms: null,
-      ttftSampleCount: 0,
-      promptEvalP50Ms: null,
-      promptEvalP95Ms: null,
-      confidenceInterval95: null,
-      reliability: 'unknown'
-    };
-  }
-  const mean = values.reduce((sum, n) => sum + n, 0) / values.length;
-  // Single sample → CV is mathematically 0 but tells us nothing about
-  // variance. Surface that as 'unknown' rather than misleading 'high'.
-  if (values.length < 2) {
-    return {
-      sampleCount: kept.length,
-      retainedSampleCount: kept.length,
-      passingSampleCount: values.length,
-      minimumRetainedSamples,
-      tokensPerSecMean: _round(mean),
-      tokensPerSecMedian: _round(mean),
-      tokensPerSecMin: _round(mean),
-      tokensPerSecMax: _round(mean),
-      tokensPerSecStdDev: null,
-      coefficientOfVariation: null,
-      p50: _round(mean),
-      p95: _round(mean),
-      ttftP50Ms: Number.isFinite(Number(passing[0]?.ttftMs)) ? _round(passing[0].ttftMs) : null,
-      ttftP95Ms: Number.isFinite(Number(passing[0]?.ttftMs)) ? _round(passing[0].ttftMs) : null,
-      ttftSampleCount: passing[0]?.ttftMeasurement === 'streamed_wall_clock'
-        && Number.isFinite(Number(passing[0]?.ttftMs)) ? 1 : 0,
-      promptEvalP50Ms: Number.isFinite(Number(passing[0]?.promptEvalDurationMs)) ? _round(passing[0].promptEvalDurationMs) : null,
-      promptEvalP95Ms: Number.isFinite(Number(passing[0]?.promptEvalDurationMs)) ? _round(passing[0].promptEvalDurationMs) : null,
-      confidenceInterval95: null,
-      reliability: 'unknown'
-    };
-  }
-  const variance = values.reduce((sum, n) => sum + ((n - mean) ** 2), 0) / (values.length - 1);
-  const stdDev = Math.sqrt(variance);
-  const cv = mean > 0 ? stdDev / mean : null;
-  const margin95 = _studentTCritical95(values.length) * stdDev / Math.sqrt(values.length);
-  const streamedTtft = passing
-    .filter(sample => sample.ttftMeasurement === 'streamed_wall_clock' && Number.isFinite(Number(sample.ttftMs)))
-    .map(sample => Number(sample.ttftMs));
-  const promptEvalDurations = passing
-    .filter(sample => Number.isFinite(Number(sample.promptEvalDurationMs)))
-    .map(sample => Number(sample.promptEvalDurationMs));
-  const reliability = values.length < minimumRetainedSamples || cv == null
-    ? 'unknown'
-    : cv <= 0.05 ? 'high' : cv <= 0.12 ? 'medium' : 'low';
-  return {
-    sampleCount: kept.length,
-    retainedSampleCount: kept.length,
-    passingSampleCount: values.length,
-    minimumRetainedSamples,
-    tokensPerSecMean: _round(mean),
-    tokensPerSecMedian: _round(_median(values)),
-    tokensPerSecMin: _round(Math.min(...values)),
-    tokensPerSecMax: _round(Math.max(...values)),
-    tokensPerSecStdDev: _round(stdDev),
-    coefficientOfVariation: cv == null ? null : _round(cv, 4),
-    p50: _round(_quantile(values, 0.5)),
-    p95: _round(_quantile(values, 0.95)),
-    ttftP50Ms: streamedTtft.length ? _round(_quantile(streamedTtft, 0.5)) : null,
-    ttftP95Ms: streamedTtft.length ? _round(_quantile(streamedTtft, 0.95)) : null,
-    ttftSampleCount: streamedTtft.length,
-    promptEvalP50Ms: promptEvalDurations.length ? _round(_quantile(promptEvalDurations, 0.5)) : null,
-    promptEvalP95Ms: promptEvalDurations.length ? _round(_quantile(promptEvalDurations, 0.95)) : null,
-    confidenceInterval95: {
-      low: _round(Math.max(0, mean - margin95)),
-      high: _round(mean + margin95),
-      method: 'student_t'
-    },
-    reliability
-  };
-}
-
-function _sampleFromResult(result, sample, opts = {}) {
-  return {
-    sample,
-    tokensPerSec: result.tokensPerSec ?? null,
-    promptEvalTokensPerSec: result.promptEvalTokensPerSec ?? null,
-    promptEvalDurationMs: result.promptEvalDurationMs ?? null,
-    ttftMs: result.timeToFirstTokenMs ?? null,
-    ttftMeasurement: result.ttftMeasurement ?? null,
-    latencyMs: result.latencyMs ?? null,
-    numCtx: result.numCtx ?? null,
-    promptTokens: result.promptTokens ?? null,
-    completionTokens: result.completionTokens ?? null,
-    vramUsedMiB: result.vramUsedMiB ?? null,
-    status: result.status,
-    error: result.error || null,
-    discarded: opts.discarded === true,
-    discardReason: opts.discardReason || null
-  };
-}
-
-function summarizePositiveMeasurements(values, { minimumSamples = 3 } = {}) {
-  const samples = values.map(Number).filter(value => Number.isFinite(value) && value > 0);
-  if (!samples.length) return {
-    sampleCount: 0, minimumSamples, mean: null, p50: null, p95: null,
-    standardDeviation: null, coefficientOfVariation: null,
-    confidenceInterval95: null, reliability: 'unknown'
-  };
-  const mean = samples.reduce((sum, value) => sum + value, 0) / samples.length;
-  if (samples.length < 2) return {
-    sampleCount: samples.length,
-    minimumSamples,
-    mean: _round(mean), p50: _round(mean), p95: _round(mean),
-    standardDeviation: null, coefficientOfVariation: null,
-    confidenceInterval95: null, reliability: 'unknown'
-  };
-  const variance = samples.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / (samples.length - 1);
-  const standardDeviation = Math.sqrt(variance);
-  const cv = mean > 0 ? standardDeviation / mean : null;
-  const margin = _studentTCritical95(samples.length) * standardDeviation / Math.sqrt(samples.length);
-  return {
-    sampleCount: samples.length,
-    minimumSamples,
-    mean: _round(mean),
-    p50: _round(_quantile(samples, 0.5)),
-    p95: _round(_quantile(samples, 0.95)),
-    standardDeviation: _round(standardDeviation),
-    coefficientOfVariation: cv == null ? null : _round(cv, 4),
-    confidenceInterval95: {
-      low: _round(Math.max(0, mean - margin)),
-      high: _round(mean + margin),
-      method: 'student_t'
-    },
-    reliability: samples.length < minimumSamples || cv == null
-      ? 'unknown'
-      : cv <= 0.05 ? 'high' : cv <= 0.12 ? 'medium' : 'low'
-  };
-}
-
-function completeRepeatedStatistics(statistics, minimumSamples, options = {}) {
-  const maxCv = Number.isFinite(Number(options.maxCoefficientOfVariation))
-    ? Number(options.maxCoefficientOfVariation)
-    : 0.12;
-  const maxRelativeCiWidth = Number.isFinite(Number(options.maxRelativeCi95Width))
-    ? Number(options.maxRelativeCi95Width)
-    : 0.30;
-  const mean = Number(statistics?.mean);
-  const low = Number(statistics?.confidenceInterval95?.low);
-  const high = Number(statistics?.confidenceInterval95?.high);
-  const relativeCiWidth = mean > 0 && Number.isFinite(low) && Number.isFinite(high)
-    ? (high - low) / mean
-    : Infinity;
-  return Number(statistics?.sampleCount) >= minimumSamples
-    && ['medium', 'high'].includes(statistics?.reliability)
-    && Number.isFinite(Number(statistics?.coefficientOfVariation))
-    && Number(statistics.coefficientOfVariation) <= maxCv
-    && Number.isFinite(low)
-    && Number.isFinite(high)
-    && relativeCiWidth <= maxRelativeCiWidth;
-}
-
-function contextProbeRepeatsForDepth(depth, settings = {}) {
-  return depth === 'full'
-    ? Math.min(20, Math.max(5, Number(settings.fullPhaseRepeats) || 5))
-    : 2;
-}
-
-function hasProfilerAuthorityReceipt(readiness, evidence, identity = {}) {
-  return verifyProfilerAuthorityReceipt(readiness, evidence, identity);
-}
-
-function profileQualificationFailures(profileData) {
-  const failures = [];
-  const required = Number(profileData.requiredRetainedSamples) || 0;
-  const quality = profileData.measurementQuality || {};
-  if (profileData.profileDepth === 'quick') failures.push('quick_diagnostic_only');
-  if (!(Number(profileData.maxVerifiedContext) > 0)) failures.push('max_context_unverified');
-  if (!(Number(profileData.recommendedInteractiveContext) > 0)) failures.push('interactive_context_unverified');
-  if (!(Number(profileData.recommendedDocumentContext) > 0)) failures.push('document_context_unverified');
-  if (Number(profileData.recommendedInteractiveContext) > Number(profileData.maxVerifiedContext)) {
-    failures.push('interactive_context_exceeds_verified_max');
-  }
-  if (Number(profileData.recommendedDocumentContext) > Number(profileData.maxVerifiedContext)) {
-    failures.push('document_context_exceeds_verified_max');
-  }
-  if (Number(quality.passingSampleCount) < required) failures.push('retained_sample_minimum_not_met');
-  if (!['medium', 'high'].includes(quality.reliability)) failures.push(`reliability_${quality.reliability || 'unknown'}`);
-  const mainMean = Number(quality.tokensPerSecMean);
-  const mainLow = Number(quality.confidenceInterval95?.low);
-  const mainHigh = Number(quality.confidenceInterval95?.high);
-  const maxCv = Number(profileData.fullMaxCoefficientOfVariation ?? 0.12);
-  const maxRelativeCi95Width = Number(profileData.fullMaxRelativeCi95Width ?? 0.30);
-  if (profileData.profileDepth === 'full'
-    && (!(Number(quality.coefficientOfVariation) <= maxCv)
-      || !(mainMean > 0)
-      || !Number.isFinite(mainLow)
-      || !Number.isFinite(mainHigh)
-      || ((mainHigh - mainLow) / mainMean) > maxRelativeCi95Width)) {
-    failures.push('full_primary_measurement_uncertain');
-  }
-  if (profileData.ttftMeasurement !== 'streamed_wall_clock'
-    || !Number.isFinite(Number(profileData.ttftMs))
-    || Number(profileData.ttftMs) < 0) failures.push('streamed_ttft_missing');
-  const requiredTtftSamples = Number(profileData.requiredTtftSamples) || required;
-  if (requiredTtftSamples > 0 && Number(quality.ttftSampleCount) < requiredTtftSamples) {
-    failures.push('streamed_ttft_sample_minimum_not_met');
-  }
-  if (profileData.spill?.verified !== true) failures.push('gpu_residency_unverified');
-
-  if (profileData.profileDepth === 'full') {
-    const requiredFullSamples = Math.max(5, Number(profileData.requiredFullPhaseSamples) || 5);
-    const fullStatOptions = {
-      maxCoefficientOfVariation: maxCv,
-      maxRelativeCi95Width
-    };
-    const authoritativeContexts = [...new Set([
-      profileData.maxVerifiedContext,
-      profileData.recommendedInteractiveContext,
-      profileData.recommendedDocumentContext
-    ].map(Number).filter(value => value > 0))];
-    const contextSteps = Array.isArray(profileData.probeSteps) ? profileData.probeSteps : [];
-    const contextEvidenceComplete = Number(profileData.contextProbeCandidateRepeats) >= requiredFullSamples
-      && authoritativeContexts.length > 0
-      && authoritativeContexts.every(numCtx => {
-        const step = contextSteps.find(candidate => Number(candidate.numCtx) === numCtx && candidate.passed === true);
-        return step
-          && Number(step.repetitionCount) >= requiredFullSamples
-          && completeRepeatedStatistics(step.throughputStatistics, requiredFullSamples, fullStatOptions);
-      });
-    if (!contextEvidenceComplete) failures.push('full_context_probe_incomplete');
-    const curve = Array.isArray(profileData.throughputCurve) ? profileData.throughputCurve : [];
-    const curveCoverage = [...new Set(curve.map(point => Number(point.contextFillPct)))].sort((a, b) => a - b);
-    if (curve.length !== 5
-      || JSON.stringify(curveCoverage) !== JSON.stringify([10, 25, 50, 75, 90])
-      || curve.some(point => !(Number(point.tokensPerSec) > 0)
-        || point.gpuOffloaded !== false
-        || Number(point.passingSampleCount) < requiredFullSamples
-        || !completeRepeatedStatistics(point.throughputStatistics, requiredFullSamples, fullStatOptions))) {
-      failures.push('full_throughput_curve_incomplete');
-    }
-    const stability = Array.isArray(profileData.generationStability) ? profileData.generationStability : [];
-    const stabilityCoverage = [...new Set(stability.map(point => Number(point.numPredict)))].sort((a, b) => a - b);
-    if (stability.length !== 3
-      || JSON.stringify(stabilityCoverage) !== JSON.stringify([64, 256, 512])
-      || stability.some(point => !(Number(point.tokensPerSec) > 0)
-        || !(Number(point.totalLatencyMs) > 0)
-        || Number(point.passingSampleCount) < requiredFullSamples
-        || !completeRepeatedStatistics(point.throughputStatistics, requiredFullSamples, fullStatOptions)
-        || !completeRepeatedStatistics(point.latencyStatistics, requiredFullSamples, fullStatOptions))) {
-      failures.push('full_generation_stability_incomplete');
-    }
-    const matrix = profileData.prefillDecodeMatrix;
-    const cells = Array.isArray(matrix?.cells) ? matrix.cells : [];
-    const expectedCellCount = Array.isArray(matrix?.prefillTokens) && Array.isArray(matrix?.decodeTokens)
-      ? matrix.prefillTokens.length * matrix.decodeTokens.length
-      : 0;
-    const completeMatrix = expectedCellCount > 0
-      && cells.length === expectedCellCount
-      && Number(matrix.cellCount) === expectedCellCount
-      && Number(matrix.passCount) === expectedCellCount
-      && Number(matrix.skippedCount || 0) === 0
-      && cells.every(cell => cell.status === 'pass'
-        && Number(cell.promptTokens) > 0
-        && Number(cell.requestedPromptTokens) > 0
-        && Number(cell.promptCoveragePct) >= Number(cell.minimumPromptCoveragePct || 80)
-        && Number(cell.promptEvalDurationMs) > 0
-        && Number(cell.evalDurationMs) > 0
-        && Number(cell.runtimeContextLength) === Number(matrix.numCtx)
-        && Number(cell.passingSampleCount) >= requiredFullSamples
-        && completeRepeatedStatistics(cell.prefillStatistics, requiredFullSamples, fullStatOptions)
-        && completeRepeatedStatistics(cell.decodeStatistics, requiredFullSamples, fullStatOptions)
-        && Number.isFinite(Number(cell.prefillTokensPerSec))
-        && Number(cell.prefillTokensPerSec) > 0
-        && Number.isFinite(Number(cell.decodeTokensPerSec))
-        && Number(cell.decodeTokensPerSec) > 0);
-    if (!completeMatrix) {
-      failures.push('full_prefill_decode_matrix_incomplete');
-    }
-    if (!(Number(profileData.loadTiming?.coldLoadMs) > 0)
-      || !(Number(profileData.loadTiming?.hotLoadMs) > 0)
-      || profileData.loadTiming?.unloadVerified !== true
-      || Number(profileData.loadTiming?.passingSampleCount) < requiredFullSamples
-      || !completeRepeatedStatistics(profileData.loadTiming?.coldStatistics, requiredFullSamples, fullStatOptions)
-      || !completeRepeatedStatistics(profileData.loadTiming?.hotStatistics, requiredFullSamples, fullStatOptions)) {
-      failures.push('full_load_timing_incomplete');
-    }
-  }
-  return failures;
-}
-
-async function persistProfileEvidence({
-  modelName,
-  hostId,
-  hostUrl,
-  artifact,
-  profileData,
-  claimIdentity,
-  assertClaimActive,
-  signal
-}) {
-  const checkpoint = () => {
-    if (signal?.aborted) {
-      const error = signal.reason instanceof Error ? signal.reason : new Error('Profiler authority write aborted');
-      error.code = error.code || 'BENCHMARK_CLAIM_STOPPED';
-      throw error;
-    }
-    assertClaimActive?.();
-  };
-  let evidence = null;
-  let authorityJournal = null;
-  try {
-    checkpoint();
-    const currentArtifact = await resolveArtifactIdentity(modelName, hostId, hostUrl, { refresh: true });
-    checkpoint();
-    if (!identitiesMatch(artifact, currentArtifact)) {
-      throw new Error(`Artifact or runtime changed while profiling ${modelName} on ${hostUrl}; discard this run and retry`);
-    }
-    const required = Number(profileData.requiredRetainedSamples) || 0;
-    const quality = profileData.measurementQuality || {};
-    const qualificationFailures = profileQualificationFailures(profileData);
-    const benchmarkQualified = qualifiesForBenchmark(qualificationFailures);
-    profileData.benchmarkQualified = benchmarkQualified;
-    profileData.qualificationFailures = qualificationFailures;
-    const workloadId = String(claimIdentity?.claimBatchId || '');
-    if (!workloadId) {
-      const error = new Error('Profiler evidence publication requires an exact durable workload identity');
-      error.code = 'PROFILER_AUTHORITY_JOURNAL_REQUIRED';
-      throw error;
-    }
-    const authorityWriteId = crypto.randomUUID();
-    const [priorProfile, priorEvidence] = await Promise.all([
-      ModelProfile.findOne({ name: modelName })
-        .select('readiness thinkingProfiles')
-        .lean(),
-      ModelPerformanceProfile.findOne({
-        modelName,
-        hostId,
-        'artifact.digest': currentArtifact.digest,
-        'artifact.runtimeFingerprint': currentArtifact.runtimeFingerprint,
-        authorityState: { $ne: 'authority_invalidated' }
-      }).lean()
-    ]);
-    checkpoint();
-    const priorReadinessMap = priorProfile?.readiness instanceof Map
-      ? Object.fromEntries(priorProfile.readiness)
-      : (priorProfile?.readiness || {});
-    const priorThinkingMap = priorProfile?.thinkingProfiles instanceof Map
-      ? Object.fromEntries(priorProfile.thinkingProfiles)
-      : (priorProfile?.thinkingProfiles || {});
-    // BSON turns undefined object fields into null. Normalize once so the
-    // journal, saved evidence and receipt bind the same persisted payload.
-    const evidenceProfile = canonicalValue({ ...profileData, artifact: currentArtifact });
-    const journalDetails = {
-      modelName,
-      hostId,
-      artifactDigest: currentArtifact.digest,
-      runtimeFingerprint: currentArtifact.runtimeFingerprint,
-      artifact: currentArtifact,
-      profile: evidenceProfile,
-      authorityWriteId,
-      evidenceId: null,
-      thinking: Boolean(profileData.thinking),
-      priorReadiness: priorReadinessMap[hostId] || null,
-      priorThinking: priorThinkingMap[hostId] || null,
-      // saveProfile updates the exact artifact row in place. Preserve the
-      // complete previous authority projection so restart compensation can
-      // restore it instead of tombstoning the only valid evidence row.
-      priorEvidence: priorEvidence || null
-    };
-    authorityJournal = await authorityReconciliation.prepareProfilerAuthorityWrite({
-      kind: 'profiler_evidence_write',
-      resultId: `profiler-evidence:${workloadId}:${authorityWriteId}`,
-      workloadId,
-      phase: 'profiler evidence/readiness/thinking publication',
-      details: journalDetails
-    });
-    checkpoint();
-    evidence = await modelPerformanceProfileService.saveProfile({
-      modelName,
-      hostId,
-      artifact: currentArtifact,
-      profile: evidenceProfile
-    }, {
-      signal,
-      assertAuthorityActive: checkpoint,
-      authorityWriteId,
-      authorityReconciliationId: String(authorityJournal._id),
-      authorityState: 'pending_reconciliation',
-      deferAuthorityCompensation: true
-    });
-    journalDetails.evidenceId = evidence?._id || null;
-    checkpoint();
-    const authorityReceipt = createProfilerAuthorityReceipt({
-      modelName,
-      hostId,
-      artifact: currentArtifact,
-      profile: evidenceProfile,
-      evidenceId: evidence?._id
-    });
-    checkpoint();
-    await modelProfileService.updateReadiness(modelName, hostId, 'profiled', {
-      [`readiness.${hostId}.artifact`]: currentArtifact,
-      [`readiness.${hostId}.evidenceId`]: evidence?._id || null,
-      [`readiness.${hostId}.profileDepth`]: profileData.profileDepth,
-      [`readiness.${hostId}.benchmarkQualified`]: benchmarkQualified,
-      [`readiness.${hostId}.qualificationReason`]: benchmarkQualified ? null : qualificationFailures.join(','),
-      [`readiness.${hostId}.measurementReliability`]: quality.reliability || 'unknown',
-      [`readiness.${hostId}.authorityReceipt`]: authorityReceipt,
-      [`readiness.${hostId}.authorityState`]: 'pending_reconciliation',
-      [`readiness.${hostId}.authorityWriteId`]: authorityWriteId,
-      [`readiness.${hostId}.stale`]: false,
-      [`readiness.${hostId}.staleReason`]: null
-    }, { signal });
-    checkpoint();
-    if (profileData.thinking) {
-      await modelProfileService.updateThinkingCapability(modelName, hostId, profileData.thinking, {
-        signal,
-        authorityWriteId,
-        authorityState: 'pending_reconciliation'
-      });
-      checkpoint();
-    }
-    await modelPerformanceProfileService.retireSupersededProfiles({
-      modelName,
-      hostId,
-      evidenceId: evidence?._id,
-      authorityWriteId,
-      assertAuthorityActive: checkpoint,
-      signal
-    });
-    checkpoint();
-    await authorityReconciliation.completeProfilerAuthorityWrite(authorityJournal, {
-      details: journalDetails,
-      signal,
-      assertAuthorityActive: checkpoint
-    });
-    return evidence;
-  } catch (error) {
-    if (authorityJournal) {
-      error.retainAdmission = true;
-      error.authorityInvalidationFailed = true;
-      error.code = error.code || 'PROFILER_AUTHORITY_RECONCILIATION_PENDING';
-      error.reconciliationId = String(authorityJournal._id);
-      throw error;
-    }
-    if (evidence?._id) {
-      const reason = error.code === 'BENCHMARK_CLAIM_LOST' || error.code === 'BENCHMARK_CLAIM_STOPPED'
-        ? 'claim_lost_during_profiler_authority_write'
-        : 'profiler_authority_write_failed';
-      const invalidations = await Promise.allSettled([
-        modelPerformanceProfileService.invalidateProfile(evidence._id, reason),
-        modelProfileService.invalidateReadinessIfEvidence(modelName, hostId, evidence._id, reason),
-        ...(profileData.thinking
-          ? [modelProfileService.invalidateThinkingCapability(modelName, hostId, reason)]
-          : [])
-      ]);
-      const invalidationFailures = invalidations
-        .filter(result => result.status === 'rejected')
-        .map(result => result.reason);
-      if (invalidationFailures.length > 0) {
-        error.authorityInvalidationFailed = true;
-        error.invalidationErrors = invalidationFailures;
-        error.code = error.code || 'PROFILER_AUTHORITY_INVALIDATION_FAILED';
-      }
-    }
-    throw error;
-  }
-}
+const { _formatCtx, buildContextInsight } = require('./profilerContextInsight');
+const {
+  _median,
+  summarizeThroughputSamples,
+  _sampleFromResult,
+  summarizePositiveMeasurements
+} = require('./profilerStatistics');
+const {
+  _buildProfilerCapabilities,
+  contextProbeRepeatsForDepth,
+  hasProfilerAuthorityReceipt,
+  profileQualificationFailures
+} = require('./profilerQualification');
+const { persistProfileEvidence } = require('./profilerEvidencePersistence');
+const {
+  _detectSpill,
+  _runThroughputCurve,
+  _runGenerationStability,
+  _runLoadTiming
+} = require('./profilerMeasurementPhases');
 
 async function profile(modelName, hostId, hostUrl, depth = 'standard', {
   onProgress,
@@ -788,7 +218,7 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
         numCtx: testResult.numCtx || null,
         maxNumCtx: testResult.numCtx || undefined,
         numPredict: 512,
-        timeoutMs: Math.max(60000, (Number(settings.testTimeoutSec) || 60) * 1000),
+        timeoutMs: Math.max(60000, (Number(settings.testTimeoutSec) || 60) * 1000, require('../probePlacement').cpuProbeLimits(hostUrl).timeoutMs || 0),
         signal,
         assertClaimActive: checkpoint
       });
@@ -826,6 +256,9 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
     ttftP50Ms: measurementQuality.ttftP50Ms ?? null,
     ttftP95Ms: measurementQuality.ttftP95Ms ?? null,
     ttftMeasurement: measurementQuality.ttftP50Ms != null ? 'streamed_wall_clock' : null,
+    // Prompt eval speed and TTFT from samples that each evaluated their whole
+    // prompt; profiles without it may report prefill served from Ollama's cache.
+    promptIsolation: 'unique_first_line',
     comparisonPromptTokens: representativeSample?.promptTokens || null,
     comparisonPromptTargetTokens: testResult.requestedPromptTokens || null,
     contextProbeFillPct: Number(settings.contextProbeFillPct) || 80,
@@ -930,8 +363,8 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
   profileData.performanceKneeDegradationPct = Number(probeResult.performanceKneeDegradationThreshold)
     || Number(settings.performanceKneeDegradationThreshold)
     || 15;
-  // Profiler measures runtime behavior only. Long-context semantic quality is
-  // populated exclusively by a separately qualified Benchmark campaign.
+  // A window that fits is not a window the model still reads well: only the
+  // Full profile's long-context quality probe (below) verifies that.
   profileData.qualityVerifiedContext = null;
   profileData.qualityContextStatus = 'unknown';
   profileData.degradationPct = probeResult.degradationPct || null;
@@ -979,7 +412,7 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
   notify('prefill_decode_matrix', { message: 'Running fixed prefill/decode matrix…' });
   profileData.prefillDecodeMatrix = await runPrefillDecodeMatrix(hostUrl, modelName, {
     safeNumCtx: profileData.spill?.lastSafeNumCtx || maxCtx,
-    timeoutMs: Math.max(120000, (Number(settings.testTimeoutSec) || 60) * 1000),
+    timeoutMs: require('../probePlacement').residencyTimeoutMs(hostUrl, Math.max(120000, (Number(settings.testTimeoutSec) || 60) * 1000)),
     assertClaimActive: checkpoint,
     signal,
     repeats: Math.max(5, Number(settings.fullPhaseRepeats) || 5),
@@ -988,6 +421,13 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
       `matrix_${prefillTokens}p_${decodeTokens}d_r${repeat}`,
       settings
     ),
+    longPrefill: {
+      timeoutMs: require('../probePlacement').residencyTimeoutMs(hostUrl, contextProbeService.getConfig().timeoutMs),
+      onProgress: ({ index, total, size }) => notify('prefill_decode_matrix', {
+        message: `Agent-sized prefill ${index}/${total} — ${_formatCtx(size.numCtx)}: ${size.status === 'pass'
+          ? `${size.prefillTokensPerSec} tok/s, first token ${Math.round(size.ttftMs)} ms` : size.status}`,
+      }),
+    },
     onProgress: ({ index, total, cell }) => {
       const label = `${cell.prefillTokens}p/${cell.decodeTokens}d`;
       const detail = cell.status === 'pass'
@@ -996,6 +436,22 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
       notify('prefill_decode_matrix', { message: `Matrix ${index}/${total} — ${label}: ${detail}` });
     }
   });
+  if (settings.longContextQualityEnabled !== false) {
+    notify('long_context_quality', { message: 'Checking recall of planted facts at agent-sized contexts…' });
+    checkpoint();
+    profileData.longContextQuality = await runLongContextQualityProbe(hostUrl, modelName, {
+      maxVerifiedContext: maxCtx,
+      timeoutMs: require('../probePlacement').residencyTimeoutMs(hostUrl, contextProbeService.getConfig().timeoutMs),
+      signal,
+      checkpoint,
+      onProgress: ({ index, total, result }) => notify('long_context_quality', {
+        message: `Quality ${index}/${total} — ${_formatCtx(result.numCtx)}: ${result.status}`
+          + (result.score != null ? ` (${Math.round(result.score * 100)}% exact)` : ''),
+      }),
+    });
+    profileData.qualityVerifiedContext = profileData.longContextQuality.qualityVerifiedContext;
+    profileData.qualityContextStatus = profileData.qualityVerifiedContext ? 'verified' : 'unknown';
+  }
   notify('load_timing', { message: 'Measuring cold and hot load timing…' });
   profileData.loadTiming = await _runLoadTiming(hostUrl, modelName, {
     checkpoint,
@@ -1124,280 +580,6 @@ async function runPreflight(preflightResult, hostMap, { onEvent, assertClaimActi
   if (profileCount) {
     buddySurface.emitLifecycle('preflight_ok', 'Exact-artifact profiling complete — starting the run.');
   }
-}
-
-/**
- * Detect GPU spill by querying Ollama /api/ps and comparing size_vram vs size.
- * If size_vram < size, the model has spilled weights to CPU RAM.
- */
-async function _detectSpill(hostUrl, modelName, signal = null) {
-  const safeDefaults = {
-    spillDetected: null,
-    verified: false,
-    lastSafeNumCtx: null,
-    spillNumCtx: null,
-    vramAtSpill: null,
-    sizeVram: null,
-    sizeTotal: null
-  };
-
-  try {
-    const data = await listRunning(hostUrl, { timeoutMs: 8000, signal });
-    const models = data.models || [];
-
-    // Same matcher as contextProbeService.snapshotGpuOffload — the two spill
-    // checks must agree on which /api/ps row is "this model".
-    const entry = models.find(m =>
-      isSameOllamaModel(m.name, modelName) || isSameOllamaModel(m.model, modelName)
-    );
-
-    if (!entry) {
-      logger.debug(`_detectSpill: model ${modelName} not found in /api/ps on ${hostUrl}`);
-      return safeDefaults;
-    }
-
-    const sizeVram = entry.size_vram;
-    const sizeTotal = entry.size;
-    if (!Number.isFinite(Number(sizeVram)) || !Number.isFinite(Number(sizeTotal)) || Number(sizeTotal) <= 0) {
-      return safeDefaults;
-    }
-    const spillDetected = require('../probePlacement').placementMismatch(hostUrl, sizeTotal, sizeVram);
-
-    return {
-      spillDetected,
-      verified: true,
-      lastSafeNumCtx: null,
-      spillNumCtx: null,
-      vramAtSpill: spillDetected ? Math.round(sizeVram / (1024 * 1024)) : null,
-      sizeVram,
-      sizeTotal
-    };
-  } catch (err) {
-    if (signal?.aborted) throw (signal.reason instanceof Error ? signal.reason : err);
-    logger.debug(`_detectSpill: failed to query ${hostUrl}/api/ps — ${err.message}`);
-    return safeDefaults;
-  }
-}
-
-/**
- * Test throughput at 5 context fill percentages: 10%, 25%, 50%, 75%, 90%.
- * Returns array of { contextFillPct, numCtx, tokensPerSec, vramUsedMiB, gpuOffloaded }.
- */
-async function _runThroughputCurve(hostUrl, modelName, maxCtx, settings, notify, { checkpoint = () => {}, claimIdentity = null, signal = null } = {}) {
-  const percentages = [10, 25, 50, 75, 90];
-  const minimumSamples = Math.max(5, Number(settings.fullPhaseRepeats) || 5);
-  const results = [];
-
-  for (const pct of percentages) {
-    checkpoint();
-    const numCtx = Math.max(512, Math.round(maxCtx));
-    if (notify) notify('throughput_curve', { message: `Throughput curve: testing ${pct}% fill (${_formatCtx(numCtx)} ctx)…` });
-    const samples = [];
-    for (let repeat = 1; repeat <= minimumSamples; repeat += 1) {
-      try {
-        checkpoint();
-        const testResult = await hostTestService.testModelOnHost(modelName, hostUrl, {
-          numPredict: settings.numPredict,
-          contextFillPct: pct,
-          numCtx,
-          promptWorkloadMode: 'scaled',
-          timeoutMs: settings.testTimeoutSec * 1000,
-          benchmarkClaim: claimIdentity,
-          assertClaimActive: checkpoint,
-          signal
-        });
-        checkpoint();
-        const spillCheck = await _detectSpill(hostUrl, modelName, signal);
-        checkpoint();
-        samples.push({
-          repeat,
-          status: testResult.status === 'pass' ? 'pass' : 'error',
-          tokensPerSec: testResult.tokensPerSec,
-          vramUsedMiB: testResult.vramUsedMiB,
-          gpuOffloaded: spillCheck.verified === true ? spillCheck.spillDetected : null,
-          error: testResult.status === 'pass' ? null : (testResult.error || testResult.status)
-        });
-      } catch (err) {
-        if (signal?.aborted || err.code === 'BENCHMARK_CLAIM_LOST' || err.code === 'BENCHMARK_CLAIM_STOPPED') throw err;
-        logger.warn(`_runThroughputCurve: ${pct}% repeat ${repeat} failed for ${modelName} — ${err.message}`);
-        samples.push({ repeat, status: 'error', tokensPerSec: null, vramUsedMiB: null, gpuOffloaded: null, error: err.message });
-      }
-    }
-    const passing = samples.filter(sample => sample.status === 'pass'
-      && Number(sample.tokensPerSec) > 0);
-    const throughputStatistics = summarizePositiveMeasurements(
-      passing.map(sample => sample.tokensPerSec),
-      { minimumSamples }
-    );
-    results.push({
-      contextFillPct: pct,
-      numCtx,
-      tokensPerSec: throughputStatistics.p50 || 0,
-      vramUsedMiB: _median(passing.map(sample => Number(sample.vramUsedMiB)).filter(Number.isFinite)),
-      gpuOffloaded: samples.every(sample => sample.gpuOffloaded === false)
-        ? false
-        : samples.some(sample => sample.gpuOffloaded === true) ? true : null,
-      sampleCount: samples.length,
-      passingSampleCount: passing.length,
-      minimumSamples,
-      samples,
-      throughputStatistics
-    });
-  }
-
-  return results;
-}
-
-/**
- * Test generation stability at 3 output token lengths: 64, 256, 512.
- * Returns array of { numPredict, tokensPerSec, totalLatencyMs }.
- */
-async function _runGenerationStability(hostUrl, modelName, numCtx, settings, notify, { checkpoint = () => {}, claimIdentity = null, signal = null } = {}) {
-  const targets = [64, 256, 512];
-  const minimumSamples = Math.max(5, Number(settings.fullPhaseRepeats) || 5);
-  const results = [];
-
-  for (const target of targets) {
-    checkpoint();
-    if (notify) notify('generation_stability', { message: `Stability: generating ${target} tokens…` });
-    const samples = [];
-    for (let repeat = 1; repeat <= minimumSamples; repeat += 1) {
-      try {
-        checkpoint();
-        const testResult = await hostTestService.testModelOnHost(modelName, hostUrl, {
-          maxPromptTokens: settings.maxPromptTokens,
-          numPredict: target,
-          numCtx,
-          promptWorkloadMode: 'fixed',
-          timeoutMs: settings.testTimeoutSec * 1000,
-          benchmarkClaim: claimIdentity,
-          assertClaimActive: checkpoint,
-          signal
-        });
-        checkpoint();
-        samples.push({
-          repeat,
-          status: testResult.status === 'pass' ? 'pass' : 'error',
-          tokensPerSec: testResult.tokensPerSec,
-          totalLatencyMs: testResult.latencyMs,
-          error: testResult.status === 'pass' ? null : (testResult.error || testResult.status)
-        });
-      } catch (err) {
-        if (signal?.aborted || err.code === 'BENCHMARK_CLAIM_LOST' || err.code === 'BENCHMARK_CLAIM_STOPPED') throw err;
-        logger.warn(`_runGenerationStability: ${target} tokens repeat ${repeat} failed for ${modelName} — ${err.message}`);
-        samples.push({ repeat, status: 'error', tokensPerSec: null, totalLatencyMs: null, error: err.message });
-      }
-    }
-    const passing = samples.filter(sample => sample.status === 'pass'
-      && Number(sample.tokensPerSec) > 0
-      && Number(sample.totalLatencyMs) > 0);
-    const throughputStatistics = summarizePositiveMeasurements(passing.map(sample => sample.tokensPerSec), { minimumSamples });
-    const latencyStatistics = summarizePositiveMeasurements(passing.map(sample => sample.totalLatencyMs), { minimumSamples });
-    results.push({
-      numPredict: target,
-      tokensPerSec: throughputStatistics.p50 || 0,
-      totalLatencyMs: latencyStatistics.p50 || 0,
-      sampleCount: samples.length,
-      passingSampleCount: passing.length,
-      minimumSamples,
-      samples,
-      throughputStatistics,
-      latencyStatistics
-    });
-  }
-
-  return results;
-}
-
-/**
- * Measure cold start and hot start latency.
- * 1. Unload model (keep_alive: 0)
- * 2. Wait 2 seconds
- * 3. Cold start: timed generate call
- * 4. Hot start: immediate second generate call
- */
-async function _runLoadTiming(hostUrl, modelName, { checkpoint = () => {}, signal = null, numCtx, minimumSamples: requestedSamples = 3 } = {}) {
-  if (!Number.isInteger(numCtx) || numCtx <= 0) throw new Error('Load timing requires the measured context allocation');
-  const minimumSamples = Math.max(3, Number(requestedSamples) || 3);
-  const samples = [];
-  const verifyContext = async () => {
-    const loaded = await listRunning(hostUrl, { timeoutMs: 10000, signal });
-    checkpoint();
-    const resident = (loaded?.models || []).find(entry => isSameOllamaModel(entry?.name || entry?.model, modelName));
-    if (Number(resident?.context_length) !== numCtx) {
-      throw new Error(`Load timing context mismatch: requested ${numCtx}, observed ${resident?.context_length ?? 'unknown'}`);
-    }
-  };
-  const abortableDelay = () => new Promise((resolve, reject) => {
-      let settled = false;
-      const cleanup = () => signal?.removeEventListener('abort', abort);
-      const finish = (callback) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        callback();
-      };
-      const timer = setTimeout(() => finish(resolve), 2000);
-      const abort = () => {
-        clearTimeout(timer);
-        finish(() => reject(signal.reason instanceof Error ? signal.reason : new Error('Profiler claim stopped')));
-      };
-      if (signal?.aborted) abort();
-      else signal?.addEventListener('abort', abort, { once: true });
-    });
-  for (let repeat = 1; repeat <= minimumSamples; repeat += 1) {
-    let unloadPending = false;
-    try {
-      checkpoint();
-      unloadPending = true;
-      await generate(hostUrl, { model: modelName, keep_alive: 0, stream: false }, { timeoutMs: 10000, signal });
-      unloadPending = false;
-      checkpoint();
-      await abortableDelay();
-      checkpoint();
-      const afterUnload = await listRunning(hostUrl, { timeoutMs: 10000, signal });
-      const stillResident = (afterUnload?.models || []).some(entry => isSameOllamaModel(entry?.name || entry?.model, modelName));
-      if (stillResident) throw Object.assign(new Error('Cold-load sample invalid: model remained resident after unload'), { code: 'COLD_UNLOAD_NOT_ATTESTED' });
-
-      const coldStart = Date.now();
-      const request = { model: modelName, prompt: 'Hi', stream: false, think: false, options: { num_ctx: numCtx, num_predict: 1, temperature: 0, seed: 7 } };
-      const coldResponse = await generate(hostUrl, request, { timeoutMs: 120000, signal });
-      checkpoint();
-      const coldLoadMs = jsonMutationDuration(coldResponse, Date.now() - coldStart);
-      await verifyContext();
-      const hotStart = Date.now();
-      const hotResponse = await generate(hostUrl, request, { timeoutMs: 30000, signal });
-      checkpoint();
-      const hotLoadMs = jsonMutationDuration(hotResponse, Date.now() - hotStart);
-      await verifyContext();
-      samples.push({ repeat, status: 'pass', unloadVerified: true, contextVerified: true, numCtx, coldLoadMs, hotLoadMs });
-    } catch (err) {
-      if (signal?.aborted || err.code === 'BENCHMARK_CLAIM_LOST' || err.code === 'BENCHMARK_CLAIM_STOPPED') throw err;
-      if (unloadPending) {
-        err.retainAdmission = true;
-        err.code = err.code || 'OLLAMA_UNLOAD_TERMINALITY_UNKNOWN';
-        throw err;
-      }
-      logger.warn(`_runLoadTiming: repeat ${repeat} failed for ${modelName} — ${err.message}`);
-      samples.push({ repeat, status: 'error', unloadVerified: false, coldLoadMs: null, hotLoadMs: null, error: err.message });
-    }
-  }
-  const passing = samples.filter(sample => sample.status === 'pass' && sample.unloadVerified === true);
-  const coldStatistics = summarizePositiveMeasurements(passing.map(sample => sample.coldLoadMs), { minimumSamples });
-  const hotStatistics = summarizePositiveMeasurements(passing.map(sample => sample.hotLoadMs), { minimumSamples });
-  return {
-    coldLoadMs: coldStatistics.p50,
-    hotLoadMs: hotStatistics.p50,
-    numCtx,
-    contextVerified: passing.length === minimumSamples && passing.every(sample => sample.contextVerified === true),
-    unloadVerified: passing.length === minimumSamples,
-    sampleCount: samples.length,
-    passingSampleCount: passing.length,
-    minimumSamples,
-    samples,
-    coldStatistics,
-    hotStatistics
-  };
 }
 
 const { scout, fullPipeline } = require('./profilerPipelineDriver').createProfilerPipelineDriver({ profile, hostTestService });

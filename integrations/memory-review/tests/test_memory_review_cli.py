@@ -101,6 +101,27 @@ class CliDryRunTests(unittest.TestCase):
         else:
             os.environ["AGENTX_MEMORY_REVIEW_OWNER_IDS"] = self._owner_ids
 
+    def test_synthesis_exchanges_are_kept_private_and_bounded(self):
+        import contextlib, io as _io, stat, tempfile
+        from memory_review import cli as cli_module
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp)
+            original = cli_module.SYNTHESIS_EXCHANGES_KEPT
+            cli_module.SYNTHESIS_EXCHANGES_KEPT = 2
+            try:
+                with contextlib.redirect_stdout(_io.StringIO()):
+                    cli_module._keep_synthesis_exchanges(state, "run-empty", [])
+                    for name in ("run-a", "run-b", "run-c"):
+                        cli_module._keep_synthesis_exchanges(
+                            state, name, [{"request": {"messages": []}, "reply": "{}", "reasoning": "why"}])
+            finally:
+                cli_module.SYNTHESIS_EXCHANGES_KEPT = original
+            kept = sorted((state / "synthesis").glob("*.json"))
+            self.assertEqual(len(kept), 2)
+            self.assertFalse(any(path.name.startswith(("run-empty", "run-a")) for path in kept))
+            self.assertEqual(stat.S_IMODE(kept[0].stat().st_mode), 0o600)
+            self.assertEqual(json.loads(kept[0].read_text())["exchanges"][0]["reasoning"], "why")
+
     def test_collect_dry_run_is_read_only(self):
         home = make_openclaw_home(self.root)
         out = io.StringIO()

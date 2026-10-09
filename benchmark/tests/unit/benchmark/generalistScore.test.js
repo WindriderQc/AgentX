@@ -194,7 +194,8 @@ describe('calculateGeneralistScoreFromCategories', () => {
             const scores = {
                 coding: { avg: 8, count: 10, stddev: 1, levels: [4, 5], attempted: true },
                 reasoning: { avg: 8, count: 10, stddev: 1, levels: [4, 5], attempted: true },
-                math: { avg: 8, count: 8, stddev: 1, levels: [4, 5], attempted: true }
+                // 32 results: the default full-scope minimum (4 per weighted category).
+                math: { avg: 8, count: 12, stddev: 1, levels: [4, 5], attempted: true }
             };
 
             const result = calculateGeneralistScoreFromCategories(scores, TEST_WEIGHTS);

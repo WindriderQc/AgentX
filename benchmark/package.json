@@ -19,14 +19,15 @@
     "migrate:level-score-review": "node scripts/migrate-drop-level-score-review.js",
     "test:integration": "node scripts/run-jest.js tests/integration",
     "test:nodb": "node scripts/run-jest.js --config jest.nodb.config.js",
-    "test:prepare": "node ../shared/testing/prepareMongo.js"
+    "test:prepare": "node ../shared/testing/prepareMongo.js",
+    "test:drivers": "node scripts/run-driver-smoke.js",
+    "test:surfaces": "npm run test:drivers"
   },
   "dependencies": {
     "@fontsource-variable/space-grotesk": "5.3.0",
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@fortawesome/fontawesome-free": "6.4.0",
     "chart.js": "4.4.1",
-    "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "ejs": "^5.0.1",
     "express": "^4.18.2",
@@ -37,7 +38,6 @@
   "devDependencies": {
     "jest": "^30.4.2",
     "mongodb-memory-server": "^11.0.1",
-    "sharp": "^0.35.3",
     "supertest": "^7.2.2"
   },
   "overrides": {

@@ -9,6 +9,7 @@ const {
   cleanProfileId, familyChore, familyLaunchInput, familyProfile,
   familyProfileInput, familyRoom, familyRoutineInput, nextRoutineDue
 } = require('../domains/household/family');
+const { familyBirthDate } = require('../domains/household/familyBirthDate');
 
 const OPEN_FAMILY_STATUSES = Object.freeze(['queued', 'in_progress', 'review']);
 const FAMILY_PIPELINE_ASSIGNEE = 'household-family';
@@ -83,6 +84,23 @@ async function getTask(ref, childId) {
 async function listProfiles() {
   const rows = await Profile.find({ active: true }).sort({ createdAt: 1 }).limit(20).lean();
   return { profiles: rows.map(familyProfile) };
+}
+
+// Adult-only: the public projection plus the parent's birth date. Child-facing
+// routes use listProfiles/room, whose projection never includes it.
+const adultProfile = profile => ({ ...familyProfile(profile), birthDate: profile.birthDate || null });
+
+async function listProfileDetails() {
+  const rows = await Profile.find({ active: true }).sort({ createdAt: 1 }).limit(20).lean();
+  return { profiles: rows.map(adultProfile) };
+}
+
+async function setProfileBirthDate(input = {}) {
+  const birthDate = familyBirthDate(input.birthDate);
+  const profile = await getProfile(profileId(input.profileId));
+  profile.birthDate = birthDate || undefined;
+  await profile.save();
+  return { profile: adultProfile(profile) };
 }
 
 async function createProfile(input = {}, createdBy = 'household-parent') {
@@ -164,7 +182,7 @@ async function checkIn(input = {}) {
   }
   const updated = await commitLaneTask(task, {
     fields: { status: 'review', assignee: FAMILY_PIPELINE_ASSIGNEE, checkedInAt: new Date() },
-    feedback: feedback(`kid:${childId}`, 'Checked in from the tool-free Kids Room; waiting for parent approval.'),
+    feedback: feedback(`kid:${childId}`, 'Checked in from the tool-free Kids Room; waiting for household review.'),
     kind: 'family_check_in', channel: 'family_surface', declaredActor: 'family-child',
   });
   return { alreadyWaiting: false, chore: familyChore(updated) };
@@ -173,14 +191,14 @@ async function checkIn(input = {}) {
 async function approve(input = {}) {
   const task = await getTask(input.ref);
   if (task.status === 'done') return { alreadyApproved: true, rolledOver: false, chore: familyChore(task) };
-  if (task.status !== 'review') throw failure(409, 'FAMILY_CHORE_NOT_WAITING', 'Chore is not waiting for parent approval');
+  if (task.status !== 'review') throw failure(409, 'FAMILY_CHORE_NOT_WAITING', 'Chore is not waiting for household review');
   const now = new Date();
   const nextDue = nextRoutineDue(task, now);
   const updated = await commitLaneTask(task, {
     fields: { lastCompletedAt: now, completionCount: Math.max(0, Number(task.completionCount) || 0) + 1,
       checkedInAt: null, status: nextDue ? 'queued' : 'done', assignee: FAMILY_PIPELINE_ASSIGNEE,
       ...(nextDue ? { dueAt: nextDue } : {}) },
-    feedback: feedback('household-parent', nextDue ? `Approved; ${task.cadence} routine rolled forward.` : 'Approved and completed by parent.'),
+    feedback: feedback('household-parent', nextDue ? `Approved; ${task.cadence} routine rolled forward.` : 'Approved and completed from the household review surface.'),
     kind: nextDue ? 'family_rolled_over' : 'family_approved',
     channel: 'family_surface', declaredActor: 'household-parent',
   });
@@ -200,7 +218,7 @@ async function reopen(input = {}) {
 
 async function cancel(input = {}) {
   const task = await getTask(input.ref);
-  return { chore: familyChore(await cancelTask(task, 'household-parent', 'Cancelled from the parent household surface.')) };
+  return { chore: familyChore(await cancelTask(task, 'household-parent', 'Cancelled from the household review surface.')) };
 }
 
-module.exports = { listProfiles, addProfile, archiveProfile, launch, room, list, create, checkIn, approve, reopen, cancel };
+module.exports = { listProfiles, listProfileDetails, setProfileBirthDate, addProfile, archiveProfile, launch, room, list, create, checkIn, approve, reopen, cancel };

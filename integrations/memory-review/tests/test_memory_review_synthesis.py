@@ -88,6 +88,26 @@ class SynthesisTests(unittest.TestCase):
             with self.assertRaisesRegex(synthesis.SynthesisError, "AgentX inference unavailable"):
                 synthesis.http_chat_completion("http://stub", {})
 
+    def _proxy_response(self, finish_reason):
+        body = json.dumps({"choices": [{
+            "finish_reason": finish_reason,
+            "message": {"content": '{"candidates": ['},
+        }]}).encode()
+        response = io.BytesIO(body)
+        response.__enter__ = lambda *_: response
+        response.__exit__ = lambda *_: None
+        return response
+
+    def test_output_cut_at_the_token_cap_is_refused_not_repaired(self):
+        with patch.object(synthesis, "urlopen", return_value=self._proxy_response("length")):
+            with self.assertRaisesRegex(synthesis.SynthesisError, "cut at max_tokens=3000"):
+                synthesis.http_chat_completion("http://stub", {"max_tokens": 3000})
+
+    def test_complete_output_is_returned(self):
+        with patch.object(synthesis, "urlopen", return_value=self._proxy_response("stop")):
+            self.assertEqual(
+                synthesis.http_chat_completion("http://stub", {}), '{"candidates": [')
+
     def _run(self, transport, input_=None):
         return synthesis.synthesize(
             input_ or make_input(),
@@ -161,6 +181,69 @@ class SynthesisTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(len(transport.calls), 2)
         self.assertIn("violated the contract", transport.calls[1]["messages"][1]["content"])
+
+    def test_repair_receives_the_whole_previous_output_and_budget(self):
+        long_output = "not json " + "x" * 12000 + " END-OF-OUTPUT"
+        transport = FakeTransport([
+            long_output,
+            json.dumps({"candidates": [good_candidate()]}),
+        ])
+        self.assertEqual(len(self._run(transport)), 1)
+        self.assertIn("END-OF-OUTPUT", transport.calls[1]["messages"][1]["content"])
+        self.assertEqual(transport.calls[1]["max_tokens"], transport.calls[0]["max_tokens"])
+
+    def test_candidates_beyond_the_run_bound_are_counted(self):
+        extra = 3
+        observations = [{"id": f"obs-{n}", "text": "x" * 30000} for n in (1, 2, 3)]
+        input_ = {**make_input(), "observations": observations}
+        chunks = synthesis.partition_synthesis_input(input_)
+        self.assertGreater(len(chunks), 1)
+        refs = [chunk["observations"][0]["id"] for chunk in chunks]
+        many = [good_candidate(statement=f"Owner prefers option number {n}.", ref=refs[0])
+                for n in range(schema.MAX_CANDIDATES_PER_RUN)]
+        more = [good_candidate(statement=f"Owner prefers variant number {n}.", ref=refs[1])
+                for n in range(extra)]
+        transport = FakeTransport(
+            [json.dumps({"candidates": many}), json.dumps({"candidates": more})]
+            + [json.dumps({"candidates": []})] * (len(chunks) - 2))
+        receipt = {}
+        result = synthesis.synthesize(input_, base_url="http://stub", model="verified-test-model",
+                                      transport=transport, receipt=receipt)
+        self.assertEqual(len(result), schema.MAX_CANDIDATES_PER_RUN)
+        self.assertEqual(receipt["notSubmitted"], extra)
+
+    def test_exchanges_record_every_call_including_the_one_that_fails(self):
+        exchanges = []
+        transport = FakeTransport(["nope", "still nope"])
+        with self.assertRaises(schema.SynthesisOutputError):
+            synthesis.synthesize(make_input(), base_url="http://stub", model="verified-test-model",
+                                 transport=transport, exchanges=exchanges)
+        self.assertEqual([entry["reply"] for entry in exchanges], ["nope", "still nope"])
+        self.assertEqual(exchanges[0]["request"]["messages"][0]["role"], "system")
+        failing = FakeTransport([synthesis.SynthesisError("proxy down")])
+        exchanges = []
+        with self.assertRaises(synthesis.SynthesisError):
+            synthesis.synthesize(make_input(), base_url="http://stub", model="verified-test-model",
+                                 transport=failing, exchanges=exchanges)
+        self.assertEqual(len(exchanges), 1)
+        self.assertIsNone(exchanges[0]["reply"])
+
+    def test_the_proxy_reply_keeps_reasoning_and_usage_for_the_record(self):
+        body = json.dumps({"usage": {"completion_tokens": 7}, "choices": [{
+            "finish_reason": "stop",
+            "message": {"content": '{"candidates": []}', "reasoning_content": "nothing durable here"},
+        }]}).encode()
+        response = io.BytesIO(body)
+        response.__enter__ = lambda *_: response
+        response.__exit__ = lambda *_: None
+        exchanges = []
+        with patch.object(synthesis, "urlopen", return_value=response):
+            result = synthesis.synthesize(make_input(), base_url="http://stub",
+                                          model="verified-test-model", exchanges=exchanges)
+        self.assertEqual(result, [])
+        self.assertEqual(exchanges[0]["reasoning"], "nothing durable here")
+        self.assertEqual(exchanges[0]["finishReason"], "stop")
+        self.assertEqual(exchanges[0]["usage"], {"completion_tokens": 7})
 
     def test_second_failure_raises_and_stops(self):
         transport = FakeTransport(["nope", "still nope"])

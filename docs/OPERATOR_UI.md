@@ -97,9 +97,9 @@ attempts of the selected window into phases (`agentx.pipeline-attempt-phases/v1`
 | Phase | Clock | Recorded source |
 |---|---|---|
 | Before claim | Core | Task creation (attempt 1), or the previous attempt's recorded requeue decision or release, to the claim |
-| Resource wait | none | Not instrumented: a busy host refuses the claim, and model-call admission waits are kept only for a lease's last call |
+| Resource wait | Core | Sum of the attempt's model-call waits before Ollama: runtime admission, host gate, retry backoff and retried calls' waits, from the inference rows attributed to the attempt. Part of the worker run, not added to it; unknown when a call carries no recorded wait, no call went through Core, or the rows expired (`INFERENCE_LOG_TTL_DAYS`) |
 | Startup | none | Not instrumented: claim to worker start is not recorded |
-| Worker run | worker | `clawdx-guarded/v1` run duration minus independent verification; inference and tool execution together |
+| Recorded guarded worker run | worker | `clawdx-guarded/v1` run duration minus independent verification; inference and tool execution together |
 | Verification | worker | Independent verification duration |
 | Human decision | Core | Attempt end to the recorded accepted, requeued or rejected decision |
 
@@ -131,12 +131,67 @@ An existing active `pin-vram-spill` incident remains separate from the current
 read: silence or a stale sample cannot resolve it. See the [GPU contract and
 fallback policy](OPERATIONS.md#light-task-fallback-ladder).
 
+**Inference hosts** lists every Ollama endpoint with its residency (GPU or
+CPU) and its concurrent-request limit, and registers a new one. A machine that
+runs a GPU instance and a CPU instance shows two rows.
+
+**Operations watch** shows the latest report: what the monitoring rules flag,
+and whether the model or the plain rule list wrote it. "Nothing needs
+attention" means the rules flag nothing; no model ran. **Check now** runs a
+check at once. The switch, the interval and the report language are saved by
+Core when you press **Save**; until then the line says they come from the
+configuration file.
+
+In the task routing table, a host tagged **CPU** is a slow background host, and
+**Stays on this host** means the task does not follow its model to another
+host: when that host is busy the task waits. Every task routed to a CPU host
+stays there. The light tasks of the fallback ladder may still step down when
+their host is unavailable.
+
 ## Profiler
 
 Open Benchmark's `/profiler`. **Runtime continuity** appears above preparation
 actions when journals exist or recovery evidence is unavailable. It shows host,
 operation state, next safe action and expandable operation evidence. The
 preparation action leads directly to that panel while continuity needs inspection.
+
+Under **Take the controls**, the **Coverage** section lists each model pinned on
+a host or routed to it in Core's task routing table, with the state of its
+profile and how many catalog prompts have a scored answer. A prompt counts when
+the answer was scored with the current scorer version, for the prompt as the
+catalog holds it today, by the artifact the profile describes: a new artifact,
+a new scorer version or an edited prompt re-opens what it affects. **Next**
+says what the pair still needs, a profile first, then the benchmark. A stored
+profile counts as current only when the gate every benchmark launch passes
+accepts it for the artifact the host serves now; otherwise the pair shows the
+gate's reason and needs a profile again.
+`GET /api/benchmark/coverage` returns the same matrix.
+
+A new scorer version declares, per prompt category, whether stored grades keep
+their meaning, follow from the stored dimension scores, or need the judge
+again. At startup Benchmark carries over the grades that stay valid: the row
+moves to the current scorer version and quality cohort, a grade a new rule
+changes is recomputed without a judge call, and what the row held before stays
+in its `scorer_history`. A grade that cannot be derived from what the row
+stores is left as it is and its prompt re-opens. A version that declares
+nothing re-opens every prompt. `POST /api/benchmark/coverage/carry-over` runs
+the same pass; with `{ "dryRun": true }` it only reports what it would carry
+and why it would leave the rest.
+
+Below the matrix, **Automatic measurement** fills it by itself, one small
+measurement at a time: a standard profile, or a few missing prompts for one
+model on one host. It is off until switched on. It starts a measurement only
+inside the quiet hours, when no workload, maintenance or batch holds the
+runtime and the household has been quiet for the set minutes, and it launches
+through the same routes as an operator, so judge selection, preflight and host
+claims apply unchanged. The line says why it is waiting. A pair whose
+measurements end three times without progress is left alone for a day.
+Conversations held through an external agent harness cannot be told apart from
+that harness's scheduled jobs and do not count as activity: choose quiet hours
+accordingly. A measurement in progress still yields to a household turn.
+**requested first by** under a pair's **Next** means an operator or a lead
+agent asked for it to be measured before the others; hover it for the reason.
+It still waits for the quiet hours.
 
 | Operation label | Meaning |
 |---|---|
@@ -171,6 +226,357 @@ as unknown and lists what to qualify; an unpinned model gets no offer.
 Saved measurements are retained independently from runtime recovery. A comparison
 readiness summary does not override an unresolved journal. For measured context,
 capacity and recall distinctions, see [context profiles](PROFILER_CONTEXT.md).
+
+## Data Toolbox: header, refresh and phone layout
+
+Open `/data-toolbox` (full profile, with the optional Data service). These rules
+hold on every tab.
+
+**Header.** The box beside the title states what the last read attempt gave, in
+words; its dot only repeats the state.
+
+| Header | Meaning |
+|---|---|
+| **Data answering** · `last read 14:02:11` (green) | The last read succeeded at that time |
+| **N of 7 Data sources unavailable** · `read …, incomplete` (amber) | The Overview was read but some sources did not answer; the Overview names them |
+| **Data unreachable: no source answered** (red) | The Overview was read and no source answered |
+| **N reads of this tab failed: …** (amber) | The tab drew itself with a notice in place of what could not be read |
+| **Data unreachable** · `failed …: reason · last good read …` (red) | AgentX answered that Data refused or timed out |
+| **AgentX unreachable from this page** (red) | The browser got no answer from AgentX itself |
+| **Last read failed** (red) | Any other failed read; the reason follows the time |
+
+The time is the time of a real read. A value kept from an earlier read never
+stamps the header.
+
+**Overview sources.** Each of the seven sources is listed by name with
+**answering** or **unavailable** and its reason: the HTTP status Data returned,
+`timeout`, the connection error, or the message of Data's error answer.
+
+**Automatic refresh.** A tab refreshes only while it is open and the page is
+visible; returning to the page reads at once. Each refreshing block says when it
+was read.
+
+| Tab | What refreshes | Every |
+|---|---|---|
+| Overview | Figures, source list, recent warnings and errors | 30 s |
+| Network | Counts, collectors and device list | 60 s |
+| Live Data | Feed counts and feed cards; the ISS marker | 60 s each |
+| GPU | **Now** | 30 s |
+| Activity | New events | 15 s |
+| MQTT | Broker state and new messages | 2 s |
+| Storage | A running scan or report only | while it runs |
+| Files, Databases, Janitor | Nothing | **Refresh** only |
+
+The Overview, Network and Live Data refreshes wait, and say so on their line,
+while a field of the tab has the focus, a details panel is open, a device editor
+is open, a typed name is not saved, or a network scan is running. They repaint
+their own block in place: the search box, the scan form, the map, an open
+inspector and the scroll position are left alone. A failed automatic read keeps
+what is on screen, names the failure on the line and turns the header red.
+**Refresh** reads the whole tab at any time.
+
+**What the page can change.** The amber line under the header reads **No
+filesystem actions. This page can send seven kinds of change to Data.** Open
+**Show the list** for the seven; the Overview repeats the list in full under
+**What this page can change**.
+
+**Phone width.** At 620 px and below the header shrinks to the title and the
+read state, the tab bar scrolls sideways with the open tab brought into view,
+and controls are at least 40 px tall. The Network, Activity, Reports, Databases
+and MQTT lists show one labelled block per row; other wide tables scroll inside
+their own frame, never the page.
+
+## Data Toolbox: Activity
+
+Open `/data-toolbox#activity` (full profile, with the optional Data service).
+The tab reads Data's activity log: what Data did or noticed, kept 30 days. It
+changes nothing. The event types are listed in
+[Data's README](../data/README.md#activity-log).
+
+- **Last 24 hours**: the number of errors, warnings and information events,
+  whatever the filters below, and the most recent warning or error.
+- **Events**: newest first, 50 per page, each with its time, its severity in
+  words, its type, one sentence and its details (the event's `meta`, shown as
+  plain key and value text). Filters: the family (storage, collectors, GPU,
+  network, janitor, live data, MQTT, external), the severity and the period
+  (all kept, 7 days, 24 hours). **Newer** and **Older** walk the pages.
+- New events are read every 15 seconds while the tab is open and the page
+  visible. On the first page they are added on top, marked `new`, with a count;
+  on another page a line says how many arrived. **Pause** stops the reads.
+
+Only changes are recorded, so something that stays broken appears once. The
+Overview tab shows the last four warnings and errors with a link to this tab.
+
+## Data Toolbox: Storage scans
+
+Open `/data-toolbox#storage` (full profile, with the optional Data service).
+The tab has three views: **Inventory and scans**, **Growth** and **Reports**
+(the two sections below). Under the inventory figures and the collector, the
+first view asks for a scan and follows it. A scan reads the disks and refreshes Data's index, where the rows
+of files no longer there are removed. It changes nothing on the disks.
+
+- **Scan now**: one card per source Data is configured with, with its root,
+  the collector that serves it and its last finished scan. The button is
+  disabled, with the reason beside it, when no active collector announces the
+  source or when a scan of it is already queued or running. Only the source
+  name is sent: hashing follows Data's default (duplicate candidates only).
+  If a scan of that source was already there, Data answers with that one and
+  the page says it joined it; no second scan starts.
+- **Scan in progress**: status, files seen, processed and hashed, errors, time
+  elapsed and the age of the last batch received, read again every 3 seconds
+  while the tab is open and the page visible. A collector sends the files it
+  processes as it goes and its other totals at the end: until then they show a
+  dash. A scan run by a collector cannot be stopped: Data has no stop for it.
+  When the scan ends its final state stays on the page. **Partial** means the
+  scan could not confirm every root (an unmounted disk reads as an empty
+  folder), so Data kept the index rows it already had; **failed** means it did
+  not finish and removed nothing. Both show Data's reason.
+- **Scan history**: the last 12 scans started. Each one opens on its timing
+  (requested, time in the queue, started, finished, duration, who ran it), its
+  hashing limits and every count Data recorded.
+
+A scan queued by someone else is not in this list until a collector starts it,
+because Data lists scans by start date. Asking for the same source in that
+interval joins the queued scan.
+
+## Data Toolbox: Storage growth
+
+Open `/data-toolbox#storage` and choose **Growth**. The view is read-only. Data
+records one snapshot per root and UTC day when a scan of that root ends
+`complete`, and keeps them 800 days; the view shows one block per root, for a
+window of 30 days, 90 days, one year or everything kept.
+
+- **Total size** and **Number of files**: one line chart each, with the first
+  and last values in words above it and the same figures as a table under
+  **The two charts as a table**. The vertical axis starts near the lowest value
+  when the change is small, and the chart says so. Hovering a day shows its
+  value.
+- **Growth**: size and files added between the first and the last snapshot of
+  the window, the average per day, and the five folders that grew the most. A
+  folder that was summed with the "other folders" at the start of the window is
+  left out, because its growth is not known.
+- **Size by folder**: the newest snapshot, largest folder first, with size,
+  share of the root and files. *Other folders, together* is what Data summed
+  beyond the 40 largest folders; *Files directly in the root* are the files
+  that sit in no folder. **Open** shows a folder's own size over time and its
+  subfolders. Data keeps subfolders only for a root with at most five top-level
+  folders: otherwise no folder can be opened, and the view says so.
+- **Files walked by the collector**: a separate chart of what the collector
+  counted at each completed scan. It is not the index total and has no size; it
+  is never drawn with the totals.
+
+With one snapshot the view shows the current state and says that the next point
+comes with the next complete scan; with none it says why. A root with no
+snapshot in the window, but some earlier, says from when to when they exist.
+
+## Data Toolbox: Reports
+
+Open `/data-toolbox#storage` and choose **Reports**. A report is a file Data
+generates from its index and keeps in its own report store. Generating reads
+the index only; the scanned disks are neither read nor changed. This view sends
+two changes to Data: the generation and the deletion of a report.
+
+- **Reports kept** and **Space used**: the current usage against Data's limits
+  (20 reports, 1 GiB). Over either limit Data removes the oldest reports.
+- **Generate**: a report (folder summary, statistics by extension, large files,
+  media files or the full inventory) and a format (CSV or JSON; the full
+  inventory exists in JSON only). Data starts it and answers at once; the list
+  is read again every 3 seconds while a report is running, the tab open and the
+  page visible, and the page says when it is ready or why it failed. Data
+  generates at most two reports at a time and refuses a third.
+- **The list**: type, file name, format, status (running, ready, failed with
+  Data's reason), size, records and date. **Download** saves a ready report:
+  Core passes the file through as Data sends it. **Delete** asks for
+  confirmation on the row, then removes the report from Data; for a failed
+  generation it only clears the line. A running report cannot be deleted.
+
+Running and failed generations exist in Data's memory only: after a restart of
+Data a running one is gone from the list, and the page says so.
+
+## Data Toolbox: Files
+
+Open `/data-toolbox#files`. The tab is read-only: every view reads Data's
+index and nothing is deleted, moved or renamed from it. Above the views, the
+index totals: files, size, extensions (Data lists the 25 largest, shown as
+`25+` beyond that) and folders that hold files.
+
+- **Files**: the list, with filters on the file name, the folder (that folder
+  and below), the category, the extension, a size range in KiB, MiB or GiB and
+  the presence of a hash; sorted by modification date, name or size, 25, 50 or
+  100 per page. An extension takes precedence over the category.
+- **Folders**: the folders under the current one with the files and size below
+  each, a breadcrumb to go back up, and **Show files** to open the list
+  filtered on a folder. Data records only the folders that hold files directly
+  and returns the 2 000 largest under a path: when it cut its answer, the
+  figures are marked `≥` and small folders may be missing; the totals of the
+  current folder stay exact, and opening a folder narrows the read.
+- **Duplicates**: the groups of files with equal SHA-256, largest first, ten
+  per page among the 100 largest Data returns, each with its size, its number
+  of copies, the space one copy would free and every path. The totals of the
+  whole index are shown above. Only hashed files can be compared, so all of it
+  is a lower bound. Without any current hash Data falls back to same name and
+  size, and the page says these are not verified.
+- **Cleanup**: Data's review suggestions (large files, old files, verified
+  duplicates, duplicate candidates, empty files, files at the root of a chosen
+  folder) with the sample of files behind each one. A saving Data did not
+  measure is shown as not measured.
+
+Duplicates and Cleanup take an optional folder to limit them.
+
+## Data Toolbox: Network
+
+Open `/data-toolbox#network` (full profile, with the optional Data service).
+The tab lists the devices Data's collectors have seen on the LAN and sends two
+changes: a scan request, and the edit of one device record.
+
+- **Collectors**: an **active** collector has reported to Data in the last 90
+  seconds; only an active one runs a scan. A **silent** collector is shown
+  apart with the date it was last heard. Its record and the devices it
+  reported are kept: nothing is deleted from this page.
+  An active collector with no placement metadata configured for the instance
+  is shown from its registration (host, address, registered since) and says
+  that its supervisor, unit and cadence are not declared.
+- **Scan now**: asks the active collector for one discovery scan of a target,
+  pre-filled with the network it sweeps. The target is an IPv4 address or a
+  CIDR from /16 to /32. The page follows the request every 2 seconds, then
+  shows how many devices were seen, names the ones that were not in the list
+  before, and reads the list again. A collector runs one scan at a time: a
+  request that arrives during its own periodic sweep is skipped at that poll
+  and tried again at the next ones (every 5 seconds by default). Data hands a
+  request out for two minutes; one the collector could not finish in that time
+  shows as **expired** and changed nothing. With no active collector the
+  button is disabled and the reason is shown.
+- **Find**: the search box matches the name, IP, MAC, vendor, hostname, type
+  and location. The chips filter the list (all, unnamed, online now, new in the
+  last 24 hours, not acknowledged) and show their count. The Device, IP, Last
+  seen and First seen columns sort; IP addresses sort by value. All of it works
+  on the loaded list, in the browser. A device first seen in the last 24 hours
+  carries the word **new**.
+- **Unnamed devices**: one card per device without a name, with its IP, MAC,
+  vendor, hostname, first and last sighting and the collector that saw it.
+  Type a name and press Enter (or Save): it is saved, the device leaves the
+  view and the next name field takes the focus. **Mark known** acknowledges a
+  device without naming it.
+- **Edit**: opens an editor under the row for the name, the type (computer,
+  server, phone or tablet, IoT, network equipment, media, printer, other), the
+  location and the notes. Only the fields that changed are sent. A name is at
+  most 80 characters, a location 80, notes 500. Type and Location appear as
+  columns once a device has one. Collector sweeps do not overwrite these
+  fields: a sweep only rewrites what it observed (IP, MAC, hostname, vendor,
+  last sighting).
+
+A name or the known flag acknowledges a device: Core's new-device alert no
+longer reports it. A device Data holds without a MAC (usually the collector's
+own address) can be named and edited, and is not part of that alert.
+
+## Data Toolbox: GPU
+
+Open `/data-toolbox#gpu` (full profile, with the optional Data service). The
+tab is read-only and has four sections, each read separately: one that cannot
+be read shows a notice in its place and the others stay on screen.
+
+- **Now**: the last sample of each GPU host with its age. Only a **fresh** host
+  shows current values. A **stale** host shows the last values received, their
+  age and the collector's last error; **no data** means no sample ever arrived.
+  A dash is a value the collector did not read, never a zero. This section
+  refreshes every 30 seconds while the tab is open and the page visible.
+- **Occupancy**: per physical GPU over 24 hours, 7 days or 30 days. Read
+  **Coverage** first: it is the share of the window Data has samples for. Busy,
+  utilisation and throttled figures describe that observed time only, so a GPU
+  with low coverage is mostly unknown, not idle. History older than Data's
+  retention (`DATA_HARDWARE_HISTORY_TTL_DAYS`) lowers the coverage of a long window.
+- **Recent trend**: utilisation over the last six hours as five-minute means,
+  with the mean, minimum, maximum and latest value in text.
+- **Collector**: the native gpu-agent's registration and last heartbeat.
+
+## Data Toolbox: Live Data map
+
+Open `/data-toolbox#live-data` (full profile, with the optional Data service).
+The **World map** section sits above the feed registry. It is read-only and
+drawn in the page from the feeds Data stores and from country outlines shipped
+with AgentX (Natural Earth 1:110m): it works with the internet down. The
+projection is equirectangular and shows the whole globe. Two views:
+
+- **Live**: the ISS as a labelled marker with its track over the last 95
+  minutes (about one orbit), cut where it crosses the antimeridian and where
+  points are missing for more than five minutes; the earthquakes of the current
+  list as circles whose area doubles with each magnitude unit, the strongest on
+  top and the three strongest labelled; the stored locations with their latest
+  pressure and air quality; the MQTT sensors whose points carry coordinates.
+  Satellite elements have no position and are not drawn. The ISS is read again
+  every 60 seconds while the tab is open and the page visible; an ISS position
+  older than five minutes is drawn as the last known one and said so.
+- **By country**: countries shaded by the number of events of the earthquake
+  list inside their outline, in five ranges, with the count written on each
+  counted country. The outlines are coarse: an event just off a coast, or on an
+  island too small for that scale, is counted in the **Offshore / no country**
+  row and drawn as a small ring, never dropped.
+
+Each view lists what it draws in tables under the map (ISS position and time,
+locations and sensors, every earthquake with time, magnitude, place, depth and
+type; counts and strongest magnitude per country). A feed that is off, empty or
+unreadable has its own line above the map and the other layers stay drawn. If
+the outlines cannot be loaded, the Live view draws the points on a plain grid
+and the country view says it is unavailable.
+
+## Data Toolbox: MQTT
+
+Open `/data-toolbox#mqtt` (full profile, with the optional Data service). The
+tab shows what Data's broker monitor receives and publishes one message by
+hand. It needs `MQTT_BROKER_URL` on Data; without it the tab says so.
+
+- **Broker**: connected or not, the broker's host and port, the number of
+  messages received since Data started and the time of the last one. While the
+  broker is not connected nothing is received and Send is disabled.
+- **Stream**: the messages, newest first, read every 2 seconds while the tab is
+  open and the page visible. The topic filter takes MQTT wildcards (`+` one
+  level, `#` everything below) and is applied by Data. **Pause** stops the
+  reads, **Clear** empties the list on the page only. The page keeps 300
+  messages and Data 500, in memory: a notice says when messages passed between
+  two reads and are no longer available. A long payload opens on click; a
+  payload that is not text is shown as hex.
+- **Send**: a topic (pre-filled `esp32/`), a message and a **Retain** box. Any
+  topic is accepted and the message goes out at once, at QoS 0: it reaches real
+  devices and can switch an output or reboot one. A retained message is
+  delivered again to every device that subscribes later; to remove one, send an
+  empty retained message on the same topic. The outcome is shown under the
+  form, and the message then appears in the stream when the broker delivers it
+  back. Nothing is queued: when the broker is not connected the send is refused.
+
+## Data Toolbox: Janitor duplicate review
+
+Open `/data-toolbox#janitor` (full profile, with the optional Data service).
+The tab shows the nightly shared-drive report; its **Duplicate review** section
+is where the owner decides what he wants for each verified duplicate group.
+
+Nothing in this tab deletes files. A stored decision records intent for a
+later, separately confirmed cleanup: that cleanup still needs a current profile
+run, a fresh SHA-256 preview and its own typed confirmations, none of which the
+page can send.
+
+- **Deciding**: open a group, choose the copy to keep, then **Accept for
+  preview**, **Reject deletion** or **Defer**; a note is optional. The decision
+  is saved to Data at once and the group says so (saved, or why it failed).
+  **Undo** removes the stored decision. A group shown without all its copies
+  (more than 60) cannot be decided from the page.
+- **Review progress**: groups decided on the page and in the whole report, the
+  count by decision, the space the accepted groups represent (not freed), and
+  the stale decisions with their reasons. A decision is stale when the group
+  changed since it was made (a copy gone or changed, new copies, the chosen
+  copy missing); it is shown, never applied to the new copies, and deciding
+  again records it on the current ones.
+- **Paging**: 30 groups per page, **Previous** and **Next**, in the report's
+  order. **Show only undecided groups** asks Data to skip the decided ones.
+- **Policy**: the copy the policy would keep is labelled. When the owner keeps
+  another one, both are shown.
+- **Browser draft**: when Data cannot store decisions, they are kept in this
+  browser as before. When the draft holds decisions that Data does not have,
+  **Import N decisions from this browser** shows exactly what will be sent
+  before sending it; a decision already stored is never replaced, and the
+  draft stays in the browser, marked as imported, as a backup that **Copy
+  draft**, **Download draft** and **Clear** still handle. A decision of an
+  older draft whose group is no longer in the latest report cannot be imported
+  and stays in the draft.
 
 ## Interaction and verification
 

@@ -205,6 +205,7 @@ class PipelineAttributionLeaseManager {
     }
 
     const effective = await this._requireModel(taskType);
+    if (pipelineTask.codingCapacity) require('../../src/services/pipelineCodingCapacity').assertIdentity(pipelineTask.codingCapacity, effective);
     const openedAt = now.toISOString();
     this.active = {
       leaseId: this.randomId(),
@@ -213,6 +214,8 @@ class PipelineAttributionLeaseManager {
       assignee,
       taskType,
       effectiveModel: effective.model,
+      ...(pipelineTask.codingCapacity && { codingCapacity: { pipelineId, leaseId: pipelineTask.automationLease.leaseId },
+        hostUrl: pipelineTask.codingCapacity.host, numCtx: pipelineTask.codingCapacity.numCtx }),
       attempt,
       openedAt,
       expiresAt: new Date(now.getTime() + leaseTtlMs).toISOString(),
@@ -243,8 +246,9 @@ class PipelineAttributionLeaseManager {
       });
     }
     try {
-      await this._requireTask(lease.pipelineId, lease.assignee);
-      await this._requireModel(lease.taskType, lease.effectiveModel);
+      const task = await this._requireTask(lease.pipelineId, lease.assignee);
+      const target = await this._requireModel(lease.taskType, lease.effectiveModel);
+      if (task.codingCapacity) require('../../src/services/pipelineCodingCapacity').assertIdentity(task.codingCapacity, target);
     } catch (error) {
       if (this.active === lease) this.active = null;
       this.counters.rejected += 1;
@@ -270,6 +274,7 @@ class PipelineAttributionLeaseManager {
     this.counters.attributedRequests += 1;
     return {
       effectiveModel: lease.effectiveModel,
+      ...(lease.codingCapacity && { codingCapacity: lease.codingCapacity, hostUrl: lease.hostUrl, numCtx: lease.numCtx }),
       consumerContract: PIPELINE_CONSUMER_CONTRACT,
       attribution: {
         workItemId: lease.pipelineId,
@@ -289,7 +294,8 @@ class PipelineAttributionLeaseManager {
     const task = await this._requireTask(lease.pipelineId, lease.assignee);
     if (taskAttempt(task) !== lease.attempt) throw new PipelineAttributionError(
       'The task attempt changed during inference.', { code: 'PIPELINE_ATTRIBUTION_ATTEMPT_MISMATCH' });
-    await this._requireModel(lease.taskType, lease.effectiveModel);
+    const target = await this._requireModel(lease.taskType, lease.effectiveModel);
+    if (task.codingCapacity) require('../../src/services/pipelineCodingCapacity').assertIdentity(task.codingCapacity, target);
     if (this.active !== lease || new Date(lease.deadlineAt) <= this.now()) throw new PipelineAttributionError(
       'The execution deadline or session ended during inference.', { code: 'PIPELINE_EXECUTION_DEADLINE' });
     return Math.max(0, new Date(lease.deadlineAt).getTime() - this.now().getTime());

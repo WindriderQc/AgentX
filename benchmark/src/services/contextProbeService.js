@@ -7,21 +7,28 @@
 
 const crypto = require('crypto');
 const mongoose = require('mongoose');
-const ModelProfile = require('../../models/ModelProfile');
-const ModelContextProbeSnapshot = require('../../models/ModelContextProbeSnapshot');
-const ollamaVramService = require('./ollamaVramService');
 const modelContextProfileService = require('./modelContextProfileService');
 const authorityReconciliation = require('./benchmark/benchmarkAuthorityReconciliation');
 const hostProfileService = require('./profiler/hostProfileService');
 const { identitiesMatch, resolveArtifactIdentity } = require('./profiler/artifactIdentityService');
-const { showModel, listRunning } = require('../clients/ollamaClient');
-const { generateFillPrompt } = require('./contextProbePayload');
+const { listRunning } = require('../clients/ollamaClient');
 const { snapshotGpuOffload } = require('./probeResidency');
+const {
+  runStep, sendProbeRequest, snapshotVram, validateThroughput, PROBE_NUM_PREDICT, MIN_PROBE_COMPLETION_TOKENS
+} = require('./contextProbeStep');
 const { isSameOllamaModel } = require('../helpers/ollamaModelIdentity');
-const { normalizeHostUrl, getConfiguredHosts } = require('../helpers/ollamaHostConfig');
-const { admitOllamaTargetResolved } = require('../helpers/ollamaTargetAdmission');
 const { normalizeModelName, resolveModelNumCtxDetails } = require('./modelContextResolver');
 const logger = require('../../config/logger');
+const {
+  isValidTokensPerSec,
+  findInvalidThroughputStep,
+  summarizeCandidateThroughput,
+  assessProbeStep
+} = require('./contextProbeAssessment');
+const { buildCoarseCandidates, buildRefinementStages, refinePassingBracket } = require('./contextProbeLadder');
+const { resolveHostUrl, fetchModelMetadata, fetchModelTheoreticalMax } = require('./contextProbeTarget');
+const { persistProbeSnapshot, getProbeStatus } = require('./contextProbeSnapshot');
+const { residencyOf } = require('./probePlacement');
 
 // Full-window probes can legitimately spend several minutes reloading a large
 // resident model and prefilling the requested context. A production 262K Qwen
@@ -31,393 +38,12 @@ const logger = require('../../config/logger');
 const DEFAULT_TIMEOUT_MS = 420000;
 const DEFAULT_MIN_CTX = 2048;
 const DEFAULT_MAX_CTX = 262144;
-// Decode length per probe step. The old value (16) only exercised prefill, so a
-// context could pass the probe yet stall during a real (longer) generation —
-// the "detected big context but hangs in use" gap. 64 exercises sustained
-// decode at the tested fill without making the probe crawl. Env-overridable.
-const PROBE_NUM_PREDICT = parseInt(process.env.CONTEXT_PROBE_NUM_PREDICT, 10) || 64;
-const MIN_PROBE_COMPLETION_TOKENS = Math.min(
-  PROBE_NUM_PREDICT,
-  parseInt(process.env.CONTEXT_PROBE_MIN_COMPLETION_TOKENS, 10)
-    || Math.max(4, Math.floor(PROBE_NUM_PREDICT * 0.5))
-);
-
-function isValidTokensPerSec(tokensPerSec) {
-  const value = Number(tokensPerSec);
-  return Number.isFinite(value) && value > 0;
-}
-
-/**
- * Reject only structurally impossible/corrupt throughput readings. Hardware,
- * quantization, and active-weight estimates are not measured context evidence
- * and must not decide whether a successful probe is persisted.
- * @returns {{ plausible: boolean, detail: string|null }}
- */
-function validateThroughput(tokensPerSec) {
-  const value = Number(tokensPerSec);
-  if (tokensPerSec === null || tokensPerSec === undefined || !Number.isFinite(value) || value < 0) {
-    return { plausible: false, detail: `${tokensPerSec} tok/s is not a non-negative finite measurement` };
-  }
-  return { plausible: true, detail: null };
-}
-
-function findInvalidThroughputStep(steps = []) {
-  return steps.find((step) => !validateThroughput(step?.tokensPerSec).plausible);
-}
-
-function quantile(values, q) {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const position = (sorted.length - 1) * q;
-  const lower = Math.floor(position);
-  const fraction = position - lower;
-  return sorted[lower + 1] === undefined
-    ? sorted[lower]
-    : sorted[lower] + fraction * (sorted[lower + 1] - sorted[lower]);
-}
-
-function studentTCritical95(sampleCount) {
-  const byDf = [null, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262,
-    2.228, 2.201, 2.179, 2.16, 2.145, 2.131, 2.12, 2.11, 2.101, 2.093, 2.086,
-    2.08, 2.074, 2.069, 2.064, 2.06, 2.056, 2.052, 2.048, 2.045, 2.042];
-  const df = Math.max(1, Math.floor(sampleCount) - 1);
-  return byDf[Math.min(df, 30)] || 1.96;
-}
-
-function summarizeCandidateThroughput(samples = [], minimumSamples = 2) {
-  const passing = samples.filter(sample => sample?.passed === true
-    && Number.isFinite(Number(sample.tokensPerSec))
-    && Number(sample.tokensPerSec) > 0);
-  const values = passing.map(sample => Number(sample.tokensPerSec));
-  if (!values.length) {
-    return {
-      attemptedSampleCount: samples.length,
-      sampleCount: 0,
-      minimumSamples,
-      mean: null,
-      p50: null,
-      p95: null,
-      standardDeviation: null,
-      coefficientOfVariation: null,
-      confidenceInterval95: null,
-      reliability: 'unknown'
-    };
-  }
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-  if (values.length < 2) {
-    return {
-      attemptedSampleCount: samples.length,
-      sampleCount: values.length,
-      minimumSamples,
-      mean: Number(mean.toFixed(3)),
-      p50: Number(mean.toFixed(3)),
-      p95: Number(mean.toFixed(3)),
-      standardDeviation: null,
-      coefficientOfVariation: null,
-      confidenceInterval95: null,
-      reliability: 'unknown'
-    };
-  }
-  const variance = values.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / (values.length - 1);
-  const standardDeviation = Math.sqrt(variance);
-  const cv = mean > 0 ? standardDeviation / mean : null;
-  const margin = studentTCritical95(values.length) * standardDeviation / Math.sqrt(values.length);
-  return {
-    attemptedSampleCount: samples.length,
-    sampleCount: values.length,
-    minimumSamples,
-    mean: Number(mean.toFixed(3)),
-    p50: Number(quantile(values, 0.5).toFixed(3)),
-    p95: Number(quantile(values, 0.95).toFixed(3)),
-    standardDeviation: Number(standardDeviation.toFixed(3)),
-    coefficientOfVariation: cv == null ? null : Number(cv.toFixed(4)),
-    confidenceInterval95: {
-      low: Number(Math.max(0, mean - margin).toFixed(3)),
-      high: Number((mean + margin).toFixed(3)),
-      method: 'student_t'
-    },
-    reliability: values.length < minimumSamples || cv == null
-      ? 'unknown'
-      : cv <= 0.05 ? 'high' : cv <= 0.12 ? 'medium' : 'low'
-  };
-}
-
-async function persistProbeSnapshot(data, { signal, checkpoint } = {}) {
-  const payload = { _id: new mongoose.Types.ObjectId(), ...data };
-  checkpoint?.();
-  let saved = null;
-  try {
-    const created = await ModelContextProbeSnapshot.create(
-      [payload],
-      signal ? { signal } : undefined
-    );
-    saved = Array.isArray(created) ? created[0] : created;
-    checkpoint?.();
-    return saved;
-  } catch (error) {
-    try {
-      await ModelContextProbeSnapshot.updateOne(
-        { _id: payload._id },
-        {
-          $setOnInsert: {
-            modelName: payload.modelName,
-            hostUrl: payload.hostUrl,
-            hostId: payload.hostId,
-            artifactDigest: payload.artifactDigest,
-            runtimeFingerprint: payload.runtimeFingerprint,
-            status: 'failed'
-          },
-          $set: {
-            authorityStatus: 'rejected',
-            authorityError: 'probe snapshot persistence raced profiler claim loss'
-          }
-        },
-        { upsert: true }
-      );
-      error.authorityCompensated = true;
-    } catch (compensationError) {
-      error.compensationError = compensationError;
-      error.retainAdmission = true;
-      error.code = 'CONTEXT_PROBE_SNAPSHOT_RECONCILIATION_PENDING';
-    }
-    throw error;
-  }
-}
 
 function getConfig() {
   return {
     timeoutMs: parseInt(process.env.CONTEXT_PROBE_TIMEOUT_MS, 10) || DEFAULT_TIMEOUT_MS,
     minCtx: parseInt(process.env.CONTEXT_PROBE_MIN_CTX, 10) || DEFAULT_MIN_CTX,
     maxCtx: parseInt(process.env.CONTEXT_PROBE_MAX_CTX, 10) || DEFAULT_MAX_CTX
-  };
-}
-
-function buildCoarseCandidates(minCtx, upperBound) {
-  const floorCtx = Math.max(1, Math.floor(minCtx));
-  const ceilingCtx = Math.max(floorCtx, Math.floor(upperBound));
-  const candidates = [floorCtx];
-
-  let nextCtx = floorCtx;
-  while (nextCtx < ceilingCtx) {
-    nextCtx *= 2;
-    if (nextCtx >= ceilingCtx) break;
-    candidates.push(nextCtx);
-  }
-
-  if (candidates[candidates.length - 1] !== ceilingCtx) {
-    candidates.push(ceilingCtx);
-  }
-
-  return candidates;
-}
-
-function buildRefinementStages(lowerBound, upperBound, minIncrement) {
-  const baseIncrement = Math.max(1, Math.floor(minIncrement));
-  const range = Math.max(0, Math.floor(upperBound) - Math.floor(lowerBound));
-  if (range <= baseIncrement) return [];
-
-  let step = 2 ** Math.floor(Math.log2(Math.max(baseIncrement, Math.floor(range / 4))));
-  const stages = [];
-
-  while (step >= baseIncrement) {
-    stages.push(step);
-    step = Math.floor(step / 2);
-  }
-
-  if (stages[stages.length - 1] !== baseIncrement) {
-    stages.push(baseIncrement);
-  }
-
-  return stages;
-}
-
-function assessProbeStep(step, baselineSpeed) {
-  const requestPassed = step.passed;
-  // The display percentage rounds small spills to 100; admission uses bytes.
-  // Placed as the host declares: wholly in VRAM, or none of it on a CPU host.
-  // A partial placement never verifies, on either kind of host.
-  const gpuResidencyVerified = require('./probePlacement').placementVerified(step.gpuSizeTotal, step.gpuSizeVram, step.residency);
-  const contextHonored = Number(step.ollamaContextLength) >= Number(step.numCtx);
-  const promptCoverageVerified = Number(step.promptCoveragePct) >= Number(step.minimumPromptCoveragePct || 70);
-  // A request that never completed measured no throughput; 0 tok/s there is
-  // an absent reading, not a 100% drop.
-  const degradationPct = baselineSpeed > 0 && step.requestSucceeded !== false
-    ? Number(((1 - step.tokensPerSec / baselineSpeed) * 100).toFixed(1))
-    : null;
-
-  // A larger KV cache is expected to change throughput. Record that change as
-  // benchmark evidence, but do not turn an arbitrary speed delta into a
-  // smaller runtime context contract. Context verification fails only when the
-  // request/decode fails or the model spills off GPU.
-  if (requestPassed && gpuResidencyVerified && contextHonored && promptCoverageVerified) {
-    step.passed = true;
-    step.failureKind = null;
-    step.degradationPct = degradationPct;
-    step.reason = `${step.tokensPerSec} tok/s (${degradationPct}% drop) GPU=${step.gpuPercent ?? '?'}%`;
-    return step;
-  }
-
-  step.passed = false;
-  // A request that ended without a verdict from Ollama (client deadline or
-  // lost connection) while the model stayed fully GPU-resident at the
-  // requested context did not meet a capacity limit: the window fits and the
-  // probe ran out of time. That is inconclusive transport evidence and must not
-  // be read as a smaller usable window. Without that residency proof the
-  // failure remains capacity evidence.
-  step.failureKind = step.transportFailure === true && gpuResidencyVerified && contextHonored
-    ? 'transport'
-    : 'capacity';
-  step.degradationPct = degradationPct;
-  step.reason = !requestPassed
-    ? (step.reason || 'Request failed')
-    : step.gpuPercent == null
-      ? 'GPU residency unknown; no-spill is unverified'
-      : !gpuResidencyVerified
-      ? `${step.residency === 'cpu' ? 'CPU host uses VRAM' : 'GPU spill'}: ${step.gpuPercent}% on GPU (${step.tokensPerSec} tok/s)`
-      : !contextHonored
-        ? `Ollama allocated ${step.ollamaContextLength || 'unknown'} ctx, below requested ${step.numCtx}`
-        : !promptCoverageVerified
-          ? `Prompt eval covered ${step.promptCoveragePct ?? 'unknown'}%, below required ${step.minimumPromptCoveragePct || 70}%`
-          : (step.reason || 'Request failed');
-  return step;
-}
-
-async function refinePassingBracket(lowerPassingCtx, upperFailingCtx, minIncrement, testCandidate) {
-  let bestPassingCtx = lowerPassingCtx;
-  let failLimit = upperFailingCtx;
-  const refinementStages = buildRefinementStages(lowerPassingCtx, upperFailingCtx, minIncrement);
-
-  for (const increment of refinementStages) {
-    let candidate = bestPassingCtx + increment;
-    while (candidate < failLimit) {
-      const step = await testCandidate(candidate);
-      if (step.passed) {
-        bestPassingCtx = step.numCtx;
-        candidate = bestPassingCtx + increment;
-        continue;
-      }
-
-      failLimit = candidate;
-      break;
-    }
-  }
-
-  return bestPassingCtx;
-}
-
-async function resolveHostUrl(modelName, explicitHostUrl) {
-  if (explicitHostUrl) {
-    return admitOllamaTargetResolved(explicitHostUrl, { configuredHosts: getConfiguredHosts() });
-  }
-
-  const entry = await ModelProfile.findOne({
-    $or: [
-      { name: normalizeModelName(modelName) }
-    ]
-  }).lean();
-
-  const hostUrl = normalizeHostUrl(entry?.sourceHost || entry?.host || null);
-  if (!hostUrl) {
-    throw new Error(`No host URL found for model: ${modelName}`);
-  }
-
-  return admitOllamaTargetResolved(hostUrl, { configuredHosts: getConfiguredHosts() });
-}
-
-async function fetchModelMetadata(hostUrl, modelName, options = {}) {
-  try {
-    const data = await showModel(hostUrl, modelName, { signal: options.signal });
-    const info = data.model_info || {};
-    let theoreticalMax = null;
-    for (const key of Object.keys(info)) {
-      if (key.includes('context_length') && typeof info[key] === 'number') {
-        theoreticalMax = info[key];
-        break;
-      }
-    }
-    return {
-      theoreticalMax,
-      modelInfo: info,
-      family: data.details?.family || null,
-      families: Array.isArray(data.details?.families) ? data.details.families : [],
-      architecture: info['general.architecture'] || data.details?.family || null
-    };
-  } catch (err) {
-    if (options.signal?.aborted) throw (options.signal.reason instanceof Error ? options.signal.reason : err);
-    logger.warn('Failed to fetch model theoretical max', { hostUrl, modelName, error: err.message });
-    return { theoreticalMax: null, modelInfo: {}, family: null, families: [], architecture: null };
-  }
-}
-
-async function fetchModelTheoreticalMax(hostUrl, modelName) {
-  const metadata = await fetchModelMetadata(hostUrl, modelName);
-  return metadata.theoreticalMax;
-}
-
-const sendProbeRequest = (hostUrl, modelName, prompt, numCtx, timeoutMs, signal = null) =>
-  require('./contextProbeRequest').sendProbeRequest(hostUrl, modelName, prompt, numCtx, timeoutMs, signal, PROBE_NUM_PREDICT);
-
-async function snapshotVram(hostUrl, signal = null) {
-  try {
-    const result = await ollamaVramService.getHostVram(hostUrl, { signal });
-    if (result.ok) {
-      return { usedMiB: result.memoryUsedMiBTotal, totalMiB: result.memoryTotalMiBTotal };
-    }
-  } catch (error) {
-    if (signal?.aborted) throw (signal.reason instanceof Error ? signal.reason : error);
-    // best effort
-  }
-  return { usedMiB: null, totalMiB: null };
-}
-
-async function runStep(hostUrl, modelName, numCtx, timeoutMs, promptFillPct = 80, modelContext = {}, options = {}) {
-  const fillRatio = Math.min(100, Math.max(5, Number(promptFillPct) || 80)) / 100;
-  const { prompt, estimatedTokens } = generateFillPrompt(Math.floor(numCtx * fillRatio));
-  const probeResult = await sendProbeRequest(hostUrl, modelName, prompt, numCtx, timeoutMs, options.signal);
-  options.assertClaimActive?.();
-  const shortCompletion = probeResult.ok && probeResult.completionTokens < MIN_PROBE_COMPLETION_TOKENS;
-  const plausibility = probeResult.ok
-    ? validateThroughput(probeResult.tokensPerSec)
-    : { plausible: true, detail: null };
-  const invalidThroughput = probeResult.ok && !plausibility.plausible;
-  const zeroThroughputBoundary = probeResult.ok && probeResult.tokensPerSec === 0;
-  const [vram, offload] = await Promise.all([
-    snapshotVram(hostUrl, options.signal),
-    snapshotGpuOffload(hostUrl, modelName, options.signal)
-  ]);
-
-  return {
-    numCtx,
-    requestSucceeded: probeResult.ok,
-    transportFailure: probeResult.ok ? false : probeResult.transportFailure === true,
-    failureCode: probeResult.ok ? null : (probeResult.errorCode || null),
-    tokensPerSec: probeResult.tokensPerSec,
-    promptTokens: probeResult.promptTokens,
-    estimatedPromptTokens: estimatedTokens,
-    promptCoveragePct: probeResult.promptTokens > 0 && estimatedTokens > 0
-      ? Number(((probeResult.promptTokens / estimatedTokens) * 100).toFixed(1))
-      : null,
-    minimumPromptCoveragePct: options.minimumPromptCoveragePct || 70,
-    completionTokens: probeResult.completionTokens,
-    vramUsedMiB: vram.usedMiB,
-    vramTotalMiB: vram.totalMiB,
-    gpuPercent: offload.gpuPercent,
-    gpuSizeTotal: offload.sizeTotal,
-    gpuSizeVram: offload.sizeVram,
-    ollamaContextLength: offload.contextLength, residency: offload.residency || 'gpu',
-    coResidents: offload.coResidents,
-    latencyMs: probeResult.latencyMs,
-    promptFillPct: Math.round(fillRatio * 100),
-    requestedCompletionTokens: PROBE_NUM_PREDICT,
-    minCompletionTokens: MIN_PROBE_COMPLETION_TOKENS,
-    passed: probeResult.ok && !shortCompletion && !invalidThroughput && !zeroThroughputBoundary,
-    reason: invalidThroughput
-      ? `Invalid throughput: ${plausibility.detail}`
-      : zeroThroughputBoundary
-      ? 'Context ceiling: 0 tok/s'
-      : shortCompletion
-      ? `Short completion: ${probeResult.completionTokens}/${PROBE_NUM_PREDICT} tokens generated; probe decode sample is invalid`
-      : (probeResult.ok ? null : probeResult.error)
   };
 }
 
@@ -556,10 +182,12 @@ async function probeModelContext(modelName, options = {}) {
     }
 
     // Test an already-loaded candidate before the ascending sweep changes
-    // num_ctx. Large resident models can otherwise spend most of Ollama's
+    // num_ctx. Large resident GPU models can otherwise spend most of Ollama's
     // fixed request window reloading back to their original context. Cache the
     // raw result here and assess it against the baseline when the sweep reaches
     // that candidate, preserving the existing evidence and pass semantics.
+    // CPU probes start small so a slow resident prefill cannot consume the
+    // first deadline before any lower context has been verified.
     let residentCandidate = null;
     try {
       const running = await listRunning(hostUrl, { timeoutMs: 8000, signal: options.signal });
@@ -569,6 +197,7 @@ async function probeModelContext(modelName, options = {}) {
       const residentNumCtx = Number(resident?.context_length);
       if (
         Number.isFinite(residentNumCtx)
+        && residencyOf(hostUrl) !== 'cpu'
         && residentNumCtx > coarseCandidates[0]
         && coarseCandidates.includes(residentNumCtx)
       ) {
@@ -583,6 +212,11 @@ async function probeModelContext(modelName, options = {}) {
           modelContext,
           probeOptions
         );
+        if (residentCandidate.requestStopProven) {
+          steps.push(residentCandidate);
+          throw Object.assign(new Error('Resident context request timed out before a baseline was verified; probe stopped'),
+            { requestStopProven: true });
+        }
         probeNotify({
           type: 'resident',
           numCtx: residentNumCtx,
@@ -593,6 +227,7 @@ async function probeModelContext(modelName, options = {}) {
       }
     } catch (err) {
       if (options.signal?.aborted) throw (options.signal.reason instanceof Error ? options.signal.reason : err);
+      if (err.requestStopProven) throw err;
       logger.debug(`Could not pretest resident context for ${normalizedModel}: ${err.message}`);
     }
 
@@ -617,11 +252,14 @@ async function probeModelContext(modelName, options = {}) {
 
     let bestPassingStep = baseline;
 
+    // After a request timed out and was proven stopped, no further request is sent.
+    let deadlineStopped = false;
     async function testCandidate(numCtx) {
       checkpoint();
       if (stepCache.has(numCtx)) {
         return stepCache.get(numCtx);
       }
+      if (deadlineStopped) return { numCtx, passed: false, untested: true };
 
       // The fill percentage is fixed for a whole probe run so throughput
       // remains comparable across verified windows.
@@ -633,6 +271,7 @@ async function probeModelContext(modelName, options = {}) {
 
       stepCache.set(numCtx, evaluatedStep);
       steps.push(evaluatedStep);
+      deadlineStopped ||= evaluatedStep.requestStopProven === true;
       probeNotify({
         type: 'step',
         numCtx,
@@ -843,16 +482,6 @@ async function probeModelContext(modelName, options = {}) {
       snapshotId: snapshot?._id ? snapshot._id.toString() : null
     });
   }
-}
-
-async function getProbeStatus(modelName, options = {}) {
-  const filter = {
-    modelName: normalizeModelName(modelName)
-  };
-  if (options.hostUrl) {
-    filter.hostUrl = normalizeHostUrl(options.hostUrl);
-  }
-  return ModelContextProbeSnapshot.findOne(filter).sort({ testedAt: -1 }).lean();
 }
 
 module.exports = {

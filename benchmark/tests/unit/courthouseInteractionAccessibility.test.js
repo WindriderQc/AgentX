@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const { readSource } = require('../../../shared/testing/readSource');
 
 const benchmarkRoot = path.resolve(__dirname, '..', '..');
-const read = (...segments) => fs.readFileSync(path.join(benchmarkRoot, ...segments), 'utf8');
+const read = (...segments) => readSource(path.join(benchmarkRoot, ...segments));
 
 function relativeLuminance(hex) {
     const channels = hex.replace('#', '').match(/../g).map(value => parseInt(value, 16) / 255);

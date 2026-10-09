@@ -51,6 +51,18 @@ describe('Core selected-note ownership with real Mongo', () => {
     expect(result.notes.map(note => note.id)).toEqual([match.id, preference.id]);
   });
 
+  test('a broad children request recalls separate son and daughter facts without widening family access', async () => {
+    const son = await owner.remember({ text: 'Mon fils fictif aime dessiner.' });
+    const daughter = await owner.remember({ text: 'Ma fille fictive aime les étoiles.' });
+    const preference = await owner.remember({ text: 'Réponses brèves.', kind: 'preference' });
+    const result = await operatePersonal({ action: 'context', query: 'Parle-moi de mes enfants', limit: 4 });
+    expect(result.notes.slice(0, 2).map(note => note.id)).toEqual(expect.arrayContaining([son.id, daughter.id]));
+    expect(result.notes[2].id).toBe(preference.id);
+    expect((await owner.search('mon fils')).notes.map(note => note.id)).toEqual([son.id]);
+    expect((await owner.search('ma fille')).notes.map(note => note.id)).toEqual([daughter.id]);
+    expect((await family.search('mes enfants')).notes).toEqual([]);
+  });
+
   test('vague questions cannot select personal notes through discourse words or an empty recall topic', async () => {
     const old = await owner.remember({ text: 'Synthetic question about a historical camping plan' });
     await owner.remember({ text: 'Synthetic astronomy suggestion' });
@@ -123,5 +135,13 @@ describe('Core selected-note ownership with real Mongo', () => {
       { text: 'x', expiresAt: new Date(0).toISOString() }, { text: 'x', id: { $ne: null } }]) {
       await expect(owner.remember(input)).rejects.toMatchObject({ statusCode: 400 });
     }
+  });
+
+  test('an agent-written note keeps where it came from, never the owner-dictated label (#207)', async () => {
+    const fromMail = await operatePersonal({ operation: 'remember', text: 'Synthetic fact read in a mail review', provenance: 'mail-review', source: 'explicit-ui' });
+    const fromChat = await operatePersonal({ operation: 'remember', text: 'Synthetic fact said in conversation', provenance: 'invented-origin' });
+    const listed = (await operatePersonal({ operation: 'list' })).notes;
+    expect(listed.find(note => note.id === fromMail.id).source).toBe('nestor-mail-review');
+    expect(listed.find(note => note.id === fromChat.id).source).toBe('nestor-conversation');
   });
 });

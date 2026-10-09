@@ -41,6 +41,8 @@ const BenchmarkResultSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.Mixed,
         default: null
     },
+    judge_execution_contract: { type: mongoose.Schema.Types.Mixed, default: null },
+    judge_qualification_contract: { type: mongoose.Schema.Types.Mixed, default: null },
     judge_target: {
         type: mongoose.Schema.Types.Mixed,
         default: null
@@ -199,6 +201,8 @@ const BenchmarkResultSchema = new mongoose.Schema({
         thinking_chars: { type: Number, default: null },
         visible_response_chars: { type: Number, default: null },
         thinking_only_response: { type: Boolean, default: false, index: true },
+        thinking_budget_exhausted: { type: Boolean, default: false },
+        // Historical flag: token-cap exhaustion alone no longer sets it.
         thinking_runaway: { type: Boolean, default: false, index: true },
         thinking_final_answer_policy: { type: String, default: null },
         input_to_judge_truncated: { type: Boolean, default: false },
@@ -289,6 +293,8 @@ const BenchmarkResultSchema = new mongoose.Schema({
     judge_scores: [{
         judge_model: String,
         judge_host: String,
+        execution_contract: { type: mongoose.Schema.Types.Mixed, default: null },
+        qualification_contract: { type: mongoose.Schema.Types.Mixed, default: null },
         quality_score: Number,
         explanation: String,
         scoring_time_ms: Number,

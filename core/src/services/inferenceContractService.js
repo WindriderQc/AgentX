@@ -84,7 +84,7 @@ async function readBenchmarkEvidence(model, host, deps = {}) {
         deps.hostProfilesCollection
           ? deps.hostProfilesCollection.findOne(
             { hostUrl: normalizedHost },
-            { projection: { hostId: 1, hostUrl: 1, displayName: 1, gpu: 1, ollama: 1, cpu: 1 } }
+            { projection: { hostId: 1, hostUrl: 1, displayName: 1, gpu: 1, gpus: 1, ollama: 1, cpu: 1 } }
           )
           : null,
         deps.modelProfilesCollection
@@ -369,11 +369,14 @@ async function resolveCapabilities(model, host, deps = {}) {
   };
 }
 
-function requestText({ prompt, system, messages }) {
+function requestText({ prompt, system, messages, tools }) {
+  const content = value => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value);
+  const parts = [system];
   if (Array.isArray(messages)) {
-    return messages.map((message) => String(message?.content || '')).join('\n');
-  }
-  return [system, prompt].filter((value) => typeof value === 'string').join('\n');
+    parts.push(...messages.map(message => [content(message?.content), content(message?.tool_calls)].filter(Boolean).join('\n')));
+  } else parts.push(prompt);
+  if (Array.isArray(tools) && tools.length) parts.push(JSON.stringify(tools));
+  return parts.filter(value => typeof value === 'string').join('\n');
 }
 
 function estimateInputTokens(input = {}) {
@@ -404,7 +407,8 @@ async function resolveContextBudget(input, deps = {}) {
     } else if (canUseDefaultResolver) {
       resolved = await getContextInfo(input.model, input.host, {
         workload: input.workload || 'interactive',
-        artifactIdentity: deps.artifactIdentity || null
+        artifactIdentity: deps.artifactIdentity || null,
+        signal: deps.signal || null
       });
     }
   } catch {
@@ -414,9 +418,15 @@ async function resolveContextBudget(input, deps = {}) {
   const resolvedTokens = positiveInteger(resolved?.num_ctx);
   const windowTokens = requestedNumCtx || resolvedTokens;
   const explicitOutput = positiveInteger(input.requestedMaxOutputTokens);
+  const configuredDefault = process.env.AGENTX_DEFAULT_MAX_OUTPUT_TOKENS;
+  const hasConfiguredDefault = String(configuredDefault || '').trim() !== '';
+  const parsedDefault = Number(configuredDefault);
+  const validConfiguredDefault = hasConfiguredDefault
+    && Number.isSafeInteger(parsedDefault) && parsedDefault > 0;
+  const defaultMaxTokens = validConfiguredDefault ? parsedDefault : DEFAULT_MAX_OUTPUT_TOKENS;
   const defaultOutput = windowTokens
-    ? Math.min(DEFAULT_MAX_OUTPUT_TOKENS, Math.max(256, Math.floor(windowTokens / 4)))
-    : DEFAULT_MAX_OUTPUT_TOKENS;
+    ? Math.min(defaultMaxTokens, Math.max(256, Math.floor(windowTokens / 4)))
+    : defaultMaxTokens;
   const reservedOutputTokens = windowTokens
     ? Math.min(windowTokens, explicitOutput || defaultOutput)
     : (explicitOutput || defaultOutput);
@@ -440,6 +450,9 @@ async function resolveContextBudget(input, deps = {}) {
     : null;
   const warnings = [];
 
+  if (hasConfiguredDefault && !validConfiguredDefault) {
+    warnings.push('AGENTX_DEFAULT_MAX_OUTPUT_TOKENS must be a positive safe integer; using the product default');
+  }
   if (!windowTokens) {
     warnings.push('runtime context is unresolved; no context window was inferred');
   }
@@ -462,7 +475,9 @@ async function resolveContextBudget(input, deps = {}) {
     validatedInputTokens,
     output: {
       reservedTokens: reservedOutputTokens,
-      source: explicitOutput ? 'caller' : 'default_reserve'
+      source: explicitOutput ? 'caller' : 'default_reserve',
+      defaultMaxTokens,
+      defaultSource: validConfiguredDefault ? 'environment' : 'product_default'
     },
     input: {
       estimatedTokens: estimate.tokens,

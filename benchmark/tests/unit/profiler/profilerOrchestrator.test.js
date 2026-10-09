@@ -330,6 +330,18 @@ describe('profile', () => {
       HOST_URL,
       expect.objectContaining({ numCtx: 262144, maxNumCtx: 262144 })
     );
+    expect(thinkingProfileService.profileThinkingBehavior.mock.calls[0][2].timeoutMs).toBe(60000);
+
+    // A CPU host answers a thinking probe at a few tokens per second: it gets the CPU deadline.
+    const hostConfig = require('../../../src/helpers/ollamaHostConfig');
+    hostConfig.setRegisteredHosts([{ id: 'cpu-host', url: HOST_URL, residency: 'cpu' }]);
+    try {
+      thinkingProfileService.profileThinkingBehavior.mockClear();
+      await orchestrator.profile(MODEL, HOST_ID, HOST_URL, 'quick', PROFILE_OPTIONS);
+      expect(thinkingProfileService.profileThinkingBehavior.mock.calls[0][2].timeoutMs).toBe(1200000);
+    } finally {
+      hostConfig.setRegisteredHosts([]);
+    }
   });
 });
 

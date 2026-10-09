@@ -10,6 +10,9 @@ const {
   uniqueEffectiveModels
 } = require('../common');
 
+const { setTimeout: delay } = require('node:timers/promises');
+const { ollamaMessages } = require('./messages');
+
 const HERMES_HARNESS_VERSION = '1.2.0';
 const HERMES_CONSUMER_CONTRACT = 'hermes-runtime-v1';
 
@@ -145,8 +148,34 @@ class OllamaToOpenAiSse extends Transform {
   }
 }
 
+// A coding worker loses its whole conversation when one request is refused, so
+// the patient route waits for the host instead: behind another workload, and
+// behind a benchmark that reserved the host. Both are refused before anything
+// is dispatched, which makes trying again safe.
+const PATIENT_WAIT_MS = 8 * 60 * 1000;
+const PATIENT_RETRY_MS = 3000;
+const HOST_BUSY_CODES = new Set(['RUNTIME_INFERENCE_ADMISSION_DENIED', 'BENCHMARK_CLAIM_ACTIVE']);
+
+async function whenAdmitted(run, { waitMs = 0, retryMs = PATIENT_RETRY_MS, signal } = {}) {
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    try {
+      return await run();
+    } catch (error) {
+      if (!HOST_BUSY_CODES.has(error?.code) || signal?.aborted || Date.now() + retryMs > deadline) throw error;
+      await delay(retryMs, undefined, { signal });
+    }
+  }
+}
+
 function registerHermesProtocol({ express, runtimeServices, logger }) {
   const router = express.Router();
+
+  router.post('/patient/v1/chat/completions', (req, _res, next) => {
+    req.admissionWaitMs = PATIENT_WAIT_MS;
+    req.url = '/v1/chat/completions';
+    next();
+  });
 
   router.get('/v1/models', async (_req, res) => {
     try {
@@ -178,10 +207,10 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
       }
       const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
       const model = requireApprovedModel(snapshot, body.model);
-      const result = await runtimeServices.inference.execute({
+      const result = await whenAdmitted(() => runtimeServices.inference.execute({
         mode: 'chat',
         model,
-        messages: body.messages,
+        messages: ollamaMessages(body.messages),
         stream: body.stream === true,
         tools: body.tools,
         tool_choice: body.tool_choice,
@@ -201,8 +230,9 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
         timeoutMs: Number(process.env.HERMES_OPENAI_TIMEOUT_MS || 0) || undefined
       }, {
         signal: abort.signal,
-        consumerContract: HERMES_CONSUMER_CONTRACT
-      });
+        consumerContract: HERMES_CONSUMER_CONTRACT,
+        observePromptPrefix: true
+      }), { waitMs: req.admissionWaitMs, signal: abort.signal });
       applyRoutingHeaders(res, result.metadata);
       const resolvedModel = String(result.metadata?.model || '').trim();
       res.set('X-AgentX-Fallback-Used', resolvedModel ? String(resolvedModel !== model) : 'unknown');
@@ -270,5 +300,6 @@ module.exports = {
   openAiCompletion,
   openAiToolCalls,
   registerHermesProtocol,
+  whenAdmitted,
   requireApprovedModel
 };

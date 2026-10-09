@@ -178,3 +178,31 @@ describe('buildContextProposal', () => {
     expect(proposal).toMatchObject({ status: 'not_applicable', offer: false });
   });
 });
+
+describe('buildContextProposal on a CPU-resident host', () => {
+  const hostConfig = require('../../../src/helpers/ollamaHostConfig');
+  const CPU_URL = 'http://192.0.2.70:11435';
+  beforeEach(() => hostConfig.setRegisteredHosts([{ id: 'cpu-host', url: CPU_URL, residency: 'cpu' }]));
+  afterEach(() => hostConfig.setRegisteredHosts([]));
+
+  it('reads samples saved without residency as CPU samples, so a lone CPU pin is not unknown_limit', () => {
+    const cpuStep = ctx => step(ctx, { coResidents: [], modelVram: 0, modelSize: 15 * GiB });
+    const proposal = buildContextProposal({
+      modelName: 'gemma4:12b', hostId: 'cpu-host', hostUrl: CPU_URL,
+      evidence: evidence([cpuStep(2048), cpuStep(16384), cpuStep(32768)]),
+      hostPreference: { hostUrl: CPU_URL, pinnedModels: [{ model: 'gemma4:12b', contextSize: 32768, keepAlive: -1 }] }
+    });
+    expect(proposal.status).not.toBe('unknown_limit');
+    expect(proposal.proof?.numCtx ?? proposal.currentContext).toBe(32768);
+  });
+
+  it('still refuses a CPU sample that used VRAM', () => {
+    const leaked = ctx => step(ctx, { coResidents: [], modelVram: 2 * GiB, modelSize: 15 * GiB });
+    const proposal = buildContextProposal({
+      modelName: 'gemma4:12b', hostId: 'cpu-host', hostUrl: CPU_URL,
+      evidence: evidence([leaked(2048), leaked(32768)]),
+      hostPreference: { hostUrl: CPU_URL, pinnedModels: [{ model: 'gemma4:12b', contextSize: 32768, keepAlive: -1 }] }
+    });
+    expect(proposal.status).toBe('unknown_limit');
+  });
+});

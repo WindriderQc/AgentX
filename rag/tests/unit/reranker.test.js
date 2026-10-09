@@ -21,18 +21,17 @@ describe('reranker', () => {
   });
 
   describe('buildScoringPrompt', () => {
-    it('includes query and truncated text', () => {
+    it('includes query and complete text', () => {
       const prompt = buildScoringPrompt('test query', 'some text content');
       expect(prompt).toContain('test query');
       expect(prompt).toContain('some text content');
       expect(prompt).toContain('0 to 10');
     });
 
-    it('truncates text to 500 characters', () => {
-      const longText = 'a'.repeat(1000);
+    it('preserves relevant content beyond the old 500-character cut', () => {
+      const longText = 'a'.repeat(1000) + ' Essential tail evidence.';
       const prompt = buildScoringPrompt('q', longText);
-      // The prompt should contain at most 500 chars of the text
-      expect(prompt).not.toContain('a'.repeat(501));
+      expect(prompt).toContain(longText);
     });
   });
 
@@ -68,6 +67,13 @@ describe('reranker', () => {
   });
 
   describe('rerankResults', () => {
+    it('can rank a passage using evidence beyond character 500', async () => {
+      fetchWithTimeout.mockImplementation(async (_url, options) => ({ ok: true,
+        json: async () => ({ response: JSON.parse(options.body).prompt.includes('tail evidence') ? '10' : '0' }) }));
+      const text = 'Background. '.repeat(100) + 'tail evidence';
+      const results = await rerankResults('evidence', [{ text: 'Unrelated', score: 0.9 }, { text, score: 0.2 }], 2);
+      expect(results[0]).toMatchObject({ text, llmScore: 1, vectorScore: 0.2 });
+    });
     const mockResults = [
       { text: 'irrelevant text here', score: 0.9, metadata: { documentId: 'doc1', chunkIndex: 0 } },
       { text: 'highly relevant text', score: 0.5, metadata: { documentId: 'doc2', chunkIndex: 0 } }

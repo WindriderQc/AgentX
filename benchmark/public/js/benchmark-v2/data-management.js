@@ -33,14 +33,14 @@ function setStatus(el, msg, type) {
 // ── API calls ─────────────────────────────────────────────────────────────────
 
 async function fetchStats() {
-    const res = await fetch('/api/benchmark/retention/stats');
+    const res = await fetch('/benchmark/api/benchmark/retention/stats');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     return json.data ?? json;
 }
 
 async function postAction(path, body) {
-    const res = await fetch(`/api/benchmark/retention/${path}`, {
+    const res = await fetch(`/benchmark/api/benchmark/retention/${path}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),

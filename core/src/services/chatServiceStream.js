@@ -7,7 +7,7 @@
  */
 
 const { getOrCreateProfile } = require('../helpers/userHelpers');
-const { buildOllamaPayload, buildOllamaStats } = require('../helpers/ollamaResponseHandler');
+const { buildOllamaPayload, buildOllamaStats, ollamaPhaseTimings } = require('../helpers/ollamaResponseHandler');
 const { sanitizeOptions, resolveTarget } = require('../helpers/ollamaUtils');
 const { recordInference } = require('./modelRouter');
 const { prepareInferenceRuntime } = require('./inferenceRuntimePolicy');
@@ -22,6 +22,7 @@ const {
     hasQualifiedThinkingCapability
 } = require('./inferenceContractService');
 const { persistConversation } = require('./chat/conversationPersistence');
+const { resolveContextMessages } = require('./chat/conversationHistory');
 const { prepareChatOrchestration } = require('./chat/chatOrchestrationPrelude');
 const { finalizeRouteDecision } = require('./routing/routeDecision');
 const { publicDegradedMarker, fallbackReasonCode } = require('./routing/taskFallbackLadder');
@@ -61,6 +62,7 @@ const handleChatRequestStream = async ({
     persona,
     promptVersion,
     conversationId,
+    clientTurnId = null,
     persist = true,
     callerDetail = null,
     allowRag = true,
@@ -71,6 +73,7 @@ const handleChatRequestStream = async ({
     ragFilters,
     target,
     ragStore,
+    conversationFeatures = {},
     autoRoute = false,
     taskType = null,
     enableWebSearch = false,
@@ -110,12 +113,13 @@ const handleChatRequestStream = async ({
         const promptResolutionOptions = { preferSystem: authoritativeSystem === true };
         if (exactPromptVersion != null) promptResolutionOptions.promptVersion = exactPromptVersion;
         const activePrompt = await getActivePrompt(system, personaName, promptResolutionOptions);
-        const userProfile = loadUserProfile === false ? {} : await getOrCreateProfile(userId);
+        const userProfile = loadUserProfile === false || conversationFeatures.profileContext === false ? {} : await getOrCreateProfile(userId);
 
         // Shared orchestration prelude — routing + RAG + web-search in one call.
         // onWebSearchStart / onWebSearchDone are threaded through so the
         // SSE-only side effects remain in this file.
         const ragRequested = allowRag !== false
+            && ragEnabled !== false && useRag !== false
             && (ragEnabled === true || useRag === true || process.env.RAG_ENABLED === 'true');
         const {
             routingInfo,
@@ -124,6 +128,7 @@ const handleChatRequestStream = async ({
             ragUsed,
             ragSources,
             ragContext,
+            ragStatus,
             webSearchResults,
             webSearchContext
         } = await prepareChatOrchestration({
@@ -161,9 +166,15 @@ const handleChatRequestStream = async ({
 
         const effectiveSystemPrompt = buildSystemPrompt(activePrompt.systemPrompt, userProfile, ragContext);
 
+        // Explicit caller turns always win; an id-based continuation without
+        // them rehydrates the stored transcript so earlier turns reach the model.
+        const contextMessages = await resolveContextMessages({
+            messages, conversationId, userId,
+            historyContext: conversationFeatures.historyContext
+        });
         const formattedMessages = [
             { role: 'system', content: effectiveSystemPrompt },
-            ...messages.map(m => ({ role: m.role, content: m.content })),
+            ...contextMessages,
             { role: 'user', content: message.trim() }
         ];
 
@@ -171,7 +182,7 @@ const handleChatRequestStream = async ({
         if (webSearchContext && formattedMessages.length > 1) {
             formattedMessages.splice(formattedMessages.length - 1, 0, {
                 role: 'user',
-                content: `Use these web search results as additional context for your analysis:\n\n${webSearchContext}`
+                content: require('./webSearch').untrustedSearchMessage(webSearchContext)
             });
         }
 
@@ -346,6 +357,8 @@ const handleChatRequestStream = async ({
             num_ctx_source: streamNumCtxSource,
             tokensIn: stats?.usage?.promptTokens || 0,
             tokensOut: stats?.usage?.completionTokens || 0,
+            ...ollamaPhaseTimings(completion),
+            promptCache: streamAttempt.promptCache,
             durationMs: successDurationMs,
             status: 'success'
         });
@@ -357,10 +370,10 @@ const handleChatRequestStream = async ({
         let assistantMessageId = null;
         if (persist !== false) {
             const saved = await persistConversation({
-                userId, conversationId, model: effectiveModel,
+                userId, conversationId, clientTurnId, model: effectiveModel,
                 effectiveSystemPrompt, message, assistantContent: fullContent,
                 activePrompt,
-                metadata: { thinking: thinkingContent || null, options, webSearchResults, routingInfo: routingPayload },
+                metadata: { thinking: thinkingContent || null, options, webSearchResults, routingInfo: routingPayload, ragStatus },
                 stats, ragUsed, useRag, ragSources
             });
             conversation = saved.conversation;
@@ -384,7 +397,7 @@ const handleChatRequestStream = async ({
                 numCtx: streamSanitized.num_ctx || null,
                 inferenceContract,
                 stats: stats || null,
-                ragUsed, ragSources,
+                ragUsed, ragSources, ragStatus,
                 webSearchResults: webSearchResults.length > 0 ? webSearchResults : undefined,
                 thinking: thinkingContent || null,
                 warning: hasQualifiedThinkingCapability(inferenceContract)
@@ -432,6 +445,7 @@ const handleChatRequestStream = async ({
                 },
                 num_ctx: streamTelemetry.streamSanitized?.num_ctx || null,
                 num_ctx_source: streamTelemetry.streamNumCtxSource,
+                promptCache: streamAttempt?.promptCache || err.inferencePromptCache || null,
                 durationMs: Date.now() - inferenceStartedAt,
                 status: terminalStatus,
                 error: err.message
@@ -451,4 +465,4 @@ const handleChatRequestStream = async ({
 };
 
 
-module.exports = { handleChatRequestStream };
+module.exports = { handleChatRequestStream: require('./chat/openclawChat').withOpenClawChat(handleChatRequestStream) };

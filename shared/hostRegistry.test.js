@@ -53,6 +53,23 @@ test('VRAM map keeps two instances of one machine apart by port', () => {
   assert.equal(lookupHostVramMb(map, 'http://192.0.2.10:11434'), 0);
 });
 
+test('a CPU host publishes the thread count pinned per model', () => {
+  withEnv({ OLLAMA_HOST: 'http://192.0.2.10:11434' }, () => {
+    const config = createOllamaHostConfig();
+    config.setRegisteredHosts([
+      { id: 'cpu-a', url: 'http://192.0.2.10:11435', residency: 'cpu', pinThreads: { 'Example:Tag': 4, bare: 6, bad: 0, worse: '8' } },
+      { id: 'primary', url: 'http://192.0.2.10:11434', residency: 'gpu', pinThreads: { 'example:tag': 12 } }
+    ]);
+    assert.equal(config.getHostPinThreads('http://192.0.2.10:11435', 'example:tag'), 4);
+    assert.equal(config.getHostPinThreads('http://192.0.2.10:11435/', 'bare:latest'), 6);
+    assert.equal(config.getHostPinThreads('http://192.0.2.10:11435', 'bad'), 0);
+    assert.equal(config.getHostPinThreads('http://192.0.2.10:11435', 'worse'), 0);
+    assert.equal(config.getHostPinThreads('http://192.0.2.10:11435', 'other:tag'), 0);
+    assert.equal(config.getHostPinThreads('http://192.0.2.10:11434', 'example:tag'), 0, 'a GPU host leaves threads to Ollama');
+    assert.equal(config.getHostPinThreads('http://192.0.2.77:11435', 'example:tag'), 0);
+  });
+});
+
 test('registered hosts extend the env bootstrap without a slot limit', () => {
   withEnv({ OLLAMA_HOST: 'http://192.0.2.99:11434', OLLAMA_HOST_2: 'http://192.0.2.199:11434' }, () => {
     const config = createOllamaHostConfig();

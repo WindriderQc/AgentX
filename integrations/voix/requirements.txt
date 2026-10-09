@@ -1,0 +1,19 @@
+# Speech service on the voice host (Windows or Linux, NVIDIA GPU recommended).
+faster-whisper
+fastapi
+httpx
+certifi
+kokoro-onnx
+numpy
+nvidia-cublas-cu12
+nvidia-cuda-runtime-cu12
+# kokoro-onnx requires the CPU distribution metadata too. Keep the CUDA wheel
+# last so its shared onnxruntime module is the one installed in the venv.
+onnxruntime==1.24.4
+onnxruntime-gpu[cuda,cudnn]==1.24.4
+python-multipart
+python-dotenv
+requests
+soundfile
+uvicorn[standard]
+-r requirements-test.txt

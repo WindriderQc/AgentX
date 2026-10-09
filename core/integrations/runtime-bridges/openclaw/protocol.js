@@ -46,7 +46,9 @@ function modelInfo(task) {
   };
 }
 
-function registerOpenClawProtocol({ express, runtimeServices, pipelineAttribution = null, resolveConversationTarget, logger }) {
+function registerOpenClawProtocol({
+  express, runtimeServices, pipelineAttribution = null, resolveConversationTarget, noThinkModels = new Set(), logger
+}) {
   const router = express.Router();
 
   router.get('/api/version', (_req, res) => res.json({ version: 'agentx-runtime-bridge-v1' }));
@@ -152,6 +154,15 @@ function registerOpenClawProtocol({ express, runtimeServices, pipelineAttributio
       const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
       const conversationTarget = !pipeline && await resolveConversationTarget?.(String(body.model || '').trim());
       if (!conversationTarget) enforceEffectiveModel(snapshot, effectiveBody);
+      // One model serves several uses; each declares its own reasoning in the
+      // headers of its gateway provider (`x-agentx-think: off` for a spoken lane).
+      const declared = String(req.get('x-agentx-think') || '').trim().toLowerCase();
+      if (declared && !['on', 'off'].includes(declared)) {
+        const error = new Error('x-agentx-think must be on or off');
+        error.statusCode = 400;
+        error.code = 'OPENCLAW_THINK_HEADER_INVALID';
+        throw error;
+      }
       const options = { ...(effectiveBody.options || {}) };
       delete options.num_ctx;
       delete options.attribution;
@@ -161,11 +172,15 @@ function registerOpenClawProtocol({ express, runtimeServices, pipelineAttributio
         stream: effectiveBody.stream === true,
         options,
         keepAlive: effectiveBody.keep_alive,
-        think: effectiveBody.think,
+        // What the lane declared wins, then the operator's no-reasoning list,
+        // over the level the agent asked for. Pipeline turns keep their level.
+        think: pipeline ? effectiveBody.think : declared ? declared === 'on'
+          : noThinkModels.has(String(body.model || '').trim()) ? false : effectiveBody.think,
         format: effectiveBody.format,
         tools: effectiveBody.tools,
         ...(conversationTarget && { exclusiveHost: conversationTarget.exclusiveHost !== false }),
         ...(conversationTarget?.numCtx && { options: { ...options, num_ctx: conversationTarget.numCtx } }),
+        ...(pipeline?.numCtx && { options: { ...options, num_ctx: pipeline.numCtx } }),
         callerDetail: pipeline ? 'openclaw-pipeline-runtime-bridge' : 'openclaw-runtime-bridge',
         timeoutMs: Number(process.env.OPENCLAW_AGENTX_TIMEOUT_MS || 0) || undefined,
         ...(mode === 'chat' && { messages: effectiveBody.messages }),
@@ -181,6 +196,9 @@ function registerOpenClawProtocol({ express, runtimeServices, pipelineAttributio
       const primaryRun = () => runtimeServices.inference.execute(request, {
         signal: abort.signal,
         consumerContract: pipeline?.consumerContract || OPENCLAW_CONSUMER_CONTRACT,
+        // Core logs where this prompt diverges from the last one (cache reuse);
+        // the structure stays in telemetry and never reaches Ollama.
+        ...(mode === 'chat' && { observePromptPrefix: true }),
         ...(conversationTarget && { hostUrl: conversationTarget.hostUrl }),
         ...(benchmarkClaims && { benchmarkClaims }),
         // A conversational provider (e.g. Telegram) outranks evaluation work,
@@ -189,6 +207,7 @@ function registerOpenClawProtocol({ express, runtimeServices, pipelineAttributio
         ...(!pipeline && wantsBusyReply(req, mode) && { retry: { interactive: true,
           interactiveWaitMs: fallbackTask ? PRIMARY_WAIT_WITH_FALLBACK_MS : 45000 } }),
         ...(pipeline && { attribution: pipeline.attribution,
+          ...(pipeline.codingCapacity && { codingCapacity: pipeline.codingCapacity, hostUrl: pipeline.hostUrl }),
           retry: { enabled: true, maxAttempts: 6, maxElapsedMs: Math.min(120000, request.timeoutMs) },
           beforeAttempt: () => pipelineAttribution.revalidate(leaseId),
           onProgress: progress => pipelineAttribution.progress(leaseId, progress) })

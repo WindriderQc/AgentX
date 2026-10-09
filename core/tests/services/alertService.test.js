@@ -126,6 +126,25 @@ describe('AlertService', () => {
       }));
     });
 
+    test('leaves attempts Core refused before dispatch out of the error rate', async () => {
+      const defaults = require('../../config/default-alert-rules.json');
+      const rateRule = defaults.find(rule => rule.id === 'inference-error-rate');
+      const row = fields => ({ host: 'http://test-ollama:11434', model: 'test-model:latest', caller: 'embedding',
+        timestamp: new Date(), ...fields });
+      await InferenceLog.create([
+        ...Array.from({ length: 19 }, () => row({ status: 'success' })),
+        row({ status: 'error', routeDecision: { outcome: { reasonCode: 'connection_failure' } } }),
+        // One embedding request refused during a deploy: one attempt per host.
+        ...Array.from({ length: 6 }, () => row({ status: 'error', routeDecision: { outcome: { reasonCode: 'admission_refused' } } }))
+      ]);
+      alertService.loadRules([rateRule]);
+
+      const alerts = await alertService.evaluateEvent({ component: 'platform-inference', metric: 'inference_completed', source: 'test' });
+
+      // 1 of 20 dispatched calls failed (5%): at the threshold, not above it. Counting the refusals would give 7 of 26.
+      expect(alerts).toEqual([]);
+    });
+
     test('ships re-notification for both per-event and sustained inference failures', () => {
       const defaults = require('../../config/default-alert-rules.json');
       for (const id of ['inference-error', 'inference-error-rate']) {

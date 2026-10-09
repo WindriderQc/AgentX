@@ -10,6 +10,19 @@ const HostProfileSchema = new mongoose.Schema({
     computeCapability: String,
     driver: String
   },
+  // Complete collector inventory, separate from the legacy aggregate gpu.
+  // Ollama settings.visibleDevices describes the endpoint's selection.
+  gpus: { type: [new mongoose.Schema({
+    index: Number,
+    uuid: String,
+    busId: String,
+    model: String,
+    vramTotalMiB: Number,
+    computeCapability: String,
+    driver: String
+  }, { _id: false })], default: undefined },
+  gpusObservedAt: Date,
+  gpusSource: String,
   ollama: {
     version: String,
     backend: {
@@ -17,7 +30,19 @@ const HostProfileSchema = new mongoose.Schema({
       enum: ['CPU', 'CUDA', 'Metal', 'ROCm', 'Vulkan', 'OpenCL', 'Unknown'],
       default: 'Unknown'
     },
-    cudaVersion: String
+    cudaVersion: String,
+    // Observed server settings that change what a profile measures (#368),
+    // part of the runtime fingerprint once present. Kept until a successful
+    // observation differs: a missed observation never clears them.
+    settings: {
+      kvCacheType: String,
+      flashAttention: String,
+      visibleDevices: String,
+      schedSpread: String,
+      gpuCount: Number
+    },
+    settingsObservedAt: Date,
+    settingsSource: String
   },
   baseline: {
     authorityState: {
@@ -75,6 +100,10 @@ const HostProfileSchema = new mongoose.Schema({
     serverTerminalObserved: Boolean,
     serverTerminalAt: Date,
     operatorTerminalReceipt: mongoose.Schema.Types.Mixed,
+    // Operator cancel of an in-flight request: its runtime stop proof or why it is missing.
+    cancelAbort: mongoose.Schema.Types.Mixed,
+    // Last request aborted at its expired deadline: its runtime stop proof or why it is missing.
+    deadlineAbort: mongoose.Schema.Types.Mixed,
     timeoutAt: Date,
     quietSince: Date,
     lastObservedAt: Date,

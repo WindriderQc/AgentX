@@ -4,6 +4,7 @@ const { getModelRegistryByName } = require('../../clients/coreApiClient');
 const { getModelDigest } = require('../benchmark/modelDigestService');
 const { getVersion, listModels, listRunning } = require('../../clients/ollamaClient');
 const hostProfileService = require('./hostProfileService');
+const { syncHostRuntimeSettings } = require('./hostRuntimeSettingsService');
 const { normalizeModelTag } = require('../../../../shared/modelNames');
 const {
   buildRuntimeArtifactReceipt,
@@ -47,6 +48,10 @@ async function resolveArtifactIdentity(modelName, hostId, hostUrl, options = {})
   if (!model || !hostId || !normalizedHost) {
     throw new Error('Exact model name, hostId, and hostUrl are required for profiling');
   }
+  // The observed Ollama settings join the fingerprint (#368); refreshed at
+  // most every few minutes, never fatal to an identity read.
+  await (options.syncRuntimeSettings || syncHostRuntimeSettings)({ hostId, hostUrl: normalizedHost })
+    .catch(() => null);
 
   const [digest, hostProfile, registry] = await Promise.all([
     getModelDigest(normalizedHost, model, { refresh: options.refresh !== false, signal: options.signal }),

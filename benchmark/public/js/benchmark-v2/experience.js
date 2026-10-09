@@ -72,11 +72,11 @@ import { fetchActiveProfilingState, findProfilingForHost } from './profiling-loc
     var revision = ++refreshRevision;
     setReadiness('loading', 'Checking evaluation…', 'Confirming models, host profile, judge and history');
     var responses = await Promise.allSettled([
-      fetchJson('/api/ollama-hosts'),
-      fetchJson('/api/profiler/hosts'),
-      fetchJson('/api/benchmark/batches?status=completed&limit=1'),
-      fetchJson('/api/benchmark/batches/active'),
-      fetchJson('/api/benchmark/judge/readiness'),
+      fetchJson('/benchmark/api/ollama-hosts'),
+      fetchJson('/benchmark/api/profiler/hosts'),
+      fetchJson('/benchmark/api/benchmark/batches?status=completed&limit=1'),
+      fetchJson('/benchmark/api/benchmark/batches/active'),
+      fetchJson('/benchmark/api/benchmark/judge/readiness'),
       fetchActiveProfilingState()
     ]);
     if (revision !== refreshRevision) return;
@@ -107,7 +107,7 @@ import { fetchActiveProfilingState, findProfilingForHost } from './profiling-loc
 
     if (responses[0].status !== 'fulfilled') {
       setReadiness('unknown', 'Model runtime status is unknown', 'The live check did not finish. Refresh or open connection setup.');
-      setPrimary('Open connection setup', 'Verify the runtime without guessing its state', '/setup');
+      setPrimary('Open connection setup', 'Verify the runtime without guessing its state', '/benchmark/setup');
       return;
     }
 
@@ -124,35 +124,35 @@ import { fetchActiveProfilingState, findProfilingForHost } from './profiling-loc
     }
     if (onlineModels === 0) {
       setReadiness('error', 'No model runtime available', 'Connect an Ollama host before comparing models.');
-      setPrimary('Set up evaluation', 'Connect a model host and verify it', '/setup');
+      setPrimary('Set up evaluation', 'Connect a model host and verify it', '/benchmark/setup');
       return;
     }
     if (!readyProfiles.length) {
       setReadiness('warn', 'Host baseline needed', onlineModels + ' model' + (onlineModels === 1 ? '' : 's') + ' online · performance baseline required');
-      setPrimary('Prepare the host', 'Run one baseline so comparisons are trustworthy', '/profiler');
+      setPrimary('Prepare the host', 'Run one baseline so comparisons are trustworthy', '/benchmark/profiler');
       return;
     }
 
     var profiling = responses[5].status === 'fulfilled' ? responses[5].value : null;
     if (!profiling || !profiling.available) {
       setReadiness('unknown', 'Preparation status is unknown', 'Refresh to check whether a host is still profiling models.');
-      setPrimary('Check model preparation', 'Inspect profile progress before starting', '/profiler');
+      setPrimary('Check model preparation', 'Inspect profile progress before starting', '/benchmark/profiler');
       return;
     }
     if (readyProfiles.every(function (host) { return findProfilingForHost(host, profiling).length > 0; })) {
       setReadiness('warn', 'Models are being prepared', 'Wait for profiling to finish before starting a comparison on this host.');
-      setPrimary('View preparation progress', 'Follow the active model profiles', '/profiler');
+      setPrimary('View preparation progress', 'Follow the active model profiles', '/benchmark/profiler');
       return;
     }
 
     if (responses[4].status !== 'fulfilled') {
       setReadiness('unknown', 'Judge status is unknown', 'Models and host profile are ready, but judge readiness could not be verified.');
-      setPrimary('Check judge setup', 'Verify an installed judge model before launching', '/setup?focus=judge&return=%2F');
+      setPrimary('Check judge setup', 'Verify an installed judge model before launching', '/benchmark/setup?focus=judge&return=%2Fbenchmark%2F');
       return;
     }
     if (judgeReadiness.ready !== true) {
       setReadiness('error', 'Judge is not ready', judgeReadiness.summary || 'Choose a reachable, already-installed judge model.');
-      setPrimary('Configure the judge', 'Choose and verify an installed model explicitly', '/setup?focus=judge&return=%2F');
+      setPrimary('Configure the judge', 'Choose and verify an installed model explicitly', '/benchmark/setup?focus=judge&return=%2Fbenchmark%2F');
       return;
     }
 

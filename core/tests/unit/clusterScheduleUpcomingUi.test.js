@@ -43,6 +43,7 @@ function loadClusterScheduleContext() {
         elements.set(id, {
           innerHTML: '',
           style: {},
+          setAttribute: jest.fn(),
           classList: { add: jest.fn(), remove: jest.fn(), toggle: jest.fn(), contains: jest.fn() }
         });
       }
@@ -74,6 +75,8 @@ function loadClusterScheduleContext() {
     clearInterval: jest.fn()
   });
   vm.runInContext(read('public/js/cluster-schedule.js'), context);
+  vm.runInContext(read('public/js/cluster-schedule-attention.js'), context);
+  vm.runInContext(read('public/js/cluster-schedule-actual.js'), context);
   vm.runInContext(read('public/js/cluster-schedule-services.js'), context);
   return { context, elements };
 }
@@ -165,6 +168,66 @@ describe('Cluster Schedule upcoming-task projection', () => {
     });
   });
 
+  test('never lists finished occurrences, even when a past day is selected', () => {
+    const result = upcoming.buildUpcomingTasks([{
+      id: 'nightly',
+      name: 'Nightly benchmark',
+      scheduleType: 'cron',
+      taskType: 'benchmark',
+      slots: [slot(Date.parse('2026-08-27T02:00:00.000Z'), 7_200_000)]
+    }], {
+      now: Date.parse('2026-08-28T12:00:00.000Z'),
+      todaySelected: false
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  test('marks an occurrence inside its window as running rather than due', () => {
+    const [task] = upcoming.buildUpcomingTasks([{
+      id: 'nightly',
+      name: 'Nightly benchmark',
+      scheduleType: 'cron',
+      taskType: 'benchmark',
+      slots: [slot(Date.parse('2026-08-28T02:00:00.000Z'), 7_200_000)]
+    }], {
+      now: Date.parse('2026-08-28T02:30:00.000Z'),
+      todaySelected: true
+    });
+
+    expect(task).toMatchObject({ running: true, msFromNow: 0 });
+  });
+
+  test('reports overdue only from recorded run evidence older than a past start', () => {
+    const now = Date.parse('2026-08-28T12:00:00.000Z');
+    const daily = (overrides) => ({
+      id: 'backup',
+      name: 'Mongo backup',
+      slots: [slot(Date.parse('2026-08-28T03:00:00.000Z'))],
+      ...overrides
+    });
+
+    expect(upcoming.findOverdueEntries([daily({ lastRun: null })], { now })).toEqual([]);
+    expect(upcoming.findOverdueEntries([daily({ lastRun: '2026-08-28T03:00:05.000Z' })], { now })).toEqual([]);
+    expect(upcoming.findOverdueEntries([daily({ lastRun: '2026-08-27T03:00:05.000Z' })], { now })).toEqual([
+      {
+        id: 'backup',
+        name: 'Mongo backup',
+        expectedAt: '2026-08-28T03:00:00.000Z',
+        lastRun: '2026-08-27T03:00:05.000Z'
+      }
+    ]);
+    expect(upcoming.findOverdueEntries([daily({ lastRun: '2026-08-27T03:00:05.000Z' })], {
+      now: Date.parse('2026-08-28T03:05:00.000Z')
+    })).toEqual([]);
+    expect(upcoming.findOverdueEntries([{
+      id: 'watch',
+      name: 'Ops watch',
+      lastRun: '2026-08-20T00:00:00.000Z',
+      slots: [{ start: '2026-08-28T00:00:00.000Z', end: '2026-08-29T00:00:00.000Z', continuous: true }]
+    }], { now })).toEqual([]);
+  });
+
   test('derives cadence from chronological starts even if slots arrive unsorted', () => {
     const base = Date.parse('2026-08-28T10:00:00.000Z');
     const entry = frequentEntry({ count: 0 });
@@ -185,8 +248,8 @@ describe('Cluster Schedule evidence presentation', () => {
     });
 
     expect(observed).toBe(false);
-    expect(container.innerHTML).toContain('No utilization evidence observed yet');
-    expect(container.innerHTML).toContain('not treated as zero-utilization measurements');
+    expect(container.innerHTML).toContain('No GPU usage measured');
+    expect(container.innerHTML).toContain('unknown, not zero');
   });
 
   test('distinguishes observed zero utilization from hours without evidence', () => {
@@ -203,7 +266,37 @@ describe('Cluster Schedule evidence presentation', () => {
 
     expect(observed).toBe(true);
     expect(container.innerHTML).toContain('04:00 — 0% utilization');
-    expect(container.innerHTML).toContain('00:00 — utilization evidence not observed');
+    expect(container.innerHTML).toContain('00:00 — not measured');
+  });
+
+  test('reads measured hours from the host identity keys returned by the API', () => {
+    const { context } = loadClusterScheduleContext();
+    const container = { innerHTML: '' };
+    const values = new Array(24).fill(null);
+    values[4] = 37;
+    const render = vm.runInContext('renderUtilHeatmap', context);
+    expect(render(container, {
+      hosts: [{ key: 'primary', displayName: 'Host A' }],
+      days: ['2026-08-28'],
+      grid: { primary: [values] }
+    })).toBe(true);
+    expect(container.innerHTML).toContain('Host A');
+    expect(container.innerHTML).toContain('04:00 — 37% utilization');
+  });
+
+  test('keeps countdown element ids attached to their tasks after section grouping', () => {
+    const { context } = loadClusterScheduleContext();
+    context.testTasks = [
+      { name: 'Tick', source: 'agentx-system', taskType: 'monitoring',
+        scheduleType: 'interval', intervalMs: 15 * 60_000, msFromNow: 60_000 },
+      { name: 'Daily review', source: 'agentx-system', taskType: 'maintenance',
+        scheduleType: 'cron', dailyCount: 1, msFromNow: 3_600_000 }
+    ];
+    vm.runInContext('nextTasksData = testTasks', context);
+    const container = { innerHTML: '' };
+    vm.runInContext('renderNextTasks', context)(container);
+    expect(container.innerHTML).toMatch(/Daily review[\s\S]*countdown-1/);
+    expect(container.innerHTML).toMatch(/Tick[\s\S]*countdown-0/);
   });
 
   test('uses an evidence-empty state for actual-vs-planned and retains measured zero', () => {
@@ -211,7 +304,7 @@ describe('Cluster Schedule evidence presentation', () => {
     const render = vm.runInContext('renderActualVsPlanned', context);
     const emptyContainer = { innerHTML: '' };
     render(emptyContainer, { planned: [], actualByHost: { 'gpu-a': [] } });
-    expect(emptyContainer.innerHTML).toContain('No planned-run or utilization evidence observed');
+    expect(emptyContainer.innerHTML).toContain('No GPU jobs assigned to a host and no measured usage');
 
     const measuredContainer = { innerHTML: '' };
     render(measuredContainer, {
@@ -224,6 +317,60 @@ describe('Cluster Schedule evidence presentation', () => {
     expect(measuredContainer.innerHTML).toContain('04:00 actual 0% (1 call)');
   });
 
+  test('prints measured percentages in heatmap cells and fills them like the legend', () => {
+    const { context } = loadClusterScheduleContext();
+    const values = new Array(24).fill(null);
+    values[4] = 37;
+    const container = { innerHTML: '' };
+    vm.runInContext('renderUtilHeatmap', context)(container, {
+      hosts: ['gpu-a'], days: ['2026-08-28'], grid: { 'gpu-a': [values] }
+    });
+    const fill = vm.runInContext('utilCellBackground(37)', context);
+
+    expect(container.innerHTML).toMatch(new RegExp(`background:${fill.replace(/[()]/g, '\\$&')}"[^>]*>37<`));
+    expect(container.innerHTML).toContain('aria-label="2026-08-28 04:00 — 37% utilization"');
+  });
+
+  test('turns proxy pages and network failures into readable errors', async () => {
+    const { context } = loadClusterScheduleContext();
+    const fetchJSON = vm.runInContext('fetchJSON', context);
+
+    context.fetch = jest.fn(async () => ({ status: 502, json: async () => { throw new SyntaxError('Unexpected token <'); } }));
+    vm.runInContext('fetch = this.fetch', context);
+    await expect(fetchJSON('/x')).rejects.toThrow('Server returned HTTP 502');
+
+    context.fetch = jest.fn(async () => { throw new TypeError('Failed to fetch'); });
+    vm.runInContext('fetch = this.fetch', context);
+    await expect(fetchJSON('/x')).rejects.toThrow('Core is unreachable');
+
+    context.fetch = jest.fn(async () => ({ status: 500, json: async () => ({ status: 'error', error: 'Mongo down' }) }));
+    vm.runInContext('fetch = this.fetch', context);
+    await expect(fetchJSON('/x')).rejects.toThrow('Mongo down');
+    expect(vm.runInContext('failedRequests', context)).toBe(3);
+  });
+
+  test('formats every clock time in one English 24-hour format', () => {
+    const { context } = loadClusterScheduleContext();
+    context.testDate = new Date(2026, 7, 28, 22, 5, 9);
+    expect(vm.runInContext('formatTime(testDate)', context)).toBe('22:05');
+    expect(vm.runInContext('formatClockTime(testDate)', context)).toBe('22:05');
+    expect(vm.runInContext('formatEvidenceTime(testDate)', context)).toBe('Aug 28, 2026, 22:05:09');
+  });
+
+  test('draws a planned slot that ends at midnight to the end of the track', () => {
+    const { context } = loadClusterScheduleContext();
+    const container = { innerHTML: '' };
+    const start = new Date(2026, 7, 28, 23, 0);
+    const end = new Date(2026, 7, 29, 0, 0);
+    vm.runInContext('renderActualVsPlanned', context)(container, {
+      planned: [{ hostName: 'gpu-a', tasks: [{ name: 'Late job', model: 'm', taskType: 'benchmark',
+        slots: [{ start: start.toISOString(), end: end.toISOString() }] }] }],
+      actualByHost: {}
+    });
+
+    expect(container.innerHTML).toContain('left:95.83%;width:4.17%');
+  });
+
   test('shows only declared assignments as host evidence in the legend', () => {
     const { context, elements } = loadClusterScheduleContext();
     const render = vm.runInContext('renderLegend', context);
@@ -234,10 +381,75 @@ describe('Cluster Schedule evidence presentation', () => {
     ]);
     const html = elements.get('legend').innerHTML;
 
-    expect(html).toContain('Declared host assignments');
+    expect(html).toContain('Jobs per host');
     expect(html).toContain('gpu-a');
-    expect(html).toContain('Not declared for 2 scheduled jobs; this is not a hardware count.');
-    expect(html).not.toContain('>Host not declared<');
+    expect(html).toContain('2 scheduled jobs have no assigned host.');
+    expect(html).not.toContain('>No host assigned<');
+  });
+
+  test('lists each overflowing job set once with its window count, and no projection-only overdue', () => {
+    const { context, elements } = loadClusterScheduleContext();
+    context.testConflicts = Array.from({ length: 6 }, (_, index) => ({
+      hostId: 'gpu-b',
+      capacityVramMb: 24576,
+      requiredVramMb: 26624,
+      tasks: [
+        { name: 'Voice model', resident: true },
+        { name: index % 2 ? 'Doc re-embed' : 'RAG ingestion', resident: false },
+        { name: index % 2 ? 'RAG ingestion' : 'Doc re-embed', resident: false }
+      ]
+    }));
+    context.testHosts = [
+      { id: 'gpu-a', name: 'GPU A', status: 'online' },
+      { id: 'gpu-b', name: 'GPU B', status: 'unreachable' }
+    ];
+    vm.runInContext(`
+      conflictsData = testConflicts;
+      liveHostsData = testHosts;
+      nextTasksData = [{ name: 'Running job', msFromNow: 0, running: true }];
+      overdueData = [];
+    `, context);
+    vm.runInContext('renderAttention', context)();
+    const html = elements.get('attentionList').innerHTML;
+
+    expect(html.match(/VRAM overflow/g)).toHaveLength(1);
+    expect(html).toContain('Doc re-embed + RAG ingestion with resident Voice model need 26.0 GB of 24.0 GB on GPU B (6 windows)');
+    expect(html).toContain('GPU B unreachable');
+    expect(html).not.toContain('GPU A unreachable');
+    expect(html).not.toContain('overdue');
+  });
+
+  test('shows overdue entries with the expected time and last recorded run', () => {
+    const { context, elements } = loadClusterScheduleContext();
+    vm.runInContext(`
+      conflictsData = [];
+      liveHostsData = [];
+      overdueData = [{ name: 'Mongo backup', expectedAt: '2026-08-28T03:00:00.000Z', lastRun: '2026-08-27T03:00:05.000Z' }];
+    `, context);
+    vm.runInContext('renderAttention', context)();
+    const html = elements.get('attentionList').innerHTML;
+
+    expect(html).toContain('Mongo backup overdue');
+    expect(html).toContain('last recorded run');
+  });
+
+  test('follows midnight while watching today and leaves another selected day alone', () => {
+    const { context } = loadClusterScheduleContext();
+    let today = '2026-08-28';
+    context.window.ClusterScheduleDate.localDateKey = () => today;
+    context.window.ClusterScheduleDate.isToday = key => key === today;
+    vm.runInContext('loadTimeline = () => { timelineReloads += 1; }; loadConflicts = () => {}; updateDateLabel = () => {}; var timelineReloads = 0;', context);
+    const refresh = vm.runInContext('refreshTimelineClock', context);
+
+    today = '2026-08-29';
+    refresh();
+    expect(vm.runInContext('currentDate', context)).toBe('2026-08-29');
+    expect(vm.runInContext('timelineReloads', context)).toBe(1);
+
+    vm.runInContext("currentDate = '2026-08-20'", context);
+    refresh();
+    expect(vm.runInContext('currentDate', context)).toBe('2026-08-20');
+    expect(vm.runInContext('timelineReloads', context)).toBe(1);
   });
 
   test('loads the upcoming projection before the dashboard controller', () => {

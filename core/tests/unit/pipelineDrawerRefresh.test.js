@@ -2,10 +2,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { readPipelineSource, loadPipelineParts } = require('../helpers/pipelineScripts');
 function load() {
   const document = { addEventListener() {}, activeElement: null };
   const context = { document, window: { location: { search: '' } }, URLSearchParams };
   const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/pipeline.js'), 'utf8');
+  loadPipelineParts(context);
   vm.runInNewContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.drawerTest = { preserveDrawerDraft, restoreDrawerDraft, latestTeamUpdate };\n})();'), context);
   return { ...context.drawerTest, document };
 }

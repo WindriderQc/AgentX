@@ -26,6 +26,8 @@ const { setTimeout: sleep } = require('node:timers/promises');
 const logger = require('../../../config/logger');
 const { HOSTS, refreshHosts, DEFAULT_TASK_MODELS } = require('../modelRouterDefaults');
 const { modelsMatch } = require('../../helpers/modelNameNormalization');
+const { modelIdentityKey } = require('../../../../shared/modelNames');
+const { countContention } = require('./inferenceContentionCounters');
 
 const CONFIG_ENV = 'AGENTX_TASK_FALLBACKS_JSON';
 const WAIT_ENV = 'AGENTX_TASK_FALLBACK_WAIT_MS';
@@ -224,7 +226,7 @@ function defaultDeps() {
 }
 
 /** Read-only view of what ordinary admission would refuse on this host. */
-function coordinationBlock(runtime, hostUrl, nowMs, { busyCounts = false } = {}) {
+function coordinationBlock(runtime, hostUrl, nowMs, { busyCounts = false, model = null } = {}) {
   if (!runtime) return null;
   const host = canonical(hostUrl);
   if (runtime.maintenance) {
@@ -234,14 +236,18 @@ function coordinationBlock(runtime, hostUrl, nowMs, { busyCounts = false } = {})
   }
   const inferences = (runtime.inferences || []).filter(item => canonical(item.host) === host);
   if (inferences.some(item => item.state === 'UNKNOWN')) return UNAVAILABLE_REASONS.QUARANTINED;
-  const workloads = (runtime.workloads || []).filter(item => (item.hosts || []).some(h => canonical(h) === host));
+  // A workload's shared host (a separate judge host) stays open to other callers.
+  const workloads = (runtime.workloads || []).filter(item => (item.hosts || []).some(h => canonical(h) === host)
+    && !(item.sharedHosts || []).some(h => canonical(h) === host));
   if (workloads.some(item => item.recoveryRequired === true || item.recoveryState === 'UNKNOWN')) {
     return UNAVAILABLE_REASONS.QUARANTINED;
   }
   if (inferences.some(item => item.mode === 'exclusive'
     && new Date(item.expiresAt).getTime() > nowMs)) return UNAVAILABLE_REASONS.ADMISSION_BLOCKED;
   if (workloads.some(item => !item.yieldedAt)) return UNAVAILABLE_REASONS.ADMISSION_BLOCKED;
-  if (busyCounts && inferences.some(item => item.state === 'ACTIVE'
+  // Several models may run on a host at once: only the same model is busy.
+  const sameModel = item => !model || !item.modelKey || item.modelKey === modelIdentityKey(model);
+  if (busyCounts && inferences.some(item => item.state === 'ACTIVE' && sameModel(item)
     && new Date(item.expiresAt).getTime() > nowMs)) return UNAVAILABLE_REASONS.PRIMARY_BUSY;
   return null;
 }
@@ -270,7 +276,7 @@ async function probeTarget({ model, host, url = null }, deps, { requireModel = f
   } catch (err) {
     logger.debug('[TaskFallbackLadder] coordination read skipped', { error: err.message });
   }
-  const blocked = coordinationBlock(runtime, hostUrl, deps.now(), { busyCounts });
+  const blocked = coordinationBlock(runtime, hostUrl, deps.now(), { busyCounts, model });
   if (blocked) return { available: false, reason: blocked };
   let spilled = [];
   try {
@@ -310,6 +316,7 @@ async function probePrimary(primary, deps) {
 }
 
 function recordServed(taskType, reason, now) {
+  void countContention('ladder_served', { taskType, code: reason });
   stats.served[taskType] = (stats.served[taskType] || 0) + 1;
   stats.byReason[reason] = (stats.byReason[reason] || 0) + 1;
   stats.lastServedAt = new Date(now).toISOString();
@@ -349,6 +356,7 @@ async function selectRung(taskType, base, { fallbackFrom, reason, startIndex = 0
       degraded,
     };
   }
+  void countContention('ladder_exhausted', { taskType, code: reason });
   stats.exhausted += 1;
   stats.lastExhaustedAt = new Date(deps.now()).toISOString();
   logger.warn('[TaskFallbackLadder] primary unavailable and no fallback is available', {
@@ -449,6 +457,15 @@ function publicDegradedMarker(degraded) {
   };
 }
 
+/**
+ * The marker of a rung a caller already chose (OpenClaw's conversation
+ * fallback, #143), kept only when it names the model being served.
+ */
+function servedRungMarker(degraded, model) {
+  const marker = publicDegradedMarker(degraded);
+  return marker && model && marker.fallbackTo.model === model ? marker : null;
+}
+
 /** Stable telemetry reason code (RouteDecision vocabulary). */
 function fallbackReasonCode(degraded) {
   return degraded?.degraded === true && degraded.reason ? `task_fallback_${degraded.reason}` : null;
@@ -490,6 +507,7 @@ module.exports = {
   planExactModelFallback,
   refusedBeforeDispatch,
   publicDegradedMarker,
+  servedRungMarker,
   fallbackReasonCode,
   getTaskFallbackStats,
   _internal: { coordinationBlock, probeTarget, resetForTests },

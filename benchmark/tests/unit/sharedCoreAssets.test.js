@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const expressApp = require('../../server');
+const { SHARED_CORE_ASSETS } = require('../../../shared/sharedCoreAssets');
 const { startTestHttpHarness } = require('../helpers/testHttpServer');
 const originalFetch = global.fetch;
 const originalCoreUrl = process.env.CORE_URL;
@@ -42,7 +43,7 @@ function catalogResponse() {
 
 describe('shared Core assets', () => {
   it.each([
-    '/benchmark', '/benchmark-v2.html', '/leaderboard-v2.html', '/courthouse-v2.html',
+    '/benchmark-v2.html', '/leaderboard-v2.html', '/courthouse-v2.html',
     '/model-profiler.html', '/efficiency-map.html', '/results-explorer.html', '/setup.html', '/harnesses'
   ])('retires %s without a redirect', async (url) => {
     const response = await api.get(url).expect(404);
@@ -64,7 +65,7 @@ describe('shared Core assets', () => {
     try {
       process.env.BENCHMARK_HARNESS_ENABLED = 'false';
       const setup = await api.get('/').expect(302);
-      expect(setup.headers.location).toBe('/setup');
+      expect(setup.headers.location).toBe('/benchmark/setup');
 
       process.env.BENCHMARK_HARNESS_ENABLED = 'true';
       await api.get('/').expect(200);
@@ -86,13 +87,22 @@ describe('shared Core assets', () => {
     expect(response.text).toContain('class PollingController');
   });
 
-  it('packages and serves the typed-confirmation control required by the shared footer', async () => {
+  it('copies exactly the shared Core asset list into the image', () => {
     const dockerfilePath = path.resolve(__dirname, '..', '..', '..', 'docker', 'benchmark.Dockerfile');
-    const dockerfile = fs.readFileSync(dockerfilePath, 'utf8');
-    expect(dockerfile).toContain(
-      'COPY core/public/js/utils/typed-confirmation.js /core/public/js/utils/typed-confirmation.js'
-    );
+    const copied = [...fs.readFileSync(dockerfilePath, 'utf8').matchAll(/^COPY core\/\S+ \/core\/public\/(\S+)$/gm)]
+      .map(match => match[1]);
+    expect(copied.sort()).toEqual([...SHARED_CORE_ASSETS].sort());
+  });
 
+  it.each(['/css/product-shell.css', '/css/shortcuts-modal.css', '/js/product-navigation.js'])(
+    'serves shared navigation resource %s', async (asset) => {
+      const response = await api.get(asset).expect(200);
+      expect(response.headers['content-type']).toMatch(asset.endsWith('.css') ? /css/ : /javascript/);
+      expect(response.text.length).toBeGreaterThan(100);
+    }
+  );
+
+  it('serves the typed-confirmation control required by the shared footer', async () => {
     const response = await api.get('/js/utils/typed-confirmation.js');
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toMatch(/javascript/);
@@ -107,9 +117,11 @@ describe('shared Core assets', () => {
   it('renders product-only navigation in the demo profile', async () => {
     const response = await api.get('/leaderboard').expect(200);
     expect(response.text).toContain('data-agentx-profile="demo"');
-    expect(response.text).toContain('Operate');
-    expect(response.text).toContain('Knowledge');
-    expect(response.text).toContain('Evaluation');
+    expect(response.text).toContain('Atelier');
+    expect(response.text).toContain('Ask your knowledge');
+    expect(response.text).toContain('Compare models');
+    expect(response.text).not.toContain('Personnel');
+    expect(response.text).not.toContain('Famille');
     expect(response.text).not.toContain('Nerve Center');
     expect(response.text).not.toContain('OpenClaw');
   });

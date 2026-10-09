@@ -3,29 +3,29 @@
 
 import { apiFetch } from '../utils/api.js';
 
-const BASE = '/api/benchmark';
+const BASE = '/benchmark/api/benchmark';
 
 // ── Hosts ────────────────────────────────────────────────────────────────────
 
 /** GET /api/ollama-hosts — list all configured Ollama hosts with status */
-export const fetchHosts = () => apiFetch('/api/ollama-hosts');
+export const fetchHosts = () => apiFetch('/benchmark/api/ollama-hosts');
 
 // ── Profiler ─────────────────────────────────────────────────────────────────
 
 /** GET /api/profiler/hosts — host profiles with baseline, status, GPU info */
-export const fetchProfilerHosts = () => apiFetch('/api/profiler/hosts');
+export const fetchProfilerHosts = () => apiFetch('/benchmark/api/profiler/hosts');
 
 /** GET /api/profiler/models — model profiles with per-host readiness maps */
-export const fetchProfilerModels = () => apiFetch('/api/profiler/models');
+export const fetchProfilerModels = () => apiFetch('/benchmark/api/profiler/models');
 
 /** GET /api/profiler/dashboard — profiler summary including benchmarked model names */
-export const fetchProfilerDashboard = () => apiFetch('/api/profiler/dashboard');
+export const fetchProfilerDashboard = () => apiFetch('/benchmark/api/profiler/dashboard');
 
 /** GET /api/profiler/pipeline/profile/active — running single-model profile jobs */
-export const fetchActiveProfiles = () => apiFetch('/api/profiler/pipeline/profile/active');
+export const fetchActiveProfiles = () => apiFetch('/benchmark/api/profiler/pipeline/profile/active');
 
 /** GET /api/profiler/pipeline/profile-host/active — running per-host profile queues */
-export const fetchActiveProfileQueues = () => apiFetch('/api/profiler/pipeline/profile-host/active');
+export const fetchActiveProfileQueues = () => apiFetch('/benchmark/api/profiler/pipeline/profile-host/active');
 
 // ── Batches ──────────────────────────────────────────────────────────────────
 

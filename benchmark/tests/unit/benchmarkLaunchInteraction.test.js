@@ -1,11 +1,8 @@
-const fs = require('fs');
-const path = require('path');
 const vm = require('vm');
+const { batchConfigScript } = require('../helpers/batchConfigSource');
 
 function loadLaunch(profilingCheck) {
-  const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/benchmark-v2/batch-config.js'), 'utf8')
-    .replace(/^import[\s\S]*?from ['"][^'"]+['"];\r?\n/gm, '')
-    .replace(/export function/g, 'function');
+  const source = batchConfigScript();
   const button = { disabled: false, textContent: '', style: {} };
   const error = { textContent: '', style: {} };
   const container = {
@@ -52,4 +49,27 @@ test('a failed initial check restores the action and allows a later retry', asyn
   expect(check).toHaveBeenCalledTimes(2);
   expect(ui.button.disabled).toBe(false);
   expect(ui.error.textContent).toContain('Host is busy');
+});
+
+test('preflight shows each candidate response budget and the judge window (#397)', () => {
+  const source = batchConfigScript();
+  let inserted = null;
+  const error = { parentNode: { insertBefore: node => { inserted = node; } } };
+  const container = { querySelector: selector => (selector === '#bv2-form-error' ? error : null) };
+  const context = vm.createContext({
+    document: { createElement: () => ({ style: {} }), querySelector: () => null, getElementById: () => null },
+    esc: value => String(value),
+  });
+  vm.runInContext(source + '\nglobalThis.showBudgets = _showBudgetSummary;', context);
+  context.showBudgets(container, { checks: { budgets: {
+    candidates: [
+      { model: 'model-a', num_ctx: 65536, num_predict: 32000, num_predict_source: 'documented_default_half_window_v1' },
+      { model: 'model-b', num_ctx: null, num_predict: null, error: 'Context not verified' },
+    ],
+    judge: { model: 'judge-model', num_ctx: 131072 },
+  } } });
+  expect(inserted.id).toBe('bv2-preflight-budgets');
+  expect(inserted.innerHTML).toContain('model-a: answers up to 32,000 tokens (documented default, at most half the window) in a 65,536-token window');
+  expect(inserted.innerHTML).toContain('Judge judge-model reads a 131,072-token window');
+  expect(inserted.innerHTML).not.toContain('model-b');
 });

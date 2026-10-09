@@ -3,7 +3,7 @@ const PipelineTask = require('../../models/PipelineTask');
 const { startTestHttpHarness } = require('../helpers/testHttpServer');
 const routes = require('../../routes/pipeline');
 const preparation = require('../../src/services/pipelineTaskPreparationService');
-const { MAX_PLAN_CHARS, MAX_REVISIONS } = require('../../src/services/pipelineTaskPlans');
+const { MAX_PLAN_CHARS } = require('../../src/services/pipelineTaskPlans');
 
 let harness;
 beforeAll(async () => {
@@ -83,7 +83,7 @@ test('concurrent revisions: exactly one lands per expected revision', async () =
 test('a new revision does not inherit the previous decision, and a stale decision is refused', async () => {
   const id = await create();
   const first = (await submit(id, { expectedRevision: 0, text: 'First plan' }).expect(201)).body.data.plan.current;
-  const approved = await decide(id, { revision: 1, planFingerprint: first.fingerprint, outcome: 'approved', by: 'Yanik' }).expect(200);
+  const approved = await decide(id, { revision: 1, planFingerprint: first.fingerprint, outcome: 'approved', by: 'Operator' }).expect(200);
   expect(approved.body.data).toMatchObject({ status: 'queued', plan: { state: 'approved' } });
   expect((await raw(id)).transitionSeq).toBe(1); // approval changes no status
 
@@ -91,16 +91,16 @@ test('a new revision does not inherit the previous decision, and a stale decisio
   expect(second).toMatchObject({ state: 'undecided', priorDecision: { revision: 1, outcome: 'approved', carriedOver: false } });
   expect(second.current.decision).toBeNull();
 
-  const stale = await decide(id, { revision: 1, planFingerprint: first.fingerprint, outcome: 'approved', by: 'Yanik' }).expect(409);
+  const stale = await decide(id, { revision: 1, planFingerprint: first.fingerprint, outcome: 'approved', by: 'Operator' }).expect(409);
   expect(stale.body.code).toBe('PLAN_REVISION_STALE');
-  const mismatch = await decide(id, { revision: 2, planFingerprint: first.fingerprint, outcome: 'approved', by: 'Yanik' }).expect(409);
+  const mismatch = await decide(id, { revision: 2, planFingerprint: first.fingerprint, outcome: 'approved', by: 'Operator' }).expect(409);
   expect(mismatch.body.code).toBe('PLAN_FINGERPRINT_MISMATCH');
   expect((await raw(id)).planRevisions[1].decision).toBeUndefined();
 
   // Repeating the same decision is idempotent; changing it needs a new revision.
-  await decide(id, { revision: 2, planFingerprint: second.current.fingerprint, outcome: 'approved', by: 'Yanik' }).expect(200);
-  expect((await decide(id, { revision: 2, planFingerprint: second.current.fingerprint, outcome: 'approved', by: 'Yanik' }).expect(200)).body.data.idempotent).toBe(true);
-  expect((await decide(id, { revision: 2, planFingerprint: second.current.fingerprint, outcome: 'changes_requested', by: 'Yanik' }).expect(409)).body.code).toBe('PLAN_ALREADY_DECIDED');
+  await decide(id, { revision: 2, planFingerprint: second.current.fingerprint, outcome: 'approved', by: 'Operator' }).expect(200);
+  expect((await decide(id, { revision: 2, planFingerprint: second.current.fingerprint, outcome: 'approved', by: 'Operator' }).expect(200)).body.data.idempotent).toBe(true);
+  expect((await decide(id, { revision: 2, planFingerprint: second.current.fingerprint, outcome: 'changes_requested', by: 'Operator' }).expect(409)).body.code).toBe('PLAN_ALREADY_DECIDED');
 });
 
 test('a decision racing a new revision never lands on the revision it did not review', async () => {
@@ -108,7 +108,7 @@ test('a decision racing a new revision never lands on the revision it did not re
     const id = await create({ title: `Race ${round}` });
     const first = (await submit(id, { expectedRevision: 0, text: 'Reviewed plan' }).expect(201)).body.data.plan.current;
     const [decision, revision] = await Promise.all([
-      decide(id, { revision: 1, planFingerprint: first.fingerprint, outcome: 'approved', by: 'Yanik' }),
+      decide(id, { revision: 1, planFingerprint: first.fingerprint, outcome: 'approved', by: 'Operator' }),
       submit(id, { expectedRevision: 1, text: 'Replacement plan' }),
     ]);
     const task = await raw(id);
@@ -122,7 +122,7 @@ test('a decision racing a new revision never lands on the revision it did not re
 test('editing the task request makes a decision stale and blocks deciding on the old basis', async () => {
   const id = await create();
   const plan = (await submit(id, { expectedRevision: 0, text: 'Plan against the original spec' }).expect(201)).body.data.plan.current;
-  await decide(id, { revision: 1, planFingerprint: plan.fingerprint, outcome: 'approved', by: 'Yanik' }).expect(200);
+  await decide(id, { revision: 1, planFingerprint: plan.fingerprint, outcome: 'approved', by: 'Operator' }).expect(200);
   const { editToken } = (await harness.request.get(`/api/pipeline/tasks/${id}`).expect(200)).body.data;
   await harness.request.patch(`/api/pipeline/tasks/${id}`).send({ editToken, changes: { spec: 'A different request' } }).expect(200);
   const view = (await detail(id)).plan;
@@ -133,7 +133,7 @@ test('editing the task request makes a decision stale and blocks deciding on the
   const undecided = (await submit(other, { expectedRevision: 0, text: 'Plan' }).expect(201)).body.data.plan.current;
   const token = (await harness.request.get(`/api/pipeline/tasks/${other}`).expect(200)).body.data.editToken;
   await harness.request.patch(`/api/pipeline/tasks/${other}`).send({ editToken: token, changes: { title: 'Renamed request' } }).expect(200);
-  expect((await decide(other, { revision: 1, planFingerprint: undecided.fingerprint, outcome: 'approved', by: 'Yanik' }).expect(409)).body.code).toBe('PLAN_BASIS_CHANGED');
+  expect((await decide(other, { revision: 1, planFingerprint: undecided.fingerprint, outcome: 'approved', by: 'Operator' }).expect(409)).body.code).toBe('PLAN_BASIS_CHANGED');
 });
 
 test('preparation binds each plan revision to its scope; re-preparation starts undecided', async () => {
@@ -143,7 +143,7 @@ test('preparation binds each plan revision to its scope; re-preparation starts u
   let view = (await detail(id)).plan;
   expect(view.current).toMatchObject({ revision: 1, actor: { declared: 'coding-team', channel: 'task_preparation' },
     scope: ['core/public/js/example.js'], scopeFingerprint: prepared.automation.fingerprint });
-  await decide(id, { revision: 1, planFingerprint: view.current.fingerprint, outcome: 'approved', by: 'Yanik' }).expect(200);
+  await decide(id, { revision: 1, planFingerprint: view.current.fingerprint, outcome: 'approved', by: 'Operator' }).expect(200);
   // Approval neither claims nor launches: the task simply stays queued.
   expect(await raw(id)).toMatchObject({ status: 'queued', assignee: null, automationAttemptCount: 0 });
   expect((await raw(id)).automationLease).toBeUndefined();
@@ -157,18 +157,18 @@ test('preparation binds each plan revision to its scope; re-preparation starts u
   // A scope that changes outside a plan revision cannot be decided against the old one.
   await PipelineTask.updateOne({ pipelineId: id }, { $set: { 'automation.fingerprint': 'f'.repeat(64) } });
   expect((await detail(id)).plan.current.changedSince).toEqual(['scope_changed']);
-  expect((await decide(id, { revision: 2, planFingerprint: view.current.fingerprint, outcome: 'approved', by: 'Yanik' }).expect(409)).body.code).toBe('PLAN_SCOPE_CHANGED');
+  expect((await decide(id, { revision: 2, planFingerprint: view.current.fingerprint, outcome: 'approved', by: 'Operator' }).expect(409)).body.code).toBe('PLAN_SCOPE_CHANGED');
 });
 
 test('requesting changes returns a queued task to preparation with a recorded transition', async () => {
   const id = await create();
   const plan = (await submit(id, { expectedRevision: 0, text: 'Plan' }).expect(201)).body.data.plan.current;
-  const response = await decide(id, { revision: 1, planFingerprint: plan.fingerprint, outcome: 'changes_requested', by: 'Yanik', reason: 'Too broad' }).expect(200);
+  const response = await decide(id, { revision: 1, planFingerprint: plan.fingerprint, outcome: 'changes_requested', by: 'Operator', reason: 'Too broad' }).expect(200);
   expect(response.body.data).toMatchObject({ status: 'blocked', plan: { state: 'changes_requested' }, transition: { seq: 2, from: 'queued', to: 'blocked' } });
   const task = await raw(id);
   expect(task.transitions.at(-1)).toMatchObject({ kind: 'operator_set', reason: 'Plan revision 1: changes requested',
-    actor: { declared: 'Yanik', authenticated: null, channel: 'operator_api' } });
-  expect(task.feedback.at(-1)).toMatchObject({ by: 'Yanik', text: 'Plan revision 1 changes requested: Too broad' });
+    actor: { declared: 'Operator', authenticated: null, channel: 'operator_api' } });
+  expect(task.feedback.at(-1)).toMatchObject({ by: 'Operator', text: 'Plan revision 1 changes requested: Too broad' });
 
   // The answered preparation writes revision 2 and re-queues; no decision is inherited.
   const resumed = await prepare(id, { answer: 'Only the panel.', automation: AUTOMATION, plan: 'Narrower plan' });
@@ -176,30 +176,37 @@ test('requesting changes returns a queued task to preparation with a recorded tr
   expect((await detail(id)).plan).toMatchObject({ state: 'undecided', revision: 2, priorDecision: { outcome: 'changes_requested' } });
 });
 
-test('long plans are refused by the API and shortened visibly from preparation', async () => {
+test('long plans are refused for both the API and preparation without modifying the task', async () => {
   const id = await create();
   const refused = await submit(id, { expectedRevision: 0, text: 'x'.repeat(MAX_PLAN_CHARS + 1) }).expect(413);
   expect(refused.body.code).toBe('PLAN_TOO_LONG');
   await submit(id, { expectedRevision: 0, text: 'ok', steps: Array.from({ length: 31 }, () => 'step') }).expect(413);
-  expect((await raw(id)).planRevisions).toBeUndefined();
-
-  const long = `${'Detailed step. '.repeat(1500)}END`;
-  const prepared = await prepare(id, { automation: AUTOMATION, plan: long });
-  expect(prepared.feedback.at(-1).text.length).toBeLessThanOrEqual('Execution plan: '.length + 2800);
-  const current = (await detail(id)).plan.current;
-  expect(current).toMatchObject({ truncated: true, originalLength: long.length });
-  expect(current.text).toHaveLength(MAX_PLAN_CHARS);
-  expect(current.text.endsWith('END')).toBe(false);
+  const before = await raw(id);
+  await expect(prepare(id, { automation: AUTOMATION, plan: 'x'.repeat(MAX_PLAN_CHARS + 1) }))
+    .rejects.toMatchObject({ code: 'PLAN_TOO_LONG', statusCode: 413 });
+  const after = await raw(id);
+  expect(after.planRevisions).toBeUndefined();
+  expect(after.feedback).toEqual(before.feedback);
 });
 
-test('retained revisions are bounded while the revision counter keeps counting', async () => {
+test('preparation retains the complete question, answer and accepted plan', async () => {
   const id = await create();
-  for (let revision = 0; revision < MAX_REVISIONS + 2; revision += 1) {
+  const answer = 'x'.repeat(3500) + 'ANSWER_TAIL';
+  const plan = 'p'.repeat(3500) + 'PLAN_TAIL';
+  const prepared = await prepare(id, { answer, automation: AUTOMATION, plan });
+  expect(prepared.feedback.find(entry => entry.by === 'operator').text).toBe(answer);
+  expect(prepared.feedback.at(-1).text).toBe(`Execution plan: ${plan}`);
+  expect((await detail(id)).plan.current.text).toBe(plan);
+});
+
+test('all revisions remain readable while the revision counter keeps counting', async () => {
+  const id = await create();
+  for (let revision = 0; revision < 12; revision += 1) {
     await submit(id, { expectedRevision: revision, text: `Plan ${revision + 1}` }).expect(201);
   }
   const view = (await detail(id)).plan;
-  expect(view).toMatchObject({ revision: MAX_REVISIONS + 2, retained: MAX_REVISIONS });
-  expect(view.history[0].revision).toBe(3);
+  expect(view).toMatchObject({ revision: 12, retained: 12 });
+  expect(view.history[0].revision).toBe(1);
 });
 
 test('plans stay out of private lanes and running work', async () => {
@@ -209,7 +216,7 @@ test('plans stay out of private lanes and running work', async () => {
   await harness.request.post(`/api/pipeline/tasks/${running}/claim`).send({ assignee: 'worker' }).expect(200);
   expect((await submit(running, { expectedRevision: 0, text: 'Plan' }).expect(409)).body.code).toBe('PLAN_TASK_STATE');
   const none = await create();
-  expect((await decide(none, { revision: 1, planFingerprint: 'a'.repeat(64), outcome: 'approved', by: 'Yanik' }).expect(409)).body.code).toBe('PLAN_MISSING');
+  expect((await decide(none, { revision: 1, planFingerprint: 'a'.repeat(64), outcome: 'approved', by: 'Operator' }).expect(409)).body.code).toBe('PLAN_MISSING');
   expect((await decide(none, { revision: 1, planFingerprint: 'a'.repeat(64), outcome: 'approved' }).expect(400)).body.code).toBe('PLAN_DECISION_UNSIGNED');
   expect((await detail(none)).plan).toMatchObject({ state: 'none', executionAuthority: 'none', current: null });
 });

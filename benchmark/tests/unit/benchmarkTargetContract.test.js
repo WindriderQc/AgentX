@@ -2,6 +2,7 @@
 
 const {
   buildOllamaTarget,
+  buildPromptFingerprint,
   buildQualityCohortFingerprint,
   normalizeBatchTargets,
   normalizeBenchmarkTarget,
@@ -85,17 +86,59 @@ describe('BenchmarkTarget v1', () => {
     });
   });
 
-  test('quality cohort changes with judge identity but not target ordering', () => {
+  test('quality cohort changes with judge identity, not with prompts', () => {
     const common = {
-      prompts: [{ _id: '2', name: 'B', level: 2, category: 'reasoning' }, { _id: '1', name: 'A', level: 1, category: 'coding' }],
       scorerVersion: 'scorer-v1',
       executionConfig: { response_max_tokens: 1024, temperature: 0, top_p: 1, seed: 7, think: false },
     };
     const first = buildQualityCohortFingerprint({ ...common, judgeTarget: harnessTarget() });
-    const reordered = buildQualityCohortFingerprint({ ...common, prompts: [...common.prompts].reverse(), judgeTarget: harnessTarget() });
+    const withPrompts = buildQualityCohortFingerprint({ ...common, prompts: [{ _id: '1', name: 'A' }], judgeTarget: harnessTarget() });
     const changed = buildQualityCohortFingerprint({ ...common, judgeTarget: buildOllamaTarget('http://ollama:11434', 'judge') });
-    expect(reordered).toBe(first);
+    expect(withPrompts).toBe(first);
     expect(changed).not.toBe(first);
+  });
+
+  test('a reasoning judge starts its own cohort; a judge without reasoning keeps the existing one', () => {
+    const common = {
+      scorerVersion: 'scorer-v1',
+      judgeTarget: buildOllamaTarget('http://ollama:11434', 'judge'),
+      executionConfig: { response_max_tokens: 1024, temperature: 0, top_p: 1, seed: 7, think: false },
+    };
+    const base = buildQualityCohortFingerprint(common);
+    expect(buildQualityCohortFingerprint({ ...common, judgeThink: false })).toBe(base);
+    expect(buildQualityCohortFingerprint({ ...common, judgeThink: undefined })).toBe(base);
+    expect(buildQualityCohortFingerprint({ ...common, judgeThink: true })).not.toBe(base);
+  });
+
+  test('prompt fingerprint pins identity and scoring content', () => {
+    const prompt = { _id: '1', name: 'A', level: 1, category: 'coding', prompt: 'Write a sort.', expected_answer: 'sorted' };
+    const base = buildPromptFingerprint(prompt);
+    expect(buildPromptFingerprint({ ...prompt })).toBe(base);
+    expect(buildPromptFingerprint({ ...prompt, prompt: 'Write a stable sort.' })).not.toBe(base);
+    expect(buildPromptFingerprint({ ...prompt, expected_answer: 'other' })).not.toBe(base);
+    expect(buildPromptFingerprint({ ...prompt, _id: '2' })).not.toBe(base);
+    expect(buildPromptFingerprint({ ...prompt, expected_tokens: 400 })).toBe(base);
+  });
+
+  test.each([
+    ['num_ctx', 16384],
+    ['num_predict', 1600], ['timeout', 120000], ['temperature', 0.2],
+    ['seed', 42], ['max_retries', 3], ['voting_count', 3],
+  ])('another judge %s starts another cohort', (field, value) => {
+    const common = {
+      scorerVersion: 'scorer-v1', judgeTarget: buildOllamaTarget('http://judge:11434', 'judge'),
+      judgeConfig: { num_predict: 800, timeout: 60000, temperature: 0.1, seed: 7, max_retries: 2, voting_count: 1 },
+      executionConfig: { seed: null },
+    };
+    const base = buildQualityCohortFingerprint(common);
+    expect(buildQualityCohortFingerprint({ ...common, judgeConfig: { ...common.judgeConfig } })).toBe(base);
+    expect(buildQualityCohortFingerprint({ ...common, judgeConfig: { ...common.judgeConfig, [field]: value } })).not.toBe(base);
+  });
+
+  test('an unseeded generation cannot share the seed-zero cohort', () => {
+    const common = { scorerVersion: 'scorer-v1', judgeTarget: null };
+    expect(buildQualityCohortFingerprint({ ...common, executionConfig: { seed: null } }))
+      .not.toBe(buildQualityCohortFingerprint({ ...common, executionConfig: { seed: 0 } }));
   });
 });
 
@@ -143,6 +186,20 @@ describe('harness envelope, receipt, and spend contracts', () => {
     }, { envelope });
     const valid = { schema: 'agentx.harness-execution/v1', schemaVersion: 1, output, fallbackUsed: false, receipt };
     expect(normalizeHarnessExecutionResponse(valid, { envelope, target }).output).toBe(output);
+    const failed = normalizeWorkerReceipt({ ...receipt, fingerprint: undefined, finalState: 'failed',
+      failure: { classification: 'invalid_result', code: 'REPO_FIXTURE_VERIFICATION_FAILED' },
+      result: { ...receipt.result, contractSatisfied: false },
+      evidence: { patches: [], artifacts: [], tests: [{ id: 'repo-fixture.test', status: 'failed', digest: HEX('b') }] }
+    }, { envelope });
+    try {
+      normalizeHarnessExecutionResponse({ ...valid, receipt: failed }, { envelope, target });
+      throw new Error('Expected failed execution');
+    } catch (error) {
+      expect(error.code).toBe('HARNESS_EXECUTION_FAILED');
+      expect(error.executionReceipt.usage).toMatchObject({ inputTokens: 4, outputTokens: 2, totalTokens: 6 });
+      expect(error.executionReceipt.evidence.tests[0].status).toBe('failed');
+      expect(error.executionReceipt.identity.model.name).toBe(target.model);
+    }
     expect(() => normalizeHarnessExecutionResponse({ ...valid, receipt: undefined }, { envelope, target })).toThrow();
     expect(() => normalizeHarnessExecutionResponse({ ...valid, fallbackUsed: true }, { envelope, target }))
       .toThrow(expect.objectContaining({ code: 'HARNESS_FALLBACK_USED' }));

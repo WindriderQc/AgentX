@@ -1,6 +1,7 @@
 'use strict';
 
-const { estimateTotalVram } = require('../../src/services/parameterDetection');
+const { estimateTotalVram, estimateVramBreakdown } = require('../../src/services/parameterDetection');
+const { describeKvCache } = require('../../../shared/kvCacheEstimate');
 
 /**
  * Calibration provenance: `ollama ps` reported 25 GB total allocation at 32K
@@ -31,5 +32,34 @@ describe('estimateTotalVram back-test against documented measurements', () => {
     // measured 45 GB. Guard the ceiling explicitly.
     const estimate = estimateTotalVram(8.2, 'Q4_K_M', 65536) / GB;
     expect(estimate).toBeLessThan(50);
+  });
+});
+
+/**
+ * The same two measurements, from the model's own metadata (#368). A dense
+ * Llama-architecture 8B caches 128 KiB per token in f16. Only about four
+ * request slots reproduce the measured allocation, the reading consistent with
+ * the rule of thumb's slope; the slot count of that measurement was not
+ * recorded.
+ */
+describe('estimateTotalVram from model metadata', () => {
+  const GB = 1024 ** 3;
+  const kvCache = describeKvCache({
+    'general.architecture': 'llama', 'llama.block_count': 32, 'llama.embedding_length': 4096,
+    'llama.attention.head_count': 32, 'llama.attention.head_count_kv': 8,
+  });
+
+  it.each([[32768, 25], [65536, 45]])('reproduces deepseek-r1:8b at %i ctx within 10% with four slots', (numCtx, measured) => {
+    const estimate = estimateTotalVram(8.2, 'Q4_K_M', numCtx, { kvCache, requestSlots: 4 }) / GB;
+    expect(estimate).toBeGreaterThan(measured * 0.9);
+    expect(estimate).toBeLessThan(measured * 1.1);
+  });
+
+  it('states which basis set the KV term', () => {
+    expect(estimateVramBreakdown(8.2, 'Q4_K_M', 32768, { kvCache, requestSlots: 4 }))
+      .toMatchObject({ kvBasis: 'model_info', requestSlots: 4, kvBytes: 128 * 1024 * 32768 * 4 });
+    expect(estimateVramBreakdown(8.2, 'Q4_K_M', 32768))
+      .toMatchObject({ kvBasis: 'parameter_rule_of_thumb', requestSlots: null });
+    expect(estimateVramBreakdown(null, 'Q4_K_M', 32768)).toBeNull();
   });
 });

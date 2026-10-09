@@ -222,6 +222,7 @@ function normalizeBenchmarkTarget(rawValue, options = {}) {
     observedAt: raw.observedAt == null ? null : isoTimestamp(raw.observedAt, 'target.observedAt'),
     catalogFingerprint: fingerprintValue(raw.catalogFingerprint, 'target.catalogFingerprint', executionKind === 'ollama' || options.allowMissingCatalogFingerprint === true),
   };
+  if (raw.billing != null) target.billing = enumValue(raw.billing, 'target.billing', ['local', 'free', 'included', 'paid', 'unknown']);
   const computed = fingerprint(targetUnsigned(target));
   if (raw.fingerprint && fingerprintValue(raw.fingerprint, 'target.fingerprint') !== computed) {
     throw contractError('TARGET_FINGERPRINT_MISMATCH', 'target fingerprint does not match normalized contents');
@@ -262,11 +263,20 @@ function normalizeBatchTargets({ host, models, targets } = {}) {
 }
 
 function executionHost(target) {
-  return target.executionKind === 'ollama' ? target.host : `harness:${target.harness.name}`;
+  if (target.executionKind === 'ollama') return target.host;
+  // An agent is its own leaderboard entry: two agents on one model, or an agent
+  // and the bare model behind it, never share a row.
+  return target.mode === 'native_agent' ? `harness:${target.harness.name}:${target.id}` : `harness:${target.harness.name}`;
 }
 
-function buildQualityCohortFingerprint({ prompts, scorerVersion, judgeTarget, executionConfig, profileContract = 'isolated-model-v1' }) {
-  const promptRows = (Array.isArray(prompts) ? prompts : []).map((prompt) => ({
+/**
+ * The fingerprint of one prompt as a result ran it: its identity and its
+ * scoring content. Two results compare on a prompt only when they carry the
+ * same prompt fingerprint; an edited prompt (same id, other content) gets a
+ * new one.
+ */
+function buildPromptFingerprint(prompt) {
+  return fingerprint({
     id: String(prompt?._id || prompt?.id || prompt?.name || ''),
     name: String(prompt?.name || ''),
     level: Number(prompt?.level) || null,
@@ -278,7 +288,46 @@ function buildQualityCohortFingerprint({ prompts, scorerVersion, judgeTarget, ex
       scoringCriteria: prompt?.scoring_criteria ?? prompt?.scoringCriteria ?? null,
       expectedFormat: prompt?.expected_format ?? prompt?.expectedFormat ?? null,
     }),
-  })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  });
+}
+
+/**
+ * The quality cohort: the terms every result of a comparison shares (scorer
+ * version, judge identity, generation settings, profile contract). Prompts
+ * are not part of it; each result carries its own prompt fingerprint, so a
+ * catalog edit only affects the results on the edited prompt.
+ */
+function judgeCohortSettings(config) {
+  return config ? {
+    numCtx: config.num_ctx ?? null, numPredict: config.num_predict ?? null,
+    timeoutMs: config.timeout ?? null, temperature: config.temperature ?? null,
+    seed: config.seed ?? null, maxRetries: config.max_retries ?? null,
+    votingCount: config.voting_count ?? 1, think: config.think ?? false,
+    responseCharBudget: config.response_char_budget ?? null,
+  } : null;
+}
+
+function multiJudgeIdentity(config) {
+  return config ? { model: config.model, host: config.host,
+    contract: config.execution_contract ?? null, settings: judgeCohortSettings(config) } : null;
+}
+
+function multiJudgeCohortSettings(config) {
+  return config?.enabled ? {
+      // Mutable escalation usage and per-call evidence do not change a cohort.
+      judges: (config.judges || []).map(multiJudgeIdentity),
+      tiebreaker: multiJudgeIdentity(config.tiebreaker),
+      escalationBudgetPercent: config.escalation_budget_percent ?? 20,
+      confidenceThreshold: config.confidenceThreshold ?? 0.8,
+      autoMinLevel: config.autoMinLevel ?? 4,
+      escalateOnJudgeFailure: config.escalateOnJudgeFailure !== false,
+      escalateOnReview: config.escalateOnReview !== false,
+      escalateOnLowConfidence: config.escalateOnLowConfidence !== false,
+      escalateOnHighLevel: config.escalateOnHighLevel !== false,
+  } : null;
+}
+
+function buildQualityCohortFingerprint({ scorerVersion, judgeTarget, judgeThink = false, judgeConfig = null, executionConfig, candidateContracts = null, profileContract = 'isolated-model-v1' }) {
   const normalizedJudge = judgeTarget
     ? normalizeBenchmarkTarget(judgeTarget, { allowMissingCatalogFingerprint: judgeTarget.executionKind === 'ollama' })
     : null;
@@ -294,15 +343,42 @@ function buildQualityCohortFingerprint({ prompts, scorerVersion, judgeTarget, ex
     api: normalizedJudge.api,
   } : null;
   return fingerprint({
-    prompts: promptRows,
+    schema: 'agentx.benchmark-quality-cohort/v5',
     scorerVersion: String(scorerVersion || ''),
     judgeIdentity,
+    // A reasoning judge scores differently; judges without it keep their cohort.
+    ...(judgeThink === true ? { judgeThink } : {}),
+    // Resolved and saved at launch: a changed service default must not give
+    // another judge budget or sampling policy the same comparison identity.
+    judgeSettings: judgeCohortSettings(judgeConfig),
+    judgeExecutionContract: judgeConfig?.execution_contract ?? null,
+    multiJudge: multiJudgeCohortSettings(judgeConfig?.multi_judge),
+    // Freeze the complete contender set: both arms in one campaign share this
+    // identity, while a replaced artifact or changed effective context cannot
+    // be pooled with historical measurements of the same tag.
+    candidates: candidateContracts?.map(candidate => ({
+      model: candidate.model, host: candidate.host, digest: candidate.artifactDigest,
+      runtimeFingerprint: candidate.contract?.artifact?.runtimeFingerprint ?? null,
+      numCtx: candidate.execution?.num_ctx ?? null, numPredict: candidate.execution?.num_predict ?? null,
+      think: candidate.mode?.think ?? null, sendThink: candidate.mode?.sendThink ?? null,
+    })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))) ?? null,
     generation: {
       responseMaxTokens: Number(executionConfig?.response_max_tokens) || null,
-      temperature: Number.isFinite(Number(executionConfig?.temperature)) ? Number(executionConfig.temperature) : null,
-      topP: Number.isFinite(Number(executionConfig?.top_p)) ? Number(executionConfig.top_p) : null,
-      seed: Number.isFinite(Number(executionConfig?.seed)) ? Number(executionConfig.seed) : null,
+      numCtx: executionConfig?.num_ctx ?? null,
+      forceNumCtx: executionConfig?.force_num_ctx ?? null,
+      seedPolicy: executionConfig?.seed_policy || 'fixed',
+      temperature: executionConfig?.temperature == null ? null : Number.isFinite(Number(executionConfig.temperature)) ? Number(executionConfig.temperature) : null,
+      topP: executionConfig?.top_p == null ? null : Number.isFinite(Number(executionConfig.top_p)) ? Number(executionConfig.top_p) : null,
+      topK: executionConfig?.top_k ?? null,
+      repeatPenalty: executionConfig?.repeat_penalty ?? null,
+      samplingProfile: executionConfig?.sampling_profile || 'controlled',
+      apiMode: executionConfig?.api_mode || 'chat',
+      seed: executionConfig?.seed == null ? null
+        : Number.isFinite(Number(executionConfig.seed)) ? Number(executionConfig.seed) : null,
       think: executionConfig?.think ?? null,
+      // Batches launched before the documented-default budget ran under a
+      // smaller hidden reserve: the rule separates their cohort.
+      ...(executionConfig?.response_budget_rule ? { responseBudgetRule: executionConfig.response_budget_rule } : {}),
       ...(executionConfig?.response_mode === 'best_qualified'
         ? { responseMode: 'best_qualified', thinkMinLevel: executionConfig.thinking_min_level ?? 4 }
         : {}),
@@ -320,7 +396,11 @@ function normalizeHarnessExecutionResponse(rawValue, { envelope, target } = {}) 
   const normalizedEnvelope = normalizeWorkerEnvelope(envelope);
   const receipt = normalizeWorkerReceipt(raw.receipt, { envelope: normalizedEnvelope });
   if (raw.fallbackUsed !== false) throw contractError('HARNESS_FALLBACK_USED', 'harness execution used or did not disprove fallback', 409);
-  if (receipt.finalState !== 'succeeded') throw contractError('HARNESS_EXECUTION_FAILED', `harness execution ended as ${receipt.finalState}`, 502);
+  if (receipt.finalState !== 'succeeded') {
+    const error = contractError('HARNESS_EXECUTION_FAILED', `harness execution ended as ${receipt.finalState}`, 502);
+    error.executionReceipt = projectWorkerReceiptPublic(receipt, { envelope: normalizedEnvelope });
+    throw error;
+  }
   if (receipt.identity.harness.name !== normalizedTarget.harness.name
     || receipt.identity.harness.version !== normalizedTarget.harness.version
     || receipt.identity.provider.name !== normalizedTarget.provider
@@ -355,7 +435,10 @@ module.exports = {
   EXECUTION_MODES,
   TIERS,
   buildOllamaTarget,
+  buildPromptFingerprint,
   buildQualityCohortFingerprint,
+  judgeCohortSettings,
+  multiJudgeCohortSettings,
   contractError,
   executionHost,
   normalizeBatchTargets,

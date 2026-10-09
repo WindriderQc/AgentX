@@ -77,38 +77,59 @@ function transcript(turns) {
   ].filter(Boolean).join('\n')).join('\n\n');
 }
 
-function createBrain({ inference, conversations, loadTurns, consumerContract, env = process.env, logger = null, delayMs = LIMITS.delayMs } = {}) {
+function createBrain({ inference, conversations, loadTurns, consumerContract, env = process.env, logger = null, delayMs = LIMITS.delayMs, preferencesFor = null } = {}) {
   const reviews = new Map(), running = new Map(), waiters = new Map();
-  const enabled = family => env.HOUSEHOLD_BRAIN_ENABLED === 'true' && (!family || env.HOUSEHOLD_BRAIN_FAMILY !== 'false');
+  const epochs = { family: 0, private: 0 }, scopes = new Map();
+  const epochFor = family => epochs[family ? 'family' : 'private'];
+  const enabled = family => Boolean(preferencesFor) || (env.HOUSEHOLD_BRAIN_ENABLED === 'true' && (!family || env.HOUSEHOLD_BRAIN_FAMILY !== 'false'));
+  function reconfigure(family) {
+    epochs[family ? 'family' : 'private'] += 1;
+    for (const [id, scope] of scopes) if (scope === family) {
+      reviews.delete(id);
+      for (const resolve of waiters.get(id) || []) resolve(null);
+      waiters.delete(id);
+    }
+  }
 
   function settle(sessionId, review) {
     reviews.delete(sessionId);
     reviews.set(sessionId, review);
-    while (reviews.size > LIMITS.reviews) reviews.delete(reviews.keys().next().value);
+    while (reviews.size > LIMITS.reviews) { const id = reviews.keys().next().value; reviews.delete(id); scopes.delete(id); }
     for (const waiter of waiters.get(sessionId) || []) waiter(review);
     waiters.delete(sessionId);
   }
 
-  // A new turn owns the inference host: the running review for this conversation stops.
+  // A new turn supersedes this conversation's review: it stops before inference; on a shared
+  // host its request is cancelled so the voice gets the host back; its result is never kept.
   function cancel(sessionId) {
     running.get(sessionId)?.abort();
     running.delete(sessionId);
+    if (!reviews.has(sessionId)) scopes.delete(sessionId);
   }
 
   async function review({ session, family, traceId, signal }) {
-    await new Promise(resolve => setTimeout(resolve, delayMs));
+    const generation = epochFor(family), preferences = preferencesFor ? await preferencesFor(family) : null;
+    if (preferences && !preferences.values.backgroundReview) return;
+    await new Promise(resolve => setTimeout(resolve, preferences ? preferences.values.reviewDelaySeconds * 1000 : delayMs));
     if (signal.aborted) return;
     const turns = (await loadTurns(session)).slice(-LIMITS.turns);
     if (signal.aborted || !turns.length) return;
+    if (generation !== epochFor(family) || (preferencesFor && (await preferencesFor(family)).revision !== preferences.revision)) return;
+    // On its own host the review does not compete with the voice, so a newer turn only
+    // discards its result: cancelling an admitted request leaves the runtime state
+    // unknown and Core quarantines the host. Exclusive admission is opt-in because it
+    // waits for an idle host, blocks other callers and unloads co-resident models.
+    const dedicatedHost = Boolean(env.HOUSEHOLD_BRAIN_HOST_URL);
     const result = await inference.execute({
       mode: 'chat', taskType: env.HOUSEHOLD_BRAIN_TASK || 'master_brain',
       ...(env.HOUSEHOLD_BRAIN_MODEL ? { model: String(env.HOUSEHOLD_BRAIN_MODEL).replace(/^ollama\//, '') } : {}),
-      ...(env.HOUSEHOLD_BRAIN_HOST_URL ? { exclusiveHost: true } : {}),
+      ...(dedicatedHost && env.HOUSEHOLD_BRAIN_EXCLUSIVE === 'true' ? { exclusiveHost: true } : {}),
       messages: [{ role: 'system', content: reviewerPrompt({ family }) }, { role: 'user', content: transcript(turns) }],
       stream: false, think: false, temperature: 0.2, max_tokens: 700,
       callerDetail: `agentx-household/brain/${family ? 'family' : 'private'}`, timeoutMs: LIMITS.reviewMs
-    }, { signal, consumerContract, ...(env.HOUSEHOLD_BRAIN_HOST_URL ? { hostUrl: String(env.HOUSEHOLD_BRAIN_HOST_URL) } : {}) });
+    }, { ...(dedicatedHost ? { hostUrl: String(env.HOUSEHOLD_BRAIN_HOST_URL) } : { signal }), consumerContract });
     if (signal.aborted) return;
+    if (generation !== epochFor(family) || (preferencesFor && (await preferencesFor(family)).revision !== preferences.revision)) return;
     if (!result?.ok) throw new Error('Reviewer inference failed');
     const parsed = readReview(result.body?.message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '');
     if (!parsed) throw new Error('Reviewer returned no usable review');
@@ -120,11 +141,17 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     const family = pack?.childSafe === true;
     if (!session?.sessionId || !traceId || !enabled(family) || !inference?.execute) return false;
     cancel(session.sessionId);
+    scopes.set(session.sessionId, family);
     const controller = new AbortController();
     running.set(session.sessionId, controller);
     review({ session, family, traceId, signal: controller.signal })
       .catch(error => { if (!controller.signal.aborted) logger?.warn?.('Household brain review failed', { error: error.message }); })
-      .finally(() => { if (running.get(session.sessionId) === controller) running.delete(session.sessionId); });
+      .finally(() => { if (running.get(session.sessionId) === controller) {
+        running.delete(session.sessionId);
+        for (const resolve of waiters.get(session.sessionId) || []) resolve(null);
+        waiters.delete(session.sessionId);
+        if (!reviews.has(session.sessionId)) scopes.delete(session.sessionId);
+      } });
     return true;
   }
 
@@ -150,7 +177,7 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     return new Promise(resolve => {
       let done = false;
       const finish = value => { if (done) return; done = true; clearTimeout(timer); signal?.removeEventListener?.('abort', abort); resolve(value); };
-      const waiter = value => finish(value.traceId === after ? value : null);
+      const waiter = value => finish(value?.traceId === after ? value : null);
       const abort = () => finish(null);
       const timer = setTimeout(abort, timeoutMs);
       signal?.addEventListener?.('abort', abort, { once: true });
@@ -165,6 +192,7 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
         if (!session || session.packId !== scope.packId || session.scopeId !== scope.scopeId) {
           return res.status(404).json({ ok: false, status: 'error', code: 'VOICE_PERSONA_SESSION_NOT_FOUND', message: 'Voice persona session not found' });
         }
+        if (preferencesFor && !(await preferencesFor(space === 'family')).values.backgroundReview) return res.json({ ok: true, status: 'success', data: { review: null, enabled: false } });
         const controller = new AbortController();
         res.on('close', () => controller.abort());
         const found = await wait(session.sessionId, String(req.query.after || ''), { signal: controller.signal });
@@ -174,7 +202,7 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     }
   }
 
-  return { schedule, cancel, latest, wait, contextFor, register, enabled };
+  return { schedule, cancel, latest, wait, contextFor, register, enabled, reconfigure };
 }
 
 module.exports = { createBrain, readReview, reviewerPrompt, transcript, LIMITS };

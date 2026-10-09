@@ -109,7 +109,11 @@ const shutdown = createServerShutdown({
     await drainRuntimeOperations();
   },
   flush: () => require('./src/middleware/performanceTracker').stop(),
-  disconnect: () => require('mongoose').disconnect()
+  disconnect: () => {
+    // Registered work is drained; sockets still open belong to departed callers.
+    require('./src/helpers/httpAgent').destroyOutboundSockets();
+    return require('mongoose').disconnect();
+  }
 });
 process.on('SIGTERM', () => { shutdown.run('SIGTERM'); });
 process.on('SIGINT', () => { shutdown.run('SIGINT'); });
@@ -186,6 +190,9 @@ async function startServer() {
   // Check MongoDB
   try {
     await connectDB();
+    await require('./src/services/conversations/infrastructure').ensureInfrastructure();
+    try { await require('./src/services/conversations/exchangeReceipts').resumeErasure(); }
+    catch { logger.warn('Pending exchange erasure has not completed and remains fenced.'); }
     // Resume only previously requested erasures after an interrupted shutdown.
     try { await require('./src/services/surfaceConversationService').resumeDeletedSessionCleanup(); }
     catch { logger.warn('Pending attachment erasure remains hidden and will be retried at the next start.'); }
@@ -504,6 +511,57 @@ async function startServer() {
     });
   } catch (err) {
     console.log(`   ⚠ Lane Observability: ${err.message}`);
+  }
+
+  // Paid OpenClaw model spend: one alert per 10 USD step of the native running total.
+  try {
+    require('../shared/openclawExecutionClient').connection(process.env);
+    const spendWatch = require('./src/services/execution/openclawSpendWatch').createOpenClawSpendWatch();
+    await startCoreSingletonDaemon({ name: 'openclaw-paid-spend-watch', label: 'OpenClaw Paid Spend Watch',
+      start: async () => { spendWatch.start(); console.log('   ✓ OpenClaw Paid Spend Watch: Active (10 USD steps)'); },
+      stop: async () => spendWatch.stop() });
+  } catch (err) {
+    console.log(`   ⚠ OpenClaw Paid Spend Watch: ${err.message}`);
+  }
+
+  // Opt-in: alert once per unknown device the Data network collector reports.
+  const networkWatchMs = require('./src/services/networkDeviceWatch').watchIntervalMs();
+  if (networkWatchMs) {
+    try {
+      const networkWatch = require('./src/services/networkDeviceWatch').createNetworkDeviceWatch();
+      await startCoreSingletonDaemon({ name: 'network-device-watch', label: 'Network Device Watch',
+        start: async () => { networkWatch.start(networkWatchMs); console.log(`   ✓ Network Device Watch: Active (${networkWatchMs}ms)`); },
+        stop: async () => networkWatch.stop() });
+    } catch (err) {
+      console.log(`   ⚠ Network Device Watch: ${err.message}`);
+    }
+  }
+
+  // A short model-written report of what monitoring rules currently flag.
+  // Set in the Nerve Center; OPS_WATCH_MS only bootstraps it.
+  try {
+    const opsWatch = require('./src/services/opsWatchService').getOpsWatch();
+    await startCoreSingletonDaemon({ name: 'ops-watch', label: 'Operations Watch',
+      start: async () => {
+        const settings = await require('./src/services/opsWatchSettings').effective();
+        console.log(`   ✓ Operations Watch: ${opsWatch.activate(settings) ? `Active (${settings.intervalMs}ms)` : 'Off'}`);
+      },
+      stop: async () => opsWatch.deactivate() });
+  } catch (err) {
+    console.log(`   ⚠ Operations Watch: ${err.message}`);
+  }
+
+  // Forgotten and expired notes are hidden at once; remove their text after retention.
+  const memoryRetentionDays = require('./src/services/memoryNoteRetention').retentionDays();
+  if (memoryRetentionDays) {
+    try {
+      const retention = require('./src/services/memoryNoteRetention').createMemoryNoteRetention();
+      await startCoreSingletonDaemon({ name: 'memory-note-retention', label: 'Memory Note Retention',
+        start: async () => { retention.start(); console.log(`   ✓ Memory Note Retention: Active (${memoryRetentionDays} days, daily sweep)`); },
+        stop: async () => retention.stop() });
+    } catch (err) {
+      console.log(`   ⚠ Memory Note Retention: ${err.message}`);
+    }
   }
 
   // Council sessions only advance inside the process that started them. Close

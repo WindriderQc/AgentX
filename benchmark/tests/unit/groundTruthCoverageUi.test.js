@@ -6,7 +6,7 @@ const read = (...segments) => fs.readFileSync(path.join(ROOT, ...segments), 'utf
 
 describe('ground-truth coverage honesty', () => {
     test('separates occupied cells from target-ready human coverage', () => {
-        const route = read('routes', 'benchmark', 'diagnostics.js');
+        const route = read('routes', 'benchmark', 'diagnosticsGroundTruth.js');
 
         expect(route).toContain("coverage_basis: 'occupied_cells'");
         expect(route).toContain('target_coverage_pct');

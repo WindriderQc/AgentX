@@ -1,0 +1,84 @@
+<main class="image-studio image-guide">
+  <header class="studio-header">
+    <div><p class="image-eyebrow">ATELIER IMAGE · COMMENT ÇA MARCHE</p><h1>Le chemin d’une image.</h1>
+      <p>De ta demande jusqu’au fichier conservé, puis quelques conseils pour obtenir ce que tu veux.</p></div>
+    <a class="quiet-button guide-back" href="/images">← Retour à l’atelier</a>
+  </header>
+
+  <section class="guide-section" aria-labelledby="guide-map-title">
+    <p class="panel-step">01 · LE PARCOURS</p><h2 id="guide-map-title">Une seule image à la fois, sur un seul PC</h2>
+    <p class="guide-lede">Le PC image n’a qu’une carte graphique, partagée avec les modèles de langage. Pour dessiner, AgentX leur emprunte la carte, calcule l’image, conserve l’original, puis leur rend la carte dans l’état où il l’a trouvée.</p>
+    <figure class="guide-map">
+      <div class="guide-scroll">
+        <svg viewBox="0 0 1000 440" role="img" aria-labelledby="guide-map-desc">
+          <desc id="guide-map-desc">Trois façons de demander une image mènent à AgentX Core. Core emprunte la carte graphique aux modèles de langage, envoie le travail au gardien du PC image qui lance ComfyUI le temps d’une image, conserve l’original dans l’archive, puis sert l’image à celui qui l’a demandée.</desc>
+          <defs><marker id="guide-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="guide-head" d="M0 0L10 5L0 10z"/></marker>
+            <marker id="guide-arrow-back" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="guide-head" d="M10 0L0 5L10 10z"/></marker></defs>
+
+          <text class="guide-label" x="12" y="24">QUI DEMANDE</text>
+          <rect class="guide-box" x="12" y="38" width="190" height="64" rx="8"/><text x="26" y="64">Cette page</text><text class="guide-sub" x="26" y="84">brief, format, 2 références</text>
+          <rect class="guide-box" x="12" y="116" width="190" height="64" rx="8"/><text x="26" y="142">Nestor</text><text class="guide-sub" x="26" y="162">dans une conversation privée</text>
+          <rect class="guide-box" x="12" y="194" width="190" height="64" rx="8"/><text x="26" y="220">Conversations Famille</text><text class="guide-sub" x="26" y="240">un dessin rapide par tour</text>
+          <path class="guide-wire" d="M202 70H224V148M202 226H224V148"/><path class="guide-wire" d="M202 148H262" marker-end="url(#guide-arrow)"/>
+
+          <rect class="guide-box" x="264" y="38" width="300" height="220" rx="8"/>
+          <text class="guide-title" x="280" y="66">AgentX Core</text><text class="guide-sub" x="280" y="86">reçoit, suit et conserve chaque demande</text>
+          <rect class="guide-step" x="280" y="100" width="268" height="30" rx="5"/><text x="292" y="120">1 · Préparation</text><text class="guide-sub" x="412" y="120">emprunte la carte</text>
+          <rect class="guide-step" x="280" y="136" width="268" height="30" rx="5"/><text x="292" y="156">2 · Calcul</text><text class="guide-sub" x="412" y="156">envoie la recette</text>
+          <rect class="guide-step" x="280" y="172" width="268" height="30" rx="5"/><text x="292" y="192">3 · Archivage</text><text class="guide-sub" x="412" y="192">conserve l’original</text>
+          <rect class="guide-step" x="280" y="208" width="268" height="30" rx="5"/><text x="292" y="228">4 · Restitution</text><text class="guide-sub" x="412" y="228">rend la carte</text>
+
+          <rect class="guide-zone" x="606" y="14" width="382" height="252" rx="10"/>
+          <text class="guide-label" x="620" y="36" id="guide-host">PC IMAGE</text>
+          <rect class="guide-box" x="620" y="50" width="168" height="64" rx="8"/><text x="634" y="76">Gardien</text><text class="guide-sub" x="634" y="96">toujours à l’écoute</text>
+          <rect class="guide-box" x="806" y="50" width="168" height="64" rx="8"/><text x="820" y="76">ComfyUI</text><text class="guide-sub" x="820" y="96">le temps d’une image</text>
+          <path class="guide-wire" d="M564 70H618" marker-end="url(#guide-arrow)"/><text class="guide-label" x="570" y="62">recette</text>
+          <path class="guide-wire" d="M618 96H566" marker-end="url(#guide-arrow)"/><text class="guide-label" x="570" y="116">image</text>
+          <path class="guide-wire" d="M788 82H804" marker-end="url(#guide-arrow)"/>
+          <path class="guide-wire" d="M890 114V142" marker-end="url(#guide-arrow)"/>
+          <rect class="guide-gpu" x="620" y="144" width="354" height="74" rx="8"/>
+          <circle class="guide-ink" cx="662" cy="181" r="24"/><circle class="guide-ink" cx="662" cy="181" r="6"/><path class="guide-ink" d="M662 157v18M662 187v18M638 181h18M668 181h18"/>
+          <text class="guide-card" x="702" y="178" id="guide-gpu">Carte graphique</text><text class="guide-sub" x="702" y="198" id="guide-vram">une seule, partagée</text>
+          <text class="guide-sub" x="620" y="246">Rien d’autre ne s’y exécute pendant le calcul.</text>
+
+          <rect class="guide-box" x="264" y="318" width="300" height="64" rx="8"/><text x="280" y="344">Modèles de langage</text><text class="guide-sub" x="280" y="364">déchargés, puis rechargés à l’identique</text>
+          <path class="guide-wire" d="M414 258V316" marker-end="url(#guide-arrow)" marker-start="url(#guide-arrow-back)"/>
+          <rect class="guide-box" x="700" y="318" width="274" height="64" rx="8"/><text x="716" y="344">Archive</text><text class="guide-sub" x="716" y="364">l’original, sous son empreinte</text>
+          <path class="guide-wire" d="M564 190H586V292H836V316" marker-end="url(#guide-arrow)"/>
+          <path class="guide-wire" d="M836 382V416H106V260" marker-end="url(#guide-arrow)"/><text class="guide-label" x="330" y="408">l’image revient à celui qui l’a demandée, empreinte revérifiée</text>
+        </svg>
+      </div>
+      <figcaption>Les quatre étapes sont celles qui s’affichent sous le bouton pendant une génération.</figcaption>
+    </figure>
+  </section>
+
+  <section class="guide-section" aria-labelledby="guide-recipes-title">
+    <p class="panel-step">02 · LES RECETTES</p><h2 id="guide-recipes-title">Ce qui est installé en ce moment</h2>
+    <p class="guide-lede">Cette liste est lue dans la configuration du service au moment où tu ouvres la page.</p>
+    <p id="guide-recipes-status" class="image-help" role="status">Lecture des recettes…</p>
+    <div id="guide-recipes" class="guide-cards"></div>
+  </section>
+
+  <section class="guide-section" aria-labelledby="guide-tips-title">
+    <p class="panel-step">03 · CONSEILS</p><h2 id="guide-tips-title">Pour obtenir ce que tu veux</h2>
+    <div class="guide-cards">
+      <article><h3>Retoucher une image</h3><p>Joins l’image, puis écris ce qui change <strong>et</strong> ce qui doit rester. « Change seulement le pot rouge en bleu cobalt. Garde les personnages, la table et l’éclairage. » marche mieux que « mets le pot en bleu ».</p></article>
+      <article><h3>Garder une composition</h3><p>Une graine retrouve des réglages, pas une image. Pour repartir d’une création que tu aimes, joins-la comme référence depuis la bibliothèque.</p></article>
+      <article><h3>Écrire un mot dans l’image</h3><p>Mets le texte exact entre guillemets, dis où il va, et ajoute « aucune autre lettre ni symbole ». Relis ensuite le résultat lettre par lettre.</p></article>
+      <article><h3>Deux références</h3><p>Donne un rôle à chacune : « l’image 2 sert seulement d’échantillon de matière ; applique-la au robot orange de l’image 1 ». Sans rôle, le modèle peut repeindre le mauvais élément.</p></article>
+      <article><h3>Essai rapide, puis rendu soigné</h3><p>Cherche l’idée avec la recette qui a le moins d’étapes. Quand le brief est bon, refais-le avec la recette soignée, en joignant l’essai si tu veux garder sa composition.</p></article>
+      <article><h3>Logo ou autocollant</h3><p>Demander un fond transparent n’a pas donné de résultat utilisable dans nos essais. Demande plutôt un fond uni et détoure ensuite.</p></article>
+    </div>
+  </section>
+
+  <section class="guide-section" aria-labelledby="guide-blocked-title">
+    <p class="panel-step">04 · QUAND ÇA BLOQUE</p><h2 id="guide-blocked-title">Ce que veulent dire les messages</h2>
+    <dl class="guide-messages">
+      <div><dt>« GPU occupé »</dt><dd>La carte graphique sert à autre chose, souvent une conversation ou une mesure en cours. Rien n’est mis en attente : refais la demande un peu plus tard.</dd></div>
+      <div><dt>« Le PC image est indisponible ou occupé »</dt><dd>Le gardien ne répond pas, ou une autre image est en calcul. Une seule image se fait à la fois.</dd></div>
+      <div><dt>« État incertain »</dt><dd>AgentX ne sait plus si l’image a été calculée, par exemple après un redémarrage. Utilise « Vérifier et récupérer » : il retrouve le résultat sans jamais relancer le calcul.</dd></div>
+      <div><dt>« Son archivage doit être repris »</dt><dd>L’image existe mais n’a pas pu être conservée. La reprise range l’original sans le recalculer.</dd></div>
+    </dl>
+    <p class="image-help">Il n’y a ni file d’attente, ni second PC de secours, ni nouvel essai automatique : une demande refusée doit être refaite.</p>
+  </section>
+</main>

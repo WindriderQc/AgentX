@@ -48,6 +48,7 @@ TRUST_ELIGIBLE = (
     "verified_runtime_evidence",
     "observed_project_event",
     "verified_git_or_test_outcome",
+    "household_member_statement",
 )
 TRUST_INELIGIBLE = (
     "assistant_claim",
@@ -191,7 +192,9 @@ class Observation:
             raise ValueError(f"unknown runtime: {self.runtime}")
         if self.trust not in TRUST_CLASSES:
             raise ValueError(f"unknown trust class: {self.trust}")
-        self.text = truncate(str(self.text).strip(), OBSERVATION_TEXT_MAX)
+        self.text = str(self.text).strip()
+        if len(self.text) > OBSERVATION_TEXT_MAX:
+            raise ValueError("Observation exceeds its text bound; no evidence was shortened")
         if not self.contentHash:
             self.contentHash = content_hash(self.text)
 

@@ -119,9 +119,7 @@ function normalizeTarget(value) {
   const mode = required(value.mode, 'target.mode').toLowerCase();
   const tier = required(value.tier, 'target.tier').toLowerCase();
   if (!['isolated_model', 'native_agent'].includes(mode) || !['local', 'free_cloud', 'paid_cloud'].includes(tier)) fail('INVALID_CATALOG', 'target mode or tier is invalid');
-  if (tier === 'local' && value.provider !== 'ollama') {
-    fail('INVALID_CATALOG', 'local harness targets must use Ollama');
-  }
+  if (tier === 'local' && value.provider !== 'ollama') fail('INVALID_CATALOG', 'local harness targets must use Ollama');
   const catalogFingerprint = String(value.catalogFingerprint || '').toLowerCase();
   if (!HEX64.test(catalogFingerprint)) fail('INVALID_CATALOG', 'target.catalogFingerprint must be SHA-256');
   const target = {
@@ -148,10 +146,14 @@ function normalizeTarget(value) {
     observedAt: value.observedAt == null ? null : timestamp(value.observedAt, 'target.observedAt'),
     catalogFingerprint
   };
+  if (value.billing != null) {
+    if (!['local', 'free', 'included', 'paid', 'unknown'].includes(value.billing)) fail('INVALID_CATALOG', 'target.billing is invalid');
+    target.billing = value.billing;
+  }
   return { ...target, fingerprint: fingerprint(target) };
 }
 
-function buildReceipt({ envelope, target, actual, usage, output }) {
+function buildReceipt({ envelope, target, actual, usage, output, evidence = null, contractSatisfied = true }) {
   const identity = {
     harness: target.harness,
     adapter: target.adapter,
@@ -167,7 +169,9 @@ function buildReceipt({ envelope, target, actual, usage, output }) {
     identity,
     fingerprints,
     executionTupleFingerprint: fingerprint({ identity, fingerprints: { prompt: fingerprints.prompt, tools: fingerprints.tools, policies: fingerprints.policies } }),
-    finalState: 'succeeded', failure: { classification: null, code: null },
+    finalState: contractSatisfied === true ? 'succeeded' : 'failed',
+    failure: contractSatisfied === true ? { classification: null, code: null }
+      : { classification: 'invalid_result', code: 'REPO_FIXTURE_VERIFICATION_FAILED' },
     usage: {
       durationMs: integer(usage.durationMs, 'usage.durationMs'),
       inputTokens: integer(usage.inputTokens ?? 0, 'usage.inputTokens'),
@@ -177,9 +181,10 @@ function buildReceipt({ envelope, target, actual, usage, output }) {
       turns: integer(usage.turns ?? 1, 'usage.turns'),
       toolCalls: integer(usage.toolCalls ?? 0, 'usage.toolCalls')
     },
-    toolErrors: [], humanInterventions: [], evidence: { patches: [], artifacts: [], tests: [] }, violations: [],
-    result: { contractSatisfied: true, fingerprint: fingerprint(String(output)) }
+    toolErrors: [], humanInterventions: [], evidence: evidence || { patches: [], artifacts: [], tests: [] }, violations: [],
+    result: { contractSatisfied: contractSatisfied === true, fingerprint: fingerprint(String(output)) }
   };
+  if (actual.execution) normalized.execution = require('../../shared/executionEvidence').normalizeExecutionEvidence(actual.execution);
   if (usage.cacheReadTokens != null) normalized.usage.cacheReadTokens = integer(usage.cacheReadTokens, 'usage.cacheReadTokens');
   if (usage.cacheWriteTokens != null) normalized.usage.cacheWriteTokens = integer(usage.cacheWriteTokens, 'usage.cacheWriteTokens');
   if (usage.costSource != null) {

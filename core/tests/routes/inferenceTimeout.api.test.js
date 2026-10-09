@@ -235,6 +235,99 @@ describe('POST /api/inference/generate — fetch timeout', () => {
     expect(transportSignal.aborted).toBe(false);
   });
 
+  const benchmarkRequest = (timeoutMs) => ({
+    model: 'test-model', prompt: 'hello', timeoutMs,
+    callerDetail: 'benchmark-batch-deadline',
+    workloadAdmissionId: 'workload-deadline', workloadGeneration: 'generation-deadline',
+  });
+
+  it.each(['headers', 'body'])('allows a Benchmark response beyond the Core default while awaiting %s', async (phase) => {
+    let upstreamPayload;
+    fetch.mockImplementation(async (url, options) => {
+      const evidence = benchmarkEvidenceResponse(url);
+      if (evidence) return evidence;
+      upstreamPayload = JSON.parse(options.body);
+      const delay = () => new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 650);
+        options.signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        }, { once: true });
+      });
+      if (phase === 'headers') await delay();
+      return {
+        ok: true, status: 200,
+        text: async () => {
+          if (phase === 'body') await delay();
+          return JSON.stringify({ response: 'long answer', done: true });
+        },
+      };
+    });
+
+    const response = await request(server).post('/api/inference/generate')
+      .set('X-AgentX-Caller', 'benchmark-service').send(benchmarkRequest(1500)).expect(200);
+    expect(response.body.response).toBe('long answer');
+    expect(upstreamPayload).not.toHaveProperty('timeoutMs');
+  });
+
+  it('cuts a stalled Benchmark response body at its declared deadline', async () => {
+    fetch.mockImplementation(async (url, options) => {
+      const evidence = benchmarkEvidenceResponse(url);
+      if (evidence) return evidence;
+      return { ok: true, status: 200, text: () => new Promise((_resolve, reject) => {
+        const abort = () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        if (options.signal.aborted) abort();
+        else options.signal.addEventListener('abort', abort, { once: true });
+      }) };
+    });
+    const response = await request(server).post('/api/inference/generate')
+      .set('X-AgentX-Caller', 'benchmark-service').send(benchmarkRequest(40)).expect(504);
+    expect(response.body.status).toBe('error');
+    expect(recordInference).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'timeout', error: 'fetch_timeout_40ms',
+    }));
+  });
+
+  it.each([3600001, 2147483647])('accepts a representable Benchmark deadline of %i ms', async timeoutMs => {
+    fetch.mockImplementation(async url => benchmarkEvidenceResponse(url) || {
+      ok: true, status: 200, text: async () => JSON.stringify({ response: 'hi', done: true })
+    });
+    const response = await request(server).post('/api/inference/generate')
+      .set('X-AgentX-Caller', 'benchmark-service').send(benchmarkRequest(timeoutMs)).expect(200);
+    expect(response.body.response).toBe('hi');
+  });
+
+  it.each([0, -1, 1.5, 2147483648, '1200000', null])('refuses invalid Benchmark timeout %j before dispatch', async timeoutMs => {
+    const response = await request(server).post('/api/inference/generate')
+      .set('X-AgentX-Caller', 'benchmark-service').send(benchmarkRequest(timeoutMs)).expect(400);
+    expect(response.body.code).toBe('INFERENCE_TIMEOUT_INVALID');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses an operator attempting to override the timeout using Benchmark attribution', async () => {
+    const response = await request(server).post('/api/inference/generate')
+      .send(benchmarkRequest(1200000)).expect(403);
+    expect(response.body.code).toBe('INFERENCE_TIMEOUT_FORBIDDEN');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('requires workload proof even when the caller declares Benchmark ownership', async () => {
+    const body = benchmarkRequest(1200000);
+    delete body.workloadAdmissionId;
+    const response = await request(server).post('/api/inference/generate')
+      .set('X-AgentX-Caller', 'benchmark-service').send(body).expect(403);
+    expect(response.body.code).toBe('BENCHMARK_WORKLOAD_PROOF_REQUIRED');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses an override on streaming requests instead of silently ignoring it', async () => {
+    const response = await request(server).post('/api/inference/generate')
+      .set('X-AgentX-Caller', 'benchmark-service')
+      .send({ ...benchmarkRequest(1200000), stream: true }).expect(400);
+    expect(response.body.code).toBe('INFERENCE_TIMEOUT_INVALID');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('aborts the downstream transport and skips degraded retry when the caller disconnects', async () => {
     process.env.DEGRADED_FALLBACK = 'true';
     let transportSignal;

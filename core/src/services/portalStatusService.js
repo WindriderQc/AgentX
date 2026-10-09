@@ -101,9 +101,12 @@ function summarizeIdentityConsistency(services) {
     if (missing.length) issues.push(`Identity unavailable: ${missing.join(', ')}`);
     if (profiles.length > 1) issues.push(`Mixed runtime profiles: ${profiles.join(', ')}`);
     if (versions.length > 1) issues.push(`Mixed product versions: ${versions.join(', ')}`);
+    // Services are deployed one at a time, so builds of one product version
+    // from different revisions are an expected state, not a mismatch.
+    const revisionsOnly = issues.length === 0 && revisions.length > 1;
     if (revisions.length > 1) issues.push(`Mixed build revisions: ${revisions.join(', ')}`);
 
-    let status = issues.length ? 'degraded' : 'ok';
+    let status = revisionsOnly ? 'mixed' : (issues.length ? 'degraded' : 'ok');
     if (status === 'ok' && revisions.length === 1 && revisions[0] === 'unknown') {
         status = 'unverified';
         issues.push('Build revision is not embedded in this process.');

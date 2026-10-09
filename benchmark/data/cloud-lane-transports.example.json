@@ -5,9 +5,8 @@
       "baseUrl": "http://localhost:11434"
     },
     "free-cloud-example": {
-      "type": "openrouter",
-      "baseUrl": "https://openrouter.ai/api/v1",
-      "apiKeyEnv": "OPENROUTER_API_KEY"
+      "type": "openclaw",
+      "modelFingerprint": "REPLACE_WITH_NATIVE_CATALOG_MODEL_FINGERPRINT"
     }
   }
 }

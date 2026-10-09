@@ -52,6 +52,35 @@ describe('RagStore (in-memory, mocked embeddings)', () => {
     expect(result.status).toBe('created');
   });
 
+  test.each(['EMBEDDING_INPUT_TOO_LARGE', 'EMBEDDING_INPUT_REJECTED'])(
+    'a refused %s update keeps the complete previous revision', async (code) => {
+      const metadata = { source: 'synthetic', documentId: 'preserved', chunkSize: 50, chunkOverlap: 0 };
+      await store.upsertDocumentWithChunks('Original synthetic content '.repeat(5), metadata);
+      const previous = await store.getDocument('preserved');
+      const chunks = await store.getDocumentChunks('preserved');
+      const upsert = jest.spyOn(store.vectorStore, 'upsertDocument');
+      store.embeddingsService.embedBatch.mockRejectedValueOnce(
+        Object.assign(new Error('Synthetic input refused'), { code, statusCode: 413 })
+      );
+      await expect(store.upsertDocumentWithChunks('Changed synthetic content '.repeat(5), metadata))
+        .rejects.toMatchObject({ code });
+      expect(upsert).not.toHaveBeenCalled();
+      expect(await store.getDocument('preserved')).toEqual(previous);
+      expect(await store.getDocumentChunks('preserved')).toEqual(chunks);
+    }
+  );
+
+  test('a chunk-limit refusal keeps the previous revision without embedding any partial document', async () => {
+    const metadata = { source: 'synthetic', documentId: 'preserved', chunkSize: 100, chunkOverlap: 0 };
+    await store.upsertDocumentWithChunks('Original synthetic content', metadata);
+    const previous = await store.getDocumentChunks('preserved');
+    store.embeddingsService.embedBatch.mockClear();
+    await expect(store.upsertDocumentWithChunks('x'.repeat(1_000_100), metadata))
+      .rejects.toMatchObject({ code: 'RAG_CHUNK_LIMIT_EXCEEDED' });
+    expect(store.embeddingsService.embedBatch).not.toHaveBeenCalled();
+    expect(await store.getDocumentChunks('preserved')).toEqual(previous);
+  });
+
   test('classification survives same-text updates and later content-only reingestion', async () => {
     const metadata = { source: 'test', documentId: 'classified-note', scope: 'owner', sensitivity: 'private' };
     await store.upsertDocumentWithChunks('A synthetic note', metadata);
@@ -423,13 +452,29 @@ describe('RagStore (in-memory, mocked embeddings)', () => {
         documentId: 'no-expand-doc'
       });
 
-      await store.searchSimilarChunks('test query', {
+      const { applied } = await store.search('test query', {
         topK: 3,
         hybrid: true,
-        expand: true // Should be ignored — hybrid skips expansion
+        expand: true // Not combined: hybrid runs, expansion is reported as not applied
       });
 
       expect(expandQuery).not.toHaveBeenCalled();
+      expect(applied).toEqual({ hybrid: true, expand: false });
+    });
+
+    test('hybrid reports a failed keyword search and keeps the vector results', async () => {
+      await store.upsertDocumentWithChunks('Vector only content', { source: 'test', documentId: 'kw-fail-doc' });
+      store.vectorStore.findKeywordCandidates = jest.fn().mockRejectedValue(new Error('scroll failed'));
+
+      const { results, applied } = await store.search('vector content', { topK: 3, hybrid: true });
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(applied).toEqual({ hybrid: true, expand: false, keywordSearchFailed: true });
+    });
+
+    test('search reports expansion as applied when it runs alone', async () => {
+      const { applied } = await store.search('test query', { topK: 3, expand: true });
+      expect(applied).toEqual({ hybrid: false, expand: true });
     });
 
     test('hybrid=false does not produce rrfScore', async () => {

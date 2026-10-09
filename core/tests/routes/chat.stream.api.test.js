@@ -85,6 +85,14 @@ describe('POST /api/chat/stream - Streaming SSE Endpoint', () => {
     });
 
     describe('1. SSE Headers and Format', () => {
+        it.each([[undefined, undefined], ['false', false], ['true', true]])('preserves omitted and explicit legacy RAG query choices (%s)', async (queryValue, expected) => {
+            chatService.handleChatRequestStream = jest.fn(async ({ onComplete }) => onComplete({ response: 'Synthetic', conversationId: 'conv123' }));
+            const query = { model: 'llama2', message: 'Synthetic question' };
+            if (queryValue !== undefined) query.useRag = queryValue;
+            await request(app).get('/api/chat/stream').query(query).expect(200);
+            expect(chatService.handleChatRequestStream).toHaveBeenCalledWith(expect.objectContaining({ useRag: expected }));
+        });
+
         it('should return SSE headers', async () => {
             chatService.handleChatRequestStream = jest.fn(async ({ onComplete }) => {
                 onComplete({ response: 'Test', conversationId: 'conv123' });

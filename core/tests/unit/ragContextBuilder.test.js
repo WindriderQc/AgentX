@@ -35,6 +35,7 @@ describe('ragContextBuilder', () => {
         compress: false
       });
       expect(result.ragUsed).toBe(true);
+      expect(result.ragStatus).toBe('used');
       expect(result.ragSources).toHaveLength(2);
       expect(result.ragContext).toContain('[1] alerts.md');
       expect(result.ragContext).toContain('[2] config.md');
@@ -76,6 +77,7 @@ describe('ragContextBuilder', () => {
       const result = await buildRagContext('test query', store, {});
 
       expect(result.ragUsed).toBe(false);
+      expect(result.ragStatus).toBe('unavailable');
       expect(result.ragSources).toEqual([]);
       expect(result.ragContext).toBeNull();
     });
@@ -85,6 +87,7 @@ describe('ragContextBuilder', () => {
       const result = await buildRagContext('test query', store, {});
 
       expect(result.ragUsed).toBe(false);
+      expect(result.ragStatus).toBe('no_match');
       expect(result.ragSources).toEqual([]);
       expect(result.ragContext).toBeNull();
     });
@@ -93,11 +96,13 @@ describe('ragContextBuilder', () => {
       const result = await buildRagContext('test query', null, {});
 
       expect(result.ragUsed).toBe(false);
+      expect(result.ragStatus).toBe('unavailable');
     });
 
     it('should return ragUsed=false when query is empty', async () => {
       const store = makeMockStore(mockResults);
       const result = await buildRagContext('', store, {});
+      expect(result.ragStatus).toBe('not_requested');
 
       expect(result.ragUsed).toBe(false);
     });

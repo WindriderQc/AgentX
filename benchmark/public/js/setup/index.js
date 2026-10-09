@@ -16,7 +16,7 @@ const setupParams = new URLSearchParams(window.location.search);
 const judgeFocused = setupParams.get('focus') === 'judge';
 const returnPath = safeReturnPath(
   setupParams.get('return'),
-  judgeFocused ? '/courthouse' : '/'
+  judgeFocused ? '/benchmark/courthouse' : '/benchmark/'
 );
 
 configureReturnLink();
@@ -26,7 +26,7 @@ configureReturnLink();
 (async function init() {
   const initRevision = probeRevision;
   try {
-    const res = await fetch('/api/setup/status');
+    const res = await fetch('/benchmark/api/setup/status');
     const data = await res.json();
     configuredHosts = Array.isArray(data.hosts) ? data.hosts : [];
     configuredJudge = data.judge || null;
@@ -90,7 +90,7 @@ async function probeConnection(raw, { preferredJudge = '', focusJudge = false } 
   showStatus('connect-status', `Connecting to ${url}\u2026`, 'loading');
 
   try {
-    const res = await fetch('/api/setup/test-host', {
+    const res = await fetch('/benchmark/api/setup/test-host', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
@@ -242,7 +242,7 @@ async function saveConfig() {
       }
     };
 
-    const res = await fetch('/api/setup/save', {
+    const res = await fetch('/benchmark/api/setup/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config)
@@ -314,13 +314,13 @@ function safeReturnPath(raw, fallback) {
 }
 
 function returnLabel() {
-  if (returnPath.startsWith('/courthouse')) return 'Courthouse';
-  if (returnPath.startsWith('/profiler')) return 'Profiler';
+  if (returnPath.startsWith('/benchmark/courthouse')) return 'Courthouse';
+  if (returnPath.startsWith('/benchmark/profiler')) return 'Profiler';
   return 'Benchmark';
 }
 
 function saveButtonLabel() {
-  return returnPath === '/'
+  return returnPath === '/benchmark/'
     ? 'Save & Start Benchmarking \u2192'
     : `Save & Return to ${returnLabel()} \u2192`;
 }

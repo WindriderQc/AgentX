@@ -9,7 +9,8 @@ const MAX_PER_TURN = 3;
 const MAX_CONTEXT_BYTES = 8 * 1024 * 1024;
 const MAX_CONTEXT_TEXT = 60000;
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode, code: 'CONVERSATION_ATTACHMENT_INVALID' });
-const reference = row => ({ id: String(row._id), name: row.name, mimeType: row.mimeType, kind: row.kind, size: row.size });
+const reference = row => ({ id: String(row._id), name: row.name, mimeType: row.mimeType, kind: row.kind, size: row.size,
+  ...(row.original && { original: { sha256: row.original.sha256, mimeType: row.original.mimeType, size: row.original.size } }) });
 const bytes = data => Buffer.isBuffer(data) ? data : Buffer.from(data.buffer || data);
 function ids(value = [], maximum = MAX_PER_TURN) {
   if (!Array.isArray(value) || value.length > maximum || value.some(id => typeof id !== 'string' || !/^[a-f0-9]{24}$/.test(id))
@@ -84,6 +85,17 @@ function forConversation({ surface, sessionId, packId, scopeId }) {
     });
   }
   async function references(values) { return (await load(values)).map(reference); }
+  // The model receives the attachment; the archive keeps the photo it came from.
+  async function attachOriginal(id, { bytes, name } = {}, archive = require('./imageArchive').defaultArchive()) {
+    if (!archive.enabled) throw fail('L’archive des images n’est pas configurée.', 404);
+    const [row] = await load([id]);
+    if (row.kind !== 'image') throw fail('Seule une image a un original à archiver.');
+    const receipt = await archive.store({ bytes, name: name || row.name, origin: 'uploaded',
+      context: { surface, conversationId: String(row.conversationId), attachmentId: String(row._id), attachmentName: row.name } });
+    const original = { sha256: receipt.sha256, mimeType: receipt.mimeType, size: receipt.size, path: receipt.path, archivedAt: receipt.archivedAt };
+    await Attachment.updateOne({ _id: row._id }, { $set: { original } });
+    return reference({ ...row, original });
+  }
   async function download(id) {
     const [row] = await load([id]);
     return { ...reference(row), data: bytes(row.data) };
@@ -118,7 +130,7 @@ function forConversation({ surface, sessionId, packId, scopeId }) {
       return { ...message, content, ...(images.length ? { images: images.map(row => row.base64) } : {}) };
     });
   }
-  return Object.freeze({ upload, references, download, prepare });
+  return Object.freeze({ upload, references, download, prepare, attachOriginal });
 }
 
 module.exports = { forConversation, ids, MAX_BYTES, MAX_PER_TURN };

@@ -14,9 +14,7 @@ const router = express.Router();
 const logger = require('../config/logger');
 const { getBenchmarkServiceClient } = require('../src/services/benchmarkServiceClient');
 
-const VALID_CATEGORIES = new Set([
-  'coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation'
-]);
+const VALID_CATEGORIES = new Set(require('../../shared/benchmarkCategories').BENCHMARK_CATEGORY_KEYS);
 
 /**
  * GET /api/benchmark-proxy/recommend

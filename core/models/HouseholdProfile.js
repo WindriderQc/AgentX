@@ -8,6 +8,8 @@ const HouseholdProfileSchema = new mongoose.Schema({
   displayName: { type: String, required: true },
   ageBand: { type: String, enum: AGE_BANDS, default: 'school' },
   avatar: { type: String, default: '⭐' },
+  // Optional YYYY-MM-DD, set by the parent; never part of the public profile projection.
+  birthDate: { type: String },
   active: { type: Boolean, default: true, index: true },
   createdBy: { type: String, default: 'household-parent' }
 }, { timestamps: true, collection: 'household_profiles' });
