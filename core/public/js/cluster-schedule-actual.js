@@ -102,7 +102,7 @@ function renderUtilHeatmap(container, data) {
     // Rows: one per day
     for (let di = 0; di < days.length; di++) {
       const dateLabel = SCHEDULE_DATE.formatCalendarDate(days[di], {
-        locale: 'en-US',
+        locale: UI_LOCALE,
         format: { month: 'short', day: 'numeric' }
       });
       html += `<div class="cs-util-label-cell">${dateLabel}</div>`;

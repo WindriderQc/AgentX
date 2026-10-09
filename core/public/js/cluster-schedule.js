@@ -16,6 +16,8 @@ const SCHEDULE_DATE = window.ClusterScheduleDate;
 const UPCOMING_PROJECTION = window.ClusterScheduleUpcoming;
 const HEADLINE_PROJECTION = window.ClusterScheduleHeadline;
 const OPERATOR_TIME_ZONE = SCHEDULE_DATE.browserTimeZone();
+// One display locale for every date and time on the page, with a 24-hour clock.
+const UI_LOCALE = 'en-US';
 
 const TASK_COLORS = {
   benchmark: '#f59e0b', sync: '#3b82f6', cleanup: '#8b5cf6',
@@ -81,7 +83,7 @@ function updateDateLabel() {
   const description = SCHEDULE_DATE.describeCalendarDate(currentDate, {
     now: new Date(),
     timeZone: OPERATOR_TIME_ZONE,
-    locale: 'en-US'
+    locale: UI_LOCALE
   });
   el.textContent = description.label;
   el.setAttribute('datetime', currentDate);
@@ -854,7 +856,7 @@ function renderNextItem(task, i) {
 }
 
 function formatClockTime(value) {
-  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(value).toLocaleTimeString(UI_LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
 function startCountdown() {
@@ -895,18 +897,19 @@ function esc(s) {
   return window.AgentXUtils.escapeHtml(s);
 }
 function formatTime(date) {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  return date.toLocaleTimeString(UI_LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 function formatEvidenceTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'at an unknown time';
-  return date.toLocaleString([], {
+  return date.toLocaleString(UI_LOCALE, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit'
+    second: '2-digit',
+    hourCycle: 'h23'
   });
 }
 function formatDuration(ms) {

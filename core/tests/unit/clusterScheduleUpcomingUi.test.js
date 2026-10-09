@@ -317,6 +317,14 @@ describe('Cluster Schedule evidence presentation', () => {
     expect(measuredContainer.innerHTML).toContain('04:00 actual 0% (1 call)');
   });
 
+  test('formats every clock time in one English 24-hour format', () => {
+    const { context } = loadClusterScheduleContext();
+    context.testDate = new Date(2026, 7, 28, 22, 5, 9);
+    expect(vm.runInContext('formatTime(testDate)', context)).toBe('22:05');
+    expect(vm.runInContext('formatClockTime(testDate)', context)).toBe('22:05');
+    expect(vm.runInContext('formatEvidenceTime(testDate)', context)).toBe('Aug 28, 2026, 22:05:09');
+  });
+
   test('draws a planned slot that ends at midnight to the end of the track', () => {
     const { context } = loadClusterScheduleContext();
     const container = { innerHTML: '' };
