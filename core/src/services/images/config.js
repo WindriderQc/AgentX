@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const net = require('node:net');
 const { limits } = require('./sizes');
+const { declaredRecipe } = require('./recipeExecution');
 
 function localUrl(value) {
   const u = new URL(value);
@@ -29,6 +30,7 @@ function loadConfig() {
     }
     if (!Number.isInteger(p.steps) || p.steps < 1 || p.steps > 50) throw new Error('Invalid image step count');
     if (!Number.isInteger(p.maxPixels) || p.maxPixels < 262144 || p.maxPixels > limits(p.family).maxPixels) throw new Error('Invalid image pixel budget');
+    if (p.recipe !== undefined) p.recipe = declaredRecipe(p.recipe);
   }
   c.timeoutMs = Math.max(60000, Math.min(1800000, Number(c.timeoutMs) || 900000));
   c.drainMs = Math.max(0, Math.min(90000, Number(c.drainMs) || 60000));

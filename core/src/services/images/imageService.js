@@ -9,7 +9,7 @@ const { TRANSFORM, validateParent, prepareReferences } = require('./parentRefere
 const { loadConfig } = require('./config');
 const { createComfyClient } = require('./comfyClient');
 const { reserve } = require('./gpuReservation');
-const { workflow } = require('./workflows');
+const { requestedRecipe, assertRecipe, buildExecution } = require('./recipeExecution');
 const { qualified, MAX_OUTPUT_PIXELS } = require('./sizes');
 const logger = require('../../../config/logger');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -43,8 +43,10 @@ function publicOperation(op) {
       width: op.artifact.width, height: op.artifact.height, url: `/api/images/operations/${op._id}/image` } }) };
 }
 async function save(id, changes, unset = {}) {
-  return ImageOperation.findByIdAndUpdate(id, { $set: changes, ...(Object.keys(unset).length && { $unset: unset }) },
-    { new: true, writeConcern: { w: 1, j: true } }).lean();
+  const updated = ImageOperation.findByIdAndUpdate(id, { $set: changes, ...(Object.keys(unset).length && { $unset: unset }) },
+    { new: true, writeConcern: { w: 1, j: true } });
+  if (changes.execution) updated.select('+execution');
+  return updated.lean();
 }
 function validate(body, config) {
   if (!body || typeof body !== 'object' || typeof body.actionKey !== 'string' || !/^[a-zA-Z0-9:_.-]{8,160}$/.test(body.actionKey)) throw fail('Une identité de demande est requise.');
@@ -56,6 +58,7 @@ function validate(body, config) {
   if (!qualified(profile, width, height)) throw fail('Résolution non qualifiée pour ce profil.');
   const seed = body.seed === undefined ? crypto.randomInt(0, 2 ** 48 - 1) : Number(body.seed);
   if (!Number.isSafeInteger(seed) || seed < 0) throw fail('Graine invalide.');
+  const recipe = requestedRecipe(body);
   const parent = validateParent(body.parent);
   if (body.references !== undefined && !Array.isArray(body.references)) throw fail('Références image invalides.');
   if ((body.references || []).length + (parent ? 1 : 0) > 2) throw fail('Deux références au maximum, parent compris.');
@@ -71,8 +74,8 @@ function validate(body, config) {
   const request = { prompt: body.prompt.trim(), width, height, seed };
   // Omitted seed remains omitted in the identity: a replay returns the original random seed.
   const requestHash = hash(JSON.stringify({ ...request, seed: body.seed ?? null, profile: id, references: originals.map(hash),
-    ...(parent && { parent: { ...parent, transform: TRANSFORM } }) }));
-  return { profile: { ...profile, id }, request, requestHash, originals, parent };
+    ...(parent && { parent: { ...parent, transform: TRANSFORM } }), ...(recipe && { recipe }) }));
+  return { profile: { ...profile, id }, request, requestHash, originals, parent, recipe };
 }
 async function accept(body, { conversation, signal } = {}) {
   await initialize();
@@ -88,6 +91,7 @@ async function accept(body, { conversation, signal } = {}) {
     if (prior.requestHash !== input.requestHash) throw fail('Cette identité appartient déjà à une autre demande.', 409);
     return publicOperation(prior);
   }
+  assertRecipe(input.recipe, input.profile);
   signal?.throwIfAborted();
   const prepared = await prepareReferences(input.originals, input.parent, conversation, image);
   signal?.throwIfAborted();
@@ -134,9 +138,15 @@ async function execute(op, config, client) {
       await reservation.assertOwned(); refs.push(await client.upload(Buffer.from(op.references[i]), `agentx-${op._id}-${i}.png`));
     }
     if (await cancelled()) throw Object.assign(new Error('Image request cancelled'), { cancelled: true });
-    await persist({ state: 'generating', dispatchStarted: true }); op.dispatchStarted = true;
+    const execution = buildExecution(op.profile, op.request, refs, op._id);
+    const recorded = await persist({ state: 'generating', execution, dispatchStarted: true });
+    if (!recorded?.execution?.graph || recorded.execution.graphSha256 !== execution.graphSha256
+      || hash(JSON.stringify(recorded.execution.graph)) !== execution.graphSha256) {
+      throw new Error('Image execution snapshot could not be retained');
+    }
+    op.dispatchStarted = true;
     await reservation.assertOwned(); terminal = false;
-    await client.submit(op.jobId, workflow(op.profile, op.request, refs, op._id));
+    await client.submit(op.jobId, execution.graph);
     output = await client.observe(op.jobId, { timeoutMs: config.timeoutMs, cancelled,
       assertOwned: reservation.assertOwned, onTerminal: async () => { terminal = true; } });
     await persist({ state: 'archiving', output });

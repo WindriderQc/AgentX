@@ -54,6 +54,48 @@ same bytes. An exact replay returns the existing operation before reading the
 parent archive or contacting a worker. This lineage does not constitute a full
 recipe export or HQ/finish16 execution contract.
 
+A profile may declare an optional `recipe: {"id": "studio-edit", "version": "1"}`
+in the existing private worker manifest. This declaration contains exactly those
+two strings, each 1–80 letters/digits or `._:-`, beginning with a letter/digit.
+It names the current server-owned Klein/Qwen workflow; it supplies no nodes,
+code, new parameters or weight provenance. It is distinct from a lab catalogue
+record or graph hash, and proves no installed model digest or global recipe
+immutability. Profiles without a declaration keep their existing behavior.
+
+The workshop reports the declared identity and sends optional `recipeId` and
+`recipeVersion` together. A partial or malformed pair is 400. For a new action,
+an undeclared or mismatching expected recipe is 409 before reading a parent or
+contacting a worker. The pair participates in request identity; changing it
+under the same action key is 409. An identical accepted replay is returned
+before comparison with the current declaration, so a v1 operation remains
+observable after the profile moves to v2. Callers without the pair preserve
+their previous request hashes and may use the current profile.
+The existing checks still require that profile and requested dimensions to be
+valid. An invalid recipe declaration makes the manifest unavailable, just as
+an invalid profile does; declare versions as strings.
+
+After reference uploads return their actual names, Core constructs the graph
+once and awaits durable storage of `execution.version: 1`, builder ID/version,
+the exact JSON and its `graphSha256` before submission. It submits that same
+graph when dispatch proceeds. Snapshot persistence failure prevents submission.
+Core also compares the returned stored graph and digest with the prepared SHA
+before dispatch, refusing a missing or changed snapshot after an acknowledged
+write. Existing restoration and quarantine contracts still apply. Execution snapshots
+survive terminal reference-buffer removal and recovery. Width and height in
+`execution.parameters` are the requested format; Qwen's effective resolution
+and latent path are recorded in the graph, not inferred from those dimensions.
+
+Details disclose only snapshot version, builder, graph SHA and the already
+public width/height/seed/steps, plus the historical declared recipe identity.
+They never expose the stored graph, additional brief copies or private manifest
+properties. The UI labels its digest **Graphe préparé**: a locally stored graph
+and `dispatchStarted` intent do not prove backend receipt or execution. The
+submission response and terminal operation state retain their existing meaning.
+Older operations without execution or a declared recipe remain without them;
+details never synthesize either from today's profile. Recipe/catalogue graph
+SHA, submitted JSON SHA, uploaded-reference SHA and verified output SHA describe
+different artifacts. No HQ, finish16 or complete recipe export is enabled here.
+
 `/images/guide` (linked from the atelier header) explains the path of a request,
 lists the installed recipes and gives prompting advice. Its host, GPU and recipe
 facts come from `GET /api/images/workshop`; the page source names no machine or
