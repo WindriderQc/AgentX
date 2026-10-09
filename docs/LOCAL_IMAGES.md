@@ -74,6 +74,12 @@ by Core; do not publish the ComfyUI UI or submit prompts manually while Core
 owns the worker. On hosts sharing RAM with other services, qualify the cache
 and offload policy with those services present.
 
+When the worker runs on another host than Core, it has to listen on that
+host's LAN address. Pass `--allow-client <address>` for Core's source address
+(repeat it for several): the supervisor then answers 403 to every other
+caller, reads included. Without the option, every caller that reaches the bind
+address is accepted, which is only suitable for loopback or a private bridge.
+
 `integrations/local-images/worker.py` is a CPU supervisor for that installation.
 Run it with the ComfyUI root, its virtual-environment Python, an external state
 directory and the `/object_info` schema captured from the pinned installation.
