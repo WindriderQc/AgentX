@@ -83,7 +83,7 @@ async function listPersonalTasks(input = {}, now = new Date()) {
   // Classify before paging: old imported reminders must not hide a newly
   // captured deadline. Project only the fields needed by the public view.
   const tasks = await PipelineTask.find(query).select('pipelineId title status priority spec dueAt relevantUntil origin source createdAt updatedAt').lean();
-  const attention = { overdue: 0, today: 1, upcoming: 2, inbox: 3, recheck: 4, expired: 5, done: 6 };
+  const attention = { today: 0, overdue: 1, upcoming: 2, inbox: 3, recheck: 4, expired: 5, done: 6 };
   const all = sortedPersonalTasks(tasks, now).sort((a, b) => attention[a.lane] - attention[b.lane]);
   const items = all.slice(0, limit);
   return {
