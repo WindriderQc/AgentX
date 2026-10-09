@@ -260,6 +260,29 @@ describe('POST /api/v1/network/scan-results (agent ingest)', () => {
     expect(update.$set.vendor).toHaveLength(128);
   });
 
+  // What the owner records about a device (PATCH /devices/:id) must survive
+  // every later sweep: a sweep only rewrites what the collector observed.
+  test('a sweep never writes the name, known flag, type, location or notes of an existing device', async () => {
+    const db = buildDb();
+    await request(buildApp(db))
+      .post('/api/v1/network/scan-results')
+      .send({
+        scannerId: 'x', scanSource: 'x', format: 'devices', pruneMissing: true,
+        devices: [{ ip: '192.0.2.20', mac: 'AA:BB:CC:DD:EE:FF', hostname: 'h', vendor: 'v' }, { ip: '192.0.2.21' }]
+      })
+      .expect(200);
+
+    const ownerFields = ['alias', 'notes', 'location', 'knownAt', 'hardware', 'hardware.type'];
+    for (const { updateOne } of db.coll('network_devices').bulkWrite.mock.calls[0][0]) {
+      expect(Object.keys(updateOne.update).sort()).toEqual(['$set', '$setOnInsert']);
+      expect(Object.keys(updateOne.update.$set).sort())
+        .toEqual(['hostname', 'ip', 'lastScanAt', 'lastSeen', 'mac', 'scanSource', 'status', 'vendor']);
+      for (const field of ownerFields) expect(updateOne.update.$set).not.toHaveProperty([field]);
+      // Only a device seen for the first time gets empty defaults.
+      expect(updateOne.update.$setOnInsert).toEqual({ firstSeen: expect.any(Date), alias: '', notes: '' });
+    }
+  });
+
   test('pruneMissing marks offline only this source\'s devices missing from a non-empty result', async () => {
     const db = buildDb({
       network_devices: {
@@ -524,6 +547,16 @@ describe('PATCH /api/v1/network/devices/:id', () => {
 
     expect(res.body.status).toBe('success');
     expect(res.body.data.device.alias).toBe('Printer');
+  });
+
+  test('stores the type under hardware.type, the location and the notes, each on its own field', async () => {
+    const findOneAndUpdate = jest.fn().mockResolvedValue({ _id: 'd1' });
+    const app = buildApp(buildDb({ network_devices: { findOneAndUpdate } }));
+
+    await request(app).patch('/api/v1/network/devices/AA:BB:CC:DD:EE:FF')
+      .send({ type: 'printer', location: 'Office', notes: 'Second tray' }).expect(200);
+    expect(findOneAndUpdate.mock.calls[0][0]).toEqual({ mac: 'AA:BB:CC:DD:EE:FF' });
+    expect(findOneAndUpdate.mock.calls[0][1]).toEqual({ $set: { 'hardware.type': 'printer', location: 'Office', notes: 'Second tray' } });
   });
 
   test('returns 404 when device not found', async () => {

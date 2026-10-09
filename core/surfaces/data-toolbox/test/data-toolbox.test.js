@@ -185,10 +185,10 @@ function registeredSurface() {
   return { mounts, routers };
 }
 
-test('manifest identifies the AIOps Data Toolbox contract and its two writes', () => {
+test('manifest identifies the AIOps Data Toolbox contract and its three writes', () => {
   assert.equal(toolbox.id, 'aio-ops-data-toolbox');
   assert.equal(toolbox.version, '1.5.0');
-  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-acknowledge', 'mqtt-publish']);
+  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish']);
   assert.throws(() => toolbox.register({ contractVersion: 1 }), /contract v2/);
 });
 
@@ -205,7 +205,7 @@ test('query projection keeps only allowlisted, bounded values', () => {
   assert.throws(() => toolbox.safeName('../private', 'collection'), /Invalid collection/);
 });
 
-test('registration mounts the cockpit, GET proxy families and exactly two writes', () => {
+test('registration mounts the cockpit, GET proxy families and exactly three writes', () => {
   const { mounts, routers } = registeredSurface();
   const appPaths = mounts.map((entry) => entry.path);
   assert.ok(appPaths.includes('/assets/data-toolbox'));
@@ -216,10 +216,10 @@ test('registration mounts the cockpit, GET proxy families and exactly two writes
   const routes = routers.flatMap((router) => router.routes);
   assert.ok(routes.length >= 20);
   assert.deepEqual(routes.filter((route) => route.method !== 'get').map((route) => `${route.method} ${route.path}`),
-    ['patch /network/devices/:mac', 'post /mqtt/publish'],
-    'the only mutations are naming or acknowledging a network device and publishing an MQTT message');
+    ['post /network/scan', 'patch /network/devices/:mac', 'post /mqtt/publish'],
+    'the only mutations are a network scan request, the edit of a network device record and publishing an MQTT message');
   for (const route of [
-    '/status', '/storage/summary', '/storage/files', '/network/devices',
+    '/status', '/storage/summary', '/storage/files', '/network/devices', '/network/scan-requests/:id',
     '/hardware/collectors', '/hardware/latest', '/hardware/history', '/hardware/occupancy',
     '/databases/collections', '/live-data/feeds', '/mqtt/status', '/mqtt/messages', '/janitor/profiles', '/janitor/dedup-report',
     '/janitor/profiles/:id/runs', '/janitor/runs/:id', '/janitor/strategy/latest', '/janitor/strategy/latest/raw'
@@ -318,18 +318,23 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   assert.match(app, /draft\.authorizesFilesystemMutation === false/);
   assert.match(app, /clearJanitorReviewDraft\(\)/);
   assert.match(app, /saved in this browser across refreshes, tab changes, and portfolio regenerations/);
-  // The bundle sends two mutations: naming or acknowledging a device (app.js)
-  // and publishing an MQTT message (mqtt.js). The page says so in both places.
-  assert.equal(app.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi)?.length, 1);
-  assert.match(app, /network\/devices\/\$\{encodeURIComponent\(mac\)\}`, \{ method: 'PATCH'/);
+  // The bundle sends three mutations: a network scan request and the edit of
+  // a device record (network-tools.js), and an MQTT message (mqtt.js). The
+  // page says so in both places.
+  assert.equal(app.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi), null);
+  const networkTools = fs.readFileSync(path.join(root, 'network-tools.js'), 'utf8');
+  assert.equal(networkTools.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi)?.length, 2);
+  assert.match(networkTools, /api\('\/network\/scan', \{ method: 'POST'/);
+  assert.match(networkTools, /network\/devices\/\$\{encodeURIComponent\(key\)\}`, \{ method: 'PATCH'/);
   const mqtt = fs.readFileSync(path.join(root, 'mqtt.js'), 'utf8');
   assert.equal(mqtt.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi)?.length, 1);
   assert.match(mqtt, /api\('\/mqtt\/publish', \{ method: 'POST'/);
   assert.equal(fs.readFileSync(path.join(root, 'gpu.js'), 'utf8').match(/method:/g), null);
   assert.match(html, /<strong>No filesystem actions\.<\/strong>/);
-  assert.match(html, /This page sends two changes to Data: a network device's name or its known flag, and an MQTT message published by hand/);
+  assert.match(html, /This page sends three changes to Data: a network device's record \(name, known flag, type, location, notes\), a network scan request for the active collector, and an MQTT message published by hand/);
+  assert.match(html, /Storage scan, preview, apply, move and delete endpoints are not exposed here/);
   assert.doesNotMatch(html, /The only change this page sends/);
-  assert.match(app, /Write routes<\/span><strong>2 · device name and known flag, MQTT publish/);
+  assert.match(app, /Write routes<\/span><strong>3 · network device record, network scan request, MQTT publish/);
   assert.match(css, /@media \(max-width: 620px\)/);
 });
 
@@ -501,7 +506,7 @@ test('device acknowledgement relays a bounded PATCH to Data and rejects anything
   toolbox.register({ contractVersion: 2, app, express });
 
   await request(app).patch('/api/data-toolbox/network/devices/aa:bb:cc:00:00:01')
-    .send({ alias: `  ${'x'.repeat(100)}`, known: true, notes: 'ignored' }).expect(200);
+    .send({ alias: `  ${'x'.repeat(80)}  `, known: true }).expect(200);
   assert.equal(calls.length, 1);
   assert.match(calls[0].url, /\/api\/v1\/network\/devices\/AA%3ABB%3ACC%3A00%3A00%3A01$/);
   assert.equal(calls[0].options.method, 'PATCH');
@@ -509,6 +514,7 @@ test('device acknowledgement relays a bounded PATCH to Data and rejects anything
 
   await request(app).patch('/api/data-toolbox/network/devices/not-a-mac').send({ known: true }).expect(400);
   await request(app).patch('/api/data-toolbox/network/devices/AA:BB:CC:00:00:01').send({ known: 'yes' }).expect(400);
-  await request(app).patch('/api/data-toolbox/network/devices/AA:BB:CC:00:00:01').send({ notes: 'x' }).expect(400);
+  await request(app).patch('/api/data-toolbox/network/devices/AA:BB:CC:00:00:01').send({ alias: 'x'.repeat(81) }).expect(400);
+  await request(app).patch('/api/data-toolbox/network/devices/AA:BB:CC:00:00:01').send({ alias: 'x', hostname: 'y' }).expect(400);
   assert.equal(calls.length, 1);
 });
