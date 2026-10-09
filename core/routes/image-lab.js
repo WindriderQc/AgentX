@@ -2,7 +2,7 @@
 // The image lab: the trial site built by the workshop sessions, served read-only under /images/labo.
 // Its code lives in core/public/image-lab; its images, evidence files and frozen API answers live
 // on the shared image drive (<IMAGE_ARCHIVE_DIR>/atelier-site). Lots deposited under atelier-tests
-// and the hosts' occupancy are read at each request.
+// are read at each request; host occupancy and GPU readings come live from Core.
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -16,7 +16,23 @@ const options = { extensions: ['html', 'json'], dotfiles: 'deny', redirect: fals
   } };
 const lotsRoot = () => process.env.IMAGE_ARCHIVE_DIR ? path.join(path.resolve(process.env.IMAGE_ARCHIVE_DIR), 'atelier-tests') : null;
 const liveSources = () => ({ listActive: require('../src/services/runtimeCoordinationService').listActive,
-  hosts: require('../src/helpers/ollamaHostConfig').getConfiguredHosts });
+  hosts: require('../src/helpers/ollamaHostConfig').getConfiguredHosts,
+  gpus: require('../src/services/gpuTelemetryService').getGpuTelemetryForHosts });
+
+// Fresh readings from Core's GPU collector replace the mirrored ones, host by host. A host without
+// a collector, or with a stale sample, keeps its mirrored reading and that reading's own date.
+async function liveFleet(fleet, { hosts, gpus }) {
+  try {
+    const configured = hosts(), live = await gpus(configured);
+    return (fleet || []).map(machine => {
+      const sample = live.get(configured.find(host => host.name === machine.name)?.id);
+      if (sample?.telemetry?.status !== 'fresh' || !sample.gpus.length) return machine;
+      return { ...machine, gpuObservedAt: sample.telemetry.sampledAt, gpu: sample.gpus.map(g => ({ index: String(g.index), name: g.name,
+        'memory.total [MiB]': String(g.vramTotal), 'memory.used [MiB]': String(g.vramUsed),
+        'utilization.gpu [%]': String(g.utilization), 'temperature.gpu': String(g.temperature) })) };
+    });
+  } catch { return fleet; }
+}
 
 async function occupancy({ listActive, hosts }) {
   const observedAt = new Date().toISOString();
@@ -72,8 +88,9 @@ function createRouter({ code = CODE, data = dataRoot, lots = lotsRoot, sources =
     try {
       const snapshot = JSON.parse(fs.readFileSync(path.join(data(), 'api', 'lab.json'), 'utf8'));
       const deposited = lotGroups(lots());
+      const live = sources();
       res.json({ ...snapshot, groups: [...snapshot.groups, ...deposited], revision: `${snapshot.revision}-${deposited.length}`,
-        servedAt: new Date().toISOString(), core: await occupancy(sources()) });
+        servedAt: new Date().toISOString(), core: await occupancy(live), fleet: await liveFleet(snapshot.fleet, live) });
     } catch { res.status(503).json({ error: 'status_unavailable' }); }
   });
   router.use('/lots', (req, res, next) => {
@@ -94,4 +111,4 @@ function createRouter({ code = CODE, data = dataRoot, lots = lotsRoot, sources =
   return router;
 }
 function mount(app) { app.use('/images/labo', createRouter()); }
-module.exports = { mount, createRouter, occupancy, lotGroups };
+module.exports = { mount, createRouter, occupancy, lotGroups, liveFleet };

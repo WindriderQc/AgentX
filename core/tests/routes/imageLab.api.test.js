@@ -4,14 +4,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const request = require('supertest');
-const { createRouter, occupancy, lotGroups } = require('../../routes/image-lab');
+const { createRouter, occupancy, lotGroups, liveFleet } = require('../../routes/image-lab');
 
 let dir, code;
 const put = (root, name, text) => { fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true }); fs.writeFileSync(path.join(root, name), text); };
 const write = (name, text) => put(dir, name, text);
 const hosts = () => [{ url: 'http://10.0.0.1:11434', name: 'Bench' }, { url: 'http://10.0.0.1:11435', name: 'Bench CPU' }, { url: 'http://10.0.0.2:11434', name: 'Desk' }];
 const idle = async () => ({ maintenance: null, workloads: [], inferences: [] });
-function app(sources = () => ({ listActive: idle, hosts }), data = () => dir) {
+const gpus = async () => new Map();
+function app(sources = () => ({ listActive: idle, hosts, gpus }), data = () => dir) {
   const instance = express(); instance.use('/images/labo', createRouter({ code, data, lots: () => path.join(dir, 'lots'), sources })); return instance;
 }
 beforeEach(() => {
@@ -76,4 +77,20 @@ test('a lot deposited on the shared drive becomes a comparison without any edit'
   await request(app()).get('/images/labo/lots/2026-10-08-trial/.hidden').expect(404);
   await request(app()).get('/images/labo/lots/..%2Fapi%2Flab.json').expect(404);
   expect(lotGroups(null)).toEqual([]);
+});
+test('fresh GPU readings replace mirrored ones; stale or absent collectors keep the mirrored reading and its date', async () => {
+  const named = () => [{ id: 'a', url: 'u1', name: 'Bench' }, { id: 'b', url: 'u2', name: 'Desk' }, { id: 'c', url: 'u3', name: 'Shelf' }];
+  const mirrored = [{ name: 'Bench', observedAt: 'then', gpu: [{ index: '0', 'memory.used [MiB]': '1' }], disks: { '/d': {} } },
+    { name: 'Desk', observedAt: 'then', gpu: [{ index: '0', 'memory.used [MiB]': '2' }] }, { name: 'Shelf', observedAt: 'then', gpu: [] }];
+  const readings = async () => new Map([
+    ['a', { telemetry: { status: 'fresh', sampledAt: 'now' }, gpus: [{ index: 0, name: 'Card', vramTotal: 24576, vramUsed: 100, utilization: 3, temperature: 41 }] }],
+    ['b', { telemetry: { status: 'stale', sampledAt: 'old' }, gpus: [{ index: 0, vramUsed: 9 }] }], ['c', { telemetry: { status: 'no_collector_host' }, gpus: [] }]]);
+  const [bench, desk, shelf] = await liveFleet(mirrored, { hosts: named, gpus: readings });
+  expect(bench).toMatchObject({ gpuObservedAt: 'now', observedAt: 'then', disks: { '/d': {} },
+    gpu: [{ index: '0', name: 'Card', 'memory.total [MiB]': '24576', 'memory.used [MiB]': '100', 'utilization.gpu [%]': '3', 'temperature.gpu': '41' }] });
+  expect(desk).toBe(mirrored[1]); expect(shelf).toBe(mirrored[2]);
+  expect(await liveFleet(mirrored, { hosts: named, gpus: async () => { throw new Error('down'); } })).toBe(mirrored);
+  write('api/lab.json', JSON.stringify({ groups: [], revision: 'r', fleet: mirrored }));
+  const { body } = await request(app(() => ({ listActive: idle, hosts: named, gpus: readings }))).get('/images/labo/api/lab').expect(200);
+  expect(body.fleet[0].gpuObservedAt).toBe('now'); expect(body.fleet[1].gpuObservedAt).toBeUndefined();
 });
