@@ -5,6 +5,13 @@ const lineageSchema = new mongoose.Schema({
   parent: { operationId: String, sha256: String, width: Number, height: Number },
   references: [{ _id: false, sourceSha256: String, workerSha256: String, transform: String, parentOperationId: String }],
 }, { _id: false });
+const executionSchema = new mongoose.Schema({
+  version: { type: Number, enum: [1], required: true },
+  builder: { id: { type: String, required: true }, version: { type: Number, required: true } },
+  graphSha256: { type: String, required: true, match: /^[0-9a-f]{64}$/ },
+  graph: { type: mongoose.Schema.Types.Mixed, required: true },
+  parameters: { width: Number, height: Number, seed: Number, steps: Number },
+}, { _id: false });
 const schema = new mongoose.Schema({
   _id: { type: String, required: true },
   actionKey: { type: String, required: true, unique: true },
@@ -16,6 +23,7 @@ const schema = new mongoose.Schema({
   request: { type: mongoose.Schema.Types.Mixed, required: true, select: false },
   references: { type: [Buffer], select: false },
   lineage: { type: lineageSchema },
+  execution: { type: executionSchema, select: false },
   profile: { type: mongoose.Schema.Types.Mixed, required: true },
   jobId: { type: String },
   dispatchStarted: { type: Boolean, default: false },

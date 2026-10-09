@@ -76,6 +76,8 @@
     if (!d) return;
     $('image-saved-prompt').textContent = d.request.prompt || 'Brief non disponible.';
     facts($('image-saved-recipe'), [['Format demandé', d.request.width && d.request.height ? dimensions(d.request.width, d.request.height) : null],
+      ['Recette enregistrée', d.recipe.declaredIdentity?.id], ['Version enregistrée', d.recipe.declaredIdentity?.version],
+      ['Graphe préparé (SHA-256)', d.execution?.graphSha256],
       ['Graine', d.request.seed], ['Diffusion', d.recipe.diffusion], ['Encodeur', d.recipe.encoder], ['VAE', d.recipe.vae],
       ['Précision', d.recipe.precision], ['Archive', d.archivePath]]);
     const parent = d.lineage?.parent;
@@ -221,6 +223,8 @@
       const [width, height] = $('image-size').value.split(',').map(Number);
       const payload = { prompt: $('image-prompt').value, profile: $('image-profile').value, width, height,
         ...($('image-seed').value !== '' && { seed: Number($('image-seed').value) }) };
+      const declared = workshop?.profiles.find(p => p.id === payload.profile)?.declaredIdentity;
+      if (declared) { payload.recipeId = declared.id; payload.recipeVersion = declared.version; }
       if (ref) payload.parent = { operationId: ref.id, sha256: ref.sha256 };
       payload.references = await Promise.all(files.map(fileBytes));
       const signature = JSON.stringify(payload);

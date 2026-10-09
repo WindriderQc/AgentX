@@ -24,7 +24,7 @@ class Element {
   focus() {}
 }
 const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
-async function studio({ failFirst = false, lineage, requested = parentId } = {}) {
+async function studio({ failFirst = false, lineage, requested = parentId, availableRecipe, historicalRecipe, execution } = {}) {
   const elements = new Map();
   const get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const size = new Element('option'); size.value = '1024,1024'; size.textContent = 'Square';
@@ -32,7 +32,7 @@ async function studio({ failFirst = false, lineage, requested = parentId } = {})
   get('image-prompt').value = 'Edit the chosen scene'; get('image-seed').value = '';
   const post = [], canvas = jest.fn(), imageDecode = jest.fn(); let sequence = 0;
   get('image-form').reset = () => { get('image-prompt').value = ''; get('image-seed').value = ''; get('image-references').files = []; };
-  const detail = id => ({ id, recipe: { id: 'quality', label: 'Fixture', steps: 4 },
+  const detail = id => ({ id, recipe: { id: 'quality', label: 'Fixture', steps: 4, ...(historicalRecipe && { declaredIdentity: historicalRecipe }) }, ...(execution && { execution }),
     request: { prompt: 'Edit the chosen scene', seed: 42, width: 1024, height: 1024 }, ...(lineage && { lineage }) });
   const fetch = jest.fn(async (url, options) => {
     let data;
@@ -41,7 +41,7 @@ async function studio({ failFirst = false, lineage, requested = parentId } = {})
       if (failFirst && post.length === 1) return { ok: false, json: async () => ({ ok: false, message: 'Fixture connection interrupted' }) };
       data = { operation: archived(childId) };
     } else if (url.endsWith('/status')) data = { configured: true, defaultProfile: 'quality', profiles: [{ id: 'quality', label: 'Fixture', maxPixels: 4194304 }] };
-    else if (url.endsWith('/workshop')) data = { profiles: [{ id: 'quality', label: 'Fixture', steps: 4, maxPixels: 4194304 }], worker: null };
+    else if (url.endsWith('/workshop')) data = { profiles: [{ id: 'quality', label: 'Fixture', steps: 4, maxPixels: 4194304, ...(availableRecipe && { declaredIdentity: availableRecipe }) }], worker: null };
     else if (url.endsWith('/draft')) data = { draft: { profile: 'quality', prompt: 'Edit the chosen scene', width: 1024, height: 1024, seed: 42 } };
     else if (url.endsWith('/details')) data = { details: detail(requested) };
     else if (url.endsWith('/operations')) data = { operations: [archived(parentId)] };
@@ -107,4 +107,32 @@ test('manual-only lineage renders details without an invented parent link', asyn
   expect(ui.get('image-saved-recipe').querySelectorAll('a')).toHaveLength(0);
   expect(ui.get('image-saved-recipe').querySelectorAll('img')).toHaveLength(0);
   expect(ui.post).toHaveLength(0);
+});
+
+test('a declared recipe uses the available pair and preserves it across an interrupted retry', async () => {
+  const ui = await studio({ availableRecipe: { id: 'current-recipe', version: '2' }, failFirst: true });
+  await ui.fire('image-form', 'submit'); await ui.fire('image-form', 'submit');
+  expect(ui.post).toHaveLength(2);
+  expect(ui.post[0]).toMatchObject({ recipeId: 'current-recipe', recipeVersion: '2' });
+  expect(ui.post[1]).toEqual(ui.post[0]);
+});
+test('profiles without a declared recipe preserve legacy request fields', async () => {
+  const ui = await studio(); await ui.fire('image-form', 'submit');
+  expect(ui.post).toHaveLength(1);
+  expect(ui.post[0].recipeId).toBeUndefined(); expect(ui.post[0].recipeVersion).toBeUndefined();
+});
+test('historical recipe facts retain their saved pair and prepared graph digest', async () => {
+  const ui = await studio({ availableRecipe: { id: 'current-recipe', version: '2' },
+    historicalRecipe: { id: 'saved-recipe', version: '1' }, execution: { graphSha256: checksum } });
+  await settle();
+  const values = ui.get('image-saved-recipe').querySelectorAll('dd').map(el => el.textContent);
+  expect(values).toContain('saved-recipe'); expect(values).toContain('1'); expect(values).toContain(checksum);
+  expect(values).not.toContain('current-recipe'); expect(values).not.toContain('2');
+  expect(ui.post).toHaveLength(0);
+});
+test('old details do not invent historical recipe or graph facts from the current profile', async () => {
+  const ui = await studio({ availableRecipe: { id: 'current-recipe', version: '2' } }); await settle();
+  const labels = ui.get('image-saved-recipe').querySelectorAll('dt').map(el => el.textContent);
+  expect(labels).not.toContain('Recette enregistrée'); expect(labels).not.toContain('Version enregistrée');
+  expect(labels).not.toContain('Graphe préparé (SHA-256)'); expect(ui.post).toHaveLength(0);
 });

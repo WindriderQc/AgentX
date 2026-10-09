@@ -30,7 +30,7 @@ test('image details retain the historical recipe and distinguish requested and a
     actionKey: 'private-action', admission: { secret: 'private-proof' }, timings: { totalMs: 12345 } };
   const lean = jest.fn(async () => op), select = jest.fn(() => ({ lean })); ImageOperation.findById.mockReturnValue({ select });
   const view = await details('synthetic');
-  expect(select).toHaveBeenCalledWith('+request +workerUrl'); expect(view.recipe.steps).toBe(40);
+  expect(select).toHaveBeenCalledWith('+request +workerUrl +execution'); expect(view.recipe.steps).toBe(40);
   expect(view.request).toMatchObject({ width: 1024, height: 1024, seed: 0 });
   expect(view.actualDimensions).toEqual({ width: 992, height: 992 });
   expect(view.totalMs).toBe(12345); expect(view.actionKey).toBeUndefined(); expect(view.admission).toBeUndefined();
