@@ -9,6 +9,7 @@
   let config, workshop, operation, origin = 'generation', pollTimer, request, selectedReference = null;
   let draftEpoch = 0, referenceEpoch = 0, pendingSubmit = false, history = [], shownDetails = null;
   const detailsCache = new Map();
+  let exportEpoch = 0;
   const mp = pixels => `${new Intl.NumberFormat('fr-CA', { maximumFractionDigits: 2 }).format(pixels / 1e6)} MP`;
   const dimensions = (w, h) => `${w} × ${h} px · ${mp(w * h)}`;
   const duration = ms => { const seconds = Math.round(ms / 1000); return seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`; };
@@ -99,9 +100,39 @@
     const result = await api(`/operations/${encodeURIComponent(op.id)}/details`);
     detailsCache.set(op.id, { stamp: op.updatedAt, data: result.details }); return result.details;
   }
+  function resetExport(ready) {
+    ++exportEpoch;
+    $('image-export').hidden = !ready; $('image-export').open = false;
+    $('image-export-prepare').disabled = false;
+    $('image-export-status').textContent = ''; $('image-export-links').replaceChildren();
+  }
+  async function prepareExport() {
+    const op = operation, epoch = ++exportEpoch;
+    if (op?.state !== 'completed' || !op.runtimeRestored) return;
+    $('image-export-prepare').disabled = true; $('image-export-links').replaceChildren();
+    $('image-export-status').textContent = 'Vérification des fichiers archivés…';
+    try {
+      const url = `/api/images/operations/${encodeURIComponent(op.id)}/export`;
+      const response = await fetch(url, { method: 'GET' }), manifest = await response.json();
+      if (!response.ok) throw new Error(manifest.message || 'Cet export est indisponible.');
+      if (epoch !== exportEpoch || operation?.id !== op.id) return;
+      const list = node('ul'), add = (label, href, filename) => {
+        const row = node('li'), link = node('a', label); link.href = href; link.download = filename; row.append(link); list.append(row);
+      };
+      add('Manifeste de la recette', url, 'image-recipe.json');
+      for (const part of manifest.parts) {
+        if (!/^(graph\.json|output\.(png|jpg)|reference-[01]-(source\.(png|jpg)|worker\.png))$/.test(part.name)) throw new Error('Liste de fichiers invalide.');
+        add(part.name, `${url}/parts/${encodeURIComponent(part.name)}`, part.name);
+      }
+      $('image-export-links').replaceChildren(list);
+      $('image-export-status').textContent = 'Fichiers vérifiés. Télécharge le manifeste et les pièces que tu souhaites conserver.';
+    } catch (error) { if (epoch === exportEpoch) $('image-export-status').textContent = error.message; }
+    finally { if (epoch === exportEpoch) $('image-export-prepare').disabled = false; }
+  }
   function show(op, source = origin) {
     operation = op; origin = source;
     const busy = ACTIVE.includes(op.state), ready = op.state === 'completed' && op.runtimeRestored === true && op.artifact;
+    resetExport(ready);
     $('image-result-title').textContent = busy ? 'Ton image prend forme' : source === 'library' ? 'Image de la bibliothèque' : 'Résultat de la demande';
     $('image-result-origin').textContent = source === 'library' ? 'BIBLIOTHÈQUE' : source === 'continuation' ? 'DEPUIS LA CONVERSATION' : 'CETTE DEMANDE';
     $('image-result-origin').hidden = false;
@@ -181,9 +212,11 @@
   $('image-size').addEventListener('change', updateFormMode);
   $('image-profile').addEventListener('change', renderRecipe);
   $('image-reuse-brief').addEventListener('click', () => { if (!locked() && operation) void applyDraft(operation); });
+  $('image-export-prepare').addEventListener('click', () => { void prepareExport(); });
   $('image-new').addEventListener('click', () => {
     if (locked()) return;
     ++draftEpoch; ++referenceEpoch; selectedReference = null; request = null; operation = null; shownDetails = null;
+    resetExport(false);
     $('image-form').reset(); $('image-profile').value = config.defaultProfile;
     for (const id of ['image-draft-source', 'image-selected-reference', 'image-result-origin', 'image-output', 'image-download', 'image-use-reference', 'image-reuse-brief', 'image-result-details', 'image-result-facts', 'image-result-note', 'image-cancel', 'image-recover', 'image-stages']) $(id).hidden = true;
     $('image-reference-previews').replaceChildren(); $('image-placeholder').hidden = false;
