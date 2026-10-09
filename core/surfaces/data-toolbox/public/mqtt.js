@@ -4,7 +4,7 @@
 // heading, number, bytes, date, ageLabel…) it uses when called.
 // It reads Data's broker monitor (status and the messages after the last one
 // seen) every two seconds while the tab is open and visible, and sends the
-// second of the page's two writes: one MQTT message published by hand.
+// second of the page's three writes: one MQTT message published by hand.
 // Topics and payloads come from the network: they are always escaped.
 
 const MQTT_POLL_MS = 2000;

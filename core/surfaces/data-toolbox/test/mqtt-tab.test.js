@@ -99,14 +99,14 @@ test('the MQTT tab follows Live Data and loads its script before the page script
   assert.doesNotMatch(source, /alert\(|confirm\(|prompt\(|insertAdjacentHTML|document\.write|eval\(/);
 });
 
-test('the status projection says two writes are exposed and none on the filesystem', async (t) => {
+test('the status projection says three writes are exposed and none on the filesystem', async (t) => {
   const original = global.fetch;
   t.after(() => { global.fetch = original; });
   global.fetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ status: 'success', data: {} }) });
   const status = await toolbox.buildStatus();
   assert.equal(status.readOnly, false);
   assert.equal(status.mutationsExposed, true);
-  assert.deepEqual(status.writes, ['network-device-acknowledge', 'mqtt-publish']);
+  assert.deepEqual(status.writes, ['network-device-acknowledge', 'mqtt-publish', 'storage-scan-request']);
   assert.equal(status.filesystemMutationsExposed, false);
   assert.equal(status.version, toolbox.version);
 });

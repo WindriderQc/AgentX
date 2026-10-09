@@ -8,8 +8,14 @@ Core's full profile hosts `/data-toolbox`, a UI backed by Data HTTP APIs. Its
 tabs are Overview, Storage, Files, Network, GPU, Databases, Live Data, MQTT and
 Janitor; the GPU tab reads the four `GET /api/v1/hardware` routes and the MQTT
 tab the three `/api/v1/mqtt` routes described below. The Toolbox reads, with
-two writes: a network device's name or known flag, and an MQTT message
-published by hand. The original mutation APIs remain inside Data with their
+three writes: a network device's name or known flag, an MQTT message
+published by hand, and a storage scan request. That request is
+`POST /storage/agent-scans` with the name of a configured source and nothing
+else, so hashing follows the defaults; the scan reads the disks and refreshes
+the index, and changes no file. The Storage tab follows it through
+`GET /storage/status/:scan_id` and `GET /storage/scans`; the Files tab reads
+`/storage/files/browse`, `/stats`, `/tree`, `/duplicates` and
+`/cleanup-recommendations` and `/storage/directory-count`. The original mutation APIs remain inside Data with their
 existing domain checks. Mount shared storage read-only unless a specific maintenance operation
 requires an explicitly approved writable mount. No disk mount is shipped by default.
 
@@ -142,7 +148,15 @@ not reopened: a late batch or completion gets 409. A batch is accepted only for
 a running external scan; entries outside its roots and malformed `sha256`
 values are dropped and counted in `counts.rejected` and `counts.hashes_rejected`.
 `POST /storage/scan` takes `batch_size` from 1 to 10000 and extension lists of
-at most 200 strings.
+at most 200 strings. `POST /storage/stop/:scan_id` stops an in-container scan
+only: a scan run by a native collector has no stop and ends on its own.
+`GET /storage/scans` sorts by start date, newest first, so a queued scan, which
+has none yet, comes after every other; read it by id. `GET /storage/files/tree`
+returns the folders that hold files directly, largest first, each with the
+count and size of its own files only, and says `truncated` when it reached its
+`limit` (at most 2 000). `GET /storage/files/duplicates` returns the largest
+groups only and has no offset; its `summary` describes the groups returned, the
+totals of the index are in `GET /storage/summary`.
 
 GPU telemetry lives under `/api/v1/hardware`. The native `gpu-agent` collector
 posts one cycle per interval to `POST /samples` (and `POST /collector/heartbeat`

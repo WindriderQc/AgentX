@@ -322,7 +322,7 @@ async function overview() {
       <article class="card"><h3>Automation visibility</h3>
         <div class="metric-row"><span>Live feeds</span><strong>${sources.liveData?.ok ? `${feeds.filter((feed) => feed.enabled).length}/${feeds.length} enabled` : '—'}</strong></div>
         <div class="metric-row"><span>Janitor profiles</span><strong>${sources.janitor?.ok ? number(profiles.length) : '—'}</strong></div>
-        <div class="metric-row"><span>Write routes</span><strong>2 · device name and known flag, MQTT publish</strong></div>
+        <div class="metric-row"><span>Write routes</span><strong>3 · device name and known flag, MQTT publish, storage scan request</strong></div>
         <div class="metric-row"><span>Projection authority</span><strong>AgentX Data</strong></div>
       </article>
     </div>`;
@@ -332,9 +332,8 @@ async function storage() {
   const [summary, scansBody, agentsBody] = await Promise.all([
     api('/storage/summary'), api('/storage/scans?limit=12'), api('/storage/agents')
   ]);
-  const scans = array(scansBody.scans || scansBody);
   const agents = array(agentsBody.scanners || agentsBody.agents || agentsBody);
-  content.innerHTML = `${heading('Storage evidence', 'Inventory coverage, scan receipts, and the native Data collector that can see shared storage. No scan can be launched here.', '<button class="button" data-action="refresh">Refresh</button>')}
+  content.innerHTML = `${heading('Storage evidence', 'Inventory coverage, scan receipts, and the native Data collector that can see shared storage. A scan can be asked for below; it only reads the disks.', '<button class="button" data-action="refresh">Refresh</button>')}
     <div class="grid">
       ${metric(number(summary.totalFiles), 'files inventoried')}
       ${metric(summary.totalSizeFormatted || bytes(summary.totalSize), 'inventory size')}
@@ -358,62 +357,11 @@ async function storage() {
     </div>
     ${heading('Where storage collection runs', 'This is a host-native Data process, not an AgentX Product or LLM agent.')}
     <div class="grid two">${agents.length ? agents.map((agent) => collectorCard(agent, 'storage')).join('') : '<div class="empty">No storage collectors registered.</div>'}</div>
-    ${heading('Recent scan receipts', 'Existing scan state only.')}
-    <div class="table-wrap"><table><thead><tr><th>Scan</th><th>Root / source</th><th>Status</th><th>Files</th><th>Started</th></tr></thead><tbody>
-      ${scans.length ? scans.map((scan) => `<tr><td class="mono">${e(scan.scan_id || scan.scanId || scan._id)}</td><td class="mono">${e(scanSource(scan))}</td><td>${statusPill(['complete','completed','done','success'].includes(scan.status), scan.status, scan.status)}</td><td>${number(scan.counts?.files_seen ?? scan.counts?.files_processed ?? scan.file_count ?? scan.fileCount ?? scan.files)}</td><td>${date(scan.started_at || scan.startedAt || scan.created_at)}</td></tr>`).join('') : noRows(5)}
-    </tbody></table></div>`;
+    ${storageScanSections(agentsBody, scansBody)}`;
+  storageScanStart();
 }
 
-// Data keeps a scan's source and roots under `config` and its totals under `counts`.
-function scanSource(scan) {
-  const roots = array(scan.config?.roots).join(', ');
-  return scan.config?.source ? [scan.config.source, roots].filter(Boolean).join(' · ') : roots || scan.root || scan.source || scan.hostname;
-}
-
-// The category names Data classifies files into (data/utils/categories.js).
-const FILE_CATEGORIES = ['document', 'media', 'archive', 'code', 'config', 'playlist', 'checksum', 'media_project', 'log', 'firmware', 'resource', 'certificate', 'backup', 'shortcut', 'engineering', 'model', 'disk_image', 'three_d', 'binary', 'data', 'database', 'game', 'font', 'localization', 'repository', 'cache', 'unclassified'];
-
-function fileToolbar() {
-  return `<form id="fileFilters" class="toolbar">
-    <input name="search" placeholder="Filename contains…" aria-label="Filename search">
-    <input name="root" placeholder="Root path scope…" aria-label="Root path">
-    <select name="category" aria-label="File category"><option value="">All categories</option>${FILE_CATEGORIES.map((category) => `<option>${e(category)}</option>`).join('')}</select>
-    <button class="button">Apply filters</button>
-  </form>`;
-}
-
-async function files(params = new URLSearchParams(state.filesQuery)) {
-  state.filesQuery = params.toString();
-  params.set('limit', '50');
-  params.set('page', String(state.filesPage));
-  let result;
-  try { result = await api(`/storage/files?${params}`); }
-  catch (error) {
-    // Keep the filter form so a refused query can be corrected in place.
-    content.innerHTML = `${heading('File inventory', 'Bounded, read-only file metadata from the latest storage evidence.')}${fileToolbar()}
-      <div class="notice">These filters could not be applied: ${e(error.message)}</div>`;
-    restoreFileFilters(params);
-    return;
-  }
-  const files = array(result.files);
-  const paging = result.pagination || {};
-  content.innerHTML = `${heading('File inventory', 'Bounded, read-only file metadata from the latest storage evidence.')}${fileToolbar()}
-    <div class="notice">Paths and metadata can be private. This view stays on the local AgentX origin and does not offer file mutation.</div>
-    <div class="table-wrap" tabindex="0" role="region" aria-label="File inventory table"><table class="file-inventory-table"><thead><tr><th>Name</th><th>Directory</th><th>Size</th><th>Category</th><th>Modified</th><th>Hash</th></tr></thead><tbody>
-      ${files.length ? files.map((file) => `<tr><td>${e(file.filename || file.name)}</td><td class="mono muted">${e(file.dirname || file.path)}</td><td>${e(file.sizeFormatted || bytes(file.size))}</td><td><span class="pill">${e(file.category || file.ext || 'unclassified')}</span></td><td>${date(file.mtimeFormatted || (file.mtime ? file.mtime * 1000 : null))}</td><td class="mono">${file.sha256 ? `${e(file.sha256).slice(0,12)}…` : '<span class="warn">missing</span>'}</td></tr>`).join('') : noRows(6)}
-    </tbody></table></div>
-    <p class="muted">Page ${number(paging.page || 1)} of ${number(paging.pages || 1)} · ${number(paging.total ?? files.length)} matching files</p>
-    <nav class="toolbar" aria-label="File inventory pages">
-      <button class="button" data-action="files-previous" ${state.filesPage <= 1 ? 'disabled' : ''}>Previous page</button>
-      <button class="button" data-action="files-next" ${state.filesPage >= (paging.pages || 1) ? 'disabled' : ''}>Next page</button>
-    </nav>`;
-  restoreFileFilters(params);
-}
-
-function restoreFileFilters(params) {
-  const form = document.querySelector('#fileFilters');
-  for (const [key, value] of params) if (form.elements[key] && !['limit','page'].includes(key)) form.elements[key].value = value;
-}
+// The Files tab (inventory, folders, duplicates, cleanup) lives in files-tools.js.
 
 const OBSERVATION_LABELS = Object.freeze({
   online: 'online now',
@@ -841,7 +789,9 @@ async function janitor() {
     </tbody></table></div>`;
 }
 
-const renderers = { overview, storage, files, network, databases, 'live-data': liveData, janitor };
+const renderers = { overview, storage, network, databases, 'live-data': liveData, janitor };
+// The Files tab lives in files-tools.js, which the page loads before this file.
+if (typeof files === 'function') renderers.files = files;
 // The GPU tab lives in gpu.js, which the page loads before this file.
 if (typeof gpu === 'function') renderers.gpu = gpu;
 // The MQTT tab lives in mqtt.js, loaded the same way.

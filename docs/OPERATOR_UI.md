@@ -227,6 +227,67 @@ Saved measurements are retained independently from runtime recovery. A compariso
 readiness summary does not override an unresolved journal. For measured context,
 capacity and recall distinctions, see [context profiles](PROFILER_CONTEXT.md).
 
+## Data Toolbox: Storage scans
+
+Open `/data-toolbox#storage` (full profile, with the optional Data service).
+Under the inventory figures and the collector, the tab asks for a scan and
+follows it. A scan reads the disks and refreshes Data's index, where the rows
+of files no longer there are removed. It changes nothing on the disks.
+
+- **Scan now**: one card per source Data is configured with, with its root,
+  the collector that serves it and its last finished scan. The button is
+  disabled, with the reason beside it, when no active collector announces the
+  source or when a scan of it is already queued or running. Only the source
+  name is sent: hashing follows Data's default (duplicate candidates only).
+  If a scan of that source was already there, Data answers with that one and
+  the page says it joined it; no second scan starts.
+- **Scan in progress**: status, files seen, processed and hashed, errors, time
+  elapsed and the age of the last batch received, read again every 3 seconds
+  while the tab is open and the page visible. A collector sends the files it
+  processes as it goes and its other totals at the end: until then they show a
+  dash. A scan run by a collector cannot be stopped: Data has no stop for it.
+  When the scan ends its final state stays on the page. **Partial** means the
+  scan could not confirm every root (an unmounted disk reads as an empty
+  folder), so Data kept the index rows it already had; **failed** means it did
+  not finish and removed nothing. Both show Data's reason.
+- **Scan history**: the last 12 scans started. Each one opens on its timing
+  (requested, time in the queue, started, finished, duration, who ran it), its
+  hashing limits and every count Data recorded.
+
+A scan queued by someone else is not in this list until a collector starts it,
+because Data lists scans by start date. Asking for the same source in that
+interval joins the queued scan.
+
+## Data Toolbox: Files
+
+Open `/data-toolbox#files`. The tab is read-only: every view reads Data's
+index and nothing is deleted, moved or renamed from it. Above the views, the
+index totals: files, size, extensions (Data lists the 25 largest, shown as
+`25+` beyond that) and folders that hold files.
+
+- **Files**: the list, with filters on the file name, the folder (that folder
+  and below), the category, the extension, a size range in KiB, MiB or GiB and
+  the presence of a hash; sorted by modification date, name or size, 25, 50 or
+  100 per page. An extension takes precedence over the category.
+- **Folders**: the folders under the current one with the files and size below
+  each, a breadcrumb to go back up, and **Show files** to open the list
+  filtered on a folder. Data records only the folders that hold files directly
+  and returns the 2 000 largest under a path: when it cut its answer, the
+  figures are marked `≥` and small folders may be missing; the totals of the
+  current folder stay exact, and opening a folder narrows the read.
+- **Duplicates**: the groups of files with equal SHA-256, largest first, ten
+  per page among the 100 largest Data returns, each with its size, its number
+  of copies, the space one copy would free and every path. The totals of the
+  whole index are shown above. Only hashed files can be compared, so all of it
+  is a lower bound. Without any current hash Data falls back to same name and
+  size, and the page says these are not verified.
+- **Cleanup**: Data's review suggestions (large files, old files, verified
+  duplicates, duplicate candidates, empty files, files at the root of a chosen
+  folder) with the sample of files behind each one. A saving Data did not
+  measure is shown as not measured.
+
+Duplicates and Cleanup take an optional folder to limit them.
+
 ## Data Toolbox: GPU
 
 Open `/data-toolbox#gpu` (full profile, with the optional Data service). The
