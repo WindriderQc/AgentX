@@ -43,6 +43,7 @@ function loadClusterScheduleContext() {
         elements.set(id, {
           innerHTML: '',
           style: {},
+          setAttribute: jest.fn(),
           classList: { add: jest.fn(), remove: jest.fn(), toggle: jest.fn(), contains: jest.fn() }
         });
       }
@@ -74,6 +75,7 @@ function loadClusterScheduleContext() {
     clearInterval: jest.fn()
   });
   vm.runInContext(read('public/js/cluster-schedule.js'), context);
+  vm.runInContext(read('public/js/cluster-schedule-attention.js'), context);
   vm.runInContext(read('public/js/cluster-schedule-actual.js'), context);
   vm.runInContext(read('public/js/cluster-schedule-services.js'), context);
   return { context, elements };
@@ -164,6 +166,66 @@ describe('Cluster Schedule upcoming-task projection', () => {
       occurrenceCount: 13,
       occurrenceLabel: '13 on selected day'
     });
+  });
+
+  test('never lists finished occurrences, even when a past day is selected', () => {
+    const result = upcoming.buildUpcomingTasks([{
+      id: 'nightly',
+      name: 'Nightly benchmark',
+      scheduleType: 'cron',
+      taskType: 'benchmark',
+      slots: [slot(Date.parse('2026-08-27T02:00:00.000Z'), 7_200_000)]
+    }], {
+      now: Date.parse('2026-08-28T12:00:00.000Z'),
+      todaySelected: false
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  test('marks an occurrence inside its window as running rather than due', () => {
+    const [task] = upcoming.buildUpcomingTasks([{
+      id: 'nightly',
+      name: 'Nightly benchmark',
+      scheduleType: 'cron',
+      taskType: 'benchmark',
+      slots: [slot(Date.parse('2026-08-28T02:00:00.000Z'), 7_200_000)]
+    }], {
+      now: Date.parse('2026-08-28T02:30:00.000Z'),
+      todaySelected: true
+    });
+
+    expect(task).toMatchObject({ running: true, msFromNow: 0 });
+  });
+
+  test('reports overdue only from recorded run evidence older than a past start', () => {
+    const now = Date.parse('2026-08-28T12:00:00.000Z');
+    const daily = (overrides) => ({
+      id: 'backup',
+      name: 'Mongo backup',
+      slots: [slot(Date.parse('2026-08-28T03:00:00.000Z'))],
+      ...overrides
+    });
+
+    expect(upcoming.findOverdueEntries([daily({ lastRun: null })], { now })).toEqual([]);
+    expect(upcoming.findOverdueEntries([daily({ lastRun: '2026-08-28T03:00:05.000Z' })], { now })).toEqual([]);
+    expect(upcoming.findOverdueEntries([daily({ lastRun: '2026-08-27T03:00:05.000Z' })], { now })).toEqual([
+      {
+        id: 'backup',
+        name: 'Mongo backup',
+        expectedAt: '2026-08-28T03:00:00.000Z',
+        lastRun: '2026-08-27T03:00:05.000Z'
+      }
+    ]);
+    expect(upcoming.findOverdueEntries([daily({ lastRun: '2026-08-27T03:00:05.000Z' })], {
+      now: Date.parse('2026-08-28T03:05:00.000Z')
+    })).toEqual([]);
+    expect(upcoming.findOverdueEntries([{
+      id: 'watch',
+      name: 'Ops watch',
+      lastRun: '2026-08-20T00:00:00.000Z',
+      slots: [{ start: '2026-08-28T00:00:00.000Z', end: '2026-08-29T00:00:00.000Z', continuous: true }]
+    }], { now })).toEqual([]);
   });
 
   test('derives cadence from chronological starts even if slots arrive unsorted', () => {
@@ -269,6 +331,66 @@ describe('Cluster Schedule evidence presentation', () => {
     expect(html).toContain('gpu-a');
     expect(html).toContain('Not declared for 2 scheduled jobs; this is not a hardware count.');
     expect(html).not.toContain('>Host not declared<');
+  });
+
+  test('lists each conflicting pair once with its run count, and no projection-only overdue', () => {
+    const { context, elements } = loadClusterScheduleContext();
+    context.testConflicts = Array.from({ length: 6 }, (_, index) => ({
+      hostId: 'gpu-b',
+      taskA: { name: index % 2 ? 'Doc re-embed' : 'RAG ingestion' },
+      taskB: { name: index % 2 ? 'RAG ingestion' : 'Doc re-embed' }
+    }));
+    context.testHosts = [
+      { id: 'gpu-a', name: 'GPU A', status: 'online' },
+      { id: 'gpu-b', name: 'GPU B', status: 'unreachable' }
+    ];
+    vm.runInContext(`
+      conflictsData = testConflicts;
+      liveHostsData = testHosts;
+      nextTasksData = [{ name: 'Running job', msFromNow: 0, running: true }];
+      overdueData = [];
+    `, context);
+    vm.runInContext('renderAttention', context)();
+    const html = elements.get('attentionList').innerHTML;
+
+    expect(html.match(/Schedule conflict/g)).toHaveLength(1);
+    expect(html).toContain('Doc re-embed overlaps RAG ingestion on GPU B (6 runs)');
+    expect(html).toContain('GPU B unreachable');
+    expect(html).not.toContain('GPU A unreachable');
+    expect(html).not.toContain('overdue');
+  });
+
+  test('shows overdue entries with the expected time and last recorded run', () => {
+    const { context, elements } = loadClusterScheduleContext();
+    vm.runInContext(`
+      conflictsData = [];
+      liveHostsData = [];
+      overdueData = [{ name: 'Mongo backup', expectedAt: '2026-08-28T03:00:00.000Z', lastRun: '2026-08-27T03:00:05.000Z' }];
+    `, context);
+    vm.runInContext('renderAttention', context)();
+    const html = elements.get('attentionList').innerHTML;
+
+    expect(html).toContain('Mongo backup overdue');
+    expect(html).toContain('last recorded run');
+  });
+
+  test('follows midnight while watching today and leaves another selected day alone', () => {
+    const { context } = loadClusterScheduleContext();
+    let today = '2026-08-28';
+    context.window.ClusterScheduleDate.localDateKey = () => today;
+    context.window.ClusterScheduleDate.isToday = key => key === today;
+    vm.runInContext('loadTimeline = () => { timelineReloads += 1; }; loadConflicts = () => {}; updateDateLabel = () => {}; var timelineReloads = 0;', context);
+    const refresh = vm.runInContext('refreshTimelineClock', context);
+
+    today = '2026-08-29';
+    refresh();
+    expect(vm.runInContext('currentDate', context)).toBe('2026-08-29');
+    expect(vm.runInContext('timelineReloads', context)).toBe(1);
+
+    vm.runInContext("currentDate = '2026-08-20'", context);
+    refresh();
+    expect(vm.runInContext('currentDate', context)).toBe('2026-08-20');
+    expect(vm.runInContext('timelineReloads', context)).toBe(1);
   });
 
   test('loads the upcoming projection before the dashboard controller', () => {
