@@ -33,16 +33,21 @@ real runtime state as part of running tests.
 
 The native OpenClaw reader takes every conversation of the selected agents,
 whatever its channel (Household, Telegram direct or group, main session); only
-scheduled and agent-to-agent sessions are left out. Who spoke is decided per
+scheduled, agent-to-agent and program-driven sessions (OpenClaw classification
+`custom` or `explicit`: qualification fixtures, round tables, tool-opened
+sessions) are left out. Who spoke is decided per
 message from OpenClaw's own owner flag. A Household turn contributes only what
 was said after Core's `Current user request:` label. A transcript OpenClaw
 rewrote is read again from its start. A run that reaches the session or
-observation bound stops there and the next run continues.
+observation bound stops there and the next run continues. A session longer than
+the history window is read from its latest messages, and the run says so when
+turns before the window were never seen. Core accepts 30 candidates per run;
+the run prints how many weaker ones were not submitted.
 
 Selected-note writes use Core `MemoryNote` through the native memory adapter; the
 CLI has no separate native-note writer.
 
-The 158 synthetic tests cover filtering of owner versus harness/tool content,
+The 163 synthetic tests cover filtering of owner versus harness/tool content,
 secret sanitation, bounded/resumable collection, API retries, idempotent watermarks,
 candidate validation and accepted Git evidence. No personal transcript or model
 is used. Native runtime formats, schedules and live acceptance are verified per

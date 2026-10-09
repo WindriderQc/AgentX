@@ -21,6 +21,10 @@ MAX_RPC_BYTES = 8 * 1024 * 1024
 # carries no human utterance.
 HOUSEHOLD_REQUEST_LABEL = "Current user request:"
 HOUSEHOLD_EVENT_MARKER = "[Household application event; no human utterance]"
+# OpenClaw's own classification of a session. These are driven by a schedule,
+# another agent or a program (qualification fixtures, round tables, sessions a
+# tool opens under its own key), never by a person talking to the agent.
+PROGRAM_CLASSIFICATIONS = {"cron", "subagent", "custom", "explicit"}
 RUNTIME_EVENT_MARKERS = ("[OpenClaw exec completion]", "[OpenClaw cron wake]")
 
 
@@ -109,9 +113,11 @@ def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
         if not key.startswith(f"agent:{agent}:") or _timestamp(row.get("updatedAt")) < horizon:
             continue
         # Every conversation of the agent is read, whatever its channel; only
-        # scheduled and agent-to-agent sessions are left out. Who spoke is
-        # decided per message below, never from the session as a whole.
+        # scheduled, agent-to-agent and program-driven sessions are left out.
+        # Who spoke is decided per message below, never from the session as a
+        # whole.
         if (any(marker in key for marker in (":cron:", ":subagent:", ":heartbeat:"))
+                or str(row.get("classification") or "").lower() in PROGRAM_CLASSIFICATIONS
                 or _session_registry_state(row, allowed_owners) == "automation"):
             reject(result, "cron_or_automation")
             continue
@@ -139,9 +145,6 @@ def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
             messages = history.get("messages")
             if not isinstance(messages, list):
                 raise RuntimeError("OpenClaw session history has invalid shape")
-            # Do not advance past an unseen tail or quietly lose old messages.
-            if len(messages) >= schema.MAX_EVENTS_PER_FILE:
-                raise RuntimeError("OpenClaw history reached limit; collection incomplete")
         except RuntimeError as exc:
             result.errors.append(str(exc))
             continue
@@ -152,7 +155,20 @@ def collect_gateway(*, home, agent, store, result, lookback_days, max_files,
         # and every event gets a new one. Nothing of the old mark can be found
         # again, so the rewritten history is read whole; Core drops what it
         # already holds.
-        if old_ids and ids_now and not old_ids & ids_now:
+        rewritten = bool(old_ids and ids_now and not old_ids & ids_now)
+        # A long session comes back as its latest MAX_EVENTS_PER_FILE messages.
+        # That window is complete when it still holds an event already read, or
+        # when it starts before the lookback horizon; otherwise turns between
+        # the last read and the window were never seen, and that is said.
+        if len(messages) >= schema.MAX_EVENTS_PER_FILE and (rewritten or not old_ids):
+            first = messages[0] if isinstance(messages[0], dict) else {}
+            oldest = _timestamp(first.get("timestamp")
+                                or (first.get("__openclaw") or {}).get("recordTimestampMs"))
+            if not oldest or oldest >= horizon:
+                result.errors.append(
+                    f"OpenClaw history longer than {schema.MAX_EVENTS_PER_FILE} messages;"
+                    " turns before the returned window were not read")
+        if rewritten:
             old_ids = set()
         new_ids = []
         start_observations = len(result.observations)

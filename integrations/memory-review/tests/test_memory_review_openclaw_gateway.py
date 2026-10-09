@@ -168,6 +168,52 @@ class OpenClawGatewayTests(unittest.TestCase):
         self.assertIn("wait for the next run", result.errors[0])
         self.assertEqual(gateway.read, keys[:2])
 
+    def test_program_driven_sessions_are_left_out(self):
+        human = "agent:main:household:direct:abc"
+        program = ["agent:main:qualification:greeting", "agent:main:roundtable:6ac0",
+                   "agent:main:maintenance-check-1", "agent:main:explicit:review-test"]
+        gateway = FakeGateway(
+            [session(human, classification="direct")]
+            + [session(key, classification="explicit" if "explicit" in key else "custom")
+               for key in program],
+            {human: [turn("e1", "I prefer the evening summary before dinner.")]},
+        )
+        result = run(gateway)
+        self.assertEqual(gateway.read, [human])
+        self.assertEqual(result.rejectionCounts["cron_or_automation"], 4)
+
+    def _long_history(self, first_timestamp):
+        history = [turn(f"e{n}", "") for n in range(schema.MAX_EVENTS_PER_FILE)]
+        history[0]["timestamp"] = first_timestamp
+        history[-1] = turn("last", "I decided to keep the weekly review on Monday.")
+        return history
+
+    def test_long_history_starting_before_the_horizon_is_complete(self):
+        key = "agent:main:main"
+        old = NOW_MS - 30 * 86400 * 1000
+        result = run(FakeGateway([session(key)], {key: self._long_history(old)}))
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.observations), 1)
+
+    def test_long_history_overlapping_the_last_read_is_complete(self):
+        key = "agent:main:main"
+        gateway = FakeGateway([session(key)], {key: self._long_history(NOW_MS)})
+        source_key = next(iter(run(gateway).stagedWatermarks))
+        store = FakeStore({source_key: {
+            "sessionId": "s1", "updatedAtMs": NOW_MS - 1000, "eventIds": ["e5"],
+        }})
+        result = run(gateway, store)
+        self.assertEqual(result.errors, [])
+        self.assertEqual([o.eventId for o in result.observations], ["last"])
+
+    def test_long_history_with_unseen_turns_before_the_window_says_so(self):
+        key = "agent:main:main"
+        result = run(FakeGateway([session(key)], {key: self._long_history(NOW_MS)}))
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("were not read", result.errors[0])
+        self.assertEqual(len(result.observations), 1)
+        self.assertEqual(len(result.stagedWatermarks), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

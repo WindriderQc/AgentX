@@ -192,6 +192,26 @@ class SynthesisTests(unittest.TestCase):
         self.assertIn("END-OF-OUTPUT", transport.calls[1]["messages"][1]["content"])
         self.assertEqual(transport.calls[1]["max_tokens"], transport.calls[0]["max_tokens"])
 
+    def test_candidates_beyond_the_run_bound_are_counted(self):
+        extra = 3
+        observations = [{"id": f"obs-{n}", "text": "x" * 30000} for n in (1, 2, 3)]
+        input_ = {**make_input(), "observations": observations}
+        chunks = synthesis.partition_synthesis_input(input_)
+        self.assertGreater(len(chunks), 1)
+        refs = [chunk["observations"][0]["id"] for chunk in chunks]
+        many = [good_candidate(statement=f"Owner prefers option number {n}.", ref=refs[0])
+                for n in range(schema.MAX_CANDIDATES_PER_RUN)]
+        more = [good_candidate(statement=f"Owner prefers variant number {n}.", ref=refs[1])
+                for n in range(extra)]
+        transport = FakeTransport(
+            [json.dumps({"candidates": many}), json.dumps({"candidates": more})]
+            + [json.dumps({"candidates": []})] * (len(chunks) - 2))
+        receipt = {}
+        result = synthesis.synthesize(input_, base_url="http://stub", model="verified-test-model",
+                                      transport=transport, receipt=receipt)
+        self.assertEqual(len(result), schema.MAX_CANDIDATES_PER_RUN)
+        self.assertEqual(receipt["notSubmitted"], extra)
+
     def test_second_failure_raises_and_stops(self):
         transport = FakeTransport(["nope", "still nope"])
         with self.assertRaises(schema.SynthesisOutputError):
