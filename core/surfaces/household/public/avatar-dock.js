@@ -4,15 +4,18 @@
    itself; without it (unconfigured, offline, no WebGL) a 2D orb reacts instead.
    A math picture is paced here (it starts on Nestor's first word) but drawn in
    the page's Images zone: the dock publishes it as persona-scene and records the
-   zone's persona-scene-receipt for the family turn (#131, #168). */
+   zone's persona-scene-receipt for the family turn (#131, #168).
+   In the interactive scene Nestor fills the screen, steps into the top right corner
+   when he shows something, and a tap on him brings the page and its menus. */
 (function (root) {
   'use strict';
-  const MODES = ['bulle', 'quart', 'moitie'];
+  const MODES = ['scene', 'bulle', 'quart', 'moitie'];
+  const DEFAULT_MODE = 'scene';
   const MODULE_URL = '/api/household/avatar/llmx-face.js';
   // A math picture waits for Nestor's first word so the cubes move while he explains them;
   // a silent or text-only turn still shows it after this long.
   const SCENE_HOLD_MS = 2500;
-  const storageKey = space => 'household.avatar.' + space + '.mode';
+  const storageKey = space => 'household.avatar.' + space + '.layout';
 
   // Conversation states (browser-conversation.js) → the face's observable phases.
   // Nestor rests with his eyes closed until he is activated (idle, starting,
@@ -49,17 +52,23 @@
     return scene.kind === 'count' ? `On compte jusqu’à ${scene.to}` : '';
   }
 
-  function defaultMode(space, width) {
-    if (width < 700) return 'bulle';
-    return space === 'family' ? 'moitie' : 'quart';
+  // The scene's three views: plein (Nestor fills the screen), montre (he stands in the corner
+  // beside what he shows) and menu (the page, its menus and the transcript). Something shown
+  // while the page is open stays there; closing the page returns to it. When Nestor goes back
+  // to waiting for "Hey Nestor", he takes the screen again.
+  function nextView(view, event, shown = false) {
+    if (event === 'tap') return view === 'menu' ? (shown ? 'montre' : 'plein') : 'menu';
+    if (view === 'menu') return view;
+    if (event === 'show') return 'montre';
+    return ['close', 'clear', 'sleep'].includes(event) ? 'plein' : view;
   }
 
-  function readMode(space, width) {
+  function readMode(space) {
     try {
       const saved = root.localStorage?.getItem(storageKey(space));
       if (MODES.includes(saved) || saved === 'cache') return saved;
     } catch { /* storage blocked: session default */ }
-    return defaultMode(space, width);
+    return DEFAULT_MODE;
   }
 
   function saveMode(space, mode) {
@@ -75,7 +84,7 @@
     return facePromise;
   }
 
-  function mount({ space = 'personal', documentRef = root.document } = {}) {
+  function mount({ space = 'personal', documentRef = root.document, status = null, onTap = null } = {}) {
     const doc = documentRef;
     root.AvatarDock.current?.dispose();
     const family = space === 'family';
@@ -84,20 +93,29 @@
     dock.setAttribute('aria-label', family ? 'Nestor, visage' : 'Ton agent, visage');
     dock.innerHTML = `<div class="avatar-dock-stage"><div class="avatar-dock-orb" aria-hidden="true"></div></div>
       <div class="avatar-dock-bar" role="toolbar" aria-label="Taille du visage">
+        <button type="button" data-mode="scene" title="Plein écran interactif">⛶</button>
         <button type="button" data-mode="bulle" title="Bulle">●</button>
         <button type="button" data-mode="quart" title="Quart d’écran">◱</button>
         <button type="button" data-mode="moitie" title="Moitié d’écran">◧</button>
         <button type="button" data-mode="cache" title="Masquer le visage">×</button>
       </div>
       <button type="button" class="avatar-dock-reopen" title="Afficher le visage">${family ? 'Nestor' : 'Visage'}</button>`;
-    doc.body.append(dock);
+    // The scene's own controls stay reachable on a touchscreen, where nothing hovers.
+    const sceneBar = doc.createElement('div');
+    sceneBar.className = 'avatar-scene-bar';
+    sceneBar.setAttribute('role', 'toolbar');
+    sceneBar.setAttribute('aria-label', family ? 'Nestor' : 'Ton agent');
+    sceneBar.innerHTML = `<p class="avatar-scene-status" aria-hidden="true"></p>
+      <div class="avatar-scene-actions"><button type="button" data-scene="close" hidden>Fermer l’affichage</button><button type="button" data-scene="menu">Menu</button></div>`;
+    doc.body.append(dock, sceneBar);
+    const sceneStatus = sceneBar.querySelector('.avatar-scene-status');
     const stage = dock.querySelector('.avatar-dock-stage');
     const orb = dock.querySelector('.avatar-dock-orb');
     // The mask's receipt for the current picture and the recorded turn it belongs to (#131);
     // sent once both are known, in whichever order they arrive.
     let pendingReceipt = null, recordedTurn = null, heldScene = null, sceneTimer = null;
-    let face = null, mode = readMode(space, root.innerWidth || 1200), disposed = false;
-    let state = 'idle', hostBusy = false, toolPulses = 0, tint = '#52cfc5', sample = null;
+    let face = null, mode = readMode(space), disposed = false, view = 'plein', shown = false;
+    let state = 'idle', wasAsleep = false, hostBusy = false, toolPulses = 0, tint = '#52cfc5', sample = null;
     const meter = createTokenMeter();
     let resolveReady, readySettled = false;
     const ready = new Promise(resolve => { resolveReady = resolve; });
@@ -119,13 +137,42 @@
       doc.body.dataset.avatarMode = next;
       dock.querySelectorAll('[data-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mode === next)));
       if (remember) saveMode(space, next);
+      applyView();
     }
+    function applyView() {
+      const scene = mode === 'scene';
+      if (scene) { dock.dataset.view = view; doc.body.dataset.avatarView = view; }
+      else { delete dock.dataset.view; delete doc.body.dataset.avatarView; }
+      sceneBar.hidden = !scene || view === 'menu';
+      sceneBar.querySelector('[data-scene=close]').hidden = view !== 'montre';
+    }
+    function sceneEvent(event) {
+      if (event === 'show') shown = true;
+      if (['close', 'clear', 'sleep'].includes(event)) shown = false;
+      view = nextView(view, event, shown);
+      applyView();
+    }
+    sceneBar.addEventListener('click', event => {
+      const button = event.target.closest('[data-scene]');
+      if (button) sceneEvent(button.dataset.scene === 'close' ? 'close' : 'tap');
+    });
     dock.querySelector('.avatar-dock-bar').addEventListener('click', event => {
       const button = event.target.closest('[data-mode]');
-      if (button) setMode(button.dataset.mode);
+      if (!button) return;
+      // Choosing the scene again from the open page returns to it.
+      if (button.dataset.mode === 'scene') view = shown ? 'montre' : 'plein';
+      setMode(button.dataset.mode);
     });
-    dock.querySelector('.avatar-dock-reopen').addEventListener('click', () => setMode(defaultMode(space, root.innerWidth || 1200)));
-    stage.addEventListener('click', () => { if (mode === 'bulle') setMode('quart'); });
+    dock.querySelector('.avatar-dock-reopen').addEventListener('click', () => setMode(DEFAULT_MODE));
+    stage.addEventListener('click', () => {
+      if (mode === 'bulle') setMode('quart');
+      // A tap on the full-screen face first wakes or resumes Nestor when he waits for it.
+      else if (mode === 'scene' && !(view === 'plein' && onTap?.())) sceneEvent('tap');
+    });
+    const mirrorStatus = () => { sceneStatus.textContent = status?.textContent || ''; };
+    const statusObserver = status && root.MutationObserver ? new root.MutationObserver(mirrorStatus) : null;
+    statusObserver?.observe(status, { childList: true, characterData: true, subtree: true });
+    mirrorStatus();
     setMode(mode, false);
 
     function presence() {
@@ -136,6 +183,9 @@
     }
     const tick = setInterval(() => {
       const value = presence();
+      const asleep = ['listening', 'hearing'].includes(state) && !!sample?.asleep?.();
+      if (asleep && !wasAsleep) sceneEvent('sleep');
+      wasAsleep = asleep;
       if (face) face.presence = value;
       orb.dataset.phase = value.phase;
       orb.style.setProperty('--avatar-level', Math.min(1, value.level * (value.phase === 'speaking' ? 8 : 10)).toFixed(3));
@@ -162,6 +212,7 @@
       if (detail.kind === 'turn') { pendingReceipt = null; recordedTurn = null; holdScene(null); }
       if (detail.kind === 'scene') holdScene(detail.scene || null);
       if (detail.kind === 'done') { recordedTurn = detail; sendReceipt(); }
+      if (detail.kind === 'show' || detail.kind === 'clear') sceneEvent(detail.kind);
     };
     function holdScene(next) {
       clearTimeout(sceneTimer);
@@ -219,6 +270,7 @@
 
     const handle = {
       get mode() { return mode; },
+      get view() { return mode === 'scene' ? view : null; },
       ready,
       setMode,
       dispose() {
@@ -230,9 +282,12 @@
         root.removeEventListener('persona-presence', onPresence);
         root.removeEventListener('persona-activity', onActivity);
         root.removeEventListener('persona-scene-receipt', onSceneReceipt);
+        statusObserver?.disconnect();
         doc.body.classList.remove('avatar-docked');
         delete doc.body.dataset.avatarMode;
+        delete doc.body.dataset.avatarView;
         dock.remove();
+        sceneBar.remove();
         if (root.AvatarDock.current === handle) root.AvatarDock.current = null;
       }
     };
@@ -240,7 +295,7 @@
     return handle;
   }
 
-  const api = { phaseFor, createTokenMeter, defaultMode, sceneCaption, mount, MODES, MODULE_URL, current: null };
+  const api = { phaseFor, createTokenMeter, nextView, sceneCaption, DEFAULT_MODE, mount, MODES, MODULE_URL, current: null };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.AvatarDock = api;
 })(typeof window === 'undefined' ? globalThis : window);

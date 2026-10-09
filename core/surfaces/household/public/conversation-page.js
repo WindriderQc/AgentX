@@ -71,10 +71,17 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const el = id => document.getElementById(id);
   // Shown, never spoken (#167): secrets exist only in the private space.
   const board = window.DisplayBoard.createScreen({ text: el('conversationBoard'), visual: el('conversationVisual') }, { secrets: !family, space: family ? 'family' : 'personal' });
+  // Shown live: in the avatar's interactive scene Nestor steps aside and that zone comes first.
+  const show = block => {
+    if (!board.add(block)) return;
+    el('conversationVisual').parentElement.dataset.shown = ['image', 'scene'].includes(block.kind) ? 'visual' : 'text';
+    activity('show');
+  };
+  const clearBoard = () => { board.clear(); activity('clear'); };
   // The avatar dock paces a math picture to Nestor's first word; the Images zone draws it.
   window.addEventListener('persona-scene', event => {
     const detail = event.detail || {};
-    if (detail.space === (family ? 'family' : 'personal') && detail.scene) board.add({ key: 'scene', kind: 'scene', title: detail.caption || '', scene: detail.scene });
+    if (detail.space === (family ? 'family' : 'personal') && detail.scene) show({ key: 'scene', kind: 'scene', title: detail.caption || '', scene: detail.scene });
   });
   const backendPicker = el('conversationBackend');
   backendPicker.value = runtime?.defaultBackend || 'openclaw';
@@ -251,7 +258,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (event.type === 'error') throw new Error(event.message);
       if (event.type === 'tools') { showTools(event.evidence); activity('tools', { count: event.evidence?.receipts?.length || 1 }); }
       if (event.type === 'scene' && !interruptedTurns.has(turnId)) activity('scene', { scene: event.scene });
-      if (event.type === 'show' && !interruptedTurns.has(turnId)) board.add(event.block);
+      if (event.type === 'show' && !interruptedTurns.has(turnId)) show(event.block);
       if (!interruptedTurns.has(turnId) && event.type === 'status' && event.phase === 'activity') {
         // Nestor says what it is doing (tools, another agent) once per line.
         const line = AgentActivity.describe(event.activity, agentName);
@@ -330,7 +337,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   // The docked avatar (avatar-dock.js) follows these and the persona-presence samplers.
   const activity = (kind, detail = {}) => window.dispatchEvent(new CustomEvent('persona-activity', { detail: { space, kind, ...detail } }));
   let lastGreeting = '', lastWakeReply = '';
-  const avatar = window.AvatarDock?.mount({ space: family ? 'family' : 'personal' });
+  const avatar = window.AvatarDock?.mount({ space: family ? 'family' : 'personal', status: el('conversationStatus'),
+    onTap: () => { const start = el('conversationStart'); if (start.hidden || start.disabled) return false; start.click(); return true; } });
   const conversation = new NestorConversation.Conversation({
     readyToSpeak: () => avatar?.ready,
     openAudio: (signal, onError, options) => NestorConversation.openAudio(signal, onError, { ...options, observeSpeech: true,
@@ -531,7 +539,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationEnd').onclick = () => { stopPreview(); conversation.stop(); void releaseOpen(); restoreProfile(); describe(); showTools(null); };
   el('conversationNew').onclick = () => {
     setHistoryOpen(false); stopPreview(); conversation.stop(); void releaseOpen(); partial = null;
-    transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; board.clear(); brain.reset();
+    transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; clearBoard(); brain.reset();
     personalNotes.show(null);
     showTools(null);
     el('conversationMessage').value = ''; draftFiles = []; renderDraftFiles(); restoreProfile(); describe(); picker.focus();
@@ -629,7 +637,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
             picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open; voice.value = saved.voice?.presentation || '';
             language.value = data.session.voice?.language || 'auto';
             appearance.value = data.session.visual?.style || ''; color.value = data.session.visual?.color || '#52cfc5';
-            transcript.replaceChildren(); partial = null; board.clear(); brain.reset();
+            transcript.replaceChildren(); partial = null; clearBoard(); brain.reset();
             (data.turns || []).forEach(turn => {
               if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);
               if (turn.replyText) message('assistant', turn.replyText, turn.interrupted);

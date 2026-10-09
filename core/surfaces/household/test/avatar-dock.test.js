@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { phaseFor, createTokenMeter, defaultMode, sceneCaption, MODULE_URL } = require('../public/avatar-dock');
+const { phaseFor, createTokenMeter, nextView, sceneCaption, MODULE_URL, MODES, DEFAULT_MODE } = require('../public/avatar-dock');
 
 test('conversation states map to the face phases the embed understands', () => {
   assert.equal(phaseFor('paused'), 'idle');
@@ -34,17 +34,31 @@ test('the token meter reports streamed characters as tokens per second over one 
   assert.equal(meter.active(), false);
 });
 
-test('the dock opens large on a desktop, family gets the half screen, phones get a bubble', () => {
-  assert.equal(defaultMode('personal', 1400), 'quart');
-  assert.equal(defaultMode('family', 1400), 'moitie');
-  assert.equal(defaultMode('family', 390), 'bulle');
+test('the dock opens as the interactive scene and keeps the fixed sizes as choices', () => {
+  assert.equal(DEFAULT_MODE, 'scene');
+  assert.deepEqual(MODES, ['scene', 'bulle', 'quart', 'moitie']);
+});
+
+test('Nestor fills the screen, steps aside to show, and a tap brings the page', () => {
+  assert.equal(nextView('plein', 'show'), 'montre');
+  assert.equal(nextView('montre', 'show'), 'montre');
+  assert.equal(nextView('montre', 'close'), 'plein');
+  assert.equal(nextView('montre', 'clear'), 'plein', 'a new conversation has nothing left to show');
+  assert.equal(nextView('plein', 'tap'), 'menu');
+  assert.equal(nextView('montre', 'tap'), 'menu');
+  assert.equal(nextView('menu', 'tap'), 'plein');
+  assert.equal(nextView('menu', 'tap', true), 'montre', 'closing the page returns to what is on display');
+  for (const event of ['show', 'close', 'clear', 'sleep']) assert.equal(nextView('menu', event), 'menu', 'the open page is only closed by a tap');
+  assert.equal(nextView('plein', 'close'), 'plein');
+  assert.equal(nextView('montre', 'sleep'), 'plein', 'back to waiting for the wake word, he takes the screen again');
 });
 
 test('the conversation page feeds the dock and the face module is same-origin', () => {
   const page = fs.readFileSync(path.join(__dirname, '../public/conversation-page.js'), 'utf8');
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
-  assert.match(page, /AvatarDock\?\.mount\(\{ space: family \? 'family' : 'personal' \}\)/);
-  for (const kind of ['delta', 'tools', 'host-busy', 'turn', 'scene', 'done']) assert.ok(page.includes(`activity('${kind}'`), kind);
+  assert.match(page, /AvatarDock\?\.mount\(\{ space: family \? 'family' : 'personal', status: el\('conversationStatus'\),/);
+  assert.doesNotMatch(page, /board\.clear\(\); brain/, 'a cleared board also tells the scene');
+  for (const kind of ['delta', 'tools', 'host-busy', 'turn', 'scene', 'done', 'show', 'clear']) assert.ok(page.includes(`activity('${kind}'`), kind);
   assert.match(page, /asleep: \(\) =>/);
   assert.ok(html.indexOf('greetings.js') < html.indexOf('conversation-page.js'), 'the greetings load before the page that speaks them');
   assert.doesNotMatch(page, /I am ready\. I am listening\./);

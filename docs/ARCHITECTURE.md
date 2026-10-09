@@ -185,7 +185,10 @@ finance (`/api/finance`, `/finance`) are in the demo exclusion list of
   no session, audit, task or profile models of their own. Its Super Dad and
   Famille conversations dock Nestor's GraphysX voxel face (`avatar-dock.js`),
   driven only by observable conversation state: phase, microphone and speech
-  level, token rate, tool calls and a busy inference host. A child's counting
+  level, token rate, tool calls and a busy inference host. The dock opens as
+  an interactive scene: the face fills the screen, moves to the top right
+  corner while the shown zones take the screen, and a tap on it opens the page
+  with its menus and transcript; the fixed sizes remain as choices. A child's counting
   (to 100) or addition (to 20) question gets a look-only 3D picture in the
   page's Images zone: Core recognises it (`math-scene.js`), streams the
   picture, and answers with the exact result itself, without waiting for
