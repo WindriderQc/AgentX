@@ -946,8 +946,10 @@ The background brain runs after each Super Dad and Famille turn when
 `HOUSEHOLD_BRAIN_ENABLED=true` (the Compose default; `HOUSEHOLD_BRAIN_FAMILY=false`
 leaves Famille out). It uses the router's `master_brain` lane unless
 `HOUSEHOLD_BRAIN_MODEL` names an Ollama model; `HOUSEHOLD_BRAIN_HOST_URL` pins it
-to one Ollama host so it never competes with the voice model's host; a fast voice
-model and a larger reviewer on another host form a two-level conversation. A new
+to one Ollama endpoint. Choose a separate endpoint with its own resident reviewer:
+pinning the voice endpoint again does not isolate it. An interleaved review on
+the same model can replace the conversation's prompt cache and force a full
+prefill on the next turn, even when both requests use shared admission. A new
 turn supersedes a running review: without a pinned host its request is cancelled
 so the voice gets the host back; on a pinned host the request finishes and its
 result is discarded, because cancelling an admitted request quarantines the host.

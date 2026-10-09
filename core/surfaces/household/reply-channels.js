@@ -71,6 +71,17 @@ function tokenKind(core) {
   return '';
 }
 
+// Recover a useful spoken answer when an unmarked long list slips through.
+// Remove noisy tokens before shortening, so even a partial key cannot be read.
+function listSummary(lines, lang) {
+  const items = lines.slice(0, LIMITS.spokenListItems).map(row => {
+    const text = plainReply(row.replace(/^\s*(?:[-*•+]|\d{1,2}[.)])\s+/, ''), LIMITS.body)
+      .split(/\s+/).filter(word => !tokenKind(word.replace(/^[(«“"']+|[.,;:!?)»”"']+$/g, ''))).join(' ');
+    return text.length <= 160 ? text : text.slice(0, 160).replace(/\s+\S*$/, '') + '…';
+  }).filter(Boolean);
+  return items.length ? (lang === 'en' ? 'First items: ' : 'Les premiers éléments : ') + items.join('; ') + '. ' : '';
+}
+
 function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
@@ -119,7 +130,10 @@ function createReplyChannels({ allowSecrets = false, language = 'fr', onSay = ()
     if (kind === 'list' && lines.length <= LIMITS.spokenListItems) { speakProse(lines.join('\n') + '\n'); return; }
     const body = kind === 'code' ? lines.filter(row => !LINE.fence.test(row)).join('\n') : lines.join('\n');
     const shown = addBlock(kind, '', body);
-    if (shown) say(screenCue(true) + '\n');
+    if (kind === 'list') {
+      say(listSummary(lines, lang));
+      if (shown) say((lang === 'en' ? 'The full list is on screen.' : 'La liste complète est à l’écran.') + '\n');
+    } else if (shown) say(screenCue(true) + '\n');
   };
 
   // Line structure decides lists, tables and code; everything else is prose.
@@ -251,6 +265,7 @@ function contract({ family = false, imageSources = [] } = {}) {
   return [
     'Your reply reaches two places: everything outside a show block is spoken aloud; show blocks are displayed on the user\'s screen and never spoken.',
     `${SPOKEN_REPLY_INSTRUCTION} When details are on screen, say so naturally, for example "je te l'ai mis à l'écran".`,
+    'For a priority or task question, speak the one to three most useful items and their deadlines outside the show block. A screen pointer alone is not an answer.',
     `Put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: lists longer than three items, steps, tables, code, commands, links, identifiers and long details. Markdown is allowed inside show blocks only.`,
     family
       ? 'Never show passwords, keys, account details or private information.'
