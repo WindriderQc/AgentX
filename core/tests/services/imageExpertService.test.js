@@ -44,6 +44,11 @@ test('Hermes proposal and events are canonical, replayable, scoped and advisory'
   expect(await provenance.resolve(reference, { ...context, prompt: 'An edited lake' }, 'quick')).toMatchObject({ promptEdited: true });
   await expect(provenance.resolve({ ...reference, sessionId: other.sessionId }, context, 'quick')).rejects.toMatchObject({ statusCode: 409 });
   expect(() => provenance.validate({ ...reference, harness: 'fake' })).toThrow();
+  bridge.invoke.mockImplementationOnce(async () => ({ ok: true, expert: 'hermes', text: 'Nous avions proposé un lac à l’aube.' }));
+  await service.accept(session.sessionId, { ...input, clientTurnId: randomUUID(), mode: 'consult', message: 'Quel était notre brief ?', context: { ...context, prompt: '' } });
+  await wait(service, session.sessionId);
+  expect(bridge.invoke.mock.calls[1][0].history[0].content).toContain(context.prompt);
+  expect(bridge.invoke.mock.calls[1][0].history[1].content).toContain(proposal.prompt);
 });
 
 test('provider failure stays visible, restart does not repeat inference, and only successful history is sent', async () => {
