@@ -512,9 +512,13 @@ router.put('/inference/routing-config/:taskType', async (req, res) => {
 
 router.get('/inference/heatmap', async (req, res) => {
   try {
-    const { getUtilizationHeatmap } = require('../src/services/hostUsageAggregator');
+    const { getUtilizationHeatmap, isValidTimeZone } = require('../src/services/hostUsageAggregator');
     const days = Math.min(parseInt(req.query.days) || 7, 30);
-    const heatmap = await getUtilizationHeatmap(days);
+    const timeZone = req.query.timezone || 'UTC';
+    if (!isValidTimeZone(timeZone)) {
+      return res.status(400).json({ status: 'error', message: 'Unknown time zone.' });
+    }
+    const heatmap = await getUtilizationHeatmap(days, timeZone);
     res.json({ status: 'success', data: heatmap });
   } catch (err) {
     logger.error('[NerveCenter] heatmap fetch failed', { error: err.message });

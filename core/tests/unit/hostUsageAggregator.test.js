@@ -68,6 +68,12 @@ describe('hostUsageAggregator host labels', () => {
     expect(heatmap.grid.secondary[today][11]).toBeNull();
   });
 
+  it('accepts IANA time zones and rejects unknown ones', () => {
+    expect(hostUsageAggregator.isValidTimeZone('America/Toronto')).toBe(true);
+    expect(hostUsageAggregator.isValidTimeZone('UTC')).toBe(true);
+    expect(hostUsageAggregator.isValidTimeZone('Nope/Zone')).toBe(false);
+  });
+
   it('groups measured hours by the requested time zone', () => {
     const now = new Date('2026-08-23T12:30:00.000Z');
     const records = [{

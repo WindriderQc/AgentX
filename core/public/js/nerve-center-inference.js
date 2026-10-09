@@ -488,7 +488,10 @@
         if (!container) return;
 
         try {
-            const json = await shared.fetchJson('/api/nerve-center/inference/heatmap?days=7');
+            const params = new URLSearchParams({ days: '7' });
+            const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (browserZone) params.set('timezone', browserZone);
+            const json = await shared.fetchJson(`/api/nerve-center/inference/heatmap?${params}`);
             const data = json.data || {};
             const hosts = (data.hosts || []).map(host => typeof host === 'string'
                 ? { key: host, displayName: host, role: null, ip: null }
@@ -540,7 +543,7 @@
                     <thead><tr><th style="padding:4px 8px;">Host</th>${hourHeaders}</tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
-                <div class="nc-muted" style="font-size:0.7rem;margin-top:5px;">Color is normalized to the observed maximum (${observedMax}%); hatched cells mean no telemetry, while 0% is a measured zero.</div>`;
+                <div class="nc-muted" style="font-size:0.7rem;margin-top:5px;">Hours in ${shared.escapeHtml(data.timeZone || 'UTC')}. Color is normalized to the observed maximum (${observedMax}%); hatched cells mean no telemetry, while 0% is a measured zero.</div>`;
         } catch (err) {
             console.warn('[NerveCenter] Heatmap data unavailable', err);
             container.innerHTML = '<div class="nc-muted nc-td-p12">Heatmap data unavailable.</div>';

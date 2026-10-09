@@ -12,7 +12,7 @@ const logger = require('../config/logger');
 const clusterScheduleService = require('../src/services/clusterScheduleService');
 const clusterLiveService = require('../src/services/clusterLiveService');
 const HostUsageLedger = require('../models/HostUsageLedger');
-const { getUtilizationHeatmap } = require('../src/services/hostUsageAggregator');
+const { getUtilizationHeatmap, isValidTimeZone } = require('../src/services/hostUsageAggregator');
 const { defaultPlanningTimeZone, zonedDateOnly, zonedDayBounds } = require('../src/services/planningDateService');
 const { getConfiguredHosts } = require('../src/helpers/ollamaHostConfig');
 const { describeHost } = require('../src/services/hostIdentityService');
@@ -208,9 +208,7 @@ router.get('/schedule/heatmap', async (req, res) => {
   try {
     const days = Math.min(parseInt(req.query.days || '7', 10), 30);
     const timeZone = req.query.timezone || 'UTC';
-    try {
-      new Intl.DateTimeFormat('en-US', { timeZone });
-    } catch {
+    if (!isValidTimeZone(timeZone)) {
       return res.status(400).json({ status: 'error', error: 'Unknown time zone.' });
     }
     const data = await getUtilizationHeatmap(days, timeZone);
