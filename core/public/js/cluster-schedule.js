@@ -295,7 +295,7 @@ function updateHeaderStatus(headline, nextTasks, { scheduleAvailable = true, sch
   if (!scheduleAvailable) {
     scheduleHtml = '<span class="cs-header-status-item warn"><i class="fas fa-clock" style="font-size:9px"></i> schedule unavailable</span>';
   } else if (scheduledNext.length > 0) {
-    scheduleHtml = `<span class="cs-header-status-item warn" title="${esc(scheduleTitle)}"><i class="fas fa-clock" style="font-size:9px"></i> ${scheduledNext.length} next hour${gpuJobs ? ` · ${gpuJobs} GPU` : ''}${lightJobs ? ` · ${lightJobs} light` : ''}</span>`;
+    scheduleHtml = `<span class="cs-header-status-item" title="${esc(scheduleTitle)}"><i class="fas fa-clock" style="font-size:9px"></i> ${scheduledNext.length} next hour${gpuJobs ? ` · ${gpuJobs} GPU` : ''}${lightJobs ? ` · ${lightJobs} light` : ''}</span>`;
   } else {
     scheduleHtml = `<span class="cs-header-status-item" title="${esc(scheduleTitle)}"><i class="fas fa-clock" style="font-size:9px"></i> quiet next hour</span>`;
   }
