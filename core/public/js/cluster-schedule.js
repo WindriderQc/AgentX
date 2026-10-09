@@ -59,6 +59,7 @@ let lastServiceHoverId = null;
 let persistentServicesData = [];
 let visibleTimelineEntries = [];
 let upcomingTimelineEntries = [];
+let tooltipAnchor = null;
 
 // ── API ─────────────────────────────────────────────────────
 
@@ -94,6 +95,8 @@ function setViewMode(mode) {
   viewMode = mode;
   document.getElementById('viewTask').classList.toggle('active', mode === 'task');
   document.getElementById('viewHost').classList.toggle('active', mode === 'host');
+  document.getElementById('viewTask').setAttribute('aria-pressed', String(mode === 'task'));
+  document.getElementById('viewHost').setAttribute('aria-pressed', String(mode === 'host'));
   syncTimelineFilterUI();
   loadTimeline(); loadConflicts();
 }
@@ -443,7 +446,7 @@ function renderGroupedHeatmap(container, timeline) {
     const countLabel = gpuCount > 0
       ? `${gpuCount} AI job${gpuCount !== 1 ? 's' : ''}${infraCount > 0 ? `, ${infraCount} sys` : ''}`
       : `${infraCount} sys job${infraCount !== 1 ? 's' : ''}`;
-    html += `<div class="cs-group-header" role="button" tabindex="0" data-group-key="${esc(groupKey)}">
+    html += `<div class="cs-group-header" role="button" tabindex="0" aria-expanded="${!isCollapsed}" data-group-key="${esc(groupKey)}">
       <i class="fas fa-caret-down toggle ${toggleIcon}"></i>
       <span style="color:${color}">${(groupKey).toUpperCase()}</span>
       <span class="cs-group-count">${countLabel}</span>
@@ -515,9 +518,16 @@ function positionNowLine(container) {
 }
 
 function toggleGroup(groupKey) {
+  const hadFocus = document.activeElement?.dataset?.groupKey === groupKey;
   if (collapsedGroups.has(groupKey)) collapsedGroups.delete(groupKey);
   else collapsedGroups.add(groupKey);
-  loadTimeline();
+  const container = document.getElementById('heatmapContainer');
+  hideTooltip();
+  renderGroupedHeatmap(container, visibleTimelineEntries);
+  if (hadFocus) {
+    [...container.querySelectorAll('.cs-group-header')]
+      .find(header => header.dataset.groupKey === groupKey)?.focus();
+  }
 }
 
 // ── Host Gantt View ─────────────────────────────────────────
@@ -574,6 +584,7 @@ function getSlotSegments(slots, hourStart, hourEnd, taskType, taskName, isInfra 
     const contClass = slot.continuous ? ' continuous' : '';
     const infraClass = isInfra ? ' infra' : '';
     html += `<div class="cs-hm-slot ${taskType}${contClass}${infraClass}"
+      tabindex="0" role="button" aria-label="${esc(`${taskName}, ${formatTime(slotStart)}–${formatTime(slotEnd)}, ${getHostMeta(meta.host).label}`)}"
       style="left:${left}%;width:${width}%"
       data-tt-name="${esc(taskName)}"
       data-tt-type="${esc(taskType)}"
@@ -672,12 +683,24 @@ function renderClaims(container) {
 function attachTooltipEvents(container) {
   container.querySelectorAll('.cs-hm-slot').forEach(el => {
     el.addEventListener('mouseenter', showTooltip);
-    el.addEventListener('mouseleave', hideTooltip);
+    el.addEventListener('mouseleave', () => { if (document.activeElement !== el) hideTooltip(); });
     el.addEventListener('mousemove', moveTooltip);
+    el.addEventListener('focus', showTooltip);
+    el.addEventListener('blur', hideTooltip);
+    el.addEventListener('click', showTooltip);
+    el.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      showTooltip(event);
+    });
   });
 }
 function showTooltip(e) {
-  const d = e.target.dataset;
+  const anchor = e.currentTarget || e.target;
+  if (tooltipAnchor && tooltipAnchor !== anchor) tooltipAnchor.removeAttribute('aria-describedby');
+  tooltipAnchor = anchor;
+  anchor.setAttribute('aria-describedby', 'tooltip');
+  const d = anchor.dataset;
   const name    = d.ttName || '';
   const type    = d.ttType || '';
   const time    = d.ttTime || '';
@@ -706,20 +729,32 @@ function showTooltip(e) {
   document.getElementById('tooltipName').textContent = name;
   document.getElementById('tooltipRows').innerHTML = rows.join('');
   document.getElementById('tooltip').classList.add('visible');
+  document.getElementById('tooltip').setAttribute('aria-hidden', 'false');
+  moveTooltip(e);
 }
 
 function row(icon, text, cls) {
   return `<div class="cs-tooltip-row"><i class="fas ${icon}"></i><span class="${cls}">${esc(text)}</span></div>`;
 }
 
-function hideTooltip() { document.getElementById('tooltip').classList.remove('visible'); }
+function hideTooltip() {
+  const tooltip = document.getElementById('tooltip');
+  tooltip.classList.remove('visible');
+  tooltip.setAttribute('aria-hidden', 'true');
+  tooltipAnchor?.removeAttribute('aria-describedby');
+  tooltipAnchor = null;
+}
 function moveTooltip(e) {
   const t = document.getElementById('tooltip');
+  const rect = (e.currentTarget || tooltipAnchor)?.getBoundingClientRect();
+  if (!rect) return;
   const margin = 12;
-  let left = e.clientX + 14;
-  let top  = e.clientY - 10;
-  if (left + 310 > window.innerWidth) left = e.clientX - 320;
-  if (top  + 200 > window.innerHeight) top = e.clientY - 160;
+  const pointer = e.type === 'mouseenter' || e.type === 'mousemove';
+  let left = pointer ? e.clientX + 14 : rect.left;
+  let top = pointer ? e.clientY + 14 : rect.bottom + 10;
+  left = Math.max(margin, Math.min(left, window.innerWidth - t.offsetWidth - margin));
+  if (top + t.offsetHeight > window.innerHeight - margin) top = rect.top - t.offsetHeight - 10;
+  top = Math.max(margin, top);
   t.style.left = left + 'px';
   t.style.top  = top  + 'px';
 }
@@ -932,6 +967,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('click', (e) => {
+  if (!e.target.closest('.cs-hm-slot')) hideTooltip();
   const popover = document.getElementById('servicePopover');
   if (!popover || !popover.classList.contains('visible') || !servicePopoverPinnedId) return;
   if (e.target.closest('.cs-service-chip') || e.target.closest('#servicePopover')) return;
@@ -939,7 +975,7 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') hideServicePopover(true);
+  if (e.key === 'Escape') { hideTooltip(); hideServicePopover(true); }
 });
 
 window.addEventListener('resize', () => {

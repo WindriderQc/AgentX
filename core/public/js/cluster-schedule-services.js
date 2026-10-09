@@ -35,7 +35,9 @@ function renderServicesStrip(persistent) {
           const isHostOnline = !liveHost || liveHost.status === 'online';
           const dotClass = isHostOnline ? 'active' : 'stale';
           const dotColor = isHostOnline ? color : '#f59e0b';
-          return `<div class="cs-service-chip" data-service-id="${esc(getServiceEntryId(p, index))}">
+          return `<div class="cs-service-chip" data-service-id="${esc(getServiceEntryId(p, index))}"
+            tabindex="0" role="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="servicePopover"
+            aria-label="${esc(`${p.name}, ${cadence || '24/7'}, ${getHostMeta(p.host).label}`)}">
             <span class="cs-service-dot ${dotClass}" style="background:${dotColor}"></span>
             ${esc(p.name)}
             <span class="cs-service-cadence">${esc(cadence || (p.slots.length > 1 ? p.slots.length + '×/d' : '24/7'))}</span>
@@ -76,6 +78,8 @@ function toggleServices() {
   servicesCollapsed = !servicesCollapsed;
   document.getElementById('servicesGrid').classList.toggle('collapsed', servicesCollapsed);
   document.getElementById('servicesToggle').classList.toggle('collapsed', servicesCollapsed);
+  document.getElementById('servicesToggle').setAttribute('aria-expanded', String(!servicesCollapsed));
+  if (servicesCollapsed) hideServicePopover(true);
 }
 
 function attachServiceChipEvents() {
@@ -84,6 +88,16 @@ function attachServiceChipEvents() {
     chip.addEventListener('mouseleave', onServiceChipLeave);
     chip.addEventListener('mousemove', onServiceChipMove);
     chip.addEventListener('click', onServiceChipClick);
+    chip.addEventListener('focus', onServiceChipEnter);
+    chip.addEventListener('blur', event => {
+      if (event.relatedTarget?.closest('#servicePopover')) return;
+      hideServicePopover(true);
+    });
+    chip.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      onServiceChipClick(event);
+    });
   });
 }
 
@@ -97,6 +111,7 @@ function onServiceChipEnter(e) {
 function onServiceChipLeave(e) {
   const serviceId = e.currentTarget.dataset.serviceId;
   if (servicePopoverPinnedId === serviceId) return;
+  if (document.activeElement === e.currentTarget) return;
   lastServiceHoverId = null;
   hideServicePopover();
 }
@@ -125,10 +140,16 @@ function showServicePopover(serviceId, anchorEl, pinned = false) {
   servicePopoverPinnedId = pinned ? serviceId : servicePopoverPinnedId;
   popover.innerHTML = renderServicePopover(service, serviceId, pinned);
   popover.classList.add('visible');
+  popover.setAttribute('aria-hidden', 'false');
+  popover.onfocusout = event => {
+    if (event.relatedTarget?.closest('#servicePopover, .cs-service-chip')) return;
+    hideServicePopover(true);
+  };
   positionServicePopover(anchorEl);
 
   document.querySelectorAll('.cs-service-chip').forEach(chip => {
     chip.classList.toggle('active', chip.dataset.serviceId === (servicePopoverPinnedId || serviceId));
+    chip.setAttribute('aria-expanded', String(chip.dataset.serviceId === serviceId));
   });
 
   const closeBtn = popover.querySelector('[data-close-service-popover]');
@@ -141,8 +162,12 @@ function hideServicePopover(force = false) {
   if (!force && servicePopoverPinnedId) return;
   if (force) servicePopoverPinnedId = null;
   popover.classList.remove('visible');
+  popover.setAttribute('aria-hidden', 'true');
   popover.innerHTML = '';
-  document.querySelectorAll('.cs-service-chip').forEach(chip => chip.classList.remove('active'));
+  document.querySelectorAll('.cs-service-chip').forEach(chip => {
+    chip.classList.remove('active');
+    chip.setAttribute('aria-expanded', 'false');
+  });
 }
 
 function positionServicePopover(anchorEl) {

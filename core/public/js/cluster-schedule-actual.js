@@ -6,6 +6,8 @@ function setActualView(mode) {
   actualView = mode;
   document.getElementById('btnHeatmap').classList.toggle('active', mode === 'heatmap');
   document.getElementById('btnAvp').classList.toggle('active', mode === 'avp');
+  document.getElementById('btnHeatmap').setAttribute('aria-pressed', String(mode === 'heatmap'));
+  document.getElementById('btnAvp').setAttribute('aria-pressed', String(mode === 'avp'));
   document.querySelector('.cs-actual-controls').style.display = mode === 'heatmap' ? '' : 'none';
   if (mode === 'heatmap') loadActualHeatmap();
   else loadActualVsPlanned();

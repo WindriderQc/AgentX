@@ -43,6 +43,7 @@ function loadClusterScheduleContext() {
         elements.set(id, {
           innerHTML: '',
           style: {},
+          setAttribute: jest.fn(),
           classList: { add: jest.fn(), remove: jest.fn(), toggle: jest.fn(), contains: jest.fn() }
         });
       }

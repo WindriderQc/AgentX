@@ -23,8 +23,8 @@
                         <button id="todayBtn" class="cs-btn cs-btn-sm">Today</button>
                     </div>
                     <div class="cs-view-toggles">
-                        <button id="viewTask" class="cs-btn cs-btn-sm active"><i class="fas fa-layer-group"></i> Task</button>
-                        <button id="viewHost" class="cs-btn cs-btn-sm"><i class="fas fa-server"></i> Host</button>
+                        <button id="viewTask" class="cs-btn cs-btn-sm active" aria-pressed="true"><i class="fas fa-layer-group"></i> Task</button>
+                        <button id="viewHost" class="cs-btn cs-btn-sm" aria-pressed="false"><i class="fas fa-server"></i> Host</button>
                     </div>
                     <button id="refreshBtn" class="cs-btn" title="Refresh all data" aria-label="Refresh all data"><i class="fas fa-sync-alt"></i></button>
                 </div>
@@ -42,7 +42,7 @@
         <!-- Background Services Strip -->
         <div id="servicesStrip" class="cs-services-strip" style="display:none">
             <div class="cs-services-header">
-                <button id="servicesToggle" class="cs-btn cs-btn-sm">
+                <button id="servicesToggle" class="cs-btn cs-btn-sm" aria-expanded="true" aria-controls="servicesGrid">
                     <i class="fas fa-caret-down"></i> Background Services <span id="servicesCount" class="cs-services-count"></span>
                 </button>
             </div>
@@ -74,10 +74,10 @@
                 <div class="cs-actual-section">
                     <div class="cs-actual-header">
                         <div class="cs-actual-tabs">
-                            <button id="btnHeatmap" class="cs-btn cs-btn-sm active">
+                            <button id="btnHeatmap" class="cs-btn cs-btn-sm active" aria-pressed="true">
                                 <i class="fas fa-th"></i> Utilization Heatmap
                             </button>
-                            <button id="btnAvp" class="cs-btn cs-btn-sm">
+                            <button id="btnAvp" class="cs-btn cs-btn-sm" aria-pressed="false">
                                 <i class="fas fa-chart-bar"></i> Actual vs Planned
                             </button>
                         </div>
@@ -159,11 +159,11 @@
     </div>
 
     <!-- Tooltip (hidden by default) -->
-    <div id="tooltip" class="cs-tooltip">
+    <div id="tooltip" class="cs-tooltip" role="tooltip" aria-hidden="true">
         <div id="tooltipType" class="cs-tooltip-type"></div>
         <div id="tooltipName" class="cs-tooltip-name"></div>
         <div id="tooltipRows" class="cs-tooltip-rows"></div>
     </div>
 
     <!-- Service Popover (hidden by default) -->
-    <div id="servicePopover" class="cs-service-popover"></div>
+    <div id="servicePopover" class="cs-service-popover" role="dialog" aria-label="Background Services" aria-hidden="true"></div>

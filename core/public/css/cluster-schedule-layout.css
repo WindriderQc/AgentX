@@ -631,6 +631,18 @@
     opacity: 0.85;
 }
 
+.cs-hm-slot:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    opacity: 1;
+}
+
+.cs-service-chip:focus-visible,
+.cs-group-header:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 .cs-hm-header {
     font-size: 0.8rem;
     font-weight: 600;
@@ -810,6 +822,7 @@
 }
 
 .cs-services-grid.collapsed {
+    display: none;
     max-height: 0;
     overflow: hidden;
     opacity: 0;
