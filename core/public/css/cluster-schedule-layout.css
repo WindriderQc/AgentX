@@ -739,6 +739,7 @@
 
 .cs-timeline-filters {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 16px;
     margin-bottom: 12px;
@@ -760,6 +761,23 @@
 
 .cs-filter-label input[type="checkbox"] {
     accent-color: var(--accent);
+}
+
+/* Keep the global full-width form input rules out of timeline filters. */
+#timelineFilters .cs-filter-label {
+    display: inline-flex;
+    flex: 0 0 auto;
+    margin: 0;
+    white-space: nowrap;
+}
+
+#timelineFilters input[type="checkbox"] {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
 }
 
 /* ── Services Strip ──────────────────────────────────────────── */
