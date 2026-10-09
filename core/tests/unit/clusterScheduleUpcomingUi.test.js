@@ -317,6 +317,20 @@ describe('Cluster Schedule evidence presentation', () => {
     expect(measuredContainer.innerHTML).toContain('04:00 actual 0% (1 call)');
   });
 
+  test('prints measured percentages in heatmap cells and fills them like the legend', () => {
+    const { context } = loadClusterScheduleContext();
+    const values = new Array(24).fill(null);
+    values[4] = 37;
+    const container = { innerHTML: '' };
+    vm.runInContext('renderUtilHeatmap', context)(container, {
+      hosts: ['gpu-a'], days: ['2026-08-28'], grid: { 'gpu-a': [values] }
+    });
+    const fill = vm.runInContext('utilCellBackground(37)', context);
+
+    expect(container.innerHTML).toMatch(new RegExp(`background:${fill.replace(/[()]/g, '\\$&')}"[^>]*>37<`));
+    expect(container.innerHTML).toContain('aria-label="2026-08-28 04:00 — 37% utilization"');
+  });
+
   test('formats every clock time in one English 24-hour format', () => {
     const { context } = loadClusterScheduleContext();
     context.testDate = new Date(2026, 7, 28, 22, 5, 9);

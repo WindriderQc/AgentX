@@ -28,17 +28,26 @@ function utilColor(pct) {
   return '#ef4444';
 }
 
+// One fill for heatmap cells and legend swatches. Alpha lives in the
+// background so the percentage printed in the cell stays readable.
+function utilCellBackground(pct, observed = true) {
+  if (!observed) return 'rgba(255,255,255,0.02)';
+  if (pct <= 0) return 'rgba(255,255,255,0.06)';
+  const hex = utilColor(pct);
+  const [r, g, b] = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
+  const alpha = Math.max(0.25, pct / 100);
+  return `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+}
+
 function renderUtilLegend() {
   const bar = document.getElementById('utilLegendBar');
   if (!bar) return;
   const legend = document.getElementById('utilLegend');
   legend.style.display = 'flex';
   const stops = [0, 10, 25, 45, 65, 80, 95];
-  bar.innerHTML = stops.map(p => {
-    const c = utilColor(p);
-    const op = p === 0 ? 0.15 : 0.2 + (p / 100) * 0.8;
-    return `<div class="cs-util-swatch" style="background:${c};opacity:${op.toFixed(2)}" title="${p}%"></div>`;
-  }).join('');
+  bar.innerHTML = stops.map(p =>
+    `<div class="cs-util-swatch" style="background:${utilCellBackground(p)}" title="${p}%"></div>`
+  ).join('');
 }
 
 async function loadActualHeatmap() {
@@ -111,10 +120,9 @@ function renderUtilHeatmap(container, data) {
         const rawPct = hourRow[h];
         const observed = Number.isFinite(rawPct);
         const pct = observed ? rawPct : 0;
-        const color = utilColor(pct);
-        const opacity = !observed ? 0.025 : pct <= 0 ? 0.06 : Math.max(0.2, pct / 100);
-        html += `<div class="cs-util-cell" style="background:${color};opacity:${opacity.toFixed(2)}"
-          title="${dateLabel} ${String(h).padStart(2, '0')}:00 — ${observed ? `${pct.toFixed(0)}% utilization` : 'not measured'}"></div>`;
+        const label = `${dateLabel} ${String(h).padStart(2, '0')}:00 — ${observed ? `${pct.toFixed(0)}% utilization` : 'not measured'}`;
+        html += `<div class="cs-util-cell" style="background:${utilCellBackground(pct, observed)}"
+          title="${label}" aria-label="${label}">${observed && pct >= 1 ? Math.round(pct) : ''}</div>`;
       }
     }
 
