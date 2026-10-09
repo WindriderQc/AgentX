@@ -12,6 +12,7 @@ const { reserve } = require('./gpuReservation');
 const { requestedRecipe, assertRecipe, buildExecution } = require('./recipeExecution');
 const { qualified, MAX_OUTPUT_PIXELS } = require('./sizes');
 const logger = require('../../../config/logger');
+const { assertSupportedRequest } = require('./labIntent');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const ACTIVE = ['accepted', 'reserving', 'generating', 'archiving', 'restoring'];
@@ -78,6 +79,7 @@ function validate(body, config) {
   return { profile: { ...profile, id }, request, requestHash, originals, parent, recipe };
 }
 async function accept(body, { conversation, signal } = {}) {
+  assertSupportedRequest(body);
   await initialize();
   const config = loadConfig();
   if (!config || !defaultArchive().enabled) throw fail('Le service d’images locales n’est pas configuré.', 503);

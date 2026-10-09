@@ -6,6 +6,7 @@
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
+const labIntent = require('../src/services/images/labIntent');
 
 const CODE = path.join(__dirname, '..', 'public', 'image-lab');
 const dataRoot = () => process.env.IMAGE_ARCHIVE_DIR ? path.join(path.resolve(process.env.IMAGE_ARCHIVE_DIR), 'atelier-site') : null;
@@ -83,6 +84,16 @@ function lotGroups(dir) {
 
 function createRouter({ code = CODE, data = dataRoot, lots = lotsRoot, sources = liveSources } = {}) {
   const router = express.Router();
+  const intentResponse = handler => (req, res) => {
+    res.set('Cache-Control', 'private, no-store').set('X-Content-Type-Options', 'nosniff');
+    try { handler(req, res); }
+    catch (error) { res.status(error.statusCode || 503).json({ ok: false, message: error.statusCode ? error.message : 'Recettes indisponibles.' }); }
+  };
+  router.get('/api/recipes/:id', intentResponse((req, res) => res.json({ ok: true, catalogue: labIntent.catalogue(req.params.id, data()) })));
+  router.post('/api/intents', express.json({ limit: '32kb' }), intentResponse((req, res) => {
+    const intent = labIntent.prepare(req.body, data());
+    res.set('Content-Disposition', 'attachment; filename="image-lab-intent.json"').json(intent);
+  }));
   router.get('/api/lab', async (_req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
