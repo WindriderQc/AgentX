@@ -5,18 +5,24 @@ observations, GPU telemetry, live feeds, database inspection, downloadable
 reports, an activity log, integrations and supervised janitor operations. Source, tests and distribution belong to this repository.
 
 Core's full profile hosts `/data-toolbox`, a UI backed by Data HTTP APIs. Its
-tabs are Overview, Storage, Files, Network, GPU, Databases, Live Data, MQTT and
-Janitor; the GPU tab reads the four `GET /api/v1/hardware` routes and the MQTT
-tab the three `/api/v1/mqtt` routes described below. The Toolbox reads, with
-five kinds of write: a network device's record (`PATCH /api/v1/network/devices/:id`:
+tabs are Overview, Activity, Storage, Files, Network, GPU, Databases, Live
+Data, MQTT and Janitor; the GPU tab reads the four `GET /api/v1/hardware`
+routes and the MQTT tab the three `/api/v1/mqtt` routes described below. The
+Activity tab and the Overview's recent-activity card read `GET /api/v1/events`;
+the Storage tab's Growth view reads `GET /api/v1/storage/trends` and its
+Reports view the `/api/v1/exports` routes. The Toolbox reads, with
+seven kinds of write: a network device's record (`PATCH /api/v1/network/devices/:id`:
 name, known flag, type, location, notes), a network scan request
 (`POST /api/v1/network/scan`, followed through
 `GET /api/v1/network/scan-requests/:id`), an MQTT message published by
-hand, a storage scan request, and the Janitor's duplicate-review decisions
+hand, a storage scan request, the Janitor's duplicate-review decisions
 (`PUT`/`DELETE /api/v1/janitor/profiles/shared-drive/review-decisions/:sha256`
 and `POST .../review-decisions/batch`, described under
 [Duplicate-review decisions](#duplicate-review-decisions): a record of intent
-that deletes no file). Data stores the device fields as given, with no length limit of its own:
+that deletes no file), and the generation (`POST /api/v1/exports/generate`,
+with a type and a format and nothing else) and the deletion
+(`DELETE /api/v1/exports/:filename`) of a report, a file in Data's own report
+store. The Toolbox does not relay `POST /api/v1/events` or the event stream. Data stores the device fields as given, with no length limit of its own:
 the Toolbox relay bounds them (name and location 80 characters, notes 500, a
 fixed list of types). A collector sweep rewrites only what it observed (IP,
 MAC, hostname, vendor, status, last sighting), so these fields survive it. The
@@ -294,7 +300,10 @@ for it. At most two reports are generated at a time; a third request gets `429`.
 clears a failed generation from the list. Both accept only a name the exporter
 creates (`export_<type>_<date>_<time>_<6 hex>.<format>`): anything else is
 refused with `400`, a symbolic link is never followed, and other files in the
-directory are neither listed nor touched.
+directory are neither listed nor touched. The Toolbox relays the list, the
+generation, the deletion and the download; its download relay pipes the file
+to the browser as Data sends it, so a large report is never held in Core's
+memory.
 
 Reports are written to `DATA_EXPORT_DIR`. In Compose that is `/data/exports`,
 the mount point of the `${project}_canonical_data_exports` named volume, so

@@ -294,18 +294,24 @@ async function overview() {
       <article class="card"><h3>Automation visibility</h3>
         <div class="metric-row"><span>Live feeds</span><strong>${sources.liveData?.ok ? `${feeds.filter((feed) => feed.enabled).length}/${feeds.length} enabled` : '—'}</strong></div>
         <div class="metric-row"><span>Janitor profiles</span><strong>${sources.janitor?.ok ? number(profiles.length) : '—'}</strong></div>
-        <div class="metric-row"><span>Write routes</span><strong>7 in 5 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions (save, import, remove)</strong></div>
+        <div class="metric-row"><span>Write routes</span><strong>9 in 7 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions (save, import, remove), report generation, report deletion</strong></div>
         <div class="metric-row"><span>Projection authority</span><strong>AgentX Data</strong></div>
       </article>
-    </div>`;
+    </div>
+    <section id="overviewActivity"></section>`;
+  // The last warnings and errors of the activity log: activity.js reads them apart.
+  if (typeof activityOverviewCard === 'function') activityOverviewCard();
 }
 
 async function storage() {
+  // Growth and Reports are views of this tab: storage-views.js draws them.
+  if (typeof storageOtherView === 'function' && await storageOtherView()) return;
   const [summary, scansBody, agentsBody] = await Promise.all([
     api('/storage/summary'), api('/storage/scans?limit=12'), api('/storage/agents')
   ]);
   const agents = array(agentsBody.scanners || agentsBody.agents || agentsBody);
   content.innerHTML = `${heading('Storage evidence', 'Inventory coverage, scan receipts, and the native Data collector that can see shared storage. A scan can be asked for below; it only reads the disks.', '<button class="button" data-action="refresh">Refresh</button>')}
+    ${typeof storageViewSwitch === 'function' ? storageViewSwitch() : ''}
     <div class="grid">
       ${metric(number(summary.totalFiles), 'files inventoried')}
       ${metric(summary.totalSizeFormatted || bytes(summary.totalSize), 'inventory size')}
@@ -734,6 +740,8 @@ if (typeof files === 'function') renderers.files = files;
 if (typeof gpu === 'function') renderers.gpu = gpu;
 // The MQTT tab lives in mqtt.js, loaded the same way.
 if (typeof mqttTab === 'function') renderers.mqtt = mqttTab;
+// The Activity tab lives in activity.js, loaded the same way.
+if (typeof activityTab === 'function') renderers.activity = activityTab;
 
 async function render(force = false) {
   const tab = location.hash.slice(1) || 'overview';

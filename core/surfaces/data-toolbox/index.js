@@ -405,19 +405,23 @@ async function buildStatus() {
   const healthy = Object.values(sources).filter((source) => source.ok).length;
   return {
     extension: 'aio-ops-data-toolbox',
-    version: '1.8.0',
+    version: '1.9.0',
     owner: 'agentx',
-    // Five write families are relayed: PATCH /network/devices/:mac (name, known flag,
+    // Seven write families are relayed: PATCH /network/devices/:mac (name, known flag,
     // type, location, notes), POST /network/scan (one scan request for the
-    // collectors), POST /mqtt/publish (one MQTT message sent by hand) and
+    // collectors), POST /mqtt/publish (one MQTT message sent by hand),
     // POST /storage/scans (ask the native collector to read a source again:
     // it refreshes the index and changes nothing on the disks). A fifth family,
     // janitor-review-decision (janitor-review-relay.js), stores, imports or
     // removes the owner's decision about a duplicate group: a record of intent
-    // in Data's database, which approves, previews and deletes nothing.
+    // in Data's database, which approves, previews and deletes nothing. The
+    // last two, report-generate and report-delete (reports-trends-activity.js),
+    // are POST /reports and DELETE /reports/:filename: a report is a file in
+    // Data's own report store, never on the scanned disks, which is what
+    // `filesystemMutationsExposed` is about.
     readOnly: false,
     mutationsExposed: true,
-    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision'],
+    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete'],
     filesystemMutationsExposed: false,
     dataService: { baseUrl: dataBaseUrl(), healthy, total: entries.length },
     collectorPlacement: collectorPlacement(),
@@ -651,13 +655,16 @@ function register(api) {
   // Paged verified groups and the stored review decisions (the Janitor write family).
   janitorReviewRelay.register(router, { fetchData });
 
+  // Reports, storage growth trends and the activity log: their own file.
+  require('./reports-trends-activity').mount(router, { relay, fetchData, timeoutMs: REQUEST_TIMEOUT_MS });
+
   app.use('/api/data-toolbox', router);
 }
 
 module.exports = {
   id: 'aio-ops-data-toolbox',
-  version: '1.8.0',
-  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision'],
+  version: '1.9.0',
+  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete'],
   register,
   boundedInt,
   pickQuery,

@@ -33,4 +33,33 @@ async function fetchData(relativePath, { query = '', timeoutMs = 10000, method =
   return { response, body };
 }
 
-module.exports = { DEFAULT_DATA_URL, dataBaseUrl, fetchData };
+/**
+ * Open a Data response and hand its body over unread, for a file too large to
+ * hold in memory. `headerTimeoutMs` bounds the wait for Data's first answer and
+ * `totalTimeoutMs` the whole transfer. The caller reads `response.body` and
+ * calls `close()` when it is done or gives up: that ends the upstream request.
+ */
+async function openDataStream(relativePath, { headerTimeoutMs = 10000, totalTimeoutMs = 15 * 60000 } = {}) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const arm = (ms) => {
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, ms);
+    timer.unref?.();
+    return timer;
+  };
+  let timer = arm(headerTimeoutMs);
+  try {
+    const response = await fetch(`${dataBaseUrl()}${relativePath}`, { headers: { Accept: '*/*' }, signal: controller.signal });
+    clearTimeout(timer);
+    timer = arm(totalTimeoutMs);
+    return { response, timedOut: () => timedOut, close: () => { clearTimeout(timer); controller.abort(); } };
+  } catch (error) {
+    clearTimeout(timer);
+    if (!timedOut) throw error;
+    const timeout = new Error('Data service request timed out');
+    timeout.name = 'TimeoutError';
+    throw timeout;
+  }
+}
+
+module.exports = { DEFAULT_DATA_URL, dataBaseUrl, fetchData, openDataStream };

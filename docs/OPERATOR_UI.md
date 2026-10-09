@@ -227,11 +227,33 @@ Saved measurements are retained independently from runtime recovery. A compariso
 readiness summary does not override an unresolved journal. For measured context,
 capacity and recall distinctions, see [context profiles](PROFILER_CONTEXT.md).
 
+## Data Toolbox: Activity
+
+Open `/data-toolbox#activity` (full profile, with the optional Data service).
+The tab reads Data's activity log: what Data did or noticed, kept 30 days. It
+changes nothing. The event types are listed in
+[Data's README](../data/README.md#activity-log).
+
+- **Last 24 hours**: the number of errors, warnings and information events,
+  whatever the filters below, and the most recent warning or error.
+- **Events**: newest first, 50 per page, each with its time, its severity in
+  words, its type, one sentence and its details (the event's `meta`, shown as
+  plain key and value text). Filters: the family (storage, collectors, GPU,
+  network, janitor, live data, MQTT, external), the severity and the period
+  (all kept, 7 days, 24 hours). **Newer** and **Older** walk the pages.
+- New events are read every 15 seconds while the tab is open and the page
+  visible. On the first page they are added on top, marked `new`, with a count;
+  on another page a line says how many arrived. **Pause** stops the reads.
+
+Only changes are recorded, so something that stays broken appears once. The
+Overview tab shows the last four warnings and errors with a link to this tab.
+
 ## Data Toolbox: Storage scans
 
 Open `/data-toolbox#storage` (full profile, with the optional Data service).
-Under the inventory figures and the collector, the tab asks for a scan and
-follows it. A scan reads the disks and refreshes Data's index, where the rows
+The tab has three views: **Inventory and scans**, **Growth** and **Reports**
+(the two sections below). Under the inventory figures and the collector, the
+first view asks for a scan and follows it. A scan reads the disks and refreshes Data's index, where the rows
 of files no longer there are removed. It changes nothing on the disks.
 
 - **Scan now**: one card per source Data is configured with, with its root,
@@ -257,6 +279,60 @@ of files no longer there are removed. It changes nothing on the disks.
 A scan queued by someone else is not in this list until a collector starts it,
 because Data lists scans by start date. Asking for the same source in that
 interval joins the queued scan.
+
+## Data Toolbox: Storage growth
+
+Open `/data-toolbox#storage` and choose **Growth**. The view is read-only. Data
+records one snapshot per root and UTC day when a scan of that root ends
+`complete`, and keeps them 800 days; the view shows one block per root, for a
+window of 30 days, 90 days, one year or everything kept.
+
+- **Total size** and **Number of files**: one line chart each, with the first
+  and last values in words above it and the same figures as a table under
+  **The two charts as a table**. The vertical axis starts near the lowest value
+  when the change is small, and the chart says so. Hovering a day shows its
+  value.
+- **Growth**: size and files added between the first and the last snapshot of
+  the window, the average per day, and the five folders that grew the most. A
+  folder that was summed with the "other folders" at the start of the window is
+  left out, because its growth is not known.
+- **Size by folder**: the newest snapshot, largest folder first, with size,
+  share of the root and files. *Other folders, together* is what Data summed
+  beyond the 40 largest folders; *Files directly in the root* are the files
+  that sit in no folder. **Open** shows a folder's own size over time and its
+  subfolders. Data keeps subfolders only for a root with at most five top-level
+  folders: otherwise no folder can be opened, and the view says so.
+- **Files walked by the collector**: a separate chart of what the collector
+  counted at each completed scan. It is not the index total and has no size; it
+  is never drawn with the totals.
+
+With one snapshot the view shows the current state and says that the next point
+comes with the next complete scan; with none it says why. A root with no
+snapshot in the window, but some earlier, says from when to when they exist.
+
+## Data Toolbox: Reports
+
+Open `/data-toolbox#storage` and choose **Reports**. A report is a file Data
+generates from its index and keeps in its own report store. Generating reads
+the index only; the scanned disks are neither read nor changed. This view sends
+two changes to Data: the generation and the deletion of a report.
+
+- **Reports kept** and **Space used**: the current usage against Data's limits
+  (20 reports, 1 GiB). Over either limit Data removes the oldest reports.
+- **Generate**: a report (folder summary, statistics by extension, large files,
+  media files or the full inventory) and a format (CSV or JSON; the full
+  inventory exists in JSON only). Data starts it and answers at once; the list
+  is read again every 3 seconds while a report is running, the tab open and the
+  page visible, and the page says when it is ready or why it failed. Data
+  generates at most two reports at a time and refuses a third.
+- **The list**: type, file name, format, status (running, ready, failed with
+  Data's reason), size, records and date. **Download** saves a ready report:
+  Core passes the file through as Data sends it. **Delete** asks for
+  confirmation on the row, then removes the report from Data; for a failed
+  generation it only clears the line. A running report cannot be deleted.
+
+Running and failed generations exist in Data's memory only: after a restart of
+Data a running one is gone from the list, and the page says so.
 
 ## Data Toolbox: Files
 
