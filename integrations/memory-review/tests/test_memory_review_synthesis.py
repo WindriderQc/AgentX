@@ -212,6 +212,39 @@ class SynthesisTests(unittest.TestCase):
         self.assertEqual(len(result), schema.MAX_CANDIDATES_PER_RUN)
         self.assertEqual(receipt["notSubmitted"], extra)
 
+    def test_exchanges_record_every_call_including_the_one_that_fails(self):
+        exchanges = []
+        transport = FakeTransport(["nope", "still nope"])
+        with self.assertRaises(schema.SynthesisOutputError):
+            synthesis.synthesize(make_input(), base_url="http://stub", model="verified-test-model",
+                                 transport=transport, exchanges=exchanges)
+        self.assertEqual([entry["reply"] for entry in exchanges], ["nope", "still nope"])
+        self.assertEqual(exchanges[0]["request"]["messages"][0]["role"], "system")
+        failing = FakeTransport([synthesis.SynthesisError("proxy down")])
+        exchanges = []
+        with self.assertRaises(synthesis.SynthesisError):
+            synthesis.synthesize(make_input(), base_url="http://stub", model="verified-test-model",
+                                 transport=failing, exchanges=exchanges)
+        self.assertEqual(len(exchanges), 1)
+        self.assertIsNone(exchanges[0]["reply"])
+
+    def test_the_proxy_reply_keeps_reasoning_and_usage_for_the_record(self):
+        body = json.dumps({"usage": {"completion_tokens": 7}, "choices": [{
+            "finish_reason": "stop",
+            "message": {"content": '{"candidates": []}', "reasoning_content": "nothing durable here"},
+        }]}).encode()
+        response = io.BytesIO(body)
+        response.__enter__ = lambda *_: response
+        response.__exit__ = lambda *_: None
+        exchanges = []
+        with patch.object(synthesis, "urlopen", return_value=response):
+            result = synthesis.synthesize(make_input(), base_url="http://stub",
+                                          model="verified-test-model", exchanges=exchanges)
+        self.assertEqual(result, [])
+        self.assertEqual(exchanges[0]["reasoning"], "nothing durable here")
+        self.assertEqual(exchanges[0]["finishReason"], "stop")
+        self.assertEqual(exchanges[0]["usage"], {"completion_tokens": 7})
+
     def test_second_failure_raises_and_stops(self):
         transport = FakeTransport(["nope", "still nope"])
         with self.assertRaises(schema.SynthesisOutputError):
