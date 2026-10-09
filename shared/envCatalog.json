@@ -869,6 +869,16 @@
       "secret": false,
       "description": "JSON display map (network/storage rows with host, supervisor, runtime, cadence) for Data Toolbox collectors, at most 32 KiB. Unset: the Toolbox shows registrations only."
     },
+    "DATA_EXPORT_DIR": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": "/data/exports",
+      "category": "operations",
+      "secret": false,
+      "description": "Directory where Data writes generated inventory reports (at most 20 reports and 1 GiB, oldest removed first). In Compose it is the container path of the data_exports named volume; change it only with a matching mount. Unset on a native run: exports beside the service code."
+    },
     "DATA_HARDWARE_HISTORY_TTL_DAYS": {
       "services": [
         "data"

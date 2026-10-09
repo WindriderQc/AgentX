@@ -1,8 +1,8 @@
 # Data
 
-Optional AgentX service for storage/file inventory, network observations, GPU
-telemetry, live feeds, database inspection, exports, events, integrations and
-supervised janitor operations. Source, tests and distribution belong to this repository.
+Optional AgentX service for storage/file inventory and its growth, network
+observations, GPU telemetry, live feeds, database inspection, downloadable
+reports, an activity log, integrations and supervised janitor operations. Source, tests and distribution belong to this repository.
 
 Core's full profile hosts `/data-toolbox`, a UI backed by Data HTTP APIs. Its
 tabs are Overview, Storage, Files, Network, GPU, Databases, Live Data, MQTT and
@@ -136,8 +136,9 @@ that scan's id with `coalesced: true` when it is an external scan of the same
 source, so a nightly job waits on it, and 409 when an in-container scan holds
 the root. An external scan ends `failed`, with the reason in `last_error` and
 no index row removed, after 10 minutes running without a collector heartbeat or
-batch, or 6 hours queued without a claim; this is checked at startup and each
-time scans are requested, claimed, listed or read. A finished external scan is
+batch, or 6 hours queued without a claim; this is checked at startup, each
+time scans are requested, claimed, listed or read, and every minute by the
+activity watch described below. A finished external scan is
 not reopened: a late batch or completion gets 409. A batch is accepted only for
 a running external scan; entries outside its roots and malformed `sha256`
 values are dropped and counted in `counts.rejected` and `counts.hashes_rejected`.
@@ -180,3 +181,115 @@ observed health remain visible, but configured supervisor placement is unknown.
 `npm test` runs existing unit tests and actual Mongo index tests in a disposable
 database using the shared test launcher. It cannot use a production URI. Native
 collector, real filesystem, scheduler and live-data acceptance remain separate.
+
+## Reports
+
+Reports of the file inventory live under `/api/v1/exports`. `POST /generate`
+takes `{ type, format }` (`full`, `summary`, `media`, `large`, `stats`; `json`
+or `csv`, `full` in JSON only) and answers `202` at once with the report's
+`filename` and `status: "running"`: a full report sorts every indexed file
+without an index, so its duration grows with the inventory and no request waits
+for it. At most two reports are generated at a time; a third request gets `429`.
+`GET /` returns `{ reports, totalSize, limits }`, newest first, each report with
+`filename`, `type`, `format`, `status` (`running`, `ready` or `failed`), `size`,
+`sizeFormatted`, `createdAt`, `requestedAt`, `recordCount`, `skippedCount` and
+`error`. `GET /:filename/download` streams a `ready` report as an attachment
+(`application/json` or `text/csv`), and `DELETE /:filename` removes one, or
+clears a failed generation from the list. Both accept only a name the exporter
+creates (`export_<type>_<date>_<time>_<6 hex>.<format>`): anything else is
+refused with `400`, a symbolic link is never followed, and other files in the
+directory are neither listed nor touched.
+
+Reports are written to `DATA_EXPORT_DIR`. In Compose that is `/data/exports`,
+the mount point of the `${project}_canonical_data_exports` named volume, so
+reports survive a recreated container; a native run defaults to `exports`
+beside the service code. A report is written as `<name>.part` and takes its name
+only when complete, so a listed report is never partial; a failed generation
+leaves no file, and a `.part` file left by a crash is removed by the next list
+or generation. The store keeps at most 20 reports and 1 GiB: when a new report
+brings it over either bound, the oldest are removed, never the new one. The
+state of running and failed generations is kept in memory: a restart ends a
+running generation and forgets it.
+
+## Activity log
+
+Data records what it does and notices in `appevents`, kept 30 days.
+`GET /api/v1/events` returns `{ events, pagination, filters }`, newest first;
+each event has `id`, `type`, `severity` (`info`, `warning`, `error`), `message`
+(one English sentence, at most 300 characters), `meta` (a small structure, at
+most 4 KiB, never file contents) and `at`. Filters: `type` (a type or the
+beginning of one, such as `storage` or `storage.scan_`), `severity`, `since`,
+`until` (ISO dates or epoch milliseconds), `page` (at most 500) and `limit`
+(default 50, at most 200); an invalid filter gets `400`. `GET
+/api/v1/events/stream` pushes the same events as server-sent events, with the
+same `type` and `severity` filters. `POST /api/v1/events` lets a trusted caller
+add an event of its own: `{ message, type, severity, meta }`, where `type` is
+`external.<name>` (default `external.note`); Data's own types, an unknown
+field, a message over 300 characters or a `meta` over 4 KiB are refused.
+
+| Type | Recorded when | Severity |
+|---|---|---|
+| `storage.scan_queued` | a scan is queued for a native collector (not when a request joins a scan already queued) | info |
+| `storage.scan_started` | a collector claims a queued scan, or `POST /storage/scan` starts one in the container | info |
+| `storage.scan_finished` | a scan ends; `meta.outcome` is `complete`, `partial`, `failed` or `stopped`, with `meta.reason` and the headline `meta.counts` | info, warning (`partial`, `stopped`), error (`failed`) |
+| `storage.scan_expired` | the reaper fails an external scan: no collector heartbeat for 10 minutes, or no claim for 6 hours | error |
+| `collector.first_seen` | a storage, network or GPU collector creates its registry row (`meta.kind`, `meta.collectorId`) | info |
+| `collector.silent` | a collector that was reporting has not reported for 5 minutes (or three of its intervals when that is longer) | warning |
+| `collector.back` | a collector reported silent reports again | info |
+| `gpu.host_stale` | a GPU host that was sampled has had no successful sample for 5 minutes; `meta.lastError` says why when the collector reported an error | warning |
+| `gpu.host_recovered` | a stale GPU host is sampled again | info |
+| `network.device_first_seen` | a sweep inserts a device the inventory did not hold (`meta.ip`, `meta.mac`, `meta.vendor`, `meta.hostname`); more than 25 new devices in one sweep make one summary event with `meta.count` | info |
+| `janitor.run_finished` | a janitor profile run ends; `meta.status` is `complete` or `failed` | info, error |
+| `livedata.feed_failing` | a live feed fails three runs in a row (one run for a feed fetched less often than every 5 minutes) | warning |
+| `livedata.feed_recovered` | a failing feed fetches again | info |
+| `mqtt.monitor_disconnected` | the MQTT monitor loses, or cannot open, its broker connection | warning |
+| `mqtt.monitor_connected` | the MQTT monitor connects again after a disconnection | info |
+
+Only changes are recorded: a feed that keeps failing, a broker that keeps
+refusing or a device seen at every sweep adds nothing. The last state reported
+for each collector, GPU host, feed and the MQTT monitor is kept in
+`activity_state`, so a restart reports nothing twice; "first seen" comes from
+the creation of the registry row or device row itself. A collector or host that
+was already away when its state was first recorded is not announced. Silence is
+the absence of a request, so one check runs every minute from startup, with or
+without `DATA_BACKGROUND_JOBS_ENABLED`: it reads Data's own records only, fails
+dead external scans, and counts a silence from the later of the last report and
+Data's own start, so a restart of Data is not a silence. Writing an event never
+fails the operation it describes: an error is logged and the operation goes on.
+The scans a janitor profile runs itself are not in the log, nor is a janitor
+run that a restart stopped.
+
+## Storage growth trends
+
+When a scan ends `complete`, Data stores one snapshot per scanned root in
+`storage_trend_snapshots`: the root's files and bytes, and those of its
+folders, read from the directory rollups the scan has just rebuilt. A scan that
+ends `partial` (rows kept because the scan indexed nothing under a root, or
+folders it could not read), `failed` or `stopped` stores nothing, and neither
+does an in-container scan limited to some extensions or whose rollups could not
+be rebuilt. There is one snapshot per root and UTC day: a later complete scan
+of the same day replaces it. Snapshots are kept 800 days.
+
+A snapshot holds every top-level folder of the root, or the 40 largest by bytes
+with the rest summed in one `other` entry. When the root has at most 5
+top-level folders, it also holds the 20 largest subfolders of each, the rest
+again as `other`. Files that sit directly in the root or in a top-level folder
+are a `files` entry, so the entries of a level add up to its total. A folder is
+named by its `key`: `Movies`, `Movies/Action`, and `/other`, `/files`,
+`Movies//other`, `Movies//files` for the summed entries.
+
+`GET /api/v1/storage/trends?root=&from=&to=&folder=&limit=` returns `roots`
+(every root with snapshots, its first and last day and last totals) and, for
+`root`, `totals` (one point per snapshot: `day`, `at`, `scanId`, `files`,
+`bytes`), `folders` (one series per folder of the newest snapshot in the
+window, largest first, at most `limit`: default 12, at most 42) and `growth`
+(files and bytes added between the first and last snapshot of the window, and
+the 5 folders that grew the most). With `folder`, the series are that folder
+and its subfolders, and `growth` is the folder's own. `from` and `to` are dates
+(default the last 90 days, at most 800 days); an invalid or oversized parameter
+gets `400`. A folder that was inside `other` on some days has no point for
+those days, and is counted in `growth` only when the first snapshot listed it.
+`scanHistory` gives, apart from the totals, the `files_seen` counter of
+completed collector scans of that root found in `nas_scans`, one point per day:
+it is what a collector walked, not index rows, and scans kept no byte total, so
+it is never merged into `totals` or `growth`.

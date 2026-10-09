@@ -329,6 +329,10 @@ services:
       DATA_PATH_ROLE_ALIASES_FILE: ${DATA_PATH_ROLE_ALIASES_FILE:-}
       NETWORK_SCAN_CIDR: ${NETWORK_SCAN_CIDR:-}
       DATA_HARDWARE_HISTORY_TTL_DAYS: ${DATA_HARDWARE_HISTORY_TTL_DAYS:-7}
+      # Container path of the generated reports; the named volume below is mounted there.
+      DATA_EXPORT_DIR: ${DATA_EXPORT_DIR:-/data/exports}
+    volumes:
+      - data_exports:/data/exports
     depends_on:
       mongo:
         condition: service_healthy
@@ -356,3 +360,5 @@ volumes:
     name: ${COMPOSE_PROJECT_NAME}_canonical_benchmark_jobs
   rag_logs:
     name: ${COMPOSE_PROJECT_NAME}_canonical_rag_logs
+  data_exports:
+    name: ${COMPOSE_PROJECT_NAME}_canonical_data_exports

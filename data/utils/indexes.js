@@ -35,6 +35,10 @@ const INDEX_SPECS = [
   { collection: 'hardware_gpu_samples', key: { hostId: 1, index: 1, sampledAt: -1 }, options: { name: 'hardware_host_gpu_sampled' } },
   { collection: 'nas_scans', key: { started_at: -1 }, options: { name: 'started_at_desc' } },
   { collection: 'appevents', key: { timestamp: -1 }, options: { name: 'timestamp_desc' } },
+  // Activity log read by type prefix, newest first.
+  { collection: 'appevents', key: { type: 1, timestamp: -1 }, options: { name: 'type_timestamp' } },
+  // Storage growth: one snapshot per root and UTC day.
+  { collection: 'storage_trend_snapshots', key: { root: 1, day: 1 }, options: { name: 'root_day_unique', unique: true } },
   { collection: 'dedup_reports', key: { created_at: -1 }, options: { name: 'created_at_desc' } },
   { collection: 'janitor_profiles', key: { name: 1 }, options: { name: 'name_unique', unique: true } },
   { collection: 'janitor_profiles', key: { 'schedule.enabled': 1 }, options: { name: 'schedule_enabled' } },
@@ -48,6 +52,8 @@ const INDEX_SPECS = [
 
   // TTL indexes — automatic retention for high-growth collections
   { collection: 'appevents', key: { timestamp: 1 }, options: { name: 'ttl_30d', expireAfterSeconds: 2592000 } },
+  // Long enough for year-over-year storage trends.
+  { collection: 'storage_trend_snapshots', key: { at: 1 }, options: { name: 'ttl_800d', expireAfterSeconds: 69120000 } },
   { collection: 'pressures', key: { timeStamp: 1 }, options: { name: 'ttl_90d', expireAfterSeconds: 7776000 } },
   { collection: 'integration_events', key: { at: 1 }, options: { name: 'ttl_90d', expireAfterSeconds: 7776000 } },
   // A scan request is offered to scanners for two minutes (REQUEST_TTL_MS in

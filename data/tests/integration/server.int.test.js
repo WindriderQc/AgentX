@@ -17,7 +17,7 @@ describe('Data service with its disposable MongoDB', () => {
   test('serves every read-only Toolbox capability from a clean database', async () => {
     for (const route of ['/health', '/api/v1/system/resources', '/api/v1/storage/summary',
       '/api/v1/network/devices', '/api/v1/hardware/latest', '/api/v1/livedata/feeds', '/api/v1/databases/collections',
-      '/api/v1/janitor/profiles']) {
+      '/api/v1/janitor/profiles', '/api/v1/events', '/api/v1/exports', '/api/v1/storage/trends']) {
       const response = await request(server).get(route).expect(200);
       expect(response.body.ok).toBe(true);
     }

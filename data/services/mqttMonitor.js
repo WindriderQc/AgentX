@@ -75,6 +75,18 @@ function createMqttMonitor({ bufferSize = BUFFER_SIZE, now = () => new Date(), c
   let connectedAt = null;
   let lastMessageAt = null;
   let lastError = null;
+  // Told once per change of the link, for the activity log: mqtt.js emits
+  // `close` after every failed reconnection, which is not news.
+  let onState = null;
+  let reportedState = null;
+  let everConnected = false;
+
+  function report(state) {
+    if (reportedState === state || !onState) return;
+    reportedState = state;
+    try { onState(state, { broker, error: state === 'disconnected' ? lastError : null, everConnected }); }
+    catch { /* the listener never breaks the monitor */ }
+  }
 
   // Broker and socket errors do not carry credentials, but nothing that
   // reaches a response or a log may: scrub them anyway.
@@ -107,8 +119,10 @@ function createMqttMonitor({ bufferSize = BUFFER_SIZE, now = () => new Date(), c
    * connect function; tests inject a fake one, and without it a test process
    * never opens a broker connection.
    */
-  function init({ env = process.env, connect } = {}) {
+  function init({ env = process.env, connect, onStateChange } = {}) {
     if (client) return client;
+    onState = typeof onStateChange === 'function' ? onStateChange : null;
+    reportedState = null;
     const brokerUrl = env.MQTT_BROKER_URL;
     configured = Boolean(brokerUrl);
     if (!configured) return null;
@@ -143,12 +157,15 @@ function createMqttMonitor({ bufferSize = BUFFER_SIZE, now = () => new Date(), c
       connectedAt = now();
       lastError = null;
       log(`[MQTT monitor] Connected to ${broker}`);
+      report('connected');
+      everConnected = true;
       client.subscribe('#', { qos: 0 }, (error, granted) => {
         if (error) fail(`subscription to # failed: ${error.message}`);
         else if (Array.isArray(granted) && granted[0]?.qos === 128) fail('the broker refused the subscription to #');
       });
     });
-    client.on('close', () => { connectedAt = null; });
+    // close() clears `client` first: a shutdown is not a lost connection.
+    client.on('close', () => { connectedAt = null; if (client) report('disconnected'); });
     client.on('error', (error) => fail(error?.message));
     client.on('message', (topic, payload, packet) => {
       try { record(topic, payload, packet); } catch (error) { fail(`message dropped: ${error.message}`); }

@@ -14,6 +14,7 @@ const { log } = require('../utils/logger');
 const registry = require('./livedata/registry');
 const parsers = require('./livedata/parsers');
 const store = require('./livedata/store');
+const activityEvents = require('./activityEvents');
 
 let db;
 let intervalIds = [];
@@ -76,9 +77,11 @@ async function runFeed(feed) {
     }
     health[feed.id] = { lastFetchAt: new Date(), lastError: null, lastCount: count };
     if (feed.store.mode === 'replace') log(`[liveData] ${feed.label} refreshed: ${count} records`);
+    await activityEvents.feedRun(db, feed, null);
   } catch (err) {
     health[feed.id] = { ...(health[feed.id] || {}), lastError: err.message, lastErrorAt: new Date() };
     log(`[liveData] ${feed.label} error: ${err.message}`, 'error');
+    await activityEvents.feedRun(db, feed, err);
   } finally {
     running.delete(feed.id);
   }

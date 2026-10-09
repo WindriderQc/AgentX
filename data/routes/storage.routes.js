@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const storageController = require('../controllers/storageController');
 const fileBrowserController = require('../controllers/fileBrowserController');
+const storageTrendsController = require('../controllers/storageTrendsController');
 const vaultInventoryController = require('../controllers/vaultInventoryController');
 
 // --- Storage Scanner ---
@@ -10,6 +11,7 @@ router.get('/status/:scan_id', storageController.getStatus);
 router.post('/stop/:scan_id', storageController.stopScan);
 router.get('/directory-count', storageController.getDirectoryCount);
 router.get('/summary', storageController.getSummary);
+router.get('/trends', storageTrendsController.getTrends);
 router.get('/agents', storageController.listAgents);
 router.post('/agent-scans', storageController.enqueueAgentScan);
 router.post('/agent/heartbeat', storageController.heartbeatAgent);

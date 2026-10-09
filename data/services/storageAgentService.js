@@ -1,6 +1,7 @@
 'use strict';
 
 const { ObjectId } = require('mongodb');
+const activityEvents = require('./activityEvents');
 
 const SCANNERS = 'storage_scanners';
 const SCANS = 'nas_scans';
@@ -81,7 +82,7 @@ async function registerScanner(db, info = {}) {
   if (!scannerId) return null;
   const now = new Date();
   const sources = String(info.sources || '').split(',').map(value => value.trim()).filter(Boolean);
-  await db.collection(SCANNERS).updateOne(
+  const result = await db.collection(SCANNERS).updateOne(
     { scannerId },
     {
       $set: {
@@ -96,6 +97,9 @@ async function registerScanner(db, info = {}) {
     },
     { upsert: true }
   );
+  await activityEvents.collectorSeen(db, 'storage', scannerId, {
+    inserted: (result?.upsertedCount || 0) > 0, hostname: String(info.hostname || '')
+  });
   return scannerId;
 }
 
@@ -167,7 +171,18 @@ async function expireStaleScans(db, now = new Date()) {
       }
     }
   );
-  return { running: running?.modifiedCount || 0, queued: queued?.modifiedCount || 0 };
+  const expired = { running: running?.modifiedCount || 0, queued: queued?.modifiedCount || 0 };
+  if (expired.running + expired.queued > 0) await reportExpiredScans(db, now);
+  return expired;
+}
+
+// The scans this pass just failed carry its exact `finished_at`.
+async function reportExpiredScans(db, now) {
+  try {
+    const expired = await db.collection(SCANS)
+      .find({ status: 'failed', finished_at: now, 'config.external': true }).limit(50).toArray();
+    for (const scan of expired) await activityEvents.scanExpired(db, scan);
+  } catch (_) { /* the log never fails the reaper */ }
 }
 
 async function touchScanHeartbeat(db, scanId) {
@@ -225,6 +240,7 @@ async function enqueueScan(db, input = {}) {
     }
   };
   await db.collection(SCANS).insertOne(doc);
+  await activityEvents.scanQueued(db, doc);
   return { ok: true, scan: doc };
 }
 
@@ -249,7 +265,9 @@ async function claimNextScan(db, scannerId, sources = []) {
     },
     { sort: { requested_at: 1 }, returnDocument: 'after' }
   );
-  return result?.value || result || null;
+  const claimed = result?.value || result || null;
+  if (claimed) await activityEvents.scanStarted(db, claimed, { scannerId });
+  return claimed;
 }
 
 module.exports = {

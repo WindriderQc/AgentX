@@ -21,6 +21,7 @@ const janitorApprovalEvidence = require('./janitorApprovalEvidence');
 const janitorAI = require('./janitorAI');
 const janitorProfiles = require('./janitorProfiles');
 const janitorStrategy = require('./janitorStrategy');
+const activityEvents = require('./activityEvents');
 const { log } = require('../utils/logger');
 
 const COLLECTION = 'janitor_runs';
@@ -275,6 +276,7 @@ async function _executePreparedRun(db, prepared) {
     return { ok: false, error: err.message, run_id: runDoc._id };
   } finally {
     running.delete(key);
+    await activityEvents.janitorRunFinished(db, runDoc._id);
   }
 }
 
@@ -710,10 +712,7 @@ module.exports = {
   MAX_PROPOSED_ACTIONS,
   MAX_PROPOSED_ACTIONS_BYTES,
   isLiveExecutionEnabled,
-  runProfile,
-  startProfileRun,
-  listRunsForProfile,
-  getRun,
+  runProfile, startProfileRun, listRunsForProfile, getRun,
   approveAction,
   rejectAction,
   sweepStaleRuns,

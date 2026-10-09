@@ -366,14 +366,21 @@ class Scanner extends EventEmitter {
 
     const end = new Date();
     const status = this.stopFlag ? 'stopped' : (pruneWithheld ? 'partial' : 'complete');
+    let rollupsRebuilt = false;
     try {
       counts.directories = await rebuildDirectoryRollups(filesCol, dirsCol, opts.roots);
+      rollupsRebuilt = true;
     } catch (e) {
       counts.errors++;
       await updateScan({ counts, last_error: `directory rollup: ${e && e.message || e}` });
     }
     await updateScan({ status, finished_at: end, counts });
-    this.emit('done', { status, counts, started_at: start, finished_at: end });
+    this.emit('done', {
+      status, counts, started_at: start, finished_at: end, last_error: pruneWithheld,
+      // What a growth snapshot needs to know: the rollups are current, and
+      // the scan looked at every file (an extension filter never prunes).
+      rollups_rebuilt: rollupsRebuilt, filtered: includeExt.size > 0 || excludeExt.size > 0
+    });
   }
 }
 

@@ -1,8 +1,11 @@
-const { Scanner, rebuildDirectoryRollups, pruneStaleFiles, pruneSkippedMessage } = require('../services/scanner');
+const { Scanner } = require('../services/scanner');
 const { CANDIDATE_QUEUE_ORDER } = require('../services/candidateHasher');
 const { ObjectId } = require('mongodb');
 const { resolveAllowedPath } = require('../services/janitorService');
 const storageAgentService = require('../services/storageAgentService');
+const { cleanupStaleScans, scanEnded } = require('../services/storageScanLifecycle');
+const activityEvents = require('../services/activityEvents');
+const { updateScan } = require('./storageScanUpdateController');
 const { classifyFileMetadata, normalizeContentType } = require('../utils/fileMetadata');
 const { log } = require('../utils/logger');
 
@@ -36,8 +39,6 @@ function validHashExpression() {
 const MAX_SCAN_BATCH_SIZE = 10000;
 const MAX_SCAN_EXTENSIONS = 200;
 const MAX_SCANS_PAGE = 100000;
-const UPDATE_STATUSES = new Set(['running', 'hashing', 'complete', 'completed', 'partial', 'failed', 'stopped']);
-const TERMINAL_STATUSES = new Set(['complete', 'partial', 'failed', 'stopped']);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
 
 function isExtensionList(value) {
@@ -51,26 +52,6 @@ function boundedInt(value, fallback, maximum) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed < 1) return fallback;
   return Math.min(maximum, parsed);
-}
-
-// Cleanup stale "running" scans on server restart
-async function cleanupStaleScans(db) {
-  try {
-    // An in-container scan cannot survive a restart, whichever phase it was in.
-    const result = await db.collection('nas_scans').updateMany(
-      { status: { $in: ['running', 'hashing'] }, 'config.external': { $ne: true } },
-      { $set: { status: 'stopped', finished_at: new Date() } }
-    );
-    if (result.modifiedCount > 0) {
-      log(`[Storage] Cleaned up ${result.modifiedCount} stale running scan(s)`);
-    }
-    const expired = await storageAgentService.expireStaleScans(db);
-    if (expired.running + expired.queued > 0) {
-      log(`[Storage] Marked ${expired.running} silent and ${expired.queued} unclaimed external scan(s) failed`);
-    }
-  } catch (error) {
-    log(`[Storage] Error cleaning up stale scans: ${error.message}`, 'error');
-  }
 }
 
 const scan = async (req, res) => {
@@ -131,7 +112,12 @@ const scan = async (req, res) => {
 
     const scanner = new Scanner(db);
     runningScans.set(scan_id, scanner);
-    scanner.on('done', () => runningScans.delete(scan_id));
+    const scanDoc = { _id: scan_id, config: { roots: safeRoots } };
+    scanner.on('done', (done = {}) => {
+      runningScans.delete(scan_id);
+      scanEnded(db, { ...scanDoc, ...done }, { rollupsRebuilt: done.rollups_rebuilt === true, filtered: done.filtered === true });
+    });
+    activityEvents.scanStarted(db, scanDoc);
 
     scanner.run({
       roots: safeRoots,
@@ -150,10 +136,11 @@ const scan = async (req, res) => {
       runningScans.delete(scan_id);
       // A crashed scan left "running" would block every later scan of its roots.
       try {
-        await db.collection('nas_scans').updateOne(
-          { _id: scan_id, status: { $in: ['running', 'hashing'] } },
-          { $set: { status: 'failed', finished_at: new Date(), last_error: String(err && err.message || err) } }
+        const failure = { status: 'failed', finished_at: new Date(), last_error: String(err && err.message || err) };
+        const marked = await db.collection('nas_scans').updateOne(
+          { _id: scan_id, status: { $in: ['running', 'hashing'] } }, { $set: failure }
         );
+        if (marked?.modifiedCount) await scanEnded(db, { ...scanDoc, ...failure });
       } catch (updateError) {
         log(`[Storage] Could not mark scan ${scan_id} failed: ${updateError.message}`, 'error');
       }
@@ -518,117 +505,6 @@ const insertBatch = async (req, res) => {
   } catch (error) {
     log(`[Storage] Failed to insert batch: ${error.message}`, 'error');
     res.status(500).json({ status: 'error', message: 'Failed to insert file batch', error: error.message });
-  }
-};
-
-const updateScan = async (req, res) => {
-  try {
-    const { scan_id } = req.params;
-    const { status, stats, completedAt } = req.body || {};
-    if (!scan_id) return res.status(400).json({ status: 'error', message: 'Missing scan_id' });
-
-    if (status != null && !(typeof status === 'string' && UPDATE_STATUSES.has(status))) {
-      return res.status(400).json({
-        status: 'error',
-        message: `status must be one of: ${[...UPDATE_STATUSES].join(', ')}`
-      });
-    }
-    let finishedAt = null;
-    if (completedAt != null) {
-      finishedAt = typeof completedAt === 'string' || typeof completedAt === 'number' ? new Date(completedAt) : null;
-      if (!finishedAt || Number.isNaN(finishedAt.getTime())) {
-        return res.status(400).json({ status: 'error', message: 'completedAt must be a valid date' });
-      }
-    }
-    if (stats != null && (typeof stats !== 'object' || Array.isArray(stats))) {
-      return res.status(400).json({ status: 'error', message: 'stats must be an object' });
-    }
-
-    const db = req.app.locals.db;
-    const updateFields = {};
-    const normalizedStatus = status === 'completed' ? 'complete' : status;
-
-    if (status) updateFields.status = normalizedStatus;
-    if (status === 'complete' || status === 'completed' || finishedAt) {
-      updateFields.finished_at = finishedAt || new Date();
-    }
-    if (stats) {
-      const allowedStats = [
-        'files_processed', 'files_seen', 'inserted', 'updated', 'errors', 'skipped',
-        'directories', 'hashed', 'hash_bytes', 'candidate_groups',
-        'candidate_groups_selected', 'candidate_groups_complete',
-        'candidate_groups_partial', 'candidate_groups_deferred',
-        'candidate_files_deferred', 'candidate_bytes_deferred',
-        'candidate_groups_oversized', 'candidate_files_oversized',
-        'candidate_bytes_oversized', 'stale_removed',
-        'metadata_errors', 'hash_errors', 'content_probed',
-        'content_probe_matched', 'content_probe_errors'
-      ];
-      for (const [key, value] of Object.entries(stats)) {
-        if (!allowedStats.includes(key)) continue;
-        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-          return res.status(400).json({
-            status: 'error',
-            message: `stats.${key} must be a finite non-negative number`
-          });
-        }
-        updateFields[`counts.${key}`] = value;
-      }
-    }
-
-    const scans = db.collection('nas_scans');
-    const scanDoc = await scans.findOne({ _id: scan_id });
-    if (!scanDoc) return res.status(404).json({ status: 'error', message: `Scan not found: ${scan_id}` });
-
-    const existingStatus = scanDoc.status === 'completed' ? 'complete' : scanDoc.status;
-    if (
-      scanDoc.config?.external === true &&
-      scanDoc.finished_at &&
-      TERMINAL_STATUSES.has(normalizedStatus) &&
-      normalizedStatus === existingStatus
-    ) {
-      return res.json({
-        status: 'success',
-        message: 'Scan already finalized',
-        data: {
-          scan_id,
-          already_finalized: true,
-          updated: { status: existingStatus, finished_at: scanDoc.finished_at }
-        }
-      });
-    }
-
-    // A finished external scan (for instance one failed for lack of heartbeat)
-    // is not reopened: a late completion must not prune on its behalf.
-    if (scanDoc.config?.external === true && TERMINAL_STATUSES.has(existingStatus)) {
-      return res.status(409).json({
-        status: 'error',
-        message: `Scan ${scan_id} already ended as ${existingStatus}`
-      });
-    }
-
-    if ((status === 'complete' || status === 'completed') && scanDoc.config?.external === true) {
-      const files = db.collection('nas_files');
-      const pruned = await pruneStaleFiles(files, scanDoc.config.roots || [], scan_id);
-      updateFields['counts.stale_removed'] = pruned.removed;
-      if (pruned.skippedRoots.length) {
-        updateFields.status = 'partial';
-        updateFields.last_error = pruneSkippedMessage(pruned.skippedRoots);
-      }
-      updateFields['counts.directories'] = await rebuildDirectoryRollups(
-        files,
-        db.collection('nas_directories'),
-        scanDoc.config.roots || []
-      );
-    }
-
-    const result = await scans.updateOne({ _id: scan_id }, { $set: updateFields });
-    if (result.matchedCount === 0) return res.status(404).json({ status: 'error', message: `Scan not found: ${scan_id}` });
-
-    res.json({ status: 'success', message: 'Scan updated', data: { scan_id, updated: updateFields } });
-  } catch (error) {
-    log(`[Storage] Failed to update scan: ${error.message}`, 'error');
-    res.status(500).json({ status: 'error', message: 'Failed to update scan', error: error.message });
   }
 };
 
