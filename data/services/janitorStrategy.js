@@ -42,6 +42,7 @@ const {
   hydrateStrategyReport,
   getLatestStrategy
 } = require('./janitorStrategyReportStore');
+const janitorReviewDecisions = require('./janitorReviewDecisions');
 
 function buildStrategy(policy, evidence, generatedAt = new Date(), previousReport = null) {
   const duplicatePlan = buildDuplicatePlan(evidence.duplicateGroups, policy);
@@ -186,6 +187,9 @@ async function generateStrategy(db, { persist = true } = {}) {
     getLatestStrategy(db)
   ]);
   const report = buildStrategy(policy, evidence, new Date(), previousReport);
+  // Read-only: counts the owner's stored review decisions against this report's
+  // groups. It changes neither the verified groups nor the policy's survivors.
+  report.reviewDecisions = await janitorReviewDecisions.reportSummary(db, report);
   if (!persist) return { report };
   const insertedId = await persistStrategyReport(db, report);
   return { report: { ...report, _id: insertedId } };

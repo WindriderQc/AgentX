@@ -5,6 +5,7 @@
  */
 const router = require('express').Router();
 const ctrl = require('../controllers/janitorProfilesController');
+const review = require('../controllers/janitorReviewDecisionsController');
 
 // Profile CRUD
 router.get('/',                                      ctrl.list);
@@ -21,6 +22,15 @@ router.get('/shared-drive/policy',                    ctrl.getSharedDrivePolicy)
 router.put('/shared-drive/policy',                    ctrl.putSharedDrivePolicy);
 router.post('/shared-drive/strategy',                 ctrl.generateSharedDriveStrategy);
 router.get('/shared-drive/strategy/latest',           ctrl.getLatestSharedDriveStrategy);
+router.get('/shared-drive/strategy/latest/groups',    review.groupsPage);
+
+// Stored duplicate-review decisions: the owner's intent per duplicate group.
+// Storing one approves, previews and executes nothing; the approve route above
+// is the only way to an action and does not read them.
+router.get('/shared-drive/review-decisions',          review.list);
+router.post('/shared-drive/review-decisions/batch',   review.batch);
+router.put('/shared-drive/review-decisions/:sha256',  review.put);
+router.delete('/shared-drive/review-decisions/:sha256', review.remove);
 
 router.get('/:id',                                   ctrl.get);
 router.put('/:id',                                   ctrl.update);
