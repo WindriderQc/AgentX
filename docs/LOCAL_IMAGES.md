@@ -44,8 +44,8 @@ New reference operations retain `lineage.version: 1` and ordered source/worker
 SHA descriptors. When a parent is chosen, they also retain its operation ID,
 original SHA and dimensions. The parent comes first, followed by the uploaded reference. The
 `decoded-pixels-to-png-v1` transformation identifies the existing metadata-free
-PNG normalization; it is distinct from the archived original. Worker buffers
-may be removed after a known terminal outcome while these descriptors remain.
+PNG normalization; it is distinct from the archived original. Legacy worker
+buffers may be removed after a known terminal outcome while these descriptors remain.
 The details view links to the recorded parent, independently of current profiles.
 Older operations without lineage remain without it. Parent identity, SHA and
 transformation version participate in request identity: changing the parent
@@ -53,6 +53,36 @@ under an existing action key returns 409, including when two parents have the
 same bytes. An exact replay returns the existing operation before reading the
 parent archive or contacting a worker. This lineage does not constitute a full
 recipe export or HQ/finish16 execution contract.
+
+New reference operations archive both the source bytes received by Core and
+the exact normalized PNG bytes prepared for the worker. A browser JPEG working
+copy is the received source, not a claim to preserve the user's original file.
+A parent may reuse its verified original archive receipt. Mongo stores a private
+`referenceStorage.version: 1` with ordered source/worker receipts and dimensions,
+linked to the retained lineage hashes, instead of image buffers. These receipts
+and archive paths are excluded from ordinary queries and public details. They
+survive known terminal outcomes and recovery alongside lineage and execution.
+
+An identical replay returns before reference archive reads or writes. For a new
+action, Core stores and reads back the references before contacting the worker.
+The executor then reloads their actual persistent receipts, compares them with
+the accepted reference contract and verifies source/worker hashes, dimensions,
+order and PNG worker encoding before reservation, upload or submission. A missing,
+corrupt or incoherent reference fails explicitly. A declared invalid storage
+record never falls back to legacy buffers. Existing operations can still read
+their valid legacy buffers; recovery observes the original job without reuploading
+or renormalizing references.
+
+The shared archive reader accepts canonical relative paths and bounded regular
+files, checks size, MIME and SHA, rejects static symlinks beneath the configured
+root and reads through a stable handle with identity checks before and after.
+The configured root remains a trusted boundary and may be a filesystem alias.
+Archive writes also refuse static symlinks in child directories, image files and
+sidecars. This does not promise isolation against a hostile operator replacing
+directories concurrently. Cancellation, offline refusal or an acceptance race
+may leave legitimate content-addressed images and sidecars; this change adds no
+garbage collection, shared-blob deletion, power-loss durability or complete export
+contract. Reference decoding and request limits remain unchanged.
 
 A profile may declare an optional `recipe: {"id": "studio-edit", "version": "1"}`
 in the existing private worker manifest. This declaration contains exactly those

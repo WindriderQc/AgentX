@@ -36,14 +36,14 @@ async function resolveParent(parent, conversation, readBytes) {
   } catch {
     throw fail('L’original parent doit être un PNG/JPEG de 4 MP maximum, avec un ratio maximal de 8:1. Aucun redimensionnement automatique.');
   }
-  return { bytes, parent: { ...parent, width: decoded.width, height: decoded.height } };
+  return { bytes, artifact: op.artifact, parent: { ...parent, width: decoded.width, height: decoded.height } };
 }
 
 async function prepareReferences(originals, parent, conversation, readBytes) {
   const resolved = parent ? await resolveParent(parent, conversation, readBytes) : null;
   const sources = [...(resolved ? [resolved.bytes] : []), ...originals];
   const references = sources.map(reference);
-  return { references, ...(sources.length && { lineage: { version: 1,
+  return { sources, references, ...(resolved && { parentArtifact: resolved.artifact }), ...(sources.length && { lineage: { version: 1,
     ...(resolved && { parent: resolved.parent }),
     references: sources.map((bytes, index) => ({ sourceSha256: hash(bytes), workerSha256: hash(references[index]),
       transform: TRANSFORM, ...(resolved && index === 0 && { parentOperationId: parent.operationId }) })) } }) };
