@@ -46,7 +46,9 @@ async function loadActualHeatmap() {
   const container = document.getElementById('actualContent');
   container.innerHTML = '<div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading heatmap...</div>';
   try {
-    const res = await fetch(`${API_BASE}/schedule/heatmap?days=${days}`);
+    const params = new URLSearchParams({ days: String(days) });
+    if (OPERATOR_TIME_ZONE) params.set('timezone', OPERATOR_TIME_ZONE);
+    const res = await fetch(`${API_BASE}/schedule/heatmap?${params}`);
     const json = await res.json();
     if (json.status !== 'success') throw new Error(json.error || 'API error');
     const hasObservedEvidence = renderUtilHeatmap(container, json.data);
@@ -75,7 +77,7 @@ function renderUtilHeatmap(container, data) {
     return false;
   }
 
-  let html = '<div class="cs-actual-note">Measured utilization is grouped by UTC day and hour.</div>';
+  let html = `<div class="cs-actual-note">Measured utilization by day and hour (${esc(data.timeZone || 'UTC')}).</div>`;
   for (const host of hosts) {
     const rows = grid[hostKey(host)] || [];
     const hostHasEvidence = rows.some(day =>
