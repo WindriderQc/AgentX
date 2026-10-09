@@ -331,6 +331,24 @@ describe('Cluster Schedule evidence presentation', () => {
     expect(container.innerHTML).toContain('aria-label="2026-08-28 04:00 — 37% utilization"');
   });
 
+  test('turns proxy pages and network failures into readable errors', async () => {
+    const { context } = loadClusterScheduleContext();
+    const fetchJSON = vm.runInContext('fetchJSON', context);
+
+    context.fetch = jest.fn(async () => ({ status: 502, json: async () => { throw new SyntaxError('Unexpected token <'); } }));
+    vm.runInContext('fetch = this.fetch', context);
+    await expect(fetchJSON('/x')).rejects.toThrow('Server returned HTTP 502');
+
+    context.fetch = jest.fn(async () => { throw new TypeError('Failed to fetch'); });
+    vm.runInContext('fetch = this.fetch', context);
+    await expect(fetchJSON('/x')).rejects.toThrow('Core is unreachable');
+
+    context.fetch = jest.fn(async () => ({ status: 500, json: async () => ({ status: 'error', error: 'Mongo down' }) }));
+    vm.runInContext('fetch = this.fetch', context);
+    await expect(fetchJSON('/x')).rejects.toThrow('Mongo down');
+    expect(vm.runInContext('failedRequests', context)).toBe(3);
+  });
+
   test('formats every clock time in one English 24-hour format', () => {
     const { context } = loadClusterScheduleContext();
     context.testDate = new Date(2026, 7, 28, 22, 5, 9);

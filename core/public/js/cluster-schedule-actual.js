@@ -57,10 +57,7 @@ async function loadActualHeatmap() {
   try {
     const params = new URLSearchParams({ days: String(days) });
     if (OPERATOR_TIME_ZONE) params.set('timezone', OPERATOR_TIME_ZONE);
-    const res = await fetch(`${API_BASE}/schedule/heatmap?${params}`);
-    const json = await res.json();
-    if (json.status !== 'success') throw new Error(json.error || 'API error');
-    const hasObservedEvidence = renderUtilHeatmap(container, json.data);
+    const hasObservedEvidence = renderUtilHeatmap(container, await fetchJSON(`${API_BASE}/schedule/heatmap?${params}`));
     if (hasObservedEvidence) renderUtilLegend();
     else document.getElementById('utilLegend').style.display = 'none';
   } catch (err) {
@@ -138,10 +135,7 @@ async function loadActualVsPlanned() {
   document.getElementById('utilLegend').style.display = 'none';
   container.innerHTML = '<div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading actual vs planned...</div>';
   try {
-    const res = await fetch(`${API_BASE}/schedule/actual-vs-planned?${calendarQuery()}`);
-    const json = await res.json();
-    if (json.status !== 'success') throw new Error(json.error || 'API error');
-    renderActualVsPlanned(container, json.data);
+    renderActualVsPlanned(container, await fetchJSON(`${API_BASE}/schedule/actual-vs-planned?${calendarQuery()}`));
   } catch (err) {
     container.innerHTML = `<div class="cs-empty"><i class="fas fa-exclamation-triangle"></i> ${esc(err.message)}</div>`;
   }

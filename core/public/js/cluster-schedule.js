@@ -68,10 +68,24 @@ let lastTimelineMobile = window.innerWidth <= 700;
 
 // ── API ─────────────────────────────────────────────────────
 
+let failedRequests = 0;
+
+// Turn network failures, proxy HTML pages and API errors into short,
+// readable messages instead of raw JSON parse errors.
 async function fetchJSON(url) {
-  const res = await fetch(url);
-  const json = await res.json();
-  if (json.status !== 'success') throw new Error(json.error || 'API error');
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (_error) {
+    failedRequests += 1;
+    throw new Error('Core is unreachable');
+  }
+  let json = null;
+  try { json = await res.json(); } catch (_error) { json = null; }
+  if (!json || json.status !== 'success') {
+    failedRequests += 1;
+    throw new Error(json?.error || `Server returned HTTP ${res.status}`);
+  }
   return json.data;
 }
 
@@ -955,12 +969,17 @@ async function refreshAll() {
   const btn = document.getElementById('refreshBtn');
   const icon = btn.querySelector('i');
   icon.classList.add('spinning');
+  const failuresBefore = failedRequests;
   try {
     await Promise.all([
       loadLiveState(), loadTimeline(), loadConflicts(), loadClaims(), loadHeavyQueue(),
       actualView === 'heatmap' ? loadActualHeatmap() : loadActualVsPlanned()
     ]);
   } finally { icon.classList.remove('spinning'); }
+  const failed = failedRequests - failuresBefore;
+  if (failed > 0 && window.Toast) {
+    window.Toast.warning(`Refresh incomplete: ${failed} section${failed === 1 ? '' : 's'} could not load.`);
+  }
 }
 
 function startLivePolling() {
