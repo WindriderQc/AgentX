@@ -9,6 +9,16 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
+- **Heavy work.** Core stores one-off requests from operator/coding sessions,
+  resource-aware planned windows, dispatch identities and executor receipts.
+  Cluster Schedule edits slots and shows estimated versus actual status. The
+  operator CLI explicitly launches existing Benchmark plans, Profiler host queues
+  and local images; Core observes completion without automatic launch/retry.
+  Confirmed migration preserves legacy QUEUE.md as an archive. Code tests are
+  separate from instance migration and live qualification. See
+  [heavy work](HEAVY_WORK_QUEUE.md), tracked in
+  [#566](https://github.com/WindriderQc/AgentX/issues/566).
+
 - **Execution sources.** Playground and the existing inference contract select local
   Ollama or OpenClaw, with distinct model and native agent modes. Provider
   credentials and catalogues belong to OpenClaw. Model receipts attest supplied

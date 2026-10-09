@@ -18,6 +18,8 @@ const { getConfiguredHosts } = require('../src/helpers/ollamaHostConfig');
 const { describeHost } = require('../src/services/hostIdentityService');
 const { getHeavyQueue } = require('../src/services/heavyQueueProjectionService');
 
+router.use('/schedule/work-queue', require('./heavy-work-queue'));
+
 /**
  * GET /schedule
  * List all schedule entries with optional filters.
@@ -135,7 +137,8 @@ router.get('/schedule/next', async (req, res) => {
 router.get('/schedule/heavy-queue', async (_req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
-    res.json({ status: 'success', data: await getHeavyQueue() });
+    const durable = await require('../src/services/heavyWorkQueueService').list();
+    res.json({ status: 'success', data: durable || await getHeavyQueue() });
   } catch (error) {
     logger.error('Failed to read instance heavy queue', { error: error.message });
     res.status(500).json({ status: 'error', error: 'Heavy queue unavailable' });

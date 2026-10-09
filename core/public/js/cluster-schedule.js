@@ -82,9 +82,9 @@ async function fetchJSON(url) {
   }
   let json = null;
   try { json = await res.json(); } catch (_error) { json = null; }
-  if (!json || json.status !== 'success') {
+  if (!res.ok || !json || !(json.ok === true || json.status === 'success')) {
     failedRequests += 1;
-    throw new Error(json?.error || `Server returned HTTP ${res.status}`);
+    throw new Error(json?.message || json?.error || `Server returned HTTP ${res.status}`);
   }
   return json.data;
 }

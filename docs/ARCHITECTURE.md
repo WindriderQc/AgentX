@@ -35,6 +35,12 @@ runbooks and assets ([ADR 0001](adr/0001-one-repository.md)).
 
 ## Ownership
 
+Core's heavy-work queue owns one-off operator/coding requests and their planned
+host/device windows separately from task commitments. Cluster Schedule projects
+them beside recurring work. Named operator executors preserve native Benchmark,
+Profiler and image admission/restoration ownership; the queue observer only
+reconciles their receipts. See [heavy work](HEAVY_WORK_QUEUE.md).
+
 Surfaces (Nestor, Household, PsyX, the model workbench) compose personas, domain
 policies and reusable Core capabilities. Core owns canonical conversation,
 inference/routing, memory/RAG access, tools/tasks, files/images, events/jobs and

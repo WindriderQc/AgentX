@@ -104,6 +104,21 @@ describe('profile-host queue depth selection', () => {
     );
   });
 
+  it('preserves the Core work request identity in the native queue and progress receipt', async () => {
+    const queueRequestId = '00000000-0000-4000-8000-000000000001';
+    const started = await startProfileHostQueue({ hostId: 'host-beta', skipRecentDays: 0, queueRequestId });
+    expect(started.queueRequestId).toBe(queueRequestId);
+    const progress = await request(pipelineApp).get(`/api/profiler/pipeline/profile-host/${started.queueId}/progress`).expect(200);
+    expect(progress.body.data.queueRequestId).toBe(queueRequestId);
+    await flushPromises();
+  });
+
+  it('refuses invalid queue correlation before host lookup or profiling', async () => {
+    await expect(startProfileHostQueue({ hostId: 'host-beta', queueRequestId: 'bad-id' })).rejects.toMatchObject({ statusCode: 400 });
+    expect(hostProfileService.getById).not.toHaveBeenCalled();
+    expect(orchestrator.profile).not.toHaveBeenCalled();
+  });
+
   it('keeps an old running profile and queue visible until they finish', () => {
     const old = Date.now() - 48 * 60 * 60 * 1000;
     for (const state of [activeProfiles, activeProfileQueues]) {
