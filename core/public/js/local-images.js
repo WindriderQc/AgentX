@@ -78,6 +78,15 @@
     facts($('image-saved-recipe'), [['Format demandé', d.request.width && d.request.height ? dimensions(d.request.width, d.request.height) : null],
       ['Graine', d.request.seed], ['Diffusion', d.recipe.diffusion], ['Encodeur', d.recipe.encoder], ['VAE', d.recipe.vae],
       ['Précision', d.recipe.precision], ['Archive', d.archivePath]]);
+    const parent = d.lineage?.parent;
+    if (parent) {
+      const row = node('div'), value = node('dd'), link = node('a', 'Consulter l’original choisi'), preview = node('img');
+      link.href = `/images?operation=${encodeURIComponent(parent.operationId)}`;
+      preview.src = `/api/images/operations/${encodeURIComponent(parent.operationId)}/image`;
+      preview.alt = 'Original parent de cette retouche'; preview.loading = 'lazy'; preview.width = 96;
+      value.append(link, preview, node('span', dimensions(parent.width, parent.height)));
+      row.append(node('dt', 'Image parent enregistrée'), value); $('image-saved-recipe').append(row);
+    }
     $('image-result-details').hidden = false;
     $('image-result-note').textContent = 'La durée totale inclut la préparation, le calcul, l’archivage et la restitution ; ces temps ne sont pas détaillés séparément dans ce reçu. Le matériel affiché vient de la configuration actuelle associée à l’hôte enregistré.';
     $('image-result-note').hidden = false;
@@ -189,17 +198,15 @@
     if (files.length) { const remove = node('button', 'Retirer les fichiers joints', 'quiet-button'); remove.type = 'button'; remove.addEventListener('click', () => { $('image-references').value = ''; $('image-references').dispatchEvent(new Event('change')); }); $('image-reference-previews').append(remove); }
     updateFormMode();
   });
-  $('image-use-reference').addEventListener('click', async () => {
+  $('image-use-reference').addEventListener('click', () => {
     if (locked() || !operation) return;
-    const selected = operation, epoch = ++referenceEpoch;
+    const selected = operation; ++referenceEpoch;
     try {
       if ($('image-references').files.length >= 2) throw new Error('Retire un fichier joint pour ajouter cette création aux références.');
-      const img = $('image-output'); await img.decode(); if (operation?.id !== selected.id || img.hidden || epoch !== referenceEpoch) return;
-      const ratio = Math.min(1, 1536 / Math.max(img.naturalWidth, img.naturalHeight)), canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.naturalWidth * ratio); canvas.height = Math.round(img.naturalHeight * ratio); canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      selectedReference = { id: selected.id, bytes: canvas.toDataURL('image/jpeg', 0.9).split(',')[1] };
+      if (selected.state !== 'completed' || selected.runtimeRestored !== true || !selected.artifact?.sha256) throw new Error('L’original choisi doit être archivé et ses ressources restituées.');
+      selectedReference = { id: selected.id, sha256: selected.artifact.sha256 };
       $('image-selected-reference').replaceChildren(); const thumb = node('img'), copy = node('div'), remove = node('button', 'Retirer', 'quiet-button');
-      thumb.src = selected.artifact.url; thumb.alt = 'Image 1 jointe comme référence'; copy.append(node('strong', 'Image 1 · création choisie'), node('p', 'Copie de travail pour cette retouche. L’original reste conservé.'));
+      thumb.src = selected.artifact.url; thumb.alt = 'Image 1 jointe comme référence'; copy.append(node('strong', 'Image 1 · original choisi'), node('p', 'L’original archivé sert de parent à cette retouche. Il reste conservé. Au-delà de 4 MP, choisis une autre référence.'));
       remove.type = 'button'; remove.addEventListener('click', () => { ++referenceEpoch; selectedReference = null; $('image-selected-reference').hidden = true; $('image-references').dispatchEvent(new Event('change')); });
       $('image-selected-reference').append(thumb, copy, remove); $('image-selected-reference').hidden = false;
       $('image-references').dispatchEvent(new Event('change')); $('image-prompt').focus();
@@ -214,7 +221,8 @@
       const [width, height] = $('image-size').value.split(',').map(Number);
       const payload = { prompt: $('image-prompt').value, profile: $('image-profile').value, width, height,
         ...($('image-seed').value !== '' && { seed: Number($('image-seed').value) }) };
-      payload.references = [...(ref ? [ref.bytes] : []), ...await Promise.all(files.map(fileBytes))];
+      if (ref) payload.parent = { operationId: ref.id, sha256: ref.sha256 };
+      payload.references = await Promise.all(files.map(fileBytes));
       const signature = JSON.stringify(payload);
       // A network retry retains its identity; an explicit next creation gets a new one.
       if (!request || request.signature !== signature) request = { signature, payload: { ...payload, actionKey: crypto.randomUUID() } };

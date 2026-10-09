@@ -4,7 +4,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const ImageOperation = require('../../../models/ImageOperation');
 const { defaultArchive } = require('../imageArchive');
-const { reference, decode } = require('./codec');
+const { decode } = require('./codec');
+const { TRANSFORM, validateParent, prepareReferences } = require('./parentReference');
 const { loadConfig } = require('./config');
 const { createComfyClient } = require('./comfyClient');
 const { reserve } = require('./gpuReservation');
@@ -55,7 +56,9 @@ function validate(body, config) {
   if (!qualified(profile, width, height)) throw fail('Résolution non qualifiée pour ce profil.');
   const seed = body.seed === undefined ? crypto.randomInt(0, 2 ** 48 - 1) : Number(body.seed);
   if (!Number.isSafeInteger(seed) || seed < 0) throw fail('Graine invalide.');
-  if (body.references !== undefined && (!Array.isArray(body.references) || body.references.length > 2)) throw fail('Deux références au maximum.');
+  const parent = validateParent(body.parent);
+  if (body.references !== undefined && !Array.isArray(body.references)) throw fail('Références image invalides.');
+  if ((body.references || []).length + (parent ? 1 : 0) > 2) throw fail('Deux références au maximum, parent compris.');
   const originals = (body.references || []).map(item => {
     if (typeof item !== 'string' || item.length > 3 * 1024 * 1024 || !/^[A-Za-z0-9+/]+={0,2}$/.test(item)) throw fail('Référence image invalide ou trop volumineuse.');
     const bytes = Buffer.from(item, 'base64');
@@ -67,8 +70,9 @@ function validate(body, config) {
   });
   const request = { prompt: body.prompt.trim(), width, height, seed };
   // Omitted seed remains omitted in the identity: a replay returns the original random seed.
-  const requestHash = hash(JSON.stringify({ ...request, seed: body.seed ?? null, profile: id, references: originals.map(hash) }));
-  return { profile: { ...profile, id }, request, requestHash, originals };
+  const requestHash = hash(JSON.stringify({ ...request, seed: body.seed ?? null, profile: id, references: originals.map(hash),
+    ...(parent && { parent: { ...parent, transform: TRANSFORM } }) }));
+  return { profile: { ...profile, id }, request, requestHash, originals, parent };
 }
 async function accept(body, { conversation, signal } = {}) {
   await initialize();
@@ -84,6 +88,9 @@ async function accept(body, { conversation, signal } = {}) {
     if (prior.requestHash !== input.requestHash) throw fail('Cette identité appartient déjà à une autre demande.', 409);
     return publicOperation(prior);
   }
+  signal?.throwIfAborted();
+  const prepared = await prepareReferences(input.originals, input.parent, conversation, image);
+  signal?.throwIfAborted();
   const client = createComfyClient(config.workerUrl);
   try { await client.ready(input.profile); } catch { throw fail('Le PC image est indisponible ou occupé. Fais une nouvelle demande quand il sera disponible.', 503); }
   signal?.throwIfAborted();
@@ -92,9 +99,9 @@ async function accept(body, { conversation, signal } = {}) {
   try {
     op = await ImageOperation.create([{ _id: id, actionKey: body.actionKey, requestHash: input.requestHash,
       ...(conversation && { conversation }), workerSlot: config.workerUrl, workerUrl: config.workerUrl, state: 'accepted', profile: input.profile, request: input.request,
-      references: input.originals.map(reference), jobId: id }], { writeConcern: { w: 1, j: true } });
+      references: prepared.references, ...(prepared.lineage && { lineage: prepared.lineage }), jobId: id }], { writeConcern: { w: 1, j: true } });
     op = op[0].toObject();
-    op.references = input.originals.map(reference);
+    op.references = prepared.references;
   } catch (error) {
     if (error.code !== 11000) throw error;
     const raced = await ImageOperation.findOne({ actionKey: body.actionKey }).lean();

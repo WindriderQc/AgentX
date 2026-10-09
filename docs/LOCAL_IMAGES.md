@@ -16,8 +16,15 @@ their separate permission policies.
 Nestor and Famille display conversation image cards with read-only progress,
 verified output and a **Continuer dans l’atelier** link. The atelier restores
 the selected operation's brief, seed and supported format/profile. **Utiliser
-cette image comme référence** explicitly puts a reduced copy first in the
-editing references; the original archive remains intact. A new model or prompt
+cette image comme référence** selects the archived original as the first parent
+reference. The browser sends `{parent: {operationId, sha256}}`, rather than a
+JPEG preview. Core requires a completed operation with restored runtime, checks
+the archive bytes and declared SHA, and refuses an original above the existing
+4 MP reference limit or 8:1 ratio before contacting the worker. In conversation
+requests, the parent must belong to the same surface, session, pack and scope;
+the trusted LAN atelier retains its existing archive access. At most one uploaded
+file may accompany a parent. Uploaded files keep their browser working-copy path.
+The original archive remains intact. A new model or prompt
 does not guarantee preservation of the previous composition.
 
 The workshop separates composing, inspecting a result and browsing the recent
@@ -32,6 +39,20 @@ components, step count and pixel budgets. `GET /api/images/operations/:id/detail
 reports that operation's saved recipe and request, actual archived dimensions
 and recorded total time. Historical recipes do not inherit the current profile's
 step count. A different historical worker never inherits the current GPU label.
+
+New reference operations retain `lineage.version: 1` and ordered source/worker
+SHA descriptors. When a parent is chosen, they also retain its operation ID,
+original SHA and dimensions. The parent comes first, followed by the uploaded reference. The
+`decoded-pixels-to-png-v1` transformation identifies the existing metadata-free
+PNG normalization; it is distinct from the archived original. Worker buffers
+may be removed after a known terminal outcome while these descriptors remain.
+The details view links to the recorded parent, independently of current profiles.
+Older operations without lineage remain without it. Parent identity, SHA and
+transformation version participate in request identity: changing the parent
+under an existing action key returns 409, including when two parents have the
+same bytes. An exact replay returns the existing operation before reading the
+parent archive or contacting a worker. This lineage does not constitute a full
+recipe export or HQ/finish16 execution contract.
 
 `/images/guide` (linked from the atelier header) explains the path of a request,
 lists the installed recipes and gives prompting advice. Its host, GPU and recipe
@@ -140,7 +161,8 @@ Its license is research/evaluation: label that profile explicitly. Enable
 only the resolution and step budget qualified on the actual host. References
 are decoded, bounded to an 8:1 aspect ratio, and their editing pixel budget is explicit; a large source photo
 does not silently create a 12 MP render. The browser prepares smaller JPEG
-reference copies; Qwen editing follows the first reference's framing at the
+copies for uploaded files; a chosen archived parent uses the verified original.
+Qwen editing follows the first reference's framing at the
 selected pixel budget, with a margin for its 32-pixel rounding.
 It preserves the generated output at full
 quality; upload originals remain the conversation attachment capability's job.
@@ -149,6 +171,9 @@ quality; upload originals remain the conversation attachment capability's job.
 
 `POST /api/images/operations` requires `actionKey`, `prompt`, optional `profile`,
 `width`, `height`, `seed` and a `references` array of at most two base64 images.
+An optional `parent: {operationId, sha256}` selects an archived original as
+reference zero. It counts toward the two-reference limit, leaving room for
+one uploaded reference. Core verifies this parent before worker readiness.
 Dimensions must be multiples of 32, from 256 up to the family's widest edge
 (2048 for `klein`, 2752 for `qwen21`), under the profile's pixel limit.
 Use a fresh action key for an explicit new variation. Replaying the same key

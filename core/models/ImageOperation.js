@@ -1,5 +1,10 @@
 'use strict';
 const mongoose = require('mongoose');
+const lineageSchema = new mongoose.Schema({
+  version: { type: Number, enum: [1], required: true },
+  parent: { operationId: String, sha256: String, width: Number, height: Number },
+  references: [{ _id: false, sourceSha256: String, workerSha256: String, transform: String, parentOperationId: String }],
+}, { _id: false });
 const schema = new mongoose.Schema({
   _id: { type: String, required: true },
   actionKey: { type: String, required: true, unique: true },
@@ -10,6 +15,7 @@ const schema = new mongoose.Schema({
   state: { type: String, required: true, default: 'accepted' },
   request: { type: mongoose.Schema.Types.Mixed, required: true, select: false },
   references: { type: [Buffer], select: false },
+  lineage: { type: lineageSchema },
   profile: { type: mongoose.Schema.Types.Mixed, required: true },
   jobId: { type: String },
   dispatchStarted: { type: Boolean, default: false },
