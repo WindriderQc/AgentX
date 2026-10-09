@@ -108,6 +108,6 @@ async function bundle(id, requestedName) {
     request: { prompt: op.request.prompt, width: op.request.width, height: op.request.height, seed: op.request.seed },
     execution: { builder: { id: op.execution.builder.id, version: op.execution.builder.version },
       graphSha256: op.execution.graphSha256, parameters: { ...op.execution.parameters } },
-    ...(lineage && { lineage }), parts };
+    ...(op.expert && { expert: op.expert }), ...(lineage && { lineage }), parts };
 }
 module.exports = { manifest: id => bundle(id), part: (id, name) => bundle(id, name) };

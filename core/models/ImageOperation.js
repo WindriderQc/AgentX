@@ -27,6 +27,8 @@ const schema = new mongoose.Schema({
   actionKey: { type: String, required: true, unique: true },
   requestHash: { type: String, required: true },
   conversation: { surface: String, sessionId: String, packId: String, scopeId: String },
+  expert: { type: new mongoose.Schema({ sessionId: String, turnId: String, agent: String, harness: String,
+    reportedModel: String, promptEdited: Boolean, settingsEdited: Boolean }, { _id: false }), default: undefined },
   workerSlot: { type: String },
   workerUrl: { type: String, select: false },
   state: { type: String, required: true, default: 'accepted' },
