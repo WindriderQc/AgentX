@@ -4,7 +4,11 @@ const { spawn } = require('node:child_process');
 const { readFile, writeFile, mkdir } = require('node:fs/promises');
 const path = require('node:path');
 const { fingerprint: hash } = require('../contract');
-const ADAPTER_VERSION = '2.3.0';
+const ADAPTER_VERSION = '2.3.1';
+// agent exec does not receive the cell-wide turn/tool/token/spend ceilings.
+// Its timeout and the broker's final usage check do not enforce those limits.
+// Keep this route closed until enforcement before each native call is qualified.
+const NATIVE_AGENT_BUDGETS_QUALIFIED = false;
 const { fixtureForEnvelope, stageFixture, verifyFixture } = require('../repoFixture');
 
 function parseArgs(argv) {
@@ -80,7 +84,9 @@ function parseResult(body, input, durationMs, env = process.env) {
 }
 
 async function execute(input, fixed, run = spawn) {
-  if (input.target.tier === 'paid_cloud') throw new Error('OPENCLAW_NATIVE_AGENT_BUDGET_UNQUALIFIED');
+  if (!NATIVE_AGENT_BUDGETS_QUALIFIED || input.target.tier === 'paid_cloud') {
+    throw new Error('OPENCLAW_NATIVE_AGENT_BUDGET_UNQUALIFIED');
+  }
   const runtimeVersion = String(process.env.OPENCLAW_RUNTIME_VERSION || '');
   if (!runtimeVersion || runtimeVersion !== input.target.harness.version) throw new Error('OPENCLAW_RUNTIME_VERSION does not match the catalog target');
   const config = invocationConfig(JSON.parse(await readFile(fixed.config, 'utf8')), input);
@@ -130,4 +136,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((error) => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
-module.exports = { ADAPTER_VERSION, execute, invocationConfig, parseArgs, parseResult };
+module.exports = { ADAPTER_VERSION, NATIVE_AGENT_BUDGETS_QUALIFIED, execute, invocationConfig, parseArgs, parseResult };

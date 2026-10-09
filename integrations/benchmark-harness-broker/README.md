@@ -23,7 +23,16 @@ public/hidden tests, regression checks and allowed edit paths. The receipt keeps
 patch and fixture digests, test status and whether the executable contract passed.
 A correct final explanation cannot replace a passing verifier. Native receipts
 remain distinct from isolated model quality rankings. Catalog materialization
-pins adapter version 2.3.0 and must be rerun after updating the executor.
+pins adapter version 2.3.1 and must be rerun after updating the executor.
+
+Native agent Benchmark targets are currently unavailable for every billing tier.
+The CLI adapter does not enforce the cell-wide turn, tool, token and spend
+ceilings before each native call. It rejects execution with
+`OPENCLAW_NATIVE_AGENT_BUDGET_UNQUALIFIED` before reading the profile, staging a
+workspace or starting OpenClaw. Catalog materialization preserves their metadata
+and pins with `available: false`. A timeout or a final usage check cannot qualify
+these limits. Reopening this route requires proof of native enforcement before
+the next call; request metadata and environment flags cannot enable it.
 
 ## Instance configuration
 
@@ -65,7 +74,7 @@ agent entries, and creates bounded, pinned model profiles outside Git. Fixed
 routing, native billing and a current observation window are required. It does
 not contact a provider or execute a model. Paid model execution retains the
 existing signed SpendGrant plus the native per-request ceiling. Paid native
-agent benchmarks stay unavailable until their native turn/spend boundary is
+agent benchmarks, along with local and included agents, stay unavailable until their native turn/spend boundary is
 qualified before execution. The agent materializer reads native catalogue
 billing for cloud profiles beyond local and included subscription profiles.
 
