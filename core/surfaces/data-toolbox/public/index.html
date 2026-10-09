@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>AgentX Data Toolbox</title>
-  <link rel="stylesheet" href="/assets/data-toolbox/app.css?v=live-map-20261008">
+  <link rel="stylesheet" href="/assets/data-toolbox/app.css?v=storage-files-20261008">
   <link rel="stylesheet" href="/assets/data-toolbox/network-tools.css?v=network-tools-20261008">
 </head>
 <body>
@@ -25,7 +25,7 @@
 
     <section class="guardrail" role="note">
       <strong>No filesystem actions.</strong>
-      <span>Survivor choices and accept/reject decisions stay in a local draft. Storage scan, preview, apply, move and delete endpoints are not exposed here. This page sends three changes to Data: a network device's record (name, known flag, type, location, notes), a network scan request for the active collector, and an MQTT message published by hand from the MQTT tab, which reaches the devices on the broker.</span>
+      <span>Survivor choices and accept/reject decisions stay in a local draft. Preview, apply, move and delete endpoints are not exposed here. This page sends four changes to Data: a network device's record (name, known flag, type, location, notes), a network scan request for the active collector, an MQTT message published by hand from the MQTT tab, which reaches the devices on the broker, and a storage scan request from the Storage tab, which only reads the disks and refreshes the index.</span>
     </section>
 
     <nav class="tabs" aria-label="Data Toolbox sections">
@@ -53,6 +53,8 @@
   <script src="/assets/data-toolbox/mqtt.js?v=live-map-20261008" defer></script>
   <script src="/assets/data-toolbox/live-map.js?v=live-map-20261008" defer></script>
   <script src="/assets/data-toolbox/network-tools.js?v=network-tools-20261008" defer></script>
-  <script src="/assets/data-toolbox/app.js?v=live-map-20261008" defer></script>
+  <script src="/assets/data-toolbox/storage-tools.js?v=storage-files-20261008" defer></script>
+  <script src="/assets/data-toolbox/files-tools.js?v=storage-files-20261008" defer></script>
+  <script src="/assets/data-toolbox/app.js?v=storage-files-20261008" defer></script>
 </body>
 </html>

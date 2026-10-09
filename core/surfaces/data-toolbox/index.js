@@ -58,6 +58,7 @@ function safeName(value, label) {
 }
 
 const MAC = /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/;
+const STORAGE_SOURCE = /^[a-z0-9][a-z0-9_-]{0,59}$/i;
 // A device Data stored without a MAC (a collector does not see its own) is
 // addressed by its 24-hex record id, which Data's PATCH accepts as well.
 const RECORD_ID = /^[0-9a-f]{24}$/;
@@ -402,14 +403,16 @@ async function buildStatus() {
   const healthy = Object.values(sources).filter((source) => source.ok).length;
   return {
     extension: 'aio-ops-data-toolbox',
-    version: '1.5.0',
+    version: '1.7.0',
     owner: 'agentx',
-    // Three writes are relayed: PATCH /network/devices/:mac (name, known flag,
+    // Four writes are relayed: PATCH /network/devices/:mac (name, known flag,
     // type, location, notes), POST /network/scan (one scan request for the
-    // collectors) and POST /mqtt/publish (one MQTT message sent by hand).
+    // collectors), POST /mqtt/publish (one MQTT message sent by hand) and
+    // POST /storage/scans (ask the native collector to read a source again:
+    // it refreshes the index and changes nothing on the disks).
     readOnly: false,
     mutationsExposed: true,
-    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish'],
+    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request'],
     filesystemMutationsExposed: false,
     dataService: { baseUrl: dataBaseUrl(), healthy, total: entries.length },
     collectorPlacement: collectorPlacement(),
@@ -443,6 +446,45 @@ function register(api) {
     page: { type: 'int', fallback: 1, min: 1, max: 10000 }
   }));
   router.get('/storage/agents', relay(() => '/api/v1/storage/agents'));
+  // One scan by id: a queued scan has no start date yet and sorts after every
+  // other in Data's list, so it is followed here.
+  router.get('/storage/scans/:scanId', relay((req) => `/api/v1/storage/status/${safeName(req.params.scanId, 'scan id')}`));
+  // The storage write: ask the native collector to read one configured source again.
+  // The body is exactly { source }, and the name must be one Data lists. Only
+  // the name is forwarded, so hashing follows Data's defaults. Data answers
+  // with the scan queued, or with the one already queued or running for that
+  // source (coalesced). A scan reads the disks and refreshes the index.
+  router.post('/storage/scans', async (req, res) => {
+    const input = req.body;
+    const refuse = (status, code, message) => res.status(status).json({ ok: false, status: 'error', code, message });
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return refuse(400, 'INVALID_STORAGE_SCAN', 'Expected a JSON object with one field: source');
+    }
+    const unknown = Object.keys(input).filter((key) => key !== 'source');
+    if (unknown.length) return refuse(400, 'INVALID_STORAGE_SCAN', `Unknown field: ${unknown.slice(0, 5).join(', ').slice(0, 200)}`);
+    if (typeof input.source !== 'string' || !STORAGE_SOURCE.test(input.source)) {
+      return refuse(400, 'INVALID_STORAGE_SCAN', 'source must be the name of a configured storage source');
+    }
+    let requested = false;
+    try {
+      const registry = await fetchData('/api/v1/storage/agents');
+      const sources = (registry.body.data ?? registry.body).sources;
+      if (!registry.response.ok || !sources || typeof sources !== 'object' || Array.isArray(sources)) {
+        return refuse(502, 'DATA_UNAVAILABLE', 'Data did not list its storage sources: no scan was requested');
+      }
+      if (!Object.hasOwn(sources, input.source)) {
+        return refuse(400, 'UNKNOWN_STORAGE_SOURCE', `Unknown storage source: ${input.source}`);
+      }
+      requested = true;
+      const { response, body } = await fetchData('/api/v1/storage/agent-scans', { method: 'POST', payload: { source: input.source } });
+      return res.status(response.status).json(body);
+    } catch (error) {
+      const timedOut = error.name === 'TimeoutError';
+      return refuse(502, timedOut ? 'DATA_TIMEOUT' : 'DATA_UNAVAILABLE', !timedOut ? error.message
+        : requested ? 'Data did not answer in time: the scan may or may not have been queued'
+          : 'Data did not answer in time: no scan was requested');
+    }
+  });
   router.get('/storage/files', relay(() => '/api/v1/storage/files/browse', {
     ...commonScope,
     search: { maxLength: 200 },
@@ -457,11 +499,13 @@ function register(api) {
   }));
   router.get('/storage/stats', relay(() => '/api/v1/storage/files/stats', commonScope));
   router.get('/storage/tree', relay(() => '/api/v1/storage/files/tree', {
-    root: { maxLength: 500 }, limit: { type: 'int', fallback: 200, min: 1, max: 500 }
+    root: { maxLength: 500 }, limit: { type: 'int', fallback: 200, min: 1, max: 2000 }
   }));
   router.get('/storage/duplicates', relay(() => '/api/v1/storage/files/duplicates', {
     root: { maxLength: 500 }, method: { values: ['auto', 'hash', 'fuzzy'] }, limit: { type: 'int', fallback: 50, min: 1, max: 100 }
   }));
+  router.get('/storage/cleanup', relay(() => '/api/v1/storage/files/cleanup-recommendations', { root: { maxLength: 500 } }));
+  router.get('/storage/directory-count', relay(() => '/api/v1/storage/directory-count'));
 
   router.get('/network/devices', relay(() => '/api/v1/network/devices'));
   router.get('/network/agents', relay(() => '/api/v1/network/agents'));
@@ -605,8 +649,8 @@ function register(api) {
 
 module.exports = {
   id: 'aio-ops-data-toolbox',
-  version: '1.5.0',
-  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish'],
+  version: '1.7.0',
+  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request'],
   register,
   boundedInt,
   pickQuery,

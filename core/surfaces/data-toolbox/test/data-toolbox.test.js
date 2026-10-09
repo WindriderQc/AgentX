@@ -15,13 +15,16 @@ function browserEvidence(fetchImpl) {
   const context = {
     document: {
       querySelector(selector) { return selector === '#content' ? content : selector === '#fileFilters' ? form : {}; },
+      // The page's own click handler (app.js) is the last one registered.
       addEventListener(name, callback) { listeners[name] = callback; }
     },
+    setInterval() { return 1; }, clearInterval() {},
     window: { addEventListener() {}, alert(message) { throw new Error(message); } },
     fetch: fetchImpl, URLSearchParams, console
   };
-  const source = fs.readFileSync(path.join(__dirname, '../public/app.js'), 'utf8')
-    .replace(/\nrender\(\);\s*$/, '\nglobalThis.evidence = { api, overview, storage, files, number, bytes, percent, signedNumber, signedBytes, trend };');
+  // The Storage scan sections and the Files tab live in their own files.
+  const source = ['storage-tools.js', 'files-tools.js', 'app.js'].map((file) => fs.readFileSync(path.join(__dirname, '../public', file), 'utf8')).join('\n')
+    .replace(/\nrender\(\);\s*$/, '\nglobalThis.evidence = { api, overview, storage, files(...args) { state.tab = "files"; return files(...args); }, number, bytes, percent, signedNumber, signedBytes, trend };');
   vm.runInNewContext(source, context);
   return { ...context.evidence, content, listeners, form };
 }
@@ -127,7 +130,7 @@ test('scan receipts read the source, file count and status Data actually returns
     return { ok: true, status: 200, json: async () => ({ data }) };
   });
   await browser.storage();
-  const row = browser.content.innerHTML.match(/<tr><td class="mono">scan-1<\/td>.*?<\/tr>/)[0];
+  const row = browser.content.innerHTML.match(/<details class="scan-detail" data-scan-detail="scan-1">.*?<\/summary>/s)[0];
   assert.match(row, /datalake · \/mnt\/datalake/);
   assert.match(row, new RegExp(browser.number(221299)));
   assert.match(row, /pill good">complete/);
@@ -185,10 +188,10 @@ function registeredSurface() {
   return { mounts, routers };
 }
 
-test('manifest identifies the AIOps Data Toolbox contract and its three writes', () => {
+test('manifest identifies the AIOps Data Toolbox contract and its four writes', () => {
   assert.equal(toolbox.id, 'aio-ops-data-toolbox');
-  assert.equal(toolbox.version, '1.5.0');
-  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish']);
+  assert.equal(toolbox.version, '1.7.0');
+  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request']);
   assert.throws(() => toolbox.register({ contractVersion: 1 }), /contract v2/);
 });
 
@@ -205,7 +208,7 @@ test('query projection keeps only allowlisted, bounded values', () => {
   assert.throws(() => toolbox.safeName('../private', 'collection'), /Invalid collection/);
 });
 
-test('registration mounts the cockpit, GET proxy families and exactly three writes', () => {
+test('registration mounts the cockpit, GET proxy families and exactly four writes', () => {
   const { mounts, routers } = registeredSurface();
   const appPaths = mounts.map((entry) => entry.path);
   assert.ok(appPaths.includes('/assets/data-toolbox'));
@@ -216,10 +219,10 @@ test('registration mounts the cockpit, GET proxy families and exactly three writ
   const routes = routers.flatMap((router) => router.routes);
   assert.ok(routes.length >= 20);
   assert.deepEqual(routes.filter((route) => route.method !== 'get').map((route) => `${route.method} ${route.path}`),
-    ['post /network/scan', 'patch /network/devices/:mac', 'post /mqtt/publish'],
-    'the only mutations are a network scan request, the edit of a network device record and publishing an MQTT message');
+    ['post /storage/scans', 'post /network/scan', 'patch /network/devices/:mac', 'post /mqtt/publish'],
+    'the only mutations are a storage scan request, a network scan request, the edit of a network device record and publishing an MQTT message');
   for (const route of [
-    '/status', '/storage/summary', '/storage/files', '/network/devices', '/network/scan-requests/:id',
+    '/status', '/storage/summary', '/storage/files', '/storage/scans/:scanId', '/storage/cleanup', '/storage/directory-count', '/network/devices', '/network/scan-requests/:id',
     '/hardware/collectors', '/hardware/latest', '/hardware/history', '/hardware/occupancy',
     '/databases/collections', '/live-data/feeds', '/mqtt/status', '/mqtt/messages', '/janitor/profiles', '/janitor/dedup-report',
     '/janitor/profiles/:id/runs', '/janitor/runs/:id', '/janitor/strategy/latest', '/janitor/strategy/latest/raw'
@@ -318,9 +321,9 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   assert.match(app, /draft\.authorizesFilesystemMutation === false/);
   assert.match(app, /clearJanitorReviewDraft\(\)/);
   assert.match(app, /saved in this browser across refreshes, tab changes, and portfolio regenerations/);
-  // The bundle sends three mutations: a network scan request and the edit of
-  // a device record (network-tools.js), and an MQTT message (mqtt.js). The
-  // page says so in both places.
+  // The bundle sends four mutations: a network scan request and the edit of
+  // a device record (network-tools.js), an MQTT message (mqtt.js) and a
+  // storage scan request (storage-tools.js). The page says so in both places.
   assert.equal(app.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi), null);
   const networkTools = fs.readFileSync(path.join(root, 'network-tools.js'), 'utf8');
   assert.equal(networkTools.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi)?.length, 2);
@@ -330,11 +333,16 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   assert.equal(mqtt.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi)?.length, 1);
   assert.match(mqtt, /api\('\/mqtt\/publish', \{ method: 'POST'/);
   assert.equal(fs.readFileSync(path.join(root, 'gpu.js'), 'utf8').match(/method:/g), null);
+  const scans = fs.readFileSync(path.join(root, 'storage-tools.js'), 'utf8');
+  assert.equal(scans.match(/method:\s*["'](?:POST|PUT|PATCH|DELETE)/gi)?.length, 1);
+  assert.match(scans, /api\('\/storage\/scans', \{ method: 'POST', payload: \{ source \} \}\)/);
+  assert.equal(fs.readFileSync(path.join(root, 'files-tools.js'), 'utf8').match(/method:/g), null);
   assert.match(html, /<strong>No filesystem actions\.<\/strong>/);
-  assert.match(html, /This page sends three changes to Data: a network device's record \(name, known flag, type, location, notes\), a network scan request for the active collector, and an MQTT message published by hand/);
-  assert.match(html, /Storage scan, preview, apply, move and delete endpoints are not exposed here/);
+  assert.match(html, /This page sends four changes to Data: a network device's record \(name, known flag, type, location, notes\), a network scan request for the active collector, an MQTT message published by hand from the MQTT tab, which reaches the devices on the broker, and a storage scan request from the Storage tab, which only reads the disks/);
+  assert.match(html, /Preview, apply, move and delete endpoints are not exposed here/);
+  assert.doesNotMatch(html, /Storage scan, preview/);
   assert.doesNotMatch(html, /The only change this page sends/);
-  assert.match(app, /Write routes<\/span><strong>3 · network device record, network scan request, MQTT publish/);
+  assert.match(app, /Write routes<\/span><strong>4 · network device record, network scan request, MQTT publish, storage scan request/);
   assert.match(css, /@media \(max-width: 620px\)/);
 });
 
@@ -468,7 +476,12 @@ test('the built-in Toolbox serves its page and rejects mutation methods', async 
   const app = express();
   toolbox.register({ contractVersion: 2, app, express });
   assert.match((await request(app).get('/data-toolbox').expect(200)).text, /assets\/data-toolbox\/app.js/);
-  await request(app).post('/api/data-toolbox/storage/scans').send({}).expect(404);
+  // A scan request needs a body naming a source; no other storage write exists.
+  await request(app).post('/api/data-toolbox/storage/scans').send({}).expect(400);
+  await request(app).post('/api/data-toolbox/storage/scan').send({}).expect(404);
+  await request(app).post('/api/data-toolbox/storage/stop/scan-1').send({}).expect(404);
+  await request(app).patch('/api/data-toolbox/storage/files/file-1').send({}).expect(404);
+  await request(app).delete('/api/data-toolbox/storage/scans/scan-1').expect(404);
   await request(app).delete('/api/data-toolbox/databases/collections/example').expect(404);
 });
 
