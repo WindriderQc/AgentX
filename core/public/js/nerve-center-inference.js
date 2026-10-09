@@ -131,9 +131,9 @@
                     modelOptions = `<option value="${shared.escapeHtml(current.model)}" selected>${shared.escapeHtml(shared.shortModel(current.model))}</option>${modelOptions}`;
                 }
 
-                modelCell.innerHTML = `<select class="nc-inline-select" data-field="model">${modelOptions}</select>`;
+                modelCell.innerHTML = `<select class="nc-inline-select" data-field="model" aria-label="Model for ${shared.escapeHtml(task)}">${modelOptions}</select>`;
                 hostCell.innerHTML = `
-                    <select class="nc-inline-select" data-field="host">
+                    <select class="nc-inline-select" data-field="host" aria-label="Host for ${shared.escapeHtml(task)}">
                         ${hostKeys.map(k => {
                             const meta = hosts[k];
                             const label = typeof meta === 'object'

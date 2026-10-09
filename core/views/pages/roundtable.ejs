@@ -43,12 +43,12 @@
                     </div>
                 </div>
                 <div class="rt-chair-row">
-                    <input id="liveInterjection" type="text" class="rt-input" placeholder="Add guidance for the next phase…">
+                    <input id="liveInterjection" aria-label="Guidance for the next phase" type="text" class="rt-input" placeholder="Add guidance for the next phase…">
                     <button id="liveInterjectBtn" class="btn btn-sm">Interject</button>
                 </div>
                 <div class="rt-chair-row">
-                    <input id="liveChairToken" type="password" class="rt-input" autocomplete="off" placeholder="Chair token (required for web chair actions)">
-                    <input id="liveDecisionNote" type="text" class="rt-input" placeholder="Optional decision note">
+                    <input id="liveChairToken" aria-label="Chair token" type="password" class="rt-input" autocomplete="off" placeholder="Chair token (required for web chair actions)">
+                    <input id="liveDecisionNote" aria-label="Decision note" type="text" class="rt-input" placeholder="Optional decision note">
                 </div>
                 <div id="liveChairHint" class="rt-chair-hint">Interjections are advisory and apply at the next phase boundary. No verdict executes actions.</div>
             </div>
@@ -85,12 +85,12 @@
                 <button id="formResetBtn" class="btn btn-sm">Reset to defaults</button>
             </div>
 
-            <label class="rt-label">Question</label>
+            <label class="rt-label" for="formQuestion">Question</label>
             <textarea id="formQuestion" class="rt-textarea" rows="3" placeholder="What should we decide, explore, or evaluate?"></textarea>
 
             <div class="rt-form-grid">
                 <div>
-                    <label class="rt-label">Deliberation depth</label>
+                    <label class="rt-label" for="formRounds">Deliberation depth</label>
                     <select id="formRounds" class="rt-input">
                         <option value="1">Quick consult — independent views</option>
                         <option value="2" selected>Debate — views + 1 rebuttal</option>
@@ -98,28 +98,28 @@
                     </select>
                 </div>
                 <div>
-                    <label class="rt-label">First round</label>
+                    <label class="rt-label" for="formTurnOrder">First round</label>
                     <select id="formTurnOrder" class="rt-input">
                         <option value="blind" selected>Blind — independent answers</option>
                         <option value="conversation">Conversation — each hears the previous speakers</option>
                     </select>
                 </div>
                 <div>
-                    <label class="rt-label">Post-run judge (extra inference)</label>
+                    <label class="rt-label" for="formScoring">Post-run judge (extra inference)</label>
                     <select id="formScoring" class="rt-input">
                         <option value="false" selected>Off — synthesize only</option>
                         <option value="true">On — add diagnostic scores</option>
                     </select>
                 </div>
                 <div>
-                    <label class="rt-label">Verdict policy</label>
+                    <label class="rt-label" for="formApproval">Verdict policy</label>
                     <select id="formApproval" class="rt-input">
                         <option value="false" selected>Advisory only (recommended)</option>
                         <option value="true">Record a chair decision</option>
                     </select>
                 </div>
                 <div>
-                    <label class="rt-label">Chair token</label>
+                    <label class="rt-label" for="formChairToken">Chair token</label>
                     <input id="formChairToken" type="password" class="rt-input" autocomplete="off" placeholder="only without an unlocked session">
                 </div>
             </div>
@@ -142,11 +142,11 @@
             </div>
             <div class="rt-synth-edit">
                 <div>
-                    <label class="rt-label">Model</label>
+                    <label class="rt-label" for="formSynthModel">Model</label>
                     <input id="formSynthModel" type="text" class="rt-input" list="councilModelOptions" autocomplete="off" placeholder="Select a discovered or configured model">
                 </div>
                 <div>
-                    <label class="rt-label">System prompt</label>
+                    <label class="rt-label" for="formSynthPrompt">System prompt</label>
                     <textarea id="formSynthPrompt" class="rt-input" rows="3"></textarea>
                 </div>
             </div>
@@ -163,7 +163,7 @@
                     <div class="rt-eyebrow"><i class="fas fa-history"></i> HISTORY</div>
                     <h2 class="rt-subtitle">Past discussions</h2>
                 </div>
-                <button id="historyRefreshBtn" class="btn btn-sm"><i class="fas fa-sync-alt"></i></button>
+                <button id="historyRefreshBtn" class="btn btn-sm" title="Refresh history" aria-label="Refresh history"><i class="fas fa-sync-alt"></i></button>
             </div>
             <div id="historyList" class="rt-history">Loading…</div>
         </section>

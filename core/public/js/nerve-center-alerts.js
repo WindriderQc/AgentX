@@ -168,8 +168,8 @@
                     </button>
                 </td>
                 <td style="padding:8px 10px;text-align:center">
-                    <button class="nc-btn nc-rule-edit" data-rule="${shared.escapeHtml(r.ruleId)}" style="font-size:10px;padding:3px 8px;margin-right:4px"><i class="fas fa-pen"></i></button>
-                    ${!r.builtIn ? `<button class="nc-btn nc-rule-delete" data-rule="${shared.escapeHtml(r.ruleId)}" style="font-size:10px;padding:3px 8px;border-color:rgba(248,113,113,0.3);color:#f87171"><i class="fas fa-trash"></i></button>` : ''}
+                    <button class="nc-btn nc-rule-edit" data-rule="${shared.escapeHtml(r.ruleId)}" aria-label="Edit rule ${shared.escapeHtml(r.name || r.ruleId)}" title="Edit rule" style="font-size:10px;padding:3px 8px;margin-right:4px"><i class="fas fa-pen" aria-hidden="true"></i></button>
+                    ${!r.builtIn ? `<button class="nc-btn nc-rule-delete" data-rule="${shared.escapeHtml(r.ruleId)}" aria-label="Delete rule ${shared.escapeHtml(r.name || r.ruleId)}" title="Delete rule" style="font-size:10px;padding:3px 8px;border-color:rgba(248,113,113,0.3);color:#f87171"><i class="fas fa-trash"></i></button>` : ''}
                 </td>
             </tr>`;
         }
@@ -183,17 +183,17 @@
             <h5 style="margin:0 0 10px;color:var(--text-bright);font-size:0.9rem" id="nc-rule-editor-title">New Alert Rule</h5>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
                 <div>
-                    <label class="nc-muted nc-fs-sm-block">Rule ID</label>
+                    <label class="nc-muted nc-fs-sm-block" for="nc-rule-id">Rule ID</label>
                     <input id="nc-rule-id" class="nc-inline-select nc-select-sm" placeholder="my-custom-rule">
                 </div>
                 <div>
-                    <label class="nc-muted nc-fs-sm-block">Name</label>
+                    <label class="nc-muted nc-fs-sm-block" for="nc-rule-name">Name</label>
                     <input id="nc-rule-name" class="nc-inline-select nc-select-sm" placeholder="My Custom Rule">
                 </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
                 <div>
-                    <label class="nc-muted nc-fs-sm-block">Severity</label>
+                    <label class="nc-muted nc-fs-sm-block" for="nc-rule-severity">Severity</label>
                     <select id="nc-rule-severity" class="nc-inline-select nc-select-sm">
                         <option value="info">Info</option>
                         <option value="warning" selected>Warning</option>
@@ -202,7 +202,7 @@
                     </select>
                 </div>
                 <div>
-                    <label class="nc-muted nc-fs-sm-block">Description</label>
+                    <label class="nc-muted nc-fs-sm-block" for="nc-rule-desc">Description</label>
                     <input id="nc-rule-desc" class="nc-inline-select nc-select-sm" placeholder="Optional description">
                 </div>
             </div>
@@ -222,12 +222,12 @@
         const row = document.createElement('div');
         row.style.cssText = 'display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;margin-bottom:4px;align-items:center';
         row.innerHTML = `
-            <input class="nc-inline-select nc-cond-fact" style="font-size:11px;padding:3px 6px" placeholder="fact (e.g. metric)" value="${shared.escapeHtml(cond?.fact || '')}">
-            <select class="nc-inline-select nc-cond-op" style="font-size:11px;padding:3px 4px">
+            <input class="nc-inline-select nc-cond-fact" aria-label="Condition fact" style="font-size:11px;padding:3px 6px" placeholder="fact (e.g. metric)" value="${shared.escapeHtml(cond?.fact || '')}">
+            <select class="nc-inline-select nc-cond-op" aria-label="Condition operator" style="font-size:11px;padding:3px 4px">
                 ${Object.entries(OPERATOR_LABELS).map(([k, v]) => `<option value="${k}" ${cond?.operator === k ? 'selected' : ''}>${v}</option>`).join('')}
             </select>
-            <input class="nc-inline-select nc-cond-value" style="font-size:11px;padding:3px 6px" placeholder="value" value="${shared.escapeHtml(String(cond?.value ?? ''))}">
-            <button class="nc-btn nc-cond-remove" style="font-size:10px;padding:2px 6px;color:#f87171"><i class="fas fa-times"></i></button>`;
+            <input class="nc-inline-select nc-cond-value" aria-label="Condition value" style="font-size:11px;padding:3px 6px" placeholder="value" value="${shared.escapeHtml(String(cond?.value ?? ''))}">
+            <button class="nc-btn nc-cond-remove" aria-label="Remove condition" title="Remove condition" style="font-size:10px;padding:2px 6px;color:#f87171"><i class="fas fa-times" aria-hidden="true"></i></button>`;
         row.querySelector('.nc-cond-remove').addEventListener('click', () => row.remove());
         container.appendChild(row);
     }
