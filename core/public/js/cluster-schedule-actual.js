@@ -190,7 +190,8 @@ function renderActualVsPlanned(container, data) {
         const s = new Date(slot.start);
         const e = new Date(slot.end);
         const startHour = s.getHours() + s.getMinutes() / 60;
-        const endHour   = e.getHours() + e.getMinutes() / 60;
+        // Derive the end from the duration: a slot ending at midnight is 24h, not 0h.
+        const endHour = Math.min(24, startHour + Math.max(0, e - s) / 3600000);
         const left  = (startHour / 24 * 100).toFixed(2);
         const width = Math.max((endHour - startHour) / 24 * 100, 0.4).toFixed(2);
         const color = TASK_COLORS[task.taskType] || '#666';
@@ -221,8 +222,8 @@ function renderActualVsPlanned(container, data) {
 
   // Legend
   html += `<div class="cs-avp-legend">
-    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:#7cf0ff;opacity:0.7"></div>Planned slot</div>
-    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:#22c55e;opacity:0.5"></div>Actual utilization</div>
+    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:linear-gradient(90deg,${TASK_COLORS.benchmark},${TASK_COLORS.ingestion},${TASK_COLORS.inference})"></div>Planned run (top, colored by job type)</div>
+    <div style="display:flex;align-items:center;gap:4px"><div class="cs-avp-legend-swatch" style="background:linear-gradient(90deg,${utilColor(10)},${utilColor(60)},${utilColor(95)});opacity:0.6"></div>Measured utilization (bottom, height and color = load)</div>
   </div>`;
 
   container.innerHTML = html || '<div class="cs-empty">No planned runs or measured usage for this date.</div>';

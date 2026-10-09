@@ -317,6 +317,20 @@ describe('Cluster Schedule evidence presentation', () => {
     expect(measuredContainer.innerHTML).toContain('04:00 actual 0% (1 call)');
   });
 
+  test('draws a planned slot that ends at midnight to the end of the track', () => {
+    const { context } = loadClusterScheduleContext();
+    const container = { innerHTML: '' };
+    const start = new Date(2026, 7, 28, 23, 0);
+    const end = new Date(2026, 7, 29, 0, 0);
+    vm.runInContext('renderActualVsPlanned', context)(container, {
+      planned: [{ hostName: 'gpu-a', tasks: [{ name: 'Late job', model: 'm', taskType: 'benchmark',
+        slots: [{ start: start.toISOString(), end: end.toISOString() }] }] }],
+      actualByHost: {}
+    });
+
+    expect(container.innerHTML).toContain('left:95.83%;width:4.17%');
+  });
+
   test('shows only declared assignments as host evidence in the legend', () => {
     const { context, elements } = loadClusterScheduleContext();
     const render = vm.runInContext('renderLegend', context);
