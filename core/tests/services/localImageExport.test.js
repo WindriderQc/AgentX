@@ -9,6 +9,8 @@ const ImageOperation = require('../../models/ImageOperation');
 const { defaultArchive } = require('../../src/services/imageArchive');
 const { reference } = require('../../src/services/images/codec');
 const { buildExecution } = require('../../src/services/images/recipeExecution');
+const express = require('express');
+const httpRequest = require('supertest');
 
 jest.mock('../../src/services/images/config', () => ({ loadConfig: jest.fn(() => { throw new Error('Synthetic current configuration is offline'); }) }));
 jest.mock('../../src/services/images/comfyClient', () => ({ createComfyClient: jest.fn(() => { throw new Error('No export worker call'); }) }));
@@ -36,13 +38,14 @@ const DIMENSIONS = { width: 2, height: 2 };
 let directory, writes, outsideFiles;
 
 async function fixture({ family = 'klein', references = [], parent = false, output = png(), declaration = true,
-  state = 'completed', runtimeRestored = true } = {}) {
+  state = 'completed', runtimeRestored = true, request: requestOverrides = {}, weightDtype } = {}) {
   const id = crypto.randomUUID(), archive = defaultArchive();
   const profile = { id: 'historical-quality', family, diffusion: 'historical-diffusion.safetensors', encoder: 'historical-encoder.safetensors',
     vae: 'historical-vae.safetensors', steps: family === 'klein' ? 4 : 20, maxPixels: 4194304,
     privateSecret: 'FAKE_PRIVATE_PROFILE_SECRET', presentation: { description: 'FAKE_PRIVATE_PROFILE_DESCRIPTION' },
-    ...(declaration && { recipe: { id: 'historical.recipe', version: 'v1' } }) };
-  const request = { prompt: 'SYNTHETIC_EXPORT_BRIEF_MARKER', width: 1024, height: 1024, seed: 42 };
+    ...(declaration && { recipe: { id: 'historical.recipe', version: 'v1' } }),
+    ...(weightDtype !== undefined && { weightDtype }) };
+  const request = { prompt: 'SYNTHETIC_EXPORT_BRIEF_MARKER', width: 1024, height: 1024, seed: 42, ...requestOverrides };
   const artifact = { ...await archive.store({ bytes: output, origin: 'generated' }), ...DIMENSIONS };
   const entries = [], descriptors = [], workers = references.map(reference);
   const parentId = parent ? crypto.randomUUID() : undefined;
@@ -299,4 +302,46 @@ test('an operation changed while its archive is being read refuses the stale exp
     return handle;
   });
   forbidWrites(); await expect(manifest(f.id)).rejects.toMatchObject({ statusCode: 409 }); expect(changed).toBe(true);
+});
+
+test.each(['klein', 'qwen21'])('%s exports its recorded wide format, large safe seed and scalar nondefault weight dtype with a reference', async family => {
+  const requested = { width: 1536, height: 864, seed: 2 ** 48 - 17 };
+  const f = await fixture({ family, references: [jpg], request: requested, weightDtype: 'fp8_e4m3fn' });
+  const before = await fingerprint(); forbidWrites();
+  const exported = await manifest(f.id); publicMetadata(f, exported); await exactParts(f, exported);
+  expect(exported.request).toMatchObject(requested);
+  expect(f.execution.graph.model.inputs.weight_dtype).toBe('fp8_e4m3fn');
+  expect(await fingerprint()).toEqual(before);
+});
+
+test.each([['object', { token: 'fp8_e4m3fn' }], ['array', ['fp8_e4m3fn']]])
+  ('a %s weight dtype is refused despite matching historical profile, graph and recomputed SHA', async (_kind, weightDtype) => {
+    const f = await fixture({ weightDtype });
+    expect(f.execution.graph.model.inputs.weight_dtype).toEqual(weightDtype);
+    expect(f.execution.graphSha256).toBe(sha(JSON.stringify(f.execution.graph)));
+    forbidWrites(); await expect(manifest(f.id)).rejects.toMatchObject({ statusCode: 503 });
+  });
+
+test('the actual HTTP export routes return the real Mongo/archive manifest and exact UTF-8 graph with private attachment headers and no runtime calls', async () => {
+  const { createRouter } = require('../../routes/local-images');
+  const f = await fixture({ family: 'qwen21', references: [jpg],
+    request: { prompt: 'SYNTHETIC_EXPORT_BRIEF_MARKER — café, 東京 🦋' } });
+  const before = await fingerprint(), app = express();
+  app.use('/api/images', createRouter({}, {}, api())); forbidWrites();
+  const exported = await httpRequest(app).get(`/api/images/operations/${f.id}/export`).expect(200);
+  publicMetadata(f, exported.body);
+  expect(exported.headers['cache-control']).toBe('private, no-store');
+  expect(exported.headers['content-disposition']).toBe('attachment; filename="image-recipe.json"');
+  expect(exported.headers['x-content-type-options']).toBe('nosniff');
+  expect(exported.headers['content-type']).toMatch(/^application\/json; charset=utf-8$/);
+  expect(exported.text).toBe(JSON.stringify(await manifest(f.id), null, 2) + '\n');
+  const graph = await httpRequest(app).get(`/api/images/operations/${f.id}/export/parts/graph.json`).expect(200);
+  expect(graph.headers['cache-control']).toBe('private, no-store');
+  expect(graph.headers['content-disposition']).toBe('attachment; filename="graph.json"');
+  expect(graph.headers['x-content-type-options']).toBe('nosniff');
+  expect(graph.headers['content-type']).toMatch(/^application\/json; charset=utf-8$/);
+  const received = Buffer.from(graph.text, 'utf8'), prepared = Buffer.from(JSON.stringify(f.execution.graph), 'utf8');
+  expect(received.equals(prepared)).toBe(true);
+  expect(sha(received)).toBe(f.execution.graphSha256);
+  expect(await fingerprint()).toEqual(before);
 });
