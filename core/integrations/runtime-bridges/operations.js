@@ -310,7 +310,7 @@ async function getHermesStatusEvidence() {
   const gatewayFreshness = hermesGatewayFreshness(status);
   return {
     ok: true,
-    dashboard: { url: dashboardUrl, latencyMs: Date.now() - startedAt },
+    dashboard: { url: cleanUrl(process.env.HERMES_PUBLIC_URL) || dashboardUrl, latencyMs: Date.now() - startedAt },
     hermes: {
       version: status.version || null,
       releaseDate: status.release_date || null,
@@ -342,7 +342,7 @@ function registerHermesOperations({ express, logger, statusProvider = getHermesS
       return res.json(await statusProvider());
     } catch (error) {
       logger?.warn?.('[hermes] status fetch failed', { status: error.status || 502 });
-      return res.status(error.status || 502).json({ ok: false, dashboard: { url: cleanUrl(process.env.HERMES_DASHBOARD_URL || process.env.HERMES_PUBLIC_URL) }, error: error.message });
+      return res.status(error.status || 502).json({ ok: false, dashboard: { url: cleanUrl(process.env.HERMES_PUBLIC_URL || process.env.HERMES_DASHBOARD_URL) }, error: error.message });
     }
   });
   return router;
