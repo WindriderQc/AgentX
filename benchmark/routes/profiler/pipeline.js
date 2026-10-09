@@ -351,6 +351,9 @@ async function _queueRunSingleProfile(modelName, hostId, hostUrl, depth, lease) 
  * validation/conflict failures, which the route maps to an HTTP response.
  */
 async function startProfileHostQueue(body = {}) {
+  if (body.queueRequestId !== undefined && !/^[a-f0-9-]{36}$/.test(body.queueRequestId)) {
+    throw Object.assign(new Error('Invalid queueRequestId'), { statusCode: 400 });
+  }
   const { hostId, depth, skipRecentDays, modelNames } = body;
   if (!hostId) throw Object.assign(new Error('hostId is required'), { statusCode: 400 });
 
@@ -380,6 +383,7 @@ async function startProfileHostQueue(body = {}) {
   const skipDays = Number.isFinite(Number(skipRecentDays)) ? Number(skipRecentDays) : 7;
   const tracker = {
     queueId,
+    queueRequestId: body.queueRequestId || null,
     hostId,
     hostUrl: host.hostUrl,
     hostName: host.displayName || hostId,
@@ -513,7 +517,7 @@ async function startProfileHostQueue(body = {}) {
     lease.finalize().catch(releaseErr => logger.warn('Profile queue claim finalization failed', { queueId, error: releaseErr.message }));
   });
 
-  return { queueId, hostId, depth: chosenDepth, total: candidates.length, models: candidates, skippedRecent, notOnHost };
+  return { queueId, queueRequestId: tracker.queueRequestId, hostId, depth: chosenDepth, total: candidates.length, models: candidates, skippedRecent, notOnHost };
 }
 
 router.post('/profile-host', async (req, res) => {
@@ -539,6 +543,7 @@ router.get('/profile-host/:queueId/progress', (req, res) => {
   if (!tracker) return res.status(404).json({ status: 'error', error: 'Queue not found or expired' });
   res.json({ status: 'success', data: {
     queueStatus: tracker.status,
+    queueRequestId: tracker.queueRequestId || null,
     hostId: tracker.hostId,
     hostName: tracker.hostName,
     depth: tracker.depth,

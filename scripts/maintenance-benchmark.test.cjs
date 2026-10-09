@@ -262,6 +262,17 @@ test('a start posts the plan once and returns Benchmark\'s batch id; the same st
   assert.deepEqual([status.batchId, status.status, status.tests.planned], [result.batchId, 'running', 9]);
 }));
 
+test('a closed operator queue window refuses after preflight and before any batch POST', () => withBenchmark(async fake => {
+  const { plan } = await fake.prepare();
+  let checks = 0;
+  const context = { ...fake.ctx({ plan }), beforeDispatch: async () => { checks++; throw new Error('Synthetic expired window'); } };
+  await assert.rejects(ACTIONS['benchmark-batch-start'](context), /expired window/);
+  assert.equal(checks, 1);
+  assert.equal(fake.state.posts.length, 0);
+  const saved = JSON.parse(fs.readFileSync(path.join(fake.receiptsDir, 'benchmark-batch', `${planId(plan)}.json`), 'utf8'));
+  assert.equal(saved.launch, null);
+}));
+
 test('a start checks current conditions again and refuses a plan that no longer holds', () => withBenchmark(async fake => {
   const { plan } = await fake.prepare();
   fake.state.preflight = () => ({ ready: false, issues: ['Judge: host is unreachable'], checks: { judge: { ok: false } } });

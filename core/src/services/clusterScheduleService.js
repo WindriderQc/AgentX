@@ -71,7 +71,7 @@ async function getTimeline(dateStr, timezone = defaultPlanningTimeZone()) {
     }
   }
 
-  return timeline;
+  return timeline.concat(await require('./heavyWorkQueueTimeline').reservations(dayStart, dayEnd));
 }
 
 /**

@@ -126,6 +126,16 @@
 }
 .cs-queue-group span { color: #94a3b8; font-weight: 400; }
 .cs-queue-item .cs-next-name { white-space: normal; overflow-wrap: anywhere; }
+.cs-queue-item > div { min-width: 0; width: 100%; }
+.cs-queue-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.cs-queue-button { min-height: 44px; padding: 8px 12px; border: 1px solid #64748b; border-radius: 6px; background: #182333; color: #e2e8f0; cursor: pointer; }
+.cs-queue-button:disabled { opacity: .5; cursor: default; }
+.cs-queue-button:focus-visible { outline: 2px solid #7cf0ff; outline-offset: 2px; }
+.cs-queue-receipt { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.cs-queue-dialog { max-width: min(480px, calc(100vw - 32px)); padding: 20px; border: 1px solid #64748b; border-radius: 10px; background: #101c2c; color: #e2e8f0; }
+.cs-queue-dialog::backdrop { background: rgba(0,0,0,.65); }
+.cs-queue-dialog label { display: grid; gap: 6px; margin: 12px 0; }
+.cs-queue-dialog input { min-height: 44px; max-width: 100%; padding: 8px; background: #182333; color: #e2e8f0; border: 1px solid #64748b; }
 .cs-actual-note { color: #94a3b8; font-size: 11px; padding: 4px 0 12px; }
 
 .cs-next-list {

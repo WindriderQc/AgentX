@@ -118,6 +118,21 @@
                     <div id="heavyQueueList" class="cs-next-list" aria-live="polite">
                         <div class="cs-loading"><i class="fas fa-spinner fa-spin"></i> Loading queue...</div>
                     </div>
+                    <p id="heavyQueueError" class="cs-queue-note" role="alert"></p>
+                    <dialog id="heavyQueueReservation" class="cs-queue-dialog">
+                        <form>
+                            <h3 data-queue-title></h3>
+                            <p data-queue-zone></p>
+                            <label>Planned start <input type="datetime-local" name="start" required></label>
+                            <label>Priority (1 first, 9 last) <input type="number" name="priority" min="1" max="9" required></label>
+                            <p>Planning a slot does not start the job or acquire runtime resources.</p>
+                            <p role="alert"></p>
+                            <div class="cs-queue-actions">
+                                <button type="submit" class="cs-queue-button">Save slot</button>
+                                <button type="submit" class="cs-queue-button" value="cancel" formnovalidate>Close</button>
+                            </div>
+                        </form>
+                    </dialog>
                 </div>
 
                 <!-- Upcoming Tasks -->

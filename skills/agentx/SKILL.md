@@ -49,6 +49,18 @@ The longer list is in `references/endpoints.md`.
 - **Pipeline**: `POST /api/pipeline/tasks` with `{ title, objective, service }`; `POST /api/pipeline/tasks/:id/feedback` with `{ by, text, status? }`; `POST /api/pipeline/tasks/:id/status`. Routes use the 4-digit `pipelineId` ("0338"), not the Mongo `_id`. There is no `GET /tasks/:id`: filter the list.
 - A task is worked by the local coding worker only when the owner starts it from the Pipeline page. Nothing merges or deploys by itself.
 
+## Heavy work during coding and testing
+
+Before live model tests, Benchmark/Profiler work, image renders or long shared
+compute, submit a linked request to `/api/cluster/schedule/work-queue`. Use
+`integrations/operations/heavy-work-queue.cjs` with the instance Core origin.
+The owner plans a slot and explicitly launches a supported saved executor.
+Planning grants neither runtime admission nor new tool permissions. On a lost
+response inspect the same request, never create a replacement launch while its
+outcome is uncertain. QUEUE.md becomes an archive after confirmed migration;
+until then, follow its existing instance procedure. Ordinary isolated unit
+tests/source checks/builds stay direct. See `docs/HEAVY_WORK_QUEUE.md`.
+
 Ask the owner before any write that changes models, routing, pins or host state.
 
 ## Where knowledge lives

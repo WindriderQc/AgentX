@@ -23,6 +23,13 @@ and docs/OPERATIONS.md before changing architecture.
   stay in the private instance repository or outside Git (ADR 0001).
 - Run existing relevant tests and wait for their completed result. Distinguish
   code/tests, containers, deployment and real-device acceptance.
+- Queue heavy work from coding/operator sessions before launch: live inference
+  tests, Benchmark/Profiler campaigns, image renders and long shared compute.
+  Use Core's heavy-work queue and named operator executors
+  (docs/HEAVY_WORK_QUEUE.md); link the session/task/issue and respect the planned
+  window plus native admission. Reconcile lost responses by identity, never
+  repeat a launch. Until Core migration is received, use the instance's existing
+  QUEUE.md procedure. Ordinary isolated CPU unit tests/checks/builds stay direct.
 - Keep commits in English and responses to the owner in French. One clear change
   per commit. Never rewrite ax/ Modelfiles or benchmarked num_ctx values.
 - aiOPs and AgentX-Ecosystem are archived references. Do not edit them to implement

@@ -262,6 +262,8 @@ async function start(ctx) {
     throw refuse(ctx, 'Benchmark no longer resolves this plan to the same launch; prepare a new plan', { code: 'PLAN_STALE', projection: observed.projection });
   }
 
+  // Optional operator queue hook runs after preflight and before the one launch.
+  if (ctx.beforeDispatch) await ctx.beforeDispatch(plan);
   plan.launch = { state: 'dispatched', actor: ctx.options.actor, dispatchedAt: new Date().toISOString() };
   writePlan(ctx, plan);
   let response;
