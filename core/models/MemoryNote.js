@@ -17,6 +17,11 @@ const schema = new mongoose.Schema({
   source: { type: String, default: 'explicit-ui' },
   sourceTraceId: { type: String, unique: true, sparse: true },
   contentHash: { type: String, default: '', index: true },
+  // Meaning index, derived from `text` (memoryNoteIndex.js). Never returned by
+  // an ordinary read.
+  embedding: { type: [Number], default: undefined, select: false },
+  embeddingModel: { type: String, default: null },
+  embeddedHash: { type: String, default: null },
   status: { type: String, enum: ['active', 'forgotten'], default: 'active', index: true },
   forgottenAt: { type: Date, default: null },
   expiresAt: { type: Date, default: null }

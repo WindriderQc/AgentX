@@ -1738,6 +1738,30 @@ docker exec agentx-core-1 node scripts/seal-identifiers.js --apply --backup /tmp
 Back the key up with the instance secrets: without it, stored values cannot be
 read.
 
+## Meaning index of the memory notes
+
+Each memory note carries the embedding of its own text (`embedding`,
+`embeddingModel`, `embeddedHash` on the note row), computed through Core's
+embedding route with the router's embedding model. The note is the only
+memory: the vector is derived from it, never returned by an ordinary read, and
+goes away with the note. Nothing is copied to the document store, so a search
+by meaning stays behind the same space boundary as every other read.
+
+A note is saved first and indexed just after; a busy or absent embedding host
+delays the index, never the note. Rebuild after the first deploy, after an
+embedding model change, or after an outage:
+
+```bash
+docker exec agentx-core-1 node scripts/reindex-memory-notes.js
+```
+
+It prints `{ model, notes, stale, indexed, failed }` and writes only the three
+derived fields. The memory review compares each observation and each final
+candidate with the owner's notes through this index; when notes are not
+indexed, the run's dedup is marked degraded instead of reading as "nothing
+known". Similarity floors are `MEMORY_REVIEW_RAG_MIN_SCORE` and
+`MEMORY_REVIEW_DUPLICATE_SCORE`.
+
 ## Completed coding task replay
 
 `core/scripts/completed-coding-replay.js` reads a private
