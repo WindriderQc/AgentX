@@ -10,6 +10,7 @@
 
 const API_BASE = '/api/cluster';
 const LIVE_POLL_MS = 30000;
+const TIMELINE_POLL_MS = 60000;
 const COUNTDOWN_TICK_MS = 1000;
 const SCHEDULE_DATE = window.ClusterScheduleDate;
 const UPCOMING_PROJECTION = window.ClusterScheduleUpcoming;
@@ -38,6 +39,7 @@ const CATEGORY_LABELS = {
 };
 
 let livePollTimer = null;
+let timelinePollTimer = null;
 let countdownTimer = null;
 let nextTasksData = [];
 let conflictsData = [];
@@ -45,6 +47,7 @@ let overdueData = [];
 let claimsData = [];
 let liveHostsData = [];
 let currentDate = SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE);
+let lastObservedToday = currentDate;
 let viewMode = 'task';
 let collapsedGroups = new Set();
 let servicesCollapsed = false;
@@ -922,6 +925,25 @@ function startLivePolling() {
     loadClaims();
     loadHeavyQueue();
   }, LIVE_POLL_MS);
+  if (timelinePollTimer) clearInterval(timelinePollTimer);
+  timelinePollTimer = setInterval(refreshTimelineClock, TIMELINE_POLL_MS);
+}
+
+// Keep "now", past shading and upcoming countdowns current; follow midnight
+// when the operator was watching today.
+function refreshTimelineClock() {
+  const today = SCHEDULE_DATE.localDateKey(new Date(), OPERATOR_TIME_ZONE);
+  const wasToday = currentDate === lastObservedToday;
+  lastObservedToday = today;
+  if (wasToday && currentDate !== today) {
+    currentDate = today;
+    updateDateLabel();
+  } else if (!isToday()) {
+    return;
+  }
+  hideTooltip();
+  loadTimeline();
+  loadConflicts();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

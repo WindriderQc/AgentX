@@ -373,6 +373,25 @@ describe('Cluster Schedule evidence presentation', () => {
     expect(html).toContain('last recorded run');
   });
 
+  test('follows midnight while watching today and leaves another selected day alone', () => {
+    const { context } = loadClusterScheduleContext();
+    let today = '2026-08-28';
+    context.window.ClusterScheduleDate.localDateKey = () => today;
+    context.window.ClusterScheduleDate.isToday = key => key === today;
+    vm.runInContext('loadTimeline = () => { timelineReloads += 1; }; loadConflicts = () => {}; updateDateLabel = () => {}; var timelineReloads = 0;', context);
+    const refresh = vm.runInContext('refreshTimelineClock', context);
+
+    today = '2026-08-29';
+    refresh();
+    expect(vm.runInContext('currentDate', context)).toBe('2026-08-29');
+    expect(vm.runInContext('timelineReloads', context)).toBe(1);
+
+    vm.runInContext("currentDate = '2026-08-20'", context);
+    refresh();
+    expect(vm.runInContext('currentDate', context)).toBe('2026-08-20');
+    expect(vm.runInContext('timelineReloads', context)).toBe(1);
+  });
+
   test('loads the upcoming projection before the dashboard controller', () => {
     const app = read('src/app.js');
     const routeBlock = app.slice(
