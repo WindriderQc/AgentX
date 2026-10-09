@@ -3,6 +3,7 @@
 const { createHash } = require('node:crypto');
 const MemoryNote = require('../../models/MemoryNote');
 const { sealText } = require('./identifierVault');
+const { createIndex } = require('./memoryNoteIndex');
 
 const error = (message, statusCode = 400) => Object.assign(new Error(message), {
   statusCode, code: 'MEMORY_NOTE_INVALID'
@@ -53,7 +54,7 @@ function project(row) {
 
 // Bind once in trusted server code. Request bodies and personas cannot widen
 // either the information audience or the family space.
-function forSpace({ audience, scopeId, packIds } = {}) {
+function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   if (!['owner', 'household'].includes(audience) || typeof scopeId !== 'string'
       || !/^[a-zA-Z0-9_.:-]{1,120}$/.test(scopeId) || !Array.isArray(packIds)
       || !packIds.length || packIds.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(id))) {
@@ -65,6 +66,9 @@ function forSpace({ audience, scopeId, packIds } = {}) {
   const boundary = { scopeId, packId: { $in: packs }, ...(audience === 'household' ? classification : {}) };
   const active = () => ({ ...boundary, status: { $ne: 'forgotten' },
     $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] });
+  // The note is saved first and stays valid without its vector: an embedding
+  // host that is busy or down delays the index, never the memory.
+  const indexLater = row => { index.indexNote(row._id, row.text).catch(() => {}); };
 
   async function list({ limit, offset = 0, query, kind } = {}) {
     const filter = active();
@@ -122,6 +126,7 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     }
     const row = result.value;
     if (!row) throw error('The selected note no longer exists', 404);
+    indexLater(row);
     return { ok: true, authority: 'agentx.core', ...project(row), sealed, created: Boolean(result.lastErrorObject?.upserted), changed: true };
   }
 
@@ -131,10 +136,11 @@ function forSpace({ audience, scopeId, packIds } = {}) {
       topic: typeof input.topic === 'string' ? input.topic.slice(0, 80) : 'general',
       type: input.type === 'summary' ? 'summary' : 'fact', source: input.source || 'explicit-ui',
       contentHash: digest(text.toLowerCase()), status: 'active' };
-    if (!input.sourceTraceId) return project(await MemoryNote.create(values));
+    if (!input.sourceTraceId) { const created = await MemoryNote.create(values); indexLater(created); return project(created); }
     const sourceTraceId = cleanText(input.sourceTraceId, 300);
     const row = await MemoryNote.findOneAndUpdate({ ...boundary, sourceTraceId },
       { $setOnInsert: { ...values, sourceTraceId } }, { new: true, upsert: true, runValidators: true });
+    if (!row.embeddedHash) indexLater(row);
     return project(row);
   }
 
@@ -168,7 +174,18 @@ function forSpace({ audience, scopeId, packIds } = {}) {
     return { ok: true, authority: 'agentx.core', notes: best.map(entry => entry.note), total: page.total };
   }
 
-  return Object.freeze({ list, remember, record, forget, search, count: () => MemoryNote.countDocuments(active()) });
+  // Notes of this space closest in meaning to each text. Same boundary as
+  // every other read here; notes not indexed yet are counted, not guessed.
+  async function similar(queries, { limit = 3, minScore = 0 } = {}) {
+    const texts = (Array.isArray(queries) ? queries : [queries]).map(query => cleanText(query, 4000));
+    const found = await index.nearest(active(), texts, { limit: limitOf(limit, 3), minScore });
+    return { ok: true, authority: 'agentx.core', indexed: found.indexed, unindexed: found.unindexed,
+      results: found.results.map(entry => ({ query: entry.query, ...(entry.error ? { error: entry.error } : {}),
+        notes: entry.hits.map(hit => ({ ...project(hit.note), score: Math.round(hit.score * 1000) / 1000 })) })) };
+  }
+  const reindex = () => index.rebuild(boundary);
+
+  return Object.freeze({ list, remember, record, forget, search, similar, reindex, count: () => MemoryNote.countDocuments(active()) });
 }
 
 const personal = () => forSpace({ audience: 'owner', scopeId: 'personal', packIds: ['personal_operator'] });
