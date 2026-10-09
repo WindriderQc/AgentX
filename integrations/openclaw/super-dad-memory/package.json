@@ -13,6 +13,7 @@
     "tool-evidence.js",
     "media.js",
     "local-images.js",
+    "data-tools.js",
     "core-notes.js",
     "core-vault.js",
     "core-journal.js",

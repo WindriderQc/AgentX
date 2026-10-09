@@ -99,4 +99,4 @@ async function getGpuTelemetryForHosts(hosts, { fetchImpl } = {}) {
   return result;
 }
 
-module.exports = { getGpuTelemetryForHosts, ollamaOrigin, projectGpu, _internal: { readLatest, projectHost } };
+module.exports = { getGpuTelemetryForHosts, ollamaOrigin, projectGpu, projectHost, readLatest, _internal: { readLatest, projectHost } };

@@ -33,3 +33,10 @@ test('mail, calendar and note searches are spoken', () => {
   assert.equal(describe({ kind: 'tool', tool: 'calendar_list_events' }).text, 'Je regarde ton agenda.');
   assert.equal(describe({ kind: 'tool', tool: 'memory_search' }).text, 'Je cherche dans mes notes.');
 });
+
+test('storage, file and GPU reads are spoken', () => {
+  for (const tool of ['nestor_storage', 'nestor_files']) {
+    assert.deepEqual(describe({ kind: 'tool', tool }), { text: 'Je consulte l’index des fichiers.', spoken: true });
+  }
+  assert.deepEqual(describe({ kind: 'tool', tool: 'nestor_gpus' }), { text: 'Je regarde les cartes graphiques.', spoken: true });
+});

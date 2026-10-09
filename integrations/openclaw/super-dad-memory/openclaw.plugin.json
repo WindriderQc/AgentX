@@ -19,6 +19,9 @@
       "nestor_context",
       "nestor_briefing",
       "nestor_network",
+      "nestor_storage",
+      "nestor_files",
+      "nestor_gpus",
       "local_image"
     ]
   },
@@ -45,6 +48,15 @@
       "optional": true
     },
     "nestor_network": {
+      "optional": true
+    },
+    "nestor_storage": {
+      "optional": true
+    },
+    "nestor_files": {
+      "optional": true
+    },
+    "nestor_gpus": {
       "optional": true
     },
     "local_image": {

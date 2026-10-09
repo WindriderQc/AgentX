@@ -13,6 +13,11 @@ published by hand. The original mutation APIs remain inside Data with their
 existing domain checks. Mount shared storage read-only unless a specific maintenance operation
 requires an explicitly approved writable mount. No disk mount is shipped by default.
 
+Core also projects three reads for the personal assistant: the storage summary,
+a bounded file-name search and GPU status
+([operations](../docs/OPERATIONS.md)). They use the `GET` storage and hardware
+routes below and change nothing here.
+
 Enable Compose profile `data` when needed. Data does not read `AGENTX_PROFILE`:
 it starts in either profile and reads only its own collections of the shared
 database, and its database browser lists only its allowlisted collections. Core uses `DATAAPI_BASE_URL`; the

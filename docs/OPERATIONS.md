@@ -607,6 +607,38 @@ source of new notes. They never read or write family notes. Infrastructure
 knowledge belongs in the docs or a vault note, not in owner memory; RAG
 documents are searched with `rag_search`.
 
+Nestor answers questions about the house's storage, files and GPUs from the
+optional Data service, through Core. Three read-only tools join
+`network_devices`, each with a French `summary` sentence the agent relays:
+
+| Core tool on `/mcp` | Nestor plugin tool | Answers | Bounds |
+|---|---|---|---|
+| `storage_summary` | `nestor_storage` | Indexed files and size, each storage root, the last finished scan of each source with its outcome and age, hash coverage, collector alive or not | No argument; 8 roots, 8 collectors |
+| `find_files` | `nestor_files` | Files whose name contains a fragment: name, folder, size, modified date, newest first, with the total matched and a `truncated` flag | `query` 2-80 characters; `extension` or `category`; `root` must be a source Data declares; `limit` 10 by default, 25 at most |
+| `gpu_status` | `nestor_gpus` | Per host its freshness and sample age; per GPU its name, utilisation, video memory, temperature and power; on request the busy share over 24 hours | Optional `host`; 8 hosts, 8 GPUs each |
+
+They read the index the storage collector last wrote, never the disks, and say
+so with the age of that scan; a partial, failed or interrupted last scan and a
+silent collector are stated in the sentence. A GPU host Data calls stale or
+without data is returned with its state and age and no values. When Data is
+unreachable or slow the tool fails with `DATA_UNAVAILABLE`; a refused argument
+fails with `INVALID_ARGUMENTS`. None of them writes, starts a scan, or returns
+file contents, hashes or database ids.
+
+`find_files` returns the owner's file names and paths. Core answers it on
+`tools/call` but never lists it in `tools/list`, so no MCP client is offered
+it. The `super-dad-memory` plugin offers the three `nestor_*` tools to the
+private owner context only (agent `main`, not sandboxed, in the owner's
+Household or allowed Telegram direct session): the family agent, the other team
+members and scheduled job sessions do not receive them. They are optional
+plugin tools, so an instance enables them by adding `nestor_storage`,
+`nestor_files` and `nestor_gpus` to the `tools.alsoAllow` list of the `main`
+agent only, then reloading the plugin. Leave `find_files` out of any
+`mcp.servers.<name>.toolFilter.include` list and out of every other agent's
+grants. Core's `/mcp` endpoint identifies no caller: reaching it is bounded by
+the private network ([LAN access](LAN_ACCESS_SCOPE.md)), which already serves
+the same index to the Data Toolbox.
+
 The same endpoint lets a lead agent supervise Benchmark's coverage without
 running it. `benchmark_coverage` reads the matrix (profile state and catalog
 prompts scored for each model pinned or routed on a host) and what the
