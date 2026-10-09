@@ -29,22 +29,34 @@ export async function agentxRead(baseUrl, name, args, fetchImpl = fetch) {
   return data;
 }
 
-export async function contextFor(workspace, query, { includeMemory = false, includeTasks = false, readTasks, readNotes } = {}) {
+export async function contextFor(workspace, query, { includeMemory = false, includeTasks = false, sessionKey, readTasks, readNotes } = {}) {
   const state = await readState(workspace);
   const memoryConsulted = includeMemory;
   const memory = memoryConsulted ? await readNotes({ action: 'context', query, limit: 4 }) : { notes: [] };
-  const notes = memory.notes.map(note => ({ ...note, sourceRef: 'agentx-note:' + note.id,
-    text: note.text.slice(0, 800), textTruncated: note.text.length > 800 }));
+  const notes = memory.notes.slice(0, 4).map(note => ({ id: note.id, kind: note.kind,
+    sourceRef: 'agentx-note:' + note.id, text: note.text.slice(0, 800),
+    textTruncated: note.text.length > 800, expiresAt: note.expiresAt }));
+  // The continuity endpoint retains full evidence. Conversational context only
+  // needs recent outcomes from this native session, never another chat's calls.
+  const receipts = sessionKey ? state.receipts.filter(r => r.sessionKey === sessionKey).slice(-4)
+    .map(({ id, tool, status, resultRef, observed, deliveryState, at }) =>
+      ({ id, tool, status, resultRef, observed, deliveryState, at })) : [];
   const result = { generatedAt: nowIso(), notes,
     previousGoal: state.goal && Date.now() - Date.parse(state.goal.at) < 86400000 ? state.goal : null,
-    receipts: state.receipts.slice(-8), sources: { personal_memory: memoryConsulted ? "available" : "not_consulted", calendar: "not_connected", ledger: "not_connected" } };
+    receipts, sources: { personal_memory: memoryConsulted ? "available" : "not_consulted", calendar: "not_connected", ledger: "not_connected" } };
   if (includeTasks) {
     try {
       const data = await readTasks();
       if (!Array.isArray(data.tasks)) throw new Error("Invalid task response");
-      result.tasks = data.tasks.map(({ id, title, status, dueAt, priority }) => ({ id, title, status, dueAt, priority }));
+      result.tasks = data.tasks.slice(0, 12).map(({ id, title, status, dueAt, dueLocal, relevantUntilLocal,
+        priority, lane, dueToday, overdue, recheck, expired }) =>
+        ({ id, title, status, dueAt, dueLocal, relevantUntilLocal, priority, lane, dueToday, overdue, recheck, expired }));
       result.sources.personal_tasks = "available";
-      result.taskCoverage = data.tasks.length >= 100 ? "bounded_first_100" : "returned_current_tasks";
+      result.taskCoverage = { returned: result.tasks.length,
+        total: Number.isInteger(data.totalCount) ? data.totalCount : null,
+        hasMore: data.hasMore === true || data.tasks.length > result.tasks.length,
+        dueTodayCount: data.dueTodayCount, overdueCount: data.overdueCount,
+        todayLocal: data.todayLocal, fullReadTool: 'list_personal_tasks' };
     } catch { result.sources.personal_tasks = "unavailable"; }
   }
   return result;

@@ -53,7 +53,7 @@ const SECRETARY_TOOLS = Object.freeze([
   Object.freeze({
     name: 'list_personal_tasks',
     title: 'List Personal Tasks',
-    description: 'List Dad\'s personal tasks from the canonical pipeline, most urgent first. Call this before answering what is due, next, or on the list. Name days exactly as dueLocal, relevantUntilLocal and todayLocal give them; never compute a weekday yourself.',
+    description: 'List Dad\'s personal tasks from the canonical pipeline, most urgent first. Sort before the requested limit; totalCount, overdueCount and dueTodayCount cover all matching tasks, while count covers this page and hasMore marks omissions. Call this before answering what is due, next, or on the list. Name days exactly as dueLocal, relevantUntilLocal and todayLocal give them; never compute a weekday yourself.',
     inputSchema: objectSchema({
       includeDone: { type: 'boolean', default: false },
       includeNotes: { type: 'boolean', default: false },

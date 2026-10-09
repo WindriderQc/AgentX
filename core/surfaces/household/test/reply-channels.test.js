@@ -80,7 +80,7 @@ test('a short list is spoken; a long list, a table and code go on screen', () =>
 
   const long = run(chunks('Voici :\n- a\n- b\n- c\n- d\nVoilà.', 2), { language: 'fr' });
   assert.deepEqual(long.display.map(block => [block.kind, block.body]), [['list', '- a\n- b\n- c\n- d']]);
-  assert.equal(long.say, 'Voici :\n(à l’écran)\nVoilà.');
+  assert.equal(long.say, 'Voici :\nLes premiers éléments : a; b; c. La liste complète est à l’écran.\nVoilà.');
 
   const table = run(['| a | b |\n|---|---|\n| 1 | 2 |\nFini.'], { language: 'en' });
   assert.equal(table.display[0].kind, 'table');
@@ -89,6 +89,25 @@ test('a short list is spoken; a long list, a table and code go on screen', () =>
   const code = run(chunks('Lance ça :\n```bash\nnpm test\n```\nEnsuite on verra.', 3));
   assert.deepEqual(code.display.map(block => [block.kind, block.body]), [['code', 'npm test']]);
   assert.doesNotMatch(code.streamed, /npm|```/);
+});
+
+test('an implicit long task list keeps three useful items and deadlines audible across stream boundaries', () => {
+  const reply = '- **Synthetic invoice** — due today\n- **Synthetic call** — tomorrow\n- **Synthetic form** — Friday\n- **Synthetic errand** — next week';
+  for (const size of [1, 5, 23, reply.length]) {
+    const result = run(chunks(reply, size), { language: 'en' });
+    assert.equal(result.say, 'First items: Synthetic invoice — due today; Synthetic call — tomorrow; Synthetic form — Friday. The full list is on screen.');
+    assert.equal(result.display[0].body, reply);
+    assert.doesNotMatch(result.say, /Synthetic errand|\*\*/);
+  }
+});
+
+test('long-list summaries remove noisy tokens before shortening and leave explicit display blocks silent', () => {
+  const key = 'sk-' + 'a1'.repeat(110);
+  const reply = `- First ${key}\n- Second https://example.test/long-link\n- Third /srv/agentx/config.env\n- Fourth`;
+  const result = run(chunks(reply, 7), { language: 'en', allowSecrets: true });
+  assert.equal(result.say, 'First items: First; Second; Third. The full list is on screen.');
+  assert.doesNotMatch(result.streamed, /sk-|a1|https|\/srv/);
+  assert.equal(run([`<show kind="list">${reply}</show>`], { language: 'en' }).say, 'I put it on screen.');
 });
 
 test('a reply made only of screen content still says something', () => {
