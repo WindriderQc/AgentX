@@ -22,6 +22,17 @@ The profile needs `config.yaml` and a `workspace/` directory. Configure `AGENTX_
 for `images.py`, which provides current status, workshop inspection, idempotent
 creation, operation observation and SHA-verified image download. It never retries
 mutations. Download refuses incomplete operations and existing output files.
+The client also reads history, saved drafts/details and l’Atelier's six brief
+starters. `export ID --output NEW_DIRECTORY` verifies and saves the recorded
+manifest, graph, references and output without dispatching anything. A missing
+historical export or mismatched part refuses the entire bundle. Export contains
+the original reference bytes and metadata; store it with the image's privacy.
+
+L’Atelier offers the same editable starters for illustration, product photography,
+short lettering, targeted editing, two-image composition and variations. Applying
+a starter replaces only the brief, preserving the selected references, profile,
+format and seed. It does not submit a generation. Profile suggestions resolve
+against the current workshop by model family, without pinning an instance model.
 
 The optional `integrations/openclaw/imagex` plugin registers the private owner
 `imagex` tool: consult, create, profiles, status and cancel. Its image operations

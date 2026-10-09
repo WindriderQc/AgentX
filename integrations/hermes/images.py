@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from recipe_export import export_recipe
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -77,6 +78,8 @@ def main():
     sub = parser.add_subparsers(dest='action', required=True)
     sub.add_parser('status')
     sub.add_parser('workshop')
+    sub.add_parser('list')
+    sub.add_parser('starters')
     create = sub.add_parser('create')
     create.add_argument('--key', required=True)
     create.add_argument('--prompt', required=True)
@@ -84,30 +87,44 @@ def main():
     create.add_argument('--width', type=int, default=1024)
     create.add_argument('--height', type=int, default=1024)
     create.add_argument('--seed', type=int)
+    create.add_argument('--recipe-id')
+    create.add_argument('--recipe-version')
     create.add_argument('--reference', action='append', default=[])
     create.add_argument('--parent-operation')
     create.add_argument('--parent-sha')
-    for name in ['operation', 'download']:
+    for name in ['operation', 'details', 'draft', 'download', 'export']:
         command = sub.add_parser(name)
         command.add_argument('operation_id')
-        if name == 'download':
+        if name in ('download', 'export'):
             command.add_argument('--output', required=True)
     args = parser.parse_args()
+    if args.action == 'starters':
+        return json.loads((Path(__file__).resolve().parents[2] / 'core/public/data/image-starters.json').read_text())
     client = Images()
     if args.action in ('status', 'workshop'):
         return client.json('/api/images/' + args.action)
     if args.action == 'download':
         return client.download(args.operation_id, args.output)
+    if args.action == 'export':
+        return export_recipe(client, args.operation_id, args.output)
+    if args.action == 'list':
+        return client.json('/api/images/operations')
+    if args.action in ('details', 'draft'):
+        return client.json('/api/images/operations/' + str(uuid.UUID(args.operation_id)) + '/' + args.action)
     if args.action == 'operation':
         return client.json('/api/images/operations/' + str(uuid.UUID(args.operation_id)))
     if not re.fullmatch('[a-zA-Z0-9:_.-]{8,160}', args.key):
         raise ValueError('Request key must contain 8–160 letters, digits or :_.-')
-    if len(args.reference) > 2:
+    if len(args.reference) + (1 if args.parent_operation else 0) > 2:
         raise ValueError('Two references at most')
     body = {'actionKey': args.key, 'prompt': args.prompt, 'width': args.width, 'height': args.height}
     for key in ['profile', 'seed']:
         if getattr(args, key) is not None:
             body[key] = getattr(args, key)
+    if args.recipe_id or args.recipe_version:
+        if not args.recipe_id or not args.recipe_version:
+            raise ValueError('A declared recipe requires its ID and version together')
+        body.update(recipeId=args.recipe_id, recipeVersion=args.recipe_version)
     if args.reference:
         references = []
         for name in args.reference:

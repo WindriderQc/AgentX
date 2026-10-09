@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "starters": [
+    {
+      "id": "illustration",
+      "title": "Illustration",
+      "description": "Une création originale avec une direction artistique claire.",
+      "prompt": "Illustration [style visuel] de [sujet principal] dans [environnement]. Composition [cadrage et disposition], palette [couleurs], lumière [ambiance]. Mettre en valeur [détail essentiel].",
+      "referenceCount": 0,
+      "preferredFamily": "klein",
+      "tips": ["Commence par le sujet et le style, puis précise le cadrage.", "Explore une première idée avec la recette rapide ; examine le résultat avant de choisir une recette plus détaillée."]
+    },
+    {
+      "id": "product-photo",
+      "title": "Photo produit",
+      "description": "Un objet mis en scène avec une lumière et un fond maîtrisés.",
+      "prompt": "Photo de studio de [produit et matière] sur [fond ou surface], vue [angle]. Lumière [direction et douceur], ombre naturelle, reflets maîtrisés. Le produit occupe [position et taille dans le cadre].",
+      "referenceCount": 0,
+      "preferredFamily": "qwen21",
+      "tips": ["Décris la matière, l’angle et la lumière séparément.", "Pour représenter un produit existant, joins sa photo et précise les détails à conserver."]
+    },
+    {
+      "id": "poster",
+      "title": "Affiche et texte court",
+      "description": "Une composition graphique autour d’un titre bref.",
+      "prompt": "Affiche [style graphique] avec le texte exact « [titre de 1 à 3 mots] ». Typographie [style], placée [position], couleur [couleur du texte] sur [fond]. Ajouter [éléments graphiques]. Hiérarchie visuelle claire et texte lisible.",
+      "referenceCount": 0,
+      "preferredFamily": "qwen21",
+      "tips": ["Place le texte exact entre guillemets et garde-le court.", "Choisis un format portrait dans le champ Format demandé. Vérifie chaque lettre dans l’image produite."]
+    },
+    {
+      "id": "precise-edit",
+      "title": "Retouche ciblée",
+      "description": "Une modification décrite précisément sur une image choisie.",
+      "prompt": "Dans l’image 1, [modification précise et emplacement]. Conserver [composition, pose, perspective et éléments essentiels]. Garder [style et éclairage souhaités]. Intégrer la modification naturellement dans la scène.",
+      "referenceCount": 1,
+      "preferredFamily": "qwen21",
+      "tips": ["Ajoute une photo ou utilise explicitement une création de la bibliothèque comme référence.", "La retouche est guidée par le brief et peut modifier d’autres zones : compare le résultat avec l’original."]
+    },
+    {
+      "id": "two-image-composition",
+      "title": "Composer deux images",
+      "description": "Une scène construite avec deux références dans un ordre explicite.",
+      "prompt": "Utiliser [sujet ou objet] de l’image 1 dans [décor ou ambiance] de l’image 2. Le placer [relation spatiale précise]. Harmoniser la perspective et la lumière [direction souhaitée]. Conserver [détails essentiels de chaque référence] pour une scène cohérente.",
+      "referenceCount": 2,
+      "preferredFamily": "qwen21",
+      "tips": ["L’image choisie dans la bibliothèque est la référence 1 ; le fichier ajouté devient la référence 2.", "Décris le rôle de chaque image et la relation entre les sujets."]
+    },
+    {
+      "id": "composition-variation",
+      "title": "Variation d’une création",
+      "description": "Explorer une nouvelle ambiance en prenant une image comme point de départ.",
+      "prompt": "Créer une variante de l’image 1 avec [nouvelle palette, ambiance, matière ou style]. Préserver [cadrage, composition, pose et proportions importantes]. Modifier uniquement [éléments à explorer] autant que possible.",
+      "referenceCount": 1,
+      "preferredFamily": "klein",
+      "tips": ["Une référence guide la composition ; une graine seule ne la préserve pas.", "Laisse la graine vide pour une nouvelle variante. Une structure identique reste à vérifier visuellement."]
+    }
+  ]
+}

@@ -2,9 +2,11 @@ import hashlib
 import importlib.util
 import io
 import tempfile
+import sys
 from pathlib import Path
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 spec = importlib.util.spec_from_file_location('imagex_images', Path(__file__).resolve().parents[1] / 'images.py')
 images = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(images)

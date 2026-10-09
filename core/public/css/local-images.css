@@ -692,3 +692,21 @@
     transition:none
   }
 }
+.image-starters {
+  margin-bottom:24px;
+  padding:14px 16px;
+  border:1px solid var(--border-color, #33443d);
+  border-radius:12px;
+}
+.image-starters summary {
+  cursor:pointer;
+  font-weight:600;
+}
+.image-starters label {
+  margin-top:18px;
+}
+.image-starters ul {
+  padding-left:20px;
+  font-size:13px;
+  line-height:1.6;
+}

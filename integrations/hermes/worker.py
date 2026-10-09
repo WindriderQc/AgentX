@@ -29,7 +29,12 @@ def query(payload):
         'to distinguish installed capabilities from suggestions. Do not create images, change the '
         'host, install dependencies, or claim to have inspected anything absent from the supplied evidence.'
     )
-    return instruction + '\n\nRequest and current Core evidence:\n' + json.dumps(payload, ensure_ascii=False)
+    boundary = (' Core currently exposes text creation, zero to two ordered image references, configured '
+                'profiles, dimensions, seed, archived history/details and verified recipe export. Installed '
+                'ComfyUI nodes do not establish a Core capability. Core does not expose masks, denoise '
+                'controls, standalone upscaling, ControlNet, LoRA, arbitrary graphs or recipe import. '
+                'Do not claim these are live, or promise identical pixels from seed or export alone.')
+    return instruction + boundary + '\n\nRequest and current Core evidence:\n' + json.dumps(payload, ensure_ascii=False)
 
 
 def run(payload):

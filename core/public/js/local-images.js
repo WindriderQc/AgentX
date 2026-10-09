@@ -18,6 +18,15 @@
   const genericSizes = [...$('image-size').options].map(option => [option.value, option.textContent]);
   const shape = (w, h) => w === h ? 'Carré' : w > h ? 'Paysage' : 'Portrait';
   const referenceCount = () => (selectedReference ? 1 : 0) + $('image-references').files.length;
+  const starters = globalThis.AgentXImageStarters?.mount({
+    getContext: () => ({ locked: locked() || !config?.configured, referenceCount: referenceCount(),
+      profiles: workshop?.profiles || [], hasPrompt: !!$('image-prompt').value.trim() }),
+    apply: prompt => {
+      ++draftEpoch; $('image-prompt').value = prompt; $('image-draft-source').hidden = true;
+      $('image-status').textContent = 'Canevas préparé. Remplace les passages entre crochets et vérifie les références avant de créer.';
+      $('image-prompt').focus();
+    }
+  });
   function node(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }
   function facts(target, entries) {
     target.replaceChildren();
@@ -34,6 +43,7 @@
     $('image-create').disabled = block || !config?.configured || referenceCount() > 2;
     $('image-new').disabled = block || !config; $('image-use-reference').disabled = block; $('image-reuse-brief').disabled = block;
     for (const button of $('image-gallery').querySelectorAll('button')) button.disabled = block;
+    starters?.refresh();
   }
   function updateFormMode() {
     const count = referenceCount();
@@ -207,7 +217,7 @@
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height); return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
     } finally { URL.revokeObjectURL(url); }
   }
-  $('image-form').addEventListener('input', () => { ++draftEpoch; });
+  $('image-form').addEventListener('input', () => { ++draftEpoch; starters?.refresh(); });
   $('image-search').addEventListener('input', renderHistory);
   $('image-size').addEventListener('change', updateFormMode);
   $('image-profile').addEventListener('change', renderRecipe);
