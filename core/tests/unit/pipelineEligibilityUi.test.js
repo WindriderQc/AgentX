@@ -22,6 +22,8 @@ test('shows manual and automation reasons using only observation requests', asyn
   const { result, fetch } = await observe();
   expect(result.innerHTML).toContain('Dependencies are incomplete');
   expect(result.innerHTML).toContain('No structured automation policy');
+  expect(result.innerHTML).toContain('Guarded automation (legacy)');
+  expect(result.innerHTML).not.toContain('<strong>Coding Team</strong>');
   expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/api/pipeline/tasks/0952/eligibility?automation=false', '/api/pipeline/tasks/0952/eligibility?automation=true']);
   expect(fetch.mock.calls.every(([, options]) => !options.method && !options.body)).toBe(true);
 });

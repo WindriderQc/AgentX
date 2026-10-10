@@ -227,7 +227,8 @@
       stateEl.textContent = run ? `Request ${run.pipelineId || pending?.pipelineId || ''} · ${formatStatus(run.phase)}` : `Submitting request for ${pending?.pipelineId || 'one task'}…`;
     } else {
       stateEl.dataset.tone = 'ready';
-      stateEl.textContent = 'Host observed · one local coding worker';
+      const observed = Number.isFinite(Date.parse(control.observedAt)) ? formatDate(control.observedAt) : 'unknown';
+      stateEl.textContent = `Host observed ${observed} · one local coding worker`;
     }
     const summary = control?.summary;
     detail.textContent = summary
@@ -238,7 +239,7 @@
       detail.textContent = `Task attempt ${control.inference.attempt} · ${control.inference.requestCount} model call(s). Inference retries keep this attempt and never replay worker tools.`;
     }
     const progress = run?.progress;
-    if (progress && !controller?.error && !controller?.checking && control.available) {
+    if (progress && (pending || control.busy || run.phase === 'unknown') && !controller?.error && !controller?.checking && control.available) {
       const stages = { preparing: 'Preparing workspace', dependencies: 'Installing dependencies', model_wait: 'Waiting for model capacity or response',
         model_generation: 'Model generating', tool: 'Worker tool running', test: 'Tests running', checkpoint: 'Saving checkpoint', publishing: 'Publishing draft PR' };
       const results = { blocked: 'Blocked', review: 'Draft PR ready for review', local_only: 'Local work awaits publication' };

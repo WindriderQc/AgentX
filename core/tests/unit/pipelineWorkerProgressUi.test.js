@@ -2,15 +2,15 @@
 const vm = require('vm');
 const { readPipelineScript } = require('../helpers/pipelineScripts');
 
-function render(progress, phase = 'running') {
+function render(progress, phase = 'running', extra = {}) {
   const elements = Object.fromEntries(['State', 'Detail', 'Task', 'Confirm', 'Button', 'Result'].map(name =>
     [`pipelineTeamLaunch${name}`, { dataset: {}, value: '', textContent: '', innerHTML: '' }]));
   const window = {};
   vm.runInNewContext(readPipelineScript('pipeline-delivery.js'), { window, URL });
   const control = { available: true, busy: phase === 'running', candidates: [], run: {
-    pipelineId: '0001', phase, progress, message: 'Synthetic fixture' } };
+    pipelineId: '0001', phase, progress, message: 'Synthetic fixture' }, ...extra };
   window.PipelineDelivery.create({
-    $: id => elements[id], state: { launchController: { control } },
+    $: id => elements[id], state: { launchController: { control, pending: phase === 'finished' ? null : { pipelineId: '0001' } } },
     escapeHtml: value => String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
     formatDate: value => value, formatStatus: value => value
   }).renderDispatchControl();
@@ -30,10 +30,25 @@ test('shows heartbeat, useful progress, budgets, test result and checkpoint sepa
   expect(elements.pipelineTeamLaunchDetail.textContent).toContain('Local checkpoint: aaaaaaaaaaaa');
 });
 
-test('a stopped blocked attempt and an unknown host are never presented as successful delivery', () => {
+test('a historical blocked attempt stays in its receipt and an unknown host stays visible', () => {
   const progress = { stage: 'checkpoint', result: 'blocked', stopReason: 'soft_budget_no_progress' };
-  expect(render(progress, 'finished').pipelineTeamLaunchState.textContent).toContain('Blocked');
+  expect(render(progress, 'finished').pipelineTeamLaunchState.textContent).toContain('Host observed');
   expect(render(progress, 'unknown').pipelineTeamLaunchState.textContent).toContain('Host outcome unknown');
+});
+
+test('a completed earlier task cannot replace current admission or disable a new candidate', () => {
+  const elements = render({ stage: 'publishing', result: 'review', heartbeatAt: '2026-10-08T12:01:00Z' }, 'finished', {
+    observedAt: '2026-10-09T12:00:00Z',
+    candidates: [{ pipelineId: '0002', title: 'Next synthetic task' }],
+    summary: { queuedTasks: 2, eligibleTasks: 1, privateQueuedTasks: 1 }
+  });
+  expect(elements.pipelineTeamLaunchState.textContent).toBe('Host observed 2026-10-09T12:00:00Z · one local coding worker');
+  expect(elements.pipelineTeamLaunchState.textContent).not.toContain('0001');
+  expect(elements.pipelineTeamLaunchDetail.textContent).toContain('1 of 2 queued tasks eligible');
+  expect(elements.pipelineTeamLaunchTask.disabled).toBe(false);
+  expect(elements.pipelineTeamLaunchTask.innerHTML).toContain('0002');
+  expect(elements.pipelineTeamLaunchResult.hidden).toBe(false);
+  expect(elements.pipelineTeamLaunchResult.innerHTML).toContain('0001');
 });
 
 test('untrusted labels, raw fields and injected markup do not enter progress text or HTML', () => {
