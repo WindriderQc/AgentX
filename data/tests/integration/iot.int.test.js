@@ -87,6 +87,37 @@ describe('IoT store (integration, real Mongo)', () => {
   describe('minute writes', () => {
     const T = Date.UTC(2026, 0, 5, 10, 0, 0);
 
+    test('mixed legacy streams store one source per measure-minute and survive restart through the HTTP history API', async () => {
+      const clock = { ms: T };
+      const service = iot.createIot({ now: () => new Date(clock.ms) });
+      await service.ready(db);
+      const say = (topic, value) => service.handleMessage(topic, Buffer.from(value));
+      // Cold boot: bundles arrive first; direct readings still win this minute.
+      say('esp32/alive/SYN_01', '{"CPUtemp":10,"wifi":-80}');
+      clock.ms += 1000;
+      say('esp32/data/SYN_01', '{"CPUtemp":20,"wifi":-70,"battery":0}');
+      clock.ms += 1000;
+      say('sensors/SYN_01/cpu_temperature', '30');
+      clock.ms += 1000;
+      say('esp32/data/SYN_01', '{"CPUtemp":40,"wifi":-60,"battery":1}');
+      say('sensors/SYN_01/cpu_temperature', '32');
+      clock.ms = T + 66_000;
+      await service.tick();
+      expect(await minutes({ measure: 'cpu_temperature' })).toMatchObject([
+        { count: 2, min: 30, max: 32, mean: 31, median: 31 }
+      ]);
+      expect(await minutes({ measure: 'wifi_rssi' })).toMatchObject([{ count: 2, min: -70, max: -60, mean: -65 }]);
+      // A legacy-only next minute continues producing telemetry.
+      say('esp32/alive/SYN_01', '{"CPUtemp":45,"battery":2}');
+      await service.stop();
+      expect(await minutes({ measure: 'cpu_temperature' })).toMatchObject([{ count: 2, mean: 31 }, { count: 1, mean: 45 }]);
+      const response = await request(app).get('/api/v1/iot/devices/SYN_01/history')
+        .query({ measure: 'cpu_temperature', from: new Date(T).toISOString(), to: new Date(T + 120_000).toISOString(), resolution: 'minute' });
+      expect(response.status).toBe(200);
+      expect(response.body.data.measures.cpu_temperature.points).toMatchObject([{ count: 2, mean: 31 }, { count: 1, mean: 45 }]);
+      expect((await request(app).get('/api/v1/iot/devices/SYN_01/live')).body.data.measures.cpu_temperature.points).toEqual([]);
+    });
+
     test('a bucket is stored with its fields; a later part of the same minute is merged, not duplicated', async () => {
       const first = { device: DEVICE, measure: 'temperature', ts: new Date(T), ...summarize([20, 21, 22, 23].map((value, i) => ({ at: T + i * 5000, value }))) };
       await store.writeMinuteBuckets(db, [first]);

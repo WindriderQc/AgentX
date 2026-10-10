@@ -494,9 +494,9 @@ test('Databases and Janitor stay manual, and every tab offers Refresh', async ()
   assert.match(browser.content.innerHTML, /Read when the tab opens and on Refresh\.<\/p><\/div><button class="button" data-action="refresh">Refresh<\/button>/);
   assert.deepEqual(browser.timers, [], 'no timer on the Databases tab');
   // The refreshers that exist, by tab: nothing for Databases, Janitor, Storage or Files.
-  assert.deepEqual([...new Set(browser.refreshers.map((refresher) => refresher.tab))].sort(), ['gpu', 'live-data', 'network', 'overview']);
+  assert.deepEqual([...new Set(browser.refreshers.map((refresher) => refresher.tab))].sort(), ['gpu', 'iot', 'live-data', 'network', 'overview']);
   assert.deepEqual(Array.from(browser.refreshers, (refresher) => `${refresher.tab} ${refresher.everyMs}`).sort(),
-    ['gpu 30000', 'live-data 60000', 'live-data 60000', 'network 60000', 'overview 30000']);
+    ['gpu 30000', 'iot 2000', 'live-data 60000', 'live-data 60000', 'network 60000', 'overview 30000']);
   const sources = Object.fromEntries(SCRIPTS.map((file) => [file, read(file)]));
   for (const [file, heading] of [['app.js', 'Shared-drive Janitor'], ['app.js', 'Storage evidence'], ['files-tools.js', 'File inventory'], ['gpu.js', 'GPU telemetry'], ['mqtt.js', "heading('MQTT'"], ['activity.js', "heading('Activity'"]]) {
     assert.ok(sources[file].includes(heading), `${file} draws ${heading}`);

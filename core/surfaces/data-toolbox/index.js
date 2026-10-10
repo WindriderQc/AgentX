@@ -405,9 +405,9 @@ async function buildStatus() {
   const healthy = Object.values(sources).filter((source) => source.ok).length;
   return {
     extension: 'aio-ops-data-toolbox',
-    version: '1.9.0',
+    version: '1.10.0',
     owner: 'agentx',
-    // Seven write families are relayed: PATCH /network/devices/:mac (name, known flag,
+    // Nine write families are relayed: PATCH /network/devices/:mac (name, known flag,
     // type, location, notes), POST /network/scan (one scan request for the
     // collectors), POST /mqtt/publish (one MQTT message sent by hand),
     // POST /storage/scans (ask the native collector to read a source again:
@@ -418,10 +418,11 @@ async function buildStatus() {
     // last two, report-generate and report-delete (reports-trends-activity.js),
     // are POST /reports and DELETE /reports/:filename: a report is a file in
     // Data's own report store, never on the scanned disks, which is what
-    // `filesystemMutationsExposed` is about.
+    // `filesystemMutationsExposed` is about. IoT device metadata and explicit
+    // GPIO/reboot commands are the two additional families (iot-relay.js).
     readOnly: false,
     mutationsExposed: true,
-    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete'],
+    writes: ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete', 'iot-device-update', 'iot-command'],
     filesystemMutationsExposed: false,
     dataService: { baseUrl: dataBaseUrl(), healthy, total: entries.length },
     collectorPlacement: collectorPlacement(),
@@ -658,13 +659,15 @@ function register(api) {
   // Reports, storage growth trends and the activity log: their own file.
   require('./reports-trends-activity').mount(router, { relay, fetchData, timeoutMs: REQUEST_TIMEOUT_MS });
 
+  require('./iot-relay').mount(router, { relay, fetchData });
+
   app.use('/api/data-toolbox', router);
 }
 
 module.exports = {
   id: 'aio-ops-data-toolbox',
-  version: '1.9.0',
-  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete'],
+  version: '1.10.0',
+  capabilities: ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete', 'iot-device-update', 'iot-command'],
   register,
   boundedInt,
   pickQuery,

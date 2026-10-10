@@ -1,0 +1,43 @@
+.iot-broker { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; font-size: 13px; color: var(--muted); }
+.iot-search { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 18px 0; font-size: 13px; }
+.iot-search input { min-width: 0; max-width: 360px; flex: 1; }
+.iot-devices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr)); gap: 16px; }
+.iot-device.selected { border-color: var(--cyan); box-shadow: inset 0 2px 0 var(--cyan); }
+.iot-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.iot-card-head h3 { color: var(--text); margin-bottom: 6px; font-size: 19px; overflow-wrap: anywhere; }
+.iot-card-head small { color: var(--muted); overflow-wrap: anywhere; }
+.iot-card-head .pill { flex-shrink: 0; }
+.iot-location { color: var(--cyan); font-size: 13px; }
+.iot-measures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 10px; margin: 22px 0; }
+.iot-measure > span, .iot-measure > small { display: block; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.iot-measure > strong { display: block; font-size: 25px; margin: 5px 0; letter-spacing: -.03em; }
+.iot-measure strong small { color: var(--muted); font-size: 13px; font-weight: 400; }
+.iot-card-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; padding-top: 14px; border-top: 1px solid var(--line); }
+.iot-card-foot span { font-size: 11px; color: var(--muted); }
+.iot-controls { display: flex; flex-wrap: wrap; gap: 14px; margin: 16px 0; }
+.iot-controls label, .iot-actions-grid label { display: flex; flex-direction: column; gap: 7px; color: var(--muted); font-size: 13px; }
+.iot-controls select { min-width: 130px; max-width: 100%; }
+.iot-measure-picker { margin: 0 0 18px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; display: flex; flex-wrap: wrap; gap: 10px 20px; }
+.iot-measure-picker legend { color: var(--muted); font-size: 12px; padding: 0 6px; }
+.iot-measure-picker label { display: flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
+.iot-measure-picker input { width: 16px; height: 16px; accent-color: var(--cyan); }
+.iot-charts, .iot-actions-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.iot-chart-card h3 { color: var(--text); font-size: 15px; }
+.iot-chart { width: 100%; height: auto; display: block; overflow: visible; }
+.iot-chart text { fill: var(--muted); font: 11px system-ui, sans-serif; }
+.iot-grid-line { stroke: var(--line); stroke-width: 1; }
+.iot-plot polyline { fill: none; stroke: var(--cyan); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.iot-plot circle { fill: var(--cyan); }
+.iot-range { stroke: var(--blue); stroke-width: 3; opacity: .5; vector-effect: non-scaling-stroke; }
+.iot-chart-summary, .iot-source { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.iot-data summary, .iot-actions-grid summary { cursor: pointer; min-height: 32px; font-size: 13px; color: var(--cyan); }
+.iot-data .table-wrap { max-height: 300px; margin-top: 12px; }
+.iot-empty { padding: 25px 16px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: 13px; }
+.iot-feedback { min-height: 24px; font-size: 13px; overflow-wrap: anywhere; }
+.iot-actions-grid form { display: grid; gap: 14px; margin-top: 16px; }
+.iot-actions-grid textarea { min-height: 90px; }
+.iot-search input, .iot-controls select, .iot-actions-grid input, .iot-actions-grid textarea, .iot-actions-grid select { padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); color: var(--text); font: inherit; width: 100%; }
+.iot-actions-grid button { justify-self: start; }
+.iot-chart-card, .iot-device, .iot-controls label { min-width: 0; }
+.iot-device button { min-height: 44px; }
+@media (max-width: 760px) { .iot-charts, .iot-actions-grid { grid-template-columns: 1fr; } .iot-controls label { flex: 1 1 120px; } .iot-chart-card { padding: 14px 10px; } }

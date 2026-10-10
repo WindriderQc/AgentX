@@ -15,14 +15,16 @@
  * Readings are aggregated in memory per device, measure and minute, stamped
  * with Data's own clock at reception. A minute is written five seconds after
  * it ends, and the open minute at shutdown: a crash loses at most the open
- * minute. Heartbeats only refresh "last seen". The readings bundled in
- * `esp32/data/<device>` are ignored: they repeat the `sensors/...` topics
- * under other names, so that message is proof of life only.
+ * minute. Legacy JSON on `esp32/data/<device>` and `esp32/alive/<device>`
+ * supplies numeric telemetry too. For each measure-minute, the structured
+ * sensor stream wins over data bundles, which win over heartbeat bundles.
+ * Repeated representations never increase that minute's sample count.
  */
 
 const { log } = require('../../utils/logger');
 const topics = require('./topics');
 const { parseDiscovery } = require('./discovery');
+const { parseLegacyReadings } = require('./legacyReadings');
 const { createMinuteAggregator, MINUTE_MS } = require('./buckets');
 const { createRegistry, MAX_DEVICES, MAX_MEASURES_PER_DEVICE, STALE_AFTER_MS, LIVE_RING_SIZE } = require('./registry');
 const store = require('./bucketStore');
@@ -47,6 +49,8 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
   let loading = null;
   let monitor = defaultMonitor;
   let aggregator = createMinuteAggregator();
+  let legacyData = createMinuteAggregator();
+  let legacyAlive = createMinuteAggregator();
   let removeListener = null;
   let timer = null;
   let ticking = false;
@@ -131,6 +135,17 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
       if (retained) return '';
       if (!registry.seen(parsed.device, at)) return refuse('device_limit');
       if (parsed.what === 'alive') counters.heartbeats += 1;
+      const readings = parseLegacyReadings(parsed.device, payload);
+      if (readings === null) return refuse('legacy_payload');
+      const target = parsed.what === 'data' ? legacyData : legacyAlive;
+      for (const [measure, value] of readings) {
+        const reason = registry.reading(parsed.device, measure, value, at, { transport: parsed.what });
+        if (reason) { refuse(reason); continue; }
+        const outcome = target.add(parsed.device, measure, value, at.getTime(), at.getTime());
+        if (outcome !== 'ok') { refuse(outcome); continue; }
+        counters.readings += 1;
+        counters.lastReadingAt = at;
+      }
       return '';
     }
     if (parsed.kind === 'announce') {
@@ -144,6 +159,19 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
     const described = parseDiscovery(parsed.device, payload);
     if (!described) return refuse('discovery_payload');
     return registry.applyDiscovery(parsed.device, described, at) ? '' : refuse('device_limit');
+  }
+
+  // All sources close together. Select one source per measure-minute even
+  // when a fallback was heard first or a duplicate arrives much later.
+  function takeBuckets(method, atMs) {
+    const chosen = new Map();
+    for (const source of [aggregator, legacyData, legacyAlive]) {
+      for (const bucket of source[method](atMs)) {
+        const key = `${bucket.device}\n${bucket.measure}\n${bucket.ts.getTime()}`;
+        if (!chosen.has(key)) chosen.set(key, bucket);
+      }
+    }
+    return [...chosen.values()];
   }
 
   async function writeBuckets(buckets) {
@@ -190,7 +218,7 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
     ticking = true;
     try {
       const nowMs = at.getTime();
-      await writeBuckets(aggregator.takeClosed(nowMs));
+      await writeBuckets(takeBuckets('takeClosed', nowMs));
       // Deaf is not silent: staleness is only judged while the broker link is up.
       const link = monitor?.status?.();
       if (consuming && link?.connected) registry.sweepStale(at, link.connectedAt ? new Date(link.connectedAt) : at);
@@ -239,7 +267,7 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
     removeListener = null;
     consuming = false;
     if (!registry || !db) return;
-    await writeBuckets(aggregator.takeAll());
+    await writeBuckets(takeBuckets('takeAll'));
     try { await registry.persist(db, { all: true }); }
     catch (error) { log(`[iot] registry not saved at shutdown: ${error.message}`, 'warn'); }
     await events;
@@ -268,7 +296,7 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
         refusedByReason: { ...counters.refusedByReason }, lastAt: iso(counters.lastReadingAt)
       },
       buckets: {
-        written: counters.bucketsWritten, open: aggregator.size(), pendingRetry: pending.length,
+        written: counters.bucketsWritten, open: aggregator.size() + legacyData.size() + legacyAlive.size(), pendingRetry: pending.length,
         dropped: counters.bucketsDropped, lastWriteAt: iso(counters.lastWriteAt), lastError: counters.lastError
       },
       rollup: rollup
@@ -351,7 +379,11 @@ function createIot({ now = () => new Date(), activity = defaultActivity, monitor
     ready, start, stop, tick, maintain, handleMessage, status,
     listDevices, getDevice, patchDevice, readHistory, readLive, sendCommand,
     isConsuming: () => consuming,
-    _reset() { db = null; registry = null; loading = null; aggregator = createMinuteAggregator(); pending = []; resetCounters(); }
+    _reset() {
+      db = null; registry = null; loading = null;
+      aggregator = createMinuteAggregator(); legacyData = createMinuteAggregator(); legacyAlive = createMinuteAggregator();
+      pending = []; resetCounters();
+    }
   };
 }
 

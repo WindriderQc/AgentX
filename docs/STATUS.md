@@ -38,8 +38,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   Data Toolbox (`/data-toolbox`), read-only except editing a network device's
   record, requesting a network scan from the active collector, publishing
   an MQTT message by hand, asking the storage collector for a scan,
-  storing the owner's duplicate-review decisions (intent only: no file is deleted)
-  and generating or deleting a report. It also shows storage growth and Data's
+  storing the owner's duplicate-review decisions (intent only: no file is deleted),
+  generating or deleting a report, editing an IoT device's display name, location
+  and notes, and explicitly sending a GPIO or reboot command. Its IoT tab shows
+  device cards, raw live graphs and sampled history; Système links directly to it.
+  It also shows storage growth and Data's
   activity log. The `demo` profile keeps chat,
   model discovery, RAG and Benchmark. Core owns one common home at `/`,
   `/portal` and `/ecosystem`; full-profile navigation groups Personnel, Famille

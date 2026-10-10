@@ -432,10 +432,13 @@ of merges and wait for its result before deploying.
 Data is available through Compose profile `data`. Set `COMPOSE_PROFILES=data`
 and `AGENTX_PROFILE=full`, then use the existing `up` command. Startup waits for
 Data's Mongo-backed health endpoint too. The Core portal links to `/data-toolbox`;
-the UI exposes read routes plus seven kinds of write: a network device's record, a
+the UI exposes read routes plus nine kinds of write: a network device's record, a
 network scan request, an MQTT message published by hand, a storage scan
 request, the Janitor's duplicate-review decisions, and the generation and the
-deletion of a report. Native collectors require explicit external
+deletion of a report, an IoT device's owner metadata, and an explicit GPIO or
+reboot command. **Système → Appareils IoT** opens `/data-toolbox#iot`; it
+reads cards and live/history curves without publishing commands automatically.
+Native collectors require explicit external
 targets/roots. Background jobs are disabled unless
 `DATA_BACKGROUND_JOBS_ENABLED=true`. The optional Obsidian inventory requires
 an external `OBSIDIAN_VAULT_POLICY_PATH` and read-only mount. The historical

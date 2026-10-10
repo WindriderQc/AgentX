@@ -254,12 +254,12 @@ test('Data\'s refusals, an unreadable source list and a timeout reach the page a
   assert.equal(calls.filter((call) => call.options.method === 'POST').length, before, 'without the source list nothing is posted');
 });
 
-test('the manifest and the status projection name the storage scan request among the seven write families', async (t) => {
+test('the manifest and the status projection name the storage scan request among the nine write families', async (t) => {
   const original = global.fetch;
   t.after(() => { global.fetch = original; });
   global.fetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ status: 'success', data: {} }) });
   const status = await toolbox.buildStatus();
-  assert.deepEqual(status.writes, ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete']);
+  assert.deepEqual(status.writes, ['network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete', 'iot-device-update', 'iot-command']);
   assert.equal(status.filesystemMutationsExposed, false);
   assert.ok(toolbox.capabilities.includes('storage-scan-request'));
   const html = fs.readFileSync(path.join(publicRoot, 'index.html'), 'utf8');

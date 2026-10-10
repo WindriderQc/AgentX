@@ -24,6 +24,10 @@ const MAX_INFO_CHARS = 80;
 const DEFAULT_UNITS = Object.freeze({
   temperature: '°C',
   cpu_temperature: '°C',
+  dht_temperature: '°C',
+  cpu_frequency: 'MHz',
+  free_heap: 'B',
+  lux: 'lx',
   pressure: 'hPa',
   altitude: 'm',
   humidity: '%',

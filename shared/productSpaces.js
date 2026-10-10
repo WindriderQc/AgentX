@@ -55,6 +55,7 @@ function productSpaces(link) {
       item('analytics', 'AI activity', '/analytics', 'fa-chart-line'),
       item('performance', 'Server performance', '/performance', 'fa-tachometer-alt'),
       item('backup', 'Backup', '/backup', 'fa-box-archive'),
+      item('iot', 'Appareils IoT', '/data-toolbox#iot', 'fa-microchip'),
       item('data-toolbox', 'Data Toolbox', '/data-toolbox', 'fa-database'),
       item('operator-skill', 'Skill opérateur (zip)', '/api/operator-skill/download', 'fa-file-zipper', 'core', {
         description: 'Le skill qui apprend à un assistant à opérer cette instance, à jour avec la version en service.'

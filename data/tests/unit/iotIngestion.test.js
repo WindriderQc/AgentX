@@ -130,17 +130,52 @@ describe('readings', () => {
     expect(status.readings.refusedByReason).toEqual({ device_limit: 2, measure_limit: 1 });
   });
 
-  test('the bundled esp32/data readings and heartbeats store nothing: they refresh last seen', async () => {
+  test('heartbeats refresh last seen and bundled numeric readings supply live values and history', async () => {
     const { clock, db, iot, say } = await setup();
     say('esp32/alive/SYN_01', '{"message_type":"heartbeat"}');
     clock.ms = T0 + 4000;
     say('esp32/data/SYN_01', '{"payload":{"cpu_temp_c":64.4,"bmx_temp_c":27.1}}');
     const device = await iot.getDevice(db, 'SYN_01');
     expect(device.lastSeenAt).toBe(new Date(T0 + 4000).toISOString());
-    expect(device.measures).toEqual([]);
+    expect(device.measures).toEqual([
+      expect.objectContaining({ key: 'cpu_temperature', value: 64.4, unit: '°C' }),
+      expect.objectContaining({ key: 'temperature', value: 27.1, unit: '°C' })
+    ]);
+    expect((await iot.readLive(db, 'SYN_01')).measures.temperature.points).toEqual([
+      { ts: new Date(T0 + 4000).toISOString(), value: 27.1 }
+    ]);
     await iot.stop();
-    expect(db.writes.iot_minute_buckets).toHaveLength(0);
+    expect(db.writes.iot_minute_buckets).toHaveLength(2);
     expect((await iot.status(db)).messages).toEqual({ received: 2, heartbeats: 1 });
+  });
+
+  test('fresh sensor values win over both bundles, without duplicate points in the live ring', async () => {
+    const { clock, db, iot, say } = await setup();
+    say('esp32/alive/SYN_01', '{"CPUtemp":10}');
+    clock.ms += 1000;
+    say('esp32/data/SYN_01', '{"CPUtemp":20}');
+    clock.ms += 1000;
+    say('sensors/SYN_01/cpu_temperature', '30');
+    clock.ms += 1000;
+    say('esp32/data/SYN_01', '{"CPUtemp":40}');
+    say('esp32/alive/SYN_01', '{"CPUtemp":50}');
+    const live = await iot.readLive(db, 'SYN_01');
+    expect(live.measures.cpu_temperature.points).toEqual([{ ts: new Date(T0 + 2000).toISOString(), value: 30 }]);
+    clock.ms = T0 + 63_000;
+    say('esp32/data/SYN_01', '{"CPUtemp":60}');
+    expect((await iot.readLive(db, 'SYN_01')).measures.cpu_temperature.points).toEqual([
+      { ts: new Date(clock.ms).toISOString(), value: 60 }
+    ]);
+  });
+
+  test('retained bundles create no device or samples and invalid bundles preserve proof of life only', async () => {
+    const { db, iot, say } = await setup();
+    say('esp32/data/SYN_01', '{"CPUtemp":20}', { retain: true });
+    expect(await iot.listDevices(db)).toEqual([]);
+    expect(say('esp32/data/SYN_01', '{"sender":"SYN_02","CPUtemp":20}')).toBe('legacy_payload');
+    expect((await iot.getDevice(db, 'SYN_01')).measures).toEqual([]);
+    await iot.stop();
+    expect(db.writes.iot_minute_buckets).toEqual([]);
   });
 });
 

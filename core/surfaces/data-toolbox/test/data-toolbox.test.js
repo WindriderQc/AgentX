@@ -190,10 +190,10 @@ function registeredSurface() {
   return { mounts, routers };
 }
 
-test('manifest identifies the AIOps Data Toolbox contract and its seven write families', () => {
+test('manifest identifies the AIOps Data Toolbox contract and its nine write families', () => {
   assert.equal(toolbox.id, 'aio-ops-data-toolbox');
-  assert.equal(toolbox.version, '1.9.0');
-  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete']);
+  assert.equal(toolbox.version, '1.10.0');
+  assert.deepEqual(toolbox.capabilities, ['data-toolbox-ui', 'data-readonly-projection', 'network-device-update', 'network-scan-request', 'mqtt-publish', 'storage-scan-request', 'janitor-review-decision', 'report-generate', 'report-delete', 'iot-device-update', 'iot-command']);
   assert.throws(() => toolbox.register({ contractVersion: 1 }), /contract v2/);
 });
 
@@ -210,7 +210,7 @@ test('query projection keeps only allowlisted, bounded values', () => {
   assert.throws(() => toolbox.safeName('../private', 'collection'), /Invalid collection/);
 });
 
-test('registration mounts the cockpit, GET proxy families and exactly seven write families', () => {
+test('registration mounts the cockpit, GET proxy families and exactly nine write families', () => {
   const { mounts, routers } = registeredSurface();
   const appPaths = mounts.map((entry) => entry.path);
   assert.ok(appPaths.includes('/assets/data-toolbox'));
@@ -223,7 +223,7 @@ test('registration mounts the cockpit, GET proxy families and exactly seven writ
   assert.deepEqual(routes.filter((route) => route.method !== 'get').map((route) => `${route.method} ${route.path}`),
     ['post /storage/scans', 'post /network/scan', 'patch /network/devices/:mac', 'post /mqtt/publish',
       'put /janitor/review-decisions/:sha256', 'post /janitor/review-decisions/batch', 'delete /janitor/review-decisions/:sha256',
-      'post /reports', 'delete /reports/:filename'],
+      'post /reports', 'delete /reports/:filename', 'patch /iot/devices/:id', 'post /iot/devices/:id/commands'],
     'the only mutations are a storage scan request, a network scan request, the edit of a network device record, publishing an MQTT message, the three writes of a Janitor review decision (store, import, remove), and generating or deleting a report');
   // No approval, preview or execution route of the janitor is relayed, under any method.
   assert.deepEqual(routes.filter((route) => /approve|reject|preview|apply|execute|\/run$/.test(route.path)), []);
@@ -371,11 +371,11 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   // list behind a disclosure: every write family of the manifest is named
   // there, each with its own explanation, and nothing else is listed.
   const guardrail = html.match(/<section class="guardrail" role="note"[^>]*>([\s\S]*?)<\/section>/)[1];
-  assert.match(guardrail, /<details>\s*<summary><strong>No filesystem actions\.<\/strong> <span>This page can send seven kinds of change to Data\.<\/span>/);
+  assert.match(guardrail, /<details>\s*<summary><strong>No filesystem actions\.<\/strong> <span>This page can send nine kinds of change to Data\.<\/span>/);
   assert.doesNotMatch(guardrail, /<details open/);
   const listed = [...guardrail.matchAll(/<li data-write="([a-z-]+)">([^<]+)<\/li>/g)].map((match) => [match[1], match[2]]);
   const families = toolbox.capabilities.filter((capability) => !['data-toolbox-ui', 'data-readonly-projection'].includes(capability));
-  assert.equal(families.length, 7);
+  assert.equal(families.length, 9);
   assert.deepEqual(listed.map(([family]) => family), families);
   assert.deepEqual(Object.fromEntries(listed), {
     'network-device-update': "a network device's record (name, known flag, type, location, notes);",
@@ -384,9 +384,11 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
     'storage-scan-request': 'a storage scan request from the Storage tab, which only reads the disks and refreshes the index;',
     'janitor-review-decision': "the duplicate-review decisions of the Janitor tab (saved, imported from this browser's draft, or removed), which delete no file;",
     'report-generate': 'the generation of a report from the Storage tab;',
-    'report-delete': 'the deletion of a report from the Storage tab.'
+    'report-delete': 'the deletion of a report from the Storage tab;',
+    'iot-device-update': 'an IoT device’s display name, location and notes;',
+    'iot-command': 'an explicit GPIO ON/OFF or reboot command from the IoT tab.'
   });
-  assert.match(guardrail, /<p>This page sends seven kinds of change to Data:<\/p>\s*<ol>/);
+  assert.match(guardrail, /<p>This page sends nine kinds of change to Data:<\/p>\s*<ol>/);
   assert.match(guardrail, /<p>A report is a file in Data's own report store, never on the scanned disks\.<\/p>/);
   // The Overview repeats the page's own list in full, from the same element.
   assert.match(guardrail, /<div id="guardrailDetail"/);
@@ -395,7 +397,7 @@ test('browser bundle keeps all operator domains and explicit guardrails', () => 
   assert.match(html, /Preview, apply, move and delete endpoints are not exposed here/);
   assert.doesNotMatch(html, /Storage scan, preview/);
   assert.doesNotMatch(html, /The only change this page sends/);
-  assert.match(app, /Write routes<\/span><strong>9 in 7 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions \(save, import, remove\), report generation, report deletion</);
+  assert.match(app, /Write routes<\/span><strong>11 in 9 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions \(save, import, remove\), report generation, report deletion, IoT device record, IoT command</);
   assert.match(css, /@media \(max-width: 620px\)/);
 });
 
