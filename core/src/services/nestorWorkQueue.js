@@ -2,9 +2,9 @@
 const queue = require('./heavyWorkQueueService');
 const notifications = require('./heavyWorkQueueNotifications');
 const { fail } = require('./heavyWorkQueueContract');
-const view = job => Object.fromEntries(['id', 'key', 'title', 'kind', 'state', 'revision', 'hosts', 'estimatedMinutes',
+const view = job => ({ authority: 'core.heavy-work-queue', ...Object.fromEntries(['id', 'key', 'title', 'kind', 'state', 'revision', 'hosts', 'estimatedMinutes',
   'notBefore', 'startBefore', 'reservation', 'source', 'operation', 'releaseReceipt', 'reason', 'createdAt', 'updatedAt', 'archived']
-  .filter(key => job[key] !== undefined).map(key => [key, job[key]]));
+  .filter(key => job[key] !== undefined).map(key => [key, job[key]])) });
 async function operate(body, actor = 'nestor') {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw fail('Work queue operation required');
   const fields = {
