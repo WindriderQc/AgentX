@@ -30,6 +30,7 @@ test('the host-bound tool is optional, packaged, and keeps its private token out
   assert.deepEqual(worker.parameters.properties.operation.enum, ['context', 'tasks', 'publish']);
   assert.equal(JSON.stringify(main).includes('synthetic-secret-value'), false);
   assert.equal(main.parameters.properties.workId, undefined);
+  assert.deepEqual(Object.keys(main.parameters.properties), ['operation']);
 });
 test('execute binds the real call id and run from the hook, and never trusts factory/model run parameters', async () => {
   const h = setup(), context = native('main'), tool = h.factory({ ...context, runId: 'invented-factory-run' });
@@ -47,7 +48,8 @@ test('execute binds the real call id and run from the hook, and never trusts fac
 test('the guardian legacy read is blocked only when Core owns that current turn', async () => {
   const h = setup(), context = native('main');
   const blocked = await h.hooks.before_tool_call({ toolName: 'list_personal_tasks', toolCallId: 'read', runId }, context);
-  assert.equal(blocked.block, true); assert.match(blocked.blockReason, /not a completed task lookup/);
+  assert.equal(blocked.block, true); assert.match(blocked.blockReason, /not task data or a completed lookup/);
+  assert.match(blocked.blockReason, /"args":\{"operation":"request"\}/);
   assert.equal(await h.hooks.before_tool_call({ toolName: 'list_personal_tasks' }, native('family')), undefined);
   const legacy = setup(async () => ({ ok: false, status: 404, json: async () => ({ message: 'No migrated turn' }) }));
   assert.equal(await legacy.hooks.before_tool_call({ toolName: 'list_personal_tasks', runId }, context), undefined);
@@ -59,6 +61,13 @@ test('deferred tool calls preserve actual native identity and enforce the select
   await tool.execute('wrapped', { operation: 'tasks', limit: 5, actor: 'family' });
   assert.deepEqual(h.posted[0].body.input, { limit: 5 });
   assert.equal(h.posted[0].body.context.agentId, 'worker');
+});
+test('briefing and context task reads retain the same Core owner while notes-only context remains available', async () => {
+  const h = setup(), context = native('main');
+  assert.equal((await h.hooks.before_tool_call({ toolName: 'nestor_briefing', runId }, context)).block, true);
+  assert.equal((await h.hooks.before_tool_call({ toolName: 'tool_call', params: { id: 'plugin:super-dad-memory:nestor_context', args: { includeTasks: true } }, runId }, context)).block, true);
+  assert.equal(await h.hooks.before_tool_call({ toolName: 'nestor_context', params: { includeTasks: false }, runId }, context), undefined);
+  assert.equal(h.posted.length, 2);
 });
 test('acceptance, verified read and publication have different native receipts without claiming playback', async t => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-work-proof-')); t.after(() => rm(workspace, { recursive: true }));

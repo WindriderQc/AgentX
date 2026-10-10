@@ -296,13 +296,16 @@ function createPersonaTurnHandler({
             ? await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '' : '',
           isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('').trim();
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
+        const acceptedTaskWork = entry.workId ? await conversationWorks.taskAcceptance?.(entry.workId) : null;
         const nativeInstructions = nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
           soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
           addressed: member ? (consult ? teamAddress.consultInstruction : teamAddress.memberInstruction)(speaker.name)
             : memberWork ? teamAddress.consultContract(team, agentIdFor(session)) : '',
           workshop, scene: sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : ''), llmxTurn: isLlmX,
           imageSession: session, imageBackend: backend, imagesEnabled: !member })
-          + (entry.workId ? '\n\n' + conversationWorks.guardianInstructions : '');
+          + (entry.workId ? '\n\n' + conversationWorks.guardianInstructions : '')
+          + (acceptedTaskWork ? '\n\nCore has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
+            + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch or task-list call is needed. Acceptance is not task data or task completion.' : '');
         // Child presentation follows the selected adult personality on both
         // transports. Adult conversations keep their normal style overlay order.
         const agentxInstructions = [pack.childSafe ? session.persona?.identity : '',
@@ -329,6 +332,7 @@ function createPersonaTurnHandler({
         const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history: features.historyContext === false ? [] : history, streaming, channel: req.body?.channel,
           conversationFeatures: features,
+          ...(acceptedTaskWork ? { readAcceptedTaskWork: () => conversationWorks.taskAcceptance(entry.workId) } : {}),
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
           instructions: nativeInstructions, agentxInstructions, ...(turnContext ? { turnContext } : {}),

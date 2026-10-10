@@ -1101,6 +1101,32 @@ test('retained task answers still require successful task evidence observed in t
   }
 });
 
+test('canonical accepted work gives a truthful acknowledgment without inventing task data or redispatching', async () => {
+  const hash = value => require('node:crypto').createHash('sha256').update(value).digest('hex');
+  const voice = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' };
+  const text = 'Regarde mes tâches.', turnId = '33333333-3333-4333-8333-333333333333';
+  const accepted = { authority: 'core.conversation-works', accepted: true, sessionId: voice.sessionId,
+    turnId, id: hash(voice.sessionId + '\n' + turnId), requestSha256: hash(text), state: 'running', resultReady: false };
+  for (const variant of ['canonical', 'foreign-session', 'changed-request', 'browser-object', 'completed']) {
+    let requests = 0;
+    const client = createAgentClient({ env, settleMs: 0,
+      continuity: async () => ({ answer: answer('Tu as neuf tâches ouvertes. Réessaie.'), run: { model: 'native' },
+        receipts: [{ runId, tool: 'conversation_work', status: 'failed' }] }),
+      fetchImpl: async () => { requests++; return { ok: true, body: [created, completed] }; } });
+    const readAcceptedTaskWork = variant === 'browser-object' ? accepted : async () => ({ ...accepted,
+      ...(variant === 'foreign-session' ? { sessionId: 'foreign' } : variant === 'changed-request' ? { requestSha256: hash('changed') }
+        : variant === 'completed' ? { resultReady: true, state: 'completed' } : {}) });
+    const result = await client({ session: voice, channel: 'voice', text, readAcceptedTaskWork });
+    assert.equal(requests, 1); assert.doesNotMatch(result.text, /neuf/);
+    assert.equal(result.tools.receipts[0].status, 'failed');
+    if (['canonical', 'completed'].includes(variant)) {
+      assert.equal(result.tools.verification.status, 'deferred'); assert.equal(result.tools.acceptedWork.id, accepted.id);
+      assert.doesNotMatch(result.text, /[Rr]éessaie/);
+      assert.match(result.text, variant === 'completed' ? /résultat.*prêt/ : /demande est enregistrée/);
+    } else { assert.equal(result.tools.acceptedWork, undefined); assert.equal(result.tools.verification.reason, 'task_check_missing'); }
+  }
+});
+
 test('specialist and scene dialogue keep their own task response contract', async () => {
   for (const change of [{ agentId: 'secretary' }, { llmx: { scene: 'example' } }, { source: 'graphysx-llmx' }]) {
     const client = createAgentClient({ env, settleMs: 0,

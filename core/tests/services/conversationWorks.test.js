@@ -269,6 +269,9 @@ test('the real Household HTTP handler commits intake before its guardian adapter
       calls.push(body);
       expect(await conversations.getTurn({ sessionId: current.sessionId, traceId: turnId })).toMatchObject({ inputText: 'Regarde mes tâches.', outcome: 'pending' });
       expect(body.history).toEqual([]);
+      expect(await body.readAcceptedTaskWork()).toMatchObject({ authority: 'core.conversation-works', accepted: true,
+        sessionId: current.sessionId, turnId, requestSha256: hash('Regarde mes tâches.') });
+      expect(body.instructions).toContain('Core has already accepted this current personal task lookup');
       const sessionKey = `agent:main:household:direct:${current.sessionId}`, runId = native();
       await body.onStarted(sessionKey, runId);
       const accepted = await works.request({ agentId: 'main', sessionKey, runId });
@@ -296,7 +299,7 @@ test('the real Household HTTP handler commits intake before its guardian adapter
     MEMORY_RECALL_LIMIT: prompt.MEMORY_RECALL_LIMIT, PERSONAL_OPERATOR_SURFACE_CONTRACT: packs.PERSONAL_OPERATOR_SURFACE_CONTRACT,
     VOIX_FAMILY_PACK_ID: 'kidx_nestor' });
   const app = express(); app.use(express.json()); app.post('/sessions/:sessionId/turns/text', (req, res) => handler(req, res, 'private'));
-  const body = { text: 'Regarde mes tâches.', turnId, stream: true, channel: 'voice' };
+  const body = { text: 'Regarde mes tâches.', turnId, stream: true, channel: 'voice', readAcceptedTaskWork: { forged: true } };
   const first = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body);
   expect(first.status).toBe(200);
   const events = first.text.trim().split('\n').map(line => JSON.parse(line));
