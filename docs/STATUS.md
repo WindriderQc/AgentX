@@ -9,6 +9,13 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
+- **Household daily use.** The parent view filters tasks by child, review, date
+  and text, shows recorded deadlines for the next seven days, and edits open
+  routines against their stored revision. Date-only deadlines use the household
+  day. Nestor, its day page and the family conversation share the Core shopping
+  list; purchases are checked on parent pages. Local space navigation,
+  conversation starters and a character count support desktop and mobile use.
+
 - **Heavy work.** Core stores one-off requests from operator/coding sessions,
   resource-aware planned windows, dispatch identities and executor receipts.
   Cluster Schedule edits slots and shows estimated versus actual status. The

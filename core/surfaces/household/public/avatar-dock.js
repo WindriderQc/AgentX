@@ -106,7 +106,7 @@
     sceneBar.setAttribute('role', 'toolbar');
     sceneBar.setAttribute('aria-label', family ? 'Nestor' : 'Ton agent');
     sceneBar.innerHTML = `<p class="avatar-scene-status" aria-hidden="true"></p>
-      <div class="avatar-scene-actions"><button type="button" data-scene="close" hidden>Fermer l’affichage</button><button type="button" data-scene="menu">Menu</button></div>`;
+      <div class="avatar-scene-actions"><button type="button" data-scene="close" hidden>Fermer l’affichage</button><button type="button" data-scene="menu" aria-label="Afficher la conversation, le clavier et les réglages">Conversation</button></div>`;
     doc.body.append(dock, sceneBar);
     const sceneStatus = sceneBar.querySelector('.avatar-scene-status');
     const stage = dock.querySelector('.avatar-dock-stage');
@@ -146,6 +146,12 @@
       else { delete dock.dataset.view; delete doc.body.dataset.avatarView; }
       sceneBar.hidden = !scene || view === 'menu';
       sceneBar.querySelector('[data-scene=close]').hidden = view !== 'montre';
+      // On a phone, the open page keeps the face beside its heading. A fixed
+      // bottom corner would cover the composer and its Send button.
+      const heading = scene && view === 'menu' && root.matchMedia?.('(max-width: 700px)').matches
+        ? doc.querySelector?.('.conversation-heading') : null;
+      const parent = heading || doc.body;
+      if (dock.parentElement !== parent) parent.append(dock);
     }
     function sceneEvent(event) {
       if (event === 'show') shown = true;
@@ -284,6 +290,7 @@
         root.removeEventListener('persona-presence', onPresence);
         root.removeEventListener('persona-activity', onActivity);
         root.removeEventListener('persona-scene-receipt', onSceneReceipt);
+        root.removeEventListener('resize', applyView);
         statusObserver?.disconnect();
         doc.body.classList.remove('avatar-docked');
         delete doc.body.dataset.avatarMode;
@@ -294,6 +301,7 @@
       }
     };
     root.AvatarDock.current = handle;
+    root.addEventListener('resize', applyView);
     return handle;
   }
 

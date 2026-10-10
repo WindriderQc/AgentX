@@ -39,6 +39,16 @@ const { ageInYears, instanceToday } = require('../../src/domains/household/famil
 const KNOWN_UNKNOWN = 'dis simplement ce que tu ne sais pas; ne devine jamais un âge exact';
 
 describe('built-in Household surface on Core', () => {
+  test('the family edit route persists a revision-bound routine and rejects stale or private-lane edits', async () => {
+    const started = await request(app).post('/api/family/launch').send({ profile: { profileId: 'edit-child', displayName: 'Synthetic edit child' }, routines: [{ title: 'Original routine' }] }).expect(201);
+    const original = started.body.data.routines[0];
+    const changed = await request(app).post('/api/family/chores/update').send({ ref: original.id, expectedRevision: original.revision, title: 'Updated routine', dueAt: '2026-10-10' }).expect(200);
+    expect(changed.body.data.chore).toMatchObject({ title: 'Updated routine', dueDay: '2026-10-10', revision: original.revision + 1 });
+    await request(app).post('/api/family/chores/update').send({ ref: original.id, expectedRevision: original.revision, title: 'Stale routine' }).expect(409);
+    await request(app).post('/api/family/chores/update').send({ ref: original.id, expectedRevision: changed.body.data.chore.revision, status: 'done' }).expect(400);
+    const privateTask = await request(app).post('/api/secretary/tasks').send({ title: 'Synthetic private' }).expect(201);
+    await request(app).post('/api/family/chores/update').send({ ref: privateTask.body.data.task.id, expectedRevision: 0, title: 'Forbidden' }).expect(404);
+  });
   test('Household refuses excess input before inference or audit and keeps a complete boundary-sized request', async () => {
     const base = '/api/voice-personas/private/sessions';
     const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;

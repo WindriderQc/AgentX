@@ -11,7 +11,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const agents = agentCatalog?.agents?.length ? agentCatalog.agents : [{ id: 'main', name: 'Main', personalNotes: true }];
   if (!personas?.length) throw new Error('Aucun style n’est disponible. Choisis-en un dans Prompts.');
   app.innerHTML = `<section class="conversation-shell">
-    <header class="conversation-heading"><h1>Avec Nestor.</h1><p id="conversationListeningHint">${family ? "Dis « Hey Nestor » ou « Eille Nestor », puis parle naturellement." : "Conversation ouverte : parle librement tant que le micro est actif."}</p></header>
+    <header class="conversation-heading"><p class="eyebrow">${family ? 'Nestor · Famille' : 'Super Dad · Personnel'}</p><h1>Avec Nestor.</h1><p id="conversationListeningHint">${family ? "Dis « Hey Nestor » ou « Eille Nestor », puis parle naturellement." : "Conversation ouverte : parle librement tant que le micro est actif."}</p></header>
     <nav class="conversation-toolbar" aria-label="Actions de la conversation">
       <button id="conversationNew" class="button" type="button">Nouvel échange</button>
       <button id="conversationHistoryToggle" class="button" type="button" aria-expanded="false" aria-controls="conversationHistory">Récents</button>
@@ -74,6 +74,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <p id="conversationAgentContext" class="conversation-context muted"></p>
     </section></div></section>`;
   const el = id => document.getElementById(id);
+  const composer = window.ConversationComposer.mount({ input: el('conversationMessage'), form: el('conversationText'), family });
   // Shown, never spoken (#167): secrets exist only in the private space.
   const board = window.DisplayBoard.createScreen({ text: el('conversationBoard'), visual: el('conversationVisual') }, { secrets: !family, space: family ? 'family' : 'personal' });
   // The avatar dock paces a math picture to Nestor's first word; the Images zone draws it.
@@ -669,7 +670,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; clearBoard(); brain.reset();
     personalNotes.show(null);
     showTools(null); void recap?.refresh();
-    el('conversationMessage').value = ''; draftFiles = []; renderDraftFiles(); restoreProfile(); describe(); picker.focus();
+    el('conversationMessage').value = ''; composer.sync(); draftFiles = []; renderDraftFiles(); restoreProfile(); describe(); el('conversationMessage').focus();
   };
   // Enter sends, Shift+Enter adds a line; an IME composition keeps its Enter.
   el('conversationMessage').addEventListener('keydown', event => {
@@ -705,7 +706,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (shown && !input.value.trim()) input.value = text;
       if (conversation.current(epoch)) conversation.fail(error, epoch);
     }
-    finally { textBusy = false; conversation.show(conversation.state, el('conversationStatus').textContent); }
+    finally { composer.sync(); textBusy = false; conversation.show(conversation.state, el('conversationStatus').textContent); }
   };
   async function typedDuringVoice() {
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
@@ -718,6 +719,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (input.value.trim() === text) input.value = '';
     draftFiles = []; renderDraftFiles();
     if (!await conversation.typed(text, { attachments }) && !input.value.trim()) input.value = text;
+    composer.sync();
   }
   document.addEventListener('visibilitychange', () => { if (document.hidden) { stopPreview(); conversation.stop(true); void releaseOpen(); } });
   window.addEventListener('pagehide', () => { clearInterval(audioReviewClock); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });

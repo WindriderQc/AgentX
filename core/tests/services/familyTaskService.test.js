@@ -15,6 +15,58 @@ describe('family task domain in the canonical Core store', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  test('edits an open routine against its displayed revision and preserves child check-in evidence', async () => {
+    await family.addProfile({ profileId: 'sample-child', displayName: 'Sample child' });
+    const { chore } = await family.create({ profileId: 'sample-child', title: 'Original routine', cadence: 'daily' });
+    const edited = await family.update({ ref: chore.id, expectedRevision: chore.revision, title: 'Updated routine', note: 'One small step', stars: 4 });
+    expect(edited.chore).toMatchObject({ title: 'Updated routine', note: 'One small step', stars: 4, cadence: 'daily', status: 'queued', revision: chore.revision + 1 });
+    await expect(family.update({ ref: chore.id, expectedRevision: chore.revision, title: 'Stale edit' }))
+      .rejects.toMatchObject({ status: 409, code: 'FAMILY_CHORE_EDIT_CONFLICT' });
+    await family.checkIn({ ref: chore.id, profileId: 'sample-child' });
+    const current = (await family.list()).chores[0];
+    await expect(family.update({ ref: chore.id, expectedRevision: current.revision, title: 'Different instructions' }))
+      .rejects.toMatchObject({ status: 409, code: 'FAMILY_CHORE_EDIT_NOT_OPEN' });
+    const saved = await PipelineTask.findOne({ pipelineId: chore.id }).lean();
+    expect(saved.title).toBe('Updated routine'); expect(saved.checkedInAt).toBeInstanceOf(Date);
+    expect(saved.status).toBe('review'); expect(saved.completionCount).toBe(0);
+    expect(saved.transitions.map(event => event.kind)).toEqual(['created', 'family_check_in']);
+    expect(saved.feedback.some(entry => entry.text.includes('Routine instructions updated'))).toBe(true);
+  });
+
+  test('routine editing refuses other lanes, archived profiles and fields that change workflow authority', async () => {
+    const other = await personal.create({ title: 'Private task' });
+    await family.addProfile({ profileId: 'sample-child', displayName: 'Sample child' });
+    const { chore } = await family.create({ profileId: 'sample-child', title: 'Routine' });
+    await expect(family.update({ ref: other.id, expectedRevision: 0, title: 'Leak' })).rejects.toMatchObject({ status: 404 });
+    for (const fields of [{ status: 'done' }, { completionCount: 100 }, { cadence: 'monthly' }, { stars: 9 }, { expectedRevision: '0' }, { title: 'x'.repeat(161) }, { note: 'x'.repeat(1001) }]) {
+      await expect(family.update({ ref: chore.id, expectedRevision: chore.revision, title: 'Change', ...fields })).rejects.toMatchObject({ status: 400 });
+    }
+    await family.archiveProfile({ profileId: 'sample-child' });
+    await expect(family.update({ ref: chore.id, expectedRevision: chore.revision, title: 'Change' })).rejects.toMatchObject({ status: 404 });
+    expect((await PipelineTask.findOne({ pipelineId: other.id })).title).toBe('Private task');
+  });
+
+  test('family dates remain on their chosen household day through create and edit, including DST', async () => {
+    const previous = process.env.PLANNING_TIME_ZONE; process.env.PLANNING_TIME_ZONE = 'America/Toronto';
+    try {
+      await family.addProfile({ profileId: 'sample-child', displayName: 'Sample child' });
+      const { chore } = await family.create({ profileId: 'sample-child', title: 'Dated routine', dueAt: '2026-03-08' });
+      expect(chore).toMatchObject({ dueAt: '2026-03-09T03:59:59.999Z', dueDay: '2026-03-08' });
+      const edited = await family.update({ ref: chore.id, expectedRevision: chore.revision, dueAt: '2026-11-01' });
+      expect(edited.chore).toMatchObject({ dueAt: '2026-11-02T04:59:59.999Z', dueDay: '2026-11-01' });
+      await expect(family.update({ ref: chore.id, expectedRevision: edited.chore.revision, dueAt: '2026-02-30' })).rejects.toMatchObject({ code: 'FAMILY_CHORE_BAD_DUE_DATE' });
+      const cleared = await family.update({ ref: chore.id, expectedRevision: edited.chore.revision, dueAt: null });
+      expect(cleared.chore.dueAt).toBeNull(); expect(cleared.chore.dueDay).toBeNull();
+    } finally { if (previous === undefined) delete process.env.PLANNING_TIME_ZONE; else process.env.PLANNING_TIME_ZONE = previous; }
+  });
+
+  test('bounded family lists declare partial coverage rather than an exact total', async () => {
+    await PipelineTask.insertMany(Array.from({ length: 101 }, (_, index) => ({ pipelineId: String(index + 1).padStart(4, '0'), title: 'Synthetic routine', service: 'family', status: 'queued', profileId: 'sample-child' })));
+    const result = await family.list();
+    expect(result.chores).toHaveLength(100); expect(result.hasMore).toBe(true);
+    expect(result.timeZone).toBeTruthy(); expect(result.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
   test('persists a family launch, child check-in, parent approval and recurring rollover in the canonical model', async () => {
     const work = await createTaskInMongo({ title: 'Synthetic engineering task', service: 'core' });
     const started = await family.launch({

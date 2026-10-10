@@ -115,7 +115,14 @@ function familyRoutineInput(input = {}, defaultProfileId = '') {
   if (!title) throw new FamilyInputError('title is required', 'FAMILY_CHORE_TITLE_REQUIRED');
   let dueAt = null;
   if (input.dueAt) {
-    dueAt = new Date(input.dueAt);
+    const value = String(input.dueAt).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const parsed = new Date(`${value}T12:00:00Z`);
+      if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+        throw new FamilyInputError('dueAt must name a real calendar day', 'FAMILY_CHORE_BAD_DUE_DATE');
+      }
+      dueAt = endOfHouseholdDay(value, familyTimeZone());
+    } else dueAt = new Date(value);
     if (Number.isNaN(dueAt.getTime())) {
       throw new FamilyInputError('dueAt must be an ISO date or datetime', 'FAMILY_CHORE_BAD_DUE_DATE');
     }
@@ -171,7 +178,9 @@ function familyChore(task = {}, now = new Date(), timeZone = familyTimeZone()) {
     completionCount: Math.max(0, Math.floor(Number(task.completionCount) || 0)),
     checkedInAt: task.checkedInAt || null,
     lastCompletedAt: cancelled ? null : task.lastCompletedAt || base.completedAt,
-    waitingParent: !cancelled && task.status === 'review'
+    waitingParent: !cancelled && task.status === 'review',
+    revision: Number.isInteger(task.__v) ? task.__v : 0,
+    dueDay: dueKey
   };
 }
 

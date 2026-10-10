@@ -7,7 +7,7 @@ const { initialTransition } = require('./pipelineTaskTransitions');
 const { commitLaneTask } = require('./pipelineLaneTaskMutationService');
 const {
   cleanProfileId, familyChore, familyLaunchInput, familyProfile,
-  familyProfileInput, familyRoom, familyRoutineInput, nextRoutineDue
+  familyProfileInput, familyRoom, familyRoutineInput, nextRoutineDue, familyTimeZone, calendarDayKey
 } = require('../domains/household/family');
 const { familyBirthDate } = require('../domains/household/familyBirthDate');
 
@@ -162,15 +162,45 @@ async function list(input = {}) {
   const query = { service: 'family' };
   if (input.profileId) query.profileId = cleanProfileId(input.profileId);
   if (String(input.includeClosed || '') !== 'true') query.status = { $in: OPEN_FAMILY_STATUSES };
-  const rows = await PipelineTask.find(query).limit(100).lean();
-  const chores = rows.map(task => familyChore(task)).sort((a, b) => String(a.id).localeCompare(String(b.id)));
-  return { chores };
+  const rows = await PipelineTask.find(query).sort({ pipelineId: 1 }).limit(101).lean();
+  const chores = rows.slice(0, 100).map(task => familyChore(task)).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return { chores, hasMore: rows.length > 100, timeZone: familyTimeZone(), today: calendarDayKey(new Date()) };
 }
 
 async function create(input = {}) {
   const routine = familyRoutineInput(input);
   await getProfile(routine.profileId);
   return { chore: familyChore(await createTask(routine)) };
+}
+
+// The parent edits an open routine against the revision shown by Core. A
+// checked-in task must be returned to the child before its instructions change.
+async function update(input = {}) {
+  const allowed = new Set(['ref', 'expectedRevision', 'title', 'note', 'profileId', 'cadence', 'stars', 'priority', 'dueAt']);
+  if (Object.keys(input).some(key => !allowed.has(key)) || !Number.isInteger(input.expectedRevision) || input.expectedRevision < 0) {
+    throw failure(400, 'FAMILY_CHORE_EDIT_INVALID', 'An exact revision and routine fields are required');
+  }
+  const task = await getTask(input.ref);
+  if (input.expectedRevision !== (task.__v || 0)) throw failure(409, 'FAMILY_CHORE_EDIT_CONFLICT', 'This task changed. Refresh before editing it.');
+  if (!['queued', 'in_progress'].includes(task.status) || task.familyCancelled) {
+    throw failure(409, 'FAMILY_CHORE_EDIT_NOT_OPEN', 'Return a checked-in task to the child before editing it.');
+  }
+  const changes = Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'ref' && key !== 'expectedRevision'));
+  if (!Object.keys(changes).length
+    || ['title', 'note'].some(key => changes[key] !== undefined && (typeof changes[key] !== 'string' || changes[key].length > (key === 'title' ? 160 : 1000)))
+    || (changes.cadence !== undefined && !['once', 'daily', 'weekly'].includes(changes.cadence))
+    || ['stars', 'priority'].some(key => changes[key] !== undefined && (!Number.isInteger(changes[key]) || changes[key] < 1 || changes[key] > 5))) {
+    throw failure(400, 'FAMILY_CHORE_EDIT_INVALID', 'Choose a valid frequency, stars and priority');
+  }
+  const routine = familyRoutineInput({ title: task.title, note: task.spec, profileId: task.profileId,
+    cadence: task.cadence, stars: task.stars, priority: task.priority, dueAt: task.dueAt, ...changes });
+  await getProfile(routine.profileId);
+  const saved = await commitLaneTask(task, {
+    fields: Object.fromEntries(Object.keys(changes).map(key => [key === 'note' ? 'spec' : key, routine[key]])),
+    feedback: feedback('household-parent', 'Routine instructions updated from the household review surface.'),
+    channel: 'family_surface', declaredActor: 'household-parent'
+  });
+  return { chore: familyChore(saved) };
 }
 
 async function checkIn(input = {}) {
@@ -221,4 +251,4 @@ async function cancel(input = {}) {
   return { chore: familyChore(await cancelTask(task, 'household-parent', 'Cancelled from the household review surface.')) };
 }
 
-module.exports = { listProfiles, listProfileDetails, setProfileBirthDate, addProfile, archiveProfile, launch, room, list, create, checkIn, approve, reopen, cancel };
+module.exports = { listProfiles, listProfileDetails, setProfileBirthDate, addProfile, archiveProfile, launch, room, list, create, update, checkIn, approve, reopen, cancel };
