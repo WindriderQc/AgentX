@@ -1,5 +1,6 @@
 'use strict';
-jest.mock('../../models/ImageOperation', () => ({ createCollection: jest.fn(), createIndexes: jest.fn(), updateMany: jest.fn(), create: jest.fn() }));
+jest.mock('../../models/ImageOperation', () => ({ createCollection: jest.fn(), createIndexes: jest.fn(), updateMany: jest.fn(), create: jest.fn(),
+  find: jest.fn(() => ({ select: () => ({ lean: async () => [] }) })) }));
 jest.mock('../../src/services/images/config', () => ({ loadConfig: jest.fn() }));
 jest.mock('../../src/services/imageArchive', () => ({ defaultArchive: jest.fn() }));
 jest.mock('../../src/services/images/comfyClient', () => ({ createComfyClient: jest.fn() }));
