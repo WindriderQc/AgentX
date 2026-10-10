@@ -3,7 +3,7 @@ const express = require('express');
 const { createService } = require('../src/services/images/expertService');
 function createRouter(service = createService()) {
   const router = express.Router();
-  router.use(express.json({ limit: '40kb' }));
+  router.use(express.json({ limit: '512kb' }));
   const wrap = handler => async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     try { await handler(req, res); }

@@ -7,7 +7,9 @@ const images = require('./imageService');
 const constraints = require('../../../public/js/image-brief-constraints');
 const { officialDashboardUrl } = require('./expertDashboard');
 const ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const MAX_ENVELOPE_UNITS = 60000, MAX_ENVELOPE_BYTES = 65536;
 const failure = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+const boundedText = value => typeof value === 'string' && value.length <= constraints.MAX_BRIEF && value.isWellFormed();
 const identity = sessionId => {
   if (!ID.test(sessionId || '')) throw failure('Conversation imageX invalide.');
   return { sessionId, packId: 'atelier', scopeId: 'workspace' };
@@ -16,6 +18,16 @@ const evidence = turn => turn.toolEvidence?.imagex || {};
 const publicTurn = turn => ({ id: turn.traceId, sessionId: turn.sessionId, mode: turn.modeId,
   input: turn.inputText, text: turn.replyText, state: turn.outcome, createdAt: turn.createdAt,
   updatedAt: turn.updatedAt, ...evidence(turn) });
+
+function boundEnvelope(envelope) {
+  // Match the installed studio transport's exact JSON bounds before accepting a turn.
+  for (;;) {
+    const json = JSON.stringify(envelope);
+    if (json.length <= MAX_ENVELOPE_UNITS && Buffer.byteLength(json, 'utf8') <= MAX_ENVELOPE_BYTES) return envelope;
+    if (!envelope.history.length) throw failure('Brief et demande dépassent la capacité du relais Hermes (60 000 caractères UTF-16 / 65 536 octets JSON). Réduis le texte avant de continuer.');
+    envelope.history.splice(0, 2); // Only discard complete oldest user/assistant pairs.
+  }
+}
 
 function createService({ conversations = forSurface('image-workshop'), bridge = gateway,
   workshop = presentation, imageService = images } = {}) {
@@ -52,19 +64,19 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
   }
   function validate(input) {
     if (!input || !ID.test(input.clientTurnId || '') || !['consult', 'plan'].includes(input.mode)
-      || typeof input.message !== 'string' || !input.message.trim() || input.message.length > 8000) throw failure('Demande imageX invalide.');
+      || !boundedText(input.message) || !input.message.trim()) throw failure('La demande imageX exige un texte Unicode valide de 32 000 caractères UTF-16 au maximum.');
     const context = input.context || {};
-    if (typeof context.prompt !== 'string' || context.prompt.length > 8000
+    if (!boundedText(context.prompt)
       || !Number.isInteger(context.referenceCount) || context.referenceCount < 0 || context.referenceCount > 2) throw failure('Contexte image invalide.');
     const recipe = imageService.status().profiles.find(row => row.id === context.profile);
     if (!recipe || ![context.width, context.height].every(n => Number.isInteger(n) && n >= 256 && n <= 2752 && n % 32 === 0)
       || context.width * context.height > recipe.maxPixels) throw failure('Choisis une recette et un format disponibles.');
     const protectedItems = constraints.validate(context.constraints);
-    constraints.compose(context.prompt, protectedItems);
+    constraints.composeBrief(context.prompt, protectedItems);
     const clean = { prompt: context.prompt, profile: context.profile, width: context.width, height: context.height, referenceCount: context.referenceCount,
       ...(protectedItems && { constraints: protectedItems }) };
     if (input.mode === 'plan' && !clean.prompt.trim()) throw failure('Écris ton brief avant de demander une proposition.');
-    return { clientTurnId: input.clientTurnId, mode: input.mode, message: input.message.trim(), context: clean };
+    return { clientTurnId: input.clientTurnId, mode: input.mode, message: input.message, context: clean };
   }
   async function execute(scope, turn, envelope, controller) {
     let details = evidence(turn);
@@ -125,12 +137,12 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
       const history = rows.filter(row => row.outcome === 'completed').slice(0, 6).reverse()
         .flatMap(row => {
           const previous = evidence(row), plan = previous.proposal;
-          return [{ role: 'user', content: (plan ? `Brief à affiner : ${previous.context.prompt}\nDemande : ${row.inputText}` : row.inputText).slice(0, 2000) },
-            { role: 'assistant', content: (plan ? `Prompt proposé : ${plan.prompt}\nExplication : ${row.replyText}` : row.replyText).slice(0, 2000) }];
+          return [{ role: 'user', content: plan ? `Brief à affiner : ${previous.context.prompt}\nDemande : ${row.inputText}` : row.inputText },
+            { role: 'assistant', content: plan ? `Prompt proposé : ${plan.prompt}\nExplication : ${row.replyText}` : row.replyText }];
         });
-      const envelope = { action: input.mode, history, status,
-        ...(input.mode === 'plan' ? { request: { ...input.context, prompt: constraints.compose(input.context.prompt, input.context.constraints), instruction: input.message } }
-          : { prompt: input.message, context: input.context }) };
+      const envelope = boundEnvelope({ action: input.mode, history, status,
+        ...(input.mode === 'plan' ? { request: { ...input.context, prompt: constraints.composeBrief(input.context.prompt, input.context.constraints), instruction: input.message } }
+          : { prompt: input.message, context: input.context }) });
       const turn = await conversations.recordTurn({ ...scope, traceId: input.clientTurnId, clientTurnId: input.clientTurnId,
         modeId: input.mode, source: 'imagex-hermes', speakerAgentId: 'imagex', routeTier: 'agent', outcome: 'accepted',
         inputText: input.message, replyText: '', toolEvidence: { imagex: { requestSha256: hash, context: input.context,

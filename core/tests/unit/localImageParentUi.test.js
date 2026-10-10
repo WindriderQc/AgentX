@@ -29,7 +29,7 @@ class Element {
 }
 const settle = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
 async function studio({ failFirst = false, lineage, requested = parentId, availableRecipe, historicalRecipe, execution, exportFailure, exportPending, starterFailure = false,
-  constraintsEnabled = false, draftConstraints, expert } = {}) {
+  constraintsEnabled = false, draftConstraints, expert, expertEnabled = false } = {}) {
   const elements = new Map();
   const get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const size = new Element('option'); size.value = '1024,1024'; size.textContent = 'Square';
@@ -68,11 +68,13 @@ async function studio({ failFirst = false, lineage, requested = parentId, availa
   URL: { createObjectURL: () => 'blob:fixture', revokeObjectURL() {} },
   Image: class { constructor() { this.width = 2; this.height = 2; } async decode() { imageDecode(); } },
   Event: class { constructor(type) { this.type = type; } }, queueMicrotask, setTimeout: jest.fn(), clearTimeout: jest.fn() });
+  let expertController;
+  if (expertEnabled) context.AgentXImageExpert = { mount: options => { expertController = options; return { refresh() {} }; } };
   if (constraintsEnabled) { vm.runInContext(constraintsSource, context); vm.runInContext(constraintsUiSource, context); }
   vm.runInContext(starterSource, context); vm.runInContext(source, context);
   await settle();
   const fire = async (id, type = 'click') => { await get(id).dispatchEvent({ type, preventDefault() {} }); await settle(); };
-  return { get, fire, post, canvas, imageDecode, fetch };
+  return { get, fire, post, canvas, imageDecode, fetch, expertController };
 }
 
 test('the chosen archive sends its exact parent identity without converting the browser preview', async () => {
@@ -173,6 +175,62 @@ test('editing a brief refreshes its protected budget and rejects overflow before
   await ui.fire('image-form', 'input');
   expect(ui.get('image-create').disabled).toBe(false);
   expect(ui.get('image-constraints-counter').dataset.invalid).toBe('false');
+});
+test('a full long brief blocks generation but keeps a valid Hermes planning context and counter visible', async () => {
+  const draftConstraints = { version: 1, items: [{ id: 'title', kind: 'exact-text', text: 'Fixture title' }] };
+  const ui = await studio({ constraintsEnabled: true, draftConstraints, expertEnabled: true });
+  const prompt = 'Detailed scene '.repeat(710) + ' END OF COMPLETE BRIEF';
+  ui.get('image-prompt').value = prompt; await ui.fire('image-form', 'input');
+  expect(ui.get('image-create').disabled).toBe(true);
+  expect(ui.expertController.getContext()).toMatchObject({ prompt, constraintsInvalid: false, constraints: draftConstraints });
+  expect(ui.get('image-brief-counter').textContent).toContain('Affiner mon brief');
+  expect(ui.get('image-prompt').value).toBe(prompt);
+  ui.get('image-prompt').value = 'x'.repeat(32001); await ui.fire('image-form', 'input');
+  expect(ui.expertController.getContext().constraintsInvalid).toBe(true);
+  expect(ui.get('image-brief-counter').textContent).toContain('32 000');
+});
+test('applying a condensed Hermes proposal refreshes rendering controls and preserves provenance, parent and seed', async () => {
+  const ui = await studio({ constraintsEnabled: true, expertEnabled: true });
+  await ui.fire('image-use-reference'); ui.get('image-seed').value = '73';
+  ui.get('image-prompt').value = 'x'.repeat(9958); await ui.fire('image-form', 'input');
+  expect(ui.get('image-create').disabled).toBe(true);
+  const expert = { sessionId: '33333333-3333-4333-8333-333333333333', turnId: '44444444-4444-4444-8444-444444444444' };
+  ui.expertController.apply('A condensed complete scene', expert); await settle();
+  expect(ui.get('image-create').disabled).toBe(false);
+  expect(ui.get('image-brief-counter').dataset.invalid).toBe('false');
+  await ui.fire('image-form', 'submit');
+  expect(ui.post[0]).toMatchObject({ prompt: 'A condensed complete scene', expert, seed: 73, parent: { operationId: parentId, sha256: checksum } });
+});
+test('applying a starter refreshes a previously oversized brief without an extra input event', async () => {
+  const ui = await studio({ constraintsEnabled: true });
+  ui.get('image-prompt').value = 'x'.repeat(9958); await ui.fire('image-form', 'input');
+  expect(ui.get('image-create').disabled).toBe(true);
+  ui.get('image-starter').value = 'illustration'; await ui.fire('image-starter', 'change'); await ui.fire('image-starter-apply');
+  expect(ui.get('image-create').disabled).toBe(false);
+  expect(ui.get('image-brief-counter').dataset.invalid).toBe('false');
+});
+test('direct generation submission refuses a raw over-budget brief before decoding references even if trimming would fit', async () => {
+  const ui = await studio({ constraintsEnabled: true });
+  const prompt = ' '.repeat(32000) + 'A'; ui.get('image-prompt').value = prompt;
+  ui.get('image-references').files = [{ type: 'image/png', name: 'fixture.png' }];
+  await ui.fire('image-form', 'submit');
+  expect(ui.post).toHaveLength(0); expect(ui.imageDecode).not.toHaveBeenCalled();
+  expect(ui.get('image-prompt').value).toBe(prompt);
+  expect(ui.get('image-status').textContent).toContain('32 000');
+});
+test('the raw render budget blocks an 8010-unit padded brief even though the canonical description fits', async () => {
+  const ui = await studio({ constraintsEnabled: true, expertEnabled: true });
+  const prompt = ' '.repeat(20) + 'x'.repeat(7990);
+  ui.get('image-prompt').value = prompt; await ui.fire('image-form', 'input');
+  expect(ui.get('image-create').disabled).toBe(true);
+  expect(ui.expertController.getContext().constraintsInvalid).toBe(false);
+  expect(ui.get('image-brief-counter').dataset.invalid).toBe('true');
+  expect(ui.get('image-brief-counter').textContent).toContain('texte saisi');
+  ui.get('image-references').files = [{ type: 'image/png', name: 'fixture.png' }];
+  await ui.fire('image-form', 'submit');
+  expect(ui.post).toHaveLength(0); expect(ui.imageDecode).not.toHaveBeenCalled();
+  expect(ui.get('image-prompt').value).toBe(prompt);
+  expect(ui.get('image-status').textContent).toContain('saisi dépasse 8 000');
 });
 test('historical child details show the recorded parent link and archive preview', async () => {
   const ui = await studio({ requested: childId, lineage: { version: 1, parent: { operationId: parentId, sha256: checksum, width: 512, height: 512 } } });

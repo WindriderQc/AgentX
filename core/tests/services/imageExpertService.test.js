@@ -68,6 +68,34 @@ test('provider failure stays visible, restart does not repeat inference, and onl
   expect(bridge.invoke).toHaveBeenCalledTimes(2);
 });
 
+test('a long brief and 32000-unit message survive the real Core store, restart, provenance and replay intact', async () => {
+  const constraints = require('../../public/js/image-brief-constraints');
+  const manifest = { version: 1, items: [{ id: 'fixture-title', kind: 'exact-text', text: 'École & façade 💡' }] };
+  const original = ' \n' + 'Synthetic visual description. '.repeat(350) + 'BRIEF_TERMINAL_SENTINEL \n';
+  const prefix = ' \n', tail = 'MESSAGE_TERMINAL_SENTINEL \n';
+  const message = prefix + 'm'.repeat(32000 - prefix.length - tail.length) + tail;
+  const bridge = { configured: () => true, invoke: jest.fn(async () => ({ proposal, text: proposal.reason, model: 'fixture' })) };
+  const service = createService({ bridge, workshop, imageService }), session = await service.createSession();
+  const input = { clientTurnId: randomUUID(), mode: 'plan', message, context: { ...context, prompt: original, constraints: manifest } };
+  await service.accept(session.sessionId, input);
+  const [turn] = await wait(service, session.sessionId);
+  expect(turn.state).toBe('completed'); expect(turn.input).toBe(message); expect(turn.context.prompt).toBe(original);
+  expect(turn.proposal.constraints).toEqual(manifest);
+  expect(turn.proposal.prompt).toBe(constraints.compose(proposal.prompt, manifest));
+  expect(bridge.invoke.mock.calls[0][0].request.prompt).toBe(constraints.composeBrief(original, manifest));
+  expect(bridge.invoke.mock.calls[0][0].request.instruction).toBe(message);
+  const row = await Conversation.findOne({ 'surfaceSession.sessionId': session.sessionId }).lean();
+  expect(row.messages[0].content).toBe(message); expect(row.messages[1].turn.toolEvidence.imagex.context.prompt).toBe(original);
+  const reloaded = createService({ bridge, workshop, imageService });
+  expect((await reloaded.turns(session.sessionId))[0]).toMatchObject({ input: message, context: { prompt: original }, proposal: turn.proposal });
+  expect(await reloaded.accept(session.sessionId, input)).toMatchObject({ id: turn.id, state: 'completed' });
+  expect(bridge.invoke).toHaveBeenCalledTimes(1); expect(row.surfaceSession.turnCount).toBe(1);
+  const reference = { sessionId: session.sessionId, turnId: input.clientTurnId };
+  expect(await require('../../src/services/images/expertProvenance').resolve(reference, { ...context, prompt: turn.proposal.prompt }, 'quick'))
+    .toMatchObject({ harness: 'hermes', promptEdited: false, settingsEdited: false });
+  expect(imageService.accept).not.toHaveBeenCalled();
+});
+
 test('gateway keeps its token server-side and decodes split UTF-8 events without following redirects', async () => {
   const response = new TextEncoder().encode(JSON.stringify({ type: 'result', result: { ok: true, expert: 'hermes', text: 'Été' } }) + '\n');
   const fetchImpl = jest.fn(async () => ({ ok: true, body: (async function* () { for (const byte of response) yield new Uint8Array([byte]); })() }));

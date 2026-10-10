@@ -35,6 +35,27 @@ describe('surface conversations in the canonical Core store', () => {
     await expect(conversations.recordTurn(turn(session, { scopeId: 'family' }))).rejects.toMatchObject({ statusCode: 404 });
   });
 
+  test('the server-selected image workshop stores 32000 UTF-16 input units verbatim while retaining other turn limits', async () => {
+    const atelier = forSurface('image-workshop');
+    const atelierSession = await atelier.createSession({ sessionId: randomUUID(), packId: 'atelier',
+      modeId: 'imagex', scopeId: 'workspace', label: 'Synthetic image conversation' });
+    const tail = 'TERMINAL_SENTINEL \n', prefix = ' \n';
+    const fill = 32000 - prefix.length - tail.length;
+    const inputText = prefix + '💡'.repeat(Math.floor(fill / 2)) + 'x'.repeat(fill % 2) + tail;
+    expect(inputText).toHaveLength(32000);
+    const recorded = await atelier.recordTurn(turn(atelierSession, { inputText, replyText: 'r'.repeat(16000) }));
+    expect((await atelier.getTurn({ traceId: recorded.traceId })).inputText).toBe(inputText);
+    expect((await Conversation.findById(atelierSession.conversationId).lean()).messages[0].content).toBe(inputText);
+    await expect(atelier.recordTurn(turn(atelierSession, { inputText: inputText + 'x' }))).rejects.toMatchObject({ statusCode: 400 });
+    await expect(atelier.recordTurn(turn(atelierSession, { replyText: 'r'.repeat(16001) }))).rejects.toMatchObject({ statusCode: 400 });
+    await expect(conversations.recordTurn(turn(session, { inputText: 'x'.repeat(16001), surface: 'image-workshop' })))
+      .rejects.toMatchObject({ statusCode: 400 });
+    await expect(forSurface('constructor').recordTurn(turn(session, { inputText: 'x'.repeat(16001) })))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect((await atelier.getSession({ sessionId: atelierSession.sessionId })).turnCount).toBe(1);
+    expect((await conversations.getSession({ sessionId: session.sessionId })).turnCount).toBe(0);
+  });
+
   test('concurrent replay appends exactly one turn and increments the count once', async () => {
     const event = turn(session, { source: 'voix-native' });
     const results = await Promise.allSettled(Array.from({ length: 6 }, () => conversations.recordTurn(event)));

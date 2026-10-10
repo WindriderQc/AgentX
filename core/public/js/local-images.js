@@ -41,12 +41,13 @@
       return { ready: !!config?.configured, locked: locked(), prompt: $('image-prompt').value,
         profile: $('image-profile').value, width, height, referenceCount: referenceCount(),
         seed: $('image-seed').value, referenceEpoch, worker: workshop?.worker || null,
-        constraints: constraints?.getValue({ draft: true }), constraintsInvalid: constraints ? !constraints.isValid() : false };
+        constraints: constraints?.getValue({ draft: true }), constraintsInvalid: constraints ? !constraints.isValid({ forPlanning: true }) : false };
     },
     apply: (prompt, source) => {
       draftExpert = source;
       ++draftEpoch; $('image-prompt').value = prompt; $('image-draft-source').hidden = true;
       $('image-status').textContent = 'Brief préparé avec imageX · Hermes. Vérifie les références et lance la création.';
+      controls();
       $('image-prompt').focus();
     }
   });
@@ -57,6 +58,7 @@
       draftExpert = null;
       ++draftEpoch; $('image-prompt').value = prompt; $('image-draft-source').hidden = true;
       $('image-status').textContent = 'Canevas préparé. Remplace les passages entre crochets et vérifie les références avant de créer.';
+      controls();
       $('image-prompt').focus();
     }
   });
@@ -319,6 +321,8 @@
         ...(constraints?.getValue() && { constraints: constraints.getValue() }),
         ...(draftExpert && { expert: draftExpert }),
         ...($('image-seed').value !== '' && { seed: Number($('image-seed').value) }) };
+      if (payload.prompt.length > (globalThis.ImageBriefConstraints?.MAX_BRIEF || 32000)) throw new Error('Le brief dépasse 32 000 caractères. Réduis-le avant de continuer ; tout le texte collé reste conservé.');
+      if (payload.prompt.length > (globalThis.ImageBriefConstraints?.MAX_PROMPT || 8000)) throw new Error('Le brief saisi dépasse 8 000 caractères. Utilise « Affiner mon brief » avec Hermes, ou réduis le texte.');
       globalThis.ImageBriefConstraints?.compose(payload.prompt, payload.constraints);
       const declared = workshop?.profiles.find(p => p.id === payload.profile)?.declaredIdentity;
       if (declared) { payload.recipeId = declared.id; payload.recipeVersion = declared.version; }
