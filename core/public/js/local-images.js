@@ -7,7 +7,7 @@
     completed: 'Image prête, original archivé et ressources restituées.', cancelled: 'Génération annulée.', failed: 'La génération a échoué.',
     unknown: 'État incertain : récupère cette opération avant une nouvelle demande.', archive_failed: 'Image calculée ; son archivage doit être repris.' };
   let config, workshop, operation, origin = 'generation', pollTimer, request, selectedReference = null;
-  let draftEpoch = 0, referenceEpoch = 0, pendingSubmit = false, history = [], shownDetails = null;
+  let draftEpoch = 0, referenceEpoch = 0, pendingSubmit = false, history = [], shownDetails = null, guideReference = null;
   const detailsCache = new Map();
   let exportEpoch = 0;
   let draftExpert = null;
@@ -15,17 +15,33 @@
   const dimensions = (w, h) => `${w} × ${h} px · ${mp(w * h)}`;
   const duration = ms => { const seconds = Math.round(ms / 1000); return seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`; };
   const locked = () => pendingSubmit || ACTIVE.includes(operation?.state) || operation?.state === 'unknown';
+  const constraints = globalThis.AgentXImageConstraints?.mount({
+    getContext: () => ({ locked: locked(), prompt: $('image-prompt').value }),
+    onChange: () => { ++draftEpoch; draftExpert = null; queueMicrotask(controls); }
+  });
   const textEditor = globalThis.ImageTextEditor?.init({ getContext: () => ({ operation, locked: locked() }) });
+  const imageCompare = globalThis.ImageCompare?.init({ getContext: () => ({ operation, details: shownDetails, locked: locked() }) });
+  const protectedComposition = globalThis.ImageProtectedComposition?.init({ getContext: () => ({ operation, details: shownDetails, locked: locked() }) });
   const currentRecipe = () => workshop?.profiles.find(p => p.id === $('image-profile').value) || config?.profiles.find(p => p.id === $('image-profile').value);
   const genericSizes = [...$('image-size').options].map(option => [option.value, option.textContent]);
   const shape = (w, h) => w === h ? 'Carré' : w > h ? 'Paysage' : 'Portrait';
-  const referenceCount = () => (selectedReference ? 1 : 0) + $('image-references').files.length;
+  const referenceCount = () => (selectedReference ? 1 : 0) + $('image-references').files.length + (guideReference ? 1 : 0);
+  const layoutGuide = globalThis.ImageLayoutGuide?.init({
+    getContext: () => { const [width, height] = $('image-size').value.split(',').map(Number);
+      return { locked: locked(), width, height, referenceCount: referenceCount(), guideAttached: !!guideReference }; },
+    onReference: value => {
+      if (locked() || referenceCount() - (guideReference ? 1 : 0) >= 2) throw new Error('Deux références au maximum, esquisse et parent compris.');
+      guideReference = value; ++referenceEpoch; ++draftEpoch; draftExpert = null; updateFormMode();
+    },
+    onRemoveReference: () => { if (locked()) return; guideReference = null; ++referenceEpoch; ++draftEpoch; draftExpert = null; updateFormMode(); }
+  });
   const expert = globalThis.AgentXImageExpert?.mount({
     getContext: () => {
       const [width, height] = $('image-size').value.split(',').map(Number);
       return { ready: !!config?.configured, locked: locked(), prompt: $('image-prompt').value,
         profile: $('image-profile').value, width, height, referenceCount: referenceCount(),
-        seed: $('image-seed').value, referenceEpoch, worker: workshop?.worker || null };
+        seed: $('image-seed').value, referenceEpoch, worker: workshop?.worker || null,
+        constraints: constraints?.getValue({ draft: true }), constraintsInvalid: constraints ? !constraints.isValid() : false };
     },
     apply: (prompt, source) => {
       draftExpert = source;
@@ -57,12 +73,16 @@
   }
   function controls() {
     const block = locked();
-    $('image-create').disabled = block || !config?.configured || referenceCount() > 2;
+    $('image-create').disabled = block || !config?.configured || referenceCount() > 2 || (constraints && !constraints.isValid());
     $('image-new').disabled = block || !config; $('image-use-reference').disabled = block; $('image-reuse-brief').disabled = block;
     for (const button of $('image-gallery').querySelectorAll('button')) button.disabled = block;
     starters?.refresh();
     expert?.refresh();
     textEditor?.refresh();
+    imageCompare?.refresh();
+    protectedComposition?.refresh();
+    constraints?.refresh();
+    layoutGuide?.refresh();
   }
   function updateFormMode() {
     const count = referenceCount();
@@ -96,6 +116,8 @@
     updateFormMode();
   }
   function renderResultFacts() {
+    imageCompare?.refresh();
+    protectedComposition?.refresh();
     if (!operation) return;
     const d = shownDetails, a = operation.artifact;
     facts($('image-result-facts'), [['Modèle / recette', d?.recipe.label || operation.label || operation.profile],
@@ -193,9 +215,10 @@
     try {
       const { draft } = await api(`/operations/${encodeURIComponent(op.id)}/draft`);
       if (epoch !== draftEpoch || operation?.id !== op.id) return;
-      draftExpert = op.expert ? { sessionId: op.expert.sessionId, turnId: op.expert.turnId } : null;
       if (!config.profiles.some(p => p.id === draft.profile)) throw new Error('Cette ancienne recette n’est plus disponible. Son brief reste consultable sous l’image.');
-      $('image-prompt').value = draft.prompt; $('image-seed').value = draft.seed ?? ''; $('image-profile').value = draft.profile; renderRecipe();
+      constraints?.setValue(draft.constraints);
+      draftExpert = op.expert ? { sessionId: op.expert.sessionId, turnId: op.expert.turnId } : null;
+      $('image-prompt').value = draft.visualPrompt ?? draft.prompt; $('image-seed').value = draft.seed ?? ''; $('image-profile').value = draft.profile; renderRecipe();
       const size = `${draft.width},${draft.height}`, p = currentRecipe();
       if (![...$('image-size').options].some(o => o.value === size) && [draft.width, draft.height].every(x => Number.isInteger(x) && x >= 256 && x <= (p.maxEdge || 2048) && x % 32 === 0) && draft.width * draft.height <= p.maxPixels) {
         const option = node('option', `Format précédent · ${dimensions(draft.width, draft.height)}`); option.value = size; $('image-size').append(option);
@@ -243,7 +266,7 @@
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height); return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
     } finally { URL.revokeObjectURL(url); }
   }
-  $('image-form').addEventListener('input', () => { ++draftEpoch; starters?.refresh(); expert?.refresh(); });
+  $('image-form').addEventListener('input', () => { ++draftEpoch; controls(); });
   $('image-search').addEventListener('input', renderHistory);
   $('image-size').addEventListener('change', updateFormMode);
   $('image-profile').addEventListener('change', renderRecipe);
@@ -251,10 +274,11 @@
   $('image-export-prepare').addEventListener('click', () => { void prepareExport(); });
   $('image-new').addEventListener('click', () => {
     if (locked()) return;
-    ++draftEpoch; ++referenceEpoch; selectedReference = null; request = null; operation = null; shownDetails = null;
+    ++draftEpoch; ++referenceEpoch; selectedReference = null; guideReference = null; request = null; operation = null; shownDetails = null;
     draftExpert = null;
     resetExport(false);
     $('image-form').reset(); $('image-profile').value = config.defaultProfile;
+    constraints?.reset();
     for (const id of ['image-draft-source', 'image-selected-reference', 'image-result-origin', 'image-output', 'image-download', 'image-use-reference', 'image-reuse-brief', 'image-result-details', 'image-result-facts', 'image-result-note', 'image-cancel', 'image-recover', 'image-stages']) $(id).hidden = true;
     $('image-reference-previews').replaceChildren(); $('image-placeholder').hidden = false;
     $('image-result-title').textContent = 'Ton prochain résultat'; $('image-preview-help').textContent = 'Une image sélectionnée dans la bibliothèque s’affiche ici.';
@@ -274,7 +298,7 @@
     if (locked() || !operation) return;
     const selected = operation; ++referenceEpoch;
     try {
-      if ($('image-references').files.length >= 2) throw new Error('Retire un fichier joint pour ajouter cette création aux références.');
+      if ($('image-references').files.length + (guideReference ? 1 : 0) >= 2) throw new Error('Retire une référence pour ajouter cette création aux références.');
       if (selected.state !== 'completed' || selected.runtimeRestored !== true || !selected.artifact?.sha256) throw new Error('L’original choisi doit être archivé et ses ressources restituées.');
       selectedReference = { id: selected.id, sha256: selected.artifact.sha256 };
       $('image-selected-reference').replaceChildren(); const thumb = node('img'), copy = node('div'), remove = node('button', 'Retirer', 'quiet-button');
@@ -289,15 +313,18 @@
     pendingSubmit = true; controls(); ++draftEpoch;
     try {
       const files = [...$('image-references').files], ref = selectedReference;
-      if (files.length + (ref ? 1 : 0) > 2) throw new Error('Deux références au maximum, y compris la création choisie.');
+      if (files.length + (ref ? 1 : 0) + (guideReference ? 1 : 0) > 2) throw new Error('Deux références au maximum, y compris la création choisie et l’esquisse.');
       const [width, height] = $('image-size').value.split(',').map(Number);
       const payload = { prompt: $('image-prompt').value, profile: $('image-profile').value, width, height,
+        ...(constraints?.getValue() && { constraints: constraints.getValue() }),
         ...(draftExpert && { expert: draftExpert }),
         ...($('image-seed').value !== '' && { seed: Number($('image-seed').value) }) };
+      globalThis.ImageBriefConstraints?.compose(payload.prompt, payload.constraints);
       const declared = workshop?.profiles.find(p => p.id === payload.profile)?.declaredIdentity;
       if (declared) { payload.recipeId = declared.id; payload.recipeVersion = declared.version; }
       if (ref) payload.parent = { operationId: ref.id, sha256: ref.sha256 };
       payload.references = await Promise.all(files.map(fileBytes));
+      if (guideReference) payload.references.push(guideReference.base64);
       const signature = JSON.stringify(payload);
       // A network retry retains its identity; an explicit next creation gets a new one.
       if (!request || request.signature !== signature) request = { signature, payload: { ...payload, actionKey: crypto.randomUUID() } };

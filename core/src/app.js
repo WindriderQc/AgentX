@@ -83,7 +83,7 @@ if (process.env.NODE_ENV === 'production') {
         ],
         imgSrc: [
           "'self'",
-          "data:", // Base64 images
+          "data:", "blob:", // Embedded images and verified local previews.
           "https:" // Allow external images (user avatars, etc.)
         ],
         mediaSrc: [
