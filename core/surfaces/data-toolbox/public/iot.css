@@ -205,8 +205,8 @@ body:has([data-tab="iot"].active) footer { color: #8fa4b7; border-color: #263244
 .iot-appearance > summary:hover { color: var(--cyan); }
 .iot-appearance > summary:focus-visible, .iot-style-panel button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
 .iot-style-panel { margin: 8px 0 18px; padding: 18px; border: 1px solid #273b49; border-radius: 12px; background: #0b151e; }
-.iot-style-presets { display: flex; gap: 8px; }
-.iot-style-presets button { display: flex; align-items: center; gap: 10px; flex: 1; max-width: 190px; padding: 10px 12px; color: #bdcedc; font-size: 12px; background: #111f2a; border: 1px solid #2a3e4e; border-radius: 8px; cursor: pointer; }
+.iot-style-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 190px)); gap: 8px; }
+.iot-style-presets button { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; color: #bdcedc; font-size: 12px; background: #111f2a; border: 1px solid #2a3e4e; border-radius: 8px; cursor: pointer; }
 .iot-style-presets button:hover { border-color: #4a8d97; background: #152c37; }
 .iot-style-preview { width: 62px; height: 28px; flex: none; }
 .iot-style-target { display: flex; align-items: center; gap: 18px; padding: 20px 0 16px; margin-top: 16px; border-top: 1px solid #213441; }
@@ -250,6 +250,7 @@ body:has([data-tab="iot"].active) footer { color: #8fa4b7; border-color: #263244
   .iot-overlay-tools label { flex-wrap: wrap; }
   .iot-overlay-tools select { max-width: 190px; }
   .iot-style-panel { padding: 12px; }
+  .iot-style-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .iot-style-presets button { flex-direction: column; gap: 3px; padding: 8px 4px; }
   .iot-style-presets .iot-style-preview { width: 54px; }
   .iot-style-target { flex-wrap: wrap; gap: 12px; padding-block: 14px; }

@@ -613,13 +613,18 @@ with the real value, unit and observation time for each nearby sample. A series
 with no nearby observation stays unknown. Left/right arrows, Home, End and
 Escape provide the same inspection from the focused chart.
 
-**Style des courbes** opens three presets (**Épuré**, **Aires**, **Technique**)
+**Style des courbes** opens four presets (**Signature**, **Épuré**, **Aires**, **Technique**)
 and per-measure controls for stroke width, solid/dashed/dotted lines, smooth,
 straight or stepped curves, gradient/solid fill and its opacity, sample points
 and optional glow. **Appliquer à toutes** copies the current curve's style to
 the device's other measures. Settings are retained per device and measure in
 this browser, remain active during live updates and never change observations
-or send commands. The default uses fine strokes, no fill and no glow.
+or send commands. **Signature** is the default for unsaved curves: temperature
+and CPU temperature have subtle gradient areas, pressure uses a fine dotted
+stroke, battery uses dashes, Wi-Fi uses steps, and altitude stays smooth and
+unfilled. Other measures use fine unfilled strokes. Existing saved styles
+remain active; choosing **Signature** applies the default composition to all
+of the device's measures. All defaults keep points and glow off.
 
 **Zoom vertical → Contexte** keeps a minimum viewing span in the measure's
 unit and rounds the bounds, so a one-step sensor change does not fill the whole
