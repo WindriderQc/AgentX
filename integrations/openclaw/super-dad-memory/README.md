@@ -70,3 +70,10 @@ Run `npm test --prefix integrations/openclaw/super-dad-memory`. The Core
 Household integration suite also calls this exact adapter over loopback HTTP
 against real disposable MongoDB and verifies the result through the Nestor UI
 API. OpenClaw's SDK and native runtime are not simulated by that check.
+
+The optional `conversation_work` tool binds a dedicated native worker to Core's
+durable personal conversation work. Main can request a migrated task read; the
+worker can read canonical context and tasks and publish a verified result. The
+instance supplies `conversationWorkAgentId` and a private `conversationWorkToken`
+matching Core, and grants the dedicated worker only this tool. See
+[the Core contract](../../../docs/NESTOR_CONVERSATION_WORK.md).

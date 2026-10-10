@@ -13,6 +13,7 @@ import { createCoreIdentifiersClient, householdOwnerSession } from "./core-ident
 import { registerLocalImages } from "./local-images.js";
 import { registerDataTools } from "./data-tools.js";
 import { registerWorkQueue, createWorkQueueClient } from "./work-queue.js";
+import { registerConversationWork } from './conversation-work.js';
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
@@ -22,6 +23,7 @@ export default definePluginEntry({
     registerLocalImages(api);
     registerDataTools(api);
     registerWorkQueue(api);
+    registerConversationWork(api);
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });
@@ -35,6 +37,7 @@ export default definePluginEntry({
       "list_personal_tasks", { includeDone: false, includeNotes: false, limit: 12 });
     api.registerHttpRoute({ path: "/api/nestor/continuity", auth: "gateway", match: "exact",
       handler: continuityHttpHandler(continuityOperations({ workspace: workspaceFor(), config: api.config,
+        workAgentId: api.pluginConfig?.conversationWorkAgentId,
         resolveWorkspace, modelFor: id => resolveAgentEffectiveModelPrimary(api.config, id),
         // SDK read only: getSessionMessages invokes sessions.get; it never starts an agent.
         readHistory: async sessionKey => ({ sessionKey, ...await api.runtime.subagent.getSessionMessages({ sessionKey, limit: 100 }) }) })) });

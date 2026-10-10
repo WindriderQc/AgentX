@@ -84,7 +84,7 @@ function agentInstructions(session, persona, surface, mode, { soundPlayback = fa
 }
 
 function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000, streamGraceMs = 3000, streamDrainMs = 30000, evidenceReadMs = 10000 } = {}) {
-  return async ({ session, text, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
+  return async ({ session, text, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, maxOutputTokens, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
     const sessionKey = sessionKeyFor(session);
@@ -237,6 +237,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           'x-openclaw-session-key': sessionKey, 'x-openclaw-message-channel': 'webchat',
           ...(selectedModel ? { 'x-openclaw-model': selectedModel } : {}) },
         body: JSON.stringify({ model: `openclaw/${agentIdFor(session)}`, stream: true, instructions,
+          ...(Number.isInteger(maxOutputTokens) && maxOutputTokens > 0 && maxOutputTokens <= 4096 ? { max_output_tokens: maxOutputTokens } : {}),
           // Scene edits use the client tool; ordinary dialogue may finish naturally.
           ...(browserReply ? { tools: [browserReplyTool()], tool_choice: 'auto' } : {}),
           input: [...(!session.agentSessionKey ? history : [])

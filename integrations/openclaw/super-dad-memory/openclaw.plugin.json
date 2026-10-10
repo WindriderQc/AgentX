@@ -1,7 +1,7 @@
 {
   "id": "super-dad-memory",
   "name": "Nestor Personal Harness",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Native OpenClaw tools and receipts backed by canonical AgentX Core notes and tasks.",
   "activation": {
     "onStartup": true,
@@ -23,7 +23,8 @@
       "nestor_files",
       "nestor_gpus",
       "local_image",
-      "work_queue"
+      "work_queue",
+      "conversation_work"
     ]
   },
   "toolMetadata": {
@@ -65,6 +66,9 @@
     },
     "work_queue": {
       "optional": true
+    },
+    "conversation_work": {
+      "optional": true
     }
   },
   "configSchema": {
@@ -88,11 +92,30 @@
       "mediaRoot": {
         "type": "string",
         "description": "OpenClaw media directory served read-only to Household for generated images. Default: <state dir>/media."
+      },
+      "conversationWorkAgentId": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+        "description": "Internal native worker; omitted from the public agent catalog."
+      },
+      "conversationWorkToken": {
+        "type": "string",
+        "minLength": 32,
+        "description": "Private Core native work binding token; never a tool argument."
       }
     },
     "additionalProperties": false,
     "required": [
       "agentxUrl"
     ]
+  },
+  "uiHints": {
+    "conversationWorkToken": {
+      "label": "Private Core work binding",
+      "sensitive": true
+    },
+    "conversationWorkAgentId": {
+      "label": "Internal native worker"
+    }
   }
 }

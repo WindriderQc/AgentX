@@ -285,7 +285,9 @@ function forSurface(surface) {
     });
   }
 
-  return Object.freeze({ createSession, ensureSession, getSession, listSessions, updateSession,
+  const intake = require('./conversations/surfaceTurnIntake').turnIntake({ recordTurn, getTurn, updateTurn,
+    withWrite: (sessionId, action) => withSessionWrite(surface, sessionId, action) });
+  return Object.freeze({ ...intake, createSession, ensureSession, getSession, listSessions, updateSession,
     recordTurn, getTurn, listTurns, countTurns, updateTurn, updateTurns, deleteSession, exportSession });
 }
 
