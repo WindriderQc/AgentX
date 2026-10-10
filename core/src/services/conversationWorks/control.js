@@ -10,7 +10,7 @@ function createWorkControl(works) {
     const row = await works.repo.mutate(id, current => {
       if (current.sessionId !== sessionId) throw notFound();
       if (current.revision !== input.revision) throw fail('CONVERSATION_WORK_CONTROL_STALE', 'Read the current work before changing it.', 409);
-      if (current.attempt || !['received', 'queued', 'paused'].includes(current.state)) {
+      if (current.classification === 'native_only' || current.attempt || !['received', 'queued', 'paused'].includes(current.state)) {
         throw fail('CONVERSATION_WORK_ALREADY_DISPATCHED', 'Native work has already started or settled; its owner must reconcile it.', 409);
       }
       if (input.action === 'resume' && current.state !== 'paused' || input.action === 'pause' && current.state === 'paused') {

@@ -8,7 +8,7 @@ function createWorkDelivery(works) {
     return { id: row._id, turnId: row.turnId, sessionId: row.sessionId, state: row.state,
       revision: row.revision, receivedAt: row.receivedAt, updatedAt: row.updatedAt,
       classification: row.classification, guardianStatus: row.guardian?.state || 'unknown', sequence: row.sequence, reason: row.reason || '',
-      controllable: !row.attempt && ['received', 'queued', 'paused'].includes(row.state),
+      controllable: row.classification !== 'native_only' && !row.attempt && ['received', 'queued', 'paused'].includes(row.state),
       result: result && result.kind !== 'no_work' ? { ...result, version: row.result.version,
         deliveryId: row.delivery.id, presentation: row.delivery.state } : null,
       // A context payload is never a browser projection.
