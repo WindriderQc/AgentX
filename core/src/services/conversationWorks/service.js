@@ -63,10 +63,16 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
   const guardianStarted = (id, sessionKey, runId) => repo.mutate(id, current => ({
     fields: { guardian: { ...current.guardian, state: 'running', sessionKey, runId } }, event: 'guardian_started' }));
   const guardianSettled = async (id, state) => {
-    const row = await repo.mutate(id, current => ({ fields: { guardian: { ...current.guardian, state },
-      state: current.state === 'received'
-        ? current.classification === 'native_only' ? state : state === 'cancelled' ? 'cancelled' : current.contextReady ? 'queued' : current.state
-        : current.state }, event: 'guardian_settled' }));
+    const row = await repo.mutate(id, current => {
+      // Recovery can mark a long native consultation uncertain before its
+      // original guardian returns. Its exact settlement still owns that intake.
+      const nativeIntake = current.classification === 'native_only' && ['received', 'uncertain'].includes(current.state)
+        && !current.attempt && !current.result;
+      const nextState = nativeIntake ? state : current.state === 'received' && current.classification !== 'native_only'
+        ? state === 'cancelled' ? 'cancelled' : current.contextReady ? 'queued' : current.state : current.state;
+      return { fields: { guardian: { ...current.guardian, state }, state: nextState,
+        ...(nativeIntake && { reason: '' }) }, event: 'guardian_settled' };
+    });
     if (['completed', 'failed', 'cancelled'].includes(row.state)) await finalize(row);
     wake(); return row;
   };
