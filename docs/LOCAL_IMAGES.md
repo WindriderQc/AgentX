@@ -21,6 +21,18 @@ appears beside the brief; applying it changes the text without starting a render
 The final composed prompt can be read before creation. A ready brief can create
 directly without consulting Hermes.
 
+Refinement preserves the explicitly selected recipe and dimensions. A proposal
+that changes them is refused with a French explanation beside the brief; the
+terminal state replaces the working message. **Réessayer l’affinage** starts a new
+consultation with the current brief and settings after a confirmed failure. A
+renderable brief also offers a link to creation review. A long brief stays intact
+and still needs a valid shortened proposal or an edit before rendering. Neither
+recovery action automatically starts an image or repeats a model call.
+After reloading, an empty draft can recover the failed consultation's original
+brief and protected constraints from Core without inference. It does not recover
+uploaded references or overwrite a nonempty draft; review settings and references
+before retrying or rendering.
+
 The secondary, collapsed **Conseils et questions avec imageX** panel retains chat,
 operational events, routing facts and read-only profile files. Links from the
 brief and historical collaboration receipts open it. Result text tools appear

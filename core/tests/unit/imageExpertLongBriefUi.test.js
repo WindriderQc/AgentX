@@ -15,7 +15,7 @@ class Element {
   focus() {}
 }
 const settle = async () => { for (let count = 0; count < 80; count++) await Promise.resolve(); };
-async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, available = true, sessionPending } = {}) {
+async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, available = true, sessionPending, turnError, delayedFailure = false } = {}) {
   const elements = new Map(), get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const current = { ready: true, locked: false, prompt, profile: 'quality', width: 1024, height: 576, referenceCount: 1, referenceEpoch: 1, seed: '73', constraints };
   const getContext = () => {
@@ -36,10 +36,11 @@ async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, avail
     } else if (url.endsWith('/sessions')) data = { sessions };
     else if (url.endsWith('/turns') && body) {
       const visualPrompt = 'A condensed scene, retaining the complete intent.';
-      const turn = { id: body.clientTurnId, input: body.message, context: body.context, state: 'completed', events: [], envelope: {},
+      const turn = { id: body.clientTurnId, mode: body.mode, input: body.message, context: body.context, state: 'completed', events: [], envelope: {},
         proposal: { visualPrompt, prompt: contract.compose(visualPrompt, body.context.constraints), constraints: body.context.constraints,
           profile: body.context.profile, width: body.context.width, height: body.context.height } };
-      turns.push(turn); data = { turn };
+      if (turnError && !turns.length) { turn.state = 'failed'; turn.error = turnError; delete turn.proposal; }
+      turns.push(turn); data = { turn: delayedFailure && turn.state === 'failed' ? { ...turn, state: 'accepted', error: undefined } : turn };
     } else if (url.endsWith('/turns')) data = { turns };
     else throw new Error(`Unexpected fixture endpoint: ${url}`);
     return { ok: true, json: async () => ({ ok: true, ...data }) };
@@ -49,9 +50,10 @@ async function expert({ prompt = 'x'.repeat(9958), constraints = manifest, avail
     localStorage: { getItem() {}, setItem() {}, removeItem() {} }, crypto: { randomUUID: () => `turn-${++next}` },
     setTimeout: jest.fn(), clearTimeout() {} });
   vm.runInContext(source, context);
-  const controller = context.AgentXImageExpert.mount({ getContext, apply }); await settle();
+  const restoreBrief = jest.fn(saved => { current.prompt = saved.prompt; current.constraints = saved.constraints; });
+  const controller = context.AgentXImageExpert.mount({ getContext, apply, restoreBrief }); await settle();
   const fire = async (id, type = 'click') => { await get(id).dispatchEvent({ type, preventDefault() {} }); await settle(); };
-  return { get, fire, current, getContext, controller, posts, turns, apply };
+  return { get, fire, current, getContext, controller, posts, turns, apply, restoreBrief };
 }
 
 test('planning retains a 9958-character brief with exact constraints and allows applying an 8000-budget proposal', async () => {
@@ -169,4 +171,69 @@ test('advice stays accessible during rendering while proposal application is loc
   await ui.fire('imagex-chat-form', 'submit');
   expect(ui.posts[1].body.mode).toBe('consult');
   expect(ui.get('imagex-apply').disabled).toBe(true);
+});
+
+test.each([false, true])('a rejected format is explained beside the brief, never left running (accepted response: %s)', async delayedFailure => {
+  const ui = await expert({ turnError: 'Image expert changed the requested width', delayedFailure });
+  const original = ui.current.prompt;
+  await ui.fire('imagex-plan');
+  expect(ui.get('imagex-notice').textContent).toContain('la largeur');
+  expect(ui.get('imagex-notice').textContent).toContain('1024 × 576');
+  expect(ui.get('imagex-notice').textContent).toContain('Aucune image');
+  expect(ui.get('imagex-notice').textContent).not.toContain('travaille');
+  expect(ui.get('imagex-chat-notice').textContent).toBe(ui.get('imagex-notice').textContent);
+  expect(ui.get('imagex-proposal-panel').hidden).toBe(true);
+  expect(ui.get('imagex-recovery').hidden).toBe(false);
+  expect(ui.get('imagex-use-brief').hidden).toBe(true);
+  expect(ui.get('imagex-retry').disabled).toBe(false);
+  expect(ui.current.prompt).toBe(original); expect(ui.apply).not.toHaveBeenCalled();
+  await ui.fire('imagex-retry');
+  expect(ui.posts).toHaveLength(3);
+  expect(ui.posts[2].body.context).toEqual(ui.posts[1].body.context);
+  expect(ui.posts[2].body.message).toBe(ui.posts[1].body.message);
+  expect(ui.posts[2].body.clientTurnId).not.toBe(ui.posts[1].body.clientTurnId);
+  expect(ui.get('imagex-recovery').hidden).toBe(true);
+  expect(ui.get('imagex-notice').textContent).toContain('Proposition prête');
+});
+
+test('a failed refinement offers review of a renderable brief and retries the current edited context deliberately', async () => {
+  const ui = await expert({ prompt: 'A technological atelier', constraints: { version: 1, items: [] },
+    turnError: 'Hermes est indisponible.' });
+  await ui.fire('imagex-plan');
+  expect(ui.get('imagex-use-brief').hidden).toBe(false);
+  expect(ui.get('imagex-recovery-help').textContent).toContain('créer directement');
+  ui.current.prompt += ', with a routing machine'; ui.current.width = 2048;
+  ui.controller.refresh();
+  expect(ui.get('imagex-recovery-help').textContent).toContain('a changé');
+  await ui.fire('imagex-retry');
+  expect(ui.posts[2].body.context).toMatchObject({ prompt: ui.current.prompt, width: 2048 });
+  expect(ui.apply).not.toHaveBeenCalled();
+});
+
+test('switching to a new discussion clears a failed refinement and its recovery actions', async () => {
+  const ui = await expert({ turnError: 'Image expert changed the requested width' });
+  await ui.fire('imagex-plan'); await ui.fire('imagex-new');
+  expect(ui.get('imagex-notice').textContent).toBe('');
+  expect(ui.get('imagex-chat-notice').textContent).toBe('');
+  expect(ui.get('imagex-recovery').hidden).toBe(true);
+  expect(ui.posts).toHaveLength(2);
+});
+
+test('an empty draft can recover a failed request’s saved brief and constraints without inference or applying a proposal', async () => {
+  const ui = await expert({ turnError: 'Image expert changed the requested width' }), original = ui.current.prompt;
+  await ui.fire('imagex-plan');
+  ui.current.prompt = ''; ui.current.constraints = undefined; ui.controller.refresh();
+  expect(ui.get('imagex-restore-brief').hidden).toBe(false);
+  expect(ui.get('imagex-retry').disabled).toBe(true);
+  await ui.fire('imagex-restore-brief');
+  expect(ui.current.prompt).toBe(original); expect(ui.current.constraints).toEqual(manifest);
+  expect(ui.posts).toHaveLength(2); expect(ui.apply).not.toHaveBeenCalled();
+  expect(ui.get('imagex-restore-brief').hidden).toBe(true);
+  expect(ui.get('imagex-retry').disabled).toBe(false);
+});
+
+test('a padded over-budget draft cannot be offered as directly renderable after failure', async () => {
+  const ui = await expert({ prompt: ' '.repeat(20) + 'x'.repeat(7990), constraints: { version: 1, items: [] }, turnError: 'Provider unavailable' });
+  await ui.fire('imagex-plan');
+  expect(ui.get('imagex-use-brief').hidden).toBe(true);
 });

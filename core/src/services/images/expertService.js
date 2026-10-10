@@ -15,6 +15,13 @@ const identity = sessionId => {
   return { sessionId, packId: 'atelier', scopeId: 'workspace' };
 };
 const evidence = turn => turn.toolEvidence?.imagex || {};
+function expertError(error, context) {
+  const field = /Image expert changed the requested (width|height|profile)/.exec(error.message || '')?.[1];
+  if (!field) return { error: String(error.message).slice(0, 240) };
+  const name = { width: 'la largeur', height: 'la hauteur', profile: 'la recette' }[field];
+  return { errorCode: 'IMAGE_EXPERT_SETTINGS_CHANGED',
+    error: `Hermes a proposé de modifier ${name} choisie. La proposition a été refusée pour préserver ${context.width} × ${context.height} et la recette ${context.profile}. Ton brief reste conservé.` };
+}
 const publicTurn = turn => ({ id: turn.traceId, sessionId: turn.sessionId, mode: turn.modeId,
   input: turn.inputText, text: turn.replyText, state: turn.outcome, createdAt: turn.createdAt,
   updatedAt: turn.updatedAt, ...evidence(turn) });
@@ -96,8 +103,10 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
       } });
       let proposal = result.proposal || null;
       // Plan validation is repeated against the current Core contract at the trust boundary.
-      if (proposal && (proposal.profile !== envelope.request.profile || proposal.width !== envelope.request.width
-        || proposal.height !== envelope.request.height || typeof proposal.prompt !== 'string' || !proposal.prompt.trim()
+      if (proposal) for (const field of ['profile', 'width', 'height']) {
+        if (proposal[field] !== envelope.request[field]) throw new Error(`Image expert changed the requested ${field}`);
+      }
+      if (proposal && (typeof proposal.prompt !== 'string' || !proposal.prompt.trim()
         || proposal.prompt.length > 8000 || typeof proposal.reason !== 'string' || proposal.reason.length > 2000)) throw new Error('Proposition Hermes invalide.');
       if (envelope.action === 'plan' && !proposal) throw new Error('Hermes n’a pas fourni de proposition applicable.');
       if (proposal && details.context.constraints) {
@@ -112,7 +121,7 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
       await conversations.updateTurn({ ...scope, traceId: turn.traceId }, { $set: { outcome: 'completed',
         replyText: proposal ? proposal.reason : result.text, model: result.model || '', sourceCompletedAt: new Date() } });
     } catch (error) {
-      await save({ error: controller.signal.aborted ? 'Consultation arrêtée.' : String(error.message).slice(0, 240) });
+      await save(controller.signal.aborted ? { error: 'Consultation arrêtée.' } : expertError(error, details.context));
       await conversations.updateTurn({ ...scope, traceId: turn.traceId }, { $set: { outcome: controller.signal.aborted ? 'cancelled' : 'failed' } });
     } finally { running.delete(turn.traceId); }
   }

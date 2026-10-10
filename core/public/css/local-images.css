@@ -751,3 +751,5 @@
 .image-studio .studio-guide-link { white-space:normal; }
 #image-render-prompt { white-space:pre-wrap; overflow-wrap:anywhere; max-height:250px; overflow:auto; font:12px/1.6 ui-monospace,monospace; }
 .recipe-description .studio-host { min-width:0; max-width:none; margin-top:14px; }
+.imagex-recovery { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.imagex-recovery > p { flex-basis: 100%; margin: 0; }

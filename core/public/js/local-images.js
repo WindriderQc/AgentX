@@ -36,6 +36,15 @@
     onRemoveReference: () => { if (locked()) return; guideReference = null; ++referenceEpoch; ++draftEpoch; draftExpert = null; updateFormMode(); }
   });
   const expert = globalThis.AgentXImageExpert?.mount({
+    restoreBrief: saved => {
+      if (locked() || $('image-prompt').value.trim()) return;
+      globalThis.ImageBriefConstraints?.composeBrief(saved.prompt, saved.constraints);
+      constraints?.setValue(saved.constraints);
+      draftExpert = null; ++draftEpoch;
+      $('image-prompt').value = saved.prompt; $('image-draft-source').hidden = true;
+      $('image-status').textContent = 'Brief enregistré récupéré. Vérifie les réglages et rejoins les références si nécessaire.';
+      controls(); $('image-prompt').focus();
+    },
     getContext: () => {
       const [width, height] = $('image-size').value.split(',').map(Number);
       return { ready: !!config?.configured, locked: locked(), prompt: $('image-prompt').value,

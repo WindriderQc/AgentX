@@ -13,6 +13,13 @@ import worker
 
 
 class WorkerTests(unittest.TestCase):
+    def test_refinement_copies_fixed_settings_and_prioritizes_them_over_brief_and_history(self):
+        settings = {'profile': 'quality', 'width': 2048, 'height': 1152}
+        query = worker.query({'action': 'plan', 'request': {'prompt': 'A square 1024x1024 scene', **settings},
+                              'history': [{'role': 'assistant', 'content': 'Use another format'}]})
+        self.assertIn('Fixed request settings (copy these JSON values unchanged into your result): ' + json.dumps(settings), query)
+        self.assertIn('take priority over any recipe or resolution mentioned in the brief', query)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.home = Path(self.temp.name)

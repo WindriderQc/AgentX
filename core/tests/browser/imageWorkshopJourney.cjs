@@ -21,7 +21,7 @@ const sourcePaths = ['core/src/app.js', 'core/routes/local-images.js', 'core/rou
 const before = sourcePaths.map(file => ({ file, sha256: hash(fs.readFileSync(path.join(tree, file))) }));
 const productionImgSrc = vm.runInNewContext('[' + /imgSrc:\s*\[([\s\S]*?)\]/.exec(fs.readFileSync(core + '/src/app.js', 'utf8'))[1] + ']');
 const checks = [], errors = [], cspErrors = [], requests = [], bridgeCalls = [], generation = [], sessions = new Map(), turns = new Map();
-let available = true, browser, server;
+let available = true, failNextPlan = false, browser, server;
 const copy = value => value === undefined ? undefined : structuredClone(value);
 const conversations = {
   async listSessions() { return [...sessions.values()].map(copy); },
@@ -39,6 +39,7 @@ const bridge = { configured: () => available, async invoke(envelope) {
   if (envelope.action === 'resource') return { resource: { available: true, content: 'Synthetic identity', path: 'IDENTITY.md', updatedAt: '2026-01-01T00:00:00Z', bytes: 18, sha256: 'a'.repeat(64) } };
   if (envelope.action === 'consult') return { ok: true, expert: 'hermes', text: 'Conseil synthétique, sans modèle.', model: 'fixture-hermes' };
   assert.equal(envelope.action, 'plan');
+  if (failNextPlan) { failNextPlan = false; throw new Error('Image expert changed the requested width'); }
   return { ok: true, expert: 'hermes', text: 'Proposition synthétique.', model: 'fixture-hermes', proposal: {
     prompt: condensed, profile: envelope.request.profile, width: envelope.request.width, height: envelope.request.height, reason: 'Description condensée ; les contraintes sont conservées.' } };
 } };
@@ -141,8 +142,36 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     assert.equal(await page.locator('#imagex-plan').isDisabled(), true);
     await page.locator('#imagex-plan').dispatchEvent('click'); assert.equal(requests.length, requestsBefore);
     await paste(page, 'imagex-plan-instruction', 'Préserve le hibou et condense la description.');
-    await page.locator('#imagex-plan').click(); await enabled(page, 'imagex-apply');
-    const planPost = requests.slice(requestsBefore).find(request => request.body.mode === 'plan');
+    failNextPlan = true;
+    await page.locator('#imagex-plan').click();
+    await page.waitForFunction(() => document.getElementById('imagex-notice').textContent.includes('la largeur'));
+    await enabled(page, 'imagex-retry');
+    assert.equal(await page.locator('#image-prompt').inputValue(), original);
+    assert.equal(await page.locator('#imagex-proposal-panel').isVisible(), false);
+    assert.equal(await page.locator('#imagex-recovery').isVisible(), true);
+    assert.equal(await page.locator('#imagex-use-brief').isVisible(), false);
+    assert.equal((await page.locator('#imagex-notice').textContent()).includes('travaille'), false);
+    assert.equal(generation.length, renderBefore);
+    // Reload has no textarea draft; the canonical failed request still provides recovery.
+    const recovery = await context.newPage(); await recovery.goto(url);
+    await recovery.waitForFunction(() => document.getElementById('imagex-restore-brief').hidden === false);
+    const beforeRecoveryPosts = requests.length;
+    await recovery.locator('#imagex-restore-brief').click();
+    assert.equal(await recovery.locator('#image-prompt').inputValue(), original);
+    assert.equal(await recovery.locator('#image-constraint-list textarea').first().inputValue(), 'ÉCOSYSTÈME AGENTX');
+    assert.equal(requests.length, beforeRecoveryPosts);
+    assert.equal(await recovery.locator('#image-create').isDisabled(), true);
+    await recovery.close();
+    await page.screenshot({ path: path.join(reportDir, `failed-refinement-${device}.png`), fullPage: true });
+    const failedRequest = requests.at(-1);
+    await page.locator('#imagex-retry').click(); await enabled(page, 'imagex-apply');
+    const retriedRequest = requests.at(-1);
+    assert.notEqual(retriedRequest.body.clientTurnId, failedRequest.body.clientTurnId);
+    assert.deepEqual(retriedRequest.body.context, failedRequest.body.context);
+    assert.equal(retriedRequest.body.message, failedRequest.body.message);
+    assert.equal(await page.locator('#imagex-recovery').isVisible(), false);
+    checks.push(`${device}: a refused width has a French diagnosis beside the preserved brief, a terminal status and a deliberate retry with protected settings and a new identity; no image is submitted.`);
+    const planPost = requests.slice(requestsBefore).findLast(request => request.body.mode === 'plan');
     const plan = bridgeCalls.findLast(call => call.action === 'plan');
     assert.equal(planPost.body.context.prompt, original);
     assert.equal(plan.request.prompt, contract.composeBrief(original, planPost.body.context.constraints));
