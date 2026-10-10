@@ -1,0 +1,39 @@
+<details id="image-text-editor" class="image-text-editor">
+  <summary>Textes exacts et éditables</summary>
+  <p class="image-help">Ajoute des libellés sur un calque. L’original reste conservé. Le projet JSON contient l’image et les textes pour reprendre ton travail.</p>
+  <div class="text-editor-actions">
+    <button id="image-text-prepare" type="button" class="quiet-button" disabled>Ajouter des textes à cette image</button>
+    <label class="quiet-button text-editor-import" for="image-text-file">Rouvrir un projet JSON<input id="image-text-file" type="file" accept=".json,application/json"></label>
+  </div>
+  <p id="image-text-status" class="image-help" role="status" aria-live="polite">Choisis une image archivée ou rouvre un projet.</p>
+  <p id="image-text-error" class="text-editor-error" role="alert" hidden></p>
+  <div id="image-text-workspace" hidden>
+    <p id="image-text-source" class="image-help"></p>
+    <div class="text-editor-preview"><canvas id="image-text-canvas" tabindex="0" aria-label="Aperçu des textes. Clique pour placer le libellé sélectionné ou utilise les flèches du clavier."></canvas></div>
+    <p class="image-help">Clique sur l’aperçu pour placer le libellé sélectionné. Les flèches du clavier le déplacent d’un pixel ; Maj + flèche, de dix pixels.</p>
+    <div class="text-editor-label-heading"><label for="image-text-label">Libellé à modifier</label><button id="image-text-add" type="button" class="quiet-button">Ajouter un libellé</button></div>
+    <select id="image-text-label" aria-label="Libellé à modifier"></select>
+    <fieldset id="image-text-fields" disabled>
+      <legend>Contenu et placement</legend>
+      <label for="image-text-content">Texte exact</label>
+      <textarea id="image-text-content" rows="3" maxlength="600" aria-describedby="image-text-count" placeholder="Nom, chiffre ou légende…"></textarea>
+      <p id="image-text-count" class="image-help"></p>
+      <div class="text-editor-grid">
+        <label for="image-text-x">Position horizontale (%)<input id="image-text-x" type="number" min="0" max="100" step="0.01"></label>
+        <label for="image-text-y">Position verticale (%)<input id="image-text-y" type="number" min="0" max="100" step="0.01"></label>
+        <label for="image-text-size">Taille (pixels)<input id="image-text-size" type="number" min="1" max="1024" step="1"></label>
+        <label for="image-text-align">Alignement<select id="image-text-align"><option value="left">Gauche</option><option value="center">Centre</option><option value="right">Droite</option></select></label>
+        <label for="image-text-color">Couleur du texte<input id="image-text-color" type="color" value="#ffffff"></label>
+        <label for="image-text-background">Couleur du fond<input id="image-text-background" type="color" value="#162231"></label>
+      </div>
+      <label class="text-editor-checkbox" for="image-text-transparent"><input id="image-text-transparent" type="checkbox" checked>Fond transparent</label>
+      <button id="image-text-delete" type="button" class="quiet-button">Supprimer ce libellé</button>
+    </fieldset>
+    <div class="text-editor-actions text-editor-exports">
+      <button id="image-text-png" type="button" class="quiet-button">Télécharger le PNG</button>
+      <button id="image-text-svg" type="button" class="quiet-button">Télécharger le SVG</button>
+      <button id="image-text-json" type="button" class="quiet-button">Enregistrer le projet JSON</button>
+    </div>
+    <p class="image-help">Le PNG est aplati. Le SVG contient les textes éditables. Le JSON permet de rouvrir le projet dans cet atelier. Les exports contiennent l’image originale.</p>
+  </div>
+</details>

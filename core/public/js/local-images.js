@@ -15,6 +15,7 @@
   const dimensions = (w, h) => `${w} × ${h} px · ${mp(w * h)}`;
   const duration = ms => { const seconds = Math.round(ms / 1000); return seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`; };
   const locked = () => pendingSubmit || ACTIVE.includes(operation?.state) || operation?.state === 'unknown';
+  const textEditor = globalThis.ImageTextEditor?.init({ getContext: () => ({ operation, locked: locked() }) });
   const currentRecipe = () => workshop?.profiles.find(p => p.id === $('image-profile').value) || config?.profiles.find(p => p.id === $('image-profile').value);
   const genericSizes = [...$('image-size').options].map(option => [option.value, option.textContent]);
   const shape = (w, h) => w === h ? 'Carré' : w > h ? 'Paysage' : 'Portrait';
@@ -61,6 +62,7 @@
     for (const button of $('image-gallery').querySelectorAll('button')) button.disabled = block;
     starters?.refresh();
     expert?.refresh();
+    textEditor?.refresh();
   }
   function updateFormMode() {
     const count = referenceCount();
