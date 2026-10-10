@@ -1604,3 +1604,16 @@ test('the language can change while the conversation runs and applies to the nex
   assert.equal(h.conversation.session, session, 'the conversation is not replaced');
   h.conversation.stop();
 });
+
+test('browser speech failure cannot become completed playback after its start event', async () => {
+  const { speakWithBrowser } = require('../public/browser-conversation'); let scheduled = 0;
+  globalThis.SpeechSynthesisUtterance = function (text) { this.text = text; };
+  globalThis.speechSynthesis = { getVoices: () => [], cancel() {}, speak(utterance) {
+    setTimeout(() => { utterance.onstart(); utterance.onerror({ error: 'synthesis-failed' }); }, 1);
+  } };
+  try {
+    await assert.rejects(speakWithBrowser({ text: 'Résultat.', language: 'fr' }, new AbortController().signal,
+      () => { scheduled++; }), /could not complete/);
+    assert.equal(scheduled, 1);
+  } finally { delete globalThis.speechSynthesis; delete globalThis.SpeechSynthesisUtterance; }
+});

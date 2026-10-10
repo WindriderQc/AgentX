@@ -164,6 +164,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       const id = hash(input.sessionId + '\n' + input.clientTurnId);
       let row = await repo.get(id);
       if (!row) {
+        if ((await repo.find({ state: { $in: ACTIVE } }, LIMITS.open)).length >= LIMITS.open) continue;
         const taken = await conversations.acceptTurn({ ...query(input.sessionId), modeId: current.modeId,
           traceId: input.clientTurnId, clientTurnId: input.clientTurnId, channel: input.channel,
           inputText: input.text, attachments: input.attachments });

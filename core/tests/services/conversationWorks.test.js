@@ -257,3 +257,52 @@ test('erasing an admitted work preserves the native fence until its exact termin
   expect((await mongoose.connection.collection('conversation_work_dispatch').findOne({ _id: OWNER })).workId).toBeNull();
   expect(execute).not.toHaveBeenCalled();
 });
+
+test('the real Household HTTP handler commits intake before its guardian adapter and reuses its canonical turn on duplicate', async () => {
+  const packs = require('../../surfaces/household/packs'), prompt = require('../../surfaces/household/persona-prompt');
+  const records = require('../../surfaces/household/persona-records'), pack = packs.packById('personal_operator');
+  current = await conversations.updateSession({ sessionId: current.sessionId }, { $set: { modeId: pack.defaultMode,
+    persona: { id: 'nestor', version: 1, name: 'Nestor', identity: 'Synthetic personality.', voice: {} }, voice: { language: 'auto' } } });
+  const turnId = randomUUID(), calls = [];
+  const executeConversation = require('../../surfaces/household/conversation-executor').createConversationExecutor({
+    env, inference: {}, agentClient: async body => {
+      calls.push(body);
+      expect(await conversations.getTurn({ sessionId: current.sessionId, traceId: turnId })).toMatchObject({ inputText: 'Regarde mes tâches.', outcome: 'pending' });
+      expect(body.history).toEqual([]);
+      const sessionKey = `agent:main:household:direct:${current.sessionId}`, runId = native();
+      await body.onStarted(sessionKey, runId);
+      const accepted = await works.request({ agentId: 'main', sessionKey, runId });
+      expect(accepted.execution).toBe('pending'); expect(tasks.list).not.toHaveBeenCalled();
+      return { text: 'Je m’en occupe.', sessionKey, runId, metadata: { model: 'synthetic-native' },
+        tools: { status: 'observed', receipts: [{ tool: 'conversation_work', status: 'verified', runId, acceptedWork: { id: accepted.id } }], runId } };
+    } });
+  works.guardianInstructions = require('../../surfaces/household/conversation-work-runtime').GUARDIAN;
+  const handler = require('../../surfaces/household/persona-turn').createPersonaTurnHandler({
+    runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: env, conversationWorks: works,
+    executeConversation, requireNativeAgent: async () => {}, familyTasks: { listProfiles: async () => ({ profiles: [] }), listProfileDetails: async () => ({ profiles: [] }) },
+    ownerMemory: {}, familyMemory: {}, notesFor: () => ({ search: async () => ({ notes: [] }), record: async () => ({}) }),
+    personalAttachments: () => ({ prepare: async messages => messages.map(({ attachments, ...message }) => message) }),
+    knowledgeState: { config: null, status: { status: 'disabled', corpusFingerprint: null } },
+    openHold: {}, openingPayload: () => ({}), sounds: { select: () => null, get: () => null }, visuals: { sources: () => [] },
+    brain: { cancel() {}, schedule() { throw new Error('Legacy review must not duplicate this accepted work'); }, contextFor: () => '' },
+    activePersonaTurns: new Map(), validClientTurnId: id => /^[a-zA-Z0-9-]{16,80}$/.test(id),
+    envelope: (res, data, status = 200) => res.status(status).json({ ok: true, data }),
+    fail: (res, status, message, code) => res.status(status).json({ message, code }),
+    cleanText: (value, max = 4000) => String(value || '').trim().slice(0, max),
+    assessSafety: prompt.assessSafety, childBoundaryReply: prompt.childBoundaryReply, escalationReply: prompt.escalationReply,
+    detectMemoryRequest: prompt.detectMemoryRequest, packById: packs.packById, packSummary: packs.packSummary, modeSummary: packs.modeSummary,
+    publicSession: records.publicSession, systemPromptFor: prompt.systemPromptFor, spokenReplyLanguage: prompt.spokenReplyLanguage,
+    sessionHistoryMessages: records.sessionHistoryMessages, loadSessionAuditRows: records.loadSessionAuditRows,
+    MEMORY_RECALL_LIMIT: prompt.MEMORY_RECALL_LIMIT, PERSONAL_OPERATOR_SURFACE_CONTRACT: packs.PERSONAL_OPERATOR_SURFACE_CONTRACT,
+    VOIX_FAMILY_PACK_ID: 'kidx_nestor' });
+  const app = express(); app.use(express.json()); app.post('/sessions/:sessionId/turns/text', (req, res) => handler(req, res, 'private'));
+  const body = { text: 'Regarde mes tâches.', turnId, stream: true, channel: 'voice' };
+  const first = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body);
+  expect(first.status).toBe(200);
+  const events = first.text.trim().split('\n').map(line => JSON.parse(line));
+  expect(events[0]).toMatchObject({ type: 'accepted', turnId });
+  expect(events.at(-1)).toMatchObject({ type: 'done', data: { traceId: turnId, reply: { text: 'Je m’en occupe.' } } });
+  const duplicate = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body);
+  expect(duplicate.status).toBe(202); expect(duplicate.body.data.reply.text).toBe('Je m’en occupe.');
+  expect(calls).toHaveLength(1); expect((await conversations.getSession({ sessionId: current.sessionId })).turnCount).toBe(1);
+});

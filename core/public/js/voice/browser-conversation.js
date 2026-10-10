@@ -842,7 +842,7 @@
   function speakWithBrowser({ text, language }, signal, onScheduled) {
     const synth = root.speechSynthesis;
     if (!synth || signal.aborted) return Promise.resolve();
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const utterance = new root.SpeechSynthesisUtterance(text);
       const profile = speechLanguage.PROFILES?.[language === 'en' ? 'en' : 'fr'];
       utterance.lang = profile?.locale || (language === 'en' ? 'en-CA' : 'fr-CA');
@@ -851,7 +851,7 @@
       const done = () => { signal.removeEventListener('abort', stop); resolve(); };
       const stop = () => { synth.cancel(); done(); };
       utterance.onstart = () => onScheduled?.();
-      utterance.onend = done; utterance.onerror = done;
+      utterance.onend = done; utterance.onerror = () => { signal.removeEventListener('abort', stop); reject(new Error('Browser speech could not complete.')); };
       signal.addEventListener('abort', stop, { once: true });
       synth.speak(utterance);
     });
