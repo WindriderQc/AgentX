@@ -115,7 +115,14 @@ function iotCombinedScales(model) {
 function iotCombinedDatasets(model) {
   return model.metrics.map(metric => ({ label: metric.label, data: metric.data, yAxisID: metric.axis,
     borderColor: metric.color, borderWidth: context => context.chart.width < 600 ? 1.5 : 2.3, borderCapStyle: 'round', borderJoinStyle: 'round',
-    cubicInterpolationMode: 'monotone', tension: .25, pointRadius: 0, pointHoverRadius: 0,
+    cubicInterpolationMode: 'monotone', tension: .25, pointHoverRadius: 0,
+    pointBackgroundColor: metric.color, pointBorderColor: '#10202a', pointBorderWidth: 1,
+    pointRadius(context) {
+      const data = context.dataset.data; const index = context.dataIndex;
+      if (!Number.isFinite(data[index]?.y)) return 0;
+      const isolated = !Number.isFinite(data[index - 1]?.y) && !Number.isFinite(data[index + 1]?.y);
+      return isolated ? 3 : index === data.length - 1 ? 2 : 0;
+    },
     parsing: false, spanGaps: false, fill: metric.key === model.axis.key ? 'start' : false,
     backgroundColor(context) {
       const area = context.chart.chartArea;
