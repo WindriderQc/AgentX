@@ -297,15 +297,17 @@ function createPersonaTurnHandler({
           isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('').trim();
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const acceptedTaskWork = entry.workId ? await conversationWorks.taskAcceptance?.(entry.workId) : null;
+        const currentDirective = [turnDirective(context), acceptedTaskWork
+          ? 'Core has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
+            + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch, task-list call or agent discovery is needed. Acceptance is not task data or task completion.'
+          : ''].filter(Boolean).join('\n\n');
         const nativeInstructions = nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
           soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
           addressed: member ? (consult ? teamAddress.consultInstruction : teamAddress.memberInstruction)(speaker.name)
             : memberWork ? teamAddress.consultContract(team, agentIdFor(session)) : '',
           workshop, scene: sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : ''), llmxTurn: isLlmX,
           imageSession: session, imageBackend: backend, imagesEnabled: !member })
-          + (entry.workId ? '\n\n' + conversationWorks.guardianInstructions : '')
-          + (acceptedTaskWork ? '\n\nCore has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
-            + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch or task-list call is needed. Acceptance is not task data or task completion.' : '');
+          + (entry.workId ? '\n\n' + conversationWorks.guardianInstructions : '');
         // Child presentation follows the selected adult personality on both
         // transports. Adult conversations keep their normal style overlay order.
         const agentxInstructions = [pack.childSafe ? session.persona?.identity : '',
@@ -336,7 +338,7 @@ function createPersonaTurnHandler({
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
           instructions: nativeInstructions, agentxInstructions, ...(turnContext ? { turnContext } : {}),
-          ...(turnDirective(context) ? { turnDirective: turnDirective(context) } : {}),
+          ...(currentDirective ? { turnDirective: currentDirective } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
           signal: abort.signal, onWaiting: () => event('status', { phase: 'waiting_host' }), onActivity: activity => event('status', { phase: 'activity', activity }),
