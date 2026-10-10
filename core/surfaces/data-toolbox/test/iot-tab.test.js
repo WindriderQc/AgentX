@@ -291,6 +291,45 @@ test('comparison scales stay finite for extreme numbers and min/max is an explic
   assert.ok(Number.isFinite(ranges.low) && Number.isFinite(ranges.high));
 });
 
+test('fresh browsers render the signature composition without needing saved preferences', async () => {
+  let writes = 0;
+  const page = browser(fakeData(), { getItem: () => null, setItem() { writes++; } });
+  await page.render();
+  assert.equal(page.iotCurveStyle('temperature').fill, 'gradient');
+  assert.equal(page.iotCurveStyle('temperature').opacity, 24);
+  assert.equal(page.iotCurveStyle('cpu_temperature').opacity, 14);
+  assert.equal(page.iotCurveStyle('pressure').width, .75);
+  assert.equal(page.iotCurveStyle('pressure').line, 'dotted');
+  assert.equal(page.iotCurveStyle('battery_voltage').line, 'dashed');
+  assert.equal(page.iotCurveStyle('wifi_rssi').curve, 'step');
+  assert.equal(page.iotCurveStyle('altitude').fill, 'none');
+  assert.equal(page.iotCurveStyle('constructor').fill, 'none');
+  assert.equal(page.iotCurveStyle('unknown_measure').scale, 'context');
+  assert.equal(writes, 0, 'defaults do not become saved overrides');
+  assert.ok(page.requests.every(call => call.method === 'GET'));
+});
+
+test('signature preset restores distinct metric styles and persists them without changing another device', async () => {
+  const saved = new Map();
+  const storage = { getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, value) };
+  const store = { devices: [device('SYN_1', { measures: ['temperature', 'pressure', 'battery_voltage', 'wifi_rssi', 'cpu_temperature', 'altitude'].map(key => ({ key, value: 1, at: AT })) })] };
+  const page = browser(fakeData(store), storage); await page.render();
+  page.iotState.selected = 'OTHER_DEVICE'; page.iotStoreCurveStyle(['temperature'], { width: 4, fill: 'none', scale: 'detail' });
+  page.iotState.selected = 'SYN_1'; page.iotStoreCurveStyle(page.iotState.keys, { width: 3, fill: 'none' });
+  page.listeners.click[0]({ target: { closest: selector => selector === '[data-iot-style-preset]' ? { dataset: { iotStylePreset: 'signature' } } : null } });
+  const reloaded = browser(fakeData(store), storage); await reloaded.render();
+  assert.equal(reloaded.iotCurveStyle('temperature').fill, 'gradient');
+  assert.equal(reloaded.iotCurveStyle('pressure').line, 'dotted');
+  assert.equal(reloaded.iotCurveStyle('battery_voltage').line, 'dashed');
+  assert.equal(reloaded.iotCurveStyle('wifi_rssi').curve, 'step');
+  assert.equal(reloaded.iotCurveStyle('cpu_temperature').opacity, 14);
+  assert.equal(reloaded.iotCurveStyle('altitude').width, 1.5);
+  reloaded.iotState.selected = 'OTHER_DEVICE';
+  assert.equal(reloaded.iotCurveStyle('temperature').width, 4);
+  assert.equal(reloaded.iotCurveStyle('temperature').scale, 'detail');
+  assert.ok([...page.requests, ...reloaded.requests].every(call => call.method === 'GET'));
+});
+
 test('curve preferences survive reload per device and measure without writing to Data', async () => {
   const saved = new Map();
   const storage = { getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, value) };
@@ -313,7 +352,7 @@ test('unreadable or invalid saved curve styles leave readings available with bou
     assert.equal(model.metrics[0].points[0].value, 22);
     assert.equal(model.metrics[0].style.width, 1.5);
     assert.equal(model.metrics[0].style.line, 'solid');
-    assert.equal(model.metrics[0].style.fill, 'none');
+    assert.equal(model.metrics[0].style.fill, raw === 'invalid json' ? 'gradient' : 'none');
     assert.ok(model.metrics[0].style.opacity >= 0 && model.metrics[0].style.opacity <= 40);
     page.iotStoreCurveStyle(['temperature'], { width: 2, fill: 'solid' });
     assert.equal(page.iotCurveStyle('temperature').width, 2, 'denied storage retains session preferences');

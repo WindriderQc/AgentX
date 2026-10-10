@@ -2,9 +2,17 @@
 
 const IOT_APPEARANCE_STORAGE = 'agentx.iot.curve-styles.v1';
 const IOT_CURVE_PRESETS = Object.freeze({
+  signature: { label: 'Signature', width: 1.5, line: 'solid', curve: 'smooth', fill: 'gradient', opacity: 24, points: false, glow: false },
   clean: { label: 'Épuré', width: 1.5, line: 'solid', curve: 'smooth', fill: 'none', opacity: 18, points: false, glow: false },
   areas: { label: 'Aires', width: 1.5, line: 'solid', curve: 'smooth', fill: 'gradient', opacity: 18, points: false, glow: false },
   technical: { label: 'Technique', width: 1, line: 'solid', curve: 'linear', fill: 'none', opacity: 18, points: true, glow: false }
+});
+const IOT_SIGNATURE_CURVES = Object.freeze({
+  temperature: { fill: 'gradient', opacity: 24 },
+  pressure: { width: .75, line: 'dotted' },
+  battery_voltage: { width: 1, line: 'dashed' },
+  wifi_rssi: { width: 1, curve: 'step' },
+  cpu_temperature: { fill: 'gradient', opacity: 14 }
 });
 const iotAppearance = { devices: new Map(), selected: '' };
 
@@ -15,6 +23,11 @@ function iotCleanCurveStyle(value = {}) {
     curve: oneOf('curve', ['smooth', 'linear', 'step']), fill: oneOf('fill', ['none', 'gradient', 'solid']),
     opacity: Number.isFinite(value?.opacity) ? Math.max(0, Math.min(40, value.opacity)) : base.opacity,
     points: value?.points === true, glow: value?.glow === true, scale: value?.scale === 'detail' ? 'detail' : 'context' };
+}
+
+function iotSignatureCurveStyle(key) {
+  return iotCleanCurveStyle({ ...IOT_CURVE_PRESETS.clean,
+    ...(Object.hasOwn(IOT_SIGNATURE_CURVES, key) ? IOT_SIGNATURE_CURVES[key] : {}) });
 }
 
 function iotReadAppearance() {
@@ -32,14 +45,15 @@ function iotReadAppearance() {
 iotReadAppearance();
 
 function iotCurveStyle(key) {
-  return iotCleanCurveStyle(iotAppearance.devices.get(iotState.selected)?.get(key));
+  const saved = iotAppearance.devices.get(iotState.selected)?.get(key);
+  return saved ? iotCleanCurveStyle(saved) : iotSignatureCurveStyle(key);
 }
 
 function iotStoreCurveStyle(keys, style) {
   const id = iotState.selected;
   if (!id) return;
   const curves = iotAppearance.devices.get(id) || new Map();
-  for (const key of keys) curves.set(key, iotCleanCurveStyle(style));
+  for (const key of keys) curves.set(key, iotCleanCurveStyle(typeof style === 'function' ? style(key) : style));
   iotAppearance.devices.delete(id); iotAppearance.devices.set(id, new Map([...curves].slice(-64)));
   if (iotAppearance.devices.size > 32) iotAppearance.devices.delete(iotAppearance.devices.keys().next().value);
   try {
@@ -101,7 +115,7 @@ document.addEventListener('click', event => {
   const copy = event.target.closest('[data-iot-style-copy]');
   if (!Object.hasOwn(IOT_CURVE_PRESETS, preset) && !copy) return;
   const keys = array(iotDevice()?.measures).map(measure => measure.key);
-  iotStoreCurveStyle(keys, copy ? iotCurveStyle(iotAppearanceKey()) : IOT_CURVE_PRESETS[preset]);
+  iotStoreCurveStyle(keys, copy ? iotCurveStyle(iotAppearanceKey()) : preset === 'signature' ? iotSignatureCurveStyle : IOT_CURVE_PRESETS[preset]);
   iotSyncAppearance(); iotDrawCombined();
 });
 
