@@ -1,0 +1,25 @@
+<details id="image-protected-composition" class="image-protected" hidden>
+  <summary>Conserver le parent hors des zones choisies</summary>
+  <p>Choisis les rectangles où reprendre le résultat de la retouche. La composition conserve les pixels du parent partout ailleurs. Les deux images doivent avoir les mêmes dimensions.</p>
+  <button id="image-protected-prepare" type="button" class="quiet-button">Préparer les zones sur le parent</button>
+  <p id="image-protected-status" role="status"></p>
+  <div id="image-protected-workspace" hidden>
+    <p class="image-help">Dessine un rectangle sur le parent, ou indique ses coordonnées en pixels. Les zones bleues recevront le résultat.</p>
+    <canvas id="image-protected-canvas" aria-label="Parent et zones de remplacement"></canvas>
+    <fieldset id="image-protected-fields">
+      <legend>Zone à ajouter</legend>
+      <label for="image-protected-x">X<input id="image-protected-x" type="number" min="0" step="1" value="0"></label>
+      <label for="image-protected-y">Y<input id="image-protected-y" type="number" min="0" step="1" value="0"></label>
+      <label for="image-protected-width">Largeur<input id="image-protected-width" type="number" min="1" step="1" value="1"></label>
+      <label for="image-protected-height">Hauteur<input id="image-protected-height" type="number" min="1" step="1" value="1"></label>
+      <button id="image-protected-add" type="button" class="quiet-button">Ajouter cette zone</button>
+    </fieldset>
+    <ol id="image-protected-regions"></ol>
+    <button id="image-protected-build" type="button" class="quiet-button">Composer et vérifier les pixels conservés</button>
+    <div id="image-protected-downloads" hidden>
+      <a id="image-protected-png" class="quiet-button" download="composition-protegee.png">Télécharger la composition PNG</a>
+      <a id="image-protected-receipt" class="quiet-button" download="composition-protegee.json">Télécharger les zones et le reçu</a>
+      <img id="image-protected-output" alt="Composition avec les pixels du parent conservés hors des zones choisies">
+    </div>
+  </div>
+</details>
