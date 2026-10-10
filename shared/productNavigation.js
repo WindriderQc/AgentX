@@ -23,7 +23,7 @@ function buildProductNavigation({ service = 'core', activePage = '', publicUrls 
     })));
   }
   const available = item => agentxProfile !== 'demo' || (!item.external && (
-    !item.href || !item.href.startsWith(coreBase + '/') || !demoSurfaceDisabled(item.href.slice(coreBase.length))
+    !item.href || !item.href.startsWith(coreBase + '/') || !demoSurfaceDisabled(item.href.slice(coreBase.length).split(/[?#]/, 1)[0])
   ));
   const navItems = groups.map(group => ({ ...group,
     href: group.entry ? link('core', agentxProfile === 'demo' ? '/playground' : group.entry) : null,

@@ -276,8 +276,8 @@ what is on screen, names the failure on the line and turns the header red.
 **Refresh** reads the whole tab at any time.
 
 **What the page can change.** The amber line under the header reads **No
-filesystem actions. This page can send seven kinds of change to Data.** Open
-**Show the list** for the seven; the Overview repeats the list in full under
+filesystem actions. This page can send nine kinds of change to Data.** Open
+**Show the list** for the nine; the Overview repeats the list in full under
 **What this page can change**.
 
 **Phone width.** At 620 px and below the header shrinks to the title and the
@@ -590,3 +590,44 @@ Local tests and disposable browser fixtures verify these product paths without
 production MongoDB or Ollama. Responsive browser checks establish layout at the
 tested viewport sizes, not physical touchscreen, GPU or voice acceptance. Keep
 those deployment and device receipts outside Git.
+
+## IoT devices
+
+Open **Système → Appareils IoT** (`/data-toolbox#iot`). Data owns the MQTT
+connection, device registry, readings and history. The page connects through
+Core's `/api/data-toolbox/iot` relay and never connects directly to a broker.
+
+Each device has a card with its ID, display name, location, availability,
+latest measurements and their ages. Search matches names, IDs and locations.
+Choose **Voir les courbes** to select a device and check the measures to draw.
+Unknown values stay unknown; a disconnected broker leaves the last known
+values dated and disables commands.
+
+- **Live** reads Data's last 60 raw points per measure. That memory buffer
+  starts empty after Data restarts.
+- **History** offers an hour, 24 hours, seven days, 31 days or a year, with
+  automatic or explicit minute, five-minute, 30-minute, hourly, two-hour or
+  daily resolution. Fine history is retained 90 days; hourly history has no
+  expiry. Graphs use mean values and show their min/max ranges, real time
+  spacing, gaps and partial hours. Tables expose every returned point.
+- Cards and live graphs refresh every two seconds while the tab is visible;
+  historical curves refresh every minute. Refresh waits during editing or
+  while a details panel is open. Changing devices or tabs discards old answers.
+- **Nom, emplacement et notes** explicitly saves those three registry fields.
+- **Commandes** explicitly sends GPIO ON, GPIO OFF or reboot for the selected
+  device. GPIO numbers are 0–48, matching Data's existing firmware contract.
+  Commands are QoS 0, never retained or queued. A published message establishes
+  publication only: it does not establish what the hardware did. A lost reply
+  reports an unknown outcome and triggers no automatic retry.
+
+The page displays measures from `sensors/<device>/<measure>` and recognized
+numeric fields in legacy `esp32/alive/<device>` and `esp32/data/<device>` JSON.
+Aliases such as `wifi`, `CPUtemp`, `battery` and `airHumid` become the same
+canonical measures as the sensor topics. Reception time supplies timestamps;
+retained bundles do not create fresh readings. For each measure and minute,
+sensor topics take precedence over data bundles, then heartbeat bundles,
+so duplicate representations do not inflate history. Live values prefer the
+same sources while fresh and clear the ring when switching source. Strings,
+configuration fields and device timestamps never become numeric telemetry.
+Configured-output discovery, configuration profiles and timers are separate
+from these three existing commands.

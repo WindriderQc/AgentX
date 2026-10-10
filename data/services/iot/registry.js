@@ -22,7 +22,9 @@ const MAX_MEASURES_PER_DEVICE = 32;
 const LIVE_RING_SIZE = 60;
 // Silence after which a device the broker does not report offline is stale.
 const STALE_AFTER_MS = 5 * 60 * 1000;
-const OWNER_FIELDS = Object.freeze({ displayName: 80, location: 80, notes: 1000 });
+const TRANSPORT_PRIORITY = Object.freeze({ sensors: 3, data: 2, alive: 1 });
+const TRANSPORT_FRESH_MS = 60_000;
+const { OWNER_FIELDS, validatePatch } = require('../../../shared/iotDeviceRules');
 
 const iso = (date) => (date instanceof Date && Number.isFinite(date.getTime()) ? date.toISOString() : null);
 const asDate = (value) => {
@@ -44,7 +46,8 @@ function fromDoc(doc) {
       key: measure.key, name: measure.name ?? null, unit: measure.unit ?? null,
       deviceClass: measure.deviceClass ?? null, source: measure.source || 'default',
       firstSeenAt: asDate(measure.firstSeenAt),
-      value: typeof measure.value === 'number' ? measure.value : null, at: asDate(measure.at)
+      value: typeof measure.value === 'number' ? measure.value : null, at: asDate(measure.at),
+      transport: Object.hasOwn(TRANSPORT_PRIORITY, measure.transport) ? measure.transport : 'sensors'
     });
   }
   const state = doc.availability?.state;
@@ -129,12 +132,18 @@ function createRegistry({ bootAt = new Date(), emit = () => {}, staleAfterMs = S
   }
 
   /** Record a reading. Returns '' or the reason it was refused. */
-  function reading(id, key, value, now) {
+  function reading(id, key, value, now, { transport = 'sensors' } = {}) {
     const device = ensure(id, now);
     if (!device) return 'device_limit';
     const measure = measureOf(device, key, now);
     if (!measure) { touch(device, now); return 'measure_limit'; }
     touch(device, now);
+    // A fresh, more authoritative stream supplies the card and live ring.
+    // History still receives fallback readings for minute-level arbitration.
+    if (measure.at && now - measure.at < TRANSPORT_FRESH_MS &&
+        TRANSPORT_PRIORITY[measure.transport] > TRANSPORT_PRIORITY[transport]) return '';
+    if (measure.transport !== transport) device.rings.delete(key);
+    measure.transport = transport;
     measure.value = value;
     measure.at = now;
     let ring = device.rings.get(key);
@@ -288,25 +297,6 @@ function createRegistry({ bootAt = new Date(), emit = () => {}, staleAfterMs = S
       throw error;
     }
     return pending.length;
-  }
-
-  /** Validate the owner's fields: only these three, strings or null, bounded. */
-  function validatePatch(body) {
-    if (!body || typeof body !== 'object' || Array.isArray(body)) throw refuse(400, 'Expected a JSON object with displayName, location or notes');
-    const keys = Object.keys(body);
-    const unknown = keys.filter((key) => !Object.prototype.hasOwnProperty.call(OWNER_FIELDS, key));
-    if (unknown.length) throw refuse(400, `Unknown field: ${unknown.slice(0, 5).map((key) => key.slice(0, 40)).join(', ')}`);
-    if (!keys.length) throw refuse(400, 'Nothing to change: give displayName, location or notes');
-    const changes = {};
-    for (const key of keys) {
-      const value = body[key];
-      if (value === null) { changes[key] = null; continue; }
-      if (typeof value !== 'string') throw refuse(400, `${key} must be a string or null`);
-      const clean = (key === 'notes' ? value.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '') : value.replace(/[\u0000-\u001f\u007f]+/g, ' ')).trim();
-      if (clean.length > OWNER_FIELDS[key]) throw refuse(400, `${key} must be at most ${OWNER_FIELDS[key]} characters`);
-      changes[key] = clean || null;
-    }
-    return changes;
   }
 
   async function patch(db, id, body) {

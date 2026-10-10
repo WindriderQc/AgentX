@@ -5,13 +5,13 @@ observations, GPU telemetry, live feeds, database inspection, downloadable
 reports, an activity log, integrations and supervised janitor operations. Source, tests and distribution belong to this repository.
 
 Core's full profile hosts `/data-toolbox`, a UI backed by Data HTTP APIs. Its
-tabs are Overview, Activity, Storage, Files, Network, GPU, Databases, Live
+tabs are Overview, Activity, Storage, Files, Network, GPU, Databases, IoT Devices, Live
 Data, MQTT and Janitor; the GPU tab reads the four `GET /api/v1/hardware`
 routes and the MQTT tab the three `/api/v1/mqtt` routes described below. The
 Activity tab and the Overview's recent-activity card read `GET /api/v1/events`;
 the Storage tab's Growth view reads `GET /api/v1/storage/trends` and its
 Reports view the `/api/v1/exports` routes. The Toolbox reads, with
-seven kinds of write: a network device's record (`PATCH /api/v1/network/devices/:id`:
+nine kinds of write: a network device's record (`PATCH /api/v1/network/devices/:id`:
 name, known flag, type, location, notes), a network scan request
 (`POST /api/v1/network/scan`, followed through
 `GET /api/v1/network/scan-requests/:id`), an MQTT message published by
@@ -19,10 +19,12 @@ hand, a storage scan request, the Janitor's duplicate-review decisions
 (`PUT`/`DELETE /api/v1/janitor/profiles/shared-drive/review-decisions/:sha256`
 and `POST .../review-decisions/batch`, described under
 [Duplicate-review decisions](#duplicate-review-decisions): a record of intent
-that deletes no file), and the generation (`POST /api/v1/exports/generate`,
+that deletes no file), the generation (`POST /api/v1/exports/generate`,
 with a type and a format and nothing else) and the deletion
 (`DELETE /api/v1/exports/:filename`) of a report, a file in Data's own report
-store. The Toolbox does not relay `POST /api/v1/events` or the event stream. Data stores the device fields as given, with no length limit of its own:
+store, an IoT device's owner metadata, and an explicit GPIO or reboot command
+([IoT devices](#iot-devices-and-sensor-history)). The Toolbox does not relay
+`POST /api/v1/events` or the event stream. Data stores the network device fields as given, with no length limit of its own:
 the Toolbox relay bounds them (name and location 80 characters, notes 500, a
 fixed list of types). A collector sweep rewrites only what it observed (IP,
 MAC, hostname, vendor, status, last sighting), so these fields survive it. The
@@ -348,13 +350,26 @@ measures or devices is configured; a new one appears by publishing.
 |---|---|---|
 | `sensors/<device>/<measure>` | a plain number (`27.2`, `-73`) | one reading: aggregated into the minute, latest value, live ring, "last seen" |
 | `sensors/<device>/availability` | `online` or `offline` | availability of the device, recorded when it changes; `online` published live also refreshes "last seen" |
-| `esp32/alive/<device>`, `esp32/data/<device>` | anything | "last seen" only, nothing stored |
+| `esp32/alive/<device>`, `esp32/data/<device>` | legacy JSON, up to 8 KiB | "last seen" plus recognized finite numeric telemetry |
 | `esp32/register`, `esp32/config` | the device id | "last seen"; `register` sets `registeredAt` |
 | `homeassistant/device/<device>/config` | Home Assistant device discovery JSON | optional: maker, model, versions, and the name, unit and device class of each component whose `state_topic` is `sensors/<device>/<measure>` |
 
-The readings bundled in `esp32/data/<device>` are not stored: they repeat the
-`sensors/...` readings under other key names, so using them would count each
-reading twice. A device that only publishes that bundle has no history.
+Legacy bundles accept known numeric keys at the root or in `payload`.
+`wifi`, `CPUtemp`/`cpu_temp_c`, `battery`, `airHumid` and
+`tempBM_280`/`bmx_temp_c` normalize to `wifi_rssi`, `cpu_temperature`,
+`battery_voltage`, `humidity` and `temperature`. CPU frequency, heap, DHT
+temperature, pressure, altitude, gas, light and soil fields are also recognized.
+Canonical keys win over aliases. Strings, configuration and device clock fields
+are ignored; an explicit `sender` must match the topic's device. Malformed,
+oversized or mismatched bundles count as `legacy_payload` refusals.
+
+For each measure-minute, sensor-topic readings take precedence over data
+bundles, which take precedence over heartbeat bundles. Only one source's
+samples enter history, so a device publishing all formats does not inflate
+sample counts. A bundle-only device gets both live readings and history.
+Latest values and live rings prefer the same sources while fresh (60 seconds);
+switching sources clears that measure's ring to avoid mixing duplicates.
+All measurements use reception time. Retained bundles are ignored.
 Retained messages are the broker's memory, not the device speaking: a retained
 availability sets the state, a retained reading is refused, and neither
 refreshes "last seen".

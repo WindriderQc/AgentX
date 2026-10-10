@@ -951,7 +951,7 @@ test('the Overview shows the last warnings and errors and links to the Activity 
   assert.ok(card.indexOf('Collector nas-storage has not reported') < card.indexOf('Storage scan of photos expired'), 'newest first across both severities');
   const reads = sent(browser, 'GET', '/events');
   assert.deepEqual(reads.map((request) => Object.fromEntries(request.query)), [{ severity: 'error', limit: '4' }, { severity: 'warning', limit: '4' }]);
-  assert.match(html(browser), /Write routes<\/span><strong>9 in 7 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions \(save, import, remove\), report generation, report deletion</);
+  assert.match(html(browser), /Write routes<\/span><strong>11 in 9 families · network device record, network scan request, MQTT publish, storage scan request, Janitor review decisions \(save, import, remove\), report generation, report deletion, IoT device record, IoT command</);
 
   const quiet = page(activityData({ events: fx.eventLog(1, Date.now()) }), '#overview');
   await quiet.render();

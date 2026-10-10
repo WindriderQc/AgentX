@@ -6,7 +6,7 @@
  *
  * The contract for readings is `sensors/<device>/<measure>` with a plain
  * numeric payload, and `sensors/<device>/availability` with `online` or
- * `offline`. Everything else a device says only proves it is alive, and Home
+ * `offline`. Legacy JSON telemetry is parsed separately, and Home
  * Assistant discovery is optional enrichment. No list of measures is kept
  * here: a new measure or a new device needs no change.
  */
@@ -14,13 +14,12 @@
 const MAX_TOPIC_BYTES = 200;
 const MAX_NUMERIC_BYTES = 32;
 const MAX_DISCOVERY_BYTES = 32 * 1024;
-const DEVICE_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+const { isDeviceId } = require('../../../shared/iotDeviceRules');
 const MEASURE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$/;
 const NUMERIC = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d{1,3})?$/;
 // Names an object key must never take, whatever the pattern allows.
 const RESERVED = new Set(['__proto__', 'prototype', 'constructor']);
 
-const isDeviceId = (value) => typeof value === 'string' && DEVICE_ID.test(value) && !RESERVED.has(value);
 const isMeasure = (value) => typeof value === 'string' && MEASURE.test(value) && !RESERVED.has(value);
 
 const refused = (reason) => ({ kind: 'refused', reason });
@@ -30,7 +29,7 @@ const IGNORED = Object.freeze({ kind: 'ignored' });
  * Classify a topic:
  *   reading       sensors/<device>/<measure>
  *   availability  sensors/<device>/availability
- *   seen          esp32/alive/<device>, esp32/data/<device> (proof of life only)
+ *   seen          esp32/alive/<device>, esp32/data/<device> (legacy JSON)
  *   announce      esp32/register, esp32/config (the payload is the device id)
  *   discovery     homeassistant/device/<device>/config
  *   ignored       a topic that is none of the IoT store's business
