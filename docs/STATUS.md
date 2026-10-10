@@ -116,7 +116,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   Atelier also embeds the optional Hermes imageX specialist: conversation,
   editable prompt proposals, operational console, routing facts and read-only
   profile documents. Core retains the conversations and verifies proposal links
-  on generated images. Applying a proposal precedes explicit local generation;
+  on generated images. Atelier preserves working briefs up to 32,000 UTF-16 units
+  for Hermes preparation; the final render prompt, including explicit constraints,
+  stays within 8,000. Oversized input remains visible and refuses instead of being
+  cut on paste. Applying a proposal precedes explicit local generation;
   the specialist's text consultation receives no reference image bytes.
   A browser editor adds exact, editable text over verified originals, with PNG,
   standalone SVG and portable JSON exports. Reopening a project checks its

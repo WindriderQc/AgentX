@@ -26,7 +26,9 @@
           </div>
         </details>
         <label for="image-prompt">Ton brief</label>
-        <textarea id="image-prompt" maxlength="8000" required rows="6" placeholder="Décris le sujet, l’ambiance et les détails qui comptent. Pour une retouche, précise ce qui change et ce qui doit rester."></textarea>
+        <textarea id="image-prompt" required rows="6" aria-describedby="image-brief-counter image-brief-help" placeholder="Décris le sujet, l’ambiance et les détails qui comptent. Pour une retouche, précise ce qui change et ce qui doit rester."></textarea>
+        <p id="image-brief-counter" class="image-help" role="status" aria-live="polite">Brief conservé : 0 / 32 000 caractères · rendu avec contraintes : 0 / 8 000.</p>
+        <p id="image-brief-help" class="image-help">Tu peux coller un brief long en entier. Hermes peut le condenser avec « Affiner mon brief » jusqu’à 32 000 caractères, contraintes comprises. La création exige un brief final de 8 000 caractères maximum, contraintes comprises. Si Hermes est indisponible, réduis le texte ici.</p>
         <%- include('image-brief-constraints') %>
         <div class="field-heading"><label for="image-profile">Recette de rendu</label><span>Configuration actuelle</span></div>
         <select id="image-profile" aria-describedby="image-recipe-summary"></select>

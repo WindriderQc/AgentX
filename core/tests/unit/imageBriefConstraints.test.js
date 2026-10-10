@@ -31,6 +31,27 @@ test('never truncates an oversized composed prompt or interprets a similar const
   expect(constraints.validate({ version: 1, items: [] })).toBeUndefined();
 });
 
+test('planning keeps a long original brief and the same exact suffix within a separate 32000 UTF-16 budget', () => {
+  const original = 'Synthetic visual brief. '.repeat(450) + 'TERMINAL_SENTINEL';
+  const value = manifest(), composed = constraints.composeBrief(original, value);
+  expect(original.length).toBeGreaterThan(8000);
+  expect(constraints.visual(composed, value)).toBe(original);
+  expect(composed).toBe(original + '\n\n' + constraints.block(value));
+  expect(constraints.composeBrief(composed, value)).toBe(composed);
+  expect(() => constraints.compose(original, value)).toThrow('8 000');
+  expect(constraints.MAX_PROMPT).toBe(8000); expect(constraints.MAX_BRIEF).toBe(32000);
+});
+
+test('planning and rendering limits count UTF-16 units, including the protected suffix, without cutting text', () => {
+  expect(constraints.composeBrief('💡'.repeat(16000))).toHaveLength(32000);
+  expect(() => constraints.composeBrief('💡'.repeat(16000) + 'x')).toThrow('32 000');
+  const value = manifest(), suffixLength = constraints.block(value).length + 2;
+  expect(constraints.composeBrief('x'.repeat(32000 - suffixLength), value)).toHaveLength(32000);
+  expect(() => constraints.composeBrief('x'.repeat(32001 - suffixLength), value)).toThrow('32 000');
+  expect(constraints.compose('x'.repeat(8000 - suffixLength), value)).toHaveLength(8000);
+  expect(() => constraints.compose('x'.repeat(8001 - suffixLength), value)).toThrow('8 000');
+});
+
 test.each([
   value => { value.version = 2; }, value => { value.extra = true; },
   value => { value.items[0].kind = 'inferred'; }, value => { value.items[0].kind = ['composition']; }, value => { value.items[0].text = ''; },

@@ -48,6 +48,15 @@ button. Applying preserves the recipe, format, seed and reference selections.
 Changed draft context blocks stale application. Images retain a server-verified
 link to the completed proposal, including whether its prompt was edited.
 
+Atelier accepts a working brief and consultation message up to 32,000 UTF-16
+units each. The composed working brief includes its explicit constraints in that
+budget. Hermes prepares a final render prompt within 8,000 units, including the
+constraint block; applying remains an explicit user action. Core preserves the
+full current input and removes only older complete history pairs when necessary
+to fit the installed Studio transport bounds. If the current envelope alone is
+too large, it refuses before saving a turn or invoking Hermes. The native imageX
+tool retains its existing 8,000-unit input contract.
+
 Core uses its existing `OPENCLAW_GATEWAY_URL` and server-only
 `OPENCLAW_GATEWAY_TOKEN` to call the plugin's gateway-authenticated
 `POST /api/agentx/imagex/studio` route. The worker wrapper must forward `"$@"`;

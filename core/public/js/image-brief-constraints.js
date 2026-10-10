@@ -4,7 +4,7 @@
   else root.ImageBriefConstraints = api;
 })(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
-  var MAX_ITEMS = 20, MAX_TEXT = 300, MAX_TOTAL = 4000, MAX_PROMPT = 8000;
+  var MAX_ITEMS = 20, MAX_TEXT = 300, MAX_TOTAL = 4000, MAX_PROMPT = 8000, MAX_BRIEF = 32000;
   var KINDS = { 'exact-text': 'Texte exact à afficher', 'required-element': 'Élément obligatoire', composition: 'Composition ou relation' };
   function fail(message) { throw Object.assign(new Error(message), { statusCode: 400 }); }
   function object(value, keys) {
@@ -54,12 +54,18 @@
     if (suffix && text.endsWith('\n\n' + suffix)) text = text.slice(0, -suffix.length - 2).trim();
     return text;
   }
-  function compose(prompt, value) {
+  function composeWithin(prompt, value, limit, message) {
     var text = visual(prompt, value), suffix = block(value);
     var composed = text + (suffix ? '\n\n' + suffix : '');
-    if (composed.length > MAX_PROMPT) fail('Brief et contraintes dépassent 8 000 caractères. Réduis le texte avant de continuer.');
+    if (composed.length > limit) fail(message);
     return composed;
   }
-  return { MAX_ITEMS: MAX_ITEMS, MAX_TEXT: MAX_TEXT, MAX_TOTAL: MAX_TOTAL, MAX_PROMPT: MAX_PROMPT,
-    KINDS: Object.freeze(KINDS), validate: validate, block: block, visual: visual, compose: compose };
+  function compose(prompt, value) {
+    return composeWithin(prompt, value, MAX_PROMPT, 'Brief et contraintes dépassent 8 000 caractères. Réduis le texte avant de continuer.');
+  }
+  function composeBrief(prompt, value) {
+    return composeWithin(prompt, value, MAX_BRIEF, 'Brief et contraintes dépassent 32 000 caractères UTF-16. Réduis le texte avant de continuer.');
+  }
+  return { MAX_ITEMS: MAX_ITEMS, MAX_TEXT: MAX_TEXT, MAX_TOTAL: MAX_TOTAL, MAX_PROMPT: MAX_PROMPT, MAX_BRIEF: MAX_BRIEF,
+    KINDS: Object.freeze(KINDS), validate: validate, block: block, visual: visual, compose: compose, composeBrief: composeBrief };
 });

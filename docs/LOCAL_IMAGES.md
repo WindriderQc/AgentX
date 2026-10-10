@@ -33,8 +33,20 @@ items, 300 Unicode characters per item and 4,000 characters overall. Hermes can
 rewrite the visual description; Core appends the original constraints verbatim
 to its proposal and the generation prompt. The UI shows the initial brief and
 the preserved block separately. Changed constraints invalidate stale proposals.
-The composed prompt has the existing 8,000 UTF-16 unit budget; overflow is refused
-without truncation. Request identity, draft restoration, details and recipe
+The brief and Hermes message fields retain pasted text in full, without an HTML
+`maxlength` that silently truncates it. A counter remains visible above the
+collapsed constraints. Hermes consultations accept up to 32,000 UTF-16 units
+for the message and for the composed brief including constraints; longer text
+is kept in the field and refused before creating a consultation. A brief above
+the final 8,000-unit render budget disables creation while **Affiner mon brief**
+remains available within the consultation budget. Hermes proposes a shorter
+visual description with the original constraints appended verbatim; applying
+a valid proposal updates the counter and enables creation. When Hermes is
+unavailable, the complete draft remains available for manual reduction.
+The composed generation prompt retains its existing 8,000 UTF-16 unit budget;
+the untrimmed render input must also fit 8,000 units, so leading or trailing
+spaces cannot produce a browser-valid request that Core refuses. Overflow is
+refused without truncation. Request identity, draft restoration, details and recipe
 exports retain the snapshot and visual prompt. This preserves the submitted
 intent; visual compliance still requires examination.
 
