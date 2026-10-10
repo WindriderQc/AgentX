@@ -12,6 +12,7 @@ const { createRequestLog } = require('./middleware/requestLog');
 const storageController = require('./controllers/storageController');
 const liveData = require('./services/liveData');
 const mqttMonitor = require('./services/mqttMonitor');
+const iot = require('./services/iot');
 const janitorScheduler = require('./services/janitorScheduler');
 const janitorRunner = require('./services/janitorRunner');
 const activityWatch = require('./services/activityWatch');
@@ -50,6 +51,7 @@ app.use('/api/v1/hardware', require('./routes/hardware.routes'));
 app.use('/api/v1/events', require('./routes/events.routes'));
 app.use('/api/v1/livedata', require('./routes/livedata.routes'));
 app.use('/api/v1/mqtt', require('./routes/mqtt.routes'));
+app.use('/api/v1/iot', require('./routes/iot.routes'));
 app.use('/api/v1/databases', require('./routes/databases.routes'));
 app.use('/api/v1/exports', require('./routes/exports.routes'));
 app.use('/api/v1/janitor', require('./routes/janitor.routes'));
@@ -100,6 +102,13 @@ async function start() {
   });
   log(`agentx-data listening on port ${server.address().port}`);
 
+  // The IoT store listens on the monitor's connection, so it is attached before
+  // the monitor connects: the broker replays retained availability and
+  // discovery messages at that first subscription. Like the monitor it does
+  // not depend on background jobs and never starts in a test process.
+  try { await iot.start(db, { mqttMonitor }); }
+  catch (e) { log(`[iot] Start failed: ${e.message}`, 'warn'); }
+
   // The broker monitor serves a manual API: it connects whenever a broker is
   // configured, with or without background jobs, and never in a test process.
   try { mqttMonitor.init({ onStateChange: (state, detail) => activityEvents.mqttMonitorState(db, state, detail) }); }
@@ -125,6 +134,7 @@ async function shutdown() {
   try { eventController.drainSSE(); } catch (e) { log(`[shutdown] drainSSE error: ${e.message}`, 'warn'); }
   try { liveDataController.drainSSE(); } catch (e) { log(`[shutdown] livedata drainSSE error: ${e.message}`, 'warn'); }
   activityWatch.stop();
+  try { await iot.stop(); } catch (e) { log(`[shutdown] iot.stop error: ${e.message}`, 'warn'); }
   try { await mqttMonitor.close(); } catch (e) { log(`[shutdown] mqttMonitor.close error: ${e.message}`, 'warn'); }
   try { await liveData.close(); } catch (e) { log(`[shutdown] liveData.close error: ${e.message}`, 'warn'); }
   try { await janitorScheduler.close(); } catch (e) { log(`[shutdown] janitorScheduler.close error: ${e.message}`, 'warn'); }

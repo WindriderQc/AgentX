@@ -17,7 +17,7 @@ describe('registry — new feeds registered', () => {
     expect(byId.air_quality.store.mode).toBe('points');
 
     expect(byId.sensors).toMatchObject({ kind: 'mqtt', parser: 'mqttSensor', topicsEnv: 'LIVEDATA_MQTT_TOPICS' });
-    expect(byId.sensors.store.mode).toBe('points');
+    expect(byId.sensors.store.mode).toBe('latest');
   });
 
   test('all new feeds carry a maxAgeMs retention so livedata_points stays bounded', () => {

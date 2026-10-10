@@ -9,6 +9,8 @@
  * and keeps the last messages in memory only (nothing is stored in MongoDB).
  * It also publishes the messages an operator sends by hand, and never queues
  * one: a command that reaches a device minutes late is worse than a refusal.
+ * The IoT store (services/iot) listens to the same messages through
+ * addListener and sends its device commands through the same publish.
  *
  * It connects when MQTT_BROKER_URL is set, whether or not background jobs are
  * enabled, and reports its state instead of throwing into the server.
@@ -80,6 +82,16 @@ function createMqttMonitor({ bufferSize = BUFFER_SIZE, now = () => new Date(), c
   let onState = null;
   let reportedState = null;
   let everConnected = false;
+  // Other Data services reading the same traffic (the IoT store). They get the
+  // raw message; a listener that throws never breaks the monitor.
+  const listeners = new Set();
+
+  /** Call `listener(topic, payloadBuffer, packet)` for every message received. Returns a function that removes it. */
+  function addListener(listener) {
+    if (typeof listener !== 'function') return () => {};
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  }
 
   function report(state) {
     if (reportedState === state || !onState) return;
@@ -169,6 +181,9 @@ function createMqttMonitor({ bufferSize = BUFFER_SIZE, now = () => new Date(), c
     client.on('error', (error) => fail(error?.message));
     client.on('message', (topic, payload, packet) => {
       try { record(topic, payload, packet); } catch (error) { fail(`message dropped: ${error.message}`); }
+      for (const listener of listeners) {
+        try { listener(topic, payload, packet); } catch { /* the listener's own business */ }
+      }
     });
     return client;
   }
@@ -280,7 +295,7 @@ function createMqttMonitor({ bufferSize = BUFFER_SIZE, now = () => new Date(), c
     });
   }
 
-  return { init, status, messages, publish, close, record };
+  return { init, status, messages, publish, close, record, addListener };
 }
 
 const monitor = createMqttMonitor();
