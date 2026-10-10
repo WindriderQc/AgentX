@@ -15,4 +15,5 @@ test('task evidence must belong to this run and contain a successful task tool',
   assert.equal(taskCheckObserved({ toolChecks: { status: 'observed', runId, completedTools: ['list_personal_tasks'] } }, runId), true);
   assert.equal(taskCheckObserved({ receipts: [{ runId, tool: 'agentx__list_personal_tasks', status: 'failed' }] }, runId), false);
   assert.equal(taskCheckObserved({ receipts: [{ runId, tool: 'agentx__list_personal_tasks', status: 'verified' }] }, runId), true);
+  assert.equal(taskCheckObserved({ receipts: [{ runId, tool: 'conversation_work', status: 'verified', acceptedWork: { id: 'a'.repeat(64) } }] }, runId), false);
 });

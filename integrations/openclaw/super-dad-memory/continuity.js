@@ -86,14 +86,29 @@ export function nativeTurnProgress(history, sessionKey, runId) {
     });
 }
 
-export function continuityOperations({ workspace, config, resolveWorkspace, modelFor, readHistory }) {
+export function continuityOperations({ workspace, config, resolveWorkspace, modelFor, readHistory, workAgentId }) {
   return async request => {
     if (!request || typeof request !== "object" || Array.isArray(request)) throw invalid("Expected an object");
     const operation = request.operation;
     let result;
     if (operation === 'agents') {
       if (!config) throw new Error('Native agent configuration unavailable');
-      result = { agents: agentCatalog(config, modelFor) };
+      result = { agents: agentCatalog(config, modelFor).filter(agent => agent.id !== workAgentId) };
+    } else if (operation === 'work_attempt') {
+      const match = householdKey.exec(request.sessionKey || '');
+      if (!workAgentId || match?.[1] !== workAgentId) throw invalid('A configured worker attempt is required');
+      const agentWorkspace = householdWorkspace({ agentId: workAgentId, sessionKey: request.sessionKey }, config, resolveWorkspace);
+      if (!agentWorkspace) throw invalid('The native worker is unavailable');
+      const history = await readHistory(request.sessionKey);
+      const ids = [...new Set((history?.sessionKey === request.sessionKey ? history.messages || [] : [])
+        .filter(message => message.role === 'assistant').map(message => message.__openclaw?.runId)
+        .filter(id => /^resp_[a-f0-9-]{36}$/.test(id || '')))];
+      const state = await readState(agentWorkspace);
+      const runs = (state.runs || []).filter(run => run.sessionKey === request.sessionKey);
+      const runId = request.runId || ids.at(-1) || runs.at(-1)?.runId || null;
+      result = { sessionKey: request.sessionKey, runId, run: runs.find(run => run.runId === runId) || null,
+        status: runId ? 'observed' : 'unknown', source: 'openclaw/sessions.get' };
+      // No history or capsule absence is a proof that a request was not sent.
     } else if (operation === "turn") {
       const match = householdKey.exec(request.sessionKey || '');
       if (!/^resp_[a-f0-9-]{36}$/.test(request.runId || "") || !match) {

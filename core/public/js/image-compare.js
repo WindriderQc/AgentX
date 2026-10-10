@@ -94,6 +94,7 @@
     }
     function reviewValid() { try { validate(active?.review); return true; } catch { return false; } }
     function controls() {
+      panel.hidden = !currentPair;
       $('load').disabled = busy || !currentPair || !engine;
       $('workspace').hidden = !loaded;
       $('add').disabled = busy || !loaded || active.review.items.length >= MAX_ITEMS;

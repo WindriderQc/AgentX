@@ -1,0 +1,6 @@
+
+.conversation-work { display: grid; gap: .75rem; margin-block: .75rem; }
+.conversation-work[hidden] { display: none; }
+.conversation-work-card { padding: 1rem; border: 1px solid var(--line, #243746); border-radius: 1rem; background: var(--panel, #0d1923); }
+.conversation-work-status { font-weight: 600; margin-block: 0 .5rem; }
+.conversation-work-answer { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }

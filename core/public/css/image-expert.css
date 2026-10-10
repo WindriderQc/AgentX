@@ -1,4 +1,7 @@
-.imagex-panel { margin: 0 0 28px; border: 1px solid #4f746765; border-radius: 20px; background: linear-gradient(135deg, #14332d55, #182126cc 65%); overflow: hidden; }
+.imagex-panel { margin: 28px 0 0; border: 1px solid #4f746765; border-radius: 14px; background: #141d27; overflow: hidden; }
+.imagex-panel > summary { padding: 18px 22px; color: #d5e7df; font-size: 14px; }
+.imagex-panel > summary span { color: var(--studio-muted); font-size: 12px; }
+.imagex-role-details > summary { margin: 0 28px 18px; }
 .imagex-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 26px 28px 18px; }
 .imagex-heading h2 { margin: 4px 0 8px; font-size: 30px; letter-spacing: -.035em; }
 .imagex-heading h2 span { display: inline-block; margin-left: 10px; color: #a8d2bc; font-size: 12px; font-weight: 500; letter-spacing: .025em; vertical-align: middle; padding: 5px 10px; border: 1px solid #68988166; border-radius: 50px; }

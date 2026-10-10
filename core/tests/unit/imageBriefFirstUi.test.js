@@ -25,8 +25,8 @@ test('the image brief is the first control of the compose form, followed by the 
   expect(recipe).toBeGreaterThan(format);
   expect(references).toBeGreaterThan(recipe);
   expect(create).toBeGreaterThan(references);
-  const firstControl = form.match(/<(textarea|input|select)\b[^>]*\bid="([^"]+)"/);
-  expect(firstControl?.[2]).toBe('image-prompt');
+  const controls = [...form.matchAll(/<(?:textarea|input|select)\b[^>]*\bid="([^"]+)"/g)];
+  expect(controls.slice(0, 2).map(match => match[1])).toEqual(['image-prompt', 'image-size']);
 });
 test('the imageX/Hermès advice sits in the same space as the brief and format', () => {
   const form = imageFormSegment(page);
@@ -42,7 +42,7 @@ test('the imageX/Hermès advice sits in the same space as the brief and format',
   expect(form).toContain('type="button"');
   expect(form.slice(advice, planningHelp)).toContain('Affiner mon brief');
 });
-test('the advice buttons and the specialist conversation are never nested inside the brief form', () => {
+test('the specialist conversation remains outside the brief form with unique advice controls', () => {
   const form = imageFormSegment(page);
   expect(form).not.toContain('id="imagex-chat-form"');
   expect(form.match(/<form\b/g)).toHaveLength(1);
@@ -51,8 +51,14 @@ test('the advice buttons and the specialist conversation are never nested inside
   expect(page).toContain('id="imagex-session"');
   const pageForms = page.match(/<form\b/g) || [];
   expect(pageForms).toHaveLength(2);
-  const expertStart = page.indexOf('<section class="imagex-panel"');
+  const expertStart = page.indexOf('<details class="imagex-panel"');
   expect(expertStart).toBeGreaterThan(page.indexOf('</form>'));
+  for (const id of ['image-advice', 'image-size', 'imagex-plan', 'imagex-explore', 'imagex-planning-help']) {
+    expect(page.match(new RegExp(`id="${id}"`, 'g'))).toHaveLength(1);
+  }
+  for (const id of ['imagex-recovery', 'imagex-stop', 'imagex-proposal', 'imagex-plan-instruction']) {
+    expect(form).toContain(`id="${id}"`);
+  }
 });
 test('references, constraints, sketch and generation keep their place after the format', () => {
   const form = imageFormSegment(page);

@@ -77,7 +77,7 @@ def query(payload, serialized=None):
     visual_budget = MAX_PROMPT - (utf16_length(suffix) + 2 if suffix else 0)
     instruction = (
         'Prepare an image-generation plan. Return ONLY a JSON object with prompt, profile, width, height, '
-        'and reason. Choose a profile from the supplied current status. Respect every explicit profile '
+        'and reason. Choose a profile from the supplied current status ONLY when the request has no profile. Respect every explicit profile '
         'and dimension in the request, multiples of 32 and the profile pixel budget. Use 1024x1024 '
         'when no format is specified and it fits. Improve the brief without changing its subject or intent. '
         'For editing, retain the order of image 1 and image 2. Do not execute generation: the caller '
@@ -91,6 +91,13 @@ def query(payload, serialized=None):
         'to distinguish installed capabilities from suggestions. Do not create images, change the '
         'host, install dependencies, or claim to have inspected anything absent from the supplied evidence.'
     )
+    if action == 'plan':
+        fixed = {key: request[key] for key in ('profile', 'width', 'height') if key in request}
+        if fixed:
+            instruction += (' Fixed request settings (copy these JSON values unchanged into your result): '
+                            + json.dumps(fixed, ensure_ascii=False) + '. These settings take priority over '
+                            'any recipe or resolution mentioned in the brief, instructions or earlier history. '
+                            'Refine the visual prompt and reason; do not redesign these fixed settings.')
     boundary = (' Core currently exposes text creation, zero to two ordered image references, configured '
                 'profiles, dimensions, seed, archived history/details and verified recipe export. Installed '
                 'ComfyUI nodes do not establish a Core capability. Core does not expose masks, denoise '
@@ -142,7 +149,7 @@ def run(payload, emit=None, serialized=None):
             return saved['result']
         binary = os.environ.get('HERMES_BIN', str(Path.home() / '.local' / 'bin' / 'hermes'))
         command = [binary, '-p', profile, 'chat', '--query-file', '-', '--format', 'stream-json',
-                   '--toolsets', 'skills', '--skills', 'agentx-images', '--skills', 'comfyui',
+                   '--toolsets', 'skills,vision', '--skills', 'agentx-images', '--skills', 'comfyui',
                    '--max-turns', '4', '--run-budget', '120', '--source', 'tool']
         child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  text=True, cwd=home / 'workspace', start_new_session=True)

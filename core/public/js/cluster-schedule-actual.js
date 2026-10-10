@@ -66,16 +66,26 @@ async function loadActualHeatmap() {
   }
 }
 
+function utilizationHostIdentities(hosts) {
+  const identities = new Map();
+  for (const host of hosts || []) {
+    const identity = typeof host === 'string' ? { key: host, displayName: host } : host;
+    if (typeof identity?.key !== 'string' || !identity.key) continue;
+    identities.set(identity.key, identity);
+  }
+  return [...identities.values()];
+}
+
 function renderUtilHeatmap(container, data) {
-  // hosts are identity objects keyed into grid; older payloads used strings.
-  const { hosts = [], days = [], grid = {} } = data;
+  // Deduplicate by identity key; display names and IPs can be shared by endpoints.
+  const { days = [], grid = {} } = data;
+  const hosts = utilizationHostIdentities(data.hosts);
   if (!hosts.length || !days.length) {
     container.innerHTML = '<div class="cs-empty">No GPU usage measured yet. It appears here once inference calls are recorded.</div>';
     return false;
   }
 
-  const hostKey = host => typeof host === 'string' ? host : host.key;
-  const hasObservedEvidence = hosts.some(host => (grid[hostKey(host)] || []).some(day =>
+  const hasObservedEvidence = hosts.some(host => (grid[host.key] || []).some(day =>
     Array.isArray(day) && day.some(value => Number.isFinite(value))
   ));
   if (!hasObservedEvidence) {
@@ -85,16 +95,19 @@ function renderUtilHeatmap(container, data) {
 
   let html = `<div class="cs-actual-note">Measured utilization by day and hour (${esc(data.timeZone || 'UTC')}).</div>`;
   for (const host of hosts) {
-    const rows = grid[hostKey(host)] || [];
+    const rows = grid[host.key] || [];
     const hostHasEvidence = rows.some(day =>
       Array.isArray(day) && day.some(value => Number.isFinite(value))
     );
     if (!hostHasEvidence) continue;
 
+    const endpoint = String(host.url || host.ip || '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
+    const details = [host.role, endpoint].filter(Boolean).join(' · ');
     // grid is days-major, hours-minor: rows[dayIdx][hourIdx]
     html += `<div style="margin-bottom:20px">
       <div style="font-size:12px;font-weight:600;color:#fff;margin-bottom:8px">
-        <i class="fas fa-server" style="color:#7cf0ff;margin-right:6px;font-size:10px"></i>${esc(typeof host === 'string' ? host : (host.displayName || host.key))}
+        <i class="fas fa-server" style="color:#7cf0ff;margin-right:6px;font-size:10px"></i>${esc(host.displayName || host.key)}
+        ${details ? `<div class="cs-util-host-details">${esc(details)}</div>` : ''}
       </div>
       <div style="overflow-x:auto">
         <div class="cs-util-grid" style="grid-template-columns:70px repeat(24,1fr);min-width:640px;gap:2px">`;

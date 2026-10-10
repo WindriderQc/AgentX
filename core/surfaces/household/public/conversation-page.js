@@ -61,6 +61,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <div class="conversation-actions"><button id="conversationStart" type="button" class="button primary" hidden disabled>Activer Nestor</button></div></div>
       <section id="conversationVisual" class="conversation-board conversation-visual" aria-label="Images" hidden></section>
       <div id="conversationResume" class="conversation-resume" role="region" aria-label="Reprendre" hidden></div>
+      ${family ? '' : '<section id="conversationWork" class="conversation-work" aria-label="Demandes et résultats de Nestor" aria-live="polite" hidden></section>'}
       <div id="conversationTranscript" class="conversation-transcript" role="log" aria-label="Échanges" aria-live="polite"><p class="empty">Nos échanges apparaîtront ici.</p></div>
       <section id="conversationBoard" class="conversation-board" aria-label="À l’écran" hidden></section>
       <section id="conversationBrain" class="conversation-board conversation-brain" aria-label="Pistes" hidden></section>
@@ -111,6 +112,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       label.textContent = spoken ? 'Remarque du cerveau · dite' : 'Remarque du cerveau · affichée seulement (Nestor ne parlait pas à ce moment)';
       row.dataset.spoken = String(spoken); row.append(label, document.createTextNode(remark.text)); transcript.append(row); row.scrollIntoView({ block: 'nearest' });
     } });
+  const work = family ? null : NestorWork.create({ host: el('conversationWork'), base: sessionBase, api,
+    getConversation: () => conversation, maySpeak: () => !textBusy });
   const personalNotes = mountPersonalNotes({ host: el('conversationNotes'), evidence: el('conversationPersonalContext'), api, esc });
   const selected = () => personas.find(p => p.id === picker.value) || personas[0];
   const blockedOpenMessage = 'Le modèle alternatif est indisponible. L’hôte d’inférence doit être rétabli pour poursuivre.';
@@ -249,6 +252,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       await openHold.start();
       if (signal.aborted) await releaseOpen();
     }
+    work?.follow(data.session.sessionId);
     return data.session;
   }
   async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice, onSayEnd } = {}) {
@@ -257,14 +261,22 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     const response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
       method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
     if (!response.ok) { const body = await response.json(); throw new Error(body.message || 'Conversation unavailable'); }
+    work?.follow(session.sessionId);
+    if (response.status === 202) {
+      const body = await response.json();
+      const saved = body.data;
+      if (saved?.reply) return saved.reply;
+      return { text: 'Ta demande est enregistrée. Je vérifie son résultat sans la relancer.', language: 'fr' };
+    }
     const reader = response.body.getReader(), decoder = new TextDecoder();
-    let pending = '', answer = '', result, noticed = false;
+    let pending = '', answer = '', result, noticed = false, workAccepted = false;
     const said = new Set();
     const agentName = id => agents.find(agent => agent.id === id)?.name || id.charAt(0).toUpperCase() + id.slice(1);
     const consume = line => {
       if (signal.aborted) throw new DOMException('Conversation cancelled', 'AbortError');
       if (!line.trim()) return;
       const event = JSON.parse(line);
+      if (event.type === 'accepted') { workAccepted = true; void work?.poll(); }
       if (event.type === 'error') throw new Error(event.message);
       if (event.type === 'speaker') { turnSpeaker = event.speaker || null; if (turnSpeaker) el('conversationStatus').textContent = `${turnSpeaker.name} te répond.`; }
       if (event.type === 'tools') { showTools(event.evidence); activity('tools', { count: event.evidence?.receipts?.length || 1 }); }
@@ -300,7 +312,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
       // Core has sent every spoken word; pictures, tools and the record follow before `done`.
       if (event.type === 'say_end' && !interruptedTurns.has(turnId)) onSayEnd?.();
-      if (event.type === 'done') { result = event.data; activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); void brain.follow(session.sessionId, event.data?.traceId); }
+      if (event.type === 'done') { result = event.data; activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); if (!workAccepted) void brain.follow(session.sessionId, event.data?.traceId); void work?.poll(); }
     };
     try {
       while (true) {
@@ -477,6 +489,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       return { text: lastWakeReply = NestorGreetings.wakeReply({ language: lang, previous: lastWakeReply }), language: lang };
     }
   }, (state, detail) => {
+    if (conversation.session?.sessionId) work?.follow(conversation.session.sessionId);
+    if (state === 'listening') void work?.naturalPause();
     if (state === 'idle' && !open.checked) void releaseOpen();
     if (state === 'starting') void speechFallback.probe(() => api('/api/voix/health'));
     speechFallback.sync();
@@ -666,7 +680,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   };
   el('conversationNew').onclick = () => {
     recap?.clear();
-    el('conversationResume').hidden = true; setHistoryOpen(false); stopPreview(); conversation.stop(); void releaseOpen(); partial = null;
+    el('conversationResume').hidden = true; setHistoryOpen(false); stopPreview(); conversation.stop(); work?.reset(); void releaseOpen(); partial = null;
     transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; clearBoard(); brain.reset();
     personalNotes.show(null);
     showTools(null); void recap?.refresh();
@@ -722,7 +736,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     composer.sync();
   }
   document.addEventListener('visibilitychange', () => { if (document.hidden) { stopPreview(); conversation.stop(true); void releaseOpen(); } });
-  window.addEventListener('pagehide', () => { clearInterval(audioReviewClock); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
+  window.addEventListener('pagehide', () => { work?.dispose(); clearInterval(audioReviewClock); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
   conversation.show('idle');
   const performance = family ? null : ConversationPreferences.mount({ button: el('conversationPerformance'), api, endpoint: '/api/voice-personas/preferences',
@@ -761,7 +775,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     try {
       const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/history`);
       if (epoch !== conversation.epoch) return;
-      conversation.session = data.session;
+      conversation.session = data.session; work?.follow(data.session.sessionId);
       draftFiles = []; renderDraftFiles();
       const saved = data.session;
       if (saved.persona && !personas.some(p => p.id === saved.persona.id)) { personas.push(saved.persona); picker.add(new Option(saved.persona.name, saved.persona.id)); }

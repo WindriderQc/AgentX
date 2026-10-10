@@ -1145,6 +1145,78 @@ test('with the wake word, the brain does not wake a sleeping Nestor', async () =
   assert.equal(await h.conversation.interject({ text: 'Au fait.' }), true);
 });
 
+for (const control of [{ text: '', control: 'stop' }, 'Stop, stop, stop.']) {
+  test(`background speech stops silently without interrupting a completed native turn: ${JSON.stringify(control)}`, async () => {
+    const h = harness({ transcribe: async () => control,
+      interrupt: async () => assert.fail('No model turn belongs to a background presentation'),
+      interrupted: () => assert.fail('Do not mark an unrelated transcript turn'),
+      turn: async () => assert.fail('Stop must not invoke a model') });
+    h.audio.canInterrupt = true;
+    h.audio.play = (_bytes, signal, _review, _gain, options) => new Promise(resolve => {
+      options?.onScheduled?.(); signal.addEventListener('abort', resolve, { once: true });
+    });
+    await h.conversation.start({ interruption: true, language: 'fr' });
+    let scheduled = 0;
+    const presentation = h.conversation.interject({ text: 'Tu peux dire Stop pour arrêter cette lecture.' }, { onScheduled: () => { scheduled++; } });
+    await tick();
+    assert.equal(h.conversation.state, 'speaking');
+    h.beginSpeech(); await h.say();
+    assert.equal(await presentation, false, 'Interrupted speech cannot receive a completed presentation receipt');
+    assert.equal(scheduled, 1);
+    assert.equal(h.conversation.state, 'listening');
+    assert.equal(h.conversation.activeTurn, null);
+    assert.equal(h.conversation.session.sessionId, 'private-1');
+    assert.deepEqual(h.messages, []);
+    h.conversation.stop();
+  });
+}
+
+test('a question over background speech cancels only its playback and runs the complete new request', async () => {
+  const next = deferred(), submitted = [];
+  const h = harness({ transcribe: async () => 'Stop, explique plutôt le calendrier.',
+    interrupt: async () => assert.fail('No old model run to cancel'),
+    turn: async (_session, text) => { submitted.push(text); return next.promise; } });
+  h.audio.canInterrupt = true;
+  let first = true;
+  h.audio.play = (_bytes, signal) => !first ? Promise.resolve() : new Promise(resolve => {
+    first = false; signal.addEventListener('abort', resolve, { once: true });
+  });
+  await h.conversation.start({ interruption: true });
+  const presentation = h.conversation.interject({ text: 'Voici un ancien résultat.' }); await tick();
+  h.beginSpeech(); const question = h.say(); await tick();
+  assert.equal(await presentation, false);
+  assert.deepEqual(submitted, ['Stop, explique plutôt le calendrier.']);
+  assert.equal(h.conversation.state, 'thinking', 'The old presentation cannot restart listening over the new turn');
+  next.resolve({ text: 'Le calendrier est prêt.' }); await question;
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('echo/noise during background speech resumes its playback and keeps the native session', async () => {
+  const playback = deferred();
+  const h = harness({ transcribe: async () => 'Voici le résultat conservé.', interrupt: async () => assert.fail('Echo is not an interruption') });
+  h.audio.canInterrupt = true; h.audio.play = () => playback.promise;
+  await h.conversation.start({ interruption: true });
+  const presentation = h.conversation.interject({ text: 'Voici le résultat conservé.' }); await tick();
+  h.beginSpeech(); await h.say();
+  assert.equal(h.conversation.state, 'speaking');
+  assert.equal(h.conversation.activeTurn.interrupted, false);
+  playback.resolve(); assert.equal(await presentation, true);
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('Pause during background speech aborts it without restarting an obsolete microphone', async () => {
+  const h = harness();
+  h.audio.play = (_bytes, signal) => new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+  await h.conversation.start({});
+  const presentation = h.conversation.interject({ text: 'Résultat en cours.' }); await tick();
+  h.conversation.stop(true);
+  assert.equal(await presentation, false);
+  assert.equal(h.conversation.state, 'paused');
+  assert.equal(h.conversation.session.sessionId, 'private-1');
+});
+
 test('the language Whisper recognized decides the turn voice, and French is the default', async () => {
   for (const [result, selection, expected] of [
     [{ text: 'OK', detectedLanguage: 'en' }, 'fr-en', 'en'],
@@ -1603,4 +1675,17 @@ test('the language can change while the conversation runs and applies to the nex
   assert.deepEqual([heard[0], heard.at(-1)], ['auto', 'fr']);
   assert.equal(h.conversation.session, session, 'the conversation is not replaced');
   h.conversation.stop();
+});
+
+test('browser speech failure cannot become completed playback after its start event', async () => {
+  const { speakWithBrowser } = require('../public/browser-conversation'); let scheduled = 0;
+  globalThis.SpeechSynthesisUtterance = function (text) { this.text = text; };
+  globalThis.speechSynthesis = { getVoices: () => [], cancel() {}, speak(utterance) {
+    setTimeout(() => { utterance.onstart(); utterance.onerror({ error: 'synthesis-failed' }); }, 1);
+  } };
+  try {
+    await assert.rejects(speakWithBrowser({ text: 'Résultat.', language: 'fr' }, new AbortController().signal,
+      () => { scheduled++; }), /could not complete/);
+    assert.equal(scheduled, 1);
+  } finally { delete globalThis.speechSynthesis; delete globalThis.SpeechSynthesisUtterance; }
 });

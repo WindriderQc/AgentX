@@ -10,6 +10,21 @@ host settlement to Core. The benchmark broker supplies exact claim metadata;
 pipeline requests use Core task records and expiring attribution leases. Native
 runtime configuration, accounts, histories and catalog files stay external.
 
+Hermes image analysis uses `/api/hermes-openai/vision/v1` with model
+`openclaw:agent:main`. The adapter sends inline image bytes to OpenClaw Main
+through Core's existing agent execution source and returns only a verified
+completed answer. Main's local model requests retain the OpenClaw-to-Core
+admission and telemetry path. Vision requests never invoke the local Hermes
+reasoning route, which explicitly refuses image parts instead of dropping them.
+The bounded worker exposes the `skills,vision` toolsets.
+
+Configure the external Hermes profile's `auxiliary.vision` with this custom
+endpoint, model and an empty fallback chain, and set `agent.image_input_mode`
+to `text`. Hermes then asks Main to analyze attached images before using the
+observations in its reasoning. The primary reasoning model remains an effective
+local model through `/api/hermes-openai/v1`; its provider fallback list is owned
+by Hermes. A fallback in reasoning does not change the vision endpoint.
+
 When the local host is refused (benchmark, maintenance, another resident model),
 the OpenClaw protocol answers 409 so an automation records a failed run. A
 conversation provider can instead send `x-agentx-busy-reply: conversation`: Core

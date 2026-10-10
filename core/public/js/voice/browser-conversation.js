@@ -430,29 +430,43 @@
     }
     // The background brain may add one short remark at a natural pause (#169):
     // only while listening (awake, if the wake word is on) with no turn in flight.
-    // The microphone pauses for that one sentence; Pause or End stops it at once.
-    async interject(reply) {
+    // Background results use the same speech confirmation as an ordinary reply.
+    async interject(reply, { onScheduled } = {}) {
       const epoch = this.epoch;
       const idle = () => this.current(epoch) && this.state === 'listening' && !this.activeTurn && !this.turnPending
         && (!this.selection?.wakeWord || this.wake.active());
       if (!reply?.text || !this.audio || !idle()) return false;
+      const lifetimeSignal = this.abort.signal;
+      let turn;
+      const cancel = () => { turn?.speech.abort(); this.releaseCandidate(turn); };
       try {
         // The remark is one utterance: the chosen language, else its own words.
         const language = speechLanguage.turnSpeechLanguage(reply.text, reply.language, this.selection?.language);
         const bytes = await this.io.synthesize({ ...reply, language }, this.abort.signal);
-        if (!idle()) return false;
-        this.audio.quiet(); this.show('speaking');
-        await this.audio.play(bytes, this.abort.signal);
-        await this.audio.settle?.(this.abort.signal);
-        if (this.current(epoch)) { if (this.selection?.wakeWord) this.wake.extend(); this.listen(epoch); }
+        if (!idle()) { discardSpeech(bytes); return false; }
+        turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(),
+          interrupted: false, local: true, replyStarted: true, spoken: reply.text };
+        this.activeTurn = turn;
+        lifetimeSignal.addEventListener('abort', cancel, { once: true });
+        this.audio.quiet(); this.monitor(turn); this.show('speaking');
+        await this.audio.play(bytes, turn.speech.signal, false, null, { onScheduled });
+        await this.audio.settle?.(turn.speech.signal);
+        await this.awaitCandidate(turn);
+        if (!this.owns(turn)) return false;
+        if (this.selection?.wakeWord) this.wake.extend();
         return true;
       } catch {
-        if (this.current(epoch) && this.state === 'speaking') this.listen(epoch);
         return false;
+      } finally {
+        lifetimeSignal.removeEventListener('abort', cancel);
+        this.releaseCandidate(turn);
+        if (turn && this.current(epoch) && this.activeTurn === turn && !turn.interrupted) {
+          this.activeTurn = null; this.listen(epoch);
+        }
       }
     }
     monitor(turn) {
-      if (turn.monitoring || !this.audio.canInterrupt || this.selection.interruption === false || !this.io.interrupt) return;
+      if (turn.monitoring || !this.audio.canInterrupt || this.selection.interruption === false || !turn.local && !this.io.interrupt) return;
       turn.monitoring = true;
       this.audio.listen((blob, capture) => this.exchange(blob, turn.epoch, capture), () => {
         this.warmRecognition();
@@ -479,9 +493,10 @@
       let result = null;
       try { result = await this.io.transcribe(blob, this.selection.language, this.abort.signal); } catch { /* the whole sound is still recognized when it ends */ }
       let text = typeof result === 'string' ? result : String(result?.text || '');
-      if (isTranscriptHallucination(text) || isSpokenEcho(text, turn.spoken)) text = '';
+      const stopControl = result?.control === 'stop' || isStopControl(text);
+      if (isTranscriptHallucination(text) || !stopControl && isSpokenEcho(text, turn.spoken)) text = '';
       if (turn.candidate !== candidate || !this.owns(turn)) return;
-      if (!(text.trim() || result?.control === 'stop')) {
+      if (!(text.trim() || stopControl)) {
         // No words so far: a reply that was waiting for this sound may start.
         candidate.cleared = true; candidate.resolve(); return;
       }
@@ -515,11 +530,11 @@
       turn.interrupted = true;
       turn.speech.abort(); // Stop sound now; keep the microphone and session.
       this.audio.resumePlayback?.(); // Release the held clock after cancelling its sources.
-      this.io.interrupted?.();
+      if (!turn.local) this.io.interrupted?.();
       this.show('hearing');
       // The server acknowledges only after the old turn's audit/lock settle.
       // Do not abort its HTTP stream first: that would look like a lost page.
-      turn.interruption = Promise.resolve().then(() => this.io.interrupt(this.session, turn.id, this.abort.signal, { stop }))
+      turn.interruption = Promise.resolve().then(() => turn.local ? undefined : this.io.interrupt(this.session, turn.id, this.abort.signal, { stop }))
         .then(() => { turn.interruptionSettled = true; turn.request.abort(); if (this.activeTurn === turn) this.turnPending = false; })
         .catch(error => { this.fail(error, turn.epoch); throw error; });
       turn.interruption.catch(() => {}); // handled when the captured utterance arrives
@@ -570,7 +585,7 @@
         this.early = null;
         const result = (early && (await early.result)?.value) || await this.io.transcribe(blob, this.selection.language, this.abort.signal);
         let text = typeof result === 'string' ? result : String(result?.text || '');
-        const stopControl = result?.control === 'stop';
+        const stopControl = result?.control === 'stop' || isStopControl(text);
         if (!this.current(epoch)) return;
         transcribed = true; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
         this.recognitionWarmAt = this.io.now ? this.io.now() : Date.now(); // it just ran
@@ -838,10 +853,10 @@
   }
 
   // Last rung of the voice ladder: the device's own speech synthesis, cancelled like PCM playback.
-  function speakWithBrowser({ text, language }, signal) {
+  function speakWithBrowser({ text, language }, signal, onScheduled) {
     const synth = root.speechSynthesis;
     if (!synth || signal.aborted) return Promise.resolve();
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const utterance = new root.SpeechSynthesisUtterance(text);
       const profile = speechLanguage.PROFILES?.[language === 'en' ? 'en' : 'fr'];
       utterance.lang = profile?.locale || (language === 'en' ? 'en-CA' : 'fr-CA');
@@ -849,7 +864,8 @@
       if (voice) utterance.voice = voice;
       const done = () => { signal.removeEventListener('abort', stop); resolve(); };
       const stop = () => { synth.cancel(); done(); };
-      utterance.onend = done; utterance.onerror = done;
+      utterance.onstart = () => onScheduled?.();
+      utterance.onend = done; utterance.onerror = () => { signal.removeEventListener('abort', stop); reject(new Error('Browser speech could not complete.')); };
       signal.addEventListener('abort', stop, { once: true });
       synth.speak(utterance);
     });
@@ -942,7 +958,7 @@
         playSignal?.addEventListener('abort', finish, { once: true });
         if (playSignal?.aborted || closed) finish();
       });
-      const play = async (bytes, playSignal, isReview = false, gain = null) => {
+      const play = async (bytes, playSignal, isReview = false, gain = null, { onScheduled } = {}) => {
         if (!root.VoixAudio) throw new Error('The local speech player is unavailable.');
         const abort = new AbortController(); activePlay = abort;
         const cancel = () => abort.abort();
@@ -959,10 +975,10 @@
         const observed = analyser && !isReview && gain === null;
         if (observed) activeSpeech = abort;
         try {
-          if (bytes?.browserSpeech) return await speakWithBrowser(bytes.browserSpeech, abort.signal);
+          if (bytes?.browserSpeech) return await speakWithBrowser(bytes.browserSpeech, abort.signal, onScheduled);
           return await new root.VoixAudio.Player(!isReview && playbackHold ? playbackHold.playerContext : context, {
             destinations: output ? [output] : isReview ? [context.destination] : [observed ? analyser : context.destination, { node, input: 1 }],
-            onMetrics: options.onPlaybackMetrics,
+            onMetrics: options.onPlaybackMetrics, onScheduled,
           }).play(bytes, abort.signal, { rate: gain !== null ? 1 : options.playbackRate?.() || 1 });
         } finally {
           output?.disconnect();

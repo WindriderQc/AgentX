@@ -375,6 +375,9 @@ function register(api) {
   const personalAttachments = sessionId => runtimeServices.attachments.forConversation({
     surface: 'household', sessionId, packId: 'personal_operator', scopeId: 'personal'
   });
+  const conversationWorks = require('./conversation-work-runtime').registerWorkRuntime({
+    router: personas, conversations, tasks: personalTasks, agentClient, continuity: nestorClient,
+    env: conversationEnv, logger, attachmentStore: personalAttachments, capability: runtimeServices.conversationWorks });
   const personalSessionScope = sessionId => ({ sessionId, packId: 'personal_operator', scopeId: 'personal' }), familySessionScope = sessionId => ({ sessionId, packId: 'kidx_nestor', scopeId: 'family' });
   personas.get('/private/sessions/:sessionId/export', async (req, res) => {
     try {
@@ -400,7 +403,7 @@ function register(api) {
     agentIdFor, logger, instructions: (...args) => handlePersonaTurn.openingInstructions(...args) });
   warmup.register(personas);
   const handlePersonaTurn = createPersonaTurnHandler({
-    logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor,
+    logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor, conversationWorks,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
     sounds, visuals, brain, memberWork, conversationImages, warmup, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,

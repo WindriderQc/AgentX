@@ -19,7 +19,9 @@ function taskCheckObserved(evidence, runId) {
   const checks = evidence?.toolChecks;
   if (checks?.status === 'observed' && checks.runId === runId
       && checks.completedTools?.some(tool => TASK_TOOLS.has(tool))) return true;
-  return (evidence?.receipts || []).some(row => row.runId === runId && row.status === 'verified' && TASK_TOOLS.has(row.tool));
+  return (evidence?.receipts || []).some(row => row.runId === runId && row.status === 'verified'
+    && (TASK_TOOLS.has(row.tool) || row.tool === 'conversation_work'
+      && row.workRead?.tool === 'tasks.personal.list' && /^[a-f0-9]{64}$/.test(row.workRead.id || '')));
 }
 
 function confirmedLoop(evidence, runId) {

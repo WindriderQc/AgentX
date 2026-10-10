@@ -36,9 +36,10 @@
   }
 
   class Player {
-    constructor(context, { destinations, onReceipt, onMetrics } = {}) {
+    constructor(context, { destinations, onReceipt, onMetrics, onScheduled } = {}) {
       this.context = context;
       this.destinations = destinations || [context.destination];
+      this.onScheduled = onScheduled || (() => {});
       this.onReceipt = onReceipt || (() => {}); this.onMetrics = onMetrics || (() => {});
     }
     async play(input, signal, { rate = 1, requestStartedAt } = {}) {
@@ -46,7 +47,7 @@
       const context = this.context, pending = new Set(), nodes = new Set();
       const started = Number.isFinite(requestStartedAt) ? requestStartedAt : root.performance.now();
       let cursor = 0, reader, firstScheduled = null, gapMs = 0, gaps = 0, peakBufferedMs = 0;
-      let rejectAbort;
+      let rejectAbort, scheduled = false;
       const aborted = new Promise((_, reject) => { rejectAbort = reject; });
       aborted.catch(() => {});
       const stopNodes = () => { for (const node of nodes) { try { node.stop(); } catch {} } };
@@ -76,7 +77,7 @@
         let resolve;
         const done = new Promise(r => { resolve = r; }); pending.add(done);
         node.onended = () => { node.disconnect(); node.buffer = null; nodes.delete(node); pending.delete(done); resolve(); };
-        try { node.start(at); }
+        try { node.start(at); if (!scheduled) { scheduled = true; this.onScheduled(); } }
         catch (error) { node.onended(); throw error; }
       };
       try {
