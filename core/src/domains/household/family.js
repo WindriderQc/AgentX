@@ -220,6 +220,16 @@ function nextRoutineDue(chore = {}, now = new Date()) {
   const step = cadence === 'daily' ? 1 : 7;
   let next = chore.dueAt ? new Date(chore.dueAt) : new Date(now);
   if (Number.isNaN(next.getTime())) next = new Date(now);
+  const zone = familyTimeZone(), day = calendarDayKey(next, zone);
+  if (chore.dueAt && next.getTime() === endOfHouseholdDay(day, zone).getTime()) {
+    const calendar = new Date(`${day}T12:00:00Z`), today = calendarDayKey(now, zone);
+    let nextDay;
+    do {
+      calendar.setUTCDate(calendar.getUTCDate() + step);
+      nextDay = calendar.toISOString().slice(0, 10);
+    } while (nextDay <= today);
+    return endOfHouseholdDay(nextDay, zone);
+  }
   do { next.setDate(next.getDate() + step); } while (next <= now);
   return next;
 }
