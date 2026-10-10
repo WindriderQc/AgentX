@@ -13,7 +13,7 @@ async function acceptedImageReply({ session, evidence, sessionKey, runId, langua
   const operations = [], seen = new Set();
   for (const receipt of (evidence?.receipts || []).slice(-40)) {
     const reference = receipt.imageOperation;
-    if (receipt.tool !== 'local_image' || receipt.observed !== true || receipt.status === 'failed'
+    if (!['local_image', 'imagex'].includes(receipt.tool) || receipt.observed !== true || receipt.status === 'failed'
       || receipt.runId !== runId || receipt.sessionKey !== sessionKey
       || receipt.provenance?.origin !== 'owner_turn' || !UUID.test(reference?.id || '')
       || !/^[a-f0-9]{64}$/.test(reference?.actionKey || '') || seen.has(reference.id)) continue;
@@ -29,7 +29,8 @@ async function acceptedImageReply({ session, evidence, sessionKey, runId, langua
   const text = operations.map(operation => {
     const ready = operation.state === 'completed' && operation.runtimeRestored === true
       && /^[a-f0-9]{64}$/.test(operation.artifact?.sha256 || '');
-    const status = ready ? english ? 'Your image is ready.' : 'Ton image est prête.' : pending.has(operation.state)
+    const status = ready ? english ? 'Your image is ready.' : 'Ton image est prête.' : operation.state === 'queued'
+      ? english ? 'Your image is queued. You can follow its progress in the studio.' : 'Ta demande image est en file. Tu peux suivre sa préparation dans le studio.' : pending.has(operation.state)
       ? english ? 'Your image request is accepted. You can follow its progress in the studio.' : 'Ta demande image est acceptée. Tu peux suivre sa préparation dans le studio.'
       : operation.state === 'cancelled' ? english ? 'The image request was cancelled.' : 'La demande image a été annulée.'
         : operation.state === 'failed' ? english ? 'Image generation failed.' : 'La préparation de l’image a échoué.'

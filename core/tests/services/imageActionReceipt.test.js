@@ -18,6 +18,12 @@ test('reading a native accepted receipt observes the exact Core action without r
   expect(reply.operations[0]).toMatchObject({ id, state: 'generating', studioPath: `/images?operation=${id}` });
   expect(reply.text).toContain('demande image est acceptée');
   expect(await ImageOperation.findById(id).select('+request').lean()).toEqual(before);
+  await ImageOperation.updateOne({ _id: id }, { $set: { state: 'queued' } });
+  for (const tool of ['local_image', 'imagex']) {
+    const queued = await acceptedImageReply({ session, sessionKey, runId, evidence: { receipts: [{ ...receipt, tool }] } });
+    expect(queued.text).toContain('demande image est en file');
+    expect(queued.operations[0].id).toBe(id);
+  }
   const artifact = { sha256: 'c'.repeat(64), mimeType: 'image/png', width: 1024, height: 1024, path: 'synthetic.png', size: 42 };
   await ImageOperation.updateOne({ _id: id }, { $set: { state: 'completed', runtimeRestored: true, artifact }, $unset: { workerSlot: 1 } });
   const later = await acceptedImageReply({ session, sessionKey, runId, evidence: { receipts: [receipt] } });
