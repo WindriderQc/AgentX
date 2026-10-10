@@ -188,6 +188,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply, restoreBrief }) {
         : 'Ton brief peut être créé directement. Affiner propose une autre version à vérifier ; aucune conversation n’est nécessaire.');
     if (!error && !metadata?.available && !needsCondensing) $('imagex-planning-help').textContent = 'Hermes est indisponible pour les conseils. Si ton brief est prêt, tu peux créer directement.';
     if (!context.prompt.trim() && !error) $('imagex-planning-help').textContent = 'Commence par décrire ton image dans le brief. Tu pourras ensuite l’affiner si nécessaire.';
+    if (context.ready && context.prompt.trim()) $('imagex-planning-help').textContent = `Format choisi : ${context.width} × ${context.height}. ${$('imagex-planning-help').textContent}`;
     $('imagex-chat-notice').textContent = $('imagex-notice').textContent;
     const last = turns.at(-1), canRetry = terminal(last) && last.mode === 'plan';
     $('imagex-recovery').hidden = !canRetry;

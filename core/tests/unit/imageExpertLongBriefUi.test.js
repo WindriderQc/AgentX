@@ -60,6 +60,7 @@ test('planning retains a 9958-character brief with exact constraints and allows 
   const ui = await expert(), original = ui.current.prompt;
   expect(ui.get('imagex-plan').disabled).toBe(false);
   expect(ui.get('imagex-planning-help').textContent).toContain('brief long reste conservé');
+  expect(ui.get('imagex-planning-help').textContent).toContain('Format choisi : 1024 × 576');
   await ui.fire('imagex-plan');
   expect(ui.posts).toHaveLength(2);
   expect(ui.posts[1].body).toMatchObject({ mode: 'plan', context: { prompt: original, constraints: manifest, referenceCount: 1 } });
