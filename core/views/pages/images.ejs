@@ -4,13 +4,43 @@
       <p>Crée, explore tes propositions, puis retouche celle que tu choisis. <a class="studio-guide-link" href="/images/guide">Comment ça marche, et quelques conseils →</a> <a class="studio-guide-link" href="/images/labo/">Le labo : comparer et comprendre →</a></p></div>
     <div class="studio-host"><span class="studio-dot" aria-hidden="true"></span><div><span class="studio-host-label">Calcul local</span><strong id="image-host">Lecture de la configuration…</strong><span id="image-gpu"></span></div></div>
   </header>
-  <%- include('image-expert') %>
   <div class="image-layout">
     <section class="image-compose" aria-labelledby="image-compose-title">
       <div class="panel-heading"><div><p class="panel-step">01 · COMPOSER</p><h2 id="image-compose-title">Nouvelle création</h2></div><button id="image-new" type="button" class="quiet-button" disabled>Nouveau brief</button></div>
       <p id="image-draft-source" class="draft-source" hidden></p>
-      <%- include('image-layout-guide') %>
       <form id="image-form">
+        <label for="image-prompt">Ton brief</label>
+        <textarea id="image-prompt" required rows="6" aria-describedby="image-brief-counter image-brief-help" placeholder="Décris le sujet, l’ambiance et les détails qui comptent. Pour une retouche, précise ce qui change et ce qui doit rester."></textarea>
+        <p id="image-brief-counter" class="image-help" role="status" aria-live="polite">Brief conservé : 0 / 32 000 caractères · rendu avec contraintes : 0 / 8 000.</p>
+        <p id="image-brief-help" class="image-help">Tu peux coller un brief long en entier. Hermes peut le condenser avec « Affiner mon brief » jusqu’à 32 000 caractères, contraintes comprises. La création exige un brief final de 8 000 caractères maximum, contraintes comprises. Si Hermes est indisponible, réduis le texte ici.</p>
+        <label for="image-size">Format demandé</label>
+        <select id="image-size">
+          <option value="1024,1024">Carré · 1024 × 1024 · 1,05 MP</option>
+          <option value="1280,768">Paysage · 1280 × 768 · 0,98 MP</option>
+          <option value="768,1280">Portrait · 768 × 1280 · 0,98 MP</option>
+          <option value="512,512">Petit carré · 512 × 512 · 0,26 MP</option>
+          <option value="2048,2048">Carré · 2048 × 2048 · 4,19 MP</option>
+          <option value="2048,1152">Paysage · 2048 × 1152 · 2,36 MP</option>
+        </select>
+        <p id="image-format-help" class="image-help"></p>
+        <%- include('image-advice') %>
+        <div class="field-heading"><label for="image-profile">Recette de rendu</label><span>Configuration actuelle</span></div>
+        <select id="image-profile" aria-describedby="image-recipe-summary"></select>
+        <div id="image-recipe-summary" class="recipe-summary" aria-live="polite"><p>Lecture des recettes disponibles…</p></div>
+        <details class="recipe-components"><summary>Voir les composants du modèle</summary><dl id="image-components"></dl></details>
+        <div class="references-section"><div class="field-heading"><label for="image-references">Références pour cette demande</label><span>2 maximum</span></div>
+          <p class="image-help">Ajoute une photo à transformer ou utilise une création de la bibliothèque.</p>
+          <div id="image-selected-reference" class="selected-reference" hidden></div>
+          <input id="image-references" type="file" accept="image/png,image/jpeg" multiple>
+          <div id="image-reference-previews"></div>
+          <p id="image-reference-help" class="image-help">Sans référence jointe, le modèle crée une nouvelle composition.</p>
+        </div>
+        <%- include('image-brief-constraints') %>
+        <%- include('image-layout-guide') %>
+        <details class="seed-settings"><summary>Graine et reproductibilité</summary>
+          <label for="image-seed">Graine <span>facultatif</span></label><input id="image-seed" type="number" min="0" max="9007199254740991" step="1" placeholder="Aléatoire si vide">
+          <p class="image-help">Une graine permet de retrouver les réglages. Pour préserver une composition choisie, joins son image comme référence.</p>
+        </details>
         <details class="image-starters">
           <summary>Un point de départ pour ton idée</summary>
           <label for="image-starter">Choisir un canevas</label>
@@ -25,36 +55,6 @@
             <p id="image-starter-replace" class="image-help" aria-live="polite"></p>
           </div>
         </details>
-        <label for="image-prompt">Ton brief</label>
-        <textarea id="image-prompt" required rows="6" aria-describedby="image-brief-counter image-brief-help" placeholder="Décris le sujet, l’ambiance et les détails qui comptent. Pour une retouche, précise ce qui change et ce qui doit rester."></textarea>
-        <p id="image-brief-counter" class="image-help" role="status" aria-live="polite">Brief conservé : 0 / 32 000 caractères · rendu avec contraintes : 0 / 8 000.</p>
-        <p id="image-brief-help" class="image-help">Tu peux coller un brief long en entier. Hermes peut le condenser avec « Affiner mon brief » jusqu’à 32 000 caractères, contraintes comprises. La création exige un brief final de 8 000 caractères maximum, contraintes comprises. Si Hermes est indisponible, réduis le texte ici.</p>
-        <%- include('image-brief-constraints') %>
-        <div class="field-heading"><label for="image-profile">Recette de rendu</label><span>Configuration actuelle</span></div>
-        <select id="image-profile" aria-describedby="image-recipe-summary"></select>
-        <div id="image-recipe-summary" class="recipe-summary" aria-live="polite"><p>Lecture des recettes disponibles…</p></div>
-        <details class="recipe-components"><summary>Voir les composants du modèle</summary><dl id="image-components"></dl></details>
-        <label for="image-size">Format demandé</label>
-        <select id="image-size">
-          <option value="1024,1024">Carré · 1024 × 1024 · 1,05 MP</option>
-          <option value="1280,768">Paysage · 1280 × 768 · 0,98 MP</option>
-          <option value="768,1280">Portrait · 768 × 1280 · 0,98 MP</option>
-          <option value="512,512">Petit carré · 512 × 512 · 0,26 MP</option>
-          <option value="2048,2048">Carré · 2048 × 2048 · 4,19 MP</option>
-          <option value="2048,1152">Paysage · 2048 × 1152 · 2,36 MP</option>
-        </select>
-        <p id="image-format-help" class="image-help"></p>
-        <details class="seed-settings"><summary>Graine et reproductibilité</summary>
-          <label for="image-seed">Graine <span>facultatif</span></label><input id="image-seed" type="number" min="0" max="9007199254740991" step="1" placeholder="Aléatoire si vide">
-          <p class="image-help">Une graine permet de retrouver les réglages. Pour préserver une composition choisie, joins son image comme référence.</p>
-        </details>
-        <div class="references-section"><div class="field-heading"><label for="image-references">Références pour cette demande</label><span>2 maximum</span></div>
-          <p class="image-help">Ajoute une photo à transformer ou utilise une création de la bibliothèque.</p>
-          <div id="image-selected-reference" class="selected-reference" hidden></div>
-          <input id="image-references" type="file" accept="image/png,image/jpeg" multiple>
-          <div id="image-reference-previews"></div>
-          <p id="image-reference-help" class="image-help">Sans référence jointe, le modèle crée une nouvelle composition.</p>
-        </div>
         <button type="submit" id="image-create" disabled><span id="image-create-label">Créer une nouvelle image</span><span aria-hidden="true">↗</span></button>
       </form>
       <div class="image-progress"><p id="image-status" role="status" aria-live="polite">Connexion au service…</p>
@@ -81,6 +81,7 @@
       </details>
     </section>
   </div>
+  <%- include('image-expert') %>
   <section class="image-history" aria-labelledby="image-library-title">
     <div class="library-heading"><div><p class="panel-step">03 · BIBLIOTHÈQUE</p><h2 id="image-library-title">Les créations conservées</h2><p>Cliquer ouvre un aperçu. Pour préparer une autre demande, choisis ensuite « Reprendre le brief » ou « Joindre cette image ».</p></div><label class="library-search" for="image-search">Filtrer les créations<input id="image-search" type="search" placeholder="Modèle, date, dimensions…"></label></div>
     <p id="image-gallery-count" class="image-help"></p><div id="image-gallery"></div>

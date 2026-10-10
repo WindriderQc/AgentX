@@ -692,6 +692,39 @@
     transition:none
   }
 }
+.image-advice {
+  padding:14px 16px;
+  border:1px solid #355149;
+  border-radius:12px;
+  background:linear-gradient(125deg,#1b302e,#17222c);
+  margin-bottom:23px
+}
+.image-advice-intro {
+  font-size:12px;
+  color:#b1c4c9;
+  line-height:1.6;
+  margin:0 0 10px
+}
+.image-advice .imagex-shortcuts {
+  margin:0 0 2px
+}
+.image-advice .imagex-shortcuts button {
+  border:1px solid #72958266;
+  background:#344d4380;
+  color:#e6f3eb;
+  border-radius:9px;
+  padding:9px 13px;
+  font:inherit;
+  font-size:12px;
+  cursor:pointer
+}
+.image-advice .imagex-shortcuts button:hover:not(:disabled) {
+  background:#446456
+}
+.image-advice .imagex-shortcuts button:disabled {
+  opacity:.45;
+  cursor:not-allowed
+}
 .image-starters {
   margin-bottom:24px;
   padding:14px 16px;
