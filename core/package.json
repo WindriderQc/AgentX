@@ -11,6 +11,7 @@
     "dev": "nodemon server.js",
     "test": "node scripts/run-jest.js",
     "test:surfaces": "node scripts/run-surface-tests.js && npm run test:integrations --prefix .. && npm run test:shared --prefix ..",
+    "test:images:browser": "node tests/browser/imageWorkshopJourney.cjs",
     "test:unit": "node scripts/run-jest.js tests/unit --coverage",
     "test:integration": "node scripts/run-jest.js tests/integration",
     "db:indexes": "node scripts/create-indexes.js",

@@ -13,8 +13,20 @@ configured archive may be part of the household photo library. Human studio
 access follows the deployment's trusted LAN boundary; native agents retain
 their separate permission policies.
 
-The optional imageX panel integrates Hermes into the Atelier: chat, editable
-prompt proposals, operational events, routing facts and read-only profile files.
+The Atelier starts with the working brief, followed by review of the final text,
+constraints, recipe, format and references, then explicit creation. **Affiner mon
+brief**, beside the brief, optionally prepares a proposal with Hermes. Its own
+optional instruction is independent of an unsent advice message. The proposal
+appears beside the brief; applying it changes the text without starting a render.
+The final composed prompt can be read before creation. A ready brief can create
+directly without consulting Hermes.
+
+The secondary, collapsed **Conseils et questions avec imageX** panel retains chat,
+operational events, routing facts and read-only profile files. Links from the
+brief and historical collaboration receipts open it. Result text tools appear
+with an archived image; JSON text projects can also reopen before a result exists.
+Parent comparison and protected composition appear when the selected result has
+a verified archived parent. The composition sketch stays with creation references.
 Core retains the canonical `image-workshop` conversation and keeps gateway
 credentials server-side. The panel sends text and current recipe evidence;
 reference images remain on the local rendering path. Apply a proposal explicitly
@@ -43,12 +55,31 @@ remains available within the consultation budget. Hermes proposes a shorter
 visual description with the original constraints appended verbatim; applying
 a valid proposal updates the counter and enables creation. When Hermes is
 unavailable, the complete draft remains available for manual reduction.
+The optional refinement instruction has the same 32,000-unit limit and retains
+oversized pastes. It never consumes or clears a separate advice draft.
 The composed generation prompt retains its existing 8,000 UTF-16 unit budget;
 the untrimmed render input must also fit 8,000 units, so leading or trailing
 spaces cannot produce a browser-valid request that Core refuses. Overflow is
 refused without truncation. Request identity, draft restoration, details and recipe
 exports retain the snapshot and visual prompt. This preserves the submitted
 intent; visual compliance still requires examination.
+
+The simulated browser journey uses the production EJS page, browser scripts,
+image/expert HTTP routes and expert service with an in-memory conversation store,
+a synthetic Hermes bridge and synthetic render responses. It exercises clipboard
+pastes, independent preparation/application/render actions, archive tools and
+unavailable Hermes on desktop and mobile, including widths from 320 to 1,440 px.
+With Core dependencies installed, run it using isolated Playwright tooling:
+
+```bash
+npm install --prefix /tmp/agentx-browser-tooling playwright@1.63.0
+/tmp/agentx-browser-tooling/node_modules/.bin/playwright install chromium
+ATELIER_REPORT_DIR=/tmp/agentx-image-journey \
+  NODE_PATH=/tmp/agentx-browser-tooling/node_modules npm run test:images:browser --prefix core
+```
+
+Screenshots and the validation receipt stay outside Git. This check invokes no
+model or GPU and does not attest deployment or acceptance on a physical phone.
 
 **Esquisse de composition** creates a browser CPU guide with named rectangles,
 relative placement and a chosen format. PNG export uses at most 1,536 pixels per

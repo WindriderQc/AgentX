@@ -75,7 +75,19 @@
   }
   function controls() {
     const block = locked();
-    $('image-create').disabled = block || !config?.configured || referenceCount() > 2 || (constraints && !constraints.isValid());
+    const prompt = $('image-prompt').value, hasBrief = !!prompt.trim();
+    let valid = prompt.length <= (globalThis.ImageBriefConstraints?.MAX_PROMPT || 8000) && (!constraints || constraints.isValid()), finalPrompt = '';
+    try { if (hasBrief && valid) finalPrompt = globalThis.ImageBriefConstraints?.compose(prompt, constraints?.getValue()) || prompt; }
+    catch { valid = false; }
+    $('image-render-preview').hidden = !hasBrief || !valid;
+    $('image-render-prompt').textContent = finalPrompt;
+    $('image-create').disabled = block || !config?.configured || !hasBrief || referenceCount() > 2 || !valid;
+    $('image-create-help').textContent = block ? 'Attends la fin de la demande en cours avant de lancer une autre image.'
+      : !config?.configured ? 'Le service de rendu local est indisponible.'
+      : !hasBrief ? 'Décris ton image dans le brief pour commencer.'
+      : referenceCount() > 2 ? 'Retire une référence : deux images au maximum.'
+      : !valid ? 'Prépare une version de 8 000 caractères maximum, contraintes comprises : affine le brief ou réduis-le ici.'
+      : 'Prêt à créer avec ce brief. Ce bouton lance le rendu local.';
     $('image-new').disabled = block || !config; $('image-use-reference').disabled = block; $('image-reuse-brief').disabled = block;
     for (const button of $('image-gallery').querySelectorAll('button')) button.disabled = block;
     starters?.refresh();
@@ -88,8 +100,8 @@
   }
   function updateFormMode() {
     const count = referenceCount();
-    $('image-compose-title').textContent = count ? 'Retouche avec référence' : 'Nouvelle création';
-    $('image-create-label').textContent = count ? 'Appliquer la retouche' : 'Créer une nouvelle image';
+    $('image-compose-title').textContent = selectedReference ? 'Préparer une retouche' : count ? 'Création avec références' : 'Nouvelle création';
+    $('image-create-label').textContent = selectedReference ? 'Créer la retouche' : count ? 'Créer l’image avec références' : 'Créer une nouvelle image';
     $('image-reference-help').textContent = count > 2 ? 'Deux références au maximum : retire une image avant l’envoi.'
       : count ? `${count} référence${count > 1 ? 's' : ''} jointe${count > 1 ? 's' : ''}. Décris les changements et les éléments à préserver. La retouche peut aussi modifier des zones non demandées.`
       : 'Sans référence jointe, le modèle crée une nouvelle composition.';
@@ -202,6 +214,8 @@
     const stage = { accepted: 0, reserving: 0, generating: 1, archiving: 2, restoring: 3 }[op.state];
     [...$('image-stages').children].forEach((el, i) => { el.className = i === stage ? 'current' : i < stage ? 'done' : ''; if (i === stage) el.setAttribute('aria-current', 'step'); else el.removeAttribute('aria-current'); });
     $('image-use-reference').hidden = !ready; $('image-reuse-brief').hidden = !ready;
+    $('image-improve-help').hidden = !ready;
+    $('image-text-open').hidden = !!ready;
     $('image-output').hidden = !ready; $('image-download').hidden = !ready; $('image-placeholder').hidden = Boolean(ready);
     if (ready) { $('image-output').src = op.artifact.url; $('image-download').href = op.artifact.url; }
     shownDetails = null; $('image-result-details').hidden = true; $('image-result-note').hidden = true; renderResultFacts(); controls();
@@ -279,9 +293,13 @@
     ++draftEpoch; ++referenceEpoch; selectedReference = null; guideReference = null; request = null; operation = null; shownDetails = null;
     draftExpert = null;
     resetExport(false);
+    // The inline proposal remains an independent draft when the creation form resets.
+    const proposed = $('imagex-proposal-prompt').value;
     $('image-form').reset(); $('image-profile').value = config.defaultProfile;
+    $('imagex-proposal-prompt').value = proposed; $('imagex-proposal-panel').hidden = true;
     constraints?.reset();
-    for (const id of ['image-draft-source', 'image-selected-reference', 'image-result-origin', 'image-output', 'image-download', 'image-use-reference', 'image-reuse-brief', 'image-result-details', 'image-result-facts', 'image-result-note', 'image-cancel', 'image-recover', 'image-stages']) $(id).hidden = true;
+    for (const id of ['image-draft-source', 'image-selected-reference', 'image-result-origin', 'image-output', 'image-download', 'image-use-reference', 'image-reuse-brief', 'image-result-details', 'image-result-facts', 'image-result-note', 'image-cancel', 'image-recover', 'image-stages', 'image-improve-help']) $(id).hidden = true;
+    $('image-text-open').hidden = false;
     $('image-reference-previews').replaceChildren(); $('image-placeholder').hidden = false;
     $('image-result-title').textContent = 'Ton prochain résultat'; $('image-preview-help').textContent = 'Une image sélectionnée dans la bibliothèque s’affiche ici.';
     $('image-status').textContent = 'Nouveau brief. Choisis une recette et un format.'; renderRecipe(); renderHistory(); $('image-prompt').focus();
@@ -296,6 +314,7 @@
     if (files.length) { const remove = node('button', 'Retirer les fichiers joints', 'quiet-button'); remove.type = 'button'; remove.addEventListener('click', () => { $('image-references').value = ''; $('image-references').dispatchEvent(new Event('change')); }); $('image-reference-previews').append(remove); }
     updateFormMode();
   });
+  $('image-text-open').addEventListener('click', () => { textEditor?.open(); });
   $('image-use-reference').addEventListener('click', () => {
     if (locked() || !operation) return;
     const selected = operation; ++referenceEpoch;

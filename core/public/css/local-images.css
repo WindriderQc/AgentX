@@ -710,3 +710,44 @@
   font-size:13px;
   line-height:1.6;
 }
+
+/* The brief leads the journey; advice and proposals never start a render. */
+.image-journey {
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 24px;
+  margin:0 0 24px;
+  padding:14px 0;
+  border-block:1px solid var(--studio-border);
+}
+.image-journey a { color:#d2e5df; text-decoration:none; font-size:12px; line-height:1.6; }
+.image-journey span { color:var(--studio-accent); margin-right:6px; }
+.image-compose #image-prompt { margin-bottom:0; }
+.brief-assistance { margin:16px 0 22px; padding:16px; border:1px solid #3d5b50; border-radius:12px; background:#182923; }
+.brief-assistance > a { display:inline-block; margin:10px 0 0; font-size:12px; }
+.brief-assistance > button:first-child { display:block; }
+.brief-assistance .image-help:last-of-type { margin-bottom:0; }
+.imagex-brief-proposal { margin:0 0 22px; padding:16px; border:1px solid #618277; border-radius:12px; background:#172c25; }
+.imagex-brief-proposal > summary { color:#ceeadd; font-weight:600; }
+.imagex-brief-proposal pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:240px; overflow:auto; font:12px/1.6 ui-monospace,monospace; }
+.imagex-brief-proposal textarea { margin:0; }
+.imagex-brief-proposal #imagex-apply { border:0; border-radius:9px; padding:12px; font:inherit; font-size:12px; cursor:pointer; }
+.image-review { border-top:1px solid var(--studio-border); margin-top:22px; padding-top:22px; scroll-margin-top:24px; }
+.image-review h3 { font-size:18px; margin:0; }
+.recipe-description { margin:0 0 20px; }
+.recipe-description .recipe-components { margin-bottom:0; }
+#image-result { scroll-margin-top:24px; }
+#image-text-open { margin-top:16px; }
+@media(max-width:760px) {
+  .image-journey { gap:8px; flex-direction:column; }
+  .brief-assistance,.imagex-brief-proposal { padding:13px; }
+  .image-compose textarea,.imagex-panel textarea,.imagex-panel select { font-size:16px; }
+  .imagex-panel > summary { padding:16px; }
+}
+.brief-plan-instruction { margin:12px 0; }
+.brief-plan-instruction label { margin-top:12px; }
+.brief-plan-instruction textarea { min-height:80px; margin-bottom:0; }
+.studio-header > div:first-child { min-width:0; max-width:100%; }
+.image-studio .studio-guide-link { white-space:normal; }
+#image-render-prompt { white-space:pre-wrap; overflow-wrap:anywhere; max-height:250px; overflow:auto; font:12px/1.6 ui-monospace,monospace; }
+.recipe-description .studio-host { min-width:0; max-width:none; margin-top:14px; }

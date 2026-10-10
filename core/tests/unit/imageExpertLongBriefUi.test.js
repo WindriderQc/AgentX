@@ -79,11 +79,11 @@ test('a valid raw brief whose exact constraint block exceeds the planning budget
   await ui.fire('imagex-plan'); expect(ui.posts).toHaveLength(0);
   expect(ui.get('imagex-notice').textContent).toContain('32 000');
 });
-test.each([{ label: 'text', message: 'x'.repeat(32001) }, { label: 'whitespace', message: ' '.repeat(32001) }])('an over-budget $label message remains intact and blocks all consultation entry points', async ({ message }) => {
+test.each([{ label: 'text', message: 'x'.repeat(32001) }, { label: 'whitespace', message: ' '.repeat(32001) }])('an over-budget $label advice draft stays intact without blocking brief preparation', async ({ message }) => {
   const ui = await expert(); ui.get('imagex-message').value = message; await ui.fire('imagex-message', 'input');
-  expect(ui.get('imagex-plan').disabled).toBe(true); expect(ui.get('imagex-send').disabled).toBe(true);
-  await ui.fire('imagex-plan'); await ui.fire('imagex-explore'); await ui.fire('imagex-chat-form', 'submit');
-  expect(ui.posts).toHaveLength(0); expect(ui.get('imagex-message').value).toBe(message);
+  expect(ui.get('imagex-plan').disabled).toBe(false); expect(ui.get('imagex-send').disabled).toBe(true);
+  await ui.fire('imagex-chat-form', 'submit'); expect(ui.posts).toHaveLength(0);
+  await ui.fire('imagex-plan'); expect(ui.posts[1].body.mode).toBe('plan'); expect(ui.get('imagex-message').value).toBe(message);
   expect(ui.get('imagex-message-counter').dataset.invalid).toBe('true');
 });
 test('a 32000-character consultation message is sent without trimming its whitespace or terminal sentinel', async () => {
@@ -134,4 +134,39 @@ test('Hermes unavailability explains manual reduction while leaving the complete
   expect(ui.get('imagex-plan').disabled).toBe(true);
   expect(ui.get('imagex-planning-help').textContent).toContain('indisponible');
   await ui.fire('imagex-plan'); expect(ui.posts).toHaveLength(0); expect(ui.current.prompt).toBe(original);
+});
+
+test('brief preparation sends its own instruction and preserves an unrelated advice draft', async () => {
+  const ui = await expert();
+  ui.get('imagex-message').value = 'A question I have not sent';
+  ui.get('imagex-plan-instruction').value = 'Keep the central character';
+  await ui.fire('imagex-plan');
+  expect(ui.posts[1].body.message).toBe('Keep the central character');
+  expect(ui.get('imagex-message').value).toBe('A question I have not sent');
+  expect(ui.get('imagex-proposal-panel').hidden).toBe(false);
+  expect(ui.get('imagex-proposal-panel').open).toBe(true);
+  await ui.fire('imagex-apply');
+  expect(ui.get('imagex-proposal-panel').open).toBe(false);
+});
+test('an oversized planning instruction remains intact and refuses before session creation', async () => {
+  const ui = await expert(); ui.get('imagex-plan-instruction').value = 'x'.repeat(32001);
+  await ui.fire('imagex-plan-instruction', 'input');
+  expect(ui.get('imagex-plan').disabled).toBe(true);
+  expect(ui.get('imagex-instruction-counter').textContent).toContain('32');
+  await ui.fire('imagex-plan'); expect(ui.posts).toHaveLength(0);
+  expect(ui.get('imagex-plan-instruction').value).toHaveLength(32001);
+});
+test('a ready brief still explains direct creation when Hermes is unavailable', async () => {
+  const ui = await expert({ available: false, prompt: 'An owl in a workshop' });
+  expect(ui.get('imagex-planning-help').textContent).toContain('créer directement');
+  expect(ui.posts).toHaveLength(0);
+});
+
+test('advice stays accessible during rendering while proposal application is locked', async () => {
+  const ui = await expert(); ui.current.locked = true; ui.controller.refresh();
+  ui.get('imagex-message').value = 'A question about the recipe'; await ui.fire('imagex-message', 'input');
+  expect(ui.get('imagex-send').disabled).toBe(false);
+  await ui.fire('imagex-chat-form', 'submit');
+  expect(ui.posts[1].body.mode).toBe('consult');
+  expect(ui.get('imagex-apply').disabled).toBe(true);
 });
