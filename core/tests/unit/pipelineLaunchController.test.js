@@ -92,6 +92,39 @@ describe('Pipeline launch reconciliation', () => {
     expect(refreshTasks).toHaveBeenCalled();
   });
 
+  test('stop targets the current request once and remains pending until a terminal observation', async () => {
+    request.mockResolvedValue(snapshot(run('running', 'in_progress', { canStop: true }), true));
+    const controller = make();
+    await controller.refresh();
+    expect(controller.canStop()).toBe(true);
+    const stopping = deferred();
+    request.mockImplementation((url, options) => options.method === 'POST' ? stopping.promise
+      : Promise.resolve(snapshot(run('stopping', 'in_progress', { canStop: false }), true)));
+    const first = controller.stop();
+    expect(await controller.stop()).toBe(false);
+    stopping.reject(new Error('Response lost'));
+    await first;
+    expect(posts()).toHaveLength(1);
+    expect(posts()[0][0]).toBe(`/api/runtime-bridges/coding-dispatch/runs/${ID}/stop`);
+    expect(JSON.parse(posts()[0][1].body)).toEqual({ pipelineId: '0700', confirm: true });
+    expect(controller.pending).toEqual(selection);
+    await jest.advanceTimersByTimeAsync(6000);
+    expect(posts()).toHaveLength(1);
+    expect(controller.canLaunch('0700')).toBe(false);
+    request.mockResolvedValue(snapshot(run('finished', 'blocked')));
+    await controller.refresh();
+    expect(controller.pending).toBeNull();
+  });
+
+  test('a stale browser selection cannot stop another task or request', async () => {
+    storage.setItem('agentx.pipeline.simpleWorkerRequest.v1', JSON.stringify(selection));
+    request.mockResolvedValue(snapshot({ ...run('running', 'in_progress', { canStop: true }), requestId: NEXT, pipelineId: '0701' }, true));
+    const controller = make();
+    await controller.refresh();
+    expect(await controller.stop()).toBe(false);
+    expect(posts()).toHaveLength(0);
+  });
+
   test('reload during a lost response restores the same receipt using GET only', async () => {
     const controller = make();
     await controller.refresh();

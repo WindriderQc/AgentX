@@ -1,7 +1,9 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
+import signal
 import sys
 import tempfile
 import unittest
@@ -29,6 +31,7 @@ class CodingRunTest(unittest.TestCase):
                      "planningContext": {"text": "Reference only. " + "x" * 5000 + " Final fact."}}
         self.feedback = mock.Mock()
         for name, value in (("WORKSPACES", Path(root.name)), ("MODEL", "fixture-model"),
+                            ("RECEIPTS", Path(root.name) / "receipts"),
                             ("feedback", self.feedback), ("request", self.request),
                             ("install_dependencies", lambda workspace, progress=None: None)):
             patch = mock.patch.object(runner, name, value)
@@ -71,6 +74,62 @@ class CodingRunTest(unittest.TestCase):
         publish.assert_not_called()
         self.assertEqual(runner.git(self.workspace, "status", "--porcelain"), "")
         self.assertTrue((self.workspace / "result.txt").exists())
+
+    def test_operator_stop_preserves_checkpoint_and_forbids_publication_even_after_worker_success(self):
+        key = "11111111-2222-4333-8444-555555555555"
+        receipts = self.workspace.parent / "receipts"
+        def worker(workspace, prompt, timeout, progress=None):
+            (workspace / "result.txt").write_text("Partial source\n")
+            progress.stop_path.write_text(json.dumps({"requestId": key, "pipelineId": "0001"}))
+            return subprocess.CompletedProcess([], 0, stdout="Fixture", stderr="")
+        with mock.patch.object(sys, "argv", ["coding_run", "0001", "--request-id", key]), \
+                mock.patch.object(runner, "RECEIPTS", receipts), \
+                mock.patch.object(runner, "run_worker", worker), \
+                mock.patch.object(runner, "push_and_open_pr") as publish, \
+                mock.patch.dict(os.environ, {"GH_TOKEN": "fixture-token"}), mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        publish.assert_not_called()
+        self.assertEqual(runner.git(self.workspace, "show", "HEAD:result.txt"), "Partial source")
+        value = json.loads((receipts / f"{key}.progress.json").read_text())
+        self.assertEqual((value["phase"], value["result"], value["stopReason"]), ("finished", "blocked", "operator_stop"))
+        self.assertEqual(value["checkpoint"], runner.git(self.workspace, "rev-parse", "HEAD"))
+
+    def test_sigterm_uses_cleanup_and_restores_the_callers_signal_handler(self):
+        self.exit_code = 0
+        previous = signal.getsignal(signal.SIGTERM)
+        def worker(workspace, prompt, timeout, progress=None):
+            os.kill(os.getpid(), signal.SIGTERM)
+            return self.worker(workspace, prompt, timeout, progress)
+        with mock.patch.object(runner, "run_worker", worker), mock.patch.object(runner, "push_and_open_pr") as publish, \
+                mock.patch.dict(os.environ, {"GH_TOKEN": "fixture-token"}), mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        publish.assert_not_called()
+        self.assertEqual(signal.getsignal(signal.SIGTERM), previous)
+
+    def test_publication_boundary_reads_stop_before_recording_irreversible_stage(self):
+        key = "11111111-2222-4333-8444-555555555555"
+        progress = runner.coding_progress.Progress("0001", key, receipts=runner.RECEIPTS)
+        progress.phase = "delivering"
+        progress.set_stage("checkpoint")
+        progress.stop_path.write_text(json.dumps({"requestId": key, "pipelineId": "0001"}))
+        self.assertFalse(runner.begin_publication(progress))
+        self.assertEqual(progress.stage, "checkpoint")
+        self.assertEqual(progress.stop_reason, "operator_stop")
+
+    def test_supervised_stop_waits_for_the_child_and_retains_raw_output(self):
+        key = "11111111-2222-4333-8444-555555555555"
+        progress = runner.coding_progress.Progress("0001", key, receipts=self.workspace.parent / "receipts")
+        progress.phase = "running"
+        script = ("import json,time;from pathlib import Path;print('Synthetic preserved output',flush=True);"
+                  f"Path({str(progress.stop_path)!r}).write_text(json.dumps({{'requestId':{key!r},'pipelineId':'0001'}}));"
+                  "time.sleep(60)")
+        result = runner.supervise([sys.executable, "-c", script], progress)
+        self.assertEqual(result.returncode, -signal.SIGTERM)
+        self.assertEqual(progress.stop_reason, "operator_stop")
+        logs = list((progress.path.parent / f"{key}.output").glob("*/stdout"))
+        self.assertEqual(len(logs), 1)
+        self.assertEqual(logs[0].read_text(), "Synthetic preserved output\n")
+        self.assertIn("Synthetic preserved output", result.stdout)
 
     def test_completed_work_without_token_preserves_a_local_checkpoint_without_publication(self):
         self.exit_code = 0

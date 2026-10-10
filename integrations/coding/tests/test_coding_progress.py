@@ -120,6 +120,27 @@ class ProgressTest(unittest.TestCase):
         self.clock[0] = 2400
         self.assertEqual(self.progress.tick(), "test_inactive")
 
+    def test_reading_and_new_model_waits_cannot_reset_useful_progress_limit(self):
+        for minute in range(45):
+            self.clock[0] = minute * 60
+            self.progress.model_events.put("model_request")
+            self.progress.event({"type": "tool/call", "data": {"name": "bash", "arguments": {"command": "cat README.md"}}})
+            self.progress.event({"type": "tool/result", "data": {"message": {}}})
+            self.assertIsNone(self.progress.tick())
+        self.clock[0] = 45 * 60
+        self.progress.model_events.put("model_request")
+        self.assertEqual(self.progress.tick(), "no_useful_progress")
+        self.assertEqual(self.progress.extensions, 0)
+
+    def test_stop_receipt_matches_both_identities_and_survives_budget_checks(self):
+        self.progress.stop_path.write_text(json.dumps({"requestId": KEY, "pipelineId": "0002"}))
+        self.assertIsNone(self.progress.tick())
+        self.progress.stop_path.write_text(json.dumps({"requestId": KEY, "pipelineId": "0001"}))
+        self.clock[0] = 15000
+        self.assertEqual(self.progress.tick(), "operator_stop")
+        self.progress.finish("blocked")
+        self.assertEqual(module.safe_progress(json.loads(self.progress.path.read_text()), KEY, "0001")["stopReason"], "operator_stop")
+
     def test_projection_rejects_foreign_identity_and_removes_unknown_nested_data(self):
         self.progress.finish("blocked", "worker_exit", "a" * 40)
         value = json.loads(self.progress.path.read_text())

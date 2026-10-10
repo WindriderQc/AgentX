@@ -20,6 +20,7 @@ REQUEST_ID = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0
 STAGES = {"preparing", "dependencies", "model_wait", "model_generation", "tool", "test", "checkpoint", "publishing"}
 PHASES = {"preparing", "running", "delivering", "finished"}
 REASONS = {"hard_budget", "soft_budget_no_progress", "no_useful_progress", "model_call_limit",
+           "operator_stop",
            "worker_exit", "no_changes", "dependencies_failed", "dependencies_changed", "runner_error",
            "tests_failed", "generated_artifacts", "ineligible_task", "runtime_unavailable", "runtime_changed",
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
@@ -161,6 +162,7 @@ class Progress:
                  *, receipts: Path | None = None, heartbeat=None, now=time.monotonic):
         self.task_id, self.request_id, self.now, self.heartbeat = task_id, request_id, now, heartbeat
         self.path = receipts / f"{request_id}.progress.json" if receipts and request_id else None
+        self.stop_path = receipts / f"{request_id}.stop.json" if receipts and request_id else None
         self.started = self.stage_since = self.last_activity = self.last_useful = self.now()
         self.soft_deadline = self.started + soft_seconds
         self.hard_deadline = self.started + 2 * soft_seconds
@@ -295,6 +297,7 @@ class Progress:
             self.scan(home, workspace)
 
     def tick(self, home: Path | None = None, workspace: Path | None = None):
+        self.check_stop()
         self.observe(home, workspace)
         current = self.now()
         if self.last_heartbeat is None or current - self.last_heartbeat >= 20:
@@ -304,7 +307,7 @@ class Progress:
                 except (OSError, RuntimeError):
                     pass
             self.last_heartbeat, self.heartbeat_at = current, utc_now()
-        if self.phase == "running":
+        if self.phase == "running" and not self.stop_reason:
             if current >= self.soft_deadline and current < self.hard_deadline:
                 if self.last_useful > self.last_extension and current - self.last_useful < min(1800, self.extension_seconds):
                     self.soft_deadline = min(self.hard_deadline, current + self.extension_seconds)
@@ -318,9 +321,21 @@ class Progress:
                 self.stop_reason = "model_call_limit"
             elif self.stage in STAGE_LIMITS and current - self.stage_since >= STAGE_LIMITS[self.stage]:
                 self.stop_reason = f"{self.stage}_inactive"
-            elif self.stage not in {"model_wait", "test"} and current - self.last_useful >= 45 * 60:
+            elif self.stage != "test" and current - self.last_useful >= 45 * 60:
                 self.stop_reason = "no_useful_progress"
         self.write()
+        return self.stop_reason
+
+    def check_stop(self):
+        if self.stop_path:
+            try:
+                if self.stop_path.stat().st_size <= 4096:
+                    value = json.loads(self.stop_path.read_text())
+                    if (isinstance(value, dict) and value.get("requestId") == self.request_id
+                            and value.get("pipelineId") == self.task_id):
+                        self.stop_reason = "operator_stop"
+            except (OSError, ValueError):
+                pass
         return self.stop_reason
 
     def finish(self, result: str, reason: str | None = None, checkpoint: str | None = None):

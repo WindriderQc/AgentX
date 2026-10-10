@@ -277,6 +277,18 @@
       retry.after(cancel);
     }
     if (cancel) { cancel.hidden = run?.phase !== 'waiting'; cancel.disabled = !controller?.canCancel(); }
+    let stop = $('pipelineTeamLaunchStop');
+    if (!stop && retry) {
+      stop = document.createElement('button');
+      stop.id = 'pipelineTeamLaunchStop'; stop.type = 'button'; stop.className = 'pipeline-btn compact';
+      stop.addEventListener('click', () => state.launchController?.stop());
+      retry.after(stop);
+    }
+    if (stop) {
+      stop.hidden = !run?.canStop && run?.phase !== 'stopping';
+      stop.textContent = run?.phase === 'stopping' ? 'Stopping worker…' : `Stop worker #${run?.pipelineId || ''}`;
+      stop.disabled = !controller?.canStop();
+    }
     const reasons = $('pipelineTeamEligibilityReasons');
     if (reasons) reasons.innerHTML = (control?.excluded || []).map(task => `<div class="pipeline-launch-exclusion"><button type="button" class="pipeline-btn compact" data-pipeline-task="${escapeHtml(task.pipelineId)}">${escapeHtml(task.pipelineId)} · ${escapeHtml(task.title)}</button><p>${(task.reasons || []).map(reason => escapeHtml(reason.detail || reason.code)).join(' · ')}</p></div>`).join('') || '<p>No additional non-private queue exclusions in the current observation.</p>';
   }

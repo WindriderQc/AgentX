@@ -3,14 +3,14 @@ const vm = require('vm');
 const { readPipelineScript } = require('../helpers/pipelineScripts');
 
 function render(progress, phase = 'running', extra = {}) {
-  const elements = Object.fromEntries(['State', 'Detail', 'Task', 'Confirm', 'Button', 'Result'].map(name =>
+  const elements = Object.fromEntries(['State', 'Detail', 'Task', 'Confirm', 'Button', 'Result', 'Stop'].map(name =>
     [`pipelineTeamLaunch${name}`, { dataset: {}, value: '', textContent: '', innerHTML: '' }]));
   const window = {};
   vm.runInNewContext(readPipelineScript('pipeline-delivery.js'), { window, URL });
   const control = { available: true, busy: phase === 'running', candidates: [], run: {
     pipelineId: '0001', phase, progress, message: 'Synthetic fixture' }, ...extra };
   window.PipelineDelivery.create({
-    $: id => elements[id], state: { launchController: { control, pending: phase === 'finished' ? null : { pipelineId: '0001' } } },
+    $: id => elements[id], state: { launchController: { control, pending: phase === 'finished' ? null : { pipelineId: '0001' }, canStop: () => control.run.canStop === true } },
     escapeHtml: value => String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
     formatDate: value => value, formatStatus: value => value
   }).renderDispatchControl();
@@ -34,6 +34,18 @@ test('a historical blocked attempt stays in its receipt and an unknown host stay
   const progress = { stage: 'checkpoint', result: 'blocked', stopReason: 'soft_budget_no_progress' };
   expect(render(progress, 'finished').pipelineTeamLaunchState.textContent).toContain('Host observed');
   expect(render(progress, 'unknown').pipelineTeamLaunchState.textContent).toContain('Host outcome unknown');
+});
+
+test('offers Stop worker only for the current stoppable request and shows a pending stop', () => {
+  const active = render({}, 'running', { run: { pipelineId: '0001', phase: 'running', canStop: true } }).pipelineTeamLaunchStop;
+  expect(active.hidden).toBe(false);
+  expect(active.disabled).toBe(false);
+  expect(active.textContent).toBe('Stop worker #0001');
+  const stopping = render({}, 'stopping', { run: { pipelineId: '0001', phase: 'stopping', canStop: false } }).pipelineTeamLaunchStop;
+  expect(stopping.hidden).toBe(false);
+  expect(stopping.disabled).toBe(true);
+  expect(stopping.textContent).toBe('Stopping worker…');
+  expect(render({}, 'finished').pipelineTeamLaunchStop.hidden).toBe(true);
 });
 
 test('a completed earlier task cannot replace current admission or disable a new candidate', () => {

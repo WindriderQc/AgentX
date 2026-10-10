@@ -41,6 +41,17 @@ test('HTTP loss is reported as uncertain and does not reflect private stderr', a
   await assert.rejects(control.launch(request), error => error.code === 'CODING_DISPATCH_OUTCOME_UNKNOWN' && error.statusCode === 503 && !error.message.includes('secret'));
 });
 
+test('stop requires confirmation and binds the exact task and request without signaling another unit', async () => {
+  const control = configured(async (target, command) => {
+    assert.equal(command, `/usr/bin/python3 /srv/agentx/AgentX/integrations/coding/coding_dispatch_control.py stop 0700 ${request.requestId}`);
+    return envelope({ accepted: true, phase: 'stopping' });
+  });
+  assert.equal((await control.stop(request)).phase, 'stopping');
+  for (const change of [{ confirm: false }, { pipelineId: '0700; kill' }, { requestId: 'not-a-uuid' }]) {
+    await assert.rejects(configured(() => assert.fail('must not contact host')).stop({ ...request, ...change }), error => error.statusCode === 400);
+  }
+});
+
 test('known rejection preserves the bounded receipt for reconciliation', async () => {
   const run = { requestId: request.requestId, phase: 'rejected' };
   const control = configured(async () => ({ stdout: JSON.stringify({ status: 'error', statusCode: 409, code: 'CODING_DISPATCH_INELIGIBLE', message: 'Task changed', data: { run } }) }));
@@ -60,4 +71,10 @@ test('routes await host observations and reserve 202 for request acknowledgement
   await routes['POST /runs']({ body: request }, post);
   assert.equal(post.statusCode, 202);
   assert.equal(post.body.data.run.phase, 'accepted');
+  const stop = response();
+  let selection;
+  control.stop = async input => { selection = input; return { accepted: true, phase: 'stopping' }; };
+  await routes['POST /runs/:requestId/stop']({ params: { requestId: request.requestId }, body: { pipelineId: '0700', confirm: true, requestId: 'spoofed' } }, stop);
+  assert.equal(stop.statusCode, 202);
+  assert.deepEqual(selection, { requestId: request.requestId, pipelineId: '0700', confirm: true });
 });
