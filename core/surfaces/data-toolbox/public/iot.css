@@ -226,6 +226,7 @@ body:has([data-tab="iot"].active) footer { color: #8fa4b7; border-color: #263244
 .iot-style-checks input { margin: 0; accent-color: var(--cyan); }
 .iot-style-copy { grid-column: 4; justify-self: end; align-self: center; padding: 8px 0; color: #79bac7; font-size: 11px; background: transparent; border: 0; cursor: pointer; }
 .iot-style-copy:hover { color: var(--cyan); }
+.iot-style-scale-hint { margin: 14px 0 0; color: #718b9f; font-size: 10px; line-height: 1.5; }
 .iot-overlay-plot { position: relative; height: 400px; }
 .iot-overlay-plot canvas { max-width: 100%; touch-action: pan-y; }
 .iot-overlay-plot canvas:focus-visible { outline: 1px solid var(--cyan); outline-offset: 3px; border-radius: 8px; }

@@ -621,6 +621,12 @@ the device's other measures. Settings are retained per device and measure in
 this browser, remain active during live updates and never change observations
 or send commands. The default uses fine strokes, no fill and no glow.
 
+**Zoom vertical → Contexte** keeps a minimum viewing span in the measure's
+unit and rounds the bounds, so a one-step sensor change does not fill the whole
+chart. **Détail** zooms to the observed range. Context spans are viewing scales,
+never valid-value limits: an outlier expands the domain, and all observations
+remain unchanged. Quantized readings still show their actual repeated values.
+
 **Par mesure** displays individual charts using the same returned readings.
 The combined live chart updates in place, retaining its canvas and inspection
 cursor. Both views expose full-precision tables; historical **Min–max** adds
