@@ -11,7 +11,10 @@ async function nativeWorkAcknowledgment(request) {
   const work = await readAcceptedNativeWork();
   if (work?.authority !== 'core.conversation-works' || work.accepted !== true
       || work.sessionId !== session.sessionId || work.requestSha256 !== hash(text)
-      || work.id !== hash(work.sessionId + '\n' + work.turnId)) return null;
+      || work.id !== hash(work.sessionId + '\n' + work.turnId)) {
+    throw Object.assign(new Error('The accepted consultation cannot be verified. No replacement was dispatched.'),
+      { code: 'CONVERSATION_WORK_ACCEPTANCE_UNAVAILABLE', statusCode: 503 });
+  }
   const en = scoreSpeechLanguage(text).language === 'en';
   const answer = work.resultReady
     ? en ? 'The consultation result is ready. I’ll present it at the next pause.' : 'Le résultat de la consultation est prêt. Je te le présente à la prochaine pause.'

@@ -25,13 +25,14 @@ test('canonical acceptance replies without invoking either brain and preserves p
   assert.deepEqual(deltas, [answer.text]); assert.equal(settled, true);
 });
 
-test('foreign, changed, invented and missing acceptance never replaces a native turn', async () => {
+test('foreign, changed, invented and erased acceptance cannot redispatch a consultation', async () => {
   for (const patch of [{ sessionId: randomUUID() }, { requestSha256: hash('other text') },
-    { id: hash('invented') }, { authority: 'browser' }, { accepted: false }]) {
+    { id: hash('invented') }, { authority: 'browser' }, { accepted: false }, null]) {
     const input = request(); let calls = 0;
     const execute = createConversationExecutor({ agentClient: async () => { calls++; return { text: 'Native reply' }; } });
-    const reply = await execute({ ...input, readAcceptedNativeWork: async () => ({ ...input.acceptance, ...patch }) });
-    assert.equal(calls, 1); assert.equal(reply.text, 'Native reply');
+    await assert.rejects(execute({ ...input, readAcceptedNativeWork: async () => patch === null ? null : ({ ...input.acceptance, ...patch }) }),
+      { code: 'CONVERSATION_WORK_ACCEPTANCE_UNAVAILABLE' });
+    assert.equal(calls, 0);
   }
 });
 
