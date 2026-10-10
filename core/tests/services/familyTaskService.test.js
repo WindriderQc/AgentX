@@ -50,6 +50,9 @@ describe('family task domain in the canonical Core store', () => {
     const previous = process.env.PLANNING_TIME_ZONE; process.env.PLANNING_TIME_ZONE = 'America/Toronto';
     try {
       await family.addProfile({ profileId: 'sample-child', displayName: 'Sample child' });
+      const exact = new Date('2026-10-10T12:34:56.789Z');
+      const timed = await family.create({ profileId: 'sample-child', title: 'Exact instant', dueAt: exact });
+      expect(timed.chore.dueAt).toBe(exact.toISOString());
       const { chore } = await family.create({ profileId: 'sample-child', title: 'Dated routine', dueAt: '2026-03-08' });
       expect(chore).toMatchObject({ dueAt: '2026-03-09T03:59:59.999Z', dueDay: '2026-03-08' });
       const edited = await family.update({ ref: chore.id, expectedRevision: chore.revision, dueAt: '2026-11-01' });

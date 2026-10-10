@@ -115,7 +115,8 @@ function familyRoutineInput(input = {}, defaultProfileId = '') {
   if (!title) throw new FamilyInputError('title is required', 'FAMILY_CHORE_TITLE_REQUIRED');
   let dueAt = null;
   if (input.dueAt) {
-    const value = String(input.dueAt).trim();
+    const value = input.dueAt instanceof Date && Number.isFinite(input.dueAt.getTime())
+      ? input.dueAt.toISOString() : String(input.dueAt).trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       const parsed = new Date(`${value}T12:00:00Z`);
       if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
