@@ -114,7 +114,7 @@ async function accept(body, { conversation, signal } = {}) {
   const referenceStorage = await retainReferences(prepared);
   signal?.throwIfAborted();
   const client = createComfyClient(config.workerUrl);
-  try { await client.ready(input.profile); } catch { throw fail('Le PC image est indisponible ou occupé. Fais une nouvelle demande quand il sera disponible.', 503); }
+  try { await client.ready(input.profile, { allowBusy: true }); } catch { throw fail('Le PC image est indisponible ou le modèle requis est absent.', 503); }
   signal?.throwIfAborted();
   const id = crypto.randomUUID();
   let op;

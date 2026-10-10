@@ -62,6 +62,28 @@ describe('durable local image operations', () => {
     expect(await ImageOperation.countDocuments()).toBe(0);
     expect(reserve).not.toHaveBeenCalled();
   });
+  test('a second image waits behind the busy first worker and keeps its identity until dispatch', async () => {
+    let finishFirst;
+    const firstOutput = new Promise(resolve => { finishFirst = resolve; });
+    client.observe.mockImplementationOnce(async (_id, options) => {
+      await firstOutput; await options.onTerminal();
+      return { filename: 'result.png', subfolder: 'agentx', type: 'output' };
+    });
+    const first = await service.accept({ actionKey: 'image-busy-first', prompt: 'A synthetic lake' });
+    await waitFor(first.id, 'generating');
+    client.ready.mockImplementation(async (_profile, options) => {
+      if (!options?.allowBusy) throw new Error('Worker busy');
+      return {};
+    });
+    const second = await service.accept({ actionKey: 'image-busy-second', prompt: 'A synthetic mountain' });
+    expect(second.state).toBe('queued'); expect(client.submit).toHaveBeenCalledTimes(1);
+    expect((await service.accept({ actionKey: 'image-busy-second', prompt: 'A synthetic mountain' })).id).toBe(second.id);
+    client.ready.mockResolvedValue({}); finishFirst();
+    await waitFor(first.id, 'completed');
+    await require('../../src/services/heavyWorkQueueEvidence').reconcile(first.queueRequestId, 'fixture');
+    await service.dispatchQueued(); await waitFor(second.id, 'completed');
+    expect(client.submit).toHaveBeenCalledTimes(2);
+  });
   test('waits in the durable queue behind coding work, then dispatches exactly once after release', async () => {
     const queue = require('../../src/services/heavyWorkQueueService');
     const blocker = await queue.submit({ key: 'synthetic-coding', title: 'Synthetic coding', kind: 'diagnostic',

@@ -5,6 +5,19 @@ const { localUrl } = require('../../src/services/images/config');
 const { decode } = require('../../src/services/images/codec');
 const { PNG } = require('pngjs');
 
+test('acceptance checks installed models on a busy worker while execution still requires it free', async () => {
+  const nodes = Object.fromEntries([['UNETLoader', 'unet_name', 'diffusion'], ['CLIPLoader', 'clip_name', 'encoder'], ['VAELoader', 'vae_name', 'vae']]
+    .map(([node, input, value]) => [node, { input: { required: { [input]: [[value]] } } }]));
+  const fetcher = jest.fn(async url => ({ ok: true, text: async () => JSON.stringify(url.endsWith('/object_info') ? nodes
+    : url.endsWith('/queue') ? { queue_running: [['synthetic-running']], queue_pending: [] } : { devices: [] }) }));
+  const client = createComfyClient('http://127.0.0.1:8188', fetcher);
+  const profile = { diffusion: 'diffusion', encoder: 'encoder', vae: 'vae' };
+  await expect(client.ready(profile, { allowBusy: true })).resolves.toEqual({ devices: [] });
+  await expect(client.ready(profile)).rejects.toThrow('already busy');
+  await expect(client.ready({ ...profile, diffusion: 'missing' }, { allowBusy: true })).rejects.toThrow('not installed');
+  expect(fetcher.mock.calls.every(([url]) => !url.endsWith('/prompt'))).toBe(true);
+});
+
 test('empty /free acknowledgement is followed by measured memory release', async () => {
   const fetcher = jest.fn(async url => ({ ok: true, text: async () => url.endsWith('/free') ? '' : JSON.stringify(
     url.endsWith('/queue') ? { queue_running: [], queue_pending: [] } : { devices: [{ vram_total: 12e9, vram_free: 11e9, torch_vram_total: 0, torch_vram_free: 0 }] }) }));

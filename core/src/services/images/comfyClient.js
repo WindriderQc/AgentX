@@ -12,9 +12,9 @@ function createComfyClient(base, fetchImpl = fetch) {
     const text = await r.text();
     return text ? JSON.parse(text) : {};
   }
-  async function ready(profile) {
+  async function ready(profile, { allowBusy = false } = {}) {
     const [stats, queue, nodes] = await Promise.all([json('/system_stats'), json('/queue'), json('/object_info')]);
-    if (queue.queue_running?.length || queue.queue_pending?.length) throw new Error('Image worker is already busy');
+    if (!allowBusy && (queue.queue_running?.length || queue.queue_pending?.length)) throw new Error('Image worker is already busy');
     for (const [node, input, value] of [
       ['UNETLoader', 'unet_name', profile.diffusion], ['CLIPLoader', 'clip_name', profile.encoder], ['VAELoader', 'vae_name', profile.vae]
     ]) {
