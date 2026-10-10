@@ -128,7 +128,7 @@ describe('operations watch scheduling', () => {
   it('rewrites an unchanged report when the language changes', async () => {
     const execute = jest.fn(async () => ({ ok: true, body: { response: 'Reinicie el host B.' }, headers: {} }));
     const watch = createOpsWatch({
-      buildSnapshot: async () => ({ operationalAttention: { issues: [{ code: 'host_offline', severity: 'critical', message: 'Host B is offline' }] } }),
+      buildSnapshot: async () => ({ alerts: [], operationalAttention: { issues: [{ code: 'host_offline', severity: 'critical', message: 'Host B is offline' }] } }),
       execute, evaluateEvent: jest.fn(), language: 'English'
     });
     await watch.check();

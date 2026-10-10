@@ -11,8 +11,8 @@
  * The model never decides what is wrong and can never hide a finding: when it
  * is unavailable the report carries the plain finding list. It runs only when
  * the set of findings changes. Delivery is the `ops-watch-report` alert rule,
- * one incident per distinct finding set; it goes stale and resolves on its own
- * once the findings are gone.
+ * one continuous incident while findings remain. Only a completed check with
+ * no current findings resolves it; producer silence is not recovery.
  *
  * Opt-in: switched on, with its interval and language, from the Nerve Center
  * (opsWatchSettings); OPS_WATCH_MS and OPS_WATCH_LANGUAGE only bootstrap it.
@@ -27,9 +27,6 @@ const MIN_INTERVAL_MS = 5 * 60 * 1000;
 const FIRST_DELAY_MS = 2 * 60 * 1000;
 const MODEL_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_FINDINGS = 12;
-// The snapshot carries only the few latest alerts, this job's own reports
-// among them; the watch reads the active ones itself, most severe first.
-const ALERT_LIMIT = 30;
 const MAX_SUMMARY_CHARS = 1500;
 // The alert count restates the alerts listed one by one below.
 const SKIPPED_ISSUE_CODES = new Set(['active_alerts']);
@@ -83,10 +80,14 @@ function plainList(findings) {
 function createOpsWatch(deps = {}) {
   const buildSnapshot = deps.buildSnapshot
     || (() => require('../../routes/nerve-center').buildEcosystemSnapshot());
-  const listAlerts = deps.listAlerts || (deps.buildSnapshot ? null : async () => (await require('./alertService')
-    .getAlertSnapshot({ limit: ALERT_LIMIT, filters: { status: 'active' }, sort: 'severity' })).alerts);
+  const listAlerts = deps.listAlerts || (deps.buildSnapshot ? null
+    : () => require('./opsWatchObservations').listOpenAlerts());
   const execute = deps.execute || ((request, options) => require('./inferenceService').executeInference(request, options));
-  const evaluateEvent = deps.evaluateEvent || (event => require('./alertService').evaluateEvent(event));
+  const evaluateEvent = deps.evaluateEvent || (event => require('./opsWatchReportLifecycle').publishReport(event));
+  const readDiagnosis = deps.readDiagnosis
+    || (id => require('./pipelineTaskDiagnosisReadService').readTaskDiagnosis(id));
+  const reconcileReports = deps.reconcileReports
+    || (observation => require('./opsWatchReportLifecycle').reconcileReports(observation));
   const now = deps.now || (() => new Date());
   let language = deps.language || process.env.OPS_WATCH_LANGUAGE || 'English';
 
@@ -111,10 +112,30 @@ function createOpsWatch(deps = {}) {
   }
 
   async function check() {
+    const checkedAt = now();
     const snapshot = await buildSnapshot();
-    const findings = collectFindings(listAlerts ? { ...snapshot, alerts: await listAlerts() } : snapshot);
+    const alerts = listAlerts ? await listAlerts() : snapshot?.alerts;
+    if (!Array.isArray(snapshot?.operationalAttention?.issues) || !Array.isArray(alerts)) {
+      throw new Error('Operations watch observation is incomplete');
+    }
+    // Escalations remain durable operator-owned records. A closed task's old
+    // heartbeat is historical evidence, not a current service failure. Missing
+    // diagnoses and failed reads remain findings rather than an all-clear.
+    const currentAlerts = [];
+    for (const alert of alerts) {
+      const id = alert?.ruleId === 'pipeline-task-escalation'
+        && alert.context?.additionalData?.pipelineId;
+      if (id) {
+        try {
+          if ((await readDiagnosis(id))?.category === 'closed') continue;
+        } catch { /* keep the unresolved incident when its state is unknown */ }
+      }
+      currentAlerts.push(alert);
+    }
+    const findings = collectFindings({ ...snapshot, alerts: currentAlerts });
     const at = now().toISOString();
     if (findings.length === 0) {
+      await reconcileReports({ checkedAt, incidentKey: null });
       latest = { at, fingerprint: null, findingCount: 0, findings: [], summary: null, source: 'rules', model: null };
       return { findingCount: 0, summarized: false, emitted: false };
     }
@@ -130,16 +151,19 @@ function createOpsWatch(deps = {}) {
         model: written.model, modelUnavailable: written.summary ? null : written.reason
       };
     }
+    latest = { ...latest, at, findings };
     await evaluateEvent({
       component: 'operations', metric: METRIC, value: findings.length, threshold: 0, source: 'ops-watch',
       additionalData: {
         detector: METRIC,
-        incidentKey: `ops-watch:${fingerprint}`,
+        incidentKey: 'ops-watch:current',
+        findingFingerprint: fingerprint,
         findingCount: findings.length,
         summary: latest.summary,
         reportSource: latest.source
       }
     });
+    await reconcileReports({ checkedAt, incidentKey: 'ops-watch:current' });
     return { findingCount: findings.length, summarized, emitted: true, source: latest.source };
   }
 

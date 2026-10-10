@@ -461,9 +461,16 @@ and `OPS_WATCH_LANGUAGE` apply only until they are saved there. Core takes what 
 issues and the active alerts) and asks the `ops_watch` task's model for one
 short report: findings by severity, impact, next action. The model runs only
 when the set of findings changes, never decides what is wrong, and cannot hide
-a finding: when it is unavailable the report carries the plain list. Each
-distinct set of findings is one `ops-watch-report` incident (`telegram`), which
-resolves once the findings are gone; `GET /api/nerve-center/ops-watch` returns
+a finding: when it is unavailable the report carries the plain list. One
+`ops-watch-report` incident (`telegram`) stays open as the findings change,
+notifies once when the finding set changes, and resolves only after a completed
+check finds no current findings. Acknowledged reports remain quiet. Silence,
+disabled checks and failed reads do not prove recovery. Pipeline escalations
+for tasks whose current diagnosis is closed stay in the operator's alert
+registry but are omitted from this current report; unavailable diagnoses stay
+visible. Legacy reports are retired after the current report is recorded,
+without a recovery notice. The relay labels generic `auto-stale` closures as
+expired signals, with recovery unverified. `GET /api/nerve-center/ops-watch` returns
 the latest report and the settings. The input is small
 and nothing waits on the answer, so route `ops_watch` to a CPU-resident host in
 the Nerve Center routing table. Any task routed to a CPU-resident host stays on

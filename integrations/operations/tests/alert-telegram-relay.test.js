@@ -179,6 +179,29 @@ test('formats a resolution notice with how and how long', () => {
   assert.match(text, /Règle pin-vram-spill · durée 1 h 15/);
 });
 
+test('an auto-stale closure reports expired evidence without claiming recovery', () => {
+  const text = formatResolution(alert({ status: 'resolved', resolution: {
+    resolvedAt: '2026-09-27T21:05:00Z', resolutionMethod: 'auto-stale',
+  } }));
+  assert.match(text, /^🕓 Signal expiré/);
+  assert.match(text, /rétablissement non vérifié/);
+  assert.doesNotMatch(text, /✅|Résolu/);
+});
+
+test('a superseded operations report is forgotten without a recovery message', async () => {
+  const mem = memoryState({ relayed: { a1: { ruleId: 'ops-watch-report', sentAt: '2026-09-27T19:55:00Z' } } });
+  const fetch = fakeFetch([
+    [/\/api\/alerts\?status=active/, 200, { data: { alerts: [] } }],
+    [/\/api\/alerts\/a1$/, 200, { data: { alert: alert({ ruleId: 'ops-watch-report', status: 'resolved',
+      resolution: { resolutionMethod: 'ops-watch-superseded' } }) } }],
+  ]);
+  const summary = await run(parseArgs(['--send']), { fetch, config: CONFIG, token: TOKEN, now: () => NOW,
+    readState: mem.readState, writeState: mem.writeState });
+  assert.equal(summary.resolved, 0);
+  assert.deepEqual(mem.box.state.relayed, {});
+  assert.equal(fetch.calls.some(call => /telegram/.test(call.url)), false);
+});
+
 test('a relayed alert gets one resolution notice, then is forgotten', async () => {
   const mem = memoryState();
   const active = [alert()];
