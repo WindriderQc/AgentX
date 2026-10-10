@@ -337,29 +337,11 @@ test('erasing an admitted work preserves the native fence until its exact termin
   expect(execute).not.toHaveBeenCalled();
 });
 
-test('the real Household HTTP handler commits intake before its guardian adapter and reuses its canonical turn on duplicate', async () => {
+async function personalHttp(executeConversation) {
   const packs = require('../../surfaces/household/packs'), prompt = require('../../surfaces/household/persona-prompt');
   const records = require('../../surfaces/household/persona-records'), pack = packs.packById('personal_operator');
   current = await conversations.updateSession({ sessionId: current.sessionId }, { $set: { modeId: pack.defaultMode,
     persona: { id: 'nestor', version: 1, name: 'Nestor', identity: 'Synthetic personality.', voice: {} }, voice: { language: 'auto' } } });
-  const turnId = randomUUID(), calls = [];
-  const executeConversation = require('../../surfaces/household/conversation-executor').createConversationExecutor({
-    env, inference: {}, agentClient: async body => {
-      calls.push(body);
-      expect(await conversations.getTurn({ sessionId: current.sessionId, traceId: turnId })).toMatchObject({ inputText: 'Regarde mes tâches.', outcome: 'pending' });
-      expect(body.history).toEqual([]);
-      expect(await body.readAcceptedTaskWork()).toMatchObject({ authority: 'core.conversation-works', accepted: true,
-        sessionId: current.sessionId, turnId, requestSha256: hash('Regarde mes tâches.') });
-      expect(body.turnDirective).toContain('Core has already accepted this current personal task lookup');
-      expect(body.instructions).not.toContain(turnId);
-      expect(body.instructions).not.toContain((await body.readAcceptedTaskWork()).id);
-      const sessionKey = `agent:main:household:direct:${current.sessionId}`, runId = native();
-      await body.onStarted(sessionKey, runId);
-      const accepted = await works.request({ agentId: 'main', sessionKey, runId });
-      expect(accepted.execution).toBe('pending'); expect(tasks.list).not.toHaveBeenCalled();
-      return { text: 'Je m’en occupe.', sessionKey, runId, metadata: { model: 'synthetic-native' },
-        tools: { status: 'observed', receipts: [{ tool: 'conversation_work', status: 'verified', runId, acceptedWork: { id: accepted.id } }], runId } };
-    } });
   works.guardianInstructions = require('../../surfaces/household/conversation-work-runtime').GUARDIAN;
   const handler = require('../../surfaces/household/persona-turn').createPersonaTurnHandler({
     runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: env, conversationWorks: works,
@@ -380,6 +362,155 @@ test('the real Household HTTP handler commits intake before its guardian adapter
     MEMORY_RECALL_LIMIT: prompt.MEMORY_RECALL_LIMIT, PERSONAL_OPERATOR_SURFACE_CONTRACT: packs.PERSONAL_OPERATOR_SURFACE_CONTRACT,
     VOIX_FAMILY_PACK_ID: 'kidx_nestor' });
   const app = express(); app.use(express.json()); app.post('/sessions/:sessionId/turns/text', (req, res) => handler(req, res, 'private'));
+  return app;
+}
+
+function nativeProof(attempt, answer = 'Lecture confirmée par la Secrétaire.') {
+  return { ok: true, authority: 'openclaw.nestor', operation: 'turn', runId: attempt.runId, sessionKey: attempt.sessionKey,
+    run: { runId: attempt.runId, sessionKey: attempt.sessionKey, status: 'completed' },
+    answer: { status: 'ready', runId: attempt.runId, text: answer, deliveredBy: 'announce:requester-settle:synthetic' },
+    progress: [{ tool: 'sessions_spawn', agentId: 'secretary' }], receipts: [],
+    toolChecks: { status: 'observed', runId: attempt.runId, completedTools: ['sessions_spawn', 'sessions_yield'], loop: null } };
+}
+
+test('real voice HTTP accepts a specialist read and keeps the guardian available while its isolated native work is held', async () => {
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: () => true });
+  const foreground = jest.fn(async body => {
+    expect(body.session.sessionId).toBe(current.sessionId);
+    expect(body.channel).toBe('voice');
+    expect(body.turnContext).toContain('running');
+    await body.onSettled();
+    return { text: 'Je t’entends.', sessionKey: 'agent:main:household:direct:' + current.sessionId,
+      tools: { status: 'observed', receipts: [] }, metadata: {} };
+  });
+  const execute = require('../../surfaces/household/conversation-executor').createConversationExecutor({ agentClient: foreground, env });
+  const app = await personalHttp(execute);
+  const text = 'Résume mes courriels récents.', turnId = randomUUID();
+  const body = { text, turnId, channel: 'voice', stream: true };
+  const first = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body).timeout(2000);
+  expect(first.status).toBe(200);
+  const done = first.text.trim().split('\n').map(JSON.parse).at(-1).data;
+  expect(done.reply.text).toContain('Tu peux continuer à me parler');
+  expect(foreground).not.toHaveBeenCalled();
+  expect(await conversations.getTurn({ sessionId: current.sessionId, traceId: turnId })).toMatchObject({
+    inputText: text, outcome: 'completed', model: '', routingSource: 'core.conversation-works' });
+  const duplicate = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body);
+  expect(duplicate.status).toBe(202);
+  let release, started, proof;
+  const held = new Promise(resolve => { release = resolve; });
+  const dispatched = new Promise(resolve => { started = resolve; });
+  const nativeRuntime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works });
+  const background = jest.fn(async ({ row, onStarted }) => {
+    expect(row.attempt.agentId).toBe('main');
+    expect(row.attempt.sessionKey).toMatch(/^agent:main:household:work:/);
+    expect(row.attempt.sessionId).not.toBe(current.sessionId);
+    const runId = native();
+    await onStarted(row.attempt.sessionKey, runId);
+    proof = nativeProof({ ...row.attempt, runId });
+    started(); await held;
+  });
+  const observer = createWorkObserver({ works, env, agentFor: () => 'main', execute: background,
+    observe: async () => proof, receive: nativeRuntime.receive });
+  const running = observer.tick(); await dispatched;
+  try {
+    // A later conversational turn goes through the guardian, independent of
+    // the held boss promise and its native session.
+    const followup = await request(app).post(`/sessions/${current.sessionId}/turns/text`)
+      .send({ text: 'Bonjour.', turnId: randomUUID(), channel: 'voice', stream: true }).timeout(2000);
+    expect(followup.status).toBe(200);
+    expect(foreground).toHaveBeenCalledTimes(1);
+    expect(background).toHaveBeenCalledTimes(1);
+    const work = await works.repo.get(hash(current.sessionId + '\n' + turnId));
+    expect(work.state).toBe('running'); expect(work.result).toBeUndefined();
+    await expect(works.contextForWorker({ agentId: 'main', sessionKey: work.attempt.sessionKey, runId: work.attempt.runId }))
+      .rejects.toMatchObject({ statusCode: 404 });
+  } finally { release(); await running; observer.stop(); }
+  const work = await works.repo.get(hash(current.sessionId + '\n' + turnId));
+  expect(work).toMatchObject({ state: 'completed', result: { version: 1 }, attempt: { terminal: 'completed' } });
+  const restored = createConversationWorks({ conversations, tasks, env });
+  expect((await createWorkDelivery(restored).snapshot(current.sessionId)).items.find(item => item.id === work._id).result)
+    .toMatchObject({ text: 'Lecture confirmée par la Secrétaire.', presentation: 'available' });
+  expect(tasks.list).not.toHaveBeenCalled();
+});
+
+test('lost native dispatch response discovers the same run, waits for a yielded specialist and receives its result after restart without replay', async () => {
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: () => true });
+  const accepted = await works.intake(input('Résume mes courriels récents.'));
+  await works.prepare(accepted.row._id, 'Selected context');
+  const runId = native(); let ready = false;
+  const continuity = jest.fn(async request => {
+    if (request.operation === 'work_attempt') return { runId, sessionKey: request.sessionKey };
+    const proof = nativeProof({ runId, sessionKey: request.sessionKey });
+    if (!ready) proof.answer = { status: 'yielded', runId };
+    return proof;
+  });
+  const nativeRuntime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, continuity });
+  const execute = jest.fn(async () => { throw new Error('Response lost before run identity arrived'); });
+  const first = createWorkObserver({ works, env, execute, agentFor: () => 'main',
+    observe: nativeRuntime.observe, receive: nativeRuntime.receive });
+  await first.tick(); first.stop();
+  const retained = await works.repo.get(accepted.row._id);
+  expect(retained.attempt.runId).toBe(runId); expect(retained.result).toBeUndefined();
+  expect(await mongoose.connection.collection('conversation_work_dispatch').findOne({ _id: OWNER })).toMatchObject({ workId: retained._id });
+  ready = true;
+  const restarted = createWorkObserver({ works, env, execute, agentFor: () => 'main',
+    observe: nativeRuntime.observe, receive: nativeRuntime.receive });
+  await restarted.tick(); await restarted.tick(); restarted.stop();
+  expect(execute).toHaveBeenCalledTimes(1);
+  const completed = await works.repo.get(retained._id);
+  expect(completed.state).toBe('completed');
+  const published = await works.publishNative(retained._id, nativeProof(completed.attempt));
+  expect(published.deliveryId).toBe(completed.delivery.id);
+  await expect(works.publishNative(retained._id, nativeProof(completed.attempt, 'Changed result'))).rejects.toMatchObject({ statusCode: 409 });
+  expect((await exchanges.read(EXCHANGE_SCOPE, completed.exchangeId)).state).toBe('completed');
+});
+
+test('a foreign native result, missing consultation proof and restricted worker credentials cannot publish a specialist answer', async () => {
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: () => true });
+  const accepted = await works.intake(input('Résume mes courriels récents.'));
+  await works.prepare(accepted.row._id, 'Selected context');
+  const attempt = { id: randomUUID(), sessionId: randomUUID(), agentId: 'main', runId: native() };
+  attempt.sessionKey = 'agent:main:household:work:' + attempt.sessionId;
+  const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture' }));
+  await expect(works.publishNative(row._id, nativeProof({ ...attempt, runId: native() }))).rejects.toMatchObject({ statusCode: 409 });
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works });
+  expect(await runtime.receive({ row, evidence: { ...nativeProof(attempt), progress: [{ tool: 'sessions_spawn', agentId: 'other' }] } })).toBeNull();
+  await expect(works.publish({ agentId: 'main', sessionKey: attempt.sessionKey, runId: attempt.runId },
+    { kind: 'answer', text: 'Invented', receiptIds: [] })).rejects.toMatchObject({ statusCode: 404 });
+  expect((await works.repo.get(row._id)).result).toBeUndefined();
+});
+
+test('a specialist read remains queued when its guardian is interrupted; observe mode retains the original native path', async () => {
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: () => true, nativeOnly: () => true });
+  const accepted = await works.intake(input('Résume mes courriels récents.'));
+  await works.prepare(accepted.row._id, 'Selected context');
+  await works.guardianSettled(accepted.row._id, 'cancelled');
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ classification: 'native_read', state: 'queued', guardian: { state: 'cancelled' } });
+  const observe = createConversationWorks({ conversations, tasks, env: { ...env, PERSONAL_CONVERSATION_WORK_MODE: 'observe' },
+    nativeRead: () => true, nativeOnly: () => true });
+  expect((await observe.intake(input('Résume mes courriels récents.'))).row.classification).toBe('native_only');
+});
+
+test('the real Household HTTP handler commits intake before its guardian adapter and reuses its canonical turn on duplicate', async () => {
+  const turnId = randomUUID(), calls = [];
+  const executeConversation = require('../../surfaces/household/conversation-executor').createConversationExecutor({
+    env, inference: {}, agentClient: async body => {
+      calls.push(body);
+      expect(await conversations.getTurn({ sessionId: current.sessionId, traceId: turnId })).toMatchObject({ inputText: 'Regarde mes tâches.', outcome: 'pending' });
+      expect(body.history).toEqual([]);
+      expect(await body.readAcceptedTaskWork()).toMatchObject({ authority: 'core.conversation-works', accepted: true,
+        sessionId: current.sessionId, turnId, requestSha256: hash('Regarde mes tâches.') });
+      expect(body.turnDirective).toContain('Core has already accepted this current personal task lookup');
+      expect(body.instructions).not.toContain(turnId);
+      expect(body.instructions).not.toContain((await body.readAcceptedTaskWork()).id);
+      const sessionKey = `agent:main:household:direct:${current.sessionId}`, runId = native();
+      await body.onStarted(sessionKey, runId);
+      const accepted = await works.request({ agentId: 'main', sessionKey, runId });
+      expect(accepted.execution).toBe('pending'); expect(tasks.list).not.toHaveBeenCalled();
+      return { text: 'Je m’en occupe.', sessionKey, runId, metadata: { model: 'synthetic-native' },
+        tools: { status: 'observed', receipts: [{ tool: 'conversation_work', status: 'verified', runId, acceptedWork: { id: accepted.id } }], runId } };
+    } });
+  const app = await personalHttp(executeConversation);
   const body = { text: 'Regarde mes tâches.', turnId, stream: true, channel: 'voice', readAcceptedTaskWork: { forged: true } };
   const first = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body);
   expect(first.status).toBe(200);

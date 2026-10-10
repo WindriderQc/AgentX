@@ -2,7 +2,7 @@ import { readState } from "./store.js";
 import { nativeToolChecks } from './tool-evidence.js';
 
 const invalid = message => Object.assign(new Error(message), { statusCode: 400 });
-const householdKey = /^agent:([a-z0-9][a-z0-9_-]*):household:direct:[a-f0-9-]{36}$/;
+const householdKey = /^agent:([a-z0-9][a-z0-9_-]*):household:(direct|work):[a-f0-9-]{36}$/;
 
 export function configuredAgents(config = {}) {
   return config.agents?.entries || Object.fromEntries((config.agents?.list || []).map(agent => [agent.id, agent]));
@@ -96,8 +96,9 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
       result = { agents: agentCatalog(config, modelFor).filter(agent => agent.id !== workAgentId) };
     } else if (operation === 'work_attempt') {
       const match = householdKey.exec(request.sessionKey || '');
-      if (!workAgentId || match?.[1] !== workAgentId) throw invalid('A configured worker attempt is required');
-      const agentWorkspace = householdWorkspace({ agentId: workAgentId, sessionKey: request.sessionKey }, config, resolveWorkspace);
+      const isolatedMain = match?.[1] === 'main' && match[2] === 'work';
+      if (!isolatedMain && (!workAgentId || match?.[1] !== workAgentId)) throw invalid('A configured worker attempt is required');
+      const agentWorkspace = householdWorkspace({ agentId: match[1], sessionKey: request.sessionKey }, config, resolveWorkspace);
       if (!agentWorkspace) throw invalid('The native worker is unavailable');
       const history = await readHistory(request.sessionKey);
       const ids = [...new Set((history?.sessionKey === request.sessionKey ? history.messages || [] : [])
@@ -105,7 +106,10 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
         .filter(id => /^resp_[a-f0-9-]{36}$/.test(id || '')))];
       const state = await readState(agentWorkspace);
       const runs = (state.runs || []).filter(run => run.sessionKey === request.sessionKey);
-      const runId = request.runId || ids.at(-1) || runs.at(-1)?.runId || null;
+      const candidates = [...new Set([...ids, ...runs.map(run => run.runId)].filter(id => /^resp_[a-f0-9-]{36}$/.test(id || '')))];
+      // A work session owns one initial Responses run. Ambiguity is retained,
+      // never resolved by choosing a later run or starting another attempt.
+      const runId = request.runId || (isolatedMain ? candidates.length === 1 ? candidates[0] : null : ids.at(-1) || runs.at(-1)?.runId) || null;
       result = { sessionKey: request.sessionKey, runId, run: runs.find(run => run.runId === runId) || null,
         status: runId ? 'observed' : 'unknown', source: 'openclaw/sessions.get' };
       // No history or capsule absence is a proof that a request was not sent.

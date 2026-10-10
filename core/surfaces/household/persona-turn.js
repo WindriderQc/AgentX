@@ -297,6 +297,7 @@ function createPersonaTurnHandler({
           isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('').trim();
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const acceptedTaskWork = entry.workId ? await conversationWorks.taskAcceptance?.(entry.workId) : null;
+        const acceptedNativeWork = entry.workId ? await conversationWorks.nativeAcceptance?.(entry.workId) : null;
         const currentDirective = [turnDirective(context), acceptedTaskWork
           ? 'Core has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
             + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch, task-list call or agent discovery is needed. Acceptance is not task data or task completion.'
@@ -335,6 +336,7 @@ function createPersonaTurnHandler({
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText, history: features.historyContext === false ? [] : history, streaming, channel: req.body?.channel,
           conversationFeatures: features,
           ...(acceptedTaskWork ? { readAcceptedTaskWork: () => conversationWorks.taskAcceptance(entry.workId) } : {}),
+          ...(acceptedNativeWork ? { readAcceptedNativeWork: () => conversationWorks.nativeAcceptance(entry.workId) } : {}),
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
           instructions: nativeInstructions, agentxInstructions, ...(turnContext ? { turnContext } : {}),
@@ -366,7 +368,8 @@ function createPersonaTurnHandler({
         entry.executionSettled = true;
         metadata = result.metadata; if (metadata?.routing?.degraded) { fallbackUsed = true; fallbackReason = `task_fallback_${metadata.routing.reason}`; } // #135 degraded fallback
         routeTier = backend === 'openclaw' ? 'agent' : 'router';
-        continuity = backend === 'openclaw' ? { status: 'ready', source: `openclaw/${agentIdFor(turnSession)}`, sessionKey: result.sessionKey }
+        continuity = result.tools?.authority === 'core.conversation-works' ? { status: 'accepted', source: 'core.conversation-works' }
+          : backend === 'openclaw' ? { status: 'ready', source: `openclaw/${agentIdFor(turnSession)}`, sessionKey: result.sessionKey }
           : { status: 'ready', source: 'session-audit', messageCount: history.length };
         if (!pack.childSafe) continuity.personal = { status: 'ready', authority: 'agentx.core', notes: memories };
         toolEvidence = result.tools;

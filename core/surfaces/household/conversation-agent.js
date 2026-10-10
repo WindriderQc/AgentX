@@ -7,7 +7,7 @@ const { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure } = re
 const { requestsSecretary, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
 
 const agentIdFor = session => ['kidx_nestor', 'kidx_reader'].includes(session.packId) ? 'family' : session.agentId || 'main';
-const sessionKeyFor = session => `agent:${agentIdFor(session)}:household:direct:${session.sessionId}`;
+const sessionKeyFor = session => `agent:${agentIdFor(session)}:household:${session.nativeWork ? 'work' : 'direct'}:${session.sessionId}`;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 // OpenClaw /v1/responses: the run finished, but its final text rewrote text it
 // had already streamed, which an append-only stream cannot express.
