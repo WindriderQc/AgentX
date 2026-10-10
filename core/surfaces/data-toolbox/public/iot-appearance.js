@@ -14,7 +14,7 @@ function iotCleanCurveStyle(value = {}) {
   return { width: oneOf('width', [.75, 1, 1.5, 2, 3, 4]), line: oneOf('line', ['solid', 'dashed', 'dotted']),
     curve: oneOf('curve', ['smooth', 'linear', 'step']), fill: oneOf('fill', ['none', 'gradient', 'solid']),
     opacity: Number.isFinite(value?.opacity) ? Math.max(0, Math.min(40, value.opacity)) : base.opacity,
-    points: value?.points === true, glow: value?.glow === true };
+    points: value?.points === true, glow: value?.glow === true, scale: value?.scale === 'detail' ? 'detail' : 'context' };
 }
 
 function iotReadAppearance() {
@@ -66,9 +66,10 @@ function iotAppearanceEditor(metrics) {
     <label>Trait<select data-iot-style="line">${options({ solid: 'Continu', dashed: 'Tirets', dotted: 'Pointillé' }, style.line)}</select></label>
     <label>Courbe<select data-iot-style="curve">${options({ smooth: 'Lisse', linear: 'Droite', step: 'Paliers' }, style.curve)}</select></label>
     <label>Remplissage<select data-iot-style="fill">${options({ none: 'Aucun', gradient: 'Dégradé', solid: 'Uni' }, style.fill)}</select></label>
+    <label>Zoom vertical<select data-iot-style="scale">${options({ context: 'Contexte', detail: 'Détail' }, style.scale)}</select></label>
     <label class="iot-style-opacity">Opacité de l’aire <output id="iotStyleOpacity">${style.opacity} %</output><input type="range" data-iot-style="opacity" min="0" max="40" step="1" value="${style.opacity}"${style.fill === 'none' ? ' disabled' : ''}></label>
     <div class="iot-style-checks"><label><input type="checkbox" data-iot-style="points"${style.points ? ' checked' : ''}>Points</label><label><input type="checkbox" data-iot-style="glow"${style.glow ? ' checked' : ''}>Halo</label></div>
-    <button type="button" class="iot-style-copy" data-iot-style-copy>Appliquer à toutes</button></div>`;
+    <button type="button" class="iot-style-copy" data-iot-style-copy>Appliquer à toutes</button></div><p class="iot-style-scale-hint">Contexte garde une échelle plus stable. Détail agrandit les petites variations.</p>`;
 }
 
 function iotAppearanceHtml(metrics) {
@@ -109,7 +110,7 @@ function iotChangeAppearance(event) {
   const target = event.target;
   if (target.id === 'iotStyleMetric' && event.type === 'change') { iotAppearance.selected = target.value; iotSyncAppearance(); return; }
   const field = target.dataset.iotStyle;
-  if (!['width', 'line', 'curve', 'fill', 'opacity', 'points', 'glow'].includes(field)) return;
+  if (!['width', 'line', 'curve', 'fill', 'opacity', 'points', 'glow', 'scale'].includes(field)) return;
   // Sliders redraw while dragging; other native controls redraw on commitment.
   if (event.type === 'input' && field !== 'opacity') return;
   const key = iotAppearanceKey(); const style = iotCurveStyle(key);

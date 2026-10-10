@@ -7,6 +7,40 @@ const iotCombinedTime = (time, seconds = true) => {
 };
 const iotCombinedDate = time => `${new Date(time).toLocaleDateString()} · ${iotCombinedTime(time)}`;
 
+// Context spans are display zoom floors, never sensor limits. Outliers expand
+// the domain; every raw sample keeps its value and remains inside the axis.
+function iotCombinedBounds(min, max, key, unit, mode = 'context') {
+  const magnitude = Math.max(Math.abs(min), Math.abs(max));
+  const spans = { '°c': key === 'cpu_temperature' ? 10 : 2, '°f': key === 'cpu_temperature' ? 20 : 4,
+    hpa: 5, mbar: 5, pa: 500, kpa: .5, dbm: 20, v: .5, mv: 500, '%': 10,
+    m: key === 'altitude' ? 10 : Math.max(magnitude * .02, .01) };
+  const normalizedUnit = String(unit).trim().toLowerCase();
+  const contextSpan = (Object.hasOwn(spans, normalizedUnit) ? spans[normalizedUnit] : magnitude * .02) || 1;
+  const divisor = Math.max(magnitude, mode === 'detail' ? 0 : contextSpan) || 1;
+  const low = min / divisor; const high = max / divisor;
+  let lower; let upper; let tickStep;
+  if (mode === 'detail') {
+    const pad = high === low ? .04 : (high - low) * .12;
+    lower = low - pad; upper = high + pad;
+  } else {
+    const span = Math.max(high - low, contextSpan / divisor);
+    const center = low / 2 + high / 2;
+    const candidate = span * 1.24 / 5;
+    // Choose a round step in the original unit without overflowing a raw span.
+    const exponent = Math.floor(Math.log10(candidate) + Math.log10(divisor));
+    const power = 10 ** exponent;
+    const fraction = candidate * divisor / power;
+    const factor = [1, 2, 2.5, 5, 10].find(value => value >= fraction) || 10;
+    const rounded = factor * power / divisor;
+    const step = Number.isFinite(rounded) && rounded > 0 ? rounded : candidate;
+    tickStep = step;
+    lower = Math.floor((center - span * .62) / step) * step;
+    upper = Math.ceil((center + span * .62) / step) * step;
+  }
+  const limit = Number.MAX_VALUE / divisor;
+  return { divisor, low: Math.max(-limit, Math.min(lower, low)), high: Math.min(limit, Math.max(upper, high)), tickStep };
+}
+
 // Each metric keeps its own units and scale. All datasets share actual timestamps.
 function iotCombinedModel() {
   const series = iotState.series || {};
@@ -32,17 +66,17 @@ function iotCombinedModel() {
       min = Math.min(min, iotState.ranges && Number.isFinite(point.min) ? point.min : point.value);
       max = Math.max(max, iotState.ranges && Number.isFinite(point.max) ? point.max : point.value);
     }
-    const divisor = points.length ? (Math.max(Math.abs(min), Math.abs(max)) || 1) : 1;
-    const low = points.length ? min / divisor : 0; const high = points.length ? max / divisor : 1;
-    const pad = high === low ? .04 : (high - low) * .12;
+    const style = iotCurveStyle(key); const unit = measure?.unit || known?.unit || '';
+    const bounds = points.length ? iotCombinedBounds(min, max, key, unit, style.scale) : { divisor: 1, low: 0, high: 1 };
+    const { divisor } = bounds;
     const data = []; let previous = null;
     for (const point of raw) {
       if (previous && point.ts - previous.ts > gapLimit) data.push({ x: previous.ts + (point.ts - previous.ts) / 2, y: null });
       data.push({ x: point.ts, y: Number.isFinite(point.value) ? point.value / divisor : null });
       previous = point;
     }
-    return { key, ...visual, style: iotCurveStyle(key), unit: measure?.unit || known?.unit || '', points, data, divisor,
-      axis: `iotY${index}`, low: low - pad, high: high + pad, min, max,
+    return { key, ...visual, style, unit, points, data, ...bounds,
+      axis: `iotY${index}`, min, max,
       tolerance: live ? Math.max(7500, cadence * 1.5) : bucket * .51 };
   });
   const from = new Date(series.from).getTime(); const to = new Date(series.to).getTime();
@@ -106,7 +140,17 @@ function iotCombinedScales(model) {
       callback: value => `${model.end - model.start > 86400000 ? new Date(value).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' }) + ' ' : ''}${iotCombinedTime(value, model.live)}` } } };
   for (const metric of model.metrics) scales[metric.axis] = { type: 'linear', position: 'left',
     display: metric.key === model.axis.key, min: metric.low, max: metric.high,
-    afterBuildTicks(scale) { scale.options.title.display = scale.chart.width >= 600; },
+    afterBuildTicks(scale) {
+      scale.options.title.display = scale.chart.width >= 600;
+      if (!metric.tickStep) return;
+      const ticks = [];
+      for (let index = 0; index < 12; index++) {
+        const value = metric.low + index * metric.tickStep;
+        if (value > metric.high + metric.tickStep * 1e-9) break;
+        ticks.push({ value: Math.min(value, metric.high) });
+      }
+      scale.ticks = ticks;
+    },
     border: { display: false }, grid: { color: '#30485c38', tickLength: 0 },
     title: { display: true, text: `${metric.label}${metric.unit ? ` · ${metric.unit}` : ''}`, color: metric.color, font: { size: 11 }, padding: 10 },
     ticks: { color: metric.color, maxTicksLimit: 6, padding: 12, font: { size: 11 }, callback: value => iotValue(value * metric.divisor) } };

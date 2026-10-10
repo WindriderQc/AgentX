@@ -109,7 +109,7 @@ function browser(respond, localStorage) {
     }
   };
   const source = ['refresh.js', 'iot-visuals.js', 'iot-appearance.js', 'iot-charts.js', 'iot-combined.js', 'iot.js', 'app.js'].map(file => fs.readFileSync(path.join(__dirname, '../public', file), 'utf8')).join('\n')
-    .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, render, iotState, iotTab, iotSelect, iotLoadSeries, iotSubmit, iotRefresher, iotChart, iotCards, iotCombinedModel, iotNearestValue, iotCurveStyle, iotStoreCurveStyle };');
+    .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, render, iotState, iotTab, iotSelect, iotLoadSeries, iotSubmit, iotRefresher, iotChart, iotCards, iotCombinedModel, iotNearestValue, iotCombinedBounds, iotCurveStyle, iotStoreCurveStyle };');
   vm.runInNewContext(source, context);
   return { ...context.page, elements, listeners, requests, timers, document, content: element('#content') };
 }
@@ -319,4 +319,35 @@ test('unreadable or invalid saved curve styles leave readings available with bou
     assert.equal(page.iotCurveStyle('temperature').width, 2, 'denied storage retains session preferences');
     assert.ok(page.requests.every(call => call.method === 'GET'));
   }
+});
+
+test('context scales do not magnify a quantized sensor step into a full-height swing', async () => {
+  const page = await open({});
+  const bounds = page.iotCombinedBounds(1013.01, 1013.02, 'pressure', 'hPa');
+  const span = (bounds.high - bounds.low) * bounds.divisor;
+  assert.ok(span >= 5, 'pressure keeps a viewing span rather than stretching its hundredth-unit step');
+  assert.ok(.01 / span < .01);
+  const shifted = page.iotCombinedBounds(1013.02, 1013.03, 'pressure', 'hPa');
+  assert.ok(Math.abs(bounds.low * bounds.divisor - shifted.low * shifted.divisor) < 1e-9);
+  assert.ok(Math.abs(bounds.high * bounds.divisor - shifted.high * shifted.divisor) < 1e-9);
+  const detail = page.iotCombinedBounds(1013.01, 1013.02, 'pressure', 'hPa', 'detail');
+  assert.ok((detail.high - detail.low) * detail.divisor < .02, 'detail preserves access to small real variations');
+});
+
+test('context bounds expand for outliers and keep all observations, zero and extreme values', async () => {
+  const page = await open({});
+  for (const [min, max, key, unit] of [
+    [-140, 400, 'temperature', '°C'], [-180, 10, 'wifi_rssi', 'dBm'], [0, 150, 'battery_voltage', 'V'],
+    [0, 0, 'unknown', ''], [-1.5e308, 1.5e308, 'unknown', ''], [1e-320, 2e-320, 'unknown', ''], [8, 9, 'unknown', 'constructor']
+  ]) {
+    const bounds = page.iotCombinedBounds(min, max, key, unit);
+    assert.ok(Number.isFinite(bounds.low) && Number.isFinite(bounds.high) && Number.isFinite(bounds.divisor));
+    assert.ok(bounds.high > bounds.low);
+    assert.ok(min / bounds.divisor >= bounds.low && max / bounds.divisor <= bounds.high, 'viewing spans never cap a valid observation');
+  }
+  page.iotStoreCurveStyle(['temperature'], { scale: 'detail' });
+  assert.equal(page.iotCurveStyle('temperature').scale, 'detail');
+  assert.equal(page.iotCurveStyle('wifi_rssi').scale, 'context');
+  const model = page.iotCombinedModel();
+  assert.equal(model.metrics[0].points[0].value, 22);
 });
