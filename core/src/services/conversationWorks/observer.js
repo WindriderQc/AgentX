@@ -8,7 +8,8 @@ const { OWNER } = require('./contract');
 // This owner dispatches one native run. It does not implement a model/tool
 // loop. The durable gate has no timeout takeover: a lost dispatch is observed
 // through its exact native session before another work is admitted.
-function createWorkObserver({ works, execute, prepare = async value => value, observe, env = process.env, logger, intervalMs = 1000 }) {
+function createWorkObserver({ works, execute, prepare = async value => value, observe, receive = async () => null,
+  agentFor = () => env.PERSONAL_CONVERSATION_WORK_AGENT_ID, env = process.env, logger, intervalMs = 1000 }) {
   let running = false, timer, closed = false;
   const gate = () => mongoose.connection.collection('conversation_work_dispatch');
   const clear = (id, processId) => gate().updateOne({ _id: OWNER, workId: id, ...(processId && { processId }) }, { $set: { workId: null },
@@ -38,6 +39,13 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
         fields: { state: 'uncertain', reason: 'native_result_not_proven' }, event: 'dispatch_uncertain' }));
       return;
     }
+    // A yielded parent has ended; its specialist may still be working. Keep
+    // the same dispatch owner until the original requester answer is received.
+    const received = await receive({ row, evidence });
+    if (received?.pending) return;
+    const workId = row._id;
+    row = await works.repo.get(workId);
+    if (!row) { await clear(workId); return; }
     await works.repo.mutate(row._id, current => ({ fields: {
       state: current.result ? 'completed' : 'failed', reason: current.result ? '' : 'native_result_not_published',
       attempt: { ...current.attempt, settledAt: new Date(), terminal: native.status } }, event: 'native_settled' }));
@@ -47,7 +55,7 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
 
   async function run(row) {
     const processId = randomUUID();
-    const id = randomUUID(), sessionId = randomUUID(), agentId = env.PERSONAL_CONVERSATION_WORK_AGENT_ID;
+    const id = randomUUID(), sessionId = randomUUID(), agentId = agentFor(row);
     const attempt = { id, sessionId, agentId, sessionKey: `agent:${agentId}:household:direct:${sessionId}`, dispatchedAt: new Date() };
     try { await gate().updateOne({ _id: OWNER }, { $setOnInsert: { workId: null } }, { ...acknowledged, upsert: true }); }
     catch (cause) { if (cause.code !== 11000) throw cause; }

@@ -16,4 +16,13 @@ function requestsSecretary(text) {
 
 const SECRETARY_DIRECTIVE = 'This request belongs to Main and the Secretary, not the limited task-read worker. Consult the allowed secretary agent with a minimal relevant task using native sessions_spawn and sessions_yield. Preserve the user request and all restrictions. Main has no direct Gmail tools; that does not mean the Secretary is unavailable. Return her verified result or the actual consultation failure; do not ask the user to paste their mailbox merely because Main lacks direct mailbox tools.';
 
-module.exports = { requestsSecretary, SECRETARY_DIRECTIVE };
+// A conservative migration selector, never an authorization decision. Ambiguous
+// requests and effects retain the existing native owner/approval path.
+function requestsSecretaryRead(text) {
+  if (!requestsSecretary(text)) return false;
+  const input = String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/\b(?:envoi\w*|envoie|send\w*|repond\w*|reply|draft\w*|redig\w*|modifi\w*|modify|change\w*|supprim\w*|delet\w*|effac\w*|archiv\w*|tri\w*|organis\w*|marqu\w*|mark|cre\w*|add|ajout\w*|transfer\w*|forward|unsubscribe|desabonn\w*)\b/.test(input)) return false;
+  return /\b(?:lis|lire|read|lectur\w*|resum\w*|summari\w*|cherch\w*|search|verifi\w*|check|regard\w*|look|list\w*|quels?|quelle?s?|quoi|combien|what|which|how many)\b/.test(input);
+}
+
+module.exports = { requestsSecretary, requestsSecretaryRead, SECRETARY_DIRECTIVE };
