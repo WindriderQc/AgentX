@@ -180,6 +180,16 @@ test('a cancelled unclassified guardian cannot be resurrected as a worker answer
   expect(await works.repo.get(accepted.row._id)).toMatchObject({ state: 'cancelled', guardian: { state: 'cancelled' } });
 });
 
+test.each(['pause', 'resume', 'cancel'])('background %s cannot change or dispatch native-only Main work', async action => {
+  works = createConversationWorks({ conversations, tasks, env, nativeOnly: () => true });
+  const accepted = await works.intake(input('Consult the specialist.'));
+  const control = require('../../src/services/conversationWorks/control').createWorkControl(works);
+  await expect(control(current.sessionId, accepted.row._id, { action, revision: accepted.row.revision }))
+    .rejects.toMatchObject({ code: 'CONVERSATION_WORK_ALREADY_DISPATCHED' });
+  expect((await createWorkDelivery(works).snapshot(current.sessionId)).items[0]).toMatchObject({ controllable: false, state: 'received' });
+  expect((await works.repo.get(accepted.row._id)).revision).toBe(accepted.row.revision);
+});
+
 test('native-only intake with a lost guardian receipt remains uncertain across recovery without a replacement dispatch', async () => {
   works = createConversationWorks({ conversations, tasks, env, nativeOnly: () => true });
   const accepted = await works.intake(input('Consult the specialist.'));
