@@ -83,6 +83,30 @@ test('personal voice selects the configured model per run while preserving nativ
   assert.ok(!agentInstructions(voice, voice.persona, '', null, { channel: 'text' }).includes('one to three short sentences'));
 });
 
+test('personal mailbox requests keep Main native model policy, scope and exact request for Secretary consultation', async () => {
+  const requests = [];
+  const voice = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main', agentSessionKey: sessionKeyFor(session) };
+  const client = createAgentClient({ env: { ...env, HOUSEHOLD_VOICE_MODEL: 'local/guardian' }, settleMs: 0,
+    continuity: async () => ({ answer: answer('Résultat vérifié.'), run: { model: 'native-main-model' } }),
+    fetchImpl: async (_url, options) => { requests.push({ headers: options.headers, body: JSON.parse(options.body) }); return { ok: true, body: [created, completed] }; } });
+  const text = 'Demande à la Secrétaire quels outils de courriel elle peut utiliser, sans lire de message.';
+  const result = await client({ session: voice, channel: 'voice', text });
+  assert.equal(requests[0].headers['x-openclaw-model'], undefined, 'Native Main chooses its installed model; no guardian override');
+  assert.equal(requests[0].headers['x-openclaw-session-key'], voice.agentSessionKey);
+  assert.equal(requests[0].body.model, 'openclaw/main');
+  const content = requests[0].body.input[0].content;
+  assert.equal(content.at(-1).text, text, 'Retain the complete request and restrictions');
+  assert.match(content[0].text, /sessions_spawn and sessions_yield/);
+  assert.match(content[0].text, /not the limited task-read worker/);
+  assert.equal(result.metadata.model, 'native-main-model');
+  await client({ session: voice, channel: 'voice', text, model: 'local/explicit' });
+  assert.equal(requests.at(-1).headers['x-openclaw-model'], 'local/explicit');
+  for (const input of [{ session: voice, channel: 'text' }, { session: { ...voice, agentId: 'family' }, channel: 'voice' }]) {
+    await client({ ...input, text });
+    assert.equal(requests.at(-1).body.input[0].content, text, 'Other native paths keep their instructions');
+  }
+});
+
 test('one native session owns tools and history; presentation and model remain independent', async () => {
   const requests = [], starts = [], deltas = [];
   const client = createAgentClient({ env, continuity: async req => {

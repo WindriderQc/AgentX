@@ -154,6 +154,52 @@ test('an accepted request interrupted before its canonical slot is recovered wit
   expect(tasks.list).not.toHaveBeenCalled();
 });
 
+test.each(['completed', 'failed', 'cancelled'])('native-only work settled as %s never dispatches the limited worker', async state => {
+  works = createConversationWorks({ conversations, tasks, env, classify: () => false, nativeOnly: () => true });
+  const accepted = await works.intake(input('Consult the mailbox specialist.'));
+  await works.prepare(accepted.row._id, 'Native specialist policy');
+  await works.guardianStarted(accepted.row._id, 'agent:main:household:direct:' + current.sessionId, native());
+  await works.guardianSettled(accepted.row._id, state);
+  const execute = jest.fn();
+  const observer = createWorkObserver({ works, env, execute, observe: jest.fn() });
+  await observer.tick(); observer.stop();
+  expect(execute).not.toHaveBeenCalled();
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ classification: 'native_only', state, guardian: { state } });
+  expect((await exchanges.read(EXCHANGE_SCOPE, accepted.row.exchangeId)).state).toBe('completed');
+  expect(tasks.list).not.toHaveBeenCalled();
+});
+
+test('a cancelled unclassified guardian cannot be resurrected as a worker answer', async () => {
+  const accepted = await works.intake(input('Explain this question.'));
+  await works.prepare(accepted.row._id, 'context');
+  await works.guardianSettled(accepted.row._id, 'cancelled');
+  const execute = jest.fn();
+  const observer = createWorkObserver({ works, env, execute, observe: jest.fn() });
+  await observer.tick(); observer.stop();
+  expect(execute).not.toHaveBeenCalled();
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ state: 'cancelled', guardian: { state: 'cancelled' } });
+});
+
+test('native-only intake with a lost guardian receipt remains uncertain across recovery without a replacement dispatch', async () => {
+  works = createConversationWorks({ conversations, tasks, env, nativeOnly: () => true });
+  const accepted = await works.intake(input('Consult the specialist.'));
+  await works.repo.mutate(accepted.row._id, () => ({ fields: { receivedAt: new Date(Date.now() - 120000) }, event: 'fixture_old_intake' }));
+  await works.recover(); await works.recover();
+  const execute = jest.fn();
+  const observer = createWorkObserver({ works, env, execute, observe: jest.fn() });
+  await observer.tick(); observer.stop();
+  expect(execute).not.toHaveBeenCalled();
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ classification: 'native_only', state: 'uncertain', reason: 'native_guardian_receipt_required' });
+});
+
+test('a combined native consultation and task lookup still admits its migrated task portion', async () => {
+  works = createConversationWorks({ conversations, tasks, env, classify: () => true, nativeOnly: () => true });
+  const accepted = await works.intake(input('Consult the specialist and check tasks.'));
+  await works.prepare(accepted.row._id, 'context');
+  expect(await works.taskAcceptance(accepted.row._id)).toMatchObject({ accepted: true });
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ classification: 'tasks_read', state: 'queued' });
+});
+
 test('an ambiguous dispatch holds the global owner through restart and settles only with exact native evidence', async () => {
   const accepted = await works.intake(input()); await works.prepare(accepted.row._id, 'context');
   let attempt;

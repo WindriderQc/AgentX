@@ -4,6 +4,7 @@ const { nativePerformedBy } = require('./native-attribution');
 const { acceptedImageReply } = require('./accepted-images');
 const { scoreSpeechLanguage } = require('../../public/js/voice/speech-language');
 const { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure } = require('./tool-turn-guard');
+const { requestsSecretary, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
 
 const agentIdFor = session => ['kidx_nestor', 'kidx_reader'].includes(session.packId) ? 'family' : session.agentId || 'main';
 const sessionKeyFor = session => `agent:${agentIdFor(session)}:household:direct:${session.sessionId}`;
@@ -90,8 +91,10 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     const sessionKey = sessionKeyFor(session);
     // A per-run model changes neither the native agent nor its history/tools.
     // Explicit Open selection always wins; other surfaces keep native policy.
-    const selectedModel = model || (personalVoice(session, channel) && !session.inference?.open
+    const secretaryRequest = personalVoice(session, channel) && requestsSecretary(text);
+    const selectedModel = model || (personalVoice(session, channel) && !secretaryRequest && !session.inference?.open
       && session.modeId !== 'open' ? env.HOUSEHOLD_VOICE_MODEL?.trim() : undefined);
+    if (secretaryRequest) turnDirective = [turnDirective, SECRETARY_DIRECTIVE].filter(Boolean).join('\n\n');
     const content = currentContent ?? conversationInput({ text, applicationEvent });
     const contextualContent = turnContext || turnDirective ? [
       ...(turnContext ? [{ type: 'input_text', text: selectedContextBlock(turnContext) }] : []),

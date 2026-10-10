@@ -6,10 +6,11 @@ const { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
   eligible, sessionScope, simple, validateResult } = require('./contract');
 const { createRepository } = require('./repository');
 
-function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false,
+function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false,
   exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
+  const classification = text => simple(text) ? 'simple' : classify(text) ? 'tasks_read' : nativeOnly(text) ? 'native_only' : 'unclassified';
   const query = sessionId => ({ sessionId, ...SCOPED });
   async function session(sessionId) {
     const value = await conversations.getSession(query(sessionId));
@@ -47,7 +48,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     const row = await repo.insert({ _id: id, owner: OWNER, surface: 'household',
       conversationId: current.conversationId, sessionId: current.sessionId, turnId,
       exchangeId: accepted.receipt._id, requestSha256: hash(text), mode: snapshot.mode,
-      state: simple(text) ? 'completed' : 'received', classification: simple(text) ? 'simple' : classify(text) ? 'tasks_read' : 'unclassified',
+      state: simple(text) ? 'completed' : 'received', classification: classification(text),
       revision: 0, receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
       guardian: { state: accepted.duplicate ? taken.turn.outcome === 'pending' ? 'uncertain' : 'completed' : 'pending' }, erased: false });
     return { row, turn: taken.turn, duplicate: accepted.duplicate || taken.duplicate };
@@ -63,7 +64,10 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     fields: { guardian: { ...current.guardian, state: 'running', sessionKey, runId } }, event: 'guardian_started' }));
   const guardianSettled = async (id, state) => {
     const row = await repo.mutate(id, current => ({ fields: { guardian: { ...current.guardian, state },
-      state: current.state === 'received' && current.contextReady ? 'queued' : current.state }, event: 'guardian_settled' }));
+      state: current.state === 'received'
+        ? current.classification === 'native_only' ? state : state === 'cancelled' ? 'cancelled' : current.contextReady ? 'queued' : current.state
+        : current.state }, event: 'guardian_settled' }));
+    if (['completed', 'failed', 'cancelled'].includes(row.state)) await finalize(row);
     wake(); return row;
   };
   async function binding(context, role = 'worker') {
@@ -212,12 +216,18 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
           mode: input.mode, state: simple(input.text) ? 'completed' : 'received', revision: 0,
           receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
           guardian: { state: taken.turn.outcome === 'pending' ? 'uncertain' : taken.turn.outcome }, erased: false,
-          classification: simple(input.text) ? 'simple' : classify(input.text) ? 'tasks_read' : 'unclassified' });
+          classification: classification(input.text) });
       }
       // A live intake can still be collecting context. Recovery never steals it.
       // After restart, stale pre-dispatch input is safe to dispatch only as a new
       // worker attempt, while the guardian's lost result remains explicitly unknown.
       if (row.state === 'received' && now().getTime() - new Date(row.receivedAt).getTime() > 60000) {
+        if (row.classification === 'native_only') {
+          await repo.mutate(id, saved => saved.state !== 'received' ? null : { fields: { state:
+            ['completed', 'failed', 'cancelled'].includes(saved.guardian?.state) ? saved.guardian.state : 'uncertain',
+            reason: 'native_guardian_receipt_required' }, event: 'native_intake_retained' });
+          continue;
+        }
         await repo.mutate(id, async (saved, fence) => saved.state !== 'received' ? null : {
           fields: { contextReady: true, contextRef: saved.contextRef || await repo.payload(saved, { selectedContext:
             'Recovered human intake. Selected turn context was not committed; use canonical recent turns and state what is missing.' }, fence),
