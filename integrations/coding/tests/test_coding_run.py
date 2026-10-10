@@ -72,6 +72,19 @@ class CodingRunTest(unittest.TestCase):
         self.assertEqual(runner.git(self.workspace, "status", "--porcelain"), "")
         self.assertTrue((self.workspace / "result.txt").exists())
 
+    def test_completed_work_without_token_preserves_a_local_checkpoint_without_publication(self):
+        self.exit_code = 0
+        with mock.patch.object(runner, "run_worker", self.worker), \
+                mock.patch.object(runner, "push_and_open_pr") as publish, \
+                mock.patch.dict(os.environ, {"GH_TOKEN": ""}), mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 0)
+        publish.assert_not_called()
+        self.assertEqual(self.feedback.call_args.args[-1], "blocked")
+        self.assertIn("no GH_TOKEN: not pushed", self.feedback.call_args.args[1])
+        self.assertEqual(runner.git(self.workspace, "status", "--porcelain"), "")
+        self.assertNotEqual(runner.git(self.workspace, "rev-parse", "HEAD"),
+                            runner.git(self.workspace, "rev-parse", "origin/main"))
+
     def test_failed_observed_test_keeps_a_successful_worker_turn_local(self):
         self.exit_code = 0
         def worker(workspace, prompt, timeout, progress):
