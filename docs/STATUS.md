@@ -68,6 +68,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   Playground, PsyX, personal Nestor and Famille. Their shared editor explains
   resource effects, offers presets and requires an explicit save; Famille
   controls live in the parental space.
+- **Nestor guardian and worker.** Optional personal voice work commits the human
+  request before guardian inference and uses an isolated native worker for
+  bounded task reads and review. Core retains results through reconnect, fences
+  uncertain dispatches and separates display, playback start and completion.
+  The feature defaults off; text, Open, specialists and Famille keep their
+  existing contracts. See [conversation work](NESTOR_CONVERSATION_WORK.md).
 - **Conversation recovery.** Playground retains accepted requests and response
   bytes in Core. Owners can download refused or interrupted exchanges without
   sending the request again. Completed retries replay the saved response;

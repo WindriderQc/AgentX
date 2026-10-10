@@ -46,6 +46,16 @@ outcomes until acknowledgment; task completion remains separate. Custom coding
 checks use explicit operator attestations, never commands stored in a request.
 See [heavy work](HEAVY_WORK_QUEUE.md).
 
+Core's `conversationWorks` capability owns durable personal request intake,
+work revisions, native attempt/session identity, verified task-read references,
+results and ordered delivery events. Household composes its guardian and an
+isolated native worker; OpenClaw owns their native loops. A dispatch fence
+precedes the outbound worker request, and uncertain attempts require exact native
+reconciliation. Work payloads use the existing transcript owner's storage and
+erasure barrier. Browser presentation ownership prevents automatic duplicate
+speech and does not grant business execution. See
+[the conversation work contract](NESTOR_CONVERSATION_WORK.md).
+
 Surfaces (Nestor, Household, PsyX, the model workbench) compose personas, domain
 policies and reusable Core capabilities. Core owns canonical conversation,
 inference/routing, memory/RAG access, tools/tasks, files/images, events/jobs and

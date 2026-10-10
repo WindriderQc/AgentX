@@ -26,13 +26,15 @@ function attributionForTurn(session, input) {
 // ingestion) cross this boundary before Core persists a turn. Older audits
 // remain unchanged; attribution is evidence captured at write time.
 function attributedConversations(conversations) {
-  return Object.freeze({ ...conversations, async recordTurn(input, options) {
+  const attributed = method => async (input, options) => {
     const session = await conversations.getSession({ sessionId: input.sessionId, packId: input.packId, scopeId: input.scopeId });
     const attribution = attributionForTurn(session || {}, input);
-    const audit = await conversations.recordTurn({ ...input, speaker: attribution.speaker,
+    const audit = await conversations[method]({ ...input, speaker: attribution.speaker,
       performedBy: attribution.performedBy, voice: attribution.voice }, options);
     return { ...audit, replySpeech: attribution.speech };
-  } });
+  };
+  return Object.freeze({ ...conversations, recordTurn: attributed('recordTurn'),
+    ...(conversations.settleTurn ? { settleTurn: attributed('settleTurn') } : {}) });
 }
 
 module.exports = { attributionForTurn, attributedConversations };

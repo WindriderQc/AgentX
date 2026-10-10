@@ -82,3 +82,14 @@ test('speech scheduling receipt includes time spent awaiting the HTTP response',
   context.nodes[0].onended(); const metrics = await speaking;
   assert.equal(metrics.first_scheduled_ms, 750);
 });
+
+test('scheduled playback fires once after the first successful node start and before completion', async () => {
+  const context = new Context(), source = stream(); let scheduled = 0;
+  const playing = new Player(context, { onScheduled() { scheduled++; assert.equal(context.nodes[0].at > 0, true); } })
+    .play(source.response, new AbortController().signal);
+  source.send(meta); source.send(frame(1)); await tick();
+  assert.equal(scheduled, 1);
+  source.send(frame(2)); await tick(); assert.equal(scheduled, 1);
+  source.send({ type: 'done', frames: 2, samples: 4800 }); source.close();
+  context.nodes.forEach(node => node.onended()); await playing;
+});

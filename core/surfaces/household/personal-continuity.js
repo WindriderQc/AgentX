@@ -5,7 +5,7 @@ const unavailable = () => Object.assign(new Error('The native agent catalog or t
 
 function createNestorClient({ env = process.env, fetchImpl = (...args) => fetch(...args) } = {}) {
   return async (request, signal) => {
-    if (!['agents', 'turn'].includes(request?.operation)) throw unavailable();
+    if (!['agents', 'turn', 'work_attempt'].includes(request?.operation)) throw unavailable();
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw unavailable();
     const url = new URL('/api/nestor/continuity', env.OPENCLAW_GATEWAY_URL.replace(/^ws/, 'http'));
     const timeout = AbortSignal.timeout(10000);

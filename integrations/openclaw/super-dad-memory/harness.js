@@ -88,14 +88,21 @@ export async function recordTool(workspace, event, context, { config, pluginConf
     && Array.isArray(data.jobs) && Number.isInteger(data.count) && data.count >= data.jobs.length)
     || (data?.authority === 'core.alerts' && ((Array.isArray(data.notifications) && Number.isInteger(data.count))
       || (data.acknowledged === true && /^[a-f0-9]{24}$/.test(data.id || '')))));
-  const proved = localImage ? data.operation.state === 'completed' && data.operation.runtimeRestored === true && Boolean(data.operation.artifact?.sha256)
+  const acceptedWork = tool === 'conversation_work' && data?.authority === 'core.conversation-works'
+    && data.accepted === true && /^[a-f0-9]{64}$/.test(data.id || '') && ['pending', 'completed', 'failed', 'cancelled'].includes(data.execution);
+  const workRead = tool === 'conversation_work' && data?.authority === 'core.conversation-works'
+    && data.receipt?.tool === 'tasks.personal.list' && data.receipt.status === 'verified'
+    && data.receipt.runId === (context.runId || event.runId) && /^[a-f0-9]{64}$/.test(data.receipt.id || '');
+  const workPublished = tool === 'conversation_work' && data?.authority === 'core.conversation-works'
+    && data.published === true && /^[a-f0-9]{64}$/.test(data.id || '') && data.resultVersion === 1;
+  const proved = acceptedWork || workRead || workPublished || (localImage ? data.operation.state === 'completed' && data.operation.runtimeRestored === true && Boolean(data.operation.artifact?.sha256)
     : tool === 'work_queue' ? Boolean(queueRequest || queueRead)
     : tool === "personal_memory" ? data?.ok === true
     : soundTool ? Boolean(soundId)
     : healthTool ? healthResult
     : /agentx__(add|update|complete)_personal_task/.test(tool) ? Boolean(task?.id && task?.status)
       : tool === "agentx__list_personal_tasks" ? Array.isArray(data?.tasks)
-      : tool === "agentx__shopping_list" ? Array.isArray(data?.items) : false;
+      : tool === "agentx__shopping_list" ? Array.isArray(data?.items) : false);
   const resultRef = localImage ? `local-image:${data.operation.id}`
     : queueRequest ? `heavy-work:${queueRequest.id}`
     : tool === "personal_memory" && data?.id ? `personal-note:${data.id}`
@@ -109,6 +116,9 @@ export async function recordTool(workspace, event, context, { config, pluginConf
       ...(soundId ? { soundId } : {}),
       ...(imageOperation ? { imageOperation } : {}),
       ...(queueRequest ? { queueRequest } : {}),
+      ...(workRead ? { workRead: { id: data.receipt.id, tool: data.receipt.tool } } : {}),
+      ...(workPublished ? { workPublished: { id: data.id, resultVersion: data.resultVersion } } : {}),
+      ...(acceptedWork ? { acceptedWork: { id: data.id, state: data.state } } : {}),
       deliveryState: "unknown", at: nowIso() }].slice(-40) }));
 }
 

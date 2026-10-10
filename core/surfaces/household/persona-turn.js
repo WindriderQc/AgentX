@@ -37,7 +37,7 @@ async function teamPersona(agentId, personas) {
 const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
 
 function createPersonaTurnHandler({
-  logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null,
+  logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null, conversationWorks = null,
   familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
   sounds, visuals, brain, memberWork, conversationImages, warmup = null, activePersonaTurns, validClientTurnId,
   envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
@@ -70,7 +70,8 @@ function createPersonaTurnHandler({
     }
     if (!userText && !isOpening) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
     if (!consult && activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
-    const clientTurnId = consult ? consult.turnId : (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice' && req.body?.stream === true))
+    let clientTurnId = consult ? consult.turnId : (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
+      && (req.body?.stream === true || ['read', 'observe'].includes(conversationEnv.PERSONAL_CONVERSATION_WORK_MODE))))
       && validClientTurnId(req.body?.turnId) ? req.body.turnId : '';
     const startedAt = Date.now();
     const abort = new AbortController();
@@ -130,6 +131,18 @@ function createPersonaTurnHandler({
         ? personalAttachments(session.sessionId) : null;
       if (requestedAttachments.length && !attachmentStore) return fail(res, 400, 'Les pièces jointes sont disponibles dans Nestor personnel.', 'ATTACHMENTS_PERSONAL_ONLY');
       entry.attachments = requestedAttachments.length ? await attachmentStore.references(requestedAttachments) : [];
+      if (!consult && !isLlmX && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session))
+          && (conversationWorks?.eligible(session, req.body?.channel)
+            || await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel))) {
+        clientTurnId ||= req.body.turnId; entry.clientTurnId = clientTurnId;
+        const intake = await conversationWorks.intake({ session, turnId: clientTurnId, text: userText, attachments: entry.attachments });
+        entry.workId = intake.row._id; entry.traceId = clientTurnId; entry.snapshot ||= {
+          sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
+        if (intake.duplicate) { entry.auditWritten = true; return envelope(res, { accepted: true, turnId: clientTurnId, workId: entry.workId,
+          outcome: intake.turn.outcome, reply: intake.turn.outcome === 'completed' ? { text: intake.turn.replyText } : null,
+          replayed: false }, 202); }
+        event('accepted', { turnId: clientTurnId, workId: entry.workId, state: intake.row.state });
+      }
       entry.markReady(entry.snapshot || null);
       if (isLlmX) {
         if (isOpening) {
@@ -217,7 +230,7 @@ function createPersonaTurnHandler({
         if (features.historyContext !== false && (backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore || recoverInterrupted)) {
           // Core inference reads a block window, so its history start (and the cached prefix) moves rarely.
           try {
-            const rows = await loadSessionAuditRows(conversations, session, pack);
+            const rows = (await loadSessionAuditRows(conversations, session, pack)).filter(row => !entry.workId || row.traceId !== clientTurnId);
             history = sessionHistoryMessages(rows, pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {});
             if (recoverInterrupted) interruptedContext = interruptedRequestContext(rows);
           }
@@ -279,13 +292,17 @@ function createPersonaTurnHandler({
         const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || '',
           isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId),
+          !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
+            ? await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '' : '',
           isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('').trim();
+        if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const nativeInstructions = nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
           soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
           addressed: member ? (consult ? teamAddress.consultInstruction : teamAddress.memberInstruction)(speaker.name)
             : memberWork ? teamAddress.consultContract(team, agentIdFor(session)) : '',
           workshop, scene: sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : ''), llmxTurn: isLlmX,
-          imageSession: session, imageBackend: backend, imagesEnabled: !member });
+          imageSession: session, imageBackend: backend, imagesEnabled: !member })
+          + (entry.workId ? '\n\n' + conversationWorks.guardianInstructions : '');
         // Child presentation follows the selected adult personality on both
         // transports. Adult conversations keep their normal style overlay order.
         const agentxInstructions = [pack.childSafe ? session.persona?.identity : '',
@@ -320,6 +337,7 @@ function createPersonaTurnHandler({
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
           signal: abort.signal, onWaiting: () => event('status', { phase: 'waiting_host' }), onActivity: activity => event('status', { phase: 'activity', activity }),
           onStarted: async (key, runId) => {
+            if (entry.workId && runId) await conversationWorks.guardianStarted(entry.workId, key, runId);
             if (runId) entry.auditContext = { ...entry.auditContext,
               toolEvidence: { authority: `openclaw/${agentIdFor(turnSession)}`, sessionKey: key, runId } };
             if (member) {
@@ -381,8 +399,8 @@ function createPersonaTurnHandler({
         try { holdState = await openHold.touch({ warm: false }); } catch { /* keep the pre-turn status */ }
       }
       if (!replyText) replyText = 'Je n’ai pas réussi à préparer une réponse utile.';
-      const traceId = crypto.randomUUID();
-      const audit = await conversations.recordTurn({
+      const traceId = entry.workId ? clientTurnId : crypto.randomUUID();
+      const audit = await conversations[entry.workId ? 'settleTurn' : 'recordTurn']({
         traceId,
         ...(isLlmX ? { source: 'graphysx-llmx', origin: isOpening ? 'application_opening' : 'human', outcome: 'completed', applicationEvent: entry.applicationEvent || null } : {}),
         ...(sceneProposal ? { sceneProposal } : {}), ...(display.length ? { display: replyChannels.storedDisplay(display) } : {}),
@@ -420,7 +438,11 @@ function createPersonaTurnHandler({
       } : {} });
       entry.auditWritten = true;
       entry.traceId = traceId;
-      if (!isLlmX && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
+      if (entry.workId) {
+        if (routeTier === 'deterministic') await conversationWorks.handled(entry.workId);
+        await conversationWorks.guardianSettled(entry.workId, 'completed');
+      }
+      if (!entry.workId && !isLlmX && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
       entry.replyText = replyText;
       // The conversation's agent hears about a member's answer once, on its next turn.
       if (member) await conversations.updateSession({ sessionId: session.sessionId },
@@ -504,10 +526,10 @@ function createPersonaTurnHandler({
     } finally {
       try {
         if (entry.completion) { const error = await entry.completion; entry.error ||= error; }
-        if ((isOpening ? entry.openingReserved : entry.interrupted || (sceneEnabled && entry.dispatched)) && entry.snapshot && !entry.auditWritten) {
+        if ((entry.workId || (isOpening ? entry.openingReserved : entry.interrupted || (sceneEnabled && entry.dispatched))) && entry.snapshot && !entry.auditWritten) {
           const reply = sceneEnabled ? entry.naturalReply || '' : plainReply(entry.channels ? entry.channels.end().say : entry.generated, 5000);
-          entry.traceId = crypto.randomUUID();
-          await conversations.recordTurn({
+          entry.traceId = entry.workId ? clientTurnId : crypto.randomUUID();
+          await conversations[entry.workId ? 'settleTurn' : 'recordTurn']({
             ...entry.snapshot, traceId: entry.traceId, clientTurnId, interrupted: entry.interrupted,
             ...(isLlmX ? { source: 'graphysx-llmx', origin: isOpening ? 'application_opening' : 'human', outcome: abort.signal.aborted ? 'cancelled' : 'failed', applicationEvent: entry.applicationEvent || null } : {}),
             interruptionState: entry.error && !entry.executionSettled ? 'failed' : 'confirmed',
@@ -515,8 +537,9 @@ function createPersonaTurnHandler({
             attachments: entry.attachments,
             inputSha256: crypto.createHash('sha256').update(userText).digest('hex'),
             replySha256: crypto.createHash('sha256').update(reply).digest('hex'),
-            ...entry.auditContext, durationMs: Date.now() - startedAt
+            ...entry.auditContext, durationMs: Date.now() - startedAt, ...(entry.workId ? { outcome: abort.signal.aborted ? 'cancelled' : 'failed' } : {})
           });
+          if (entry.workId) await conversationWorks.guardianSettled(entry.workId, abort.signal.aborted ? 'cancelled' : 'failed');
         }
         if (entry.openingReserved && (!entry.auditWritten || entry.error || abort.signal.aborted)) {
           await conversations.updateSession({ sessionId: entry.snapshot.sessionId, 'llmx.opening.turnId': clientTurnId },

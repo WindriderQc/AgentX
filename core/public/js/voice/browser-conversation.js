@@ -431,7 +431,7 @@
     // The background brain may add one short remark at a natural pause (#169):
     // only while listening (awake, if the wake word is on) with no turn in flight.
     // The microphone pauses for that one sentence; Pause or End stops it at once.
-    async interject(reply) {
+    async interject(reply, { onScheduled } = {}) {
       const epoch = this.epoch;
       const idle = () => this.current(epoch) && this.state === 'listening' && !this.activeTurn && !this.turnPending
         && (!this.selection?.wakeWord || this.wake.active());
@@ -442,8 +442,9 @@
         const bytes = await this.io.synthesize({ ...reply, language }, this.abort.signal);
         if (!idle()) return false;
         this.audio.quiet(); this.show('speaking');
-        await this.audio.play(bytes, this.abort.signal);
+        await this.audio.play(bytes, this.abort.signal, false, null, { onScheduled });
         await this.audio.settle?.(this.abort.signal);
+        if (!this.current(epoch) || this.abort.signal.aborted) return false;
         if (this.current(epoch)) { if (this.selection?.wakeWord) this.wake.extend(); this.listen(epoch); }
         return true;
       } catch {
@@ -838,10 +839,10 @@
   }
 
   // Last rung of the voice ladder: the device's own speech synthesis, cancelled like PCM playback.
-  function speakWithBrowser({ text, language }, signal) {
+  function speakWithBrowser({ text, language }, signal, onScheduled) {
     const synth = root.speechSynthesis;
     if (!synth || signal.aborted) return Promise.resolve();
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const utterance = new root.SpeechSynthesisUtterance(text);
       const profile = speechLanguage.PROFILES?.[language === 'en' ? 'en' : 'fr'];
       utterance.lang = profile?.locale || (language === 'en' ? 'en-CA' : 'fr-CA');
@@ -849,7 +850,8 @@
       if (voice) utterance.voice = voice;
       const done = () => { signal.removeEventListener('abort', stop); resolve(); };
       const stop = () => { synth.cancel(); done(); };
-      utterance.onend = done; utterance.onerror = done;
+      utterance.onstart = () => onScheduled?.();
+      utterance.onend = done; utterance.onerror = () => { signal.removeEventListener('abort', stop); reject(new Error('Browser speech could not complete.')); };
       signal.addEventListener('abort', stop, { once: true });
       synth.speak(utterance);
     });
@@ -942,7 +944,7 @@
         playSignal?.addEventListener('abort', finish, { once: true });
         if (playSignal?.aborted || closed) finish();
       });
-      const play = async (bytes, playSignal, isReview = false, gain = null) => {
+      const play = async (bytes, playSignal, isReview = false, gain = null, { onScheduled } = {}) => {
         if (!root.VoixAudio) throw new Error('The local speech player is unavailable.');
         const abort = new AbortController(); activePlay = abort;
         const cancel = () => abort.abort();
@@ -959,10 +961,10 @@
         const observed = analyser && !isReview && gain === null;
         if (observed) activeSpeech = abort;
         try {
-          if (bytes?.browserSpeech) return await speakWithBrowser(bytes.browserSpeech, abort.signal);
+          if (bytes?.browserSpeech) return await speakWithBrowser(bytes.browserSpeech, abort.signal, onScheduled);
           return await new root.VoixAudio.Player(!isReview && playbackHold ? playbackHold.playerContext : context, {
             destinations: output ? [output] : isReview ? [context.destination] : [observed ? analyser : context.destination, { node, input: 1 }],
-            onMetrics: options.onPlaybackMetrics,
+            onMetrics: options.onPlaybackMetrics, onScheduled,
           }).play(bytes, abort.signal, { rate: gain !== null ? 1 : options.playbackRate?.() || 1 });
         } finally {
           output?.disconnect();
