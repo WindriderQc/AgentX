@@ -149,7 +149,7 @@ def run(payload, emit=None, serialized=None):
             return saved['result']
         binary = os.environ.get('HERMES_BIN', str(Path.home() / '.local' / 'bin' / 'hermes'))
         command = [binary, '-p', profile, 'chat', '--query-file', '-', '--format', 'stream-json',
-                   '--toolsets', 'skills', '--skills', 'agentx-images', '--skills', 'comfyui',
+                   '--toolsets', 'skills,vision', '--skills', 'agentx-images', '--skills', 'comfyui',
                    '--max-turns', '4', '--run-budget', '120', '--source', 'tool']
         child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  text=True, cwd=home / 'workspace', start_new_session=True)

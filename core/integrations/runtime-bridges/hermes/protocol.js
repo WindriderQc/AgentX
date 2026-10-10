@@ -12,6 +12,7 @@ const {
 
 const { setTimeout: delay } = require('node:timers/promises');
 const { ollamaMessages } = require('./messages');
+const { registerHermesVision } = require('./vision');
 
 const HERMES_HARNESS_VERSION = '1.2.0';
 const HERMES_CONSUMER_CONTRACT = 'hermes-runtime-v1';
@@ -170,6 +171,7 @@ async function whenAdmitted(run, { waitMs = 0, retryMs = PATIENT_RETRY_MS, signa
 
 function registerHermesProtocol({ express, runtimeServices, logger }) {
   const router = express.Router();
+  registerHermesVision(router, { runtimeServices, logger });
 
   router.post('/patient/v1/chat/completions', (req, _res, next) => {
     req.admissionWaitMs = PATIENT_WAIT_MS;
