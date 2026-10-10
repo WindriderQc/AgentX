@@ -47,6 +47,7 @@ RECEIPTS = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) 
 RELAY_PORT = 8377
 PACKAGE_DIRS = ("core", "benchmark", "rag", "data")
 INSTALL_TIMEOUT_SECONDS = 1800
+CLONE_TIMEOUT_SECONDS = 1800
 
 _spec = importlib.util.spec_from_file_location("model_relay", HERE / "model_relay.py")
 model_relay = importlib.util.module_from_spec(_spec)
@@ -427,8 +428,16 @@ def execute(args, progress) -> int:
     # An existing workspace is a follow-up: the worker continues its own branch.
     if not workspace.exists():
         WORKSPACES.mkdir(mode=0o700, exist_ok=True)
-        subprocess.run(["git", "clone", "--quiet", "--branch", BASE_BRANCH,
-                        f"https://github.com/{REPOSITORY}.git", str(workspace)], check=True)
+        clone = (subprocess.CompletedProcess([], 1, stdout="", stderr="") if progress.check_stop() else
+                 supervise(["timeout", "-k", "30", str(CLONE_TIMEOUT_SECONDS),
+                            "git", "clone", "--quiet", "--branch", BASE_BRANCH,
+                            f"https://github.com/{REPOSITORY}.git", str(workspace)], progress))
+        if clone.returncode or progress.check_stop():
+            feedback(args.task_id, "Repository preparation stopped before dependencies or model dispatch. "
+                                   f"Any partial clone remains in {workspace}; inspect it before handing the task back. "
+                                   "No automatic retry or publication was started.", "blocked")
+            progress.finish("blocked", progress.stop_reason or "runner_error")
+            return 1
         git(workspace, "checkout", "--quiet", "-b", branch)
 
     try:

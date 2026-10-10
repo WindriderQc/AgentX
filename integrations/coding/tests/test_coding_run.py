@@ -131,6 +131,56 @@ class CodingRunTest(unittest.TestCase):
         self.assertEqual(logs[0].read_text(), "Synthetic preserved output\n")
         self.assertIn("Synthetic preserved output", result.stdout)
 
+    def blocked_clone(self, operator_stop):
+        key = "11111111-2222-4333-8444-555555555555"
+        root = self.workspace.parent
+        workspaces = root / "fresh-workspaces"
+        receipts = root / "receipts"
+        fixture_bin = root / "fixture-bin"
+        fixture_bin.mkdir()
+        # Exercise the real supervisor with a stalled, network-free clone child.
+        # The fixture cannot invoke Git, a model, or an external service.
+        script = (f"#!{sys.executable}\n"
+                  "import json,os,sys,time\nfrom pathlib import Path\n"
+                  "workspace = Path(sys.argv[-1]); workspace.mkdir()\n"
+                  "(workspace / 'partial-source').write_text('Preserved partial clone')\n"
+                  f"Path({str(root / 'clone.pid')!r}).write_text(str(os.getpid()))\n"
+                  "print('Preserved clone output', flush=True)\n")
+        if operator_stop:
+            script += (f"Path({str(receipts / (key + '.stop.json'))!r}).write_text("
+                       f"json.dumps({{'requestId':{key!r},'pipelineId':'0001'}}))\n")
+        (fixture_bin / "git").write_text(script + "time.sleep(60)\n")
+        (fixture_bin / "git").chmod(0o700)
+        with mock.patch.object(sys, "argv", ["coding_run", "0001", "--request-id", key]), \
+                mock.patch.object(runner, "WORKSPACES", workspaces), \
+                mock.patch.object(runner, "CLONE_TIMEOUT_SECONDS", 10 if operator_stop else 1), \
+                mock.patch.object(runner, "install_dependencies") as install, \
+                mock.patch.object(runner, "run_worker") as worker, \
+                mock.patch.object(runner, "git") as checkout, \
+                mock.patch.object(runner, "push_and_open_pr") as publish, \
+                mock.patch.dict(os.environ, {"PATH": str(fixture_bin) + os.pathsep + os.environ["PATH"],
+                                             "GH_TOKEN": "fixture-token"}), mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        install.assert_not_called()
+        worker.assert_not_called()
+        checkout.assert_not_called()
+        publish.assert_not_called()
+        with self.assertRaises(ProcessLookupError):
+            os.kill(int((root / "clone.pid").read_text()), 0)
+        self.assertEqual((workspaces / "task-0001/partial-source").read_text(), "Preserved partial clone")
+        logs = list((receipts / f"{key}.output").glob("*/stdout"))
+        self.assertEqual(logs[0].read_text(), "Preserved clone output\n")
+        value = json.loads((receipts / f"{key}.progress.json").read_text())
+        self.assertEqual((value["phase"], value["result"], value["stopReason"]),
+                         ("finished", "blocked", "operator_stop" if operator_stop else "runner_error"))
+        self.assertEqual(self.feedback.call_args.args[-1], "blocked")
+
+    def test_operator_stop_during_clone_retains_traces_and_exits_before_dispatch(self):
+        self.blocked_clone(operator_stop=True)
+
+    def test_stalled_clone_is_bounded_without_an_operator_stop(self):
+        self.blocked_clone(operator_stop=False)
+
     def test_completed_work_without_token_preserves_a_local_checkpoint_without_publication(self):
         self.exit_code = 0
         with mock.patch.object(runner, "run_worker", self.worker), \
