@@ -613,6 +613,14 @@ with the real value, unit and observation time for each nearby sample. A series
 with no nearby observation stays unknown. Left/right arrows, Home, End and
 Escape provide the same inspection from the focused chart.
 
+**Style des courbes** opens three presets (**Épuré**, **Aires**, **Technique**)
+and per-measure controls for stroke width, solid/dashed/dotted lines, smooth,
+straight or stepped curves, gradient/solid fill and its opacity, sample points
+and optional glow. **Appliquer à toutes** copies the current curve's style to
+the device's other measures. Settings are retained per device and measure in
+this browser, remain active during live updates and never change observations
+or send commands. The default uses fine strokes, no fill and no glow.
+
 **Par mesure** displays individual charts using the same returned readings.
 The combined live chart updates in place, retaining its canvas and inspection
 cursor. Both views expose full-precision tables; historical **Min–max** adds
