@@ -64,6 +64,7 @@
       <div class="image-canvas"><div id="image-placeholder"><span aria-hidden="true">✦</span><p>Le prochain résultat apparaît ici.<br>Tu peux aussi consulter une création conservée.</p></div><img id="image-output" alt="Image générée localement" hidden></div>
       <dl id="image-result-facts" class="result-facts" hidden></dl>
       <div class="result-actions"><a id="image-download" class="quiet-button" hidden download>Télécharger l’original</a><button id="image-reuse-brief" type="button" class="quiet-button" hidden>Reprendre le brief et les réglages</button><button id="image-use-reference" type="button" class="reference-button" hidden>Joindre cette image pour la retoucher</button></div>
+      <%- include('image-text-editor') %>
       <p id="image-result-note" class="image-help" hidden></p>
       <details id="image-result-details" class="result-details" hidden><summary>Brief et recette de cette image</summary><p id="image-saved-prompt"></p><dl id="image-saved-recipe"></dl></details>
       <details id="image-export" class="result-details" hidden>

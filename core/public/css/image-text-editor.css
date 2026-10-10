@@ -1,0 +1,73 @@
+.image-text-editor {
+  margin-top: 24px;
+  border-top: 1px solid var(--border-color, #314254);
+  padding-top: 18px;
+}
+.image-text-editor summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-primary, #e8edf4);
+}
+.image-text-editor [hidden] { display: none !important; }
+.image-text-editor .image-help { margin: 12px 0; }
+.text-editor-actions, .text-editor-label-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.text-editor-import {
+  position: relative;
+  cursor: pointer;
+}
+.text-editor-import input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.text-editor-import:focus-within {
+  outline: 2px solid var(--accent, #70c8ff);
+  outline-offset: 3px;
+}
+.text-editor-import:has(input:disabled) { opacity: .5; cursor: wait; }
+.text-editor-preview {
+  background: #111820;
+  border: 1px solid var(--border-color, #314254);
+  border-radius: 10px;
+  overflow: hidden;
+}
+#image-text-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: crosshair;
+}
+#image-text-canvas:focus-visible { outline: 3px solid #70c8ff; outline-offset: -3px; }
+.image-text-editor textarea, .image-text-editor select, .image-text-editor input[type=number] {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--border-color, #314254);
+  border-radius: 8px;
+  background: var(--bg-primary, #111820);
+  color: var(--text-primary, #e8edf4);
+  padding: 10px;
+  font: inherit;
+}
+.image-text-editor textarea { resize: vertical; }
+.text-editor-label-heading { justify-content: space-between; margin: 18px 0 8px; }
+.image-text-editor fieldset { border: 0; margin: 16px 0; padding: 0; min-width: 0; }
+.image-text-editor legend { font-weight: 600; margin-bottom: 10px; }
+.image-text-editor label { font-size: .86rem; }
+.text-editor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.text-editor-grid label { display: grid; gap: 6px; }
+.image-text-editor input[type=color] { width: 100%; min-height: 40px; padding: 3px; border: 1px solid #314254; border-radius: 8px; background: transparent; }
+.text-editor-checkbox { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+.text-editor-checkbox input { width: auto; }
+.text-editor-error { color: var(--danger, #ffb3b3); padding: 10px; border: 1px solid currentColor; border-radius: 8px; }
+.text-editor-exports { margin-top: 18px; }
+@media (max-width: 480px) {
+  .text-editor-actions > .quiet-button { flex: 1 1 100%; text-align: center; }
+  .text-editor-grid { grid-template-columns: 1fr; }
+}

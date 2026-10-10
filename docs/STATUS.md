@@ -115,6 +115,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   profile documents. Core retains the conversations and verifies proposal links
   on generated images. Applying a proposal precedes explicit local generation;
   the specialist's text consultation receives no reference image bytes.
+  A browser editor adds exact, editable text over verified originals, with PNG,
+  standalone SVG and portable JSON exports. Reopening a project checks its
+  embedded image and preserves the archived source; editing starts no GPU work.
 - **Pipeline.** List, dossier and Planning references share Core's read-only
   next-action projection. **Needs attention** pages the engineering and
   private-lane queues separately, with an exact total or an explicit lower

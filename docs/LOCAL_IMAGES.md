@@ -47,6 +47,24 @@ Conversation continuation links still restore the saved draft, with its origin
 shown. A plain visit starts with an empty preview; an active or uncertain
 operation resumes observation instead of starting another calculation.
 
+The result panel's **Textes exacts et éditables** editor places text over a
+verified archived original in the browser. Select a completed image and choose
+**Ajouter des textes à cette image** to start a project. Labels have editable wording,
+position, size, alignment, text colour and an optional background. Positioning
+uses the image's native dimensions, including when its preview is scaled.
+This finishing step runs on the browser CPU and creates no generation request
+or GPU reservation. The archived original and its ordinary download stay intact.
+
+Download the composition as PNG, as a standalone SVG containing the source
+image and editable text, or as an editable JSON project. The project embeds
+the original PNG/JPEG bytes, their SHA-256 and dimensions, and the labels under
+`agentx.image-text-project/v1`. **Rouvrir un projet JSON** restores it without archive
+access, including on a plain visit with no selected operation. Imported projects
+are checked for bounded image data, dimensions and matching SHA before image
+decoding. An operation ID in an imported file records provenance; it does not
+grant archive access. Text and source bytes remain in the browser and downloaded
+files; saving a derived composition to Core's library is not part of this editor.
+
 Read-only `GET /api/images/workshop` reports the configured worker, model
 components, step count and pixel budgets. `GET /api/images/operations/:id/details`
 reports that operation's saved recipe and request, actual archived dimensions
