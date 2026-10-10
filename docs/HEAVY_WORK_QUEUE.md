@@ -137,6 +137,15 @@ an executor, and cannot reserve or dispatch through this capability. Personal
 errands remain personal tasks; implementation work remains Pipeline. A queue
 completion never marks a linked task or GitHub issue done.
 
+A Nestor proposal has no executor. To carry it into execution, the operator
+submits a reviewed manifest with its supported executor and a stable new key,
+copies the task/issue references and sets `source.ref` to
+`queue-request:<proposal-id>`. After confirming that submission, cancel the
+unstarted proposal using its current revision, then reserve/run the execution
+request. Keep both IDs as intent and execution evidence. Do not attempt to run
+the executor-free proposal or replace its immutable intent under the old key.
+Both records belong to this same Core queue; no second queue is introduced.
+
 The native `work_queue` tool uses the private owner session and native run/call
 identity. Family and group sessions receive no tool. Configured morning jobs
 receive read-only access. Main needs an explicit `work_queue` grant; this adds
