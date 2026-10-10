@@ -28,9 +28,20 @@ Core reaches the service through `VOIX_BASE_URL` (and `VOIX_FALLBACK_URL`).
 | `GET /config`, `POST /config` | Speech choices only: engine, default language, per-language voices |
 | `POST /diagnostics/tts-smoke` | One synthesis, timed, without returning audio |
 
-`/health` answers `status`, `version`, `warmup` and a constant `running: false`
+`/health` answers `status`, `version`, `warmup`, current `recognition` state and a constant `running: false`
 kept for callers written for the earlier service. Uploaded audio is decoded in
 memory and never stored; logs carry sizes and timings, never text.
+Recognition serializes model loads and decoding, including optional warm-up, so
+uploads cannot overlap GPU inference on the same Whisper model. Warm-up skips a
+busy recognizer and never runs the expensive CPU fallback. A CUDA failure keeps
+the current utterance on CPU, then makes the configured GPU eligible for retry
+after 30 seconds. Consecutive CUDA failures back off to at most five minutes.
+The next upload or eligible warm-up tries recovery; discovery never invokes a
+model. A successful decode restores GPU preference and releases cached CPU
+weights. Explicit CPU deployments stay on CPU. `/health` remains HTTP 200 for
+liveness but reports `status: degraded` during GPU fallback; `/v1/models` also
+reports the active backend, failure category and retry delay. Logs record safe
+CUDA failure categories and recovery, without exception payloads or transcripts.
 Uploaded transcription requires confident speech before decoding words; audio
 with no detected speech returns empty text. `WHISPER_VAD_THRESHOLD` tunes that
 probability threshold. Weaker phonemes remain accepted after speech starts, and

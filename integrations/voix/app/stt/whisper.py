@@ -1,10 +1,12 @@
 """faster-whisper STT, GPU-first, in-memory audio.
 
 A caller uploads one complete utterance and receives its text (beam_size=5,
-GPU float16). Falls back to CPU int8 once if the CUDA runtime is unavailable.
+GPU float16). CUDA failures use CPU int8 with bounded, request-driven GPU recovery.
 """
 from __future__ import annotations
 
+import logging
+import math
 import os
 import sys
 import threading
@@ -21,10 +23,24 @@ from app.stt.vocabulary import normalize_transcript
 _models: dict[tuple[str, str], object] = {}
 _models_lock = threading.Lock()
 _prefer_cpu = settings.whisper_device == "cpu"
+_inference_lock = threading.RLock()
+_state_lock = threading.Lock()
+_retry_at = 0.0
+_gpu_failures = 0
+_failure_reason: str | None = None
+_retrying = False
+_RETRY_SECONDS = 30
+_MAX_RETRY_SECONDS = 300
+_LOG = logging.getLogger("voix.stt")
+_LOG.setLevel(logging.INFO)
+if not _LOG.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    _LOG.addHandler(_handler)
+    _LOG.propagate = False
 _dll_directories: list[object] = []
 # Monotonic time of the last completed model run, whoever asked for it.
 _last_run_at: float | None = None
-_warm_lock = threading.Lock()
 
 
 def _configure_windows_cuda_runtime() -> None:
@@ -70,21 +86,77 @@ def _is_cuda_runtime_error(exc: Exception) -> bool:
 
 
 def _active_backend() -> tuple[str, str]:
-    if _prefer_cpu:
-        return "cpu", "int8"
-    return settings.whisper_device, settings.whisper_compute_type
+    with _state_lock:
+        if _prefer_cpu:
+            return "cpu", "int8"
+        return settings.whisper_device, settings.whisper_compute_type
 
 
-def backend_status() -> dict[str, str]:
+def backend_status() -> dict:
     """Current recognition backend, including a CPU fallback; never loads a model."""
+    with _state_lock:
+        degraded = _prefer_cpu and settings.whisper_device != "cpu"
+        return {
+            "device": "cpu" if _prefer_cpu else settings.whisper_device,
+            "compute_type": "int8" if _prefer_cpu else settings.whisper_compute_type,
+            "degraded": degraded,
+            "retry_after_seconds": math.ceil(max(0, _retry_at - time.monotonic())) if degraded else 0,
+            "retrying": _retrying,
+            "consecutive_gpu_failures": _gpu_failures,
+            "failure_reason": _failure_reason,
+        }
+
+
+def _next_backend() -> tuple[str, str]:
     device, compute = _active_backend()
-    return {"device": device, "compute_type": compute}
+    with _state_lock:
+        if _prefer_cpu and settings.whisper_device != "cpu" and time.monotonic() >= _retry_at:
+            return settings.whisper_device, settings.whisper_compute_type
+    return device, compute
+
+
+def _gpu_failed(device: str, compute: str, exc: Exception) -> None:
+    global _prefer_cpu, _retry_at, _gpu_failures, _failure_reason
+    # Keep transcripts, upload paths and arbitrary exception payloads out of logs.
+    message = str(exc).lower()
+    reason = "out_of_memory" if "out of memory" in message else "cuda_runtime_error"
+    with _state_lock:
+        _prefer_cpu = True
+        _gpu_failures += 1
+        delay = min(_MAX_RETRY_SECONDS, _RETRY_SECONDS * 2 ** min(_gpu_failures - 1, 4))
+        _retry_at = time.monotonic() + delay
+        _failure_reason = reason
+    with _models_lock:
+        _models.pop((device, compute), None)
+    _LOG.warning("Recognition using CPU after %s; GPU retry eligible in %s seconds", reason, delay)
+
+
+def _gpu_recovered(device: str) -> None:
+    global _prefer_cpu, _retry_at, _gpu_failures, _failure_reason
+    if device == "cpu":
+        return
+    with _state_lock:
+        recovered = _prefer_cpu
+        _prefer_cpu, _retry_at, _gpu_failures, _failure_reason = False, 0.0, 0, None
+    if recovered:
+        with _models_lock:
+            _models.pop(("cpu", "int8"), None)
+        _LOG.info("Recognition recovered on configured GPU")
 
 
 def preload_model() -> dict[str, str]:
-    device, compute = _active_backend()
-    _get_model(device, compute)
-    return {"device": device, "computeType": compute, "model": settings.whisper_model}
+    with _inference_lock:
+        device, compute = _next_backend()
+        try:
+            _get_model(device, compute)
+        except Exception as exc:
+            if device == "cpu" or not _is_cuda_runtime_error(exc):
+                raise
+            _gpu_failed(device, compute, exc)
+            device, compute = "cpu", "int8"
+            _get_model(device, compute)
+        # Loading alone does not prove decoding recovered; only a successful run does.
+        return {"device": device, "computeType": compute, "model": settings.whisper_model}
 
 
 class Transcript(str):
@@ -150,26 +222,38 @@ def _run(model, audio: np.ndarray | str | BinaryIO, language: str, *, vad_filter
     return _transcript(normalize_transcript(text), getattr(info, "language", ""))
 
 
+def _transcribe_locked(audio, language: str, *, vad_filter: bool = False, cpu_fallback: bool = True):
+    global _retrying
+    device, compute = _next_backend()
+    initial_position = audio.tell() if hasattr(audio, "tell") else None
+    with _state_lock:
+        _retrying = _prefer_cpu and device != "cpu"
+    try:
+        try:
+            text = _run(_get_model(device, compute), audio, language, vad_filter=vad_filter)
+        except Exception as exc:
+            if device == "cpu" or not _is_cuda_runtime_error(exc):
+                raise
+            _gpu_failed(device, compute, exc)
+            if not cpu_fallback:
+                raise
+            if initial_position is not None:
+                audio.seek(initial_position)
+            return _run(_get_model("cpu", "int8"), audio, language, vad_filter=vad_filter)
+        _gpu_recovered(device)
+        return text
+    finally:
+        with _state_lock:
+            _retrying = False
+
+
 def transcribe(audio: np.ndarray, *, language: str | None = None) -> tuple[str, float]:
     """Transcribe a float32 mono array @ 16 kHz. Returns (text, elapsed_ms)."""
-    global _prefer_cpu
     audio = np.asarray(audio, dtype=np.float32).reshape(-1)
-    lang = language or settings.voix_language
-    device, compute = _active_backend()
     started = time.perf_counter()
-    try:
-        text = _run(_get_model(device, compute), audio, lang)
-    except Exception as exc:
-        if device != "cpu" and _is_cuda_runtime_error(exc):
-            _prefer_cpu = True
-            with _models_lock:
-                _models.pop((device, compute), None)
-            print("[stt] GPU path unavailable, switching to CPU int8.")
-            text = _run(_get_model("cpu", "int8"), audio, lang)
-        else:
-            raise
-    elapsed_ms = (time.perf_counter() - started) * 1000.0
-    return text, elapsed_ms
+    with _inference_lock:
+        text = _transcribe_locked(audio, language or settings.voix_language)
+    return text, (time.perf_counter() - started) * 1000.0
 
 
 def warm(*, max_age_s: float = 20.0) -> float | None:
@@ -182,18 +266,23 @@ def warm(*, max_age_s: float = 20.0) -> float | None:
     less than `max_age_s` ago, another warm call is in progress, or the model
     failed. A failure is left for the real request to report.
     """
-    if not _warm_lock.acquire(blocking=False):
+    # Optional warm-up never queues behind or overlaps an ordinary transcription.
+    if not _inference_lock.acquire(blocking=False):
         return None
     try:
-        if _last_run_at is not None and time.monotonic() - _last_run_at < max_age_s:
+        device, _ = _next_backend()
+        if device == "cpu" and settings.whisper_device != "cpu":
+            return None
+        if (device == "cpu" or not _prefer_cpu) and _last_run_at is not None and time.monotonic() - _last_run_at < max_age_s:
             return None
         try:
-            _, elapsed_ms = transcribe(np.zeros(16000, dtype=np.float32), language="fr")
+            started = time.perf_counter()
+            _transcribe_locked(np.zeros(16000, dtype=np.float32), "fr", cpu_fallback=False)
         except Exception:
             return None
-        return elapsed_ms
+        return (time.perf_counter() - started) * 1000.0
     finally:
-        _warm_lock.release()
+        _inference_lock.release()
 
 
 def transcribe_path(path: str | Path | BinaryIO, *, language: str | None = None) -> tuple[str, float]:
@@ -202,25 +291,8 @@ def transcribe_path(path: str | Path | BinaryIO, *, language: str | None = None)
     bundled VAD so silence/noise returns empty text instead of invented
     subtitle credits.
     """
-    global _prefer_cpu
-    import time as _time
-    lang = language or settings.voix_language
-    device, compute = _active_backend()
-    started = _time.perf_counter()
+    started = time.perf_counter()
     audio = path if hasattr(path, "read") else str(path)
-    initial_position = audio.tell() if hasattr(audio, "tell") else None
-    try:
-        text = _run(_get_model(device, compute), audio, lang, vad_filter=True)
-    except Exception as exc:
-        if device != "cpu" and _is_cuda_runtime_error(exc):
-            _prefer_cpu = True
-            with _models_lock:
-                _models.pop((device, compute), None)
-            print("[stt] GPU path unavailable, switching to CPU int8.")
-            if initial_position is not None:
-                audio.seek(initial_position)
-            text = _run(_get_model("cpu", "int8"), audio, lang, vad_filter=True)
-        else:
-            raise
-    elapsed_ms = (_time.perf_counter() - started) * 1000.0
-    return text, elapsed_ms
+    with _inference_lock:
+        text = _transcribe_locked(audio, language or settings.voix_language, vad_filter=True)
+    return text, (time.perf_counter() - started) * 1000.0
