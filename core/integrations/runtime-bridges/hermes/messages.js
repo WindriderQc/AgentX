@@ -21,6 +21,12 @@ function objectArguments(value) {
 }
 
 function ollamaMessages(messages) {
+  if (messages.some(message => message?.images?.length || Array.isArray(message?.content)
+    && message.content.some(part => ['image_url', 'input_image', 'image'].includes(part?.type)))) {
+    throw Object.assign(new Error('Send image analysis to the Hermes vision endpoint before local reasoning.'), {
+      statusCode: 400, code: 'HERMES_IMAGE_ROUTE_REQUIRED'
+    });
+  }
   return messages.map((message) => ({
     ...message,
     content: textContent(message?.content),
