@@ -13,6 +13,10 @@ function queryFor(feed) {
   if (feed.store.mode === 'points') {
     return { collectionName: 'livedata_points', filter: { feedId: feed.id }, tsField: 'ts' };
   }
+  // Latest-only feeds: one document per topic, never the raw points of before.
+  if (feed.store.mode === 'latest') {
+    return { collectionName: 'livedata_points', filter: { feedId: feed.id, latest: true }, tsField: 'ts' };
+  }
   return { collectionName: feed.store.collection, filter: {}, tsField: feed.store.tsField || 'timeStamp' };
 }
 

@@ -10,7 +10,7 @@
  * Feed shape:
  *   { id, label, category, kind, sourceUrl, urlTemplate?, fanout?, apiKeyEnv?,
  *     parser, intervalMs, timeout, retries, geo, mqttPublish?, legacyToggle?,
- *     store: { collection, mode: 'append'|'replace'|'points', tsField?, retention? },
+ *     store: { collection, mode: 'append'|'replace'|'points'|'latest', tsField?, retention? },
  *     enabled }
  */
 
@@ -119,6 +119,9 @@ function getSeedFeeds() {
       store: { collection: 'livedata_points', mode: 'points', retention: { maxAgeMs: int(process.env.AQI_MAX_AGE_MS, 2592000000) } } // 30d
     },
     {
+      // Latest value per topic only (for the feed list and the map). Sensor
+      // history is the IoT store's business (services/iot): storing one point
+      // per message grew by about 100,000 documents a day for a single device.
       id: 'sensors',
       label: 'MQTT Sensors',
       category: 'sensor',
@@ -127,7 +130,7 @@ function getSeedFeeds() {
       topicsEnv: 'LIVEDATA_MQTT_TOPICS', // comma-list, e.g. "sensors/#"
       geo: true,
       legacyToggle: 'sensors',
-      store: { collection: 'livedata_points', mode: 'points', retention: { maxAgeMs: int(process.env.SENSORS_MAX_AGE_MS, 2592000000) } } // 30d
+      store: { collection: 'livedata_points', mode: 'latest', retention: { maxAgeMs: int(process.env.SENSORS_MAX_AGE_MS, 2592000000) } } // a topic silent for 30d is dropped
     }
   ];
 }

@@ -81,7 +81,13 @@ when `WEATHER_API_KEY` is set. A feed that cannot run (missing key, no location,
 upstream error) reports the reason as `lastError` in `GET /api/v1/livedata/feeds`.
 `MQTT_BROKER_URL` (with optional `MQTT_USERNAME`, `MQTT_PASSWORD`) republishes
 ISS and pressure points and feeds the `sensors` feed from the topics in
-`LIVEDATA_MQTT_TOPICS`; unset, MQTT is skipped.
+`LIVEDATA_MQTT_TOPICS`; unset, MQTT is skipped. The `sensors` feed keeps the
+latest value of each topic only: one `livedata_points` document per topic
+(`latest: true`, `key` = the topic), replaced at most once a minute, for at
+most 500 topics, and dropped when its topic has been silent for
+`SENSORS_MAX_AGE_MS` (30 days). Its `/latest`, `/history` and count show those
+documents; `/stream` still pushes every message. Sensor history is kept by the
+[IoT store](#iot-devices-and-sensor-history), not by this feed.
 
 The Toolbox Live Data tab draws these feeds on a world map with the existing
 `GET` routes only (`/latest` for ISS, pressure, air quality and sensors,
@@ -316,6 +322,273 @@ brings it over either bound, the oldest are removed, never the new one. The
 state of running and failed generations is kept in memory: a restart ends a
 running generation and forgets it.
 
+## IoT devices and sensor history
+
+Data keeps a registry of the devices that speak on the MQTT broker and a
+sampled history of their readings, under `/api/v1/iot`. Devices publish as fast
+as they like; Data does not store every reading.
+
+```mermaid
+flowchart LR
+  D[Device] -->|every few seconds| B[MQTT broker]
+  B --> M[Minute being built<br/>memory]
+  M -->|when the minute ends| MB[(iot_minute_buckets<br/>kept 90 days)]
+  MB -->|closed hours| HB[(iot_hour_buckets<br/>kept without limit)]
+  B --> R[(iot_devices<br/>registry)]
+```
+
+### Topics consumed
+
+Ingestion listens on the MQTT monitor's broker connection (no third
+connection): it starts when `MQTT_BROKER_URL` is set, with or without
+`DATA_BACKGROUND_JOBS_ENABLED`, and never in a test process. No list of
+measures or devices is configured; a new one appears by publishing.
+
+| Topic | Payload | Effect |
+|---|---|---|
+| `sensors/<device>/<measure>` | a plain number (`27.2`, `-73`) | one reading: aggregated into the minute, latest value, live ring, "last seen" |
+| `sensors/<device>/availability` | `online` or `offline` | availability of the device, recorded when it changes; `online` published live also refreshes "last seen" |
+| `esp32/alive/<device>`, `esp32/data/<device>` | anything | "last seen" only, nothing stored |
+| `esp32/register`, `esp32/config` | the device id | "last seen"; `register` sets `registeredAt` |
+| `homeassistant/device/<device>/config` | Home Assistant device discovery JSON | optional: maker, model, versions, and the name, unit and device class of each component whose `state_topic` is `sensors/<device>/<measure>` |
+
+The readings bundled in `esp32/data/<device>` are not stored: they repeat the
+`sensors/...` readings under other key names, so using them would count each
+reading twice. A device that only publishes that bundle has no history.
+Retained messages are the broker's memory, not the device speaking: a retained
+availability sets the state, a retained reading is refused, and neither
+refreshes "last seen".
+
+Refused and counted in `GET /status` (`readings.refusedByReason`), never
+stored: a payload that is not a finite decimal number of at most 32 bytes
+(`not_numeric`: no JSON, `NaN`, hexadecimal or text), a topic over 200 bytes
+(`topic_too_long`) or without exactly three levels (`topic_shape`), a device
+name outside `[A-Za-z0-9][A-Za-z0-9_.-]{0,63}` (`device_name`) or a measure
+name outside `[A-Za-z0-9][A-Za-z0-9_-]{0,47}` (`measure_name`), a 101st device
+(`device_limit`), a 33rd measure on one device (`measure_limit`), an
+availability other than `online`/`offline` (`availability_value`), a retained
+reading (`retained_reading`), and a discovery payload over 32 KiB, not a JSON
+object, or describing nothing (`discovery_payload`).
+
+### What is stored, and for how long
+
+| Collection | One document per | Kept |
+|---|---|---|
+| `iot_minute_buckets` | device, measure and minute | 90 days (TTL on `ts`) |
+| `iot_hour_buckets` | device, measure and hour | without limit |
+| `iot_devices` | device (`_id` = device id) | until removed by hand |
+| `iot_state` | the rollup position (`rollup`) and the backfill state (`backfill_livedata_sensors`) | — |
+
+Both bucket collections have a unique index on `{ device, measure, ts }`.
+Heartbeats are never stored. The last 60 readings of each measure are kept in
+memory only, for `GET /devices/:id/live`.
+
+A bucket holds `device`, `measure`, `ts` (the start of its minute or hour,
+UTC) and:
+
+| Field | Meaning |
+|---|---|
+| `count` | number of readings |
+| `min`, `max` | the true extremes: a real peak stays visible |
+| `mean` | arithmetic mean, rounded to 6 decimals |
+| `median` | the central value: a stray glitch does not move it |
+| `first`, `last` | times of the first and last reading |
+| `parts` (minute) | number of writes the bucket was made of: 1, or more after a late reading or a restart inside the minute |
+| `minutes` (hour) | number of minute buckets the hour was made from |
+| `partial` (hour) | `true` when the hour was built from an incomplete set of minutes (see below) |
+
+Readings are stamped with Data's clock at reception; a device's own clock is
+not used. A minute is written five seconds after it ends, and the open minute
+at shutdown, so a crash loses at most the open minute. Readings may arrive in
+any order inside their minute. A reading whose time is more than two minutes
+old is refused (`late`); one for a minute already written is merged into the
+stored bucket: `count`, `min`, `max`, `mean`, `first` and `last` merge exactly,
+and since the earlier readings are gone, the `median` kept is that of the part
+with more readings. The same merge joins the part written at shutdown with the
+rest of that minute after a restart. Beyond 600 readings in one minute the
+median is taken on the first 600; the other fields stay exact. A minute bucket
+whose write fails is kept in memory and retried at the next tick (at most
+20,000 buckets).
+
+Every five minutes, and at startup, the rollup writes the hour buckets of
+every hour that has been closed for five minutes. An hour bucket is derived
+from that hour's minute buckets: `count` is their sum, `min`/`max` the true
+extremes, `mean` is weighted by `count`, and **`median` is the median of the
+minute medians**, not the median of the raw readings, which are no longer
+there. The rollup replaces what it wrote, so running it again changes nothing;
+it resumes from its stored position, skips stretches without data, and catches
+up after any downtime shorter than the minute retention. An hour within two
+days of leaving the minute tier may already have lost minutes to the TTL: it
+never replaces a stored hour bucket and, if none exists, is written with
+`partial: true`.
+
+### Devices
+
+A device document holds its id, `firstSeenAt`, `lastSeenAt` (the last message
+the device itself sent on any topic above), `availability` (`online`,
+`offline` or `unknown`, with `since`), `registeredAt`, `discoveryAt`, `info`
+from discovery, its measures (`key`, `name`, `unit`, `deviceClass`, `source`,
+latest `value` and `at`), and the owner's `displayName`, `location` and
+`notes`. Without discovery a measure gets a name from its key and a default
+unit by name: `temperature` and `cpu_temperature` °C, `pressure` hPa,
+`altitude` m, `humidity` %, `battery_voltage` V, `wifi_rssi` dBm; any other
+measure has no unit. "Last seen" and latest values are written to MongoDB once
+a minute; a new device, a change of availability, discovery or staleness
+within five seconds.
+
+`status` is what a page should show:
+
+| `status` | When |
+|---|---|
+| `online` | availability is `online` and the device spoke in the last 5 minutes |
+| `offline` | availability is `offline` (the broker published the device's last-will) |
+| `stale` | availability is not `offline`, but the device has been silent for more than 5 minutes (heartbeats stopped while the broker still holds `online`) |
+| `unknown` | the device speaks but never published an availability |
+
+Silence is counted from the later of the device's last message and the moment
+Data's broker connection came up, and is not judged while that connection is
+down, so a restart of Data or of the broker is not a silence. A device stays
+`offline` until it publishes `online` again, even if other messages arrive.
+
+### API
+
+All routes answer `{ status: "success", ok: true, data }`, or `{ status:
+"error", ok: false, message, error }` with 400 (invalid request), 404 (unknown
+device), 503 (no database, or no broker link for a command) or 504.
+
+`GET /api/v1/iot/status` — `data`:
+
+```json
+{
+  "consumer": { "running": true, "configured": true, "connected": true, "broker": "host:1883", "connection": "mqtt-monitor", "startedAt": "ISO" },
+  "devices": { "tracked": 1, "limit": 100, "measuresPerDeviceLimit": 32, "online": 1, "offline": 0, "stale": 0, "unknown": 0 },
+  "messages": { "received": 1200, "heartbeats": 600 },
+  "readings": { "accepted": 600, "refused": 0, "refusedByReason": {}, "lastAt": "ISO" },
+  "buckets": { "written": 60, "open": 6, "pendingRetry": 0, "dropped": 0, "lastWriteAt": "ISO", "lastError": null },
+  "rollup": { "through": "ISO", "lastRunAt": "ISO", "lastHours": 1, "lastBuckets": 6, "more": false },
+  "backfill": { "state": "done", "points": 40000, "buckets": 3400, "skipped": 0, "removed": 40000, "startedAt": "ISO", "finishedAt": "ISO" },
+  "settings": { "minuteRetentionDays": 90, "staleAfterSeconds": 300, "liveRingSize": 60 }
+}
+```
+
+Counters start at zero with each start of Data. `rollup` and `backfill` are
+`null` until they have run; `rollup.through` is the start of the first hour
+not rolled up yet.
+
+`GET /api/v1/iot/devices` — `data: { devices: [device], count }`, sorted by id.
+`GET /api/v1/iot/devices/:id` — `data: device`:
+
+```json
+{
+  "id": "SENSOR_01", "displayName": null, "location": null, "notes": null,
+  "status": "online",
+  "availability": { "state": "online", "since": "ISO" },
+  "staleSince": null,
+  "firstSeenAt": "ISO", "lastSeenAt": "ISO", "lastSeenAgeMs": 420,
+  "registeredAt": null, "discoveryAt": "ISO",
+  "info": { "name": "SENSOR_01", "manufacturer": "Maker", "model": "Sensor node", "swVersion": null, "hwVersion": null, "origin": "Firmware" },
+  "measures": [
+    { "key": "temperature", "name": "Temperature", "unit": "°C", "deviceClass": "temperature", "source": "discovery",
+      "firstSeenAt": "ISO", "value": 27.2, "at": "ISO", "ageMs": 1200 }
+  ]
+}
+```
+
+`source` is `discovery` or `default`. A measure announced by discovery and
+not read yet has `value`, `at` and `ageMs` null. Ages are computed at the time
+of the request.
+
+`PATCH /api/v1/iot/devices/:id` — body with one or more of `displayName` (at
+most 80 characters), `location` (80) and `notes` (1,000); each is a string, or
+`null` or an empty string to clear it. Any other field is refused with 400.
+Returns the device.
+
+`GET /api/v1/iot/devices/:id/history` — query:
+
+| Parameter | Value | Default |
+|---|---|---|
+| `measure` | one measure or several separated by commas (`temperature,pressure`), at most 12, each known for the device | every measure of the device (400 when it has more than 12) |
+| `from`, `to` | ISO 8601 or epoch milliseconds; `from` is inclusive and moved back to the start of its bucket, `to` is exclusive | `to` = now, `from` = `to` − 24 h |
+| `resolution` | `auto`, `minute`, `5min`, `30min`, `hour`, `2hour`, `day` | `auto` |
+
+`auto` picks the smallest bucket that keeps each measure at 1,500 points or
+fewer: `minute` up to 25 hours, `5min` up to about 5 days, `30min` up to about
+31 days, `hour` up to about 62 days, `2hour` up to 125 days, `day` beyond.
+`minute`, `5min` and `30min` are computed from the minute tier and so reach
+back 90 days; for a range starting earlier, `auto` chooses among `hour`,
+`2hour` and `day`. `hour` and above come from the hour tier; hours of the last
+48 hours that the rollup has not written yet are derived on the fly from
+minute buckets, and a point containing an hour still open carries `partial:
+true`. A larger bucket combines stored buckets exactly like the rollup (sum of
+`count`, true `min`/`max`, weighted `mean`, median of the stored medians).
+Buckets are aligned on UTC. A request for more than 5,000 points per measure
+is refused with 400. `data`:
+
+```json
+{
+  "device": "SENSOR_01", "from": "ISO", "to": "ISO",
+  "resolution": "auto", "bucket": "5min", "bucketSeconds": 300, "source": "minute",
+  "measures": {
+    "temperature": { "name": "Temperature", "unit": "°C", "points": [
+      { "ts": "ISO", "count": 60, "min": 26.9, "max": 27.4, "mean": 27.18, "median": 27.2,
+        "first": "ISO", "last": "ISO", "buckets": 5 }
+    ] }
+  }
+}
+```
+
+`bucket` is the size used, `source` the tier read (`minute` or `hour`),
+`buckets` the number of stored buckets of that tier a point combines. Points
+are oldest first; a span without readings has no point; every asked measure is
+present, with an empty list when it has no data. The minute still being built
+is not in history: use `/live` for it.
+
+`GET /api/v1/iot/devices/:id/live` — optional `measure` (as above, default
+all). The last readings held in memory, at most 60 per measure, oldest first;
+empty after a restart of Data. `data`:
+
+```json
+{ "device": "SENSOR_01", "status": "online", "ringSize": 60,
+  "measures": { "temperature": { "name": "Temperature", "unit": "°C", "points": [ { "ts": "ISO", "value": 27.2 } ] } } }
+```
+
+`POST /api/v1/iot/devices/:id/commands` — body `{ "command": "io_on" | "io_off"
+| "reboot", "gpio": 0–48 }`; `gpio` is a required integer for `io_on` and
+`io_off`, and refused for `reboot`, as is any other field. It publishes
+`esp32/<device>/io/on` or `esp32/<device>/io/off` with the GPIO number as
+payload, or `esp32/<device>/reboot` with an empty payload, through the MQTT
+monitor's publish: QoS 0, not retained, never queued. 400 for an invalid body,
+404 for a device the registry does not hold, 503 when the broker is not
+configured or not connected, 504 when the write is not confirmed within 5 s.
+Each valid command adds `iot.command_sent` or `iot.command_failed` to the
+activity log. `data`:
+
+```json
+{ "device": "SENSOR_01", "deviceStatus": "online", "command": "io_on", "gpio": 5,
+  "topic": "esp32/SENSOR_01/io/on", "qos": 0, "retain": false, "publishedAt": "ISO" }
+```
+
+A published command is not a confirmed action: the device answers nothing,
+only switches a GPIO configured as a digital output, and an offline device
+never receives it. Like the MQTT routes, these have no login of their own.
+
+### Backfill of the former raw points
+
+Before the IoT store, the `sensors` live feed stored one `livedata_points`
+document per message. At its first start with this version, Data converts
+those raw points (`feedId: "sensors"` without `latest: true`) into minute
+buckets, one hour of points at a time, oldest first, and deletes each hour
+once its buckets are written. A minute that already has a bucket is left as it
+is, so the conversion can be interrupted and resumed at the next start without
+damage; the rollup then redoes the hours concerned. Points that are not a
+numeric `sensors/<device>/<measure>` reading are counted as `skipped` and
+deleted. When no raw point is left the state becomes `done` and the conversion
+never runs again; `GET /status` shows its counters. Devices found this way are
+added to the registry without a "first seen" event.
+
+There is no environment variable for the IoT store: it follows
+`MQTT_BROKER_URL`, `MQTT_USERNAME` and `MQTT_PASSWORD`.
+
 ## Activity log
 
 Data records what it does and notices in `appevents`, kept 30 days.
@@ -349,10 +622,17 @@ field, a message over 300 characters or a `meta` over 4 KiB are refused.
 | `livedata.feed_recovered` | a failing feed fetches again | info |
 | `mqtt.monitor_disconnected` | the MQTT monitor loses, or cannot open, its broker connection | warning |
 | `mqtt.monitor_connected` | the MQTT monitor connects again after a disconnection | info |
+| `iot.device_first_seen` | a device speaks on the broker for the first time (`meta.deviceId`); a device found only by the backfill of old points is not announced | info |
+| `iot.device_online` | a device publishes `online` on its availability topic | info |
+| `iot.device_offline` | the broker publishes `offline` for a device (its last-will); `meta.learnedFromRetained` is true when Data learned it from the retained message at connection | warning |
+| `iot.device_stale` | a device not reported offline has been silent for 5 minutes | warning |
+| `iot.device_recovered` | a stale device speaks again | info |
+| `iot.command_sent` | a command was published to a device (`meta.command`, `meta.gpio`, `meta.topic`) | info |
+| `iot.command_failed` | a valid command could not be published (no broker link, or unconfirmed write) | warning |
 
 Only changes are recorded: a feed that keeps failing, a broker that keeps
 refusing or a device seen at every sweep adds nothing. The last state reported
-for each collector, GPU host, feed and the MQTT monitor is kept in
+for each collector, GPU host, feed, IoT device and the MQTT monitor is kept in
 `activity_state`, so a restart reports nothing twice; "first seen" comes from
 the creation of the registry row or device row itself. A collector or host that
 was already away when its state was first recorded is not announced. Silence is

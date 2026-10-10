@@ -1,5 +1,6 @@
 const { log } = require('./logger');
 const hardwareTelemetry = require('../services/hardwareTelemetryService');
+const iotBuckets = require('../services/iot/bucketStore');
 
 // Uniqueness on `mac` must NOT apply to MAC-less devices. nmap returns some hosts
 // without a MAC (the scanning host itself, L3 devices), which the upsert stores as
@@ -51,6 +52,8 @@ const INDEX_SPECS = [
   { collection: 'dedup_report_details', key: { reportId: 1, ordinal: 1 }, options: { name: 'report_ordinal' } },
   // Every latest/history/count/prune query filters on the feed and orders by time.
   { collection: 'livedata_points', key: { feedId: 1, ts: -1 }, options: { name: 'feed_ts_desc' } },
+  // IoT sensor history: minute buckets (90-day TTL) and hour buckets (kept).
+  ...iotBuckets.INDEX_SPECS,
 
   // TTL indexes — automatic retention for high-growth collections
   { collection: 'appevents', key: { timestamp: 1 }, options: { name: 'ttl_30d', expireAfterSeconds: 2592000 } },

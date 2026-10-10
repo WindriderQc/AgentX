@@ -5,6 +5,8 @@
  *   - replace: atomic temp-collection rename swap (USGS quakes pattern).
  *   - points:  generic `livedata_points` time-series for the long tail,
  *              scoped/pruned per feedId.
+ *   - latest:  one `livedata_points` document per topic, replaced in place
+ *              at most once a minute: the current value, no history.
  *
  * Generalizes the original ISS bulk-prune + quakes atomic swap.
  */
@@ -14,6 +16,7 @@ async function write(db, feed, docs) {
     case 'append': return appendDocs(db, feed, docs);
     case 'replace': return replaceDocs(db, feed, docs);
     case 'points': return writePoints(db, feed, docs);
+    case 'latest': return writeLatest(db, feed, docs);
     default: throw new Error(`Unknown store mode: ${feed.store && feed.store.mode}`);
   }
 }
@@ -102,4 +105,44 @@ async function writePoints(db, feed, docs) {
   return stamped.length;
 }
 
-module.exports = { write, appendDocs, replaceDocs, writePoints, pruneCollection, pruneBy };
+// Latest-only writer for push-in feeds that speak every few seconds: one
+// document per topic ({ feedId, latest: true, key, ts, payload, geo? }),
+// replaced at most once per LATEST_MIN_INTERVAL_MS, for at most
+// LATEST_MAX_KEYS topics. Messages in between are not written at all.
+const LATEST_MIN_INTERVAL_MS = 60_000;
+const LATEST_MAX_KEYS = 500;
+const LATEST_MAX_KEY_BYTES = 256;
+const latestWrites = new Map(); // "feedId\nkey" -> time of the last write
+
+async function writeLatest(db, feed, docs) {
+  if (!docs || docs.length === 0) return 0;
+  const col = db.collection('livedata_points');
+  let written = 0;
+  for (const d of docs) {
+    const payload = d.payload !== undefined ? d.payload : d;
+    const key = typeof payload?.topic === 'string' ? payload.topic : '';
+    if (!key || Buffer.byteLength(key, 'utf8') > LATEST_MAX_KEY_BYTES) continue;
+    const slot = `${feed.id}\n${key}`;
+    const nowMs = Date.now();
+    const last = latestWrites.get(slot);
+    if (last === undefined ? latestWrites.size >= LATEST_MAX_KEYS : nowMs - last < LATEST_MIN_INTERVAL_MS) continue;
+    latestWrites.set(slot, nowMs); // before the write: two messages of one topic never upsert together
+    const point = { feedId: feed.id, latest: true, key, ts: d.ts || d.timeStamp || new Date(nowMs), payload };
+    const geo = d.geo || (Number.isFinite(d.lat) && Number.isFinite(d.lon) ? { lat: d.lat, lon: d.lon } : null);
+    await col.updateOne(
+      { feedId: feed.id, latest: true, key },
+      geo ? { $set: { ...point, geo } } : { $set: point, $unset: { geo: '' } },
+      { upsert: true }
+    );
+    written += 1;
+  }
+  const r = feed.store.retention;
+  if (written && r) await pruneBy(col, { feedId: feed.id, latest: true }, 'ts', r);
+  return written;
+}
+
+module.exports = {
+  write, appendDocs, replaceDocs, writePoints, writeLatest, pruneCollection, pruneBy,
+  LATEST_MIN_INTERVAL_MS, LATEST_MAX_KEYS,
+  _resetLatestWrites: () => latestWrites.clear()
+};

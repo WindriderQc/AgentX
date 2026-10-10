@@ -1981,7 +1981,7 @@
       "default": null,
       "category": "network",
       "secret": false,
-      "description": "MQTT broker for Data live feeds and the Toolbox MQTT monitor. Unset: MQTT is skipped."
+      "description": "MQTT broker for Data live feeds, the Toolbox MQTT monitor and the IoT store (device registry and sensor history). Unset: MQTT is skipped."
     },
     "MQTT_ISS_TOPIC": {
       "services": [
@@ -2940,7 +2940,7 @@
       "default": null,
       "category": "operations",
       "secret": false,
-      "description": "Retention of Data sensor points. Unset: 30 days."
+      "description": "Silence after which Data drops the latest point of an MQTT sensor topic (sensors live feed). Unset: 30 days."
     },
     "STORAGE_AGENT_SOURCES": {
       "services": [

@@ -47,7 +47,14 @@ const EVENT_TYPES = Object.freeze({
   'livedata.feed_failing': 'A live feed started to fail.',
   'livedata.feed_recovered': 'A failing live feed fetched again.',
   'mqtt.monitor_disconnected': 'The MQTT monitor lost, or could not open, its broker connection.',
-  'mqtt.monitor_connected': 'The MQTT monitor connected again after a disconnection.'
+  'mqtt.monitor_connected': 'The MQTT monitor connected again after a disconnection.',
+  'iot.device_first_seen': 'An IoT device spoke on the broker for the first time.',
+  'iot.device_online': 'An IoT device published online on its availability topic.',
+  'iot.device_offline': 'The broker published offline for an IoT device (its last-will).',
+  'iot.device_stale': 'An IoT device not reported offline has been silent for five minutes.',
+  'iot.device_recovered': 'A stale IoT device spoke again.',
+  'iot.command_sent': 'A command was published to an IoT device.',
+  'iot.command_failed': 'A command to an IoT device could not be published.'
 });
 
 function validationError(message) {
