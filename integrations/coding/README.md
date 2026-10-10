@@ -64,7 +64,8 @@ hard ceiling. Cache churn, touching files, repeated source states, repeated
 identical test outcomes and model activity do not extend it. The runner also
 bounds model requests (128), model waiting (22 minutes), generation (30 minutes),
 tools (15 minutes) and tests (40 minutes), with a 45-minute useful-progress
-limit outside model waiting and tests. Heartbeats continue during those waits.
+limit outside an active test. Repeated model waits and reading tools cannot
+reset this limit. Heartbeats continue during those waits.
 
 On a controlled stop, the child process group and its in-flight model relay are
 closed, source changes are committed locally and the task is blocked. A failed
@@ -72,6 +73,19 @@ or unknown last observed test, changed dependency files, or a previous checkpoin
 containing generated runtime artifacts prevents publication. An abrupt host
 failure stays unknown for an operator to reconcile. Successful delivery opens
 one draft PR and reuses it on subsequent handoffs.
+
+Pipeline's **Stop worker** requests a cooperative stop for the exact task and
+request id. The host serializes it with launches and refuses a stale selection;
+it never signals a shared unit. Repeated stops are idempotent. The runner polls
+the private stop receipt, closes its child group and model relay, preserves raw
+outputs and source checkpoints outside the product repository, and records
+`operator_stop`. SIGTERM/SIGINT use the same runner cleanup. An accepted stop is
+not a terminal result: Core can still drain its already-dispatched model stream
+to collect terminal evidence. Verify the worker exit and Core's exact inference
+completion receipt separately before declaring the model stopped. No retry
+follows an operator stop. Stop acceptance and entry into publication share a
+host lock: an accepted stop prevents publication; once publication has started,
+the host refuses a stop that could no longer revoke its external effects.
 
 ## Dependencies
 

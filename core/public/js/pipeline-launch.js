@@ -76,7 +76,7 @@
         this.error = null;
         const run = this.control.run;
         if (!this.pending && run?.requestId && run.pipelineId && Number.isSafeInteger(run.expectedAttemptCount)
-          && ['submitting', 'uncertain', 'accepted', 'running', 'unknown', 'waiting'].includes(run.phase)) {
+          && ['submitting', 'uncertain', 'accepted', 'running', 'stopping', 'unknown', 'waiting'].includes(run.phase)) {
           this.pending = { requestId: run.requestId, pipelineId: run.pipelineId, expectedAttemptCount: run.expectedAttemptCount };
           this.persist();
         }
@@ -122,6 +122,24 @@
       try {
         await this.boundedRequest(`/api/runtime-bridges/coding-dispatch/runs/${this.pending.requestId}/cancel`, { method: 'POST' });
       } catch (error) { this.error = error.message; }
+      finally { this.submitting = false; await this.refresh(); }
+      return true;
+    }
+    canStop() {
+      return !this.disposed && !this.submitting && !this.checking && !this.error && Boolean(this.pending)
+        && this.control?.run?.requestId === this.pending.requestId
+        && this.control.run.pipelineId === this.pending.pipelineId && this.control.run.canStop === true;
+    }
+    async stop() {
+      if (!this.canStop()) return false;
+      const selection = { ...this.pending };
+      this.submitting = true;
+      this.changed();
+      try {
+        await this.boundedRequest(`/api/runtime-bridges/coding-dispatch/runs/${selection.requestId}/stop`, {
+          method: 'POST', body: JSON.stringify({ pipelineId: selection.pipelineId, confirm: true })
+        });
+      } catch (error) { this.error = `${error.message}. Checking the same stop request; nothing was relaunched.`; }
       finally { this.submitting = false; await this.refresh(); }
       return true;
     }

@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from urllib.request import urlopen
 
@@ -92,13 +93,14 @@ def status(key: str | None = None) -> dict:
     latest = RECEIPTS / "latest"
     run = read_receipt(key or (latest.read_text().strip() if latest.exists() else ""))
     progress = read_progress(run) if run else None
+    current = bool(run and latest.exists() and latest.read_text().strip() == run["requestId"])
     if run and run["phase"] == "accepted":
-        run["phase"] = "running" if busy else "finished" if progress and progress["phase"] == "finished" else "unknown"
-        run["message"] = ("The coding worker is running." if busy
+        run["phase"] = "running" if busy and current else "finished" if progress and progress["phase"] == "finished" else "unknown"
+        run["message"] = ("The coding worker is running." if run["phase"] == "running"
                           else "The coding worker stopped. Read its recorded result." if run["phase"] == "finished"
                           else "The host unit stopped without a terminal receipt. Inspect the task and checkpoint.")
     elif run and run["phase"] == "uncertain":
-        run["phase"] = "running" if busy else "unknown"
+        run["phase"] = "running" if busy and current else "unknown"
         run["message"] = "Read the task and host unit to reconcile this launch; it will not be started again."
     if key and not run:
         legacy = LEGACY_RECEIPTS / f"{key}.json"
@@ -107,6 +109,12 @@ def status(key: str | None = None) -> dict:
                if legacy.exists() else {"requestId": key, "phase": "not_received", "message": "No receipt for this request."})
     if run and progress:
         run["progress"] = progress
+    if run and not run.get("retired"):
+        run["canStop"] = bool(current and busy and run["phase"] == "running"
+                               and not (progress and (progress["phase"] == "finished" or progress["stage"] == "publishing")))
+        if (RECEIPTS / f"{run['requestId']}.stop.json").is_file() and run["canStop"]:
+            run.update(phase="stopping", canStop=False,
+                       message="Stop requested; waiting for the local checkpoint. Core may still drain the in-flight inference.")
     return {
         "contractVersion": 2, "available": True, "busy": busy,
         "observedAt": datetime.now(timezone.utc).isoformat(),
@@ -154,6 +162,35 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int) -> dict:
         return {"accepted": True, "replayed": False, "pipelineId": pipeline_id, "run": run}
 
 
+def stop(pipeline_id: str, key: str) -> dict:
+    """Record a cooperative stop for this request only; never signal a shared unit."""
+    STATE.mkdir(parents=True, exist_ok=True)
+    with (STATE / "coding-dispatcher-control.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        run = read_receipt(key)
+        if not run or run["pipelineId"] != pipeline_id:
+            raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "No matching coding request and task.")
+        progress = read_progress(run)
+        if progress and progress["phase"] == "finished":
+            return {"accepted": True, "alreadyFinished": True, "requestId": key, "pipelineId": pipeline_id}
+        if progress and progress["stage"] == "publishing":
+            raise ControlError("CODING_DISPATCH_STOP_TOO_LATE", "Publication already started; its external effects cannot be revoked by stopping the worker.")
+        latest = RECEIPTS / "latest"
+        if not latest.exists() or latest.read_text().strip() != key or not unit_active():
+            raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "This request is not the active worker; inspect its preserved receipt.")
+        path = RECEIPTS / f"{key}.stop.json"
+        if not path.exists():
+            value = {"requestId": key, "pipelineId": pipeline_id,
+                     "requestedAt": datetime.now(timezone.utc).isoformat()}
+            with tempfile.NamedTemporaryFile(mode="w", dir=RECEIPTS, prefix=".stop-", delete=False) as output:
+                json.dump(value, output)
+                output.flush()
+                os.fsync(output.fileno())
+                temporary = output.name
+            os.replace(temporary, path)
+        return {"accepted": True, "requestId": key, "pipelineId": pipeline_id, "phase": "stopping"}
+
+
 def main() -> int:
     action, values = (sys.argv[1] if len(sys.argv) > 1 else ""), sys.argv[2:]
     try:
@@ -163,6 +200,8 @@ def main() -> int:
             data = status(values[0] if values else None)
         elif action == "launch" and len(values) == 3 and re.fullmatch(r"\d{4}", values[0]) and values[2].isdigit():
             data = launch(values[0], values[1], int(values[2]))
+        elif action == "stop" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
+            data = stop(values[0], values[1])
         else:
             raise ControlError("CODING_DISPATCH_INVALID_REQUEST", "Invalid control arguments.", 400)
         print(json.dumps({"status": "success", "data": data}))

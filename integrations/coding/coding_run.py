@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -46,6 +47,7 @@ RECEIPTS = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) 
 RELAY_PORT = 8377
 PACKAGE_DIRS = ("core", "benchmark", "rag", "data")
 INSTALL_TIMEOUT_SECONDS = 1800
+CLONE_TIMEOUT_SECONDS = 1800
 
 _spec = importlib.util.spec_from_file_location("model_relay", HERE / "model_relay.py")
 model_relay = importlib.util.module_from_spec(_spec)
@@ -260,22 +262,28 @@ def tail(path: Path, size: int = 6000) -> str:
 
 def supervise(command: list[str], progress=None, home=None, workspace=None) -> subprocess.CompletedProcess:
     """Poll the child while retaining raw stdout/stderr outside the repository."""
-    with tempfile.TemporaryDirectory(prefix="agentx-coding-output-") as directory:
-        stdout, stderr = Path(directory) / "stdout", Path(directory) / "stderr"
-        with stdout.open("wb") as out, stderr.open("wb") as err:
-            process = subprocess.Popen(command, stdout=out, stderr=err, start_new_session=True)
-            try:
-                while process.poll() is None:
-                    if progress and progress.tick(home, workspace):
-                        terminate(process)
-                        break
-                    time.sleep(2)
-            finally:
-                if process.poll() is None:
+    if progress and progress.path:
+        output_root = progress.path.parent / f"{progress.request_id}.output"
+        output_root.mkdir(mode=0o700, exist_ok=True)
+        directory = Path(tempfile.mkdtemp(prefix=f"{progress.stage}-", dir=output_root))
+    else:
+        directory = Path(tempfile.mkdtemp(prefix="agentx-coding-output-"))
+    # Raw output survives every exit, including an operator stop. It never enters Git.
+    stdout, stderr = directory / "stdout", directory / "stderr"
+    with stdout.open("wb") as out, stderr.open("wb") as err:
+        process = subprocess.Popen(command, stdout=out, stderr=err, start_new_session=True)
+        try:
+            while process.poll() is None:
+                if progress and progress.tick(home, workspace):
                     terminate(process)
-        if progress and home and workspace:
-            progress.observe(home, workspace)
-        return subprocess.CompletedProcess(command, process.wait(), tail(stdout), tail(stderr))
+                    break
+                time.sleep(2)
+        finally:
+            if process.poll() is None:
+                terminate(process)
+    if progress and home and workspace:
+        progress.observe(home, workspace)
+    return subprocess.CompletedProcess(command, process.wait(), tail(stdout), tail(stderr))
 
 
 def terminate(process):
@@ -345,6 +353,19 @@ def push_and_open_pr(workspace: Path, branch: str, task_id: str, title: str, sum
     return created["html_url"]
 
 
+def begin_publication(progress) -> bool:
+    # Serialize the irreversible boundary with cooperative stop acceptance.
+    # Once this stage is durable, the host refuses a stop as too late to revoke publication.
+    RECEIPTS.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (RECEIPTS.parent / "coding-dispatcher-control.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if progress.check_stop():
+            return False
+        progress.set_stage("publishing")
+        progress.write()
+        return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("task_id")
@@ -363,6 +384,11 @@ def main() -> int:
 
     progress = coding_progress.Progress(args.task_id, args.request_id, args.timeout_seconds, receipts=RECEIPTS,
         heartbeat=lambda: request(f"{CORE}/api/pipeline/tasks/{args.task_id}/heartbeat", {"assignee": WORKER}))
+    previous_handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT)}
+    def stop_worker(_signum, _frame):
+        progress.stop_reason = "operator_stop"
+    for signum in previous_handlers:
+        signal.signal(signum, stop_worker)
     try:
         return execute(args, progress)
     except Exception as error:
@@ -371,6 +397,9 @@ def main() -> int:
                                "no automatic retry was started.", "blocked")
         print(f"coding runner failed: {type(error).__name__}", file=sys.stderr)
         return 1
+    finally:
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
 
 
 def execute(args, progress) -> int:
@@ -399,8 +428,16 @@ def execute(args, progress) -> int:
     # An existing workspace is a follow-up: the worker continues its own branch.
     if not workspace.exists():
         WORKSPACES.mkdir(mode=0o700, exist_ok=True)
-        subprocess.run(["git", "clone", "--quiet", "--branch", BASE_BRANCH,
-                        f"https://github.com/{REPOSITORY}.git", str(workspace)], check=True)
+        clone = (subprocess.CompletedProcess([], 1, stdout="", stderr="") if progress.check_stop() else
+                 supervise(["timeout", "-k", "30", str(CLONE_TIMEOUT_SECONDS),
+                            "git", "clone", "--quiet", "--branch", BASE_BRANCH,
+                            f"https://github.com/{REPOSITORY}.git", str(workspace)], progress))
+        if clone.returncode or progress.check_stop():
+            feedback(args.task_id, "Repository preparation stopped before dependencies or model dispatch. "
+                                   f"Any partial clone remains in {workspace}; inspect it before handing the task back. "
+                                   "No automatic retry or publication was started.", "blocked")
+            progress.finish("blocked", progress.stop_reason or "runner_error")
+            return 1
         git(workspace, "checkout", "--quiet", "-b", branch)
 
     try:
@@ -410,7 +447,7 @@ def execute(args, progress) -> int:
     except subprocess.CalledProcessError as error:
         feedback(args.task_id, "Dependencies could not be installed before the worker started.\n\n"
                                f"{(error.stderr or error.stdout or '')[-3000:]}", "blocked")
-        progress.finish("blocked", "dependencies_failed")
+        progress.finish("blocked", progress.stop_reason or "dependencies_failed")
         return 1
     except (coding_runtime.RuntimeUnavailable, coding_runtime.RuntimeChanged) as error:
         feedback(args.task_id, "The selected Node/npm runtime could not be validated for dependency preparation. "
@@ -429,7 +466,10 @@ def execute(args, progress) -> int:
     # Core's patient route owns capacity waiting. A nonzero worker exit stops
     # this attempt; a later explicit handoff continues its existing workspace.
     progress.phase = "running"
-    run = run_worker(workspace, prompt, max(1, int(progress.hard_deadline - progress.now())), progress)
+    run = (subprocess.CompletedProcess([], 1, stdout="Stopped by the operator before worker dispatch.", stderr="")
+           if progress.check_stop() else
+           run_worker(workspace, prompt, max(1, int(progress.hard_deadline - progress.now())), progress))
+    progress.check_stop()
     summary = run.stdout.strip() or run.stderr.strip()[-2000:] or "(the worker printed nothing)"
 
     progress.phase = "delivering"
@@ -477,7 +517,10 @@ def execute(args, progress) -> int:
         progress.finish("blocked", "generated_artifacts", progress.checkpoint)
         return 1
     token = os.environ.get("GH_TOKEN", "").strip()
-    progress.set_stage("publishing")
+    if progress.check_stop() or (token and not begin_publication(progress)):
+        feedback(args.task_id, "Operator stop recorded. The checkpoint stays local; no publication was started.", "blocked")
+        progress.finish("blocked", checkpoint=progress.checkpoint)
+        return 1
     if token:
         where = push_and_open_pr(workspace, branch, args.task_id, task.get("title", "Coding task"), summary, token)
     else:

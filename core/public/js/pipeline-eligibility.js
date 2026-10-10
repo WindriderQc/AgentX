@@ -19,7 +19,7 @@
     if (!/^\d{3,4}$/.test(task.pipelineId) || ['personal', 'family', 'household', 'secretary'].includes(String(task.service).toLowerCase())
       || task.source === 'idea-drop' || String(task.source || '').startsWith('household-')) return '';
     return `<details class="pipeline-task-eligibility" data-task-eligibility="${esc(task.pipelineId)}"><summary>Why can this task start, or why is it waiting?</summary>
-      <p>Inspect the current queue and Coding Team conditions.</p><div data-eligibility-result role="status" aria-live="polite"></div>
+      <p>Inspect queue conditions and the retained guarded automation policy. The local Coding Team uses the separate Run one task control and requires an unassigned, queued agentx-coding task.</p><div data-eligibility-result role="status" aria-live="polite"></div>
       <button type="button" class="pipeline-btn compact" data-refresh-eligibility>Refresh conditions</button>
       <p class="pipeline-muted">This observation starts no work. The launch path checks current conditions again.</p></details>`;
   }
@@ -48,8 +48,8 @@
     try {
       const values = await Promise.allSettled([read(panel.dataset.taskEligibility, false, controller.signal), read(panel.dataset.taskEligibility, true, controller.signal)]);
       if (!panel.isConnected || requests.get(panel) !== controller) return;
-      result.innerHTML = values.map((value, index) => value.status === 'fulfilled' ? renderMode(value.value, index ? 'Coding Team' : 'Manual worker queue')
-        : `<section class="pipeline-eligibility-mode"><strong>${index ? 'Coding Team' : 'Manual worker queue'}</strong><p>${esc(controller.signal.aborted ? 'The observation timed out. Refresh to try again.' : value.reason.message)}</p></section>`).join('');
+      result.innerHTML = values.map((value, index) => value.status === 'fulfilled' ? renderMode(value.value, index ? 'Guarded automation (legacy)' : 'Manual worker queue')
+        : `<section class="pipeline-eligibility-mode"><strong>${index ? 'Guarded automation (legacy)' : 'Manual worker queue'}</strong><p>${esc(controller.signal.aborted ? 'The observation timed out. Refresh to try again.' : value.reason.message)}</p></section>`).join('');
     } finally {
       clearTimeout(timer);
       if (requests.get(panel) === controller) { result.removeAttribute('aria-busy'); button.disabled = false; }

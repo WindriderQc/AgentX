@@ -92,6 +92,12 @@ class CodingDispatchControl {
   async cancel(input = {}) {
     return this.call(`/usr/bin/python3 ${this.root}/integrations/coding/coding_dispatch_control.py cancel-waiting ${exactRequestId(input.requestId)}`);
   }
+  async stop(input = {}) {
+    const pipelineId = exactPipelineId(input.pipelineId);
+    const requestId = exactRequestId(input.requestId);
+    if (input.confirm !== true) throw new CodingDispatchControlError('Explicit confirmation is required to stop this worker.', { code: 'CODING_DISPATCH_CONFIRMATION_REQUIRED', statusCode: 400 });
+    return this.call(`/usr/bin/python3 ${this.root}/integrations/coding/coding_dispatch_control.py stop ${pipelineId} ${requestId}`);
+  }
 }
 function sendError(res, error, logger) {
   const statusCode = Number(error?.statusCode) || 500;
@@ -118,6 +124,10 @@ function registerCodingDispatchControlRoutes({ express, control, preparation, lo
   });
   router.post('/runs/:requestId/cancel', async (req, res) => {
     try { return res.json({ status: 'success', data: await control.cancel(req.params) }); }
+    catch (error) { return sendError(res, error, logger); }
+  });
+  router.post('/runs/:requestId/stop', async (req, res) => {
+    try { return res.status(202).json({ status: 'success', data: await control.stop({ ...req.body, requestId: req.params.requestId }) }); }
     catch (error) { return sendError(res, error, logger); }
   });
   return router;

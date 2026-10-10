@@ -227,7 +227,8 @@
       stateEl.textContent = run ? `Request ${run.pipelineId || pending?.pipelineId || ''} · ${formatStatus(run.phase)}` : `Submitting request for ${pending?.pipelineId || 'one task'}…`;
     } else {
       stateEl.dataset.tone = 'ready';
-      stateEl.textContent = 'Host observed · one local coding worker';
+      const observed = Number.isFinite(Date.parse(control.observedAt)) ? formatDate(control.observedAt) : 'unknown';
+      stateEl.textContent = `Host observed ${observed} · one local coding worker`;
     }
     const summary = control?.summary;
     detail.textContent = summary
@@ -238,7 +239,7 @@
       detail.textContent = `Task attempt ${control.inference.attempt} · ${control.inference.requestCount} model call(s). Inference retries keep this attempt and never replay worker tools.`;
     }
     const progress = run?.progress;
-    if (progress && !controller?.error && !controller?.checking && control.available) {
+    if (progress && (pending || control.busy || run.phase === 'unknown') && !controller?.error && !controller?.checking && control.available) {
       const stages = { preparing: 'Preparing workspace', dependencies: 'Installing dependencies', model_wait: 'Waiting for model capacity or response',
         model_generation: 'Model generating', tool: 'Worker tool running', test: 'Tests running', checkpoint: 'Saving checkpoint', publishing: 'Publishing draft PR' };
       const results = { blocked: 'Blocked', review: 'Draft PR ready for review', local_only: 'Local work awaits publication' };
@@ -276,6 +277,18 @@
       retry.after(cancel);
     }
     if (cancel) { cancel.hidden = run?.phase !== 'waiting'; cancel.disabled = !controller?.canCancel(); }
+    let stop = $('pipelineTeamLaunchStop');
+    if (!stop && retry) {
+      stop = document.createElement('button');
+      stop.id = 'pipelineTeamLaunchStop'; stop.type = 'button'; stop.className = 'pipeline-btn compact';
+      stop.addEventListener('click', () => state.launchController?.stop());
+      retry.after(stop);
+    }
+    if (stop) {
+      stop.hidden = !run?.canStop && run?.phase !== 'stopping';
+      stop.textContent = run?.phase === 'stopping' ? 'Stopping worker…' : `Stop worker #${run?.pipelineId || ''}`;
+      stop.disabled = !controller?.canStop();
+    }
     const reasons = $('pipelineTeamEligibilityReasons');
     if (reasons) reasons.innerHTML = (control?.excluded || []).map(task => `<div class="pipeline-launch-exclusion"><button type="button" class="pipeline-btn compact" data-pipeline-task="${escapeHtml(task.pipelineId)}">${escapeHtml(task.pipelineId)} · ${escapeHtml(task.title)}</button><p>${(task.reasons || []).map(reason => escapeHtml(reason.detail || reason.code)).join(' · ')}</p></div>`).join('') || '<p>No additional non-private queue exclusions in the current observation.</p>';
   }

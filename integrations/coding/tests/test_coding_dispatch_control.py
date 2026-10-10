@@ -114,6 +114,55 @@ class ControlTest(unittest.TestCase):
             control.main()
         self.assertEqual(json.loads(printed.call_args.args[0])["code"], "CODING_DISPATCH_INVALID_REQUEST")
 
+    def test_stop_is_cooperative_idempotent_and_does_not_signal_a_shared_unit(self):
+        control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted"})
+        with mock.patch.object(control, "unit_active", return_value=True), mock.patch.object(control.subprocess, "run") as host:
+            self.assertTrue(control.status(KEY)["run"]["canStop"])
+            first = control.stop("0001", KEY)
+            path = control.RECEIPTS / f"{KEY}.stop.json"
+            saved = path.read_text()
+            self.assertEqual(control.stop("0001", KEY), first)
+            self.assertEqual(path.read_text(), saved)
+            self.assertEqual((control.status(KEY)["run"]["phase"], control.status(KEY)["run"]["canStop"]), ("stopping", False))
+            host.assert_not_called()
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_stale_stop_cannot_affect_a_different_running_job(self):
+        control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted"})
+        other = "22222222-2222-4333-8444-555555555555"
+        control.save_receipt({"requestId": other, "pipelineId": "0009", "phase": "accepted"})
+        with mock.patch.object(control, "unit_active", return_value=True), mock.patch.object(control.subprocess, "run") as host:
+            with self.assertRaises(control.ControlError):
+                control.stop("0001", KEY)
+            with self.assertRaises(control.ControlError):
+                control.stop("0001", other)
+            self.assertEqual((control.status(KEY)["run"]["phase"], control.status(KEY)["run"]["canStop"]), ("unknown", False))
+            self.assertTrue(control.status(other)["run"]["canStop"])
+            self.assertFalse(any(control.RECEIPTS.glob("*.stop.json")))
+            host.assert_not_called()
+
+    def test_terminal_history_stays_terminal_while_another_worker_runs(self):
+        control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted"})
+        value = {"requestId": KEY, "pipelineId": "0001", "phase": "finished", "stage": "checkpoint", "result": "blocked"}
+        (control.RECEIPTS / f"{KEY}.progress.json").write_text(json.dumps(value))
+        other = "22222222-2222-4333-8444-555555555555"
+        control.save_receipt({"requestId": other, "pipelineId": "0009", "phase": "accepted"})
+        with mock.patch.object(control, "unit_active", return_value=True):
+            self.assertEqual((control.status(KEY)["run"]["phase"], control.status(KEY)["run"]["canStop"]), ("finished", False))
+            self.assertTrue(control.stop("0001", KEY)["alreadyFinished"])
+        self.assertFalse(any(control.RECEIPTS.glob("*.stop.json")))
+
+    def test_stop_cannot_claim_to_revoke_publication_that_already_started(self):
+        control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "accepted"})
+        value = {"requestId": KEY, "pipelineId": "0001", "phase": "delivering", "stage": "publishing"}
+        (control.RECEIPTS / f"{KEY}.progress.json").write_text(json.dumps(value))
+        with mock.patch.object(control, "unit_active", return_value=True):
+            self.assertFalse(control.status(KEY)["run"]["canStop"])
+            with self.assertRaises(control.ControlError) as late:
+                control.stop("0001", KEY)
+        self.assertEqual(late.exception.code, "CODING_DISPATCH_STOP_TOO_LATE")
+        self.assertFalse(any(control.RECEIPTS.glob("*.stop.json")))
+
     def test_lost_launch_reply_never_starts_the_same_or_a_new_request_again(self):
         with mock.patch.object(control.subprocess, "run", side_effect=TimeoutError) as run:
             with self.assertRaises(TimeoutError):
