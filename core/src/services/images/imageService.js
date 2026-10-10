@@ -13,6 +13,7 @@ const { requestedRecipe, assertRecipe, buildExecution } = require('./recipeExecu
 const { qualified, MAX_OUTPUT_PIXELS } = require('./sizes');
 const logger = require('../../../config/logger');
 const expertProvenance = require('./expertProvenance');
+const constraints = require('../../../public/js/image-brief-constraints');
 const { assertSupportedRequest } = require('./labIntent');
 const workQueue = require('./workQueue');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -85,7 +86,10 @@ function validate(body, config) {
     } catch { throw fail('La référence doit être une image PNG/JPEG complète de 4 MP maximum, avec un ratio maximal de 8:1.'); }
     return bytes;
   });
-  const request = { prompt: body.prompt.trim(), width, height, seed };
+  const protectedItems = constraints.validate(body.constraints);
+  const visualPrompt = constraints.visual(body.prompt, protectedItems);
+  const request = { prompt: constraints.compose(visualPrompt, protectedItems), width, height, seed,
+    ...(protectedItems && { visualPrompt, constraints: protectedItems }) };
   // Omitted seed remains omitted in the identity: a replay returns the original random seed.
   const requestHash = hash(JSON.stringify({ ...request, seed: body.seed ?? null, profile: id, references: originals.map(hash),
     ...(parent && { parent: { ...parent, transform: TRANSFORM } }), ...(recipe && { recipe }), ...(expert && { expert }) }));
@@ -253,7 +257,7 @@ async function listForConversation(conversation) {
 async function draft(id) {
   const op = await ImageOperation.findById(id).select('+request').lean();
   if (!op) throw fail('Opération image inconnue.', 404);
-  return { ...op.request, profile: op.profile.id };
+  return { ...op.request, ...(op.request.constraints && { constraints: constraints.validate(op.request.constraints) }), profile: op.profile.id };
 }
 async function list() {
   await initialize();

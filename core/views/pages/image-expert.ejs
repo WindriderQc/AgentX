@@ -38,7 +38,9 @@
       <div id="imagex-proposal" role="tabpanel" aria-labelledby="imagex-tab-proposal">
         <p id="imagex-proposal-empty" class="image-help">Demande « Affiner mon brief » pour obtenir une proposition adaptée à la recette et au format choisis.</p>
         <div id="imagex-proposal-content" hidden><p id="imagex-proposal-reason"></p><p id="imagex-proposal-settings" class="image-help"></p>
+          <details><summary>Comparer avec mon brief initial</summary><pre id="imagex-proposal-original" class="imagex-protected-constraints"></pre></details>
           <label for="imagex-proposal-prompt">Prompt proposé · modifiable</label><textarea id="imagex-proposal-prompt" rows="7" maxlength="8000"></textarea>
+          <pre id="imagex-proposal-constraints" class="imagex-protected-constraints" aria-label="Contraintes utilisateur conservées" hidden></pre>
           <button id="imagex-apply" type="button">Appliquer au brief ↓</button><p id="imagex-apply-note" class="image-help">Vérifie ensuite le brief et les références, puis lance la création.</p>
         </div>
       </div>

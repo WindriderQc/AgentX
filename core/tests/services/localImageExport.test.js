@@ -345,3 +345,25 @@ test('the actual HTTP export routes return the real Mongo/archive manifest and e
   expect(sha(received)).toBe(f.execution.graphSha256);
   expect(await fingerprint()).toEqual(before);
 });
+
+test('a protected brief exports its exact structured intentions and native composed prompt', async () => {
+  const contract = require('../../public/js/image-brief-constraints');
+  const constraints = { version: 1, items: [{ id: 'fixture-title', kind: 'exact-text', text: 'École — façade\nDécouverte' }] };
+  const visualPrompt = 'SYNTHETIC_EXPORT_BRIEF_MARKER';
+  const f = await fixture({ request: { visualPrompt, constraints, prompt: contract.compose(visualPrompt, constraints) } });
+  const before = await fingerprint(); forbidWrites();
+  const exported = await manifest(f.id);
+  publicMetadata(f, exported); await exactParts(f, exported);
+  expect(exported.request.constraints).toEqual(constraints);
+  expect(exported.request.prompt).toContain(constraints.items[0].text);
+  expect(await fingerprint()).toEqual(before);
+});
+
+test('a changed protected snapshot refuses export even when the stored graph remains valid', async () => {
+  const contract = require('../../public/js/image-brief-constraints');
+  const constraints = { version: 1, items: [{ id: 'fixture-title', kind: 'exact-text', text: 'Exact title' }] };
+  const visualPrompt = 'SYNTHETIC_EXPORT_BRIEF_MARKER';
+  const f = await fixture({ request: { visualPrompt, constraints, prompt: contract.compose(visualPrompt, constraints) } });
+  await alter(f.id, { 'request.constraints.items.0.text': 'Modified snapshot' });
+  forbidWrites(); await expect(manifest(f.id)).rejects.toMatchObject({ statusCode: 503 });
+});

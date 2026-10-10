@@ -40,3 +40,15 @@ test('missing image details return a bounded not-found outcome', async () => {
   ImageOperation.findById.mockReturnValue({ select: () => ({ lean: async () => null }) });
   await expect(details('missing')).rejects.toMatchObject({ statusCode: 404 });
 });
+
+test('details expose the exact constraint snapshot for manual review without parsing the prose', async () => {
+  const constraints = { version: 1, items: [{ id: 'fixture-label', kind: 'exact-text', text: 'École — façade' }] };
+  const op = { _id: 'synthetic', profile: { ...profile, id: 'quality' }, workerUrl: config.workerUrl,
+    request: { prompt: 'Full composed prompt', visualPrompt: 'Visual description', constraints, width: 1024, height: 1024, seed: 0 } };
+  ImageOperation.findById.mockReturnValue({ select: () => ({ lean: async () => op }) });
+  const view = await details('synthetic');
+  expect(view.request.constraints).toEqual(constraints);
+  expect(view.request.constraints).not.toBe(constraints);
+  expect(view.request.visualPrompt).toBe('Visual description');
+  expect(view.request.constraints.items[0].text).toBe('École — façade');
+});

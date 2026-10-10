@@ -1,0 +1,14 @@
+<details id="image-constraints" class="image-constraints">
+  <summary>Contraintes à conserver dans le brief</summary>
+  <p class="image-help">Ajoute les intentions qui doivent rester mot pour mot lorsque Hermes reformule ton brief. Leur respect dans l’image reste à vérifier.</p>
+  <div class="image-constraint-composer">
+    <label for="image-constraint-kind">Catégorie</label>
+    <select id="image-constraint-kind"><option value="exact-text">Texte exact à afficher</option><option value="required-element">Élément obligatoire</option><option value="composition">Composition ou relation</option></select>
+    <label for="image-constraint-text">Ton intention exacte</label>
+    <textarea id="image-constraint-text" rows="2" maxlength="600" placeholder="Exemple : trois machines alignées au bas de l’image"></textarea>
+    <button id="image-constraint-add" type="button">Ajouter la contrainte</button>
+  </div>
+  <ol id="image-constraint-list" class="image-constraint-list"></ol>
+  <p id="image-constraints-counter" class="image-help" role="status"></p>
+  <p id="image-constraints-notice" class="image-help" role="status"></p>
+</details>
