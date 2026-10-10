@@ -20,7 +20,7 @@ def runtime(monkeypatch):
         "_prefer_cpu": False, "_retry_at": 0.0, "_gpu_failures": 0,
         "_failure_reason": None, "_retrying": False, "_models": {}, "_last_run_at": None,
     }.items():
-        monkeypatch.setattr(whisper, name, value)
+        monkeypatch.setattr(whisper, name, value, raising=False)
     monkeypatch.setattr(whisper.time, "monotonic", lambda: clock[0])
     return clock
 
@@ -34,6 +34,19 @@ def install_model(monkeypatch, action):
                 return iter([SimpleNamespace(text="Bonjour.")]), SimpleNamespace(language="fr")
         return Model()
     monkeypatch.setattr(whisper, "_build_model", build)
+
+
+def test_next_upload_returns_to_gpu_after_a_temporary_failure(monkeypatch, runtime):
+    calls = []
+    def run(device, *_):
+        calls.append(device)
+        if len(calls) == 1:
+            raise RuntimeError("CUDA temporarily unavailable")
+    install_model(monkeypatch, run)
+    assert whisper.transcribe_path("sample.wav")[0] == "Bonjour."
+    runtime[0] += 31
+    assert whisper.transcribe_path("sample.wav")[0] == "Bonjour."
+    assert calls == ["cuda", "cpu", "cuda"]
 
 
 @pytest.mark.parametrize("uploaded", [False, True], ids=["native", "upload"])
