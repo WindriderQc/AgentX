@@ -48,7 +48,7 @@
           <path class="guide-wire" d="M836 382V416H106V260" marker-end="url(#guide-arrow)"/><text class="guide-label" x="330" y="408">l’image revient à celui qui l’a demandée, empreinte revérifiée</text>
         </svg>
       </div>
-      <figcaption>Les quatre étapes sont celles qui s’affichent sous le bouton pendant une génération.</figcaption>
+      <figcaption>La demande attend d’abord son tour dans la file. Les quatre étapes s’affichent ensuite pendant la génération.</figcaption>
     </figure>
   </section>
 
@@ -74,11 +74,12 @@
   <section class="guide-section" aria-labelledby="guide-blocked-title">
     <p class="panel-step">04 · QUAND ÇA BLOQUE</p><h2 id="guide-blocked-title">Ce que veulent dire les messages</h2>
     <dl class="guide-messages">
-      <div><dt>« GPU occupé »</dt><dd>La carte graphique sert à autre chose, souvent une conversation ou une mesure en cours. Rien n’est mis en attente : refais la demande un peu plus tard.</dd></div>
-      <div><dt>« Le PC image est indisponible ou occupé »</dt><dd>Le gardien ne répond pas, ou une autre image est en calcul. Une seule image se fait à la fois.</dd></div>
+      <div><dt>« Image en file »</dt><dd>La demande est enregistrée et attend son créneau. Une seule image utilise la carte à la fois. Consulte le même reçu ; inutile de refaire la demande.</dd></div>
+      <div><dt>« GPU occupé »</dt><dd>Le contrôle au lancement a trouvé un autre usage de la carte. Consulte le résultat de cette opération avant de décider d’un nouvel essai.</dd></div>
+      <div><dt>« Le PC image est indisponible ou le modèle requis est absent »</dt><dd>Le gardien ne répond pas, ou la recette demandée n’est pas installée. La demande est refusée avant son inscription en file.</dd></div>
       <div><dt>« État incertain »</dt><dd>AgentX ne sait plus si l’image a été calculée, par exemple après un redémarrage. Utilise « Vérifier et récupérer » : il retrouve le résultat sans jamais relancer le calcul.</dd></div>
       <div><dt>« Son archivage doit être repris »</dt><dd>L’image existe mais n’a pas pu être conservée. La reprise range l’original sans le recalculer.</dd></div>
     </dl>
-    <p class="image-help">Il n’y a ni file d’attente, ni second PC de secours, ni nouvel essai automatique : une demande refusée doit être refaite.</p>
+    <p class="image-help">Une image acceptée peut démarrer une fois dans les 15 minutes suivant sa demande. Si le créneau expire, elle est annulée. Le résultat reste consultable et un calcul incertain n’est jamais relancé automatiquement.</p>
   </section>
 </main>
