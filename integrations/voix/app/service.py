@@ -66,13 +66,17 @@ app = FastAPI(title="VoiX", version=VERSION, lifespan=lifespan)
 
 @app.get("/health")
 def health() -> dict:
+    from app.stt import whisper
+
+    recognition = whisper.backend_status()
     return {
-        "status": "ok",
+        "status": "degraded" if recognition["degraded"] else "ok",
         "version": VERSION,
         # No native conversation exists in this service. Callers written for the
         # earlier service read this flag, so it stays, always false.
         "running": False,
         "warmup": warmup.snapshot(),
+        "recognition": recognition,
     }
 
 

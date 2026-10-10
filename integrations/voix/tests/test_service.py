@@ -31,10 +31,14 @@ def reset_speech_state(tmp_path, monkeypatch):
 # ======================= health / discovery =======================
 
 def test_health_reports_only_the_speech_service():
+    from app.stt import whisper
+
     for path in ("/health", "/api/health"):
         body = client.get(path).json()
-        assert body == {"status": "ok", "version": service.VERSION, "running": False,
-                        "warmup": warmup.snapshot()}
+        recognition = whisper.backend_status()
+        assert body == {"status": "degraded" if recognition["degraded"] else "ok",
+                        "version": service.VERSION, "running": False,
+                        "warmup": warmup.snapshot(), "recognition": recognition}
         assert body["warmup"]["state"] == "ready"
 
 
