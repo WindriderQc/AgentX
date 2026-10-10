@@ -1763,8 +1763,24 @@ It prints `{ model, notes, stale, indexed, failed }` and writes only the three
 derived fields. The memory review compares each observation and each final
 candidate with the owner's notes through this index; when notes are not
 indexed, the run's dedup is marked degraded instead of reading as "nothing
-known". Similarity floors are `MEMORY_REVIEW_RAG_MIN_SCORE` and
-`MEMORY_REVIEW_DUPLICATE_SCORE`.
+known". An approved `shared_fact` candidate is written as one of the owner's
+notes (source `memory-review`, kind from the candidate type, the stricter
+`highly_private` label kept), so the agents read it and the owner can correct
+or forget it in the memory editor.
+
+Similarity floors are `MEMORY_REVIEW_RAG_MIN_SCORE` and
+`MEMORY_REVIEW_DUPLICATE_SCORE`; their defaults were measured for another
+embedding model. Measured with `qllama/bge-m3:f16` on review statements
+(2026-10-09, 635 pairs of different facts, 6 restatements, 2 contradictions):
+different facts reach 0.68 at most (1 % above 0.62), same-language
+restatements score 0.72 to 0.91, a restatement in another language 0.68, and
+a direct contradiction 0.70 to 0.96. A score above 0.70 therefore says "same
+subject", never "same statement": the reviewer decides whether it repeats or
+contradicts the note. With that model, 0.70 is the working value of
+`MEMORY_REVIEW_DUPLICATE_SCORE`, which compares a final statement with a note.
+`MEMORY_REVIEW_RAG_MIN_SCORE` compares a raw observation, often a short
+question, with a note: there a true match scored 0.47 to 0.52 and an unrelated
+one up to 0.48, so that floor only trims context and cannot decide relevance.
 
 ## Completed coding task replay
 

@@ -18,6 +18,7 @@ jest.mock('../../src/services/ragServiceClient', () => {
 
 const { __fake: fakeRag } = require('../../src/services/ragServiceClient');
 const MemoryReviewRun = require('../../models/MemoryReviewRun');
+const MemoryNote = require('../../models/MemoryNote');
 const PipelineTask = require('../../models/PipelineTask');
 
 function createApp() {
@@ -104,6 +105,7 @@ async function seedRunWithObservation(runKey, text = 'Prefer local-first tooling
 }
 
 afterEach(async () => {
+  await MemoryNote.deleteMany({});
   delete process.env.MEMORY_REVIEW_MODE;
   delete process.env.MEMORY_REVIEW_AUTOMATION_MODE;
   delete process.env.MEMORY_REVIEW_EXCEPTION_BUDGET;
@@ -578,37 +580,41 @@ describe('apply gating and adapters', () => {
     expect(res.body.code).toBe('MEMORY_REVIEW_NOT_APPROVED');
   });
 
-  test('shared_fact adapter writes through nestor-memory and duplicate apply is a no-op', async () => {
+  test('shared_fact adapter writes one owner memory note and duplicate apply is a no-op', async () => {
     const { runId, candidateId } = await approvedCandidate('test-apply-fact');
     await authorizeRun(runId);
     const first = await harness.request
       .post(`/api/memory-review/runs/${runId}/candidates/${candidateId}/apply`)
       .send({ by: 'operator' }).expect(200);
     expect(first.body.data.status).toBe('applied');
-    expect(first.body.data.result).toContain('nestor-memory');
-    expect(fakeRag.upsertDocumentWithChunks).toHaveBeenCalledTimes(1);
-    const upsertArgs = fakeRag.upsertDocumentWithChunks.mock.calls[0][1];
-    expect(upsertArgs.source).toBe('nestor-memory');
-    expect(upsertArgs).toMatchObject({ scope: 'project', sensitivity: 'normal' });
-    expect(upsertArgs.documentId).toContain('memory-review');
+    expect(first.body.data.result).toMatch(/^owner note [a-f0-9]{24} created$/);
+    // The store the agents read, not a document-store lane nobody reads.
+    expect(fakeRag.upsertDocumentWithChunks).not.toHaveBeenCalled();
+    const notes = await MemoryNote.find({}).lean();
+    expect(notes).toEqual([expect.objectContaining({
+      text: 'Durable fact for test-apply-fact.', kind: 'preference', source: 'memory-review',
+      packId: 'personal_operator', scopeId: 'personal', scope: 'owner', sensitivity: 'private', status: 'active',
+    })]);
+    const { personal } = require('../../src/services/memoryNoteService');
+    expect((await personal().search('durable fact')).notes.map((note) => note.id)).toEqual([String(notes[0]._id)]);
 
     const second = await harness.request
       .post(`/api/memory-review/runs/${runId}/candidates/${candidateId}/apply`)
       .send({ by: 'operator' }).expect(200);
     expect(second.body.data.alreadyApplied).toBe(true);
-    expect(fakeRag.upsertDocumentWithChunks).toHaveBeenCalledTimes(1);
+    expect(await MemoryNote.countDocuments({})).toBe(1);
   });
 
-  test('a manually approved private fact keeps its classification in RAG', async () => {
+  test('a manually approved highly private fact keeps that label on the note', async () => {
     const { runId, candidateId } = await approvedCandidate('test-private-labels', {}, {
       scope: 'private_domain', sensitivity: 'highly_private',
     });
     await authorizeRun(runId);
     await harness.request.post(`/api/memory-review/runs/${runId}/candidates/${candidateId}/apply`)
       .send({ by: 'operator' }).expect(200);
-    expect(fakeRag.upsertDocumentWithChunks.mock.calls[0][1]).toMatchObject({
-      source: 'nestor-memory', scope: 'private_domain', sensitivity: 'highly_private',
-    });
+    expect(await MemoryNote.find({}).lean()).toEqual([
+      expect.objectContaining({ scope: 'owner', sensitivity: 'highly_private', source: 'memory-review' }),
+    ]);
   });
 
   test('concurrent apply attempts acquire only one adapter lease', async () => {
@@ -617,9 +623,10 @@ describe('apply gating and adapters', () => {
     let release;
     let signalStarted;
     const started = new Promise((resolve) => { signalStarted = resolve; });
-    fakeRag.upsertDocumentWithChunks.mockImplementationOnce(() => new Promise((resolve) => {
+    const write = MemoryNote.findOneAndUpdate.bind(MemoryNote);
+    const held = jest.spyOn(MemoryNote, 'findOneAndUpdate').mockImplementationOnce((...args) => new Promise((resolve) => {
       signalStarted();
-      release = () => resolve({ documentId: 'doc-race', chunkCount: 1, status: 'completed' });
+      release = () => resolve(write(...args));
     }));
     const first = harness.request
       .post(`/api/memory-review/runs/${runId}/candidates/${candidateId}/apply`)
@@ -633,8 +640,9 @@ describe('apply gating and adapters', () => {
     expect(second.body.code).toBe('MEMORY_REVIEW_APPLY_IN_PROGRESS');
     release();
     const completed = await first;
+    held.mockRestore();
     expect(completed.status).toBe(200);
-    expect(fakeRag.upsertDocumentWithChunks).toHaveBeenCalledTimes(1);
+    expect(await MemoryNote.countDocuments({})).toBe(1);
   });
 
   test('pipeline_task adapter creates a real approval-gated task', async () => {
@@ -667,10 +675,11 @@ describe('apply gating and adapters', () => {
   test('adapter failure marks apply_failed, audits, and stays retryable', async () => {
     const { runId, candidateId } = await approvedCandidate('test-apply-fail');
     await authorizeRun(runId);
-    fakeRag.upsertDocumentWithChunks.mockRejectedValueOnce(new Error('rag exploded'));
+    const failing = jest.spyOn(MemoryNote, 'findOneAndUpdate').mockRejectedValueOnce(new Error('notes store exploded'));
     await harness.request
       .post(`/api/memory-review/runs/${runId}/candidates/${candidateId}/apply`)
       .send({ by: 'operator' }).expect(502);
+    failing.mockRestore();
     let doc = await MemoryReviewRun.findOne({ runId });
     expect(doc.candidates[0].status).toBe('apply_failed');
     expect(doc.audit.some((a) => a.event === 'candidate_apply_failed')).toBe(true);
@@ -717,7 +726,7 @@ describe('standing memory policy v2', () => {
     expect(doc.candidates[0]).toEqual(expect.objectContaining({ status: 'applied' }));
     expect(doc.candidates[0].apply.automated).toBe(true);
     expect(doc.candidates[0].automation.disposition).toBe('auto_apply');
-    expect(fakeRag.upsertDocumentWithChunks.mock.calls[0][1].source).toBe('nestor-memory');
+    expect(await MemoryNote.find({}).lean()).toEqual([expect.objectContaining({ source: 'memory-review', status: 'active' })]);
   });
 
   test('a recurrent inference is stored automatically as expiring working memory', async () => {

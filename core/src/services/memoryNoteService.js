@@ -106,8 +106,12 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     if (!changed) return { ok: true, authority: 'agentx.core', id, text, kind, sealed, created: false, changed: false, updatedAt: existing.updatedAt };
     // An explicit correction keeps an existing classification. In particular it
     // cannot downgrade a highly-private note by using a different presentation.
+    // A trusted server caller may ask for the stricter owner label on a new
+    // note; nothing can ask for a weaker one.
+    const stricter = audience === 'owner' && input.sensitivity === 'highly_private'
+      ? { ...classification, sensitivity: 'highly_private' } : classification;
     const labels = existing?.scope && existing?.sensitivity
-      ? { scope: existing.scope, sensitivity: existing.sensitivity } : classification;
+      ? { scope: existing.scope, sensitivity: existing.sensitivity } : stricter;
     const filter = { ...boundary, _id: id, ...(input.id === undefined ? {} : { status: { $ne: 'forgotten' } }) };
     const update = { $set: {
       text, kind, ...labels, expiresAt, status: 'active', forgottenAt: null,
