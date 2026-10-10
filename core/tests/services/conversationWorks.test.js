@@ -337,14 +337,14 @@ test('erasing an admitted work preserves the native fence until its exact termin
   expect(execute).not.toHaveBeenCalled();
 });
 
-async function personalHttp(executeConversation) {
+async function personalHttp(executeConversation, warmup = null) {
   const packs = require('../../surfaces/household/packs'), prompt = require('../../surfaces/household/persona-prompt');
   const records = require('../../surfaces/household/persona-records'), pack = packs.packById('personal_operator');
   current = await conversations.updateSession({ sessionId: current.sessionId }, { $set: { modeId: pack.defaultMode,
     persona: { id: 'nestor', version: 1, name: 'Nestor', identity: 'Synthetic personality.', voice: {} }, voice: { language: 'auto' } } });
   works.guardianInstructions = require('../../surfaces/household/conversation-work-runtime').GUARDIAN;
   const handler = require('../../surfaces/household/persona-turn').createPersonaTurnHandler({
-    runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: env, conversationWorks: works,
+    runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: env, conversationWorks: works, warmup,
     executeConversation, requireNativeAgent: async () => {}, familyTasks: { listProfiles: async () => ({ profiles: [] }), listProfileDetails: async () => ({ profiles: [] }) },
     ownerMemory: {}, familyMemory: {}, notesFor: () => ({ search: async () => ({ notes: [] }), record: async () => ({}) }),
     personalAttachments: () => ({ prepare: async messages => messages.map(({ attachments, ...message }) => message) }),
@@ -384,7 +384,9 @@ test('real voice HTTP accepts a specialist read and keeps the guardian available
       tools: { status: 'observed', receipts: [] }, metadata: {} };
   });
   const execute = require('../../surfaces/household/conversation-executor').createConversationExecutor({ agentClient: foreground, env });
-  const app = await personalHttp(execute);
+  let releaseWarmup;
+  const warming = new Promise(resolve => { releaseWarmup = resolve; });
+  const app = await personalHttp(execute, { noteTurn() {}, settled: () => warming });
   const text = 'Résume mes courriels récents.', turnId = randomUUID();
   const body = { text, turnId, channel: 'voice', stream: true };
   const first = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body).timeout(2000);
@@ -396,6 +398,7 @@ test('real voice HTTP accepts a specialist read and keeps the guardian available
     inputText: text, outcome: 'completed', model: '', routingSource: 'core.conversation-works' });
   const duplicate = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body);
   expect(duplicate.status).toBe(202);
+  releaseWarmup();
   let release, started, proof;
   const held = new Promise(resolve => { release = resolve; });
   const dispatched = new Promise(resolve => { started = resolve; });

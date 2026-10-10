@@ -329,7 +329,12 @@ function createPersonaTurnHandler({
               .then(shown => { if (!res.writableEnded) event('show', { block: shown }); }));
           } });
         // The opening warm-up shares this native session: its run ends before the first real turn starts.
-        if (!member) { warmup?.noteTurn(session); await warmup?.settled(session.sessionId); }
+        if (!member) {
+          warmup?.noteTurn(session);
+          // A canonical acknowledgment invokes no native turn and can finish
+          // while opening warm-up still owns the guardian's native session.
+          if (!acceptedNativeWork) await warmup?.settled(session.sessionId);
+        }
 
         serverPhases.prepared = Date.now() - startedAt;
         const run = executeConversation({ backend, session: turnSession, pack: isOpening ? { ...pack, maxTokens: 180 }
