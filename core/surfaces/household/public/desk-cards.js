@@ -82,7 +82,11 @@
     const row = (idea) => `<div class="dad-task" data-idea="${esc(idea.id)}">
         <div class="dad-task-main"><div><strong>${esc(idea.text)}</strong><small>${esc(from(idea))}</small></div></div>
         <div class="row wrap dad-task-actions">${idea.memory ? '<button class="compact primary" data-idea-action="memory">Retenir</button>' : ''}<button class="compact${idea.memory ? '' : ' primary'}" data-idea-action="personal">Tâche perso</button>
-        <button class="compact" data-idea-action="task">TODO AgentX</button><button class="compact" data-idea-action="park">Plus tard</button>
+        <select class="compact" data-idea-service aria-label="Service du TODO AgentX">
+          <option value="">Service du TODO…</option><option value="agentx-coding">Coding Team</option>
+          <option value="core">Core</option><option value="benchmark">Benchmark</option>
+          <option value="rag">RAG</option><option value="data">Data</option>
+        </select><button class="compact" data-idea-action="task">TODO AgentX</button><button class="compact" data-idea-action="park">Plus tard</button>
         <button class="compact danger" data-idea-action="reject">Rejeter</button></div></div>`;
     async function load() {
       try {
@@ -99,6 +103,8 @@
       if (!button) return;
       const id = button.closest('[data-idea]').dataset.idea;
       const action = button.dataset.ideaAction;
+      const service = action === 'task' ? button.closest('[data-idea]').querySelector('[data-idea-service]').value : '';
+      if (action === 'task' && !service) { status('Choisissez le service du TODO AgentX.'); return; }
       button.disabled = true;
       host.dataset.touched = 'true';
       try {
@@ -106,7 +112,7 @@
           await post(`/api/family/ideas/${encodeURIComponent(id)}/promote`, { targetType: 'memory' });
           status('Retenu dans tes souvenirs.');
         } else if (action === 'personal' || action === 'task') {
-          const data = await post(`/api/family/ideas/${encodeURIComponent(id)}/promote`, { targetType: action });
+          const data = await post(`/api/family/ideas/${encodeURIComponent(id)}/promote`, { targetType: action, ...(service ? { service } : {}) });
           status(`${action === 'task' ? 'TODO AgentX' : 'Tâche perso'} #${data.task.pipelineId} créée.`);
         } else {
           await post(`/api/family/ideas/${encodeURIComponent(id)}/set-aside`, { action });
