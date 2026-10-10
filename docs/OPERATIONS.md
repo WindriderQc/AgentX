@@ -957,6 +957,16 @@ prefill on the next turn, even when both requests use shared admission. A new
 turn supersedes a running review: without a pinned host its request is cancelled
 so the voice gets the host back; on a pinned host the request finishes and its
 result is discarded, because cancelling an admitted request quarantines the host.
+Set `HOUSEHOLD_BRAIN_TASK=household_review` to use a dedicated routed review lane
+with an optional `AGENTX_TASK_FALLBACKS_JSON.household_review` ladder. Configure
+its primary in the routing table and pin each fallback on its registered host.
+This opt-in ignores the direct `HOUSEHOLD_BRAIN_MODEL` and
+`HOUSEHOLD_BRAIN_HOST_URL` overrides, uses shared admission, and discards
+superseded results without cancelling admitted work. Both primary and fallback
+endpoints must be separate from the spoken model. A busy or reserved primary can
+use a CPU reviewer; a failure after dispatch is never replayed on another model.
+Reviews disclose their actual model and any fallback marker. Deliberate
+`master_brain` and `deep_reasoning` requests remain strict.
 Reviews use shared admission unless `HOUSEHOLD_BRAIN_EXCLUSIVE=true`, which waits
 for an idle host, blocks other callers and unloads co-resident models. The
 browser speaks its remark only while listening with no turn in flight.
@@ -1071,7 +1081,8 @@ answer tries `secondary` next.
   with its `OLLAMA_HOST*` URL, or an additional ID from the inference host
   registry described below. Pin the fallback model on its host first.
 - Only `quick_chat`, `buddy_reaction`, `nestor_answer_light`,
-  `rag_query_expansion`, `rag_reranking`, `rag_compression` and `janitor_ai`
+  `rag_query_expansion`, `rag_reranking`, `rag_compression`, `janitor_ai` and
+  advisory `household_review`
   may degrade. A ladder naming any other task, an unknown task or an
   unconfigured host is rejected as a whole at startup: Core logs
   `[TaskFallbackLadder] AGENTX_TASK_FALLBACKS_JSON rejected` with every

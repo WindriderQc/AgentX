@@ -305,6 +305,21 @@ describe('task fallback ladder routing', () => {
     expect(ladder.fallbackReasonCode(result.degraded)).toBe('task_fallback_primary_busy');
   });
 
+  it('keeps an idle review primary and uses the configured reviewer only while that primary is busy', async () => {
+    setLadder({ household_review: [{ model: FALLBACK_MODEL, host: 'tertiary' }] });
+    process.env.AGENTX_TASK_FALLBACK_WAIT_MS = '0';
+    const primary = primaryRecommendation();
+    await expect(ladder.applyTaskFallbackLadder('household_review', primary, world())).resolves.toBe(primary);
+    const busy = { host: HOST_URLS.primary, modelKey: PRIMARY_MODEL, state: 'ACTIVE', mode: 'shared', expiresAt: new Date(9e12) };
+    const deps = world({ runtime: { maintenance: null, workloads: [], inferences: [busy] } });
+    expect(await ladder.applyTaskFallbackLadder('household_review', primary, deps)).toMatchObject({
+      model: FALLBACK_MODEL, host: 'tertiary', degraded: { reason: 'primary_busy' },
+    });
+    const unavailable = world({ claimed: ['primary', 'tertiary'] });
+    await expect(ladder.applyTaskFallbackLadder('household_review', primary, unavailable)).resolves.toBe(primary);
+    expect(deps.sleep).not.toHaveBeenCalled();
+  });
+
   it('keeps a primary whose request finishes within the wait', async () => {
     const busy = { host: HOST_URLS.primary, state: 'ACTIVE', mode: 'shared', expiresAt: new Date(9e12) };
     const deps = world({

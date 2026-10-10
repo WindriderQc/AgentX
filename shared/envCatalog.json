@@ -1465,6 +1465,16 @@
       "description": "Optional Ollama model for Household background reviews. Unset: use the router master_brain lane.",
       "fallback": "the router master_brain lane"
     },
+    "HOUSEHOLD_BRAIN_TASK": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "master_brain",
+      "category": "household",
+      "secret": false,
+      "description": "Background Household review task. household_review opts into the configured primary/fallback lane; master_brain preserves the existing direct reviewer policy."
+    },
     "HOUSEHOLD_BROWSER_STT_FALLBACK": {
       "services": [
         "core"

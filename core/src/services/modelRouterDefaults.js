@@ -125,6 +125,7 @@ const CLASSIFIABLE_TASKS = {
 };
 
 const DIRECT_INVOKE_TASKS = {
+    household_review: { model: MASTER_BRAIN_MODEL, host: MASTER_BRAIN_HOST },
     daily_operator: { model: DAILY_OPERATOR_MODEL, host: DAILY_OPERATOR_HOST },
     nestor_answer_light: { model: NESTOR_ANSWER_LIGHT_MODEL, host: NESTOR_ANSWER_LIGHT_HOST },
     rag_query_expansion: { model: UTILITY_MODEL, host: UTILITY_HOST },
@@ -145,7 +146,7 @@ const CLASSIFICATION_MODEL = envModel('AGENTX_CLASSIFIER_MODEL', LIGHTWEIGHT_MOD
 const CLASSIFICATION_HOST = envHost('AGENTX_CLASSIFIER_HOST', LIGHTWEIGHT_HOST);
 // The spoken lane stays on the host the operator chose for it: its prompt cache and its
 // measured timings live there, and it must never follow its model to the speech host.
-const STRICT_CONFIGURED_HOST_TASKS = new Set(['quick_chat', 'buddy_reaction', 'nestor_answer_light', 'ops_watch', 'mail_review', 'voice_persona_chat']);
+const STRICT_CONFIGURED_HOST_TASKS = new Set(['quick_chat', 'buddy_reaction', 'nestor_answer_light', 'ops_watch', 'mail_review', 'voice_persona_chat', 'household_review']);
 
 // A task may follow its model to another host only when that host has the
 // same residency: a CPU-routed task never moves to a GPU host (the model would
