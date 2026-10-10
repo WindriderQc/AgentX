@@ -108,7 +108,7 @@ function browser(respond) {
         : { ok: true, status: 200, json: async () => ({ status: 'success', data: answer }) };
     }
   };
-  const source = ['refresh.js', 'iot-charts.js', 'iot.js', 'app.js'].map(file => fs.readFileSync(path.join(__dirname, '../public', file), 'utf8')).join('\n')
+  const source = ['refresh.js', 'iot-visuals.js', 'iot-charts.js', 'iot.js', 'app.js'].map(file => fs.readFileSync(path.join(__dirname, '../public', file), 'utf8')).join('\n')
     .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, render, iotState, iotTab, iotSelect, iotLoadSeries, iotSubmit, iotRefresher, iotChart, iotCards };');
   vm.runInNewContext(source, context);
   return { ...context.page, elements, listeners, requests, timers, document, content: element('#content') };
@@ -147,7 +147,7 @@ test('no devices or no live points stays empty and never fabricates charts', asy
   assert.equal(empty.requests.length, 2);
   const page = await open({ read: () => ({ measures: {} }) });
   assert.match(page.elements['#iotSeries'].innerHTML, /Aucune mesure reçue/);
-  assert.doesNotMatch(page.elements['#iotSeries'].innerHTML, /<svg/);
+  assert.doesNotMatch(page.elements['#iotSeries'].innerHTML, /class="iot-chart"/);
 });
 
 test('an offline broker preserves dated values and disables device commands', async () => {
@@ -231,7 +231,8 @@ test('charts preserve timestamp spacing, breaks across missing minutes, and expo
     { ts: '2026-01-01T01:00:00Z', mean: 5, min: 4, max: 6, count: 3, partial: true }
   ], { name: '<temperature>', unit: '°C', bucketSeconds: 60 });
   assert.equal((chart.match(/<polyline/g) || []).length, 2);
-  assert.match(chart, /56\.00,[0-9.]+ 66\.50,[0-9.]+/);
+  const plotted = [...chart.matchAll(/data-iot-point[^>]*cx="([0-9.]+)"/g)].map(match => Number(match[1]));
+  assert.equal((plotted[1] - plotted[0]) / (plotted[2] - plotted[0]), 1 / 60, 'a minute occupies one sixtieth of the hour');
   assert.match(chart, /dernière période en cours/);
   assert.match(chart, /<table>/);
   assert.match(chart, /&lt;temperature&gt;/);
