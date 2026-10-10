@@ -3,6 +3,7 @@ const ImageOperation = require('../../../models/ImageOperation');
 const { defaultArchive, MAX_BYTES } = require('../imageArchive');
 const { decode } = require('./codec');
 const { declaredRecipe } = require('./recipeExecution');
+const constraints = require('../../../public/js/image-brief-constraints');
 const { validateGraph, object, uuid, digest, sha } = require('./exportGraphV1');
 const fail = (message, statusCode) => Object.assign(new Error(message), { statusCode });
 const invalid = () => fail('Les données archivées sont incohérentes ou indisponibles.', 503);
@@ -76,6 +77,12 @@ async function bundle(id, requestedName) {
   if (op.state !== 'completed' || op.runtimeRestored !== true) throw fail('L’export exige une image terminée et ses ressources restituées.', 409);
   if (!op.execution || !op.artifact) throw fail('Cette opération historique ne possède pas un export complet enregistré.', 409);
   requireValid(op._id === id && typeof op.profile?.id === 'string' && /^[a-z0-9-]{1,50}$/.test(op.profile.id));
+  let protectedItems;
+  try {
+    protectedItems = constraints.validate(op.request?.constraints);
+    if (protectedItems) requireValid(typeof op.request.visualPrompt === 'string'
+      && constraints.compose(op.request.visualPrompt, protectedItems) === op.request.prompt);
+  } catch { throw invalid(); }
   const { entries, lineage } = references(op);
   const graph = validateGraph(op, entries.length);
   let declaration;
@@ -105,7 +112,8 @@ async function bundle(id, requestedName) {
   if (requestedName !== undefined) return { bytes, mimeType: parts.find(p => p.name === requestedName).mimeType, filename: requestedName };
   return { schemaVersion: 1, operation: { id, state: 'completed', runtimeRestored: true },
     recipe: { id: op.profile.id, family: op.profile.family, ...(declaration && { declaredIdentity: declaration }) },
-    request: { prompt: op.request.prompt, width: op.request.width, height: op.request.height, seed: op.request.seed },
+    request: { prompt: op.request.prompt, width: op.request.width, height: op.request.height, seed: op.request.seed,
+      ...(protectedItems && { visualPrompt: op.request.visualPrompt, constraints: protectedItems }) },
     execution: { builder: { id: op.execution.builder.id, version: op.execution.builder.version },
       graphSha256: op.execution.graphSha256, parameters: { ...op.execution.parameters } },
     ...(op.expert && { expert: op.expert }), ...(lineage && { lineage }), parts };

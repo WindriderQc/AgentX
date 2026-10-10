@@ -1,0 +1,37 @@
+<details id="image-layout-guide" class="image-layout-guide">
+  <summary>Esquisse de composition</summary>
+  <p class="image-help">Place des zones nommées pour montrer la composition souhaitée. Cette esquisse sert de guide visuel ; le modèle peut modifier le placement, les formes et les noms.</p>
+  <div class="layout-guide-actions">
+    <button id="image-layout-format" class="quiet-button" type="button">Utiliser le format courant</button>
+    <button id="image-layout-new" class="quiet-button" type="button">Nouvelle esquisse</button>
+    <label class="quiet-button layout-guide-import" for="image-layout-file">Rouvrir un projet JSON<input id="image-layout-file" type="file" accept=".json,application/json"></label>
+  </div>
+  <p id="image-layout-status" class="image-help" role="status" aria-live="polite"></p>
+  <p id="image-layout-error" class="layout-guide-error" role="alert" hidden></p>
+  <div id="image-layout-workspace" hidden>
+    <p id="image-layout-format-label" class="image-help"></p>
+    <div class="layout-guide-preview"><canvas id="image-layout-canvas" tabindex="0" aria-label="Esquisse de composition. Clique pour placer la zone sélectionnée ou utilise les flèches du clavier."></canvas></div>
+    <p class="image-help">Clique pour placer le coin supérieur gauche de la zone. Les flèches déplacent la zone de 0,1 % ; Maj + flèche, de 1 %.</p>
+    <div class="layout-guide-actions"><label for="image-layout-zone">Zone à modifier</label><button id="image-layout-add" class="quiet-button" type="button">Ajouter une zone</button></div>
+    <select id="image-layout-zone" aria-label="Zone à modifier"></select>
+    <fieldset id="image-layout-fields" disabled>
+      <legend>Nom et placement</legend>
+      <label for="image-layout-name">Nom de la zone<input id="image-layout-name" type="text" maxlength="160" placeholder="Sujet principal, pièce, atelier…"></label>
+      <div class="layout-guide-grid">
+        <label for="image-layout-x">Position horizontale (%)<input id="image-layout-x" type="number" min="0" max="99" step="0.01"></label>
+        <label for="image-layout-y">Position verticale (%)<input id="image-layout-y" type="number" min="0" max="99" step="0.01"></label>
+        <label for="image-layout-width">Largeur (%)<input id="image-layout-width" type="number" min="1" max="100" step="0.01"></label>
+        <label for="image-layout-height">Hauteur (%)<input id="image-layout-height" type="number" min="1" max="100" step="0.01"></label>
+      </div>
+      <label for="image-layout-color">Couleur de la zone<input id="image-layout-color" type="color" value="#c5d9cf"></label>
+      <button id="image-layout-delete" class="quiet-button" type="button">Supprimer cette zone</button>
+    </fieldset>
+    <div class="layout-guide-actions">
+      <button id="image-layout-attach" class="reference-button" type="button">Joindre l’esquisse</button>
+      <button id="image-layout-remove-reference" class="quiet-button" type="button" hidden>Retirer l’esquisse jointe</button>
+      <button id="image-layout-png" class="quiet-button" type="button">Télécharger le PNG</button>
+      <button id="image-layout-json" class="quiet-button" type="button">Enregistrer le projet JSON</button>
+    </div>
+    <p class="image-help">L’esquisse occupe une référence parmi les deux disponibles, parent compris. La joindre prépare la demande ; utilise ensuite le bouton de création. Le projet JSON garde les zones pour les modifier hors ligne.</p>
+  </div>
+</details>

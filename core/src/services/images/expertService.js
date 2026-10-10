@@ -4,6 +4,7 @@ const { forSurface } = require('../surfaceConversationService');
 const gateway = require('./expertGateway');
 const presentation = require('./workshopPresentation');
 const images = require('./imageService');
+const constraints = require('../../../public/js/image-brief-constraints');
 const { officialDashboardUrl } = require('./expertDashboard');
 const ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const failure = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
@@ -58,7 +59,10 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
     const recipe = imageService.status().profiles.find(row => row.id === context.profile);
     if (!recipe || ![context.width, context.height].every(n => Number.isInteger(n) && n >= 256 && n <= 2752 && n % 32 === 0)
       || context.width * context.height > recipe.maxPixels) throw failure('Choisis une recette et un format disponibles.');
-    const clean = { prompt: context.prompt, profile: context.profile, width: context.width, height: context.height, referenceCount: context.referenceCount };
+    const protectedItems = constraints.validate(context.constraints);
+    constraints.compose(context.prompt, protectedItems);
+    const clean = { prompt: context.prompt, profile: context.profile, width: context.width, height: context.height, referenceCount: context.referenceCount,
+      ...(protectedItems && { constraints: protectedItems }) };
     if (input.mode === 'plan' && !clean.prompt.trim()) throw failure('Écris ton brief avant de demander une proposition.');
     return { clientTurnId: input.clientTurnId, mode: input.mode, message: input.message.trim(), context: clean };
   }
@@ -78,12 +82,19 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
           ...(typeof event.failed === 'boolean' && { failed: event.failed }) };
         if ((details.events || []).length < 80) await save({ events: [...(details.events || []), safe] });
       } });
-      const proposal = result.proposal || null;
+      let proposal = result.proposal || null;
       // Plan validation is repeated against the current Core contract at the trust boundary.
       if (proposal && (proposal.profile !== envelope.request.profile || proposal.width !== envelope.request.width
         || proposal.height !== envelope.request.height || typeof proposal.prompt !== 'string' || !proposal.prompt.trim()
         || proposal.prompt.length > 8000 || typeof proposal.reason !== 'string' || proposal.reason.length > 2000)) throw new Error('Proposition Hermes invalide.');
       if (envelope.action === 'plan' && !proposal) throw new Error('Hermes n’a pas fourni de proposition applicable.');
+      if (proposal && details.context.constraints) {
+        const protectedItems = constraints.validate(details.context.constraints);
+        const visualPrompt = constraints.visual(proposal.prompt, protectedItems);
+        if (!visualPrompt.trim()) throw new Error('Hermes n’a pas fourni de description visuelle.');
+        proposal = { profile: proposal.profile, width: proposal.width, height: proposal.height, reason: proposal.reason,
+          visualPrompt, prompt: constraints.compose(visualPrompt, protectedItems), constraints: protectedItems };
+      }
       await save({ proposal, reportedModel: result.model || null, nativeSessionId: result.sessionId || null,
         tokens: result.tokens || null, durationMs: result.durationMs || null });
       await conversations.updateTurn({ ...scope, traceId: turn.traceId }, { $set: { outcome: 'completed',
@@ -118,7 +129,7 @@ function createService({ conversations = forSurface('image-workshop'), bridge = 
             { role: 'assistant', content: (plan ? `Prompt proposé : ${plan.prompt}\nExplication : ${row.replyText}` : row.replyText).slice(0, 2000) }];
         });
       const envelope = { action: input.mode, history, status,
-        ...(input.mode === 'plan' ? { request: { ...input.context, instruction: input.message } }
+        ...(input.mode === 'plan' ? { request: { ...input.context, prompt: constraints.compose(input.context.prompt, input.context.constraints), instruction: input.message } }
           : { prompt: input.message, context: input.context }) };
       const turn = await conversations.recordTurn({ ...scope, traceId: input.clientTurnId, clientTurnId: input.clientTurnId,
         modeId: input.mode, source: 'imagex-hermes', speakerAgentId: 'imagex', routeTier: 'agent', outcome: 'accepted',

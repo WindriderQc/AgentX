@@ -5,6 +5,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply }) {
   const labels = { accepted: 'Enregistrée', running: 'Hermes travaille…', completed: 'Terminée', failed: 'Échec', interrupted: 'Interrompue', cancelled: 'Arrêtée' };
   let metadata, sessionId = '', turns = [], selectedTurn = '', proposalTurn = null, timer, pending = false, retry = null, fileEpoch = 0, fileUrl;
   const baselines = new Map();
+  const constraints = globalThis.ImageBriefConstraints;
   let applied = null;
   const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
   const active = () => turns.find(turn => ['accepted', 'running'].includes(turn.state));
@@ -44,7 +45,10 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply }) {
   function showProposal(turn) {
     proposalTurn = turn; $('imagex-proposal-empty').hidden = !!turn; $('imagex-proposal-content').hidden = !turn;
     if (turn) {
-      $('imagex-proposal-prompt').value = turn.proposal.prompt;
+      $('imagex-proposal-prompt').value = turn.proposal.visualPrompt ?? turn.proposal.prompt;
+      $('imagex-proposal-original').textContent = turn.context.prompt;
+      $('imagex-proposal-constraints').textContent = constraints?.block(turn.proposal.constraints) || '';
+      $('imagex-proposal-constraints').hidden = !turn.proposal.constraints;
       $('imagex-proposal-reason').textContent = turn.proposal.reason || '';
       $('imagex-proposal-settings').textContent = `${turn.proposal.profile} · ${turn.proposal.width} × ${turn.proposal.height} · ${turn.context.referenceCount} référence(s)`;
     }
@@ -103,12 +107,13 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply }) {
   }
   async function send(mode, message) {
     if (busy() || !metadata?.available) return;
-    const current = getContext(); if (!current.ready || mode === 'plan' && !current.prompt.trim()) { $('imagex-notice').textContent = 'Écris ton brief et choisis une recette avant de demander une proposition.'; return; }
+    const current = getContext(); if (!current.ready || current.constraintsInvalid || mode === 'plan' && !current.prompt.trim()) { $('imagex-notice').textContent = 'Écris ton brief et choisis une recette avant de demander une proposition.'; return; }
     pending = true; refresh(); $('imagex-notice').textContent = 'Transmission à Hermes…';
     try {
       if (!sessionId) { sessionId = (await api('/sessions', {})).session.sessionId;
         try { localStorage.setItem('agentx-imagex-session', sessionId); } catch {} }
-      const context = { prompt: current.prompt, profile: current.profile, width: current.width, height: current.height, referenceCount: current.referenceCount };
+      const context = { prompt: current.prompt, profile: current.profile, width: current.width, height: current.height, referenceCount: current.referenceCount,
+        ...(current.constraints && { constraints: current.constraints }) };
       const payload = { mode, message, context }, key = JSON.stringify({ sessionId, ...payload });
       if (!retry || retry.key !== key) retry = { key, body: { ...payload, clientTurnId: crypto.randomUUID() } };
       baselines.set(retry.body.clientTurnId, signature());
@@ -121,7 +126,7 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply }) {
     finally { pending = false; refresh(); }
   }
   function refresh() {
-    const context = getContext(), working = busy(), ready = !!metadata?.available && context.ready;
+    const context = getContext(), working = busy(), ready = !!metadata?.available && context.ready && !context.constraintsInvalid;
     $('imagex-send').disabled = working || !ready; $('imagex-plan').disabled = working || !ready || !context.prompt.trim();
     $('imagex-explore').disabled = working || !ready; $('imagex-new').disabled = working; $('imagex-session').disabled = working;
     $('imagex-stop').hidden = !active(); $('imagex-stop').disabled = pending;
@@ -129,11 +134,16 @@ globalThis.AgentXImageExpert = { mount({ getContext, apply }) {
     const original = proposalTurn?.context;
     const changed = original && (context.prompt !== original.prompt || context.profile !== original.profile
       || context.width !== original.width || context.height !== original.height || context.referenceCount !== original.referenceCount
+      || JSON.stringify(context.constraints) !== JSON.stringify(original.constraints)
       || baselines.has(proposalTurn.id) && baselines.get(proposalTurn.id) !== signature());
-    $('imagex-apply').disabled = !proposalTurn || context.locked || changed || !$('imagex-proposal-prompt').value.trim();
+    let invalidProposal = context.constraintsInvalid;
+    try { constraints?.compose($('imagex-proposal-prompt').value, proposalTurn?.proposal.constraints); } catch { invalidProposal = true; }
+    $('imagex-apply').disabled = !proposalTurn || context.locked || changed || invalidProposal || !$('imagex-proposal-prompt').value.trim();
     $('imagex-apply-note').textContent = applied && applied.id === proposalTurn?.id && applied.signature === signature() ? 'Proposition appliquée. Le brief est prêt à être vérifié dans le formulaire de création.'
       : context.locked ? 'Attends la fin de la génération pour modifier le brief.'
-      : changed ? 'Le brief, les réglages ou les références ont changé. Demande une nouvelle proposition pour ce contexte.'
+      : invalidProposal ? 'Corrige les contraintes ou réduis le brief : le texte transmis est limité à 8 000 caractères.'
+      : changed ? 'Le brief, les contraintes, les réglages ou les références ont changé. Demande une nouvelle proposition pour ce contexte.'
+        : proposalTurn?.proposal.constraints ? 'Appliquer remplace la description visuelle. Tes contraintes sont reprises mot pour mot dans le brief transmis ; leur respect dans l’image reste à vérifier.'
         : 'Appliquer remplace le texte du brief. La graine, la recette et les références restent celles du formulaire.';
   }
   for (const [index, name] of ['proposal', 'activity', 'files'].entries()) {

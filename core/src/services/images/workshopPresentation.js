@@ -4,6 +4,7 @@ const ImageOperation = require('../../../models/ImageOperation');
 const { loadConfig } = require('./config');
 const { MIN_EDGE, MULTIPLE, limits, recommended } = require('./sizes');
 const { declaredRecipe, executionDetails } = require('./recipeExecution');
+const constraints = require('../../../public/js/image-brief-constraints');
 const text = value => typeof value === 'string' ? value.trim().slice(0,240) : null;
 function workerInfo(workerUrl, config) {
   let address;
@@ -40,7 +41,8 @@ async function details(id) {
     ...(op.lineage && { lineage: op.lineage }),
     ...(op.execution && { execution: executionDetails(op.execution) }),
     worker: workerInfo(op.workerUrl, loadConfig()),
-    request: { prompt: op.request?.prompt, seed: op.request?.seed, width: op.request?.width, height: op.request?.height },
+    request: { prompt: op.request?.prompt, seed: op.request?.seed, width: op.request?.width, height: op.request?.height,
+      ...(op.request?.constraints && { visualPrompt: op.request.visualPrompt, constraints: constraints.validate(op.request.constraints) }) },
     actualDimensions: op.artifact ? { width: op.artifact.width, height: op.artifact.height } : null,
     totalMs: op.timings?.totalMs ?? null, archivePath: text(op.artifact?.path),
     createdAt: op.createdAt, runtimeRestored: op.runtimeRestored === true };

@@ -1,0 +1,30 @@
+<details id="image-compare" class="image-compare">
+  <summary>Comparer avec l’original parent</summary>
+  <p class="image-help">Examine la retouche et son parent enregistré. La checklist contient tes observations manuelles ; aucun contrôle automatique du contenu n’est effectué.</p>
+  <button id="image-compare-load" type="button" class="quiet-button" disabled>Charger les deux originaux</button>
+  <p id="image-compare-status" class="image-help" role="status" aria-live="polite">Choisis une retouche archivée qui possède un parent enregistré.</p>
+  <p id="image-compare-error" class="compare-error" role="alert" hidden></p>
+  <div id="image-compare-workspace" hidden>
+    <div class="compare-controls">
+      <label for="image-compare-mode">Présentation<select id="image-compare-mode"><option value="side">Côte à côte</option><option value="slider">Volet coulissant</option></select></label>
+      <label for="image-compare-zoom">Taille d’affichage<select id="image-compare-zoom"><option value="fit">Adapter à l’écran</option><option value="native">100 % · pixels de l’original</option></select></label>
+      <label class="compare-checkbox" for="image-compare-sync"><input id="image-compare-sync" type="checkbox" checked>Défilement synchronisé</label>
+    </div>
+    <p id="image-compare-dimensions" class="image-help"></p>
+    <div id="image-compare-side" class="compare-side">
+      <figure><figcaption>Original parent</figcaption><div id="image-compare-parent-scroll" class="compare-viewport" tabindex="0" aria-label="Original parent : aperçu défilable"><img id="image-compare-parent-image" alt="Original parent enregistré de cette retouche"></div></figure>
+      <figure><figcaption>Résultat de la retouche</figcaption><div id="image-compare-result-scroll" class="compare-viewport" tabindex="0" aria-label="Résultat : aperçu défilable"><img id="image-compare-result-image" alt="Résultat archivé de la retouche"></div></figure>
+    </div>
+    <div id="image-compare-slider" hidden>
+      <div id="image-compare-slider-scroll" class="compare-viewport" tabindex="0" aria-label="Comparaison coulissante défilable"><div id="image-compare-stage" class="compare-stage"><img id="image-compare-slider-parent" alt="Original parent sous le volet"><img id="image-compare-slider-result" class="compare-overlay" alt="Résultat sur le volet"><span id="image-compare-seam" class="compare-seam" aria-hidden="true"></span></div></div>
+      <label for="image-compare-position">Révéler le résultat <span id="image-compare-percent">50 %</span><input id="image-compare-position" type="range" min="0" max="100" step="1" value="50"></label>
+      <p class="image-help">Le résultat apparaît à gauche du séparateur ; le parent apparaît à droite.</p>
+    </div>
+    <details class="compare-provenance"><summary>Identité des deux archives vérifiées</summary><dl id="image-compare-provenance"></dl></details>
+    <div class="compare-review-heading"><h3>Ma checklist de vérification</h3><button id="image-compare-add" type="button" class="quiet-button">Ajouter un point</button></div>
+    <p class="image-help">Les contraintes enregistrées dans le brief sont reprises mot pour mot et restent « À vérifier » jusqu’à ton examen. Les observations restent dans cette page ; exporte le JSON pour les conserver et les rouvrir.</p>
+    <div id="image-compare-items" class="compare-items"></div>
+    <p id="image-compare-review-status" class="image-help" role="status" aria-live="polite"></p>
+    <div class="compare-file-actions"><button id="image-compare-export" type="button" class="quiet-button">Enregistrer la revue JSON</button><label class="quiet-button compare-import" for="image-compare-file">Rouvrir une revue JSON<input id="image-compare-file" type="file" accept=".json,application/json"></label></div>
+  </div>
+</details>

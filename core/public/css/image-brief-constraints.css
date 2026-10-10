@@ -1,0 +1,9 @@
+.image-constraints { border:1px solid var(--border-color, #38465b); border-radius:12px; padding:12px; margin:12px 0; }
+.image-constraints summary { cursor:pointer; font-weight:600; }
+.image-constraint-composer { display:grid; gap:8px; }
+.image-constraint-list { display:grid; gap:12px; padding-left:24px; }
+.image-constraint-list li { display:grid; gap:6px; }
+.image-constraint-list button,.image-constraint-composer button { justify-self:start; }
+.image-constraint-list textarea,.image-constraint-composer textarea,.image-constraint-composer select { width:100%; box-sizing:border-box; }
+#image-constraints-counter[data-invalid="true"] { color:var(--danger-color, #fca5a5); }
+.imagex-protected-constraints { white-space:pre-wrap; overflow-wrap:anywhere; padding:12px; border:1px solid var(--border-color, #38465b); border-radius:8px; }

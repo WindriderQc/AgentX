@@ -1,0 +1,12 @@
+.image-protected { margin-top: 1rem; padding: 1rem; border: 1px solid var(--border, #344352); border-radius: 12px; }
+.image-protected summary { cursor: pointer; font-weight: 600; }
+.image-protected p { line-height: 1.5; }
+.image-protected canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; }
+.image-protected fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; margin-top: 1rem; }
+.image-protected fieldset label { display: grid; gap: .3rem; }
+.image-protected input { width: 100%; min-width: 0; }
+.image-protected li { margin: .5rem 0; }
+.image-protected li button { margin-left: .5rem; }
+#image-protected-downloads { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1rem; }
+#image-protected-downloads[hidden] { display: none; }
+#image-protected-output { width: 100%; height: auto; }

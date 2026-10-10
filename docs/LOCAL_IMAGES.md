@@ -26,6 +26,27 @@ or setting changes. Restarted consultations are interrupted without inference
 replay. The manual creation path remains usable without Hermes. Installation and
 protocol details are in [the Hermes adapter](../integrations/hermes/README.md).
 
+**Contraintes à conserver dans le brief** records explicit exact text, required
+elements and composition/relationship instructions. Core validates a closed
+`constraints: {version: 1, items: [{id, kind, text}]}` snapshot, with at most 20
+items, 300 Unicode characters per item and 4,000 characters overall. Hermes can
+rewrite the visual description; Core appends the original constraints verbatim
+to its proposal and the generation prompt. The UI shows the initial brief and
+the preserved block separately. Changed constraints invalidate stale proposals.
+The composed prompt has the existing 8,000 UTF-16 unit budget; overflow is refused
+without truncation. Request identity, draft restoration, details and recipe
+exports retain the snapshot and visual prompt. This preserves the submitted
+intent; visual compliance still requires examination.
+
+**Esquisse de composition** creates a browser CPU guide with named rectangles,
+relative placement and a chosen format. PNG export uses at most 1,536 pixels per
+edge; portable `agentx.image-layout-guide/v1` JSON keeps up to 24 editable zones.
+Joining the guide explicitly occupies one of the two reference slots, including
+the parent. It then follows ordinary archived reference preparation and the
+existing native image-operation queue identity. Changing the guide does not
+replace its previously attached PNG until it is joined again. It is a visual
+reference rather than a spatial restriction on the rendering model.
+
 Nestor and Famille display conversation image cards with read-only progress,
 verified output and a **Continuer dans l’atelier** link. The atelier restores
 the selected operation's brief, seed and supported format/profile. **Utiliser
@@ -64,6 +85,33 @@ are checked for bounded image data, dimensions and matching SHA before image
 decoding. An operation ID in an imported file records provenance; it does not
 grant archive access. Text and source bytes remain in the browser and downloaded
 files; saving a derived composition to Core's library is not part of this editor.
+
+**Comparer avec l’original parent** reads and verifies both canonical archives
+against the stored lineage, SHA and dimensions. It offers side-by-side views,
+native-pixel zoom and synchronized scrolling. A sliding overlay is available
+only when the dimensions agree; different formats keep their own proportions.
+Saved brief constraints start as manual checklist items marked **À vérifier**.
+Observations and notes can be exported and reopened as bounded
+`agentx.image-review.v1` JSON bound to both operation IDs, hashes and dimensions.
+They are manual judgements and do not constitute OCR or semantic validation.
+
+**Conserver le parent hors des zones choisies** selects up to 20 rectangles on
+the verified parent. `POST /api/images/operations/:id/protected-composition`
+reads only that completed operation and its recorded completed parent from
+canonical archive receipts. It checks both expected hashes, dimensions and
+record identity, copies the parent's decoded RGBA buffer and replaces pixels
+only inside the rectangle union with the corresponding result pixels. The two
+images must have identical dimensions and fit the 4,300,800-pixel output budget;
+composition accepts JPEG and non-interlaced PNG, refusing interlaced PNG before
+decoding because the installed codec's interlaced inflate has no output bound;
+there is no implicit resizing. Core decodes the exported PNG again and compares
+every RGBA value outside the union before returning the PNG and a
+`agentx.protected-image-composition/v1` receipt with region coordinates, hashes
+and selected/protected pixel counts. This guarantees the retained decoded pixel
+values, including alpha, using the declared codec contract. It does not copy the
+source file's encoded bytes or metadata. Composition is bounded, serialized CPU
+work with no model, worker, GPU admission or archive write. Downloads keep the
+composition and receipt locally; both archived originals remain intact.
 
 Read-only `GET /api/images/workshop` reports the configured worker, model
 components, step count and pixel budgets. `GET /api/images/operations/:id/details`

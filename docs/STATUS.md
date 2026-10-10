@@ -118,6 +118,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   A browser editor adds exact, editable text over verified originals, with PNG,
   standalone SVG and portable JSON exports. Reopening a project checks its
   embedded image and preserves the archived source; editing starts no GPU work.
+  Explicit brief constraints survive Hermes rewriting and remain in accepted
+  requests, drafts and recipe exports. A browser composition sketch joins as an
+  ordinary reference. Verified parent/result comparison includes a manual,
+  exportable checklist. CPU composition replaces only chosen rectangles and
+  verifies the exported PNG's decoded pixels outside them against the parent.
 - **Pipeline.** List, dossier and Planning references share Core's read-only
   next-action projection. **Needs attention** pages the engineering and
   private-lane queues separately, with an exact total or an explicit lower

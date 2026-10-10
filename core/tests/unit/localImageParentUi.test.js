@@ -4,6 +4,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../../public/js/local-images.js'), 'utf8');
 const starterSource = fs.readFileSync(path.join(__dirname, '../../public/js/image-starters.js'), 'utf8');
+const constraintsSource = fs.readFileSync(path.join(__dirname, '../../public/js/image-brief-constraints.js'), 'utf8');
+const constraintsUiSource = fs.readFileSync(path.join(__dirname, '../../public/js/image-brief-constraints-ui.js'), 'utf8');
 const starterData = JSON.parse(fs.readFileSync(path.join(__dirname, '../../public/data/image-starters.json'), 'utf8'));
 const parentId = '11111111-1111-4111-8111-111111111111';
 const childId = '22222222-2222-4222-8222-222222222222';
@@ -25,8 +27,9 @@ class Element {
     ...(child.tagName === tag ? [child] : []), ...child.querySelectorAll(tag) ]); }
   focus() {}
 }
-const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
-async function studio({ failFirst = false, lineage, requested = parentId, availableRecipe, historicalRecipe, execution, exportFailure, exportPending, starterFailure = false } = {}) {
+const settle = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
+async function studio({ failFirst = false, lineage, requested = parentId, availableRecipe, historicalRecipe, execution, exportFailure, exportPending, starterFailure = false,
+  constraintsEnabled = false, draftConstraints, expert } = {}) {
   const elements = new Map();
   const get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const size = new Element('option'); size.value = '1024,1024'; size.textContent = 'Square';
@@ -49,10 +52,11 @@ async function studio({ failFirst = false, lineage, requested = parentId, availa
       return { ok: true, json: async () => ({ schemaVersion: 1, parts: [{ name: 'graph.json' }, { name: 'reference-0-source.jpg' }, { name: 'output.png' }] }) };
     } else if (url.endsWith('/status')) data = { configured: true, defaultProfile: 'quality', profiles: [{ id: 'quality', label: 'Fixture', maxPixels: 4194304 }] };
     else if (url.endsWith('/workshop')) data = { profiles: [{ id: 'quality', family: 'qwen21', label: 'Fixture', steps: 4, maxPixels: 4194304, ...(availableRecipe && { declaredIdentity: availableRecipe }) }], worker: null };
-    else if (url.endsWith('/draft')) data = { draft: { profile: 'quality', prompt: 'Edit the chosen scene', width: 1024, height: 1024, seed: 42 } };
+    else if (url.endsWith('/draft')) data = { draft: { profile: 'quality', prompt: 'Edit the chosen scene', width: 1024, height: 1024, seed: 42,
+      ...(draftConstraints && { constraints: draftConstraints, visualPrompt: 'Edit the chosen scene' }) } };
     else if (url.endsWith('/details')) data = { details: detail(requested) };
     else if (url.endsWith('/operations')) data = { operations: [archived(parentId)] };
-    else data = { operation: archived(requested) };
+    else data = { operation: { ...archived(requested), ...(expert && { expert }) } };
     return { ok: true, json: async () => ({ ok: true, ...data }) };
   });
   const context = vm.createContext({ document: { getElementById: get, createElement: tag => {
@@ -63,7 +67,8 @@ async function studio({ failFirst = false, lineage, requested = parentId, availa
   localStorage: { setItem() {} }, crypto: { randomUUID: () => `fixture-action-${++sequence}` },
   URL: { createObjectURL: () => 'blob:fixture', revokeObjectURL() {} },
   Image: class { constructor() { this.width = 2; this.height = 2; } async decode() { imageDecode(); } },
-  Event: class { constructor(type) { this.type = type; } }, setTimeout: jest.fn(), clearTimeout: jest.fn() });
+  Event: class { constructor(type) { this.type = type; } }, queueMicrotask, setTimeout: jest.fn(), clearTimeout: jest.fn() });
+  if (constraintsEnabled) { vm.runInContext(constraintsSource, context); vm.runInContext(constraintsUiSource, context); }
   vm.runInContext(starterSource, context); vm.runInContext(source, context);
   await settle();
   const fire = async (id, type = 'click') => { await get(id).dispatchEvent({ type, preventDefault() {} }); await settle(); };
@@ -138,6 +143,36 @@ test('starting a new brief clears the archived parent', async () => {
   const ui = await studio(); await ui.fire('image-use-reference'); await ui.fire('image-new');
   ui.get('image-prompt').value = 'A new scene'; await ui.fire('image-form', 'submit');
   expect(ui.post[0].parent).toBeUndefined(); expect(ui.post[0].references).toEqual([]);
+});
+test.each([undefined, { version: 1, items: [{ id: 'title', kind: 'exact-text', text: 'ÉCOSYSTÈME & atelier' }] }])(
+  'restoring an archived brief retains Hermes provenance after the constraints controller changes its value (%j)', async draftConstraints => {
+    const expert = { sessionId: '33333333-3333-4333-8333-333333333333', turnId: '44444444-4444-4444-8444-444444444444' };
+    const ui = await studio({ constraintsEnabled: true, draftConstraints, expert });
+    expect(ui.get('image-prompt').value).toBe('Edit the chosen scene');
+    await ui.fire('image-form', 'submit');
+    expect(ui.post).toHaveLength(1);
+    expect(ui.post[0].expert).toEqual(expert);
+    expect(ui.post[0].constraints).toEqual(draftConstraints);
+    expect(ui.post[0].prompt).toBe('Edit the chosen scene');
+  });
+test('editing a brief refreshes its protected budget and rejects overflow before decoding references or posting', async () => {
+  const draftConstraints = { version: 1, items: [{ id: 'title', kind: 'exact-text', text: 'Fixture title' }] };
+  const ui = await studio({ constraintsEnabled: true, draftConstraints });
+  expect(ui.get('image-create').disabled).toBe(false);
+  ui.get('image-prompt').value = 'x'.repeat(8000);
+  await ui.fire('image-form', 'input');
+  expect(ui.get('image-create').disabled).toBe(true);
+  expect(ui.get('image-constraints-counter').dataset.invalid).toBe('true');
+  expect(ui.get('image-constraints-counter').textContent).toContain('dépassent 8 000');
+  ui.get('image-references').files = [{ type: 'image/png', name: 'fixture.png' }];
+  await ui.fire('image-form', 'submit');
+  expect(ui.get('image-status').textContent).toContain('dépassent 8 000');
+  expect(ui.post).toHaveLength(0);
+  expect(ui.imageDecode).not.toHaveBeenCalled(); expect(ui.canvas).not.toHaveBeenCalled();
+  ui.get('image-prompt').value = 'A shorter visual brief';
+  await ui.fire('image-form', 'input');
+  expect(ui.get('image-create').disabled).toBe(false);
+  expect(ui.get('image-constraints-counter').dataset.invalid).toBe('false');
 });
 test('historical child details show the recorded parent link and archive preview', async () => {
   const ui = await studio({ requested: childId, lineage: { version: 1, parent: { operationId: parentId, sha256: checksum, width: 512, height: 512 } } });

@@ -9,6 +9,7 @@
     <section class="image-compose" aria-labelledby="image-compose-title">
       <div class="panel-heading"><div><p class="panel-step">01 · COMPOSER</p><h2 id="image-compose-title">Nouvelle création</h2></div><button id="image-new" type="button" class="quiet-button" disabled>Nouveau brief</button></div>
       <p id="image-draft-source" class="draft-source" hidden></p>
+      <%- include('image-layout-guide') %>
       <form id="image-form">
         <details class="image-starters">
           <summary>Un point de départ pour ton idée</summary>
@@ -26,6 +27,7 @@
         </details>
         <label for="image-prompt">Ton brief</label>
         <textarea id="image-prompt" maxlength="8000" required rows="6" placeholder="Décris le sujet, l’ambiance et les détails qui comptent. Pour une retouche, précise ce qui change et ce qui doit rester."></textarea>
+        <%- include('image-brief-constraints') %>
         <div class="field-heading"><label for="image-profile">Recette de rendu</label><span>Configuration actuelle</span></div>
         <select id="image-profile" aria-describedby="image-recipe-summary"></select>
         <div id="image-recipe-summary" class="recipe-summary" aria-live="polite"><p>Lecture des recettes disponibles…</p></div>
@@ -65,6 +67,8 @@
       <dl id="image-result-facts" class="result-facts" hidden></dl>
       <div class="result-actions"><a id="image-download" class="quiet-button" hidden download>Télécharger l’original</a><button id="image-reuse-brief" type="button" class="quiet-button" hidden>Reprendre le brief et les réglages</button><button id="image-use-reference" type="button" class="reference-button" hidden>Joindre cette image pour la retoucher</button></div>
       <%- include('image-text-editor') %>
+      <%- include('image-compare') %>
+      <%- include('image-protected-composition') %>
       <p id="image-result-note" class="image-help" hidden></p>
       <details id="image-result-details" class="result-details" hidden><summary>Brief et recette de cette image</summary><p id="image-saved-prompt"></p><dl id="image-saved-recipe"></dl></details>
       <details id="image-export" class="result-details" hidden>
