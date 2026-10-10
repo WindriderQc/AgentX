@@ -41,7 +41,7 @@ function iotCombinedModel() {
       data.push({ x: point.ts, y: Number.isFinite(point.value) ? point.value / divisor : null });
       previous = point;
     }
-    return { key, ...visual, unit: measure?.unit || known?.unit || '', points, data, divisor,
+    return { key, ...visual, style: iotCurveStyle(key), unit: measure?.unit || known?.unit || '', points, data, divisor,
       axis: `iotY${index}`, low: low - pad, high: high + pad, min, max,
       tolerance: live ? Math.max(7500, cadence * 1.5) : bucket * .51 };
   });
@@ -80,6 +80,7 @@ function iotCombinedHtml() {
   return `<article class="card iot-overlay-card"><header class="iot-overlay-head"><div><p class="iot-eyebrow">${number(model.metrics.length)} MESURES · UN AXE DE TEMPS</p><h3>Courbes superposées</h3></div><span class="iot-live-pill${model.live ? ' live' : ''}"><i aria-hidden="true"></i>${model.live ? 'En direct' : 'Historique'}</span></header>
     <div id="iotCombinedReadings" class="iot-overlay-readings">${iotCombinedReadings(model)}</div>
     <div class="iot-overlay-tools"><p>Chaque courbe a son échelle. Le survol affiche les valeurs dans leur unité.</p><label>Axe affiché<select id="iotCombinedAxis">${model.populated.map(metric => `<option value="${e(metric.key)}"${metric.key === model.axis.key ? ' selected' : ''}>${e(metric.label)}${metric.unit ? ` (${e(metric.unit)})` : ''}</option>`).join('')}</select></label>${model.live ? '' : `<label class="iot-range-toggle"><input type="checkbox" id="iotCombinedRanges"${iotState.ranges ? ' checked' : ''}>Min–max</label>`}</div>
+    ${iotAppearanceHtml(model.metrics)}
     <div class="iot-overlay-plot"><canvas id="iotCombinedChart" tabindex="0" role="img" aria-label="Courbes superposées de ${e(model.metrics.map(metric => metric.label).join(', '))}. Flèches gauche et droite pour consulter les mesures, Échap pour fermer le survol."></canvas><div id="iotCombinedTooltip" class="iot-shared-tooltip" hidden role="status"></div></div>
     <div class="iot-overlay-foot"><span>Survole ou touche le graphique pour comparer les mesures.</span><span id="iotCombinedWindow">${e(iotCombinedDate(model.start))} → ${e(iotCombinedDate(model.end))}</span></div>
     <details class="iot-overlay-data"><summary>Consulter les valeurs détaillées</summary><div id="iotCombinedTables">${iotCombinedTables(model)}</div></details></article>`;
@@ -100,13 +101,13 @@ function iotCombinedScales(model) {
       for (let time = Math.ceil(model.start / step) * step; time <= model.end; time += step) ticks.push({ value: time });
       scale.ticks = ticks;
     },
-    border: { display: false }, grid: { color: '#25405238', tickLength: 0 },
+    border: { display: false }, grid: { color: '#25405222', tickLength: 0 },
     ticks: { color: '#8198ab', includeBounds: false, maxTicksLimit: 7, maxRotation: 0, padding: 14, font: { size: 11 },
       callback: value => `${model.end - model.start > 86400000 ? new Date(value).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' }) + ' ' : ''}${iotCombinedTime(value, model.live)}` } } };
   for (const metric of model.metrics) scales[metric.axis] = { type: 'linear', position: 'left',
     display: metric.key === model.axis.key, min: metric.low, max: metric.high,
     afterBuildTicks(scale) { scale.options.title.display = scale.chart.width >= 600; },
-    border: { display: false }, grid: { color: '#30485c55', tickLength: 0 },
+    border: { display: false }, grid: { color: '#30485c38', tickLength: 0 },
     title: { display: true, text: `${metric.label}${metric.unit ? ` · ${metric.unit}` : ''}`, color: metric.color, font: { size: 11 }, padding: 10 },
     ticks: { color: metric.color, maxTicksLimit: 6, padding: 12, font: { size: 11 }, callback: value => iotValue(value * metric.divisor) } };
   return scales;
@@ -114,21 +115,25 @@ function iotCombinedScales(model) {
 
 function iotCombinedDatasets(model) {
   return model.metrics.map(metric => ({ label: metric.label, data: metric.data, yAxisID: metric.axis,
-    borderColor: metric.color, borderWidth: context => context.chart.width < 600 ? 1.5 : 2.3, borderCapStyle: 'round', borderJoinStyle: 'round',
-    cubicInterpolationMode: 'monotone', tension: .25, pointHoverRadius: 0,
+    borderColor: metric.color, borderWidth: metric.style.width, borderCapStyle: 'round', borderJoinStyle: 'round',
+    borderDash: metric.style.line === 'dashed' ? [7, 5] : metric.style.line === 'dotted' ? [1, 4] : [],
+    cubicInterpolationMode: metric.style.curve === 'smooth' ? 'monotone' : 'default',
+    tension: metric.style.curve === 'smooth' ? .25 : 0, stepped: metric.style.curve === 'step', pointHoverRadius: 0,
     pointBackgroundColor: metric.color, pointBorderColor: '#10202a', pointBorderWidth: 1,
     pointRadius(context) {
       const data = context.dataset.data; const index = context.dataIndex;
       if (!Number.isFinite(data[index]?.y)) return 0;
       const isolated = !Number.isFinite(data[index - 1]?.y) && !Number.isFinite(data[index + 1]?.y);
-      return isolated ? 3 : index === data.length - 1 ? 2 : 0;
+      return isolated ? 2.5 : metric.style.points ? 1.8 : index === data.length - 1 ? 1.5 : 0;
     },
-    parsing: false, spanGaps: false, fill: metric.key === model.axis.key ? 'start' : false,
+    parsing: false, spanGaps: false, fill: metric.style.fill === 'none' ? false : 'start',
     backgroundColor(context) {
       const area = context.chart.chartArea;
       if (!area) return 'transparent';
+      const alpha = Math.round(metric.style.opacity / 100 * 255).toString(16).padStart(2, '0');
+      if (metric.style.fill === 'solid') return metric.color + alpha;
       const gradient = context.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
-      gradient.addColorStop(0, metric.color + '0b'); gradient.addColorStop(1, metric.color + '00'); return gradient;
+      gradient.addColorStop(0, metric.color + alpha); gradient.addColorStop(1, metric.color + '00'); return gradient;
     }
   }));
 }
@@ -150,7 +155,10 @@ function iotPaintCombinedHover() {
 
 const iotCombinedPlugin = {
   id: 'iotComparison',
-  beforeDatasetDraw(chart, args) { chart.ctx.save(); chart.ctx.shadowColor = iotCombined.model.metrics[args.index].color; chart.ctx.shadowBlur = chart.width < 600 ? 0 : 3; },
+  beforeDatasetDraw(chart, args) {
+    const metric = iotCombined.model.metrics[args.index];
+    chart.ctx.save(); chart.ctx.shadowColor = metric.color; chart.ctx.shadowBlur = metric.style.glow && chart.width >= 600 ? 4 : 0;
+  },
   afterDatasetDraw(chart) { chart.ctx.restore(); },
   beforeDatasetsDraw(chart) {
     if (!iotState.ranges) return;
@@ -182,7 +190,7 @@ const iotCombinedPlugin = {
     for (const metric of model.metrics) {
       const point = iotNearestValue(metric, hoverTime); if (!point) continue;
       const px = chart.scales.x.getPixelForValue(point.ts); const py = chart.scales[metric.axis].getPixelForValue(point.value / metric.divisor);
-      ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fillStyle = metric.color; ctx.shadowColor = metric.color; ctx.shadowBlur = 12; ctx.fill();
+      ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fillStyle = metric.color; ctx.shadowColor = metric.color; ctx.shadowBlur = metric.style.glow ? 8 : 0; ctx.fill();
       ctx.shadowBlur = 0; ctx.strokeStyle = '#10202a'; ctx.lineWidth = 2; ctx.stroke();
     }
     ctx.restore();

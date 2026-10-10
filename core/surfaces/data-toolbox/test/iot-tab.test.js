@@ -92,12 +92,12 @@ test('Data refusals survive the relay and a lost command reply is explicitly unk
   assert.equal(calls.length, 3);
 });
 
-function browser(respond) {
+function browser(respond, localStorage) {
   const elements = {}; const listeners = {}; const requests = []; const timers = [];
   const element = selector => elements[selector] ||= { innerHTML: '', textContent: '', value: '', disabled: false,
     setAttribute() {}, querySelectorAll() { return []; }, contains() { return false; } };
   const document = { hidden: false, querySelector: element, querySelectorAll() { return []; }, addEventListener(name, handler) { (listeners[name] ||= []).push(handler); } };
-  const context = { document, location: { hash: '#iot' }, window: { addEventListener() {} }, console, URLSearchParams, Date,
+  const context = { document, location: { hash: '#iot' }, window: { addEventListener() {} }, localStorage, console, URLSearchParams, Date,
     FormData: class { constructor(form) { return Object.entries(form.fields); } },
     setInterval(callback, ms) { timers.push({ callback, ms }); return timers.length; }, clearInterval() {},
     async fetch(url, options = {}) {
@@ -108,8 +108,8 @@ function browser(respond) {
         : { ok: true, status: 200, json: async () => ({ status: 'success', data: answer }) };
     }
   };
-  const source = ['refresh.js', 'iot-visuals.js', 'iot-charts.js', 'iot-combined.js', 'iot.js', 'app.js'].map(file => fs.readFileSync(path.join(__dirname, '../public', file), 'utf8')).join('\n')
-    .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, render, iotState, iotTab, iotSelect, iotLoadSeries, iotSubmit, iotRefresher, iotChart, iotCards, iotCombinedModel, iotNearestValue };');
+  const source = ['refresh.js', 'iot-visuals.js', 'iot-appearance.js', 'iot-charts.js', 'iot-combined.js', 'iot.js', 'app.js'].map(file => fs.readFileSync(path.join(__dirname, '../public', file), 'utf8')).join('\n')
+    .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, render, iotState, iotTab, iotSelect, iotLoadSeries, iotSubmit, iotRefresher, iotChart, iotCards, iotCombinedModel, iotNearestValue, iotCurveStyle, iotStoreCurveStyle };');
   vm.runInNewContext(source, context);
   return { ...context.page, elements, listeners, requests, timers, document, content: element('#content') };
 }
@@ -289,4 +289,34 @@ test('comparison scales stay finite for extreme numbers and min/max is an explic
   const ranges = page.iotCombinedModel().metrics[0];
   assert.equal(ranges.min, -1.5e308); assert.equal(ranges.max, 1.5e308);
   assert.ok(Number.isFinite(ranges.low) && Number.isFinite(ranges.high));
+});
+
+test('curve preferences survive reload per device and measure without writing to Data', async () => {
+  const saved = new Map();
+  const storage = { getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, value) };
+  const first = browser(fakeData(), storage); await first.render();
+  first.iotStoreCurveStyle(['temperature'], { width: .75, line: 'dashed', curve: 'step', fill: 'gradient', opacity: 24 });
+  const second = browser(fakeData(), storage); await second.render();
+  assert.equal(second.iotCurveStyle('temperature').width, .75);
+  assert.equal(second.iotCurveStyle('temperature').fill, 'gradient');
+  assert.equal(second.iotCurveStyle('wifi_rssi').fill, 'none');
+  second.iotState.selected = 'OTHER_DEVICE';
+  assert.equal(second.iotCurveStyle('temperature').width, 1.5);
+  assert.ok([...first.requests, ...second.requests].every(call => call.method === 'GET'));
+});
+
+test('unreadable or invalid saved curve styles leave readings available with bounded rendering settings', async () => {
+  for (const raw of ['invalid json', JSON.stringify({ version: 1, devices: [{ id: 'SYN_1', curves: [{ key: 'temperature', width: 999, line: '<script>', fill: 'unexpected', opacity: -100 }] }] })]) {
+    const page = browser(fakeData(), { getItem: () => raw, setItem() { throw new Error('storage unavailable'); } });
+    await page.render();
+    const model = page.iotCombinedModel();
+    assert.equal(model.metrics[0].points[0].value, 22);
+    assert.equal(model.metrics[0].style.width, 1.5);
+    assert.equal(model.metrics[0].style.line, 'solid');
+    assert.equal(model.metrics[0].style.fill, 'none');
+    assert.ok(model.metrics[0].style.opacity >= 0 && model.metrics[0].style.opacity <= 40);
+    page.iotStoreCurveStyle(['temperature'], { width: 2, fill: 'solid' });
+    assert.equal(page.iotCurveStyle('temperature').width, 2, 'denied storage retains session preferences');
+    assert.ok(page.requests.every(call => call.method === 'GET'));
+  }
 });
