@@ -13,6 +13,10 @@ const IOT_METRICS = Object.freeze({
   cpu_frequency: { label: 'Fréquence CPU', tone: 'violet', icon: 'chip', order: 10 },
   lux: { label: 'Luminosité', tone: 'gold', icon: 'sun', order: 11 }
 });
+const IOT_COLORS = Object.freeze({ temperature: '#ff9b73', humidity: '#67b8ff', wifi_rssi: '#62dbac',
+  battery_voltage: '#f4cf75', cpu_temperature: '#c58bfa', pressure: '#59dbe8', altitude: '#859cff',
+  dht_temperature: '#ffb798', free_heap: '#8be7b4', cpu_frequency: '#e89edb', lux: '#ffe69a' });
+const IOT_PALETTE = ['#59dbe8', '#ff9b73', '#62dbac', '#c58bfa', '#f4cf75', '#859cff', '#ed9cce', '#93d6ff'];
 const IOT_ICONS = Object.freeze({
   temperature: '<path d="M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0Z"/><path d="M12 9v9"/><circle cx="12" cy="18" r="1"/>',
   drop: '<path d="M12 3c-2 3-6 7-6 11a6 6 0 0 0 12 0c0-4-4-8-6-11Z"/><path d="M9 15a3 3 0 0 0 3 3"/>',
@@ -36,7 +40,9 @@ function iotIcon(name) {
 function iotMetric(key, name) {
   const profile = Object.hasOwn(IOT_METRICS, key) ? IOT_METRICS[key] : { label: key, tone: 'blue', icon: 'chart', order: 99 };
   const normalized = text => String(text || '').toLowerCase().replace(/[_-]/g, ' ');
-  return { ...profile, label: name && normalized(name) !== normalized(key) ? name : profile.label };
+  const hash = [...String(key)].reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 0);
+  const color = Object.hasOwn(IOT_COLORS, key) ? IOT_COLORS[key] : IOT_PALETTE[hash % IOT_PALETTE.length];
+  return { ...profile, color, label: name && normalized(name) !== normalized(key) ? name : profile.label };
 }
 
 function iotCardMeasures(device) {
