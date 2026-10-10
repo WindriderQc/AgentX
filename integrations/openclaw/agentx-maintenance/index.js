@@ -1,6 +1,7 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import categories from "../../../shared/benchmarkCategories.js";
 import { DEFAULT_AGENTS, SERVICES, TOOL, actionArgs, allowedActions, operatorContext, runAction, startGate } from "./action-runner.js";
+import { queueBenchmark } from './queued-benchmark.js';
 
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 
@@ -14,9 +15,16 @@ export default definePluginEntry({
       ? api.pluginConfig.agentIds : [...DEFAULT_AGENTS];
     const grants = { agentIds, agentActions: api.pluginConfig?.agentActions };
     const gate = startGate(grants);
+    const nativeRuns = new Map();
     // A batch starts only behind the runtime's approval: without the hook, no agent holds the start.
     const approvalHook = typeof api.on === "function";
-    if (approvalHook) api.on("before_tool_call", (event, context) => gate.before(event, context), { priority: 60 });
+    if (approvalHook) api.on("before_tool_call", (event, context) => {
+      if (event.toolName === TOOL && event.toolCallId && (event.runId || context.runId)) {
+        nativeRuns.set(`${context.sessionKey}:${event.toolCallId}`, event.runId || context.runId);
+        if (nativeRuns.size > 1000) nativeRuns.delete(nativeRuns.keys().next().value);
+      }
+      return gate.before(event, context);
+    }, { priority: 60 });
 
     api.registerTool(context => {
       if (!operatorContext(context, agentIds)) return null;
@@ -64,6 +72,11 @@ export default definePluginEntry({
           const args = actionArgs(params, context.agentId, allowed);
           if (params.action === "benchmark-batch-start" && !gate.passed(params, context, _callId)) {
             throw new Error("This start has no resolved allow-once runtime approval; nothing was launched");
+          }
+          if (['benchmark-batch-prepare', 'benchmark-batch-start'].includes(params.action)) {
+            const runId = context.runId || nativeRuns.get(`${context.sessionKey}:${_callId}`);
+            nativeRuns.delete(`${context.sessionKey}:${_callId}`);
+            return receipt(await queueBenchmark(params, { ...context, runId, toolCallId: _callId }, api.pluginConfig));
           }
           return receipt(await runAction(command, args));
         },

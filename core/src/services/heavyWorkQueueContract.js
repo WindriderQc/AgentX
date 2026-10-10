@@ -68,8 +68,18 @@ function validateRequest(body) {
       only(executor, ['hostId', 'depth', 'skipRecentDays', 'modelNames'], 'profiler executor');
       if (!/^[a-zA-Z0-9_.:-]{1,100}$/.test(executor.hostId || '')) throw fail('profiler hostId required');
     } else if (kind === 'image') {
-      only(executor, ['actionKey', 'prompt', 'profile', 'width', 'height', 'seed', 'parent', 'recipe'], 'image executor');
-      if (!/^[a-zA-Z0-9:_.-]{8,160}$/.test(executor.actionKey || '') || typeof executor.prompt !== 'string' || !executor.prompt.trim()) throw fail('image actionKey and prompt required');
+      if (executor.mode === 'image-operation') {
+        only(executor, ['mode', 'actionKey', 'operationId', 'requestHash'], 'native image executor');
+        if (!/^[a-f0-9-]{36}$/.test(executor.operationId || '') || !/^[a-f0-9]{64}$/.test(executor.requestHash || '')) throw fail('Exact native image identity required');
+      } else {
+        only(executor, ['actionKey', 'prompt', 'profile', 'width', 'height', 'seed', 'parent', 'recipe'], 'image executor');
+        if (typeof executor.prompt !== 'string' || !executor.prompt.trim()) throw fail('image prompt required');
+      }
+      if (!/^[a-zA-Z0-9:_.-]{8,160}$/.test(executor.actionKey || '')) throw fail('image actionKey required');
+    } else if (['diagnostic', 'other'].includes(kind)) {
+      only(executor, ['mode', 'receiptRef'], 'operator executor');
+      if (executor.mode !== 'operator') throw fail('Custom work needs the explicit operator receipt protocol');
+      text(executor.receiptRef, 'executor.receiptRef', 500);
     } else throw fail('This kind has no supported executor; submit a planning request without executor');
   }
   const request = {

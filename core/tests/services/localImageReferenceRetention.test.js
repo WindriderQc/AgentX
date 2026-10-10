@@ -9,7 +9,7 @@ const { calculateObjectSize } = require('bson');
 const ImageOperation = require('../../models/ImageOperation');
 const { defaultArchive } = require('../../src/services/imageArchive');
 const { reference } = require('../../src/services/images/codec');
-jest.mock('../../src/services/images/config', () => ({ loadConfig: jest.fn() }));
+jest.mock('../../src/services/images/config', () => ({ ...jest.requireActual('../../src/services/images/config'), loadConfig: jest.fn() }));
 jest.mock('../../src/services/images/comfyClient', () => ({ createComfyClient: jest.fn() }));
 jest.mock('../../src/services/images/gpuReservation', () => ({ reserve: jest.fn() }));
 const { loadConfig } = require('../../src/services/images/config');
@@ -50,8 +50,9 @@ const prepared = (source = small) => {
 };
 beforeEach(async () => {
   jest.restoreAllMocks(); jest.clearAllMocks(); await ImageOperation.createCollection(); await ImageOperation.deleteMany({});
+    await require('../../models/HeavyWorkQueue').deleteMany({});
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'reference-retention-fixture-')); process.env.IMAGE_ARCHIVE_DIR = directory;
-  loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:8188', profiles: { quality: profile }, defaultProfile: 'quality' });
+  loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:8188', ollamaHosts: ['http://127.0.0.1:11434'], profiles: { quality: profile }, defaultProfile: 'quality' });
   uploads = []; atSubmit = [];
   client = { ready: jest.fn().mockResolvedValue({}), json: jest.fn().mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] }),
     upload: jest.fn(async (bytes, name) => { uploads.push(Buffer.from(bytes)); return name; }),

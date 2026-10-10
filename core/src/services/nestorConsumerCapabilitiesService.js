@@ -97,6 +97,11 @@ async function getCapabilities({ systemHealth, probeTimeoutMs = DEFAULT_PROBE_TI
       callerDetailPrefix: 'nestor/',
       maxHours: LIMITS.metricsHours,
     },
+    workQueue: {
+      authority: 'core.heavy-work-queue', endpoint: `${CONTRACT_BASE_PATH}/work-queue`,
+      operations: ['list', 'show', 'request', 'cancel', 'notifications', 'acknowledge'],
+      dispatch: 'operator-only', notificationAuthority: 'core.alerts', durableReceipts: true,
+    },
     limits: { ...LIMITS },
   };
 }

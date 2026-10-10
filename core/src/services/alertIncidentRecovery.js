@@ -6,7 +6,7 @@ const logger = require('../../config/logger');
 async function resolveStaleAlerts(maxAgeMs) {
   const now = new Date();
   const result = await Alert.updateMany({ status: { $in: ['active', 'acknowledged'] },
-    ruleId: { $nin: ['pin-vram-spill', 'pipeline-task-escalation'] },
+    ruleId: { $nin: ['pin-vram-spill', 'pipeline-task-escalation', 'heavy_work_queue'] },
     lastOccurrence: { $lt: new Date(now.getTime() - maxAgeMs) } },
   { $set: { status: 'resolved', 'resolution.resolved': true, 'resolution.resolvedAt': now,
     'resolution.resolvedBy': 'system', 'resolution.resolutionMethod': 'auto-stale' } });

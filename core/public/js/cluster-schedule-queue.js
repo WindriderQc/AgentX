@@ -64,6 +64,8 @@ function renderCoreHeavyQueue(container, queue) {
         <div class="cs-next-meta"><span>P${Number(job.priority)} · ${esc(job.kind)} · ${esc(expired ? 'window expired' : job.state)}</span></div>
         <div class="cs-next-meta">${esc(job.hosts.join(', ') || job.legacyRow?.hosts || 'Hosts need review')}</div>
         ${job.reservation ? `<div class="cs-next-meta">${esc(formatEvidenceTime(job.reservation.start))} → ${esc(formatEvidenceTime(job.reservation.end))} (estimated)</div>` : ''}
+        ${job.dispatchedAt ? `<div class="cs-next-meta">Dispatch recorded ${esc(formatEvidenceTime(job.dispatchedAt))}${job.finishedAt ? ` · settled ${esc(formatEvidenceTime(job.finishedAt))}` : ''}</div>` : ''}
+        ${job.releaseReceipt ? `<div class="cs-next-meta">Receipt: ${esc(job.releaseReceipt.authority)}</div>` : ''}
         ${overrun ? '<div class="cs-queue-note">Past estimated end; waiting for an executor and release receipt.</div>' : ''}
         <div class="cs-next-meta">${esc(job.source.type)} ${esc(job.source.ref || '')} ${esc(job.source.taskId || '')}</div>
         ${job.source.issueUrl ? `<a href="${esc(job.source.issueUrl)}" target="_blank" rel="noopener">GitHub issue</a>` : ''}

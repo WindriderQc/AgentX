@@ -12,8 +12,11 @@ Instance configuration, data and deployment receipts remain outside Git.
 - **Heavy work.** Core stores one-off requests from operator/coding sessions,
   resource-aware planned windows, dispatch identities and executor receipts.
   Cluster Schedule edits slots and shows estimated versus actual status. The
-  operator CLI explicitly launches existing Benchmark plans, Profiler host queues
-  and local images; Core observes completion without automatic launch/retry.
+  operator CLI explicitly launches existing Benchmark plans and Profiler host
+  queues, and tracks custom coding checks through explicit operator receipts.
+  Accepted images queue before GPU work and start once within a bounded window.
+  Nestor can propose/read/cancel unstarted work and read durable result alerts;
+  LeadX queues preparation and approved Benchmark starts through the same entrance.
   Confirmed migration preserves legacy QUEUE.md as an archive. Code tests are
   separate from instance migration and live qualification. See
   [heavy work](HEAVY_WORK_QUEUE.md), tracked in

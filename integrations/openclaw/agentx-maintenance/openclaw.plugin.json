@@ -1,7 +1,7 @@
 {
   "id": "agentx-maintenance",
   "name": "AgentX Maintenance Actions",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Bounded AgentX maintenance actions for operator agents: status, deploy, quarantine recovery, judge calibration and approved Benchmark batches.",
   "activation": {
     "onStartup": true,
@@ -48,6 +48,12 @@
             ]
           }
         }
+      },
+      "agentxUrl": {
+        "type": "string"
+      },
+      "queueCommand": {
+        "type": "string"
       }
     },
     "additionalProperties": false,

@@ -8,7 +8,7 @@ const jpeg = require('jpeg-js');
 const ImageOperation = require('../../models/ImageOperation');
 const { defaultArchive } = require('../../src/services/imageArchive');
 const { reference } = require('../../src/services/images/codec');
-jest.mock('../../src/services/images/config', () => ({ loadConfig: jest.fn() }));
+jest.mock('../../src/services/images/config', () => ({ ...jest.requireActual('../../src/services/images/config'), loadConfig: jest.fn() }));
 jest.mock('../../src/services/images/comfyClient', () => ({ createComfyClient: jest.fn() }));
 jest.mock('../../src/services/images/gpuReservation', () => ({ reserve: jest.fn() }));
 const { loadConfig } = require('../../src/services/images/config');
@@ -57,9 +57,10 @@ describe('server-verified archived image parents', () => {
     jest.clearAllMocks();
     await ImageOperation.createCollection();
     await ImageOperation.deleteMany({});
+    await require('../../models/HeavyWorkQueue').deleteMany({});
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'image-parent-fixture-'));
     process.env.IMAGE_ARCHIVE_DIR = directory;
-    loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:8188', profiles: { quality: profile }, defaultProfile: 'quality' });
+    loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:8188', ollamaHosts: ['http://127.0.0.1:11434'], profiles: { quality: profile }, defaultProfile: 'quality' });
     client = { ready: jest.fn().mockResolvedValue({}), json: jest.fn().mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] }),
       upload: jest.fn().mockImplementation(async (_bytes, name) => name), submit: jest.fn().mockResolvedValue({}),
       observe: jest.fn().mockImplementation(async (_id, options) => { await options.onTerminal(); return { filename: 'fixture.png', subfolder: '', type: 'output' }; }),

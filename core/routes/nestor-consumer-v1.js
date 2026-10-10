@@ -320,6 +320,11 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
     }));
   }));
 
+  router.post('/work-queue', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    envelope.success(res, await require('../src/services/nestorWorkQueue').operate(req.body, 'nestor-consumer'));
+  }));
+
   router.get('/events/stream', (req, res) => {
     const cursor = String(req.query.cursor || req.get('last-event-id') || '').trim().slice(0, 200);
     const replay = buddyEvents.getEventsAfter(cursor, 200);
