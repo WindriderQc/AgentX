@@ -19,6 +19,7 @@ test('only isolated Main work sessions and the configured worker support dispatc
   const operate = continuityOperations({ workspace, config, workAgentId: 'nestor-worker', readHistory: async () => ({ sessionKey,
     messages: [{ role: 'assistant', __openclaw: { runId } },
       { role: 'assistant', __openclaw: { runId: 'announce:requester-settle:synthetic' } }] }) });
+  assert.equal((await operate({ operation: 'agents' })).capabilities.isolatedWork, true);
   assert.equal(householdWorkspace({ agentId: 'main', sessionKey }, config), workspace);
   assert.equal(householdWorkspace({ agentId: 'family', sessionKey }, config), null);
   assert.deepEqual((await operate({ operation: 'work_attempt', sessionKey })).run, run);

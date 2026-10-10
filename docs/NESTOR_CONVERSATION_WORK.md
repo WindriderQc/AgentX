@@ -51,6 +51,9 @@ guardian keeps its own session and voice model. Its pending-work context prevent
 redispatch. Mixed or ambiguous effects, message drafts, sends, modifications and
 deletions retain their existing synchronous native path and approval contracts.
 The bounded task-read worker receives no mailbox tools or specialist grants.
+Preparation checks the installed native adapter's isolated-work capability before
+dispatch. A mismatched Core/plugin installation refuses before invoking a model,
+retaining the failed request instead of creating an unrecoverable native attempt.
 
 Core retains the exact parent run and successful consultation-tool observations
 beside the received requester-settle answer. Parent completion on yield does not

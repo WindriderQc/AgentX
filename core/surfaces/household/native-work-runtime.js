@@ -9,6 +9,8 @@ const READ_ONLY = 'This is an isolated background consultation already accepted 
 function nativeWorkRuntime({ works, conversations, agentClient, continuity, attachmentStore }) {
   return {
     async prepare({ row, session, selectedContext }) {
+      const catalog = await continuity({ operation: 'agents' });
+      if (catalog?.capabilities?.isolatedWork !== true) throw new Error('The installed native adapter does not support isolated consultations yet');
       const turn = await conversations.getTurn({ ...works.query(row.sessionId), traceId: row.turnId });
       if (!turn || hash(turn.inputText) !== row.requestSha256) throw new Error('Canonical native consultation request unavailable');
       const messages = [{ role: 'user', content: turn.inputText, attachments: turn.attachments || [] }];

@@ -11,7 +11,7 @@ test('background native Main preserves the complete request, references prior tu
   const row = { sessionId: originalId, turnId: 'canonical-turn', requestSha256: hash(text), attempt: { sessionId: workSessionId, agentId: 'main' } };
   const session = { sessionId: originalId, packId: 'personal_operator', scopeId: 'personal', modeId: 'personal',
     agentSessionKey: `agent:main:household:direct:${originalId}`, persona: { identity: 'Synthetic Nestor identity.' } };
-  const runtime = nativeWorkRuntime({ works: { query: sessionId => ({ sessionId }) }, conversations: {
+  const runtime = nativeWorkRuntime({ works: { query: sessionId => ({ sessionId }) }, continuity: async () => ({ capabilities: { isolatedWork: true } }), conversations: {
     getTurn: async () => ({ inputText: text, attachments: [] }),
     listTurns: async () => [{ traceId: row.turnId, inputText: text },
       { traceId: 'prior-turn', inputText: 'A prior restriction.', replyText: 'Preserved.', outcome: 'completed' }]
@@ -34,4 +34,11 @@ test('background native Main preserves the complete request, references prior tu
   assert.equal(JSON.parse(sent.body).model, 'openclaw/main');
   assert.equal(result.metadata.model, 'native-main-model');
   assert.match(JSON.stringify(JSON.parse(sent.body).input), /Résume mes courriels récents/);
+});
+
+test('a mismatched installed native adapter refuses preparation before any model or tool request', async () => {
+  const runtime = nativeWorkRuntime({ continuity: async () => ({ agents: [] }),
+    conversations: { getTurn: () => assert.fail('Unsupported adapter must refuse before preparing dispatch') },
+    agentClient: () => assert.fail('Unsupported adapter must not invoke a model') });
+  await assert.rejects(runtime.prepare({ row: {}, session: {} }), /does not support isolated consultations yet/);
 });
