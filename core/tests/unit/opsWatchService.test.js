@@ -15,7 +15,7 @@ function harness(snapshots, answer = { ok: true, body: { response: 'Host B is of
   const evaluateEvent = jest.fn(async () => ({ emitted: 1 }));
   const watch = createOpsWatch({
     buildSnapshot: async () => (queue.length > 1 ? queue.shift() : queue[0]),
-    execute, evaluateEvent, language: 'French', now: () => new Date('2030-01-01T00:00:00Z')
+    execute, evaluateEvent, reconcileReports: jest.fn(), language: 'French', now: () => new Date('2025-01-01T00:00:00Z')
   });
   return { watch, execute, evaluateEvent };
 }
@@ -81,13 +81,15 @@ describe('operations watch', () => {
     expect(watch.latest()).toMatchObject({ source: 'model', model: 'cpu-model' });
   });
 
-  it('opens a new incident and asks again when the findings change', async () => {
+  it('keeps the same incident and asks again when the findings change', async () => {
     const { watch, execute, evaluateEvent } = harness([snapshot({ issues: [offline] }), snapshot({ issues: [offline], alerts: [spill] })]);
     await watch.check();
     await watch.check();
     expect(execute).toHaveBeenCalledTimes(2);
     expect(evaluateEvent.mock.calls[1][0].additionalData.incidentKey)
-      .not.toBe(evaluateEvent.mock.calls[0][0].additionalData.incidentKey);
+      .toBe(evaluateEvent.mock.calls[0][0].additionalData.incidentKey);
+    expect(evaluateEvent.mock.calls[1][0].additionalData.findingFingerprint)
+      .not.toBe(evaluateEvent.mock.calls[0][0].additionalData.findingFingerprint);
     expect(evaluateEvent.mock.calls[1][0].additionalData.findingCount).toBe(2);
   });
 
@@ -117,10 +119,11 @@ describe('operations watch report delivery', () => {
     alertService.loadRules([rule]);
   });
 
-  it('renders the report as one telegram-targeted incident per finding set', async () => {
+  it('updates one telegram-targeted incident until a completed check clears every finding', async () => {
     expect(rule.channels).toEqual(['local_log', 'telegram']);
+    let current = snapshot({ issues: [offline] });
     const watch = createOpsWatch({
-      buildSnapshot: async () => snapshot({ issues: [offline] }),
+      buildSnapshot: async () => current,
       execute: async () => ({ ok: true, body: { response: '1. Host B offline: restart it.' }, headers: {} }),
       evaluateEvent: event => alertService.evaluateEvent(event)
     });
@@ -131,5 +134,19 @@ describe('operations watch report delivery', () => {
     expect(alerts[0].title).toBe('Operations watch — 1 finding(s)');
     expect(alerts[0].message).toBe('1. Host B offline: restart it.');
     expect(alerts[0].occurrenceCount).toBe(2);
+    current = snapshot({ issues: [offline], alerts: [spill] });
+    await watch.check();
+    const changed = await Alert.find({ ruleId: RULE_ID }).lean();
+    expect(changed).toHaveLength(1);
+    expect(changed[0]._id).toEqual(alerts[0]._id);
+    expect(changed[0].context.currentValue).toBe(2);
+    await Alert.updateOne({ _id: alerts[0]._id }, { $set: { lastOccurrence: new Date(0) } });
+    await alertService.resolveStaleAlerts(1);
+    expect((await Alert.findById(alerts[0]._id)).status).toBe('active');
+    current = snapshot();
+    await watch.check();
+    const cleared = await Alert.findById(alerts[0]._id);
+    expect(cleared.status).toBe('resolved');
+    expect(cleared.resolution.resolutionMethod).toBe('ops-watch-clear');
   });
 });

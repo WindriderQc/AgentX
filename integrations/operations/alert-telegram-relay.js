@@ -213,8 +213,10 @@ function durationText(fromValue, toValue) {
 }
 
 function formatResolution(alert) {
-  const lines = [`✅ Résolu · ${alert.title || alert.ruleName || alert.ruleId}`];
   const resolution = alert.resolution || {};
+  const expired = resolution.resolutionMethod === 'auto-stale';
+  const lines = [`${expired ? '🕓 Signal expiré' : '✅ Résolu'} · ${alert.title || alert.ruleName || alert.ruleId}`];
+  if (expired) lines.push('Aucune observation récente ; rétablissement non vérifié.');
   const how = resolution.comment || resolution.resolutionMethod;
   if (how) lines.push(String(how));
   const facts = [`Règle ${alert.ruleId}`];
@@ -354,6 +356,11 @@ async function run(options, deps = {}) {
       continue;
     }
     if (!alert || alert.status !== 'resolved') continue;
+    if (alert.resolution?.resolutionMethod === 'ops-watch-superseded') {
+      delete state.relayed[id];
+      stateChanged = true;
+      continue;
+    }
     const text = formatResolution(alert);
     notices += 1;
     if (!options.send) {
