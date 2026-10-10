@@ -237,6 +237,75 @@ describe('Cluster Schedule upcoming-task projection', () => {
 });
 
 describe('Cluster Schedule evidence presentation', () => {
+  test('reads each canonical host identity by its stable grid key', () => {
+    const { context } = loadClusterScheduleContext();
+    const container = { innerHTML: '' };
+    const primary = new Array(24).fill(null);
+    const secondary = new Array(24).fill(null);
+    primary[4] = 12;
+    secondary[5] = 37;
+    const render = vm.runInContext('renderUtilHeatmap', context);
+
+    expect(render(container, {
+      hosts: [
+        { key: 'primary', displayName: 'GPU One', role: 'primary', ip: '192.0.2.10', url: 'http://192.0.2.10:11434' },
+        { key: 'secondary', displayName: 'GPU Two', role: 'secondary', ip: '192.0.2.11', url: 'http://192.0.2.11:11434' }
+      ],
+      days: ['2026-08-28'],
+      grid: { primary: [primary], secondary: [secondary] }
+    })).toBe(true);
+
+    const html = container.innerHTML;
+    expect(html).toContain('GPU One');
+    expect(html).toContain('GPU Two');
+    expect(html).not.toContain('[object Object]');
+    const [one, two] = html.split('GPU Two');
+    expect(one).toContain('04:00 — 12% utilization');
+    expect(one).not.toContain('37% utilization');
+    expect(two).toContain('05:00 — 37% utilization');
+    expect(two).not.toContain('12% utilization');
+  });
+
+  test('renders repeated identities once and distinguishes endpoints on the same machine', () => {
+    const { context } = loadClusterScheduleContext();
+    const container = { innerHTML: '' };
+    const gpu = { key: 'gpu', displayName: 'Inference', role: 'gpu', ip: '192.0.2.10', url: 'http://192.0.2.10:11434' };
+    const cpu = { ...gpu, key: 'cpu', role: 'cpu', url: 'http://192.0.2.10:11435' };
+    const values = new Array(24).fill(null);
+    values[4] = 0;
+    const render = vm.runInContext('renderUtilHeatmap', context);
+
+    expect(render(container, {
+      hosts: [gpu, gpu, cpu, 'legacy', 'legacy'],
+      days: ['2026-08-28'],
+      grid: { gpu: [values], cpu: [values], legacy: [values] }
+    })).toBe(true);
+
+    expect(container.innerHTML.match(/class="cs-util-grid"/g)).toHaveLength(3);
+    expect(container.innerHTML).toContain('192.0.2.10:11434');
+    expect(container.innerHTML).toContain('192.0.2.10:11435');
+  });
+
+  test('keeps canonical hosts without evidence out of the measured heatmaps', () => {
+    const { context } = loadClusterScheduleContext();
+    const container = { innerHTML: '' };
+    const values = new Array(24).fill(null);
+    values[4] = 0;
+    const render = vm.runInContext('renderUtilHeatmap', context);
+
+    expect(render(container, {
+      hosts: [
+        { key: 'measured', displayName: 'Measured host' },
+        { key: 'unobserved', displayName: 'Unobserved host' }
+      ],
+      days: ['2026-08-28'],
+      grid: { measured: [values], unobserved: [new Array(24).fill(null)] }
+    })).toBe(true);
+    expect(container.innerHTML).toContain('Measured host');
+    expect(container.innerHTML).not.toContain('Unobserved host');
+    expect(container.innerHTML).toContain('04:00 — 0% utilization');
+  });
+
   test('treats an all-null utilization grid as unobserved rather than zero percent', () => {
     const { context } = loadClusterScheduleContext();
     const container = { innerHTML: '' };

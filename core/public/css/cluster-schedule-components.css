@@ -407,6 +407,14 @@
 
 /* ── Utilization Heatmap ─────────────────────────────────────── */
 
+.cs-util-host-details {
+    margin-top: 4px;
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+
 .cs-util-grid {
     display: grid;
     grid-template-columns: 120px repeat(24, 1fr);
