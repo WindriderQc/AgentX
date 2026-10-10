@@ -17,7 +17,17 @@
         <textarea id="image-prompt" required rows="7" aria-describedby="image-brief-counter image-brief-help" placeholder="Décris le sujet, l’ambiance et les détails qui comptent. Pour une retouche, précise ce qui change et ce qui doit rester."></textarea>
         <p id="image-brief-counter" class="image-help" role="status" aria-live="polite">Brief conservé : 0 / 32 000 caractères · rendu avec contraintes : 0 / 8 000.</p>
         <p id="image-brief-help" class="image-help">Colle ton prompt en entier ou décris ton idée ici. Le brief de travail accepte 32 000 caractères ; le rendu final accepte 8 000 caractères, contraintes comprises.</p>
-        <div class="brief-assistance">
+        <label for="image-size">Format demandé</label>
+        <select id="image-size">
+          <option value="1024,1024">Carré · 1024 × 1024 · 1,05 MP</option>
+          <option value="1280,768">Paysage · 1280 × 768 · 0,98 MP</option>
+          <option value="768,1280">Portrait · 768 × 1280 · 0,98 MP</option>
+          <option value="512,512">Petit carré · 512 × 512 · 0,26 MP</option>
+          <option value="2048,2048">Carré · 2048 × 2048 · 4,19 MP</option>
+          <option value="2048,1152">Paysage · 2048 × 1152 · 2,36 MP</option>
+        </select>
+        <p id="image-format-help" class="image-help"></p>
+        <div id="image-advice" class="brief-assistance">
           <button id="imagex-plan" type="button" class="quiet-button" aria-describedby="imagex-planning-help">Affiner mon brief</button>
           <a href="#imagex" class="studio-guide-link" data-imagex-open>Conseils et questions avec imageX</a>
           <p class="image-help">Facultatif : Hermes clarifie ou condense ce brief. Tu vérifies sa proposition avant de l’appliquer ; cette étape ne crée aucune image.</p>
@@ -27,7 +37,7 @@
             <p id="imagex-instruction-counter" class="image-help" role="status">Consigne : 0 / 32 000 caractères.</p>
           </details>
           <p id="imagex-planning-help" class="image-help" role="status"></p>
-          <a href="#image-review" class="studio-guide-link">Vérifier ou modifier la recette et le format ↓</a>
+          <a href="#image-review" class="studio-guide-link">Vérifier ou modifier la recette ↓</a>
           <p id="imagex-notice" class="image-help" role="status"></p>
           <div id="imagex-recovery" class="imagex-recovery" hidden>
             <p id="imagex-recovery-help" class="image-help"></p>
@@ -63,16 +73,6 @@
             <details class="recipe-components"><summary>Voir les composants du modèle</summary><dl id="image-components"></dl></details>
             <div class="studio-host"><span class="studio-dot" aria-hidden="true"></span><div><span class="studio-host-label">Calcul local</span><strong id="image-host">Lecture de la configuration…</strong><span id="image-gpu"></span></div></div>
           </details>
-          <label for="image-size">Format demandé</label>
-          <select id="image-size">
-            <option value="1024,1024">Carré · 1024 × 1024 · 1,05 MP</option>
-            <option value="1280,768">Paysage · 1280 × 768 · 0,98 MP</option>
-            <option value="768,1280">Portrait · 768 × 1280 · 0,98 MP</option>
-            <option value="512,512">Petit carré · 512 × 512 · 0,26 MP</option>
-            <option value="2048,2048">Carré · 2048 × 2048 · 4,19 MP</option>
-            <option value="2048,1152">Paysage · 2048 × 1152 · 2,36 MP</option>
-          </select>
-          <p id="image-format-help" class="image-help"></p>
           <details class="seed-settings"><summary>Graine et reproductibilité</summary>
             <label for="image-seed">Graine <span>facultatif</span></label><input id="image-seed" type="number" min="0" max="9007199254740991" step="1" placeholder="Aléatoire si vide">
             <p class="image-help">Une graine permet de retrouver les réglages. Pour préserver une composition choisie, joins son image comme référence.</p>
