@@ -602,11 +602,21 @@ up to four priority measurements and their ages. Every measurement stays
 available in the charts. Search matches names, IDs and locations.
 Choose **Voir les courbes** to select a device and check the measures to draw.
 Unknown values stay unknown; a disconnected broker leaves the last known
-values dated and disables commands. The IoT tab uses a light canvas with
-compact cards and a consistent colour per measurement. Each chart leads with
-its latest returned value and age; moving over the curve reveals an actual
-point with its timestamp and full precision. Period buttons select the live
-view or history without opening a menu.
+values dated and disables commands. The workspace follows the AgentX theme.
+
+**Superposées**, the default view, places all selected measurements on one
+large chart with a shared time axis. Each curve has its own scale so volts,
+temperature and signal strength remain readable together. **Axe affiché**
+selects which curve's scale and unit appear on the vertical axis; the coloured
+legend chooses the curves. Moving or tapping on the chart opens one comparison
+with the real value, unit and observation time for each nearby sample. A series
+with no nearby observation stays unknown. Left/right arrows, Home, End and
+Escape provide the same inspection from the focused chart.
+
+**Par mesure** displays individual charts using the same returned readings.
+The combined live chart updates in place, retaining its canvas and inspection
+cursor. Both views expose full-precision tables; historical **Min–max** adds
+the observed ranges to the combined chart and its scales.
 
 - **Live** reads Data's last 60 raw points per measure. That memory buffer
   starts empty after Data restarts.

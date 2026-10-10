@@ -108,8 +108,8 @@ function browser(respond) {
         : { ok: true, status: 200, json: async () => ({ status: 'success', data: answer }) };
     }
   };
-  const source = ['refresh.js', 'iot-visuals.js', 'iot-charts.js', 'iot.js', 'app.js'].map(file => fs.readFileSync(path.join(__dirname, '../public', file), 'utf8')).join('\n')
-    .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, render, iotState, iotTab, iotSelect, iotLoadSeries, iotSubmit, iotRefresher, iotChart, iotCards };');
+  const source = ['refresh.js', 'iot-visuals.js', 'iot-charts.js', 'iot-combined.js', 'iot.js', 'app.js'].map(file => fs.readFileSync(path.join(__dirname, '../public', file), 'utf8')).join('\n')
+    .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, render, iotState, iotTab, iotSelect, iotLoadSeries, iotSubmit, iotRefresher, iotChart, iotCards, iotCombinedModel, iotNearestValue };');
   vm.runInNewContext(source, context);
   return { ...context.page, elements, listeners, requests, timers, document, content: element('#content') };
 }
@@ -137,7 +137,7 @@ test('device cards render real latest values, zero and unknowns, escape names, a
   assert.doesNotMatch(page.content.innerHTML, /<img src=x/);
   assert.match(page.elements['#iotCards'].innerHTML, /<strong>0<small>/);
   assert.match(page.elements['#iotCards'].innerHTML, /Hors ligne/);
-  assert.match(page.elements['#iotSeries'].innerHTML, /<svg/);
+  assert.match(page.elements['#iotSeries'].innerHTML, /<canvas id="iotCombinedChart"/);
   assert.equal(page.requests.filter(call => call.method !== 'GET').length, 0);
   assert.deepEqual(plain(page.iotState.keys), ['temperature', 'wifi_rssi']);
 });
@@ -147,7 +147,7 @@ test('no devices or no live points stays empty and never fabricates charts', asy
   assert.equal(empty.requests.length, 2);
   const page = await open({ read: () => ({ measures: {} }) });
   assert.match(page.elements['#iotSeries'].innerHTML, /Aucune mesure reçue/);
-  assert.doesNotMatch(page.elements['#iotSeries'].innerHTML, /class="iot-chart"/);
+  assert.doesNotMatch(page.elements['#iotSeries'].innerHTML, /class="iot-chart"|id="iotCombinedChart"/);
 });
 
 test('an offline broker preserves dated values and disables device commands', async () => {
@@ -170,7 +170,7 @@ test('polling discovers the first device and its first measures without requirin
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(plain(page.iotState.keys), ['temperature', 'wifi_rssi']);
   assert.match(page.elements['#iotControls'].innerHTML, /temperature/);
-  assert.match(page.elements['#iotSeries'].innerHTML, /<svg/);
+  assert.match(page.elements['#iotSeries'].innerHTML, /<canvas id="iotCombinedChart"/);
 });
 
 test('history uses exact shared bounds and batches devices with more than twelve metrics', async () => {
@@ -237,4 +237,56 @@ test('charts preserve timestamp spacing, breaks across missing minutes, and expo
   assert.match(chart, /<table>/);
   assert.match(chart, /&lt;temperature&gt;/);
   assert.doesNotMatch(chart, /NaN|Infinity/);
+});
+
+
+test('superposed metrics share exact time bounds while keeping distinct scales and real values', async () => {
+  const page = await open({});
+  const start = Date.parse('2026-01-01T00:00:00Z');
+  page.iotState.period = '24'; page.iotState.keys = ['temperature', 'battery_voltage'];
+  page.iotState.series = { bucketSeconds: 60, from: new Date(start).toISOString(), to: new Date(start + 7200000).toISOString(), measures: {
+    temperature: { unit: '°C', points: [{ ts: start, mean: 20, min: 19, max: 21 }, { ts: start + 60000, mean: 21, min: 20, max: 22 }] },
+    battery_voltage: { unit: 'V', points: [{ ts: start + 900000, mean: 4.1, min: 4, max: 4.2 }, { ts: start + 960000, mean: 4.2, min: 4.1, max: 4.3 }] }
+  } };
+  const model = page.iotCombinedModel();
+  assert.equal(model.start, start); assert.equal(model.end, start + 7200000);
+  assert.equal(model.metrics[1].data[0].x - model.metrics[0].data[0].x, 900000, 'a later series does not move to the start of the chart');
+  assert.notEqual(model.metrics[0].axis, model.metrics[1].axis);
+  assert.equal(model.metrics[1].unit, 'V');
+  assert.equal(model.metrics[1].data[0].y * model.metrics[1].divisor, 4.1);
+  assert.equal(model.metrics[0].points[0].value, 20);
+  assert.notEqual(model.metrics[0].color, model.metrics[1].color);
+});
+
+test('the comparison leaves explicit missing readings and historical gaps empty, including during hover', async () => {
+  const page = await open({}); const start = Date.parse('2026-01-01T00:00:00Z');
+  page.iotState.period = '24'; page.iotState.keys = ['temperature'];
+  page.iotState.series = { bucketSeconds: 60, measures: { temperature: { points: [
+    { ts: start, mean: 0 }, { ts: start + 60000, mean: null }, { ts: start + 180000, mean: 10 },
+    { ts: 'invalid', mean: 9 }, { ts: start + 240000, mean: Infinity }
+  ] } } };
+  const metric = page.iotCombinedModel().metrics[0];
+  assert.equal(metric.points.length, 2);
+  assert.equal(metric.points[0].value, 0);
+  assert.ok(metric.data.some(point => point.x === start + 60000 && point.y === null));
+  assert.ok(metric.data.some(point => point.x === start + 120000 && point.y === null), 'large time gaps break the line');
+  assert.equal(page.iotNearestValue(metric, start + 60000), null);
+  assert.equal(page.iotNearestValue(metric, start + 180000).value, 10);
+  assert.equal(page.iotNearestValue(metric, start + 240000), null);
+});
+
+test('comparison scales stay finite for extreme numbers and min/max is an explicit history option', async () => {
+  const page = await open({}); page.iotState.period = '24'; page.iotState.keys = ['temperature'];
+  page.iotState.series = { measures: { temperature: { points: [
+    { ts: AT, mean: -1e308, min: -1.5e308, max: 1e308 },
+    { ts: Date.parse(AT) + 60000, mean: 1e308, min: -1e308, max: 1.5e308 }
+  ] } } };
+  const metric = page.iotCombinedModel().metrics[0];
+  assert.ok(Number.isFinite(metric.low) && Number.isFinite(metric.high));
+  assert.ok(metric.data.every(point => point.y === null || Number.isFinite(point.y)));
+  assert.equal(metric.min, -1e308); assert.equal(metric.max, 1e308);
+  page.iotState.ranges = true;
+  const ranges = page.iotCombinedModel().metrics[0];
+  assert.equal(ranges.min, -1.5e308); assert.equal(ranges.max, 1.5e308);
+  assert.ok(Number.isFinite(ranges.low) && Number.isFinite(ranges.high));
 });
