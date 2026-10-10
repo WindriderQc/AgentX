@@ -402,7 +402,7 @@ test('real voice HTTP accepts a specialist read and keeps the guardian available
   const nativeRuntime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works });
   const background = jest.fn(async ({ row, onStarted }) => {
     expect(row.attempt.agentId).toBe('main');
-    expect(row.attempt.sessionKey).toMatch(/^agent:main:household:work:/);
+    expect(row.attempt.sessionKey).toMatch(/^agent:main:household:direct:/);
     expect(row.attempt.sessionId).not.toBe(current.sessionId);
     const runId = native();
     await onStarted(row.attempt.sessionKey, runId);
@@ -470,7 +470,7 @@ test('a foreign native result, missing consultation proof and restricted worker 
   const accepted = await works.intake(input('Résume mes courriels récents.'));
   await works.prepare(accepted.row._id, 'Selected context');
   const attempt = { id: randomUUID(), sessionId: randomUUID(), agentId: 'main', runId: native() };
-  attempt.sessionKey = 'agent:main:household:work:' + attempt.sessionId;
+  attempt.sessionKey = 'agent:main:household:direct:' + attempt.sessionId;
   const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture' }));
   await expect(works.publishNative(row._id, nativeProof({ ...attempt, runId: native() }))).rejects.toMatchObject({ statusCode: 409 });
   const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works });

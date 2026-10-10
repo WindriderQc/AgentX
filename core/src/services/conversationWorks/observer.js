@@ -56,8 +56,7 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
   async function run(row) {
     const processId = randomUUID();
     const id = randomUUID(), sessionId = randomUUID(), agentId = agentFor(row);
-    const namespace = row.classification === 'native_read' ? 'work' : 'direct';
-    const attempt = { id, sessionId, agentId, sessionKey: `agent:${agentId}:household:${namespace}:${sessionId}`, dispatchedAt: new Date() };
+    const attempt = { id, sessionId, agentId, sessionKey: `agent:${agentId}:household:direct:${sessionId}`, dispatchedAt: new Date() };
     try { await gate().updateOne({ _id: OWNER }, { $setOnInsert: { workId: null } }, { ...acknowledged, upsert: true }); }
     catch (cause) { if (cause.code !== 11000) throw cause; }
     const claim = await gate().updateOne({ _id: OWNER, workId: null }, { $set: { workId: row._id,

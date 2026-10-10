@@ -2,7 +2,7 @@ import { readState } from "./store.js";
 import { nativeToolChecks } from './tool-evidence.js';
 
 const invalid = message => Object.assign(new Error(message), { statusCode: 400 });
-const householdKey = /^agent:([a-z0-9][a-z0-9_-]*):household:(direct|work):[a-f0-9-]{36}$/;
+const householdKey = /^agent:([a-z0-9][a-z0-9_-]*):household:direct:[a-f0-9-]{36}$/;
 
 export function configuredAgents(config = {}) {
   return config.agents?.entries || Object.fromEntries((config.agents?.list || []).map(agent => [agent.id, agent]));
@@ -97,7 +97,7 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
         capabilities: { isolatedWork: true } };
     } else if (operation === 'work_attempt') {
       const match = householdKey.exec(request.sessionKey || '');
-      const isolatedMain = match?.[1] === 'main' && match[2] === 'work';
+      const isolatedMain = match?.[1] === 'main';
       if (!isolatedMain && (!workAgentId || match?.[1] !== workAgentId)) throw invalid('A configured worker attempt is required');
       const agentWorkspace = householdWorkspace({ agentId: match[1], sessionKey: request.sessionKey }, config, resolveWorkspace);
       if (!agentWorkspace) throw invalid('The native worker is unavailable');

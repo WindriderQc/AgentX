@@ -45,12 +45,14 @@ Recovered work explicitly identifies missing selected context.
 
 In read mode, conservative mailbox reads receive a canonical acknowledgment
 without invoking either model in the foreground. The native background Main
-uses its installed model/tools in an isolated `household:work` session and
+uses its installed model/tools in an isolated `household:direct` session and
 consults the Secretary through `sessions_spawn` and `sessions_yield`. The live
 guardian keeps its own session and voice model. Its pending-work context prevents
 redispatch. Mixed or ambiguous effects, message drafts, sends, modifications and
 deletions retain their existing synchronous native path and approval contracts.
 The bounded task-read worker receives no mailbox tools or specialist grants.
+The native Main namespace is preserved so its existing personal tool scope remains
+available; the fresh session identity separates the boss from the live guardian.
 Preparation checks the installed native adapter's isolated-work capability before
 dispatch. A mismatched Core/plugin installation refuses before invoking a model,
 retaining the failed request instead of creating an unrecoverable native attempt.

@@ -29,7 +29,10 @@ test('background native Main preserves the complete request, references prior tu
     continuity: async () => ({ run: { model: 'native-main-model' }, answer: { runId, status: 'ready', text: 'Actual result.' } }),
     fetchImpl: async (_url, request) => { sent = request; return { ok: true, body: [sse('response.created'), sse('response.completed')] }; } });
   const result = await client(prepared);
-  assert.equal(sent.headers['x-openclaw-session-key'], `agent:main:household:work:${workSessionId}`);
+  assert.equal(sent.headers['x-openclaw-session-key'], `agent:main:household:direct:${workSessionId}`);
+  const { privateOwnerContext } = await import('../../../../integrations/openclaw/action-provenance.mjs');
+  assert.equal(privateOwnerContext({ agentId: 'main', sessionKey: session.agentSessionKey }), true);
+  assert.equal(privateOwnerContext({ agentId: 'main', sessionKey: sent.headers['x-openclaw-session-key'] }), true);
   assert.equal(sent.headers['x-openclaw-model'], undefined);
   assert.equal(JSON.parse(sent.body).model, 'openclaw/main');
   assert.equal(result.metadata.model, 'native-main-model');

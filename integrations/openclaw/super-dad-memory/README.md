@@ -74,9 +74,9 @@ API. OpenClaw's SDK and native runtime are not simulated by that check.
 The optional `conversation_work` tool binds a dedicated native worker to Core's
 durable personal conversation work. Main can request a migrated task read; the
 worker can read canonical context and tasks and publish a verified result.
-Isolated `agent:main:household:work:<uuid>` sessions support exact native dispatch
+Isolated `agent:main:household:direct:<uuid>` sessions support exact native dispatch
 discovery for background specialist reads. An ambiguous run stays unknown; this
-namespace cannot acquire the dedicated worker's model-facing tool capabilities. The
+attempt cannot acquire the dedicated worker's model-facing tool capabilities. The
 instance supplies `conversationWorkAgentId` and a private `conversationWorkToken`
 matching Core, and grants the dedicated worker only this tool. See
 [the Core contract](../../../docs/NESTOR_CONVERSATION_WORK.md).
