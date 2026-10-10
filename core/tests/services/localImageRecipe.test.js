@@ -6,7 +6,7 @@ const path = require('node:path');
 const { PNG } = require('pngjs');
 const ImageOperation = require('../../models/ImageOperation');
 const { defaultArchive } = require('../../src/services/imageArchive');
-jest.mock('../../src/services/images/config', () => ({ loadConfig: jest.fn() }));
+jest.mock('../../src/services/images/config', () => ({ ...jest.requireActual('../../src/services/images/config'), loadConfig: jest.fn() }));
 jest.mock('../../src/services/images/comfyClient', () => ({ createComfyClient: jest.fn() }));
 jest.mock('../../src/services/images/gpuReservation', () => ({ reserve: jest.fn() }));
 const { loadConfig } = require('../../src/services/images/config');
@@ -31,7 +31,7 @@ const terminal = async id => {
 };
 let directory, client, submittedRecords;
 function configure(profile = makeProfile()) {
-  loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:8188', profiles: { quality: profile }, defaultProfile: 'quality' });
+  loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:8188', ollamaHosts: ['http://127.0.0.1:11434'], profiles: { quality: profile }, defaultProfile: 'quality' });
 }
 async function archivedParent() {
   const id = crypto.randomUUID();
@@ -55,6 +55,7 @@ async function refusalBeforeEffects(input, statusCode) {
 beforeEach(async () => {
   jest.restoreAllMocks(); jest.clearAllMocks();
   await ImageOperation.createCollection(); await ImageOperation.deleteMany({});
+    await require('../../models/HeavyWorkQueue').deleteMany({});
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'image-recipe-fixture-'));
   process.env.IMAGE_ARCHIVE_DIR = directory; configure(); submittedRecords = [];
   client = { ready: jest.fn().mockResolvedValue({}), json: jest.fn().mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] }),

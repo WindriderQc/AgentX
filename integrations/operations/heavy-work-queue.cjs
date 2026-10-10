@@ -8,7 +8,7 @@ const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const ROOT = path.resolve(__dirname, '../..');
 const { planId, planRef, batchRequest } = require('../../shared/benchmarkBatchPlan.cjs');
-const ACTIONS = new Set(['list', 'show', 'submit', 'reserve', 'cancel', 'run', 'reconcile', 'migrate', 'archive', 'recover']);
+const ACTIONS = new Set(['list', 'show', 'submit', 'reserve', 'cancel', 'run', 'begin-operator', 'finish-operator', 'reconcile', 'migrate', 'archive', 'recover']);
 
 function parse(argv) {
   const [action, ...args] = argv;
@@ -27,7 +27,7 @@ function parse(argv) {
   const url = new URL(core);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error('Core needs an HTTP(S) origin');
   if (!['list', 'show'].includes(action) && !options.actor) throw new Error('--actor required');
-  if (['show', 'reserve', 'cancel', 'run', 'reconcile', 'recover'].includes(action) && !/^[a-f0-9-]{36}$/.test(options.id || '')) throw new Error('--id needs a queue request UUID');
+  if (['show', 'reserve', 'cancel', 'run', 'begin-operator', 'finish-operator', 'reconcile', 'recover'].includes(action) && !/^[a-f0-9-]{36}$/.test(options.id || '')) throw new Error('--id needs a queue request UUID');
   return { action, options, core: url.origin };
 }
 async function json(url, { body, actor = 'operator', fetchImpl = fetch, timeoutMs = 30000 } = {}) {
@@ -73,6 +73,9 @@ async function benchmarkStart(job, { actor, benchmark, assertDispatch }) {
   }
 }
 async function runJob(job, client, { actor, benchmark, benchmarkExecutor = benchmarkStart, fetchImpl = fetch }) {
+  if (!['benchmark', 'profiler', 'image'].includes(job.kind) || job.executor?.mode === 'image-operation') {
+    throw new Error('Use the native image dispatcher or the explicit begin-operator protocol; no dispatch was recorded');
+  }
   // All local file/config checks precede the durable dispatch mark.
   if (job.kind === 'benchmark' && benchmarkExecutor === benchmarkStart) {
     if (job.executor.prepare !== true) checkPlan(job);
@@ -96,7 +99,7 @@ async function runJob(job, client, { actor, benchmark, benchmarkExecutor = bench
       operationId = result.queueId;
     } else if (job.kind === 'image') {
       await assertDispatch();
-      const result = await client.image(begun.executor);
+      const result = await client.image({ ...begun.executor, queueRequestId: begun.id, queueDispatchId: begun.dispatchId });
       operationId = result.operation?.id;
     } else throw new Error('No supported executor');
     if (typeof operationId !== 'string' || !operationId) throw new Error('Executor returned no operation identity');
@@ -139,6 +142,22 @@ async function main(argv = process.argv.slice(2), deps = {}) {
   if (action === 'reconcile') return client(`/${options.id}/reconcile`, {});
   const job = await client(`/${options.id}`);
   if (job.revision !== revision()) throw new Error('Request changed; read its current revision');
+  if (['begin-operator', 'finish-operator'].includes(action)) {
+    if (job.executor?.mode !== 'operator' || !['diagnostic', 'other'].includes(job.kind)) throw new Error('This request has no operator executor');
+    if (action === 'begin-operator') return client(`/${job.id}/begin`, { expectedRevision: job.revision });
+    if (!options.file) throw new Error('--file needs the local terminal operator receipt');
+    const bytes = fs.readFileSync(options.file);
+    if (bytes.length > 1024 * 1024) throw new Error('Operator receipt exceeds 1 MiB');
+    const receipt = JSON.parse(bytes);
+    if (receipt.contract !== 'agentx.operator-heavy-work/v1' || receipt.queueRequestId !== job.id
+      || receipt.dispatchId !== job.dispatchId || receipt.receiptRef !== job.executor.receiptRef
+      || receipt.actor !== options.actor || receipt.runtimeReleased !== true
+      || !['completed', 'failed', 'cancelled'].includes(receipt.state)) throw new Error('Receipt differs from this operator dispatch or lacks terminal/release evidence');
+    return client(`/${job.id}/operator-finish`, { expectedRevision: job.revision, dispatchId: job.dispatchId,
+      state: receipt.state, receiptRef: receipt.receiptRef,
+      receiptSha256: require('node:crypto').createHash('sha256').update(bytes).digest('hex'),
+      confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED' });
+  }
   return runJob(job, client, { actor: options.actor, benchmark: options.benchmark || `${core}/benchmark`, ...deps });
 }
 if (require.main === module) main().then(data => {

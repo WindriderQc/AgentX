@@ -212,6 +212,7 @@ async function list() {
 async function archive(actor) {
   return mutate(async state => {
     const terminal = state.jobs.filter(job => TERMINAL.includes(job.state));
+    await require('./heavyWorkQueueNotifications').publishJobs(terminal);
     for (const job of terminal) {
       const hash = digest(job);
       try {
@@ -222,6 +223,30 @@ async function archive(actor) {
     }
     state.jobs = state.jobs.filter(job => !TERMINAL.includes(job.state));
     return { readOnly: !terminal.length, value: { archived: terminal.length, actor: text(actor, 'actor', 100) } };
+  });
+}
+// Custom coding checks have an explicit operator attestation, not a native
+// executor result. This never runs a command or releases runtime coordination.
+async function operatorFinish(id, body, actor) {
+  revision(body);
+  if (body.confirmation !== 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED'
+    || !['completed', 'failed', 'cancelled'].includes(body.state)
+    || !/^[a-f0-9]{64}$/.test(body.receiptSha256 || '')) throw fail('Exact operator outcome, receipt hash and release confirmation required');
+  return mutate(async state => {
+    const job = jobIn(state, id, body.expectedRevision);
+    if (job.executor?.mode !== 'operator' || !['diagnostic', 'other'].includes(job.kind)
+      || !ACTIVE.includes(job.state) || !body.dispatchId || body.dispatchId !== job.dispatchId
+      || body.receiptRef !== job.executor.receiptRef) throw fail('Exact active operator dispatch and planned receipt reference required', 409);
+    const runtime = await require('../../models/RuntimeCoordination').findById('runtime').lean();
+    if ([...(runtime?.workloads || []), ...(runtime?.inferences || [])].some(item => runtimeOverlaps(job, item))) {
+      throw fail('Native runtime authority remains held; reconcile it through its owner first', 409);
+    }
+    job.state = body.state; job.finishedAt = new Date().toISOString();
+    job.operation = { kind: 'operator', id: job.dispatchId, authority: 'operator-attestation' };
+    job.releaseReceipt = { authority: 'operator-attestation', operationId: job.dispatchId, state: body.state,
+      receiptRef: body.receiptRef, receiptSha256: body.receiptSha256, confirmation: body.confirmation,
+      actor, observedAt: job.finishedAt };
+    return event(job, actor, 'operator-finished', job.releaseReceipt);
   });
 }
 async function archived(offset = 0, limit = 50) {
@@ -283,4 +308,4 @@ async function migrate(body, actor, { file = FILE } = {}) {
   return list();
 }
 
-module.exports = { submit, reserve, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, MAX_JOBS };
+module.exports = { submit, reserve, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorFinish, MAX_JOBS };

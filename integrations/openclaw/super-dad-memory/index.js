@@ -12,6 +12,7 @@ import { createCoreBriefClient } from "./core-brief.js";
 import { createCoreIdentifiersClient, householdOwnerSession } from "./core-identifiers.js";
 import { registerLocalImages } from "./local-images.js";
 import { registerDataTools } from "./data-tools.js";
+import { registerWorkQueue, createWorkQueueClient } from "./work-queue.js";
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
@@ -20,6 +21,7 @@ export default definePluginEntry({
   register(api) {
     registerLocalImages(api);
     registerDataTools(api);
+    registerWorkQueue(api);
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });
@@ -154,9 +156,14 @@ export default definePluginEntry({
       if (!privateOwnerContext(context, api.config) && !morningContext(context)) return null;
       return {
         name: "nestor_briefing", label: "Nestor Personal Briefing",
-        description: "Get the French morning brief composed by AgentX Core from all open personal tasks (at most six lines). Relay its text as is. Read-only; does not deliver a message or imply calendar access.",
+        description: "Get the French morning brief composed by AgentX Core from all open personal tasks (at most six lines), plus pending heavy-work outcomes from Core alerts. Relay the personal text as is, then mention up to two verified queue outcomes if present. Read-only; does not acknowledge results, deliver a message or imply calendar access.",
         parameters: { type: "object", properties: {}, additionalProperties: false },
-        async execute() { return receipt(briefingFromCore(await agentxRead(api.pluginConfig?.agentxUrl, "personal_briefing", {}))); },
+        async execute() {
+          const brief = briefingFromCore(await agentxRead(api.pluginConfig?.agentxUrl, "personal_briefing", {}));
+          try { brief.workQueue = await createWorkQueueClient({ baseUrl: api.pluginConfig?.agentxUrl })({ action: 'notifications', limit: 5 }); }
+          catch (error) { brief.workQueue = { available: false, warning: error.message }; }
+          return receipt(brief);
+        },
       };
     }, { name: "nestor_briefing", optional: true });
 

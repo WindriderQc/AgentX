@@ -38,8 +38,13 @@ runbooks and assets ([ADR 0001](adr/0001-one-repository.md)).
 Core's heavy-work queue owns one-off operator/coding requests and their planned
 host/device windows separately from task commitments. Cluster Schedule projects
 them beside recurring work. Named operator executors preserve native Benchmark,
-Profiler and image admission/restoration ownership; the queue observer only
-reconciles their receipts. See [heavy work](HEAVY_WORK_QUEUE.md).
+Profiler and image admission/restoration ownership. The observer reconciles
+receipts and dispatches only images already accepted by the image service in a
+bounded window. Nestor proposes/reads work through its consumer contract;
+LeadX queues Benchmark work behind its existing approval. Core alerts retain
+outcomes until acknowledgment; task completion remains separate. Custom coding
+checks use explicit operator attestations, never commands stored in a request.
+See [heavy work](HEAVY_WORK_QUEUE.md).
 
 Surfaces (Nestor, Household, PsyX, the model workbench) compose personas, domain
 policies and reusable Core capabilities. Core owns canonical conversation,

@@ -25,6 +25,8 @@ const referenceStorageSchema = new mongoose.Schema({
 const schema = new mongoose.Schema({
   _id: { type: String, required: true },
   actionKey: { type: String, required: true, unique: true },
+  queueRequestId: { type: String },
+  queueDispatchId: { type: String },
   requestHash: { type: String, required: true },
   conversation: { surface: String, sessionId: String, packId: String, scopeId: String },
   expert: { type: new mongoose.Schema({ sessionId: String, turnId: String, agent: String, harness: String,

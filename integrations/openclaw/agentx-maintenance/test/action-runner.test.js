@@ -205,7 +205,7 @@ async function plugin() {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const body = source.replace(/^import .*$/gm, '').replace('export default', 'return');
-  const names = ['DEFAULT_AGENTS', 'SERVICES', 'TOOL', 'actionArgs', 'allowedActions', 'operatorContext', 'runAction', 'startGate'];
+  const names = ['DEFAULT_AGENTS', 'SERVICES', 'TOOL', 'actionArgs', 'allowedActions', 'operatorContext', 'runAction', 'startGate', 'queueBenchmark'];
   return overrides => new Function('definePluginEntry', 'categories', ...names, body)(x => x, categories, ...names.map(name => overrides?.[name] ?? runner[name]));
 }
 
@@ -213,7 +213,7 @@ async function plugin() {
 async function registered(pluginConfig, { hooks = true, overrides } = {}) {
   const calls = [], handlers = new Map();
   let factory;
-  (await plugin())({ ...overrides, runAction: async (command, args) => { calls.push({ command, args }); return { contract: 'agentx.maintenance-action/v1', outcome: 'completed' }; } })
+  (await plugin())({ ...overrides, queueBenchmark: async (params, context) => { calls.push({ params, context }); return { contract: 'agentx.maintenance-action/v1', outcome: 'completed' }; }, runAction: async (command, args) => { calls.push({ command, args }); return { contract: 'agentx.maintenance-action/v1', outcome: 'completed' }; } })
     .register({ pluginConfig: { actionCommand: '/srv/instance/bin/agentx-action', ...pluginConfig },
       registerTool: build => { factory = build; }, ...(hooks && { on: (name, handler) => handlers.set(name, handler) }) });
   return { calls, tool: context => factory(context), before: handlers.get('before_tool_call') };
@@ -240,12 +240,12 @@ test('the entry gives each agent its own actions and runs a start only behind th
   const approved = before({ toolName: 'agentx_maintenance_action', toolCallId: 'call-2', params: start }, leadx).requireApproval;
   approved.onResolution('allow-once');
   assert.equal((await tool(leadx).execute('call-2', start)).details.outcome, 'completed');
-  assert.deepEqual(calls[0].args.slice(0, 5), ['benchmark-batch-start', '--actor', 'openclaw:leadx', '--plan', start.plan]);
+  assert.equal(calls[0].params.plan, start.plan); assert.equal(calls[0].context.agentId, 'leadx');
   await assert.rejects(tool(leadx).execute('call-3', start), /no resolved allow-once runtime approval/);
   // The actor is the runtime's agent whatever the model sends.
   await assert.rejects(tool(leadx).execute('call-4', { action: 'benchmark-batch-prepare', ...request, actor: 'openclaw:main' }), /actor/);
   await tool(leadx).execute('call-5', { action: 'benchmark-batch-prepare', ...request });
-  assert.deepEqual(calls[1].args.slice(0, 3), ['benchmark-batch-prepare', '--actor', 'openclaw:leadx']);
+  assert.equal(calls[1].params.action, 'benchmark-batch-prepare'); assert.equal(calls[1].context.agentId, 'leadx');
   assert.equal(calls.length, 2);
 });
 

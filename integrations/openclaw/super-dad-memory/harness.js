@@ -39,8 +39,8 @@ export async function contextFor(workspace, query, { includeMemory = false, incl
   // The continuity endpoint retains full evidence. Conversational context only
   // needs recent outcomes from this native session, never another chat's calls.
   const receipts = sessionKey ? state.receipts.filter(r => r.sessionKey === sessionKey).slice(-4)
-    .map(({ id, tool, status, resultRef, observed, deliveryState, at }) =>
-      ({ id, tool, status, resultRef, observed, deliveryState, at })) : [];
+    .map(({ id, tool, status, resultRef, observed, deliveryState, at, queueRequest }) =>
+      ({ id, tool, status, resultRef, observed, deliveryState, at, ...(queueRequest && { queueRequest }) })) : [];
   const result = { generatedAt: nowIso(), notes,
     previousGoal: state.goal && Date.now() - Date.parse(state.goal.at) < 86400000 ? state.goal : null,
     receipts, sources: { personal_memory: memoryConsulted ? "available" : "not_consulted", calendar: "not_connected", ledger: "not_connected" } };
@@ -80,7 +80,16 @@ export async function recordTool(workspace, event, context, { config, pluginConf
     && data.acceptedAction?.operationId === data.operation.id
     && /^[a-f0-9-]{36}$/.test(data.operation.id) && /^[a-f0-9]{64}$/.test(data.acceptedAction.actionKey || '')
     ? { id: data.operation.id, actionKey: data.acceptedAction.actionKey } : null;
+  const queueRequest = tool === 'work_queue' && data?.authority === 'core.heavy-work-queue'
+    && /^[a-f0-9-]{36}$/.test(data.id || '')
+    && ['requested', 'reserved', 'dispatching', 'running', 'uncertain', 'completed', 'failed', 'cancelled'].includes(data.state)
+    ? { id: data.id, state: data.state } : null;
+  const queueRead = tool === 'work_queue' && ((data?.authority === 'core.heavy-work-queue'
+    && Array.isArray(data.jobs) && Number.isInteger(data.count) && data.count >= data.jobs.length)
+    || (data?.authority === 'core.alerts' && ((Array.isArray(data.notifications) && Number.isInteger(data.count))
+      || (data.acknowledged === true && /^[a-f0-9]{24}$/.test(data.id || '')))));
   const proved = localImage ? data.operation.state === 'completed' && data.operation.runtimeRestored === true && Boolean(data.operation.artifact?.sha256)
+    : tool === 'work_queue' ? Boolean(queueRequest || queueRead)
     : tool === "personal_memory" ? data?.ok === true
     : soundTool ? Boolean(soundId)
     : healthTool ? healthResult
@@ -88,6 +97,7 @@ export async function recordTool(workspace, event, context, { config, pluginConf
       : tool === "agentx__list_personal_tasks" ? Array.isArray(data?.tasks)
       : tool === "agentx__shopping_list" ? Array.isArray(data?.items) : false;
   const resultRef = localImage ? `local-image:${data.operation.id}`
+    : queueRequest ? `heavy-work:${queueRequest.id}`
     : tool === "personal_memory" && data?.id ? `personal-note:${data.id}`
     : /agentx__(add|update|complete)_personal_task/.test(tool) && task?.id ? `personal-task:${task.id}` : null;
   const id = digest(`${context.runId || event.runId || ""}:${context.toolCallId || event.toolCallId || digest(JSON.stringify(event.params || {}))}:${tool}`).slice(0, 24);
@@ -98,6 +108,7 @@ export async function recordTool(workspace, event, context, { config, pluginConf
       provenance: nativeActionProvenance(context, config, pluginConfig),
       ...(soundId ? { soundId } : {}),
       ...(imageOperation ? { imageOperation } : {}),
+      ...(queueRequest ? { queueRequest } : {}),
       deliveryState: "unknown", at: nowIso() }].slice(-40) }));
 }
 

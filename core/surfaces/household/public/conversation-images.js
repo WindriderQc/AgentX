@@ -2,8 +2,8 @@
 (function exposeConversationImages(root) {
   const UUID = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
   const ROUTE = new RegExp('^/api/voice-personas/(family|private)/sessions/[a-zA-Z0-9_-]{1,80}/images/(' + UUID + ')$');
-  const ACTIVE = new Set(['accepted', 'reserving', 'generating', 'archiving', 'restoring']);
-  const LABELS = { accepted: 'Ton dessin est demandé.', reserving: 'Préparation du dessin…', generating: 'Ton dessin prend forme…',
+  const ACTIVE = new Set(['queued', 'accepted', 'reserving', 'generating', 'archiving', 'restoring']);
+  const LABELS = { queued: 'Ton dessin attend son tour.', accepted: 'Ton dessin est demandé.', reserving: 'Préparation du dessin…', generating: 'Ton dessin prend forme…',
     archiving: 'Conservation du dessin…', restoring: 'Dernières vérifications…', completed: 'Ton image est prête.',
     failed: 'Le dessin n’a pas pu être préparé.', cancelled: 'Le dessin a été annulé.',
     archive_failed: 'Le dessin attend sa récupération dans l’atelier.', unknown: 'L’état du dessin doit être vérifié dans l’atelier. Aucune nouvelle image n’est lancée automatiquement.' };

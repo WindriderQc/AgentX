@@ -7,12 +7,15 @@ const logger = require('../../config/logger');
 let timer;
 let busy = false;
 
-// Bookkeeping only: observe existing executor receipts. Never launch, retry,
-// cancel, restore a model or release a native runtime admission.
+// Observe existing receipts and dispatch only images explicitly accepted by
+// the image service, within their bounded start window. Never replay a crossed
+// dispatch fence or launch a Benchmark/operator request automatically.
 async function sweep() {
   if (busy || mongoose.connection.readyState !== 1) return;
   busy = true;
   try {
+    try { await require('./images/imageService').dispatchQueued(); }
+    catch (error) { logger.warn('Image dispatcher unavailable; other queue receipts remain observable', { code: error.code || 'IMAGE_QUEUE_UNAVAILABLE' }); }
     const current = await queue.list();
     for (const job of current?.jobs || []) {
       if (!['dispatching', 'running', 'uncertain'].includes(job.state)) continue;
@@ -23,6 +26,7 @@ async function sweep() {
         logger.debug('Heavy queue awaits executor evidence', { queueRequestId: job.id, code: error.code || 'EVIDENCE_UNAVAILABLE' });
       }
     }
+    await require('./heavyWorkQueueNotifications').publishJobs((await queue.list())?.jobs || []);
   } catch (error) { logger.warn('Heavy queue observation unavailable', { code: error.code || 'QUEUE_UNAVAILABLE' }); }
   finally { busy = false; }
 }

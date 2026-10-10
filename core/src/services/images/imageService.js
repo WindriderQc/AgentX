@@ -14,6 +14,7 @@ const { qualified, MAX_OUTPUT_PIXELS } = require('./sizes');
 const logger = require('../../../config/logger');
 const expertProvenance = require('./expertProvenance');
 const { assertSupportedRequest } = require('./labIntent');
+const workQueue = require('./workQueue');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const ACTIVE = ['accepted', 'reserving', 'generating', 'archiving', 'restoring'];
@@ -27,6 +28,14 @@ async function initialize() {
     await ImageOperation.updateMany({ state: { $in: ACTIVE } }, { $set: {
       state: 'unknown', error: 'Service redémarré pendant une opération. Récupération requise ; aucune nouvelle génération automatique.'
     } }, { writeConcern: { w: 1, j: true } });
+    const queued = await ImageOperation.find({ state: 'queued' }).select('queueRequestId').lean();
+    for (const op of queued) {
+      let job;
+      try { job = await require('../heavyWorkQueueService').get(op.queueRequestId); } catch { /* Missing queue evidence stays unknown. */ }
+      if (!job || ['dispatching', 'running', 'uncertain'].includes(job.state)) {
+        await save(op._id, { state: 'unknown', error: 'Dispatch précédent sans reçu de fin. Aucune relance automatique.' });
+      }
+    }
   })();
   return initialized;
 }
@@ -38,6 +47,7 @@ function publicOperation(op) {
     if (['http:', 'https:'].includes(url.protocol)) studioUrl = url.origin + studioPath;
   } catch { /* A local deployment may only have relative browser routes. */ }
   return { id: op._id, state: op.state, profile: op.profile.id, label: op.profile.label,
+    ...(op.queueRequestId && { queueRequestId: op.queueRequestId }),
     studioPath, ...(studioUrl && { studioUrl }),
     createdAt: op.createdAt, updatedAt: op.updatedAt, runtimeRestored: op.runtimeRestored,
     cancelRequested: op.cancelRequested, error: op.error || null, timings: op.timings || null,
@@ -104,13 +114,13 @@ async function accept(body, { conversation, signal } = {}) {
   const referenceStorage = await retainReferences(prepared);
   signal?.throwIfAborted();
   const client = createComfyClient(config.workerUrl);
-  try { await client.ready(input.profile); } catch { throw fail('Le PC image est indisponible ou occupé. Fais une nouvelle demande quand il sera disponible.', 503); }
+  try { await client.ready(input.profile, { allowBusy: true }); } catch { throw fail('Le PC image est indisponible ou le modèle requis est absent.', 503); }
   signal?.throwIfAborted();
   const id = crypto.randomUUID();
   let op;
   try {
     op = await ImageOperation.create([{ _id: id, actionKey: body.actionKey, requestHash: input.requestHash,
-      ...(conversation && { conversation }), workerSlot: config.workerUrl, workerUrl: config.workerUrl, state: 'accepted', profile: input.profile, request: input.request,
+      ...(conversation && { conversation }), workerUrl: config.workerUrl, state: 'queued', profile: input.profile, request: input.request,
       ...(expert && { expert }),
       ...(referenceStorage && { referenceStorage }), ...(prepared.lineage && { lineage: prepared.lineage }), jobId: id }], { writeConcern: { w: 1, j: true } });
     op = op[0].toObject();
@@ -122,8 +132,30 @@ async function accept(body, { conversation, signal } = {}) {
     if (raced && raced.requestHash === input.requestHash) return publicOperation(raced);
     throw fail('Une image est déjà en cours ou doit être récupérée. Fais une nouvelle demande après sa fin.', 409);
   }
-  setImmediate(() => execute(op, config, client).catch(error => logger.error('Local image operation failed', { id, error: error.message })));
-  return publicOperation(op);
+  try {
+    const job = await workQueue.enroll(op, config, body);
+    op.queueRequestId = job.id;
+    if (body.queueDispatchId) op.queueDispatchId = body.queueDispatchId;
+    await workQueue.dispatch(op, accepted => setImmediate(() => execute(accepted, config, client)
+      .catch(error => logger.error('Local image operation failed', { id, error: error.message }))));
+  } catch (error) {
+    await save(id, { state: 'unknown', error: 'Enregistrement en file incertain. Consulte le même reçu avant toute relance.' });
+    throw error;
+  }
+  return publicOperation(await ImageOperation.findById(id).lean());
+}
+async function dispatchQueued() {
+  const config = loadConfig();
+  if (!config) return;
+  await initialize();
+  const pending = await ImageOperation.find({ state: 'queued' }).sort({ createdAt: 1 }).select('+workerUrl').limit(20).lean();
+  for (const op of pending) {
+    if (op.workerUrl !== config.workerUrl) continue;
+    try {
+      await workQueue.dispatch(op, accepted => setImmediate(() => execute(accepted, config, createComfyClient(config.workerUrl))
+        .catch(error => logger.error('Queued image operation failed', { id: op._id, error: error.message }))));
+    } catch (error) { logger.warn('Image queue awaits admission', { id: op._id, code: error.code || 'QUEUE_UNAVAILABLE' }); }
+  }
 }
 async function archive(id, client, output) {
   const bytes = await client.read(output);
@@ -182,6 +214,10 @@ async function execute(op, config, client) {
     : output ? 'archive_failed' : generationError?.cancelled ? 'cancelled' : 'failed';
   await save(op._id, { state, error: generationError?.message || null, timings: { totalMs: Date.now() - start } },
     state === 'unknown' ? {} : { workerSlot: 1, references: 1, admission: 1 });
+  try {
+    await require('../heavyWorkQueueEvidence').reconcile(op.queueRequestId, 'core-images');
+    await require('../heavyWorkQueueNotifications').publishJobs([await require('../heavyWorkQueueService').get(op.queueRequestId)]);
+  } catch (error) { logger.warn('Image queue awaits terminal receipt', { id: op._id, code: error.code || 'EVIDENCE_UNAVAILABLE' }); }
 }
 async function get(id) {
   await initialize();
@@ -227,6 +263,11 @@ async function cancel(id) {
   await initialize();
   const op = await ImageOperation.findById(id).lean();
   if (!op) throw fail('Opération image inconnue.', 404);
+  if (op.state === 'queued') {
+    const job = await require('../heavyWorkQueueService').get(op.queueRequestId);
+    await require('../heavyWorkQueueService').cancel(job.id, { expectedRevision: job.revision }, 'core-images');
+    return publicOperation(await save(id, { state: 'cancelled', cancelRequested: true }, { workerSlot: 1 }));
+  }
   if (ACTIVE.includes(op.state)) return publicOperation(await save(id, { cancelRequested: true }));
   return publicOperation(op);
 }
@@ -265,4 +306,4 @@ function status() {
     conversationProfile: p ? { id: quick, width: Math.min(1024, Math.floor(Math.sqrt(p.maxPixels) / 32) * 32), height: Math.min(1024, Math.floor(Math.sqrt(p.maxPixels) / 32) * 32) } : null,
     profiles: Object.entries(config?.profiles || {}).map(([id, p]) => ({ id, label: p.label || id, maxPixels: p.maxPixels, license: p.license || null })) };
 }
-module.exports = { accept, get, getForAction, getForConversation, listForConversation, draft, list, cancel, image, retryArchive, recover, status, validate, publicOperation };
+module.exports = { accept, dispatchQueued, get, getForAction, getForConversation, listForConversation, draft, list, cancel, image, retryArchive, recover, status, validate, publicOperation };

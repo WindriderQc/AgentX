@@ -1,8 +1,8 @@
 'use strict';
 (() => {
   const $ = id => document.getElementById(id);
-  const ACTIVE = ['accepted', 'reserving', 'generating', 'archiving', 'restoring'];
-  const statuses = { accepted: 'Demande enregistrée.', reserving: 'Préparation du GPU et des services qui le partagent.',
+  const ACTIVE = ['queued', 'accepted', 'reserving', 'generating', 'archiving', 'restoring'];
+  const statuses = { queued: 'Image en file. Elle démarrera lorsque son créneau sera libre.', accepted: 'Demande enregistrée.', reserving: 'Préparation du GPU et des services qui le partagent.',
     generating: 'Génération en cours…', archiving: 'Archivage de l’original…', restoring: 'Restitution des ressources aux services habituels…',
     completed: 'Image prête, original archivé et ressources restituées.', cancelled: 'Génération annulée.', failed: 'La génération a échoué.',
     unknown: 'État incertain : récupère cette opération avant une nouvelle demande.', archive_failed: 'Image calculée ; son archivage doit être repris.' };

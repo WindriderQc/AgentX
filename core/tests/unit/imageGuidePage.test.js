@@ -28,7 +28,7 @@ test('host, card and recipes come from the live configuration, never from the pa
 test('the guide quotes the messages the service and the workshop really show', () => {
   const view = read('views/pages/images-guide.ejs'), client = read('public/js/local-images.js');
   expect(read('src/services/images/gpuReservation.js')).toContain('GPU occupé');
-  expect(read('src/services/images/imageService.js')).toContain('Le PC image est indisponible ou occupé');
+  expect(read('src/services/images/imageService.js')).toContain('Le PC image est indisponible ou le modèle requis est absent');
   for (const text of ['État incertain', 'archivage doit être repris']) { expect(client).toContain(text); expect(view).toContain(text); }
   for (const stage of ['Préparation', 'Calcul', 'Archivage', 'Restitution']) { expect(read('views/pages/images.ejs')).toContain(`<li>${stage}</li>`); expect(view).toContain(stage); }
 });

@@ -26,12 +26,21 @@ async function preDispatch(job) {
     exactHosts(job, [host.hostUrl]);
   } else if (job.kind === 'image') {
     const config = require('./images/config').loadConfig();
+    if (job.executor.mode === 'image-operation') {
+      if (!config) throw fail('Image executor is not configured', 409);
+      exactHosts(job, [...config.ollamaHosts, new URL(config.workerUrl).origin]);
+      const op = await Images.findOne({ _id: job.executor.operationId, actionKey: job.executor.actionKey }).lean();
+      if (!op || op.requestHash !== job.executor.requestHash || op.state !== 'queued') throw fail('Native image request changed or was already dispatched', 409);
+      return;
+    }
     if (!config || !config.profiles[job.executor.profile || config.defaultProfile]) throw fail('Image executor is not configured', 409);
     exactHosts(job, config.ollamaHosts);
     const input = require('./images/imageService').validate(job.executor, config);
     const prior = await Images.findOne({ actionKey: job.executor.actionKey }).select('requestHash').lean();
     if (prior && prior.requestHash !== input.requestHash) throw fail('Image actionKey already names another request', 409);
-  } else throw fail('This request has no supported executor', 409);
+  } else if (!(['diagnostic', 'other'].includes(job.kind) && job.executor.mode === 'operator')) {
+    throw fail('This request has no supported executor', 409);
+  }
 }
 async function observe(job) {
   let operationId = job.operation?.id;
