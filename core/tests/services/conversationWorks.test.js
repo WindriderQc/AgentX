@@ -169,6 +169,29 @@ test.each(['completed', 'failed', 'cancelled'])('native-only work settled as %s 
   expect(tasks.list).not.toHaveBeenCalled();
 });
 
+test.each(['completed', 'failed', 'cancelled'])('a native guardian settling as %s after recovery reconciles its original intake without replay', async state => {
+  let at = new Date();
+  works = createConversationWorks({ conversations, tasks, env, nativeOnly: () => true, now: () => at });
+  const accepted = await works.intake(input('Consult the mailbox specialist.'));
+  await works.prepare(accepted.row._id, 'Native specialist policy');
+  const sessionKey = 'agent:main:household:direct:' + current.sessionId, runId = native();
+  await works.guardianStarted(accepted.row._id, sessionKey, runId);
+  at = new Date(at.getTime() + 61000);
+  await works.recover();
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ state: 'uncertain', guardian: { state: 'running', sessionKey, runId } });
+  await works.guardianSettled(accepted.row._id, state);
+  await works.recover();
+  const execute = jest.fn(), observer = createWorkObserver({ works, env, execute, observe: jest.fn() });
+  await observer.tick(); observer.stop();
+  const row = await works.repo.get(accepted.row._id);
+  expect(row).toMatchObject({ state, reason: '', guardian: { state, sessionKey, runId } });
+  expect(row.attempt).toBeUndefined();
+  expect(row.result).toBeUndefined();
+  expect((await exchanges.read(EXCHANGE_SCOPE, accepted.row.exchangeId)).state).toBe('completed');
+  expect(execute).not.toHaveBeenCalled();
+  expect(tasks.list).not.toHaveBeenCalled();
+});
+
 test('a cancelled unclassified guardian cannot be resurrected as a worker answer', async () => {
   const accepted = await works.intake(input('Explain this question.'));
   await works.prepare(accepted.row._id, 'context');
