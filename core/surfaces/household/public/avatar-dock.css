@@ -1,4 +1,5 @@
-/* The docked avatar (avatar-dock.js). Modes: bulle, quart (a quarter of the screen),
+/* The docked avatar (avatar-dock.js). Modes: scene (interactive: full screen, the top right
+   corner beside what Nestor shows, or the open page), bulle, quart (a quarter of the screen),
    moitie (the right half; the conversation keeps the left), cache (a small reopen tab). */
 /* Below the sticky topbar (z-index 20), so its menus ("Réglages et outils") open over the dock. */
 .avatar-dock { --avatar-tint: #52cfc5; position: fixed; z-index: 15; right: 16px; bottom: 16px; display: grid;
@@ -43,4 +44,39 @@ body.avatar-docked .conversation-presence { display: none; }
   .avatar-dock[data-mode=bulle] { width: 76px; height: 76px; right: 12px; bottom: 12px; }
   body[data-avatar-mode=quart] .conversation-stage, body[data-avatar-mode=moitie] .conversation-stage { padding-bottom: 42vh; }
 }
-@media (prefers-reduced-motion: reduce) { .avatar-dock, .avatar-dock-orb { transition: none; } }
+/* The interactive scene. plein: Nestor covers the page and the product navigation (z-index 100). montre: he stands in
+   the top right corner and the shown zones take the screen. menu: the page, with him as in quart. */
+.avatar-dock[data-mode=scene] { --avatar-corner: clamp(112px, 16vw, 200px); bottom: auto; cursor: pointer;
+  transition: top .45s cubic-bezier(.2, .8, .2, 1), right .45s cubic-bezier(.2, .8, .2, 1), width .45s cubic-bezier(.2, .8, .2, 1), height .45s cubic-bezier(.2, .8, .2, 1), border-radius .45s ease; }
+.avatar-dock[data-view=plein] { z-index: 110; top: 0; right: 0; width: 100vw; height: 100dvh; border-width: 0; border-radius: 0; }
+.avatar-dock[data-view=montre] { z-index: 110; top: 12px; right: 12px; width: var(--avatar-corner); height: var(--avatar-corner); border-radius: 28px; }
+.avatar-dock[data-view=menu] { top: 134px; right: 16px; width: min(40vw, 600px); height: min(50vh, 460px); }
+.avatar-dock[data-view=plein] .avatar-dock-bar, .avatar-dock[data-view=montre] .avatar-dock-bar { display: none; }
+.avatar-dock[data-view=menu] .avatar-dock-bar { opacity: 1; }
+.avatar-scene-bar { position: fixed; z-index: 115; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  display: grid; justify-items: center; gap: 10px; width: max-content; max-width: calc(100vw - 32px); pointer-events: none; }
+.avatar-scene-bar[hidden], .avatar-scene-bar [hidden] { display: none; }
+.avatar-scene-status { margin: 0; color: var(--soft); text-align: center; text-wrap: balance; text-shadow: 0 1px 8px #060d14; }
+body[data-avatar-view=montre] .avatar-scene-status { display: none; }
+.avatar-scene-actions { display: flex; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 999px; background: #0b1620d9; backdrop-filter: blur(8px); pointer-events: auto; opacity: .6; transition: opacity .2s; }
+.avatar-scene-actions:hover, .avatar-scene-actions:focus-within { opacity: 1; }
+.avatar-scene-actions button { min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: none; color: var(--text); font: inherit; cursor: pointer; }
+.avatar-scene-actions button:hover, .avatar-scene-actions button:focus-visible { background: #1b2f3d; }
+body[data-avatar-view=plein] { overflow: hidden; }
+body[data-avatar-view=montre] :is(#nav-container, .conversation-heading, .conversation-toolbar, .conversation-team, .conversation-history, .conversation-recap, .conversation-settings),
+body[data-avatar-view=montre] .conversation-stage > :not(.conversation-board) { display: none; }
+body[data-avatar-view=montre] .conversation-stage { position: fixed; z-index: 105; inset: 0; align-self: stretch; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain;
+  border: 0; border-radius: 0; padding: 20px calc(clamp(112px, 16vw, 200px) + 36px) 96px 20px; }
+body[data-avatar-view=montre] .conversation-stage[data-shown=visual] > .conversation-visual,
+body[data-avatar-view=montre] .conversation-stage[data-shown=text] > .conversation-board:not(.conversation-visual, .conversation-brain) { order: -1; }
+body[data-avatar-view=montre] .display-board-list { max-height: none; overflow: visible; }
+body[data-avatar-view=montre] .display-block-figure img { max-height: 72dvh; }
+@media (min-width: 701px) and (max-width: 1000px) { .avatar-dock[data-view=menu] { top: 170px; } }
+@media (min-width: 701px) { body[data-avatar-view=menu] #app { width: calc(100vw - min(40vw, 600px) - 32px); margin: 0; } }
+@media (max-width: 700px) {
+  .avatar-dock[data-mode=scene] { --avatar-corner: 84px; }
+  .avatar-dock[data-view=menu] { top: calc(100dvh - 88px); right: 12px; width: 76px; height: 76px; border-radius: 50%; }
+  .avatar-dock[data-view=menu] .avatar-dock-bar { display: none; }
+  body[data-avatar-view=montre] .conversation-stage { padding: 108px 12px 96px; }
+}
+@media (prefers-reduced-motion: reduce) { .avatar-dock, .avatar-dock[data-mode=scene], .avatar-dock-orb { transition: none; } }

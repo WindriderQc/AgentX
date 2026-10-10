@@ -90,7 +90,8 @@ test('the page loads the board before the conversation that mounts it', () => {
 test('pictures go to their own zone, with provenance, and a missing one says so', () => {
   const text = new Element('section'), visual = new Element('section');
   const screen = globalThis.DisplayBoard.createScreen({ text, visual }, { secrets: false });
-  screen.add({ id: 'b1', kind: 'list', title: '', body: '- a' });
+  assert.equal(screen.add({ id: 'b1', kind: 'list', title: '', body: '- a' }), true, 'a drawn block is reported');
+  assert.equal(screen.add({ id: 'b0', kind: 'secret', title: '', body: 'x' }), false, 'a refused one is not');
   screen.add({ id: 'b2', kind: 'image', source: 'web', title: 'Girafe', body: 'girafe', status: 'found',
     image: { url: 'https://images.example.test/g.jpg', origin: 'https://zoo.example.test/g', originTitle: 'Zoo', sourceLabel: 'Internet' } });
   assert.deepEqual(text.children[1].children.map(card => card.dataset.kind), ['list']);

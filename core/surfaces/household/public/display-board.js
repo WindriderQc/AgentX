@@ -169,9 +169,9 @@
     const update = () => { container.hidden = !list.childElementCount; };
     const board = {
       add(block) {
-        if (kinds && !kinds.includes(block?.kind)) return;
+        if (kinds && !kinds.includes(block?.kind)) return false;
         const card = render(block, { secrets, space });
-        if (!card) return;
+        if (!card) return false;
         // A keyed block replaces its previous card: one live 3D picture, not one per turn.
         const key = block.key || (block.operation?.id ? `image:${block.operation.id}` : '');
         if (key) {
@@ -181,6 +181,7 @@
         list.prepend(card);
         while (list.childElementCount > MAX_BLOCKS) { list.lastElementChild._dispose?.(); list.lastElementChild.remove(); }
         update();
+        return true;
       },
       restore(blocks = []) { (Array.isArray(blocks) ? blocks : []).forEach(board.add); },
       has: key => Array.from(list.children).some(child => child.dataset?.key === key),
@@ -195,7 +196,8 @@
     const boards = [create(text, { secrets, space, kinds: ['text', 'list', 'table', 'code', 'link', 'secret'] }),
       create(visual, { secrets, space, kinds: ['image', 'scene'], heading: 'Images' })];
     return {
-      add: block => boards.forEach(board => board.add(block)),
+      // True when one of the zones drew the block.
+      add: block => boards.map(board => board.add(block)).some(Boolean),
       restore: blocks => boards.forEach(board => board.restore(blocks)),
       has: key => boards.some(board => board.has(key)),
       clear: () => boards.forEach(board => board.clear())

@@ -77,9 +77,16 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   // Shown, never spoken (#167): secrets exist only in the private space.
   const board = window.DisplayBoard.createScreen({ text: el('conversationBoard'), visual: el('conversationVisual') }, { secrets: !family, space: family ? 'family' : 'personal' });
   // The avatar dock paces a math picture to Nestor's first word; the Images zone draws it.
+  // Shown live: in the avatar's interactive scene Nestor steps aside and that zone comes first.
+  const show = block => {
+    if (!board.add(block)) return;
+    el('conversationVisual').parentElement.dataset.shown = ['image', 'scene'].includes(block.kind) ? 'visual' : 'text';
+    activity('show');
+  };
+  const clearBoard = () => { board.clear(); activity('clear'); };
   window.addEventListener('persona-scene', event => {
     const detail = event.detail || {};
-    if (detail.space === (family ? 'family' : 'personal') && detail.scene) board.add({ key: 'scene', kind: 'scene', title: detail.caption || '', scene: detail.scene });
+    if (detail.space === (family ? 'family' : 'personal') && detail.scene) show({ key: 'scene', kind: 'scene', title: detail.caption || '', scene: detail.scene });
   });
   const backendPicker = el('conversationBackend');
   backendPicker.value = runtime?.defaultBackend || 'openclaw';
@@ -231,7 +238,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     recap?.clear();
     // A new session has no history: never leave an older transcript on screen beside it.
     if (transcript.querySelector('.conversation-message')) {
-      transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; partial = null; board.clear(); brain.reset();
+      transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; partial = null; clearBoard(); brain.reset();
     }
     const data = await api(sessionBase, { method: 'POST', signal,
       body: JSON.stringify({ ...prefs, packId: family ? 'kidx_nestor' : 'personal_operator', scopeId: family ? 'family' : 'personal', ...(family ? { modeId: 'family' } : {}), label: selected().name }) });
@@ -261,7 +268,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (event.type === 'speaker') { turnSpeaker = event.speaker || null; if (turnSpeaker) el('conversationStatus').textContent = `${turnSpeaker.name} te répond.`; }
       if (event.type === 'tools') { showTools(event.evidence); activity('tools', { count: event.evidence?.receipts?.length || 1 }); }
       if (event.type === 'scene' && !interruptedTurns.has(turnId)) activity('scene', { scene: event.scene });
-      if (event.type === 'show' && !interruptedTurns.has(turnId)) board.add(event.block);
+      if (event.type === 'show' && !interruptedTurns.has(turnId)) show(event.block);
       if (event.type === 'status' && event.phase === 'activity') voiceHealth.activity();
       if (!interruptedTurns.has(turnId) && event.type === 'status' && event.phase === 'activity') {
         // Nestor says what it is doing (tools, another agent) once per line.
@@ -367,7 +374,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   // The docked avatar (avatar-dock.js) follows these and the persona-presence samplers.
   const activity = (kind, detail = {}) => window.dispatchEvent(new CustomEvent('persona-activity', { detail: { space, kind, ...detail } }));
   let lastGreeting = '', lastWakeReply = '';
-  const avatar = window.AvatarDock?.mount({ space: family ? 'family' : 'personal' });
+  const avatar = window.AvatarDock?.mount({ space: family ? 'family' : 'personal', status: el('conversationStatus'),
+    // The same button pauses an active conversation: a tap only ever starts or resumes one.
+    onTap: () => { const start = el('conversationStart'); if (start.hidden || start.disabled || !['idle', 'paused', 'error'].includes(conversation.state)) return false; start.click(); return true; } });
   // Browser speech recognition only with the instance gate and this browser's consent (per space).
   let renderSpeechFallback = () => {};
   async function transcribeLocal(blob, lang, signal) {
@@ -657,7 +666,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationNew').onclick = () => {
     recap?.clear();
     el('conversationResume').hidden = true; setHistoryOpen(false); stopPreview(); conversation.stop(); void releaseOpen(); partial = null;
-    transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; board.clear(); brain.reset();
+    transcript.innerHTML = '<p class="empty">Nos échanges apparaîtront ici.</p>'; clearBoard(); brain.reset();
     personalNotes.show(null);
     showTools(null); void recap?.refresh();
     el('conversationMessage').value = ''; draftFiles = []; renderDraftFiles(); restoreProfile(); describe(); picker.focus();
@@ -761,7 +770,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       backendPicker.value = saved.backend || runtime?.defaultBackend || 'openclaw';
       picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open;
       language.value = data.session.voice?.language || 'auto';
-      transcript.replaceChildren(); partial = null; board.clear(); brain.reset();
+      transcript.replaceChildren(); partial = null; clearBoard(); brain.reset();
       (data.turns || []).forEach(turn => {
         if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);
         if (turn.replyText) message('assistant', turn.replyText, turn.interrupted, null, [], turn.speakerAgentId ? ConversationTeam.memberName(team, agents, turn.speakerAgentId) : '');
