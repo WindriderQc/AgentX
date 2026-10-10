@@ -598,10 +598,15 @@ connection, device registry, readings and history. The page connects through
 Core's `/api/data-toolbox/iot` relay and never connects directly to a broker.
 
 Each device has a card with its ID, display name, location, availability,
-latest measurements and their ages. Search matches names, IDs and locations.
+up to four priority measurements and their ages. Every measurement stays
+available in the charts. Search matches names, IDs and locations.
 Choose **Voir les courbes** to select a device and check the measures to draw.
 Unknown values stay unknown; a disconnected broker leaves the last known
-values dated and disables commands.
+values dated and disables commands. The IoT tab uses a light canvas with
+compact cards and a consistent colour per measurement. Each chart leads with
+its latest returned value and age; moving over the curve reveals an actual
+point with its timestamp and full precision. Period buttons select the live
+view or history without opening a menu.
 
 - **Live** reads Data's last 60 raw points per measure. That memory buffer
   starts empty after Data restarts.
@@ -609,7 +614,8 @@ values dated and disables commands.
   automatic or explicit minute, five-minute, 30-minute, hourly, two-hour or
   daily resolution. Fine history is retained 90 days; hourly history has no
   expiry. Graphs use mean values and show their min/max ranges, real time
-  spacing, gaps and partial hours. Tables expose every returned point.
+  spacing, gaps and partial hours. Tables expose every returned point at full
+  precision.
 - Cards and live graphs refresh every two seconds while the tab is visible;
   historical curves refresh every minute. Refresh waits during editing or
   while a details panel is open. Changing devices or tabs discards old answers.

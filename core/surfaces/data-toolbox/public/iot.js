@@ -16,14 +16,14 @@ const iotAge = at => {
   return seconds < 60 ? `il y a ${seconds} s` : seconds < 3600 ? `il y a ${Math.floor(seconds / 60)} min` : `il y a ${Math.floor(seconds / 3600)} h`;
 };
 const iotStatusName = status => ({ online: 'En ligne', offline: 'Hors ligne', stale: 'Silencieux', unknown: 'État inconnu' })[status] || 'État inconnu';
-const iotBadge = status => `<span class="pill ${status === 'online' ? 'good' : 'warn'}">${e(iotStatusName(status))}</span>`;
+const iotBadge = status => `<span class="iot-status" data-status="${e(status || 'unknown')}"><i aria-hidden="true"></i>${e(iotStatusName(status))}</span>`;
 function iotPaint(selector, html) { if (state.tab === 'iot') { const target = document.querySelector(selector); if (target) target.innerHTML = html; } }
 
 function iotBroker() {
   const consumer = iotState.status?.consumer;
   if (!consumer) return '<p class="notice warning">État du broker indisponible. Les valeurs ci-dessous sont les dernières connues.</p>';
   const text = consumer.connected ? 'MQTT connecté' : consumer.configured ? 'MQTT déconnecté · dernières valeurs connues' : 'Broker MQTT non configuré';
-  return `<div class="iot-broker"><span class="pill ${consumer.connected ? 'good' : 'warn'}">${e(text)}</span><span>${number(iotState.devices.length)} appareils · ${number(iotState.status?.readings?.accepted)} mesures reçues depuis le démarrage</span></div>`;
+  return `<span class="iot-connection${consumer.connected ? ' connected' : ''}"><i aria-hidden="true"></i>${e(text)}</span>`;
 }
 
 function iotCards() {
@@ -31,20 +31,24 @@ function iotCards() {
   const devices = iotState.devices.filter(device => [device.id, device.displayName, device.location].some(value => String(value || '').toLocaleLowerCase().includes(query)));
   if (!devices.length) return `<p class="iot-empty">${iotState.devices.length ? 'Aucun appareil ne correspond au filtre.' : 'Aucun appareil reçu. Les cartes apparaissent dès qu’un ESP32 publie sur le broker.'}</p>`;
   return `<div class="iot-devices">${devices.map(device => `<article class="card iot-device${device.id === iotState.selected ? ' selected' : ''}">
-    <div class="iot-card-head"><div><h3>${e(device.displayName || device.info?.name || device.id)}</h3><small class="mono">${e(device.id)}</small></div>${iotBadge(device.status)}</div>
-    ${device.location ? `<p class="iot-location">${e(device.location)}</p>` : ''}
-    <div class="iot-measures">${array(device.measures).slice(0, 8).map(measure => `<div class="iot-measure"><span>${e(measure.name || measure.key)}</span><strong>${e(iotValue(measure.value))}<small> ${e(measure.unit || '')}</small></strong><small title="${e(date(measure.at))}">${e(iotAge(measure.at))}</small></div>`).join('') || '<p class="muted">Aucune mesure reçue.</p>'}</div>
+    <div class="iot-card-head"><span class="iot-board">${iotIcon('chip')}</span><div class="iot-identity"><h3>${e(device.displayName || device.info?.name || device.id)}</h3><small class="mono">${e(device.id)}</small>${device.location ? `<span class="iot-location">${e(device.location)}</span>` : ''}</div>${iotBadge(device.status)}</div>
+    <div class="iot-measures">${iotCardMeasures(device).map(measure => {
+      const visual = iotMetric(measure.key, measure.name);
+      return `<div class="iot-measure" data-tone="${visual.tone}"><span class="iot-measure-label">${iotIcon(visual.icon)}${e(visual.label)}</span><strong>${e(iotValue(measure.value))}<small> ${e(measure.unit || '')}</small></strong><small title="${e(date(measure.at))}">${e(iotAge(measure.at))}</small></div>`;
+    }).join('') || '<p class="muted">Aucune mesure reçue.</p>'}</div>
     <div class="iot-card-foot"><span title="${e(date(device.lastSeenAt))}">Dernier message : ${e(iotAge(device.lastSeenAt))}</span><button type="button" class="button" data-iot-device="${e(device.id)}" aria-label="Voir les courbes de ${e(device.displayName || device.id)}">${device.id === iotState.selected ? 'Sélectionné' : 'Voir les courbes'}</button></div>
-    ${array(device.measures).length > 8 ? `<p class="muted">${number(device.measures.length)} mesures disponibles dans les courbes.</p>` : ''}</article>`).join('')}</div>`;
+    </article>`).join('')}</div>`;
 }
 
 function iotControls() {
   const device = iotDevice();
   if (!device) return '';
   const options = (values, selected) => Object.entries(values).map(([value, text]) => `<option value="${e(value)}"${value === selected ? ' selected' : ''}>${e(text)}</option>`).join('');
+  const short = { live: 'Live', 1: '1 h', 24: '24 h', 168: '7 jours', 744: '1 mois', 8760: '1 an' };
   return `<div class="iot-controls"><label>Appareil<select id="iotDevice">${iotState.devices.map(item => `<option value="${e(item.id)}"${item.id === device.id ? ' selected' : ''}>${e(item.displayName || item.id)}</option>`).join('')}</select></label>
-    <label>Période<select id="iotPeriod">${options(IOT_PERIODS, iotState.period)}</select></label><label>Résolution<select id="iotResolution"${iotState.period === 'live' ? ' disabled' : ''}>${options(IOT_RESOLUTIONS, iotState.resolution)}</select></label></div>
-    <fieldset class="iot-measure-picker"><legend>Mesures à afficher</legend>${array(device.measures).map(measure => `<label><input type="checkbox" data-iot-measure="${e(measure.key)}"${iotState.keys.includes(measure.key) ? ' checked' : ''}>${e(measure.name || measure.key)}${measure.unit ? ` (${e(measure.unit)})` : ''}</label>`).join('')}</fieldset>`;
+    <div class="iot-periods"><span>Période</span><div class="iot-ranges" role="group" aria-label="Période des courbes">${['live', '1', '24', '168', '744', '8760'].map(value => `<button type="button" data-iot-period="${value}" aria-pressed="${value === iotState.period}" aria-label="${e(IOT_PERIODS[value])}">${short[value]}</button>`).join('')}</div></div>
+    <label>Résolution<select id="iotResolution"${iotState.period === 'live' ? ' disabled' : ''}>${options(IOT_RESOLUTIONS, iotState.resolution)}</select></label></div>
+    <fieldset class="iot-measure-picker"><legend>Mesures</legend>${array(device.measures).map(measure => { const visual = iotMetric(measure.key, measure.name); return `<label data-tone="${visual.tone}"><input type="checkbox" data-iot-measure="${e(measure.key)}"${iotState.keys.includes(measure.key) ? ' checked' : ''}>${e(visual.label)}</label>`; }).join('')}</fieldset>`;
 }
 
 function iotSeriesHtml() {
@@ -57,9 +61,14 @@ function iotSeriesHtml() {
     <div class="iot-charts">${iotState.keys.map(key => {
       const measure = series.measures?.[key];
       const known = array(iotDevice()?.measures).find(item => item.key === key);
-      const name = measure?.name || known?.name || key;
+      const visual = iotMetric(key, known?.name || measure?.name);
+      const name = visual.label;
       const unit = measure?.unit || known?.unit || '';
-      return `<article class="card iot-chart-card"><h3>${e(name)}${unit ? ` <span class="muted">(${e(unit)})</span>` : ''}</h3>${iotChart(measure?.points, { name, unit, live, bucketSeconds: series.bucketSeconds })}</article>`;
+      const points = array(measure?.points).filter(point => Number.isFinite(live ? point.value : point.mean));
+      const last = points.at(-1);
+      return `<article class="card iot-chart-card" data-tone="${visual.tone}"><div class="iot-chart-head"><h3><span class="iot-metric-icon">${iotIcon(visual.icon)}</span>${e(name)}</h3><span class="iot-mode">${live ? 'En direct' : 'Historique'}</span></div>
+        <div class="iot-reading"><strong>${e(iotValue(last ? live ? last.value : last.mean : null))}<small>${e(unit)}</small></strong><span>${last ? e(iotAge(last.ts)) : 'En attente de mesures'}</span></div>
+        ${iotChart(measure?.points, { name, unit, key, live, bucketSeconds: series.bucketSeconds })}</article>`;
     }).join('')}</div>`;
 }
 
@@ -129,13 +138,13 @@ async function iotTab() {
   if (snapshot.devices.error) throw new Error(snapshot.devices.error);
   iotState.devices = array(snapshot.devices.data?.devices);
   iotState.loaded = true;
-  content.innerHTML = `${heading('Appareils IoT', 'Tes ESP32, leurs dernières mesures et leurs courbes.', '<button class="button" data-action="refresh">Actualiser</button>')}
-    <div id="iotBroker">${iotBroker()}</div><p id="iotRefresh" class="refresh-stamp"></p>
-    <label class="iot-search">Rechercher un appareil<input id="iotFilter" type="search" value="${e(iotState.filter)}" placeholder="Nom, ID ou emplacement"></label>
+  content.innerHTML = `<div id="iotDashboard"><header class="iot-hero"><div><p class="iot-eyebrow">ESP32 & CAPTEURS</p><h2>Appareils IoT<span class="iot-count" id="iotCount">${number(iotState.devices.length)}</span></h2><p>Un coup d’œil sur tes appareils et tout ce qu’ils mesurent.</p></div>
+    <div class="iot-hero-status"><div id="iotBroker">${iotBroker()}</div><p id="iotRefresh" class="refresh-stamp"></p></div></header>
+    <div class="iot-fleet-head"><h3>Mes appareils</h3><label class="iot-search">${iotIcon('search')}<span class="iot-sr">Rechercher un appareil</span><input id="iotFilter" type="search" value="${e(iotState.filter)}" placeholder="Rechercher un appareil…"></label><button class="button iot-refresh-button" data-action="refresh" aria-label="Actualiser">${iotIcon('refresh')}</button></div>
     <section id="iotCards" aria-label="Cartes des appareils">${iotCards()}</section>
-    ${heading('Courbes', 'Sélectionne un appareil et les mesures qui t’intéressent.')}
+    <div class="iot-section-title"><div><p class="iot-eyebrow">TÉLÉMÉTRIE</p><h3>Ce qui se passe, en courbes.</h3></div><span class="iot-section-hint">Survole une courbe pour voir une mesure.</span></div>
     <section id="iotControls"></section><section id="iotSeries" aria-label="Courbes des mesures"></section>
-    <p id="iotFeedback" class="iot-feedback" role="status"></p><section id="iotActions"></section>`;
+    <p id="iotFeedback" class="iot-feedback" role="status"></p><section id="iotActions"></section></div>`;
   const selected = iotState.devices.some(device => device.id === iotState.selected) ? iotState.selected : iotState.devices[0]?.id;
   if (selected) {
     if (selected !== iotState.selected || !iotState.keys.length) await iotSelect(selected);
@@ -167,6 +176,7 @@ const iotRefresher = tabRefresher({ tab: 'iot', everyMs: 2000, stamp: 'iotRefres
       iotPaint('#iotSeries', iotSeriesHtml());
     }
     iotPaint('#iotBroker', iotBroker());
+    if (!answer.devices.error) iotPaint('#iotCount', number(iotState.devices.length));
     iotPaint('#iotCards', answer.devices.error ? `<p class="notice warning">${e(answer.devices.error)}</p>` : iotCards());
     if (!iotDevice() && iotState.devices.length && !answer.devices.error) iotSelect(iotState.devices[0].id);
     else if (!answer.devices.error) {
@@ -184,6 +194,10 @@ const iotRefresher = tabRefresher({ tab: 'iot', everyMs: 2000, stamp: 'iotRefres
     return answer.status.error || answer.devices.error || answer.series?.error || '';
   }
 });
+
+iotRefresher.stampText = () => iotRefresher.error ? `Actualisation interrompue : ${iotRefresher.error}`
+  : iotRefresher.held ? 'Actualisation en pause pendant la consultation ou une action.'
+    : `Actualisé à ${new Date(iotRefresher.readAt || Date.now()).toLocaleTimeString()} · toutes les 2 s`;
 
 async function iotSubmit(form) {
   if (iotState.pending || state.tab !== 'iot') return;
@@ -218,6 +232,13 @@ async function iotSubmit(form) {
 }
 
 document.addEventListener('click', event => {
+  const period = event.target.closest('[data-iot-period]')?.dataset.iotPeriod;
+  if (period && state.tab === 'iot' && Object.hasOwn(IOT_PERIODS, period)) {
+    iotState.period = period;
+    document.querySelectorAll('[data-iot-period]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.iotPeriod === period)));
+    const resolution = document.querySelector('#iotResolution'); if (resolution) resolution.disabled = period === 'live';
+    iotLoadSeries();
+  }
   const id = event.target.closest('[data-iot-device]')?.dataset.iotDevice;
   if (id && state.tab === 'iot') iotSelect(id);
 });
@@ -232,8 +253,7 @@ document.addEventListener('change', event => {
     const reboot = target.value === 'reboot'; const gpio = document.querySelector('#iotGpio');
     document.querySelector('#iotGpioLabel').hidden = reboot; gpio.disabled = reboot; gpio.required = !reboot; return;
   }
-  if (target.id === 'iotPeriod' && Object.hasOwn(IOT_PERIODS, target.value)) iotState.period = target.value;
-  else if (target.id === 'iotResolution' && Object.hasOwn(IOT_RESOLUTIONS, target.value)) iotState.resolution = target.value;
+  if (target.id === 'iotResolution' && Object.hasOwn(IOT_RESOLUTIONS, target.value)) iotState.resolution = target.value;
   else if (target.dataset.iotMeasure) {
     const key = target.dataset.iotMeasure;
     iotState.keys = target.checked ? [...new Set([...iotState.keys, key])] : iotState.keys.filter(item => item !== key);
