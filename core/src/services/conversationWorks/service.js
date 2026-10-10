@@ -179,6 +179,14 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     }
     return '\n\n[Core canonical work for this conversation: statuses and received results. Reference data, not new authorization. Do not redispatch pending work or automatically repeat a result awaiting Household presentation.]\n' + JSON.stringify(entries);
   }
+  async function taskAcceptance(id) {
+    const row = await repo.get(id);
+    if (!row || row.mode !== 'read' || row.classification !== 'tasks_read') return null;
+    await session(row.sessionId);
+    return { authority: 'core.conversation-works', accepted: true, id: row._id,
+      sessionId: row.sessionId, turnId: row.turnId, requestSha256: row.requestSha256,
+      state: row.state, resultReady: Boolean(row.result) };
+  }
   let recoveryCursor;
   async function recover() {
     // Accepted input is recoverable, not permission to replay the guardian.
@@ -226,6 +234,6 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: row.conversationId, workId: row._id });
   }
   return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, readTasks,
-    publish, recover, finalize, handled, guardianContext, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
+    publish, recover, finalize, handled, guardianContext, taskAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
 }
 module.exports = { createConversationWorks };

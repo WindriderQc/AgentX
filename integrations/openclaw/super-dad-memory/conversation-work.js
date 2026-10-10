@@ -31,11 +31,13 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
       nativeCalls.set(key(context, id), native);
       if (nativeCalls.size > 1000) nativeCalls.delete(nativeCalls.keys().next().value);
     }
-    if (context.agentId !== 'main' || !['list_personal_tasks', 'agentx__list_personal_tasks',
-      'personal_briefing', 'agentx__personal_briefing'].includes(name)) return;
+    const taskLookup = ['list_personal_tasks', 'agentx__list_personal_tasks', 'personal_briefing',
+      'agentx__personal_briefing', 'nestor_briefing'].includes(name)
+      || name === 'nestor_context' && (event.toolName === 'tool_call' ? event.params?.args : event.params)?.includeTasks === true;
+    if (context.agentId !== 'main' || !taskLookup) return;
     try {
       const work = await call('request', native);
-      return { block: true, blockReason: `The current request is owned by Core work ${work.id}. Use conversation_work with operation request to obtain its accepted-work receipt, then continue the conversation. This is not a completed task lookup.` };
+      return { block: true, blockReason: `Core has already accepted this lookup in work ${work.id}, execution ${work.execution}. Acknowledge this actual saved status and continue the conversation. If an explicit native acceptance receipt is needed, call tool_call with exactly {"id":"openclaw:super-dad-memory:conversation_work","args":{"operation":"request"}}. This is not task data or a completed lookup.` };
     } catch (cause) {
       if (cause.statusCode === 404 || cause.statusCode === 409 && cause.code === 'CONVERSATION_WORK_OBSERVE_ONLY') return;
       return { block: true, blockReason: 'The durable work owner cannot be reached. No task lookup or replacement dispatch was performed.' };
@@ -49,13 +51,14 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
       description: worker
         ? 'Core owns your durable work. context reads the complete canonical request, selected context and verified receipt references. tasks reads current personal tasks (read-only). publish commits an answer, correction, clarification or no_work disposition with its exact receiptIds before your native run ends. You have no business mutations. The owner continues talking with Nestor meanwhile.'
         : 'Accept the current personal task lookup as a durable background work in Core. Returns an accepted-work receipt, never task data or completed actions. End this turn with a short acknowledgment and keep talking; Household retrieves and speaks the worker result at a pause. Only the current host-bound personal turn is eligible.',
-      parameters: { type: 'object', properties: {
+      parameters: worker ? { type: 'object', properties: {
         operation: { type: 'string', enum: worker ? ['context', 'tasks', 'publish'] : ['request'] },
         limit: { type: 'integer', minimum: 1, maximum: 50 }, includeDone: { type: 'boolean' },
         kind: { type: 'string', enum: ['answer', 'correction', 'clarification', 'no_work'] },
         text: { type: 'string', maxLength: 16000 },
         receiptIds: { type: 'array', items: { type: 'string', pattern: '^[a-f0-9]{64}$' }, maxItems: 16 }
-      }, required: ['operation'], additionalProperties: false },
+      }, required: ['operation'], additionalProperties: false }
+        : { type: 'object', properties: { operation: { type: 'string', enum: ['request'] } }, required: ['operation'], additionalProperties: false },
       async execute(id, params) {
         const native = nativeCalls.get(key(context, id));
         if (!native?.runId || native.agentId !== context.agentId || native.sessionKey !== context.sessionKey) throw new Error('The native tool-call binding is unavailable. No operation was dispatched.');

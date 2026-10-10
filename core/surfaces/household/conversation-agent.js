@@ -84,7 +84,7 @@ function agentInstructions(session, persona, surface, mode, { soundPlayback = fa
 }
 
 function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000, streamGraceMs = 3000, streamDrainMs = 30000, evidenceReadMs = 10000 } = {}) {
-  return async ({ session, text, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, maxOutputTokens, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
+  return async ({ session, text, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, maxOutputTokens, readAcceptedTaskWork, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onActivity = () => {} }) => {
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
     const sessionKey = sessionKeyFor(session);
@@ -118,7 +118,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       } finally { clearTimeout(timer); }
     };
     const language = scoreSpeechLanguage(text);
-    let guardFailure, verificationFailure, taskObservedRun, stopChecked = false;
+    let guardFailure, verificationFailure, taskObservedRun, acceptedTaskWork, stopChecked = false;
     const imageReply = () => browserReply ? Promise.resolve(null) : acceptedImageReply({ session, evidence,
       sessionKey, runId, language: language.decided ? language.language : 'fr', readOperation: readImageOperation });
     // When each step of the native run happened, in ms from this request: what the
@@ -132,6 +132,8 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         tools: { status: evidence?.run || imageDelivery ? 'observed' : 'unavailable', authority: `openclaw/${agentIdFor(session)}`, runId,
           receipts: evidence?.receipts || [], run: evidence?.run || null, performedBy: nativePerformedBy(evidence, agentIdFor(session), runId),
           ...(imageDelivery ? { imageDelivery } : {}),
+          ...(acceptedTaskWork ? { acceptedWork: acceptedTaskWork,
+            verification: { status: 'deferred', reason: 'core_work_accepted' } } : {}),
           ...(verificationFailure ? { verification: { status: 'failed', reason: verificationFailure,
             ...(guardFailure ? { tool: guardFailure.tool, repetitions: guardFailure.repetitions } : {}) } } : {}),
           ...(evidence?.answer?.deliveredBy ? { deliveredBy: evidence.answer.deliveredBy } : {}), ...(browserCall ? { browserReply: browserCall } : {}) },
@@ -396,8 +398,10 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         if (agentIdFor(session) === 'main' && session.packId === 'personal_operator' && session.scopeId === 'personal'
             && !session.llmx && session.source !== 'graphysx-llmx'
             && requestsTaskCheck(text) && taskObservedRun !== runId) {
-          verificationFailure = 'task_check_missing';
-          answer = checkFailure(language.decided ? language.language : 'fr');
+          const acknowledgment = personalVoice(session, channel) ? await require('./task-work-acceptance').taskWorkAcknowledgment(
+            readAcceptedTaskWork, { session, text, language: language.decided ? language.language : 'fr' }) : null;
+          if (acknowledgment) { answer = acknowledgment.text; acceptedTaskWork = acknowledgment.acceptedWork; }
+          else { verificationFailure = 'task_check_missing'; answer = checkFailure(language.decided ? language.language : 'fr'); }
         }
         if (personalVoice(session, channel) && unfinishedToolPreamble(answer)) {
           answer = /^(?:i|let me)\b/i.test(answer) || scoreSpeechLanguage(answer).language === 'en'
