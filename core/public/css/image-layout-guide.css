@@ -1,0 +1,25 @@
+.image-layout-guide { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color, #314254); }
+.image-layout-guide summary { cursor: pointer; font-weight: 600; }
+.image-layout-guide [hidden] { display: none !important; }
+.layout-guide-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.layout-guide-import { position: relative; cursor: pointer; }
+.layout-guide-import input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.layout-guide-import:focus-within { outline: 2px solid #70c8ff; outline-offset: 3px; }
+.layout-guide-import:has(input:disabled) { opacity: .5; cursor: wait; }
+.layout-guide-preview { overflow: hidden; border: 1px solid var(--border-color, #314254); border-radius: 10px; background: #f6f4ef; }
+#image-layout-canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
+#image-layout-canvas:focus-visible { outline: 3px solid #22618d; outline-offset: -3px; }
+.image-layout-guide input[type=text], .image-layout-guide input[type=number], .image-layout-guide select {
+  box-sizing: border-box; width: 100%; font: inherit; color: var(--text-primary, #e8edf4);
+  border: 1px solid var(--border-color, #314254); background: var(--bg-primary, #111820); padding: 9px; border-radius: 8px;
+}
+.image-layout-guide input[type=color] { display: block; width: 100%; height: 38px; margin: 6px 0 14px; border: 1px solid #314254; border-radius: 8px; background: transparent; }
+.image-layout-guide fieldset { padding: 0; margin: 14px 0; border: 0; min-width: 0; }
+.image-layout-guide legend { font-weight: 600; margin-bottom: 10px; }
+.layout-guide-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.layout-guide-grid label { display: grid; gap: 5px; }
+.layout-guide-error { padding: 10px; color: var(--danger, #ffb3b3); border: 1px solid currentColor; border-radius: 8px; }
+@media (max-width: 480px) {
+  .layout-guide-grid { grid-template-columns: 1fr; }
+  .layout-guide-actions > .quiet-button, .layout-guide-actions > .reference-button { flex: 1 1 100%; text-align: center; }
+}
