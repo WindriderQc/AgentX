@@ -271,7 +271,9 @@ test('the real Household HTTP handler commits intake before its guardian adapter
       expect(body.history).toEqual([]);
       expect(await body.readAcceptedTaskWork()).toMatchObject({ authority: 'core.conversation-works', accepted: true,
         sessionId: current.sessionId, turnId, requestSha256: hash('Regarde mes tâches.') });
-      expect(body.instructions).toContain('Core has already accepted this current personal task lookup');
+      expect(body.turnDirective).toContain('Core has already accepted this current personal task lookup');
+      expect(body.instructions).not.toContain(turnId);
+      expect(body.instructions).not.toContain((await body.readAcceptedTaskWork()).id);
       const sessionKey = `agent:main:household:direct:${current.sessionId}`, runId = native();
       await body.onStarted(sessionKey, runId);
       const accepted = await works.request({ agentId: 'main', sessionKey, runId });

@@ -53,8 +53,10 @@ The plugin binds calls using the native before-tool hook's session, run and call
 identity. Main's `conversation_work request` returns acceptance and result
 metadata, not task data. For migrated requests its legacy task reads are blocked.
 An explicit lookup is already accepted before guardian inference. Its canonical
-intake lets the guardian acknowledge it without another tool dispatch. A failed
-native acceptance call never becomes proof of a completed lookup: Household
+intake lets the guardian acknowledge it without another tool dispatch. Current intake IDs
+and states belong to the final turn directive; static system instructions remain
+identical across turns so changing work identities do not invalidate their cache.
+A failed native acceptance call never becomes proof of a completed lookup: Household
 uses the current Core status for a truthful acknowledgment and retains failed
 native receipts. Browser objects, foreign requests and stale content cannot
 substitute for the bound Core capability.
