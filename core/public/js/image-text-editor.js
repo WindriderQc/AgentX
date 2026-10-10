@@ -50,6 +50,7 @@
       return `${origin}${dirty ? ' Modifications à enregistrer en JSON.' : ''}`;
     }
     function controls() {
+      panel.hidden = !readyOperation() && !project && !panel.open;
       $('prepare').disabled = busy || !readyOperation();
       $('file').disabled = busy;
       $('workspace').hidden = !project;
@@ -276,7 +277,7 @@
     for (const format of ['png', 'svg', 'json']) listen($(format), 'click', () => exportFile(format));
     listen(root, 'beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
     refresh();
-    return { refresh, destroy() {
+    return { refresh, open() { panel.hidden = false; panel.open = true; $('file').focus(); }, destroy() {
       destroyed = true; epoch++; request?.abort(); events.forEach(removeListener => removeListener());
       urls.forEach(url => URL.revokeObjectURL(url)); urls.clear(); image = null; project = null;
     } };

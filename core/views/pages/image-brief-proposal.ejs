@@ -1,0 +1,14 @@
+<details id="imagex-proposal-panel" class="imagex-brief-proposal" hidden>
+  <summary>Vérifier la proposition de brief</summary>
+  <p class="image-help">Compare et ajuste ce texte. « Appliquer » remplace ton brief ; seul le bouton « Créer » lance le rendu.</p>
+  <div id="imagex-proposal">
+    <p id="imagex-proposal-empty" class="image-help">Demande « Affiner mon brief » pour obtenir une proposition adaptée à la recette et au format choisis.</p>
+    <div id="imagex-proposal-content" hidden><p id="imagex-proposal-reason"></p><p id="imagex-proposal-settings" class="image-help"></p>
+      <details><summary>Comparer avec mon brief initial</summary><pre id="imagex-proposal-original" class="imagex-protected-constraints"></pre></details>
+      <label for="imagex-proposal-prompt">Brief proposé · modifiable</label><textarea id="imagex-proposal-prompt" rows="7" aria-describedby="imagex-apply-note"></textarea>
+      <p id="imagex-proposal-counter" class="image-help" role="status"></p>
+      <pre id="imagex-proposal-constraints" class="imagex-protected-constraints" aria-label="Contraintes utilisateur conservées" hidden></pre>
+      <button id="imagex-apply" type="button">Appliquer cette proposition au brief</button><p id="imagex-apply-note" class="image-help">Vérifie ensuite le brief et les références, puis lance la création.</p>
+    </div>
+  </div>
+</details>

@@ -70,6 +70,28 @@ test('old consultations and proposal shape remain compatible without protected i
   expect(turn.proposal).toEqual(proposal); expect(turn.context).toEqual(plain);
 });
 
+test.each([{ field: 'width', value: 512, label: 'largeur' }, { field: 'height', value: 512, label: 'hauteur' },
+  { field: 'profile', value: 'other', label: 'recette' }])('a changed $field fails with a useful diagnosis and preserves the canonical brief', async ({ field, value, label }) => {
+  const f = fixture({ ...proposal, [field]: value }), session = await f.service.createSession();
+  const raw = { clientTurnId: randomUUID(), mode: 'plan', message: 'Refine', context: context() };
+  await f.service.accept(session.sessionId, raw);
+  const [turn] = await f.settle(session.sessionId);
+  expect(turn).toMatchObject({ state: 'failed', errorCode: 'IMAGE_EXPERT_SETTINGS_CHANGED', context: raw.context });
+  expect(turn.error).toContain(label); expect(turn.error).toContain('1024 × 1024');
+  expect(turn.proposal).toBeUndefined();
+  await f.service.accept(session.sessionId, raw); expect(f.bridge.invoke).toHaveBeenCalledTimes(1);
+});
+
+test('the native bridge width refusal is translated and remains terminal without inference replay', async () => {
+  const f = fixture(), session = await f.service.createSession();
+  f.bridge.invoke.mockRejectedValue(new Error('Image expert changed the requested width'));
+  await f.service.accept(session.sessionId, { clientTurnId: randomUUID(), mode: 'plan', message: 'Refine', context: context() });
+  const [turn] = await f.settle(session.sessionId);
+  expect(turn.state).toBe('failed'); expect(turn.errorCode).toBe('IMAGE_EXPERT_SETTINGS_CHANGED');
+  expect(turn.error).toContain('Ton brief reste conservé');
+  expect(f.bridge.invoke).toHaveBeenCalledTimes(1);
+});
+
 test.each(['plan', 'consult'])('a %s preserves a long original brief, message whitespace and protected intent without repeating replay', async mode => {
   const f = fixture(mode === 'plan' ? proposal : null), session = await f.service.createSession();
   const original = ' \n' + 'Synthetic visual brief. '.repeat(450) + 'TERMINAL_BRIEF_SENTINEL \n';
