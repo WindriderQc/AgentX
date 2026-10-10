@@ -402,7 +402,7 @@ test('real voice HTTP accepts a specialist read and keeps the guardian available
   let release, started, proof;
   const held = new Promise(resolve => { release = resolve; });
   const dispatched = new Promise(resolve => { started = resolve; });
-  const nativeRuntime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works });
+  const nativeRuntime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
   const background = jest.fn(async ({ row, onStarted }) => {
     expect(row.attempt.agentId).toBe('main');
     expect(row.attempt.sessionKey).toMatch(/^agent:main:household:direct:/);
@@ -447,7 +447,7 @@ test('lost native dispatch response discovers the same run, waits for a yielded 
     if (!ready) proof.answer = { status: 'yielded', runId };
     return proof;
   });
-  const nativeRuntime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, continuity });
+  const nativeRuntime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations, continuity });
   const execute = jest.fn(async () => { throw new Error('Response lost before run identity arrived'); });
   const first = createWorkObserver({ works, env, execute, agentFor: () => 'main',
     observe: nativeRuntime.observe, receive: nativeRuntime.receive });
@@ -476,7 +476,7 @@ test('a foreign native result, missing consultation proof and restricted worker 
   attempt.sessionKey = 'agent:main:household:direct:' + attempt.sessionId;
   const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture' }));
   await expect(works.publishNative(row._id, nativeProof({ ...attempt, runId: native() }))).rejects.toMatchObject({ statusCode: 409 });
-  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works });
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
   expect(await runtime.receive({ row, evidence: { ...nativeProof(attempt), progress: [{ tool: 'sessions_spawn', agentId: 'other' }] } })).toBeNull();
   await expect(works.publish({ agentId: 'main', sessionKey: attempt.sessionKey, runId: attempt.runId },
     { kind: 'answer', text: 'Invented', receiptIds: [] })).rejects.toMatchObject({ statusCode: 404 });
@@ -492,6 +492,22 @@ test('a specialist read remains queued when its guardian is interrupted; observe
   const observe = createConversationWorks({ conversations, tasks, env: { ...env, PERSONAL_CONVERSATION_WORK_MODE: 'observe' },
     nativeRead: () => true, nativeOnly: () => true });
   expect((await observe.intake(input('Résume mes courriels récents.'))).row.classification).toBe('native_only');
+});
+
+test('a combined specialist consultation and task lookup retains the existing actual-task-read requirement', async () => {
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: () => true });
+  const accepted = await works.intake(input('Consulte la secrétaire et regarde mes tâches.'));
+  await works.prepare(accepted.row._id, 'Selected context');
+  const attempt = { id: randomUUID(), sessionId: randomUUID(), agentId: 'main', runId: native() };
+  attempt.sessionKey = 'agent:main:household:direct:' + attempt.sessionId;
+  const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture' }));
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  const proof = nativeProof(attempt);
+  expect(await runtime.receive({ row, evidence: proof })).toBeNull();
+  expect((await works.repo.get(row._id)).result).toBeUndefined();
+  proof.toolChecks.completedTools.push('list_personal_tasks');
+  expect(await runtime.receive({ row, evidence: proof })).toEqual({ published: true });
+  expect((await works.repo.get(row._id)).result.version).toBe(1);
 });
 
 test('the real Household HTTP handler commits intake before its guardian adapter and reuses its canonical turn on duplicate', async () => {
