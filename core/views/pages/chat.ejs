@@ -26,14 +26,14 @@
       <div id="filterPanel" class="filter-panel" style="display: none;">
         <div class="filter-section">
           <label class="filter-label">Date Range</label>
-          <input type="date" id="filterDateFrom" class="filter-input" placeholder="From">
-          <input type="date" id="filterDateTo" class="filter-input" placeholder="To">
+          <input type="date" id="filterDateFrom" class="filter-input" placeholder="From" aria-label="From date">
+          <input type="date" id="filterDateTo" class="filter-input" placeholder="To" aria-label="To date">
         </div>
 
         <details class="filter-advanced">
           <summary style="cursor:pointer;font-size:0.8rem;color:var(--muted);margin-bottom:8px;">More filters</summary>
           <div class="filter-section">
-            <label class="filter-label">Model</label>
+            <label class="filter-label" for="filterModel">Model</label>
             <select id="filterModel" class="filter-select" multiple size="3">
               <option value="">All Models</option>
             </select>
@@ -47,7 +47,7 @@
           </div>
 
           <div class="filter-section">
-            <label class="filter-label">Feedback</label>
+            <label class="filter-label" for="filterFeedback">Feedback</label>
             <select id="filterFeedback" class="filter-select">
               <option value="">All Feedback</option>
               <option value="1">Positive</option>
@@ -57,7 +57,7 @@
           </div>
 
           <div class="filter-section">
-            <label class="filter-label">Tags</label>
+            <label class="filter-label" for="filterTagsInput">Tags</label>
             <div class="tags-input-container">
               <input type="text" id="filterTagsInput" class="filter-input" placeholder="Add tag and press Enter">
               <div id="filterTagsChips" class="tags-chips"></div>
@@ -66,7 +66,7 @@
           </div>
 
           <div class="filter-section">
-            <label class="filter-label">Sort By</label>
+            <label class="filter-label" for="filterSortBy">Sort By</label>
             <select id="filterSortBy" class="filter-select">
               <option value="relevance">Relevance</option>
               <option value="date_desc">Newest First</option>
@@ -89,11 +89,11 @@
 
       <!-- Pagination Controls -->
       <div id="paginationControls" class="pagination-controls" style="display: none;">
-        <button id="prevPageBtn" class="pagination-btn" disabled>
+        <button id="prevPageBtn" class="pagination-btn" aria-label="Previous page" disabled>
           <i class="fas fa-chevron-left"></i>
         </button>
         <span id="paginationInfo" class="pagination-info">Page 1 of 1</span>
-        <button id="nextPageBtn" class="pagination-btn" disabled>
+        <button id="nextPageBtn" class="pagination-btn" aria-label="Next page" disabled>
           <i class="fas fa-chevron-right"></i>
         </button>
       </div>
@@ -124,7 +124,7 @@
           <span class="ci-inline-field"><span class="ci-health-dot"></span><span class="ci-status-label">Host</span><strong class="ci-status-value" data-ci-field="host">Not observed</strong></span>
           <span class="ci-inline-field"><span class="ci-status-label">Route</span><strong class="ci-status-value" data-ci-field="route">Not observed</strong></span>
           <span class="ci-inline-field"><span class="ci-status-label">VRAM</span><strong class="ci-status-value" data-ci-field="vram">Not observed</strong></span>
-          <select id="headerPersonaSelect" class="header-persona-dropdown" style="display: none;">
+          <select id="headerPersonaSelect" class="header-persona-dropdown" aria-label="Persona" style="display: none;">
             <option value="default_chat">Default</option>
           </select>
           <button class="icon-btn" id="headerDevToggle" title="Show precision controls" aria-label="Show precision controls"><i class="fas fa-flask" aria-hidden="true"></i></button>

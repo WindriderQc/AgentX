@@ -11,13 +11,13 @@
                 <p class="lede" id="modelBoundNote" aria-live="polite"></p>
             </div>
             <div class="header-controls">
-                <select id="timeRangeSelect">
+                <select id="timeRangeSelect" aria-label="Time range">
                     <option value="1">Last Hour</option>
                     <option value="6">Last 6 Hours</option>
                     <option value="24" selected>Last 24 Hours</option>
                     <option value="168">Last 7 Days</option>
                 </select>
-                <select id="endpointFilter">
+                <select id="endpointFilter" aria-label="Endpoint">
                     <option value="">All Endpoints</option>
                 </select>
                 <button id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>

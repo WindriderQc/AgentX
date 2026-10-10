@@ -89,7 +89,7 @@
             <div class="filter-search-row">
                 <div class="search-box">
                     <i class="fas fa-search"></i>
-                    <input type="text" id="searchInput" placeholder="Search models, tags, vendors...">
+                    <input type="text" id="searchInput" aria-label="Search models" placeholder="Search models, tags, vendors...">
                 </div>
                 <div class="filter-actions">
                     <button id="syncRegistryBtn" class="btn-secondary" title="Sync models from all Ollama hosts">
@@ -101,20 +101,20 @@
                 </div>
             </div>
             <div class="filters">
-                <select id="providerSelect" class="select-input">
+                <select id="providerSelect" class="select-input" aria-label="Provider">
                     <option value="all">All Providers</option>
                     <option value="ollama">Ollama</option>
                     <option value="custom">Custom</option>
                 </select>
-                <select id="hostSelect" class="select-input">
+                <select id="hostSelect" class="select-input" aria-label="Host">
                     <option value="all">All Hosts</option>
                 </select>
-                <select id="statusSelect" class="select-input">
+                <select id="statusSelect" class="select-input" aria-label="Status">
                     <option value="available">Available</option>
                     <option value="all">All (incl. gone)</option>
                     <option value="gone">Gone only</option>
                 </select>
-                <select id="sortSelect" class="select-input">
+                <select id="sortSelect" class="select-input" aria-label="Sort by">
                     <option value="name">Name (A-Z)</option>
                     <option value="score">Benchmark Score</option>
                     <option value="size">Size (Largest)</option>
@@ -174,7 +174,7 @@
         <div class="detail-drawer-content">
             <div class="detail-drawer-header">
                 <h2 id="detailModelName">Model</h2>
-                <button id="closeDetailDrawer" class="close-modal"><i class="fas fa-times"></i></button>
+                <button id="closeDetailDrawer" class="close-modal" aria-label="Close"><i class="fas fa-times" aria-hidden="true"></i></button>
             </div>
             <div id="detailDrawerBody" class="detail-drawer-body"></div>
         </div>
@@ -186,7 +186,7 @@
         <div class="detail-drawer-content">
             <div class="detail-drawer-header">
                 <h2 id="statPopoutTitle">Details</h2>
-                <button id="closeStatPopout" class="close-modal"><i class="fas fa-times"></i></button>
+                <button id="closeStatPopout" class="close-modal" aria-label="Close"><i class="fas fa-times" aria-hidden="true"></i></button>
             </div>
             <div id="statPopoutBody" class="detail-drawer-body"></div>
         </div>
@@ -197,7 +197,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Add Model Source</h2>
-                <button class="close-modal"><i class="fas fa-times"></i></button>
+                <button class="close-modal" aria-label="Close"><i class="fas fa-times" aria-hidden="true"></i></button>
             </div>
             <div class="tab-nav">
                 <button class="tab-btn active" data-tab="tab-pull">Pull from Ollama</button>
@@ -206,14 +206,14 @@
             <div class="modal-body">
                 <div id="tab-pull" class="tab-pane active">
                     <div class="form-group">
-                        <label>Target Host</label>
+                        <label for="pullModelHost">Target Host</label>
                         <select id="pullModelHost" class="form-input">
                             <option value="">Loading configured hosts...</option>
                         </select>
                         <p class="helper-text">Pulls are always sent to the selected configured Ollama host.</p>
                     </div>
                     <div class="form-group">
-                        <label>Model Name (e.g. llama3:8b)</label>
+                        <label for="pullModelName">Model Name (e.g. llama3:8b)</label>
                         <div class="input-row">
                             <input type="text" id="pullModelName" class="form-input" placeholder="library/model:tag">
                             <button id="btnPull" class="btn-primary">Pull</button>
@@ -229,12 +229,12 @@
                     <p>Register a custom model definition or remote API.</p>
                     <form id="customForm">
                         <div class="form-group">
-                            <label>Display Name</label>
-                            <input type="text" name="displayName" class="form-input" required>
+                            <label for="customDisplayName">Display Name</label>
+                            <input type="text" id="customDisplayName" name="displayName" class="form-input" required>
                         </div>
                         <div class="form-group">
-                            <label>Base Model ID</label>
-                            <input type="text" name="baseModel" class="form-input" required placeholder="gpt-4-turbo">
+                            <label for="customBaseModel">Base Model ID</label>
+                            <input type="text" id="customBaseModel" name="baseModel" class="form-input" required placeholder="gpt-4-turbo">
                         </div>
                         <button type="submit" class="btn-primary">Register</button>
                     </form>
@@ -250,7 +250,7 @@
                 <h2>Model Comparison</h2>
                 <div class="actions">
                     <button class="btn-secondary-sm"><i class="fas fa-file-pdf"></i> Export PDF</button>
-                    <button class="close-modal"><i class="fas fa-times"></i></button>
+                    <button class="close-modal" aria-label="Close"><i class="fas fa-times" aria-hidden="true"></i></button>
                 </div>
             </div>
             <div class="modal-body p-0">
@@ -264,16 +264,16 @@
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
                 <h2 id="execConfigTitle">Execution Config</h2>
-                <button id="closeExecConfigModal" class="close-modal"><i class="fas fa-times"></i></button>
+                <button id="closeExecConfigModal" class="close-modal" aria-label="Close"><i class="fas fa-times" aria-hidden="true"></i></button>
             </div>
             <div class="modal-body" id="execConfigBody">
                 <div class="form-group">
-                    <label>Context Window (num_ctx)</label>
+                    <label for="execConfigNumCtx">Context Window (num_ctx)</label>
                     <div id="execConfigCtxDefault" class="text-sm" style="color:var(--muted); margin-bottom:4px;"></div>
                     <input type="number" id="execConfigNumCtx" class="form-input" min="512" step="1024" placeholder="e.g. 262144">
                 </div>
                 <div class="form-group">
-                    <label>Temperature</label>
+                    <label for="execConfigTemperature">Temperature</label>
                     <div id="execConfigTempDefault" class="text-sm" style="color:var(--muted); margin-bottom:4px;"></div>
                     <input type="number" id="execConfigTemperature" class="form-input" min="0" max="2" step="0.1" placeholder="e.g. 0.7">
                 </div>

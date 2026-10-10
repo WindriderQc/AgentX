@@ -57,14 +57,14 @@
                         </div>
                     </td>
                     <td class="nc-td-md nc-task-model">
-                        <select class="nc-inline-select nc-task-model-select" data-task="${task}" style="min-width:210px;">
+                        <select class="nc-inline-select nc-task-model-select" data-task="${task}" aria-label="Model for ${shared.escapeHtml(task)}" style="min-width:210px;">
                             ${availableModels.map(model => (
                                 `<option value="${shared.escapeHtml(model)}" ${model === entry.model ? 'selected' : ''}>${shared.escapeHtml(shared.shortModel(model))}</option>`
                             )).join('')}
                         </select>
                     </td>
                     <td class="nc-td-md nc-task-host">
-                        <select class="nc-inline-select nc-task-host-select" data-task="${task}" style="min-width:120px;">
+                        <select class="nc-inline-select nc-task-host-select" data-task="${task}" aria-label="Host for ${shared.escapeHtml(task)}" style="min-width:120px;">
                             ${hostKeys.map(hostKey => (
                                 `<option value="${hostKey}" ${hostKey === entry.host ? 'selected' : ''}>${hostKey.toUpperCase()}</option>`
                             )).join('')}

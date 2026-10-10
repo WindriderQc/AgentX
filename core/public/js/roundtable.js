@@ -64,19 +64,20 @@
     const runtimeOptions = ['model', 'codex', 'openclaw']
       .map((value) => `<option value="${value}" ${runtime === value ? 'selected' : ''}>${value}</option>`)
       .join('');
+    const id = (field) => `agent-${index}-${field}`;
     return `
       <div class="rt-agent-edit-card" data-index="${index}">
-        <button type="button" class="rt-remove" data-remove="${index}" title="Remove">×</button>
+        <button type="button" class="rt-remove" data-remove="${index}" title="Remove" aria-label="Remove agent ${index + 1}">×</button>
         <div class="rt-agent-edit-row">
-          <div><label class="rt-label">Role</label><input type="text" class="rt-input" data-field="role" value="${escape(agent.role || '')}"></div>
-          <div><label class="rt-label">Agent ID</label><input type="text" class="rt-input" data-field="agentId" value="${escape(agent.agentId || '')}"></div>
+          <div><label class="rt-label" for="${id('role')}">Role</label><input type="text" class="rt-input" id="${id('role')}" data-field="role" value="${escape(agent.role || '')}"></div>
+          <div><label class="rt-label" for="${id('agentId')}">Agent ID</label><input type="text" class="rt-input" id="${id('agentId')}" data-field="agentId" value="${escape(agent.agentId || '')}"></div>
         </div>
         <div class="rt-agent-edit-row">
-          <div><label class="rt-label">Runtime</label><select class="rt-input" data-field="runtime">${runtimeOptions}</select></div>
-          <div><label class="rt-label">Model</label><input type="text" class="rt-input" data-field="model" list="councilModelOptions" autocomplete="off" value="${escape(agent.model || '')}" placeholder="required for model runtime; openclaw: the agent's own"></div>
+          <div><label class="rt-label" for="${id('runtime')}">Runtime</label><select class="rt-input" id="${id('runtime')}" data-field="runtime">${runtimeOptions}</select></div>
+          <div><label class="rt-label" for="${id('model')}">Model</label><input type="text" class="rt-input" id="${id('model')}" data-field="model" list="councilModelOptions" autocomplete="off" value="${escape(agent.model || '')}" placeholder="required for model runtime; openclaw: the agent's own"></div>
         </div>
         <div class="rt-agent-edit-row">
-          <div><label class="rt-label">Session key / ID</label><input type="text" class="rt-input" data-runtime-field="sessionKey" value="${escape(agent.runtimeConfig?.sessionKey || agent.runtimeConfig?.sessionId || '')}" placeholder="optional dedicated runtime session"></div>
+          <div><label class="rt-label" for="${id('sessionKey')}">Session key / ID</label><input type="text" class="rt-input" id="${id('sessionKey')}" data-runtime-field="sessionKey" value="${escape(agent.runtimeConfig?.sessionKey || agent.runtimeConfig?.sessionId || '')}" placeholder="optional dedicated runtime session"></div>
           <div style="display:flex; align-items:flex-end; padding-bottom:6px;">
             <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#94a3b8; cursor:pointer;">
               <input type="checkbox" data-field="enableWebSearch" ${agent.enableWebSearch ? 'checked' : ''}>
@@ -84,8 +85,8 @@
             </label>
           </div>
         </div>
-        <label class="rt-label">System prompt</label>
-        <textarea class="rt-input" data-field="systemPrompt" rows="4">${escape(agent.systemPrompt || '')}</textarea>
+        <label class="rt-label" for="${id('systemPrompt')}">System prompt</label>
+        <textarea class="rt-input" id="${id('systemPrompt')}" data-field="systemPrompt" rows="4">${escape(agent.systemPrompt || '')}</textarea>
       </div>
     `;
   }
