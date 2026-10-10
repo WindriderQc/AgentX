@@ -425,6 +425,8 @@
   async function loadPanel() {
     await window.mountConversation({ app, api, esc, space: 'family' });
     app.insertAdjacentHTML('beforeend', `<section class="ecosystem-primary household-spaces" aria-label="Activités en famille"><a class="ecosystem-primary-link" href="/kids"><span class="ecosystem-primary-index">01</span><span><small>Enfants</small><strong>Apprendre & participer</strong><span>Les activités et les responsabilités de la maison.</span></span></a><a class="ecosystem-primary-link" href="/lecture"><span class="ecosystem-primary-index">02</span><span><small>Lecture</small><strong>Lire ensemble</strong><span>Découvrir un texte avec Nestor.</span></span></a></section>`);
+    const shopping = document.createElement('section'); shopping.className = 'card household-shared-list'; app.append(shopping);
+    window.HouseholdShopping.mount({ host: shopping, api, esc });
   }
 
   async function loadMemories() {
@@ -680,6 +682,10 @@
     } catch (error) {
       console.error('Household page initialization failed', error); setRuntime(false, 'indisponible');
       app.innerHTML = '<article class="card full danger-box"><h1>Cette page est momentanément indisponible.</h1><p>Réessaie dans un instant.</p><button type="button" id="householdRetry">Réessayer</button></article>'; document.getElementById('householdRetry').onclick = () => location.reload();
+    } finally {
+      if (['/dad', '/dad/day', '/dad/memories', '/dad/family', '/panel', '/kids', '/kids/sounds', '/lecture'].includes(location.pathname)) {
+        window.HouseholdNavigation.mount(app, location.pathname);
+      }
     }
   }
 

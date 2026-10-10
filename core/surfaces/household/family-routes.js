@@ -42,6 +42,7 @@ function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, s
     ['get', '/room', 'room', 200],
     ['get', '/chores', 'list', 200],
     ['post', '/chores', 'create', 201],
+    ['post', '/chores/update', 'update', 200],
     ['post', '/chores/check-in', 'checkIn', 200],
     ['post', '/chores/approve', 'approve', 200],
     ['post', '/chores/reopen', 'reopen', 200],

@@ -164,10 +164,14 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
   async function load(ctx) {
     const { app, api, esc, toast, setRuntime, speak, clock } = ctx;
     app.innerHTML = template(esc, familyKnowledgeStarter());
+    const shopping = document.createElement('article'); shopping.className = 'card full dad-shopping';
+    app.querySelector('.dad-grid').append(shopping);
+    window.HouseholdShopping.mount({ host: shopping, api, esc, canBuy: true });
     const byId = (id) => document.getElementById(id);
     const setPill = (id, text, tone = '') => { const node = byId(id); node.textContent = text; node.className = `pill ${tone}`; };
     byId('dadDate').textContent = new Intl.DateTimeFormat('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
-    clock(); setInterval(clock, 30000);
+    clock(); const clockTimer = setInterval(clock, 30000);
+    window.addEventListener('pagehide', () => clearInterval(clockTimer), { once: true });
     let latestDesk = null;
 
     const dueLabel = (task) => task.overdue ? 'en retard' : task.dueToday ? "aujourd'hui" : task.dueAt ? new Intl.DateTimeFormat('fr-CA', { month: 'short', day: 'numeric' }).format(new Date(task.dueAt)) : 'sans date';
@@ -335,13 +339,16 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
     });
     byId('dadCaptureForm').addEventListener('submit', async (event) => {
       event.preventDefault();
+      const button = event.target.querySelector('button.primary');
+      if (button.disabled) return; button.disabled = true;
       const title = byId('dadCaptureTitle');
       const due = byId('dadCaptureDue');
       try {
-        await api('/api/secretary/tasks', { method: 'POST', body: JSON.stringify({ title: title.value, dueAt: due.value ? new Date(`${due.value}T12:00:00`).toISOString() : null, priority: Number(byId('dadCapturePriority').value), source: 'household-dad-desk' }) });
+        await api('/api/secretary/tasks', { method: 'POST', body: JSON.stringify({ title: title.value, dueAt: due.value || null, priority: Number(byId('dadCapturePriority').value), source: 'household-dad-desk' }) });
         title.value = ''; due.value = ''; byId('dadCapturePriority').value = '3';
         await refreshDad();
       } catch (error) { toast(error.message); }
+      finally { button.disabled = false; }
     });
     byId('dadRefresh').addEventListener('click', () => { refreshDad(); refreshMail(); });
     byId('dadReminderPreviewToggle').addEventListener('click', (event) => {
