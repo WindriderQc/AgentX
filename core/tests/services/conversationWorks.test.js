@@ -306,3 +306,34 @@ test('the real Household HTTP handler commits intake before its guardian adapter
   expect(duplicate.status).toBe(202); expect(duplicate.body.data.reply.text).toBe('Je m’en occupe.');
   expect(calls).toHaveLength(1); expect((await conversations.getSession({ sessionId: current.sessionId })).turnCount).toBe(1);
 });
+
+test('worker results and pending states feed the guardian’s next selected context within the same personal conversation', async () => {
+  const job = await result();
+  for (let i = 0; i < 5; i++) await works.intake(input('Bonjour'));
+  const context = await works.guardianContext(current.sessionId);
+  expect(context).toContain('Deux tâches sont enregistrées.'); expect(context).toContain(job.row._id);
+  expect(await works.guardianContext(current.sessionId, job.row._id)).toBe('');
+  const foreign = await conversations.createSession({ sessionId: randomUUID(), packId: 'personal_operator', scopeId: 'personal', modeId: 'standard', status: 'active' });
+  expect(await works.guardianContext(foreign.sessionId)).toBe('');
+  const family = await conversations.createSession({ sessionId: randomUUID(), packId: 'kidx_nestor', scopeId: 'family', modeId: 'family', status: 'active' });
+  await expect(works.guardianContext(family.sessionId)).rejects.toMatchObject({ statusCode: 404 });
+});
+
+test('flag off preserves immutable accepted mode and deduplication for retained turns', async () => {
+  const original = input(), accepted = await works.intake(original);
+  const disabled = createConversationWorks({ conversations, tasks, env: { ...env, PERSONAL_CONVERSATION_WORK_MODE: 'off' } });
+  const retained = await disabled.intake(original);
+  expect(retained).toMatchObject({ duplicate: true, row: { _id: accepted.row._id, mode: 'read' } });
+  expect(await disabled.intake(input())).toBeNull();
+});
+
+test('flag off recovers an accepted exchange interrupted before work insertion without replaying the guardian', async () => {
+  const original = input(), { receipt } = await exchanges.accept(EXCHANGE_SCOPE, { body: { text: original.text,
+    attachments: [], sessionId: current.sessionId, channel: 'voice', clientTurnId: original.turnId, mode: 'read' } },
+  original.turnId, current.conversationId);
+  const disabled = createConversationWorks({ conversations, tasks, env: { ...env, PERSONAL_CONVERSATION_WORK_MODE: 'off' } });
+  const retained = await disabled.intake(original);
+  expect(retained).toMatchObject({ duplicate: true, row: { exchangeId: receipt._id, mode: 'read', guardian: { state: 'uncertain' } } });
+  expect(await conversations.countTurns({ sessionId: current.sessionId })).toBe(1);
+  expect(tasks.list).not.toHaveBeenCalled();
+});

@@ -11,7 +11,7 @@ export function createConversationWorkClient({ baseUrl, token, fetchImpl = fetch
     });
     const body = await response.json();
     if (!response.ok || body.ok !== true || body.data?.authority !== 'core.conversation-works') {
-      throw Object.assign(new Error(body.message || 'Conversation work unavailable; do not replay the request.'), { statusCode: response.status });
+      throw Object.assign(new Error(body.message || 'Conversation work unavailable; do not replay the request.'), { statusCode: response.status, code: body.code });
     }
     return body.data;
   };
@@ -37,7 +37,7 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
       const work = await call('request', native);
       return { block: true, blockReason: `The current request is owned by Core work ${work.id}. Use conversation_work with operation request to obtain its accepted-work receipt, then continue the conversation. This is not a completed task lookup.` };
     } catch (cause) {
-      if (cause.statusCode === 404 || cause.statusCode === 409) return;
+      if (cause.statusCode === 404 || cause.statusCode === 409 && cause.code === 'CONVERSATION_WORK_OBSERVE_ONLY') return;
       return { block: true, blockReason: 'The durable work owner cannot be reached. No task lookup or replacement dispatch was performed.' };
     }
   });

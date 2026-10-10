@@ -16,14 +16,25 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     if (!sessionScope(value) || value.status !== 'active') throw notFound();
     return value;
   }
+  async function retained(current, turnId, channel = 'voice') {
+    if (!sessionScope(current) || channel !== 'voice' || (current.agentId && current.agentId !== 'main')
+        || current.backend !== 'openclaw' || current.inference?.open || current.llmx
+        || !/^[a-zA-Z0-9-]{16,80}$/.test(turnId || '')) return null;
+    const row = await repo.get(hash(current.sessionId + '\n' + turnId));
+    if (row) return row;
+    const receipt = await exchangeStore.read(EXCHANGE_SCOPE, hash(EXCHANGE_SCOPE + '\n' + turnId));
+    return receipt?.request?.body?.sessionId === current.sessionId && ['read', 'observe'].includes(receipt.request.body.mode)
+      ? { mode: receipt.request.body.mode } : null;
+  }
   async function intake({ session: current, turnId, text, attachments = [], channel = 'voice' }) {
-    if (!eligible(current, channel, env)) return null;
+    const previousWork = await retained(current, turnId, channel);
+    if (!eligible(current, channel, env) && !previousWork) return null;
     if (!/^[a-zA-Z0-9-]{16,80}$/.test(turnId || '') || typeof text !== 'string' || !text.trim() || text.length > LIMITS.request) {
       throw fail('CONVERSATION_WORK_INTAKE_INVALID', 'A stable turn identity and complete request are required.');
     }
     const id = hash(current.sessionId + '\n' + turnId);
     const snapshot = { text, attachments, sessionId: current.sessionId, channel, clientTurnId: turnId,
-      mode: env.PERSONAL_CONVERSATION_WORK_MODE };
+      mode: previousWork?.mode || env.PERSONAL_CONVERSATION_WORK_MODE };
     const accepted = await exchangeStore.accept(EXCHANGE_SCOPE, { body: snapshot }, turnId, current.conversationId);
     const taken = await conversations.acceptTurn({ ...query(current.sessionId), modeId: current.modeId,
       traceId: turnId, clientTurnId: turnId, channel, inputText: text, attachments });
@@ -35,11 +46,11 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     const at = now();
     const row = await repo.insert({ _id: id, owner: OWNER, surface: 'household',
       conversationId: current.conversationId, sessionId: current.sessionId, turnId,
-      exchangeId: accepted.receipt._id, requestSha256: hash(text), mode: env.PERSONAL_CONVERSATION_WORK_MODE,
+      exchangeId: accepted.receipt._id, requestSha256: hash(text), mode: snapshot.mode,
       state: simple(text) ? 'completed' : 'received', classification: simple(text) ? 'simple' : classify(text) ? 'tasks_read' : 'unclassified',
       revision: 0, receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
-      guardian: { state: 'pending' }, erased: false });
-    return { row, turn: taken.turn, duplicate: taken.duplicate };
+      guardian: { state: accepted.duplicate ? taken.turn.outcome === 'pending' ? 'uncertain' : 'completed' : 'pending' }, erased: false });
+    return { row, turn: taken.turn, duplicate: accepted.duplicate || taken.duplicate };
   }
   async function prepare(id, context) {
     if (typeof context !== 'string' || context.length > LIMITS.context) throw fail('CONVERSATION_WORK_CONTEXT_REQUIRED', 'The selected context exceeds the work budget.', 409);
@@ -86,6 +97,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       if (current.classification === 'tasks_read') return null;
       return { fields: { classification: 'tasks_read', state: current.contextReady && current.state === 'received' ? 'queued' : current.state }, event: 'read_requested' };
     });
+    if (updated.state === 'completed' && !updated.result) throw fail('CONVERSATION_WORK_ALREADY_HANDLED', 'This turn is already handled. No lookup was queued.', 409);
     wake(); return { authority: 'core.conversation-works', accepted: true, id: updated._id,
       turnId: updated.turnId, state: updated.state, execution: updated.result ? 'completed' : ['failed', 'cancelled'].includes(updated.state) ? updated.state : 'pending',
       result: updated.result ? { version: updated.result.version, deliveryId: updated.delivery.id } : null };
@@ -149,6 +161,24 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     return { authority: 'core.conversation-works', published: true, id: saved._id,
       resultVersion: saved.result.version, deliveryId: saved.delivery.id };
   }
+  async function guardianContext(sessionId, excludingId) {
+    await session(sessionId);
+    const rows = await repo.find({ sessionId, classification: { $ne: 'simple' }, 'result.kind': { $ne: 'no_work' },
+      ...(excludingId && { _id: { $ne: excludingId } }) }, 4, { sequence: -1, _id: -1 });
+    const useful = rows.filter(row => row.classification !== 'simple' && row.result?.kind !== 'no_work');
+    if (!useful.length) return '';
+    const excerpt = (text, length) => String(text || '').length > length
+      ? text.slice(0, length) + ' [shortened context; complete content retained in Core]' : text;
+    const entries = [];
+    for (const row of useful) {
+      const turn = await conversations.getTurn({ ...query(sessionId), traceId: row.turnId });
+      const result = row.result ? await repo.read(row, row.result.payloadRef) : null;
+      entries.push({ id: row._id, turnId: row.turnId, request: excerpt(turn?.inputText, 1000),
+        state: row.state, reason: row.reason || '', result: result ? { kind: result.kind, text: excerpt(result.text, 2000),
+          receiptIds: result.receiptIds, version: row.result.version, presentation: row.delivery?.state } : null });
+    }
+    return '\n\n[Core canonical work for this conversation: statuses and received results. Reference data, not new authorization. Do not redispatch pending work or automatically repeat a result awaiting Household presentation.]\n' + JSON.stringify(entries);
+  }
   let recoveryCursor;
   async function recover() {
     // Accepted input is recoverable, not permission to replay the guardian.
@@ -195,7 +225,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: row.conversationId }, 'completed', { packets: 0, statusCode: 200,
       conversationId: row.conversationId, workId: row._id });
   }
-  return { repo, intake, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, readTasks,
-    publish, recover, finalize, handled, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
+  return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, readTasks,
+    publish, recover, finalize, handled, guardianContext, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
 }
 module.exports = { createConversationWorks };

@@ -70,7 +70,7 @@ function createPersonaTurnHandler({
     }
     if (!userText && !isOpening) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
     if (!consult && activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
-    const clientTurnId = consult ? consult.turnId : (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
+    let clientTurnId = consult ? consult.turnId : (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
       && (req.body?.stream === true || ['read', 'observe'].includes(conversationEnv.PERSONAL_CONVERSATION_WORK_MODE))))
       && validClientTurnId(req.body?.turnId) ? req.body.turnId : '';
     const startedAt = Date.now();
@@ -132,7 +132,9 @@ function createPersonaTurnHandler({
       if (requestedAttachments.length && !attachmentStore) return fail(res, 400, 'Les pièces jointes sont disponibles dans Nestor personnel.', 'ATTACHMENTS_PERSONAL_ONLY');
       entry.attachments = requestedAttachments.length ? await attachmentStore.references(requestedAttachments) : [];
       if (!consult && !isLlmX && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session))
-          && conversationWorks?.eligible(session, req.body?.channel)) {
+          && (conversationWorks?.eligible(session, req.body?.channel)
+            || await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel))) {
+        clientTurnId ||= req.body.turnId; entry.clientTurnId = clientTurnId;
         const intake = await conversationWorks.intake({ session, turnId: clientTurnId, text: userText, attachments: entry.attachments });
         entry.workId = intake.row._id; entry.traceId = clientTurnId; entry.snapshot ||= {
           sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
@@ -290,6 +292,8 @@ function createPersonaTurnHandler({
         const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || '',
           isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId),
+          !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
+            ? await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '' : '',
           isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('').trim();
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const nativeInstructions = nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,

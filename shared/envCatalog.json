@@ -2481,6 +2481,36 @@
       "secret": false,
       "description": "Interval at which Core turns the current operational findings and active alerts into one short model-written report (task ops_watch), minimum 300000. Applies until the watch is set in the Nerve Center. Unset: off."
     },
+    "PERSONAL_CONVERSATION_WORK_AGENT_ID": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Dedicated isolated native agent for personal conversation work. Use a new profile with only conversation_work; do not reuse Main, Famille or a specialist."
+    },
+    "PERSONAL_CONVERSATION_WORK_MODE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "off",
+      "category": "household",
+      "secret": false,
+      "description": "Personal Main voice conversation work: off (default), observe (review only), or read (durable worker task reads). Existing accepted modes remain immutable when new intake is disabled."
+    },
+    "PERSONAL_CONVERSATION_WORK_TOKEN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": true,
+      "description": "Private native binding token shared with the Nestor plugin conversationWorkToken. Keep it outside model/browser parameters and retain it while accepted work remains open."
+    },
     "PIN_CONTEXT_SPEED_TOLERANCE_PCT": {
       "services": [
         "core"

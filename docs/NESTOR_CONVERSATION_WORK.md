@@ -71,6 +71,8 @@ Private routes under `/api/voice-personas/private/sessions/:sessionId` provide:
 - `POST /work-deliveries/:deliveryId/receipt`: versioned display, claim, scheduled
   playback, completion, interruption and deferral receipts.
 
+The guardian’s next selected context includes canonical statuses and received
+results from the same conversation, so it can follow up on the worker’s work.
 The result card survives a paused microphone and reconnect. At a natural pause,
 one browser claims presentation. Speech starts only while Nestor is listening,
 awake and free of another turn. Display does not establish speech; the first
