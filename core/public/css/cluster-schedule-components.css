@@ -126,6 +126,7 @@
 }
 .cs-queue-group span { color: #94a3b8; font-weight: 400; }
 .cs-queue-item .cs-next-name { white-space: normal; overflow-wrap: anywhere; }
+.cs-queue-item .cs-next-meta { overflow-wrap: anywhere; }
 .cs-queue-item > div { min-width: 0; width: 100%; }
 .cs-queue-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 .cs-queue-button { min-height: 44px; padding: 8px 12px; border: 1px solid #64748b; border-radius: 6px; background: #182333; color: #e2e8f0; cursor: pointer; }
