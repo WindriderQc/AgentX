@@ -16,10 +16,15 @@
   const duration = ms => { const seconds = Math.round(ms / 1000); return seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`; };
   const locked = () => pendingSubmit || ACTIVE.includes(operation?.state) || operation?.state === 'unknown';
   const constraints = globalThis.AgentXImageConstraints?.mount({
-    getContext: () => ({ locked: locked(), prompt: $('image-prompt').value }),
+    getContext: () => ({ locked: locked(), prompt: $('image-prompt').value, textPolicy: textPolicy?.getValue({ draft: true }) }),
     onChange: () => { ++draftEpoch; draftExpert = null; queueMicrotask(controls); }
   });
-  const textEditor = globalThis.ImageTextEditor?.init({ getContext: () => ({ operation, locked: locked() }) });
+  const textPolicy = globalThis.AgentXImageTextPolicy?.mount({
+    getContext: () => ({ locked: locked(), prompt: $('image-prompt').value, constraints: constraints?.getValue({ draft: true }) }),
+    onChange: () => { ++draftEpoch; draftExpert = null; queueMicrotask(controls); },
+    onAdvice: () => expert?.planTexts()
+  });
+  const textEditor = globalThis.ImageTextEditor?.init({ getContext: () => ({ operation, details: shownDetails, locked: locked() }) });
   const imageCompare = globalThis.ImageCompare?.init({ getContext: () => ({ operation, details: shownDetails, locked: locked() }) });
   const protectedComposition = globalThis.ImageProtectedComposition?.init({ getContext: () => ({ operation, details: shownDetails, locked: locked() }) });
   const currentRecipe = () => workshop?.profiles.find(p => p.id === $('image-profile').value) || config?.profiles.find(p => p.id === $('image-profile').value);
@@ -40,6 +45,7 @@
       if (locked() || $('image-prompt').value.trim()) return;
       globalThis.ImageBriefConstraints?.composeBrief(saved.prompt, saved.constraints);
       constraints?.setValue(saved.constraints);
+      textPolicy?.setValue(saved.textPolicy, saved.constraints);
       draftExpert = null; ++draftEpoch;
       $('image-prompt').value = saved.prompt; $('image-draft-source').hidden = true;
       $('image-status').textContent = 'Brief enregistré récupéré. Vérifie les réglages et rejoins les références si nécessaire.';
@@ -50,9 +56,11 @@
       return { ready: !!config?.configured, locked: locked(), prompt: $('image-prompt').value,
         profile: $('image-profile').value, width, height, referenceCount: referenceCount(),
         seed: $('image-seed').value, referenceEpoch, worker: workshop?.worker || null,
-        constraints: constraints?.getValue({ draft: true }), constraintsInvalid: constraints ? !constraints.isValid({ forPlanning: true }) : false };
+        constraints: constraints?.getValue({ draft: true }), constraintsInvalid: constraints ? !constraints.isValid({ forPlanning: true }) : false,
+        textPolicy: textPolicy?.getValue({ draft: true }), textPolicyError: textPolicy?.getError({ forPlanning: true }) || '' };
     },
-    apply: (prompt, source) => {
+    apply: (prompt, source, policy) => {
+      if (policy) textPolicy?.setValue(policy);
       draftExpert = source;
       ++draftEpoch; $('image-prompt').value = prompt; $('image-draft-source').hidden = true;
       $('image-status').textContent = 'Brief préparé avec imageX · Hermes. Vérifie les références et lance la création.';
@@ -85,17 +93,23 @@
   function controls() {
     const block = locked();
     const prompt = $('image-prompt').value, hasBrief = !!prompt.trim();
-    let valid = prompt.length <= (globalThis.ImageBriefConstraints?.MAX_PROMPT || 8000) && (!constraints || constraints.isValid()), finalPrompt = '';
-    try { if (hasBrief && valid) finalPrompt = globalThis.ImageBriefConstraints?.compose(prompt, constraints?.getValue()) || prompt; }
-    catch { valid = false; }
-    $('image-render-preview').hidden = !hasBrief || !valid;
+    let valid = prompt.length <= (globalThis.ImageBriefConstraints?.MAX_PROMPT || 8000) && (!constraints || constraints.isValid({ forPlanning: true })), finalPrompt = '', renderError = '';
+    try {
+      if (hasBrief && (!constraints || constraints.isValid({ forPlanning: true }))) {
+        const items = constraints?.getValue(), policy = textPolicy?.getValue();
+        finalPrompt = globalThis.ImageTextPolicy.inspect(prompt, items, policy).prompt || '';
+        globalThis.ImageTextPolicy.compose(prompt, items, policy);
+      }
+    }
+    catch (error) { valid = false; renderError = error.message; }
+    $('image-render-preview').hidden = !finalPrompt;
     $('image-render-prompt').textContent = finalPrompt;
     $('image-create').disabled = block || !config?.configured || !hasBrief || referenceCount() > 2 || !valid;
     $('image-create-help').textContent = block ? 'Attends la fin de la demande en cours avant de lancer une autre image.'
       : !config?.configured ? 'Le service de rendu local est indisponible.'
       : !hasBrief ? 'Décris ton image dans le brief pour commencer.'
       : referenceCount() > 2 ? 'Retire une référence : deux images au maximum.'
-      : !valid ? 'Prépare une version de 8 000 caractères maximum, contraintes comprises : affine le brief ou réduis-le ici.'
+      : !valid ? renderError || 'Prépare une version de 8 000 caractères maximum, contraintes comprises : affine le brief ou réduis-le ici.'
       : 'Prêt à créer avec ce brief. Ce bouton lance le rendu local.';
     $('image-new').disabled = block || !config; $('image-use-reference').disabled = block; $('image-reuse-brief').disabled = block;
     for (const button of $('image-gallery').querySelectorAll('button')) button.disabled = block;
@@ -105,6 +119,7 @@
     imageCompare?.refresh();
     protectedComposition?.refresh();
     constraints?.refresh();
+    textPolicy?.refresh();
     layoutGuide?.refresh();
   }
   function updateFormMode() {
@@ -139,6 +154,7 @@
     updateFormMode();
   }
   function renderResultFacts() {
+    textEditor?.refresh();
     imageCompare?.refresh();
     protectedComposition?.refresh();
     if (!operation) return;
@@ -242,6 +258,7 @@
       if (epoch !== draftEpoch || operation?.id !== op.id) return;
       if (!config.profiles.some(p => p.id === draft.profile)) throw new Error('Cette ancienne recette n’est plus disponible. Son brief reste consultable sous l’image.');
       constraints?.setValue(draft.constraints);
+      textPolicy?.setValue(draft.textPolicy, draft.constraints);
       draftExpert = op.expert ? { sessionId: op.expert.sessionId, turnId: op.expert.turnId } : null;
       $('image-prompt').value = draft.visualPrompt ?? draft.prompt; $('image-seed').value = draft.seed ?? ''; $('image-profile').value = draft.profile; renderRecipe();
       const size = `${draft.width},${draft.height}`, p = currentRecipe();
@@ -307,6 +324,7 @@
     $('image-form').reset(); $('image-profile').value = config.defaultProfile;
     $('imagex-proposal-prompt').value = proposed; $('imagex-proposal-panel').hidden = true;
     constraints?.reset();
+    textPolicy?.reset();
     for (const id of ['image-draft-source', 'image-selected-reference', 'image-result-origin', 'image-output', 'image-download', 'image-use-reference', 'image-reuse-brief', 'image-result-details', 'image-result-facts', 'image-result-note', 'image-cancel', 'image-recover', 'image-stages', 'image-improve-help']) $(id).hidden = true;
     $('image-text-open').hidden = false;
     $('image-reference-previews').replaceChildren(); $('image-placeholder').hidden = false;
@@ -347,11 +365,12 @@
       const [width, height] = $('image-size').value.split(',').map(Number);
       const payload = { prompt: $('image-prompt').value, profile: $('image-profile').value, width, height,
         ...(constraints?.getValue() && { constraints: constraints.getValue() }),
+        ...(textPolicy?.getValue() && { textPolicy: textPolicy.getValue() }),
         ...(draftExpert && { expert: draftExpert }),
         ...($('image-seed').value !== '' && { seed: Number($('image-seed').value) }) };
       if (payload.prompt.length > (globalThis.ImageBriefConstraints?.MAX_BRIEF || 32000)) throw new Error('Le brief dépasse 32 000 caractères. Réduis-le avant de continuer ; tout le texte collé reste conservé.');
       if (payload.prompt.length > (globalThis.ImageBriefConstraints?.MAX_PROMPT || 8000)) throw new Error('Le brief saisi dépasse 8 000 caractères. Utilise « Affiner mon brief » avec Hermes, ou réduis le texte.');
-      globalThis.ImageBriefConstraints?.compose(payload.prompt, payload.constraints);
+      globalThis.ImageTextPolicy.compose(payload.prompt, payload.constraints, payload.textPolicy);
       const declared = workshop?.profiles.find(p => p.id === payload.profile)?.declaredIdentity;
       if (declared) { payload.recipeId = declared.id; payload.recipeVersion = declared.version; }
       if (ref) payload.parent = { operationId: ref.id, sha256: ref.sha256 };

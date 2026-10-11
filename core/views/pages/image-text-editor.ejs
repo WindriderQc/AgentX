@@ -3,12 +3,14 @@
   <p class="image-help">Ajoute des libellés sur un calque. L’original reste conservé. Le projet JSON contient l’image et les textes pour reprendre ton travail.</p>
   <div class="text-editor-actions">
     <button id="image-text-prepare" type="button" class="quiet-button" disabled>Ajouter des textes à cette image</button>
+    <button id="image-text-planned" type="button" class="quiet-button" hidden>Deuxième passe : préparer les textes prévus</button>
     <label class="quiet-button text-editor-import" for="image-text-file">Rouvrir un projet JSON<input id="image-text-file" type="file" accept=".json,application/json"></label>
   </div>
   <p id="image-text-status" class="image-help" role="status" aria-live="polite">Choisis une image archivée ou rouvre un projet.</p>
   <p id="image-text-error" class="text-editor-error" role="alert" hidden></p>
   <div id="image-text-workspace" hidden>
     <p id="image-text-source" class="image-help"></p>
+    <p id="image-text-placement-hint" class="image-help" hidden></p>
     <div class="text-editor-preview"><canvas id="image-text-canvas" tabindex="0" aria-label="Aperçu des textes. Clique pour placer le libellé sélectionné ou utilise les flèches du clavier."></canvas></div>
     <p class="image-help">Clique sur l’aperçu pour placer le libellé sélectionné. Les flèches du clavier le déplacent d’un pixel ; Maj + flèche, de dix pixels.</p>
     <div class="text-editor-label-heading"><label for="image-text-label">Libellé à modifier</label><button id="image-text-add" type="button" class="quiet-button">Ajouter un libellé</button></div>
