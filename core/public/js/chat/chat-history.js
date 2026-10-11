@@ -192,7 +192,24 @@ function showHistoryContextMenu(btn, item, state, elements) {
   });
 }
 
+/**
+ * A reply still streaming belongs to the conversation it was sent in. When
+ * the view switches (new chat, another conversation) it is detached: the
+ * request keeps running so the server still saves it, but it no longer
+ * writes into the new view or holds the Send button as Stop.
+ */
+export function detachActiveReply(state, elements) {
+  state.viewEpoch = (state.viewEpoch || 0) + 1;
+  if (!state.streamAbortController && !state.sending) return;
+  state.streamAbortController = null;
+  state.streamStopRequestedController = null;
+  state.sending = false;
+  elements.sendBtn.disabled = false;
+  elements.sendBtn.textContent = 'Send';
+}
+
 export async function loadConversation(id, state, elements, helpers, preserveModelSelection = false) {
+  if (id !== state.conversationId) detachActiveReply(state, elements);
   try {
     const res = await fetch(`/api/history/${id}`);
     if (!res.ok) {
