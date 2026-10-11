@@ -5,6 +5,7 @@ const root = path.resolve(__dirname, '../..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 const view = read('views/pages/memory-review.ejs');
 const controller = read('public/js/memory-review.js');
+const keys = read('public/js/memory-review-keys.js');
 const styles = read('public/css/memory-review.css');
 
 describe('Dreaming Review UI contract', () => {
@@ -45,7 +46,8 @@ describe('Dreaming Review UI contract', () => {
     expect(view).toContain('Copy digest');
     expect(view).toContain('Find a run');
     expect(view).toContain('<kbd>J</kbd>/<kbd>K</kbd>');
-    expect(controller).toContain("a: 'approve', r: 'reject', d: 'defer', e: 'edit_approve'");
+    expect(keys).toContain("a: 'approve', r: 'reject', d: 'defer', e: 'edit_approve'");
+    expect(controller).toContain('MemoryReviewKeys.resolveShortcut');
     expect(controller).toContain('Copy clarification question');
     expect(controller).toContain('Summary unavailable; derived from run history');
     expect(controller).toContain('Safe automation ·');

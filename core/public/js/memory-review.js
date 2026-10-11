@@ -681,12 +681,6 @@
     } finally { submit.disabled = false; }
   }
 
-  function focusedCandidate() {
-    const items = [...document.querySelectorAll('.mr-candidate')];
-    const active = document.activeElement?.closest?.('.mr-candidate');
-    return { items, index: Math.max(0, items.indexOf(active)) };
-  }
-
   document.querySelectorAll('[data-status-filter]').forEach((button) => button.addEventListener('click', () => {
     document.querySelectorAll('[data-status-filter]').forEach((item) => item.classList.remove('active'));
     button.classList.add('active'); state.filter = button.dataset.statusFilter; renderCandidates();
@@ -703,26 +697,14 @@
   document.addEventListener('keydown', (event) => {
     if (!$('mrActionBackdrop').hidden) {
       if (event.key === 'Escape') return closeAction();
-      if (event.key !== 'Tab') return;
-      const focusable = [...$('mrActionModal').querySelectorAll('button:not(:disabled), textarea:not([hidden])')]
-        .filter((element) => element.offsetParent !== null);
-      if (!focusable.length) return;
-      const first = focusable[0]; const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      return;
+      return MemoryReviewKeys.trapTab(event, $('mrActionModal'));
     }
     if (/INPUT|TEXTAREA|SELECT|SUMMARY/.test(document.activeElement?.tagName || '') || event.ctrlKey || event.metaKey || event.altKey) return;
-    const key = event.key.toLowerCase();
-    const { items, index } = focusedCandidate();
-    if (!items.length) return;
-    if (key === 'j' || key === 'k') {
-      event.preventDefault();
-      items[Math.max(0, Math.min(items.length - 1, index + (key === 'j' ? 1 : -1)))].focus();
-      return;
-    }
-    const action = { a: 'approve', r: 'reject', d: 'defer', e: 'edit_approve' }[key];
-    if (action) items[index].querySelector(`[data-action="${action}"]`)?.click();
+    const items = [...document.querySelectorAll('.mr-candidate')];
+    const index = items.indexOf(document.activeElement?.closest?.('.mr-candidate'));
+    const shortcut = MemoryReviewKeys.resolveShortcut(event.key, { count: items.length, index });
+    if (shortcut?.move !== undefined) { event.preventDefault(); items[shortcut.move].focus(); }
+    if (shortcut?.action) items[index].querySelector(`[data-action="${shortcut.action}"]`)?.click();
   });
 
   (async () => { await Promise.all([loadConfig(), loadInsights(), loadRuns()]); })();

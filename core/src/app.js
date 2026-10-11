@@ -675,7 +675,7 @@ app.get('/memory-review', (req, res) => {
       '<link rel="stylesheet" href="/styles.css">',
       '<link rel="stylesheet" href="/css/memory-review.css">'
     ].join('\n'),
-    footerJs: '<script src="/js/memory-review.js"></script>'
+    footerJs: '<script src="/js/memory-review-keys.js"></script><script src="/js/memory-review.js"></script>'
   });
 });
 
