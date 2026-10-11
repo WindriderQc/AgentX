@@ -114,9 +114,12 @@ class UnifiedModels {
     /* ── Category pill strip ────────────────────────────── */
     setupCategoryStrip() {
         document.querySelectorAll('.cat-pill').forEach(pill => {
+            pill.setAttribute('aria-pressed', String(pill.classList.contains('active')));
             pill.addEventListener('click', () => {
-                document.querySelector('.cat-pill.active')?.classList.remove('active');
-                pill.classList.add('active');
+                document.querySelectorAll('.cat-pill').forEach(other => {
+                    other.classList.toggle('active', other === pill);
+                    other.setAttribute('aria-pressed', String(other === pill));
+                });
                 this.activeCategory = pill.dataset.cat;
                 this.filterModels();
             });
@@ -158,6 +161,11 @@ class UnifiedModels {
         }
         const container = document.getElementById('tagCloud');
         if (!container) return;
+        // A refresh rebuilds the pills: keep active tags that still exist and
+        // drop the others, so no invisible tag keeps filtering the table.
+        for (const tag of [...this.activeTags]) {
+            if (!tagCounts.has(tag)) this.activeTags.delete(tag);
+        }
 
         if (tagCounts.size === 0) {
             container.style.display = 'none';
@@ -166,20 +174,22 @@ class UnifiedModels {
         container.style.display = 'flex';
         container.innerHTML = '<span class="tag-cloud-label"><i class="fas fa-tags"></i> Tags:</span>';
 
+        // Active tags stay visible even when they fall outside the top 20.
         const sorted = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]);
-        for (const [tag, count] of sorted.slice(0, 20)) {
+        const shown = sorted.slice(0, 20);
+        for (const entry of sorted.slice(20)) if (this.activeTags.has(entry[0])) shown.push(entry);
+        for (const [tag, count] of shown) {
             const btn = document.createElement('button');
-            btn.className = 'tag-pill';
+            btn.type = 'button';
+            btn.className = this.activeTags.has(tag) ? 'tag-pill active' : 'tag-pill';
             btn.dataset.tag = tag;
+            btn.setAttribute('aria-pressed', String(this.activeTags.has(tag)));
             btn.innerHTML = `${escapeHtml(tag)} <span class="tag-count">${count}</span>`;
             btn.addEventListener('click', () => {
-                if (this.activeTags.has(tag)) {
-                    this.activeTags.delete(tag);
-                    btn.classList.remove('active');
-                } else {
-                    this.activeTags.add(tag);
-                    btn.classList.add('active');
-                }
+                if (this.activeTags.has(tag)) this.activeTags.delete(tag);
+                else this.activeTags.add(tag);
+                btn.classList.toggle('active', this.activeTags.has(tag));
+                btn.setAttribute('aria-pressed', String(this.activeTags.has(tag)));
                 this.filterModels();
             });
             container.appendChild(btn);
