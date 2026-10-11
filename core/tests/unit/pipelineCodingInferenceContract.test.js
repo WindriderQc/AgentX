@@ -276,22 +276,11 @@ test('a validation proof from another invocation cannot settle the current call 
   expect(run.pendingInferences).toEqual([CALL]);
 });
 
-test.each([
-  ['Core model deadline', 1, undefined, 499, 'INFERENCE_CANCELLED'],
-  ['runtime timeout', 3600, '1000', 504, 'INFERENCE_TIMEOUT'],
-])('%s preserves unknown after dispatch without a fabricated native completion', async (_name, modelSeconds, timeout, status, code) => {
-  const priorTimeout = process.env.HERMES_OPENAI_TIMEOUT_MS;
-  if (timeout) process.env.HERMES_OPENAI_TIMEOUT_MS = timeout;
-  const f = await fixture({ modelSeconds });
+async function expectTimedOutInferenceUnknown(f, status, code) {
   f.deps.fetch.mockImplementation((_url, { signal }) => new Promise((_resolve, reject) => {
     signal.addEventListener('abort', () => reject(Object.assign(new Error('Synthetic timeout'), { name: 'AbortError' })), { once: true });
   }));
-  let response;
-  try { response = await f.post(); }
-  finally {
-    if (priorTimeout === undefined) delete process.env.HERMES_OPENAI_TIMEOUT_MS;
-    else process.env.HERMES_OPENAI_TIMEOUT_MS = priorTimeout;
-  }
+  const response = await f.post();
   expect(response.status).toBe(status);
   expect(response.body.code || response.body.error?.code).toBe(code);
   expect(f.deps.fetch).toHaveBeenCalledTimes(1);
@@ -299,6 +288,34 @@ test.each([
   const run = (await durable(f)).codingAutonomy.runs.at(-1);
   expect(run.modelReceipts[0].state).toBe('unknown');
   expect(run.pendingInferences).toEqual([CALL]);
+}
+
+test('Core model deadline preserves unknown after dispatch without a fabricated native completion', async () => {
+  const deps = dependencies();
+  let budgetSignal;
+  const f = await fixture({ modelSeconds: 1, deps, execute: (input, options) => {
+    budgetSignal = options.signal;
+    // This case tests the real Core budget timer. The separate runtime backup
+    // timer uses the same deadline and can otherwise win the race by a tick.
+    const { codingDeadlineAt: _backupDeadline, ...budgetOptions } = options;
+    return executeRoutedInference(deps, { ...input, timeoutMs: 60000 }, budgetOptions);
+  } });
+  await expectTimedOutInferenceUnknown(f, 499, 'INFERENCE_CANCELLED');
+  expect(budgetSignal.aborted).toBe(true);
+  expect(budgetSignal.reason.code).toBe('CODING_MODEL_BUDGET');
+});
+
+test('runtime timeout preserves unknown after dispatch without a fabricated native completion', async () => {
+  const priorTimeout = process.env.HERMES_OPENAI_TIMEOUT_MS;
+  process.env.HERMES_OPENAI_TIMEOUT_MS = '1000';
+  try {
+    const f = await fixture({ modelSeconds: 3600 });
+    await expectTimedOutInferenceUnknown(f, 504, 'INFERENCE_TIMEOUT');
+  }
+  finally {
+    if (priorTimeout === undefined) delete process.env.HERMES_OPENAI_TIMEOUT_MS;
+    else process.env.HERMES_OPENAI_TIMEOUT_MS = priorTimeout;
+  }
 });
 
 test('caller interruption retains unknown even when the original validation refusal was proven before routing', async () => {
