@@ -232,11 +232,19 @@ class UnifiedModels {
     setupActionMenuDismissal() {
         if (this.actionMenuDismissalBound) return;
         this.actionMenuDismissalBound = true;
-        document.addEventListener('click', () => {
-            document.querySelectorAll('.action-menu.active').forEach((menu) => {
-                menu.classList.remove('active');
-                menu.parentElement?.querySelector('.btn-actions')?.setAttribute('aria-expanded', 'false');
-            });
+        document.addEventListener('click', () => this.closeActionMenus());
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this.closeActionMenus({ restoreFocus: true });
+        });
+    }
+
+    // Closes every open row menu; Escape hands focus back to the menu button.
+    closeActionMenus({ restoreFocus = false } = {}) {
+        document.querySelectorAll('.action-menu.active').forEach((menu) => {
+            menu.classList.remove('active');
+            const button = menu.parentElement?.querySelector('.btn-actions');
+            button?.setAttribute('aria-expanded', 'false');
+            if (restoreFocus && menu.contains(document.activeElement)) button?.focus();
         });
     }
 
@@ -562,12 +570,10 @@ class UnifiedModels {
             if (actionBtn) {
                 actionBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    document.querySelectorAll('.action-menu.active').forEach((menu) => {
-                        menu.classList.remove('active');
-                        menu.parentElement?.querySelector('.btn-actions')?.setAttribute('aria-expanded', 'false');
-                    });
                     const actionMenu = tr.querySelector('.action-menu');
-                    const expanded = actionMenu?.classList.toggle('active') || false;
+                    const wasOpen = actionMenu?.classList.contains('active');
+                    this.closeActionMenus();
+                    const expanded = !wasOpen && (actionMenu?.classList.toggle('active') || false);
                     actionBtn.setAttribute('aria-expanded', String(expanded));
                 });
             }
