@@ -15,7 +15,7 @@ const ACTIVITY_META_ROWS = 40;
 const ACTIVITY_OVERVIEW_ROWS = 4;
 const ACTIVITY_FAMILIES = Object.freeze({
   storage: 'Storage', collector: 'Collectors', gpu: 'GPU', network: 'Network', janitor: 'Janitor',
-  livedata: 'Live data', mqtt: 'MQTT', external: 'External (recorded by another service)'
+  livedata: 'Live data', mqtt: 'MQTT', iot: 'IoT devices', external: 'External (recorded by another service)'
 });
 const ACTIVITY_SEVERITIES = Object.freeze({ error: 'Error', warning: 'Warning', info: 'Info' });
 const ACTIVITY_WINDOWS = Object.freeze({ all: 'All kept (30 days)', 168: 'Last 7 days', 24: 'Last 24 hours' });

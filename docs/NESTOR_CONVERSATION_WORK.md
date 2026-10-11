@@ -2,7 +2,10 @@
 
 Core's optional `conversationWorks` capability lets personal voice dialogue
 continue while a separate native Nestor worker checks personal tasks or reviews
-a completed conversational turn. Nestor remains the single visible identity.
+a completed conversational turn. Conservative current public-information reads
+and explicit personal mailbox reads run in isolated background Main sessions,
+retaining Main's web tools and native Secretary delegation.
+Nestor remains the single visible identity.
 Core owns acceptance, complete requests, execution metadata, verified task reads,
 structured results and presentation receipts. OpenClaw owns the native agent/tool
 loop. Polling the browser projection never starts inference.
@@ -41,7 +44,47 @@ are reviewed after the guardian settles; explicit task reads can run concurrentl
 Stale intake can recover after restart without replaying an uncertain guardian.
 Recovered work explicitly identifies missing selected context.
 
-One durable personal dispatch gate permits one native worker at a time. The
+In read mode, conservative mailbox reads receive a canonical acknowledgment
+without invoking either model in the foreground. The native background Main
+uses its installed model/tools in an isolated `household:direct` session and
+consults the Secretary through `sessions_spawn` and `sessions_yield`. The live
+guardian keeps its own session and voice model. Its pending-work context prevents
+redispatch. Mixed or ambiguous effects, message drafts, sends, modifications and
+deletions retain their existing synchronous native path and approval contracts.
+Current public-information questions and explicit web reads use the same
+acknowledgment and isolated native Main path. Tool discovery is separate from
+web research: publication requires a successful same-run `web_search` or
+`web_fetch`, not merely `tool_search`. Relative dates use the request's original
+local calendar day and configured planning time zone. Effects, declined searches,
+personal records and local service checks retain their existing paths.
+Pure web consultations admit at most four web reads and eight total tool calls,
+including discovery, through Core and the native adapter's pre-tool hook. Core
+retains each admission in the existing work, even when the page fails to load;
+changing URLs or restarting the adapter does not reset it. After exhaustion the
+adapter blocks further tools and directs Main to conclude from its verified
+sources or explain the actual lookup limitation. Mixed task/mail reads keep
+their existing native contracts. An older adapter without this capability
+refuses pure web dispatch before inference.
+
+Every private worker receives the same adult-owner presentation contract as
+the guardian. Child profiles remain reference data; they do not select the
+audience. A bounded reviewer's missing tool is not proof that Main lacks it.
+The bounded task-read worker receives no web/mailbox tools or specialist grants.
+The native Main namespace is preserved so its existing personal tool scope remains
+available; the fresh session identity separates the boss from the live guardian.
+Preparation checks the installed native adapter's isolated-work capability before
+dispatch. A mismatched Core/plugin installation refuses before invoking a model,
+retaining the failed request instead of creating an unrecoverable native attempt.
+
+Core retains the exact parent run and successful consultation-tool observations
+beside the received requester-settle answer. Parent completion on yield does not
+mean the child has answered: the dispatch gate waits for that same answer through
+restart or a lost response. A missing or ambiguous run never permits replacement.
+Only the trusted native adapter can publish this received result; the model-facing
+work API cannot publish it or use its identity to acquire task-read capabilities.
+Stopping acknowledgment or result speech does not cancel the accepted work.
+
+One durable personal dispatch gate permits one native work at a time. The
 work attempt/session is recorded before the outbound call. An unfinished
 preparation may be revoked by an exact CAS before its dispatch fence. A marked
 or uncertain dispatch never expires into another attempt. Reconcile the exact

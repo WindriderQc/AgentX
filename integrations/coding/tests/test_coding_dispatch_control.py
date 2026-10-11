@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
@@ -11,6 +12,7 @@ control = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(control)
 
 KEY = "11111111-2222-4333-8444-555555555555"
+FRESH = "22222222-2222-4333-8444-555555555555"
 TASKS = [
     {"pipelineId": "0001", "title": "Fix dates", "status": "queued", "service": "agentx-coding"},
     {"pipelineId": "0002", "title": "Groceries", "status": "queued", "service": "personal"},
@@ -35,6 +37,119 @@ class ControlTest(unittest.TestCase):
             patcher = mock.patch.object(control, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
+
+    def terminal(self, **extra):
+        return {"requestId": KEY, "pipelineId": "0001", "phase": "finished", "stage": "checkpoint",
+                "result": "blocked", "stopReason": "hard_budget", "coreRecorded": True, **extra}
+
+    def write_progress(self, value):
+        control.atomic_json(control.RECEIPTS / f"{KEY}.progress.json", value)
+
+    def manifest(self, url, **kwargs):
+        parts = url.split("/")
+        return io.BytesIO(json.dumps({"data": {"requestId": parts[-2], "pipelineId": parts[-4]}}).encode())
+
+    def test_lost_systemd_reply_finishes_and_replays_without_starting_a_second_worker(self):
+        for recorded in (True, False):
+            with self.subTest(coreRecorded=recorded), \
+                    mock.patch.object(control, "urlopen", side_effect=self.manifest), \
+                    mock.patch.object(control.subprocess, "run", side_effect=TimeoutError) as process:
+                # The journal is durable before systemd can accept and lose its reply.
+                with self.assertRaises(TimeoutError):
+                    control.launch("0001", KEY, 0, autonomous=True)
+                original = (control.RECEIPTS / f"{KEY}.json").read_bytes()
+                with mock.patch.object(control, "unit_active", return_value=True):
+                    self.assertEqual(control.status(KEY)["run"]["phase"], "running")
+                self.write_progress(self.terminal(coreRecorded=recorded))
+                self.assertEqual(control.status(KEY)["run"]["phase"], "finished")
+                self.assertTrue(control.launch("0001", KEY, 0, autonomous=True)["replayed"])
+                self.assertEqual((control.RECEIPTS / f"{KEY}.json").read_bytes(), original)
+                if not recorded:
+                    for autonomous in (True, False):
+                        with self.assertRaises(control.ControlError) as unknown:
+                            control.launch("0009", FRESH, 0, autonomous=autonomous)
+                        self.assertEqual(unknown.exception.code, "CODING_DISPATCH_OUTCOME_UNKNOWN")
+                    verdict = {"status": "blocked", "leaseId": "synthetic-original-lease",
+                               "attemptEvidence": {"failureCodes": ["hard_budget"]}}
+                    control.atomic_json(control.RECEIPTS / f"{KEY}.verdict.json", verdict)
+                    runner = mock.Mock()
+                    with mock.patch.object(control, "load_runner", return_value=runner):
+                        control.reconcile("0001", KEY)
+                    runner.request.assert_called_once_with(f"{control.CORE}/api/pipeline/tasks/0001/feedback", verdict)
+                process.assert_called_once()
+                process.side_effect = None
+                self.assertFalse(control.launch("0009", FRESH, 0, autonomous=True)["replayed"])
+                self.assertEqual(process.call_count, 2)
+            # Each scenario uses a fresh disposable journal.
+            for path in control.RECEIPTS.iterdir():
+                path.unlink()
+
+    def test_simple_terminal_receipt_preserves_transition_to_authorized_autonomy(self):
+        # The simple runner predates coreRecorded and cannot replay an autonomous verdict.
+        for phase in ("accepted", "uncertain"):
+            with self.subTest(phase=phase):
+                control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": phase})
+                self.write_progress(self.terminal(coreRecorded=False))
+                with mock.patch.object(control, "urlopen", side_effect=self.manifest) as manifest, \
+                        mock.patch.object(control.subprocess, "run") as process:
+                    self.assertFalse(control.launch("0009", FRESH, 0, autonomous=True)["replayed"])
+                    manifest.assert_called_once_with(f"{control.CORE}/api/pipeline/coding-autonomy/tasks/0009/runs/{FRESH}/manifest", timeout=10)
+                    process.assert_called_once()
+                for path in control.RECEIPTS.iterdir():
+                    path.unlink()
+
+    def test_active_matching_unit_takes_precedence_over_terminal_progress(self):
+        for phase in ("accepted", "uncertain"):
+            for recorded in (True, False):
+                with self.subTest(phase=phase, coreRecorded=recorded):
+                    control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": phase, "autonomous": True})
+                    self.write_progress(self.terminal(coreRecorded=recorded))
+                    with mock.patch.object(control, "unit_active", return_value=True), \
+                            mock.patch.object(control.subprocess, "run") as process:
+                        observed = control.status(KEY)["run"]
+                        self.assertEqual((observed["phase"], observed["canStop"]), ("running", False))
+                        with self.assertRaises(control.ControlError) as busy:
+                            control.launch("0009", FRESH, 0, autonomous=True)
+                        self.assertEqual(busy.exception.code, "CODING_DISPATCH_BUSY")
+                        process.assert_not_called()
+
+    def test_missing_or_malformed_terminal_proof_keeps_uncertain_launch_fenced(self):
+        cases = [None, "invalid json", [], self.terminal(pipelineId="0009"), self.terminal(requestId=FRESH),
+                 self.terminal(phase="running"), self.terminal(stage="invalid"), self.terminal(result="invalid"),
+                 self.terminal(usage="invalid"), self.terminal(result=None)]
+        for value in cases:
+            with self.subTest(value=value):
+                control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "uncertain", "autonomous": True})
+                path = control.RECEIPTS / f"{KEY}.progress.json"
+                path.unlink(missing_ok=True)
+                if value == "invalid json":
+                    path.write_text(value)
+                elif value is not None:
+                    self.write_progress(value)
+                with mock.patch.object(control.subprocess, "run") as process:
+                    self.assertEqual(control.status(KEY)["run"]["phase"], "unknown")
+                    self.assertTrue(control.launch("0001", KEY, 0, autonomous=True)["replayed"])
+                    with self.assertRaises(control.ControlError) as unknown:
+                        control.launch("0009", FRESH, 0, autonomous=True)
+                    self.assertEqual(unknown.exception.code, "CODING_DISPATCH_OUTCOME_UNKNOWN")
+                    process.assert_not_called()
+
+    def test_old_uncertain_request_observes_only_its_receipt_while_another_job_runs(self):
+        control.save_receipt({"requestId": KEY, "pipelineId": "0001", "phase": "uncertain", "autonomous": True})
+        control.save_receipt({"requestId": FRESH, "pipelineId": "0009", "phase": "accepted"})
+        other = (control.RECEIPTS / f"{FRESH}.json").read_bytes()
+        with mock.patch.object(control, "unit_active", return_value=True), \
+                mock.patch.object(control.subprocess, "run") as process:
+            self.assertEqual(control.status(KEY)["run"]["phase"], "unknown")
+            self.write_progress(self.terminal())
+            self.assertEqual(control.status(KEY)["run"]["phase"], "finished")
+            self.assertTrue(control.launch("0001", KEY, 0, autonomous=True)["replayed"])
+            self.assertTrue(control.stop("0001", KEY)["alreadyFinished"])
+            self.assertEqual(control.status(FRESH)["run"]["phase"], "running")
+            self.assertEqual((control.RECEIPTS / "latest").read_text(), FRESH)
+            self.assertEqual((control.RECEIPTS / f"{FRESH}.json").read_bytes(), other)
+            self.assertFalse(any(control.RECEIPTS.glob("*.stop.json")))
+            process.assert_not_called()
 
     def test_only_explicit_coding_tasks_can_start(self):
         status = control.status()

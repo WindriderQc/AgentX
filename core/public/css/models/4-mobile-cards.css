@@ -1,0 +1,47 @@
+/* Models table as cards on narrow screens. Each row becomes a card whose
+   cells show their column name (data-label), so the actions stay on screen
+   instead of behind a sideways scroll. Sorting stays in the sort menu. */
+@media (max-width: 720px) {
+    .models-table,
+    .models-table tbody { display: block; width: 100%; }
+    .models-table thead { display: none; }
+
+    .models-table tbody tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 12px;
+        margin: 10px;
+        padding: 12px;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.02);
+    }
+    .models-table tbody tr:has(> td[colspan]) { display: block; }
+
+    .models-table td,
+    .models-table td:nth-child(n) { display: block; padding: 0; border: 0; font-size: 12px; min-width: 0; }
+    .models-table td[colspan] { padding: 8px 4px; }
+    .models-table td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 2px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .models-table .model-name-cell,
+    .models-table .table-action-cell { grid-column: 1 / -1; }
+    .models-table .model-name-cell { font-size: 14px; }
+    .models-table .model-open-detail { overflow-wrap: anywhere; text-align: left; }
+
+    .models-table .table-action-cell {
+        padding-top: 8px;
+        border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .models-table .table-action-cell .actions { justify-content: stretch; }
+    .models-table .table-action-cell .action-chat { flex: 1; justify-content: center; min-height: 40px; }
+    .models-table .table-action-cell .btn-icon { width: 40px; height: 40px; }
+}

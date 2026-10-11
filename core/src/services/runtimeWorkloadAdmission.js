@@ -147,6 +147,22 @@ async function isWorkloadRecoveryRequired({ id, generation, principal } = {}) {
   return Boolean(state);
 }
 
+// Observe the original acquisition after a lost response. This never admits a
+// replacement or changes a recovery quarantine, including an expired owner.
+async function recoverWorkloadAcquisition({ principal, requestId, workloadId, kind, hosts } = {}) {
+  principal = clean(principal); requestId = clean(requestId); workloadId = clean(workloadId);
+  if (!principal || !requestId || !workloadId) return { recovered: false };
+  const current = await RuntimeCoordination.findById('runtime').select('+releaseReceipts').lean();
+  const original = (current?.workloads || []).find(item => item.principal === principal && item.requestId === requestId);
+  const receipt = [...(current?.releaseReceipts || [])].reverse().find(item =>
+    item.coordinationKind === 'workload' && item.principal === principal && item.requestId === requestId);
+  const observed = original || receipt;
+  if (!observed || !sameWorkloadIntent(observed, { workloadId, kind: kind || 'benchmark', hosts, batchId: null }))
+    return { recovered: false };
+  return { recovered: true, admissionId: observed.admissionId, generation: observed.generation,
+    principal, requestId, workloadId, released: !original && receipt?.released === true };
+}
+
 async function assertWorkloadAdmission({ id, generation, principal, workloadId, host } = {}) {
   id = clean(id);
   generation = clean(generation);
@@ -202,6 +218,7 @@ async function workloadSharesHost({ id, generation, host } = {}) {
 
 module.exports = {
   acquireWorkload,
+  recoverWorkloadAcquisition,
   isWorkloadRecoveryRequired,
   assertWorkloadAdmission,
   workloadSharesHost

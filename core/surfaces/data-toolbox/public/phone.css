@@ -34,7 +34,7 @@
   .crumbs .link-button { padding-inline: 4px; }
   main input:not([type="checkbox"]):not([type="radio"]), main select, main textarea { min-height: 42px; font-size: 16px; }
   main input[type="checkbox"], main input[type="radio"] { width: 20px; height: 20px; flex: none; }
-  .mqtt-retain, .review-choice { min-height: 40px; }
+  .mqtt-retain, .mqtt-heartbeats, .review-choice { min-height: 40px; }
   main details > summary { min-height: 40px; padding-block: 10px; }
   .guardrail summary, .jr-group summary, .scan-detail summary { padding-block: 8px; }
   td details > summary { display: inline-block; min-width: 40px; }

@@ -70,7 +70,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   controls live in the parental space.
 - **Nestor guardian and worker.** Optional personal voice work commits the human
   request before guardian inference and uses an isolated native worker for
-  bounded task reads and review. Core retains results through reconnect, fences
+  bounded task reads and review. Conservative mailbox and current public-information
+  reads receive an immediate saved-request acknowledgment and use isolated native
+  Main web research with durable tool admission limits or Main/Secretary consultation
+  while the guardian remains available. Core retains results through reconnect, fences
   uncertain dispatches and separates display, playback start and completion.
   The feature defaults off; text, Open, specialists and Famille keep their
   existing contracts. See [conversation work](NESTOR_CONVERSATION_WORK.md).
@@ -137,6 +140,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   A browser editor adds exact, editable text over verified originals, with PNG,
   standalone SVG and portable JSON exports. Reopening a project checks its
   embedded image and preserves the archived source; editing starts no GPU work.
+  A **Textes dans l’image** checkbox controls no-text instructions, single-pass
+  lettering or a text-free render followed by prefilled editable layers. Hermes
+  recommends a method and placements in a reviewed proposal; Core preserves
+  supplied exact labels. Placement is checked manually on the rendered image.
   Explicit brief constraints survive Hermes rewriting and remain in accepted
   requests, drafts and recipe exports. A browser composition sketch joins as an
   ordinary reference. Verified parent/result comparison includes a manual,
@@ -161,7 +168,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   an inactive host without a terminal receipt stays unknown and blocks new work.
   Review of that pull request and its CI is
   the gate; nothing merges or deploys by itself. See
-  [the coding worker](../integrations/coding/README.md).
+  [the coding worker](../integrations/coding/README.md). The disabled-by-default
+  [correction loop](CODING_AUTONOMY.md) records explicit engineering scope,
+  linked executions, cumulative budgets and manual interventions. Core observes
+  exact-head CI and resumes the same task/PR through native claims; uncertain
+  publication/model outcomes remain fenced. Green CI ends at human review.
 - **Planning.** The page is a frozen historical reference. Its idea inbox is
   live: Nestor and family captures wait there until the parent reviews them.
   Coding workers receive bounded context from linked Planning objectives;

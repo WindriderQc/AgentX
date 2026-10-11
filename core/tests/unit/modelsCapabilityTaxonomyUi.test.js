@@ -42,6 +42,27 @@ describe('Models capability taxonomy', () => {
     expect(source).toContain('this.capabilityTierBadge(model, this.activeCategory)');
   });
 
+  test('every method the catalog calls on itself is defined', () => {
+    const defined = new Set([...source.matchAll(/^    (?:async )?([A-Za-z]\w*)\([^)]*\) \{/gm)].map(match => match[1]));
+    const called = [...new Set([...source.matchAll(/this\.([A-Za-z]\w*)\(/g)].map(match => match[1]))];
+    expect(called.filter(name => !defined.has(name))).toEqual([]);
+  });
+
+  test('offers chat only for models the playground can use', () => {
+    const start = source.indexOf('    chatAvailability(model) {');
+    const end = source.indexOf('    getIconForSource(source) {');
+    const body = source.slice(start, end).replace('chatAvailability(model) {', 'function chatAvailability(model) {');
+    const context = {};
+    vm.createContext(context);
+    vm.runInContext(`${body}\nthis.chatAvailability = chatAvailability;`, context);
+    const chat = context.chatAvailability;
+    expect(chat({ categories: ['generalist'] }).available).toBe(true);
+    expect(chat({ categories: ['embedding'] })).toMatchObject({ available: false, reason: expect.stringContaining('Embedding') });
+    expect(chat({ deployment: { status: 'gone' } }).available).toBe(false);
+    expect(chat({ chatAllowed: false }).available).toBe(false);
+    expect(chat({ chatAllowed: true }).available).toBe(true);
+  });
+
   test('Trusted qualification is explicitly out of this catalog projection', () => {
     expect(source).toContain('Trusted per-category qualification belongs to');
     expect(source).not.toMatch(/tier = ['"]qualified['"]/);

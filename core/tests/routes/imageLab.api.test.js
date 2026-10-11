@@ -94,3 +94,12 @@ test('fresh GPU readings replace mirrored ones; stale or absent collectors keep 
   const { body } = await request(app(() => ({ listActive: idle, hosts: named, gpus: readings }))).get('/images/labo/api/lab').expect(200);
   expect(body.fleet[0].gpuObservedAt).toBe('now'); expect(body.fleet[1].gpuObservedAt).toBeUndefined();
 });
+test('the drawing of the production path is fed by the configured worker and recipes, and survives their absence', async () => {
+  const workshop = () => ({ worker: { label: 'Bench', gpu: 'Card', vramGiB: 24 }, profiles: [{ id: 'quality', steps: 25, diffusion: 'private.safetensors' }] });
+  const { body } = await request(app(() => ({ listActive: idle, hosts, gpus, workshop }))).get('/images/labo/api/lab').expect(200);
+  expect(body.imageWorker).toEqual({ label: 'Bench', gpu: 'Card', vramGiB: 24 }); expect(body.imageRecipes).toEqual([{ id: 'quality', steps: 25 }]);
+  const failing = await request(app(() => ({ listActive: idle, hosts, gpus, workshop: () => { throw new Error('no manifest'); } }))).get('/images/labo/api/lab').expect(200);
+  expect(failing.body.imageWorker).toBeUndefined(); expect(failing.body.groups).toEqual([1]);
+  const page = fs.readFileSync(path.join(__dirname, '../../public/image-lab/lab-resources/ui/lab.js'), 'utf8');
+  expect(page.slice(page.indexOf('function productionPath'), page.indexOf('function machines'))).not.toMatch(/UGFrank|UGAlien|RTX|qwen|klein/);
+});

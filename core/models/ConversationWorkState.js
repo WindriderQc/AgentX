@@ -11,6 +11,7 @@ const schema = new mongoose.Schema({
   contextRef: mongoose.Schema.Types.Mixed, attempt: mongoose.Schema.Types.Mixed,
   guardian: mongoose.Schema.Types.Mixed, result: mongoose.Schema.Types.Mixed,
   tools: [mongoose.Schema.Types.Mixed], events: [mongoose.Schema.Types.Mixed],
+  nativeAdmissions: [mongoose.Schema.Types.Mixed],
   sequence: Number, delivery: mongoose.Schema.Types.Mixed,
   erased: Boolean, reason: String, classification: String
 }, { versionKey: false, collection: 'conversation_work_states', minimize: false,

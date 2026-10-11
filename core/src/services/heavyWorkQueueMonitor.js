@@ -5,6 +5,7 @@ const queue = require('./heavyWorkQueueService');
 const evidence = require('./heavyWorkQueueEvidence');
 const logger = require('../../config/logger');
 let timer;
+let codingTimer;
 let busy = false;
 
 // Observe existing receipts and dispatch only images explicitly accepted by
@@ -34,7 +35,12 @@ function start() {
   if (timer || process.env.NODE_ENV === 'test') return;
   timer = setInterval(sweep, 15000);
   timer.unref();
+  codingTimer = setInterval(() => {
+    require('./pipelineCodingAutonomyService').tick().catch(error =>
+      logger.warn('Coding autonomy awaits reconciliation', { code: error.code || 'CODING_AUTONOMY_UNAVAILABLE' }));
+  }, 15000);
+  codingTimer.unref();
 }
-function stop() { if (timer) clearInterval(timer); timer = null; }
+function stop() { if (timer) clearInterval(timer); timer = null; if (codingTimer) clearInterval(codingTimer); codingTimer = null; }
 
 module.exports = { start, stop, sweep };

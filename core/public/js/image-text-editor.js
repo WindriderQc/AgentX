@@ -10,6 +10,7 @@
     const events = [], urls = new Set(), invalidFields = new Set();
     let project = null, image = null, selected = null, dirty = false, imported = false;
     let busy = false, epoch = 0, contextKey = '', request = null, destroyed = false;
+    let plannedHints = new Map();
 
     function listen(element, name, handler) {
       element.addEventListener(name, handler);
@@ -29,6 +30,10 @@
         Number.isInteger(op.artifact.width) && Number.isInteger(op.artifact.height) ? op : null;
     }
     function currentLabel() { return project?.labels.find(label => label.id === selected); }
+    function plannedLabels() {
+      const policy = context().details?.request?.textPolicy;
+      return readyOperation() && policy?.enabled && policy.strategy === 'two-pass' ? policy.labels : [];
+    }
     function error(message = '') { $('error').textContent = message; $('error').hidden = !message; }
     function frenchError(err) {
       const message = err.message || '';
@@ -52,6 +57,7 @@
     function controls() {
       panel.hidden = !readyOperation() && !project && !panel.open;
       $('prepare').disabled = busy || !readyOperation();
+      if ($('planned')) { $('planned').hidden = !plannedLabels().length; $('planned').disabled = busy || !readyOperation(); }
       $('file').disabled = busy;
       $('workspace').hidden = !project;
       $('add').disabled = busy || !project || project.labels.length >= engine.MAX_LABELS;
@@ -91,6 +97,11 @@
       const label = currentLabel();
       invalidFields.clear();
       $('content').value = label?.text || '';
+      if ($('placement-hint')) {
+        const hint = plannedHints.get(label?.id);
+        $('placement-hint').hidden = !hint;
+        $('placement-hint').textContent = hint ? `Placement souhaité : ${hint}. Clique sur l’image pour placer ce texte ; la position initiale est provisoire.` : '';
+      }
       $('count').textContent = `${Array.from($('content').value).length} / ${engine.MAX_TEXT_LENGTH} caractères`;
       $('x').value = label ? Math.round(label.x * 10000) / 100 : '';
       $('y').value = label ? Math.round(label.y * 10000) / 100 : '';
@@ -158,7 +169,7 @@
       $('source').textContent = `Original : ${project.source.width} × ${project.source.height} pixels · opération ${project.source.operationId}`;
       panel.open = true; renderList(); renderFields(); paint();
     }
-    async function prepare() {
+    async function prepare(labels = []) {
       const op = readyOperation();
       if (busy || !op || !replaceAllowed()) return;
       const { token, signal } = start('Lecture et vérification de l’original archivé…');
@@ -173,9 +184,14 @@
         if (blob.size > maxBytes) throw new Error('Cette image est trop volumineuse pour le projet éditable.');
         const dataUrl = await toDataUrl(blob);
         if (stale(token)) return;
-        const candidate = engine.create({ operationId: op.id, sha256: op.artifact.sha256.toLowerCase(),
+        let candidate = engine.create({ operationId: op.id, sha256: op.artifact.sha256.toLowerCase(),
           width: op.artifact.width, height: op.artifact.height, dataUrl });
+        if (labels.length) candidate = engine.validate({ ...candidate, labels: labels.map((label, index) => ({
+          id: `planned-${index}`, text: label.text, x: .08, y: .08 + index * .84 / labels.length,
+          fontSize: Math.max(12, Math.min(40, Math.round(op.artifact.width / 40))), color: '#ffffff', background: '#162231', align: 'left'
+        })) });
         await install(candidate, token, false);
+        if (!stale(token)) { plannedHints = new Map(labels.map((label, index) => [`planned-${index}`, label.placement || 'à choisir sur le rendu'])); dirty = !!labels.length; renderFields(); }
       } catch (err) { fail(err, token); } finally { finish(token); }
     }
     async function importFile() {
@@ -188,6 +204,7 @@
         if (stale(token)) return;
         const candidate = engine.parse(json);
         await install(candidate, token, true);
+        if (!stale(token)) { plannedHints.clear(); renderFields(); }
       } catch (err) { fail(err, token); } finally { finish(token); }
     }
     function download(blob, extension) {
@@ -243,7 +260,8 @@
       error('L’éditeur de textes ne peut pas être chargé. Recharge la page.');
       return { refresh() {}, destroy() {} };
     }
-    listen($('prepare'), 'click', prepare); listen($('file'), 'change', importFile);
+    listen($('prepare'), 'click', () => prepare()); listen($('file'), 'change', importFile);
+    if ($('planned')) listen($('planned'), 'click', () => prepare(plannedLabels()));
     listen($('add'), 'click', add); listen($('delete'), 'click', remove);
     listen($('label'), 'change', () => { selected = $('label').value; error(); renderFields(); paint(); });
     listen($('content'), 'input', () => {

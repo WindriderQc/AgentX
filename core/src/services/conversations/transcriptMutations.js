@@ -163,7 +163,7 @@ async function erase() {
       await fence.mutate(() => mongoose.connection.collection('conversation_work_states').updateMany(
         { conversationId: String(candidate._id) }, { $set: { erased: true, state: 'cancelled' },
           $unset: Object.fromEntries(['conversationId', 'sessionId', 'turnId', 'exchangeId', 'requestSha256',
-            'contextRef', 'guardian', 'result', 'tools', 'events', 'delivery', 'reason', 'classification'].map(key => [key, ''])) }, acknowledged));
+            'contextRef', 'guardian', 'result', 'tools', 'nativeAdmissions', 'events', 'delivery', 'reason', 'classification'].map(key => [key, ''])) }, acknowledged));
       await store.eraseTranscript(candidate._id, { fence });
       returned = saved;
       deletedCount++;

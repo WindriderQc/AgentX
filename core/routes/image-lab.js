@@ -18,7 +18,14 @@ const options = { extensions: ['html', 'json'], dotfiles: 'deny', redirect: fals
 const lotsRoot = () => process.env.IMAGE_ARCHIVE_DIR ? path.join(path.resolve(process.env.IMAGE_ARCHIVE_DIR), 'atelier-tests') : null;
 const liveSources = () => ({ listActive: require('../src/services/runtimeCoordinationService').listActive,
   hosts: require('../src/helpers/ollamaHostConfig').getConfiguredHosts,
-  gpus: require('../src/services/gpuTelemetryService').getGpuTelemetryForHosts });
+  gpus: require('../src/services/gpuTelemetryService').getGpuTelemetryForHosts,
+  workshop: require('../src/services/images/workshopPresentation').overview });
+
+// Which machine and recipes serve image requests today, so the lab's drawing never names a retired host.
+function production({ workshop }) {
+  try { const view = workshop(); return { imageWorker: view.worker, imageRecipes: view.profiles.map(({ id, steps }) => ({ id, steps })) }; }
+  catch { return {}; }
+}
 
 // Fresh readings from Core's GPU collector replace the mirrored ones, host by host. A host without
 // a collector, or with a stale sample, keeps its mirrored reading and that reading's own date.
@@ -101,7 +108,7 @@ function createRouter({ code = CODE, data = dataRoot, lots = lotsRoot, sources =
       const deposited = lotGroups(lots());
       const live = sources();
       res.json({ ...snapshot, groups: [...snapshot.groups, ...deposited], revision: `${snapshot.revision}-${deposited.length}`,
-        servedAt: new Date().toISOString(), core: await occupancy(live), fleet: await liveFleet(snapshot.fleet, live) });
+        servedAt: new Date().toISOString(), core: await occupancy(live), fleet: await liveFleet(snapshot.fleet, live), ...production(live) });
     } catch { res.status(503).json({ error: 'status_unavailable' }); }
   });
   router.use('/lots', (req, res, next) => {

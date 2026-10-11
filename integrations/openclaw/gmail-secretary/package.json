@@ -1,6 +1,6 @@
 {
   "name": "@agentx/openclaw-gmail-secretary",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Nestor-only Gmail secretary tools backed by the gog CLI.",
   "type": "module",
   "files": [

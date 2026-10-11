@@ -269,6 +269,41 @@ describe('ring buffer and since', () => {
     expect(monitor.messages({ topic: 'sensors/#' }).messages).toEqual([]);
   });
 
+  test('exclude leaves matching topics out, before the limit, and counts each one once', () => {
+    const { monitor } = filled(10, { bufferSize: 50 });
+    // Odd sequences are esp32/kitchen/state, even ones liveData/iss.
+    let result = monitor.messages({ exclude: 'esp32/#' });
+    expect(seqs(result)).toEqual([2, 4, 6, 8, 10]);
+    expect(result).toMatchObject({ exclude: 'esp32/#', excludedCount: 5, topic: '#' });
+    expect(monitor.messages()).toMatchObject({ exclude: null, excludedCount: 0 });
+    expect(monitor.messages({ exclude: '' })).toMatchObject({ exclude: null, excludedCount: 0 });
+    // With `since`, pages add up: nothing past nextSince is counted early.
+    result = monitor.messages({ since: 0, exclude: 'esp32/+/state', limit: 2 });
+    expect(seqs(result)).toEqual([2, 4]);
+    expect(result).toMatchObject({ more: true, nextSince: 4, excludedCount: 2 });
+    result = monitor.messages({ since: 4, exclude: 'esp32/+/state', limit: 2 });
+    expect(seqs(result)).toEqual([6, 8]);
+    expect(result).toMatchObject({ more: true, nextSince: 8, excludedCount: 2 });
+    result = monitor.messages({ since: 8, exclude: 'esp32/+/state', limit: 2 });
+    expect(seqs(result)).toEqual([10]);
+    expect(result).toMatchObject({ more: false, nextSince: 10, excludedCount: 1 });
+    // Only messages the topic filter keeps are counted as excluded.
+    expect(monitor.messages({ since: 0, topic: 'liveData/#', exclude: 'esp32/#' })).toMatchObject({ excludedCount: 0 });
+    expect(monitor.messages({ since: 0, topic: 'esp32/#', exclude: 'esp32/kitchen/#' })).toMatchObject({ messages: [], excludedCount: 5, nextSince: 10 });
+    // `a/#` also excludes `a` itself; a different device is kept.
+    const { monitor: other, client } = connectedMonitor({ bufferSize: 10 });
+    for (const topic of ['esp32/alive/ESP_SYNTH01', 'esp32/alive', 'esp32/alivex/1', 'esp32/data/ESP_SYNTH01']) client.emit('message', topic, Buffer.from('1'), {});
+    expect(other.messages({ exclude: 'esp32/alive/#' }).messages.map((message) => message.topic)).toEqual(['esp32/alivex/1', 'esp32/data/ESP_SYNTH01']);
+  });
+
+  test('exclude follows the topic filter rules and is refused when misplaced', () => {
+    const { monitor } = filled(3);
+    for (const bad of ['esp32/#/x', 'esp32/a+', 'x'.repeat(257), ['a'], 5]) {
+      expect(() => monitor.messages({ exclude: bad })).toThrow(expect.objectContaining({ statusCode: 400, message: expect.stringMatching(/^exclude: /) }));
+    }
+    expect(() => monitor.messages({ exclude: 'esp32/#/x' })).toThrow('exclude: in a topic filter, # must be alone in the last level');
+  });
+
   test('a since from before a restart starts again from the buffer', () => {
     const { monitor } = filled(3);
     const result = monitor.messages({ since: 900 });
@@ -402,6 +437,10 @@ describe('routes', () => {
     const bad = await request(app).get('/api/v1/mqtt/messages?since=nope').expect(400);
     expect(bad.body).toEqual({ status: 'error', message: 'since must be a non-negative integer' });
     await request(app).get('/api/v1/mqtt/messages?topic=esp32/%23/x').expect(400);
+    const excluded = await request(app).get('/api/v1/mqtt/messages?exclude=esp32/alive/%23').expect(200);
+    expect(excluded.body.data).toMatchObject({ exclude: 'esp32/alive/#', excludedCount: 0 });
+    const badExclude = await request(app).get('/api/v1/mqtt/messages?exclude=esp32/%23/x').expect(400);
+    expect(badExclude.body).toEqual({ status: 'error', message: 'exclude: in a topic filter, # must be alone in the last level' });
 
     const invalid = await request(app).post('/api/v1/mqtt/publish').send({ topic: 'esp32/+', payload: 'x' }).expect(400);
     expect(invalid.body.message).toBe('topic must not contain the wildcards # or +');

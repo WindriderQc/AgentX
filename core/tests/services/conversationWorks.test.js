@@ -169,6 +169,29 @@ test.each(['completed', 'failed', 'cancelled'])('native-only work settled as %s 
   expect(tasks.list).not.toHaveBeenCalled();
 });
 
+test.each(['completed', 'failed', 'cancelled'])('a native guardian settling as %s after recovery reconciles its original intake without replay', async state => {
+  let at = new Date();
+  works = createConversationWorks({ conversations, tasks, env, nativeOnly: () => true, now: () => at });
+  const accepted = await works.intake(input('Consult the mailbox specialist.'));
+  await works.prepare(accepted.row._id, 'Native specialist policy');
+  const sessionKey = 'agent:main:household:direct:' + current.sessionId, runId = native();
+  await works.guardianStarted(accepted.row._id, sessionKey, runId);
+  at = new Date(at.getTime() + 61000);
+  await works.recover();
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ state: 'uncertain', guardian: { state: 'running', sessionKey, runId } });
+  await works.guardianSettled(accepted.row._id, state);
+  await works.recover();
+  const execute = jest.fn(), observer = createWorkObserver({ works, env, execute, observe: jest.fn() });
+  await observer.tick(); observer.stop();
+  const row = await works.repo.get(accepted.row._id);
+  expect(row).toMatchObject({ state, reason: '', guardian: { state, sessionKey, runId } });
+  expect(row.attempt).toBeUndefined();
+  expect(row.result).toBeUndefined();
+  expect((await exchanges.read(EXCHANGE_SCOPE, accepted.row.exchangeId)).state).toBe('completed');
+  expect(execute).not.toHaveBeenCalled();
+  expect(tasks.list).not.toHaveBeenCalled();
+});
+
 test('a cancelled unclassified guardian cannot be resurrected as a worker answer', async () => {
   const accepted = await works.intake(input('Explain this question.'));
   await works.prepare(accepted.row._id, 'context');
@@ -314,11 +337,209 @@ test('erasing an admitted work preserves the native fence until its exact termin
   expect(execute).not.toHaveBeenCalled();
 });
 
-test('the real Household HTTP handler commits intake before its guardian adapter and reuses its canonical turn on duplicate', async () => {
+async function personalHttp(executeConversation, warmup = null) {
   const packs = require('../../surfaces/household/packs'), prompt = require('../../surfaces/household/persona-prompt');
   const records = require('../../surfaces/household/persona-records'), pack = packs.packById('personal_operator');
   current = await conversations.updateSession({ sessionId: current.sessionId }, { $set: { modeId: pack.defaultMode,
     persona: { id: 'nestor', version: 1, name: 'Nestor', identity: 'Synthetic personality.', voice: {} }, voice: { language: 'auto' } } });
+  works.guardianInstructions = require('../../surfaces/household/conversation-work-runtime').GUARDIAN;
+  const handler = require('../../surfaces/household/persona-turn').createPersonaTurnHandler({
+    runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: env, conversationWorks: works, warmup,
+    executeConversation, requireNativeAgent: async () => {}, familyTasks: { listProfiles: async () => ({ profiles: [] }), listProfileDetails: async () => ({ profiles: [] }) },
+    ownerMemory: {}, familyMemory: {}, notesFor: () => ({ search: async () => ({ notes: [] }), record: async () => ({}) }),
+    personalAttachments: () => ({ prepare: async messages => messages.map(({ attachments, ...message }) => message) }),
+    knowledgeState: { config: null, status: { status: 'disabled', corpusFingerprint: null } },
+    openHold: {}, openingPayload: () => ({}), sounds: { select: () => null, get: () => null }, visuals: { sources: () => [] },
+    brain: { cancel() {}, schedule() { throw new Error('Legacy review must not duplicate this accepted work'); }, contextFor: () => '' },
+    activePersonaTurns: new Map(), validClientTurnId: id => /^[a-zA-Z0-9-]{16,80}$/.test(id),
+    envelope: (res, data, status = 200) => res.status(status).json({ ok: true, data }),
+    fail: (res, status, message, code) => res.status(status).json({ message, code }),
+    cleanText: (value, max = 4000) => String(value || '').trim().slice(0, max),
+    assessSafety: prompt.assessSafety, childBoundaryReply: prompt.childBoundaryReply, escalationReply: prompt.escalationReply,
+    detectMemoryRequest: prompt.detectMemoryRequest, packById: packs.packById, packSummary: packs.packSummary, modeSummary: packs.modeSummary,
+    publicSession: records.publicSession, systemPromptFor: prompt.systemPromptFor, spokenReplyLanguage: prompt.spokenReplyLanguage,
+    sessionHistoryMessages: records.sessionHistoryMessages, loadSessionAuditRows: records.loadSessionAuditRows,
+    MEMORY_RECALL_LIMIT: prompt.MEMORY_RECALL_LIMIT, PERSONAL_OPERATOR_SURFACE_CONTRACT: packs.PERSONAL_OPERATOR_SURFACE_CONTRACT,
+    VOIX_FAMILY_PACK_ID: 'kidx_nestor' });
+  const app = express(); app.use(express.json()); app.post('/sessions/:sessionId/turns/text', (req, res) => handler(req, res, 'private'));
+  return app;
+}
+
+function nativeProof(attempt, answer = 'Lecture confirmée par la Secrétaire.') {
+  return { ok: true, authority: 'openclaw.nestor', operation: 'turn', runId: attempt.runId, sessionKey: attempt.sessionKey,
+    run: { runId: attempt.runId, sessionKey: attempt.sessionKey, status: 'completed' },
+    answer: { status: 'ready', runId: attempt.runId, text: answer, deliveredBy: 'announce:requester-settle:synthetic' },
+    progress: [{ tool: 'sessions_spawn', agentId: 'secretary' }], receipts: [],
+    toolChecks: { status: 'observed', runId: attempt.runId, completedTools: ['sessions_spawn', 'sessions_yield'], loop: null } };
+}
+
+test.each(['Résume mes courriels récents.', 'Est-ce que l’équipe de hockey joue ce soir?'])('real voice HTTP accepts %s and keeps the guardian available while its native owner is held', async text => {
+  const { requestsSecretaryRead } = require('../../surfaces/household/native-specialist-policy');
+  const { requestsWebRead } = require('../../surfaces/household/native-web-policy');
+  const web = requestsWebRead(text), resultText = web ? 'Résultat vérifié à la source.' : 'Lecture confirmée par la Secrétaire.';
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: text => requestsSecretaryRead(text) || requestsWebRead(text) });
+  const foreground = jest.fn(async body => {
+    expect(body.session.sessionId).toBe(current.sessionId);
+    expect(body.channel).toBe('voice');
+    expect(body.turnContext).toContain('running');
+    await body.onSettled();
+    return { text: 'Je t’entends.', sessionKey: 'agent:main:household:direct:' + current.sessionId,
+      tools: { status: 'observed', receipts: [] }, metadata: {} };
+  });
+  const execute = require('../../surfaces/household/conversation-executor').createConversationExecutor({ agentClient: foreground, env });
+  let releaseWarmup;
+  const warming = new Promise(resolve => { releaseWarmup = resolve; });
+  const app = await personalHttp(execute, { noteTurn() {}, settled: () => warming });
+  const turnId = randomUUID();
+  const body = { text, turnId, channel: 'voice', stream: true };
+  const first = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body).timeout(2000);
+  expect(first.status).toBe(200);
+  const done = first.text.trim().split('\n').map(JSON.parse).at(-1).data;
+  expect(done.reply.text).toContain('Tu peux continuer à me parler');
+  expect(foreground).not.toHaveBeenCalled();
+  expect(await conversations.getTurn({ sessionId: current.sessionId, traceId: turnId })).toMatchObject({
+    inputText: text, outcome: 'completed', model: '', routingSource: 'core.conversation-works' });
+  const duplicate = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body);
+  expect(duplicate.status).toBe(202);
+  releaseWarmup();
+  let release, started, proof;
+  const held = new Promise(resolve => { release = resolve; });
+  const dispatched = new Promise(resolve => { started = resolve; });
+  const nativeRuntime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  const background = jest.fn(async ({ row, onStarted }) => {
+    expect(row.attempt.agentId).toBe('main');
+    expect(row.attempt.sessionKey).toMatch(/^agent:main:household:direct:/);
+    expect(row.attempt.sessionId).not.toBe(current.sessionId);
+    const runId = native();
+    await onStarted(row.attempt.sessionKey, runId);
+    proof = nativeProof({ ...row.attempt, runId }, resultText);
+    if (web) {
+      proof.toolChecks.completedTools = ['web_search'];
+      proof.progress = [{ tool: 'web_search' }];
+      delete proof.answer.deliveredBy;
+    }
+    started(); await held;
+  });
+  const observer = createWorkObserver({ works, env, agentFor: () => 'main', execute: background,
+    observe: async () => proof, receive: nativeRuntime.receive });
+  const running = observer.tick(); await dispatched;
+  try {
+    // A later conversational turn goes through the guardian, independent of
+    // the held boss promise and its native session.
+    const followup = await request(app).post(`/sessions/${current.sessionId}/turns/text`)
+      .send({ text: 'Bonjour.', turnId: randomUUID(), channel: 'voice', stream: true }).timeout(2000);
+    expect(followup.status).toBe(200);
+    expect(foreground).toHaveBeenCalledTimes(1);
+    expect(background).toHaveBeenCalledTimes(1);
+    const work = await works.repo.get(hash(current.sessionId + '\n' + turnId));
+    expect(work.state).toBe('running'); expect(work.result).toBeUndefined();
+    await expect(works.contextForWorker({ agentId: 'main', sessionKey: work.attempt.sessionKey, runId: work.attempt.runId }))
+      .rejects.toMatchObject({ statusCode: 404 });
+  } finally { release(); await running; observer.stop(); }
+  const work = await works.repo.get(hash(current.sessionId + '\n' + turnId));
+  expect(work).toMatchObject({ state: 'completed', result: { version: 1 }, attempt: { terminal: 'completed' } });
+  const restored = createConversationWorks({ conversations, tasks, env });
+  expect((await createWorkDelivery(restored).snapshot(current.sessionId)).items.find(item => item.id === work._id).result)
+    .toMatchObject({ text: resultText, presentation: 'available' });
+  expect(tasks.list).not.toHaveBeenCalled();
+});
+
+test('a native web answer needs a successful same-run web result; discovery alone cannot publish it', async () => {
+  const { requestsWebRead } = require('../../surfaces/household/native-web-policy');
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: requestsWebRead });
+  const accepted = await works.intake(input('What is the weather today?'));
+  await works.prepare(accepted.row._id, 'Selected context');
+  const attempt = { id: randomUUID(), sessionId: randomUUID(), agentId: 'main', runId: native() };
+  attempt.sessionKey = 'agent:main:household:direct:' + attempt.sessionId;
+  const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture' }));
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  const proof = nativeProof(attempt, 'Checked forecast.');
+  proof.progress = [{ tool: 'tool_search' }]; proof.toolChecks.completedTools = ['tool_search'];
+  delete proof.answer.deliveredBy;
+  expect(await runtime.receive({ row, evidence: proof })).toBeNull();
+  expect((await works.repo.get(row._id)).result).toBeUndefined();
+  proof.progress = [{ tool: 'web_fetch' }]; proof.toolChecks.completedTools = ['web_fetch'];
+  expect(await runtime.receive({ row, evidence: { ...proof, toolChecks: { ...proof.toolChecks, runId: native() } } })).toBeNull();
+  expect(await runtime.receive({ row, evidence: proof })).toEqual({ published: true });
+  const stored = await works.repo.get(row._id);
+  expect((await works.repo.read(stored, stored.result.payloadRef)).text).toBe('Checked forecast.');
+});
+
+test('lost native dispatch response discovers the same run, waits for a yielded specialist and receives its result after restart without replay', async () => {
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: () => true });
+  const accepted = await works.intake(input('Résume mes courriels récents.'));
+  await works.prepare(accepted.row._id, 'Selected context');
+  const runId = native(); let ready = false;
+  const continuity = jest.fn(async request => {
+    if (request.operation === 'work_attempt') return { runId, sessionKey: request.sessionKey };
+    const proof = nativeProof({ runId, sessionKey: request.sessionKey });
+    if (!ready) proof.answer = { status: 'yielded', runId };
+    return proof;
+  });
+  const nativeRuntime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations, continuity });
+  const execute = jest.fn(async () => { throw new Error('Response lost before run identity arrived'); });
+  const first = createWorkObserver({ works, env, execute, agentFor: () => 'main',
+    observe: nativeRuntime.observe, receive: nativeRuntime.receive });
+  await first.tick(); first.stop();
+  const retained = await works.repo.get(accepted.row._id);
+  expect(retained.attempt.runId).toBe(runId); expect(retained.result).toBeUndefined();
+  expect(await mongoose.connection.collection('conversation_work_dispatch').findOne({ _id: OWNER })).toMatchObject({ workId: retained._id });
+  ready = true;
+  const restarted = createWorkObserver({ works, env, execute, agentFor: () => 'main',
+    observe: nativeRuntime.observe, receive: nativeRuntime.receive });
+  await restarted.tick(); await restarted.tick(); restarted.stop();
+  expect(execute).toHaveBeenCalledTimes(1);
+  const completed = await works.repo.get(retained._id);
+  expect(completed.state).toBe('completed');
+  const published = await works.publishNative(retained._id, nativeProof(completed.attempt));
+  expect(published.deliveryId).toBe(completed.delivery.id);
+  await expect(works.publishNative(retained._id, nativeProof(completed.attempt, 'Changed result'))).rejects.toMatchObject({ statusCode: 409 });
+  expect((await exchanges.read(EXCHANGE_SCOPE, completed.exchangeId)).state).toBe('completed');
+});
+
+test('a foreign native result, missing consultation proof and restricted worker credentials cannot publish a specialist answer', async () => {
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: () => true });
+  const accepted = await works.intake(input('Résume mes courriels récents.'));
+  await works.prepare(accepted.row._id, 'Selected context');
+  const attempt = { id: randomUUID(), sessionId: randomUUID(), agentId: 'main', runId: native() };
+  attempt.sessionKey = 'agent:main:household:direct:' + attempt.sessionId;
+  const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture' }));
+  await expect(works.publishNative(row._id, nativeProof({ ...attempt, runId: native() }))).rejects.toMatchObject({ statusCode: 409 });
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  expect(await runtime.receive({ row, evidence: { ...nativeProof(attempt), progress: [{ tool: 'sessions_spawn', agentId: 'other' }] } })).toBeNull();
+  await expect(works.publish({ agentId: 'main', sessionKey: attempt.sessionKey, runId: attempt.runId },
+    { kind: 'answer', text: 'Invented', receiptIds: [] })).rejects.toMatchObject({ statusCode: 404 });
+  expect((await works.repo.get(row._id)).result).toBeUndefined();
+});
+
+test('a specialist read remains queued when its guardian is interrupted; observe mode retains the original native path', async () => {
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: () => true, nativeOnly: () => true });
+  const accepted = await works.intake(input('Résume mes courriels récents.'));
+  await works.prepare(accepted.row._id, 'Selected context');
+  await works.guardianSettled(accepted.row._id, 'cancelled');
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ classification: 'native_read', state: 'queued', guardian: { state: 'cancelled' } });
+  const observe = createConversationWorks({ conversations, tasks, env: { ...env, PERSONAL_CONVERSATION_WORK_MODE: 'observe' },
+    nativeRead: () => true, nativeOnly: () => true });
+  expect((await observe.intake(input('Résume mes courriels récents.'))).row.classification).toBe('native_only');
+});
+
+test('a combined specialist consultation and task lookup retains the existing actual-task-read requirement', async () => {
+  works = createConversationWorks({ conversations, tasks, env, nativeRead: () => true });
+  const accepted = await works.intake(input('Consulte la secrétaire et regarde mes tâches.'));
+  await works.prepare(accepted.row._id, 'Selected context');
+  const attempt = { id: randomUUID(), sessionId: randomUUID(), agentId: 'main', runId: native() };
+  attempt.sessionKey = 'agent:main:household:direct:' + attempt.sessionId;
+  const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture' }));
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  const proof = nativeProof(attempt);
+  expect(await runtime.receive({ row, evidence: proof })).toBeNull();
+  expect((await works.repo.get(row._id)).result).toBeUndefined();
+  proof.toolChecks.completedTools.push('list_personal_tasks');
+  expect(await runtime.receive({ row, evidence: proof })).toEqual({ published: true });
+  expect((await works.repo.get(row._id)).result.version).toBe(1);
+});
+
+test('the real Household HTTP handler commits intake before its guardian adapter and reuses its canonical turn on duplicate', async () => {
   const turnId = randomUUID(), calls = [];
   const executeConversation = require('../../surfaces/household/conversation-executor').createConversationExecutor({
     env, inference: {}, agentClient: async body => {
@@ -337,26 +558,7 @@ test('the real Household HTTP handler commits intake before its guardian adapter
       return { text: 'Je m’en occupe.', sessionKey, runId, metadata: { model: 'synthetic-native' },
         tools: { status: 'observed', receipts: [{ tool: 'conversation_work', status: 'verified', runId, acceptedWork: { id: accepted.id } }], runId } };
     } });
-  works.guardianInstructions = require('../../surfaces/household/conversation-work-runtime').GUARDIAN;
-  const handler = require('../../surfaces/household/persona-turn').createPersonaTurnHandler({
-    runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: env, conversationWorks: works,
-    executeConversation, requireNativeAgent: async () => {}, familyTasks: { listProfiles: async () => ({ profiles: [] }), listProfileDetails: async () => ({ profiles: [] }) },
-    ownerMemory: {}, familyMemory: {}, notesFor: () => ({ search: async () => ({ notes: [] }), record: async () => ({}) }),
-    personalAttachments: () => ({ prepare: async messages => messages.map(({ attachments, ...message }) => message) }),
-    knowledgeState: { config: null, status: { status: 'disabled', corpusFingerprint: null } },
-    openHold: {}, openingPayload: () => ({}), sounds: { select: () => null, get: () => null }, visuals: { sources: () => [] },
-    brain: { cancel() {}, schedule() { throw new Error('Legacy review must not duplicate this accepted work'); }, contextFor: () => '' },
-    activePersonaTurns: new Map(), validClientTurnId: id => /^[a-zA-Z0-9-]{16,80}$/.test(id),
-    envelope: (res, data, status = 200) => res.status(status).json({ ok: true, data }),
-    fail: (res, status, message, code) => res.status(status).json({ message, code }),
-    cleanText: (value, max = 4000) => String(value || '').trim().slice(0, max),
-    assessSafety: prompt.assessSafety, childBoundaryReply: prompt.childBoundaryReply, escalationReply: prompt.escalationReply,
-    detectMemoryRequest: prompt.detectMemoryRequest, packById: packs.packById, packSummary: packs.packSummary, modeSummary: packs.modeSummary,
-    publicSession: records.publicSession, systemPromptFor: prompt.systemPromptFor, spokenReplyLanguage: prompt.spokenReplyLanguage,
-    sessionHistoryMessages: records.sessionHistoryMessages, loadSessionAuditRows: records.loadSessionAuditRows,
-    MEMORY_RECALL_LIMIT: prompt.MEMORY_RECALL_LIMIT, PERSONAL_OPERATOR_SURFACE_CONTRACT: packs.PERSONAL_OPERATOR_SURFACE_CONTRACT,
-    VOIX_FAMILY_PACK_ID: 'kidx_nestor' });
-  const app = express(); app.use(express.json()); app.post('/sessions/:sessionId/turns/text', (req, res) => handler(req, res, 'private'));
+  const app = await personalHttp(executeConversation);
   const body = { text: 'Regarde mes tâches.', turnId, stream: true, channel: 'voice', readAcceptedTaskWork: { forged: true } };
   const first = await request(app).post(`/sessions/${current.sessionId}/turns/text`).send(body);
   expect(first.status).toBe(200);
@@ -397,4 +599,59 @@ test('flag off recovers an accepted exchange interrupted before work insertion w
   expect(retained).toMatchObject({ duplicate: true, row: { exchangeId: receipt._id, mode: 'read', guardian: { state: 'uncertain' } } });
   expect(await conversations.countTurns({ sessionId: current.sessionId })).toBe(1);
   expect(tasks.list).not.toHaveBeenCalled();
+});
+
+async function budgetWork() {
+  const { requestsWebRead } = require('../../surfaces/household/native-web-policy');
+  const options = { conversations, tasks, env, nativeRead: requestsWebRead,
+    nativeBudget: text => requestsWebRead(text) ? { tools: 8, web: 4 } : null };
+  works = createConversationWorks(options);
+  const accepted = await works.intake(input('Est-ce que l’équipe joue ce soir?'));
+  await works.prepare(accepted.row._id, 'Selected personal context');
+  const attempt = { id: randomUUID(), sessionId: randomUUID(), agentId: 'main', runId: native() };
+  attempt.sessionKey = `agent:main:household:direct:${attempt.sessionId}`;
+  const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture_native_started' }));
+  return { row, options, context: { agentId: 'main', sessionKey: attempt.sessionKey, runId: attempt.runId } };
+}
+
+test('native web admissions survive restart, count failed reads and retain the same-call receipt', async () => {
+  const job = await budgetWork();
+  const first = await works.admitNativeTool(job.context, { tool: 'web_search' }, 'first');
+  expect(first.admitted).toBe(true);
+  const restarted = createConversationWorks(job.options);
+  expect(await restarted.admitNativeTool(job.context, { tool: 'web_search' }, 'first')).toEqual(first);
+  await expect(restarted.admitNativeTool(job.context, { tool: 'web_fetch' }, 'first')).rejects.toMatchObject({ statusCode: 409 });
+  for (let i = 0; i < 3; i++) expect((await restarted.admitNativeTool(job.context, { tool: 'web_fetch' }, `different-url-${i}`)).admitted).toBe(true);
+  expect((await restarted.admitNativeTool(job.context, { tool: 'web_search' }, 'another-query')).admitted).toBe(false);
+  expect((await restarted.admitNativeTool(job.context, { tool: 'tool_search' }, 'another-capability')).admitted).toBe(false);
+  expect((await works.repo.get(job.row._id)).nativeAdmissions).toHaveLength(4);
+  expect(tasks.list).not.toHaveBeenCalled();
+});
+
+test('native budget fences concurrent calls and the complete discovery budget', async () => {
+  const job = await budgetWork();
+  const admissions = await Promise.all(Array.from({ length: 6 }, (_, i) => works.admitNativeTool(job.context, { tool: 'web_fetch' }, `parallel-${i}`)));
+  expect(admissions.filter(a => a.admitted)).toHaveLength(4);
+  const second = await budgetWork();
+  for (let i = 0; i < 8; i++) expect((await works.admitNativeTool(second.context, { tool: 'tool_search' }, `discovery-${i}`)).admitted).toBe(true);
+  expect((await works.admitNativeTool(second.context, { tool: 'read' }, 'spill-file')).admitted).toBe(false);
+});
+
+test('native budget requires the canonical request and the exact native Main identity', async () => {
+  const job = await budgetWork();
+  for (const patch of [{ agentId: 'family' }, { runId: native() }, { sessionKey: 'foreign' }, { workId: job.row._id }]) {
+    await expect(works.admitNativeTool({ ...job.context, ...patch }, { tool: 'web_fetch' }, 'forged')).rejects.toMatchObject({ statusCode: 404 });
+  }
+  await works.repo.mutate(job.row._id, row => ({ fields: { requestSha256: hash('changed') }, event: 'fixture_corrupt_request' }));
+  await expect(works.admitNativeTool(job.context, { tool: 'web_fetch' }, 'changed')).rejects.toMatchObject({ statusCode: 404 });
+});
+
+test('native budget never grants worker task access, blocks settled work and erases its metadata', async () => {
+  const job = await budgetWork();
+  await works.admitNativeTool(job.context, { tool: 'web_fetch' }, 'actual');
+  await expect(works.readTasks(job.context, {}, 'foreign-role')).rejects.toMatchObject({ statusCode: 404 });
+  await works.repo.mutate(job.row._id, () => ({ fields: { state: 'failed' }, event: 'fixture_settled' }));
+  expect((await works.admitNativeTool(job.context, { tool: 'web_fetch' }, 'actual')).admitted).toBe(false);
+  await conversations.deleteSession({ sessionId: current.sessionId, packId: 'personal_operator', scopeId: 'personal' });
+  expect((await works.repo.getIncludingErased(job.row._id)).nativeAdmissions).toBeUndefined();
 });

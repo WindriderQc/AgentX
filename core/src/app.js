@@ -627,6 +627,7 @@ app.get('/models', (req, res) => {
     ].join('\n'),
     footerJs: [
       '<script src="/js/utils/playground-link.js"></script>',
+      '<script src="/js/models-sorting.js"></script>',
       '<script src="/js/models-unified.js"></script>',
       '<script src="/js/models-unified-popouts.js"></script>',
       '<script src="/js/models-stats-strip.js"></script>',

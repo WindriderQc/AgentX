@@ -49,7 +49,8 @@ See [heavy work](HEAVY_WORK_QUEUE.md).
 Core's `conversationWorks` capability owns durable personal request intake,
 work revisions, native attempt/session identity, verified task-read references,
 results and ordered delivery events. Household composes its guardian and an
-isolated native worker; OpenClaw owns their native loops. A dispatch fence
+isolated native worker, plus isolated native owner sessions for migrated specialist
+reads; OpenClaw owns their native loops. A dispatch fence
 precedes the outbound worker request, and uncertain attempts require exact native
 reconciliation. Work payloads use the existing transcript owner's storage and
 erasure barrier. Browser presentation ownership prevents automatic duplicate
@@ -500,6 +501,13 @@ applies a validated proposal explicitly before normal image creation. Core
 resolves proposal provenance from the completed canonical turn. Read-only
 profile documents and configured routing are disclosed without credentials or
 arbitrary filesystem access. No unfinished consultation is replayed at restart.
+Core validates an optional versioned lettering policy and Hermes text plan,
+preserving user-supplied exact labels. One-pass rendering includes those words;
+two-pass rendering requests blank areas and retains exact-text constraints in
+canonical metadata rather than renderer instructions. The browser preloads
+editable labels onto a verified original, with provisional placement requiring
+human review. This typography pass uses Canvas/SVG and no model. The policy is
+part of request identity, drafts, details and verified recipe exports.
 
 Browser cards read progress and verified completion without re-submitting a
 creation. Resume also reads scoped operations independently of the turn audit,
@@ -815,7 +823,13 @@ with a shell and test tools inside Bubblewrap. The runner keeps credentials
 outside that sandbox, commits completed work and opens a draft pull request.
 Interrupted work stays committed locally for continuation. Core admits model
 calls; only proven admission refusals wait and retry. Review and normal PR CI
-are the acceptance gate. See [the coding worker](../integrations/coding/README.md).
+are the acceptance gate. The disabled-by-default
+[autonomous correction loop](CODING_AUTONOMY.md) keeps selection, explicit task
+scope, cumulative budgets and linked executions in Core. Its runner handles one
+leased turn, journals publication before effects and reconciles lost responses
+without relaunch. Exact-commit GitHub observations produce bounded corrections
+or ready-for-human-review; native model completion and capacity release remain
+separate gates. See [the coding worker](../integrations/coding/README.md).
 
 Nerve Center reads `live.gpuHealth` from the existing host-preference endpoint;
 HTTP reachability stays separate from pin GPU residency. Benchmark's bounded

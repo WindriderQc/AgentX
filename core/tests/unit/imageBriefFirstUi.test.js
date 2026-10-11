@@ -62,7 +62,7 @@ test('the specialist conversation remains outside the brief form with unique adv
 });
 test('references, constraints, sketch and generation keep their place after the format', () => {
   const form = imageFormSegment(page);
-  for (const id of ['image-constraints', 'image-layout-guide', 'image-seed', 'image-starter']) {
+  for (const id of ['image-constraints', 'image-text-policy', 'image-layout-guide', 'image-seed', 'image-starter']) {
     expect(form.indexOf(id)).toBeGreaterThan(form.indexOf('id="image-size"'));
   }
   for (const id of ['image-gallery', 'image-search', 'image-text-editor', 'image-compare']) {

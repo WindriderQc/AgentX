@@ -14,9 +14,12 @@ const MQTT_MAX_TOPIC_BYTES = 256;
 const MQTT_MAX_PAYLOAD_BYTES = 4096;
 const MQTT_LONG_PAYLOAD = 200;
 const MQTT_QUICK_FILTERS = Object.freeze(['#', 'esp32/#', 'liveData/#', 'sensors/#']);
+// The ESP32 heartbeat: one message per device per second, which would fill
+// most of the list. Hidden by default; Data applies the exclusion.
+const MQTT_HEARTBEAT_FILTER = 'esp32/alive/#';
 
 const mqttState = {
-  status: null, rows: [], since: null, lastSeq: 0, epoch: null, filter: '#', filterError: '', paused: false,
+  status: null, rows: [], since: null, lastSeq: 0, epoch: null, filter: '#', filterError: '', paused: false, hideHeartbeats: true, hidden: 0,
   notice: '', streamError: '', loaded: false, busy: false, timer: null, open: new Set(),
   sending: false, outcome: null, draft: { topic: 'esp32/', payload: '', retain: false }
 };
@@ -78,9 +81,11 @@ function mqttStatusSection() {
 
 function mqttControls() {
   const shown = `${number(mqttState.rows.length)} message${mqttState.rows.length === 1 ? '' : 's'} shown`;
+  const hidden = !mqttState.hideHeartbeats ? ''
+    : ` · ${number(mqttState.hidden)} heartbeat message${mqttState.hidden === 1 ? '' : 's'} hidden (<span class="mono">${e(MQTT_HEARTBEAT_FILTER)}</span>)`;
   return `<button type="button" class="button" data-mqtt-action="pause" aria-pressed="${mqttState.paused}">${mqttState.paused ? 'Resume' : 'Pause'}</button>
     <button type="button" class="button" data-mqtt-action="clear">Clear</button>
-    <span class="muted">${shown} · filter <span class="mono">${e(mqttState.filter)}</span> · ${mqttState.paused
+    <span class="muted">${shown} · filter <span class="mono">${e(mqttState.filter)}</span>${hidden} · ${mqttState.paused
     ? '<strong class="warn">paused</strong>: nothing is read until Resume, Data keeps its own buffer'
     : `read every ${MQTT_POLL_MS / 1000} s while this tab is open and visible`}</span>`;
 }
@@ -149,16 +154,17 @@ function mqttPaintStream() {
 async function mqttReadNew(seq) {
   for (let read = 0; read < MQTT_READS_PER_POLL; read++) {
     const query = new URLSearchParams({ limit: String(MQTT_MAX_ROWS), topic: mqttState.filter });
+    if (mqttState.hideHeartbeats) query.set('exclude', MQTT_HEARTBEAT_FILTER);
     if (mqttState.since !== null) query.set('since', String(mqttState.since));
-    const filter = mqttState.filter;
+    const filter = `${mqttState.filter}|${mqttState.hideHeartbeats}`;
     const result = await mqttSettled(api(`/mqtt/messages?${query}`));
-    if (seq !== state.renderSeq || state.tab !== 'mqtt' || filter !== mqttState.filter) return false;
+    if (seq !== state.renderSeq || state.tab !== 'mqtt' || filter !== `${mqttState.filter}|${mqttState.hideHeartbeats}`) return false;
     if (result.error) { mqttState.streamError = result.error; return true; }
     const data = result.data || {};
     mqttState.streamError = '';
     if (mqttState.epoch !== null && data.epoch !== mqttState.epoch) {
       // Data restarted: its sequence numbers start again. Read the list anew.
-      Object.assign(mqttState, { epoch: data.epoch, since: null, lastSeq: 0, rows: [], open: new Set(),
+      Object.assign(mqttState, { epoch: data.epoch, since: null, lastSeq: 0, rows: [], hidden: 0, open: new Set(),
         notice: `Data restarted its broker monitor (${mqttClock(data.epoch)}): the list starts again from what it has received since.` });
       continue;
     }
@@ -171,6 +177,8 @@ async function mqttReadNew(seq) {
     const fresh = array(data.messages).filter((message) => message.seq > mqttState.lastSeq).reverse();
     if (fresh.length) mqttState.lastSeq = fresh[0].seq;
     mqttState.rows = [...fresh, ...mqttState.rows].slice(0, MQTT_MAX_ROWS);
+    // Data counts what the exclusion removed from each read, each message once.
+    if (Number.isSafeInteger(data.excludedCount)) mqttState.hidden += data.excludedCount;
     mqttState.since = Number.isSafeInteger(data.nextSince) ? data.nextSince : mqttState.since;
     if (!data.more) break;
   }
@@ -192,6 +200,7 @@ async function mqttTab() {
       <input id="mqttFilterInput" name="topic" class="mono" value="${e(mqttState.filter)}" maxlength="256" autocomplete="off" spellcheck="false" aria-describedby="mqttFilterHelp">
       <button class="button" type="submit">Apply</button>
       ${MQTT_QUICK_FILTERS.map((filter) => `<button type="button" class="button mono" data-mqtt-filter="${e(filter)}">${e(filter)}</button>`).join('')}
+      <label class="mqtt-heartbeats"><input type="checkbox" id="mqttHideHeartbeats" name="hideHeartbeats"${mqttState.hideHeartbeats ? ' checked' : ''}> Hide heartbeats <span class="muted">— the once-a-second <span class="mono">${e(MQTT_HEARTBEAT_FILTER)}</span> messages of the ESP32 devices.</span></label>
     </form>
     <p id="mqttFilterHelp" class="muted mqtt-help">MQTT wildcards: <span class="mono">+</span> stands for one level, <span class="mono">#</span> for everything below. Data applies the filter; the broker's own <span class="mono">$SYS</span> topics are not part of <span class="mono">#</span>.</p>
     <div id="mqttControls" class="mqtt-controls">${mqttControls()}</div>
@@ -247,11 +256,21 @@ async function mqttSetFilter(value) {
   if (mqttState.filterError) { mqttPaint('#mqttNotice', mqttNotices()); return; }
   if (input) input.value = filter;
   // A new filter is a new list: the newest matching messages Data still holds.
-  Object.assign(mqttState, { filter, rows: [], since: null, lastSeq: 0, notice: '', streamError: '', open: new Set() });
+  return mqttRestartList({ filter });
+}
+
+// A new filter or exclusion is a new list, read again from Data's buffer.
+async function mqttRestartList(change) {
+  Object.assign(mqttState, change, { rows: [], hidden: 0, since: null, lastSeq: 0, notice: '', streamError: '', open: new Set() });
   mqttPaintStream();
   if (mqttState.paused) return;
   const seq = state.renderSeq;
   if (await mqttReadNew(seq)) mqttPaintStream();
+}
+
+function mqttSetHideHeartbeats(hide) {
+  if (state.tab !== 'mqtt' || !mqttState.loaded || mqttState.hideHeartbeats === (hide === true)) return;
+  return mqttRestartList({ hideHeartbeats: hide === true });
 }
 
 function mqttTogglePause() {
@@ -264,7 +283,7 @@ function mqttTogglePause() {
 // Clears this page's list only: Data's buffer and the broker are untouched.
 function mqttClear() {
   if (state.tab !== 'mqtt' || !mqttState.loaded) return;
-  Object.assign(mqttState, { rows: [], notice: '', open: new Set() });
+  Object.assign(mqttState, { rows: [], hidden: 0, notice: '', open: new Set() });
   mqttPaintStream();
 }
 
@@ -310,6 +329,10 @@ document.addEventListener('submit', (event) => {
   const fields = event.target.elements;
   if (event.target.id === 'mqttFilter') mqttSetFilter(fields.topic.value);
   else mqttSend({ topic: fields.topic.value, payload: fields.payload.value, retain: fields.retain.checked === true });
+});
+
+document.addEventListener('change', (event) => {
+  if (event.target.id === 'mqttHideHeartbeats') mqttSetHideHeartbeats(event.target.checked === true);
 });
 
 // What is typed survives a full redraw of the tab (Refresh, tab change).

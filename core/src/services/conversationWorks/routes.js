@@ -24,6 +24,7 @@ function registerConversationWorkRoutes(router, { works, env = process.env }) {
     if (operation === 'request') return works.request(context);
     if (operation === 'context') return works.contextForWorker(context);
     if (operation === 'tasks') return works.readTasks(context, input, callId);
+    if (operation === 'native_budget') return works.admitNativeTool(context, input, callId);
     if (operation === 'publish') return works.publish(context, input);
     throw fail('CONVERSATION_WORK_OPERATION_INVALID', 'Unknown work operation.');
   }));

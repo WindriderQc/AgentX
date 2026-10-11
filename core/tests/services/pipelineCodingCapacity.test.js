@@ -113,6 +113,63 @@ test('cancellation racing after reservation prevents the claim and releases only
   expect((await coordination.listActive()).workloads).toHaveLength(0);
 });
 
+test('lost accepted acquisition cancels through its original native receipt and preserves another workload', async () => {
+  await newTask();
+  await coordination.acquireWorkload({ principal: 'other-owner', requestId: 'unrelated-request', workloadId: 'unrelated',
+    kind: 'coding', hosts: ['http://unrelated.test:11434'] });
+  const acquire = coordination.acquireWorkload;
+  jest.spyOn(coordination, 'acquireWorkload').mockImplementationOnce(async input => {
+    await acquire(input); throw new Error('Lost accepted acquisition reply');
+  });
+  await expect(claimEligibleTask('0800', 'worker', new Date(), options)).rejects.toThrow('Lost accepted');
+  expect((await PipelineTask.findOne({ pipelineId: '0800' }).lean()).codingCapacity).toMatchObject({
+    requestId: REQUEST, admissionState: 'acquiring' });
+  await capacity.cancel('0800', REQUEST);
+  expect((await PipelineTask.findOne({ pipelineId: '0800' }).lean()).codingCapacity).toBeUndefined();
+  const state = await RuntimeCoordination.findById('runtime').select('+releaseReceipts').lean();
+  expect(state.workloads).toHaveLength(1); expect(state.workloads[0].workloadId).toBe('unrelated');
+  expect(state.releaseReceipts).toEqual(expect.arrayContaining([expect.objectContaining({ requestId: REQUEST, released: true })]));
+});
+
+test('uncertain acquisition without a native receipt retains the cancelled request and refuses false release', async () => {
+  await newTask(); jest.spyOn(coordination, 'acquireWorkload').mockRejectedValueOnce(new Error('Transport outcome unknown'));
+  await expect(claimEligibleTask('0800', 'worker', new Date(), options)).rejects.toThrow('Transport outcome');
+  await expect(capacity.cancel('0800', REQUEST)).rejects.toMatchObject({ code: 'CODING_CAPACITY_RECOVERY_REQUIRED' });
+  expect((await PipelineTask.findOne({ pipelineId: '0800' }).lean()).codingCapacity).toMatchObject({
+    requestId: REQUEST, admissionState: 'acquiring', cancelled: true });
+  expect((await RuntimeCoordination.findById('runtime').select('+releaseReceipts').lean())?.releaseReceipts || []).toHaveLength(0);
+});
+
+test('acquisition recovery is read-only and refuses a different host or owner, including after native release', async () => {
+  const identity = { principal: 'original-owner', requestId: 'original-request', workloadId: 'original-workload',
+    kind: 'coding', hosts: [HOST] };
+  const original = await coordination.acquireWorkload(identity);
+  await expect(coordination.recoverWorkloadAcquisition({ ...identity, principal: 'another-owner' })).resolves.toMatchObject({ recovered: false });
+  await expect(coordination.recoverWorkloadAcquisition({ ...identity, hosts: ['http://another.test:11434'] })).resolves.toMatchObject({ recovered: false });
+  await expect(coordination.recoverWorkloadAcquisition(identity)).resolves.toMatchObject({ recovered: true,
+    admissionId: original.admissionId, generation: original.generation, released: false });
+  expect((await coordination.listActive()).workloads).toHaveLength(1);
+  await coordination.release('workload', { id: original.admissionId, generation: original.generation, principal: identity.principal });
+  await expect(coordination.recoverWorkloadAcquisition(identity)).resolves.toMatchObject({ recovered: true,
+    admissionId: original.admissionId, generation: original.generation, released: true });
+  expect((await coordination.listActive()).workloads).toHaveLength(0);
+});
+
+test('lost acquisition whose original native receipt is quarantined cannot be declared cancelled', async () => {
+  await newTask(); const acquire = coordination.acquireWorkload;
+  jest.spyOn(coordination, 'acquireWorkload').mockImplementationOnce(async input => {
+    const original = await acquire(input);
+    await RuntimeCoordination.updateOne({ _id: 'runtime', 'workloads.admissionId': original.admissionId },
+      { $set: { 'workloads.$.recoveryState': 'UNKNOWN' } });
+    throw new Error('Lost accepted acquisition reply');
+  });
+  await expect(claimEligibleTask('0800', 'worker', new Date(), options)).rejects.toThrow('Lost accepted');
+  await expect(capacity.cancel('0800', REQUEST)).rejects.toMatchObject({ code: 'CODING_CAPACITY_RECOVERY_REQUIRED' });
+  expect((await PipelineTask.findOne({ pipelineId: '0800' }).lean()).codingCapacity).toMatchObject({
+    requestId: REQUEST, admissionState: 'admitted', cancelled: true });
+  expect((await coordination.listActive()).workloads).toHaveLength(1);
+});
+
 test('only the exact active task, host, artifact and context can borrow the reservation', async () => {
   await newTask();
   const task = await claimEligibleTask('0800', 'worker', new Date(), options);
@@ -147,4 +204,16 @@ test('unknown inference retains capacity and prevents another dispatch even afte
     .rejects.toMatchObject({ code: 'CODING_CAPACITY_RECOVERY_REQUIRED' });
   expect((await coordination.listActive()).workloads).toHaveLength(1);
   await expect(claimEligibleTask('0800', 'worker', new Date(), options)).rejects.toMatchObject({ code: 'TASK_UNAVAILABLE' });
+});
+
+
+test('autonomous capacity outside the approved campaign refuses before acquiring any workload', async () => {
+  await newTask(); await PipelineTask.updateOne({ pipelineId: '0800' }, { $set: { codingAutonomy: { authorized: true } } });
+  const autonomy = require('../../src/services/pipelineCodingAutonomyService');
+  jest.spyOn(autonomy, 'workerManifest').mockResolvedValue({});
+  jest.spyOn(autonomy, 'campaign').mockRejectedValue(Object.assign(new Error('Host outside campaign'), { code: 'CODING_AUTONOMY_QUEUE_WAIT' }));
+  const acquire = jest.spyOn(coordination, 'acquireWorkload');
+  await expect(claimEligibleTask('0800', 'worker', new Date(), options)).rejects.toMatchObject({ code: 'CODING_AUTONOMY_QUEUE_WAIT' });
+  expect(acquire).not.toHaveBeenCalled();
+  expect((await PipelineTask.findOne({ pipelineId: '0800' }).lean()).automationAttemptCount).toBe(0);
 });

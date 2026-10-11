@@ -110,6 +110,7 @@ function register(api) {
     })
   });
   const codingDispatchControl = new CodingDispatchControl({ inferenceStatus: () => pipelineAttribution.status().active });
+  require('../../src/services/pipelineCodingAutonomyService').configureControl(codingDispatchControl);
   const codingPreparation = runtimeServices.pipeline
     ? new CodingTaskPreparation({ pipeline: runtimeServices.pipeline }) : null;
   const codingDeliveryControl = new CodingDeliveryControl({

@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import shlex
 from datetime import datetime, timezone
 from urllib.request import urlopen
 
@@ -70,8 +71,23 @@ def read_receipt(key: str) -> dict | None:
 
 def save_receipt(run: dict) -> None:
     RECEIPTS.mkdir(parents=True, exist_ok=True)
-    (RECEIPTS / f"{run['requestId']}.json").write_text(json.dumps(run))
-    (RECEIPTS / "latest").write_text(run["requestId"])
+    atomic_json(RECEIPTS / f"{run['requestId']}.json", run)
+    atomic_json(RECEIPTS / "latest", run["requestId"], raw=True)
+
+
+def atomic_json(path, value, raw=False):
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=".receipt-", delete=False) as out:
+        out.write(str(value) if raw else json.dumps(value))
+        out.flush()
+        os.fsync(out.fileno())
+        name = out.name
+    os.replace(name, path)
+    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def read_progress(run: dict) -> dict | None:
@@ -82,8 +98,9 @@ def read_progress(run: dict) -> dict | None:
         path = RECEIPTS / f"{key}.progress.json"
         if path.stat().st_size > 65536:
             return None
-        return progress_module.safe_progress(json.loads(path.read_text()), key, run["pipelineId"])
-    except (OSError, ValueError, TypeError):
+        progress = progress_module.safe_progress(json.loads(path.read_text()), key, run["pipelineId"])
+        return progress if progress and (progress["phase"] != "finished" or progress["result"]) else None
+    except (OSError, ValueError, TypeError, AttributeError):
         return None
 
 
@@ -94,14 +111,11 @@ def status(key: str | None = None) -> dict:
     run = read_receipt(key or (latest.read_text().strip() if latest.exists() else ""))
     progress = read_progress(run) if run else None
     current = bool(run and latest.exists() and latest.read_text().strip() == run["requestId"])
-    if run and run["phase"] == "accepted":
+    if run and run["phase"] in {"accepted", "uncertain"}:
         run["phase"] = "running" if busy and current else "finished" if progress and progress["phase"] == "finished" else "unknown"
         run["message"] = ("The coding worker is running." if run["phase"] == "running"
                           else "The coding worker stopped. Read its recorded result." if run["phase"] == "finished"
                           else "The host unit stopped without a terminal receipt. Inspect the task and checkpoint.")
-    elif run and run["phase"] == "uncertain":
-        run["phase"] = "running" if busy and current else "unknown"
-        run["message"] = "Read the task and host unit to reconcile this launch; it will not be started again."
     if key and not run:
         legacy = LEGACY_RECEIPTS / f"{key}.json"
         run = ({**json.loads(legacy.read_text()), "retired": True, "canRetry": False, "canCancel": False,
@@ -127,13 +141,17 @@ def status(key: str | None = None) -> dict:
     }
 
 
-def launch(pipeline_id: str, key: str, expected_attempt_count: int) -> dict:
+def launch(pipeline_id: str, key: str, expected_attempt_count: int, *, autonomous=False) -> dict:
     STATE.mkdir(parents=True, exist_ok=True)
     with (STATE / "coding-dispatcher-control.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         previous = read_receipt(key)
         if previous:
-            if previous["pipelineId"] != pipeline_id:
+            if previous.get('cancelledBeforeLaunch'):
+                if previous['pipelineId'] != pipeline_id:
+                    raise ControlError('CODING_DISPATCH_REQUEST_CONFLICT', 'Cancelled request belongs to another task.')
+                return {'accepted': False, 'replayed': True, 'pipelineId': pipeline_id, 'run': previous}
+            if previous["pipelineId"] != pipeline_id or previous.get("expectedAttemptCount", 0) != expected_attempt_count or bool(previous.get("autonomous")) != autonomous:
                 raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "This request id belongs to a different selection.")
             return {"accepted": True, "replayed": True, "pipelineId": pipeline_id, "run": previous}
         if (LEGACY_RECEIPTS / f"{key}.json").exists():
@@ -143,19 +161,31 @@ def launch(pipeline_id: str, key: str, expected_attempt_count: int) -> dict:
         latest = RECEIPTS / "latest"
         pending = read_receipt(latest.read_text().strip()) if latest.exists() else None
         terminal = read_progress(pending) if pending else None
-        if pending and (pending["phase"] == "uncertain" or
-                        pending["phase"] == "accepted" and not (terminal and terminal["phase"] == "finished")):
+        if pending and pending["phase"] in {"accepted", "uncertain"} and not (
+                terminal and terminal["phase"] == "finished" and
+                (not pending.get("autonomous") or terminal["coreRecorded"])):
             raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "Reconcile the previous launch before starting another task.")
-        if not any(task["pipelineId"] == pipeline_id and can_start(task) for task in queued_tasks()):
+        selected = next((task for task in queued_tasks() if task["pipelineId"] == pipeline_id and can_start(task)), None)
+        if not selected:
             raise ControlError("CODING_DISPATCH_INELIGIBLE", "Only unowned, queued, non-private agentx-coding tasks can start.")
+        if int(selected.get("automationAttemptCount") or 0) != expected_attempt_count:
+            raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "The task attempt changed before launch.")
+        if autonomous:
+            with urlopen(f"{CORE}/api/pipeline/coding-autonomy/tasks/{pipeline_id}/runs/{key}/manifest", timeout=10) as response:
+                manifest = json.load(response)["data"]
+            if manifest.get("requestId") != key or manifest.get("pipelineId") != pipeline_id:
+                raise ControlError("CODING_DISPATCH_INELIGIBLE", "Core has no matching autonomous authorization.")
         run = {"requestId": key, "pipelineId": pipeline_id, "expectedAttemptCount": expected_attempt_count,
                "submittedAt": datetime.now(timezone.utc).isoformat(), "unitName": UNIT, "phase": "uncertain",
                "message": "The host is starting the coding worker."}
+        if autonomous:
+            run["autonomous"] = True
         save_receipt(run)
         subprocess.run(["systemd-run", "--user", "--collect", "--quiet", f"--unit={UNIT}",
                         f"--property=EnvironmentFile=-{ENV_FILE}", f"--setenv=AGENTX_CORE_URL={CORE}",
                         f"--setenv=PATH={os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')}",
-                        sys.executable, str(HERE / "coding_run.py"), pipeline_id, "--request-id", key],
+                        sys.executable, str(HERE / "coding_run.py"), pipeline_id, "--request-id", key,
+                        *(["--autonomous"] if autonomous else [])],
                        check=True, capture_output=True, text=True, timeout=10)
         run.update(phase="accepted", message="The coding worker started on this task.")
         save_receipt(run)
@@ -168,7 +198,17 @@ def stop(pipeline_id: str, key: str) -> dict:
     with (STATE / "coding-dispatcher-control.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         run = read_receipt(key)
-        if not run or run["pipelineId"] != pipeline_id:
+        if not run:
+            # The same launch/stop lock closes a selected but unreceived ID.
+            # Do not change latest or touch an unrelated active host job.
+            run = {'pipelineId': pipeline_id, 'requestId': key, 'phase': 'finished',
+                   'autonomous': True, 'cancelledBeforeLaunch': True}
+            atomic_json(RECEIPTS / f'{key}.json', run)
+            atomic_json(RECEIPTS / f'{key}.progress.json', {'pipelineId': pipeline_id, 'requestId': key,
+                'phase': 'finished', 'stage': 'preparing', 'coreRecorded': True, 'preflight': True,
+                'result': 'blocked', 'stopReason': 'operator_stop', 'usage': {}})
+            return {'accepted': True, 'cancelledBeforeLaunch': True, 'pipelineId': pipeline_id, 'requestId': key}
+        if run["pipelineId"] != pipeline_id:
             raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "No matching coding request and task.")
         progress = read_progress(run)
         if progress and progress["phase"] == "finished":
@@ -191,6 +231,76 @@ def stop(pipeline_id: str, key: str) -> dict:
         return {"accepted": True, "requestId": key, "pipelineId": pipeline_id, "phase": "stopping"}
 
 
+def load_runner():
+    spec = importlib.util.spec_from_file_location("coding_run", HERE / "coding_run.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def setting(name, fallback=""):
+    if os.environ.get(name):
+        return os.environ[name]
+    if not ENV_FILE.is_file():
+        return fallback
+    for line in ENV_FILE.read_text().splitlines():
+        if line.startswith(name + "="):
+            parts = shlex.split(line.split("=", 1)[1])
+            return parts[0] if len(parts) == 1 else fallback
+    return fallback
+
+
+def observe(pipeline_id, key):
+    run = read_receipt(key)
+    progress = read_progress(run) if run else None
+    if not run or run["pipelineId"] != pipeline_id or not progress or not progress.get("pr"):
+        raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "No matching published PR receipt.")
+    token = setting("GH_TOKEN")
+    if not token:
+        raise ControlError("CODING_GITHUB_UNAVAILABLE", "The GitHub token is not configured.", 503)
+    spec = importlib.util.spec_from_file_location("coding_github", HERE / "coding_github.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    runner = load_runner()
+    repository = setting("AGENTX_CODING_REPOSITORY", "WindriderQc/AgentX")
+    return module.observe(runner.request, repository, pipeline_id, progress["pr"], token)
+
+
+def reconcile(pipeline_id, key):
+    # Only replay the exact saved native verdict. Never restart the worker or
+    # its model, and never manufacture a receipt from an absent process.
+    run = read_receipt(key)
+    if not run or run["pipelineId"] != pipeline_id or not run.get("autonomous"):
+        raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "No matching autonomous receipt.")
+    path = RECEIPTS / f"{key}.verdict.json"
+    publication = RECEIPTS / f"{key}.publication.json"
+    if not path.is_file() and publication.is_file() and publication.stat().st_size <= 65536:
+        intent = json.loads(publication.read_text())
+        if intent.get('requestId') != key or intent.get('pipelineId') != pipeline_id:
+            raise ControlError('CODING_DISPATCH_REQUEST_CONFLICT', 'Publication receipt identity mismatch.')
+        runner = load_runner()
+        spec = importlib.util.spec_from_file_location('coding_publication', HERE / 'coding_publication.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        pr = module.recover(runner.request, intent, setting('GH_TOKEN'))
+        value = json.loads((RECEIPTS / f'{key}.progress.json').read_text())
+        value.update(pr=pr, checkpoint=pr['head'])
+        atomic_json(RECEIPTS / f'{key}.progress.json', value)
+        atomic_json(path, module.verdict(intent, pr))
+    if not path.is_file() or path.stat().st_size > 65536:
+        raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "No durable native verdict to reconcile.")
+    body = json.loads(path.read_text())
+    runner = load_runner()
+    runner.request(f"{CORE}/api/pipeline/tasks/{pipeline_id}/feedback", body)
+    path = RECEIPTS / f"{key}.progress.json"
+    value = json.loads(path.read_text())
+    value.update(coreRecorded=True, phase="finished", result="review" if body.get("status") == "done" else "blocked",
+                 stopReason=(body.get("attemptEvidence") or {}).get("failureCodes", [None])[0]
+                 if (body.get("attemptEvidence") or {}).get("failureCodes") else None)
+    atomic_json(path, value)
+    return {"reconciled": True, "pipelineId": pipeline_id, "requestId": key}
+
+
 def main() -> int:
     action, values = (sys.argv[1] if len(sys.argv) > 1 else ""), sys.argv[2:]
     try:
@@ -198,8 +308,12 @@ def main() -> int:
             raise ControlError("CODING_DISPATCH_INVALID_REQUEST", "A valid request id is required.", 400)
         if action == "status" and len(values) <= 1:
             data = status(values[0] if values else None)
-        elif action == "launch" and len(values) == 3 and re.fullmatch(r"\d{4}", values[0]) and values[2].isdigit():
-            data = launch(values[0], values[1], int(values[2]))
+        elif action in {"launch", "launch-autonomous"} and len(values) == 3 and re.fullmatch(r"\d{4}", values[0]) and values[2].isdigit():
+            data = launch(values[0], values[1], int(values[2]), autonomous=action == "launch-autonomous")
+        elif action == "observe" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
+            data = observe(values[0], values[1])
+        elif action == "reconcile" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
+            data = reconcile(values[0], values[1])
         elif action == "stop" and len(values) == 2 and re.fullmatch(r"\d{4}", values[0]):
             data = stop(values[0], values[1])
         else:

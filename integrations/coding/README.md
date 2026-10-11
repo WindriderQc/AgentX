@@ -9,6 +9,16 @@ Core Pipeline is the task queue. One local worker takes one task, writes the
 change and opens a draft pull request. Reviewing that pull request, with its
 normal CI, is the gate. Nothing here merges or deploys.
 
+## Autonomous corrections
+
+Pipeline also provides the explicitly authorized, disabled-by-default
+[Core-owned correction loop](../../docs/CODING_AUTONOMY.md). It reuses native
+claims/capacity, prepares current Git versions, verifies and updates the same
+PR, observes exact-commit CI and gives the Coding Team bounded correction turns.
+Its cumulative budgets and durable publication/native receipts survive resumes.
+The manual path below stays available; it does not turn routing or idea intake
+into autonomous authorization.
+
 ## One run
 
 ```bash
@@ -143,8 +153,12 @@ tasks explicitly routed with `service: agentx-coding`; ordinary Core and other
 Pipeline tickets remain available for their own workflows. `launch` starts
 `coding_run.py` for one of the listed tasks as the transient user
 unit `agentx-coding-run`. One task runs at a time. A repeated request id returns
-its first receipt instead of starting a second run. A lost launch reply stays
-unknown and blocks another launch until the operator reconciles the host unit.
+its first receipt instead of starting a second run. After a lost launch reply,
+the matching active unit means running; exact terminal progress means finished.
+Missing or malformed proof stays unknown and blocks another launch. A completed
+autonomous request also requires Core's recorded native result before any new
+launch. Core verifies released claims, capacity and inferences before closing
+its autonomous slot; the worker's exit alone never proves model release.
 New requests use `~/.local/state/agentx/coding-run-requests`. Guarded receipts
 remain in `coding-dispatch-requests`, keep their original outcomes and cannot
 launch the replacement worker with the same request id.

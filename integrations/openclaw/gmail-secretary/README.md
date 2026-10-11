@@ -10,6 +10,14 @@ loads the host OpenClaw SDK; the tested tool logic is in `lib/tools.js`. Install
 the plugin on the native OpenClaw host using that host's normal plugin workflow.
 No host account, scheduler job or mailbox is configured by AgentX startup.
 
+For a dedicated mail specialist, set `agentIds` to its native agent ID. Every
+Gmail tool then uses a session-bound native factory and is absent from other
+agents, with an additional call-time gate. Omit `agentIds` to retain the existing
+installation's tool-policy behavior. OpenClaw propagates a requester's explicit
+tool denials to spawned specialists: when using this scope, remove Gmail-specific
+denials from the delegating agent so its mail specialist can retain its tools.
+Keep the specialist's own allowlist and native approvals in place.
+
 Set plugin configuration outside Git: `gogPath`, `account`,
 `keyringPasswordFile`, `attachmentRoot`, `auditLog`, `triageStateFile`,
 `evidenceHelperPath` and `evidenceRoot`. Defaults use the current OS home and the

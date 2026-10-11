@@ -213,6 +213,8 @@ tr:last-child th.row-head { border-bottom: 0; }
 .mqtt-filter input { flex: 1 1 220px; min-width: 0; }
 .mqtt-filter input:focus, .mqtt-send input:focus, .mqtt-send textarea:focus { border-color: var(--cyan); }
 .mqtt-filter .button.mono { padding: 7px 10px; }
+.mqtt-filter .mqtt-heartbeats { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--text); line-height: 1.5; }
+.mqtt-filter .mqtt-heartbeats input { flex: 0 0 auto; padding: 0; border: 0; accent-color: var(--cyan); margin-right: 4px; }
 .mqtt-help { margin: 8px 0 12px; font-size: 12px; }
 .mqtt-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12px; }
 .mqtt-stream { max-height: 560px; }

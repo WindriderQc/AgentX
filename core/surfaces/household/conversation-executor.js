@@ -52,6 +52,8 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
     const endTurn = interactivePriority.beginHouseholdTurn();
     const stopWaiting = interactivePriority.onWaiting(info => request.onWaiting?.(info));
     try {
+      const accepted = await require('./native-work-acceptance').nativeWorkAcknowledgment(request);
+      if (accepted) return accepted;
       if (personalRecaps && request.session?.packId === 'personal_operator' && request.conversationFeatures?.recapContext !== false) {
         const { recapContext } = require('../../src/services/conversationRecapService');
         const confirmed = (await personalRecaps.read(request.session.sessionId)).recap || (await personalRecaps.latest())?.recap;

@@ -14,6 +14,7 @@ import { registerLocalImages } from "./local-images.js";
 import { registerDataTools } from "./data-tools.js";
 import { registerWorkQueue, createWorkQueueClient } from "./work-queue.js";
 import { registerConversationWork } from './conversation-work.js';
+import { registerNativeReadBudget } from './native-read-budget.js';
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
@@ -24,6 +25,7 @@ export default definePluginEntry({
     registerDataTools(api);
     registerWorkQueue(api);
     registerConversationWork(api);
+    registerNativeReadBudget(api);
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });

@@ -2,7 +2,7 @@
   "id": "gmail-secretary",
   "name": "Gmail Secretary",
   "description": "Typed Gmail tools for Nestor, backed by the local gog CLI with native approvals for sensitive actions.",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "activation": {
     "onStartup": true
   },
@@ -48,6 +48,12 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
+      "agentIds": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "string", "minLength": 1 },
+        "description": "Optional native agents that own Gmail tools. Scope the plugin to the mail specialist instead of denying its tools on the delegating agent, whose denials propagate to child sessions."
+      },
       "gogPath": {
         "type": "string"
       },

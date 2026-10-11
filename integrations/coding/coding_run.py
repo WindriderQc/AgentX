@@ -29,6 +29,7 @@ import tempfile
 import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from types import SimpleNamespace
 
 
 HERE = Path(__file__).resolve().parent
@@ -63,6 +64,9 @@ _spec.loader.exec_module(coding_dispatch_control)
 _spec = importlib.util.spec_from_file_location("coding_runtime", HERE / "coding_runtime.py")
 coding_runtime = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(coding_runtime)
+_spec = importlib.util.spec_from_file_location("coding_autonomous", HERE / "coding_autonomous.py")
+coding_autonomous = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(coding_autonomous)
 AUTHOR = ["-c", "user.name=AgentX Coding Team", "-c", "user.email=coding-team@agentx.invalid"]
 
 PROMPT = """You are the AgentX coding worker. /workspace is a fresh clone of {repository}
@@ -104,19 +108,25 @@ and their results, and anything you could not finish.
 """
 
 
-def request(url: str, body: dict | None = None, token: str = "") -> dict:
+def request(url: str, body: dict | None = None, token: str = "", method: str | None = None) -> dict:
     headers = {"Accept": "application/json", "x-service-caller": "coding-run"}
     if body is not None:
         headers["Content-Type"] = "application/json"
     if token:
         headers["Authorization"] = f"Bearer {token}"
     call = Request(url, data=json.dumps(body).encode() if body is not None else None,
-                   headers=headers, method="POST" if body is not None else "GET")
+                   headers=headers, method=method or ("POST" if body is not None else "GET"))
     try:
         with urlopen(call, timeout=30) as response:
             return json.load(response)
     except HTTPError as error:
-        raise RuntimeError(f"{url}: HTTP {error.code} {error.read(500).decode(errors='replace')}") from error
+        raw = error.read(4096).decode(errors='replace')
+        failure = RuntimeError(f'{url}: HTTP {error.code}')
+        try:
+            failure.code = json.loads(raw).get('code')
+        except ValueError:
+            failure.code = None
+        raise failure from error
 
 
 SETTINGS = """llm-pi-ai:
@@ -306,7 +316,8 @@ def run_worker(workspace: Path, prompt: str, timeout_seconds: int, progress=None
         progress.baseline(home, workspace)
         progress.set_stage("model_wait")
     relay = model_relay.serve(str(home / "model.sock"), MODEL_URL,
-                             progress.model_events.put if progress else None)
+                             progress.model_events.put if progress else None,
+                             getattr(progress, "relay_headers", None))
     try:
         return supervise(sandbox(workspace, home, [
             "python3", "/opt/coding/model_relay.py", "inside", "/home/agent/model.sock", str(RELAY_PORT), "--",
@@ -335,7 +346,7 @@ def feedback(task_id: str, text: str, status: str | None = None) -> None:
         print(f"could not record feedback on task {task_id}: {error}", file=sys.stderr)
 
 
-def push_and_open_pr(workspace: Path, branch: str, task_id: str, title: str, summary: str, token: str) -> str:
+def push_and_open_pr(workspace: Path, branch: str, task_id: str, title: str, summary: str, token: str, *, safe_body=False) -> str:
     # The token reaches git through the environment only, never the remote URL or disk.
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_COUNT": "1",
            "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
@@ -346,9 +357,13 @@ def push_and_open_pr(workspace: Path, branch: str, task_id: str, title: str, sum
     owner = REPOSITORY.split("/")[0]
     existing = request(f"{pulls}?head={owner}:{branch}&state=open", token=token)
     if existing:
+        if len(existing) != 1 or safe_body and existing[0].get("base", {}).get("ref") != BASE_BRANCH:
+            raise RuntimeError("The task has an ambiguous PR or a changed target")
+        if safe_body:
+            request(f"{pulls}/{existing[0]['number']}", {"body": summary}, token=token, method="PATCH")
         return existing[0]["html_url"]
     created = request(pulls, {"title": f"{title} (task {task_id})", "head": branch, "base": BASE_BRANCH, "draft": True,
-                              "body": f"Pipeline task {task_id}, written by the local coding worker.\n\n"
+                              "body": summary if safe_body else f"Pipeline task {task_id}, written by the local coding worker.\n\n"
                                       f"## Worker summary\n\n{summary[-6000:]}"}, token=token)
     return created["html_url"]
 
@@ -372,6 +387,7 @@ def main() -> int:
     # A local model needs well over an hour to read the code, fix and test a Core change.
     parser.add_argument("--timeout-seconds", type=int, default=7200)
     parser.add_argument("--request-id", default="")
+    parser.add_argument("--autonomous", action="store_true")
     args = parser.parse_args()
     if not TASK_ID.fullmatch(args.task_id):
         parser.error("task id is four digits")
@@ -392,6 +408,11 @@ def main() -> int:
     try:
         return execute(args, progress)
     except Exception as error:
+        if args.autonomous:
+            # Never overwrite a leased native verdict with legacy feedback.
+            progress.write()
+            print(f"autonomous request requires reconciliation: {type(error).__name__}", file=sys.stderr)
+            return 2
         progress.finish("blocked", "runner_error", progress.checkpoint)
         feedback(args.task_id, f"Coding runner failed ({type(error).__name__}). Inspect the local workspace and host unit; "
                                "no automatic retry was started.", "blocked")
@@ -403,6 +424,8 @@ def main() -> int:
 
 
 def execute(args, progress) -> int:
+    if getattr(args, "autonomous", False):
+        return coding_autonomous.execute(SimpleNamespace(**globals()), args, progress)
     # The same eligibility rule as the Pipeline launch control: a direct task id
     # may not start a task the dispatch boundary would refuse, and an ineligible
     # task must stay untouched (no claim, clone, dependency install or worker run).

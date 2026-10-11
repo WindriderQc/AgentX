@@ -13,6 +13,8 @@ const {
 const { setTimeout: delay } = require('node:timers/promises');
 const { ollamaMessages } = require('./messages');
 const { registerHermesVision } = require('./vision');
+const { settledStream } = require('../openclaw/settled-stream');
+const { isPreRoutingValidationRefusal } = require('../../../src/extensions/trustedRuntimeServices');
 
 const HERMES_HARNESS_VERSION = '1.2.0';
 const HERMES_CONSUMER_CONTRACT = 'hermes-runtime-v1';
@@ -200,6 +202,18 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
   router.post('/v1/chat/completions', async (req, res) => {
     const abort = requestAbort(req, res);
     let streaming = false;
+    let coding;
+    let inferenceOptions;
+    let settling = false;
+    const settleCoding = async state => {
+      settling = true;
+      try { await coding.finish(state); }
+      catch (cause) {
+        throw Object.assign(new Error('Coding inference receipt persistence is unverified.', { cause }), {
+          code: 'CODING_INFERENCE_SETTLEMENT_UNVERIFIED', statusCode: 503
+        });
+      }
+    };
     try {
       const body = req.body || {};
       if (!Array.isArray(body.messages) || body.messages.length === 0) {
@@ -209,6 +223,13 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
       }
       const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
       const model = requireApprovedModel(snapshot, body.model);
+      coding = await require('../../../src/services/pipelineCodingInferenceService').prepare(req.headers, model, abort.signal);
+      inferenceOptions = {
+        signal: abort.signal,
+        consumerContract: HERMES_CONSUMER_CONTRACT,
+        observePromptPrefix: true,
+        ...(coding?.options || {})
+      };
       const result = await whenAdmitted(() => runtimeServices.inference.execute({
         mode: 'chat',
         model,
@@ -230,11 +251,15 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
         user: body.user,
         callerDetail: 'hermes-runtime-bridge',
         timeoutMs: Number(process.env.HERMES_OPENAI_TIMEOUT_MS || 0) || undefined
-      }, {
-        signal: abort.signal,
-        consumerContract: HERMES_CONSUMER_CONTRACT,
-        observePromptPrefix: true
-      }), { waitMs: req.admissionWaitMs, signal: abort.signal });
+      }, inferenceOptions), { waitMs: req.admissionWaitMs, signal: coding?.options.signal || abort.signal });
+      let codingCompletion;
+      if (coding) {
+        if (result.completion) {
+          codingCompletion = result.completion.then(async value => { await settleCoding('completed'); return value; },
+            async error => { await settleCoding('unknown'); throw error; });
+          if (!result.stream) await codingCompletion;
+        } else await settleCoding(result.ok ? 'completed' : 'refused');
+      }
       applyRoutingHeaders(res, result.metadata);
       const resolvedModel = String(result.metadata?.model || '').trim();
       res.set('X-AgentX-Fallback-Used', resolvedModel ? String(resolvedModel !== model) : 'unknown');
@@ -256,13 +281,18 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
           'Cache-Control': 'no-cache, no-transform',
           Connection: 'keep-alive'
         });
+        const admitted = coding ? settledStream(result.stream, codingCompletion) : result.stream;
         const stream = result.metadata.upstreamProtocol === 'openai'
-          ? result.stream
-          : result.stream.pipe(new OllamaToOpenAiSse(model));
+          ? admitted
+          : new OllamaToOpenAiSse(model);
         stream.once('error', (error) => {
           if (!abort.signal.aborted) logger?.warn?.('Hermes inference stream failed', { code: error.code || 'STREAM_ERROR' });
           if (!res.destroyed) res.destroy(error);
         });
+        if (stream !== admitted) {
+          admitted.once('error', error => stream.destroy(error));
+          admitted.pipe(stream);
+        }
         pipeRuntimeStream(stream, res, abort.signal);
         return undefined;
       }
@@ -272,6 +302,13 @@ function registerHermesProtocol({ express, runtimeServices, logger }) {
           : openAiCompletion(result.body, model)
       );
     } catch (error) {
+      if (coding && !settling) {
+        const interrupted = abort.signal.aborted || coding.options.signal?.aborted
+          || ['INFERENCE_TIMEOUT', 'INFERENCE_CANCELLED'].includes(error.code);
+        const refused = !interrupted && (isPreRoutingValidationRefusal(error, inferenceOptions) || error.failure?.safeToRetry === true);
+        try { await settleCoding(refused ? 'refused' : 'unknown'); }
+        catch (persistenceError) { error = persistenceError; }
+      }
       const safeStatus = Number(error?.statusCode || 500);
       if (!res.headersSent && safeStatus < 500) {
         return res.status(safeStatus).json({

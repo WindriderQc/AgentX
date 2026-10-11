@@ -463,6 +463,26 @@ describe('trusted runtime services', () => {
     expect(admission.abandon).toHaveBeenCalledTimes(1);
   });
 
+  test('Core coding deadline bounds a stalled native stream after caller detachment, including a subsecond remainder', async () => {
+    const capacity = require('../../src/services/pipelineCodingCapacity');
+    const authorize = jest.spyOn(capacity, 'authorizeInference').mockResolvedValue({ principal: 'core-trusted-runtime',
+      workloadAdmissionId: 'coding-admission', workloadGeneration: 'coding-generation' });
+    const upstream = new PassThrough(); const caller = new AbortController();
+    const deps = inferenceDeps({ fetch: jest.fn(async () => response({ stream: upstream })) });
+    const started = Date.now();
+    try {
+      const result = await executeRoutedInference(deps, {
+        mode: 'chat', model: 'model-a', messages: [{ role: 'user', content: 'synthetic' }], stream: true, timeoutMs: 60000
+      }, { signal: caller.signal, codingCapacity: { pipelineId: '0800', leaseId: 'original-lease' }, codingDeadlineAt: started + 250 });
+      const failed = new Promise(resolve => result.stream.once('error', resolve)); result.stream.resume(); caller.abort();
+      expect(deps.fetch.mock.calls[0][1].signal.aborted).toBe(false);
+      await failed; await expect(result.completion).rejects.toMatchObject({ code: 'RUNTIME_INFERENCE_COMPLETION_FAILED' });
+      expect(Date.now() - started).toBeLessThan(1000); expect(deps.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+      const admission = await deps.beginInferenceAdmission.mock.results[0].value;
+      expect(admission.complete).not.toHaveBeenCalled(); expect(admission.abandon).toHaveBeenCalledTimes(1);
+    } finally { authorize.mockRestore(); upstream.destroy(); }
+  });
+
   test('executes a non-streaming request through Core routing and resident pin policy', async () => {
     const release = jest.fn();
     const deps = inferenceDeps({

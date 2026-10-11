@@ -23,6 +23,7 @@ const {
 } = require('./runtimeMaintenanceRecovery');
 const {
   acquireWorkload,
+  recoverWorkloadAcquisition,
   isWorkloadRecoveryRequired,
   assertWorkloadAdmission
 } = require('./runtimeWorkloadAdmission');
@@ -42,6 +43,7 @@ const { acquireMaintenance, listDeployBlockers } = createMaintenanceAcquisition(
 module.exports = {
   acquireMaintenance,
   acquireWorkload,
+  recoverWorkloadAcquisition,
   acquireInference,
   heartbeatInference,
   releaseInference,

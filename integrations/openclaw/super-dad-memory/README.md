@@ -73,7 +73,20 @@ API. OpenClaw's SDK and native runtime are not simulated by that check.
 
 The optional `conversation_work` tool binds a dedicated native worker to Core's
 durable personal conversation work. Main can request a migrated task read; the
-worker can read canonical context and tasks and publish a verified result. The
+worker can read canonical context and tasks and publish a verified result.
+Isolated `agent:main:household:direct:<uuid>` sessions support exact native dispatch
+discovery for background specialist reads. An ambiguous run stays unknown; this
+attempt cannot acquire the dedicated worker's model-facing tool capabilities. The
 instance supplies `conversationWorkAgentId` and a private `conversationWorkToken`
 matching Core, and grants the dedicated worker only this tool. See
 [the Core contract](../../../docs/NESTOR_CONVERSATION_WORK.md).
+# Native web consultation budget
+
+For a Core-bound background Main web consultation, the pre-tool hook asks Core
+to admit each native call using the host's session, run and call identities.
+Core retains the limits and admissions in the existing conversation work.
+After four web reads or eight total calls, further tools are blocked and Main
+must conclude from checked sources or describe the actual lookup limitation.
+Ordinary guardian runs and specialist consultations preserve their native
+tools. This adds no model-visible tool or grant. Deployment requires matching
+Core and plugin versions; the continuity catalog advertises the budget hook.
