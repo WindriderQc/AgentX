@@ -377,7 +377,8 @@
       message.hidden = true;
       if (select) {
         const requested = new URLSearchParams(window.location.search).get('run');
-        const target = state.runs.find((run) => run.runId === requested)?.runId
+        // A linked run may be older than the 30 listed; it still loads by id.
+        const target = requested
           || state.selectedRunId
           || state.runs.find((run) => run.status === 'ready_for_review' || run.status === 'partially_reviewed')?.runId
           || state.runs.find((run) => run.status === 'completed')?.runId
