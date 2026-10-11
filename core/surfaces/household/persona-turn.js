@@ -179,6 +179,7 @@ function createPersonaTurnHandler({
       let toolEvidence = null;
       let metadata = { model: '', hostKey: '', routingSource: 'deterministic' };
       let routeTier = 'deterministic';
+      let adviceRefs = [];
       let fallbackUsed = false;
       let fallbackReason = '';
       let holdState = null;
@@ -289,11 +290,17 @@ function createPersonaTurnHandler({
         // model's prompt cache keeps them. Everything selected for this turn (notes,
         // members, knowledge, chores, saves, the sound note, the reply language, a team
         // member's last exchange and the reviewer's advice) goes last, beside the request.
+        const brainAdvice = isLlmX || features.reviewContext === false ? { text: '', refs: [] }
+          : brain.contextWithRefs ? brain.contextWithRefs(session.sessionId) : { text: brain.contextFor(session.sessionId), refs: [] };
+        const workAdvice = !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
+          ? conversationWorks?.guardianContextWithRefs
+            ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
+            : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
+          : { text: '', refs: [] };
+        adviceRefs = [...brainAdvice.refs, ...workAdvice.refs];
         const turnContext = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || '',
-          isLlmX || features.reviewContext === false ? '' : brain.contextFor(session.sessionId),
-          !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
-            ? await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '' : '',
+          brainAdvice.text, workAdvice.text,
           isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || ''].join('').trim();
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const acceptedTaskWork = entry.workId ? await conversationWorks.taskAcceptance?.(entry.workId) : null;
@@ -386,6 +393,7 @@ function createPersonaTurnHandler({
         if (backend === 'openclaw' && !pack.childSafe) knowledge = { ...knowledge, status: 'agent-managed', enabled: true,
           used: toolEvidence.receipts?.some(receipt => /rag_search|memory_search|wiki_search/.test(receipt.tool)) || false };
         entry.auditContext = { model: metadata.model || '', routingSource: metadata.routingSource || '', routeTier, toolEvidence,
+          ...(adviceRefs.length ? { adviceRefs } : {}),
           knowledgeStatus: knowledge.status, knowledgeSourceCount: knowledge.sourceCount,
           knowledgeCorpusFingerprint: knowledge.corpusFingerprint, safetyFlags: safety.flagIds,
           parentAttention: safety.requiresParentAttention, soundId: sound?.id || '' };
@@ -443,6 +451,7 @@ function createPersonaTurnHandler({
         knowledgeCorpusFingerprint: knowledge.corpusFingerprint,
         personalContinuity: continuity.personal || null, toolEvidence,
         speakerAgentId: speaker?.agentId || '',
+        ...(adviceRefs.length ? { adviceRefs } : {}),
         ...(speaker ? { speaker: { ...speaker, personaVersion: memberPersona?.version ?? null } } : {}),
         ...serverTimingsOf(serverPhases),
         durationMs: Date.now() - startedAt
@@ -485,6 +494,7 @@ function createPersonaTurnHandler({
       const updated = await conversations.getSession({ sessionId: session.sessionId });
       const resultPayload = {
         traceId, speaker: audit.speaker, ...(consulted ? { consult: consulted } : {}),
+        ...(adviceRefs.length ? { adviceRefs } : {}),
         ...(isLlmX ? { origin: isOpening ? 'application_opening' : 'human', turnId: clientTurnId } : {}),
         ...(sceneProposal ? { sceneProposal } : {}), ...(display.length ? { display } : {}),
         session: publicSession(updated || session),
@@ -521,6 +531,7 @@ function createPersonaTurnHandler({
           corpusFingerprint: knowledge.corpusFingerprint
         },
         continuity, tools: toolEvidence,
+        ...serverTimingsOf(serverPhases),
         timings: { totalMs: Date.now() - startedAt },
         audit: { id: String(audit._id), traceId, createdAt: audit.createdAt }
       };

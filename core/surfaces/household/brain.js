@@ -1,4 +1,5 @@
 'use strict';
+const { randomUUID } = require('node:crypto');
 
 // Nestor's slower brain (#162, #169). After a turn is recorded, a larger local
 // model reviews the canonical conversation in the background and proposes:
@@ -137,7 +138,7 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     if (!result?.ok) throw new Error('Reviewer inference failed');
     const parsed = readReview(result.body?.message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '');
     if (!parsed) throw new Error('Reviewer returned no usable review');
-    settle(session.sessionId, { traceId, reviewedAt: new Date().toISOString(), model: result.metadata?.model || '',
+    settle(session.sessionId, { adviceId: randomUUID(), version: 1, traceId, reviewedAt: new Date().toISOString(), model: result.metadata?.model || '',
       ...(result.metadata?.routing && { routing: result.metadata.routing }), ...parsed });
   }
 
@@ -166,14 +167,17 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
   }
 
   // Advisory notes for the next turn, so Nestor can acknowledge a correction himself.
-  function contextFor(sessionId) {
+  function contextWithRefs(sessionId) {
     const found = reviews.get(sessionId);
-    if (!found || (!found.corrections.length && !found.interjection)) return '';
-    return '\n\nBackground review of this conversation (advisory, from a slower local model; it may be wrong, so verify before relying on it):'
+    if (!found || (!found.corrections.length && !found.interjection)) return { text: '', refs: [] };
+    const text = '\n\nBackground review of this conversation (advisory, from a slower local model; it may be wrong, so verify before relying on it):'
       + (found.corrections.length ? ' Possible corrections: ' + found.corrections.join(' | ') + '.' : '')
       + (found.interjection ? ` It suggested adding: "${found.interjection.text}" (it may already have been said at a pause).` : '')
       + ' If a correction is right, acknowledge it briefly and naturally in this turn; do not mention the review itself.';
+    return { text, refs: found.adviceId ? [{ source: 'brain', adviceId: found.adviceId, version: found.version,
+      sourceTurnId: found.traceId, coverage: [found.corrections.length ? 'corrections' : '', found.interjection ? 'interjection' : ''].filter(Boolean) }] : [] };
   }
+  const contextFor = sessionId => contextWithRefs(sessionId).text;
 
   function wait(sessionId, after, { signal, timeoutMs = LIMITS.waitMs } = {}) {
     const ready = latest(sessionId, after);
@@ -207,7 +211,7 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     }
   }
 
-  return { schedule, cancel, latest, wait, contextFor, register, enabled, reconfigure };
+  return { schedule, cancel, latest, wait, contextFor, contextWithRefs, register, enabled, reconfigure };
 }
 
 module.exports = { createBrain, readReview, reviewerPrompt, transcript, LIMITS };

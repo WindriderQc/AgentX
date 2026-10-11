@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aperçu local · Cockpit Nestor</title>
+  <link rel="stylesheet" href="/workflow-panel.css">
+  <link rel="stylesheet" href="/avatar-dock.css">
+  <link rel="stylesheet" href="/workflow-cockpit.css">
+  <style>
+    :root { color-scheme: dark; font: 15px/1.5 system-ui, sans-serif; background: #07131d; color: #e9f5f8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 1.3rem 1rem 4rem; }
+    main { max-width: 1360px; margin: auto; }
+    .conversation-shell { max-width: 1360px; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .7rem; }
+    .eyebrow { margin: 0; color: #8fcbd4; text-transform: uppercase; letter-spacing: .14em; font-size: .72rem; }
+    h1 { font-weight: 500; font-size: clamp(1.7rem, 3.5vw, 2.6rem); margin: .1rem 0; }
+    .subtitle { color: #a6bec8; margin: .2rem 0 0; }
+    .pill { color: #77dfe3; border: 1px solid #365966; border-radius: 999px; padding: .35rem .7rem; font-size: .72rem; }
+    .conversation-stage { border: 1px solid #36515d; border-radius: 20px; padding: 1rem; background: linear-gradient(145deg, #112631, #0d1a23 70%); }
+    .conversation-live { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 12px; }
+    .conversation-presence { display: grid; place-items: center; width: 40px; height: 40px; margin: 0; border: 2px solid #75e9a7; border-radius: 50%; background: #174f48; color: #e7fff0; }
+    .conversation-status { margin: 0; font-size: .83rem; }
+    .conversation-actions { display: flex; gap: .4rem; }
+    .conversation-actions button, .conversation-text button { min-height: 44px; padding: .6rem .9rem; border: 1px solid #5b9ba5; border-radius: 9px; background: #19414c; color: #e2f9f6; font: inherit; }
+    .conversation-transcript { min-height: 230px; max-height: 53vh; overflow-y: auto; padding: .35rem; }
+    .conversation-message { max-width: 84%; width: fit-content; padding: .75rem .9rem; margin: .75rem 0; border-radius: .8rem; background: #172f3b; line-height: 1.55; }
+    .conversation-message.user { margin-left: auto; background: #22505a; }
+    .conversation-message small { display: block; margin-top: .25rem; color: #a3c4cc; font-size: .68rem; }
+    .conversation-text { display: flex; gap: .5rem; padding-top: .8rem; border-top: 1px solid #36515d; }
+    .conversation-text textarea { flex: 1; min-width: 0; min-height: 58px; padding: .8rem; border: 1px solid #395b69; border-radius: 9px; background: #0a1821; color: #fff; font: inherit; resize: vertical; }
+    .conversation-text button { background: #63e1e6; color: #10212b; font-weight: 700; }
+    .conversation-board { padding: 12px; border: 1px solid #4b7882; border-radius: 10px; background: #123340; }
+    @media (max-width: 760px) { body { padding: .45rem .5rem 2rem; } header { margin-bottom: .4rem; } .subtitle { font-size: .75rem; } .pill { font-size: .6rem; } .conversation-live { grid-template-columns: 34px 1fr auto; } .conversation-presence { width: 34px; height: 34px; } .conversation-actions button { padding: .45rem .65rem; } .conversation-message { max-width: 94%; } }
+  </style>
+  <script src="/workflow-panel.js" defer></script>
+  <script defer>
+    window.addEventListener('DOMContentLoaded', () => {
+      const panel = NestorWorkflow.create({ host: document.getElementById('conversationWorkflow'), signal: document.getElementById('conversationWorkflowSignal') });
+      panel.begin('synthetic-session', 'tour-01', 'voice');
+      panel.timings('tour-01', { sttDone: 680, sttServer: 420, requestSent: 710, firstDelta: 1980, firstAudio: 2560 });
+      panel.stream('tour-01', { type: 'tools', evidence: { receipts: [{ id: 'recu-gardien-01', tool: 'personal_tasks', status: 'verified' }] } });
+      panel.stream('tour-01', { type: 'done', data: { traceId: 'trace-synthetic-01', serverTimings: { prepared: 240, executed: 2830 } } });
+      panel.ingest('synthetic-session', { items: [{ id: 'travail-01', turnId: 'tour-01', sessionId: 'synthetic-session', revision: 4,
+        guardianStatus: 'completed', guardianRunId: 'resp-synthetic-01', classification: 'unclassified', state: 'running',
+        attempt: { id: 'tentative-01', agentId: 'nestor-worker', runId: 'resp-synthetic-02' },
+        tools: [{ id: 'recu-01', tool: 'personal_tasks', runId: 'resp-synthetic-02', status: 'verified' }], nativeAdmissions: [] }],
+        events: [
+          { sequence: 1, workId: 'travail-01', type: 'request_received', at: '2026-10-11T16:00:00Z' },
+          { sequence: 2, workId: 'travail-01', type: 'guardian_started', at: '2026-10-11T16:00:01Z' },
+          { sequence: 3, workId: 'travail-01', type: 'context_ready', at: '2026-10-11T16:00:02Z' },
+          { sequence: 4, workId: 'travail-01', type: 'guardian_settled', at: '2026-10-11T16:00:04Z' },
+          { sequence: 5, workId: 'travail-01', type: 'dispatch_marked', at: '2026-10-11T16:00:05Z' },
+          { sequence: 6, workId: 'travail-01', type: 'native_started', at: '2026-10-11T16:00:07Z' }
+        ] });
+    });
+  </script>
+</head>
+<body class="household-product">
+  <main class="conversation-shell">
+    <header><div><p class="eyebrow">Super Dad · Personnel</p><h1>Avec Nestor.</h1><p class="subtitle">Une conversation, plusieurs composants observables.</p></div><span class="pill">Aperçu synthétique</span></header>
+    <section class="conversation-stage" aria-label="Conversation de démonstration">
+      <div class="conversation-cockpit">
+        <div class="conversation-live"><div class="conversation-presence" aria-hidden="true">N</div><p class="conversation-status">Nestor écoute · le travail de fond continue</p><div class="conversation-actions"><button type="button">Pause</button></div><p id="conversationWorkflowSignal" class="conversation-workflow-signal"></p></div>
+        <div class="conversation-dialogue">
+          <section class="conversation-board conversation-visual" aria-label="Visuel présenté" hidden>Visuel synthétique du tour.</section>
+          <div class="conversation-transcript" role="log" aria-label="Échanges">
+            <p class="conversation-message user">Peux-tu regarder mes tâches du jour ?<small>Vous · tour 1</small></p>
+            <p class="conversation-message assistant">Oui, je m’en occupe. Je reste disponible si tu veux préciser.<small>Nestor · réponse directe</small></p>
+          </div>
+          <form class="conversation-text" onsubmit="event.preventDefault()"><textarea aria-label="Message" placeholder="Écris un message." required></textarea><button type="submit">Envoyer</button></form>
+        </div>
+        <section id="conversationWorkflow" aria-label="Parcours des composants de Nestor"></section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

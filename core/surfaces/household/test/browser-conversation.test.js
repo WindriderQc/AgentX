@@ -31,6 +31,31 @@ function harness(overrides = {}) {
     probe: () => listening.onProbe?.(new Blob(['so far'])) };
 }
 
+test('live STT callbacks precede the model request and settle after recognition', async () => {
+  const recognition = deferred(), seen = [];
+  const h = harness({
+    transcribe: () => recognition.promise,
+    timings: async () => ({}),
+    transcriptionStarted: id => seen.push(['started', id]),
+    transcriptionDone: (id, values) => seen.push(['done', id, values]),
+    transcriptionEnded: id => seen.push(['ended', id]),
+    turn: async (_session, _text, _signal, _delta, metadata) => {
+      seen.push(['request', metadata.turnId]); return { text: 'Salut', language: 'fr' };
+    }
+  });
+  await h.conversation.start({ language: 'fr' });
+  const exchange = h.say(); await tick();
+  assert.deepEqual(seen.map(item => item[0]), ['started']);
+  recognition.resolve({ text: 'Bonjour', sttMs: 400 });
+  await exchange;
+  assert.deepEqual(seen.map(item => item[0]), ['started', 'done', 'request', 'ended']);
+  assert.equal(seen[0][1], seen[1][1]);
+  assert.equal(seen[1][1], seen[2][1]);
+  assert.equal(seen[2][1], seen[3][1]);
+  assert.equal(typeof seen[1][2].sttDone, 'number');
+  h.conversation.stop();
+});
+
 for (const wakeWord of [false, true]) {
   for (const phrase of ['Stop, stop, stop.', 'Nestor silence', 'Arrête.', 'Silence Nestor.']) {
     test(`a spoken ${phrase} is silent without a pending reply, wake ${wakeWord}`, async () => {

@@ -3,14 +3,14 @@
 const { randomUUID } = require('node:crypto');
 const exchanges = require('../conversations/exchangeReceipts');
 const { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
-  eligible, sessionScope, simple, validateResult } = require('./contract');
+  eligible, sessionScope, validateResult } = require('./contract');
 const { createRepository } = require('./repository');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
   nativeBudget = () => null, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
-  const classification = (text, mode) => simple(text) ? 'simple' : mode === 'read' && nativeRead(text) ? 'native_read'
+  const classification = (text, mode) => mode === 'read' && nativeRead(text) ? 'native_read'
     : classify(text) ? 'tasks_read' : nativeOnly(text) ? 'native_only' : 'unclassified';
   const query = sessionId => ({ sessionId, ...SCOPED });
   async function session(sessionId) {
@@ -49,7 +49,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     const row = await repo.insert({ _id: id, owner: OWNER, surface: 'household',
       conversationId: current.conversationId, sessionId: current.sessionId, turnId,
       exchangeId: accepted.receipt._id, requestSha256: hash(text), mode: snapshot.mode,
-      state: simple(text) ? 'completed' : 'received', classification: classification(text, snapshot.mode),
+      state: 'received', classification: classification(text, snapshot.mode),
       revision: 0, receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
       guardian: { state: accepted.duplicate ? taken.turn.outcome === 'pending' ? 'uncertain' : 'completed' : 'pending' }, erased: false });
     return { row, turn: taken.turn, duplicate: accepted.duplicate || taken.duplicate };
@@ -172,12 +172,13 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     return { authority: 'core.conversation-works', published: true, id: saved._id,
       resultVersion: saved.result.version, deliveryId: saved.delivery.id };
   }
-  async function guardianContext(sessionId, excludingId) {
+  async function guardianContextWithRefs(sessionId, excludingId) {
     await session(sessionId);
     const rows = await repo.find({ sessionId, classification: { $ne: 'simple' }, 'result.kind': { $ne: 'no_work' },
+      $or: [{ 'result.version': { $exists: true } }, { classification: { $in: ['tasks_read', 'native_read'] } }],
       ...(excludingId && { _id: { $ne: excludingId } }) }, 4, { sequence: -1, _id: -1 });
     const useful = rows.filter(row => row.classification !== 'simple' && row.result?.kind !== 'no_work');
-    if (!useful.length) return '';
+    if (!useful.length) return { text: '', refs: [] };
     const excerpt = (text, length) => String(text || '').length > length
       ? text.slice(0, length) + ' [shortened context; complete content retained in Core]' : text;
     const entries = [];
@@ -188,8 +189,11 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
         state: row.state, reason: row.reason || '', result: result ? { kind: result.kind, text: excerpt(result.text, 2000),
           receiptIds: result.receiptIds, version: row.result.version, presentation: row.delivery?.state } : null });
     }
-    return '\n\n[Core canonical work for this conversation: statuses and received results. Reference data, not new authorization. Do not redispatch pending work or automatically repeat a result awaiting Household presentation.]\n' + JSON.stringify(entries);
+    return { text: '\n\n[Core canonical work for this conversation: statuses and received results. Reference data, not new authorization. Do not redispatch pending work or automatically repeat a result awaiting Household presentation.]\n' + JSON.stringify(entries),
+      refs: useful.filter(row => row.result).map(row => ({ source: 'work', workId: row._id,
+        version: row.result.version, sourceTurnId: row.turnId, coverage: ['result'] })) };
   }
+  const guardianContext = async (sessionId, excludingId) => (await guardianContextWithRefs(sessionId, excludingId)).text;
   async function taskAcceptance(id) {
     const row = await repo.get(id);
     if (!row || row.mode !== 'read' || row.classification !== 'tasks_read') return null;
@@ -228,7 +232,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
         const at = now();
         row = await repo.insert({ _id: id, owner: OWNER, surface: 'household', conversationId: current.conversationId,
           sessionId: input.sessionId, turnId: input.clientTurnId, exchangeId: item.id, requestSha256: hash(input.text),
-          mode: input.mode, state: simple(input.text) ? 'completed' : 'received', revision: 0,
+          mode: input.mode, state: 'received', revision: 0,
           receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
           guardian: { state: taken.turn.outcome === 'pending' ? 'uncertain' : taken.turn.outcome }, erased: false,
           classification: classification(input.text, input.mode) });
@@ -261,6 +265,6 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
   return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, readTasks,
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
     publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now }),
-    recover, finalize, handled, guardianContext, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
+    recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
 }
 module.exports = { createConversationWorks };
