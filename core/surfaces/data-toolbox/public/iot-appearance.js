@@ -16,6 +16,36 @@ const IOT_SIGNATURE_CURVES = Object.freeze({
 });
 const iotAppearance = { devices: new Map(), selected: '' };
 
+// How a history bucket is read: which central value the line follows and
+// whether the min–max band is drawn. One choice for the whole tab, kept under
+// its own key so the per-curve styles saved under v1 stay exactly as they are.
+const IOT_READING_STORAGE = 'agentx.iot.reading.v1';
+const IOT_READING_DEFAULT = Object.freeze({ central: 'median', band: true });
+function iotCleanReading(value) {
+  return { central: value?.central === 'mean' ? 'mean' : IOT_READING_DEFAULT.central,
+    band: typeof value?.band === 'boolean' ? value.band : IOT_READING_DEFAULT.band };
+}
+function iotReadReading() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(IOT_READING_STORAGE));
+    return iotCleanReading(saved?.version === 1 ? saved : null);
+  } catch { return iotCleanReading(null); }
+}
+function iotStoreReading() {
+  try { localStorage.setItem(IOT_READING_STORAGE, JSON.stringify({ version: 1, ...iotCleanReading({ central: iotState.central, band: iotState.ranges }) })); }
+  catch { /* The choice stays active for the session when storage is unavailable. */ }
+}
+/** The central value of a history bucket; the other one stands in when the chosen one is absent. */
+function iotCentral(point, central = iotState.central) {
+  const [first, second] = central === 'mean' ? [point.mean, point.median] : [point.median, point.mean];
+  return Number.isFinite(first) ? first : second;
+}
+/** The reading controls of a history view, shared by both chart layouts. */
+function iotReadingControls() {
+  return `<label>Valeur centrale<select id="iotCentral"><option value="median"${iotState.central === 'median' ? ' selected' : ''}>Médiane</option><option value="mean"${iotState.central === 'mean' ? ' selected' : ''}>Moyenne</option></select></label><label class="iot-range-toggle"><input type="checkbox" id="iotCombinedRanges"${iotState.ranges ? ' checked' : ''}>Bande min–max</label>`;
+}
+const iotReadingHint = (combined = iotState.view === 'combined') => `La ligne suit la ${iotState.central === 'mean' ? 'moyenne' : 'médiane'} de chaque tranche de temps${iotState.ranges ? ` ; la bande ombrée va du minimum au maximum mesurés dans la tranche${combined ? ' (plus marquée pour la mesure de l’axe affiché)' : ''}` : ''}.`;
+
 function iotCleanCurveStyle(value = {}) {
   const base = IOT_CURVE_PRESETS.clean;
   const oneOf = (key, choices) => choices.includes(value?.[key]) ? value[key] : base[key];

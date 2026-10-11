@@ -100,6 +100,7 @@ function browser(respond, localStorage) {
   const context = { document, location: { hash: '#iot' }, window: { addEventListener() {} }, localStorage, console, URLSearchParams, Date,
     FormData: class { constructor(form) { return Object.entries(form.fields); } },
     setInterval(callback, ms) { timers.push({ callback, ms }); return timers.length; }, clearInterval() {},
+    setTimeout() { return 1; }, clearTimeout() {},
     async fetch(url, options = {}) {
       const parsed = new URL(url, 'http://localhost');
       const call = { path: parsed.pathname.replace('/api/data-toolbox', ''), query: parsed.searchParams, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : undefined };
@@ -108,8 +109,8 @@ function browser(respond, localStorage) {
         : { ok: true, status: 200, json: async () => ({ status: 'success', data: answer }) };
     }
   };
-  const source = ['refresh.js', 'iot-visuals.js', 'iot-appearance.js', 'iot-charts.js', 'iot-combined.js', 'iot.js', 'app.js'].map(file => fs.readFileSync(path.join(__dirname, '../public', file), 'utf8')).join('\n')
-    .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, render, iotState, iotTab, iotSelect, iotLoadSeries, iotSubmit, iotRefresher, iotChart, iotCards, iotCombinedModel, iotNearestValue, iotCombinedBounds, iotCurveStyle, iotStoreCurveStyle };');
+  const source = ['refresh.js', 'iot-visuals.js', 'iot-appearance.js', 'iot-charts.js', 'iot-combined.js', 'iot-fleet.js', 'iot-commands.js', 'iot-events.js', 'iot.js', 'app.js'].map(file => fs.readFileSync(path.join(__dirname, '../public', file), 'utf8')).join('\n')
+    .replace(/\nrender\(\);\s*$/, '\nglobalThis.page = { state, render, iotState, iotTab, iotSelect, iotLoadSeries, iotSubmit, iotRefresher, iotChart, iotCards, iotCombinedModel, iotNearestValue, iotCombinedBounds, iotCurveStyle, iotStoreCurveStyle, iotCommand, iotCommandSend };');
   vm.runInNewContext(source, context);
   return { ...context.page, elements, listeners, requests, timers, document, content: element('#content') };
 }
@@ -119,6 +120,7 @@ function fakeData(store = {}) {
   return async call => {
     if (call.path === '/iot/status') return store.statusError || status(store.connected !== false);
     if (call.path === '/iot/devices') return store.devicesError || { devices: store.devices };
+    if (call.path === '/events') return { events: [], pagination: { total: 0 } };
     const id = decodeURIComponent(call.path.split('/')[3]);
     if (call.path.endsWith('/live')) return store.read ? store.read(call) : series(id, call.query.get('measure').split(','));
     if (call.path.endsWith('/history')) return { ...series(id, call.query.get('measure').split(',')), bucket: call.query.get('resolution') === 'auto' ? 'minute' : call.query.get('resolution'), bucketSeconds: 60, from: call.query.get('from'), to: call.query.get('to') };
@@ -153,7 +155,8 @@ test('no devices or no live points stays empty and never fabricates charts', asy
 test('an offline broker preserves dated values and disables device commands', async () => {
   const page = await open({ connected: false });
   assert.match(page.content.innerHTML, /MQTT déconnecté/);
-  assert.match(page.elements['#iotActions'].innerHTML, /type="submit" disabled>Envoyer/);
+  assert.match(page.elements['#iotActions'].innerHTML, /type="submit" disabled>Préparer l’envoi/);
+  assert.match(page.elements['#iotActions'].innerHTML, /Commandes désactivées : Data n’est pas connecté au broker MQTT\./);
   assert.match(page.elements['#iotCards'].innerHTML, /Dernier message/);
 });
 
@@ -208,18 +211,20 @@ test('polling pauses on a hidden tab, during a command, and drops answers after 
   assert.equal(page.elements['#iotCards'].innerHTML, cardsBefore, 'obsolete answer did not draw any card');
 });
 
-test('device saves are explicit and a double command click issues one request with no automatic retry', async () => {
+test('device saves are explicit; a command is sent only after its confirmation, once, with no automatic retry', async () => {
   let release;
-  const store = { write: call => call.method === 'POST' ? new Promise(resolve => { release = () => resolve(new Error('outcome unknown')); }) : device('SYN_1', call.body) };
+  const store = { write: call => call.method === 'POST' ? new Promise(resolve => { release = () => resolve(Object.assign(new Error('outcome unknown'), { status: 502 })); }) : device('SYN_1', call.body) };
   const page = await open(store);
   const form = (id, fields) => ({ id, fields, dataset: { device: 'SYN_1' }, querySelector() { return { disabled: false }; } });
   await page.iotSubmit(form('iotRecord', { displayName: 'Garden', location: 'North', notes: 'Test' }));
   assert.equal(page.iotState.devices[0].displayName, 'Garden');
   const command = form('iotCommand', { command: 'io_on', gpio: '2' });
-  const sent = page.iotSubmit(command); await page.iotSubmit(command);
+  await page.iotSubmit(command); await page.iotSubmit(command);
+  assert.equal(page.requests.filter(call => call.method === 'POST').length, 0, 'preparing a command sends nothing');
+  const sent = page.iotCommandSend(); await page.iotCommandSend();
   assert.equal(page.requests.filter(call => call.method === 'POST').length, 1);
   release(); await sent;
-  assert.match(page.elements['#iotFeedback'].textContent, /outcome unknown.*Aucun nouvel envoi automatique/);
+  assert.match(page.elements['#iotCommandOutcome'].innerHTML, /Peut-être envoyé.*outcome unknown.*aucun nouvel envoi automatique/);
   assert.deepEqual(plain(page.requests.find(call => call.method === 'POST').body), { command: 'io_on', gpio: 2 });
 });
 
@@ -281,6 +286,7 @@ test('comparison scales stay finite for extreme numbers and min/max is an explic
     { ts: AT, mean: -1e308, min: -1.5e308, max: 1e308 },
     { ts: Date.parse(AT) + 60000, mean: 1e308, min: -1e308, max: 1.5e308 }
   ] } } };
+  page.iotState.ranges = false;
   const metric = page.iotCombinedModel().metrics[0];
   assert.ok(Number.isFinite(metric.low) && Number.isFinite(metric.high));
   assert.ok(metric.data.every(point => point.y === null || Number.isFinite(point.y)));

@@ -603,6 +603,17 @@ Core's `/api/data-toolbox/iot` relay and never connects directly to a broker.
 Each device has a card with its ID, display name, location, availability,
 up to four priority measurements and their ages. Every measurement stays
 available in the charts. Search matches names, IDs and locations.
+The card also shows the maker, model and firmware or hardware version when the
+registry holds them. A Wi-Fi signal in dBm is drawn as an arc gauge from −100
+to −40 dBm with the exact value and a quality word: **Excellent** at −55 dBm
+or better, **Bon** from −70, **Moyen** from −80, **Faible** below; a missing
+value reads **Inconnu**. The thresholds are in the gauge's tooltip and written
+under the registry table.
+
+**Enregistré / dernière activité**, under the cards, lists every device Data
+knows whatever the search filter: name, ID, state, first message received,
+last activity with its age, and since when the announced availability or the
+silence holds.
 Choose **Voir les courbes** to select a device and check the measures to draw.
 Unknown values stay unknown; a disconnected broker leaves the last known
 values dated and disables commands. The workspace follows the AgentX theme.
@@ -637,26 +648,59 @@ remain unchanged. Quantized readings still show their actual repeated values.
 
 **Par mesure** displays individual charts using the same returned readings.
 The combined live chart updates in place, retaining its canvas and inspection
-cursor. Both views expose full-precision tables; historical **Min–max** adds
-the observed ranges to the combined chart and its scales.
+cursor. Both views expose full-precision tables with the median, mean, minimum,
+maximum and reading count of each bucket.
+
+History views draw the **median** of each time bucket as the line and the
+**minimum–maximum range as a shaded band**; live readings are raw and have no
+band. **Valeur centrale** switches the line between **Médiane** and
+**Moyenne**, and **Bande min–max** shows or hides the band. Both choices are
+kept in this browser under their own key, so curve styles saved earlier are
+untouched and a browser without the new key gets median and band. The band is
+cut at gaps, widens a curve's scale to the real extremes so it is never
+clipped, and is drawn stronger for the measure of **Axe affiché** in the
+combined chart. One line above the chart says what the line and the band mean
+and which resolution Data actually used.
 
 - **Live** reads Data's last 60 raw points per measure. That memory buffer
   starts empty after Data restarts.
 - **History** offers an hour, 24 hours, seven days, 31 days or a year, with
   automatic or explicit minute, five-minute, 30-minute, hourly, two-hour or
   daily resolution. Fine history is retained 90 days; hourly history has no
-  expiry. Graphs use mean values and show their min/max ranges, real time
-  spacing, gaps and partial hours. Tables expose every returned point at full
-  precision.
+  expiry. Graphs show real time spacing, gaps and partial hours. Tables expose
+  every returned point at full precision.
+- **Tout** reads from the device's first message to now and always lets Data
+  choose the resolution, which falls back to hourly or daily buckets beyond
+  the minute tier. The resolution selector is disabled for it.
 - Cards and live graphs refresh every two seconds while the tab is visible;
   historical curves refresh every minute. Refresh waits during editing or
   while a details panel is open. Changing devices or tabs discards old answers.
 - **Nom, emplacement et notes** explicitly saves those three registry fields.
-- **Commandes** explicitly sends GPIO ON, GPIO OFF or reboot for the selected
-  device. GPIO numbers are 0–48, matching Data's existing firmware contract.
-  Commands are QoS 0, never retained or queued. A published message establishes
-  publication only: it does not establish what the hardware did. A lost reply
-  reports an unknown outcome and triggers no automatic retry.
+- **Commandes** sends GPIO ON, GPIO OFF or reboot for the selected device in
+  two steps, without a browser dialog. **Préparer l’envoi** sends nothing: it
+  shows the device, command, GPIO, MQTT topic and payload exactly as they will
+  be published. **Confirmer l’envoi** sends that message once; **Annuler**,
+  another device, or 20 seconds without confirmation disarm it. The controls
+  are disabled, with the reason in words, when the device is offline or
+  silent, or when Data's broker link is disconnected, not configured or
+  unknown. GPIO numbers are 0–48, matching Data's existing firmware contract.
+  Commands are QoS 0, never retained or queued. The outcome is shown in place:
+  **Publié** with the topic and time (publication only, never what the
+  hardware did), **Non envoyé** for a refusal or a missing broker link (4xx,
+  503), **Peut-être envoyé** when the publication was not confirmed (504, a
+  lost or unreadable reply). Nothing is retried automatically.
+- **Événements** lists the selected device's latest lines of Data's activity
+  log (first seen, online, offline, silent, back, command sent or failed).
+  The log has no device filter: the tab reads the 100 most recent IoT events
+  every 30 seconds and keeps those of the device, and says so. Its link opens
+  the Activity tab filtered on IoT devices.
+- **État du consommateur MQTT** shows Data's own report: broker link, devices
+  tracked, readings received and refused with their reasons, last minute
+  bucket written, last hourly rollup and minute retention. A missing value is
+  shown as missing.
+- **Pas encore revenu des anciennes pages** is a collapsed note, with no
+  control, of what has no backend today: daily timers per output, input/output
+  configuration profiles pushed to a device, and cameras.
 
 The page displays measures from `sensors/<device>/<measure>` and recognized
 numeric fields in legacy `esp32/alive/<device>` and `esp32/data/<device>` JSON.
