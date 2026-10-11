@@ -442,9 +442,9 @@ export function persistSettings(elements, state, defaults, refreshMessages, setF
     options: readOptions(elements),
   };
   localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(payload));
-  state.settings = payload;
-  state.showStats = payload.showStats;
-  refreshMessages();
+  const statsChanged = state.showStats !== payload.showStats; // the only setting saved messages show
+  state.settings = payload; state.showStats = payload.showStats;
+  if (statsChanged && !state.streamAbortController) refreshMessages(); // never drop a streaming reply
   setFeedback('Defaults saved locally.', 'success');
 }
 
